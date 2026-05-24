@@ -23,11 +23,20 @@
   },
   "hooks": {
     "PreToolUse": [
-      ".claude/hooks/read-plan-before-write.sh",
-      ".claude/hooks/block-secrets.sh"
+      {
+        "matcher": "Edit|Write",
+        "hooks": [{ "type": "command", "command": ".claude/hooks/read-plan-before-write.sh" }]
+      },
+      {
+        "matcher": "",
+        "hooks": [{ "type": "command", "command": ".claude/hooks/block-secrets.sh" }]
+      }
     ],
     "PostToolUse": [
-      ".claude/hooks/typecheck-on-edit.sh"
+      {
+        "matcher": "Edit|Write",
+        "hooks": [{ "type": "command", "command": ".claude/hooks/typecheck-on-edit.sh" }]
+      }
     ]
   }
 }

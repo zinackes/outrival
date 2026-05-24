@@ -1,0 +1,24 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+:root {
+  --background: #0c0c0f;
+  --foreground: #ffffff;
+  --surface: #16161a;
+  --border: rgba(255, 255, 255, 0.08);
+  --accent: #f59e0b;
+  --accent-foreground: #0c0c0f;
+  --muted: rgba(255, 255, 255, 0.5);
+  --radius: 6px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-inter), sans-serif;
+  -webkit-font-smoothing: antialiased;
+}

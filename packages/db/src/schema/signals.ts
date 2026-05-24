@@ -1,0 +1,23 @@
+import { pgTable, text, timestamp, boolean, pgEnum } from "drizzle-orm/pg-core";
+import { changes } from "./changes";
+import { organizations } from "./organizations";
+import { competitors } from "./competitors";
+
+export const severityEnum = pgEnum("severity", ["low", "medium", "high", "critical"]);
+export const categoryEnum = pgEnum("category", [
+  "pricing", "product", "hiring", "reviews", "content", "funding",
+]);
+
+export const signals = pgTable("signals", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  changeId: text("change_id").notNull().references(() => changes.id),
+  orgId: text("org_id").notNull().references(() => organizations.id),
+  competitorId: text("competitor_id").notNull().references(() => competitors.id),
+  severity: severityEnum("severity").notNull(),
+  category: categoryEnum("category").notNull(),
+  insight: text("insight").notNull(),
+  soWhat: text("so_what"),
+  recommendedAction: text("recommended_action"),
+  isRead: boolean("is_read").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});

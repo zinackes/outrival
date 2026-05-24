@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "db:push": "drizzle-kit push",
     "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
     "@outrival/shared": "workspace:*",
@@ -21,6 +22,7 @@
     "postgres": "^3.4.9"
   },
   "devDependencies": {
+    "@types/node": "^25.9.1",
     "drizzle-kit": "^0.31.10"
   }
 }

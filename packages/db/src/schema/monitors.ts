@@ -1,0 +1,22 @@
+import { pgTable, text, timestamp, boolean, jsonb, pgEnum } from "drizzle-orm/pg-core";
+import { competitors } from "./competitors";
+
+export const sourceTypeEnum = pgEnum("source_type", [
+  "homepage", "pricing", "blog", "changelog", "jobs",
+  "g2_reviews", "capterra_reviews", "appstore_reviews",
+  "linkedin", "twitter",
+]);
+
+export const frequencyEnum = pgEnum("frequency", ["realtime", "daily", "weekly"]);
+
+export const monitors = pgTable("monitors", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  competitorId: text("competitor_id").notNull().references(() => competitors.id, { onDelete: "cascade" }),
+  sourceType: sourceTypeEnum("source_type").notNull(),
+  frequency: frequencyEnum("frequency").notNull().default("daily"),
+  config: jsonb("config"),
+  isActive: boolean("is_active").notNull().default(true),
+  lastRunAt: timestamp("last_run_at"),
+  nextRunAt: timestamp("next_run_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});

@@ -1,0 +1,19 @@
+{
+  "name": "@outrival/workers",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "dev": "trigger dev",
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "trigger:dev": "trigger dev"
+  },
+  "dependencies": {
+    "@outrival/ai": "workspace:*",
+    "@outrival/db": "workspace:*",
+    "@outrival/scrapers": "workspace:*",
+    "@outrival/shared": "workspace:*",
+    "@trigger.dev/sdk": "^4.4.6",
+    "zod": "^4.4.3"
+  }
+}

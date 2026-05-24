@@ -5,8 +5,13 @@
     "dev": "turbo dev",
     "build": "turbo build",
     "typecheck": "turbo typecheck",
-    "test": "turbo test"
+    "test": "turbo test",
+    "db:push": "pnpm --filter @outrival/db db:push",
+    "db:migrate": "pnpm --filter @outrival/db db:migrate",
+    "db:studio": "pnpm --filter @outrival/db db:studio",
+    "trigger:dev": "pnpm --filter @outrival/workers trigger:dev"
   },
+  "packageManager": "pnpm@10.11.0",
   "devDependencies": {
     "turbo": "latest",
     "typescript": "^5.4.0"

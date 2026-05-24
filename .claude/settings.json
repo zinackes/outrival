@@ -1,0 +1,33 @@
+{
+  "autoCompact": false,
+  "permissions": {
+    "allow": [
+      "Bash(pnpm *)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git log *)",
+      "Bash(git branch *)",
+      "Bash(mkdir -p *)",
+      "Bash(cat *)",
+      "Bash(ls *)",
+      "Bash(echo *)",
+      "Bash(chmod +x *)"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(curl * | bash)",
+      "Bash(wget * | sh)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      ".claude/hooks/read-plan-before-write.sh",
+      ".claude/hooks/block-secrets.sh"
+    ],
+    "PostToolUse": [
+      ".claude/hooks/typecheck-on-edit.sh"
+    ]
+  }
+}

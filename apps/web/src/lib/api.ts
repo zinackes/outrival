@@ -203,6 +203,17 @@ export interface BattleCard {
   updatedAt: string;
 }
 
+export interface CompetitorCandidate {
+  id: string;
+  orgId: string;
+  url: string;
+  title: string | null;
+  overlapScore: number | null;
+  reason: string | null;
+  status: "new" | "dismissed" | "added";
+  firstSeenAt: string;
+}
+
 export const api = {
   listCompetitors: () => request<{ competitors: Competitor[] }>("/api/competitors"),
   getCompetitor: (id: string) =>
@@ -303,4 +314,15 @@ export const api = {
     }),
   battleCardPdfUrl: (competitorId: string) =>
     `${BASE}/api/competitors/${competitorId}/battle-card/pdf`,
+  listCandidates: (status?: "new" | "dismissed" | "added") =>
+    request<{ candidates: CompetitorCandidate[] }>(
+      `/api/candidates${status ? `?status=${status}` : ""}`,
+    ),
+  addCandidate: (id: string) =>
+    request<{ competitor: Competitor; monitors: Monitor[] }>(
+      `/api/candidates/${id}/add`,
+      { method: "POST" },
+    ),
+  dismissCandidate: (id: string) =>
+    request<{ ok: true }>(`/api/candidates/${id}/dismiss`, { method: "POST" }),
 };

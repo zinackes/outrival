@@ -13,6 +13,7 @@ import { settingsRouter } from "./routes/settings";
 import { onboardingRouter } from "./routes/onboarding";
 import { battleCardsRouter } from "./routes/battle-cards";
 import { notificationsRouter } from "./routes/notifications";
+import { candidatesRouter } from "./routes/candidates";
 
 const app = new Hono();
 
@@ -40,6 +41,7 @@ app.route("/api/digests", digestsRouter);
 app.route("/api/settings", settingsRouter);
 app.route("/api/onboarding", onboardingRouter);
 app.route("/api/notifications", notificationsRouter);
+app.route("/api/candidates", candidatesRouter);
 
 export default {
   port: env.PORT,

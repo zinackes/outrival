@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import Link from "next/link";
-import { Home, Users, FileText, Bell, Settings } from "lucide-react";
+import { Home, Users, FileText, Bell, Settings, Sparkles } from "lucide-react";
 import { LogoutButton } from "./logout-button";
 import { NotificationsBell } from "@/components/outrival/notifications-bell";
 
@@ -26,6 +26,7 @@ async function getOnboardingStatus(): Promise<{ onboardingCompleted: boolean } |
 const navItems = [
   { href: "/dashboard", label: "Activité", icon: Home },
   { href: "/dashboard/competitors", label: "Competitors", icon: Users },
+  { href: "/dashboard/candidates", label: "Détections", icon: Sparkles },
   { href: "/dashboard/digests", label: "Digests", icon: FileText },
   { href: "/dashboard/alerts", label: "Alerts", icon: Bell },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },

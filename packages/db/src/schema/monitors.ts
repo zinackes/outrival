@@ -16,7 +16,9 @@ export const monitors = pgTable("monitors", {
   frequency: frequencyEnum("frequency").notNull().default("daily"),
   config: jsonb("config"),
   isActive: boolean("is_active").notNull().default(true),
+  requiresProxy: boolean("requires_proxy").notNull().default(false),
   lastRunAt: timestamp("last_run_at"),
   nextRunAt: timestamp("next_run_at"),
+  lastChangedAt: timestamp("last_changed_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

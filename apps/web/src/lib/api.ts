@@ -41,6 +41,52 @@ export interface ChangeRow {
   competitorUrl: string;
 }
 
+export interface Signal {
+  id: string;
+  severity: "low" | "medium" | "high" | "critical";
+  category: string;
+  insight: string;
+  soWhat: string | null;
+  recommendedAction: string | null;
+  isRead: boolean;
+  createdAt: string;
+  competitorId: string;
+  competitorName: string;
+  changeId: string;
+}
+
+export interface DigestSection {
+  urgency: "action_required" | "watch" | "fyi";
+  competitor: string;
+  category: string;
+  insight: string;
+  so_what: string;
+}
+
+export interface DigestContent {
+  temperature: "calme" | "modérée" | "agitée";
+  tldr: string[];
+  sections: DigestSection[];
+}
+
+export interface Digest {
+  id: string;
+  orgId: string;
+  weekStart: string;
+  weekEnd: string;
+  content: DigestContent;
+  temperature: string | null;
+  sentAt: string | null;
+  createdAt: string;
+}
+
+export interface NotificationSettings {
+  slackWebhookUrl: string | null;
+  digestEmail: string | null;
+  digestEnabled: boolean;
+  alertsEnabled: boolean;
+}
+
 export const api = {
   listCompetitors: () => request<{ competitors: Competitor[] }>("/api/competitors"),
   getCompetitor: (id: string) =>
@@ -63,4 +109,29 @@ export const api = {
     const qs = q.toString();
     return request<{ changes: ChangeRow[] }>(`/api/changes${qs ? `?${qs}` : ""}`);
   },
+  listSignals: (params?: {
+    limit?: number;
+    competitorId?: string;
+    severity?: string;
+    unreadOnly?: boolean;
+  }) => {
+    const q = new URLSearchParams();
+    if (params?.limit) q.set("limit", String(params.limit));
+    if (params?.competitorId) q.set("competitorId", params.competitorId);
+    if (params?.severity) q.set("severity", params.severity);
+    if (params?.unreadOnly) q.set("unreadOnly", "true");
+    const qs = q.toString();
+    return request<{ signals: Signal[] }>(`/api/signals${qs ? `?${qs}` : ""}`);
+  },
+  markSignalRead: (id: string) =>
+    request<{ ok: true }>(`/api/signals/${id}/read`, { method: "PATCH" }),
+  listDigests: () => request<{ digests: Digest[] }>("/api/digests"),
+  getDigest: (id: string) => request<{ digest: Digest }>(`/api/digests/${id}`),
+  getNotificationSettings: () =>
+    request<NotificationSettings>("/api/settings/notifications"),
+  updateNotificationSettings: (body: Partial<NotificationSettings>) =>
+    request<{ ok: true }>("/api/settings/notifications", {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
 };

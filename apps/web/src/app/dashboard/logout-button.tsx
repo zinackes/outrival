@@ -1,15 +1,16 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
 import { signOut } from "@/lib/auth-client";
 
 export function LogoutButton() {
-  const router = useRouter();
-
   async function handleLogout() {
-    await signOut();
-    router.push("/login");
+    try {
+      await signOut();
+    } catch (err) {
+      console.error("signOut failed", err);
+    }
+    window.location.href = "/login";
   }
 
   return (

@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, jsonb, pgEnum } from "drizzle-orm/pg-core";
 
 export const planEnum = pgEnum("plan", ["free", "starter", "pro", "business"]);
 
@@ -12,6 +12,14 @@ export const organizations = pgTable("organizations", {
   digestEmail: text("digest_email"),
   digestEnabled: boolean("digest_enabled").notNull().default(true),
   alertsEnabled: boolean("alerts_enabled").notNull().default(true),
+  productUrl: text("product_url"),
+  productProfile: jsonb("product_profile").$type<{
+    category: string;
+    audience: string;
+    valueProp: string;
+    pricingModel: string;
+  }>(),
+  onboardingCompleted: boolean("onboarding_completed").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

@@ -1,4 +1,4 @@
-import { task, logger, AbortTaskRunError } from "@trigger.dev/sdk/v3";
+import { task, logger, tasks, AbortTaskRunError } from "@trigger.dev/sdk/v3";
 import { z } from "zod";
 import { and, desc, eq, gte } from "drizzle-orm";
 import {
@@ -121,6 +121,9 @@ export const scrapeMonitorJob = task({
           })
           .returning();
         changeId = newChange?.id ?? null;
+        if (changeId) {
+          await tasks.trigger("classify-change", { changeId });
+        }
       }
     }
 

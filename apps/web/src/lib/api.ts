@@ -1,4 +1,27 @@
+import type { BillingPeriod, Plan } from "@outrival/shared";
+
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+
+export type ApiErrorCode =
+  | "plan_limit_competitors"
+  | "plan_locked_feature"
+  | "plan_locked_source"
+  | "plan_locked_frequency"
+  | "plan_locked_channel";
+
+export class ApiError extends Error {
+  status: number;
+  code?: ApiErrorCode | string;
+  data: Record<string, unknown>;
+
+  constructor(status: number, body: unknown, message: string) {
+    super(message);
+    this.status = status;
+    const data = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
+    this.data = data;
+    if (typeof data.error === "string") this.code = data.error;
+  }
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
@@ -9,7 +32,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`API ${res.status}: ${text || res.statusText}`);
+    let body: unknown = text;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      // not json, leave as text
+    }
+    throw new ApiError(res.status, body, `API ${res.status}: ${text || res.statusText}`);
   }
   return res.json() as Promise<T>;
 }
@@ -214,6 +243,21 @@ export interface CompetitorCandidate {
   firstSeenAt: string;
 }
 
+export interface BillingInfo {
+  plan: Plan;
+  planPeriod: BillingPeriod | null;
+  hasSubscription: boolean;
+  usage: {
+    competitors: { used: number; limit: number | null };
+  };
+  features: {
+    battleCards: boolean;
+    realtimeAlerts: boolean;
+    api: boolean;
+    multiUser: boolean;
+  };
+}
+
 export const api = {
   listCompetitors: () => request<{ competitors: Competitor[] }>("/api/competitors"),
   getCompetitor: (id: string) =>
@@ -325,4 +369,12 @@ export const api = {
     ),
   dismissCandidate: (id: string) =>
     request<{ ok: true }>(`/api/candidates/${id}/dismiss`, { method: "POST" }),
+  getBilling: () => request<BillingInfo>("/api/billing"),
+  createCheckout: (plan: Exclude<Plan, "free">, period: BillingPeriod) =>
+    request<{ url: string }>("/api/billing/checkout", {
+      method: "POST",
+      body: JSON.stringify({ plan, period }),
+    }),
+  openPortal: () =>
+    request<{ url: string }>("/api/billing/portal", { method: "POST" }),
 };

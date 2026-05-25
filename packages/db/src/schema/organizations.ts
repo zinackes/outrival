@@ -1,6 +1,7 @@
 import { pgTable, text, timestamp, boolean, jsonb, pgEnum } from "drizzle-orm/pg-core";
 
 export const planEnum = pgEnum("plan", ["free", "starter", "pro", "business"]);
+export const billingPeriodEnum = pgEnum("billing_period", ["monthly", "yearly"]);
 
 export const organizations = pgTable("organizations", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -8,6 +9,8 @@ export const organizations = pgTable("organizations", {
   slug: text("slug").notNull().unique(),
   plan: planEnum("plan").notNull().default("free"),
   stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  planPeriod: billingPeriodEnum("plan_period"),
   slackWebhookUrl: text("slack_webhook_url"),
   digestEmail: text("digest_email"),
   digestEnabled: boolean("digest_enabled").notNull().default(true),

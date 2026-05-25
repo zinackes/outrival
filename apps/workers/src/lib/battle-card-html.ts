@@ -1,0 +1,116 @@
+import type { BattleCardContent } from "@outrival/ai";
+
+function escape(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function list(items: string[]): string {
+  if (!items.length) return `<li class="muted">—</li>`;
+  return items.map((i) => `<li>${escape(i)}</li>`).join("");
+}
+
+export function renderBattleCardHtml(input: {
+  competitorName: string;
+  myProductCategory: string;
+  generatedAt: Date;
+  content: BattleCardContent;
+}): string {
+  const { content } = input;
+  const objections = content.common_objections.length
+    ? content.common_objections
+        .map(
+          (o) =>
+            `<div class="obj"><div class="obj-q">«&nbsp;${escape(o.objection)}&nbsp;»</div><div class="obj-a">${escape(o.response)}</div></div>`,
+        )
+        .join("")
+    : `<div class="muted">—</div>`;
+
+  return `<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<title>Battle card — ${escape(input.competitorName)}</title>
+<style>
+  @page { size: A4; margin: 16mm; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Inter", "Segoe UI", Helvetica, Arial, sans-serif;
+    color: #1a1a1a;
+    background: #ffffff;
+    font-size: 11px;
+    line-height: 1.5;
+  }
+  header { display: flex; justify-content: space-between; align-items: end; border-bottom: 2px solid #F59E0B; padding-bottom: 12px; margin-bottom: 18px; }
+  .brand { font-family: "Syne", Helvetica, sans-serif; font-size: 20px; font-weight: 700; letter-spacing: -0.5px; }
+  .brand span { color: #F59E0B; }
+  .meta { font-size: 10px; color: #555; text-align: right; }
+  h1 { font-family: "Syne", Helvetica, sans-serif; font-size: 26px; margin: 0 0 6px; letter-spacing: -0.6px; }
+  .subtitle { font-size: 11px; color: #666; margin: 0 0 18px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  section { border: 1px solid #e5e5e5; border-radius: 8px; padding: 12px 14px; break-inside: avoid; }
+  section.full { grid-column: 1 / -1; }
+  section h2 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; color: #F59E0B; font-weight: 700; }
+  ul { margin: 0; padding-left: 16px; }
+  ul li { margin-bottom: 4px; }
+  .muted { color: #999; font-style: italic; }
+  .obj { margin-bottom: 10px; }
+  .obj:last-child { margin-bottom: 0; }
+  .obj-q { font-weight: 600; color: #333; }
+  .obj-a { color: #444; margin-top: 2px; padding-left: 8px; border-left: 2px solid #F59E0B; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  footer { margin-top: 22px; padding-top: 10px; border-top: 1px solid #e5e5e5; font-size: 9px; color: #999; text-align: center; }
+</style>
+</head>
+<body>
+  <header>
+    <div class="brand">Out<span>rival</span></div>
+    <div class="meta">
+      Battle card · ${escape(input.generatedAt.toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" }))}
+    </div>
+  </header>
+
+  <h1>${escape(input.competitorName)}</h1>
+  <p class="subtitle">Catégorie produit : ${escape(input.myProductCategory)}</p>
+
+  <div class="pair">
+    <section>
+      <h2>Leurs forces</h2>
+      <ul>${list(content.their_strengths)}</ul>
+    </section>
+    <section>
+      <h2>Nos forces</h2>
+      <ul>${list(content.our_strengths)}</ul>
+    </section>
+  </div>
+
+  <section class="full" style="margin-top: 14px;">
+    <h2>Leurs faiblesses</h2>
+    <ul>${list(content.their_weaknesses)}</ul>
+  </section>
+
+  <section class="full" style="margin-top: 14px;">
+    <h2>Objections fréquentes</h2>
+    ${objections}
+  </section>
+
+  <div class="pair" style="margin-top: 14px;">
+    <section>
+      <h2>Quand on gagne</h2>
+      <ul>${list(content.when_we_win)}</ul>
+    </section>
+    <section>
+      <h2>Quand on perd</h2>
+      <ul>${list(content.when_we_lose)}</ul>
+    </section>
+  </div>
+
+  <footer>Généré par Outrival · ${escape(input.generatedAt.toISOString())}</footer>
+</body>
+</html>`;
+}

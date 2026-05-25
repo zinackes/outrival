@@ -31,3 +31,9 @@ export async function getFromR2(key: string): Promise<string> {
   if (!res.Body) throw new Error(`R2 object not found: ${key}`);
   return await res.Body.transformToString();
 }
+
+export async function getBytesFromR2(key: string): Promise<Uint8Array> {
+  const res = await r2.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
+  if (!res.Body) throw new Error(`R2 object not found: ${key}`);
+  return await res.Body.transformToByteArray();
+}

@@ -1,1 +1,10 @@
-export {};
+export { AI_CONFIG } from "./config";
+export type { AIProvider, AITaskConfig } from "./config";
+export { complete } from "./provider";
+export { safeParseJson } from "./lib/parse";
+export { classifyChange, ClassificationSchema } from "./tasks/classify";
+export type { Classification } from "./tasks/classify";
+export { generateInsight, InsightSchema } from "./tasks/insight";
+export type { Insight } from "./tasks/insight";
+export { generateDigest, DigestSchema } from "./tasks/digest";
+export type { Digest, DigestInputSignal } from "./tasks/digest";

@@ -19,3 +19,6 @@ export function getScraper(sourceType: SourceType): ScraperFn {
 }
 
 export type { ScraperResult } from "./types";
+export { findSimilarCompanies } from "./discovery/discover";
+export type { DiscoveredCompany } from "./discovery/discover";
+export { quickFetchText } from "./lib/quick-fetch";

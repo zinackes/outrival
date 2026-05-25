@@ -7,6 +7,9 @@ import { healthRouter } from "./routes/health";
 import { competitorsRouter } from "./routes/competitors";
 import { monitorsRouter } from "./routes/monitors";
 import { changesRouter } from "./routes/changes";
+import { signalsRouter } from "./routes/signals";
+import { digestsRouter } from "./routes/digests";
+import { settingsRouter } from "./routes/settings";
 
 const app = new Hono();
 
@@ -28,6 +31,9 @@ app.route("/health", healthRouter);
 app.route("/api/competitors", competitorsRouter);
 app.route("/api/monitors", monitorsRouter);
 app.route("/api/changes", changesRouter);
+app.route("/api/signals", signalsRouter);
+app.route("/api/digests", digestsRouter);
+app.route("/api/settings", settingsRouter);
 
 export default {
   port: env.PORT,

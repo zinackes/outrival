@@ -5,6 +5,7 @@ import { organizations } from "@outrival/db";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
+import { getOrgPlan, isChannelAllowed } from "../lib/plan";
 
 type Variables = { user: { id: string } };
 
@@ -44,6 +45,13 @@ settingsRouter.patch("/notifications", async (c) => {
   const parsed = PatchSchema.safeParse(body);
   if (!parsed.success) {
     return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
+  }
+
+  if (parsed.data.slackWebhookUrl) {
+    const plan = await getOrgPlan(orgId);
+    if (!isChannelAllowed(plan, "slack")) {
+      return c.json({ error: "plan_locked_channel", channel: "slack", plan }, 403);
+    }
   }
 
   const update: Record<string, unknown> = {};

@@ -2,6 +2,7 @@ import { task, logger, AbortTaskRunError } from "@trigger.dev/sdk/v3";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db, signals, competitors, organizations, alerts, notifications } from "@outrival/db";
+import { PLAN_LIMITS } from "@outrival/shared";
 import { sendSlackMessage } from "../lib/slack";
 import { getResend, ALERT_FROM } from "../lib/resend";
 
@@ -45,21 +46,25 @@ export const sendAlertJob = task({
       return { skipped: true, reason: "alerts_disabled" };
     }
 
+    const limits = PLAN_LIMITS[org.plan];
+
     const emoji = SEVERITY_EMOJI[signal.severity] ?? "🔔";
     const text = `${emoji} *${competitor.name}* — ${signal.category}\n${signal.insight}${signal.soWhat ? `\n→ ${signal.soWhat}` : ""}`;
 
-    await db.insert(notifications).values({
-      orgId: org.id,
-      type: "signal",
-      title: `${emoji} ${competitor.name} — ${signal.category}`,
-      body: signal.insight,
-      linkUrl: `/dashboard/competitors/${competitor.id}`,
-    });
+    if (limits.features.realtimeAlerts) {
+      await db.insert(notifications).values({
+        orgId: org.id,
+        type: "signal",
+        title: `${emoji} ${competitor.name} — ${signal.category}`,
+        body: signal.insight,
+        linkUrl: `/dashboard/competitors/${competitor.id}`,
+      });
+    }
 
     let slackSent = false;
     let emailSent = false;
 
-    if (org.slackWebhookUrl) {
+    if (org.slackWebhookUrl && limits.allowedChannels.includes("slack")) {
       try {
         await sendSlackMessage(org.slackWebhookUrl, text);
         await db.insert(alerts).values({

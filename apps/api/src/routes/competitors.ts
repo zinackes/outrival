@@ -13,6 +13,7 @@ import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
 import { chQuery } from "../lib/clickhouse-safe";
+import { checkCompetitorQuota, getOrgPlan } from "../lib/plan";
 
 type Variables = { user: { id: string } };
 
@@ -39,6 +40,15 @@ competitorsRouter.post("/", async (c) => {
 
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
+
+  const plan = await getOrgPlan(orgId);
+  const quota = await checkCompetitorQuota(orgId, plan);
+  if (!quota.allowed) {
+    return c.json(
+      { error: "plan_limit_competitors", used: quota.used, limit: quota.limit, plan },
+      403,
+    );
+  }
 
   const [competitor] = await db
     .insert(competitors)

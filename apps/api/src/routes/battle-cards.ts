@@ -7,6 +7,7 @@ import { getBytesFromR2 } from "@outrival/shared";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
+import { getOrgPlan, isFeatureAllowed } from "../lib/plan";
 
 type Variables = { user: { id: string } };
 
@@ -57,6 +58,11 @@ battleCardsRouter.post("/:id/battle-card/generate", async (c) => {
   const id = c.req.param("id");
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
+
+  const plan = await getOrgPlan(orgId);
+  if (!isFeatureAllowed(plan, "battleCards")) {
+    return c.json({ error: "plan_locked_feature", feature: "battleCards", plan }, 403);
+  }
 
   const competitor = await assertOwnedCompetitor(id, orgId);
   if (!competitor) return c.json({ error: "Not found" }, 404);

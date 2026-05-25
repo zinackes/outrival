@@ -5,6 +5,7 @@ import { competitorCandidates, competitors, monitors } from "@outrival/db";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
+import { checkCompetitorQuota, getOrgPlan } from "../lib/plan";
 
 type Variables = { user: { id: string } };
 
@@ -54,6 +55,15 @@ candidatesRouter.post("/:id/add", async (c) => {
   });
   if (!candidate) return c.json({ error: "Not found" }, 404);
   if (candidate.status === "added") return c.json({ error: "Already added" }, 400);
+
+  const plan = await getOrgPlan(orgId);
+  const quota = await checkCompetitorQuota(orgId, plan);
+  if (!quota.allowed) {
+    return c.json(
+      { error: "plan_limit_competitors", used: quota.used, limit: quota.limit, plan },
+      403,
+    );
+  }
 
   const [competitor] = await db
     .insert(competitors)

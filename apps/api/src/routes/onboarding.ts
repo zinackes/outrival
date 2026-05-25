@@ -9,6 +9,12 @@ import { tasks } from "@trigger.dev/sdk/v3";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
+import {
+  checkCompetitorQuota,
+  getOrgPlan,
+  isFrequencyAllowed,
+  isSourceAllowed,
+} from "../lib/plan";
 
 type Variables = { user: { id: string } };
 
@@ -159,6 +165,33 @@ onboardingRouter.post("/complete", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
   const { selectedCompetitors, monitoringPrefs } = parsed.data;
+
+  const plan = await getOrgPlan(orgId);
+
+  if (!isFrequencyAllowed(plan, monitoringPrefs.frequency)) {
+    return c.json(
+      { error: "plan_locked_frequency", frequency: monitoringPrefs.frequency, plan },
+      403,
+    );
+  }
+  const lockedSource = monitoringPrefs.sources.find((s) => !isSourceAllowed(plan, s));
+  if (lockedSource) {
+    return c.json({ error: "plan_locked_source", source: lockedSource, plan }, 403);
+  }
+
+  const quota = await checkCompetitorQuota(orgId, plan, selectedCompetitors.length);
+  if (!quota.allowed) {
+    return c.json(
+      {
+        error: "plan_limit_competitors",
+        used: quota.used,
+        limit: quota.limit,
+        requested: selectedCompetitors.length,
+        plan,
+      },
+      403,
+    );
+  }
 
   const created: Array<{ competitorId: string; monitorIds: string[] }> = [];
 

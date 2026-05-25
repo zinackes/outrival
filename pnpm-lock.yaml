@@ -165,6 +165,9 @@ importers:
 
   packages/db:
     dependencies:
+      '@clickhouse/client':
+        specifier: ^1.18.5
+        version: 1.18.5
       '@outrival/shared':
         specifier: workspace:*
         version: link:../shared

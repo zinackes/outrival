@@ -9,12 +9,16 @@
     "trigger:dev": "trigger dev"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.98.0",
+    "@clickhouse/client": "^1.18.5",
     "@outrival/ai": "workspace:*",
     "@outrival/db": "workspace:*",
     "@outrival/scrapers": "workspace:*",
     "@outrival/shared": "workspace:*",
+    "@trigger.dev/build": "^4.4.6",
     "@trigger.dev/sdk": "^4.4.6",
     "drizzle-orm": "^0.45.2",
+    "resend": "^6.12.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {

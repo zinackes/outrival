@@ -13,6 +13,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@outrival/shared": "workspace:*"
+    "@anthropic-ai/sdk": "^0.98.0",
+    "@outrival/shared": "workspace:*",
+    "groq-sdk": "^1.2.0",
+    "zod": "^4.4.3"
   }
 }

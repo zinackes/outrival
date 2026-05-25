@@ -244,3 +244,84 @@ GROQ + SCRAPINGBEE + CLICKHOUSE credentials
 5. Ouvrir la fiche → tous les onglets affichent des données + graphiques OK
 6. Mesurer le taux de succès ScrapingBee sur G2/Capterra
 7. Commencer Phase 6 — Battle Cards & Alertes
+
+---
+
+### 2026-05-25 — Phase 6 Battle Cards & Alertes
+
+**Objectif** : Battle cards IA exportables en PDF, alertes in-app temps-réel via SSE
+(DB-backed, pas Upstash), détection hebdo de nouveaux concurrents avec flow candidat.
+
+**Réalisé** :
+- Étape 1 : 3 nouvelles tables Postgres + enums (battle_cards, notifications + type enum,
+  competitor_candidates + status enum) → db:push appliqué
+- Étape 2 : @outrival/ai : generateBattleCard (Groq AI_CONFIG.insights, Zod schema 6 sections,
+  prompt XML structuré, maxTokens 2048)
+- Étape 3 : Workers : generate-battle-card.job + lib/battle-card-html.ts
+  (template A4 dark/amber printable) + Playwright PDF → upload R2
+  · getBytesFromR2 ajouté à @outrival/shared (Uint8Array pour binaires)
+  · playwright ajouté en dep directe d'apps/workers (pnpm strict)
+- Étape 4 : API : 4 routes /api/competitors/:id/battle-card (GET, generate, PATCH content, GET pdf)
+  · Router séparé monté à /api/competitors à côté du competitorsRouter (Hono dispatche par chemin)
+- Étape 5 : UI : composant BattleCardTab + ajout onglet "Battle Card" dans fiche concurrent
+  · Modes view/edit, polling 3s pendant génération, DL PDF, régénérer
+- Étape 6 : Notifications SSE :
+  · send-alert.job : 7 lignes ajoutées pour insert notifications (surgical)
+  · routes/notifications.ts (list, unread-count, read/:id, read-all, stream)
+  · streamSSE Hono + poll DB 3s + onAbort + heartbeat
+  · components/notifications-bell.tsx (badge + dropdown + toast + EventSource)
+  · Header ajouté au dashboard layout (au-dessus du main)
+- Étape 7 : detect-new-competitors.job (schedules.task, cron 0 20 * * 0) :
+  · Loop orgs onboardées → findSimilarCompanies → dedup URL+hostname
+  · scoreOverlap → insert candidate + notification si overlap > 65
+  · routes/candidates.ts (list filter status, add, dismiss)
+  · /dashboard/candidates page + entrée sidebar "Détections"
+- Étape 8 : pnpm build ✓ (7/7) + pnpm typecheck ✓ (7/7)
+
+**Fichiers créés** :
+- packages/db/src/schema/{battle_cards,notifications,competitor_candidates}.ts
+- packages/ai/src/tasks/battle-card.ts
+- apps/workers/src/jobs/{generate-battle-card,detect-new-competitors}.job.ts
+- apps/workers/src/lib/battle-card-html.ts
+- apps/api/src/routes/{battle-cards,notifications,candidates}.ts
+- apps/web/src/components/outrival/{battle-card-tab,notifications-bell}.tsx
+- apps/web/src/app/dashboard/candidates/page.tsx
+
+**Fichiers modifiés** :
+- packages/db/src/schema/index.ts (+3 exports)
+- packages/shared/src/r2/client.ts (+ getBytesFromR2)
+- packages/ai/src/index.ts (réexports battle card)
+- apps/workers/src/jobs/send-alert.job.ts (insert notification surgical)
+- apps/workers/package.json (+ playwright dep)
+- apps/api/src/index.ts (3 nouveaux mounts)
+- apps/web/src/lib/api.ts (types + endpoints battle card + candidates)
+- apps/web/src/app/dashboard/competitors/[id]/page.tsx (onglet Battle Card)
+- apps/web/src/app/dashboard/layout.tsx (header + NotificationsBell + nav Détections)
+
+**Décisions notables** :
+- SSE DB-backed (poll 3s) plutôt qu'Upstash pub/sub — latence ok, gratuit, sur VPS
+- PDF Playwright in-process (browser launch + close per job) — Trigger.dev extension
+  playwright déjà configurée pour les scrapers
+- Battle card content = jsonb editable, PDF non-régénéré auto (bouton "Régénérer" séparé)
+- Dedup candidates : URL exacte + hostname normalisé (sans www) — Exa varie les formats
+- Cron `0 20 * * 0` (dim 20h UTC) pour detect-new-competitors
+- Notification creation surgical : 7 lignes dans send-alert (avant Slack/email)
+- Battle cards générées via Groq llama-3.3-70b (AI_CONFIG.insights) — swap Claude
+  Sonnet via 1 ligne config si besoin de qualité premium plus tard
+
+**Tests** : pnpm build ✓ (7/7) | pnpm typecheck ✓ (7/7) | runtime à tester avec
+GROQ + R2 + EXA + DB credentials
+
+**Prochaine session** :
+1. Test E2E : sur un concurrent enrichi, générer battle card → vérifier contenu cohérent
+2. Éditer une section → sauvegarde OK, PDF inchangé jusqu'à "Régénérer"
+3. Télécharger le PDF → ouvrir → vérifier le rendu A4 (sections, branding)
+4. Déclencher un signal critical → vérifier l'apparition dans la cloche en ~3s + toast
+5. Test "Marquer tout comme lu" + clic notif → navigation correcte
+6. Déclencher manuellement detect-new-competitors → vérifier insert candidates +
+   notification "new_competitor"
+7. Ajouter un candidat → vérifier création competitor + 3 monitors + scrape initial
+8. Re-déclencher detect-new-competitors → vérifier qu'on ne re-alerte PAS sur les
+   candidats déjà vus
+9. Mesurer stabilité SSE (durée connexion, reconnect EventSource)
+10. Commencer Phase 7 — Monétisation (Stripe, free tier limits, landing page)

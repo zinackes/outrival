@@ -10,13 +10,56 @@ Mis à jour automatiquement par Claude Code à chaque session.
 - [x] Phase 3 — Intelligence IA (Groq classify+insight+digest, alertes, cron)
 - [x] Phase 4 — Competitor Discovery (Exa.ai, onboarding, overlap scoring)
 - [x] Phase 5 — Enrichissement (jobs, reviews, pricing history, fiche complète)
-- [ ] Phase 6 — Battle Cards & Alertes (export PDF, alertes temps-réel)
+- [x] Phase 6 — Battle Cards & Alertes (export PDF, alertes temps-réel SSE)
 - [ ] Phase 7 — Monétisation (Stripe, free tier limits, landing page)
 
 ## Phase en cours
-Phase 6 — Battle Cards & Alertes (prochaine)
+Phase 7 — Monétisation (prochaine)
 
-## Étapes session actuelle (Phase 5 — terminée 2026-05-25)
+## Étapes session actuelle (Phase 6 — terminée 2026-05-25)
+
+- [x] Étape 1 — Schémas DB : battle_cards, notifications (+ enum), competitor_candidates (+ enum) + db:push
+- [x] Étape 2 — packages/ai : generateBattleCard (Groq via AI_CONFIG.insights, Zod schema)
+- [x] Étape 3 — Workers : generate-battle-card.job (gather context → Groq → upsert → Playwright PDF → R2)
+              + lib/battle-card-html.ts (template A4 Outrival dark/amber)
+              + getBytesFromR2 helper (packages/shared) + playwright en dep workers
+- [x] Étape 4 — API : 4 routes /api/competitors/:id/battle-card (GET, generate, PATCH, GET pdf)
+- [x] Étape 5 — UI : onglet "Battle Card" + composant BattleCardTab (édition inline,
+              polling 3s pendant génération, DL PDF, régénérer)
+- [x] Étape 6 — Notifications SSE :
+              · send-alert.job : insert notification (surgical, 7 lignes)
+              · routes/notifications.ts : list, unread-count, read, read-all, stream(SSE)
+              · components/notifications-bell.tsx + header dans dashboard layout
+              · DB-backed, latence ~3s, EventSource auto-reconnect
+- [x] Étape 7 — detect-new-competitors.job (cron `0 20 * * 0`) :
+              · findSimilarCompanies + scoreOverlap pour chaque org onboardée
+              · dedup par URL ET hostname normalisé (existing + seen candidates)
+              · insert candidate + notification si overlap > 65
+              · routes/candidates.ts (list, add, dismiss)
+              · /dashboard/candidates + entrée sidebar "Détections"
+- [x] Étape 8 — pnpm build ✓ (7/7) + pnpm typecheck ✓ (7/7)
+- [x] Étape 9 — Mise à jour planning
+
+## Décisions Phase 6
+
+- Temps-réel via SSE DB-backed (`hono/streaming.streamSSE`) — pas d'Upstash
+  pub/sub ni service payant. Latence 2-3s amplement suffisante pour veille
+- PDF Playwright via `chromium.launch({headless:true})` + page.pdf({format:"A4"})
+  → buffer → upload R2 (jamais en DB). Régénération uniquement à la demande
+- Helper `getBytesFromR2(key) → Uint8Array` ajouté à @outrival/shared
+  (au lieu de string) pour servir binaires via Response Hono
+- battleCardsRouter monté à `/api/competitors` à côté de competitorsRouter
+  (deux routers même prefix, dispatch par chemin distinct `/:id/battle-card`)
+- Dedup candidates double-vérifié : exact URL set + normalized hostname set
+  (sans www) car Exa retourne parfois différents formats pour le même site
+- send-alert modif surgical : 7 lignes en plus (insert dans table notifications)
+  pour ne pas casser la robustesse Slack/email existante
+- Battle card content = jsonb editable inline (pas de schéma de validation
+  duplicaté côté UI, juste Zod côté API)
+- Bell + toast positionnés en `position:fixed bottom-right` pour les toasts,
+  dropdown ancré au bouton bell dans le header (z-50)
+
+## Étapes session précédente (Phase 5 — terminée 2026-05-25)
 
 - [x] Étape 0 — Deps (@clickhouse/client ajouté à @outrival/db)
 - [x] Étape 1 — Tables ClickHouse (client partagé `ch` + ensureClickhouseTables + script `pnpm ch:setup`)

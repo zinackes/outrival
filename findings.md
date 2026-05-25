@@ -257,3 +257,95 @@ Découvertes techniques et décisions importantes accumulées au fil des session
 - Logo : "Out" blanc + "rival" amber, font Syne
 - Tabs custom (pas de @radix-ui/react-tabs installé) — boutons + underline amber
   pour l'état actif, transparent sinon
+
+## Phase 6 — Battle Cards & Alertes
+
+### Génération battle card (Groq)
+
+- `generateBattleCard(input)` via `AI_CONFIG.insights` (Groq llama-3.3-70b)
+- Prompt XML structuré : `<my_product>`, `<competitor>`, `<reviews>`, `<recent_signals>`
+- maxTokens 2048 — battle card complète sort en ~3-6s
+- Inputs collectés côté workers : org.productProfile, competitor.aiSummary,
+  praises/complaints (8 max chacun), 8 derniers signals
+- Si Groq retourne du JSON malformé → safeParseJson retourne ok:false → null
+  → AbortTaskRunError côté job (pas de retry inutile sur même prompt cassé)
+
+### PDF Playwright
+
+- `chromium.launch({ headless: true })` puis `page.setContent(html, { waitUntil: "networkidle" })`
+  puis `page.pdf({ format: "A4", printBackground: true, margin: 0 })`
+- `Buffer.from(...)` autour du retour `page.pdf()` (typage Playwright = Buffer | Uint8Array)
+- Toujours `await browser.close()` dans un `finally` — sinon fuite si erreur
+- Playwright doit être déclaré dans `dependencies` d'apps/workers (pnpm strict),
+  même si `packages/scrapers` l'a déjà — un workspace dep ne donne PAS accès
+  aux subdeps depuis le sibling
+- Template HTML inline (lib/battle-card-html.ts) avec @page A4, margin 16mm,
+  break-inside: avoid sur les sections, font-family Inter + Syne (fallbacks system)
+
+### R2 — binaire vs texte
+
+- `uploadToR2(key, body, contentType)` accepte string OU Buffer (déjà ok)
+- `getFromR2(key) → string` existant via `transformToString()`
+- Nouveau `getBytesFromR2(key) → Uint8Array` via `transformToByteArray()`
+  pour servir des binaires (PDF) via `new Response(bytes, ...)` côté Hono
+- Convention de clé PDF : `battle-cards/{competitorId}/{ISO_timestamp}.pdf`
+- `pdfR2Key` stocké en DB après l'upload R2 (jamais l'inverse)
+
+### Routes API battle-cards
+
+- `app.route("/api/competitors", competitorsRouter)` puis
+  `app.route("/api/competitors", battleCardsRouter)` fonctionne en Hono :
+  les deux routers partagent le prefix, chacun dispatch ses propres chemins
+  (`/:id` vs `/:id/battle-card`)
+- Réponse PDF : `Content-Disposition: attachment; filename="battle-card-{slug}.pdf"`
+  où slug = `competitor.name.replace(/[^\w-]+/g, "-").toLowerCase()`
+
+### SSE Hono — pattern temps-réel
+
+- `import { streamSSE } from "hono/streaming"` — natif Hono, zéro dep
+- Boucle infinie `while (!aborted)` avec `stream.sleep(3000)` entre polls
+- `stream.onAbort(() => { aborted = true })` capture la déconnexion client
+- Tracking via `lastCheck = new Date()` mis à jour seulement au `createdAt` de la
+  dernière notif émise (pas à `new Date()` à chaque tour) — évite de manquer
+  une notif créée entre `findMany` et reset de `lastCheck`
+- Heartbeat `event: "heartbeat"` toutes les 3s pour maintenir la connexion
+  vivante côté proxies/load balancers (Coolify/Nginx coupent à 60s d'idle)
+- Event au connect : `event: "ready"` avec timestamp (debug latence côté client)
+
+### EventSource côté navigateur
+
+- `new EventSource(url, { withCredentials: true })` — cookies envoyés
+  (Better Auth session cookie nécessaire pour authMiddleware)
+- `es.addEventListener("notification", ...)` pour les events nommés
+  (pas `onmessage` qui ne reçoit que les events sans `event:`)
+- EventSource gère l'auto-reconnect par défaut → on n'a rien à coder
+- `es.close()` dans le cleanup useEffect — sinon connexion zombie sur navigation
+
+### Notifications — création surgical depuis send-alert
+
+- Insert dans `notifications` AVANT la branche Slack/email (l'in-app marche
+  même si Slack/email sont désactivés ou échouent)
+- Type `signal` pour les alertes liées à un Signal, `new_competitor` pour la détection
+- `linkUrl` toujours relatif (`/dashboard/competitors/{id}` ou `/dashboard/candidates`)
+  pour permettre router.push() ou anchor href direct
+
+### Detect new competitors — pattern dedup
+
+- Filtrer les concurrents existants ET les candidates déjà vus
+- Comparaison URL exacte (set d'URLs) + comparaison par hostname normalisé
+  (lowercase, strip `www.`) — Exa peut retourner le même site avec/sans www
+- `competitor_candidates.url` est la dedup key fonctionnelle (jamais re-alerter)
+- Status `new` → en attente, `added` → ajouté à la veille, `dismissed` → ignoré
+- Cron `0 20 * * 0` (dimanche 20h UTC) — assez tard pour ne pas bloquer
+  d'autres jobs en heures ouvrées européennes
+- Seuil overlap > 65 codé en const `MIN_OVERLAP` — facile à tweaker
+
+### UI Battle Card — édition inline
+
+- Mode view = ul/li read-only, mode edit = inputs/textareas inline
+- Pas de form/zod côté client — l'API valide le payload PATCH avec son propre Zod
+  schema dupliqué (cohérent mais simple)
+- Polling 3s pendant `status === "generating"` jusqu'à `pdfR2Key` non-null
+- Bouton "Télécharger PDF" désactivé tant que `pdfR2Key` est null (PDF en attente)
+- Bouton "Régénérer" relance le job mais garde le contenu actuel visible
+  (UX : on ne perd pas l'éditable pendant la régénération)

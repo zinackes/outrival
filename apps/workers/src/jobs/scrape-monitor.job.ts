@@ -61,8 +61,14 @@ export const scrapeMonitorJob = task({
       }
     }
 
+    const configUrl =
+      monitor.config && typeof monitor.config === "object" && "url" in monitor.config
+        ? String((monitor.config as { url: unknown }).url)
+        : null;
+    const scrapeUrl = configUrl ?? competitor.url;
+
     const scraper = getScraper(monitor.sourceType);
-    const result = await scraper(competitor.id, competitor.url);
+    const result = await scraper(competitor.id, scrapeUrl);
     const newHash = computeHash(result.html);
 
     const lastSnapshot = await db.query.snapshots.findFirst({

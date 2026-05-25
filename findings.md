@@ -350,6 +350,66 @@ Découvertes techniques et décisions importantes accumulées au fil des session
 - Bouton "Régénérer" relance le job mais garde le contenu actuel visible
   (UX : on ne perd pas l'éditable pendant la régénération)
 
+## Patch 01 — Coût scraping (direct-first + reschedule adaptatif)
+
+### Direct-first scraping (packages/scrapers/src/lib/crawler.ts)
+
+- `scrapePage(url, opts)` tente Playwright direct (gratuit) en premier, fallback
+  ScrapingBee (premium_proxy + render_js) seulement si `looksBlocked` détecte un
+  blocage. Retourne `ScrapeOutcome { ...result, usedProxy: boolean }`
+- `looksBlocked(html, statusCode)` conservateur (mieux vaut un faux positif → proxy
+  qu'un faux contenu stocké) : status 403/429/503, html < 500 chars, captcha,
+  cf-challenge, "attention required", "access denied", "just a moment"
+- `runCrawler(url, { useProxy, fullPage, waitForSelector })` factorise les deux modes :
+  useProxy=true → scrapeViaScrapingBee, useProxy=false → PlaywrightCrawler direct
+- `statusCode` ajouté à `ScraperResult` — exposé par Playwright via `response?.status()`
+  et par Cheerio via `response?.statusCode`
+- `preferProxy: true` saute la tentative directe (utile pour sites connus protégés)
+
+### Scrapers : passthrough preferProxy
+
+- Tous les scrapers acceptent `(competitorId, url, options?: ScrapeOptions)` et
+  retournent `ScrapeOutcome` (structurellement compatible avec ScraperResult)
+- homepage, pricing, jobs, blog : passent `options.preferProxy` à scrapePage
+- g2-reviews et capterra-reviews : **forcent** `preferProxy: true` (sites connus
+  protégés → évite une tentative directe inutile et le crédit consommé en double)
+- blog reste sur scrapeStatic (CheerioCrawler) — pas de proxy car blogs typiquement
+  pas derrière anti-bot
+
+### Apprentissage proxy (scrape-monitor)
+
+- `monitor.requiresProxy` (default false) est passé en `preferProxy` à chaque scrape
+- Après chaque scrape, si `outcome.usedProxy && !monitor.requiresProxy` → set
+  `requiresProxy = true` → le prochain scrape ne refait pas la tentative directe
+- Pas de retour à false automatique : un site qui demande le proxy une fois est
+  considéré protégé à vie (conservatif)
+
+### Reschedule adaptatif (packages/shared/src/scheduling.ts)
+
+- `computeNextRun(frequency, lastChangedAt, createdAt, now?)` calcule le prochain run
+- BASE_INTERVAL_MS : realtime=1h, daily=24h, weekly=7d
+- MAX_INTERVAL_MS (plafond) : realtime=12h, daily=5d, weekly=30d
+- stalenessMultiplier : ×1 (<14j) → ×2 (<45j) → ×3 (<90j) → ×4 (>=90j)
+- La fréquence utilisateur est un **plancher** (jamais accéléré au-delà), le
+  multiplicateur est un **plafond** (jamais plus lent que MAX_INTERVAL_MS)
+- `lastChangedAt` mis à jour côté scrape-monitor uniquement quand un Change est
+  inséré → un site qui ne change plus voit son nextRunAt s'éloigner naturellement
+- Si lastChangedAt est null, on fallback sur createdAt (premier scrape post-création)
+
+### Schedule-scraping
+
+- Aucune modif nécessaire — était déjà dans l'état cible (`isActive && (nextRunAt
+  null || nextRunAt <= now)` → enqueue). Toute la logique de reschedule vit
+  désormais dans scrape-monitor (chaque monitor se reprogramme après son propre run)
+
+### Pattern TS — closures et spread
+
+- `let result: ScraperResult | null = null` assigné dans un closure puis check
+  `if (!result) throw` → TS ne narrow PAS le type dans la branche suivante à cause
+  du closure. Solution : `const captured = result as ScraperResult | null` puis
+  check → permet le narrow. (S'applique au spread `{ ...result, usedProxy }`
+  mais pas au simple `return result`.)
+
 ## Phase 7 — Monétisation
 
 ### Stripe SDK v22 + TypeScript NodeNext

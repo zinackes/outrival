@@ -14,7 +14,9 @@ import {
   Star,
   FileText,
   Sparkles,
+  Swords,
 } from "lucide-react";
+import { BattleCardTab } from "@/components/outrival/battle-card-tab";
 import {
   LineChart,
   Line,
@@ -38,7 +40,7 @@ import {
   type ReviewsData,
 } from "@/lib/api";
 
-type TabKey = "activity" | "pricing" | "hiring" | "reviews" | "content";
+type TabKey = "activity" | "pricing" | "hiring" | "reviews" | "content" | "battlecard";
 
 const TABS: Array<{ key: TabKey; label: string; icon: typeof Activity }> = [
   { key: "activity", label: "Activité récente", icon: Activity },
@@ -46,6 +48,7 @@ const TABS: Array<{ key: TabKey; label: string; icon: typeof Activity }> = [
   { key: "hiring", label: "Recrutement", icon: Briefcase },
   { key: "reviews", label: "Reviews", icon: Star },
   { key: "content", label: "Contenu", icon: FileText },
+  { key: "battlecard", label: "Battle Card", icon: Swords },
 ];
 
 const SEVERITY_COLOR: Record<string, string> = {
@@ -132,6 +135,7 @@ export default function CompetitorDetailPage({ params }: Props) {
         {tab === "hiring" && <HiringTab competitorId={id} />}
         {tab === "reviews" && <ReviewsTab competitorId={id} />}
         {tab === "content" && <ContentTab changes={recentChanges} />}
+        {tab === "battlecard" && <BattleCardTab competitorId={id} />}
       </div>
     </div>
   );

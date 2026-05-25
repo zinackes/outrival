@@ -184,6 +184,25 @@ export interface DiscoveredCompetitor {
   reason: string;
 }
 
+export interface BattleCardContent {
+  their_strengths: string[];
+  our_strengths: string[];
+  their_weaknesses: string[];
+  common_objections: Array<{ objection: string; response: string }>;
+  when_we_win: string[];
+  when_we_lose: string[];
+}
+
+export interface BattleCard {
+  id: string;
+  competitorId: string;
+  orgId: string;
+  content: BattleCardContent;
+  pdfR2Key: string | null;
+  generatedAt: string;
+  updatedAt: string;
+}
+
 export const api = {
   listCompetitors: () => request<{ competitors: Competitor[] }>("/api/competitors"),
   getCompetitor: (id: string) =>
@@ -270,4 +289,18 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  getBattleCard: (competitorId: string) =>
+    request<{ battleCard: BattleCard }>(`/api/competitors/${competitorId}/battle-card`),
+  generateBattleCard: (competitorId: string) =>
+    request<{ status: string; runId: string }>(
+      `/api/competitors/${competitorId}/battle-card/generate`,
+      { method: "POST" },
+    ),
+  patchBattleCard: (competitorId: string, content: BattleCardContent) =>
+    request<{ battleCard: BattleCard }>(`/api/competitors/${competitorId}/battle-card`, {
+      method: "PATCH",
+      body: JSON.stringify({ content }),
+    }),
+  battleCardPdfUrl: (competitorId: string) =>
+    `${BASE}/api/competitors/${competitorId}/battle-card/pdf`,
 };

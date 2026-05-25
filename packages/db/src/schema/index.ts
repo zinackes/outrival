@@ -9,3 +9,6 @@ export * from "./digests";
 export * from "./alerts";
 export * from "./job_postings";
 export * from "./reviews";
+export * from "./battle_cards";
+export * from "./notifications";
+export * from "./competitor_candidates";

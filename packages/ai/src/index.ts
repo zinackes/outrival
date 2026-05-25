@@ -8,3 +8,7 @@ export { generateInsight, InsightSchema } from "./tasks/insight";
 export type { Insight } from "./tasks/insight";
 export { generateDigest, DigestSchema } from "./tasks/digest";
 export type { Digest, DigestInputSignal } from "./tasks/digest";
+export { analyzeProduct, ProductProfileSchema } from "./tasks/analyze-product";
+export type { ProductProfile } from "./tasks/analyze-product";
+export { scoreOverlap } from "./tasks/score-overlap";
+export type { Candidate, ScoredCandidate } from "./tasks/score-overlap";

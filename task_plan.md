@@ -7,43 +7,46 @@ Mis à jour automatiquement par Claude Code à chaque session.
 - [x] Phase 0 — Scaffold monorepo (turbo, tsconfig, packages vides, CI vert)
 - [x] Phase 1 — Foundation (monorepo, auth, DB schema, dashboard shell)
 - [x] Phase 2 — Scraping Core (Crawlee, diff engine, change feed)
-- [ ] Phase 3 — Intelligence IA (Groq classification, Claude insights, digest)
+- [x] Phase 3 — Intelligence IA (Groq classify+insight+digest, alertes, cron)
 - [ ] Phase 4 — Competitor Discovery (Exa.ai, onboarding, overlap scoring)
 - [ ] Phase 5 — Enrichissement (jobs, reviews, pricing history, fiche complète)
 - [ ] Phase 6 — Battle Cards & Alertes (export PDF, alertes temps-réel)
 - [ ] Phase 7 — Monétisation (Stripe, free tier limits, landing page)
 
 ## Phase en cours
-Phase 3 — Intelligence IA (prochaine)
+Phase 4 — Competitor Discovery (prochaine)
 
-## Étapes session actuelle (Phase 2 — terminée)
+## Étapes session actuelle (Phase 3 — terminée)
 
-- [x] Étape 0 — Deps + R2 env (crawlee, playwright, aws-sdk, diff, date-fns)
-- [x] Étape 1 — Client R2 (packages/shared/src/r2/client.ts)
-- [x] Étape 2 — Diff engine (packages/shared/src/diff)
-- [x] Étape 3 — Scrapers homepage/pricing/blog (Playwright + Cheerio)
-- [x] Étape 4 — scrape-monitor.job (R2 upload → snapshot → diff → change)
-- [x] Étape 5 — Routes API competitors/monitors/changes (auth + Zod)
-- [x] Étape 6 — UI competitors + activity feed (page liste, page détail, feed)
-- [x] Étape 7 — Vérif typecheck + build (7/7 ✓)
-- [x] Étape 8 — Mise à jour fichiers planning
+- [x] Étape 0 — Deps (groq-sdk, @anthropic-ai/sdk, resend, @clickhouse/client)
+- [x] Étape 1 — packages/ai pipeline (config, provider, parse, classify, insight, digest)
+- [x] Étape 2 — Schéma : slackWebhookUrl, digestEmail, digestEnabled, alertsEnabled sur organizations
+- [x] Étape 3 — Jobs classify-change + generate-signal + ClickHouse signal_feed
+- [x] Étape 4 — Trigger pipeline IA depuis scrape-monitor après création Change
+- [x] Étape 5 — Alertes Slack + email (Resend) via send-alert.job
+- [x] Étape 6 — schedule-scraping.job (cron horaire, fréquences realtime/daily/weekly)
+- [x] Étape 7 — generate-weekly-digest.job (cron lundi 8h + email Resend)
+- [x] Étape 8 — Routes API : signals, digests, settings/notifications
+- [x] Étape 9 — UI : feed Signals, page Digests, page Settings
+- [x] Étape 10 — pnpm build ✓ + pnpm typecheck ✓ (7/7)
+- [x] Étape 11 — Mise à jour planning
 
 ## Décisions architecturales
-- Stack : Next.js App Router + Hono/Bun + Drizzle + Railway PostgreSQL + ClickHouse
-- Infra : Hetzner VPS + Coolify (self-hosted, EU)
-- Scraping : Crawlee + ScrapingBee proxy (Phase 2 : sans proxy, ScrapingBee Phase 5+)
-- Jobs : Trigger.dev v3 (SDK v4.4.6, export `/v3`)
-- Stockage binaire : Cloudflare R2
-- Auth : Better Auth v1.6.11
-- AI : Groq (classification) + Claude Sonnet (insights)
-- Pattern multi-tenant : `ensureUserOrg(userId)` crée une org perso au premier accès
+- Pipeline IA 100% Groq pour Phase 3 (llama-3.3-70b-versatile) — swap vers Claude
+  prévu en changeant une seule ligne dans `packages/ai/src/config.ts`
+- ClickHouse insert (signal_feed) en best-effort : skip + log si CLICKHOUSE_URL non set
+- Idempotence Signal : check `signals.changeId` avant insert (classify + generate)
+- ClickHouse client dans `apps/workers/src/lib/clickhouse.ts` (workers seul consommateur)
+- env aiEnv() lazy : ne parse les vars qu'au premier appel pour ne pas crasher trigger:dev
+- Resend `ALERT_FROM` paramétrable via env `RESEND_FROM` (défaut alerts@outrival.io)
 
-## À faire avant Phase 3
+## À faire avant Phase 4
 
-- Remplir les creds R2 dans .env.local (R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY)
-- Créer le bucket `outrival-snapshots` sur Cloudflare R2
-- Test E2E manuel : ajouter linear.app → Scraper maintenant → vérifier R2 + DB + feed
-- Remplir GROQ_API_KEY + ANTHROPIC_API_KEY dans .env.local
+- Remplir `GROQ_API_KEY` + `RESEND_API_KEY` dans .env.local
+- (optionnel) Remplir `CLICKHOUSE_URL` + `CLICKHOUSE_PASSWORD` + créer table `signal_feed`
+- `pnpm db:push --filter @outrival/db` pour appliquer les nouvelles colonnes organizations
+- Test E2E : scraper un site modifié → vérifier Signal créé + alerte si high/critical
+- Déclencher manuellement `generate-weekly-digest` une fois pour vérifier le flow email
 
 ## Blockers
-Aucun (creds R2 à fournir pour test E2E)
+Aucun. Phase 3 livrable end-to-end. Reste creds à fournir pour test runtime.

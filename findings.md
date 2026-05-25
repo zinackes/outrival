@@ -87,6 +87,52 @@ Découvertes techniques et décisions importantes accumulées au fil des session
   (Phase 1 n'a pas implémenté l'onboarding org). Toutes les routes passent par ce helper
   pour récupérer `orgId`.
 
+## Phase 3 — Intelligence IA
+
+### Groq via `groq-sdk`
+- `response_format: { type: "json_object" }` est supporté par `llama-3.3-70b-versatile`
+  — toujours combiner avec un prompt qui demande explicitement "UNIQUEMENT JSON valide".
+- Le SDK Groq retourne `res.choices[0]?.message?.content` (peut être undefined → fallback "").
+- Pour les longs diffs : truncate à ~8KB dans le prompt pour rester sous les limites de
+  contexte et limiter le coût (le diffText est déjà tronqué à 50KB en DB).
+
+### Pattern provider abstrait
+- `complete(config, options)` dans `packages/ai/src/provider.ts` switch sur `config.provider`.
+- Clients Groq/Anthropic instanciés lazy via getter — sinon trigger:dev crash quand
+  `GROQ_API_KEY` est absent à l'import des jobs.
+- `aiEnv()` est une fonction lazy (pas un export top-level parsé) pour la même raison.
+
+### Trigger.dev v3 — patterns Phase 3
+- `tasks.trigger("task-id", payload)` par string ID est suffisant — pas besoin du
+  generic `tasks.trigger<typeof ...>` qui force un import circulaire entre jobs.
+- `schedules.task({ id, cron, run })` v3 : `payload.timestamp` est dispo dans `run`.
+- Toujours `maxDuration` requis (en secondes) dans la config du task.
+- Idempotence pipeline : `signals.changeId` est unique de facto — check avant insert
+  dans BOTH classify-change ET generate-signal (le 2e protège contre les race conditions).
+
+### ClickHouse best-effort
+- `signal_feed` insert wrap try/catch + log — si CLICKHOUSE_URL absent, skip avec warn.
+- Permet au pipeline de fonctionner sans ClickHouse provisioned (validation produit d'abord).
+- Table à créer côté ClickHouse manuellement (DDL non automatisé pour l'instant).
+
+### Resend / Slack
+- Slack webhook : POST JSON `{ text }` suffit — pas besoin de blocks pour l'alerte.
+- Resend `from` : nécessite un domaine vérifié — fallback `alerts@outrival.io` en config.
+- Erreurs Slack/email : log + insert ligne `alerts` avec `error` au lieu de throw.
+  → garde le pipeline robuste (alerte ratée ≠ signal perdu).
+
+### Digest hebdomadaire
+- Idempotence par `(orgId, weekStart)` — recherche existing avant generate.
+- Skip orgs sans signal sur la semaine (pas de digest vide → spam évité).
+- `weekStart`/`weekEnd` au format ISO date (YYYY-MM-DD) pour matcher Drizzle `date()`.
+- HTML email inliné directement dans `lib/digest-email.ts` (pas de templating engine).
+
+### UI signals
+- `activity-feed.tsx` (ancien feed Changes bruts) remplacé par feed Signals.
+- L'ancienne page `/dashboard` (Activité) sert maintenant le feed Signals avec sévérité,
+  catégorie, insight, so_what, recommendedAction + bouton "marquer comme lu".
+- Pas de page `/dashboard/changes` distincte — les Changes restent visibles via API.
+
 ## Décisions de design
 
 - Outrival = dark theme, amber (#F59E0B), Syne + Inter

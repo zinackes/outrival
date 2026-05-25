@@ -41,6 +41,52 @@ Découvertes techniques et décisions importantes accumulées au fil des session
 - `tsc --filter` n'existe pas — toujours utiliser `pnpm typecheck --filter @outrival/pkg` (turbo).
 - Si `cd apps/workers && git add apps/workers/` → pathspec error. Toujours faire `git add` depuis la racine du repo.
 
+## Phase 2 — Scraping Core
+
+### Crawlee / Playwright
+- `PlaywrightCrawler` retient les pages visitées → un second `crawler.run([url])`
+  avec la même URL ne ré-exécute pas le handler. Toujours instancier un crawler frais
+  par appel `scrape()` ou appeler `await crawler.teardown()` après chaque run.
+- `page.goto({ waitUntil: "networkidle" })` ne suffit pas pour les SPA modernes —
+  prévoir un `waitForSelector` optionnel par scraper.
+- `page.screenshot()` retourne déjà un `Buffer` côté Node, mais le typage Playwright
+  expose `Buffer | Uint8Array`. Wrapper avec `Buffer.from(...)`.
+- `headless: true` par défaut OK pour dev.
+
+### R2 / S3 client
+- Endpoint R2 : `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com` + `region: "auto"`.
+- ContentType requis sur upload — sinon Cloudflare sert sans MIME (curl OK mais le browser
+  voit `application/octet-stream`).
+- Convention de clé : `snapshots/{competitorId}/{sourceType}/{ISO_timestamp}.{html|png}`.
+  Pas de slash final, pas d'extension dans le `r2Key` stocké en DB
+  (on append `.html` / `.png` au moment du fetch).
+
+### Heuristiques scraping
+- Pricing : si l'URL contient déjà `pricing|tarifs|plans|tarification`, on l'utilise tel quel,
+  sinon on essaye `/pricing`, `/tarifs`, `/plans`, `/price` en cascade (premier qui retourne
+  >50 chars wins).
+- Blog : `/blog`, `/changelog`, `/news`, `/updates`, `/posts` — CheerioCrawler (statique)
+  car la plupart sont SSR.
+
+### Diff
+- `diffLines` du package `diff` est suffisant pour Phase 2 (texte seul).
+- `diffText` stocké tronqué à 50KB en DB pour éviter de spammer la table changes.
+- `rawDiff` (jsonb) stocke `{ added, removed }` complet — analysable IA en Phase 3.
+
+### Job scrape-monitor — pattern critique
+- **Toujours upload R2 AVANT insert snapshot** (règle scraping). Si upload fail, throw →
+  Trigger.dev retry, pas de row orpheline en DB.
+- Idempotence : skip si snapshot < 1h sauf `force: true` (utilisé par le bouton "Scraper
+  maintenant").
+- Hash identique → update `monitor.lastRunAt` mais pas de nouveau snapshot ni change.
+- `tasks.trigger("scrape-monitor", {...})` depuis l'API : pas besoin de typer le payload,
+  le job le valide via Zod.
+
+### API multi-tenant
+- `ensureUserOrg(userId)` crée une org perso au premier accès si l'utilisateur n'en a pas
+  (Phase 1 n'a pas implémenté l'onboarding org). Toutes les routes passent par ce helper
+  pour récupérer `orgId`.
+
 ## Décisions de design
 
 - Outrival = dark theme, amber (#F59E0B), Syne + Inter

@@ -6,3 +6,5 @@ dist/
 .turbo/
 *.tsbuildinfo
 .codegraph/
+.trigger/
+next-env.d.ts

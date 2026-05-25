@@ -13,6 +13,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@outrival/shared": "workspace:*"
+    "@outrival/shared": "workspace:*",
+    "crawlee": "^3.16.0",
+    "playwright": "^1.60.0"
   }
 }

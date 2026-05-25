@@ -19,7 +19,83 @@ export interface Competitor {
   name: string;
   url: string;
   description: string | null;
+  category: string | null;
+  overlapScore: number | null;
+  aiSummary: string | null;
+  aiSummaryUpdatedAt: string | null;
+  metadata: Record<string, unknown> | null;
   createdAt: string;
+  updatedAt: string;
+}
+
+export interface CompetitorJob {
+  id: string;
+  title: string;
+  department: string | null;
+  location: string | null;
+  isActive: boolean;
+  detectedAt: string;
+}
+
+export interface JobsByDepartment {
+  total: number;
+  departments: Array<{
+    department: string;
+    count: number;
+    jobs: CompetitorJob[];
+  }>;
+}
+
+export interface JobTrendPoint {
+  department: string;
+  count: number;
+  recorded_at: string;
+}
+
+export interface PricingHistoryPoint {
+  plan_name: string;
+  price: number;
+  currency: string;
+  billing_period: string;
+  recorded_at: string;
+}
+
+export interface ReviewScorePoint {
+  source: string;
+  score: number;
+  review_count: number;
+  sentiment_score: number;
+  recorded_at: string;
+}
+
+export interface ReviewVerbatim {
+  id: string;
+  source: string;
+  score: number | null;
+  content: string | null;
+  author: string | null;
+  detectedAt: string;
+}
+
+export interface ReviewsData {
+  summary: {
+    praises: Array<string | null>;
+    complaints: Array<string | null>;
+    lastUpdatedAt: string | null;
+  };
+  recent: ReviewVerbatim[];
+}
+
+export interface CompetitorSignal {
+  id: string;
+  severity: "low" | "medium" | "high" | "critical";
+  category: string;
+  insight: string;
+  soWhat: string | null;
+  recommendedAction: string | null;
+  isRead: boolean;
+  createdAt: string;
+  changeId?: string;
 }
 
 export interface Monitor {
@@ -111,9 +187,24 @@ export interface DiscoveredCompetitor {
 export const api = {
   listCompetitors: () => request<{ competitors: Competitor[] }>("/api/competitors"),
   getCompetitor: (id: string) =>
-    request<{ competitor: Competitor; monitors: Monitor[]; recentChanges: ChangeRow[] }>(
-      `/api/competitors/${id}`,
-    ),
+    request<{
+      competitor: Competitor;
+      monitors: Monitor[];
+      recentChanges: ChangeRow[];
+      recentSignals: CompetitorSignal[];
+    }>(`/api/competitors/${id}`),
+  getCompetitorJobs: (id: string) =>
+    request<JobsByDepartment>(`/api/competitors/${id}/jobs`),
+  getCompetitorJobTrends: (id: string) =>
+    request<{ trends: JobTrendPoint[] }>(`/api/competitors/${id}/job-trends`),
+  getCompetitorReviews: (id: string) =>
+    request<ReviewsData>(`/api/competitors/${id}/reviews`),
+  getCompetitorReviewScores: (id: string) =>
+    request<{ scores: ReviewScorePoint[] }>(`/api/competitors/${id}/review-scores`),
+  getCompetitorPricingHistory: (id: string) =>
+    request<{ history: PricingHistoryPoint[] }>(`/api/competitors/${id}/pricing-history`),
+  getCompetitorSignals: (id: string, limit = 50) =>
+    request<{ signals: CompetitorSignal[] }>(`/api/competitors/${id}/signals?limit=${limit}`),
   createCompetitor: (body: { name: string; url: string; description?: string }) =>
     request<{ competitor: Competitor; monitors: Monitor[] }>("/api/competitors", {
       method: "POST",

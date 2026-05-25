@@ -112,3 +112,54 @@ alertes Slack/email, scraping autonome (cron), digest hebdomadaire.
 4. Test E2E : scraper modifié → Signal → alerte high/critical reçue
 5. Déclencher generate-weekly-digest manuellement → email digest reçu
 6. Commencer Phase 4 — Competitor Discovery (Exa.ai)
+
+---
+
+### 2026-05-25 — Phase 4 Competitor Discovery
+
+**Objectif** : Onboarding 5 étapes synchrone (URL produit → profil IA →
+discovery Exa + scoring overlap Groq → sélection → premier scrape).
+Zéro dépendance Trigger.dev Realtime.
+
+**Réalisé** :
+- Étape 0 : pnpm add exa-js @outrival/scrapers + EXA_API_KEY + SCRAPINGBEE_API_KEY
+- Étape 1 : organizations.{productUrl, productProfile jsonb, onboardingCompleted}
+- Étape 2 : packages/ai/tasks/{analyze-product, score-overlap} (Groq, schemas Zod, scoring batché)
+- Étape 3 : packages/scrapers/discovery/discover.ts (Exa findSimilarAndContents) + lib/quick-fetch.ts (ScrapingBee no-JS)
+- Étape 4 : apps/api/src/routes/onboarding.ts (5 endpoints : status, analyze, discover, profile, complete)
+- Étape 5 : apps/web/src/app/(onboarding)/onboarding/page.tsx (client unique 5 étapes, state machine, spinners amber)
+- Étape 6 : dashboard layout — getOnboardingStatus + redirect /onboarding (4 lignes surgical)
+- Étape 7 : pnpm build ✓ (7/7) + pnpm typecheck ✓ (7/7)
+
+**Fichiers créés** :
+- packages/ai/src/tasks/analyze-product.ts, score-overlap.ts
+- packages/scrapers/src/discovery/discover.ts, lib/quick-fetch.ts
+- apps/api/src/routes/onboarding.ts
+- apps/web/src/app/(onboarding)/onboarding/page.tsx
+
+**Fichiers modifiés** :
+- packages/db/src/schema/organizations.ts (+3 colonnes)
+- packages/ai/src/index.ts (réexports)
+- packages/scrapers/src/index.ts + package.json (subpath exports ./discovery, ./quick-fetch)
+- apps/api/package.json (+ @outrival/scrapers workspace)
+- apps/api/src/index.ts (mount /api/onboarding)
+- apps/web/src/lib/api.ts (5 endpoints + types ProductProfile, DiscoveredCompetitor)
+- apps/web/src/app/dashboard/layout.tsx (garde onboarding)
+- .env.local (EXA_API_KEY + SCRAPINGBEE_API_KEY placeholders)
+
+**Décisions notables** :
+- Tout synchrone — pas de Trigger.dev Realtime (gratuit, plus simple, debug trivial)
+- Scoring overlap **batché** : 1 appel Groq pour 15 candidats (vs 15 appels séparés)
+- ProductProfile en **camelCase** partout (valueProp, pricingModel) — LLM instruit en camelCase
+- Subpath exports @outrival/scrapers pour ne pas pull crawlee/playwright dans l'API
+- `/discover` ne crée RIEN en DB — seul `/complete` crée competitors + monitors
+- Premier scrape post-onboarding = seul usage Trigger.dev (réutilise scrape-monitor)
+
+**Tests** : pnpm build ✓ (7/7) | pnpm typecheck ✓ (7/7) | runtime à tester avec EXA + SCRAPINGBEE keys
+
+**Prochaine session** :
+1. Remplir EXA_API_KEY + SCRAPINGBEE_API_KEY dans .env.local
+2. Test E2E : nouveau compte → /onboarding → URL réelle → flow complet → dashboard
+3. Mesurer latence /analyze + /discover (cible <15s total)
+4. Évaluer qualité discovery Exa sur 3-4 produits variés
+5. Commencer Phase 5 — Enrichissement (jobs, reviews, pricing history)

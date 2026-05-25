@@ -133,6 +133,49 @@ Découvertes techniques et décisions importantes accumulées au fil des session
   catégorie, insight, so_what, recommendedAction + bouton "marquer comme lu".
 - Pas de page `/dashboard/changes` distincte — les Changes restent visibles via API.
 
+## Phase 4 — Competitor Discovery
+
+### Exa.ai (exa-js v2)
+- `findSimilarAndContents(url, { numResults, excludeDomains, text })` retourne `{ results: [{ url, title, text }] }`.
+- `text.maxCharacters: 500` suffit pour donner du contexte à Groq pour scorer l'overlap.
+- Toujours `excludeDomains: [hostname(productUrl)]` pour ne pas retourner le produit lui-même.
+- Client instancié lazy via `getExa()` — sinon import du package onboarding crash si EXA_API_KEY manque au démarrage.
+
+### Scoring d'overlap batché
+- Un seul appel Groq (maxTokens 2048) pour les 15 candidats — 5-10x plus rapide
+  que 15 appels séparés et bien meilleur résultat car le LLM voit l'ensemble.
+- Le LLM renvoie parfois moins d'entrées que de candidats — toujours faire un mapping
+  par URL et défaulter à 0 pour les missing.
+- Snake_case dans le format LLM (`overlap_score`) puis remap en camelCase côté JS.
+
+### ProductProfile camelCase
+- Schéma drizzle org.productProfile typé via `$type<{ category, audience, valueProp, pricingModel }>()`.
+- LLM instruit en camelCase via le prompt — pas besoin de remap après parse.
+
+### Onboarding synchrone vs Trigger.dev Realtime
+- Pour des appels <15s qui ne se font qu'une fois, le sync API est gagnant :
+  pas de coût Realtime, code UI simple (spinner + await), debug trivial.
+- Trigger.dev reste pour le premier scrape (peut prendre 30s+, peut fail) — décorrélé du flow UI.
+
+### Subpath exports @outrival/scrapers
+- `./discovery` et `./quick-fetch` exposés séparément pour ne pas pull `crawlee`/`playwright`
+  dans l'API. L'API n'a besoin que d'Exa + fetch ScrapingBee.
+- Pattern à reproduire si d'autres packages mêlent du lourd et du léger.
+
+### quickFetchText
+- ScrapingBee `render_js=false` suffit pour extraire le texte d'une homepage (95% des cas).
+- Pipeline regex : strip script/style/tags + collapse whitespace → texte propre prêt pour Groq.
+- Seuil de 100 chars en sortie pour rejeter les pages trop maigres (cold pages, redirects).
+
+### Discovery flow API
+- `/onboarding/discover` ne crée RIEN en DB — c'est juste un appel scoring.
+- `/onboarding/complete` est le seul endpoint qui crée competitors + monitors.
+- Concurrents pré-cochés côté UI si overlapScore > 60 (heuristique testée à itérer).
+
+### Garde dashboard layout
+- Fetch `/api/onboarding/status` server-side avec forwarded headers (même pattern que getSession).
+- Redirect vers `/onboarding` si `!onboardingCompleted` — surgical, 4 lignes ajoutées.
+
 ## Décisions de design
 
 - Outrival = dark theme, amber (#F59E0B), Syne + Inter

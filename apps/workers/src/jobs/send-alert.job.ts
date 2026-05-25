@@ -1,7 +1,7 @@
 import { task, logger, AbortTaskRunError } from "@trigger.dev/sdk/v3";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
-import { db, signals, competitors, organizations, alerts } from "@outrival/db";
+import { db, signals, competitors, organizations, alerts, notifications } from "@outrival/db";
 import { sendSlackMessage } from "../lib/slack";
 import { getResend, ALERT_FROM } from "../lib/resend";
 
@@ -47,6 +47,14 @@ export const sendAlertJob = task({
 
     const emoji = SEVERITY_EMOJI[signal.severity] ?? "🔔";
     const text = `${emoji} *${competitor.name}* — ${signal.category}\n${signal.insight}${signal.soWhat ? `\n→ ${signal.soWhat}` : ""}`;
+
+    await db.insert(notifications).values({
+      orgId: org.id,
+      type: "signal",
+      title: `${emoji} ${competitor.name} — ${signal.category}`,
+      body: signal.insight,
+      linkUrl: `/dashboard/competitors/${competitor.id}`,
+    });
 
     let slackSent = false;
     let emailSent = false;

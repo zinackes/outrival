@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { Home, Users, FileText, Bell, Settings } from "lucide-react";
 import { LogoutButton } from "./logout-button";
+import { NotificationsBell } from "@/components/outrival/notifications-bell";
 
 async function getSession() {
   const res = await fetch(
@@ -78,7 +79,15 @@ export default async function DashboardLayout({
         <LogoutButton />
       </aside>
 
-      <main className="flex-1 p-8">{children}</main>
+      <main className="flex-1 flex flex-col">
+        <header
+          style={{ borderBottom: "1px solid var(--border)" }}
+          className="flex items-center justify-end px-8 py-3"
+        >
+          <NotificationsBell />
+        </header>
+        <div className="flex-1 p-8">{children}</div>
+      </main>
     </div>
   );
 }

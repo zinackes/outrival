@@ -14,6 +14,8 @@ import { onboardingRouter } from "./routes/onboarding";
 import { battleCardsRouter } from "./routes/battle-cards";
 import { notificationsRouter } from "./routes/notifications";
 import { candidatesRouter } from "./routes/candidates";
+import { billingRouter } from "./routes/billing";
+import { stripeWebhookRouter } from "./routes/stripe-webhook";
 
 const app = new Hono();
 
@@ -31,6 +33,11 @@ app.use(
 
 app.on(["POST", "GET"], "/api/auth/**", (c) => auth.handler(c.req.raw));
 
+// Stripe webhook — must be mounted before any router that could consume the
+// body (none currently, but kept first defensively) and stays outside the
+// auth middleware: Stripe authenticates the request via its signature.
+app.route("/api/stripe/webhook", stripeWebhookRouter);
+
 app.route("/health", healthRouter);
 app.route("/api/competitors", competitorsRouter);
 app.route("/api/competitors", battleCardsRouter);
@@ -42,6 +49,7 @@ app.route("/api/settings", settingsRouter);
 app.route("/api/onboarding", onboardingRouter);
 app.route("/api/notifications", notificationsRouter);
 app.route("/api/candidates", candidatesRouter);
+app.route("/api/billing", billingRouter);
 
 export default {
   port: env.PORT,

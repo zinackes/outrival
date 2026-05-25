@@ -349,3 +349,83 @@ Découvertes techniques et décisions importantes accumulées au fil des session
 - Bouton "Télécharger PDF" désactivé tant que `pdfR2Key` est null (PDF en attente)
 - Bouton "Régénérer" relance le job mais garde le contenu actuel visible
   (UX : on ne perd pas l'éditable pendant la régénération)
+
+## Phase 7 — Monétisation
+
+### Stripe SDK v22 + TypeScript NodeNext
+
+- Le module `stripe` v22 publie une shape "weird" en CJS : `export = StripeConstructor`
+  où StripeConstructor est callable mais son namespace ne contient que `type Stripe = ...`
+  → `Stripe.Customer`, `Stripe.Event` etc. ne sont PAS accessibles par défaut
+  via `import Stripe from "stripe"` quand TS résout en CJS (notre config)
+- Workaround : utiliser l'inference plutôt que les types namespace
+  - `export type StripeClient = InstanceType<typeof Stripe>` pour l'instance
+  - `type StripeEvent = ReturnType<StripeClient["webhooks"]["constructEvent"]>`
+  - `type StripeSubscription = Extract<StripeEvent, { type: "customer.subscription.created" }>["data"]["object"]`
+  - Évite d'avoir à passer en `"type": "module"` dans apps/api/package.json
+- `apiVersion: "2026-04-22.dahlia"` (la version la plus récente que le SDK accepte ;
+  ne pas garder une vieille version genre `2025-04-30.basil` même si la doc Stripe
+  semble la suggérer — TS rejette)
+
+### Webhook Stripe en Hono
+
+- Mounté à `/api/stripe/webhook` AVANT les autres routes `/api/*` (pattern défensif
+  même si Hono ne consomme pas le body globalement avec nos middlewares actuels)
+- Pas de authMiddleware sur ce router — la signature Stripe (`stripe-signature`
+  header + `STRIPE_WEBHOOK_SECRET`) authentifie l'event
+- Raw body via `await c.req.text()` dans le handler — Hono n'a pas besoin de
+  config spéciale pour préserver le raw body comme Express/Fastify
+- `stripe.webhooks.constructEvent(rawBody, signature, secret)` throw si invalide
+  → retourner 400 "invalid_signature"
+- Pour retrouver l'orgId depuis un event : 3 sources de vérité (Customer.metadata,
+  Subscription.metadata, Session.metadata) + fallback DB lookup par stripeCustomerId
+  → robuste si une des sources manque
+
+### Plan limits dans @outrival/shared
+
+- PLAN_LIMITS est la source unique de vérité (api gating, web UI, paywalls, workers)
+- `business.maxCompetitors = Number.POSITIVE_INFINITY` → ne pas le serializer en JSON.
+  L'API retourne `limit: null` dans `/api/billing` quand `Number.isFinite(...)` est false
+  pour ne pas casser le client. L'UI affiche "illimité"
+- `PLAN_PRICING` typé avec `satisfies Record<Exclude<Plan, "free">, Record<BillingPeriod, number>>`
+  pour autocomplete sans perdre les valeurs littérales
+
+### Mapping price ID ↔ plan/period
+
+- 6 vars d'env : `STRIPE_PRICE_{STARTER|PRO|BUSINESS}_{MONTHLY|YEARLY}`
+- `getPriceId(plan, period)` lit l'env à l'appel (lazy, pas de cache global)
+- `lookupPlanByPriceId(priceId)` itère sur les 6 combinaisons pour retrouver
+  le plan+period quand le webhook reçoit un priceId
+- Aucune config "dure" dans le code — le mapping est piloté par l'env. Permet
+  de changer les prix ou ajouter un plan annuel sans redéployer
+
+### Gating dans send-alert.job (workers)
+
+- `if (limits.features.realtimeAlerts)` autour de l'insert notifications →
+  les free users ne voient pas la bell (cohérent avec realtimeAlerts: false)
+- Slack envoyé seulement si `limits.allowedChannels.includes("slack")` ET
+  `org.slackWebhookUrl` set
+- Email reste toujours envoyé (email channel dans tous les plans)
+- Surgical : 3 conditions ajoutées, pas de refacto
+
+### ApiError côté web
+
+- Nouvelle classe `ApiError extends Error` dans `apps/web/src/lib/api.ts`
+- Porte `status`, `code` (parsé depuis `data.error`), et `data` (le payload JSON)
+- Le wrapper `request()` essaie de parser le body en JSON, fallback en texte
+- `paywallFromError(err)` extrait un `PaywallReason` (avec plan, limit, used,
+  feature, source, frequency, channel) si l'erreur est une 403 avec code
+  plan_*, sinon retourne null → chaque call site fait `if (reason)` pour
+  ouvrir le paywall ou fallback sur l'erreur classique
+
+### Paywall pattern
+
+- Un seul composant `PaywallDialog` qui prend `{ reason: PaywallReason | null, onClose }`
+- Switch sur `reason.code` pour la copy. Maps en haut du fichier pour FEATURE_LABEL,
+  SOURCE_LABEL, CHANNEL_LABEL → ajout d'une nouvelle source/feature = 1 ligne
+- Bouton primaire "Voir les plans" → Link vers `/dashboard/settings/billing`
+  + onClose pour fermer le dialog avant la navigation (évite flash)
+- Position fixed → peut être rendu n'importe où dans l'arbre, pas besoin de Portal
+- Pour battle-card-tab (5 return statements possibles), variable intermédiaire
+  `const paywallNode = <PaywallDialog .../>` + wrap fragment des branches qui
+  ont un bouton onGenerate

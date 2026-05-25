@@ -11,10 +11,93 @@ Mis à jour automatiquement par Claude Code à chaque session.
 - [x] Phase 4 — Competitor Discovery (Exa.ai, onboarding, overlap scoring)
 - [x] Phase 5 — Enrichissement (jobs, reviews, pricing history, fiche complète)
 - [x] Phase 6 — Battle Cards & Alertes (export PDF, alertes temps-réel SSE)
-- [ ] Phase 7 — Monétisation (Stripe, free tier limits, landing page)
+- [x] Phase 7 — Monétisation (Stripe, free tier limits, gating, paywalls)
 
 ## Phase en cours
-Phase 7 — Monétisation (prochaine)
+Phases core terminées. Reste landing page + polish global via Claude Design
+(hors phases Claude Code).
+
+## Étapes session actuelle (Phase 7 — terminée 2026-05-25)
+
+- [x] Étape 0 — Install stripe + STRIPE_* placeholders dans .env.example/.env.local
+- [x] Étape 1 — packages/shared : PLAN_LIMITS + PLAN_PRICING + PLAN_LABELS +
+              types Plan, BillingPeriod, AlertChannel, PlanFeature
+- [x] Étape 2 — apps/api/src/lib/plan.ts (helpers) + gating dans routes
+              competitors, onboarding, candidates, battle-cards, settings
+              + send-alert.job (notif RT + slack channel)
+              → codes structurés : plan_limit_competitors, plan_locked_feature,
+                plan_locked_source, plan_locked_frequency, plan_locked_channel
+- [x] Étape 3a — DB schema : organizations.stripeSubscriptionId +
+              billingPeriodEnum + organizations.planPeriod → db:push
+- [x] Étape 3b — Routes Stripe :
+              · apps/api/src/lib/stripe.ts (lazy getStripe + price ↔ plan map)
+              · routes/billing.ts (GET, POST checkout, POST portal)
+              · routes/stripe-webhook.ts (signature + 4 events handled)
+              · monté à `/api/stripe/webhook` AVANT les autres `/api/*`
+- [x] Étape 4 — UI billing : composant BillingDashboard (Client) +
+              page /dashboard/settings/billing + lien depuis Settings
+              · plan actuel + usage avec barre + tableau 4 plans + toggle period
+              · redirect vers Stripe URL + ?status=success → toast + refresh
+              · ApiError class dans lib/api.ts pour porter le code structuré
+- [x] Étape 5 — Paywalls : PaywallDialog + paywallFromError(err)
+              branchés sur 5 call sites :
+              · createCompetitor (competitors page)
+              · completeOnboarding (onboarding page)
+              · addCandidate (candidates page)
+              · generateBattleCard (battle-card-tab)
+              · updateNotificationSettings (notification-settings-form)
+- [x] Étape 6 — pnpm build ✓ (7/7) + pnpm typecheck ✓ (7/7)
+- [x] Étape 7 — Mise à jour planning
+
+## Décisions Phase 7
+
+- PLAN_LIMITS = source unique de vérité dans @outrival/shared (utilisé par
+  api gating, web billing UI, paywalls, et workers send-alert)
+- business.maxCompetitors = Number.POSITIVE_INFINITY ; UI affiche "illimité"
+  et envoie `limit: null` côté JSON (Number.POSITIVE_INFINITY n'est pas
+  serializable JSON, le helper `Number.isFinite(...)` est utilisé)
+- Webhook monté à `/api/stripe/webhook` AVANT les routes `/api/*` (Hono ne
+  cause pas de body-consumption issue avec les middlewares actuels mais
+  pattern défensif). Pas dans authMiddleware → signature Stripe = preuve
+- Stripe SDK v22 : `apiVersion: "2026-04-22.dahlia"` (la version du doc
+  était trop ancienne). Types via inference (`InstanceType<typeof Stripe>`,
+  `Extract<EventType, {type:"x"}>["data"]["object"]`) pour contourner la
+  shape pénible du namespace export en CJS
+- Customer Stripe créé à la première checkout (lazy) — pas de pre-creation
+  au signup. metadata.orgId présent sur Customer + Session + Subscription
+  → 3 sources de vérité pour retrouver l'org dans le webhook
+- Le webhook gère 4 events : checkout.session.completed,
+  customer.subscription.created/updated/deleted. Pour created/updated, on
+  re-derive le plan depuis le priceId du subscription via lookupPlanByPriceId.
+  Pour deleted, repasse en free + clear subscriptionId + planPeriod
+- ApiError côté web : nouvelle classe qui porte `status`, `code` (string),
+  `data` (payload JSON parsé). paywallFromError(e) renvoie null pour les
+  non-paywalls → fallback à l'erreur classique
+- PaywallDialog : un seul composant pour tous les codes plan_* avec
+  switch sur reason.code → bon copy en français + bouton "Voir les plans"
+  qui link vers /dashboard/settings/billing. Position fixed, fermable
+- Gating send-alert.job (workers) : si !realtimeAlerts → pas d'insert
+  notification (donc free user ne voit pas la bell). Slack/webhook
+  filtrés par `isChannelAllowed`. Email digestEmail reste toujours envoyé
+  (channel "email" autorisé sur tous les plans)
+- Stripe en mode test pour cette phase ; les vraies clés + price IDs
+  seront remplies par l'utilisateur dans .env.local avant le test E2E
+
+## À tester (runtime)
+
+- Compte free : tenter d'ajouter un 3e concurrent → paywall "limit_competitors"
+- Compte free : tenter de générer une battle card → paywall "locked_feature"
+- Settings : tenter de sauver une URL Slack en free → paywall "locked_channel"
+- Stripe test mode (carte 4242 4242 4242 4242) :
+  1. Créer 3 produits Starter/Pro/Business avec prix monthly + yearly
+  2. Coller les price IDs dans .env.local
+  3. Souscrire au plan Pro depuis /dashboard/settings/billing
+  4. Au retour ?status=success → toast + refresh → org.plan = pro
+  5. Vérifier qu'on peut ajouter jusqu'à 15 concurrents et générer une battle card
+  6. Ouvrir le Customer Portal → annuler l'abonnement
+  7. Vérifier que org.plan repasse en free via webhook subscription.deleted
+
+## Étapes session précédente (Phase 6 — terminée 2026-05-25)
 
 ## Étapes session actuelle (Phase 6 — terminée 2026-05-25)
 

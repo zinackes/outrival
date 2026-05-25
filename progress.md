@@ -247,6 +247,117 @@ GROQ + SCRAPINGBEE + CLICKHOUSE credentials
 
 ---
 
+### 2026-05-25 — Phase 7 Monétisation
+
+**Objectif** : Monétisation Stripe end-to-end — limites par plan, gating
+des features premium, Stripe Checkout + Customer Portal + webhooks,
+dashboard billing et paywalls contextuels. Landing page hors scope
+(faite séparément avec Claude Design).
+
+**Réalisé** :
+- Étape 0 : Install stripe (apps/api) + STRIPE_* + WEB_URL placeholders
+- Étape 1 : @outrival/shared/constants/plans.ts — PLAN_LIMITS, PLAN_PRICING,
+  PLAN_LABELS, types Plan, BillingPeriod, AlertChannel, PlanFeature
+- Étape 2 : apps/api/src/lib/plan.ts (helpers : quota, isFeatureAllowed,
+  isSourceAllowed, isChannelAllowed, isFrequencyAllowed, getOrgPlan,
+  countActiveCompetitors)
+  + gating surgical sur 5 routes : POST /competitors, /onboarding/complete,
+    /candidates/:id/add, /competitors/:id/battle-card/generate,
+    PATCH /settings/notifications
+  + gating dans workers/send-alert.job (realtimeAlerts + slack channel)
+  → codes 403 structurés : plan_limit_competitors, plan_locked_feature,
+    plan_locked_source, plan_locked_frequency, plan_locked_channel
+- Étape 3a : organizations.stripeSubscriptionId + planPeriod (enum
+  billing_period) → pnpm db:push
+- Étape 3b : Stripe routes
+  · apps/api/src/lib/stripe.ts : getStripe lazy + getPriceId +
+    lookupPlanByPriceId
+  · apps/api/src/routes/billing.ts : GET /, POST /checkout, POST /portal
+  · apps/api/src/routes/stripe-webhook.ts : signature verify + 4 events
+    (checkout.session.completed, customer.subscription.created/updated/deleted)
+  · Mount AVANT les autres /api/* dans index.ts
+- Étape 4 : UI billing
+  · apps/web/src/lib/api.ts : ApiError class + types BillingInfo +
+    endpoints getBilling, createCheckout, openPortal
+  · apps/web/src/components/outrival/billing-dashboard.tsx (Client) :
+    plan actuel + barre usage + tableau 4 plans + toggle monthly/yearly
+    + boutons "Passer à X" / "Gérer mon abonnement" + ?status=success toast
+  · apps/web/src/app/dashboard/settings/billing/page.tsx (Server wrapper)
+  · settings/page.tsx : section "Abonnement" avec lien card vers billing
+- Étape 5 : Paywalls
+  · apps/web/src/components/outrival/paywall-dialog.tsx + paywallFromError(err)
+  · Branchés sur 5 call sites : createCompetitor, completeOnboarding,
+    addCandidate, generateBattleCard, updateNotificationSettings
+- Étape 6 : pnpm build ✓ (7/7) + pnpm typecheck ✓ (7/7)
+- Étape 7 : Mise à jour planning (task_plan.md, findings.md, progress.md)
+
+**Fichiers créés** :
+- packages/shared/src/constants/plans.ts
+- apps/api/src/lib/plan.ts
+- apps/api/src/lib/stripe.ts
+- apps/api/src/routes/billing.ts
+- apps/api/src/routes/stripe-webhook.ts
+- apps/web/src/app/dashboard/settings/billing/page.tsx
+- apps/web/src/components/outrival/billing-dashboard.tsx
+- apps/web/src/components/outrival/paywall-dialog.tsx
+
+**Fichiers modifiés** :
+- .env.example (STRIPE_PRICE_*, WEB_URL)
+- packages/shared/src/index.ts (re-export plans)
+- packages/db/src/schema/organizations.ts (+ stripeSubscriptionId, planPeriod, billingPeriodEnum)
+- apps/api/src/index.ts (mount billing + stripe-webhook AVANT autres routes)
+- apps/api/src/routes/competitors.ts (gating POST /)
+- apps/api/src/routes/onboarding.ts (gating POST /complete)
+- apps/api/src/routes/candidates.ts (gating POST /:id/add)
+- apps/api/src/routes/battle-cards.ts (gating POST /:id/battle-card/generate)
+- apps/api/src/routes/settings.ts (gating PATCH /notifications - slack channel)
+- apps/api/package.json (+ stripe)
+- apps/workers/src/jobs/send-alert.job.ts (gating notif RT + slack channel)
+- apps/web/src/lib/api.ts (ApiError + BillingInfo + billing endpoints)
+- apps/web/src/app/dashboard/settings/page.tsx (section Abonnement)
+- apps/web/src/app/dashboard/competitors/page.tsx (paywall createCompetitor)
+- apps/web/src/app/dashboard/candidates/page.tsx (paywall addCandidate)
+- apps/web/src/app/(onboarding)/onboarding/page.tsx (paywall completeOnboarding)
+- apps/web/src/components/outrival/battle-card-tab.tsx (paywall generateBattleCard)
+- apps/web/src/components/outrival/notification-settings-form.tsx (paywall update)
+
+**Décisions notables** :
+- Stripe SDK v22 + TS NodeNext : utiliser InstanceType + Extract pour
+  inférer les types (le namespace `Stripe.X` n'est pas accessible en CJS)
+- `apiVersion: "2026-04-22.dahlia"` (la dernière supportée par v22.1.1)
+- Mapping price ↔ plan/period piloté à 100% par les env vars STRIPE_PRICE_*
+  → ajout/changement de prix = pas de code, juste env
+- Webhook signature-verified, hors authMiddleware, monté avant /api/*
+- `business.maxCompetitors = Number.POSITIVE_INFINITY` → API renvoie
+  `limit: null` (JSON-safe), UI affiche "illimité"
+- ApiError côté web porte le code structuré + payload → paywallFromError
+  retourne null pour les non-paywalls (fallback erreur classique)
+- PaywallDialog unique avec switch sur code → maps FEATURE/SOURCE/CHANNEL_LABEL
+  pour ajouter une nouvelle source = 1 ligne
+- Gating send-alert surgical : 3 if blocks, pas de refacto du job
+
+**Tests** : pnpm build ✓ (7/7) | pnpm typecheck ✓ (7/7) | runtime E2E
+à faire avec vraies clés Stripe test + price IDs créés manuellement
+
+**Prochaine session** :
+1. Créer dans Stripe Dashboard (mode test) : 3 produits Starter/Pro/Business
+   avec prix monthly + yearly chacun (6 prix au total)
+2. Coller les price IDs dans .env.local (STRIPE_PRICE_*)
+3. Configurer le webhook Stripe (URL : https://<api>/api/stripe/webhook
+   en prod ou via Stripe CLI en local) → coller STRIPE_WEBHOOK_SECRET
+4. Test E2E :
+   a. Compte free : ajouter 2 concurrents OK, 3e → paywall
+   b. Tenter de générer une battle card en free → paywall
+   c. Aller dans /dashboard/settings/billing → souscrire au plan Pro
+      (carte test 4242 4242 4242 4242)
+   d. Au retour : org.plan = pro (via webhook subscription.created/updated)
+   e. Vérifier qu'on peut ajouter jusqu'à 15 concurrents
+   f. Vérifier que battle cards + sources reviews sont débloquées
+   g. Customer Portal → annuler l'abonnement → org.plan repasse en free
+5. Hand-off à Claude Design pour landing page + polish global
+
+---
+
 ### 2026-05-25 — Phase 6 Battle Cards & Alertes
 
 **Objectif** : Battle cards IA exportables en PDF, alertes in-app temps-réel via SSE

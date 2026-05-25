@@ -9,7 +9,13 @@ import {
   changes,
 } from "@outrival/db";
 import { getScraper } from "@outrival/scrapers";
-import { computeHash, computeTextDiff, uploadToR2, getFromR2 } from "@outrival/shared";
+import {
+  computeHash,
+  computeNextRun,
+  computeTextDiff,
+  uploadToR2,
+  getFromR2,
+} from "@outrival/shared";
 
 const InputSchema = z.object({
   monitorId: z.string(),
@@ -17,19 +23,6 @@ const InputSchema = z.object({
 });
 
 const IDEMPOTENCE_WINDOW_MS = 60 * 60 * 1000;
-
-function frequencyToMs(freq: string): number {
-  switch (freq) {
-    case "realtime":
-      return 60 * 60 * 1000;
-    case "daily":
-      return 24 * 60 * 60 * 1000;
-    case "weekly":
-      return 7 * 24 * 60 * 60 * 1000;
-    default:
-      return 24 * 60 * 60 * 1000;
-  }
-}
 
 export const scrapeMonitorJob = task({
   id: "scrape-monitor",
@@ -68,8 +61,17 @@ export const scrapeMonitorJob = task({
     const scrapeUrl = configUrl ?? competitor.url;
 
     const scraper = getScraper(monitor.sourceType);
-    const result = await scraper(competitor.id, scrapeUrl);
+    const result = await scraper(competitor.id, scrapeUrl, {
+      preferProxy: monitor.requiresProxy,
+    });
     const newHash = computeHash(result.html);
+
+    if (result.usedProxy && !monitor.requiresProxy) {
+      await db
+        .update(monitors)
+        .set({ requiresProxy: true })
+        .where(eq(monitors.id, monitor.id));
+    }
 
     const lastSnapshot = await db.query.snapshots.findFirst({
       where: eq(snapshots.monitorId, monitor.id),
@@ -78,12 +80,14 @@ export const scrapeMonitorJob = task({
 
     if (lastSnapshot && lastSnapshot.contentHash === newHash) {
       logger.log("Hash identical, no change", { lastSnapshotId: lastSnapshot.id });
+      const nextRunAt = computeNextRun(
+        monitor.frequency,
+        monitor.lastChangedAt,
+        monitor.createdAt,
+      );
       await db
         .update(monitors)
-        .set({
-          lastRunAt: new Date(),
-          nextRunAt: new Date(Date.now() + frequencyToMs(monitor.frequency)),
-        })
+        .set({ lastRunAt: new Date(), nextRunAt })
         .where(eq(monitors.id, monitor.id));
       return { changed: false, snapshotId: lastSnapshot.id };
     }
@@ -128,6 +132,10 @@ export const scrapeMonitorJob = task({
           .returning();
         changeId = newChange?.id ?? null;
         if (changeId) {
+          await db
+            .update(monitors)
+            .set({ lastChangedAt: new Date() })
+            .where(eq(monitors.id, monitor.id));
           await tasks.trigger("classify-change", { changeId });
         }
       }
@@ -152,12 +160,17 @@ export const scrapeMonitorJob = task({
       });
     }
 
+    const refreshed = await db.query.monitors.findFirst({
+      where: eq(monitors.id, monitor.id),
+    });
+    const nextRunAt = computeNextRun(
+      refreshed?.frequency ?? monitor.frequency,
+      refreshed?.lastChangedAt ?? monitor.lastChangedAt,
+      refreshed?.createdAt ?? monitor.createdAt,
+    );
     await db
       .update(monitors)
-      .set({
-        lastRunAt: new Date(),
-        nextRunAt: new Date(Date.now() + frequencyToMs(monitor.frequency)),
-      })
+      .set({ lastRunAt: new Date(), nextRunAt })
       .where(eq(monitors.id, monitor.id));
 
     logger.log("Completed scrape-monitor", {

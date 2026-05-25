@@ -10,6 +10,8 @@ export const competitors = pgTable("competitors", {
   overlapScore: real("overlap_score"),
   category: text("category"),
   metadata: jsonb("metadata"),
+  aiSummary: text("ai_summary"),
+  aiSummaryUpdatedAt: timestamp("ai_summary_updated_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   deletedAt: timestamp("deleted_at"),

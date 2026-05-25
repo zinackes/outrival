@@ -23,6 +23,9 @@ importers:
       '@outrival/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@outrival/scrapers':
+        specifier: workspace:*
+        version: link:../../packages/scrapers
       '@outrival/shared':
         specifier: workspace:*
         version: link:../../packages/shared

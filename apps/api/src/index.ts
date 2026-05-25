@@ -10,6 +10,7 @@ import { changesRouter } from "./routes/changes";
 import { signalsRouter } from "./routes/signals";
 import { digestsRouter } from "./routes/digests";
 import { settingsRouter } from "./routes/settings";
+import { onboardingRouter } from "./routes/onboarding";
 
 const app = new Hono();
 
@@ -34,6 +35,7 @@ app.route("/api/changes", changesRouter);
 app.route("/api/signals", signalsRouter);
 app.route("/api/digests", digestsRouter);
 app.route("/api/settings", settingsRouter);
+app.route("/api/onboarding", onboardingRouter);
 
 export default {
   port: env.PORT,

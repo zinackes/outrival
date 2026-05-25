@@ -13,6 +13,15 @@ async function getSession() {
   return res.json();
 }
 
+async function getOnboardingStatus(): Promise<{ onboardingCompleted: boolean } | null> {
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_API_URL}/api/onboarding/status`,
+    { headers: await headers(), cache: "no-store" },
+  );
+  if (!res.ok) return null;
+  return res.json();
+}
+
 const navItems = [
   { href: "/dashboard", label: "Activité", icon: Home },
   { href: "/dashboard/competitors", label: "Competitors", icon: Users },
@@ -28,6 +37,9 @@ export default async function DashboardLayout({
 }) {
   const session = await getSession();
   if (!session) redirect("/login");
+
+  const status = await getOnboardingStatus();
+  if (status && !status.onboardingCompleted) redirect("/onboarding");
 
   return (
     <div className="flex min-h-screen">

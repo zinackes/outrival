@@ -112,6 +112,9 @@ importers:
       '@trigger.dev/sdk':
         specifier: ^4.4.6
         version: 4.4.6(zod@4.4.3)
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@opentelemetry/api@1.9.0)(kysely@0.28.17)(postgres@3.4.9)
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -178,6 +181,9 @@ importers:
       '@types/diff':
         specifier: ^8.0.0
         version: 8.0.0
+      '@types/node':
+        specifier: ^25.9.1
+        version: 25.9.1
 
 packages:
 

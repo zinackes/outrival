@@ -11,6 +11,7 @@ import { signalsRouter } from "./routes/signals";
 import { digestsRouter } from "./routes/digests";
 import { settingsRouter } from "./routes/settings";
 import { onboardingRouter } from "./routes/onboarding";
+import { battleCardsRouter } from "./routes/battle-cards";
 
 const app = new Hono();
 
@@ -30,6 +31,7 @@ app.on(["POST", "GET"], "/api/auth/**", (c) => auth.handler(c.req.raw));
 
 app.route("/health", healthRouter);
 app.route("/api/competitors", competitorsRouter);
+app.route("/api/competitors", battleCardsRouter);
 app.route("/api/monitors", monitorsRouter);
 app.route("/api/changes", changesRouter);
 app.route("/api/signals", signalsRouter);

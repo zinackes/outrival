@@ -1,5 +1,5 @@
 import { scrapePage, scrapeFirstSuccess } from "../lib/crawler";
-import type { ScraperResult } from "../types";
+import type { ScrapeOutcome, ScrapeOptions } from "../types";
 
 const CAREERS_PATHS = [
   "/careers",
@@ -30,13 +30,19 @@ function detectAts(html: string): string | null {
   return null;
 }
 
-export async function scrape(_competitorId: string, url: string): Promise<ScraperResult> {
+export async function scrape(
+  _competitorId: string,
+  url: string,
+  options: ScrapeOptions = {},
+): Promise<ScrapeOutcome> {
   const lowered = url.toLowerCase();
   const direct = CAREERS_KEYWORDS.some((k) => lowered.includes(k));
 
   const result = direct
-    ? await scrapePage(url, { fullPage: true })
-    : await scrapeFirstSuccess(url, CAREERS_PATHS, (u) => scrapePage(u, { fullPage: true }));
+    ? await scrapePage(url, { fullPage: true, preferProxy: options.preferProxy })
+    : await scrapeFirstSuccess(url, CAREERS_PATHS, (u) =>
+        scrapePage(u, { fullPage: true, preferProxy: options.preferProxy }),
+      );
 
   const ats = detectAts(result.html);
   return {

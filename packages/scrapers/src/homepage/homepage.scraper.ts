@@ -1,6 +1,10 @@
 import { scrapePage } from "../lib/crawler";
-import type { ScraperResult } from "../types";
+import type { ScrapeOutcome, ScrapeOptions } from "../types";
 
-export async function scrape(_competitorId: string, url: string): Promise<ScraperResult> {
-  return scrapePage(url, { fullPage: true });
+export async function scrape(
+  _competitorId: string,
+  url: string,
+  options: ScrapeOptions = {},
+): Promise<ScrapeOutcome> {
+  return scrapePage(url, { fullPage: true, preferProxy: options.preferProxy });
 }

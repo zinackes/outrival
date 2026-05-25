@@ -5,9 +5,13 @@ import * as jobs from "./jobs/jobs.scraper";
 import * as g2Reviews from "./g2-reviews/g2-reviews.scraper";
 import * as capterraReviews from "./capterra-reviews/capterra-reviews.scraper";
 import type { SourceType } from "@outrival/shared";
-import type { ScraperResult } from "./types";
+import type { ScrapeOptions, ScrapeOutcome } from "./types";
 
-type ScraperFn = (competitorId: string, url: string) => Promise<ScraperResult>;
+type ScraperFn = (
+  competitorId: string,
+  url: string,
+  options?: ScrapeOptions,
+) => Promise<ScrapeOutcome>;
 
 const scrapers: Partial<Record<SourceType, ScraperFn>> = {
   homepage: homepage.scrape,
@@ -24,7 +28,7 @@ export function getScraper(sourceType: SourceType): ScraperFn {
   return scraper;
 }
 
-export type { ScraperResult } from "./types";
+export type { ScraperResult, ScrapeOptions, ScrapeOutcome } from "./types";
 export { findSimilarCompanies } from "./discovery/discover";
 export type { DiscoveredCompany } from "./discovery/discover";
 export { quickFetchText } from "./lib/quick-fetch";

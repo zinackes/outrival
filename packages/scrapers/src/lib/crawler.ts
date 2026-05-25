@@ -1,14 +1,31 @@
 import { PlaywrightCrawler, CheerioCrawler } from "crawlee";
-import type { ScraperResult, ScrapeOptions } from "../types";
+import { scrapeViaScrapingBee } from "./scrapingbee";
+import type { ScraperResult, ScrapeOptions, ScrapeOutcome } from "../types";
 
-/**
- * Generic Playwright scrape — used for JS-heavy pages.
- * Returns the result; upload to R2 is the caller's responsibility (jobs).
- */
-export async function scrapePage(
-  url: string,
-  options: ScrapeOptions = {},
-): Promise<ScraperResult> {
+interface RunCrawlerOptions {
+  useProxy: boolean;
+  fullPage?: boolean;
+  waitForSelector?: string;
+}
+
+function looksBlocked(html: string, statusCode?: number): boolean {
+  if (statusCode === 403 || statusCode === 429 || statusCode === 503) return true;
+  if (html.trim().length < 500) return true;
+  const lower = html.toLowerCase();
+  return (
+    lower.includes("captcha") ||
+    lower.includes("cf-challenge") ||
+    lower.includes("attention required") ||
+    lower.includes("access denied") ||
+    lower.includes("just a moment")
+  );
+}
+
+async function runCrawler(url: string, opts: RunCrawlerOptions): Promise<ScraperResult> {
+  if (opts.useProxy) {
+    return scrapeViaScrapingBee(url, { renderJs: true, premiumProxy: true });
+  }
+
   let result: ScraperResult | null = null;
 
   const crawler = new PlaywrightCrawler({
@@ -16,16 +33,18 @@ export async function scrapePage(
     maxConcurrency: 1,
     requestHandlerTimeoutSecs: 60,
     headless: true,
-    async requestHandler({ page, request }) {
+    async requestHandler({ page, request, response }) {
       await page.goto(request.url, { waitUntil: "networkidle", timeout: 45000 });
-      if (options.waitForSelector) {
-        await page.waitForSelector(options.waitForSelector, { timeout: 10000 }).catch(() => {});
+      if (opts.waitForSelector) {
+        await page
+          .waitForSelector(opts.waitForSelector, { timeout: 10000 })
+          .catch(() => {});
       }
 
       const html = await page.content();
       const text = await page.evaluate(() => document.body?.innerText ?? "");
       const screenshotBuffer = await page.screenshot({
-        fullPage: options.fullPage ?? true,
+        fullPage: opts.fullPage ?? true,
         type: "png",
       });
 
@@ -34,6 +53,7 @@ export async function scrapePage(
         text,
         screenshotBuffer: Buffer.from(screenshotBuffer),
         metadata: { url: request.url, scrapedWith: "playwright" },
+        statusCode: response?.status(),
       };
     },
   });
@@ -46,15 +66,55 @@ export async function scrapePage(
 }
 
 /**
- * Generic Cheerio scrape for static pages (no JS, no screenshot).
+ * Direct-first scrape of a JS-heavy page. Falls back to ScrapingBee when
+ * the direct attempt looks blocked. Set `preferProxy: true` to skip the
+ * direct attempt entirely (e.g. for sites already known to be protected).
  */
-export async function scrapeStatic(url: string): Promise<ScraperResult> {
+export async function scrapePage(
+  url: string,
+  options: ScrapeOptions = {},
+): Promise<ScrapeOutcome> {
+  if (options.preferProxy) {
+    const result = await runCrawler(url, {
+      useProxy: true,
+      fullPage: options.fullPage,
+      waitForSelector: options.waitForSelector,
+    });
+    return { ...result, usedProxy: true };
+  }
+
+  try {
+    const result = await runCrawler(url, {
+      useProxy: false,
+      fullPage: options.fullPage,
+      waitForSelector: options.waitForSelector,
+    });
+    if (!looksBlocked(result.html, result.statusCode)) {
+      return { ...result, usedProxy: false };
+    }
+  } catch {
+    // direct attempt failed → fall through to proxy
+  }
+
+  const result = await runCrawler(url, {
+    useProxy: true,
+    fullPage: options.fullPage,
+    waitForSelector: options.waitForSelector,
+  });
+  return { ...result, usedProxy: true };
+}
+
+/**
+ * Static (no JS) scrape. Always direct — no proxy fallback because Cheerio
+ * pages are typically blog/changelog content not behind anti-bot.
+ */
+export async function scrapeStatic(url: string): Promise<ScrapeOutcome> {
   let result: ScraperResult | null = null;
 
   const crawler = new CheerioCrawler({
     maxRequestRetries: 3,
     maxConcurrency: 1,
-    async requestHandler({ $, request, body }) {
+    async requestHandler({ $, request, body, response }) {
       const html = typeof body === "string" ? body : body.toString("utf-8");
       const text = $("body").text().replace(/\s+/g, " ").trim();
       result = {
@@ -62,6 +122,7 @@ export async function scrapeStatic(url: string): Promise<ScraperResult> {
         text,
         screenshotBuffer: Buffer.alloc(0),
         metadata: { url: request.url, scrapedWith: "cheerio" },
+        statusCode: response?.statusCode,
       };
     },
   });
@@ -69,8 +130,9 @@ export async function scrapeStatic(url: string): Promise<ScraperResult> {
   await crawler.run([url]);
   await crawler.teardown();
 
-  if (!result) throw new Error(`Static scraping failed for ${url}`);
-  return result;
+  const captured = result as ScraperResult | null;
+  if (!captured) throw new Error(`Static scraping failed for ${url}`);
+  return { ...captured, usedProxy: false };
 }
 
 /**
@@ -80,8 +142,8 @@ export async function scrapeStatic(url: string): Promise<ScraperResult> {
 export async function scrapeFirstSuccess(
   baseUrl: string,
   candidatePaths: string[],
-  scrapeFn: (u: string) => Promise<ScraperResult>,
-): Promise<ScraperResult> {
+  scrapeFn: (u: string) => Promise<ScrapeOutcome>,
+): Promise<ScrapeOutcome> {
   const base = new URL(baseUrl);
   let lastError: unknown;
 

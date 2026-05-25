@@ -4,6 +4,9 @@ import { logger } from "hono/logger";
 import { env } from "./env";
 import { auth } from "./lib/auth";
 import { healthRouter } from "./routes/health";
+import { competitorsRouter } from "./routes/competitors";
+import { monitorsRouter } from "./routes/monitors";
+import { changesRouter } from "./routes/changes";
 
 const app = new Hono();
 
@@ -22,6 +25,9 @@ app.use(
 app.on(["POST", "GET"], "/api/auth/**", (c) => auth.handler(c.req.raw));
 
 app.route("/health", healthRouter);
+app.route("/api/competitors", competitorsRouter);
+app.route("/api/monitors", monitorsRouter);
+app.route("/api/changes", changesRouter);
 
 export default {
   port: env.PORT,

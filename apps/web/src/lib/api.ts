@@ -87,6 +87,27 @@ export interface NotificationSettings {
   alertsEnabled: boolean;
 }
 
+export interface ProductProfile {
+  category: string;
+  audience: string;
+  valueProp: string;
+  pricingModel: string;
+}
+
+export interface OnboardingStatus {
+  onboardingCompleted: boolean;
+  productUrl: string | null;
+  profile: ProductProfile | null;
+}
+
+export interface DiscoveredCompetitor {
+  url: string;
+  title: string;
+  snippet: string;
+  overlapScore: number;
+  reason: string;
+}
+
 export const api = {
   listCompetitors: () => request<{ competitors: Competitor[] }>("/api/competitors"),
   getCompetitor: (id: string) =>
@@ -132,6 +153,30 @@ export const api = {
   updateNotificationSettings: (body: Partial<NotificationSettings>) =>
     request<{ ok: true }>("/api/settings/notifications", {
       method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  onboardingStatus: () => request<OnboardingStatus>("/api/onboarding/status"),
+  analyzeProduct: (productUrl: string) =>
+    request<{ profile: ProductProfile }>("/api/onboarding/analyze", {
+      method: "POST",
+      body: JSON.stringify({ productUrl }),
+    }),
+  discoverCompetitors: (productUrl: string, profile: ProductProfile) =>
+    request<{ competitors: DiscoveredCompetitor[] }>("/api/onboarding/discover", {
+      method: "POST",
+      body: JSON.stringify({ productUrl, profile }),
+    }),
+  patchProductProfile: (profile: ProductProfile) =>
+    request<{ profile: ProductProfile }>("/api/onboarding/profile", {
+      method: "PATCH",
+      body: JSON.stringify({ profile }),
+    }),
+  completeOnboarding: (body: {
+    selectedCompetitors: Array<{ name: string; url: string; overlapScore?: number }>;
+    monitoringPrefs: { frequency: "daily" | "weekly"; sources: Array<"homepage" | "pricing" | "blog"> };
+  }) =>
+    request<{ competitorsCreated: number }>("/api/onboarding/complete", {
+      method: "POST",
       body: JSON.stringify(body),
     }),
 };

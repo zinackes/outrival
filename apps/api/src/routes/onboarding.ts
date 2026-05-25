@@ -16,6 +16,22 @@ export const onboardingRouter = new Hono<{ Variables: Variables }>();
 
 onboardingRouter.use("*", authMiddleware);
 
+onboardingRouter.get("/status", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, orgId),
+  });
+  if (!org) return c.json({ error: "Not found" }, 404);
+
+  return c.json({
+    onboardingCompleted: org.onboardingCompleted,
+    productUrl: org.productUrl,
+    profile: org.productProfile,
+  });
+});
+
 const AnalyzeSchema = z.object({
   productUrl: z.string().url(),
 });

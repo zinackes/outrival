@@ -163,3 +163,84 @@ Zéro dépendance Trigger.dev Realtime.
 3. Mesurer latence /analyze + /discover (cible <15s total)
 4. Évaluer qualité discovery Exa sur 3-4 produits variés
 5. Commencer Phase 5 — Enrichissement (jobs, reviews, pricing history)
+
+---
+
+### 2026-05-25 — Phase 5 Enrichissement
+
+**Objectif** : Sources jobs + G2/Capterra scrapables, pricing structuré en ClickHouse,
+résumé IA des concurrents, fiche concurrent complète (5 onglets, recharts).
+
+**Réalisé** :
+- Étape 0 : @clickhouse/client ajouté à @outrival/db
+- Étape 1 : client `ch` partagé (proxy lazy) + ensureClickhouseTables (4 tables)
+  + script `pnpm --filter @outrival/db ch:setup` (bun + dotenv ../../.env.local)
+- Étape 2 : competitors.aiSummary + aiSummaryUpdatedAt + pnpm db:push
+- Étape 3 : 4 tâches Groq (extract-pricing/jobs/reviews + competitor-summary)
+  via AI_CONFIG.classification, Zod schemas snake_case, safeParseJson
+- Étape 4 : 3 nouveaux scrapers (jobs Playwright + ATS detect, g2-reviews via
+  ScrapingBee premium, capterra-reviews) + helper scrapingbee.ts + getScraper map
+- Étape 5 : 4 nouveaux jobs Trigger.dev v3 :
+  - extract-pricing.job → ClickHouse pricing_history
+  - extract-jobs.job → diff vs actives (close manquants, insert nouveaux) +
+    ClickHouse job_counts par département
+  - extract-reviews.job → praises/complaints en reviews + ClickHouse review_scores
+  - refresh-competitor-summary.job → update competitor.aiSummary
+  - scrape-monitor.job : routing surgical (~12 lignes) selon source_type
+- Étape 6 : 6 sous-routes /api/competitors/:id/{jobs,job-trends,reviews,review-scores,
+  pricing-history,signals} + enrichissement /:id avec aiSummary + recentSignals
+  + helper assertOwnedCompetitor + chQuery best-effort
+- Étape 7 : refonte complète /dashboard/competitors/[id] :
+  - Header (name, category, overlap bar, last activity)
+  - AiSummary toujours visible (avec placeholder si non généré)
+  - Monitor list inline avec bouton "Scraper"
+  - 5 onglets custom (Activité, Pricing, Recrutement, Reviews, Contenu) lazy-load
+  - recharts dark amber : pricing timeline (par plan), job trends (par département),
+    review scores (par source)
+  - Cards delta % pour pricing
+  - Table département × offres actives × trend 90j
+  - Reviews : 2 colonnes praises (green) / complaints (red)
+- Étape 8 : pnpm build ✓ (7/7) + pnpm typecheck ✓ (7/7)
+
+**Fichiers créés** :
+- packages/db/src/clickhouse.ts + clickhouse-schema.ts + scripts/ch-setup.ts
+- packages/ai/src/tasks/{extract-pricing,extract-jobs,extract-reviews,competitor-summary}.ts
+- packages/scrapers/src/{jobs/jobs.scraper,g2-reviews/g2-reviews.scraper,capterra-reviews/capterra-reviews.scraper}.ts
+- packages/scrapers/src/lib/scrapingbee.ts
+- apps/workers/src/lib/html-to-text.ts
+- apps/workers/src/jobs/{extract-pricing,extract-jobs,extract-reviews,refresh-competitor-summary}.job.ts
+- apps/api/src/lib/clickhouse-safe.ts
+
+**Fichiers modifiés** :
+- packages/db/{package.json, src/index.ts, src/schema/competitors.ts}
+- packages/ai/src/index.ts (réexports)
+- packages/scrapers/src/index.ts (getScraper map)
+- apps/workers/src/lib/clickhouse.ts (insertPricingHistory + insertJobCounts + insertReviewScore)
+- apps/workers/src/jobs/scrape-monitor.job.ts (routing surgical après création snapshot)
+- apps/api/src/routes/competitors.ts (helper + 6 sous-routes + enrichissement /:id)
+- apps/web/src/lib/api.ts (types Competitor enrichis + 7 nouveaux endpoints + CompetitorSignal)
+- apps/web/src/app/dashboard/competitors/[id]/page.tsx (réécriture complète)
+- apps/web/package.json (+ recharts)
+
+**Décisions notables** :
+- Client ClickHouse partagé via proxy lazy → API + script + workers
+- Workers gardent leur impl spécifique (logger Trigger.dev, insertBestEffort)
+- chQuery best-effort retourne [] si CLICKHOUSE_URL absent → UI fonctionne sans CH
+- Reviews praises/complaints stockés dans reviews.author = "praise"|"complaint"
+  (pas de schema change Phase 5 — à normaliser plus tard)
+- G2 / Capterra forcés via ScrapingBee premium_proxy + render_js
+- Tabs custom (pas de @radix-ui/react-tabs) — design boutons + underline amber
+- Routing scrape-monitor surgical : aucune logique existante touchée
+
+**Tests** : pnpm build ✓ (7/7) | pnpm typecheck ✓ (7/7) | runtime à tester avec
+GROQ + SCRAPINGBEE + CLICKHOUSE credentials
+
+**Prochaine session** :
+1. Provisionner ClickHouse Cloud + `pnpm ch:setup` (créé les 4 tables)
+2. Sur un concurrent réel : ajouter monitors pricing + jobs + g2_reviews
+3. Scraper manuellement → vérifier pricing_history alimenté, job_postings créés,
+   reviews praises/complaints insérés
+4. Déclencher refresh-competitor-summary → vérifier competitor.aiSummary rempli
+5. Ouvrir la fiche → tous les onglets affichent des données + graphiques OK
+6. Mesurer le taux de succès ScrapingBee sur G2/Capterra
+7. Commencer Phase 6 — Battle Cards & Alertes

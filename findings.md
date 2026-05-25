@@ -176,9 +176,84 @@ Découvertes techniques et décisions importantes accumulées au fil des session
 - Fetch `/api/onboarding/status` server-side avec forwarded headers (même pattern que getSession).
 - Redirect vers `/onboarding` si `!onboardingCompleted` — surgical, 4 lignes ajoutées.
 
+## Phase 5 — Enrichissement
+
+### ClickHouse intégré côté @outrival/db
+
+- Client partagé `getClickhouse()` + proxy `ch` dans `packages/db/src/clickhouse.ts`
+  → utilisé à la fois par l'API (chQuery best-effort) et le script `pnpm ch:setup`
+- Workers gardent leur propre `lib/clickhouse.ts` avec helpers `insertPricingHistory`,
+  `insertJobCounts`, `insertReviewScore`, `insertSignalFeed` (best-effort + logger)
+- `ensureClickhouseTables()` (packages/db/src/clickhouse-schema.ts) crée pricing_history,
+  job_counts, review_scores, signal_feed avec ENGINE = MergeTree() ORDER BY (competitor_id, recorded_at)
+- Script CLI : `pnpm --filter @outrival/db ch:setup` (bun run + dotenv.config({path: "../../.env.local"}))
+
+### ClickHouse best-effort côté API
+
+- `apps/api/src/lib/clickhouse-safe.ts` wrap toutes les queries ClickHouse en try/catch
+- Retourne `[]` si CLICKHOUSE_URL absent → la fiche concurrent reste fonctionnelle
+  même sans ClickHouse provisioned (utile en dev local)
+- Pattern `toString(recorded_at) AS recorded_at` pour avoir une string sérialisable JSON
+
+### Routing scrape-monitor (surgical)
+
+- Après création du Snapshot (et avant l'update lastRunAt), routing par sourceType :
+  - pricing → trigger("extract-pricing", { snapshotId, competitorId })
+  - jobs → trigger("extract-jobs", { snapshotId, competitorId })
+  - g2_reviews | capterra_reviews → trigger("extract-reviews", { snapshotId, competitorId, source })
+- La logique de diff/Change/classify reste inchangée → pipeline IA Phase 3 continue
+- Surgical : ~12 lignes ajoutées, aucune logique existante touchée
+
+### Détection offres fermées (extract-jobs)
+
+- Signature d'une offre = lowered(title) + "::" + lowered(department)
+- Algorithme :
+  1. Fetch toutes les jobPostings actives du concurrent
+  2. Set des signatures dans l'extraction Groq
+  3. Inserts = présents dans extraction mais pas en DB
+  4. Closures = en DB mais absents de l'extraction → set isActive=false + closedAt
+- Garde-fou `inArray(jobPostings.id, closedIds)` pour limiter le `update`
+
+### Reviews : table verbatims réutilisée pour praises/complaints
+
+- Pas de schema change : on stocke un row par praise et par complaint
+- `author = "praise" | "complaint"` (le champ author n'a pas d'usage existant)
+- `content` = la phrase courte extraite par Groq
+- `score` = average_score global (dénormalisation pratique pour la liste)
+- ClickHouse review_scores reçoit l'agrégat (score moyen, sentiment, nombre)
+- À normaliser Phase 6+ avec une table `review_summaries` dédiée
+
+### G2 / Capterra via ScrapingBee premium
+
+- `premium_proxy: true` + `render_js: true` obligatoires (G2 sert peu de contenu sans JS)
+- Pas de screenshot retourné (Buffer.alloc(0)) — coût trop élevé via ScrapingBee
+- L'URL doit être fournie par l'utilisateur via `monitor.config.url`
+  (auto-discovery G2 URL = futur — heuristique nom + slug)
+
+### Heuristique pages carrières (jobs.scraper)
+
+- Candidates : /careers, /jobs, /join-us, /carrieres, /career, /about/careers,
+  /company/careers, /work-with-us — premier qui retourne >50 chars wins
+- Si l'URL contient déjà un mot-clé carrières → utilisée telle quelle (skip cascade)
+- Détection ATS via regex sur le HTML rendu : Greenhouse, Lever, Ashby, Workable,
+  Recruitee, SmartRecruiters → stocké dans `metadata.atsDetected`
+- N'extrait pas les offres directement — délégué à `extract-jobs.job.ts` via Groq
+
+### Recharts dark + amber
+
+- Couleurs palette : ["#F59E0B" amber, "#22d3ee" cyan, "#a855f7" purple, "#10b981" green,
+  "#ef4444" red, "#f97316" orange] cycle modulo
+- CartesianGrid stroke = var(--border), Tooltip background = var(--bg)
+- Pricing : LineChart par plan_name (X = date courte, Y = prix)
+- Job trends : LineChart par department (90 derniers jours)
+- Review scores : LineChart par source (domain Y = [0, 5])
+- Format date court via toLocaleDateString("fr-FR", { day, month })
+
 ## Décisions de design
 
 - Outrival = dark theme, amber (#F59E0B), Syne + Inter
 - shadcn/ui new-york style, radius 6px, flat surfaces
 - CSS custom properties pour toutes les couleurs (--background, --surface, --accent, etc.)
 - Logo : "Out" blanc + "rival" amber, font Syne
+- Tabs custom (pas de @radix-ui/react-tabs installé) — boutons + underline amber
+  pour l'état actif, transparent sinon

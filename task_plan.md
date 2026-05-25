@@ -9,14 +9,47 @@ Mis à jour automatiquement par Claude Code à chaque session.
 - [x] Phase 2 — Scraping Core (Crawlee, diff engine, change feed)
 - [x] Phase 3 — Intelligence IA (Groq classify+insight+digest, alertes, cron)
 - [x] Phase 4 — Competitor Discovery (Exa.ai, onboarding, overlap scoring)
-- [ ] Phase 5 — Enrichissement (jobs, reviews, pricing history, fiche complète)
+- [x] Phase 5 — Enrichissement (jobs, reviews, pricing history, fiche complète)
 - [ ] Phase 6 — Battle Cards & Alertes (export PDF, alertes temps-réel)
 - [ ] Phase 7 — Monétisation (Stripe, free tier limits, landing page)
 
 ## Phase en cours
-Phase 5 — Enrichissement (prochaine)
+Phase 6 — Battle Cards & Alertes (prochaine)
 
-## Étapes session actuelle (Phase 4 — terminée 2026-05-25)
+## Étapes session actuelle (Phase 5 — terminée 2026-05-25)
+
+- [x] Étape 0 — Deps (@clickhouse/client ajouté à @outrival/db)
+- [x] Étape 1 — Tables ClickHouse (client partagé `ch` + ensureClickhouseTables + script `pnpm ch:setup`)
+- [x] Étape 2 — Schéma : competitors.aiSummary + aiSummaryUpdatedAt
+- [x] Étape 3 — packages/ai : extract-pricing, extract-jobs, extract-reviews, competitor-summary (Groq)
+- [x] Étape 4 — packages/scrapers : jobs (Playwright + ATS detection), g2-reviews + capterra-reviews (ScrapingBee premium)
+- [x] Étape 5 — Workers : 4 nouveaux jobs + routing surgical depuis scrape-monitor
+- [x] Étape 6 — API : 6 sous-routes /:id/{jobs,job-trends,reviews,review-scores,pricing-history,signals} + enrichissement /:id
+- [x] Étape 7 — UI : fiche concurrent complète (5 onglets, recharts dark amber)
+- [x] Étape 8 — pnpm build ✓ (7/7) + pnpm typecheck ✓ (7/7)
+- [x] Étape 9 — Mise à jour planning
+
+## Décisions Phase 5
+
+- Client ClickHouse partagé dans `packages/db/src/clickhouse.ts` (proxy lazy)
+  pour permettre l'usage depuis l'API ET les workers
+- Workers conservent leur propre `lib/clickhouse.ts` avec logger Trigger.dev
+  (helpers insert best-effort par table : pricing_history, job_counts,
+  review_scores, signal_feed)
+- API : helper `chQuery` best-effort retourne [] si CLICKHOUSE_URL absent
+  → la fiche concurrent reste fonctionnelle sans ClickHouse provisioned
+- Reviews : on stocke praises et complaints dans la table `reviews` Postgres
+  avec `author = "praise" | "complaint"` (pas idéal, à normaliser Phase 6+)
+- Routing scrape-monitor 100% surgical : 4 lignes en plus pour brancher
+  pricing/jobs/g2/capterra vers les jobs d'extraction
+- Tabs custom (pas de shadcn Tabs installé) — design flat + underline amber
+- Recharts pour pricing timeline, job trends, review scores
+- G2 / Capterra forcés via ScrapingBee premium_proxy + render_js=true
+- Détection ATS (Greenhouse, Lever, Ashby, Workable, Recruitee, SmartRecruiters)
+  stockée dans metadata.atsDetected mais non utilisée pour scraper l'iframe
+  (Phase 6+ si besoin)
+
+## Étapes session précédente (Phase 4 — terminée 2026-05-25)
 
 - [x] Étape 0 — Deps (exa-js + EXA_API_KEY + SCRAPINGBEE_API_KEY placeholder)
 - [x] Étape 1 — Schéma org : productUrl, productProfile (jsonb), onboardingCompleted
@@ -28,55 +61,34 @@ Phase 5 — Enrichissement (prochaine)
 - [x] Étape 7 — pnpm build ✓ (7/7) + pnpm typecheck ✓ (7/7)
 - [x] Étape 8 — Mise à jour planning
 
-## Décisions Phase 4
-
-- Tout synchrone (analyze ~7s, discover ~6s) — aucun @trigger.dev/react-hooks
-- Seul usage Trigger.dev = premier scrape via /complete (réutilise scrape-monitor)
-- Subpath exports @outrival/scrapers/{discovery,quick-fetch} — évite de pull crawlee/playwright dans l'API
-- ProductProfile camelCase partout (valueProp, pricingModel) — LLM instruit en camelCase via prompt
-- scoreOverlap batché : un seul appel Groq (maxTokens 2048) pour 15 candidats
-- Discovery ne crée RIEN en DB — seul /complete crée competitors + monitors
-- Pré-coché côté UI uniquement si overlapScore > 60
-- ensureUserOrg réutilisé partout — pas de logique org dupliquée
-
-## Étapes session précédente (Phase 3 — terminée)
-
-- [x] Étape 0 — Deps (groq-sdk, @anthropic-ai/sdk, resend, @clickhouse/client)
-- [x] Étape 1 — packages/ai pipeline (config, provider, parse, classify, insight, digest)
-- [x] Étape 2 — Schéma : slackWebhookUrl, digestEmail, digestEnabled, alertsEnabled sur organizations
-- [x] Étape 3 — Jobs classify-change + generate-signal + ClickHouse signal_feed
-- [x] Étape 4 — Trigger pipeline IA depuis scrape-monitor après création Change
-- [x] Étape 5 — Alertes Slack + email (Resend) via send-alert.job
-- [x] Étape 6 — schedule-scraping.job (cron horaire, fréquences realtime/daily/weekly)
-- [x] Étape 7 — generate-weekly-digest.job (cron lundi 8h + email Resend)
-- [x] Étape 8 — Routes API : signals, digests, settings/notifications
-- [x] Étape 9 — UI : feed Signals, page Digests, page Settings
-- [x] Étape 10 — pnpm build ✓ + pnpm typecheck ✓ (7/7)
-- [x] Étape 11 — Mise à jour planning
-
 ## Décisions architecturales
-- Pipeline IA 100% Groq pour Phase 3 (llama-3.3-70b-versatile) — swap vers Claude
-  prévu en changeant une seule ligne dans `packages/ai/src/config.ts`
-- ClickHouse insert (signal_feed) en best-effort : skip + log si CLICKHOUSE_URL non set
+
+- Pipeline IA 100% Groq pour Phase 3 (llama-3.3-70b-versatile) — swap vers
+  Claude prévu en changeant une seule ligne dans `packages/ai/src/config.ts`
+- ClickHouse insert best-effort partout : skip + log si CLICKHOUSE_URL non set
 - Idempotence Signal : check `signals.changeId` avant insert (classify + generate)
-- ClickHouse client dans `apps/workers/src/lib/clickhouse.ts` (workers seul consommateur)
+- Phase 5 : ClickHouse client partagé dans packages/db (proxy lazy)
 - env aiEnv() lazy : ne parse les vars qu'au premier appel pour ne pas crasher trigger:dev
-- Resend `ALERT_FROM` paramétrable via env `RESEND_FROM` (défaut alerts@outrival.io)
+- ProductProfile camelCase partout (Phase 4)
+- Discovery ne crée RIEN en DB — seul /complete crée competitors + monitors
+- Pour les sources G2/Capterra : URL fournie par l'utilisateur via monitor.config
+  (auto-discovery G2 URL = Phase 6 si besoin)
 
-## À faire avant Phase 5
+## À faire avant Phase 6
 
-- Remplir `EXA_API_KEY` + `SCRAPINGBEE_API_KEY` dans .env.local
-- Test E2E onboarding : nouveau compte → URL produit → discovery → sélection → dashboard
-- Mesurer la latence réelle des appels /analyze et /discover (cible : <15s combinés)
-- Évaluer la qualité de la discovery Exa sur 3-4 produits de catégories différentes
-
-## À faire avant Phase 4 (historique)
-
-- Remplir `GROQ_API_KEY` + `RESEND_API_KEY` dans .env.local
-- (optionnel) Remplir `CLICKHOUSE_URL` + `CLICKHOUSE_PASSWORD` + créer table `signal_feed`
-- `pnpm db:push --filter @outrival/db` pour appliquer les nouvelles colonnes organizations
-- Test E2E : scraper un site modifié → vérifier Signal créé + alerte si high/critical
-- Déclencher manuellement `generate-weekly-digest` une fois pour vérifier le flow email
+- Provisionner ClickHouse Cloud + lancer `pnpm ch:setup` une fois pour
+  créer les 4 tables (pricing_history, job_counts, review_scores, signal_feed)
+- Test E2E : ajouter monitors pricing+jobs+g2_reviews sur un concurrent réel,
+  scraper manuellement, vérifier les onglets de la fiche
+- Mesurer la fiabilité du scraping G2/Capterra via ScrapingBee
+- Évaluer la qualité de l'extraction Groq sur des pages réelles
+  (pricing structuré, jobs par département, top complaints reviews)
+- Déclencher refresh-competitor-summary manuellement → vérifier aiSummary
+- Vérifier la détection des offres fermées (réexécuter extract-jobs deux fois
+  avec un job supprimé entre les deux)
 
 ## Blockers
-Aucun. Phase 3 livrable end-to-end. Reste creds à fournir pour test runtime.
+
+Aucun. Phase 5 livrable end-to-end. Reste creds ClickHouse à fournir pour
+runtime + URLs G2/Capterra par concurrent (monitor.config) à configurer
+côté UI (Phase 6).

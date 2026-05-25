@@ -127,6 +127,25 @@ export const scrapeMonitorJob = task({
       }
     }
 
+    if (monitor.sourceType === "pricing") {
+      await tasks.trigger("extract-pricing", {
+        snapshotId: newSnapshot.id,
+        competitorId: competitor.id,
+      });
+    } else if (monitor.sourceType === "jobs") {
+      await tasks.trigger("extract-jobs", {
+        snapshotId: newSnapshot.id,
+        competitorId: competitor.id,
+      });
+    } else if (monitor.sourceType === "g2_reviews" || monitor.sourceType === "capterra_reviews") {
+      const reviewSource = monitor.sourceType === "g2_reviews" ? "g2" : "capterra";
+      await tasks.trigger("extract-reviews", {
+        snapshotId: newSnapshot.id,
+        competitorId: competitor.id,
+        source: reviewSource,
+      });
+    }
+
     await db
       .update(monitors)
       .set({

@@ -16,6 +16,19 @@ function getClient(): ClickHouseClient | null {
   return client;
 }
 
+async function insertBestEffort(table: string, values: unknown[]): Promise<void> {
+  const ch = getClient();
+  if (!ch) {
+    logger.warn(`ClickHouse not configured, skipping ${table} insert`);
+    return;
+  }
+  try {
+    await ch.insert({ table, values, format: "JSONEachRow" });
+  } catch (err) {
+    logger.error(`ClickHouse insert failed (${table})`, { err: String(err) });
+  }
+}
+
 export interface SignalFeedRow {
   org_id: string;
   competitor_id: string;
@@ -25,18 +38,44 @@ export interface SignalFeedRow {
 }
 
 export async function insertSignalFeed(row: SignalFeedRow): Promise<void> {
-  const ch = getClient();
-  if (!ch) {
-    logger.warn("ClickHouse not configured, skipping signal_feed insert");
-    return;
-  }
-  try {
-    await ch.insert({
-      table: "signal_feed",
-      values: [row],
-      format: "JSONEachRow",
-    });
-  } catch (err) {
-    logger.error("ClickHouse insert failed", { err: String(err) });
-  }
+  await insertBestEffort("signal_feed", [row]);
+}
+
+export interface PricingHistoryRow {
+  competitor_id: string;
+  plan_name: string;
+  price: number;
+  currency: string;
+  billing_period: string;
+  recorded_at: Date;
+}
+
+export async function insertPricingHistory(rows: PricingHistoryRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  await insertBestEffort("pricing_history", rows);
+}
+
+export interface JobCountRow {
+  competitor_id: string;
+  department: string;
+  count: number;
+  recorded_at: Date;
+}
+
+export async function insertJobCounts(rows: JobCountRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  await insertBestEffort("job_counts", rows);
+}
+
+export interface ReviewScoreRow {
+  competitor_id: string;
+  source: string;
+  score: number;
+  review_count: number;
+  sentiment_score: number;
+  recorded_at: Date;
+}
+
+export async function insertReviewScore(row: ReviewScoreRow): Promise<void> {
+  await insertBestEffort("review_scores", [row]);
 }

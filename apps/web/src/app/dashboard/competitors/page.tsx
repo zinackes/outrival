@@ -6,11 +6,17 @@ import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 import { Plus, Play, ExternalLink } from "lucide-react";
 import { api, type Competitor } from "@/lib/api";
+import {
+  PaywallDialog,
+  paywallFromError,
+  type PaywallReason,
+} from "@/components/outrival/paywall-dialog";
 
 export default function CompetitorsPage() {
   const [competitors, setCompetitors] = useState<Competitor[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showDialog, setShowDialog] = useState(false);
+  const [paywall, setPaywall] = useState<PaywallReason | null>(null);
 
   async function refresh() {
     try {
@@ -101,12 +107,30 @@ export default function CompetitorsPage() {
         </ul>
       )}
 
-      {showDialog && <AddCompetitorDialog onClose={() => setShowDialog(false)} onAdded={refresh} />}
+      {showDialog && (
+        <AddCompetitorDialog
+          onClose={() => setShowDialog(false)}
+          onAdded={refresh}
+          onPaywall={(reason) => {
+            setShowDialog(false);
+            setPaywall(reason);
+          }}
+        />
+      )}
+      <PaywallDialog reason={paywall} onClose={() => setPaywall(null)} />
     </div>
   );
 }
 
-function AddCompetitorDialog({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
+function AddCompetitorDialog({
+  onClose,
+  onAdded,
+  onPaywall,
+}: {
+  onClose: () => void;
+  onAdded: () => void;
+  onPaywall: (reason: PaywallReason) => void;
+}) {
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
@@ -121,7 +145,12 @@ function AddCompetitorDialog({ onClose, onAdded }: { onClose: () => void; onAdde
       await onAdded();
       onClose();
     } catch (e) {
-      setErr(String(e));
+      const reason = paywallFromError(e);
+      if (reason) {
+        onPaywall(reason);
+      } else {
+        setErr(String(e));
+      }
     } finally {
       setBusy(false);
     }

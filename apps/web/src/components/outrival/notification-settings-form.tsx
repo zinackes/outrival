@@ -2,12 +2,18 @@
 
 import { useEffect, useState } from "react";
 import { api, type NotificationSettings } from "@/lib/api";
+import {
+  PaywallDialog,
+  paywallFromError,
+  type PaywallReason,
+} from "@/components/outrival/paywall-dialog";
 
 export function NotificationSettingsForm() {
   const [settings, setSettings] = useState<NotificationSettings | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [paywall, setPaywall] = useState<PaywallReason | null>(null);
 
   useEffect(() => {
     api
@@ -31,7 +37,12 @@ export function NotificationSettingsForm() {
       });
       setSaved(true);
     } catch (e) {
-      setError(String(e));
+      const reason = paywallFromError(e);
+      if (reason) {
+        setPaywall(reason);
+      } else {
+        setError(String(e));
+      }
     } finally {
       setSaving(false);
     }
@@ -122,6 +133,7 @@ export function NotificationSettingsForm() {
         )}
         {error && <span className="text-sm text-red-400">{error}</span>}
       </div>
+      <PaywallDialog reason={paywall} onClose={() => setPaywall(null)} />
     </form>
   );
 }

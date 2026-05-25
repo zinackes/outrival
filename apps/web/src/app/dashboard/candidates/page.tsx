@@ -5,11 +5,17 @@ import { Check, X, ExternalLink, Sparkles } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 import { api, type CompetitorCandidate } from "@/lib/api";
+import {
+  PaywallDialog,
+  paywallFromError,
+  type PaywallReason,
+} from "@/components/outrival/paywall-dialog";
 
 export default function CandidatesPage() {
   const [items, setItems] = useState<CompetitorCandidate[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [actingId, setActingId] = useState<string | null>(null);
+  const [paywall, setPaywall] = useState<PaywallReason | null>(null);
 
   async function load() {
     try {
@@ -30,7 +36,12 @@ export default function CandidatesPage() {
       await api.addCandidate(id);
       setItems((prev) => prev?.filter((c) => c.id !== id) ?? null);
     } catch (e) {
-      setError(String(e));
+      const reason = paywallFromError(e);
+      if (reason) {
+        setPaywall(reason);
+      } else {
+        setError(String(e));
+      }
     } finally {
       setActingId(null);
     }
@@ -53,6 +64,7 @@ export default function CandidatesPage() {
 
   return (
     <div>
+      <PaywallDialog reason={paywall} onClose={() => setPaywall(null)} />
       <header className="mb-6">
         <h1 style={{ fontFamily: "var(--font-syne)" }} className="text-2xl font-bold mb-1">
           Concurrents détectés

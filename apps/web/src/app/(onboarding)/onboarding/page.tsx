@@ -8,6 +8,11 @@ import {
   type DiscoveredCompetitor,
   type ProductProfile,
 } from "@/lib/api";
+import {
+  PaywallDialog,
+  paywallFromError,
+  type PaywallReason,
+} from "@/components/outrival/paywall-dialog";
 
 type SourceType = "homepage" | "pricing" | "blog";
 type Frequency = "daily" | "weekly";
@@ -29,6 +34,7 @@ export default function OnboardingPage() {
   const [manualUrl, setManualUrl] = useState("");
   const [frequency, setFrequency] = useState<Frequency>("daily");
   const [sources, setSources] = useState<SourceType[]>(["homepage", "pricing", "blog"]);
+  const [paywall, setPaywall] = useState<PaywallReason | null>(null);
 
   async function handleAnalyze(e: React.FormEvent) {
     e.preventDefault();
@@ -128,7 +134,12 @@ export default function OnboardingPage() {
       });
       router.push("/dashboard");
     } catch (e) {
-      setError(String(e));
+      const reason = paywallFromError(e);
+      if (reason) {
+        setPaywall(reason);
+      } else {
+        setError(String(e));
+      }
       setLoading(false);
     }
   }
@@ -329,6 +340,7 @@ export default function OnboardingPage() {
           </p>
         )}
       </div>
+      <PaywallDialog reason={paywall} onClose={() => setPaywall(null)} />
     </div>
   );
 }

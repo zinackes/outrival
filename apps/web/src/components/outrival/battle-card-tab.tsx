@@ -3,6 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Download, RefreshCw, Save, Sparkles, X } from "lucide-react";
 import { api, type BattleCard, type BattleCardContent } from "@/lib/api";
+import {
+  PaywallDialog,
+  paywallFromError,
+  type PaywallReason,
+} from "@/components/outrival/paywall-dialog";
 
 const EMPTY_CONTENT: BattleCardContent = {
   their_strengths: [],
@@ -25,6 +30,7 @@ export function BattleCardTab({ competitorId }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<BattleCardContent>(EMPTY_CONTENT);
+  const [paywall, setPaywall] = useState<PaywallReason | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   async function load(silent = false) {
@@ -73,8 +79,14 @@ export function BattleCardTab({ competitorId }: Props) {
       await api.generateBattleCard(competitorId);
       startPolling();
     } catch (e) {
-      setError(String(e));
-      setStatus("error");
+      const reason = paywallFromError(e);
+      if (reason) {
+        setPaywall(reason);
+        setStatus(card ? "ready" : "absent");
+      } else {
+        setError(String(e));
+        setStatus("error");
+      }
     }
   }
 
@@ -93,26 +105,33 @@ export function BattleCardTab({ competitorId }: Props) {
     }
   }
 
+  const paywallNode = (
+    <PaywallDialog reason={paywall} onClose={() => setPaywall(null)} />
+  );
+
   if (status === "loading") return <Note text="Chargement…" />;
   if (status === "error") return <Note text={`Erreur : ${error}`} />;
   if (status === "absent") {
     return (
-      <div
-        className="p-6 text-center flex flex-col items-center gap-3"
-        style={{ background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: "var(--radius)" }}
-      >
-        <Sparkles size={20} style={{ color: "var(--accent)" }} />
-        <p className="text-sm" style={{ color: "var(--muted)" }}>
-          Aucune battle card pour ce concurrent. Générez-en une avec l&apos;IA en quelques secondes.
-        </p>
-        <button
-          onClick={onGenerate}
-          style={{ background: "var(--accent)", color: "#000", borderRadius: "var(--radius)" }}
-          className="flex items-center gap-2 px-4 py-2 text-sm font-medium hover:opacity-90"
+      <>
+        <div
+          className="p-6 text-center flex flex-col items-center gap-3"
+          style={{ background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: "var(--radius)" }}
         >
-          <Sparkles size={14} /> Générer la battle card
-        </button>
-      </div>
+          <Sparkles size={20} style={{ color: "var(--accent)" }} />
+          <p className="text-sm" style={{ color: "var(--muted)" }}>
+            Aucune battle card pour ce concurrent. Générez-en une avec l&apos;IA en quelques secondes.
+          </p>
+          <button
+            onClick={onGenerate}
+            style={{ background: "var(--accent)", color: "#000", borderRadius: "var(--radius)" }}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium hover:opacity-90"
+          >
+            <Sparkles size={14} /> Générer la battle card
+          </button>
+        </div>
+        {paywallNode}
+      </>
     );
   }
 
@@ -246,6 +265,7 @@ export function BattleCardTab({ competitorId }: Props) {
         Généré le {new Date(card.generatedAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })}
         {!card.pdfR2Key && " · PDF en attente de génération"}
       </p>
+      {paywallNode}
     </div>
   );
 }

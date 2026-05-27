@@ -489,3 +489,87 @@ Découvertes techniques et décisions importantes accumulées au fil des session
 - Pour battle-card-tab (5 return statements possibles), variable intermédiaire
   `const paywallNode = <PaywallDialog .../>` + wrap fragment des branches qui
   ont un bouton onGenerate
+
+## Patch 04 — Observabilité (2026-05-27)
+
+### Sentry — projets & DSN
+
+- 3 projets Sentry distincts pour triage par service :
+  - `outrival-api` → DSN dans `SENTRY_DSN_API`, init dans `apps/api/src/lib/sentry.ts`
+  - `outrival-workers` → DSN dans `SENTRY_DSN_WORKERS`, init dans `apps/workers/src/lib/sentry.ts`
+  - `outrival-web` → DSN serveur dans `SENTRY_DSN_WEB`, DSN client dans
+    `NEXT_PUBLIC_SENTRY_DSN` (préfixe Next.js obligatoire pour exposer au browser).
+    Init via `src/instrumentation.ts` (serveur/edge) + `src/instrumentation-client.ts`
+- Sentry n'est **activé qu'en `NODE_ENV=production`** sur les 3 services
+  (`enabled: process.env.NODE_ENV === "production"`). Dev = silent.
+- `tracesSampleRate: 0.1` partout (rester dans le free tier). À ajuster
+  selon le volume réel après lancement.
+- `sendDefaultPii: false` partout — pas d'auto-capture des headers/IP.
+- **Session Replay Sentry désactivé** côté web (`replaysSessionSampleRate: 0`,
+  `replaysOnErrorSampleRate: 0`). PostHog gère le replay (patch-03 — pas
+  encore appliqué) pour éviter de payer deux fois.
+- Source maps web : upload automatique via `withSentryConfig` quand
+  `SENTRY_AUTH_TOKEN` + `SENTRY_ORG` sont présents. Sinon skip silencieux.
+- Source maps workers : `@sentry/esbuild-plugin` ajouté dans
+  `trigger.config.ts` (extension `esbuildPlugin`), gated sur `SENTRY_AUTH_TOKEN`
+  + `SENTRY_ORG` + `NODE_ENV=production`.
+- Hook global Trigger.dev : `onFailure` dans `trigger.config.ts` capture
+  toute exception non-gérée vers Sentry avec tags `taskId` + `runId`.
+
+### pino — logger partagé
+
+- Source unique : `packages/shared/src/logger.ts`. Réexport via index.ts.
+- Redaction PII : passwords, tokens, apiKeys, secrets, authorization headers,
+  cookies, emails, stripeCustomerId, DATABASE_URL — censurés `[REDACTED]`.
+- Mode dev : `pino-pretty` (colorisé). Mode prod : JSON streamé sur stdout
+  (Coolify capture et persiste).
+- Niveaux contrôlés via `LOG_LEVEL` (défaut `info`).
+- Helper `childLogger(context)` pour des loggers enrichis (job id, orgId, etc.)
+- Surgical : remplacement des `console.error` aux points critiques uniquement
+  (`apps/api/src/lib/clickhouse-safe.ts`, `apps/api/src/routes/stripe-webhook.ts`).
+  Les workers utilisent déjà `logger` de `@trigger.dev/sdk/v3`.
+
+### Health checks
+
+- `GET /health` — alias de `/live` (compat existante).
+- `GET /health/live` — liveness pur, no deps. Pour uptime monitors externes
+  (ping toutes les 1 min sans amplifier la charge DB).
+- `GET /health/ready` — readiness profond :
+  - `db` (Postgres) → `SELECT 1` via Drizzle, **requis**
+  - `clickhouse` → `client.ping()` (ne throw pas, retourne `{ success }`),
+    **optionnel** : si `CLICKHOUSE_URL` absent → `"skipped"` (200), si présent
+    et fail → `false` (503)
+  - **redis** non testé : Upstash retiré en Phase 6, SSE DB-backed à la place
+- Retourne `{ status: "ok" | "degraded", checks: {...} }` avec status 200/503.
+
+### Uptime monitoring (à configurer — externe)
+
+À faire AVANT le launch beta (par l'utilisateur — pas codé, juste config) :
+
+1. **Better Stack ou UptimeRobot (free tier)** :
+   - Monitor `https://api.outrival.io/health/live` — ping 1/min, alerte si !200
+   - Monitor `https://outrival.io` — ping 1/min, alerte si !200
+   - Optionnel : monitor `/health/ready` à 5/min — alerte sur "degraded"
+2. **Notification** : email + Slack channel `#alerts` (à créer).
+
+### Alertes Sentry → Slack (à configurer — externe)
+
+1. **Intégration Slack** dans Sentry workspace (settings → integrations).
+2. **Règles d'alerte conservatrices** (anti alert-fatigue) :
+   - Nouvelle issue (jamais vue auparavant) → notif Slack `#alerts`
+   - Pic d'erreurs (>10 events en 5 min sur la même issue) → notif Slack
+   - **NE PAS** alerter sur chaque occurrence d'une issue connue.
+3. Séparer les channels par sévérité si besoin (`#alerts-critical` pour `outrival-api` 5xx).
+
+### À remplir en prod
+
+- `SENTRY_DSN_API` / `SENTRY_DSN_WORKERS` / `SENTRY_DSN_WEB` / `NEXT_PUBLIC_SENTRY_DSN`
+- `SENTRY_AUTH_TOKEN` (Settings → Auth Tokens → Internal Integration)
+- `SENTRY_ORG` (slug de l'org Sentry)
+- `SENTRY_PROJECT_WEB` (défaut: `outrival-web`)
+
+### Log shipping (étape 7 — différée)
+
+Pour plus tard : `@axiomhq/pino` transport ajouté à `packages/shared/src/logger.ts`
+quand le volume justifie l'investissement. Free tier Axiom = 500 GB/mois.
+Au lancement, les logs Coolify (VPS) + dashboard Trigger.dev couvrent l'essentiel.

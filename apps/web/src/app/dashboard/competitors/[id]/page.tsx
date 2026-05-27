@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState, use } from "react";
+import { useEffect, useMemo, useRef, useState, use } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
-import { fr } from "date-fns/locale";
+import { toast } from "sonner";
 import {
   ArrowLeft,
   Play,
@@ -15,14 +16,52 @@ import {
   FileText,
   Sparkles,
   Swords,
+  Loader2,
+  Info,
+  ChevronRight,
+  ChevronDown,
+  AlertCircle,
+  Trash2,
+  RefreshCw,
+  MoreHorizontal,
+  Check,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { BattleCardTab } from "@/components/outrival/battle-card-tab";
+import { track } from "@/lib/posthog/events";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
+import CompetitorDetailLoading from "./loading";
+import { ChartSkeleton } from "@/components/dashboard/skeletons";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   LineChart,
   Line,
   XAxis,
   YAxis,
-  Tooltip,
+  Tooltip as ChartTooltip,
   ResponsiveContainer,
   CartesianGrid,
   Legend,
@@ -43,42 +82,58 @@ import {
 type TabKey = "activity" | "pricing" | "hiring" | "reviews" | "content" | "battlecard";
 
 const TABS: Array<{ key: TabKey; label: string; icon: typeof Activity }> = [
-  { key: "activity", label: "Activité récente", icon: Activity },
+  { key: "activity", label: "Activity", icon: Activity },
   { key: "pricing", label: "Pricing", icon: DollarSign },
-  { key: "hiring", label: "Recrutement", icon: Briefcase },
+  { key: "hiring", label: "Hiring", icon: Briefcase },
   { key: "reviews", label: "Reviews", icon: Star },
-  { key: "content", label: "Contenu", icon: FileText },
+  { key: "content", label: "Content", icon: FileText },
   { key: "battlecard", label: "Battle Card", icon: Swords },
 ];
 
-const SEVERITY_COLOR: Record<string, string> = {
-  low: "#6b7280",
-  medium: "#f59e0b",
-  high: "#f97316",
-  critical: "#ef4444",
+const SEVERITY_CLASS: Record<string, string> = {
+  low: "bg-low text-background",
+  medium: "bg-medium text-background",
+  high: "bg-high text-background",
+  critical: "bg-critical text-background",
 };
+
+const POLL_INTERVAL_MS = 3000;
+const POLL_TIMEOUT_MS = 300_000;
 
 interface Props {
   params: Promise<{ id: string }>;
 }
 
+type CompetitorData = {
+  competitor: Competitor;
+  monitors: Monitor[];
+  recentChanges: ChangeRow[];
+  recentSignals: CompetitorSignal[];
+};
+
 export default function CompetitorDetailPage({ params }: Props) {
   const { id } = use(params);
-  const [data, setData] = useState<{
-    competitor: Competitor;
-    monitors: Monitor[];
-    recentChanges: ChangeRow[];
-    recentSignals: CompetitorSignal[];
-  } | null>(null);
+  const router = useRouter();
+  const [data, setData] = useState<CompetitorData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [runningId, setRunningId] = useState<string | null>(null);
+  const [scrapingIds, setScrapingIds] = useState<Set<string>>(new Set());
   const [tab, setTab] = useState<TabKey>("activity");
+  const [showDelete, setShowDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [refreshTick, setRefreshTick] = useState(0);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const scrapingStartRef = useRef<Map<string, { startedAt: number; lastRunAt: string | null }>>(
+    new Map(),
+  );
 
   async function refresh() {
     try {
-      setData(await api.getCompetitor(id));
+      const fresh = await api.getCompetitor(id);
+      setData(fresh);
+      return fresh;
     } catch (e) {
       setError(String(e));
+      return null;
     }
   }
 
@@ -86,235 +141,759 @@ export default function CompetitorDetailPage({ params }: Props) {
     refresh();
   }, [id]);
 
+  useEffect(() => {
+    if (scrapingIds.size === 0) {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+      return;
+    }
+    if (pollRef.current) return;
+
+    pollRef.current = setInterval(async () => {
+      const fresh = await refresh();
+      if (!fresh) return;
+      const finished: string[] = [];
+      const timedOut: string[] = [];
+      const now = Date.now();
+      for (const monitorId of scrapingIds) {
+        const tracker = scrapingStartRef.current.get(monitorId);
+        if (!tracker) continue;
+        const updated = fresh.monitors.find((m) => m.id === monitorId);
+        const updatedRun = updated?.lastRunAt ?? null;
+        const changed =
+          updatedRun !== null && updatedRun !== tracker.lastRunAt;
+        if (changed) {
+          finished.push(monitorId);
+        } else if (now - tracker.startedAt > POLL_TIMEOUT_MS) {
+          timedOut.push(monitorId);
+        }
+      }
+      if (finished.length === 0 && timedOut.length === 0) return;
+
+      setScrapingIds((prev) => {
+        const next = new Set(prev);
+        for (const fid of [...finished, ...timedOut]) {
+          next.delete(fid);
+          scrapingStartRef.current.delete(fid);
+        }
+        return next;
+      });
+
+      if (finished.length > 0) {
+        const labels = finished
+          .map((mid) => fresh.monitors.find((m) => m.id === mid)?.sourceType ?? mid)
+          .join(", ");
+        toast.success("Scrape completed", { description: labels });
+        setRefreshTick((t) => t + 1);
+      }
+      if (timedOut.length > 0) {
+        const labels = timedOut
+          .map((mid) => fresh.monitors.find((m) => m.id === mid)?.sourceType ?? mid)
+          .join(", ");
+        toast.warning("Scrape still running", {
+          description: `${labels} — still in progress after 5 min, will continue in background. Refresh the page later to see results.`,
+        });
+      }
+    }, POLL_INTERVAL_MS);
+
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, [scrapingIds, id]);
+
+  async function runAllMonitors() {
+    if (!data) return;
+    const idle = data.monitors.filter((m) => !scrapingIds.has(m.id));
+    if (idle.length === 0) return;
+    for (const m of idle) {
+      await runMonitor(m.id);
+    }
+  }
+
+  async function confirmDelete() {
+    setDeleting(true);
+    try {
+      await api.deleteCompetitor(id);
+      toast.success("Competitor deleted");
+      router.push("/dashboard/competitors");
+    } catch (e) {
+      toast.error("Failed to delete", { description: String(e) });
+      setDeleting(false);
+    }
+  }
+
   async function runMonitor(monitorId: string) {
-    setRunningId(monitorId);
+    if (!data) return;
+    const monitor = data.monitors.find((m) => m.id === monitorId);
+    if (!monitor) return;
+    scrapingStartRef.current.set(monitorId, {
+      startedAt: Date.now(),
+      lastRunAt: monitor.lastRunAt,
+    });
+    setScrapingIds((prev) => new Set(prev).add(monitorId));
     try {
       await api.runMonitor(monitorId);
+      track("scrape_triggered", { sourceType: monitor.sourceType });
+      toast.info(`Scrape started · ${monitor.sourceType}`, {
+        description: "Polling for completion…",
+      });
     } catch (e) {
-      setError(String(e));
-    } finally {
-      setRunningId(null);
+      scrapingStartRef.current.delete(monitorId);
+      setScrapingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(monitorId);
+        return next;
+      });
+      toast.error("Failed to trigger scrape", { description: String(e) });
     }
   }
 
   if (error) {
-    return <p className="text-sm" style={{ color: "var(--muted)" }}>Erreur : {error}</p>;
+    return <p className="text-sm text-muted-foreground">Error: {error}</p>;
   }
-  if (!data) {
-    return <p className="text-sm" style={{ color: "var(--muted)" }}>Chargement…</p>;
-  }
+  if (!data) return <CompetitorDetailLoading />;
 
   const { competitor, monitors, recentChanges, recentSignals } = data;
-  const lastRun = monitors
+  const lastRunMs = monitors
     .map((m) => (m.lastRunAt ? new Date(m.lastRunAt).getTime() : 0))
     .reduce((a, b) => Math.max(a, b), 0);
 
   return (
-    <div>
-      <Link
-        href="/dashboard/competitors"
-        className="text-sm flex items-center gap-1 mb-4 hover:opacity-80"
-        style={{ color: "var(--muted)" }}
-      >
-        <ArrowLeft size={14} /> Retour
-      </Link>
+    <TooltipProvider delayDuration={200}>
+      <div className="space-y-[22px]">
+        <Link
+          href="/dashboard/competitors"
+          className="text-[13px] text-muted-foreground flex items-center gap-1 hover:text-foreground transition-colors w-fit"
+        >
+          <ArrowLeft size={13} /> Back
+        </Link>
 
-      <Header competitor={competitor} lastRunMs={lastRun} />
+        <Header
+          competitor={competitor}
+          lastRunMs={lastRunMs}
+          anyMonitorRunning={monitors.some((m) => scrapingIds.has(m.id))}
+          onRunAll={runAllMonitors}
+          onDelete={() => setShowDelete(true)}
+        />
 
-      <AiSummary competitor={competitor} />
+        <MonitorChips
+          monitors={monitors}
+          scrapingIds={scrapingIds}
+          onRun={runMonitor}
+        />
 
-      <Monitors monitors={monitors} runningId={runningId} onRun={runMonitor} />
+        <StatsOverview
+          competitor={competitor}
+          signals={recentSignals}
+        />
 
-      <Tabs tab={tab} onChange={setTab} />
+        <AiSummary competitor={competitor} onRefresh={refresh} />
 
-      <div className="mt-6">
-        {tab === "activity" && (
-          <ActivityTab signals={recentSignals} changes={recentChanges} />
-        )}
-        {tab === "pricing" && <PricingTab competitorId={id} />}
-        {tab === "hiring" && <HiringTab competitorId={id} />}
-        {tab === "reviews" && <ReviewsTab competitorId={id} />}
-        {tab === "content" && <ContentTab changes={recentChanges} />}
-        {tab === "battlecard" && <BattleCardTab competitorId={id} />}
+        <Tabs value={tab} onValueChange={(v) => setTab(v as TabKey)}>
+          <TabsList variant="line" className="w-full justify-start overflow-x-auto">
+            {TABS.map((t) => {
+              const Icon = t.icon;
+              return (
+                <TabsTrigger key={t.key} value={t.key}>
+                  <Icon size={13} /> {t.label}
+                </TabsTrigger>
+              );
+            })}
+          </TabsList>
+
+          <div className="mt-6">
+            <TabsContent value="activity">
+              <ActivityTab
+                signals={recentSignals}
+                changes={recentChanges}
+                onRefresh={refresh}
+                competitorUrl={competitor.url}
+              />
+            </TabsContent>
+            <TabsContent value="pricing">
+              <PricingTab
+                competitorId={id}
+                monitors={monitors}
+                scrapingIds={scrapingIds}
+                onRun={runMonitor}
+                refreshTick={refreshTick}
+              />
+            </TabsContent>
+            <TabsContent value="hiring">
+              <HiringTab
+                competitorId={id}
+                monitors={monitors}
+                scrapingIds={scrapingIds}
+                onRun={runMonitor}
+                refreshTick={refreshTick}
+              />
+            </TabsContent>
+            <TabsContent value="reviews">
+              <ReviewsTab
+                competitorId={id}
+                monitors={monitors}
+                scrapingIds={scrapingIds}
+                onRun={runMonitor}
+                refreshTick={refreshTick}
+              />
+            </TabsContent>
+            <TabsContent value="content">
+              <ContentTab
+                changes={recentChanges}
+                monitors={monitors}
+                scrapingIds={scrapingIds}
+                onRun={runMonitor}
+                onRefresh={refresh}
+                competitorUrl={competitor.url}
+              />
+            </TabsContent>
+            <TabsContent value="battlecard">
+              <BattleCardTab competitorId={id} />
+            </TabsContent>
+          </div>
+        </Tabs>
+
+        <Dialog open={showDelete} onOpenChange={setShowDelete}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete competitor?</DialogTitle>
+              <DialogDescription>
+                {competitor.name} and all its monitors, snapshots, changes,
+                signals and battle cards will be soft-deleted. This cannot be
+                undone from the UI.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setShowDelete(false)}
+                disabled={deleting}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={confirmDelete}
+                disabled={deleting}
+              >
+                {deleting && <Loader2 size={13} className="animate-spin" />}
+                {deleting ? "Deleting…" : "Delete"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
-    </div>
+    </TooltipProvider>
   );
 }
 
-function Header({ competitor, lastRunMs }: { competitor: Competitor; lastRunMs: number }) {
+function Header({
+  competitor,
+  lastRunMs,
+  anyMonitorRunning,
+  onRunAll,
+  onDelete,
+}: {
+  competitor: Competitor;
+  lastRunMs: number;
+  anyMonitorRunning: boolean;
+  onRunAll: () => void;
+  onDelete: () => void;
+}) {
   return (
-    <div className="mb-6">
-      <div className="flex items-baseline gap-3 mb-1">
-        <h1 style={{ fontFamily: "var(--font-syne)" }} className="text-2xl font-bold">
-          {competitor.name}
-        </h1>
-        {competitor.category && (
-          <span style={{ color: "var(--muted)" }} className="text-xs uppercase tracking-wide">
-            {competitor.category}
-          </span>
-        )}
-      </div>
-      <a
-        href={competitor.url}
-        target="_blank"
-        rel="noreferrer"
-        style={{ color: "var(--muted)" }}
-        className="text-sm flex items-center gap-1 hover:opacity-80"
-      >
-        {competitor.url} <ExternalLink size={12} />
-      </a>
-      <div className="mt-3 flex items-center gap-4 text-xs" style={{ color: "var(--muted)" }}>
-        {competitor.overlapScore !== null && competitor.overlapScore !== undefined && (
-          <div className="flex items-center gap-2">
-            <span>Overlap</span>
-            <div
-              style={{ background: "var(--bg)", border: "1px solid var(--border)" }}
-              className="w-32 h-2 rounded-full overflow-hidden"
-            >
-              <div
-                style={{
-                  background: "var(--accent)",
-                  width: `${Math.max(0, Math.min(100, competitor.overlapScore))}%`,
-                  height: "100%",
-                }}
-              />
-            </div>
-            <span>{Math.round(competitor.overlapScore)} / 100</span>
+    <div className="flex items-start md:items-center justify-between gap-4 flex-wrap">
+      <div className="min-w-0">
+        <div className="flex items-baseline gap-3 flex-wrap mb-1">
+          <h1 className="font-bold text-[20px] tracking-tight leading-tight m-0">
+            {competitor.name}
+          </h1>
+          {competitor.category && (
+            <Badge variant="outline" className="text-[10px] uppercase tracking-widest font-mono">
+              {competitor.category}
+            </Badge>
+          )}
+        </div>
+        <a
+          href={competitor.url}
+          target="_blank"
+          rel="noreferrer"
+          className="text-[13px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 transition-colors"
+        >
+          {competitor.url}
+          <ExternalLink size={12} />
+        </a>
+        {lastRunMs > 0 && (
+          <div className="text-[11px] text-muted-foreground/80 font-mono mt-1">
+            last activity {formatDistanceToNow(new Date(lastRunMs), { addSuffix: true })}
           </div>
         )}
-        {lastRunMs > 0 && (
-          <span>
-            dernière activité il y a{" "}
-            {formatDistanceToNow(new Date(lastRunMs), { locale: fr })}
-          </span>
-        )}
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <Button
+          size="sm"
+          variant="default"
+          onClick={onRunAll}
+          disabled={anyMonitorRunning}
+        >
+          {anyMonitorRunning ? (
+            <Loader2 size={12} className="animate-spin" />
+          ) : (
+            <Play size={12} />
+          )}
+          Scrape all
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-9 w-9 p-0"
+              aria-label="More actions"
+            >
+              <MoreHorizontal size={14} />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuItem onClick={onDelete} className="text-critical focus:text-critical">
+              <Trash2 size={13} /> Delete competitor
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   );
 }
 
-function AiSummary({ competitor }: { competitor: Competitor }) {
-  if (!competitor.aiSummary) {
-    return (
-      <div
-        className="mb-6 p-4 text-sm flex items-start gap-2"
-        style={{
-          background: "var(--surface)",
-          border: "1px dashed var(--border)",
-          borderRadius: "var(--radius)",
-          color: "var(--muted)",
-        }}
-      >
-        <Sparkles size={14} className="mt-0.5" />
-        <span>
-          Résumé IA non encore généré. Il apparaîtra ici après le premier
-          enrichissement.
-        </span>
-      </div>
-    );
-  }
+function MonitorChips({
+  monitors,
+  scrapingIds,
+  onRun,
+}: {
+  monitors: Monitor[];
+  scrapingIds: Set<string>;
+  onRun: (id: string) => void;
+}) {
+  if (monitors.length === 0) return null;
   return (
-    <div
-      className="mb-6 p-4"
-      style={{
-        background: "var(--surface)",
-        border: "1px solid var(--border)",
-        borderRadius: "var(--radius)",
-      }}
-    >
-      <div className="flex items-center gap-2 mb-2 text-xs uppercase tracking-wide" style={{ color: "var(--accent)" }}>
-        <Sparkles size={12} /> Résumé
+    <div className="flex items-center gap-1.5 flex-wrap">
+      {monitors.map((m) => {
+        const running = scrapingIds.has(m.id);
+        const lastRunMs = m.lastRunAt ? new Date(m.lastRunAt).getTime() : 0;
+        const lastFailedMs = m.lastFailedAt ? new Date(m.lastFailedAt).getTime() : 0;
+        const failed = lastFailedMs > 0 && lastFailedMs > lastRunMs;
+        const status = running ? "running" : failed ? "failed" : lastRunMs > 0 ? "ok" : "idle";
+        const Icon = running ? Loader2 : failed ? AlertCircle : lastRunMs > 0 ? Check : Play;
+        const relativeTime =
+          status === "failed" && m.lastFailedAt
+            ? `failed ${formatDistanceToNow(new Date(m.lastFailedAt), { addSuffix: true })}`
+            : status === "ok" && m.lastRunAt
+              ? formatDistanceToNow(new Date(m.lastRunAt), { addSuffix: true })
+              : status === "running"
+                ? "scraping…"
+                : "never scraped";
+        return (
+          <Tooltip key={m.id}>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={() => !running && onRun(m.id)}
+                disabled={running}
+                className={cn(
+                  "inline-flex items-center gap-1.5 px-2 py-1 rounded-md border text-[11px] font-mono uppercase tracking-wide transition-colors disabled:cursor-not-allowed",
+                  status === "ok" && "border-border bg-card hover:bg-accent/40 text-foreground",
+                  status === "failed" && "border-critical/40 bg-critical/[0.08] text-critical hover:bg-critical/[0.14]",
+                  status === "running" && "border-border bg-accent/40 text-foreground",
+                  status === "idle" && "border-dashed border-border bg-card hover:bg-accent/40 text-muted-foreground",
+                )}
+              >
+                <Icon size={10} className={cn(running && "animate-spin")} />
+                <span className="font-semibold">{m.sourceType}</span>
+                <span className="text-muted-foreground/70 font-normal normal-case tracking-normal">
+                  {m.frequency}
+                </span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-[280px] text-[11px] leading-relaxed">
+              <div className="flex flex-col gap-0.5">
+                <div className="font-semibold">{m.sourceType}</div>
+                <div className="text-muted-foreground">{relativeTime}</div>
+                {failed && m.lastError && (
+                  <div className="text-critical/80 mt-1 max-w-[260px] break-words">
+                    {m.lastError}
+                  </div>
+                )}
+                <div className="text-muted-foreground/70 mt-1">
+                  {running ? "Currently scraping" : "Click to scrape now"}
+                </div>
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        );
+      })}
+    </div>
+  );
+}
+
+function StatsOverview({
+  competitor,
+  signals,
+}: {
+  competitor: Competitor;
+  signals: CompetitorSignal[];
+}) {
+  const now = Date.now();
+  const sevenDaysAgo = now - 7 * 24 * 3600 * 1000;
+  const signals7d = signals.filter(
+    (s) => new Date(s.createdAt).getTime() >= sevenDaysAgo,
+  ).length;
+
+  return (
+    <Card className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-border">
+      <KpiCell
+        label="Overlap"
+        tooltip="How similar this competitor is to your product (0–100). Computed at discovery via Exa + AI scoring against your product profile."
+        value={
+          competitor.overlapScore != null ? (
+            <div className="flex items-center gap-2.5">
+              <div className="h-1.5 w-[70px] bg-background rounded border border-border overflow-hidden">
+                <span
+                  className="block h-full bg-primary rounded"
+                  style={{
+                    width: `${Math.max(0, Math.min(100, competitor.overlapScore))}%`,
+                  }}
+                />
+              </div>
+              <span className="tabular-nums font-mono text-[18px] font-bold">
+                {Math.round(competitor.overlapScore)}
+              </span>
+              <span className="text-muted-foreground/80 text-xs font-mono">/100</span>
+            </div>
+          ) : (
+            "—"
+          )
+        }
+        raw
+      />
+      <KpiCell
+        label="Signals 7d"
+        value={signals7d}
+        sub={`${signals.length} total tracked`}
+      />
+    </Card>
+  );
+}
+
+function KpiCell({
+  label,
+  tooltip,
+  value,
+  sub,
+  raw,
+}: {
+  label: string;
+  tooltip?: string;
+  value: React.ReactNode;
+  sub?: string;
+  raw?: boolean;
+}) {
+  return (
+    <div className="px-5 py-4 flex flex-col gap-1.5 text-left min-w-0">
+      <div className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase flex items-center gap-1.5">
+        <span>{label}</span>
+        {tooltip && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="text-muted-foreground/60 hover:text-foreground transition-colors"
+                aria-label={`About ${label}`}
+              >
+                <Info size={11} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-[240px] text-[11px] leading-relaxed normal-case">
+              {tooltip}
+            </TooltipContent>
+          </Tooltip>
+        )}
       </div>
-      <p className="text-sm leading-relaxed">{competitor.aiSummary}</p>
-      {competitor.aiSummaryUpdatedAt && (
-        <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>
-          mis à jour{" "}
-          {formatDistanceToNow(new Date(competitor.aiSummaryUpdatedAt), {
-            locale: fr,
-            addSuffix: true,
-          })}
-        </p>
+      {raw ? (
+        <div>{value}</div>
+      ) : (
+        <div
+          className={cn(
+            "font-bold tracking-tight leading-none truncate",
+            typeof value === "number"
+              ? "text-[26px] font-mono tabular-nums"
+              : "text-[18px]",
+          )}
+        >
+          {value}
+        </div>
+      )}
+      {sub && (
+        <div className="text-muted-foreground/80 text-[11px] font-mono truncate">
+          {sub}
+        </div>
       )}
     </div>
   );
 }
 
-function Monitors({
-  monitors,
-  runningId,
-  onRun,
+function AiSummary({
+  competitor,
+  onRefresh,
 }: {
-  monitors: Monitor[];
-  runningId: string | null;
-  onRun: (id: string) => void;
+  competitor: Competitor;
+  onRefresh: () => void;
 }) {
+  const [refreshing, setRefreshing] = useState(false);
+
+  async function refresh() {
+    setRefreshing(true);
+    try {
+      await api.refreshCompetitorSummary(competitor.id);
+      toast.info("Refreshing AI summary…", {
+        description: "It will update in a few seconds.",
+      });
+      setTimeout(() => {
+        onRefresh();
+        setRefreshing(false);
+      }, 6000);
+    } catch (e) {
+      toast.error("Failed to refresh summary", { description: String(e) });
+      setRefreshing(false);
+    }
+  }
+
+  if (!competitor.aiSummary) {
+    return (
+      <Card className="px-4 py-3 border-dashed flex items-start gap-2 justify-between">
+        <div className="flex items-start gap-2 text-muted-foreground text-[13px]">
+          <Sparkles size={13} className="mt-0.5 shrink-0" />
+          <span>AI summary not generated yet.</span>
+        </div>
+        <Button size="sm" variant="secondary" onClick={refresh} disabled={refreshing} className="h-7 text-[11px]">
+          {refreshing ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
+          {refreshing ? "Generating…" : "Generate now"}
+        </Button>
+      </Card>
+    );
+  }
   return (
-    <div className="mb-6">
-      <h2 style={{ fontFamily: "var(--font-syne)" }} className="text-sm font-bold mb-2 uppercase tracking-wide">
-        Monitors
-      </h2>
-      <ul className="flex flex-col gap-2">
-        {monitors.map((m) => (
-          <li
-            key={m.id}
-            style={{
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
-              borderRadius: "var(--radius)",
-            }}
-            className="p-3 flex items-center justify-between"
-          >
-            <div className="flex flex-col gap-1">
-              <span className="text-sm font-medium uppercase tracking-wide">
-                {m.sourceType}{" "}
-                <span style={{ color: "var(--muted)" }}>· {m.frequency}</span>
-              </span>
-              <span style={{ color: "var(--muted)" }} className="text-xs">
-                {m.lastRunAt
-                  ? `dernier scrape il y a ${formatDistanceToNow(new Date(m.lastRunAt), {
-                      locale: fr,
-                    })}`
-                  : "jamais scrapé"}
-              </span>
-            </div>
-            <button
-              onClick={() => onRun(m.id)}
-              disabled={runningId === m.id}
-              style={{ background: "var(--accent)", color: "#000", borderRadius: "var(--radius)" }}
-              className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium disabled:opacity-50"
-            >
-              <Play size={12} /> {runningId === m.id ? "Lancé…" : "Scraper"}
-            </button>
-          </li>
-        ))}
-      </ul>
-    </div>
+    <Card className="px-5 py-4">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase flex items-center gap-1.5">
+          <Sparkles size={11} /> Summary
+        </div>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={refresh}
+          disabled={refreshing}
+          className="h-6 px-2 text-[10px] font-mono uppercase tracking-widest text-muted-foreground hover:text-foreground"
+        >
+          {refreshing ? (
+            <Loader2 size={10} className="animate-spin" />
+          ) : (
+            <RefreshCw size={10} />
+          )}
+          {refreshing ? "Refreshing" : "Refresh"}
+        </Button>
+      </div>
+      <p className="text-[13px] leading-relaxed">{competitor.aiSummary}</p>
+      {competitor.aiSummaryUpdatedAt && (
+        <p className="text-[11px] font-mono text-muted-foreground/80 mt-2">
+          updated {formatDistanceToNow(new Date(competitor.aiSummaryUpdatedAt), { addSuffix: true })}
+        </p>
+      )}
+    </Card>
   );
 }
 
-function Tabs({ tab, onChange }: { tab: TabKey; onChange: (t: TabKey) => void }) {
+type DiffLine = { kind: "add" | "remove"; text: string };
+
+function parseDiff(diffText: string, maxLines = 18): { lines: DiffLine[]; truncated: boolean } {
+  const lines: DiffLine[] = [];
+  for (const raw of diffText.split("\n")) {
+    const trimmed = raw.trimEnd();
+    if (!trimmed) continue;
+    const kind: "add" | "remove" | null =
+      trimmed.startsWith("+ ") ? "add" : trimmed.startsWith("- ") ? "remove" : null;
+    if (!kind) continue;
+    const text = stripHtml(trimmed.slice(2)).trim();
+    if (!text) continue;
+    lines.push({ kind, text });
+    if (lines.length >= maxLines) break;
+  }
+  return { lines, truncated: lines.length >= maxLines };
+}
+
+function stripHtml(input: string): string {
+  return input
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, " ");
+}
+
+function ChangeCard({
+  change,
+  onRefresh,
+  fallbackUrl,
+}: {
+  change: ChangeRow;
+  onRefresh?: () => void;
+  fallbackUrl?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [classifying, setClassifying] = useState(false);
+  const hasSummary = change.summary && change.summary.trim().length > 0;
+
+  async function classify() {
+    setClassifying(true);
+    try {
+      await api.classifyChange(change.id);
+      toast.info("Classifying change with AI…", {
+        description: "Refreshing in a few seconds.",
+      });
+      setTimeout(() => {
+        onRefresh?.();
+        setClassifying(false);
+      }, 4000);
+    } catch (e) {
+      toast.error("Failed to classify", { description: String(e) });
+      setClassifying(false);
+    }
+  }
+
+  const pageUrl = change.monitorUrl ?? fallbackUrl ?? null;
   return (
-    <div
-      className="flex gap-1 border-b"
-      style={{ borderColor: "var(--border)" }}
-    >
-      {TABS.map((t) => {
-        const Icon = t.icon;
-        const active = tab === t.key;
-        return (
-          <button
-            key={t.key}
-            onClick={() => onChange(t.key)}
-            style={{
-              color: active ? "var(--accent)" : "var(--muted)",
-              borderBottom: active ? "2px solid var(--accent)" : "2px solid transparent",
-            }}
-            className="flex items-center gap-2 px-3 py-2 text-sm font-medium hover:opacity-90"
+    <Card className="px-3.5 py-3">
+      <div className="flex items-center gap-2 mb-2 text-[11px]">
+        <Badge variant="outline" className="text-[9px] font-mono uppercase tracking-wide px-2 py-0">
+          {change.sourceType}
+        </Badge>
+        <span className="text-muted-foreground/70 font-mono text-[10px]">
+          · {formatDistanceToNow(new Date(change.detectedAt), { addSuffix: true })}
+        </span>
+        {pageUrl && (
+          <a
+            href={pageUrl}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="ml-auto inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-widest text-muted-foreground/70 hover:text-foreground transition-colors"
           >
-            <Icon size={14} /> {t.label}
+            View page <ExternalLink size={10} />
+          </a>
+        )}
+      </div>
+
+      {hasSummary ? (
+        <p className="text-[13px] leading-relaxed text-foreground">{change.summary}</p>
+      ) : (
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-[12px] text-muted-foreground/70 italic">
+            No AI summary yet — classification was never run for this change.
+          </p>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={classifying}
+            onClick={classify}
+            className="h-7 text-[11px]"
+          >
+            {classifying ? (
+              <>
+                <Loader2 size={11} className="animate-spin" /> Classifying…
+              </>
+            ) : (
+              <>
+                <Sparkles size={11} /> Classify with AI
+              </>
+            )}
+          </Button>
+        </div>
+      )}
+
+      {change.diffText && (
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            className="flex items-center gap-1 text-[10px] font-mono uppercase tracking-widest text-muted-foreground/70 hover:text-foreground transition-colors"
+          >
+            {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+            {open ? "Hide raw diff" : "Show raw diff"}
           </button>
-        );
-      })}
+          {open && (
+            <div className="mt-2 pt-2 border-t border-border/50">
+              <DiffPreview diffText={change.diffText} />
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function DiffPreview({ diffText }: { diffText: string }) {
+  const { lines, truncated } = useMemo(() => parseDiff(diffText), [diffText]);
+  if (lines.length === 0) {
+    return (
+      <p className="text-[11px] text-muted-foreground/70 italic">
+        Only HTML/markup differences — nothing meaningful to display.
+      </p>
+    );
+  }
+  const added = lines.filter((l) => l.kind === "add").length;
+  const removed = lines.filter((l) => l.kind === "remove").length;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-3 text-[10px] font-mono uppercase tracking-widest text-muted-foreground/80">
+        {added > 0 && <span className="text-positive">+ {added} added</span>}
+        {removed > 0 && <span className="text-critical">− {removed} removed</span>}
+      </div>
+      <ul className="flex flex-col gap-1 text-[12px] leading-relaxed">
+        {lines.map((l, i) => (
+          <li
+            key={i}
+            className={cn(
+              "px-2 py-1 rounded-sm font-normal flex gap-2",
+              l.kind === "add" && "bg-positive/[0.08] text-foreground",
+              l.kind === "remove" && "bg-critical/[0.08] text-foreground",
+            )}
+          >
+            <span
+              className={cn(
+                "font-mono shrink-0 select-none",
+                l.kind === "add" ? "text-positive" : "text-critical",
+              )}
+            >
+              {l.kind === "add" ? "+" : "−"}
+            </span>
+            <span className="break-words min-w-0">{l.text}</span>
+          </li>
+        ))}
+      </ul>
+      {truncated && (
+        <p className="text-[10px] font-mono text-muted-foreground/70 uppercase tracking-widest">
+          … more changes truncated
+        </p>
+      )}
     </div>
   );
 }
@@ -322,57 +901,158 @@ function Tabs({ tab, onChange }: { tab: TabKey; onChange: (t: TabKey) => void })
 function ActivityTab({
   signals,
   changes,
+  onRefresh,
+  competitorUrl,
 }: {
   signals: CompetitorSignal[];
   changes: ChangeRow[];
+  onRefresh?: () => void;
+  competitorUrl: string;
 }) {
   if (signals.length === 0 && changes.length === 0) {
-    return <Empty text="Aucune activité détectée pour ce concurrent." />;
+    return (
+      <Card className="px-6 py-10 text-center border-dashed flex flex-col items-center gap-2.5">
+        <p className="text-[13px] font-semibold text-foreground">No activity yet</p>
+        <p className="text-[12px] text-muted-foreground max-w-md">
+          Activity will appear once a monitor detects a change. Scrape from the
+          Monitors section above to start tracking.
+        </p>
+      </Card>
+    );
   }
+  const signalChangeIds = new Set(signals.map((s) => s.changeId).filter(Boolean));
+  const orphanChanges = changes.filter((c) => !signalChangeIds.has(c.id));
   return (
-    <ul className="flex flex-col gap-2">
-      {signals.map((s) => (
-        <li
-          key={s.id}
-          style={{
-            background: "var(--surface)",
-            border: "1px solid var(--border)",
-            borderRadius: "var(--radius)",
-          }}
-          className="p-3"
-        >
-          <div className="flex items-center gap-2 mb-1 text-xs">
-            <span
-              style={{ background: SEVERITY_COLOR[s.severity] ?? "var(--muted)", color: "#000" }}
-              className="px-2 py-0.5 rounded uppercase tracking-wide text-[10px] font-semibold"
-            >
-              {s.severity}
-            </span>
-            <span style={{ color: "var(--muted)" }} className="uppercase tracking-wide">
-              {s.category}
-            </span>
-            <span style={{ color: "var(--muted)" }}>
-              · il y a {formatDistanceToNow(new Date(s.createdAt), { locale: fr })}
-            </span>
+    <div className="flex flex-col gap-5">
+      {signals.length > 0 && (
+        <ul className="flex flex-col gap-2">
+          {signals.map((s) => {
+            const pageUrl = s.monitorUrl ?? competitorUrl;
+            return (
+              <Card key={s.id} className="px-3.5 py-3">
+                <div className="flex items-center gap-2 mb-1.5 text-[11px] flex-wrap">
+                  <Badge
+                    className={cn(
+                      "uppercase tracking-wide text-[9px] font-bold px-2 py-0",
+                      SEVERITY_CLASS[s.severity],
+                    )}
+                  >
+                    {s.severity}
+                  </Badge>
+                  <span className="text-muted-foreground uppercase tracking-widest font-mono text-[10px]">
+                    {s.category}
+                  </span>
+                  {s.sourceType && (
+                    <Badge variant="outline" className="text-[9px] font-mono uppercase tracking-wide px-2 py-0">
+                      {s.sourceType}
+                    </Badge>
+                  )}
+                  <span className="text-muted-foreground/70 font-mono text-[10px]">
+                    · {formatDistanceToNow(new Date(s.createdAt), { addSuffix: true })}
+                  </span>
+                  <a
+                    href={pageUrl}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="ml-auto inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-widest text-muted-foreground/70 hover:text-foreground transition-colors"
+                  >
+                    View page <ExternalLink size={10} />
+                  </a>
+                </div>
+                <p className="text-[13px] mb-1">{s.insight}</p>
+                {s.soWhat && (
+                  <p className="text-muted-foreground text-[12px] mb-1">→ {s.soWhat}</p>
+                )}
+                {s.recommendedAction && (
+                  <p className="text-foreground text-[12px] font-medium">
+                    Action: {s.recommendedAction}
+                  </p>
+                )}
+              </Card>
+            );
+          })}
+        </ul>
+      )}
+
+      {orphanChanges.length > 0 && (
+        <div>
+          <div className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase mb-2.5">
+            Detected changes · not classified as signals
           </div>
-          <p className="text-sm mb-1">{s.insight}</p>
-          {s.soWhat && (
-            <p style={{ color: "var(--muted)" }} className="text-xs mb-1">
-              → {s.soWhat}
-            </p>
-          )}
-          {s.recommendedAction && (
-            <p style={{ color: "var(--accent)" }} className="text-xs">
-              Action : {s.recommendedAction}
-            </p>
-          )}
-        </li>
-      ))}
-    </ul>
+          <ul className="flex flex-col gap-2">
+            {orphanChanges.map((c) => (
+              <li key={c.id}>
+                <ChangeCard change={c} onRefresh={onRefresh} fallbackUrl={competitorUrl} />
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }
 
-function PricingTab({ competitorId }: { competitorId: string }) {
+type MonitorSourceProps = {
+  monitors: Monitor[];
+  scrapingIds: Set<string>;
+  onRun: (id: string) => void;
+};
+
+function MonitorEmptyState({
+  source,
+  label,
+  monitors,
+  scrapingIds,
+  onRun,
+}: {
+  source: string;
+  label: string;
+} & MonitorSourceProps) {
+  const monitor = monitors.find((m) => m.sourceType === source);
+  if (!monitor) {
+    return (
+      <Empty
+        text={`No ${label} monitor configured for this competitor.`}
+        hint={`Source "${source}" is not in this competitor's monitor list. It may not be enabled by your plan or hasn't been added yet.`}
+      />
+    );
+  }
+  const running = scrapingIds.has(monitor.id);
+  return (
+    <Card className="px-6 py-10 text-center border-dashed flex flex-col items-center gap-3">
+      <p className="text-[14px] font-semibold text-foreground">No {label} data yet</p>
+      <p className="text-[12px] text-muted-foreground max-w-md">
+        {monitor.lastRunAt
+          ? `Monitor was scraped ${formatDistanceToNow(new Date(monitor.lastRunAt), { addSuffix: true })}, but no ${label} data was extracted. The source page may not expose this data.`
+          : `This monitor has never been scraped. Run it now to extract ${label} data.`}
+      </p>
+      <Button
+        size="sm"
+        variant={running ? "secondary" : "default"}
+        onClick={() => onRun(monitor.id)}
+        disabled={running}
+      >
+        {running ? (
+          <>
+            <Loader2 size={12} className="animate-spin" /> Scraping…
+          </>
+        ) : (
+          <>
+            <Play size={12} /> Scrape now
+          </>
+        )}
+      </Button>
+    </Card>
+  );
+}
+
+function PricingTab({
+  competitorId,
+  monitors,
+  scrapingIds,
+  onRun,
+  refreshTick,
+}: { competitorId: string; refreshTick?: number } & MonitorSourceProps) {
   const [history, setHistory] = useState<PricingHistoryPoint[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -381,40 +1061,45 @@ function PricingTab({ competitorId }: { competitorId: string }) {
       .getCompetitorPricingHistory(competitorId)
       .then((r) => setHistory(r.history))
       .catch((e) => setErr(String(e)));
-  }, [competitorId]);
+  }, [competitorId, refreshTick]);
 
-  if (err) return <Empty text={`Erreur : ${err}`} />;
-  if (history === null) return <Empty text="Chargement…" />;
-  if (history.length === 0) {
-    return <Empty text="Aucune donnée de pricing. Activez un monitor pricing pour ce concurrent." />;
+  const series = useMemo(
+    () => (history ? buildPricingSeries(history) : null),
+    [history],
+  );
+
+  if (err) return <Empty text={`Error: ${err}`} />;
+  if (history === null) return <TabLoading />;
+  if (history.length === 0 || !series) {
+    return (
+      <MonitorEmptyState
+        source="pricing"
+        label="pricing"
+        monitors={monitors}
+        scrapingIds={scrapingIds}
+        onRun={onRun}
+      />
+    );
   }
 
-  const series = useMemo(() => buildPricingSeries(history), [history]);
   const plans = Object.keys(series.byPlan);
-  const latestByPlan = new Map<string, PricingHistoryPoint>();
   const sorted = [...history].sort(
     (a, b) => new Date(a.recorded_at).getTime() - new Date(b.recorded_at).getTime(),
   );
-  for (const p of sorted) latestByPlan.set(p.plan_name, p);
+  const latestByPlan = new Map<string, PricingHistoryPoint>();
   const firstByPlan = new Map<string, PricingHistoryPoint>();
+  for (const p of sorted) latestByPlan.set(p.plan_name, p);
   for (const p of sorted) if (!firstByPlan.has(p.plan_name)) firstByPlan.set(p.plan_name, p);
 
   return (
     <div className="flex flex-col gap-4">
-      <div
-        style={{
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-          borderRadius: "var(--radius)",
-        }}
-        className="p-4"
-      >
+      <Card className="p-4">
         <ResponsiveContainer width="100%" height={260}>
           <LineChart data={series.points}>
             <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
             <XAxis dataKey="date" stroke="var(--muted)" fontSize={11} />
             <YAxis stroke="var(--muted)" fontSize={11} />
-            <Tooltip
+            <ChartTooltip
               contentStyle={{
                 background: "var(--bg)",
                 border: "1px solid var(--border)",
@@ -435,7 +1120,7 @@ function PricingTab({ competitorId }: { competitorId: string }) {
             ))}
           </LineChart>
         </ResponsiveContainer>
-      </div>
+      </Card>
 
       <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {plans.map((plan) => {
@@ -444,27 +1129,28 @@ function PricingTab({ competitorId }: { competitorId: string }) {
           const delta = latest.price - first.price;
           const pct = first.price > 0 ? (delta / first.price) * 100 : 0;
           return (
-            <li
-              key={plan}
-              style={{
-                background: "var(--surface)",
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius)",
-              }}
-              className="p-3"
-            >
-              <p className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>
+            <Card key={plan} className="px-3.5 py-3">
+              <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-mono">
                 {plan}
               </p>
-              <p className="text-lg font-bold">
-                {latest.price} {latest.currency} <span className="text-xs" style={{ color: "var(--muted)" }}>/ {latest.billing_period}</span>
+              <p className="text-[18px] font-bold tracking-tight mt-1">
+                {latest.price} {latest.currency}{" "}
+                <span className="text-[11px] text-muted-foreground/80 font-mono font-normal">
+                  / {latest.billing_period}
+                </span>
               </p>
               {delta !== 0 && (
-                <p className="text-xs" style={{ color: delta > 0 ? "#ef4444" : "#10b981" }}>
-                  {delta > 0 ? "▲" : "▼"} {Math.abs(delta).toFixed(0)} {latest.currency} ({pct.toFixed(0)}%)
+                <p
+                  className={cn(
+                    "text-[11px] mt-1 font-mono tabular-nums",
+                    delta > 0 ? "text-critical" : "text-positive",
+                  )}
+                >
+                  {delta > 0 ? "▲" : "▼"} {Math.abs(delta).toFixed(0)} {latest.currency} (
+                  {pct.toFixed(0)}%)
                 </p>
               )}
-            </li>
+            </Card>
           );
         })}
       </ul>
@@ -472,47 +1158,58 @@ function PricingTab({ competitorId }: { competitorId: string }) {
   );
 }
 
-function HiringTab({ competitorId }: { competitorId: string }) {
+function HiringTab({
+  competitorId,
+  monitors,
+  scrapingIds,
+  onRun,
+  refreshTick,
+}: { competitorId: string; refreshTick?: number } & MonitorSourceProps) {
   const [jobs, setJobs] = useState<JobsByDepartment | null>(null);
   const [trends, setTrends] = useState<JobTrendPoint[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([
-      api.getCompetitorJobs(competitorId),
-      api.getCompetitorJobTrends(competitorId),
-    ])
-      .then(([j, t]) => {
-        setJobs(j);
-        setTrends(t.trends);
-      })
-      .catch((e) => setErr(String(e)));
-  }, [competitorId]);
+    let cancelled = false;
+    setErr(null);
+    api
+      .getCompetitorJobs(competitorId)
+      .then((j) => !cancelled && setJobs(j))
+      .catch((e) => !cancelled && setErr(String(e)));
+    api
+      .getCompetitorJobTrends(competitorId)
+      .then((t) => !cancelled && setTrends(t.trends))
+      .catch((e) => !cancelled && setErr(String(e)));
+    return () => {
+      cancelled = true;
+    };
+  }, [competitorId, refreshTick]);
 
-  if (err) return <Empty text={`Erreur : ${err}`} />;
-  if (!jobs || !trends) return <Empty text="Chargement…" />;
+  if (err) return <Empty text={`Error: ${err}`} />;
+  if (!jobs || !trends) return <TabLoading />;
   if (jobs.total === 0) {
-    return <Empty text="Aucune offre détectée. Activez un monitor jobs pour ce concurrent." />;
+    return (
+      <MonitorEmptyState
+        source="jobs"
+        label="hiring"
+        monitors={monitors}
+        scrapingIds={scrapingIds}
+        onRun={onRun}
+      />
+    );
   }
 
   const trendByDept = buildJobTrend(trends);
 
   return (
     <div className="flex flex-col gap-4">
-      <div
-        style={{
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-          borderRadius: "var(--radius)",
-        }}
-        className="p-3"
-      >
-        <table className="w-full text-sm">
+      <Card className="px-3 py-3">
+        <table className="w-full text-[13px]">
           <thead>
-            <tr style={{ color: "var(--muted)" }} className="text-xs uppercase tracking-wide">
-              <th className="text-left py-2">Département</th>
-              <th className="text-right py-2">Offres actives</th>
-              <th className="text-right py-2">Trend 90j</th>
+            <tr className="text-[10px] uppercase tracking-widest text-muted-foreground font-mono">
+              <th className="text-left py-2">Department</th>
+              <th className="text-right py-2">Active</th>
+              <th className="text-right py-2">Trend 90d</th>
             </tr>
           </thead>
           <tbody>
@@ -524,10 +1221,19 @@ function HiringTab({ competitorId }: { competitorId: string }) {
                 const last = series[series.length - 1]?.count ?? d.count;
                 const delta = last - first;
                 return (
-                  <tr key={d.department} style={{ borderTop: "1px solid var(--border)" }}>
+                  <tr key={d.department} className="border-t border-border">
                     <td className="py-2">{d.department}</td>
-                    <td className="py-2 text-right">{d.count}</td>
-                    <td className="py-2 text-right" style={{ color: delta === 0 ? "var(--muted)" : delta > 0 ? "#10b981" : "#ef4444" }}>
+                    <td className="py-2 text-right tabular-nums font-mono">{d.count}</td>
+                    <td
+                      className={cn(
+                        "py-2 text-right tabular-nums font-mono",
+                        delta === 0
+                          ? "text-muted-foreground"
+                          : delta > 0
+                            ? "text-positive"
+                            : "text-critical",
+                      )}
+                    >
                       {delta === 0 ? "—" : delta > 0 ? `▲ +${delta}` : `▼ ${delta}`}
                     </td>
                   </tr>
@@ -535,59 +1241,85 @@ function HiringTab({ competitorId }: { competitorId: string }) {
               })}
           </tbody>
         </table>
-      </div>
+      </Card>
 
       {Object.keys(trendByDept).length > 0 && (
-        <div
-          style={{
-            background: "var(--surface)",
-            border: "1px solid var(--border)",
-            borderRadius: "var(--radius)",
-          }}
-          className="p-4"
-        >
-          <p className="text-xs uppercase tracking-wide mb-2" style={{ color: "var(--muted)" }}>
-            Évolution 90 jours
+        <Card className="p-4">
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-mono mb-2">
+            90-day trend
           </p>
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={mergeTrendsByDate(trends)}>
               <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
               <XAxis dataKey="date" stroke="var(--muted)" fontSize={11} />
               <YAxis stroke="var(--muted)" fontSize={11} />
-              <Tooltip contentStyle={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6, fontSize: 12 }} />
+              <ChartTooltip
+                contentStyle={{
+                  background: "var(--bg)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 6,
+                  fontSize: 12,
+                }}
+              />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               {Object.keys(trendByDept).map((dept, i) => (
-                <Line key={dept} type="monotone" dataKey={dept} stroke={lineColor(i)} strokeWidth={2} dot={false} />
+                <Line
+                  key={dept}
+                  type="monotone"
+                  dataKey={dept}
+                  stroke={lineColor(i)}
+                  strokeWidth={2}
+                  dot={false}
+                />
               ))}
             </LineChart>
           </ResponsiveContainer>
-        </div>
+        </Card>
       )}
     </div>
   );
 }
 
-function ReviewsTab({ competitorId }: { competitorId: string }) {
+function ReviewsTab({
+  competitorId,
+  monitors,
+  scrapingIds,
+  onRun,
+  refreshTick,
+}: { competitorId: string; refreshTick?: number } & MonitorSourceProps) {
   const [reviews, setReviews] = useState<ReviewsData | null>(null);
   const [scores, setScores] = useState<ReviewScorePoint[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([
-      api.getCompetitorReviews(competitorId),
-      api.getCompetitorReviewScores(competitorId),
-    ])
-      .then(([r, s]) => {
-        setReviews(r);
-        setScores(s.scores);
-      })
-      .catch((e) => setErr(String(e)));
-  }, [competitorId]);
+    let cancelled = false;
+    setErr(null);
+    api
+      .getCompetitorReviews(competitorId)
+      .then((r) => !cancelled && setReviews(r))
+      .catch((e) => !cancelled && setErr(String(e)));
+    api
+      .getCompetitorReviewScores(competitorId)
+      .then((s) => !cancelled && setScores(s.scores))
+      .catch((e) => !cancelled && setErr(String(e)));
+    return () => {
+      cancelled = true;
+    };
+  }, [competitorId, refreshTick]);
 
-  if (err) return <Empty text={`Erreur : ${err}`} />;
-  if (!reviews || !scores) return <Empty text="Chargement…" />;
+  if (err) return <Empty text={`Error: ${err}`} />;
+  if (!reviews || !scores) return <TabLoading />;
   if (reviews.recent.length === 0 && scores.length === 0) {
-    return <Empty text="Aucune review collectée. Activez un monitor G2 ou Capterra." />;
+    const hasG2 = monitors.some((m) => m.sourceType === "g2_reviews");
+    return (
+      <MonitorEmptyState
+        source={hasG2 ? "g2_reviews" : "capterra_reviews"}
+        label="reviews"
+        monitors={monitors}
+        scrapingIds={scrapingIds}
+        onRun={onRun}
+      />
+    );
   }
 
   const series = buildReviewScoreSeries(scores);
@@ -595,121 +1327,188 @@ function ReviewsTab({ competitorId }: { competitorId: string }) {
   return (
     <div className="flex flex-col gap-4">
       {scores.length > 0 && (
-        <div
-          style={{
-            background: "var(--surface)",
-            border: "1px solid var(--border)",
-            borderRadius: "var(--radius)",
-          }}
-          className="p-4"
-        >
-          <p className="text-xs uppercase tracking-wide mb-2" style={{ color: "var(--muted)" }}>
-            Évolution du score
+        <Card className="p-4">
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-mono mb-2">
+            Score over time
           </p>
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={series.points}>
               <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
               <XAxis dataKey="date" stroke="var(--muted)" fontSize={11} />
               <YAxis domain={[0, 5]} stroke="var(--muted)" fontSize={11} />
-              <Tooltip contentStyle={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6, fontSize: 12 }} />
+              <ChartTooltip
+                contentStyle={{
+                  background: "var(--bg)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 6,
+                  fontSize: 12,
+                }}
+              />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               {series.sources.map((src, i) => (
-                <Line key={src} type="monotone" dataKey={src} stroke={lineColor(i)} strokeWidth={2} dot />
+                <Line
+                  key={src}
+                  type="monotone"
+                  dataKey={src}
+                  stroke={lineColor(i)}
+                  strokeWidth={2}
+                  dot
+                />
               ))}
             </LineChart>
           </ResponsiveContainer>
-        </div>
+        </Card>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <ReviewColumn title="Ce qu'ils adorent" items={reviews.summary.praises} accent="#10b981" />
-        <ReviewColumn title="Ce dont ils se plaignent" items={reviews.summary.complaints} accent="#ef4444" />
+        <ReviewColumn title="What they love" items={reviews.summary.praises} accent="positive" />
+        <ReviewColumn
+          title="What they complain about"
+          items={reviews.summary.complaints}
+          accent="critical"
+        />
       </div>
     </div>
   );
 }
 
-function ContentTab({ changes }: { changes: ChangeRow[] }) {
-  const blog = changes.filter((c) => c.sourceType === "blog" || c.sourceType === "changelog");
-  if (blog.length === 0) {
-    return <Empty text="Aucun contenu détecté (blog / changelog)." />;
+const CONTENT_SOURCES = new Set(["homepage", "blog", "changelog"]);
+
+function ContentTab({
+  changes,
+  monitors,
+  scrapingIds,
+  onRun,
+  onRefresh,
+  competitorUrl,
+}: {
+  changes: ChangeRow[];
+  onRefresh?: () => void;
+  competitorUrl: string;
+} & MonitorSourceProps) {
+  const contentChanges = changes.filter((c) => CONTENT_SOURCES.has(c.sourceType));
+  const contentMonitors = monitors.filter((m) => CONTENT_SOURCES.has(m.sourceType));
+
+  if (contentChanges.length === 0) {
+    if (contentMonitors.length === 0) {
+      return (
+        <Empty
+          text="No content monitor configured."
+          hint="Content tracking covers homepage, blog and changelog. None of these sources is enabled for this competitor."
+        />
+      );
+    }
+    const preferred =
+      contentMonitors.find((m) => m.sourceType === "homepage") ??
+      contentMonitors.find((m) => m.sourceType === "blog") ??
+      contentMonitors[0]!;
+    const running = scrapingIds.has(preferred.id);
+    return (
+      <Card className="px-6 py-10 text-center border-dashed flex flex-col items-center gap-3">
+        <p className="text-[14px] font-semibold text-foreground">No content changes yet</p>
+        <p className="text-[12px] text-muted-foreground max-w-md">
+          {preferred.lastRunAt
+            ? `The ${preferred.sourceType} monitor was scraped ${formatDistanceToNow(new Date(preferred.lastRunAt), { addSuffix: true })} — no change since.`
+            : `The ${preferred.sourceType} monitor has never been scraped. Run it now.`}
+        </p>
+        <Button
+          size="sm"
+          variant={running ? "secondary" : "default"}
+          onClick={() => onRun(preferred.id)}
+          disabled={running}
+        >
+          {running ? (
+            <>
+              <Loader2 size={12} className="animate-spin" /> Scraping…
+            </>
+          ) : (
+            <>
+              <Play size={12} /> Scrape {preferred.sourceType}
+            </>
+          )}
+        </Button>
+      </Card>
+    );
   }
+
   return (
     <ul className="flex flex-col gap-2">
-      {blog.map((c) => (
-        <li
-          key={c.id}
-          style={{
-            background: "var(--surface)",
-            border: "1px solid var(--border)",
-            borderRadius: "var(--radius)",
-          }}
-          className="p-3"
-        >
-          <p style={{ color: "var(--muted)" }} className="text-xs mb-1">
-            il y a {formatDistanceToNow(new Date(c.detectedAt), { locale: fr })} · {c.sourceType}
-          </p>
-          {c.diffText && (
-            <pre style={{ color: "var(--muted)" }} className="text-xs whitespace-pre-wrap font-mono">
-              {c.diffText.slice(0, 400)}
-            </pre>
-          )}
+      {contentChanges.map((c) => (
+        <li key={c.id}>
+          <ChangeCard change={c} onRefresh={onRefresh} fallbackUrl={competitorUrl} />
         </li>
       ))}
     </ul>
   );
 }
 
-function ReviewColumn({ title, items, accent }: { title: string; items: Array<string | null>; accent: string }) {
+function ReviewColumn({
+  title,
+  items,
+  accent,
+}: {
+  title: string;
+  items: Array<string | null>;
+  accent: "positive" | "critical";
+}) {
   return (
-    <div
-      style={{
-        background: "var(--surface)",
-        border: "1px solid var(--border)",
-        borderRadius: "var(--radius)",
-      }}
-      className="p-3"
-    >
-      <p className="text-xs uppercase tracking-wide mb-2" style={{ color: accent }}>
+    <Card className="px-3.5 py-3">
+      <p
+        className={cn(
+          "text-[10px] uppercase tracking-widest font-mono mb-2",
+          accent === "positive" ? "text-positive" : "text-critical",
+        )}
+      >
         {title}
       </p>
       {items.length === 0 ? (
-        <p className="text-xs" style={{ color: "var(--muted)" }}>—</p>
+        <p className="text-[11px] text-muted-foreground">—</p>
       ) : (
-        <ul className="flex flex-col gap-1.5 text-sm">
+        <ul className="flex flex-col gap-1.5 text-[13px]">
           {items.filter(Boolean).map((it, i) => (
             <li key={i}>· {it}</li>
           ))}
         </ul>
       )}
+    </Card>
+  );
+}
+
+function TabLoading() {
+  return (
+    <div className="flex flex-col gap-4">
+      <ChartSkeleton height={260} />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Card key={i} className="p-3 flex flex-col gap-2">
+            <Skeleton className="h-3 w-16" />
+            <Skeleton className="h-5 w-24" />
+            <Skeleton className="h-3 w-20" />
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }
 
-function Empty({ text }: { text: string }) {
+function Empty({ text, hint }: { text: string; hint?: string }) {
   return (
-    <p
-      className="text-sm p-6 text-center"
-      style={{
-        color: "var(--muted)",
-        border: "1px dashed var(--border)",
-        borderRadius: "var(--radius)",
-      }}
-    >
-      {text}
-    </p>
+    <Card className="px-6 py-10 text-center border-dashed text-muted-foreground">
+      <p className="text-[13px]">{text}</p>
+      {hint && <p className="text-[11px] mt-2 max-w-md mx-auto text-muted-foreground/70">{hint}</p>}
+    </Card>
   );
 }
 
 function lineColor(i: number): string {
-  const palette = ["#F59E0B", "#22d3ee", "#a855f7", "#10b981", "#ef4444", "#f97316"];
-  return palette[i % palette.length] ?? "#F59E0B";
+  const palette = ["#fafafa", "#22d3ee", "#a855f7", "#10b981", "#ef4444", "#f97316"];
+  return palette[i % palette.length] ?? "#fafafa";
 }
 
 function shortDate(iso: string): string {
   const d = new Date(iso.replace(" ", "T"));
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short" });
+  return d.toLocaleDateString("en-US", { day: "2-digit", month: "short" });
 }
 
 function buildPricingSeries(history: PricingHistoryPoint[]): {

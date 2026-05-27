@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -174,6 +174,10 @@ export function OnboardingForm({ plan }: { plan: Plan }) {
     "blog",
   ]);
 
+  useEffect(() => {
+    track("onboarding_started");
+  }, []);
+
   const completedSteps = useMemo<Record<Step, boolean>>(
     () => ({
       1: profile !== null,
@@ -216,6 +220,7 @@ export function OnboardingForm({ plan }: { plan: Plan }) {
       setProfile(res.profile);
       setCommittedUrl(productUrl);
       setStep(2);
+      track("onboarding_product_analyzed");
     } catch (e) {
       setErrors({ global: extractMessage(e) });
     } finally {
@@ -255,6 +260,7 @@ export function OnboardingForm({ plan }: { plan: Plan }) {
         }),
       );
       setStep(3);
+      track("onboarding_competitors_found", { count: sorted.length });
     } catch (e) {
       setErrors({ global: extractMessage(e) });
     } finally {
@@ -382,6 +388,7 @@ export function OnboardingForm({ plan }: { plan: Plan }) {
         monitoringPrefs: { frequency, sources },
       };
       await api.completeOnboarding(payload);
+      track("onboarding_completed", { competitorCount: selected.length });
       router.push("/dashboard");
     } catch (e) {
       const reason = paywallFromError(e);

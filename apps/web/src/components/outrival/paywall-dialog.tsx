@@ -1,9 +1,20 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 import { Lock, Sparkles } from "lucide-react";
 import { PLAN_LABELS, type Plan } from "@outrival/shared";
 import { ApiError } from "@/lib/api";
+import { track } from "@/lib/posthog/events";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 export type PaywallReason = {
   code: string;
@@ -35,64 +46,64 @@ export function paywallFromError(err: unknown): PaywallReason | null {
 }
 
 const FEATURE_LABEL: Record<string, string> = {
-  battleCards: "Battle cards IA",
-  realtimeAlerts: "Alertes temps-réel",
-  api: "Accès API",
-  multiUser: "Multi-utilisateurs",
+  battleCards: "AI battle cards",
+  realtimeAlerts: "Real-time alerts",
+  api: "API access",
+  multiUser: "Multi-user",
 };
 
 const SOURCE_LABEL: Record<string, string> = {
-  jobs: "Suivi des offres d'emploi",
-  g2_reviews: "Reviews G2",
-  capterra_reviews: "Reviews Capterra",
-  appstore_reviews: "Reviews App Store",
+  jobs: "Job postings tracking",
+  g2_reviews: "G2 reviews",
+  capterra_reviews: "Capterra reviews",
+  appstore_reviews: "App Store reviews",
 };
 
 const CHANNEL_LABEL: Record<string, string> = {
-  slack: "Notifications Slack",
-  webhook: "Webhooks sortants",
+  slack: "Slack notifications",
+  webhook: "Outgoing webhooks",
 };
 
 function copyFor(reason: PaywallReason): { title: string; body: string } {
   switch (reason.code) {
     case "plan_limit_competitors": {
       const limit = reason.limit ?? 0;
-      const planLabel = reason.plan ? PLAN_LABELS[reason.plan] : "actuel";
+      const planLabel = reason.plan ? PLAN_LABELS[reason.plan] : "current";
       return {
-        title: "Limite de concurrents atteinte",
-        body: `Votre plan ${planLabel} permet de suivre ${limit} concurrent${limit > 1 ? "s" : ""}. Passez à un plan supérieur pour en suivre davantage.`,
+        title: "Competitor limit reached",
+        body: `Your ${planLabel} plan lets you track ${limit} competitor${limit > 1 ? "s" : ""}. Upgrade to track more.`,
       };
     }
     case "plan_locked_feature": {
-      const label = reason.feature ? FEATURE_LABEL[reason.feature] ?? reason.feature : "Cette fonctionnalité";
+      const label = reason.feature ? FEATURE_LABEL[reason.feature] ?? reason.feature : "This feature";
       return {
-        title: `${label} — plan supérieur requis`,
-        body: "Cette fonctionnalité est disponible à partir du plan Pro. Passez à un plan supérieur pour la débloquer.",
+        title: `${label} — upgrade required`,
+        body: "This feature is available starting with the Pro plan. Upgrade to unlock it.",
       };
     }
     case "plan_locked_source": {
-      const label = reason.source ? SOURCE_LABEL[reason.source] ?? reason.source : "Cette source";
+      const label = reason.source ? SOURCE_LABEL[reason.source] ?? reason.source : "This source";
       return {
-        title: `${label} — plan supérieur requis`,
-        body: "Cette source de surveillance nécessite un plan supérieur. Passez à un plan supérieur pour la débloquer.",
+        title: `${label} — upgrade required`,
+        body: "This monitoring source requires a higher plan. Upgrade to unlock it.",
       };
     }
     case "plan_locked_frequency":
       return {
-        title: "Fréquence non disponible sur votre plan",
-        body: `La fréquence "${reason.frequency ?? "demandée"}" nécessite un plan supérieur. Passez à un plan supérieur pour scraper plus souvent.`,
+        title: "Frequency not available on your plan",
+        body: `The "${reason.frequency ?? "requested"}" frequency requires a higher plan. Upgrade to scrape more often.`,
       };
     case "plan_locked_channel": {
-      const label = reason.channel ? CHANNEL_LABEL[reason.channel] ?? reason.channel : "Ce canal";
+      const label = reason.channel ? CHANNEL_LABEL[reason.channel] ?? reason.channel : "This channel";
       return {
-        title: `${label} — plan supérieur requis`,
-        body: "Ce canal de notification nécessite un plan supérieur.",
+        title: `${label} — upgrade required`,
+        body: "This notification channel requires a higher plan.",
       };
     }
     default:
       return {
-        title: "Cette action n'est pas disponible sur votre plan",
-        body: "Passez à un plan supérieur pour débloquer cette fonctionnalité.",
+        title: "This action is not available on your plan",
+        body: "Upgrade to unlock this feature.",
       };
   }
 }
@@ -104,74 +115,46 @@ export function PaywallDialog({
   reason: PaywallReason | null;
   onClose: () => void;
 }) {
-  if (!reason) return null;
-  const { title, body } = copyFor(reason);
+  const open = reason !== null;
+  const copy = reason ? copyFor(reason) : null;
+
+  useEffect(() => {
+    if (reason) track("paywall_shown", { reason: reason.code });
+  }, [reason]);
 
   return (
-    <div
-      onClick={onClose}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-          borderRadius: "var(--radius)",
-        }}
-        className="w-full max-w-md p-6 flex flex-col gap-4"
-      >
-        <div
-          style={{
-            background: "rgba(245, 158, 11, 0.12)",
-            borderRadius: "999px",
-            width: "40px",
-            height: "40px",
-          }}
-          className="flex items-center justify-center"
-        >
-          <Lock size={18} style={{ color: "var(--accent)" }} />
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md">
+        <div className="flex items-center justify-center w-10 h-10 rounded-full bg-[var(--accent-dim)]">
+          <Lock size={18} className="text-primary" />
         </div>
-        <div>
-          <h2 style={{ fontFamily: "var(--font-syne)" }} className="text-lg font-bold mb-1">
-            {title}
-          </h2>
-          <p style={{ color: "var(--muted)" }} className="text-sm">
-            {body}
+        <DialogHeader>
+          <DialogTitle>{copy?.title}</DialogTitle>
+          <DialogDescription>{copy?.body}</DialogDescription>
+        </DialogHeader>
+        {reason?.used !== undefined && reason?.limit !== undefined && (
+          <p className="text-xs text-muted-foreground">
+            You&apos;re currently using {reason.used} / {reason.limit}{" "}
+            competitors.
           </p>
-          {reason.used !== undefined && reason.limit !== undefined && (
-            <p style={{ color: "var(--muted)" }} className="text-xs mt-2">
-              Vous utilisez actuellement {reason.used} / {reason.limit} concurrents.
-            </p>
-          )}
-        </div>
-        <div className="flex items-center justify-end gap-2 mt-2">
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              background: "transparent",
-              border: "1px solid var(--border)",
-              borderRadius: "var(--radius)",
-            }}
-            className="px-4 py-2 text-sm hover:bg-white/5"
-          >
-            Plus tard
-          </button>
-          <Link
-            href="/dashboard/settings/billing"
-            onClick={onClose}
-            style={{
-              background: "var(--accent)",
-              color: "#0a0a0a",
-              borderRadius: "var(--radius)",
-            }}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium hover:opacity-90"
-          >
-            <Sparkles size={14} /> Voir les plans
-          </Link>
-        </div>
-      </div>
-    </div>
+        )}
+        <DialogFooter>
+          <Button variant="secondary" onClick={onClose}>
+            Later
+          </Button>
+          <Button asChild>
+            <Link
+              href="/dashboard/settings/billing"
+              onClick={() => {
+                if (reason) track("paywall_cta_clicked", { reason: reason.code });
+                onClose();
+              }}
+            >
+              <Sparkles size={14} /> View plans
+            </Link>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

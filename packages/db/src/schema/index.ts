@@ -12,3 +12,4 @@ export * from "./reviews";
 export * from "./battle_cards";
 export * from "./notifications";
 export * from "./competitor_candidates";
+export * from "./feedback";

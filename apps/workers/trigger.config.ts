@@ -35,7 +35,15 @@ export default defineConfig({
     });
   },
   build: {
-    external: ["crawlee", "playwright", "playwright-core", "jsdom"],
+    external: [
+      "crawlee",
+      "playwright",
+      "playwright-core",
+      "jsdom",
+      "pino",
+      "pino-pretty",
+      "thread-stream",
+    ],
     extensions: [
       playwright({ browsers: ["chromium"], headless: true }),
       ...(enableSentrySourceMaps

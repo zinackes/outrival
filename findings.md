@@ -573,3 +573,117 @@ Découvertes techniques et décisions importantes accumulées au fil des session
 Pour plus tard : `@axiomhq/pino` transport ajouté à `packages/shared/src/logger.ts`
 quand le volume justifie l'investissement. Free tier Axiom = 500 GB/mois.
 Au lancement, les logs Coolify (VPS) + dashboard Trigger.dev couvrent l'essentiel.
+
+## Patch 03 — Analytics PostHog Cloud EU (2026-05-27)
+
+### Configuration projet
+
+- Cloud EU obligatoire : `api_host: https://eu.i.posthog.com`, `ui_host: https://eu.posthog.com`.
+- Init dans `apps/web/src/lib/posthog/provider.tsx` avec :
+  - `opt_out_capturing_by_default: true` (RGPD strict, rien avant consentement)
+  - `person_profiles: "identified_only"` (pas de profil anonyme)
+  - `capture_pageview: false` (App Router → capture manuelle dans `pageview.tsx`)
+  - `autocapture: true` (clics + interactions)
+  - `session_recording.maskAllInputs: true` + `maskTextSelector: "[data-ph-mask]"`
+- Provider no-op si `NEXT_PUBLIC_POSTHOG_KEY` absent ou contient `REPLACE_ME` → dev local fonctionne sans key.
+
+### Consentement (RGPD)
+
+- Cookie `ph_consent` (`granted` | `denied`), `SameSite=Lax`, max-age 6 mois.
+- Helpers : `apps/web/src/lib/consent.ts` (`getConsent`, `setConsent`).
+- Bannière : `apps/web/src/components/outrival/consent-banner.tsx`, mountée
+  globalement dans `apps/web/src/app/layout.tsx`. Affichée uniquement si
+  `getConsent() === "unset"`. "Accepter" → `setConsent("granted")` +
+  `posthog.opt_in_capturing()`. "Refuser" → `setConsent("denied")` (PostHog
+  reste opt-out).
+- Au mount du provider, si `getConsent() === "granted"` → opt-in immédiat
+  (sinon attendre clic Accepter).
+
+### Identification
+
+- `posthog.identify(userId)` après login/signup réussi (forms client).
+- `apps/web/src/lib/posthog/identity-sync.tsx` re-sync `identify(userId, { plan })`
+  côté dashboard layout (server-driven, garantit que les refresh restent identifiés).
+- `posthog.reset()` au logout (user-menu + onboarding signout).
+- **JAMAIS l'email comme propriété de personne** — uniquement `userId` + `plan`.
+
+### Masquage PII pour session replay
+
+- `maskAllInputs: true` couvre tous les `<input>` automatiquement.
+- `data-ph-mask` ajouté sur :
+  - Email user dans `apps/web/src/components/dashboard/user-menu.tsx`
+  - Section complète `apps/web/src/app/dashboard/settings/billing/page.tsx`
+  - Wrapper `NotificationSettingsForm` dans `apps/web/src/app/dashboard/settings/page.tsx`
+
+### Events client (10)
+
+Tous via `apps/web/src/lib/posthog/events.ts` → `track()` gated par
+`posthog.__loaded && has_opted_in_capturing()`.
+
+| Event | Déclenché par |
+|-------|---------------|
+| `user_signed_up` | `register-form` après `signUp.email` ok |
+| `onboarding_started` | mount onboarding-form |
+| `onboarding_product_analyzed` | step 1 → 2 (analyze ok) |
+| `onboarding_competitors_found` | step 2 → 3 (discovery ok, `count`) |
+| `onboarding_completed` | `completeOnboarding` ok (`competitorCount`) |
+| `competitor_added` | `createCompetitor` ok (manual dialog), `source: "manual"` |
+| `scrape_triggered` | `runMonitor` ok (`sourceType`) |
+| `battle_card_generated` | `generateBattleCard` ok (`competitorId`) |
+| `paywall_shown` | PaywallDialog open (`reason`) |
+| `paywall_cta_clicked` | Click "View plans" dans PaywallDialog (`reason`) |
+
+### Events server-side (3)
+
+- `apps/api/src/lib/posthog.ts` : `captureServerEvent(distinctId, event, props)`,
+  flush après chaque capture. No-op si `POSTHOG_API_KEY` absent ou `REPLACE_ME`.
+- `apps/workers/src/lib/posthog.ts` : idem + `shutdownPostHog()` à appeler
+  en fin de run (processus court).
+- `distinctId` = owner user de l'org (premier user par `createdAt asc`).
+
+| Event | Déclenché par | Source |
+|-------|---------------|--------|
+| `plan_upgraded` | Subscription created/updated active | `apps/api/src/routes/stripe-webhook.ts` |
+| `plan_cancelled` | Subscription deleted | idem |
+| `signal_generated` | Nouveau signal inséré | `apps/workers/src/jobs/generate-signal.job.ts` (avant `shutdownPostHog()`) |
+
+### Feature flags
+
+- `useFeatureFlagEnabled("kill-switch-discovery")` sur `handleProfileConfirm`
+  dans `onboarding-form.tsx` — bloque l'appel Exa avec message de fallback
+  "Discovery temporarily disabled" si toggle on dans PostHog.
+- Pattern de démo pour kill switches + rollout progressif sans redéploiement.
+
+### Résolutions de conflits dependencies
+
+- `pnpm.overrides {"@opentelemetry/api": "1.9.0"}` ajouté à `package.json` root.
+  Sans cet override, `posthog-node` + `@sentry/node` (1.9.1) + `trigger.dev` (1.9.0)
+  produisaient deux instances de `drizzle-orm` peer-resolvées différemment,
+  causant des erreurs TypeScript "Types have separate declarations of a private
+  property" dans le workers typecheck (notamment `send-alert.job.ts:40`).
+- `apps/api/src/lib/auth.ts` : suppression du paramètre `schema` dans
+  `drizzleAdapter(db, { provider: "pg" })`. Better Auth gère ses propres tables
+  (user, session, account, verification). Le code précédent référençait
+  `sessions/accounts/verifications` non exportés par `@outrival/db` — bug pré-existant
+  qui passait grâce au cache Turbo, exposé après réinstall posthog-node.
+
+### Status build (2026-05-27)
+
+- 6/7 packages typecheck propre : shared, db, ai, scrapers, api, workers ✓
+- `@outrival/web` : 16 erreurs TS pré-existantes (refs vers `Monitor.lastFailedAt`,
+  `Monitor.lastError`, `api.refreshCompetitorSummary`, `ChangeRow.summary`,
+  `ChangeRow.monitorUrl`, `CompetitorSignal.monitorUrl`, `CompetitorSignal.sourceType`,
+  `Competitor.stats`, `topbar.compact`, `api.classifyChange`). Ces erreurs sont
+  du WIP utilisateur antérieur à patch-03 — l'API/types/components ont divergé
+  pendant que l'UI était en cours de redesign. À nettoyer dans un commit séparé,
+  sans rapport avec PostHog.
+
+### À remplir en prod
+
+- Créer projet PostHog Cloud EU → coller key dans `NEXT_PUBLIC_POSTHOG_KEY` +
+  `POSTHOG_API_KEY` (même key, exposée client + utilisée server-side).
+- Activer Session Replay + Feature Flags dans le projet PostHog.
+- Créer feature flag `kill-switch-discovery` dans PostHog (toggle on pour
+  désactiver discovery onboarding en cas de problème Exa).
+- Page `/privacy` à créer (lien depuis la bannière de consentement — placeholder
+  pour l'instant, à brancher à la politique de confidentialité légale).

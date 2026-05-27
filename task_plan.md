@@ -22,7 +22,71 @@ appliqué le 2026-05-27. Reste landing page + polish global via Claude Design
 
 - [x] patch-01 — Scraping cost optimization (direct-first + adaptive reschedule)
 - [x] patch-04 — Errors, logs & uptime (Sentry + pino + health checks profonds)
-- [ ] patch-03 — PostHog analytics + session replay (prochain)
+- [x] patch-03 — PostHog analytics + session replay (terminé 2026-05-27)
+- [ ] patch-05 — Widget feedback (prochain)
+
+## Étapes patch-03 (terminées 2026-05-27)
+
+- [x] Étape 0 — posthog-js (@outrival/web) + posthog-node (@outrival/api,
+              @outrival/workers) + env vars stub NEXT_PUBLIC_POSTHOG_KEY/HOST
+              + POSTHOG_API_KEY/HOST → eu.i.posthog.com
+- [x] Étape 1 — apps/web/src/lib/consent.ts (cookie ph_consent 6 mois) +
+              components/outrival/consent-banner.tsx (Accepter/Refuser, design neutre)
+- [x] Étape 2 — apps/web/src/lib/posthog/provider.tsx (init Cloud EU,
+              opt_out_capturing_by_default, person_profiles "identified_only",
+              maskAllInputs + data-ph-mask) + pageview.tsx (manual App Router
+              capture) + integration root layout avec Suspense +
+              data-ph-mask sur billing/settings/email user-menu
+- [x] Étape 3 — apps/web/src/lib/posthog/events.ts (track/identify/reset
+              gated par has_opted_in_capturing) + identify-sync.tsx server-driven
+              + identifyUser sur login/signup + posthog.reset() sur logout
+              (user-menu + onboarding signout)
+- [x] Étape 4 — 10 events funnel client : user_signed_up, onboarding_*
+              (started/product_analyzed/competitors_found/completed),
+              competitor_added, scrape_triggered, battle_card_generated,
+              paywall_shown + paywall_cta_clicked centralisés dans PaywallDialog
+- [x] Étape 5 — apps/api/src/lib/posthog.ts + plan_upgraded/plan_cancelled
+              dans stripe-webhook (distinctId = owner user de l'org) +
+              apps/workers/src/lib/posthog.ts + signal_generated dans
+              generate-signal.job avec shutdownPostHog() en fin de run
+- [x] Étape 6 — useFeatureFlagEnabled("kill-switch-discovery") sur
+              handleProfileConfirm — bloque l'appel Exa avec message de fallback
+- [x] Étape 7 — pnpm typecheck ✓ pour shared/db/ai/scrapers/api/workers (6/7)
+              · @outrival/web a 16 erreurs TS pré-existantes (lastFailedAt,
+                lastError, refreshCompetitorSummary, classifyChange, stats,
+                ChangeRow.summary/monitorUrl, CompetitorSignal.monitorUrl/
+                sourceType, topbar.compact) — WIP utilisateur antérieur
+                à patch-03, sans rapport avec PostHog. À nettoyer dans
+                un commit séparé (l'API/types/components ont divergé)
+
+## Décisions patch-03
+
+- PostHog Cloud EU (eu.i.posthog.com) obligatoire — RGPD
+- OPT-IN strict : opt_out_capturing_by_default true. Aucun event ni session
+  replay avant clic "Accepter". Helper track() gate sur posthog.__loaded
+  ET has_opted_in_capturing()
+- person_profiles "identified_only" → pas de profil pour visiteurs anonymes
+- userId comme seul distinctId — JAMAIS l'email comme propriété de personne
+- maskAllInputs + maskTextSelector "[data-ph-mask]" sur session replay :
+  appliqué sur user-menu email, section billing complète, settings
+  notifications (digestEmail, slack webhook URL)
+- Provider no-op si NEXT_PUBLIC_POSTHOG_KEY absent ou contient "REPLACE_ME"
+  → dev local fonctionne sans key
+- Server-side : flushAt=1 + flushInterval=0 + flush après chaque capture
+  pour ne pas perdre d'events. Workers : shutdownPostHog() en fin de run
+- pnpm.overrides {"@opentelemetry/api": "1.9.0"} ajouté au root package.json
+  pour éviter le clash de versions drizzle-orm peer-resolution (trigger.dev
+  pin 1.9.0, sentry pin 1.9.1). Sans override, workers typecheck échoue
+  avec "Types have separate declarations of a private property"
+- Better Auth : drizzleAdapter(db, { provider: "pg" }) sans schema option
+  — Better Auth gère ses propres tables (user/session/account/verification),
+  les passer comme schema requérait des exports drizzle inexistants
+- Feature flag de démo : "kill-switch-discovery" — bloque l'appel Exa
+  pendant l'onboarding avec message "Discovery temporarily disabled"
+- distinctId server-side = owner user de l'org (premier user créé par
+  createdAt ascending). Multi-user (business plan) viendra plus tard
+- signal_generated track en fin de generate-signal.job, AVANT le shutdown.
+  Pas de batch — chaque signal flush immédiatement
 
 ## Étapes patch-04 (terminées 2026-05-27)
 

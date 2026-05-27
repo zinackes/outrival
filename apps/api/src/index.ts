@@ -20,6 +20,7 @@ import { notificationsRouter } from "./routes/notifications";
 import { candidatesRouter } from "./routes/candidates";
 import { billingRouter } from "./routes/billing";
 import { stripeWebhookRouter } from "./routes/stripe-webhook";
+import { feedbackRouter } from "./routes/feedback";
 
 const app = new Hono();
 
@@ -54,6 +55,7 @@ app.route("/api/onboarding", onboardingRouter);
 app.route("/api/notifications", notificationsRouter);
 app.route("/api/candidates", candidatesRouter);
 app.route("/api/billing", billingRouter);
+app.route("/api/feedback", feedbackRouter);
 
 app.onError((err, c) => {
   Sentry.captureException(err);

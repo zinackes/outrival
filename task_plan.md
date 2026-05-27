@@ -14,8 +14,89 @@ Mis à jour automatiquement par Claude Code à chaque session.
 - [x] Phase 7 — Monétisation (Stripe, free tier limits, gating, paywalls)
 
 ## Phase en cours
-Phases core terminées. Reste landing page + polish global via Claude Design
+Phases core terminées. Patch-04 (observabilité Sentry + pino + health checks)
+appliqué le 2026-05-27. Reste landing page + polish global via Claude Design
 (hors phases Claude Code).
+
+## Patches appliqués
+
+- [x] patch-01 — Scraping cost optimization (direct-first + adaptive reschedule)
+- [x] patch-04 — Errors, logs & uptime (Sentry + pino + health checks profonds)
+- [ ] patch-03 — PostHog analytics + session replay (prochain)
+
+## Étapes patch-04 (terminées 2026-05-27)
+
+- [x] Étape 0 — pino + @sentry/node + @sentry/esbuild-plugin + @sentry/nextjs
+              installés + env vars stub LOG_LEVEL + SENTRY_DSN_* + SENTRY_AUTH_TOKEN
+              + SENTRY_ORG dans .env.example et .env.local
+- [x] Étape 1 — packages/shared/src/logger.ts (pino + redact PII) +
+              childLogger helper + export depuis index.ts +
+              remplacement console.error → logger.error dans clickhouse-safe.ts
+              et stripe-webhook.ts (surgical, points critiques)
+- [x] Étape 2 — apps/api/src/lib/sentry.ts (init Node SDK, enabled prod only,
+              tracesSampleRate 0.1, sendDefaultPii false) + import en TOUT
+              PREMIER dans index.ts + app.onError → captureException + logger.error
+- [x] Étape 3 — apps/workers/src/lib/sentry.ts (idem API) + hook global
+              onFailure dans trigger.config.ts → Sentry.captureException avec
+              tags taskId+runId + @sentry/esbuild-plugin gated sur
+              SENTRY_AUTH_TOKEN+SENTRY_ORG+NODE_ENV=production
+- [x] Étape 4 — Next.js 16 pattern moderne (pas le wizard) :
+              · src/instrumentation.ts (server/edge runtime detection)
+              · src/instrumentation-client.ts (client init)
+              · withSentryConfig dans next.config.ts (source maps automatiques)
+              · Session Replay Sentry désactivé (replays*SampleRate: 0)
+              · @sentry/nextjs ^10.54.0
+- [x] Étape 5 — apps/api/src/routes/health.ts étendu :
+              · GET /health/live (no deps, pour uptime monitors)
+              · GET /health/ready (db SELECT 1 requis + clickhouse ping optionnel,
+                redis skipped — Upstash retiré Phase 6) → 200/503
+- [x] Étape 6 — findings.md : section Patch-04 complète (Sentry config,
+              uptime monitoring TODO externe, règles Slack conservatrices,
+              env vars à remplir en prod)
+- [x] Étape 7 — Axiom log shipping : reporté (optionnel, free tier Coolify+Trigger.dev suffit)
+- [x] Étape 8 — pnpm build ✓ (7/7) + pnpm typecheck ✓ (7/7)
+
+## Décisions patch-04
+
+- Sentry DSN/Auth Token : stub dans .env.example/.env.local. À remplir en prod
+  via dashboard Sentry (3 projets : outrival-api, outrival-workers, outrival-web)
+- Next.js : pattern `src/instrumentation*.ts` (Next 15+) plutôt que
+  `sentry.*.config.ts` au root (incompatible avec tsconfig rootDir=src)
+- Wizard `pnpm dlx @sentry/wizard@latest -i nextjs` NON exécuté (modifie trop
+  de fichiers, config manuelle plus chirurgicale)
+- `console.error` remplacé chirurgicalement uniquement aux points critiques —
+  workers utilisaient déjà logger de @trigger.dev/sdk
+- `withSentryConfig` au lieu d'un import direct — gère source maps + tunneling
+  + bundling auto en prod
+- `tracesSampleRate: 0.1` (10%) pour rester dans le free tier Sentry
+  (5k events/mois). Ajustable selon volume réel
+- Session Replay Sentry DÉSACTIVÉ — PostHog patch-03 fera le replay
+- `sendDefaultPii: false` partout — pas d'auto-capture des emails/IP/headers
+- Redact pino : couvre passwords, tokens, apiKeys, secrets, auth headers,
+  cookies, emails, stripeCustomerId, DATABASE_URL
+- Health check `/ready` : db requis (503 si fail), clickhouse optionnel
+  (200 + status "skipped" si CLICKHOUSE_URL absent — bon pour dev local)
+- Hook onFailure global Trigger.dev (deprecated mais fonctionnel) — l'API
+  recommended `tasks.onFailure` runtime sera adoptée si besoin de plus de
+  granularité par job
+
+## À faire avant beta (externe — utilisateur)
+
+- Créer org Sentry + 3 projets → coller DSN dans .env prod
+- Générer SENTRY_AUTH_TOKEN (Internal Integration scope: project:releases)
+- Configurer Better Stack ou UptimeRobot :
+  · monitor `https://api.outrival.io/health/live` (1/min)
+  · monitor `https://outrival.io` (1/min)
+  · alerte → email + Slack #alerts
+- Sentry → Slack integration + règles conservatrices :
+  · nouvelle issue → notif #alerts
+  · pic >10 events/5 min même issue → notif #alerts
+  · PAS d'alerte sur chaque occurrence (alert-fatigue)
+- Test E2E avec NODE_ENV=production en local :
+  · erreur API → visible dans outrival-api
+  · job qui throw → visible dans outrival-workers
+  · erreur client → visible dans outrival-web avec source maps
+  · couper la DB → /health/ready → 503
 
 ## Étapes session actuelle (Phase 7 — terminée 2026-05-25)
 

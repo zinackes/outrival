@@ -41,6 +41,18 @@ Découvertes techniques et décisions importantes accumulées au fil des session
   admin riche (filtres, statuts, screenshots inline) est dans patch-02.
 - `GET /api/feedback` actuel = liste basique, owner-only. Pas d'UI dashboard.
 
+### Bug Trigger.dev × pino (patch-04 fallout résolu)
+- Symptôme : `pnpm trigger:dev` plante avec
+  `Cannot find module '.trigger/tmp/build-*/lib/worker.js'`.
+- Cause : pino spawn un worker thread (via `thread-stream`) qui charge
+  `lib/worker.js` via `__dirname` au runtime. esbuild bundle pino dans la
+  sortie, `__dirname` pointe sur le bundle dir → résolution cassée.
+- Fix : externaliser `pino`, `pino-pretty`, `thread-stream` dans
+  `apps/workers/trigger.config.ts` (`build.external`). Pino reste dans
+  node_modules au runtime, ses chemins internes worker survivent.
+- À surveiller : tout package qui spawn un Node worker thread doit être
+  externalisé. Candidats futurs : `fflate`, modules de file-watching.
+
 
 
 ## Architecture

@@ -1,37 +1,19 @@
 import { Suspense } from "react";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { BillingDashboard } from "@/components/outrival/billing-dashboard";
+import { BillingDashboardSkeleton } from "./loading";
 
 export default function BillingPage() {
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center gap-3">
-        <Link
-          href="/dashboard/settings"
-          style={{ color: "var(--muted)" }}
-          className="flex items-center gap-1.5 text-sm hover:text-white transition-colors"
-        >
-          <ArrowLeft size={14} />
-          Paramètres
-        </Link>
-      </div>
-
-      <div>
-        <h1
-          style={{ fontFamily: "var(--font-syne)" }}
-          className="text-2xl font-bold mb-2"
-        >
-          Abonnement
-        </h1>
-        <p style={{ color: "var(--muted)" }} className="text-sm">
-          Gérez votre plan, votre usage et votre méthode de paiement.
+    <section className="flex flex-col gap-5" data-ph-mask>
+      <header>
+        <h2 className="font-semibold text-base tracking-tight">Subscription</h2>
+        <p className="text-muted-foreground text-sm mt-1">
+          Manage your plan, usage and payment method.
         </p>
-      </div>
-
-      <Suspense fallback={<p style={{ color: "var(--muted)" }} className="text-sm">Chargement…</p>}>
+      </header>
+      <Suspense fallback={<BillingDashboardSkeleton />}>
         <BillingDashboard />
       </Suspense>
-    </div>
+    </section>
   );
 }

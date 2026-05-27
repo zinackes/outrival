@@ -13,6 +13,7 @@
     "@outrival/db": "workspace:*",
     "@outrival/scrapers": "workspace:*",
     "@outrival/shared": "workspace:*",
+    "@sentry/node": "^10.54.0",
     "@trigger.dev/sdk": "^4.4.6",
     "better-auth": "^1.6.11",
     "drizzle-orm": "^0.45.2",

@@ -1,15 +1,25 @@
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
-import { organizations } from "@outrival/db";
+import { organizations, users } from "@outrival/db";
 import { logger } from "@outrival/shared";
 import type { Plan } from "@outrival/shared";
 import { db } from "../lib/db";
+import { captureServerEvent } from "../lib/posthog";
 import {
   getStripe,
   getWebhookSecret,
   lookupPlanByPriceId,
   type StripeClient,
 } from "../lib/stripe";
+
+async function findOrgOwnerUserId(orgId: string): Promise<string | null> {
+  const u = await db.query.users.findFirst({
+    where: eq(users.orgId, orgId),
+    columns: { id: true },
+    orderBy: (t, { asc }) => asc(t.createdAt),
+  });
+  return u?.id ?? null;
+}
 
 export const stripeWebhookRouter = new Hono();
 
@@ -65,6 +75,17 @@ async function applyPlanFromSubscription(orgId: string, sub: StripeSubscription)
       updatedAt: new Date(),
     })
     .where(eq(organizations.id, orgId));
+
+  if (isActive) {
+    const userId = await findOrgOwnerUserId(orgId);
+    if (userId) {
+      await captureServerEvent(userId, "plan_upgraded", {
+        plan,
+        period: mapped.period,
+        orgId,
+      });
+    }
+  }
 }
 
 stripeWebhookRouter.post("/", async (c) => {
@@ -139,6 +160,10 @@ stripeWebhookRouter.post("/", async (c) => {
             updatedAt: new Date(),
           })
           .where(eq(organizations.id, orgId));
+        const userId = await findOrgOwnerUserId(orgId);
+        if (userId) {
+          await captureServerEvent(userId, "plan_cancelled", { orgId });
+        }
         break;
       }
     }

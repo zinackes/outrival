@@ -8,9 +8,11 @@ import {
   competitors,
   signals,
   organizations,
+  users,
 } from "@outrival/db";
 import { generateInsight, ClassificationSchema } from "@outrival/ai";
 import { insertSignalFeed } from "../lib/clickhouse";
+import { captureWorkerEvent, shutdownPostHog } from "../lib/posthog";
 
 const InputSchema = z.object({
   changeId: z.string(),
@@ -98,6 +100,21 @@ export const generateSignalJob = task({
         logger.log("Alert triggered", { signalId: newSignal.id });
       }
     }
+
+    const orgOwner = await db.query.users.findFirst({
+      where: eq(users.orgId, competitor.orgId),
+      columns: { id: true },
+      orderBy: (t, { asc }) => asc(t.createdAt),
+    });
+    if (orgOwner) {
+      await captureWorkerEvent(orgOwner.id, "signal_generated", {
+        severity: input.classification.severity,
+        category: input.classification.category,
+        competitorId: competitor.id,
+        orgId: competitor.orgId,
+      });
+    }
+    await shutdownPostHog();
 
     logger.log("Completed generate-signal", {
       signalId: newSignal.id,

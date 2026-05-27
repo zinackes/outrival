@@ -15,6 +15,7 @@
     "@outrival/db": "workspace:*",
     "@outrival/scrapers": "workspace:*",
     "@outrival/shared": "workspace:*",
+    "@sentry/esbuild-plugin": "^5.3.0",
     "@sentry/node": "^10.54.0",
     "@trigger.dev/build": "^4.4.6",
     "@trigger.dev/sdk": "^4.4.6",

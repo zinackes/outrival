@@ -1,6 +1,10 @@
+// Sentry MUST be imported first so the SDK can patch globals before anything
+// else loads. Side-effect import — keep this at the top of the file.
+import { Sentry } from "./lib/sentry";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { logger } from "hono/logger";
+import { logger as honoLogger } from "hono/logger";
+import { logger } from "@outrival/shared";
 import { env } from "./env";
 import { auth } from "./lib/auth";
 import { healthRouter } from "./routes/health";
@@ -19,7 +23,7 @@ import { stripeWebhookRouter } from "./routes/stripe-webhook";
 
 const app = new Hono();
 
-app.use("*", logger());
+app.use("*", honoLogger());
 app.use(
   "*",
   cors({
@@ -50,6 +54,15 @@ app.route("/api/onboarding", onboardingRouter);
 app.route("/api/notifications", notificationsRouter);
 app.route("/api/candidates", candidatesRouter);
 app.route("/api/billing", billingRouter);
+
+app.onError((err, c) => {
+  Sentry.captureException(err);
+  logger.error(
+    { err, path: c.req.path, method: c.req.method },
+    "Unhandled error",
+  );
+  return c.json({ error: "Internal server error" }, 500);
+});
 
 export default {
   port: env.PORT,

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import { organizations } from "@outrival/db";
+import { logger } from "@outrival/shared";
 import type { Plan } from "@outrival/shared";
 import { db } from "../lib/db";
 import {
@@ -42,12 +43,12 @@ async function findOrgId(
 async function applyPlanFromSubscription(orgId: string, sub: StripeSubscription) {
   const priceId = sub.items.data[0]?.price?.id;
   if (!priceId) {
-    console.error("Subscription has no price id", { subId: sub.id });
+    logger.error({ subId: sub.id }, "Subscription has no price id");
     return;
   }
   const mapped = lookupPlanByPriceId(priceId);
   if (!mapped) {
-    console.error("Unknown price id", { priceId, subId: sub.id });
+    logger.error({ priceId, subId: sub.id }, "Unknown price id");
     return;
   }
   const isActive = sub.status === "active" || sub.status === "trialing";
@@ -68,14 +69,26 @@ async function applyPlanFromSubscription(orgId: string, sub: StripeSubscription)
 
 stripeWebhookRouter.post("/", async (c) => {
   const sig = c.req.header("stripe-signature");
-  if (!sig) return c.json({ error: "missing_signature" }, 400);
+  if (!sig) {
+    logger.error("Stripe webhook: missing stripe-signature header");
+    return c.json({ error: "missing_signature" }, 400);
+  }
 
-  const rawBody = await c.req.text();
+  // Read raw bytes (avoid UTF-8 decode roundtrip that can break HMAC match)
+  const rawBody = new Uint8Array(await c.req.arrayBuffer());
 
   let event: StripeEvent;
   try {
-    event = getStripe().webhooks.constructEvent(rawBody, sig, getWebhookSecret());
+    event = await getStripe().webhooks.constructEventAsync(
+      rawBody,
+      sig,
+      getWebhookSecret(),
+    );
   } catch (err) {
+    logger.error(
+      { err, bodyLen: rawBody.byteLength, sigPrefix: sig.slice(0, 32) },
+      "Stripe webhook: signature verification failed",
+    );
     return c.json({ error: "invalid_signature", detail: String(err) }, 400);
   }
 
@@ -85,7 +98,7 @@ stripeWebhookRouter.post("/", async (c) => {
         const session = event.data.object;
         const orgId = await findOrgId(session.metadata, session.customer);
         if (!orgId) {
-          console.error("checkout.session.completed: no orgId", { sessionId: session.id });
+          logger.error({ sessionId: session.id }, "checkout.session.completed: no orgId");
           break;
         }
         if (!session.subscription) break;
@@ -103,7 +116,7 @@ stripeWebhookRouter.post("/", async (c) => {
         const sub = event.data.object;
         const orgId = await findOrgId(sub.metadata, sub.customer);
         if (!orgId) {
-          console.error(`${event.type}: no orgId`, { subId: sub.id });
+          logger.error({ type: event.type, subId: sub.id }, "subscription event: no orgId");
           break;
         }
         await applyPlanFromSubscription(orgId, sub);
@@ -114,7 +127,7 @@ stripeWebhookRouter.post("/", async (c) => {
         const sub = event.data.object;
         const orgId = await findOrgId(sub.metadata, sub.customer);
         if (!orgId) {
-          console.error("customer.subscription.deleted: no orgId", { subId: sub.id });
+          logger.error({ subId: sub.id }, "customer.subscription.deleted: no orgId");
           break;
         }
         await db
@@ -130,7 +143,7 @@ stripeWebhookRouter.post("/", async (c) => {
       }
     }
   } catch (err) {
-    console.error("Stripe webhook handler failed", { type: event.type, err: String(err) });
+    logger.error({ err, type: event.type }, "Stripe webhook handler failed");
     return c.json({ error: "handler_failed" }, 500);
   }
 

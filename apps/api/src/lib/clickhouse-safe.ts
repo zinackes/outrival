@@ -1,4 +1,5 @@
 import { getClickhouse } from "@outrival/db";
+import { logger } from "@outrival/shared";
 
 export async function chQuery<T>(args: {
   query: string;
@@ -14,7 +15,7 @@ export async function chQuery<T>(args: {
     });
     return (await result.json()) as T[];
   } catch (err) {
-    console.error("ClickHouse query failed:", err);
+    logger.error({ err, query: args.query }, "ClickHouse query failed");
     return [];
   }
 }

@@ -1,94 +1,94 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
-import Link from "next/link";
-import { Home, Users, FileText, Bell, Settings, Sparkles } from "lucide-react";
-import { LogoutButton } from "./logout-button";
-import { NotificationsBell } from "@/components/outrival/notifications-bell";
+import { headers, cookies } from "next/headers";
+import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import { PostHogIdentitySync } from "@/lib/posthog/identity-sync";
 
-async function getSession() {
+export const metadata: Metadata = {
+  title: "Dashboard",
+  robots: { index: false, follow: false },
+};
+
+async function getSession(h: Headers) {
   const res = await fetch(
     `${process.env.NEXT_PUBLIC_API_URL}/api/auth/get-session`,
-    { headers: await headers(), cache: "no-store" },
+    { headers: h, cache: "no-store" },
   );
   if (!res.ok) return null;
   return res.json();
 }
 
-async function getOnboardingStatus(): Promise<{ onboardingCompleted: boolean } | null> {
+async function getOnboardingStatus(
+  h: Headers,
+): Promise<{ onboardingCompleted: boolean } | null> {
   const res = await fetch(
     `${process.env.NEXT_PUBLIC_API_URL}/api/onboarding/status`,
-    { headers: await headers(), cache: "no-store" },
+    { headers: h, cache: "no-store" },
   );
   if (!res.ok) return null;
   return res.json();
 }
 
-const navItems = [
-  { href: "/dashboard", label: "Activité", icon: Home },
-  { href: "/dashboard/competitors", label: "Competitors", icon: Users },
-  { href: "/dashboard/candidates", label: "Détections", icon: Sparkles },
-  { href: "/dashboard/digests", label: "Digests", icon: FileText },
-  { href: "/dashboard/alerts", label: "Alerts", icon: Bell },
-  { href: "/dashboard/settings", label: "Settings", icon: Settings },
-];
+async function getBilling(h: Headers): Promise<{
+  plan?: string;
+  competitorsUsed?: number;
+  competitorsLimit?: number | null;
+} | null> {
+  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/billing`, {
+    headers: h,
+    cache: "no-store",
+  });
+  if (!res.ok) return null;
+  const data = (await res.json()) as {
+    plan?: string;
+    usage?: { competitors?: { used?: number; limit?: number | null } };
+  };
+  return {
+    plan: data.plan,
+    competitorsUsed: data.usage?.competitors?.used,
+    competitorsLimit: data.usage?.competitors?.limit ?? null,
+  };
+}
 
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const session = await getSession();
-  if (!session) redirect("/login");
+  const h = await headers();
+  const cookieStore = await cookies();
 
-  const status = await getOnboardingStatus();
+  const [session, status, billing] = await Promise.all([
+    getSession(h),
+    getOnboardingStatus(h),
+    getBilling(h),
+  ]);
+
+  if (!session) redirect("/login");
   if (status && !status.onboardingCompleted) redirect("/onboarding");
 
+  const user = {
+    name: session?.user?.name ?? null,
+    email: session?.user?.email ?? null,
+  };
+  const org = {
+    name: session?.user?.name
+      ? `${session.user.name.split(" ")[0]} workspace`
+      : "Workspace",
+    plan: billing?.plan ? billing.plan : "Free",
+    seatsUsed: billing?.competitorsUsed,
+    seatsLimit: billing?.competitorsLimit ?? undefined,
+  };
+
+  const sidebarCookie = cookieStore.get("sidebar_state")?.value;
+  const defaultOpen = sidebarCookie == null ? true : sidebarCookie === "true";
+
+  const userId = session?.user?.id as string | undefined;
+
   return (
-    <div className="flex min-h-screen">
-      <aside
-        style={{
-          background: "var(--surface)",
-          borderRight: "1px solid var(--border)",
-          width: "220px",
-          flexShrink: 0,
-        }}
-        className="flex flex-col py-6 px-4"
-      >
-        <div className="mb-8 px-2">
-          <span
-            style={{ fontFamily: "var(--font-syne)", fontSize: "20px" }}
-            className="font-bold"
-          >
-            Out<span style={{ color: "var(--accent)" }}>rival</span>
-          </span>
-        </div>
-
-        <nav className="flex flex-col gap-1 flex-1">
-          {navItems.map(({ href, label, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              style={{ borderRadius: "var(--radius)", color: "var(--muted)" }}
-              className="flex items-center gap-3 px-3 py-2 text-sm hover:bg-white/5 hover:text-white transition-colors"
-            >
-              <Icon size={16} />
-              {label}
-            </Link>
-          ))}
-        </nav>
-
-        <LogoutButton />
-      </aside>
-
-      <main className="flex-1 flex flex-col">
-        <header
-          style={{ borderBottom: "1px solid var(--border)" }}
-          className="flex items-center justify-end px-8 py-3"
-        >
-          <NotificationsBell />
-        </header>
-        <div className="flex-1 p-8">{children}</div>
-      </main>
-    </div>
+    <DashboardShell user={user} org={org} defaultOpen={defaultOpen}>
+      {userId && <PostHogIdentitySync userId={userId} plan={org.plan} />}
+      {children}
+    </DashboardShell>
   );
 }

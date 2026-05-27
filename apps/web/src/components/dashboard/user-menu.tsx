@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CreditCard, LogOut, Settings } from "lucide-react";
 import { signOut } from "@/lib/auth-client";
+import { resetUser } from "@/lib/posthog/events";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,6 +30,7 @@ export function UserMenu({ user }: { user: User }) {
 
   async function handleSignOut() {
     await signOut();
+    resetUser();
     router.push("/login");
     router.refresh();
   }

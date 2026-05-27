@@ -377,4 +377,16 @@ export const api = {
     }),
   openPortal: () =>
     request<{ url: string }>("/api/billing/portal", { method: "POST" }),
+  submitFeedback: (body: {
+    type: "bug" | "idea" | "other";
+    message: string;
+    pageUrl?: string;
+    consoleErrors?: Array<{ ts: number; message: string }>;
+    screenshot?: string;
+    userAgent?: string;
+  }) =>
+    request<{ ok: true; id: string }>("/api/feedback", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 };

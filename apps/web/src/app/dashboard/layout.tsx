@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { headers, cookies } from "next/headers";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { PostHogIdentitySync } from "@/lib/posthog/identity-sync";
+import { FeedbackWidget } from "@/components/outrival/feedback-widget";
 
 export const metadata: Metadata = {
   title: "Dashboard",
@@ -89,6 +90,7 @@ export default async function DashboardLayout({
     <DashboardShell user={user} org={org} defaultOpen={defaultOpen}>
       {userId && <PostHogIdentitySync userId={userId} plan={org.plan} />}
       {children}
+      <FeedbackWidget />
     </DashboardShell>
   );
 }

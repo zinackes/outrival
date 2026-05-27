@@ -23,7 +23,61 @@ appliqué le 2026-05-27. Reste landing page + polish global via Claude Design
 - [x] patch-01 — Scraping cost optimization (direct-first + adaptive reschedule)
 - [x] patch-04 — Errors, logs & uptime (Sentry + pino + health checks profonds)
 - [x] patch-03 — PostHog analytics + session replay (terminé 2026-05-27)
-- [ ] patch-05 — Widget feedback (prochain)
+- [x] patch-05 — Widget feedback (terminé 2026-05-27)
+- [ ] patch-02 — Admin ops (prochain — vue riche feedbacks + ops dashboard)
+
+## Étapes patch-05 (terminées 2026-05-27)
+
+- [x] Étape 0 — pnpm add html2canvas --filter @outrival/web + env OPS_SLACK_WEBHOOK_URL
+- [x] Étape 1 — Schéma DB : table feedback + enums type/status + db:push --force
+              (drop simultané des colonnes orphelines patch-03 :
+              changes.summary, monitors.last_failed_at, monitors.last_error)
+- [x] Étape 2 — packages/shared/notify.ts : sendSlackMessage helper (silencieux)
+- [x] Étape 3 — apps/web/src/lib/feedback/error-buffer.ts : buffer 20 entrées
+              (window.error + unhandledrejection + console.error wrapper)
+- [x] Étape 4 — apps/api/src/routes/feedback.ts :
+              · POST authMiddleware + Zod (5000 chars + screenshot 2MB cap)
+              · screenshot data URL → R2 (feedback/{id}/screenshot.{jpg|png})
+              · sendSlackMessage best-effort vers OPS_SLACK_WEBHOOK_URL
+              · GET owner-only (db.users.role === "owner")
+- [x] Étape 5 — apps/web/src/components/outrival/feedback-widget.tsx :
+              · Bouton flottant fixed bottom-right (MessageSquarePlus)
+              · Dialog shadcn : 3 tabs (bug/idea/other) + textarea + checkbox
+                screenshot + texte d'info auto-capture (pageUrl + erreurs)
+              · html2canvas dynamic import + JPEG q=0.7 + cast `(mod.default ?? mod)`
+              · toast sonner confirmation
+              · initErrorBuffer() au mount (idempotent)
+              · monté dans dashboard/layout.tsx
+- [x] Étape 6 — pnpm typecheck 6/7 ✓ (web a toujours les 16 erreurs
+              pré-existantes patch-03, 0 nouvelle erreur introduite par patch-05)
+
+## Décisions patch-05
+
+- `sendSlackMessage()` dans @outrival/shared/notify (api ne peut pas importer
+  workers — règles monorepo). Silencieux par design : try/catch swallow,
+  ne JAMAIS faire échouer le POST feedback à cause d'un Slack down
+- OPS_SLACK_WEBHOOK_URL distinct des `organizations.slackWebhookUrl` des orgs.
+  À remplir en prod avec un webhook ops perso (Slack workspace privé)
+- R2 best-effort sur le screenshot : si l'upload fail, on continue sans
+  (insert feedback row sans screenshotR2Key) — l'utilisateur a quand même
+  envoyé son message
+- Le screenshot est OPTIONNEL et désactivé par défaut. Texte d'info explicite
+  dans la modal : "La page actuelle et les erreurs techniques récentes sont
+  jointes automatiquement" → opt-in éclairé
+- html2canvas en dynamic import pour ne pas peser sur le bundle initial
+  (~50KB gzipped). Chargé seulement quand l'utilisateur clique "Joindre une
+  capture" ET clique Envoyer
+- Buffer console : 20 entrées max, message tronqué à 500 chars. Wrap
+  console.error + listen window error/unhandledrejection. initErrorBuffer()
+  protégé par `installed = true` flag → safe à appeler plusieurs fois
+- drizzle.config.ts modifié : auto-load .env.local via dotenv + tablesFilter
+  pour exclure les tables Better Auth (user/session/account/verification).
+  Sans ça, db:push planté sur prompts TTY introuvables. Le `--force` lors du
+  push a aussi dropé les 3 colonnes orphelines patch-03 (changes.summary,
+  monitors.last_failed_at, monitors.last_error) — cleanup de dette ratifié
+  par l'utilisateur
+- Vue riche feedbacks (filtres, table, statuts) reportée à patch-02 (admin ops)
+- 16 erreurs TS pré-existantes du web restent — out of scope patch-05
 
 ## Étapes patch-03 (terminées 2026-05-27)
 

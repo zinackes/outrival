@@ -2,6 +2,47 @@
 
 Découvertes techniques et décisions importantes accumulées au fil des sessions.
 
+## Patch-05 — Widget feedback (2026-05-27)
+
+### html2canvas
+- Limites observées : images cross-origin nécessitent `useCORS: true` ET un CORS
+  permissif côté serveur — sinon elles sortent transparentes. Les fonts en CSS
+  variables (`var(--font-display)`) sont rendues correctement, mais certains
+  effets (filter, mask, mix-blend-mode) sont parfois ignorés. Le sticky/fixed
+  positioning est rendu à sa position d'origine (pas la position finale après
+  scroll).
+- Taille screenshot JPEG q=0.7 : typiquement 200-600KB pour un viewport
+  dashboard 1440px. Cap dur côté API à 2MB (data URL ~2.8MB encodée) — assez
+  pour 4K si besoin.
+- Import dynamique (`await import("html2canvas")`) requiert un cast — le typage
+  du package gère mal le `default` sous NodeNext + esModuleInterop. Pattern
+  retenu : `(mod.default ?? mod) as unknown as ...` avec types inline.
+
+### Slack ops (OPS_SLACK_WEBHOOK_URL)
+- `sendSlackMessage()` dans `@outrival/shared/notify` est silencieux par
+  design : aucun throw, aucun log. Une notif qui échoue ne doit JAMAIS
+  faire échouer la soumission du feedback (constraint patch-05).
+- Webhook ops distinct des `slackWebhookUrl` des orgs (table organizations).
+  À configurer côté .env.local en prod (Slack workspace personnel ops).
+
+### DB schema
+- `pnpm db:push` requiert TTY pour les prompts de rename/data-loss. Solution
+  retenue : `drizzle.config.ts` charge `.env.local` via dotenv automatiquement
+  + `tablesFilter: ["!user", "!session", "!account", "!verification"]` pour
+  exclure les tables Better Auth (gérées par BA, hors schema Drizzle). Pour
+  prompts de data-loss : utiliser `--force` après revue manuelle du diff.
+- Lors de l'application de patch-05, drizzle-kit a dropé 3 colonnes orphelines
+  côté DB (changes.summary, monitors.last_failed_at, monitors.last_error)
+  qui n'étaient plus dans les schemas src/ — cleanup naturel de la dette
+  signalée par patch-03.
+
+### Vue riche feedbacks
+- Patch-05 livre la capture + stockage + ping Slack uniquement. La vue
+  admin riche (filtres, statuts, screenshots inline) est dans patch-02.
+- `GET /api/feedback` actuel = liste basique, owner-only. Pas d'UI dashboard.
+
+
+
 ## Architecture
 
 - PostgreSQL Railway = données relationnelles. ClickHouse = time-series uniquement.

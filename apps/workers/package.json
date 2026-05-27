@@ -21,6 +21,7 @@
     "@trigger.dev/sdk": "^4.4.6",
     "drizzle-orm": "^0.45.2",
     "playwright": "^1.60.0",
+    "posthog-node": "^5.35.5",
     "resend": "^6.12.3",
     "zod": "^4.4.3"
   },

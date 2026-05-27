@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useFeatureFlagEnabled } from "posthog-js/react";
 import {
   AlertCircle,
   ArrowLeft,
@@ -152,6 +153,7 @@ export function OnboardingForm({ plan }: { plan: Plan }) {
   const planLimits = PLAN_LIMITS[plan];
   const maxCompetitors = planLimits.maxCompetitors;
   const allowedFrequencies = planLimits.allowedFrequencies;
+  const discoveryDisabled = useFeatureFlagEnabled("kill-switch-discovery");
   const [step, setStep] = useState<Step>(1);
   const [busy, setBusy] = useState<null | "analyze" | "discover" | "complete">(
     null,
@@ -232,6 +234,14 @@ export function OnboardingForm({ plan }: { plan: Plan }) {
   async function handleProfileConfirm() {
     if (!profile) return;
     clearErrors();
+
+    if (discoveryDisabled) {
+      setErrors({
+        global:
+          "Discovery is temporarily disabled. Add competitors manually after onboarding — we'll restore automatic discovery shortly.",
+      });
+      return;
+    }
 
     const empty = (
       ["category", "audience", "valueProp", "pricingModel"] as const

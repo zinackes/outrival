@@ -5,7 +5,7 @@ export const roleEnum = pgEnum("role", ["owner", "admin", "member"]);
 
 export const users = pgTable("users", {
   id: text("id").primaryKey(),
-  orgId: text("org_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  orgId: text("org_id").references(() => organizations.id, { onDelete: "cascade" }),
   email: text("email").notNull().unique(),
   name: text("name"),
   role: roleEnum("role").notNull().default("member"),

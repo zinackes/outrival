@@ -8,7 +8,6 @@ import {
   snapshots,
   changes,
 } from "@outrival/db";
-import { getScraper } from "@outrival/scrapers";
 import {
   computeHash,
   computeNextRun,
@@ -60,6 +59,9 @@ export const scrapeMonitorJob = task({
         : null;
     const scrapeUrl = configUrl ?? competitor.url;
 
+    // Lazy-import to avoid loading crawlee/playwright at module parse time
+    // (trigger.dev warns on >1 s import — crawlee is the culprit).
+    const { getScraper } = await import("@outrival/scrapers");
     const scraper = getScraper(monitor.sourceType);
     const result = await scraper(competitor.id, scrapeUrl, {
       preferProxy: monitor.requiresProxy,

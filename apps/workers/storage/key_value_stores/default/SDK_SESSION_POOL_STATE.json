@@ -1,0 +1,121 @@
+{
+  "usableSessionsCount": 3,
+  "retiredSessionsCount": 0,
+  "sessions": [
+    {
+      "id": "session_wfuJqha0dc",
+      "cookieJar": {
+        "version": "tough-cookie@6.0.1",
+        "storeType": "MemoryCookieStore",
+        "rejectPublicSuffixes": true,
+        "enableLooseMode": false,
+        "allowSpecialUseDomain": true,
+        "prefixSecurity": "silent",
+        "cookies": []
+      },
+      "userData": {},
+      "maxErrorScore": 3,
+      "errorScoreDecrement": 0.5,
+      "expiresAt": "2026-05-29T20:52:16.875Z",
+      "createdAt": "2026-05-29T20:02:16.875Z",
+      "usageCount": 0,
+      "maxUsageCount": 50,
+      "errorScore": 0
+    },
+    {
+      "id": "session_y3klSC9uTM",
+      "cookieJar": {
+        "version": "tough-cookie@6.0.1",
+        "storeType": "MemoryCookieStore",
+        "rejectPublicSuffixes": true,
+        "enableLooseMode": false,
+        "allowSpecialUseDomain": true,
+        "prefixSecurity": "silent",
+        "cookies": [
+          {
+            "key": "PHPSESSID",
+            "value": "0nh57mjse4cb182ral9l8achb9",
+            "expires": "2026-06-12T20:02:18.991Z",
+            "domain": "nerdisa.com",
+            "path": "/",
+            "secure": true,
+            "httpOnly": true,
+            "hostOnly": true,
+            "creation": "2026-05-29T20:02:19.973Z",
+            "lastAccessed": "2026-05-29T20:02:19.973Z"
+          },
+          {
+            "key": "visitor-id",
+            "value": "bf567b486f9eabcb8f45de7aad97b8d4",
+            "expires": "2027-07-03T20:02:18.992Z",
+            "domain": "nerdisa.com",
+            "path": "/",
+            "httpOnly": true,
+            "hostOnly": true,
+            "creation": "2026-05-29T20:02:19.974Z",
+            "lastAccessed": "2026-05-29T20:02:19.974Z"
+          },
+          {
+            "key": "session-id",
+            "value": "4e1240943636df733313c868c3770c25",
+            "expires": "2026-05-31T02:02:18.992Z",
+            "domain": "nerdisa.com",
+            "path": "/",
+            "httpOnly": true,
+            "hostOnly": true,
+            "creation": "2026-05-29T20:02:19.974Z",
+            "lastAccessed": "2026-05-29T20:02:19.974Z"
+          },
+          {
+            "key": "_ga_82ZX0NQZCT",
+            "value": "GS2.1.s1780084939$o1$g0$t1780084939$j60$l0$h0",
+            "expires": "2027-07-03T20:02:19.958Z",
+            "domain": "nerdisa.com",
+            "path": "/",
+            "hostOnly": false,
+            "creation": "2026-05-29T20:02:19.975Z",
+            "lastAccessed": "2026-05-29T20:02:19.975Z"
+          },
+          {
+            "key": "_ga",
+            "value": "GA1.1.73459269.1780084940",
+            "expires": "2027-07-03T20:02:19.960Z",
+            "domain": "nerdisa.com",
+            "path": "/",
+            "hostOnly": false,
+            "creation": "2026-05-29T20:02:19.975Z",
+            "lastAccessed": "2026-05-29T20:02:19.975Z"
+          }
+        ]
+      },
+      "userData": {},
+      "maxErrorScore": 3,
+      "errorScoreDecrement": 0.5,
+      "expiresAt": "2026-05-29T20:52:16.879Z",
+      "createdAt": "2026-05-29T20:02:16.879Z",
+      "usageCount": 2,
+      "maxUsageCount": 50,
+      "errorScore": 0
+    },
+    {
+      "id": "session_JjHYCIMnvr",
+      "cookieJar": {
+        "version": "tough-cookie@6.0.1",
+        "storeType": "MemoryCookieStore",
+        "rejectPublicSuffixes": true,
+        "enableLooseMode": false,
+        "allowSpecialUseDomain": true,
+        "prefixSecurity": "silent",
+        "cookies": []
+      },
+      "userData": {},
+      "maxErrorScore": 3,
+      "errorScoreDecrement": 0.5,
+      "expiresAt": "2026-05-29T20:52:18.428Z",
+      "createdAt": "2026-05-29T20:02:18.428Z",
+      "usageCount": 0,
+      "maxUsageCount": 50,
+      "errorScore": 0
+    }
+  ]
+}

@@ -33,6 +33,18 @@ async function runCrawler(url: string, opts: RunCrawlerOptions): Promise<Scraper
     maxConcurrency: 1,
     requestHandlerTimeoutSecs: 60,
     headless: true,
+    launchContext: {
+      launchOptions: {
+        args: [
+          "--disable-dev-shm-usage", // /dev/shm tiny under WSL → otherwise swap/crash
+          "--disable-gpu",
+          "--no-sandbox",
+          // single-process slashes Chromium RAM but can break JS-heavy pages,
+          // so it's dev-only — prod (Trigger.dev cloud) keeps the default model.
+          ...(process.env.NODE_ENV !== "production" ? ["--single-process"] : []),
+        ],
+      },
+    },
     async requestHandler({ page, request, response }) {
       await page.goto(request.url, { waitUntil: "networkidle", timeout: 45000 });
       if (opts.waitForSelector) {

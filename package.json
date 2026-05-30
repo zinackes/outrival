@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "dev": "turbo dev",
+    "dev:app": "turbo dev --filter @outrival/web --filter @outrival/api",
     "build": "turbo build",
     "typecheck": "turbo typecheck",
     "test": "turbo test",

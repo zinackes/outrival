@@ -4,6 +4,8 @@ import { users, organizations } from "@outrival/db";
 
 /**
  * Returns the orgId for a user, creating a personal org if none exists.
+ * Uses an upsert on slug so a previously-created org is reused rather than
+ * causing a unique-constraint failure on concurrent or retried requests.
  */
 export async function ensureUserOrg(userId: string): Promise<string> {
   const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
@@ -11,9 +13,12 @@ export async function ensureUserOrg(userId: string): Promise<string> {
   if (user.orgId) return user.orgId;
 
   const slug = `org-${userId.slice(0, 8)}`;
+  // ON CONFLICT DO UPDATE (no-op update on slug) so we always get the row back,
+  // whether we just created it or it already existed from a previous attempt.
   const [org] = await db
     .insert(organizations)
-    .values({ name: `${user.name}'s workspace`, slug, plan: "free" })
+    .values({ name: `${user.name ?? user.email}'s workspace`, slug, plan: "free" })
+    .onConflictDoUpdate({ target: organizations.slug, set: { slug } })
     .returning();
   if (!org) throw new Error("Failed to create org");
 

@@ -11,5 +11,4 @@ export default defineConfig({
   out: "./migrations",
   dialect: "postgresql",
   dbCredentials: { url: process.env.DATABASE_URL! },
-  tablesFilter: ["!user", "!session", "!account", "!verification"],
 });

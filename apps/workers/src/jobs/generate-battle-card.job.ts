@@ -11,8 +11,6 @@ import {
 } from "@outrival/db";
 import { generateBattleCard } from "@outrival/ai";
 import { uploadToR2 } from "@outrival/shared";
-import { chromium } from "playwright";
-import { renderBattleCardHtml } from "../lib/battle-card-html";
 
 const InputSchema = z.object({
   competitorId: z.string(),
@@ -106,6 +104,13 @@ export const generateBattleCardJob = task({
       if (!created) throw new Error("Failed to insert battle card");
       battleCardId = created.id;
     }
+
+    // Lazy-import to avoid loading playwright/Chromium bindings at module parse
+    // time (trigger.dev warns on >1 s import — playwright is the culprit).
+    const [{ chromium }, { renderBattleCardHtml }] = await Promise.all([
+      import("playwright"),
+      import("../lib/battle-card-html"),
+    ]);
 
     const html = renderBattleCardHtml({
       competitorName: competitor.name,

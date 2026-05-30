@@ -6,11 +6,15 @@ import {
   organizations,
 } from "@outrival/db";
 import { findSimilarCompanies } from "@outrival/scrapers/discovery";
-import { scoreOverlap } from "@outrival/ai";
-import { normalizeHostname } from "@outrival/shared";
+import { scoreOverlap, buildDiscoveryQuery } from "@outrival/ai";
+import {
+  buildDetectionBody,
+  buildDetectionTitle,
+  normalizeHostname,
+  resolveDetectionConfig,
+} from "@outrival/shared";
 import { db } from "./db";
 
-const MIN_OVERLAP = 65;
 const CANDIDATES_PER_ORG = 20;
 
 export type DetectResult =
@@ -24,6 +28,14 @@ export async function detectCandidatesForOrg(orgId: string): Promise<DetectResul
   if (!org || !org.productUrl || !org.productProfile) {
     return { ok: false, error: "missing_profile" };
   }
+
+  const cfg = resolveDetectionConfig(org.detectionConfig);
+  const excludedHosts = new Set(cfg.excludedDomains);
+
+  await db
+    .update(organizations)
+    .set({ detectionLastRunAt: new Date() })
+    .where(eq(organizations.id, orgId));
 
   const existing = await db.query.competitors.findMany({
     where: and(eq(competitors.orgId, orgId), isNull(competitors.deletedAt)),
@@ -44,26 +56,43 @@ export async function detectCandidatesForOrg(orgId: string): Promise<DetectResul
     if (h) seenHosts.add(h);
   }
 
-  const discovered = await findSimilarCompanies(org.productUrl, CANDIDATES_PER_ORG);
+  const discovered = await findSimilarCompanies(
+    org.productUrl,
+    buildDiscoveryQuery(org.productProfile, cfg.keywords),
+    CANDIDATES_PER_ORG,
+    cfg.excludedDomains,
+  );
   const fresh = discovered.filter((d) => {
     if (seenUrls.has(d.url)) return false;
     const host = normalizeHostname(d.url);
     if (!host) return false;
     if (existingHosts.has(host)) return false;
     if (seenHosts.has(host)) return false;
+    if (excludedHosts.has(host)) return false;
     return true;
+  });
+
+  // TEMP debug — à retirer
+  console.log("[detect]", {
+    orgId,
+    discovered: discovered.length,
+    freshAfterDedup: fresh.length,
+    existingHosts: [...existingHosts],
+    seenCount: seen.length,
   });
 
   if (fresh.length === 0) return { ok: true, detected: 0 };
 
   const scored = await scoreOverlap(org.productProfile, fresh);
   const scoredByUrl = new Map(scored.map((s) => [s.url, s]));
+  // TEMP debug — à retirer
+  console.log("[detect] scores", scored.map((s) => `${s.overlapScore} ${s.url}`));
 
-  let detected = 0;
+  const detectedTitles: string[] = [];
   for (const d of fresh) {
     const scoring = scoredByUrl.get(d.url);
     if (!scoring) continue;
-    if (scoring.overlapScore <= MIN_OVERLAP) continue;
+    if (scoring.overlapScore <= cfg.minOverlap) continue;
 
     await db.insert(competitorCandidates).values({
       orgId,
@@ -74,15 +103,18 @@ export async function detectCandidatesForOrg(orgId: string): Promise<DetectResul
       status: "new",
     });
 
+    detectedTitles.push(d.title);
+  }
+
+  const detected = detectedTitles.length;
+  if (detected > 0) {
     await db.insert(notifications).values({
       orgId,
       type: "new_competitor",
-      title: `Nouveau concurrent détecté : ${d.title}`,
-      body: `Overlap ${Math.round(scoring.overlapScore)}% — ${scoring.reason}`,
+      title: buildDetectionTitle(detected),
+      body: buildDetectionBody(detectedTitles),
       linkUrl: `/dashboard/candidates`,
     });
-
-    detected++;
   }
 
   return { ok: true, detected };

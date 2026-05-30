@@ -1,17 +1,47 @@
 import { Hono } from "hono";
+import { z } from "zod";
 import { and, desc, eq } from "drizzle-orm";
 import { tasks } from "@trigger.dev/sdk/v3";
-import { competitorCandidates, competitors, monitors } from "@outrival/db";
+import {
+  competitorCandidates,
+  competitors,
+  monitors,
+  organizations,
+} from "@outrival/db";
+import { DetectionConfigSchema, resolveDetectionConfig } from "@outrival/shared";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
 import { checkCompetitorQuota, getOrgPlan } from "../lib/plan";
+import { detectCandidatesForOrg } from "../lib/detect-candidates";
 
 type Variables = { user: { id: string } };
 
 export const candidatesRouter = new Hono<{ Variables: Variables }>();
 
 candidatesRouter.use("*", authMiddleware);
+
+// TEMP: rate limit désactivé pour les tests — repasser à true pour réactiver
+const DETECT_RATE_LIMIT_ENABLED = false;
+const DETECT_COOLDOWN_MS = 30 * 60 * 1000;
+const lastDetectAt = new Map<string, number>();
+
+const ConfigBodySchema = DetectionConfigSchema.extend({
+  excludedDomains: z.array(z.string()).max(50),
+  keywords: z.string().max(200),
+});
+
+/** Reduce a free-form entry ("https://www.Foo.com/x", "Foo.com") to a bare host. */
+function normalizeDomain(raw: string): string | null {
+  const t = raw.trim().toLowerCase();
+  if (!t) return null;
+  try {
+    const h = new URL(t.includes("://") ? t : `https://${t}`).hostname;
+    return h.startsWith("www.") ? h.slice(4) : h;
+  } catch {
+    return null;
+  }
+}
 
 function deriveCompetitorName(url: string, title: string | null): string {
   if (title && title.trim().length > 0) return title.trim().slice(0, 100);
@@ -43,6 +73,48 @@ candidatesRouter.get("/", async (c) => {
   });
 
   return c.json({ candidates: rows });
+});
+
+candidatesRouter.get("/config", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, orgId),
+  });
+  if (!org) return c.json({ error: "Not found" }, 404);
+
+  return c.json({
+    config: resolveDetectionConfig(org.detectionConfig),
+    lastRunAt: org.detectionLastRunAt,
+  });
+});
+
+candidatesRouter.put("/config", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = ConfigBodySchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
+  }
+
+  const excludedDomains = [
+    ...new Set(
+      parsed.data.excludedDomains
+        .map(normalizeDomain)
+        .filter((d): d is string => d !== null),
+    ),
+  ];
+
+  const config = { ...parsed.data, excludedDomains };
+  await db
+    .update(organizations)
+    .set({ detectionConfig: config, updatedAt: new Date() })
+    .where(eq(organizations.id, orgId));
+
+  return c.json({ config });
 });
 
 candidatesRouter.post("/:id/add", async (c) => {
@@ -99,6 +171,31 @@ candidatesRouter.post("/:id/add", async (c) => {
   }
 
   return c.json({ competitor, monitors: monitorRows });
+});
+
+candidatesRouter.post("/detect", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const last = lastDetectAt.get(orgId);
+  if (DETECT_RATE_LIMIT_ENABLED && last && Date.now() - last < DETECT_COOLDOWN_MS) {
+    const retryInSec = Math.ceil((DETECT_COOLDOWN_MS - (Date.now() - last)) / 1000);
+    return c.json({ error: "cooldown", retryInSec }, 429);
+  }
+  lastDetectAt.set(orgId, Date.now());
+
+  try {
+    const result = await detectCandidatesForOrg(orgId);
+    if (!result.ok) {
+      lastDetectAt.delete(orgId);
+      return c.json({ error: result.error }, 400);
+    }
+    return c.json({ detected: result.detected });
+  } catch (e) {
+    lastDetectAt.delete(orgId);
+    console.error("detect-candidates failed", { orgId, error: String(e) });
+    return c.json({ error: "detection_failed" }, 500);
+  }
 });
 
 candidatesRouter.post("/:id/dismiss", async (c) => {

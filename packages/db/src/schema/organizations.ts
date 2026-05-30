@@ -22,6 +22,23 @@ export const organizations = pgTable("organizations", {
     valueProp: string;
     pricingModel: string;
   }>(),
+  detectionConfig: jsonb("detection_config")
+    .$type<{
+      minOverlap: number;
+      autoDetect: boolean;
+      cadence: "weekly" | "monthly";
+      excludedDomains: string[];
+      keywords: string;
+    }>()
+    .notNull()
+    .default({
+      minOverlap: 65,
+      autoDetect: true,
+      cadence: "weekly",
+      excludedDomains: [],
+      keywords: "",
+    }),
+  detectionLastRunAt: timestamp("detection_last_run_at"),
   onboardingCompleted: boolean("onboarding_completed").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

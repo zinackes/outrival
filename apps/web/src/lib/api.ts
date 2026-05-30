@@ -1,4 +1,12 @@
-import type { BillingPeriod, Plan } from "@outrival/shared";
+import type {
+  BillingPeriod,
+  Plan,
+  SourceType,
+  MonitorFrequency,
+  DetectionConfig,
+} from "@outrival/shared";
+
+export type { DetectionConfig } from "@outrival/shared";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -43,6 +51,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export interface CompetitorStats {
+  signals7d: number;
+  signalsPrev: number;
+  lastSignalAt: string | null;
+  categoryCounts: Record<string, number>;
+}
+
 export interface Competitor {
   id: string;
   name: string;
@@ -55,6 +70,7 @@ export interface Competitor {
   metadata: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;
+  stats?: CompetitorStats;
 }
 
 export interface CompetitorJob {
@@ -124,7 +140,9 @@ export interface CompetitorSignal {
   recommendedAction: string | null;
   isRead: boolean;
   createdAt: string;
-  changeId?: string;
+  changeId?: string | null;
+  sourceType: string | null;
+  monitorUrl: string | null;
 }
 
 export interface Monitor {
@@ -133,17 +151,21 @@ export interface Monitor {
   sourceType: string;
   frequency: string;
   lastRunAt: string | null;
+  lastFailedAt: string | null;
+  lastError: string | null;
 }
 
 export interface ChangeRow {
   id: string;
   diffText: string | null;
+  summary: string | null;
   detectedAt: string;
   monitorId: string;
   sourceType: string;
-  competitorId: string;
-  competitorName: string;
-  competitorUrl: string;
+  monitorUrl?: string | null;
+  competitorId?: string;
+  competitorName?: string;
+  competitorUrl?: string;
 }
 
 export interface Signal {
@@ -169,10 +191,12 @@ export interface DigestSection {
 }
 
 export interface DigestContent {
-  temperature: "calme" | "modérée" | "agitée";
+  temperature: "low" | "moderate" | "high";
   tldr: string[];
   sections: DigestSection[];
 }
+
+export type DigestRange = "this_week" | "last_7_days" | "last_30_days";
 
 export interface Digest {
   id: string;
@@ -192,6 +216,13 @@ export interface NotificationSettings {
   alertsEnabled: boolean;
 }
 
+export interface WorkspaceSettings {
+  name: string;
+  slug: string;
+  productUrl: string | null;
+  productProfile: ProductProfile | null;
+}
+
 export interface ProductProfile {
   category: string;
   audience: string;
@@ -203,6 +234,7 @@ export interface OnboardingStatus {
   onboardingCompleted: boolean;
   productUrl: string | null;
   profile: ProductProfile | null;
+  plan: Plan;
 }
 
 export interface DiscoveredCompetitor {
@@ -258,7 +290,39 @@ export interface BillingInfo {
   };
 }
 
+export interface SearchCompetitorHit {
+  id: string;
+  name: string;
+  url: string;
+  category: string | null;
+}
+
+export interface SearchSignalHit {
+  id: string;
+  competitorId: string;
+  competitorName: string;
+  category: string;
+  severity: "low" | "medium" | "high" | "critical";
+  insight: string;
+  createdAt: string;
+}
+
+export interface SearchDigestHit {
+  id: string;
+  weekStart: string;
+  weekEnd: string;
+  temperature: string | null;
+}
+
+export interface SearchResults {
+  competitors: SearchCompetitorHit[];
+  signals: SearchSignalHit[];
+  digests: SearchDigestHit[];
+}
+
 export const api = {
+  search: (q: string) =>
+    request<SearchResults>(`/api/search?q=${encodeURIComponent(q)}`),
   listCompetitors: () => request<{ competitors: Competitor[] }>("/api/competitors"),
   getCompetitor: (id: string) =>
     request<{
@@ -286,8 +350,23 @@ export const api = {
     }),
   deleteCompetitor: (id: string) =>
     request<{ ok: true }>(`/api/competitors/${id}`, { method: "DELETE" }),
+  refreshCompetitorSummary: (id: string) =>
+    request<{ runId: string }>(`/api/competitors/${id}/refresh-summary`, {
+      method: "POST",
+    }),
   runMonitor: (id: string) =>
     request<{ runId: string; monitorId: string }>(`/api/monitors/${id}/run`, { method: "POST" }),
+  addCompetitorMonitor: (
+    id: string,
+    sourceType: SourceType,
+    frequency?: MonitorFrequency,
+  ) =>
+    request<{ monitor: Monitor; created: boolean }>(`/api/competitors/${id}/monitors`, {
+      method: "POST",
+      body: JSON.stringify({ sourceType, frequency }),
+    }),
+  classifyChange: (id: string) =>
+    request<{ runId: string }>(`/api/changes/${id}/classify`, { method: "POST" }),
   listChanges: (params?: { limit?: number; competitorId?: string }) => {
     const q = new URLSearchParams();
     if (params?.limit) q.set("limit", String(params.limit));
@@ -313,10 +392,26 @@ export const api = {
     request<{ ok: true }>(`/api/signals/${id}/read`, { method: "PATCH" }),
   listDigests: () => request<{ digests: Digest[] }>("/api/digests"),
   getDigest: (id: string) => request<{ digest: Digest }>(`/api/digests/${id}`),
+  generateDigest: (range: DigestRange = "this_week") =>
+    request<{ digest: Digest | null; reason?: string }>("/api/digests/generate", {
+      method: "POST",
+      body: JSON.stringify({ range }),
+    }),
   getNotificationSettings: () =>
     request<NotificationSettings>("/api/settings/notifications"),
   updateNotificationSettings: (body: Partial<NotificationSettings>) =>
     request<{ ok: true }>("/api/settings/notifications", {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  getWorkspaceSettings: () =>
+    request<WorkspaceSettings>("/api/settings/workspace"),
+  updateWorkspaceSettings: (body: {
+    name?: string;
+    productUrl?: string;
+    productProfile?: ProductProfile;
+  }) =>
+    request<{ ok: true }>("/api/settings/workspace", {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
@@ -362,6 +457,17 @@ export const api = {
     request<{ candidates: CompetitorCandidate[] }>(
       `/api/candidates${status ? `?status=${status}` : ""}`,
     ),
+  detectCandidates: () =>
+    request<{ detected: number }>(`/api/candidates/detect`, { method: "POST" }),
+  getDetectionConfig: () =>
+    request<{ config: DetectionConfig; lastRunAt: string | null }>(
+      `/api/candidates/config`,
+    ),
+  updateDetectionConfig: (config: DetectionConfig) =>
+    request<{ config: DetectionConfig }>(`/api/candidates/config`, {
+      method: "PUT",
+      body: JSON.stringify(config),
+    }),
   addCandidate: (id: string) =>
     request<{ competitor: Competitor; monitors: Monitor[] }>(
       `/api/candidates/${id}/add`,

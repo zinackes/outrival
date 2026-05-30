@@ -8,10 +8,16 @@ import {
   organizations,
 } from "@outrival/db";
 import { findSimilarCompanies } from "@outrival/scrapers/discovery";
-import { scoreOverlap } from "@outrival/ai";
+import { scoreOverlap, buildDiscoveryQuery } from "@outrival/ai";
+import {
+  buildDetectionBody,
+  buildDetectionTitle,
+  resolveDetectionConfig,
+} from "@outrival/shared";
 
-const MIN_OVERLAP = 65;
 const CANDIDATES_PER_ORG = 20;
+const WEEKLY_MIN_MS = 6 * 24 * 60 * 60 * 1000;
+const MONTHLY_MIN_MS = 27 * 24 * 60 * 60 * 1000;
 
 function normalizeHostname(url: string): string | null {
   try {
@@ -46,7 +52,23 @@ export const detectNewCompetitorsJob = schedules.task({
     for (const org of orgs) {
       if (!org.productUrl || !org.productProfile) continue;
 
+      const cfg = resolveDetectionConfig(org.detectionConfig);
+      if (!cfg.autoDetect) continue;
+      const minIntervalMs =
+        cfg.cadence === "monthly" ? MONTHLY_MIN_MS : WEEKLY_MIN_MS;
+      if (
+        org.detectionLastRunAt &&
+        Date.now() - org.detectionLastRunAt.getTime() < minIntervalMs
+      ) {
+        continue;
+      }
+
       try {
+        await db
+          .update(organizations)
+          .set({ detectionLastRunAt: new Date() })
+          .where(eq(organizations.id, org.id));
+
         const existing = await db.query.competitors.findMany({
           where: and(eq(competitors.orgId, org.id), isNull(competitors.deletedAt)),
         });
@@ -65,14 +87,21 @@ export const detectNewCompetitorsJob = schedules.task({
           const h = normalizeHostname(c.url);
           if (h) seenHosts.add(h);
         }
+        const excludedHosts = new Set(cfg.excludedDomains);
 
-        const discovered = await findSimilarCompanies(org.productUrl, CANDIDATES_PER_ORG);
+        const discovered = await findSimilarCompanies(
+          org.productUrl,
+          buildDiscoveryQuery(org.productProfile, cfg.keywords),
+          CANDIDATES_PER_ORG,
+          cfg.excludedDomains,
+        );
         const fresh = discovered.filter((d) => {
           if (seenUrls.has(d.url)) return false;
           const host = normalizeHostname(d.url);
           if (!host) return false;
           if (existingHosts.has(host)) return false;
           if (seenHosts.has(host)) return false;
+          if (excludedHosts.has(host)) return false;
           return true;
         });
 
@@ -84,10 +113,11 @@ export const detectNewCompetitorsJob = schedules.task({
         const scored = await scoreOverlap(org.productProfile, fresh);
         const scoredByUrl = new Map(scored.map((s) => [s.url, s]));
 
+        const detectedTitles: string[] = [];
         for (const d of fresh) {
           const scoring = scoredByUrl.get(d.url);
           if (!scoring) continue;
-          if (scoring.overlapScore <= MIN_OVERLAP) continue;
+          if (scoring.overlapScore <= cfg.minOverlap) continue;
 
           await db.insert(competitorCandidates).values({
             orgId: org.id,
@@ -97,13 +127,16 @@ export const detectNewCompetitorsJob = schedules.task({
             reason: scoring.reason,
             status: "new",
           });
+          detectedTitles.push(d.title);
           totalDetected++;
+        }
 
+        if (detectedTitles.length > 0) {
           await db.insert(notifications).values({
             orgId: org.id,
             type: "new_competitor",
-            title: `Nouveau concurrent détecté : ${d.title}`,
-            body: `Overlap ${Math.round(scoring.overlapScore)}% — ${scoring.reason}`,
+            title: buildDetectionTitle(detectedTitles.length),
+            body: buildDetectionBody(detectedTitles),
             linkUrl: `/dashboard/candidates`,
           });
           totalNotified++;

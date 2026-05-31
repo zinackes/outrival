@@ -25,7 +25,7 @@ export async function detectCandidatesForOrg(orgId: string): Promise<DetectResul
   const org = await db.query.organizations.findFirst({
     where: eq(organizations.id, orgId),
   });
-  if (!org || !org.productUrl || !org.productProfile) {
+  if (!org || !org.productProfile) {
     return { ok: false, error: "missing_profile" };
   }
 

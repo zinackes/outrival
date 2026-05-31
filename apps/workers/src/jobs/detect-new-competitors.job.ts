@@ -38,7 +38,6 @@ export const detectNewCompetitorsJob = schedules.task({
 
     const orgs = await db.query.organizations.findMany({
       where: and(
-        isNotNull(organizations.productUrl),
         isNotNull(organizations.productProfile),
         eq(organizations.onboardingCompleted, true),
       ),
@@ -50,7 +49,7 @@ export const detectNewCompetitorsJob = schedules.task({
     let totalNotified = 0;
 
     for (const org of orgs) {
-      if (!org.productUrl || !org.productProfile) continue;
+      if (!org.productProfile) continue;
 
       const cfg = resolveDetectionConfig(org.detectionConfig);
       if (!cfg.autoDetect) continue;

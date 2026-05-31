@@ -57,3 +57,22 @@ Roadmap produit = database Notion "🎯 Roadmap" (sous le hub "Outrival").
   le référencer dans la note Notion de l'item : `📄 docs/<fichier>.md (existe déjà)`.
 - Avant de créer un item : chercher dans la data source pour éviter un doublon
   (l'énumération par search sémantique n'est pas exhaustive — vérifier le titre).
+
+### Features ad-hoc (hors phase / patch)
+
+Une feature envoyée « comme ça » (sans phase ni patch) doit aussi finir dans le
+board si elle ajoute ou modifie de façon **notable une capacité produit**. Le gate
+n'est PAS la taille du diff ni l'empreinte technique — c'est l'importance produit.
+
+- **Signaux** (augmentent la probabilité, jamais suffisants seuls) : nouvelle
+  entité / table / enum / migration · nouvelle étape de pipeline ou nouveau job ·
+  nouvelle source de monitoring / route API / page user-facing · nouvelle
+  dépendance externe ou env var · touche ≥2 packages de façon non triviale.
+- **Skip** (pas d'item) : fix, petit changement, tweak incrémental — même s'il
+  touche un enum, une colonne ou une route. Un enum/colonne/route isolé ne
+  justifie rien à lui seul.
+- **Flow** : en fin de tâche éligible, je **propose en 1 ligne** la création d'un
+  item, tu valides — pas d'auto-création (le board reste synchro à la main).
+- **Création** : item directement en `Status = Done` (pas de phase de planif),
+  avec le lien `📄 docs/<fichier>.md` s'il y a un doc, après la recherche
+  anti-doublon ci-dessus.

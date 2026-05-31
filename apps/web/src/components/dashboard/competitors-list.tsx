@@ -12,6 +12,7 @@ import {
   Loader2,
   MoreHorizontal,
   Trash2,
+  ExternalLink,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
@@ -53,6 +54,13 @@ type SortDir = "asc" | "desc";
 
 const TH_BASE =
   "text-left px-3.5 py-2.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground font-medium border-b border-border whitespace-nowrap";
+
+function prettyUrl(url: string): string {
+  return url
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/\/+$/, "");
+}
 
 function computeDelta(curr: number, prev: number): {
   delta: number;
@@ -455,9 +463,21 @@ export function CompetitorsList() {
                   </td>
                   <td className="px-3.5 py-3 align-middle">
                     <div className="font-medium">{c.name}</div>
-                    <div className="text-muted-foreground/80 text-[11px] mt-px font-mono">
-                      {c.url}
-                    </div>
+                    <a
+                      href={c.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="group/url inline-flex items-center gap-1 mt-px w-fit max-w-full font-mono text-[11px] text-muted-foreground/80 transition-colors hover:text-foreground"
+                    >
+                      <span className="truncate underline-offset-2 group-hover/url:underline">
+                        {prettyUrl(c.url)}
+                      </span>
+                      <ExternalLink
+                        size={10}
+                        className="shrink-0 opacity-0 transition-opacity group-hover/url:opacity-100"
+                      />
+                    </a>
                   </td>
                   <td className="px-3.5 py-3 align-middle text-muted-foreground">
                     {c.category ?? "—"}
@@ -540,9 +560,21 @@ export function CompetitorsList() {
                   <CompAvatar name={c.name} />
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold text-[15px]">{c.name}</div>
-                    <div className="text-muted-foreground/80 text-[11px] font-mono whitespace-nowrap overflow-hidden text-ellipsis">
-                      {c.url}
-                    </div>
+                    <a
+                      href={c.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="group/url inline-flex max-w-full items-center gap-1 font-mono text-[11px] text-muted-foreground/80 transition-colors hover:text-foreground"
+                    >
+                      <span className="truncate underline-offset-2 group-hover/url:underline">
+                        {prettyUrl(c.url)}
+                      </span>
+                      <ExternalLink
+                        size={10}
+                        className="shrink-0 opacity-0 transition-opacity group-hover/url:opacity-100"
+                      />
+                    </a>
                   </div>
                 </div>
                 {c.category && (

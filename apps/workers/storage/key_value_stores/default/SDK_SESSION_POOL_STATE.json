@@ -3,7 +3,7 @@
   "retiredSessionsCount": 1,
   "sessions": [
     {
-      "id": "session_iMAu3OrZeV",
+      "id": "session_0omummgK1A",
       "cookieJar": {
         "version": "tough-cookie@6.0.1",
         "storeType": "MemoryCookieStore",
@@ -16,14 +16,14 @@
       "userData": {},
       "maxErrorScore": 3,
       "errorScoreDecrement": 0.5,
-      "expiresAt": "2026-05-31T12:57:47.155Z",
-      "createdAt": "2026-05-31T12:07:47.155Z",
+      "expiresAt": "2026-05-31T13:57:51.739Z",
+      "createdAt": "2026-05-31T13:07:51.738Z",
       "usageCount": 0,
       "maxUsageCount": 50,
       "errorScore": 0
     },
     {
-      "id": "session_is4aqhJTey",
+      "id": "session_9f3wg6f06W",
       "cookieJar": {
         "version": "tough-cookie@6.0.1",
         "storeType": "MemoryCookieStore",
@@ -34,37 +34,37 @@
         "cookies": [
           {
             "key": "_ga_X4N3W6Q3XB",
-            "value": "GS2.1.s1780229268$o1$g1$t1780229366$j60$l0$h0",
-            "expires": "2027-07-05T12:09:26.900Z",
+            "value": "GS2.1.s1780232873$o1$g1$t1780232964$j60$l0$h0",
+            "expires": "2027-07-05T13:09:24.906Z",
             "domain": "scrapebeast.com",
             "path": "/",
             "hostOnly": false,
-            "creation": "2026-05-31T12:07:48.486Z",
-            "lastAccessed": "2026-05-31T12:09:26.923Z"
+            "creation": "2026-05-31T13:07:53.689Z",
+            "lastAccessed": "2026-05-31T13:09:24.947Z"
           },
           {
             "key": "_ga",
-            "value": "GA1.1.1652415764.1780229268",
-            "expires": "2027-07-05T12:09:26.900Z",
+            "value": "GA1.1.1586244243.1780232874",
+            "expires": "2027-07-05T13:09:24.906Z",
             "domain": "scrapebeast.com",
             "path": "/",
             "hostOnly": false,
-            "creation": "2026-05-31T12:07:48.493Z",
-            "lastAccessed": "2026-05-31T12:09:26.923Z"
+            "creation": "2026-05-31T13:07:53.694Z",
+            "lastAccessed": "2026-05-31T13:09:24.947Z"
           }
         ]
       },
       "userData": {},
       "maxErrorScore": 3,
       "errorScoreDecrement": 0.5,
-      "expiresAt": "2026-05-31T12:57:47.159Z",
-      "createdAt": "2026-05-31T12:07:47.159Z",
+      "expiresAt": "2026-05-31T13:57:51.746Z",
+      "createdAt": "2026-05-31T13:07:51.746Z",
       "usageCount": 4,
       "maxUsageCount": 50,
       "errorScore": 6
     },
     {
-      "id": "session_iGQMBWN9EH",
+      "id": "session_rby5FT8IKa",
       "cookieJar": {
         "version": "tough-cookie@6.0.1",
         "storeType": "MemoryCookieStore",
@@ -77,14 +77,14 @@
       "userData": {},
       "maxErrorScore": 3,
       "errorScoreDecrement": 0.5,
-      "expiresAt": "2026-05-31T12:58:33.566Z",
-      "createdAt": "2026-05-31T12:08:33.566Z",
+      "expiresAt": "2026-05-31T13:58:38.843Z",
+      "createdAt": "2026-05-31T13:08:38.843Z",
       "usageCount": 0,
       "maxUsageCount": 50,
       "errorScore": 0
     },
     {
-      "id": "session_ysW8sACZW5",
+      "id": "session_HJJeXq1Kg1",
       "cookieJar": {
         "version": "tough-cookie@6.0.1",
         "storeType": "MemoryCookieStore",
@@ -97,14 +97,14 @@
       "userData": {},
       "maxErrorScore": 3,
       "errorScoreDecrement": 0.5,
-      "expiresAt": "2026-05-31T12:59:18.934Z",
-      "createdAt": "2026-05-31T12:09:18.934Z",
+      "expiresAt": "2026-05-31T13:59:24.577Z",
+      "createdAt": "2026-05-31T13:09:24.577Z",
       "usageCount": 0,
       "maxUsageCount": 50,
       "errorScore": 0
     },
     {
-      "id": "session_d3wAgxajas",
+      "id": "session_lLcGkauQ5P",
       "cookieJar": {
         "version": "tough-cookie@6.0.1",
         "storeType": "MemoryCookieStore",
@@ -117,14 +117,14 @@
       "userData": {},
       "maxErrorScore": 3,
       "errorScoreDecrement": 0.5,
-      "expiresAt": "2026-05-31T13:00:11.952Z",
-      "createdAt": "2026-05-31T12:10:11.952Z",
+      "expiresAt": "2026-05-31T14:00:10.313Z",
+      "createdAt": "2026-05-31T13:10:10.313Z",
       "usageCount": 0,
       "maxUsageCount": 50,
       "errorScore": 0
     },
     {
-      "id": "session_6J6AUxutyc",
+      "id": "session_2o32hJSb9n",
       "cookieJar": {
         "version": "tough-cookie@6.0.1",
         "storeType": "MemoryCookieStore",
@@ -135,31 +135,31 @@
         "cookies": [
           {
             "key": "_ga_X4N3W6Q3XB",
-            "value": "GS2.1.s1780229413$o1$g0$t1780229413$j60$l0$h0",
-            "expires": "2027-07-05T12:10:13.049Z",
+            "value": "GS2.1.s1780233012$o1$g0$t1780233012$j60$l0$h0",
+            "expires": "2027-07-05T13:10:12.919Z",
             "domain": "scrapebeast.com",
             "path": "/",
             "hostOnly": false,
-            "creation": "2026-05-31T12:10:13.073Z",
-            "lastAccessed": "2026-05-31T12:10:13.073Z"
+            "creation": "2026-05-31T13:10:12.982Z",
+            "lastAccessed": "2026-05-31T13:10:12.982Z"
           },
           {
             "key": "_ga",
-            "value": "GA1.1.984083504.1780229413",
-            "expires": "2027-07-05T12:10:13.050Z",
+            "value": "GA1.1.281801776.1780233013",
+            "expires": "2027-07-05T13:10:12.920Z",
             "domain": "scrapebeast.com",
             "path": "/",
             "hostOnly": false,
-            "creation": "2026-05-31T12:10:13.073Z",
-            "lastAccessed": "2026-05-31T12:10:13.073Z"
+            "creation": "2026-05-31T13:10:12.983Z",
+            "lastAccessed": "2026-05-31T13:10:12.983Z"
           }
         ]
       },
       "userData": {},
       "maxErrorScore": 3,
       "errorScoreDecrement": 0.5,
-      "expiresAt": "2026-05-31T13:00:11.953Z",
-      "createdAt": "2026-05-31T12:10:11.953Z",
+      "expiresAt": "2026-05-31T14:00:10.328Z",
+      "createdAt": "2026-05-31T13:10:10.328Z",
       "usageCount": 1,
       "maxUsageCount": 50,
       "errorScore": 1

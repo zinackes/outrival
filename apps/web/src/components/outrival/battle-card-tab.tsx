@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Download, Loader2, RefreshCw, Save, Sparkles, X } from "lucide-react";
+import { Download, HelpCircle, Loader2, RefreshCw, Save, Sparkles, X } from "lucide-react";
 import { api, type BattleCard, type BattleCardContent } from "@/lib/api";
 import { track } from "@/lib/posthog/events";
 import {
@@ -315,9 +315,23 @@ function ObjectionsSection({
 }) {
   return (
     <Card className="p-3">
-      <p className="text-xs uppercase tracking-wide mb-2 text-primary">
-        Common objections
-      </p>
+      <div className="flex items-center gap-1.5 mb-2">
+        <p className="text-xs uppercase tracking-wide text-primary">
+          Common objections
+        </p>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <HelpCircle
+              size={13}
+              className="text-muted-foreground cursor-help"
+            />
+          </TooltipTrigger>
+          <TooltipContent className="max-w-xs">
+            Objections a prospect might raise to pick this competitor over you —
+            each paired with a sales response to counter it.
+          </TooltipContent>
+        </Tooltip>
+      </div>
       {editing ? (
         <div className="flex flex-col gap-2">
           {items.map((o, i) => (

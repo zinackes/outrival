@@ -42,11 +42,35 @@ async function throwApiError(res: Response): Promise<never> {
   throw new ApiError(res.status, body, `API ${res.status}: ${text || res.statusText}`);
 }
 
+// Browser-side ceiling. Sits above the API's ClickHouse bound (~10s) so a slow
+// endpoint resolves server-side (gracefully empty) before the browser aborts —
+// this only fires when the API itself is unreachable, turning the opaque
+// "TypeError: Failed to fetch" into a clear, actionable error.
+const REQUEST_TIMEOUT_MS = 20_000;
+
+// Wraps fetch so a timeout or network drop surfaces as a typed ApiError instead
+// of a bare TypeError that callers stringify into "TypeError: Failed to fetch".
+async function safeFetch(url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (e) {
+    const timedOut = e instanceof DOMException && e.name === "TimeoutError";
+    throw new ApiError(
+      0,
+      { error: timedOut ? "timeout" : "network_error" },
+      timedOut
+        ? "Request timed out — the server took too long to respond. Try again."
+        : "Network error — could not reach the API. Check your connection and retry.",
+    );
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await safeFetch(`${BASE}${path}`, {
     credentials: "include",
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
     cache: "no-store",
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     ...init,
   });
   if (!res.ok) await throwApiError(res);
@@ -55,10 +79,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 // Multipart POST — never set Content-Type, the browser adds the boundary.
 async function postForm<T>(path: string, form: FormData): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await safeFetch(`${BASE}${path}`, {
     method: "POST",
     credentials: "include",
     cache: "no-store",
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     body: form,
   });
   if (!res.ok) await throwApiError(res);

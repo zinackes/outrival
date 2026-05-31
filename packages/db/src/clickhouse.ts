@@ -12,6 +12,10 @@ export function getClickhouse(): ClickHouseClient {
       url,
       password: process.env.CLICKHOUSE_PASSWORD,
       database: process.env.CLICKHOUSE_DATABASE ?? "default",
+      // ClickHouse Cloud idles to zero — a cold query can hang ~30s. Bound it so
+      // a slow wake-up surfaces as a thrown error (caught → [] by chQuery)
+      // instead of an indefinite hang on the request handler.
+      request_timeout: 8000,
     });
   }
   return client;

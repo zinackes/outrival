@@ -16,6 +16,24 @@ function getClient(): ClickHouseClient | null {
   return client;
 }
 
+// Lightweight query to keep the ClickHouse Cloud service from idling to zero,
+// which is what makes the first read after inactivity hang ~30s. Best-effort:
+// never throws, so the keep-warm schedule never retries.
+export async function pingClickhouse(): Promise<boolean> {
+  const ch = getClient();
+  if (!ch) {
+    logger.warn("ClickHouse not configured, skipping keep-warm ping");
+    return false;
+  }
+  try {
+    await ch.query({ query: "SELECT 1", format: "JSONEachRow" });
+    return true;
+  } catch (err) {
+    logger.error("ClickHouse keep-warm ping failed", { err: String(err) });
+    return false;
+  }
+}
+
 async function insertBestEffort(table: string, values: unknown[]): Promise<void> {
   const ch = getClient();
   if (!ch) {

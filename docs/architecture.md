@@ -163,7 +163,10 @@ signal_feed         org_id, competitor_id, category, severity, recorded_at
 **Pattern d'accès** :
 - Client partagé via `packages/db/src/clickhouse.ts` (proxy lazy `ch`)
 - Inserts depuis workers via `apps/workers/src/lib/clickhouse.ts` (best-effort + logger)
-- Queries depuis API via `apps/api/src/lib/clickhouse-safe.ts` (catch + return `[]` si CH down)
+- Queries depuis API via `apps/api/src/lib/clickhouse-safe.ts` (return `[]` si CH down,
+  bordé par `request_timeout` 8s + race 10s → jamais de hang sur le handler si CH lent/froid)
+- Service maintenu chaud par le cron `keep-clickhouse-warm` (SELECT 1 toutes les 5 min)
+  pour éviter le cold-start ~30s du free tier qui faisait ramer les tabs pricing/hiring/reviews
 - Tables créées via `pnpm --filter @outrival/db ch:setup` (one-shot post-provisioning)
 
 ## Structure R2
@@ -259,6 +262,10 @@ Côté web, l'état vide d'un onglet (Hiring, Reviews…) sans monitor affiche u
   └─ gather context (productProfile, aiSummary, top reviews, recent signals)
   └─ Groq battle card 6 sections → upsert content
   └─ Playwright headless → page.pdf({format:"A4"}) → R2
+
+[cron */5 min] keep-clickhouse-warm
+  └─ SELECT 1 best-effort → empêche le cold-start du free tier CH
+     (sinon 1ère lecture pricing/hiring/reviews ~30s)
 ```
 
 ## Temps-réel : SSE DB-backed

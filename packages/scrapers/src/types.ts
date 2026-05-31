@@ -4,6 +4,9 @@ export interface ScraperResult {
   screenshotBuffer: Buffer;
   metadata: Record<string, unknown>;
   statusCode?: number;
+  /** HTTP validators captured from the response, for conditional fetch. */
+  etag?: string;
+  lastModified?: string;
 }
 
 export interface ScrapeOptions {

@@ -14,6 +14,10 @@
     "./quick-fetch": {
       "types": "./src/lib/quick-fetch.ts",
       "default": "./src/lib/quick-fetch.ts"
+    },
+    "./conditional-fetch": {
+      "types": "./src/lib/conditional-fetch.ts",
+      "default": "./src/lib/conditional-fetch.ts"
     }
   },
   "scripts": {

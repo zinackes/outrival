@@ -14,6 +14,7 @@ import {
   computeTextDiff,
   uploadToR2,
   getFromR2,
+  supportsConditionalFetch,
 } from "@outrival/shared";
 
 const InputSchema = z.object({
@@ -71,6 +72,51 @@ export const scrapeMonitorJob = task({
         : null;
     const scrapeUrl = configUrl ?? competitor.url;
 
+    const lastSnapshot = await db.query.snapshots.findFirst({
+      where: eq(snapshots.monitorId, monitor.id),
+      orderBy: desc(snapshots.scrapedAt),
+    });
+
+    // Conditional pre-flight: for server-rendered sources, a cheap GET with the
+    // stored validators returns 304 when nothing changed — skip the full scrape
+    // (and never load crawlee/Chromium). Only trusted when the last snapshot
+    // pinned the resolved URL, so the pre-flight checks the exact resource.
+    if (
+      !input.force &&
+      supportsConditionalFetch(monitor.sourceType) &&
+      lastSnapshot?.resolvedUrl &&
+      (lastSnapshot.etag || lastSnapshot.lastModified)
+    ) {
+      const { conditionalFetch } = await import("@outrival/scrapers/conditional-fetch");
+      const cond = await conditionalFetch(
+        lastSnapshot.resolvedUrl,
+        lastSnapshot.etag,
+        lastSnapshot.lastModified,
+      );
+      if (cond.notModified) {
+        logger.log("Conditional 304, skipping scrape", {
+          monitorId: monitor.id,
+          url: lastSnapshot.resolvedUrl,
+        });
+        const nextRunAt = computeNextRun(
+          monitor.frequency,
+          monitor.lastChangedAt,
+          monitor.createdAt,
+        );
+        await db
+          .update(monitors)
+          .set({
+            lastRunAt: new Date(),
+            nextRunAt,
+            scrapeStartedAt: null,
+            lastFailedAt: null,
+            lastError: null,
+          })
+          .where(eq(monitors.id, monitor.id));
+        return { changed: false, reason: "not_modified" };
+      }
+    }
+
     // Lazy-import to avoid loading crawlee/playwright at module parse time
     // (trigger.dev warns on >1 s import — crawlee is the culprit).
     const { getScraper } = await import("@outrival/scrapers");
@@ -86,11 +132,6 @@ export const scrapeMonitorJob = task({
         .set({ requiresProxy: true })
         .where(eq(monitors.id, monitor.id));
     }
-
-    const lastSnapshot = await db.query.snapshots.findFirst({
-      where: eq(snapshots.monitorId, monitor.id),
-      orderBy: desc(snapshots.scrapedAt),
-    });
 
     if (lastSnapshot && lastSnapshot.contentHash === newHash) {
       logger.log("Hash identical, no change", { lastSnapshotId: lastSnapshot.id });
@@ -122,6 +163,9 @@ export const scrapeMonitorJob = task({
       await uploadToR2(`${r2Key}.png`, result.screenshotBuffer, "image/png");
     }
 
+    const resolvedUrl =
+      typeof result.metadata.url === "string" ? result.metadata.url : scrapeUrl;
+
     const [newSnapshot] = await db
       .insert(snapshots)
       .values({
@@ -130,6 +174,9 @@ export const scrapeMonitorJob = task({
         contentHash: newHash,
         status: "success",
         scrapedAt: new Date(),
+        etag: result.etag ?? null,
+        lastModified: result.lastModified ?? null,
+        resolvedUrl,
       })
       .returning();
 

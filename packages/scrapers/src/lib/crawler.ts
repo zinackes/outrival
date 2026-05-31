@@ -60,12 +60,15 @@ async function runCrawler(url: string, opts: RunCrawlerOptions): Promise<Scraper
         type: "png",
       });
 
+      const respHeaders = response?.headers();
       result = {
         html,
         text,
         screenshotBuffer: Buffer.from(screenshotBuffer),
         metadata: { url: request.url, scrapedWith: "playwright" },
         statusCode: response?.status(),
+        etag: respHeaders?.["etag"],
+        lastModified: respHeaders?.["last-modified"],
       };
     },
   });
@@ -129,12 +132,16 @@ export async function scrapeStatic(url: string): Promise<ScrapeOutcome> {
     async requestHandler({ $, request, body, response }) {
       const html = typeof body === "string" ? body : body.toString("utf-8");
       const text = $("body").text().replace(/\s+/g, " ").trim();
+      const etagHeader = response?.headers?.["etag"];
+      const lastModifiedHeader = response?.headers?.["last-modified"];
       result = {
         html,
         text,
         screenshotBuffer: Buffer.alloc(0),
         metadata: { url: request.url, scrapedWith: "cheerio" },
         statusCode: response?.statusCode,
+        etag: typeof etagHeader === "string" ? etagHeader : undefined,
+        lastModified: typeof lastModifiedHeader === "string" ? lastModifiedHeader : undefined,
       };
     },
   });

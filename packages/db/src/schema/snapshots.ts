@@ -12,4 +12,10 @@ export const snapshots = pgTable("snapshots", {
   contentHash: text("content_hash").notNull(),
   status: snapshotStatusEnum("status").notNull().default("success"),
   scrapedAt: timestamp("scraped_at").notNull().defaultNow(),
+  // HTTP validators for conditional fetch (etag / last-modified). resolvedUrl is
+  // the exact URL this snapshot's content came from (scrapers do path discovery),
+  // so the next conditional pre-flight checks the right resource.
+  etag: text("etag"),
+  lastModified: text("last_modified"),
+  resolvedUrl: text("resolved_url"),
 });

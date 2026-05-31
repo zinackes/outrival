@@ -24,6 +24,10 @@ appliqué le 2026-05-27. Reste landing page + polish global via Claude Design
 - [x] patch-04 — Errors, logs & uptime (Sentry + pino + health checks profonds)
 - [x] patch-03 — PostHog analytics + session replay (terminé 2026-05-27)
 - [x] patch-05 — Widget feedback (terminé 2026-05-27)
+- [~] patch-07 — Perf scraping (PARTIEL, 2026-05-31) : gzip R2 + conditional fetch
+      (blog/changelog) faits. Étapes 2/4/5 (browser pool, undici, domain throttle)
+      SKIP — no-op sur runtime Trigger.dev à machine isolée/run. Détails + à-revisiter
+      dans findings.md § "Patch 07".
 - [ ] patch-02 — Admin ops (prochain — vue riche feedbacks + ops dashboard)
 
 ## Étapes patch-05 (terminées 2026-05-27)

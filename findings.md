@@ -740,3 +740,56 @@ Tous via `apps/web/src/lib/posthog/events.ts` → `track()` gated par
   désactiver discovery onboarding en cas de problème Exa).
 - Page `/privacy` à créer (lien depuis la bannière de consentement — placeholder
   pour l'instant, à brancher à la politique de confidentialité légale).
+
+## Patch 07 — Perf scraping (appliqué PARTIELLEMENT, 2026-05-31)
+
+Le patch décrivait 5 leviers mais a été écrit pour une archi qui ne matche pas
+la prod. **Runtime réel : Trigger.dev cloud = une machine isolée par run**
+(cf. commentaire `scrape-monitor.job.ts` + reference_trigger-worker-health).
+Toute structure in-memory est donc reconstruite vide à chaque run.
+
+### Appliqué
+
+- **gzip HTML sur R2** (`packages/shared/src/r2/client.ts`) : `uploadToR2(..., { compress: true })`
+  gzip le HTML + `ContentEncoding: gzip` ; `getFromR2` détecte et `gunzip` (anciens
+  snapshots sans ContentEncoding lus tels quels → backward-compat). Seul le HTML
+  est compressé (PNG/PDF jamais). Call site : `scrape-monitor.job.ts` upload `.html`.
+- **Conditional fetch** (etag / last-modified) : pré-flight GET avant scrape sur
+  sources server-rendered. 304 → skip total (pas de download, pas de crawlee/Chromium
+  chargé, pas d'upload R2), reschedule via `computeNextRun`. Helper natif `fetch`
+  dans `packages/scrapers/src/lib/conditional-fetch.ts` exporté en subpath
+  `@outrival/scrapers/conditional-fetch` (n'importe PAS crawlee → un 304 ne lance
+  jamais Chromium). Fail-open : toute erreur → pas de skip. `force=true` bypasse.
+  - Snapshots étendus : `etag`, `last_modified`, `resolved_url` (3 colonnes nullable).
+  - `resolvedUrl` = `result.metadata.url` (l'URL réellement fetchée, request.url) —
+    indispensable car blog/pricing font de la *path-discovery* depuis `competitor.url`,
+    donc l'etag doit porter sur la ressource exacte, pas la homepage.
+  - Validateurs capturés depuis la réponse Playwright (`response.headers()`) ET
+    Cheerio (`response.headers`) dans `crawler.ts`.
+  - Gating `supportsConditionalFetch()` (`packages/shared/src/constants/sources.ts`)
+    = **blog + changelog uniquement**.
+
+### NON fait (à reconsidérer plus tard)
+
+- **Étape 2 — Browser pool** : SKIP. Aucune cible (l'onboarding analyze utilise
+  `quickFetchText` = fetch+ScrapingBee, pas Playwright direct ; Crawlee pool déjà ;
+  seul `chromium.launch` direct = PDF battle-card one-shot). + machine isolée/run
+  → un browser persistant cross-run n'existe pas.
+- **Étape 4 — undici global agent** : SKIP. Pas de keep-alive réutilisable entre
+  runs (machine isolée). Bénéfice théorique seulement côté API long-lived (Hono),
+  mais les SDK (Stripe/Exa/Resend) poolent déjà. → conditional fetch fait en
+  `fetch` natif, pas de dep `undici` ajoutée (étape 0 annulée).
+- **Étape 5 — Domain throttle in-memory** : SKIP. La Map serait vide à chaque run.
+  Le throttle réel existe déjà : `scrapeMonitorQueue.concurrencyLimit: 5` +
+  concurrencyKey Trigger.dev. Migrer vers Redis si throttle cross-run requis.
+- **`jobs` exclu du conditional fetch** : les pages ATS sont souvent des SPA et un
+  faux 304 masquerait la détection de clôture d'offres (`extract-jobs`). Revisiter
+  si les pages carrières s'avèrent envoyer des etags fiables.
+- **Si les workers passent un jour à un process long-lived** → réévaluer 2/4/5.
+
+### Note commit
+
+Le commit gzip (`feat(shared): gzip...`) a absorbé du WIP pré-existant non commité
+sur `scrape-monitor.job.ts` (queue/machine preset, routing appstore, refresh-summary,
+refactor `changedAt`) — le working tree n'était pas clean au démarrage. Code cohérent
+et typecheck OK, mais le message de commit ne reflète pas ce WIP.

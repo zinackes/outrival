@@ -35,6 +35,18 @@ export function friendlyScrapeError(
     return "This URL doesn't look right for this source — double-check it in the monitor settings.";
   }
 
+  // ScrapingBee proxy budget exhausted / unauthorized — NOT the site blocking us.
+  // Distinct message so an out-of-credits proxy isn't mistaken for anti-bot
+  // protection (G2/Capterra always go through the proxy).
+  if (
+    e.includes("limit reached") ||
+    e.includes("scrapingbee fetch failed (401)") ||
+    e.includes("scrapingbee fetch failed (402)") ||
+    e.includes("scrapingbee fetch failed (429)")
+  ) {
+    return "Our scraping proxy ran out of quota, so protected pages (G2, Capterra) can't be fetched right now. This clears when the proxy plan renews.";
+  }
+
   // Anti-bot protection, including through the ScrapingBee proxy fallback.
   if (
     e.includes("scrapingbee") ||

@@ -22,7 +22,12 @@ export async function scrapeViaScrapingBee(
 
   const res = await fetch(endpoint.toString());
   if (!res.ok) {
-    throw new Error(`ScrapingBee fetch failed (${res.status}) for ${url}`);
+    // Preserve ScrapingBee's own message (e.g. "Monthly API calls limit reached")
+    // so an exhausted proxy quota can be told apart from a real anti-bot block.
+    const detail = await res.text().catch(() => "");
+    throw new Error(
+      `ScrapingBee fetch failed (${res.status}) for ${url}: ${detail.slice(0, 200)}`,
+    );
   }
   const html = await res.text();
 

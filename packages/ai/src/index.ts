@@ -22,5 +22,7 @@ export { extractReviews, ReviewsSchema } from "./tasks/extract-reviews";
 export type { ReviewsExtraction } from "./tasks/extract-reviews";
 export { generateCompetitorSummary, SummarySchema } from "./tasks/competitor-summary";
 export type { CompetitorSummary, CompetitorSummaryInput } from "./tasks/competitor-summary";
+export { summarizeSource, SourceSummarySchema } from "./tasks/summarize-source";
+export type { SourceSummary, SourceSummaryInput } from "./tasks/summarize-source";
 export { generateBattleCard, BattleCardSchema } from "./tasks/battle-card";
 export type { BattleCardContent, BattleCardInput } from "./tasks/battle-card";

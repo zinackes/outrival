@@ -11,9 +11,27 @@ function getClient(): ClickHouseClient | null {
       url,
       password: process.env.CLICKHOUSE_PASSWORD,
       database: "outrival",
+      // Bound cold-start reads/inserts (Cloud idles to zero). keep-warm cron
+      // normally prevents the ~30s wake, but never hang a job on a slow service.
+      request_timeout: 10000,
     });
   }
   return client;
+}
+
+async function queryBestEffort<T>(
+  query: string,
+  query_params: Record<string, unknown>,
+): Promise<T[] | null> {
+  const ch = getClient();
+  if (!ch) return null;
+  try {
+    const rs = await ch.query({ query, query_params, format: "JSONEachRow" });
+    return await rs.json<T>();
+  } catch (err) {
+    logger.error("ClickHouse query failed", { err: String(err) });
+    return null;
+  }
 }
 
 // Lightweight query to keep the ClickHouse Cloud service from idling to zero,
@@ -96,4 +114,34 @@ export interface ReviewScoreRow {
 
 export async function insertReviewScore(row: ReviewScoreRow): Promise<void> {
   await insertBestEffort("review_scores", [row]);
+}
+
+// Previous-state reads for the per-source summary. Called BEFORE inserting the
+// fresh batch, so "latest in CH" is the prior scrape. Best-effort: null on miss.
+export async function getPreviousPricing(
+  competitorId: string,
+): Promise<PricingHistoryRow[] | null> {
+  const rows = await queryBestEffort<PricingHistoryRow>(
+    `SELECT plan_name, price, currency, billing_period
+     FROM pricing_history
+     WHERE competitor_id = {cid:String}
+       AND recorded_at = (
+         SELECT max(recorded_at) FROM pricing_history WHERE competitor_id = {cid:String}
+       )`,
+    { cid: competitorId },
+  );
+  return rows && rows.length > 0 ? rows : null;
+}
+
+export async function getPreviousReviewScore(
+  competitorId: string,
+  source: string,
+): Promise<number | null> {
+  const rows = await queryBestEffort<{ score: number }>(
+    `SELECT score FROM review_scores
+     WHERE competitor_id = {cid:String} AND source = {source:String}
+     ORDER BY recorded_at DESC LIMIT 1`,
+    { cid: competitorId, source },
+  );
+  return rows && rows.length > 0 ? (rows[0]?.score ?? null) : null;
 }

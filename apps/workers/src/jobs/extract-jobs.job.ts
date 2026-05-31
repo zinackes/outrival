@@ -1,8 +1,8 @@
 import { task, logger, AbortTaskRunError } from "@trigger.dev/sdk/v3";
 import { z } from "zod";
 import { and, eq, inArray, isNull } from "drizzle-orm";
-import { db, snapshots, jobPostings } from "@outrival/db";
-import { extractJobs } from "@outrival/ai";
+import { db, snapshots, jobPostings, monitors } from "@outrival/db";
+import { extractJobs, summarizeSource } from "@outrival/ai";
 import { getFromR2 } from "@outrival/shared";
 import { htmlToText } from "../lib/html-to-text";
 import { insertJobCounts } from "../lib/clickhouse";
@@ -97,6 +97,31 @@ export const extractJobsJob = task({
         recorded_at: now,
       })),
     );
+
+    // First scrape (no prior active postings) has no diff to classify — give the
+    // hiring tab a readable state. previousTotal=null marks the initial capture.
+    if (extracted.jobs.length > 0 || closedIds.length > 0) {
+      const closedTitles = existing
+        .filter((j) => closedIds.includes(j.id))
+        .map((j) => j.title);
+      const summary = await summarizeSource({
+        kind: "jobs",
+        departments: Array.from(countsByDept.entries()).map(([department, count]) => ({
+          department,
+          count,
+        })),
+        total: extracted.jobs.length,
+        added: inserts.map((j) => j.title),
+        closed: closedTitles,
+        previousTotal: existing.length > 0 ? existing.length : null,
+      });
+      if (summary) {
+        await db
+          .update(monitors)
+          .set({ aiSummary: summary.summary, aiSummaryUpdatedAt: new Date() })
+          .where(eq(monitors.id, snapshot.monitorId));
+      }
+    }
 
     logger.log("Completed extract-jobs", {
       competitorId: input.competitorId,

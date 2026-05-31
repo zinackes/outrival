@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { and, eq, isNull } from "drizzle-orm";
-import { monitors, competitors } from "@outrival/db";
+import { and, eq, inArray, isNull } from "drizzle-orm";
+import { monitors, competitors, changes, signals, alerts } from "@outrival/db";
 import { tasks } from "@trigger.dev/sdk/v3";
 import {
   MONITOR_FREQUENCIES,
@@ -77,6 +77,50 @@ monitorsRouter.patch("/:id", async (c) => {
     .where(eq(monitors.id, id))
     .returning();
   return c.json({ monitor: updated ?? monitor });
+});
+
+monitorsRouter.delete("/:id", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const monitor = await db.query.monitors.findFirst({ where: eq(monitors.id, id) });
+  if (!monitor) return c.json({ error: "Monitor not found" }, 404);
+
+  const competitor = await db.query.competitors.findFirst({
+    where: and(
+      eq(competitors.id, monitor.competitorId),
+      eq(competitors.orgId, orgId),
+      isNull(competitors.deletedAt),
+    ),
+  });
+  if (!competitor) return c.json({ error: "Forbidden" }, 403);
+
+  // Hard delete. None of monitor ← changes ← signals ← alerts cascades, and
+  // changes pin snapshots, so tear dependents down in order: alerts → signals →
+  // changes → monitor (snapshots cascade once the monitor is gone).
+  await db.transaction(async (tx) => {
+    const monitorChanges = await tx
+      .select({ id: changes.id })
+      .from(changes)
+      .where(eq(changes.monitorId, id));
+    const changeIds = monitorChanges.map((ch) => ch.id);
+    if (changeIds.length > 0) {
+      const changeSignals = await tx
+        .select({ id: signals.id })
+        .from(signals)
+        .where(inArray(signals.changeId, changeIds));
+      const signalIds = changeSignals.map((s) => s.id);
+      if (signalIds.length > 0) {
+        await tx.delete(alerts).where(inArray(alerts.signalId, signalIds));
+        await tx.delete(signals).where(inArray(signals.changeId, changeIds));
+      }
+      await tx.delete(changes).where(eq(changes.monitorId, id));
+    }
+    await tx.delete(monitors).where(eq(monitors.id, id));
+  });
+
+  return c.json({ ok: true });
 });
 
 monitorsRouter.post("/:id/run", async (c) => {

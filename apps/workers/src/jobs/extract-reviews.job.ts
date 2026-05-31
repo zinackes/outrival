@@ -1,11 +1,11 @@
 import { task, logger, AbortTaskRunError } from "@trigger.dev/sdk/v3";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
-import { db, snapshots, reviews } from "@outrival/db";
-import { extractReviews } from "@outrival/ai";
+import { db, snapshots, reviews, monitors } from "@outrival/db";
+import { extractReviews, summarizeSource } from "@outrival/ai";
 import { getFromR2, parseAppStoreSnapshot } from "@outrival/shared";
 import { htmlToText } from "../lib/html-to-text";
-import { insertReviewScore } from "../lib/clickhouse";
+import { insertReviewScore, getPreviousReviewScore } from "../lib/clickhouse";
 
 const SourceEnum = z.enum(["g2", "capterra", "appstore", "playstore"]);
 
@@ -107,6 +107,9 @@ export const extractReviewsJob = task({
       await db.insert(reviews).values(verbatims);
     }
 
+    // Prior score before inserting the fresh one → summary can note the trend.
+    const previousScore = await getPreviousReviewScore(input.competitorId, input.source);
+
     await insertReviewScore({
       competitor_id: input.competitorId,
       source: input.source,
@@ -115,6 +118,23 @@ export const extractReviewsJob = task({
       sentiment_score: extracted.sentiment_score,
       recorded_at: now,
     });
+
+    const summary = await summarizeSource({
+      kind: "reviews",
+      source: input.source,
+      score: extracted.average_score,
+      reviewCount: extracted.review_count,
+      sentiment: extracted.sentiment_score,
+      praises: extracted.top_praises,
+      complaints: extracted.top_complaints,
+      previousScore,
+    });
+    if (summary) {
+      await db
+        .update(monitors)
+        .set({ aiSummary: summary.summary, aiSummaryUpdatedAt: new Date() })
+        .where(eq(monitors.id, snapshot.monitorId));
+    }
 
     logger.log("Completed extract-reviews", {
       competitorId: input.competitorId,

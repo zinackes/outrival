@@ -23,5 +23,7 @@ export const monitors = pgTable("monitors", {
   scrapeStartedAt: timestamp("scrape_started_at"),
   lastFailedAt: timestamp("last_failed_at"),
   lastError: text("last_error"),
+  aiSummary: text("ai_summary"),
+  aiSummaryUpdatedAt: timestamp("ai_summary_updated_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

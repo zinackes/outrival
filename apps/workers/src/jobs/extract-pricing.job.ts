@@ -1,11 +1,11 @@
 import { task, logger, AbortTaskRunError } from "@trigger.dev/sdk/v3";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
-import { db, snapshots } from "@outrival/db";
-import { extractPricing } from "@outrival/ai";
+import { db, snapshots, monitors } from "@outrival/db";
+import { extractPricing, summarizeSource } from "@outrival/ai";
 import { getFromR2 } from "@outrival/shared";
 import { htmlToText } from "../lib/html-to-text";
-import { insertPricingHistory } from "../lib/clickhouse";
+import { insertPricingHistory, getPreviousPricing } from "../lib/clickhouse";
 
 const InputSchema = z.object({
   snapshotId: z.string(),
@@ -39,6 +39,10 @@ export const extractPricingJob = task({
       return { ok: true, plansInserted: 0 };
     }
 
+    // Read the prior batch before inserting the fresh one, so the summary can
+    // describe what moved (price changes, new/dropped plans) since last scrape.
+    const previous = await getPreviousPricing(input.competitorId);
+
     const recordedAt = new Date();
     await insertPricingHistory(
       extracted.plans.map((p) => ({
@@ -50,6 +54,18 @@ export const extractPricingJob = task({
         recorded_at: recordedAt,
       })),
     );
+
+    const summary = await summarizeSource({
+      kind: "pricing",
+      current: extracted.plans,
+      previous,
+    });
+    if (summary) {
+      await db
+        .update(monitors)
+        .set({ aiSummary: summary.summary, aiSummaryUpdatedAt: new Date() })
+        .where(eq(monitors.id, snapshot.monitorId));
+    }
 
     logger.log("Completed extract-pricing", {
       competitorId: input.competitorId,

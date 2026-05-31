@@ -345,6 +345,26 @@ export default function CompetitorDetailPage({ params }: Props) {
     }
   }
 
+  // Switch a competitor's review source (e.g. G2 → Capterra). Enable the new
+  // source FIRST so a plan/URL rejection surfaces the paywall without losing the
+  // existing monitor; only then delete the old one and kick off the first scrape.
+  async function switchReviewSource(oldMonitorId: string, source: SourceType, url: string) {
+    try {
+      const { monitor } = await api.addCompetitorMonitor(id, source, { url });
+      await api.deleteMonitor(oldMonitorId);
+      const fresh = await refresh();
+      toast.success(`Switched to ${source}`, { description: "Starting first scrape…" });
+      await runMonitor(monitor.id, fresh?.monitors);
+    } catch (e) {
+      const reason = paywallFromError(e);
+      if (reason) {
+        setPaywall(reason);
+        return;
+      }
+      toast.error("Failed to switch review source", { description: String(e) });
+    }
+  }
+
   async function runMonitor(monitorId: string, list?: Monitor[]) {
     const available = list ?? data?.monitors;
     if (!available) return;
@@ -468,6 +488,8 @@ export default function CompetitorDetailPage({ params }: Props) {
                 scrapingIds={scrapingIds}
                 onRun={runMonitor}
                 onEnable={enableMonitor}
+                onEdit={editMonitor}
+                onSwitch={switchReviewSource}
                 refreshTick={refreshTick}
               />
             </TabsContent>
@@ -681,7 +703,7 @@ function MonitorSources({
                   </TooltipTrigger>
                   <TooltipContent
                     side="top"
-                    className="max-w-[280px] text-[11px] leading-relaxed break-words"
+                    className="max-w-[280px] text-[11px] leading-relaxed text-pretty break-words"
                   >
                     {friendlyScrapeError(m.lastError, m.sourceType)}
                   </TooltipContent>
@@ -917,7 +939,7 @@ function KpiCell({
                 <Info size={11} />
               </button>
             </TooltipTrigger>
-            <TooltipContent side="top" className="max-w-[240px] text-[11px] leading-relaxed normal-case">
+            <TooltipContent side="top" className="max-w-[240px] text-[11px] leading-relaxed text-pretty normal-case">
               {tooltip}
             </TooltipContent>
           </Tooltip>
@@ -1011,6 +1033,32 @@ function AiSummary({
       {competitor.aiSummaryUpdatedAt && (
         <p className="text-[11px] font-mono text-muted-foreground/80 mt-2">
           updated {formatDistanceToNow(new Date(competitor.aiSummaryUpdatedAt), { addSuffix: true })}
+        </p>
+      )}
+    </Card>
+  );
+}
+
+// Per-source AI summary block, shown at the top of the structured tabs
+// (pricing/hiring/reviews). Populated by the extract-* jobs on every scrape, so
+// the user sees what was captured — and what moved — even on the first scrape.
+function SourceSummary({
+  summary,
+  updatedAt,
+}: {
+  summary: string | null | undefined;
+  updatedAt: string | null | undefined;
+}) {
+  if (!summary) return null;
+  return (
+    <Card className="px-4 py-3">
+      <div className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase flex items-center gap-1.5 mb-1.5">
+        <Sparkles size={11} /> What we found
+      </div>
+      <p className="text-[13px] leading-relaxed">{summary}</p>
+      {updatedAt && (
+        <p className="text-[11px] font-mono text-muted-foreground/80 mt-2">
+          updated {formatDistanceToNow(new Date(updatedAt), { addSuffix: true })}
         </p>
       )}
     </Card>
@@ -1425,8 +1473,14 @@ function PricingTab({
   for (const p of sorted) latestByPlan.set(p.plan_name, p);
   for (const p of sorted) if (!firstByPlan.has(p.plan_name)) firstByPlan.set(p.plan_name, p);
 
+  const pricingMonitor = monitors.find((m) => m.sourceType === "pricing");
+
   return (
     <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-1 duration-300">
+      <SourceSummary
+        summary={pricingMonitor?.aiSummary}
+        updatedAt={pricingMonitor?.aiSummaryUpdatedAt}
+      />
       <Card className="p-4">
         <ResponsiveContainer width="100%" height={260}>
           <LineChart data={series.points}>
@@ -1536,9 +1590,14 @@ function HiringTab({
   }
 
   const trendByDept = buildJobTrend(trends);
+  const jobsMonitor = monitors.find((m) => m.sourceType === "jobs");
 
   return (
     <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-1 duration-300">
+      <SourceSummary
+        summary={jobsMonitor?.aiSummary}
+        updatedAt={jobsMonitor?.aiSummaryUpdatedAt}
+      />
       <Card className="px-3 py-3">
         <table className="w-full text-[13px]">
           <thead>
@@ -1724,11 +1783,19 @@ function ReviewsTab({
   scrapingIds,
   onRun,
   onEnable,
+  onEdit,
+  onSwitch,
   refreshTick,
-}: { competitorId: string; refreshTick?: number } & MonitorSourceProps) {
+}: {
+  competitorId: string;
+  refreshTick?: number;
+  onEdit: (id: string, patch: { url?: string; frequency?: MonitorFrequency }) => Promise<void>;
+  onSwitch: (oldMonitorId: string, source: SourceType, url: string) => Promise<void>;
+} & MonitorSourceProps) {
   const [reviews, setReviews] = useState<ReviewsData | null>(null);
   const [scores, setScores] = useState<ReviewScorePoint[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [managing, setManaging] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -1748,76 +1815,268 @@ function ReviewsTab({
 
   if (err) return <Empty text={`Error: ${err}`} />;
   if (!reviews || !scores) return <TabLoading />;
-  if (reviews.recent.length === 0 && scores.length === 0) {
-    const reviewMonitor = monitors.find(
-      (m) =>
-        m.sourceType === "g2_reviews" ||
-        m.sourceType === "capterra_reviews" ||
-        m.sourceType === "appstore_reviews",
-    );
-    // No review monitor yet → collect the review-page URL before enabling.
-    if (!reviewMonitor) {
-      return <ReviewEnableState onEnable={onEnable} />;
-    }
-    return (
-      <MonitorEmptyState
-        source={reviewMonitor.sourceType as SourceType}
-        label="reviews"
-        monitors={monitors}
-        scrapingIds={scrapingIds}
-        onRun={onRun}
-        onEnable={onEnable}
-      />
-    );
+
+  const reviewMonitor = monitors.find(
+    (m) =>
+      m.sourceType === "g2_reviews" ||
+      m.sourceType === "capterra_reviews" ||
+      m.sourceType === "appstore_reviews",
+  );
+
+  // No review monitor yet → collect the review-page URL before enabling.
+  if (!reviewMonitor) {
+    return <ReviewEnableState onEnable={onEnable} />;
   }
 
-  const series = buildReviewScoreSeries(scores);
+  const hasData = reviews.recent.length > 0 || scores.length > 0;
+  const series = scores.length > 0 ? buildReviewScoreSeries(scores) : null;
 
   return (
     <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-1 duration-300">
-      {scores.length > 0 && (
-        <Card className="p-4">
-          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-mono mb-2">
-            Score over time
-          </p>
-          <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={series.points}>
-              <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
-              <XAxis dataKey="date" stroke="var(--muted)" fontSize={11} />
-              <YAxis domain={[0, 5]} stroke="var(--muted)" fontSize={11} />
-              <ChartTooltip
-                contentStyle={{
-                  background: "var(--bg)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 6,
-                  fontSize: 12,
-                }}
-              />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              {series.sources.map((src, i) => (
-                <Line
-                  key={src}
-                  type="monotone"
-                  dataKey={src}
-                  stroke={lineColor(i)}
-                  strokeWidth={2}
-                  dot
-                />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
-        </Card>
+      <ReviewSourceToolbar monitor={reviewMonitor} onManage={() => setManaging(true)} />
+
+      <SourceSummary
+        summary={reviewMonitor.aiSummary}
+        updatedAt={reviewMonitor.aiSummaryUpdatedAt}
+      />
+
+      {!hasData ? (
+        <MonitorEmptyState
+          source={reviewMonitor.sourceType as SourceType}
+          label="reviews"
+          monitors={monitors}
+          scrapingIds={scrapingIds}
+          onRun={onRun}
+          onEnable={onEnable}
+        />
+      ) : (
+        <>
+          {series && (
+            <Card className="p-4">
+              <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-mono mb-2">
+                Score over time
+              </p>
+              <ResponsiveContainer width="100%" height={220}>
+                <LineChart data={series.points}>
+                  <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
+                  <XAxis dataKey="date" stroke="var(--muted)" fontSize={11} />
+                  <YAxis domain={[0, 5]} stroke="var(--muted)" fontSize={11} />
+                  <ChartTooltip
+                    contentStyle={{
+                      background: "var(--bg)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 6,
+                      fontSize: 12,
+                    }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  {series.sources.map((src, i) => (
+                    <Line
+                      key={src}
+                      type="monotone"
+                      dataKey={src}
+                      stroke={lineColor(i)}
+                      strokeWidth={2}
+                      dot
+                    />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            </Card>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <ReviewColumn
+              title="What they love"
+              items={reviews.summary.praises}
+              accent="positive"
+            />
+            <ReviewColumn
+              title="What they complain about"
+              items={reviews.summary.complaints}
+              accent="critical"
+            />
+          </div>
+        </>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <ReviewColumn title="What they love" items={reviews.summary.praises} accent="positive" />
-        <ReviewColumn
-          title="What they complain about"
-          items={reviews.summary.complaints}
-          accent="critical"
-        />
-      </div>
+      <ReviewSourceDialog
+        open={managing}
+        monitor={reviewMonitor}
+        onClose={() => setManaging(false)}
+        onEdit={onEdit}
+        onSwitch={onSwitch}
+      />
     </div>
+  );
+}
+
+// Header row above the reviews content: shows the active review source + the
+// pinned page, with one entry point to edit the URL/frequency or switch source.
+function ReviewSourceToolbar({ monitor, onManage }: { monitor: Monitor; onManage: () => void }) {
+  const opt = REVIEW_SOURCE_OPTIONS.find((o) => o.value === monitor.sourceType);
+  const url = monitor.config?.url ?? "";
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
+      <div className="min-w-0">
+        <span className="text-[12px] font-medium text-foreground">
+          {opt?.label ?? monitor.sourceType}
+        </span>
+        {url && (
+          <span className="ml-2 text-[11px] font-mono text-muted-foreground/70 truncate">
+            {url}
+          </span>
+        )}
+      </div>
+      <Button size="sm" variant="outline" onClick={onManage} className="h-7 text-[11px] shrink-0">
+        <Settings2 size={12} /> Manage source
+      </Button>
+    </div>
+  );
+}
+
+// Edit the active review monitor: change the page URL / frequency in place, or
+// switch the review source entirely (G2 ↔ Capterra ↔ App Store). Switching
+// replaces the monitor — handled by onSwitch (delete old + enable new).
+function ReviewSourceDialog({
+  open,
+  monitor,
+  onClose,
+  onEdit,
+  onSwitch,
+}: {
+  open: boolean;
+  monitor: Monitor;
+  onClose: () => void;
+  onEdit: (id: string, patch: { url?: string; frequency?: MonitorFrequency }) => Promise<void>;
+  onSwitch: (oldMonitorId: string, source: SourceType, url: string) => Promise<void>;
+}) {
+  const currentSource = monitor.sourceType as ReviewSourceType;
+  const currentUrl = monitor.config?.url ?? "";
+  const [source, setSource] = useState<ReviewSourceType>(currentSource);
+  const [url, setUrl] = useState(currentUrl);
+  const [frequency, setFrequency] = useState<MonitorFrequency>(
+    monitor.frequency as MonitorFrequency,
+  );
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setSource(monitor.sourceType as ReviewSourceType);
+      setUrl(monitor.config?.url ?? "");
+      setFrequency(monitor.frequency as MonitorFrequency);
+    }
+  }, [open, monitor]);
+
+  const active = REVIEW_SOURCE_OPTIONS.find((o) => o.value === source)!;
+  const trimmed = url.trim();
+  const sourceChanged = source !== currentSource;
+  const urlValid = trimmed.length > 0 && validateReviewUrl(source, trimmed).ok;
+  const urlChanged = trimmed !== currentUrl;
+  const freqChanged = frequency !== monitor.frequency;
+  const canSave = !busy && urlValid && (sourceChanged || urlChanged || freqChanged);
+
+  async function save() {
+    setBusy(true);
+    try {
+      if (sourceChanged) {
+        await onSwitch(monitor.id, source, trimmed);
+      } else {
+        const patch: { url?: string; frequency?: MonitorFrequency } = {};
+        if (urlChanged) patch.url = trimmed;
+        if (freqChanged) patch.frequency = frequency;
+        if (Object.keys(patch).length > 0) await onEdit(monitor.id, patch);
+      }
+      onClose();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Manage review source</DialogTitle>
+          <DialogDescription>
+            Edit the watched page and cadence, or switch to another review site.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+              Source
+            </p>
+            <div className="flex gap-1.5">
+              {REVIEW_SOURCE_OPTIONS.map((o) => (
+                <Button
+                  key={o.value}
+                  type="button"
+                  size="sm"
+                  variant={o.value === source ? "default" : "secondary"}
+                  onClick={() => setSource(o.value)}
+                  className="h-7 text-[11px]"
+                >
+                  {o.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+              Frequency
+            </p>
+            <div className="flex gap-1.5">
+              {MONITOR_FREQUENCIES.map((f) => (
+                <Button
+                  key={f}
+                  type="button"
+                  size="sm"
+                  variant={frequency === f ? "default" : "outline"}
+                  onClick={() => setFrequency(f)}
+                  className="h-7 text-[11px] capitalize"
+                  disabled={sourceChanged}
+                >
+                  {f}
+                </Button>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+              Page URL
+            </p>
+            <Input
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder={active.placeholder}
+              inputMode="url"
+              autoComplete="off"
+            />
+            <p className="text-[11px] text-muted-foreground">Must be a {active.host} URL.</p>
+            {trimmed !== "" && !urlValid && (
+              <p className="text-[11px] text-critical/80">
+                This URL isn&apos;t valid for {active.label}.
+              </p>
+            )}
+          </div>
+          {sourceChanged && (
+            <p className="text-[11px] text-critical/80">
+              Switching source replaces the current monitor and its captured history.
+            </p>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button size="sm" onClick={save} disabled={!canSave}>
+            {busy && <Loader2 size={12} className="animate-spin" />}
+            {sourceChanged ? "Switch source" : "Save"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

@@ -194,6 +194,8 @@ export interface Monitor {
   scrapeStartedAt: string | null;
   lastFailedAt: string | null;
   lastError: string | null;
+  aiSummary: string | null;
+  aiSummaryUpdatedAt: string | null;
 }
 
 export interface ChangeRow {
@@ -417,6 +419,8 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(patch),
     }),
+  deleteMonitor: (id: string) =>
+    request<{ ok: true }>(`/api/monitors/${id}`, { method: "DELETE" }),
   addCompetitorMonitor: (
     id: string,
     sourceType: SourceType,

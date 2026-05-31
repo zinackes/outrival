@@ -793,3 +793,97 @@ Le commit gzip (`feat(shared): gzip...`) a absorbé du WIP pré-existant non com
 sur `scrape-monitor.job.ts` (queue/machine preset, routing appstore, refresh-summary,
 refactor `changedAt`) — le working tree n'était pas clean au démarrage. Code cohérent
 et typecheck OK, mais le message de commit ne reflète pas ce WIP.
+
+---
+
+## Patch-08 — Onboarding par stade de projet (2026-05-31)
+
+Refonte étape 1 onboarding : 4 stades (idée / document / developing / live), tous
+convergent vers le même `ProductProfile`. Implémenté ; commits laissés à l'utilisateur
+(working tree avait 102 fichiers WIP non commités au démarrage — décision : "j'implémente,
+tu commites").
+
+### Adaptateurs ProductProfile (packages/ai/src/profile/)
+- 4 adaptateurs purs : `fromDescription` / `fromDocument` / `fromRepo` / `fromUrl`.
+  Tous → `ProductProfile` (type unique réexporté depuis `tasks/analyze-product`, pas de
+  type concurrent). Pattern Groq `AI_CONFIG.classification` + `safeParseJson`.
+- `fromUrl(text)` = wrapper typé sur `analyzeProduct` — packages/ai NE PEUT PAS importer
+  `@outrival/scrapers` (quickFetchText), donc le fetch reste côté API. Idem unpdf/mammoth
+  (document) et fetch GitHub (repo) : extraction/fetch dans l'API, ai ne voit que du texte
+  ou des artefacts déjà extraits → package pur conservé.
+
+### Routes API (apps/api/src/routes/onboarding.ts)
+- `/analyze` renommé en `/analyze-url` (2 appelants web mis à jour : onboarding-form +
+  workspace-settings-form). Nouvelles : `/analyze-description`, `/analyze-document`
+  (multipart), `/analyze-repo`, `PATCH /progress`, `POST /skip`. `/status` étendu
+  (`projectStage`, `onboardingStep`, `onboardingSkipped`), `/complete` set `onboardingStep="done"`.
+- Échec d'analyse → **422 `{ error, fallback: "description" }`** ; le front propose de
+  basculer en mode description sans recommencer.
+- Helpers découplés de l'auth : `lib/github.ts` (`fetchRepoArtifacts`, Result-typed,
+  404=repo privé) et `lib/extract-document.ts` (`extractDocumentText`). L'authMiddleware
+  ne sert qu'à récupérer `orgId` pour le store.
+
+### Discovery sans URL
+`findSimilarCompanies(productUrl: string | null, ...)` : les modes idée/document/repo
+n'ont pas d'URL produit. Null → on saute l'exclusion hostname/marque ; la query sémantique
+(`buildDiscoveryQuery`) pilote la recherche Exa de toute façon. Route `/discover` :
+`productUrl` désormais `.nullish()`. Callers existants (detect-new-competitors.job) non
+impactés (string assignable à string|null).
+
+### ZÉRO-STOCKAGE mode Document — garanties (vérifiées au niveau code)
+- Le fichier n'est JAMAIS écrit sur disque ni uploadé R2. Audit grep confirmé : aucune
+  call `fs.`/`writeFile`/R2/`putObject` dans le chemin document (route + helper).
+- Extraction 100% en mémoire : `bytes = new Uint8Array(await file.arrayBuffer())` scopé au
+  handler, libéré (GC) au retour. PDF→unpdf `extractText(bytes,{mergePages:true})`,
+  DOCX→mammoth `extractRawText({buffer})`, md/txt→`Buffer.toString("utf-8")`.
+- `bodyLimit({ maxSize: 10MB })` (hono/body-limit) + `Cache-Control: no-store` sur la route.
+- Logs : `hono/logger` ne log pas les bodies ; pino `redact` étendu (`req.body`, `*.file`).
+  Aucun `console`/`logger` du contenu dans le chemin document.
+- Sentry : `beforeSend` dans `apps/api/src/lib/sentry.ts` → si l'URL contient
+  `/onboarding/analyze-document`, `event.request.data = "[REDACTED — document upload]"`.
+- **TODO test runtime (manuel, hors implémentation)** : upload PDF réel → inspecter disque
+  (`find` temp dirs), bucket R2, logs pino, events Sentry → aucune trace ; puis crash
+  volontaire de la route → erreur dans Sentry SANS contenu du fichier.
+
+### URL temporaire (packages/shared/src/url.ts)
+`detectTemporaryUrl(url)` — TEMPORARY_HOSTS (localhost, 127.0.0.1, .vercel.app,
+.netlify.app, .ngrok*, .replit.dev). WARNING non bloquant côté front (mode live), propose
+de basculer en mode "developing".
+
+### Web (apps/web)
+- `onboarding-form.tsx` réécrit en machine 5 écrans (stage → input → profile → discover →
+  monitoring → done). Persistance via `PATCH /progress` à chaque transition ; reprise au
+  step sauvé (discover/monitoring resume → discover + re-run discovery, la liste de
+  concurrents n'étant pas persistée).
+- `page.tsx` : redirect dashboard seulement si `onboardingCompleted && step === "done"`
+  (laisse passer skip + re-onboarding).
+- Skip : `OnboardingBanner` (token couleur `accent`, pas d'amber hardcodé) affichée si
+  `onboardingSkipped && !profile` ; garde dashboard autorise si completed OU skipped.
+- Re-onboarding : section "Stade du projet" dans `WorkspaceSettingsForm` (pas de page
+  dédiée — évite un doublon d'édition du profil). Bouton → `patchOnboardingProgress("stage")`
+  + redirect `/onboarding`. NE supprime PAS les concurrents (`/complete` ne fait qu'insert).
+- `lib/api.ts` : helper `postForm` (multipart sans Content-Type), `analyzeDescription/
+  analyzeDocument/analyzeRepo/analyzeUrl`, `patchOnboardingProgress`, `skipOnboarding`,
+  types `ProjectStage`/`OnboardingStep`.
+- `Github` icon n'existe plus dans lucide-react@1.16 (icônes de marque retirées) → `GitBranch`.
+
+### Indicateur live première session (done screen)
+Best-effort : poll `listCompetitors` toutes les 5s (40 tentatives max), "analysé" =
+`aiSummary != null` (proxy du pipeline scrape→classify→summary). Pas d'endpoint de
+progression dédié — informatif, ne bloque jamais "Aller au dashboard".
+
+### Architecture isolable pour mode public futur (étape 9)
+Logique d'analyse 100% dans des helpers réutilisables sans session : adaptateurs
+`packages/ai/src/profile/*`, `fetchRepoArtifacts`, `extractDocumentText`. Les routes
+analyze-* sont de fines couches auth(orgId)+store. Pour exposer en public plus tard :
+nouvelle route `/api/public/analyze-idea` (réutilise `fromDescription`) + rate-limit
+Upstash par IP + captcha invisible Turnstile. Aucune route publique créée dans ce patch.
+
+### Schéma
+`organizations` + `projectStage` (text), `onboardingStep` (text), `onboardingSkipped`
+(boolean default false). `db:push` direct (additif non destructif), "Changes applied".
+
+### Vérif
+`pnpm typecheck` 7/7 ✓ · `pnpm build` 7/7 ✓ (build = tsc --noEmit partout, pas de next build).
+0 nouvelle erreur TS. Reste : test E2E runtime des 4 modes + vérif zéro-stockage live
+(nécessite services + creds GROQ/EXA/R2/DB + session auth).

@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { db, signals, competitors, organizations, alerts, notifications } from "@outrival/db";
 import { PLAN_LIMITS } from "@outrival/shared";
 import { sendSlackMessage } from "../lib/slack";
+import { sendWebhook } from "../lib/webhook";
 import { getResend, ALERT_FROM } from "../lib/resend";
 
 const InputSchema = z.object({
@@ -46,12 +47,32 @@ export const sendAlertJob = task({
       return { skipped: true, reason: "alerts_disabled" };
     }
 
+    // Idempotency: a retry must not re-send Slack/email or duplicate the in-app
+    // notification. The alerts table records every channel attempt for the
+    // signal, so prior rows tell us what already happened.
+    const priorAlerts = await db.query.alerts.findMany({
+      where: eq(alerts.signalId, signal.id),
+    });
+    const sentChannels = new Set(
+      priorAlerts.filter((a) => a.sentAt).map((a) => a.channel),
+    );
+    // The in-app notification is inserted before any alerts row, so any prior
+    // alerts row means the notification step already ran on an earlier attempt.
+    const alreadyProcessed = priorAlerts.length > 0;
+
     const limits = PLAN_LIMITS[org.plan];
+
+    // Realtime alerts (in-app + Slack/email/webhook on critical signals) are a
+    // paid feature. Plans without it only surface signals via the weekly digest.
+    if (!limits.features.realtimeAlerts) {
+      logger.log("Realtime alerts not in plan, skipping", { orgId: org.id, plan: org.plan });
+      return { skipped: true, reason: "plan_no_realtime_alerts" };
+    }
 
     const emoji = SEVERITY_EMOJI[signal.severity] ?? "🔔";
     const text = `${emoji} *${competitor.name}* — ${signal.category}\n${signal.insight}${signal.soWhat ? `\n→ ${signal.soWhat}` : ""}`;
 
-    if (limits.features.realtimeAlerts) {
+    if (!alreadyProcessed) {
       await db.insert(notifications).values({
         orgId: org.id,
         type: "signal",
@@ -62,9 +83,14 @@ export const sendAlertJob = task({
     }
 
     let slackSent = false;
+    let webhookSent = false;
     let emailSent = false;
 
-    if (org.slackWebhookUrl && limits.allowedChannels.includes("slack")) {
+    if (
+      org.slackWebhookUrl &&
+      limits.allowedChannels.includes("slack") &&
+      !sentChannels.has("slack")
+    ) {
       try {
         await sendSlackMessage(org.slackWebhookUrl, text);
         await db.insert(alerts).values({
@@ -85,7 +111,43 @@ export const sendAlertJob = task({
       }
     }
 
-    if (org.digestEmail) {
+    if (
+      org.webhookUrl &&
+      limits.allowedChannels.includes("webhook") &&
+      !sentChannels.has("webhook")
+    ) {
+      try {
+        await sendWebhook(org.webhookUrl, {
+          competitor: { id: competitor.id, name: competitor.name },
+          signal: {
+            id: signal.id,
+            severity: signal.severity,
+            category: signal.category,
+            insight: signal.insight,
+            soWhat: signal.soWhat,
+            recommendedAction: signal.recommendedAction,
+          },
+          linkUrl: `/dashboard/competitors/${competitor.id}`,
+        });
+        await db.insert(alerts).values({
+          signalId: signal.id,
+          orgId: org.id,
+          channel: "webhook",
+          sentAt: new Date(),
+        });
+        webhookSent = true;
+      } catch (err) {
+        await db.insert(alerts).values({
+          signalId: signal.id,
+          orgId: org.id,
+          channel: "webhook",
+          error: String(err),
+        });
+        logger.error("Webhook alert failed", { err: String(err) });
+      }
+    }
+
+    if (org.digestEmail && !sentChannels.has("email")) {
       try {
         const html = `<div style="font-family: Inter, sans-serif; background: #0a0a0a; color: #fafafa; padding: 24px; border-radius: 6px;">
   <p style="font-size: 12px; color: #a3a3a3; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 8px;">${signal.severity.toUpperCase()} · ${signal.category}</p>
@@ -121,9 +183,10 @@ export const sendAlertJob = task({
     logger.log("Completed send-alert", {
       signalId: signal.id,
       slackSent,
+      webhookSent,
       emailSent,
     });
 
-    return { slackSent, emailSent };
+    return { slackSent, webhookSent, emailSent };
   },
 });

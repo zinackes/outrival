@@ -126,7 +126,7 @@ export function PaywallDialog({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-md">
         <div className="flex items-center justify-center w-10 h-10 rounded-full bg-[var(--accent-dim)]">
-          <Lock size={18} className="text-primary" />
+          <Lock size={18} className="text-primary-foreground" />
         </div>
         <DialogHeader>
           <DialogTitle>{copy?.title}</DialogTitle>

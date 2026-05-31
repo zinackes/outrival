@@ -41,9 +41,17 @@ export function UserMenu({ user }: { user: User }) {
         <button
           type="button"
           aria-label="Account"
-          className="flex aspect-square size-7 items-center justify-center rounded-full border border-border bg-surface text-[11px] font-semibold text-foreground transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 data-[state=open]:bg-surface-2"
+          className="flex items-center gap-2 rounded-full p-0.5 sm:pr-2.5 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 data-[state=open]:bg-surface-2"
         >
-          {initials(user.name, "?")}
+          <span className="flex aspect-square size-7 items-center justify-center rounded-full border border-border bg-surface text-[11px] font-semibold text-foreground">
+            {initials(user.name, "?")}
+          </span>
+          <span
+            className="hidden max-w-[140px] truncate text-sm font-medium text-foreground sm:block"
+            data-ph-mask
+          >
+            {user.name ?? user.email ?? "Account"}
+          </span>
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" sideOffset={8} className="w-56">

@@ -233,7 +233,12 @@ export default function CandidatesPage() {
                         <ExternalLink size={10} className="shrink-0" />
                       </a>
                     </div>
-                    <StatusPill status="warn">new</StatusPill>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {c.source === "onboarding" && (
+                        <StatusPill status="neutral">from setup</StatusPill>
+                      )}
+                      <StatusPill status="warn">new</StatusPill>
+                    </div>
                   </div>
 
                   {overlap != null && (

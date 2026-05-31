@@ -2,7 +2,7 @@
   "name": "outrival",
   "private": true,
   "scripts": {
-    "dev": "turbo dev",
+    "dev": "trap 'kill 0' EXIT; stripe listen --forward-to http://localhost:3001/api/stripe/webhook & turbo dev",
     "dev:app": "turbo dev --filter @outrival/web --filter @outrival/api",
     "build": "turbo build",
     "typecheck": "turbo typecheck",

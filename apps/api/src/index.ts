@@ -21,6 +21,7 @@ import { candidatesRouter } from "./routes/candidates";
 import { billingRouter } from "./routes/billing";
 import { stripeWebhookRouter } from "./routes/stripe-webhook";
 import { feedbackRouter } from "./routes/feedback";
+import { searchRouter } from "./routes/search";
 
 const app = new Hono();
 
@@ -36,7 +37,7 @@ app.use(
   }),
 );
 
-app.on(["POST", "GET"], "/api/auth/**", (c) => auth.handler(c.req.raw));
+app.on(["POST", "GET"], "/api/auth/*", (c) => auth.handler(c.req.raw));
 
 // Stripe webhook — must be mounted before any router that could consume the
 // body (none currently, but kept first defensively) and stays outside the
@@ -56,6 +57,7 @@ app.route("/api/notifications", notificationsRouter);
 app.route("/api/candidates", candidatesRouter);
 app.route("/api/billing", billingRouter);
 app.route("/api/feedback", feedbackRouter);
+app.route("/api/search", searchRouter);
 
 app.onError((err, c) => {
   Sentry.captureException(err);

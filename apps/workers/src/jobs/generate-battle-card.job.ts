@@ -19,6 +19,8 @@ const InputSchema = z.object({
 
 export const generateBattleCardJob = task({
   id: "generate-battle-card",
+  // Launches Chromium to render the PDF — too tight on the default 0.5 GB.
+  machine: "small-2x",
   maxDuration: 180,
   retry: { maxAttempts: 3, minTimeoutInMs: 1000, maxTimeoutInMs: 10000, factor: 2 },
 
@@ -109,7 +111,7 @@ export const generateBattleCardJob = task({
     // time (trigger.dev warns on >1 s import — playwright is the culprit).
     const [{ chromium }, { renderBattleCardHtml }] = await Promise.all([
       import("playwright"),
-      import("../lib/battle-card-html"),
+      import("../lib/battle-card-html.js"),
     ]);
 
     const html = renderBattleCardHtml({

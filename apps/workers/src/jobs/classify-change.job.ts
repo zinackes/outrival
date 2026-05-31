@@ -3,6 +3,7 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db, changes, signals } from "@outrival/db";
 import { classifyChange, type Classification } from "@outrival/ai";
+import { groqQueue } from "../lib/queues";
 
 const InputSchema = z.object({
   changeId: z.string(),
@@ -10,6 +11,7 @@ const InputSchema = z.object({
 
 export const classifyChangeJob = task({
   id: "classify-change",
+  queue: groqQueue,
   maxDuration: 120,
   retry: { maxAttempts: 3, minTimeoutInMs: 1000, maxTimeoutInMs: 10000, factor: 2 },
 

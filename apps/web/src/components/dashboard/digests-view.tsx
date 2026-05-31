@@ -3,7 +3,9 @@
 import { useEffect, useState } from "react";
 import {
   ArrowLeft,
+  ChevronDown,
   Download,
+  Loader2,
   Mail,
   RefreshCw,
   Settings as SettingsIcon,
@@ -13,15 +15,28 @@ import {
   Minus,
 } from "lucide-react";
 import { format } from "date-fns";
-import { api, type Digest } from "@/lib/api";
+import { toast } from "sonner";
+import { api, type Digest, type DigestRange } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { PageHead } from "./page-head";
 import { SeverityPill } from "./severity-pill";
 import { CatPill } from "./cat-pill";
 import { StatusPill } from "./status-pill";
 import { DigestSettingsSheet } from "./digest-settings-sheet";
 import { TableSkeleton } from "./skeletons";
+
+const RANGE_OPTIONS: { value: DigestRange; label: string }[] = [
+  { value: "this_week", label: "This week" },
+  { value: "last_7_days", label: "Last 7 days" },
+  { value: "last_30_days", label: "Last 30 days" },
+];
 
 const TEMP_MAP: Record<
   string,
@@ -76,6 +91,7 @@ export function DigestsView() {
   const [active, setActive] = useState<Digest | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [generating, setGenerating] = useState(false);
 
   useEffect(() => {
     api
@@ -83,6 +99,29 @@ export function DigestsView() {
       .then((r) => setDigests(r.digests))
       .catch((e) => setErr(String(e)));
   }, []);
+
+  async function handleGenerate(range: DigestRange) {
+    setGenerating(true);
+    try {
+      const { digest, reason } = await api.generateDigest(range);
+      if (!digest) {
+        toast.info(
+          reason === "no_signals"
+            ? "No signals in this range yet — nothing to summarize."
+            : "Could not generate a digest.",
+        );
+        return;
+      }
+      const list = await api.listDigests();
+      setDigests(list.digests);
+      setActive(digest);
+      toast.success("Digest generated.");
+    } catch (e) {
+      toast.error(`Generation failed: ${String(e)}`);
+    } finally {
+      setGenerating(false);
+    }
+  }
 
   if (err) return <p className="text-sm text-muted-foreground">Error: {err}</p>;
 
@@ -102,14 +141,29 @@ export function DigestsView() {
             >
               <SettingsIcon size={12} /> Settings
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled
-              title="On-demand generation coming soon"
-            >
-              <RefreshCw size={13} /> Generate now
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" disabled={generating}>
+                  {generating ? (
+                    <Loader2 size={13} className="animate-spin" />
+                  ) : (
+                    <RefreshCw size={13} />
+                  )}
+                  Generate now
+                  <ChevronDown size={12} className="opacity-70" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {RANGE_OPTIONS.map((o) => (
+                  <DropdownMenuItem
+                    key={o.value}
+                    onSelect={() => handleGenerate(o.value)}
+                  >
+                    {o.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </>
         }
       />

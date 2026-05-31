@@ -2,7 +2,8 @@
 # PreToolUse hook — relit task_plan.md avant chaque opération d'écriture
 # Aide Claude Code à ne pas dériver de l'objectif de la session
 
-TOOL_NAME=$(echo "$1" | jq -r '.tool_name // empty' 2>/dev/null)
+INPUT=$(cat)
+TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
 
 # S'activer uniquement sur les outils d'écriture
 if [[ "$TOOL_NAME" != "Write" && "$TOOL_NAME" != "Edit" && \

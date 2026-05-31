@@ -436,3 +436,53 @@ GROQ + R2 + EXA + DB credentials
    candidats déjà vus
 9. Mesurer stabilité SSE (durée connexion, reconnect EventSource)
 10. Commencer Phase 7 — Monétisation (Stripe, free tier limits, landing page)
+
+### 2026-05-31 — Patch-08 Onboarding par stade — implémenté (commits → utilisateur)
+
+**Objectif** : refondre l'étape 1 de l'onboarding pour accepter 4 stades de projet
+(idée / pitch document / repo GitHub / URL en ligne), tous convergeant vers le même
+ProductProfile. Robustesse (fallback description), liberté (back-nav, reprise, skip),
+confiance (mode document ZÉRO-STOCKAGE), continuité (page première session).
+
+**Réalisé** :
+- 4 adaptateurs ProductProfile purs (packages/ai/src/profile/) — type unique partagé
+- routes API par mode + /progress + /skip + helpers github/extract-document découplés auth
+- /analyze → /analyze-url (rename, 2 appelants web mis à jour)
+- detectTemporaryUrl (shared) ; discovery rendue sans-URL (findSimilarCompanies null-safe)
+- onboarding-form.tsx réécrit (5 écrans, persistance + reprise) + garde dashboard skip
+- re-onboarding dans WorkspaceSettingsForm (concurrents préservés)
+- zéro-stockage durci : sentry beforeSend + pino redact + audit code (aucune écriture)
+- schéma : projectStage / onboardingStep / onboardingSkipped + db:push (applied)
+
+**Fichiers nouveaux** :
+- packages/ai/src/profile/{from-description,from-document,from-repo,from-url,index}.ts
+- apps/api/src/lib/{github,extract-document}.ts
+- apps/web/src/components/outrival/onboarding-banner.tsx
+
+**Fichiers modifiés** :
+- packages/db/src/schema/organizations.ts · packages/ai/src/index.ts
+- packages/shared/src/{url,logger}.ts · packages/scrapers/src/discovery/discover.ts
+- apps/api/src/routes/{onboarding,settings}.ts · apps/api/src/lib/sentry.ts
+- apps/api/package.json (unpdf + mammoth)
+- apps/web/src/lib/api.ts · apps/web/src/app/(onboarding)/onboarding/{page,onboarding-form}.tsx
+- apps/web/src/app/dashboard/layout.tsx · apps/web/src/components/outrival/workspace-settings-form.tsx
+
+**Décisions notables** :
+- packages/ai PUR : fetch/extraction côté API, ai ne voit que texte/artefacts
+- ProductProfile = type unique (pas de duplicat) ; fromUrl = wrapper sur analyzeProduct
+- Mode Document zéro-stockage : in-memory only, bodyLimit 10MB, no-store, redact, beforeSend
+- Resume : redirect dashboard si completed && step==="done" (laisse passer skip/re-onboard)
+- 102 fichiers WIP non commités au démarrage → décision "j'implémente, tu commites" :
+  AUCUN commit fait par Claude, staging/commit laissés à l'utilisateur
+
+**Tests** : pnpm typecheck ✓ (7/7) | pnpm build ✓ (7/7) | 0 nouvelle erreur TS.
+Runtime à tester (creds GROQ/EXA/R2/DB + auth) : 4 modes, fallback, skip, reprise,
+re-onboarding, **vérif zéro-stockage live** (disque/R2/logs/Sentry après upload PDF).
+
+**Prochaine session** :
+1. Test E2E des 4 modes (idée / document / repo public / URL)
+2. Vérif zéro-stockage live : upload PDF → find disque + bucket R2 + logs + Sentry = vide ;
+   crash volontaire route document → Sentry sans contenu
+3. URL temporaire (vercel preview) → warning ; skip → bannière dashboard
+4. Re-onboarding depuis settings → concurrents préservés
+5. Commits par étape (à faire par l'utilisateur, working tree à nettoyer)

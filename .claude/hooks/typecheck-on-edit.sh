@@ -1,8 +1,9 @@
 #!/bin/bash
 # PostToolUse hook — lance typecheck sur le package modifié après une édition
 
-TOOL_NAME=$(echo "$1" | jq -r '.tool_name // empty' 2>/dev/null)
-FILE_PATH=$(echo "$1" | jq -r '.tool_input.path // empty' 2>/dev/null)
+INPUT=$(cat)
+TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
+FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
 
 # S'activer uniquement sur les éditions de fichiers TypeScript
 if [[ "$TOOL_NAME" != "Write" && "$TOOL_NAME" != "Edit" && "$TOOL_NAME" != "MultiEdit" ]]; then

@@ -7,6 +7,14 @@ export const candidateStatusEnum = pgEnum("candidate_status", [
   "added",
 ]);
 
+// Where a candidate came from: the weekly Exa detection job ("detection",
+// the default for pre-existing rows) or saved from the onboarding discovery
+// step ("onboarding").
+export const candidateSourceEnum = pgEnum("candidate_source", [
+  "detection",
+  "onboarding",
+]);
+
 export const competitorCandidates = pgTable("competitor_candidates", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   orgId: text("org_id")
@@ -17,5 +25,6 @@ export const competitorCandidates = pgTable("competitor_candidates", {
   overlapScore: real("overlap_score"),
   reason: text("reason"),
   status: candidateStatusEnum("status").notNull().default("new"),
+  source: candidateSourceEnum("source").notNull().default("detection"),
   firstSeenAt: timestamp("first_seen_at").notNull().defaultNow(),
 });

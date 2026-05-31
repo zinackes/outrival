@@ -41,8 +41,8 @@ export const generateWeeklyDigestJob = schedules.task({
           eq(digests.weekStart, isoDate(weekStart)),
         ),
       });
-      if (existing) {
-        logger.log("Digest already exists for org/week, skipping", {
+      if (existing?.sentAt) {
+        logger.log("Digest already sent for org/week, skipping", {
           orgId: org.id,
           digestId: existing.id,
         });
@@ -90,18 +90,29 @@ export const generateWeeklyDigestJob = schedules.task({
         continue;
       }
 
-      const [stored] = await db
-        .insert(digests)
-        .values({
-          orgId: org.id,
-          weekStart: isoDate(weekStart),
-          weekEnd: isoDate(weekEnd),
-          content: digest,
-          temperature: digest.temperature,
-        })
-        .returning();
+      // An unsent preview (from "generate now") gets finalized in place; otherwise insert.
+      const [stored] = existing
+        ? await db
+            .update(digests)
+            .set({
+              weekEnd: isoDate(weekEnd),
+              content: digest,
+              temperature: digest.temperature,
+            })
+            .where(eq(digests.id, existing.id))
+            .returning()
+        : await db
+            .insert(digests)
+            .values({
+              orgId: org.id,
+              weekStart: isoDate(weekStart),
+              weekEnd: isoDate(weekEnd),
+              content: digest,
+              temperature: digest.temperature,
+            })
+            .returning();
       if (!stored) {
-        logger.error("Failed to insert digest", { orgId: org.id });
+        logger.error("Failed to store digest", { orgId: org.id });
         skipped++;
         continue;
       }

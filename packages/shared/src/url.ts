@@ -43,3 +43,42 @@ export function normalizeHostname(input: string): string | null {
   }
   return lastTwo;
 }
+
+/**
+ * Registrable brand label, TLD-stripped — `amazon` for amazon.com, amazon.fr,
+ * www.amazon.de or amazon.co.uk. Used to detect the same company across TLDs.
+ */
+export function extractBrand(input: string): string | null {
+  const host = normalizeHostname(input);
+  if (!host) return null;
+  const label = host.split(".")[0];
+  return label && label.length > 0 ? label : null;
+}
+
+const TEMPORARY_HOSTS = [
+  "localhost",
+  "127.0.0.1",
+  "0.0.0.0",
+  ".vercel.app", // previews (a custom domain would not end with this)
+  ".netlify.app",
+  ".ngrok.io",
+  ".ngrok-free.app",
+  ".replit.dev",
+];
+
+/**
+ * Heuristic: does this URL look like a preview/local deploy rather than a real
+ * product site? Used in onboarding "live" mode as a non-blocking WARNING only —
+ * the user can still proceed or switch to the "developing" (repo) mode.
+ */
+export function detectTemporaryUrl(url: string): { temporary: boolean; reason?: string } {
+  try {
+    const u = new URL(url);
+    if (TEMPORARY_HOSTS.some((h) => u.hostname.endsWith(h) || u.hostname === h)) {
+      return { temporary: true, reason: "Cette URL semble temporaire (preview ou local)" };
+    }
+    return { temporary: false };
+  } catch {
+    return { temporary: false };
+  }
+}

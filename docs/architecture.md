@@ -20,7 +20,7 @@ Mise à jour à chaque phase / patch.
 | JobPosting            | Offre d'emploi structurée détectée chez un concurrent |
 | Review                | Praise/complaint extraite de G2, Capterra, App Store |
 | BattleCard            | Fiche stratégique IA exportable en PDF (sections jsonb editables) |
-| CompetitorCandidate   | Concurrent détecté automatiquement chaque semaine (Exa) — flow validation |
+| CompetitorCandidate   | Concurrent suggéré à valider — détecté chaque semaine (Exa, `source=detection`) ou sauvé depuis la découverte d'onboarding non sélectionnée (`source=onboarding`) |
 
 ## Stack
 
@@ -130,8 +130,9 @@ battle_cards           id, competitor_id (unique), status (pending|generating|re
                        content (jsonb — 6 sections editables), pdf_r2_key,
                        generated_at, updated_at
 
-competitor_candidates  id, org_id, name, url, hostname, overlap_score, source,
-                       status (new|added|dismissed), detected_at
+competitor_candidates  id, org_id, url, title, overlap_score, reason,
+                       status (new|dismissed|added),
+                       source (detection|onboarding), first_seen_at
 ```
 
 ### Enums Postgres
@@ -146,6 +147,7 @@ signal_severity   low | medium | high | critical
 signal_category   pricing | product | hiring | reviews | content | funding
 notification_type signal | new_competitor
 candidate_status  new | added | dismissed
+candidate_source  detection | onboarding
 battle_card_status pending | generating | ready | failed
 ```
 
@@ -189,6 +191,24 @@ Codes d'erreur structurés sur les routes gating : `plan_limit_competitors`,
 `plan_locked_feature`, `plan_locked_source`, `plan_locked_frequency`,
 `plan_locked_channel`. Le web parse via `paywallFromError(err)` et affiche
 `<PaywallDialog>`.
+
+## Provisioning des monitors
+
+Un competitor n'a pas automatiquement un monitor par source. Trois chemins de création :
+
+- **Création manuelle** (`POST /api/competitors`) et **ajout depuis candidate**
+  (`candidates.ts`) → sèment uniquement `homepage` (daily), `pricing` (daily),
+  `blog` (weekly). Sources figées, non gated (toutes incluses dès le plan free).
+- **Onboarding** (`POST /api/onboarding/complete`) → sème les sources choisies par
+  l'utilisateur, gated par plan (`isSourceAllowed` → `plan_locked_source`).
+- **Enable à la demande** (`POST /api/competitors/:id/monitors`) → ajoute une source
+  (`jobs`, `g2_reviews`, `capterra_reviews`, …) à un competitor existant. Gated par
+  plan (sinon `plan_locked_source` → paywall), idempotent (1 monitor par
+  `(competitor, sourceType)`), fréquence par défaut `weekly` pour les reviews /
+  `daily` sinon, clampée à une fréquence autorisée par le plan.
+
+Côté web, l'état vide d'un onglet (Hiring, Reviews…) sans monitor affiche un bouton
+**"Enable … monitoring"** qui appelle cet endpoint puis déclenche le premier scrape.
 
 ## Pipeline data (de bout en bout)
 

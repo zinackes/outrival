@@ -7,7 +7,10 @@ let groqClient: Groq | null = null;
 let claudeClient: Anthropic | null = null;
 
 function getGroq(): Groq {
-  if (!groqClient) groqClient = new Groq({ apiKey: aiEnv().GROQ_API_KEY });
+  // maxRetries: the SDK honors the 429 `retry-after` header, so a few retries
+  // let transient TPM rate-limit spikes (free tier 12k TPM) self-heal instead
+  // of failing the job.
+  if (!groqClient) groqClient = new Groq({ apiKey: aiEnv().GROQ_API_KEY, maxRetries: 5 });
   return groqClient;
 }
 

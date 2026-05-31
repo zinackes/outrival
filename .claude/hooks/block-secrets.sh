@@ -1,9 +1,10 @@
 #!/bin/bash
 # PreToolUse hook — bloque les commits contenant des secrets
 
-TOOL_NAME=$(echo "$1" | jq -r '.tool_name // empty' 2>/dev/null)
-COMMAND=$(echo "$1" | jq -r '.tool_input.command // empty' 2>/dev/null)
-CONTENT=$(echo "$1" | jq -r '.tool_input.content // empty' 2>/dev/null)
+INPUT=$(cat)
+TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
+COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
+CONTENT=$(echo "$INPUT" | jq -r '.tool_input.content // empty' 2>/dev/null)
 
 # Vérifier uniquement les git commits et les écritures de fichiers
 if [[ "$TOOL_NAME" == "Bash" && "$COMMAND" == *"git commit"* ]]; then
@@ -29,7 +30,7 @@ fi
 
 # Bloquer l'écriture de fichiers .env (sauf .env.example)
 if [[ "$TOOL_NAME" == "Write" ]]; then
-  FILE_PATH=$(echo "$1" | jq -r '.tool_input.path // empty' 2>/dev/null)
+  FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
   if [[ "$FILE_PATH" == *".env"* && "$FILE_PATH" != *".env.example"* ]]; then
     echo "BLOCKED: Writing to .env files is not allowed. Use .env.local instead."
     exit 2

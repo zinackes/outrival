@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, CreditCard, Trash2, type LucideIcon } from "lucide-react";
+import { Bell, Building2, CreditCard, Trash2, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -21,6 +21,12 @@ const NAV: NavGroup[] = [
   {
     group: "Workspace",
     items: [
+      {
+        href: "/dashboard/settings/workspace",
+        label: "General",
+        icon: Building2,
+        exact: true,
+      },
       {
         href: "/dashboard/settings",
         label: "Notifications",

@@ -11,8 +11,10 @@ import {
   users,
 } from "@outrival/db";
 import { generateInsight, ClassificationSchema } from "@outrival/ai";
+import { PLAN_LIMITS } from "@outrival/shared";
 import { insertSignalFeed } from "../lib/clickhouse";
 import { captureWorkerEvent, shutdownPostHog } from "../lib/posthog";
+import { groqQueue } from "../lib/queues";
 
 const InputSchema = z.object({
   changeId: z.string(),
@@ -21,6 +23,7 @@ const InputSchema = z.object({
 
 export const generateSignalJob = task({
   id: "generate-signal",
+  queue: groqQueue,
   maxDuration: 120,
   retry: { maxAttempts: 3, minTimeoutInMs: 1000, maxTimeoutInMs: 10000, factor: 2 },
 
@@ -95,8 +98,12 @@ export const generateSignalJob = task({
       const org = await db.query.organizations.findFirst({
         where: eq(organizations.id, competitor.orgId),
       });
-      if (org?.alertsEnabled) {
-        await tasks.trigger("send-alert", { signalId: newSignal.id });
+      if (org?.alertsEnabled && PLAN_LIMITS[org.plan].features.realtimeAlerts) {
+        await tasks.trigger(
+          "send-alert",
+          { signalId: newSignal.id },
+          { idempotencyKey: newSignal.id },
+        );
         logger.log("Alert triggered", { signalId: newSignal.id });
       }
     }

@@ -4,6 +4,7 @@ import * as blog from "./blog/blog.scraper";
 import * as jobs from "./jobs/jobs.scraper";
 import * as g2Reviews from "./g2-reviews/g2-reviews.scraper";
 import * as capterraReviews from "./capterra-reviews/capterra-reviews.scraper";
+import * as appstoreReviews from "./appstore-reviews/appstore-reviews.scraper";
 import type { SourceType } from "@outrival/shared";
 import type { ScrapeOptions, ScrapeOutcome } from "./types";
 
@@ -20,6 +21,7 @@ const scrapers: Partial<Record<SourceType, ScraperFn>> = {
   jobs: jobs.scrape,
   g2_reviews: g2Reviews.scrape,
   capterra_reviews: capterraReviews.scrape,
+  appstore_reviews: appstoreReviews.scrape,
 };
 
 export function getScraper(sourceType: SourceType): ScraperFn {

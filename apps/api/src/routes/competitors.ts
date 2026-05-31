@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { and, desc, eq, isNull, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, inArray, sql } from "drizzle-orm";
+import { tasks } from "@trigger.dev/sdk/v3";
 import {
   competitors,
   monitors,
@@ -13,7 +14,20 @@ import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
 import { chQuery } from "../lib/clickhouse-safe";
-import { checkCompetitorQuota, getOrgPlan } from "../lib/plan";
+import {
+  checkCompetitorQuota,
+  getOrgPlan,
+  isSourceAllowed,
+  isFrequencyAllowed,
+} from "../lib/plan";
+import {
+  SOURCE_TYPES,
+  MONITOR_FREQUENCIES,
+  isReviewSource,
+  validateMonitorUrl,
+  type SourceType,
+  type MonitorFrequency,
+} from "@outrival/shared";
 
 type Variables = { user: { id: string } };
 
@@ -73,6 +87,87 @@ competitorsRouter.post("/", async (c) => {
   return c.json({ competitor, monitors: createdMonitors }, 201);
 });
 
+const AddMonitorSchema = z.object({
+  sourceType: z.enum(SOURCE_TYPES),
+  frequency: z.enum(MONITOR_FREQUENCIES).optional(),
+  // Required for review sources (g2/capterra/appstore): the exact review-page
+  // URL. Validated + host-locked below.
+  url: z.string().optional(),
+});
+
+// Slow-changing review sources default to weekly; everything else daily.
+// Clamped to a plan-allowed frequency below (weekly is allowed on every plan).
+function defaultFrequencyFor(source: SourceType): MonitorFrequency {
+  return source.endsWith("_reviews") ? "weekly" : "daily";
+}
+
+competitorsRouter.post("/:id/monitors", async (c) => {
+  const competitorId = c.req.param("id");
+  const body = await c.req.json().catch(() => null);
+  const parsed = AddMonitorSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
+
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const competitor = await assertOwnedCompetitor(competitorId, orgId);
+  if (!competitor || competitor.deletedAt) return c.json({ error: "Competitor not found" }, 404);
+
+  const { sourceType } = parsed.data;
+  const plan = await getOrgPlan(orgId);
+  if (!isSourceAllowed(plan, sourceType)) {
+    return c.json({ error: "plan_locked_source", source: sourceType, plan }, 403);
+  }
+
+  // Review sources scrape a specific review page (not the homepage), so they
+  // require an explicit URL. Every other source accepts an OPTIONAL URL override
+  // — when absent, the scraper auto-discovers the page (e.g. /pricing). Both are
+  // host-locked (SSRF + correctness) via validateMonitorUrl.
+  let config: { url: string } | undefined;
+  if (isReviewSource(sourceType) && !parsed.data.url) {
+    return c.json({ error: "review_url_required", source: sourceType }, 400);
+  }
+  if (parsed.data.url) {
+    const valid = validateMonitorUrl(sourceType, parsed.data.url, competitor.url);
+    if (!valid.ok) {
+      return c.json({ error: "invalid_monitor_url", reason: valid.error, source: sourceType }, 400);
+    }
+    config = { url: valid.url };
+  }
+
+  const desired = parsed.data.frequency ?? defaultFrequencyFor(sourceType);
+  const frequency: MonitorFrequency = isFrequencyAllowed(plan, desired) ? desired : "weekly";
+
+  // Idempotent: one monitor per (competitor, source). When re-enabling a review
+  // source with a corrected URL, update the stored config rather than no-op.
+  const existing = await db.query.monitors.findFirst({
+    where: and(eq(monitors.competitorId, competitorId), eq(monitors.sourceType, sourceType)),
+  });
+  if (existing) {
+    const currentUrl =
+      existing.config && typeof existing.config === "object" && "url" in existing.config
+        ? String((existing.config as { url: unknown }).url)
+        : null;
+    if (config && config.url !== currentUrl) {
+      const [updated] = await db
+        .update(monitors)
+        .set({ config })
+        .where(eq(monitors.id, existing.id))
+        .returning();
+      return c.json({ monitor: updated ?? existing, created: false });
+    }
+    return c.json({ monitor: existing, created: false });
+  }
+
+  const [monitor] = await db
+    .insert(monitors)
+    .values({ competitorId, sourceType, frequency, config })
+    .returning();
+  if (!monitor) return c.json({ error: "Failed to create monitor" }, 500);
+
+  return c.json({ monitor, created: true }, 201);
+});
+
 competitorsRouter.get("/", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
@@ -81,7 +176,61 @@ competitorsRouter.get("/", async (c) => {
     where: and(eq(competitors.orgId, orgId), isNull(competitors.deletedAt)),
     orderBy: desc(competitors.createdAt),
   });
-  return c.json({ competitors: list });
+
+  if (list.length === 0) return c.json({ competitors: [] });
+
+  const now = Date.now();
+  const day = 24 * 3600 * 1000;
+  const sevenDaysAgo = new Date(now - 7 * day);
+  const fourteenDaysAgo = new Date(now - 14 * day);
+  const sevenIso = sevenDaysAgo.toISOString();
+  const fourteenIso = fourteenDaysAgo.toISOString();
+
+  const aggregates = await db
+    .select({
+      competitorId: signals.competitorId,
+      signals7d: sql<number>`count(*) filter (where ${signals.createdAt} >= ${sevenIso}::timestamp)::int`,
+      signalsPrev: sql<number>`count(*) filter (where ${signals.createdAt} >= ${fourteenIso}::timestamp and ${signals.createdAt} < ${sevenIso}::timestamp)::int`,
+      lastSignalAt: sql<string | null>`max(${signals.createdAt})`,
+      catPricing: sql<number>`count(*) filter (where ${signals.createdAt} >= ${sevenIso}::timestamp and ${signals.category} = 'pricing')::int`,
+      catProduct: sql<number>`count(*) filter (where ${signals.createdAt} >= ${sevenIso}::timestamp and ${signals.category} = 'product')::int`,
+      catHiring: sql<number>`count(*) filter (where ${signals.createdAt} >= ${sevenIso}::timestamp and ${signals.category} = 'hiring')::int`,
+      catReviews: sql<number>`count(*) filter (where ${signals.createdAt} >= ${sevenIso}::timestamp and ${signals.category} = 'reviews')::int`,
+      catContent: sql<number>`count(*) filter (where ${signals.createdAt} >= ${sevenIso}::timestamp and ${signals.category} = 'content')::int`,
+      catFunding: sql<number>`count(*) filter (where ${signals.createdAt} >= ${sevenIso}::timestamp and ${signals.category} = 'funding')::int`,
+    })
+    .from(signals)
+    .where(
+      and(
+        eq(signals.orgId, orgId),
+        gte(signals.createdAt, fourteenDaysAgo),
+      ),
+    )
+    .groupBy(signals.competitorId);
+
+  const byCompetitor = new Map(aggregates.map((a) => [a.competitorId, a]));
+
+  const enriched = list.map((c) => {
+    const a = byCompetitor.get(c.id);
+    return {
+      ...c,
+      stats: {
+        signals7d: a?.signals7d ?? 0,
+        signalsPrev: a?.signalsPrev ?? 0,
+        lastSignalAt: a?.lastSignalAt ?? null,
+        categoryCounts: {
+          pricing: a?.catPricing ?? 0,
+          product: a?.catProduct ?? 0,
+          hiring: a?.catHiring ?? 0,
+          reviews: a?.catReviews ?? 0,
+          content: a?.catContent ?? 0,
+          funding: a?.catFunding ?? 0,
+        },
+      },
+    };
+  });
+
+  return c.json({ competitors: enriched });
 });
 
 competitorsRouter.get("/:id", async (c) => {
@@ -98,11 +247,21 @@ competitorsRouter.get("/:id", async (c) => {
 
   const monitorIds = monitorList.map((m) => m.id);
   const recentChanges = monitorIds.length
-    ? await db.query.changes.findMany({
-        where: inArray(changes.monitorId, monitorIds),
-        orderBy: desc(changes.detectedAt),
-        limit: 20,
-      })
+    ? await db
+        .select({
+          id: changes.id,
+          diffText: changes.diffText,
+          summary: changes.summary,
+          detectedAt: changes.detectedAt,
+          monitorId: changes.monitorId,
+          sourceType: monitors.sourceType,
+          monitorUrl: sql<string | null>`(${monitors.config}->>'url')`,
+        })
+        .from(changes)
+        .innerJoin(monitors, eq(monitors.id, changes.monitorId))
+        .where(inArray(changes.monitorId, monitorIds))
+        .orderBy(desc(changes.detectedAt))
+        .limit(20)
     : [];
 
   const recentSignals = await db
@@ -115,8 +274,13 @@ competitorsRouter.get("/:id", async (c) => {
       recommendedAction: signals.recommendedAction,
       isRead: signals.isRead,
       createdAt: signals.createdAt,
+      changeId: signals.changeId,
+      sourceType: monitors.sourceType,
+      monitorUrl: sql<string | null>`(${monitors.config}->>'url')`,
     })
     .from(signals)
+    .leftJoin(changes, eq(changes.id, signals.changeId))
+    .leftJoin(monitors, eq(monitors.id, changes.monitorId))
     .where(eq(signals.competitorId, competitor.id))
     .orderBy(desc(signals.createdAt))
     .limit(20);
@@ -198,8 +362,8 @@ competitorsRouter.get("/:id/job-trends", async (c) => {
       SELECT department, count, toString(recorded_at) AS recorded_at
       FROM job_counts
       WHERE competitor_id = {competitorId: String}
-        AND recorded_at >= now() - INTERVAL 90 DAY
-      ORDER BY recorded_at ASC
+        AND job_counts.recorded_at >= now() - INTERVAL 90 DAY
+      ORDER BY job_counts.recorded_at ASC
     `,
     params: { competitorId: competitor.id },
   });
@@ -252,8 +416,8 @@ competitorsRouter.get("/:id/review-scores", async (c) => {
       SELECT source, score, review_count, sentiment_score, toString(recorded_at) AS recorded_at
       FROM review_scores
       WHERE competitor_id = {competitorId: String}
-        AND recorded_at >= now() - INTERVAL 180 DAY
-      ORDER BY recorded_at ASC
+        AND review_scores.recorded_at >= now() - INTERVAL 180 DAY
+      ORDER BY review_scores.recorded_at ASC
     `,
     params: { competitorId: competitor.id },
   });
@@ -279,12 +443,26 @@ competitorsRouter.get("/:id/pricing-history", async (c) => {
       SELECT plan_name, price, currency, billing_period, toString(recorded_at) AS recorded_at
       FROM pricing_history
       WHERE competitor_id = {competitorId: String}
-      ORDER BY recorded_at ASC
+      ORDER BY pricing_history.recorded_at ASC
     `,
     params: { competitorId: competitor.id },
   });
 
   return c.json({ history: rows });
+});
+
+competitorsRouter.post("/:id/refresh-summary", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor) return c.json({ error: "Not found" }, 404);
+
+  const handle = await tasks.trigger("refresh-competitor-summary", {
+    competitorId: id,
+  });
+  return c.json({ runId: handle.id });
 });
 
 competitorsRouter.delete("/:id", async (c) => {

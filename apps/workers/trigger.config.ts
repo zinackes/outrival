@@ -2,6 +2,7 @@
 import "./src/lib/sentry";
 import { defineConfig } from "@trigger.dev/sdk/v3";
 import { Sentry } from "./src/lib/sentry";
+import { validateWorkerEnv } from "./src/env";
 import { playwright } from "@trigger.dev/build/extensions/playwright";
 import { esbuildPlugin } from "@trigger.dev/build/extensions";
 import { sentryEsbuildPlugin } from "@sentry/esbuild-plugin";
@@ -27,6 +28,12 @@ export default defineConfig({
     },
   },
   dirs: ["./src/jobs"],
+  // Fail fast on misconfigured environment before any job logic runs, so a
+  // missing DB/R2 secret surfaces as one clear error instead of a cryptic
+  // failure deep inside a task after retries.
+  init: async () => {
+    validateWorkerEnv();
+  },
   // Capture every unhandled task failure into Sentry. Hook runs once the task
   // has exhausted its retries — payload trimmed to id + run id, no PII.
   onFailure: async ({ error, ctx }) => {

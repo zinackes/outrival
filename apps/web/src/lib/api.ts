@@ -31,6 +31,17 @@ export class ApiError extends Error {
   }
 }
 
+async function throwApiError(res: Response): Promise<never> {
+  const text = await res.text().catch(() => "");
+  let body: unknown = text;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    // not json, leave as text
+  }
+  throw new ApiError(res.status, body, `API ${res.status}: ${text || res.statusText}`);
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     credentials: "include",
@@ -38,16 +49,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     cache: "no-store",
     ...init,
   });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    let body: unknown = text;
-    try {
-      body = JSON.parse(text);
-    } catch {
-      // not json, leave as text
-    }
-    throw new ApiError(res.status, body, `API ${res.status}: ${text || res.statusText}`);
-  }
+  if (!res.ok) await throwApiError(res);
+  return res.json() as Promise<T>;
+}
+
+// Multipart POST — never set Content-Type, the browser adds the boundary.
+async function postForm<T>(path: string, form: FormData): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    credentials: "include",
+    cache: "no-store",
+    body: form,
+  });
+  if (!res.ok) await throwApiError(res);
   return res.json() as Promise<T>;
 }
 
@@ -150,7 +164,9 @@ export interface Monitor {
   competitorId: string;
   sourceType: string;
   frequency: string;
+  config: { url?: string } | null;
   lastRunAt: string | null;
+  scrapeStartedAt: string | null;
   lastFailedAt: string | null;
   lastError: string | null;
 }
@@ -211,6 +227,7 @@ export interface Digest {
 
 export interface NotificationSettings {
   slackWebhookUrl: string | null;
+  webhookUrl: string | null;
   digestEmail: string | null;
   digestEnabled: boolean;
   alertsEnabled: boolean;
@@ -221,6 +238,7 @@ export interface WorkspaceSettings {
   slug: string;
   productUrl: string | null;
   productProfile: ProductProfile | null;
+  projectStage: ProjectStage | null;
 }
 
 export interface ProductProfile {
@@ -230,8 +248,20 @@ export interface ProductProfile {
   pricingModel: string;
 }
 
+export type ProjectStage = "idea" | "document" | "developing" | "live";
+export type OnboardingStep =
+  | "stage"
+  | "input"
+  | "profile"
+  | "discover"
+  | "monitoring"
+  | "done";
+
 export interface OnboardingStatus {
   onboardingCompleted: boolean;
+  onboardingSkipped: boolean;
+  onboardingStep: OnboardingStep | null;
+  projectStage: ProjectStage | null;
   productUrl: string | null;
   profile: ProductProfile | null;
   plan: Plan;
@@ -272,6 +302,7 @@ export interface CompetitorCandidate {
   overlapScore: number | null;
   reason: string | null;
   status: "new" | "dismissed" | "added";
+  source: "detection" | "onboarding";
   firstSeenAt: string;
 }
 
@@ -356,14 +387,19 @@ export const api = {
     }),
   runMonitor: (id: string) =>
     request<{ runId: string; monitorId: string }>(`/api/monitors/${id}/run`, { method: "POST" }),
+  updateMonitor: (id: string, patch: { url?: string; frequency?: MonitorFrequency }) =>
+    request<{ monitor: Monitor }>(`/api/monitors/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
   addCompetitorMonitor: (
     id: string,
     sourceType: SourceType,
-    frequency?: MonitorFrequency,
+    opts?: { frequency?: MonitorFrequency; url?: string },
   ) =>
     request<{ monitor: Monitor; created: boolean }>(`/api/competitors/${id}/monitors`, {
       method: "POST",
-      body: JSON.stringify({ sourceType, frequency }),
+      body: JSON.stringify({ sourceType, frequency: opts?.frequency, url: opts?.url }),
     }),
   classifyChange: (id: string) =>
     request<{ runId: string }>(`/api/changes/${id}/classify`, { method: "POST" }),
@@ -404,6 +440,11 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
+  sendTestAlert: () =>
+    request<{
+      results: Record<"email" | "slack" | "webhook", "sent" | "not_configured" | "error">;
+      errors: Partial<Record<"email" | "slack" | "webhook", string>>;
+    }>("/api/notifications/test", { method: "POST" }),
   getWorkspaceSettings: () =>
     request<WorkspaceSettings>("/api/settings/workspace"),
   updateWorkspaceSettings: (body: {
@@ -416,15 +457,41 @@ export const api = {
       body: JSON.stringify(body),
     }),
   onboardingStatus: () => request<OnboardingStatus>("/api/onboarding/status"),
-  analyzeProduct: (productUrl: string) =>
-    request<{ profile: ProductProfile }>("/api/onboarding/analyze", {
+  analyzeUrl: (productUrl: string) =>
+    request<{ profile: ProductProfile }>("/api/onboarding/analyze-url", {
       method: "POST",
       body: JSON.stringify({ productUrl }),
     }),
-  discoverCompetitors: (productUrl: string, profile: ProductProfile) =>
+  analyzeDescription: (body: {
+    description: string;
+    category?: string;
+    inspirations?: string[];
+  }) =>
+    request<{ profile: ProductProfile }>("/api/onboarding/analyze-description", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  analyzeDocument: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return postForm<{ profile: ProductProfile }>("/api/onboarding/analyze-document", form);
+  },
+  analyzeRepo: (repoUrl: string) =>
+    request<{ profile: ProductProfile }>("/api/onboarding/analyze-repo", {
+      method: "POST",
+      body: JSON.stringify({ repoUrl }),
+    }),
+  patchOnboardingProgress: (step: OnboardingStep) =>
+    request<{ ok: true }>("/api/onboarding/progress", {
+      method: "PATCH",
+      body: JSON.stringify({ step }),
+    }),
+  skipOnboarding: () =>
+    request<{ ok: true }>("/api/onboarding/skip", { method: "POST" }),
+  discoverCompetitors: (profile: ProductProfile, productUrl?: string | null) =>
     request<{ competitors: DiscoveredCompetitor[] }>("/api/onboarding/discover", {
       method: "POST",
-      body: JSON.stringify({ productUrl, profile }),
+      body: JSON.stringify({ profile, productUrl: productUrl ?? null }),
     }),
   patchProductProfile: (profile: ProductProfile) =>
     request<{ profile: ProductProfile }>("/api/onboarding/profile", {
@@ -433,6 +500,8 @@ export const api = {
     }),
   completeOnboarding: (body: {
     selectedCompetitors: Array<{ name: string; url: string; overlapScore?: number }>;
+    savedCandidates?: Array<{ url: string; title?: string; overlapScore?: number; reason?: string }>;
+    dismissedCandidates?: Array<{ url: string; title?: string; overlapScore?: number; reason?: string }>;
     monitoringPrefs: { frequency: "daily" | "weekly"; sources: Array<"homepage" | "pricing" | "blog"> };
   }) =>
     request<{ competitorsCreated: number }>("/api/onboarding/complete", {

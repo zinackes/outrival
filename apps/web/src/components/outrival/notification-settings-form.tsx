@@ -1,24 +1,48 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Loader2, Lock } from "lucide-react";
+import { PLANS, PLAN_LABELS, PLAN_LIMITS, type Plan } from "@outrival/shared";
 import { api, type NotificationSettings } from "@/lib/api";
 import {
   PaywallDialog,
   paywallFromError,
   type PaywallReason,
 } from "@/components/outrival/paywall-dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { FormSkeleton } from "@/components/dashboard/skeletons";
+import { toast } from "sonner";
+
+function isEqual(a: NotificationSettings, b: NotificationSettings) {
+  return (
+    (a.slackWebhookUrl ?? "") === (b.slackWebhookUrl ?? "") &&
+    (a.webhookUrl ?? "") === (b.webhookUrl ?? "") &&
+    (a.digestEmail ?? "") === (b.digestEmail ?? "") &&
+    a.digestEnabled === b.digestEnabled &&
+    a.alertsEnabled === b.alertsEnabled
+  );
+}
 
 export function NotificationSettingsForm() {
   const [settings, setSettings] = useState<NotificationSettings | null>(null);
+  const [pristine, setPristine] = useState<NotificationSettings | null>(null);
+  const [plan, setPlan] = useState<Plan | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [paywall, setPaywall] = useState<PaywallReason | null>(null);
+  const [testing, setTesting] = useState(false);
 
   useEffect(() => {
-    api
-      .getNotificationSettings()
-      .then(setSettings)
+    Promise.all([api.getNotificationSettings(), api.getBilling()])
+      .then(([s, billing]) => {
+        setSettings(s);
+        setPristine(s);
+        setPlan(billing.plan);
+      })
       .catch((e) => setError(String(e)));
   }, []);
 
@@ -31,11 +55,14 @@ export function NotificationSettingsForm() {
     try {
       await api.updateNotificationSettings({
         slackWebhookUrl: settings.slackWebhookUrl || null,
+        webhookUrl: settings.webhookUrl || null,
         digestEmail: settings.digestEmail || null,
         digestEnabled: settings.digestEnabled,
         alertsEnabled: settings.alertsEnabled,
       });
+      setPristine(settings);
       setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
     } catch (e) {
       const reason = paywallFromError(e);
       if (reason) {
@@ -48,91 +75,225 @@ export function NotificationSettingsForm() {
     }
   }
 
-  if (error && !settings) return <p style={{ color: "var(--muted)" }} className="text-sm">Erreur : {error}</p>;
-  if (!settings) return <p style={{ color: "var(--muted)" }} className="text-sm">Chargement…</p>;
+  function handleCancel() {
+    if (pristine) setSettings(pristine);
+    setError(null);
+  }
 
-  const inputStyle = {
-    background: "var(--surface)",
-    border: "1px solid var(--border)",
-    borderRadius: "var(--radius)",
-    color: "var(--foreground, white)",
-  } as const;
+  async function handleTest() {
+    setTesting(true);
+    try {
+      const { results } = await api.sendTestAlert();
+      const keys = Object.keys(results) as Array<keyof typeof results>;
+      const sent = keys.filter((k) => results[k] === "sent");
+      const failed = keys.filter((k) => results[k] === "error");
+      if (sent.length === 0 && failed.length === 0) {
+        toast.error("No channels configured", {
+          description: "Add a Slack URL, webhook URL, or digest email above, then save.",
+        });
+      } else if (failed.length === 0) {
+        toast.success(`Test alert sent to ${sent.join(", ")}`);
+      } else {
+        toast.warning(
+          sent.length
+            ? `Sent to ${sent.join(", ")} — failed: ${failed.join(", ")}`
+            : `Failed: ${failed.join(", ")}`,
+        );
+      }
+    } catch (e) {
+      toast.error("Couldn't send test alert", { description: String(e) });
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  if (error && !settings)
+    return <p className="text-sm text-muted-foreground">Error: {error}</p>;
+  if (!settings || !pristine || !plan) return <FormSkeleton fields={2} />;
+
+  const dirty = !isEqual(settings, pristine);
+  const slackAllowed = PLAN_LIMITS[plan].allowedChannels.includes("slack");
+  const slackMinPlan = PLANS.find((p) =>
+    PLAN_LIMITS[p].allowedChannels.includes("slack"),
+  );
+  const webhookAllowed = PLAN_LIMITS[plan].allowedChannels.includes("webhook");
+  const webhookMinPlan = PLANS.find((p) =>
+    PLAN_LIMITS[p].allowedChannels.includes("webhook"),
+  );
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-5 max-w-xl">
-      <div>
-        <label className="text-sm font-medium mb-1 block">Slack webhook URL</label>
-        <input
+    <form onSubmit={handleSubmit} className="flex flex-col gap-6 max-w-xl">
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="slack-webhook" className="flex items-center gap-1.5">
+          Slack webhook URL
+          {!slackAllowed && <Lock size={12} className="text-muted-foreground" />}
+        </Label>
+        <Input
+          id="slack-webhook"
           type="url"
           value={settings.slackWebhookUrl ?? ""}
           onChange={(e) =>
             setSettings({ ...settings, slackWebhookUrl: e.target.value })
           }
           placeholder="https://hooks.slack.com/services/..."
-          style={inputStyle}
-          className="w-full px-3 py-2 text-sm"
+          disabled={!slackAllowed}
         />
-        <p style={{ color: "var(--muted)" }} className="text-xs mt-1">
-          Recevoir les alertes high/critical sur Slack
-        </p>
+        {slackAllowed ? (
+          <p className="text-xs text-muted-foreground">
+            High/critical alerts will be posted to this webhook.
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Slack alerts are available on the{" "}
+            {slackMinPlan ? PLAN_LABELS[slackMinPlan] : "Starter"} plan and
+            above.{" "}
+            <button
+              type="button"
+              className="text-primary underline underline-offset-2"
+              onClick={() =>
+                setPaywall({ code: "plan_locked_channel", channel: "slack", plan })
+              }
+            >
+              Upgrade
+            </button>
+          </p>
+        )}
       </div>
 
-      <div>
-        <label className="text-sm font-medium mb-1 block">Email pour le digest</label>
-        <input
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="webhook-url" className="flex items-center gap-1.5">
+          Webhook URL
+          {!webhookAllowed && (
+            <Lock size={12} className="text-muted-foreground" />
+          )}
+        </Label>
+        <Input
+          id="webhook-url"
+          type="url"
+          value={settings.webhookUrl ?? ""}
+          onChange={(e) =>
+            setSettings({ ...settings, webhookUrl: e.target.value })
+          }
+          placeholder="https://your-endpoint.com/hooks/outrival"
+          disabled={!webhookAllowed}
+        />
+        {webhookAllowed ? (
+          <p className="text-xs text-muted-foreground">
+            We POST a JSON payload on each high/critical signal.
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            The webhook channel is available on the{" "}
+            {webhookMinPlan ? PLAN_LABELS[webhookMinPlan] : "Pro"} plan and
+            above.{" "}
+            <button
+              type="button"
+              className="text-primary underline underline-offset-2"
+              onClick={() =>
+                setPaywall({
+                  code: "plan_locked_channel",
+                  channel: "webhook",
+                  plan,
+                })
+              }
+            >
+              Upgrade
+            </button>
+          </p>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="digest-email">Digest email</Label>
+        <Input
+          id="digest-email"
           type="email"
           value={settings.digestEmail ?? ""}
           onChange={(e) =>
             setSettings({ ...settings, digestEmail: e.target.value })
           }
-          placeholder="vous@entreprise.com"
-          style={inputStyle}
-          className="w-full px-3 py-2 text-sm"
+          placeholder="you@company.com"
         />
+        <p className="text-xs text-muted-foreground">
+          Weekly digests are sent here every Monday at 8am UTC.
+        </p>
       </div>
 
-      <label className="flex items-center gap-3 text-sm">
-        <input
-          type="checkbox"
-          checked={settings.digestEnabled}
-          onChange={(e) =>
-            setSettings({ ...settings, digestEnabled: e.target.checked })
-          }
-        />
-        Activer le digest hebdomadaire
-      </label>
+      <div className="flex flex-col gap-3 pt-1">
+        <label className="flex items-center gap-3 text-sm cursor-pointer">
+          <Checkbox
+            checked={settings.digestEnabled}
+            onCheckedChange={(c) =>
+              setSettings({ ...settings, digestEnabled: c === true })
+            }
+          />
+          Enable weekly digest
+        </label>
 
-      <label className="flex items-center gap-3 text-sm">
-        <input
-          type="checkbox"
-          checked={settings.alertsEnabled}
-          onChange={(e) =>
-            setSettings({ ...settings, alertsEnabled: e.target.checked })
-          }
-        />
-        Activer les alertes temps-réel (high/critical)
-      </label>
+        <label className="flex items-center gap-3 text-sm cursor-pointer">
+          <Checkbox
+            checked={settings.alertsEnabled}
+            onCheckedChange={(c) =>
+              setSettings({ ...settings, alertsEnabled: c === true })
+            }
+          />
+          Enable real-time alerts (high/critical)
+        </label>
+      </div>
 
-      <div className="flex items-center gap-3">
-        <button
-          type="submit"
-          disabled={saving}
-          style={{
-            background: "var(--accent)",
-            color: "#0a0a0a",
-            borderRadius: "var(--radius)",
-          }}
-          className="px-4 py-2 text-sm font-medium disabled:opacity-50"
-        >
-          {saving ? "Enregistrement…" : "Enregistrer"}
-        </button>
-        {saved && (
-          <span style={{ color: "var(--accent)" }} className="text-sm">
-            ✓ Enregistré
-          </span>
+      <div className="flex flex-col gap-2 pt-3 border-t border-border">
+        <span className="text-sm font-medium">Test alerts</span>
+        <p className="text-xs text-muted-foreground">
+          Sends a test message to your configured channels (Slack, webhook,
+          email) to check they're wired up correctly.
+        </p>
+        <div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleTest}
+            disabled={testing || dirty}
+          >
+            {testing && <Loader2 size={12} className="animate-spin" />}
+            {testing ? "Sending…" : "Send test alert"}
+          </Button>
+        </div>
+        {dirty && (
+          <p className="text-xs text-muted-foreground">
+            Save your changes first — the test uses your saved channel settings.
+          </p>
         )}
-        {error && <span className="text-sm text-red-400">{error}</span>}
       </div>
+
+      {saved && !dirty && (
+        <p className="text-sm text-positive">✓ Saved</p>
+      )}
+      {error && <p className="text-sm text-destructive">{error}</p>}
+
+      {dirty && (
+        <div className="sticky bottom-4 z-10 flex items-center justify-between gap-3 px-4 py-2.5 rounded-md border border-border-strong bg-surface/95 backdrop-blur-sm shadow-lg">
+          <span className="text-xs text-muted-foreground">
+            You have unsaved changes.
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={handleCancel}
+              disabled={saving}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" size="sm" disabled={saving}>
+              {saving && <Loader2 size={12} className="animate-spin" />}
+              {saving ? "Saving…" : "Save changes"}
+            </Button>
+          </div>
+        </div>
+      )}
+
       <PaywallDialog reason={paywall} onClose={() => setPaywall(null)} />
     </form>
   );

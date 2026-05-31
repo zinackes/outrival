@@ -22,6 +22,7 @@ export interface CompetitorSummaryInput {
     score: number | null;
     topComplaints: string[];
   };
+  homepageContent?: string | null;
 }
 
 export async function generateCompetitorSummary(
@@ -42,13 +43,17 @@ export async function generateCompetitorSummary(
       }`
     : "Pas de données reviews.";
 
+  const homepageBlock = input.homepageContent?.trim()
+    ? input.homepageContent.trim().slice(0, 4000)
+    : null;
+
   const prompt = `<competitor>
 Nom : ${input.name}
 Catégorie : ${input.category ?? "inconnue"}
 Description : ${input.description ?? "n/c"}
 </competitor>
 
-<recent_signals>
+${homepageBlock ? `<homepage_content>\n${homepageBlock}\n</homepage_content>\n\n` : ""}<recent_signals>
 ${signalsBlock}
 </recent_signals>
 
@@ -61,7 +66,8 @@ Rédige un résumé exécutif en 2-3 phrases factuelles sur ce concurrent.
 - Ton informatif, en français
 - Inclure : ce qu'ils font, où ils se situent, dynamique récente
 - Pas de superlatifs, pas de spéculation
-- Si pas de signal récent, indique simplement le profil produit
+- Si du contenu de page (homepage_content) est fourni, base-toi en priorité dessus pour décrire leur offre, leur positionnement et leur cible
+- Sinon, si pas de signal récent, indique simplement le profil produit
 
 Réponds UNIQUEMENT avec un objet JSON valide, sans markdown ni texte autour.
 </task>

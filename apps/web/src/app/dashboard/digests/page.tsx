@@ -1,15 +1,5 @@
-import { DigestsList } from "@/components/outrival/digests-list";
+import { DigestsView } from "@/components/dashboard/digests-view";
 
 export default function DigestsPage() {
-  return (
-    <div>
-      <h1
-        style={{ fontFamily: "var(--font-syne)" }}
-        className="text-2xl font-bold mb-6"
-      >
-        Digests hebdomadaires
-      </h1>
-      <DigestsList />
-    </div>
-  );
+  return <DigestsView />;
 }

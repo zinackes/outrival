@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { fr } from "date-fns/locale";
 import { Sparkles, Check } from "lucide-react";
 import { api, type Signal } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const SEVERITY_STYLE: Record<
   Signal["severity"],
@@ -37,14 +38,33 @@ export function ActivityFeed() {
   if (error)
     return (
       <p style={{ color: "var(--muted)" }} className="text-sm">
-        Erreur : {error}
+        Error: {error}
       </p>
     );
   if (signals === null)
     return (
-      <p style={{ color: "var(--muted)" }} className="text-sm">
-        Chargement…
-      </p>
+      <ul className="flex flex-col gap-3" aria-busy="true">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <li
+            key={i}
+            style={{
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius)",
+            }}
+            className="p-4 flex flex-col gap-2"
+          >
+            <div className="flex items-center gap-2 flex-wrap">
+              <Skeleton className="h-4 w-16" />
+              <Skeleton className="h-3 w-12" />
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="h-3 w-16 ml-auto" />
+            </div>
+            <Skeleton className="h-3 w-[90%]" />
+            <Skeleton className="h-3 w-[70%]" />
+          </li>
+        ))}
+      </ul>
     );
   if (signals.length === 0)
     return (
@@ -56,7 +76,7 @@ export function ActivityFeed() {
         }}
         className="p-6 text-sm text-center"
       >
-        Aucun signal pour l'instant. Les changements détectés apparaîtront ici une fois classifiés par l'IA.
+        No signals yet. Detected changes will appear here once classified by the AI.
       </div>
     );
 
@@ -91,7 +111,7 @@ export function ActivityFeed() {
               <Sparkles size={12} style={{ color: "var(--muted)" }} />
               <span className="text-sm font-medium">{s.competitorName}</span>
               <span style={{ color: "var(--muted)" }} className="text-xs ml-auto">
-                il y a {formatDistanceToNow(new Date(s.createdAt), { locale: fr, addSuffix: false })}
+                {formatDistanceToNow(new Date(s.createdAt), { addSuffix: true })}
               </span>
             </div>
             <p className="text-sm mb-2">{s.insight}</p>
@@ -102,17 +122,18 @@ export function ActivityFeed() {
             )}
             {s.recommendedAction && (
               <p style={{ color: "var(--muted)" }} className="text-xs mb-2">
-                Action : {s.recommendedAction}
+                Action: {s.recommendedAction}
               </p>
             )}
             {!s.isRead && (
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => markRead(s.id)}
-                style={{ color: "var(--muted)" }}
-                className="text-xs flex items-center gap-1 hover:text-white transition-colors"
+                className="h-7 px-2 text-xs"
               >
-                <Check size={12} /> Marquer comme lu
-              </button>
+                <Check size={12} /> Mark as read
+              </Button>
             )}
           </li>
         );

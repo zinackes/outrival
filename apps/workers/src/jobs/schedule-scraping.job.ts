@@ -20,20 +20,19 @@ export const scheduleScrapingJob = schedules.task({
 
     logger.log("Monitors due", { count: due.length });
 
-    let enqueued = 0;
-    for (const monitor of due) {
-      try {
-        await tasks.trigger("scrape-monitor", { monitorId: monitor.id });
-        enqueued++;
-      } catch (err) {
-        logger.error("Failed to enqueue scrape-monitor", {
-          monitorId: monitor.id,
-          err: String(err),
-        });
-      }
+    if (due.length === 0) {
+      logger.log("Completed schedule-scraping", { enqueued: 0 });
+      return { enqueued: 0, total: 0 };
     }
 
-    logger.log("Completed schedule-scraping", { enqueued });
-    return { enqueued, total: due.length };
+    // One batch call instead of N sequential triggers. Actual execution is
+    // throttled by the scrape-monitor queue (concurrencyLimit).
+    await tasks.batchTrigger(
+      "scrape-monitor",
+      due.map((monitor) => ({ payload: { monitorId: monitor.id } })),
+    );
+
+    logger.log("Completed schedule-scraping", { enqueued: due.length });
+    return { enqueued: due.length, total: due.length };
   },
 });

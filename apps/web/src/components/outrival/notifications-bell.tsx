@@ -1,9 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Bell, Check } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
-import { fr } from "date-fns/locale";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -17,12 +21,13 @@ interface Notification {
   createdAt: string;
 }
 
-export function NotificationsBell() {
+export function NotificationsBell({ compact = false }: { compact?: boolean } = {}) {
   const [items, setItems] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [open, setOpen] = useState(false);
-  const [toast, setToast] = useState<Notification | null>(null);
+  const router = useRouter();
   const esRef = useRef<EventSource | null>(null);
+  const seenIds = useRef<Set<string>>(new Set());
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   async function loadInitial() {
@@ -33,6 +38,7 @@ export function NotificationsBell() {
       ]);
       if (listRes.ok) {
         const { notifications } = (await listRes.json()) as { notifications: Notification[] };
+        for (const n of notifications) seenIds.current.add(n.id);
         setItems(notifications);
       }
       if (countRes.ok) {
@@ -53,13 +59,21 @@ export function NotificationsBell() {
     es.addEventListener("notification", (e) => {
       try {
         const notif = JSON.parse((e as MessageEvent).data) as Notification;
-        setItems((prev) => {
-          if (prev.some((p) => p.id === notif.id)) return prev;
-          return [notif, ...prev].slice(0, 20);
-        });
+        // Dedup by id: the SSE stream can replay a notification, and React
+        // Strict Mode can briefly open two connections. Never toast/count twice.
+        if (seenIds.current.has(notif.id)) return;
+        seenIds.current.add(notif.id);
+
+        setItems((prev) => [notif, ...prev].slice(0, 20));
         if (!notif.isRead) setUnreadCount((c) => c + 1);
-        setToast(notif);
-        setTimeout(() => setToast(null), 4500);
+
+        toast(notif.title, {
+          description: notif.body ?? undefined,
+          icon: <Bell size={14} className="text-primary" />,
+          action: notif.linkUrl
+            ? { label: "View", onClick: () => router.push(notif.linkUrl!) }
+            : undefined,
+        });
       } catch {
         /* ignore */
       }
@@ -112,90 +126,92 @@ export function NotificationsBell() {
   return (
     <>
       <div ref={dropdownRef} className="relative">
-        <button
-          onClick={() => setOpen((o) => !o)}
-          aria-label="Notifications"
-          style={{
-            background: "var(--surface)",
-            border: "1px solid var(--border)",
-            borderRadius: "var(--radius)",
-          }}
-          className="relative p-2 hover:opacity-90"
-        >
-          <Bell size={16} />
-          {unreadCount > 0 && (
-            <span
-              style={{ background: "var(--accent)", color: "#000" }}
-              className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center"
-            >
-              {unreadCount > 99 ? "99+" : unreadCount}
-            </span>
-          )}
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            {compact ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setOpen((o) => !o)}
+                aria-label="Notifications"
+                className="relative w-8 h-8 hover:bg-accent hover:text-foreground"
+              >
+                <Bell size={14} />
+                {unreadCount > 0 && (
+                  <span
+                    className="absolute top-1.5 right-1.5 w-[7px] h-[7px] rounded-full bg-primary border-2 border-background"
+                    aria-hidden
+                  />
+                )}
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setOpen((o) => !o)}
+                aria-label="Notifications"
+                className="relative"
+              >
+                <Bell size={16} />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center bg-primary text-primary-foreground">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
+              </Button>
+            )}
+          </TooltipTrigger>
+          <TooltipContent>
+            Notifications{unreadCount > 0 ? ` (${unreadCount} unread)` : ""}
+          </TooltipContent>
+        </Tooltip>
 
         {open && (
-          <div
-            style={{
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
-              borderRadius: "var(--radius)",
-              boxShadow: "0 8px 30px rgba(0,0,0,0.4)",
-            }}
-            className="absolute right-0 top-12 w-96 max-h-[480px] flex flex-col z-50"
-          >
-            <div
-              className="flex items-center justify-between px-3 py-2"
-              style={{ borderBottom: "1px solid var(--border)" }}
-            >
-              <span className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>
+          <Card className="absolute right-0 top-12 w-96 max-w-[calc(100vw-2rem)] max-h-[480px] overflow-hidden z-50 shadow-lg">
+            <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+              <span className="text-xs uppercase tracking-wide text-muted-foreground">
                 Notifications
               </span>
               {unreadCount > 0 && (
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={markAllRead}
-                  className="text-xs flex items-center gap-1 hover:opacity-80"
-                  style={{ color: "var(--accent)" }}
+                  className="h-7 px-2 text-xs text-primary hover:text-primary"
                 >
-                  <Check size={11} /> Tout marquer lu
-                </button>
+                  <Check size={11} /> Mark all read
+                </Button>
               )}
             </div>
-            <ul className="overflow-y-auto flex-1">
+            <ul className="overflow-y-auto flex-1 min-h-0">
               {items.length === 0 ? (
-                <li className="p-6 text-center text-xs" style={{ color: "var(--muted)" }}>
-                  Aucune notification
+                <li className="p-6 text-center text-xs text-muted-foreground">
+                  No notifications
                 </li>
               ) : (
                 items.map((n) => (
-                  <li
-                    key={n.id}
-                    style={{ borderBottom: "1px solid var(--border)" }}
-                    className="p-3 hover:bg-white/[0.02]"
-                  >
+                  <li key={n.id} className="border-b border-border last:border-0 hover:bg-white/[0.02]">
                     <a
                       href={n.linkUrl ?? "#"}
                       onClick={() => {
                         if (!n.isRead) markRead(n.id);
                         if (n.linkUrl) setOpen(false);
                       }}
-                      className="flex flex-col gap-1"
+                      className="flex flex-col gap-1 p-3"
                     >
                       <div className="flex items-start gap-2">
                         {!n.isRead && (
-                          <span
-                            style={{ background: "var(--accent)" }}
-                            className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0"
-                          />
+                          <span className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0 bg-primary" />
                         )}
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium leading-tight">{n.title}</p>
                           {n.body && (
-                            <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>
+                            <p className="text-xs mt-1 text-muted-foreground">
                               {n.body}
                             </p>
                           )}
-                          <p className="text-[10px] mt-1.5" style={{ color: "var(--muted)" }}>
-                            il y a {formatDistanceToNow(new Date(n.createdAt), { locale: fr })}
+                          <p className="text-[10px] mt-1.5 text-muted-foreground">
+                            {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
                           </p>
                         </div>
                       </div>
@@ -204,31 +220,9 @@ export function NotificationsBell() {
                 ))
               )}
             </ul>
-          </div>
+          </Card>
         )}
       </div>
-
-      {toast && (
-        <div
-          style={{
-            background: "var(--surface)",
-            border: "1px solid var(--accent)",
-            borderRadius: "var(--radius)",
-            boxShadow: "0 8px 30px rgba(0,0,0,0.5)",
-          }}
-          className="fixed bottom-6 right-6 max-w-sm p-3 flex items-start gap-2 z-50"
-        >
-          <Bell size={14} style={{ color: "var(--accent)" }} className="mt-0.5 flex-shrink-0" />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium leading-tight">{toast.title}</p>
-            {toast.body && (
-              <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>
-                {toast.body}
-              </p>
-            )}
-          </div>
-        </div>
-      )}
     </>
   );
 }

@@ -28,7 +28,38 @@ appliqué le 2026-05-27. Reste landing page + polish global via Claude Design
       (blog/changelog) faits. Étapes 2/4/5 (browser pool, undici, domain throttle)
       SKIP — no-op sur runtime Trigger.dev à machine isolée/run. Détails + à-revisiter
       dans findings.md § "Patch 07".
+- [x] patch-08 — Onboarding par stade de projet (implémenté 2026-05-31 — complete)
 - [ ] patch-02 — Admin ops (prochain — vue riche feedbacks + ops dashboard)
+
+## Étapes patch-08 (implémentées 2026-05-31 — commits laissés à l'utilisateur)
+
+Working tree avait 102 fichiers WIP non commités au démarrage → décision utilisateur
+"j'implémente, tu commites". Aucun commit fait par Claude. Détails dans findings.md
+§ "Patch-08".
+
+- [x] 0 — deps unpdf@1.6.2 + mammoth@1.12.0 dans @outrival/api
+- [x] 1 — schéma org : projectStage, onboardingStep, onboardingSkipped + db:push (applied)
+- [x] 2 — packages/ai/src/profile/ : fromDescription/fromDocument/fromRepo/fromUrl (purs)
+- [x] 3 — routes /analyze-{url,description,document,repo} + /progress + /skip + helpers
+          lib/github.ts + lib/extract-document.ts ; /analyze→/analyze-url (rename)
+- [x] 4 — detectTemporaryUrl dans packages/shared/src/url.ts
+- [x] 5 — onboarding-form.tsx réécrit (5 écrans) + page.tsx (resume + redirect guard)
+- [x] 6 — OnboardingBanner + garde dashboard (completed OU skipped)
+- [x] 7 — section re-onboarding dans WorkspaceSettingsForm (concurrents préservés)
+- [x] 8 — zéro-stockage : sentry beforeSend + pino redact (req.body/*.file) + audit code
+- [x] 9 — logique analyze isolée de l'auth (helpers réutilisables) — documenté
+- [x] 10 — typecheck 7/7 ✓ + build 7/7 ✓ ; test E2E runtime = manuel (creds requis)
+
+### Décisions patch-08
+
+- packages/ai reste PUR : fetch (quickFetch/unpdf/mammoth/GitHub) côté API, ai ne reçoit
+  que texte/artefacts. fromUrl = wrapper typé sur analyzeProduct.
+- ProductProfile = type UNIQUE (réexporté depuis tasks/analyze-product), pas de duplicat.
+- Discovery sans URL : findSimilarCompanies(productUrl: string|null) — query sémantique
+  pilote Exa, URL sert juste à exclure le domaine propre.
+- Resume : redirect dashboard seulement si completed && step==="done" → laisse passer skip
+  + re-onboarding. Liste de concurrents non persistée → resume discover re-run discovery.
+- Re-onboarding logé dans WorkspaceSettingsForm (pas de page settings/profile dédiée).
 
 ## Étapes patch-05 (terminées 2026-05-27)
 

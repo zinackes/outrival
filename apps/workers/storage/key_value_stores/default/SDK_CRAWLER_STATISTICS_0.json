@@ -1,30 +1,52 @@
 {
-  "requestsFinished": 2,
-  "requestsFailed": 0,
-  "requestsRetries": 0,
+  "requestsFinished": 0,
+  "requestsFailed": 1,
+  "requestsRetries": 1,
   "requestsFailedPerMinute": 0,
-  "requestsFinishedPerMinute": 17,
-  "requestMinDurationMillis": 1513,
-  "requestMaxDurationMillis": 4648,
-  "requestTotalFailedDurationMillis": 0,
-  "requestTotalFinishedDurationMillis": 6161,
-  "crawlerStartedAt": "2026-05-29T20:02:16.821Z",
-  "crawlerFinishedAt": "2026-05-29T20:02:23.558Z",
-  "statsPersistedAt": "2026-05-29T20:02:23.558Z",
-  "crawlerRuntimeMillis": 7034,
-  "crawlerLastStartTimestamp": 1780084936524,
+  "requestsFinishedPerMinute": 0,
+  "requestMinDurationMillis": null,
+  "requestMaxDurationMillis": 0,
+  "requestTotalFailedDurationMillis": 46128,
+  "requestTotalFinishedDurationMillis": 0,
+  "crawlerStartedAt": "2026-05-31T12:07:47.107Z",
+  "crawlerFinishedAt": "2026-05-31T12:10:58.285Z",
+  "statsPersistedAt": "2026-05-31T12:10:58.285Z",
+  "crawlerRuntimeMillis": 191392,
+  "crawlerLastStartTimestamp": 1780229266893,
   "requestRetryHistogram": [
-    2
+    null,
+    null,
+    null,
+    1
   ],
   "statsId": 0,
-  "requestAvgFailedDurationMillis": null,
-  "requestAvgFinishedDurationMillis": 3081,
-  "requestTotalDurationMillis": 6161,
-  "requestsTotal": 2,
+  "requestAvgFailedDurationMillis": 46128,
+  "requestAvgFinishedDurationMillis": null,
+  "requestTotalDurationMillis": 46128,
+  "requestsTotal": 1,
   "requestsWithStatusCode": {
-    "200": 1,
-    "404": 1
+    "200": 4
   },
-  "errors": {},
-  "retryErrors": {}
+  "errors": {
+    "/home/tmfzi/outrival/packages/scrapers/src/lib/crawler.ts:49:18": {
+      "missing error code": {
+        "TimeoutError": {
+          "page.goto: Timeout 45000ms exceeded.": {
+            "count": 1
+          }
+        }
+      }
+    }
+  },
+  "retryErrors": {
+    "/home/tmfzi/outrival/packages/scrapers/src/lib/crawler.ts:49:18": {
+      "missing error code": {
+        "TimeoutError": {
+          "page.goto: Timeout 45000ms exceeded.": {
+            "count": 3
+          }
+        }
+      }
+    }
+  }
 }

@@ -10,5 +10,6 @@ export const changes = pgTable("changes", {
   diffText: text("diff_text"),
   diffType: text("diff_type"),
   rawDiff: jsonb("raw_diff"),
+  summary: text("summary"),
   detectedAt: timestamp("detected_at").notNull().defaultNow(),
 });

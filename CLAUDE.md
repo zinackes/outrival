@@ -42,3 +42,18 @@ pnpm trigger:dev                # Runner Trigger.dev local
 - Prompts AI          → packages/ai/src/prompts/[name].prompt.ts
 - Schema DB           → packages/db/src/schema/[entity].ts
 - Routes API          → apps/api/src/routes/[resource].ts
+
+## Notion — roadmap produit
+
+Roadmap produit = database Notion "🎯 Roadmap" (sous le hub "Outrival").
+À tenir synchro à la main (la roadmap dérive sinon, cf. statuts tous restés "Now") :
+
+- Une phase / patch / feature de la roadmap **développée** (code implémenté,
+  typecheck/build OK — pas besoin d'attendre merge `main` ni déploiement) →
+  passer son `Status` à `Done` dans Notion.
+- Le suivi "réellement en prod" (mergé + déployé) sera tracké séparément
+  (mécanisme à définir — TODO). Ne pas l'attendre pour passer un item `Done`.
+- Un doc de specs / réflexion écrit dans `docs/` pour un item de la roadmap →
+  le référencer dans la note Notion de l'item : `📄 docs/<fichier>.md (existe déjà)`.
+- Avant de créer un item : chercher dans la data source pour éviter un doublon
+  (l'énumération par search sémantique n'est pas exhaustive — vérifier le titre).

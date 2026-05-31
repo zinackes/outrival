@@ -17,6 +17,10 @@ const baseOptions: LoggerOptions = {
       "*.email",
       "*.stripeCustomerId",
       "DATABASE_URL",
+      // Never let uploaded document bytes / multipart bodies reach the logs
+      // (zero-storage guarantee for the document onboarding mode).
+      "req.body",
+      "*.file",
     ],
     censor: "[REDACTED]",
   },

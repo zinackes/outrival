@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { and, desc, eq, isNull } from "drizzle-orm";
+import { tasks } from "@trigger.dev/sdk/v3";
 import { changes, monitors, competitors } from "@outrival/db";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
@@ -43,4 +44,31 @@ changesRouter.get("/", async (c) => {
     .limit(limit);
 
   return c.json({ changes: rows });
+});
+
+changesRouter.post("/:id/classify", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const id = c.req.param("id");
+
+  const owned = await db
+    .select({ id: changes.id })
+    .from(changes)
+    .innerJoin(monitors, eq(monitors.id, changes.monitorId))
+    .innerJoin(competitors, eq(competitors.id, monitors.competitorId))
+    .where(
+      and(
+        eq(changes.id, id),
+        eq(competitors.orgId, orgId),
+        isNull(competitors.deletedAt),
+      ),
+    )
+    .limit(1);
+
+  if (owned.length === 0) {
+    return c.json({ error: "Not found" }, 404);
+  }
+
+  const handle = await tasks.trigger("classify-change", { changeId: id });
+  return c.json({ runId: handle.id });
 });

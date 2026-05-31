@@ -39,6 +39,26 @@ function isJunkHost(host: string): boolean {
   return JUNK_HOST_SUFFIXES.some((s) => host === s || host.endsWith(`.${s}`));
 }
 
+const REACHABILITY_TIMEOUT_MS = 5000;
+
+// Exa surfaces defunct startups whose domain no longer resolves (expired,
+// parked, dead). A network-level failure (DNS miss, refused connection,
+// timeout) means the domain is dead → drop it. ANY HTTP response — even a
+// 403/503 from anti-bot — means the site is alive, so we keep it.
+async function isReachable(url: string): Promise<boolean> {
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      redirect: "follow",
+      signal: AbortSignal.timeout(REACHABILITY_TIMEOUT_MS),
+    });
+    res.body?.cancel().catch(() => {});
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 let exaClient: Exa | null = null;
 
 function getExa(): Exa {
@@ -57,13 +77,16 @@ export interface DiscoveredCompany {
 }
 
 export async function findSimilarCompanies(
-  productUrl: string,
+  // Null for onboarding modes without a live product site (idea / document /
+  // developing). Only used to exclude the user's own domain/brand from results;
+  // the semantic `query` is what actually drives the search.
+  productUrl: string | null,
   query: string,
   count = 15,
   excludeDomains: string[] = [],
 ): Promise<DiscoveredCompany[]> {
-  const hostname = new URL(productUrl).hostname;
-  const ownBrand = extractBrand(productUrl);
+  const hostname = productUrl ? new URL(productUrl).hostname : null;
+  const ownBrand = productUrl ? extractBrand(productUrl) : null;
 
   // Semantic search on what the product DOES (the query), restricted to
   // company entities. findSimilar(url) was anchored on the page itself, so it
@@ -71,7 +94,7 @@ export async function findSimilarCompanies(
   // query + category:"company" finds companies that do the same thing.
   const results = await getExa().search(query, {
     numResults: count,
-    excludeDomains: [hostname, ...excludeDomains],
+    excludeDomains: [...(hostname ? [hostname] : []), ...excludeDomains],
     category: "company",
     contents: { text: { maxCharacters: 500 } },
   });
@@ -98,16 +121,25 @@ export async function findSimilarCompanies(
     return true;
   });
 
+  // Drop dead domains (parallel, network-error = dead). Junk hosts are already
+  // gone, so we only ping plausible candidates.
+  const reachability = await Promise.all(
+    filtered.map(async (r) => ({ r, alive: await isReachable(r.url) })),
+  );
+  const live = reachability.filter((x) => x.alive).map((x) => x.r);
+
   // TEMP debug — à retirer
   console.log("[discovery]", {
     productUrl,
     ownBrand,
     rawCount: mapped.length,
     afterFilter: filtered.length,
+    afterReachable: live.length,
     dropped: mapped
       .filter((r) => !filtered.includes(r))
       .map((r) => r.url),
+    dead: reachability.filter((x) => !x.alive).map((x) => x.r.url),
   });
 
-  return filtered;
+  return live;
 }

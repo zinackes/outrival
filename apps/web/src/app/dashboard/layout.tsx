@@ -4,6 +4,7 @@ import { headers, cookies } from "next/headers";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { PostHogIdentitySync } from "@/lib/posthog/identity-sync";
 import { FeedbackWidget } from "@/components/outrival/feedback-widget";
+import { OnboardingBanner } from "@/components/outrival/onboarding-banner";
 
 export const metadata: Metadata = {
   title: "Dashboard",
@@ -21,7 +22,11 @@ async function getSession(h: Headers) {
 
 async function getOnboardingStatus(
   h: Headers,
-): Promise<{ onboardingCompleted: boolean } | null> {
+): Promise<{
+  onboardingCompleted: boolean;
+  onboardingSkipped: boolean;
+  profile: unknown;
+} | null> {
   const res = await fetch(
     `${process.env.NEXT_PUBLIC_API_URL}/api/onboarding/status`,
     { headers: h, cache: "no-store" },
@@ -66,7 +71,13 @@ export default async function DashboardLayout({
   ]);
 
   if (!session) redirect("/login");
-  if (status && !status.onboardingCompleted) redirect("/onboarding");
+  // Skip mode grants dashboard access without completing onboarding.
+  if (status && !status.onboardingCompleted && !status.onboardingSkipped) {
+    redirect("/onboarding");
+  }
+  const showOnboardingBanner = Boolean(
+    status?.onboardingSkipped && !status?.profile,
+  );
 
   const user = {
     name: session?.user?.name ?? null,
@@ -89,6 +100,7 @@ export default async function DashboardLayout({
   return (
     <DashboardShell user={user} org={org} defaultOpen={defaultOpen}>
       {userId && <PostHogIdentitySync userId={userId} plan={org.plan} />}
+      {showOnboardingBanner && <OnboardingBanner />}
       {children}
       <FeedbackWidget />
     </DashboardShell>

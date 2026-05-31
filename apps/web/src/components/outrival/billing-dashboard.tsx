@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Check, Minus, Loader2 } from "lucide-react";
 import {
   PLAN_LABELS,
   PLAN_LIMITS,
@@ -9,57 +10,98 @@ import {
   PLANS,
   type BillingPeriod,
   type Plan,
+  type SourceType,
 } from "@outrival/shared";
 import { api, type BillingInfo } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { cn } from "@/lib/utils";
+import { BillingDashboardSkeleton } from "@/app/dashboard/settings/billing/loading";
 
 type PaidPlan = Exclude<Plan, "free">;
 
-const PAID_PLANS: PaidPlan[] = ["starter", "pro", "business"];
+const SOURCE_LABELS: Record<SourceType, string> = {
+  homepage: "Homepage",
+  pricing: "Pricing page",
+  blog: "Blog",
+  changelog: "Changelog",
+  jobs: "Job postings",
+  g2_reviews: "G2 reviews",
+  capterra_reviews: "Capterra reviews",
+  appstore_reviews: "App Store reviews",
+  linkedin: "LinkedIn",
+  twitter: "Twitter / X",
+};
 
 const FEATURE_ROWS: Array<{
   label: string;
   read: (p: Plan) => string | boolean;
+  tooltip?: (p: Plan) => ReactNode;
 }> = [
   {
-    label: "Concurrents suivis",
+    label: "Tracked competitors",
     read: (p) => {
       const lim = PLAN_LIMITS[p].maxCompetitors;
-      return Number.isFinite(lim) ? `Jusqu'à ${lim}` : "Illimité";
+      return Number.isFinite(lim) ? `Up to ${lim}` : "Unlimited";
     },
   },
   {
-    label: "Fréquence de scraping",
+    label: "Scraping frequency",
     read: (p) => {
       const freqs = PLAN_LIMITS[p].allowedFrequencies;
-      if (freqs.includes("realtime")) return "Temps réel";
-      if (freqs.includes("daily")) return "Quotidien";
-      return "Hebdomadaire";
+      if (freqs.includes("realtime")) return "Hourly";
+      if (freqs.includes("daily")) return "Daily";
+      return "Weekly";
     },
   },
   {
-    label: "Sources surveillées",
+    label: "Monitored sources",
     read: (p) => `${PLAN_LIMITS[p].allowedSources.length} sources`,
+    tooltip: (p) => (
+      <ul className="space-y-0.5">
+        {PLAN_LIMITS[p].allowedSources.map((s) => (
+          <li key={s}>{SOURCE_LABELS[s]}</li>
+        ))}
+      </ul>
+    ),
   },
-  { label: "Battle cards IA", read: (p) => PLAN_LIMITS[p].features.battleCards },
-  { label: "Alertes temps-réel", read: (p) => PLAN_LIMITS[p].features.realtimeAlerts },
   {
-    label: "Canaux d'alerte",
-    read: (p) => PLAN_LIMITS[p].allowedChannels.join(", "),
+    label: "Alert channels",
+    read: (p) =>
+      PLAN_LIMITS[p].allowedChannels
+        .map((c) => c[0]!.toUpperCase() + c.slice(1))
+        .join(", "),
   },
-  { label: "Accès API", read: (p) => PLAN_LIMITS[p].features.api },
-  { label: "Multi-utilisateurs", read: (p) => PLAN_LIMITS[p].features.multiUser },
+  { label: "AI battle cards", read: (p) => PLAN_LIMITS[p].features.battleCards },
+  {
+    label: "Real-time alerts",
+    read: (p) => PLAN_LIMITS[p].features.realtimeAlerts,
+  },
+  { label: "API access", read: (p) => PLAN_LIMITS[p].features.api },
+  { label: "Multi-user", read: (p) => PLAN_LIMITS[p].features.multiUser },
 ];
 
-const cardStyle = {
-  background: "var(--surface)",
-  border: "1px solid var(--border)",
-  borderRadius: "var(--radius)",
-} as const;
-
-function renderValue(v: string | boolean): React.ReactNode {
-  if (v === true) return <span style={{ color: "var(--accent)" }}>✓</span>;
-  if (v === false) return <span style={{ color: "var(--muted)" }}>—</span>;
-  return <span style={{ color: "var(--foreground, white)" }}>{v}</span>;
+function renderCell(v: string | boolean) {
+  if (v === true)
+    return <Check size={14} className="text-foreground inline-block" />;
+  if (v === false)
+    return <Minus size={14} className="text-muted-foreground/50 inline-block" />;
+  return <span className="text-foreground">{v}</span>;
 }
 
 export function BillingDashboard() {
@@ -78,15 +120,18 @@ export function BillingDashboard() {
   useEffect(() => {
     const status = search.get("status");
     if (status === "success") {
-      setToast("Abonnement activé. Le nouveau plan sera disponible dans quelques secondes.");
-      // refresh billing after a short delay (webhook may take a moment)
-      const t = setTimeout(() => api.getBilling().then(setBilling).catch(() => {}), 2000);
-      // clean the query string
+      setToast(
+        "Subscription activated. The new plan will be available in a few seconds.",
+      );
+      const t = setTimeout(
+        () => api.getBilling().then(setBilling).catch(() => {}),
+        2000,
+      );
       router.replace("/dashboard/settings/billing");
       return () => clearTimeout(t);
     }
     if (status === "cancelled") {
-      setToast("Souscription annulée. Aucun changement.");
+      setToast("Subscription cancelled. No changes made.");
       router.replace("/dashboard/settings/billing");
     }
   }, [search, router]);
@@ -115,238 +160,255 @@ export function BillingDashboard() {
     }
   }
 
-  if (error && !billing) {
-    return <p style={{ color: "var(--muted)" }} className="text-sm">Erreur : {error}</p>;
-  }
-  if (!billing) {
-    return <p style={{ color: "var(--muted)" }} className="text-sm">Chargement…</p>;
-  }
+  if (error && !billing)
+    return <p className="text-sm text-muted-foreground">Error: {error}</p>;
+  if (!billing) return <BillingDashboardSkeleton />;
 
   const used = billing.usage.competitors.used;
   const limit = billing.usage.competitors.limit;
   const usagePct =
-    limit !== null && limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+    limit !== null && limit > 0
+      ? Math.min(100, Math.round((used / limit) * 100))
+      : 0;
   const isUnlimited = limit === null;
 
   return (
     <div className="flex flex-col gap-8">
       {toast && (
-        <div
-          style={{
-            ...cardStyle,
-            borderColor: "var(--accent)",
-            background: "rgba(245, 158, 11, 0.08)",
-          }}
-          className="px-4 py-3 text-sm"
-        >
+        <Card className="border-primary/40 bg-primary/[0.04] px-4 py-3 text-sm">
           {toast}
-        </div>
+        </Card>
       )}
 
-      <section style={cardStyle} className="p-5">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <p style={{ color: "var(--muted)" }} className="text-xs uppercase tracking-wider mb-1">
-              Plan actuel
-            </p>
-            <h2 style={{ fontFamily: "var(--font-syne)" }} className="text-3xl font-bold">
-              {PLAN_LABELS[billing.plan]}
-              {billing.planPeriod && (
-                <span style={{ color: "var(--muted)" }} className="text-base font-normal ml-2">
-                  · {billing.planPeriod === "monthly" ? "mensuel" : "annuel"}
+      <Card className="px-5 py-4">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-6 flex-wrap">
+            <div className="flex flex-col">
+              <span
+                className="text-[10px] uppercase tracking-[0.14em] text-[var(--muted-2)]"
+                style={{ fontFamily: "var(--font-mono)" }}
+              >
+                Current plan
+              </span>
+              <span className="font-semibold text-base mt-0.5 tracking-tight">
+                {PLAN_LABELS[billing.plan]}
+                {billing.planPeriod && (
+                  <span className="text-muted-foreground font-normal ml-1.5 text-sm">
+                    · {billing.planPeriod}
+                  </span>
+                )}
+              </span>
+            </div>
+
+            <div className="h-8 w-px bg-border hidden sm:block" />
+
+            <div className="flex flex-col min-w-[180px]">
+              <span
+                className="text-[10px] uppercase tracking-[0.14em] text-[var(--muted-2)]"
+                style={{ fontFamily: "var(--font-mono)" }}
+              >
+                Competitors
+              </span>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-sm tabular-nums">
+                  {used}
+                  {!isUnlimited && (
+                    <span className="text-muted-foreground"> / {limit}</span>
+                  )}
+                  {isUnlimited && (
+                    <span className="text-muted-foreground"> · ∞</span>
+                  )}
                 </span>
-              )}
-            </h2>
+                {!isUnlimited && (
+                  <Progress
+                    value={usagePct}
+                    className={cn(
+                      "h-1 w-20",
+                      usagePct >= 100 && "[&>div]:bg-destructive",
+                    )}
+                  />
+                )}
+              </div>
+            </div>
           </div>
+
           {billing.hasSubscription && (
-            <button
-              type="button"
+            <Button
+              variant="outline"
+              size="sm"
               onClick={handlePortal}
               disabled={busy === "portal"}
-              style={{
-                background: "transparent",
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius)",
-                color: "var(--foreground, white)",
-              }}
-              className="px-4 py-2 text-sm hover:bg-white/5 disabled:opacity-50"
             >
-              {busy === "portal" ? "Ouverture…" : "Gérer mon abonnement"}
-            </button>
-          )}
-        </div>
-
-        <div className="mt-5">
-          <div className="flex items-center justify-between text-sm mb-2">
-            <span style={{ color: "var(--muted)" }}>Concurrents suivis</span>
-            <span>
-              {used} {isUnlimited ? "" : `/ ${limit}`}
-              {isUnlimited && (
-                <span style={{ color: "var(--muted)" }}> (illimité)</span>
+              {busy === "portal" && (
+                <Loader2 size={12} className="animate-spin" />
               )}
-            </span>
-          </div>
-          {!isUnlimited && (
-            <div
-              style={{
-                background: "var(--border)",
-                borderRadius: "999px",
-                height: "6px",
-                overflow: "hidden",
-              }}
-            >
-              <div
-                style={{
-                  width: `${usagePct}%`,
-                  height: "100%",
-                  background: usagePct >= 100 ? "#ef4444" : "var(--accent)",
-                  transition: "width 200ms ease",
-                }}
-              />
-            </div>
+              {busy === "portal" ? "Opening…" : "Manage subscription"}
+            </Button>
           )}
         </div>
-      </section>
+      </Card>
 
-      <section>
-        <div className="flex items-center justify-between mb-4">
-          <h2 style={{ fontFamily: "var(--font-syne)" }} className="text-xl font-bold">
-            Plans
-          </h2>
-          <div
-            style={{
-              ...cardStyle,
-              display: "inline-flex",
-              padding: "2px",
-            }}
-          >
-            {(["monthly", "yearly"] as const).map((p) => (
-              <button
-                key={p}
-                type="button"
-                onClick={() => setPeriod(p)}
-                style={{
-                  background: period === p ? "var(--accent)" : "transparent",
-                  color: period === p ? "#0a0a0a" : "var(--muted)",
-                  borderRadius: "calc(var(--radius) - 2px)",
-                }}
-                className="px-3 py-1.5 text-xs font-medium transition-colors"
-              >
-                {p === "monthly" ? "Mensuel" : "Annuel"}
-                {p === "yearly" && (
-                  <span className="ml-1" style={{ opacity: 0.8 }}>−17%</span>
-                )}
-              </button>
-            ))}
+      <section className="flex flex-col gap-4">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h3 className="font-semibold text-base tracking-tight">Change plan</h3>
+            <p className="text-muted-foreground text-sm mt-0.5">
+              Yearly billing saves 17%.
+            </p>
           </div>
+          <ToggleGroup
+            type="single"
+            value={period}
+            onValueChange={(v) => v && setPeriod(v as BillingPeriod)}
+            variant="outline"
+            size="sm"
+          >
+            <ToggleGroupItem value="monthly">Monthly</ToggleGroupItem>
+            <ToggleGroupItem value="yearly">
+              Yearly <span className="ml-1 opacity-70">−17%</span>
+            </ToggleGroupItem>
+          </ToggleGroup>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {PLANS.map((plan) => {
-            const isCurrent = plan === billing.plan;
-            const isPaid = plan !== "free";
-            const pricing = isPaid
-              ? PLAN_PRICING[plan as PaidPlan][period]
-              : 0;
-            const monthly = period === "yearly" && isPaid
-              ? Math.round((pricing / 12) * 10) / 10
-              : pricing;
+        <Card className="p-0 overflow-hidden">
+          <Table className="text-[13px]">
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="w-[200px] align-bottom" />
+                {PLANS.map((plan) => {
+                  const isCurrent = plan === billing.plan;
+                  const isPaid = plan !== "free";
+                  const pricing = isPaid
+                    ? PLAN_PRICING[plan as PaidPlan][period]
+                    : 0;
+                  const monthly =
+                    period === "yearly" && isPaid
+                      ? Math.round((pricing / 12) * 10) / 10
+                      : pricing;
 
-            return (
-              <div
-                key={plan}
-                style={{
-                  ...cardStyle,
-                  borderColor: isCurrent ? "var(--accent)" : "var(--border)",
-                  boxShadow: isCurrent ? "0 0 0 1px var(--accent) inset" : undefined,
-                }}
-                className="p-5 flex flex-col gap-4"
-              >
-                <div>
-                  <p style={{ color: "var(--muted)" }} className="text-xs uppercase tracking-wider">
-                    {PLAN_LABELS[plan]}
-                  </p>
-                  <div className="flex items-baseline gap-1 mt-1">
-                    <span
-                      style={{ fontFamily: "var(--font-syne)" }}
-                      className="text-2xl font-bold"
+                  return (
+                    <TableHead
+                      key={plan}
+                      className={cn(
+                        "align-top py-4 px-3 border-l border-border",
+                        isCurrent && "bg-surface-2/40",
+                      )}
                     >
-                      {monthly}€
-                    </span>
-                    {isPaid && (
-                      <span style={{ color: "var(--muted)" }} className="text-xs">
-                        /mois
-                      </span>
-                    )}
-                  </div>
-                  {period === "yearly" && isPaid && (
-                    <p style={{ color: "var(--muted)" }} className="text-xs mt-0.5">
-                      facturé {pricing}€ /an
-                    </p>
-                  )}
-                </div>
+                      <div className="flex flex-col gap-2.5">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="text-[10px] uppercase tracking-[0.14em] text-[var(--muted-2)]"
+                            style={{ fontFamily: "var(--font-mono)" }}
+                          >
+                            {PLAN_LABELS[plan]}
+                          </span>
+                          {isCurrent && (
+                            <span
+                              className="text-[9px] px-1.5 py-0.5 rounded bg-foreground text-background tracking-wider"
+                              style={{ fontFamily: "var(--font-mono)" }}
+                            >
+                              CURRENT
+                            </span>
+                          )}
+                        </div>
 
-                {isCurrent ? (
-                  <button
-                    type="button"
-                    disabled
-                    style={{
-                      background: "transparent",
-                      border: "1px solid var(--border)",
-                      borderRadius: "var(--radius)",
-                      color: "var(--muted)",
-                    }}
-                    className="w-full px-3 py-2 text-sm"
-                  >
-                    Plan actuel
-                  </button>
-                ) : isPaid ? (
-                  <button
-                    type="button"
-                    onClick={() => handleCheckout(plan as PaidPlan)}
-                    disabled={Boolean(busy)}
-                    style={{
-                      background: "var(--accent)",
-                      color: "#0a0a0a",
-                      borderRadius: "var(--radius)",
-                    }}
-                    className="w-full px-3 py-2 text-sm font-medium disabled:opacity-50"
-                  >
-                    {busy === plan ? "Redirection…" : `Passer à ${PLAN_LABELS[plan]}`}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    disabled
-                    style={{
-                      background: "transparent",
-                      border: "1px solid var(--border)",
-                      borderRadius: "var(--radius)",
-                      color: "var(--muted)",
-                    }}
-                    className="w-full px-3 py-2 text-sm"
-                  >
-                    Gratuit
-                  </button>
-                )}
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-xl font-semibold tracking-tight text-foreground tabular-nums">
+                            {monthly}€
+                          </span>
+                          {isPaid && (
+                            <span className="text-[11px] text-muted-foreground">
+                              /mo
+                            </span>
+                          )}
+                        </div>
+                        <div className="h-3 text-[10px] text-muted-foreground">
+                          {period === "yearly" && isPaid
+                            ? `${pricing}€ billed yearly`
+                            : ""}
+                        </div>
 
-                <ul className="flex flex-col gap-2 text-xs">
-                  {FEATURE_ROWS.map((row) => (
-                    <li key={row.label} className="flex items-start justify-between gap-2">
-                      <span style={{ color: "var(--muted)" }}>{row.label}</span>
-                      <span className="text-right">{renderValue(row.read(plan))}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            );
-          })}
-        </div>
+                        {isCurrent ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled
+                            className="w-full font-normal"
+                          >
+                            Current plan
+                          </Button>
+                        ) : isPaid ? (
+                          <Button
+                            size="sm"
+                            onClick={() => handleCheckout(plan as PaidPlan)}
+                            disabled={Boolean(busy)}
+                            className="w-full"
+                          >
+                            {busy === plan && (
+                              <Loader2 size={12} className="animate-spin" />
+                            )}
+                            {busy === plan ? "Redirecting…" : "Upgrade"}
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled
+                            className="w-full font-normal"
+                          >
+                            Free
+                          </Button>
+                        )}
+                      </div>
+                    </TableHead>
+                  );
+                })}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {FEATURE_ROWS.map((row) => (
+                <TableRow key={row.label} className="hover:bg-transparent">
+                  <TableCell className="text-muted-foreground font-normal whitespace-normal py-2.5 px-4">
+                    {row.label}
+                  </TableCell>
+                  {PLANS.map((plan) => {
+                    const isCurrent = plan === billing.plan;
+                    return (
+                      <TableCell
+                        key={plan}
+                        className={cn(
+                          "text-center py-2.5 px-3 border-l border-border whitespace-normal",
+                          isCurrent && "bg-surface-2/40",
+                        )}
+                      >
+                        {row.tooltip ? (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="text-foreground underline decoration-dotted decoration-muted-foreground/40 underline-offset-[3px] cursor-help">
+                                {row.read(plan)}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent
+                              side="top"
+                              className="max-w-[220px] text-[11px] leading-relaxed normal-case"
+                            >
+                              {row.tooltip(plan)}
+                            </TooltipContent>
+                          </Tooltip>
+                        ) : (
+                          renderCell(row.read(plan))
+                        )}
+                      </TableCell>
+                    );
+                  })}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Card>
       </section>
 
-      {error && (
-        <p className="text-sm text-red-400">{error}</p>
-      )}
+      {error && <p className="text-sm text-destructive">{error}</p>}
     </div>
   );
 }

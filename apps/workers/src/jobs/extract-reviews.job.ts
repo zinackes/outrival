@@ -3,7 +3,7 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db, snapshots, reviews } from "@outrival/db";
 import { extractReviews } from "@outrival/ai";
-import { getFromR2 } from "@outrival/shared";
+import { getFromR2, parseAppStoreSnapshot } from "@outrival/shared";
 import { htmlToText } from "../lib/html-to-text";
 import { insertReviewScore } from "../lib/clickhouse";
 
@@ -30,13 +30,40 @@ export const extractReviewsJob = task({
     if (!snapshot) throw new AbortTaskRunError(`Snapshot ${input.snapshotId} not found`);
 
     const html = await getFromR2(`${snapshot.r2Key}.html`);
-    const text = htmlToText(html);
 
-    const extracted = await extractReviews(text);
-    if (!extracted) {
+    // App Store snapshots are our normalized JSON (Apple RSS), not HTML. Score
+    // and review_count come straight from the structured data; the AI is used
+    // only to synthesize qualitative praises/complaints.
+    let text: string;
+    let structured: { averageScore: number | null; reviewCount: number } | null = null;
+    if (input.source === "appstore") {
+      const summary = parseAppStoreSnapshot(html);
+      if (!summary) {
+        logger.warn("App Store snapshot parse failed");
+        return { ok: false, reason: "parse_failed" };
+      }
+      if (summary.reviewCount === 0 || summary.text.length === 0) {
+        logger.warn("App Store snapshot has no reviews");
+        return { ok: false, reason: "no_reviews" };
+      }
+      text = summary.text;
+      structured = { averageScore: summary.averageScore, reviewCount: summary.reviewCount };
+    } else {
+      text = htmlToText(html);
+    }
+
+    const extractedRaw = await extractReviews(text);
+    if (!extractedRaw) {
       logger.warn("Reviews extraction returned null");
       return { ok: false, reason: "parse_failed" };
     }
+    const extracted = structured
+      ? {
+          ...extractedRaw,
+          average_score: structured.averageScore ?? extractedRaw.average_score,
+          review_count: structured.reviewCount,
+        }
+      : extractedRaw;
     logger.log("Reviews extracted", {
       source: input.source,
       averageScore: extracted.average_score,

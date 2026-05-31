@@ -24,7 +24,8 @@ import {
   Trash2,
   RefreshCw,
   MoreHorizontal,
-  Check,
+  Plus,
+  Settings2,
 } from "lucide-react";
 import {
   Dialog,
@@ -41,8 +42,22 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { BattleCardTab } from "@/components/outrival/battle-card-tab";
+import {
+  PaywallDialog,
+  paywallFromError,
+  type PaywallReason,
+} from "@/components/outrival/paywall-dialog";
 import { track } from "@/lib/posthog/events";
+import {
+  validateReviewUrl,
+  validateMonitorUrl,
+  MONITOR_FREQUENCIES,
+  type SourceType,
+  type ReviewSourceType,
+  type MonitorFrequency,
+} from "@outrival/shared";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -53,6 +68,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { friendlyScrapeError } from "@/lib/scrape-errors";
 import CompetitorDetailLoading from "./loading";
 import { ChartSkeleton } from "@/components/dashboard/skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -100,6 +116,30 @@ const SEVERITY_CLASS: Record<string, string> = {
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 300_000;
 
+type MonitorStatus = "running" | "failed" | "ok" | "idle";
+
+// A monitor is "running" from the server's point of view when its scrape was
+// started after the last terminal event (success or failure) and hasn't blown
+// past the poll timeout. This lets the in-progress state survive a page refresh
+// even though the client-side `scrapingIds` set is reset on reload.
+function isServerScraping(m: Monitor): boolean {
+  if (!m.scrapeStartedAt) return false;
+  const started = new Date(m.scrapeStartedAt).getTime();
+  const lastRun = m.lastRunAt ? new Date(m.lastRunAt).getTime() : 0;
+  const lastFailed = m.lastFailedAt ? new Date(m.lastFailedAt).getTime() : 0;
+  if (started <= lastRun || started <= lastFailed) return false;
+  return Date.now() - started < POLL_TIMEOUT_MS;
+}
+
+function monitorStatus(m: Monitor, running: boolean): MonitorStatus {
+  if (running) return "running";
+  const lastRun = m.lastRunAt ? new Date(m.lastRunAt).getTime() : 0;
+  const lastFailed = m.lastFailedAt ? new Date(m.lastFailedAt).getTime() : 0;
+  if (lastFailed > 0 && lastFailed > lastRun) return "failed";
+  if (lastRun > 0) return "ok";
+  return "idle";
+}
+
 interface Props {
   params: Promise<{ id: string }>;
 }
@@ -117,14 +157,17 @@ export default function CompetitorDetailPage({ params }: Props) {
   const [data, setData] = useState<CompetitorData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [scrapingIds, setScrapingIds] = useState<Set<string>>(new Set());
+  const [runningAll, setRunningAll] = useState(false);
   const [tab, setTab] = useState<TabKey>("activity");
   const [showDelete, setShowDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
+  const [paywall, setPaywall] = useState<PaywallReason | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const scrapingStartRef = useRef<Map<string, { startedAt: number; lastRunAt: string | null }>>(
-    new Map(),
-  );
+  const scrapingStartRef = useRef<
+    Map<string, { startedAt: number; lastRunAt: string | null; lastFailedAt: string | null }>
+  >(new Map());
+  const seededRef = useRef(false);
 
   async function refresh() {
     try {
@@ -141,6 +184,24 @@ export default function CompetitorDetailPage({ params }: Props) {
     refresh();
   }, [id]);
 
+  // Restore the in-progress state after a refresh: any monitor the server still
+  // reports as scraping is re-tracked so the existing poll resumes and reports
+  // its completion/failure. Runs once, after the first successful load.
+  useEffect(() => {
+    if (!data || seededRef.current) return;
+    seededRef.current = true;
+    const running = data.monitors.filter(isServerScraping);
+    if (running.length === 0) return;
+    for (const m of running) {
+      scrapingStartRef.current.set(m.id, {
+        startedAt: m.scrapeStartedAt ? new Date(m.scrapeStartedAt).getTime() : Date.now(),
+        lastRunAt: m.lastRunAt,
+        lastFailedAt: m.lastFailedAt,
+      });
+    }
+    setScrapingIds(new Set(running.map((m) => m.id)));
+  }, [data]);
+
   useEffect(() => {
     if (scrapingIds.size === 0) {
       if (pollRef.current) {
@@ -155,6 +216,7 @@ export default function CompetitorDetailPage({ params }: Props) {
       const fresh = await refresh();
       if (!fresh) return;
       const finished: string[] = [];
+      const failed: string[] = [];
       const timedOut: string[] = [];
       const now = Date.now();
       for (const monitorId of scrapingIds) {
@@ -162,19 +224,20 @@ export default function CompetitorDetailPage({ params }: Props) {
         if (!tracker) continue;
         const updated = fresh.monitors.find((m) => m.id === monitorId);
         const updatedRun = updated?.lastRunAt ?? null;
-        const changed =
-          updatedRun !== null && updatedRun !== tracker.lastRunAt;
-        if (changed) {
+        const updatedFailed = updated?.lastFailedAt ?? null;
+        if (updatedRun !== null && updatedRun !== tracker.lastRunAt) {
           finished.push(monitorId);
+        } else if (updatedFailed !== null && updatedFailed !== tracker.lastFailedAt) {
+          failed.push(monitorId);
         } else if (now - tracker.startedAt > POLL_TIMEOUT_MS) {
           timedOut.push(monitorId);
         }
       }
-      if (finished.length === 0 && timedOut.length === 0) return;
+      if (finished.length === 0 && failed.length === 0 && timedOut.length === 0) return;
 
       setScrapingIds((prev) => {
         const next = new Set(prev);
-        for (const fid of [...finished, ...timedOut]) {
+        for (const fid of [...finished, ...failed, ...timedOut]) {
           next.delete(fid);
           scrapingStartRef.current.delete(fid);
         }
@@ -186,6 +249,15 @@ export default function CompetitorDetailPage({ params }: Props) {
           .map((mid) => fresh.monitors.find((m) => m.id === mid)?.sourceType ?? mid)
           .join(", ");
         toast.success("Scrape completed", { description: labels });
+        setRefreshTick((t) => t + 1);
+      }
+      if (failed.length > 0) {
+        for (const mid of failed) {
+          const m = fresh.monitors.find((x) => x.id === mid);
+          toast.error(`Scrape failed · ${m?.sourceType ?? mid}`, {
+            description: friendlyScrapeError(m?.lastError, m?.sourceType),
+          });
+        }
         setRefreshTick((t) => t + 1);
       }
       if (timedOut.length > 0) {
@@ -210,8 +282,13 @@ export default function CompetitorDetailPage({ params }: Props) {
     if (!data) return;
     const idle = data.monitors.filter((m) => !scrapingIds.has(m.id));
     if (idle.length === 0) return;
-    for (const m of idle) {
-      await runMonitor(m.id);
+    setRunningAll(true);
+    try {
+      for (const m of idle) {
+        await runMonitor(m.id);
+      }
+    } finally {
+      setRunningAll(false);
     }
   }
 
@@ -227,13 +304,56 @@ export default function CompetitorDetailPage({ params }: Props) {
     }
   }
 
-  async function runMonitor(monitorId: string) {
-    if (!data) return;
-    const monitor = data.monitors.find((m) => m.id === monitorId);
+  async function enableMonitor(sourceType: SourceType, url?: string) {
+    try {
+      await api.addCompetitorMonitor(id, sourceType, url ? { url } : undefined);
+      const fresh = await refresh();
+      const created = fresh?.monitors.find((m) => m.sourceType === sourceType);
+      if (created && fresh) {
+        toast.success(`${sourceType} monitoring enabled`, {
+          description: "Starting first scrape…",
+        });
+        await runMonitor(created.id, fresh.monitors);
+      } else {
+        toast.success(`${sourceType} monitoring enabled`);
+      }
+    } catch (e) {
+      const reason = paywallFromError(e);
+      if (reason) {
+        setPaywall(reason);
+        return;
+      }
+      toast.error("Failed to enable source", { description: String(e) });
+    }
+  }
+
+  async function editMonitor(
+    monitorId: string,
+    patch: { url?: string; frequency?: MonitorFrequency },
+  ) {
+    try {
+      await api.updateMonitor(monitorId, patch);
+      await refresh();
+      toast.success("Monitor updated");
+    } catch (e) {
+      const reason = paywallFromError(e);
+      if (reason) {
+        setPaywall(reason);
+        return;
+      }
+      toast.error("Failed to update monitor", { description: String(e) });
+    }
+  }
+
+  async function runMonitor(monitorId: string, list?: Monitor[]) {
+    const available = list ?? data?.monitors;
+    if (!available) return;
+    const monitor = available.find((m) => m.id === monitorId);
     if (!monitor) return;
     scrapingStartRef.current.set(monitorId, {
       startedAt: Date.now(),
       lastRunAt: monitor.lastRunAt,
+      lastFailedAt: monitor.lastFailedAt,
     });
     setScrapingIds((prev) => new Set(prev).add(monitorId));
     try {
@@ -265,7 +385,7 @@ export default function CompetitorDetailPage({ params }: Props) {
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="space-y-[22px]">
+      <div className="space-y-[22px] animate-in fade-in slide-in-from-bottom-2 duration-500">
         <Link
           href="/dashboard/competitors"
           className="text-[13px] text-muted-foreground flex items-center gap-1 hover:text-foreground transition-colors w-fit"
@@ -276,15 +396,21 @@ export default function CompetitorDetailPage({ params }: Props) {
         <Header
           competitor={competitor}
           lastRunMs={lastRunMs}
-          anyMonitorRunning={monitors.some((m) => scrapingIds.has(m.id))}
-          onRunAll={runAllMonitors}
           onDelete={() => setShowDelete(true)}
         />
 
-        <MonitorChips
+        <MonitorSources
           monitors={monitors}
           scrapingIds={scrapingIds}
           onRun={runMonitor}
+          onRunAll={runAllMonitors}
+          onEdit={editMonitor}
+          competitorUrl={competitor.url}
+          runningAll={runningAll}
+          disabled={
+            runningAll ||
+            monitors.every((m) => scrapingIds.has(m.id) || isServerScraping(m))
+          }
         />
 
         <StatsOverview
@@ -321,6 +447,7 @@ export default function CompetitorDetailPage({ params }: Props) {
                 monitors={monitors}
                 scrapingIds={scrapingIds}
                 onRun={runMonitor}
+                onEnable={enableMonitor}
                 refreshTick={refreshTick}
               />
             </TabsContent>
@@ -330,6 +457,7 @@ export default function CompetitorDetailPage({ params }: Props) {
                 monitors={monitors}
                 scrapingIds={scrapingIds}
                 onRun={runMonitor}
+                onEnable={enableMonitor}
                 refreshTick={refreshTick}
               />
             </TabsContent>
@@ -339,6 +467,7 @@ export default function CompetitorDetailPage({ params }: Props) {
                 monitors={monitors}
                 scrapingIds={scrapingIds}
                 onRun={runMonitor}
+                onEnable={enableMonitor}
                 refreshTick={refreshTick}
               />
             </TabsContent>
@@ -389,6 +518,8 @@ export default function CompetitorDetailPage({ params }: Props) {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        <PaywallDialog reason={paywall} onClose={() => setPaywall(null)} />
       </div>
     </TooltipProvider>
   );
@@ -397,14 +528,10 @@ export default function CompetitorDetailPage({ params }: Props) {
 function Header({
   competitor,
   lastRunMs,
-  anyMonitorRunning,
-  onRunAll,
   onDelete,
 }: {
   competitor: Competitor;
   lastRunMs: number;
-  anyMonitorRunning: boolean;
-  onRunAll: () => void;
   onDelete: () => void;
 }) {
   return (
@@ -436,19 +563,6 @@ function Header({
         )}
       </div>
       <div className="flex items-center gap-2 shrink-0">
-        <Button
-          size="sm"
-          variant="default"
-          onClick={onRunAll}
-          disabled={anyMonitorRunning}
-        >
-          {anyMonitorRunning ? (
-            <Loader2 size={12} className="animate-spin" />
-          ) : (
-            <Play size={12} />
-          )}
-          Scrape all
-        </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -471,73 +585,258 @@ function Header({
   );
 }
 
-function MonitorChips({
+function SourceStatusIcon({ status }: { status: MonitorStatus }) {
+  if (status === "running")
+    return <Loader2 size={13} className="animate-spin text-muted-foreground shrink-0" />;
+  if (status === "failed") return <AlertCircle size={13} className="text-critical shrink-0" />;
+  return (
+    <span
+      className={cn(
+        "h-2 w-2 rounded-full shrink-0",
+        status === "ok" ? "bg-positive" : "border border-muted-foreground/40",
+      )}
+    />
+  );
+}
+
+function MonitorSources({
   monitors,
   scrapingIds,
   onRun,
+  onRunAll,
+  onEdit,
+  competitorUrl,
+  runningAll,
+  disabled,
 }: {
   monitors: Monitor[];
   scrapingIds: Set<string>;
   onRun: (id: string) => void;
+  onRunAll: () => void;
+  onEdit: (id: string, patch: { url?: string; frequency?: MonitorFrequency }) => Promise<void>;
+  competitorUrl: string;
+  runningAll: boolean;
+  disabled: boolean;
 }) {
+  const [editing, setEditing] = useState<Monitor | null>(null);
   if (monitors.length === 0) return null;
   return (
-    <div className="flex items-center gap-1.5 flex-wrap">
+    <Card className="divide-y divide-border overflow-hidden">
+      <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+        <span className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
+          Sources
+        </span>
+        <Button
+          size="sm"
+          variant="default"
+          onClick={onRunAll}
+          disabled={disabled}
+          className="h-7 text-[11px]"
+        >
+          {runningAll ? (
+            <Loader2 size={12} className="animate-spin" />
+          ) : (
+            <Play size={12} />
+          )}
+          Scrape all
+        </Button>
+      </div>
       {monitors.map((m) => {
-        const running = scrapingIds.has(m.id);
-        const lastRunMs = m.lastRunAt ? new Date(m.lastRunAt).getTime() : 0;
-        const lastFailedMs = m.lastFailedAt ? new Date(m.lastFailedAt).getTime() : 0;
-        const failed = lastFailedMs > 0 && lastFailedMs > lastRunMs;
-        const status = running ? "running" : failed ? "failed" : lastRunMs > 0 ? "ok" : "idle";
-        const Icon = running ? Loader2 : failed ? AlertCircle : lastRunMs > 0 ? Check : Play;
-        const relativeTime =
-          status === "failed" && m.lastFailedAt
-            ? `failed ${formatDistanceToNow(new Date(m.lastFailedAt), { addSuffix: true })}`
-            : status === "ok" && m.lastRunAt
-              ? formatDistanceToNow(new Date(m.lastRunAt), { addSuffix: true })
-              : status === "running"
-                ? "scraping…"
+        const running = scrapingIds.has(m.id) || isServerScraping(m);
+        const status = monitorStatus(m, running);
+        const ageText =
+          status === "running"
+            ? "scraping…"
+            : status === "failed" && m.lastFailedAt
+              ? `failed ${formatDistanceToNow(new Date(m.lastFailedAt), { addSuffix: true })}`
+              : status === "ok" && m.lastRunAt
+                ? formatDistanceToNow(new Date(m.lastRunAt), { addSuffix: true })
                 : "never scraped";
         return (
-          <Tooltip key={m.id}>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={() => !running && onRun(m.id)}
-                disabled={running}
-                className={cn(
-                  "inline-flex items-center gap-1.5 px-2 py-1 rounded-md border text-[11px] font-mono uppercase tracking-wide transition-colors disabled:cursor-not-allowed",
-                  status === "ok" && "border-border bg-card hover:bg-accent/40 text-foreground",
-                  status === "failed" && "border-critical/40 bg-critical/[0.08] text-critical hover:bg-critical/[0.14]",
-                  status === "running" && "border-border bg-accent/40 text-foreground",
-                  status === "idle" && "border-dashed border-border bg-card hover:bg-accent/40 text-muted-foreground",
-                )}
+          <div key={m.id} className="flex items-center gap-3 px-4 py-2.5">
+            <SourceStatusIcon status={status} />
+            <span className="font-medium text-[13px] w-[104px] truncate">{m.sourceType}</span>
+            <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground/60 w-12">
+              {m.frequency}
+            </span>
+            <span
+              className={cn(
+                "text-[11px] font-mono",
+                status === "failed" ? "text-critical/80" : "text-muted-foreground/70",
+              )}
+            >
+              {ageText}
+            </span>
+            <div className="ml-auto flex items-center gap-1.5">
+              {status === "failed" && m.lastError && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      className="text-critical/70 hover:text-critical transition-colors"
+                      aria-label="Scrape error detail"
+                    >
+                      <Info size={13} />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent
+                    side="top"
+                    className="max-w-[280px] text-[11px] leading-relaxed break-words"
+                  >
+                    {friendlyScrapeError(m.lastError, m.sourceType)}
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                onClick={() => setEditing(m)}
+                aria-label="Configure source"
               >
-                <Icon size={10} className={cn(running && "animate-spin")} />
-                <span className="font-semibold">{m.sourceType}</span>
-                <span className="text-muted-foreground/70 font-normal normal-case tracking-normal">
-                  {m.frequency}
-                </span>
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="top" className="max-w-[280px] text-[11px] leading-relaxed">
-              <div className="flex flex-col gap-0.5">
-                <div className="font-semibold">{m.sourceType}</div>
-                <div className="text-muted-foreground">{relativeTime}</div>
-                {failed && m.lastError && (
-                  <div className="text-critical/80 mt-1 max-w-[260px] break-words">
-                    {m.lastError}
-                  </div>
+                <Settings2 size={13} />
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => onRun(m.id)}
+                disabled={running}
+                className="h-7 text-[11px] min-w-[84px]"
+              >
+                {running ? (
+                  <>
+                    <Loader2 size={11} className="animate-spin" /> Scraping…
+                  </>
+                ) : (
+                  <>
+                    <Play size={11} /> Run
+                  </>
                 )}
-                <div className="text-muted-foreground/70 mt-1">
-                  {running ? "Currently scraping" : "Click to scrape now"}
-                </div>
-              </div>
-            </TooltipContent>
-          </Tooltip>
+              </Button>
+            </div>
+          </div>
         );
       })}
-    </div>
+      <MonitorEditDialog
+        monitor={editing}
+        competitorUrl={competitorUrl}
+        onClose={() => setEditing(null)}
+        onSave={onEdit}
+      />
+    </Card>
+  );
+}
+
+const EDITABLE_FREQUENCIES: MonitorFrequency[] = [...MONITOR_FREQUENCIES];
+
+// Per-monitor config: override the auto-detected page URL and the check cadence.
+// Frequency is the upper bound (the scheduler backs off when a source is stable),
+// gated server-side by plan — an over-plan choice surfaces the paywall.
+function MonitorEditDialog({
+  monitor,
+  competitorUrl,
+  onClose,
+  onSave,
+}: {
+  monitor: Monitor | null;
+  competitorUrl: string;
+  onClose: () => void;
+  onSave: (id: string, patch: { url?: string; frequency?: MonitorFrequency }) => Promise<void>;
+}) {
+  const [frequency, setFrequency] = useState<MonitorFrequency>("daily");
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (monitor) {
+      setFrequency(monitor.frequency as MonitorFrequency);
+      setUrl(monitor.config?.url ?? "");
+    }
+  }, [monitor]);
+
+  if (!monitor) return null;
+
+  const trimmed = url.trim();
+  const currentUrl = monitor.config?.url ?? "";
+  const urlChanged = trimmed !== currentUrl;
+  const urlValid =
+    trimmed === "" ||
+    validateMonitorUrl(monitor.sourceType as SourceType, trimmed, competitorUrl).ok;
+  const freqChanged = frequency !== monitor.frequency;
+  const canSave = (urlChanged || freqChanged) && urlValid && !busy;
+
+  async function save() {
+    if (!monitor) return;
+    const patch: { url?: string; frequency?: MonitorFrequency } = {};
+    if (urlChanged && trimmed !== "") patch.url = trimmed;
+    if (freqChanged) patch.frequency = frequency;
+    if (Object.keys(patch).length === 0) {
+      onClose();
+      return;
+    }
+    setBusy(true);
+    try {
+      await onSave(monitor.id, patch);
+      onClose();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open={!!monitor} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="capitalize">Configure {monitor.sourceType}</DialogTitle>
+          <DialogDescription>
+            Pin the exact page to watch and how often it is checked.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+              Frequency
+            </p>
+            <div className="flex gap-1.5">
+              {EDITABLE_FREQUENCIES.map((f) => (
+                <Button
+                  key={f}
+                  type="button"
+                  size="sm"
+                  variant={frequency === f ? "default" : "outline"}
+                  onClick={() => setFrequency(f)}
+                  className="h-7 text-[11px] capitalize"
+                >
+                  {f}
+                </Button>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+              Page URL (optional)
+            </p>
+            <Input
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="Leave empty to auto-detect"
+            />
+            {trimmed !== "" && !urlValid && (
+              <p className="text-[11px] text-critical/80">
+                This URL isn&apos;t allowed for this source.
+              </p>
+            )}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button size="sm" onClick={save} disabled={!canSave}>
+            {busy && <Loader2 size={12} className="animate-spin" />} Save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -996,6 +1295,7 @@ type MonitorSourceProps = {
   monitors: Monitor[];
   scrapingIds: Set<string>;
   onRun: (id: string) => void;
+  onEnable?: (source: SourceType, url?: string) => Promise<void>;
 };
 
 function MonitorEmptyState({
@@ -1004,17 +1304,49 @@ function MonitorEmptyState({
   monitors,
   scrapingIds,
   onRun,
+  onEnable,
 }: {
-  source: string;
+  source: SourceType;
   label: string;
 } & MonitorSourceProps) {
+  const [enabling, setEnabling] = useState(false);
   const monitor = monitors.find((m) => m.sourceType === source);
   if (!monitor) {
     return (
-      <Empty
-        text={`No ${label} monitor configured for this competitor.`}
-        hint={`Source "${source}" is not in this competitor's monitor list. It may not be enabled by your plan or hasn't been added yet.`}
-      />
+      <Card className="px-6 py-10 text-center border-dashed flex flex-col items-center gap-3">
+        <p className="text-[14px] font-semibold text-foreground">
+          No {label} monitoring yet
+        </p>
+        <p className="text-[12px] text-muted-foreground max-w-md">
+          This competitor isn&apos;t tracking {label} yet. Enable it to start
+          capturing {label} data — we&apos;ll run the first scrape right away.
+          Requires a plan that includes this source.
+        </p>
+        {onEnable && (
+          <Button
+            size="sm"
+            onClick={async () => {
+              setEnabling(true);
+              try {
+                await onEnable(source);
+              } finally {
+                setEnabling(false);
+              }
+            }}
+            disabled={enabling}
+          >
+            {enabling ? (
+              <>
+                <Loader2 size={12} className="animate-spin" /> Enabling…
+              </>
+            ) : (
+              <>
+                <Plus size={12} /> Enable {label} monitoring
+              </>
+            )}
+          </Button>
+        )}
+      </Card>
     );
   }
   const running = scrapingIds.has(monitor.id);
@@ -1051,6 +1383,7 @@ function PricingTab({
   monitors,
   scrapingIds,
   onRun,
+  onEnable,
   refreshTick,
 }: { competitorId: string; refreshTick?: number } & MonitorSourceProps) {
   const [history, setHistory] = useState<PricingHistoryPoint[] | null>(null);
@@ -1078,6 +1411,7 @@ function PricingTab({
         monitors={monitors}
         scrapingIds={scrapingIds}
         onRun={onRun}
+        onEnable={onEnable}
       />
     );
   }
@@ -1092,7 +1426,7 @@ function PricingTab({
   for (const p of sorted) if (!firstByPlan.has(p.plan_name)) firstByPlan.set(p.plan_name, p);
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-1 duration-300">
       <Card className="p-4">
         <ResponsiveContainer width="100%" height={260}>
           <LineChart data={series.points}>
@@ -1163,6 +1497,7 @@ function HiringTab({
   monitors,
   scrapingIds,
   onRun,
+  onEnable,
   refreshTick,
 }: { competitorId: string; refreshTick?: number } & MonitorSourceProps) {
   const [jobs, setJobs] = useState<JobsByDepartment | null>(null);
@@ -1195,6 +1530,7 @@ function HiringTab({
         monitors={monitors}
         scrapingIds={scrapingIds}
         onRun={onRun}
+        onEnable={onEnable}
       />
     );
   }
@@ -1202,7 +1538,7 @@ function HiringTab({
   const trendByDept = buildJobTrend(trends);
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-1 duration-300">
       <Card className="px-3 py-3">
         <table className="w-full text-[13px]">
           <thead>
@@ -1280,11 +1616,114 @@ function HiringTab({
   );
 }
 
+const REVIEW_SOURCE_OPTIONS: {
+  value: ReviewSourceType;
+  label: string;
+  host: string;
+  placeholder: string;
+}[] = [
+  {
+    value: "g2_reviews",
+    label: "G2",
+    host: "g2.com",
+    placeholder: "https://www.g2.com/products/<slug>/reviews",
+  },
+  {
+    value: "capterra_reviews",
+    label: "Capterra",
+    host: "capterra.com",
+    placeholder: "https://www.capterra.com/p/<id>/<slug>/reviews/",
+  },
+  {
+    value: "appstore_reviews",
+    label: "App Store",
+    host: "apps.apple.com",
+    placeholder: "https://apps.apple.com/us/app/<slug>/id000000000",
+  },
+];
+
+function ReviewEnableState({
+  onEnable,
+}: {
+  onEnable?: (source: SourceType, url?: string) => Promise<void>;
+}) {
+  const [source, setSource] = useState<ReviewSourceType>("g2_reviews");
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const active = REVIEW_SOURCE_OPTIONS.find((o) => o.value === source)!;
+  const trimmed = url.trim();
+  const valid = trimmed.length > 0 && validateReviewUrl(source, trimmed).ok;
+
+  return (
+    <Card className="px-6 py-8 border-dashed flex flex-col items-center gap-4 text-center">
+      <div className="flex flex-col items-center gap-1">
+        <p className="text-[14px] font-semibold text-foreground">Track reviews</p>
+        <p className="text-[12px] text-muted-foreground max-w-md">
+          Pick a review source and paste this competitor&apos;s review-page URL. We&apos;ll
+          capture ratings, praises and complaints — and run the first scrape right away.
+        </p>
+      </div>
+
+      <div className="flex gap-1.5">
+        {REVIEW_SOURCE_OPTIONS.map((o) => (
+          <Button
+            key={o.value}
+            type="button"
+            size="sm"
+            variant={o.value === source ? "default" : "secondary"}
+            onClick={() => setSource(o.value)}
+          >
+            {o.label}
+          </Button>
+        ))}
+      </div>
+
+      <div className="w-full max-w-md flex flex-col gap-1.5 text-left">
+        <Input
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder={active.placeholder}
+          inputMode="url"
+          autoComplete="off"
+        />
+        <p className="text-[11px] text-muted-foreground">
+          Must be a {active.host} URL. Requires a plan that includes this source.
+        </p>
+      </div>
+
+      <Button
+        size="sm"
+        disabled={!valid || busy || !onEnable}
+        onClick={async () => {
+          if (!onEnable) return;
+          setBusy(true);
+          try {
+            await onEnable(source, trimmed);
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        {busy ? (
+          <>
+            <Loader2 size={12} className="animate-spin" /> Enabling…
+          </>
+        ) : (
+          <>
+            <Plus size={12} /> Enable reviews monitoring
+          </>
+        )}
+      </Button>
+    </Card>
+  );
+}
+
 function ReviewsTab({
   competitorId,
   monitors,
   scrapingIds,
   onRun,
+  onEnable,
   refreshTick,
 }: { competitorId: string; refreshTick?: number } & MonitorSourceProps) {
   const [reviews, setReviews] = useState<ReviewsData | null>(null);
@@ -1310,14 +1749,24 @@ function ReviewsTab({
   if (err) return <Empty text={`Error: ${err}`} />;
   if (!reviews || !scores) return <TabLoading />;
   if (reviews.recent.length === 0 && scores.length === 0) {
-    const hasG2 = monitors.some((m) => m.sourceType === "g2_reviews");
+    const reviewMonitor = monitors.find(
+      (m) =>
+        m.sourceType === "g2_reviews" ||
+        m.sourceType === "capterra_reviews" ||
+        m.sourceType === "appstore_reviews",
+    );
+    // No review monitor yet → collect the review-page URL before enabling.
+    if (!reviewMonitor) {
+      return <ReviewEnableState onEnable={onEnable} />;
+    }
     return (
       <MonitorEmptyState
-        source={hasG2 ? "g2_reviews" : "capterra_reviews"}
+        source={reviewMonitor.sourceType as SourceType}
         label="reviews"
         monitors={monitors}
         scrapingIds={scrapingIds}
         onRun={onRun}
+        onEnable={onEnable}
       />
     );
   }
@@ -1325,7 +1774,7 @@ function ReviewsTab({
   const series = buildReviewScoreSeries(scores);
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-1 duration-300">
       {scores.length > 0 && (
         <Card className="p-4">
           <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-mono mb-2">

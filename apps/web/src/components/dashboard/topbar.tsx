@@ -8,6 +8,8 @@ import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { NotificationsBell } from "@/components/outrival/notifications-bell";
+import { GlobalSearch } from "@/components/dashboard/global-search";
+import { ThemeToggle } from "@/components/dashboard/theme-toggle";
 import { UserMenu } from "@/components/dashboard/user-menu";
 
 interface User {
@@ -20,6 +22,7 @@ const ROUTE_TITLES: Record<string, string> = {
   "/dashboard/signals": "Signals",
   "/dashboard/competitors": "Competitors",
   "/dashboard/candidates": "Detections",
+  "/dashboard/settings/workspace": "Settings",
   "/dashboard/digests": "Digests",
   "/dashboard/alerts": "Alerts",
   "/dashboard/settings": "Settings",
@@ -74,6 +77,7 @@ export function Topbar({ user }: { user: User }) {
         )}
       </div>
       <div className="flex-1" />
+      <GlobalSearch />
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
@@ -88,6 +92,7 @@ export function Topbar({ user }: { user: User }) {
         </TooltipTrigger>
         <TooltipContent>Refresh</TooltipContent>
       </Tooltip>
+      <ThemeToggle />
       <NotificationsBell compact />
       <UserMenu user={user} />
     </header>

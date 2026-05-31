@@ -23,6 +23,7 @@ import {
   DropdownMenuContent,
   DropdownMenuLabel,
   DropdownMenuCheckboxItem,
+  DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -318,12 +319,12 @@ export function SignalsView() {
             {activeFilterCount > 0 && (
               <>
                 <DropdownMenuSeparator />
-                <button
-                  onClick={clearFilters}
-                  className="w-full text-left px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                <DropdownMenuItem
+                  onSelect={clearFilters}
+                  className="text-xs text-muted-foreground"
                 >
                   Reset filters
-                </button>
+                </DropdownMenuItem>
               </>
             )}
           </DropdownMenuContent>

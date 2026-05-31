@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
 import { Bricolage_Grotesque, DM_Mono } from "next/font/google";
+import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import { PostHogProvider } from "@/lib/posthog/provider";
@@ -24,7 +25,10 @@ const dmMono = DM_Mono({
 const SITE_URL = "https://outrival.io";
 
 export const viewport: Viewport = {
-  themeColor: "#09090b",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#09090b" },
+  ],
   width: "device-width",
   initialScale: 1,
 };
@@ -100,14 +104,21 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body>
-        <PostHogProvider>
-          <TooltipProvider delayDuration={200}>{children}</TooltipProvider>
-          <Suspense fallback={null}>
-            <PostHogPageView />
-          </Suspense>
-          <ConsentBanner />
-        </PostHogProvider>
-        <Toaster />
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <PostHogProvider>
+            <TooltipProvider delayDuration={200}>{children}</TooltipProvider>
+            <Suspense fallback={null}>
+              <PostHogPageView />
+            </Suspense>
+            <ConsentBanner />
+          </PostHogProvider>
+          <Toaster />
+        </ThemeProvider>
       </body>
     </html>
   );

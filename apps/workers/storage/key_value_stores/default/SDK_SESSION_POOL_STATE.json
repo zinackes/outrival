@@ -1,9 +1,9 @@
 {
-  "usableSessionsCount": 3,
-  "retiredSessionsCount": 0,
+  "usableSessionsCount": 5,
+  "retiredSessionsCount": 1,
   "sessions": [
     {
-      "id": "session_wfuJqha0dc",
+      "id": "session_iMAu3OrZeV",
       "cookieJar": {
         "version": "tough-cookie@6.0.1",
         "storeType": "MemoryCookieStore",
@@ -16,14 +16,14 @@
       "userData": {},
       "maxErrorScore": 3,
       "errorScoreDecrement": 0.5,
-      "expiresAt": "2026-05-29T20:52:16.875Z",
-      "createdAt": "2026-05-29T20:02:16.875Z",
+      "expiresAt": "2026-05-31T12:57:47.155Z",
+      "createdAt": "2026-05-31T12:07:47.155Z",
       "usageCount": 0,
       "maxUsageCount": 50,
       "errorScore": 0
     },
     {
-      "id": "session_y3klSC9uTM",
+      "id": "session_is4aqhJTey",
       "cookieJar": {
         "version": "tough-cookie@6.0.1",
         "storeType": "MemoryCookieStore",
@@ -33,72 +33,38 @@
         "prefixSecurity": "silent",
         "cookies": [
           {
-            "key": "PHPSESSID",
-            "value": "0nh57mjse4cb182ral9l8achb9",
-            "expires": "2026-06-12T20:02:18.991Z",
-            "domain": "nerdisa.com",
-            "path": "/",
-            "secure": true,
-            "httpOnly": true,
-            "hostOnly": true,
-            "creation": "2026-05-29T20:02:19.973Z",
-            "lastAccessed": "2026-05-29T20:02:19.973Z"
-          },
-          {
-            "key": "visitor-id",
-            "value": "bf567b486f9eabcb8f45de7aad97b8d4",
-            "expires": "2027-07-03T20:02:18.992Z",
-            "domain": "nerdisa.com",
-            "path": "/",
-            "httpOnly": true,
-            "hostOnly": true,
-            "creation": "2026-05-29T20:02:19.974Z",
-            "lastAccessed": "2026-05-29T20:02:19.974Z"
-          },
-          {
-            "key": "session-id",
-            "value": "4e1240943636df733313c868c3770c25",
-            "expires": "2026-05-31T02:02:18.992Z",
-            "domain": "nerdisa.com",
-            "path": "/",
-            "httpOnly": true,
-            "hostOnly": true,
-            "creation": "2026-05-29T20:02:19.974Z",
-            "lastAccessed": "2026-05-29T20:02:19.974Z"
-          },
-          {
-            "key": "_ga_82ZX0NQZCT",
-            "value": "GS2.1.s1780084939$o1$g0$t1780084939$j60$l0$h0",
-            "expires": "2027-07-03T20:02:19.958Z",
-            "domain": "nerdisa.com",
+            "key": "_ga_X4N3W6Q3XB",
+            "value": "GS2.1.s1780229268$o1$g1$t1780229366$j60$l0$h0",
+            "expires": "2027-07-05T12:09:26.900Z",
+            "domain": "scrapebeast.com",
             "path": "/",
             "hostOnly": false,
-            "creation": "2026-05-29T20:02:19.975Z",
-            "lastAccessed": "2026-05-29T20:02:19.975Z"
+            "creation": "2026-05-31T12:07:48.486Z",
+            "lastAccessed": "2026-05-31T12:09:26.923Z"
           },
           {
             "key": "_ga",
-            "value": "GA1.1.73459269.1780084940",
-            "expires": "2027-07-03T20:02:19.960Z",
-            "domain": "nerdisa.com",
+            "value": "GA1.1.1652415764.1780229268",
+            "expires": "2027-07-05T12:09:26.900Z",
+            "domain": "scrapebeast.com",
             "path": "/",
             "hostOnly": false,
-            "creation": "2026-05-29T20:02:19.975Z",
-            "lastAccessed": "2026-05-29T20:02:19.975Z"
+            "creation": "2026-05-31T12:07:48.493Z",
+            "lastAccessed": "2026-05-31T12:09:26.923Z"
           }
         ]
       },
       "userData": {},
       "maxErrorScore": 3,
       "errorScoreDecrement": 0.5,
-      "expiresAt": "2026-05-29T20:52:16.879Z",
-      "createdAt": "2026-05-29T20:02:16.879Z",
-      "usageCount": 2,
+      "expiresAt": "2026-05-31T12:57:47.159Z",
+      "createdAt": "2026-05-31T12:07:47.159Z",
+      "usageCount": 4,
       "maxUsageCount": 50,
-      "errorScore": 0
+      "errorScore": 6
     },
     {
-      "id": "session_JjHYCIMnvr",
+      "id": "session_iGQMBWN9EH",
       "cookieJar": {
         "version": "tough-cookie@6.0.1",
         "storeType": "MemoryCookieStore",
@@ -111,11 +77,92 @@
       "userData": {},
       "maxErrorScore": 3,
       "errorScoreDecrement": 0.5,
-      "expiresAt": "2026-05-29T20:52:18.428Z",
-      "createdAt": "2026-05-29T20:02:18.428Z",
+      "expiresAt": "2026-05-31T12:58:33.566Z",
+      "createdAt": "2026-05-31T12:08:33.566Z",
       "usageCount": 0,
       "maxUsageCount": 50,
       "errorScore": 0
+    },
+    {
+      "id": "session_ysW8sACZW5",
+      "cookieJar": {
+        "version": "tough-cookie@6.0.1",
+        "storeType": "MemoryCookieStore",
+        "rejectPublicSuffixes": true,
+        "enableLooseMode": false,
+        "allowSpecialUseDomain": true,
+        "prefixSecurity": "silent",
+        "cookies": []
+      },
+      "userData": {},
+      "maxErrorScore": 3,
+      "errorScoreDecrement": 0.5,
+      "expiresAt": "2026-05-31T12:59:18.934Z",
+      "createdAt": "2026-05-31T12:09:18.934Z",
+      "usageCount": 0,
+      "maxUsageCount": 50,
+      "errorScore": 0
+    },
+    {
+      "id": "session_d3wAgxajas",
+      "cookieJar": {
+        "version": "tough-cookie@6.0.1",
+        "storeType": "MemoryCookieStore",
+        "rejectPublicSuffixes": true,
+        "enableLooseMode": false,
+        "allowSpecialUseDomain": true,
+        "prefixSecurity": "silent",
+        "cookies": []
+      },
+      "userData": {},
+      "maxErrorScore": 3,
+      "errorScoreDecrement": 0.5,
+      "expiresAt": "2026-05-31T13:00:11.952Z",
+      "createdAt": "2026-05-31T12:10:11.952Z",
+      "usageCount": 0,
+      "maxUsageCount": 50,
+      "errorScore": 0
+    },
+    {
+      "id": "session_6J6AUxutyc",
+      "cookieJar": {
+        "version": "tough-cookie@6.0.1",
+        "storeType": "MemoryCookieStore",
+        "rejectPublicSuffixes": true,
+        "enableLooseMode": false,
+        "allowSpecialUseDomain": true,
+        "prefixSecurity": "silent",
+        "cookies": [
+          {
+            "key": "_ga_X4N3W6Q3XB",
+            "value": "GS2.1.s1780229413$o1$g0$t1780229413$j60$l0$h0",
+            "expires": "2027-07-05T12:10:13.049Z",
+            "domain": "scrapebeast.com",
+            "path": "/",
+            "hostOnly": false,
+            "creation": "2026-05-31T12:10:13.073Z",
+            "lastAccessed": "2026-05-31T12:10:13.073Z"
+          },
+          {
+            "key": "_ga",
+            "value": "GA1.1.984083504.1780229413",
+            "expires": "2027-07-05T12:10:13.050Z",
+            "domain": "scrapebeast.com",
+            "path": "/",
+            "hostOnly": false,
+            "creation": "2026-05-31T12:10:13.073Z",
+            "lastAccessed": "2026-05-31T12:10:13.073Z"
+          }
+        ]
+      },
+      "userData": {},
+      "maxErrorScore": 3,
+      "errorScoreDecrement": 0.5,
+      "expiresAt": "2026-05-31T13:00:11.953Z",
+      "createdAt": "2026-05-31T12:10:11.953Z",
+      "usageCount": 1,
+      "maxUsageCount": 50,
+      "errorScore": 1
     }
   ]
 }

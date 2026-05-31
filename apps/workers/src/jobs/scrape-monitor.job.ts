@@ -1,4 +1,4 @@
-import { task, logger, tasks, AbortTaskRunError } from "@trigger.dev/sdk/v3";
+import { task, logger, tasks, queue, AbortTaskRunError } from "@trigger.dev/sdk/v3";
 import { z } from "zod";
 import { and, desc, eq, gte } from "drizzle-orm";
 import {
@@ -23,8 +23,20 @@ const InputSchema = z.object({
 
 const IDEMPOTENCE_WINDOW_MS = 60 * 60 * 1000;
 
+// Global throttle on concurrent scrapes. Each run is an isolated machine, so
+// this does not protect memory — it bounds ScrapingBee burst usage and Trigger
+// concurrency cost when schedule-scraping fans out many monitors at once.
+const scrapeMonitorQueue = queue({
+  name: "scrape-monitor",
+  concurrencyLimit: 5,
+});
+
 export const scrapeMonitorJob = task({
   id: "scrape-monitor",
+  // Chromium (lazy-imported Crawlee/Playwright) OOMs on the default 0.5 GB
+  // machine for heavy pages — surfaced as TASK_EXECUTION_ABORTED. 2 GB is safe.
+  machine: "medium-1x",
+  queue: scrapeMonitorQueue,
   maxDuration: 300,
   retry: { maxAttempts: 3, minTimeoutInMs: 1000, maxTimeoutInMs: 10000, factor: 2 },
 
@@ -89,7 +101,13 @@ export const scrapeMonitorJob = task({
       );
       await db
         .update(monitors)
-        .set({ lastRunAt: new Date(), nextRunAt })
+        .set({
+          lastRunAt: new Date(),
+          nextRunAt,
+          scrapeStartedAt: null,
+          lastFailedAt: null,
+          lastError: null,
+        })
         .where(eq(monitors.id, monitor.id));
       return { changed: false, snapshotId: lastSnapshot.id };
     }
@@ -97,7 +115,9 @@ export const scrapeMonitorJob = task({
     const timestamp = new Date().toISOString();
     const r2Key = `snapshots/${competitor.id}/${monitor.sourceType}/${timestamp}`;
 
-    await uploadToR2(`${r2Key}.html`, result.html, "text/html; charset=utf-8");
+    await uploadToR2(`${r2Key}.html`, result.html, "text/html; charset=utf-8", {
+      compress: true,
+    });
     if (result.screenshotBuffer.length > 0) {
       await uploadToR2(`${r2Key}.png`, result.screenshotBuffer, "image/png");
     }
@@ -116,6 +136,7 @@ export const scrapeMonitorJob = task({
     if (!newSnapshot) throw new Error("Failed to insert snapshot");
 
     let changeId: string | null = null;
+    let changedAt: Date | null = null;
     if (lastSnapshot) {
       const beforeHtml = await getFromR2(`${lastSnapshot.r2Key}.html`);
       const diff = computeTextDiff(beforeHtml, result.html);
@@ -134,13 +155,21 @@ export const scrapeMonitorJob = task({
           .returning();
         changeId = newChange?.id ?? null;
         if (changeId) {
+          changedAt = new Date();
           await db
             .update(monitors)
-            .set({ lastChangedAt: new Date() })
+            .set({ lastChangedAt: changedAt })
             .where(eq(monitors.id, monitor.id));
           await tasks.trigger("classify-change", { changeId });
         }
       }
+    }
+
+    // First-ever homepage capture has no prior snapshot to diff against, so the
+    // change → classify → signal pipeline produces nothing. Kick off a one-off
+    // content summary so the user sees what this competitor does from scrape #1.
+    if (monitor.sourceType === "homepage" && !lastSnapshot) {
+      await tasks.trigger("refresh-competitor-summary", { competitorId: competitor.id });
     }
 
     if (monitor.sourceType === "pricing") {
@@ -153,8 +182,17 @@ export const scrapeMonitorJob = task({
         snapshotId: newSnapshot.id,
         competitorId: competitor.id,
       });
-    } else if (monitor.sourceType === "g2_reviews" || monitor.sourceType === "capterra_reviews") {
-      const reviewSource = monitor.sourceType === "g2_reviews" ? "g2" : "capterra";
+    } else if (
+      monitor.sourceType === "g2_reviews" ||
+      monitor.sourceType === "capterra_reviews" ||
+      monitor.sourceType === "appstore_reviews"
+    ) {
+      const reviewSource =
+        monitor.sourceType === "g2_reviews"
+          ? "g2"
+          : monitor.sourceType === "capterra_reviews"
+            ? "capterra"
+            : "appstore";
       await tasks.trigger("extract-reviews", {
         snapshotId: newSnapshot.id,
         competitorId: competitor.id,
@@ -162,17 +200,22 @@ export const scrapeMonitorJob = task({
       });
     }
 
-    const refreshed = await db.query.monitors.findFirst({
-      where: eq(monitors.id, monitor.id),
-    });
+    // frequency/createdAt are immutable for the run; lastChangedAt only moves if
+    // we detected a change above (captured in changedAt) — no need to refetch.
     const nextRunAt = computeNextRun(
-      refreshed?.frequency ?? monitor.frequency,
-      refreshed?.lastChangedAt ?? monitor.lastChangedAt,
-      refreshed?.createdAt ?? monitor.createdAt,
+      monitor.frequency,
+      changedAt ?? monitor.lastChangedAt,
+      monitor.createdAt,
     );
     await db
       .update(monitors)
-      .set({ lastRunAt: new Date(), nextRunAt })
+      .set({
+        lastRunAt: new Date(),
+        nextRunAt,
+        scrapeStartedAt: null,
+        lastFailedAt: null,
+        lastError: null,
+      })
       .where(eq(monitors.id, monitor.id));
 
     logger.log("Completed scrape-monitor", {
@@ -186,5 +229,22 @@ export const scrapeMonitorJob = task({
       snapshotId: newSnapshot.id,
       changeId,
     };
+  },
+
+  // Runs once after all retries are exhausted. Persist the failure so the UI
+  // can show a "failed" state instead of spinning until the client poll times
+  // out, and clear the in-progress marker.
+  async onFailure({ payload, error }) {
+    const parsed = InputSchema.safeParse(payload);
+    if (!parsed.success) return;
+    const message = error instanceof Error ? error.message : String(error);
+    await db
+      .update(monitors)
+      .set({
+        scrapeStartedAt: null,
+        lastFailedAt: new Date(),
+        lastError: message.slice(0, 1000),
+      })
+      .where(eq(monitors.id, parsed.data.monitorId));
   },
 });

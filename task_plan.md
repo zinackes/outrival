@@ -525,36 +525,33 @@ pas au code réel. Adaptations :
    sinon→classify-change générique. (Évite la race de double-signal sur le
    même changeId.)
 
+## Statut : COMPLETE (2026-06-01)
+Typecheck 7/7 ✓ · build 7/7 ✓ · 45 tests bun verts · db:push + ch:setup appliqués.
+Étapes 4+5 fusionnées (couplées, add -A) ; 8 faite avant 7 (dépendance generate-signal).
+Reste : run E2E live (creds GROQ/R2/DB + Trigger.dev) non exécuté ici.
+
 ## Étapes (1 commit par étape)
-- [ ] Étape 1 — Schéma : 6 champs pricing sur `competitors` (pricingStatus,
-      pricingObservedRegion, pricingPromotional, pricingDemoUrl, pricingNote,
-      pricingManualOverride) + ClickHouse pricing_history (status, promotional,
-      observed_region) via CREATE étendu + ALTER ... ADD COLUMN IF NOT EXISTS.
-      db:push + ch:setup. → `feat(db): add pricing status taxonomy fields`
-- [ ] Étape 2 — `@outrival/shared` : type `PricingStatus` + `detectPricingRepositioning(prev, current)`.
-      → `feat(shared): pricing status type + repositioning detector`
-- [ ] Étape 3 — scrapers/pricing/discover-url.ts : cascade direct(HEAD)→nav→footer→homepage_section
-      (cheerio). + dép cheerio. → `feat(scrapers): multi-strategy pricing URL discovery`
-- [ ] Étape 4 — scrapers/pricing/signals.ts : detectPricingSignals (regex FR+EN,
-      price/gated/calculator/signup/promo) + infra bun test + fixtures réelles.
-      → `feat(scrapers): pricing signal detectors`
-- [ ] Étape 5 — scrapers/pricing/determine-status.ts : determineStatus (6 statuts)
-      + matrice de tests. → `feat(scrapers): pricing status determination logic`
-- [ ] Étape 6 — Brancher la découverte dans pricing.scraper.ts (signature
-      `scrape()` inchangée) + helper pur `analyzePricingHtml(html)` exporté pour
-      le worker. → `feat(scrapers): refactor pricing scraper around status taxonomy`
-- [ ] Étape 7 — Workers : scrape-monitor (pricing) calcule analyse sur result.html,
-      stocke les champs competitor (sauf manualOverride), route promo/transition/
-      générique, passe status+promo à extract-pricing (qui tague les lignes CH).
-      → `feat(workers): integrate pricing taxonomy and skip promotional signals`
-- [ ] Étape 8 — Signal repositionné : generate-signal (ou trigger dédié) reçoit
-      le contexte prev→current pour formuler insight/so_what.
+- [x] Étape 1 — Schéma : 6 champs pricing sur `competitors` + ClickHouse
+      pricing_history (status/promotional/observed_region, ALTER IF NOT EXISTS).
+      db:push + ch:setup OK. → `feat(db): add pricing status taxonomy fields`
+- [x] Étape 2 — `@outrival/shared` : `PRICING_STATUSES` (tuple) + `PricingStatus`
+      (dérivé) + `detectPricingRepositioning`. → `feat(shared): pricing status type…`
+- [x] Étape 3 — scrapers/pricing/discover-url.ts (cheerio, + dép cheerio).
+      → `feat(scrapers): multi-strategy pricing URL discovery`
+- [x] Étape 4+5 — signals.ts + determine-status.ts + bun test + 4 fixtures réelles.
+      → `feat(scrapers): pricing signal detectors + status taxonomy`
+- [x] Étape 6 — Découverte branchée dans pricing.scraper.ts + helper pur
+      `analyzePricingHtml` + subpath `@outrival/scrapers/pricing`.
+      → `feat(scrapers): refactor pricing scraper around status taxonomy`
+- [x] Étape 8 — generate-signal accepte `pricingTransition` + insight dédié.
       → `feat(ai): detect pricing status repositioning signals`
-- [ ] Étape 9 — UI : carte statut dans PricingTab (6 variantes) + modal override
-      manuel + route API PATCH pricing + affichage région.
+- [x] Étape 7 — scrape-monitor : analyse, stockage (sauf override), routage
+      promo/transition/générique, status→extract-pricing→ClickHouse.
+      → `feat(workers): integrate pricing taxonomy and skip promotional signals`
+- [x] Étape 9 — CompetitorPricingCard (6 variantes + région + note + demo) +
+      modal override + routes PUT /pricing & POST /pricing/redetect.
       → `feat(web): adapt competitor pricing card to status taxonomy`
-- [ ] Étape 10 — Vérif finale : build+typecheck+ch:setup, fixtures passent,
-      findings.md + task_plan.md à jour.
+- [x] Étape 10 — Vérif finale OK, findings.md + task_plan.md à jour.
 
 ## Décisions prises
 - Détection lancée dans scrape-monitor (sur result.html en mémoire) car le
@@ -608,13 +605,28 @@ périodique + re-discovery proposée sur changement majeur.
       (trigger homepage self ; merge préserve les champs édités) + garde reviews self
 - [x] 4 — classify-change : branche self → determineSelfChangeSeverity + insert
       self_product_changes (idempotent par changeId) + notifySelfChange ; AUCUN signal
-- [ ] 5 — API my-product.ts : GET / PATCH / POST rescan / GET changes /
-      changes/:id/{accept,modify,ignore}
-- [ ] 6 — UI dashboard/my-product + nav "Mon produit" + bloc changements pending
-- [ ] 7 — re-discovery proposée sur major (accept renvoie suggestion + modal + reuse discover)
-- [ ] 8 — re-scan périodique (monitors self ramassés par schedule-scraping) + bouton re-scan
-- [ ] 9 — exclusion self : liste concurrents (type='competitor'), quota, discovery
-- [ ] 10 — vérif build + typecheck + findings/task_plan à jour
+- [x] 5 — API my-product.ts : GET / PATCH / POST rescan / GET changes /
+      changes/:id/{accept,modify,ignore} ; monté /api/my-product
+- [x] 6 — UI dashboard/my-product (EditableText/EditableList, pending changes,
+      modal re-discovery) + nav "My product" (sidebar) + loading.tsx
+- [x] 7 — re-discovery : accept(major) → suggestion → modal → api.detectCandidates()
+      (reuse détection existante, préserve les concurrents). "re-score existing" déféré.
+- [x] 8 — re-scan : monitors self (weekly) ramassés par schedule-scraping +
+      bouton "Re-scan" (POST /rescan, force) — aucun code dédié nécessaire
+- [x] 9 — exclusion self (ne type='self') : liste competitors, search, changes feed,
+      quota. Discovery déjà couverte (self dans existing → dédup + Exa exclut productUrl)
+- [x] 10 — typecheck 7/7 ✓ + build 7/7 ✓
+
+## patch-12 = COMPLETE (implémenté 2026-06-01, commits laissés à l'utilisateur)
+
+### Déférés (notés dans findings)
+- Édition inline du pricing sur /my-product (PATCH le supporte ; UI read-only — le
+  competitor pricing tab patch-11 couvre déjà l'override). 
+- Battle card "côté nous" depuis selfProfile (utilise encore org.productProfile, OK).
+- Re-discovery "re-score des concurrents existants" (on ajoute des suggestions +
+  préserve, sans recalculer l'overlap des existants).
+- Email sur self_change (in-app notification seulement ; pas de Resend dupliqué).
 
 ## Blockers patch-12
-- Aucun pour l'instant. db:push requiert .env.local (déjà auto-load via drizzle.config).
+- Aucun. Test E2E runtime (onboarding live → self créé → enrich → /my-product) =
+  manuel, nécessite services + creds (GROQ/EXA/R2/DB + Trigger.dev).

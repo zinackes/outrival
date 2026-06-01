@@ -970,3 +970,65 @@ hypothèses fausses corrigées (cf. décisions ci-dessous).
 ### Vérif
 `pnpm typecheck` 7/7 ✓ · `pnpm build` 7/7 ✓ · `bun test` (@outrival/ai) 8/8 ✓.
 0 nouvelle erreur TS.
+
+---
+
+## Patch 11 — Pricing detection taxonomy (2026-06-01)
+
+### Architecture vs the patch's assumptions
+The patch's file paths assumed a Phase-5 layout that differs from reality:
+- Scraper = `packages/scrapers/src/pricing/pricing.scraper.ts` (fetches HTML only).
+- Tier extraction stays AI-side in `extract-pricing.job.ts` (Groq → ClickHouse),
+  NOT in the scraper. The scraper does not return `tiers`.
+- The 6-status taxonomy lives on the `competitors` table (Postgres); the
+  ClickHouse `pricing_history` got `status`/`promotional`/`observed_region`.
+- Pure detectors live in `scrapers/pricing/` (cheerio only). Exposed to workers
+  via a new pure subpath `@outrival/scrapers/pricing` so scrape-monitor never
+  pulls crawlee/Chromium at parse time.
+- `PricingStatus` + `detectPricingRepositioning` live in `@outrival/shared`.
+
+### Signal routing (key constraint)
+`signals.changeId` is notNull + a unique-ish FK, so a pricing change routes to
+exactly ONE outcome in scrape-monitor: promo → no signal · status transition →
+dedicated repositioning signal (replaces the generic diff signal, via
+generate-signal's `pricingTransition`) · otherwise → the generic classify
+pipeline. Confirmed with the user (transition replaces generic).
+
+### Real-fixture findings (captured 2026-06-01, committed under __fixtures__)
+Static SSR HTML was enough for all four — the distinguishing content was in the
+markup, not JS-only, once the regexes were fixed:
+- **Linear** → `public` (prices visible; Enterprise "Contact" CTA is JS-rendered
+  so the static fixture doesn't see it — matches the patch's expected `public`).
+- **Notion** → `public_partial` (€/$ prices + "Contact us" on Enterprise).
+- **Crayon** → `gated_demo` (no prices, "Get a Demo").
+- **Segment** → `dynamic` (no static prices, usage-based "Monthly Tracked Users").
+
+### Regex gaps that only surfaced on real markup (not theory)
+1. Gated CTAs: the patch's list missed **"get a demo" / "schedule a demo" /
+   "talk to an expert"** — Crayon uses "Get a Demo", so it mis-detected as
+   `unknown` until added.
+2. Usage-based: added **pay-as-you-go / usage-based / "based on usage" /
+   "monthly tracked users" / MTU** to the calculator detector — Segment's slider
+   is a custom component (no `<input type=range>`), so vocabulary is the only
+   static signal of a `dynamic` page.
+3. Accented FR promo terms: `\b` forms no word boundary next to é/É (not `\w` in
+   JS regex), and `[ée]` under `/i` doesn't match `É` (i only folds ASCII). Fixed
+   "Économisez", "offre limitée", "durée limitée" by dropping the `\b` and
+   spelling out É.
+
+### Caveats / future improvements
+- `discoverPricingUrl` trusts HEAD 2xx for direct paths → soft-404 hosts (200 on
+  any path) could mislead it; the homepage nav/footer fallback is more reliable.
+- Local Playwright capture hung on `networkidle` for analytics-heavy pages
+  (Linear/Segment never go idle). Fixtures were taken from static SSR instead,
+  which is faithful here because the status-deciding content is server-rendered.
+- `unknown` rate to watch in prod: only Crayon-style pages with non-standard CTAs
+  risk it now that demo vocabulary is broad. Surfaced in the UI with a manual
+  "Fill in" override (pricingManualOverride) that scrapes never overwrite.
+
+### Verification
+`pnpm typecheck` 7/7 ✓ · `pnpm build` 7/7 ✓ · `bun test packages/scrapers/src/pricing`
+45/45 ✓ · `db:push` applied (6 competitor columns) · `ch:setup` applied
+(pricing_history taxonomy columns, ALTER ADD COLUMN IF NOT EXISTS for existing).
+Runtime end-to-end (live scrape → status stored → repositioning signal → email)
+not exercised here — needs GROQ/R2/DB creds + a Trigger.dev run.

@@ -1,8 +1,15 @@
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
-import { organizations, competitors, monitors, competitorCandidates } from "@outrival/db";
+import { and, eq } from "drizzle-orm";
+import {
+  organizations,
+  competitors,
+  monitors,
+  competitorCandidates,
+  type SelfProfile,
+  type SelfProfileField,
+} from "@outrival/db";
 import { normalizeHostname } from "@outrival/shared";
 import {
   scoreOverlap,
@@ -52,6 +59,74 @@ async function storeProfile(orgId: string, profile: ProductProfile, stage: Proje
       updatedAt: new Date(),
     })
     .where(eq(organizations.id, orgId));
+}
+
+/**
+ * Patch-12: ensure the org has a "self" competitor (its own product) when it has a
+ * product URL to monitor. No-op for idea/document onboarding (no URL) and idempotent
+ * (one self per org). Seeds the editable selfProfile from the onboarding productProfile
+ * (auto-detected), creates homepage/pricing/jobs monitors at the USER_PRODUCT_RESCAN_DAYS
+ * cadence, and force-triggers the first scrape so the Phase 5 enrichment runs immediately.
+ */
+async function createSelfCompetitor(orgId: string) {
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, orgId),
+  });
+  if (!org?.productUrl) return;
+
+  const existingSelf = await db.query.competitors.findFirst({
+    where: and(eq(competitors.orgId, orgId), eq(competitors.type, "self")),
+  });
+  if (existingSelf) return;
+
+  const pp = org.productProfile;
+  const seed = <T,>(value: T | null | undefined): SelfProfileField<T> | undefined =>
+    value == null || (typeof value === "string" && value.trim() === "")
+      ? undefined
+      : { value, isFromAutoDetect: true, lastEditedByUserAt: null };
+  const selfProfile: SelfProfile = {
+    category: seed(pp?.category),
+    audience: seed(pp?.audience),
+    valueProp: seed(pp?.valueProp),
+  };
+
+  const [selfCompetitor] = await db
+    .insert(competitors)
+    .values({
+      orgId,
+      name: normalizeHostname(org.productUrl) ?? "My product",
+      url: org.productUrl,
+      category: pp?.category ?? null,
+      type: "self",
+      isUserProduct: true,
+      selfProfile,
+    })
+    .returning();
+  if (!selfCompetitor) return;
+
+  const rescanDays = Number(process.env.USER_PRODUCT_RESCAN_DAYS ?? 14) || 14;
+  const nextRunAt = new Date(Date.now() + rescanDays * 24 * 60 * 60 * 1000);
+  // Reviews are skipped for the self-competitor (too early-stage, and G2/Capterra
+  // cost a proxy call) — we simply never create review monitors for it.
+  const selfMonitorRows = await db
+    .insert(monitors)
+    .values(
+      (["homepage", "pricing", "jobs"] as const).map((sourceType) => ({
+        competitorId: selfCompetitor.id,
+        sourceType,
+        frequency: "weekly" as const,
+        nextRunAt,
+      })),
+    )
+    .returning();
+
+  for (const m of selfMonitorRows) {
+    try {
+      await tasks.trigger("scrape-monitor", { monitorId: m.id, force: true });
+    } catch (e) {
+      console.error("Failed to trigger self scrape", { monitorId: m.id, error: String(e) });
+    }
+  }
 }
 
 onboardingRouter.get("/status", async (c) => {
@@ -430,6 +505,14 @@ onboardingRouter.post("/complete", async (c) => {
       }
     }
   }
+
+  // Patch-12: create the "self" competitor — the user's own product, monitored
+  // with the same Phase 5 pipeline but excluded from the competitor list, quotas
+  // and discovery. Only when we have a URL to scrape (live/developing modes);
+  // idea/document onboarding has none, so no self-competitor is created yet. When
+  // the user later re-onboards with a URL, /complete runs again and creates it.
+  // Idempotent: never create a second self for the same org.
+  await createSelfCompetitor(orgId);
 
   // Save the discovered-but-untracked competitors as candidates so they remain
   // reachable in Detections (e.g. to track after a plan upgrade). Dedup by

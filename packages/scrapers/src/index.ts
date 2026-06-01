@@ -34,3 +34,8 @@ export type { ScraperResult, ScrapeOptions, ScrapeOutcome } from "./types";
 export { findSimilarCompanies } from "./discovery/discover";
 export type { DiscoveredCompany } from "./discovery/discover";
 export { quickFetchText } from "./lib/quick-fetch";
+export { analyzePricingHtml, extractDemoUrl } from "./pricing/analyze";
+export type { PricingAnalysis } from "./pricing/analyze";
+export { detectPricingSignals } from "./pricing/signals";
+export type { PricingSignals } from "./pricing/signals";
+export { discoverPricingUrl } from "./pricing/discover-url";

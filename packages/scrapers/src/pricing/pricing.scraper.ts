@@ -1,20 +1,30 @@
-import { scrapePage, scrapeFirstSuccess } from "../lib/crawler";
+import { scrapePage } from "../lib/crawler";
 import type { ScrapeOutcome, ScrapeOptions } from "../types";
+import { discoverPricingUrl } from "./discover-url";
 
-const PRICING_PATHS = ["/pricing", "/tarifs", "/plans", "/price"];
-
-const PRICING_KEYWORDS = ["pricing", "tarifs", "plans", "tarification"];
+const PRICING_KEYWORDS = ["pricing", "tarifs", "plans", "tarification", "prix"];
 
 export async function scrape(
   _competitorId: string,
   url: string,
   options: ScrapeOptions = {},
 ): Promise<ScrapeOutcome> {
-  const lowered = url.toLowerCase();
-  if (PRICING_KEYWORDS.some((k) => lowered.includes(k))) {
-    return scrapePage(url, { fullPage: true, preferProxy: options.preferProxy });
+  const preferProxy = options.preferProxy;
+
+  // URL already points at a pricing page → scrape it directly.
+  if (PRICING_KEYWORDS.some((k) => url.toLowerCase().includes(k))) {
+    return scrapePage(url, { fullPage: true, preferProxy });
   }
-  return scrapeFirstSuccess(url, PRICING_PATHS, (u) =>
-    scrapePage(u, { fullPage: true, preferProxy: options.preferProxy }),
-  );
+
+  // Otherwise scrape the homepage and locate the real pricing page from it
+  // (direct paths → nav → footer → embedded section).
+  const homepage = await scrapePage(url, { fullPage: true, preferProxy });
+  const candidate = await discoverPricingUrl(url, homepage.html);
+
+  // Not found, or pricing is embedded in the homepage → analyse the homepage.
+  if (!candidate || candidate.source === "homepage_section") {
+    return homepage;
+  }
+
+  return scrapePage(candidate.url, { fullPage: true, preferProxy });
 }

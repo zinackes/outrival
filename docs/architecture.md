@@ -210,7 +210,7 @@ Un competitor n'a pas automatiquement un monitor par source. Trois chemins de cr
   `(competitor, sourceType)`), fréquence par défaut `weekly` pour les reviews /
   `daily` sinon, clampée à une fréquence autorisée par le plan.
 
-### Self-product (« My Product ») — patch-13
+### Self-product (« My Product ») — patch-15
 
 Le competitor `type = "self"` (le produit de l'utilisateur) est créé à
 l'onboarding complete **quel que soit le stade**, plus seulement quand il y a une

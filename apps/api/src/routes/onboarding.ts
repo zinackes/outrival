@@ -68,7 +68,7 @@ async function storeProfile(
 }
 
 /**
- * Patch-13: ensure the org has a "self" competitor (its own product) at EVERY stage.
+ * Patch-15: ensure the org has a "self" competitor (its own product) at EVERY stage.
  * idea/document/developing have no live URL yet — the self is still created so the user
  * can edit and track its profile manually, just without site monitors. live (a product
  * URL) additionally seeds homepage/pricing/jobs monitors at the USER_PRODUCT_RESCAN_DAYS

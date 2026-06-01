@@ -650,7 +650,7 @@ function Header({
     <header className="sticky top-0 z-20 border-b border-border bg-background-2/85 backdrop-blur supports-[backdrop-filter]:bg-background-2/65">
       <div className="mx-auto max-w-3xl px-4 sm:px-8 h-14 flex items-center justify-between">
         <Link href="/" className="text-base font-semibold font-[var(--font-display)] tracking-tight">
-          <span className="text-muted-foreground">Out</span>rival
+          Out<span className="text-primary">rival</span>
         </Link>
         <div className="flex items-center gap-1">
           {showControls && (
@@ -689,7 +689,11 @@ function ProgressBar({ step }: { step: number }) {
             key={n}
             className={cn(
               "h-1 flex-1 rounded-full transition-colors",
-              n < step ? "bg-foreground" : n === step ? "bg-foreground/60" : "bg-border-strong",
+              n < step
+                ? "bg-primary"
+                : n === step
+                  ? "bg-primary/50 animate-pulse"
+                  : "bg-border-strong",
             )}
           />
         ))}
@@ -817,11 +821,17 @@ function StageChooser({
               className={cn(
                 "text-left p-5 rounded-md border transition-all",
                 current === s
-                  ? "border-foreground bg-foreground/5 ring-1 ring-foreground/40"
+                  ? "border-primary bg-primary/10 ring-1 ring-primary/40"
                   : "border-border hover:border-border-strong hover:bg-surface-2",
               )}
             >
-              <Icon size={20} className="text-foreground" />
+              <Icon
+                size={20}
+                className={cn(
+                  "transition-colors",
+                  current === s ? "text-primary" : "text-foreground",
+                )}
+              />
               <p className="text-sm font-medium mt-3">{meta.title}</p>
               <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
                 {meta.description}
@@ -1283,7 +1293,7 @@ function CompetitorRow({
     <li
       className={cn(
         "flex items-start gap-3 px-3 py-3 rounded-md cursor-pointer transition-colors hover:bg-surface-2",
-        competitor.selected && "bg-surface-2/60",
+        competitor.selected && "bg-primary/5",
         disabled && "opacity-50",
       )}
       onClick={onToggle}
@@ -1338,7 +1348,7 @@ function OverlapBadge({ score }: { score: number }) {
   const tone = score > 75 ? "positive" : score > 50 ? "accent" : "muted";
   const classes = {
     positive: "bg-positive/15 text-positive border-positive/30",
-    accent: "bg-foreground/10 text-foreground border-border-strong",
+    accent: "bg-primary/10 text-primary border-primary/30",
     muted: "bg-transparent text-muted-foreground border-border",
   }[tone];
   return (
@@ -1492,7 +1502,7 @@ function SegmentChoice({
       className={cn(
         "text-left p-4 rounded-md border transition-all",
         active
-          ? "border-foreground bg-foreground/5 ring-1 ring-foreground/40"
+          ? "border-primary bg-primary/10 ring-1 ring-primary/40"
           : "border-border hover:border-border-strong hover:bg-surface-2",
         locked && "opacity-50",
       )}
@@ -1502,17 +1512,17 @@ function SegmentChoice({
           <span
             className={cn(
               "w-4 h-4 rounded-full border flex items-center justify-center transition-colors",
-              active ? "bg-foreground border-foreground" : "bg-transparent border-border-strong",
+              active ? "bg-primary border-primary" : "bg-transparent border-border-strong",
             )}
           >
-            {active && <span className="w-1.5 h-1.5 rounded-full bg-background" />}
+            {active && <span className="w-1.5 h-1.5 rounded-full bg-primary-foreground" />}
           </span>
         ) : (
           <span
             className={cn(
               "w-4 h-4 rounded-sm border flex items-center justify-center transition-colors",
               active
-                ? "bg-foreground border-foreground text-background"
+                ? "bg-primary border-primary text-primary-foreground"
                 : "bg-transparent border-border-strong text-transparent",
             )}
           >

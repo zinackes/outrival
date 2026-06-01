@@ -1,9 +1,17 @@
 import { task, logger, tasks, AbortTaskRunError } from "@trigger.dev/sdk/v3";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
-import { db, changes, signals } from "@outrival/db";
+import {
+  db,
+  changes,
+  signals,
+  monitors,
+  competitors,
+  selfProductChanges,
+} from "@outrival/db";
 import { classifyChange, type Classification } from "@outrival/ai";
 import { groqQueue } from "../lib/queues";
+import { determineSelfChangeSeverity, notifySelfChange } from "../lib/self-change";
 
 const InputSchema = z.object({
   changeId: z.string(),

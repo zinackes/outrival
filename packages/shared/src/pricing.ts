@@ -2,15 +2,15 @@
 // worker routing, web display). Kept here so scrapers, workers and web all
 // agree on the same status strings without importing each other.
 
-export type PricingStatus =
-  | "public" // prices shown clearly
-  | "public_partial" // some tiers visible, others "Contact us"
-  | "gated_demo" // no prices, routes to demo / sales
-  | "gated_signup" // no prices, requires creating an account
-  | "dynamic" // interactive calculator, not statically scrapable
-  | "unknown"; // not detected, reason uncertain
-
-export const PRICING_STATUSES: readonly PricingStatus[] = [
+// Single source: the type is derived from the tuple so z.enum(PRICING_STATUSES)
+// stays in sync with PricingStatus.
+//   public         prices shown clearly
+//   public_partial some tiers visible, others "Contact us"
+//   gated_demo     no prices, routes to demo / sales
+//   gated_signup   no prices, requires creating an account
+//   dynamic        interactive calculator, not statically scrapable
+//   unknown        not detected, reason uncertain
+export const PRICING_STATUSES = [
   "public",
   "public_partial",
   "gated_demo",
@@ -18,6 +18,8 @@ export const PRICING_STATUSES: readonly PricingStatus[] = [
   "dynamic",
   "unknown",
 ] as const;
+
+export type PricingStatus = (typeof PRICING_STATUSES)[number];
 
 export type PricingRepositioningType =
   | "pricing_gated" // pulled public prices behind a gate

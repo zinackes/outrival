@@ -10,16 +10,30 @@ import {
   organizations,
   users,
 } from "@outrival/db";
-import { generateInsight, ClassificationSchema } from "@outrival/ai";
-import { PLAN_LIMITS } from "@outrival/shared";
+import { generateInsight, generateRepositioningInsight, ClassificationSchema } from "@outrival/ai";
+import { PLAN_LIMITS, PRICING_STATUSES } from "@outrival/shared";
 import { insertSignalFeed } from "../lib/clickhouse";
 import { captureWorkerEvent, shutdownPostHog } from "../lib/posthog";
 import { groqQueue } from "../lib/queues";
 
-const InputSchema = z.object({
-  changeId: z.string(),
-  classification: ClassificationSchema,
+// A pricing status transition (patch-11) carries its own severity and replaces
+// the generic diff classification for that change.
+const PricingTransitionSchema = z.object({
+  type: z.enum(["pricing_gated", "pricing_public", "pricing_usage_based"]),
+  severity: z.enum(["high", "medium"]),
+  previous: z.enum(PRICING_STATUSES),
+  current: z.enum(PRICING_STATUSES),
 });
+
+const InputSchema = z
+  .object({
+    changeId: z.string(),
+    classification: ClassificationSchema.optional(),
+    pricingTransition: PricingTransitionSchema.optional(),
+  })
+  .refine((v) => v.classification || v.pricingTransition, {
+    message: "generate-signal needs a classification or a pricingTransition",
+  });
 
 export const generateSignalJob = task({
   id: "generate-signal",
@@ -55,12 +69,29 @@ export const generateSignalJob = task({
     });
     if (!competitor) throw new AbortTaskRunError(`Competitor ${monitor.competitorId} not found`);
 
-    const insight = await generateInsight(
-      change.diffText,
-      competitor.name,
-      competitor.category,
-      input.classification,
-    );
+    // A pricing repositioning replaces the generic classification: it sets the
+    // category to "pricing", takes its severity from the transition, and gets a
+    // transition-aware insight prompt.
+    const severity = input.pricingTransition
+      ? input.pricingTransition.severity
+      : input.classification!.severity;
+    const category = input.pricingTransition ? "pricing" : input.classification!.category;
+
+    const insight = input.pricingTransition
+      ? await generateRepositioningInsight({
+          competitorName: competitor.name,
+          competitorCategory: competitor.category,
+          previous: input.pricingTransition.previous,
+          current: input.pricingTransition.current,
+          type: input.pricingTransition.type,
+          diffText: change.diffText,
+        })
+      : await generateInsight(
+          change.diffText,
+          competitor.name,
+          competitor.category,
+          input.classification!,
+        );
     if (!insight) {
       logger.error("Insight generation failed", { changeId: input.changeId });
       throw new AbortTaskRunError("Insight returned null");
@@ -72,8 +103,8 @@ export const generateSignalJob = task({
         changeId: input.changeId,
         orgId: competitor.orgId,
         competitorId: competitor.id,
-        severity: input.classification.severity,
-        category: input.classification.category,
+        severity,
+        category,
         insight: insight.insight,
         soWhat: insight.so_what,
         recommendedAction: insight.recommended_action,
@@ -85,14 +116,12 @@ export const generateSignalJob = task({
     await insertSignalFeed({
       org_id: competitor.orgId,
       competitor_id: competitor.id,
-      category: input.classification.category,
-      severity: input.classification.severity,
+      category,
+      severity,
       recorded_at: new Date(),
     });
 
-    const isHigh =
-      input.classification.severity === "high" ||
-      input.classification.severity === "critical";
+    const isHigh = severity === "high" || severity === "critical";
 
     if (isHigh) {
       const org = await db.query.organizations.findFirst({
@@ -115,8 +144,8 @@ export const generateSignalJob = task({
     });
     if (orgOwner) {
       await captureWorkerEvent(orgOwner.id, "signal_generated", {
-        severity: input.classification.severity,
-        category: input.classification.category,
+        severity,
+        category,
         competitorId: competitor.id,
         orgId: competitor.orgId,
       });
@@ -125,8 +154,8 @@ export const generateSignalJob = task({
 
     logger.log("Completed generate-signal", {
       signalId: newSignal.id,
-      severity: input.classification.severity,
-      category: input.classification.category,
+      severity,
+      category,
     });
 
     return { signalId: newSignal.id };

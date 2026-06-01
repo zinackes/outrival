@@ -236,6 +236,16 @@ export const scrapeMonitorJob = task({
       await tasks.trigger("refresh-competitor-summary", { competitorId: competitor.id });
     }
 
+    // Self-competitor (patch-12): refresh the structured profile (features + tech
+    // stack) from each homepage capture. Auto-detected fields are refreshed; fields
+    // the user corrected stay sticky.
+    if (monitor.sourceType === "homepage" && competitor.type === "self") {
+      await tasks.trigger("extract-self-profile", {
+        competitorId: competitor.id,
+        snapshotId: newSnapshot.id,
+      });
+    }
+
     if (monitor.sourceType === "pricing") {
       await tasks.trigger("extract-pricing", {
         snapshotId: newSnapshot.id,
@@ -247,9 +257,12 @@ export const scrapeMonitorJob = task({
         competitorId: competitor.id,
       });
     } else if (
-      monitor.sourceType === "g2_reviews" ||
-      monitor.sourceType === "capterra_reviews" ||
-      monitor.sourceType === "appstore_reviews"
+      // Reviews are never scraped for the self-competitor (defensive: we also
+      // never create review monitors for it) — too early-stage + proxy cost.
+      competitor.type !== "self" &&
+      (monitor.sourceType === "g2_reviews" ||
+        monitor.sourceType === "capterra_reviews" ||
+        monitor.sourceType === "appstore_reviews")
     ) {
       const reviewSource =
         monitor.sourceType === "g2_reviews"

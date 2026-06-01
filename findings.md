@@ -887,3 +887,86 @@ Upstash par IP + captcha invisible Turnstile. Aucune route publique créée dans
 `pnpm typecheck` 7/7 ✓ · `pnpm build` 7/7 ✓ (build = tsc --noEmit partout, pas de next build).
 0 nouvelle erreur TS. Reste : test E2E runtime des 4 modes + vérif zéro-stockage live
 (nécessite services + creds GROQ/EXA/R2/DB + session auth).
+
+---
+
+## Patch-09 — Optimisation coût IA (2026-06-01)
+
+3 leviers : cache Redis sur tâches déterministes, filtre de significativité, routing
+modèle 8b/70b. Le patch a été écrit pour une archi qui ne matche plus la prod — deux
+hypothèses fausses corrigées (cf. décisions ci-dessous).
+
+### Redis réintroduit (Upstash REST) — cache IA uniquement
+- Le patch importait `../redis` (« client Upstash existant ») : **faux**, Upstash a été
+  retiré en Phase 6 (SSE DB-backed). Réintroduit `@upstash/redis` dans `@outrival/shared`
+  (`src/redis.ts`, client lazy `getRedis()`), **pour le cache IA seulement**.
+- **Pourquoi Upstash et pas un Redis self-host sur le VPS** : les workers (donc
+  `classifyChange`, le plus gros volume) tournent sur **Trigger.dev Cloud**, pas sur le
+  VPS. Le client REST Upstash est joignable de partout ; un Redis VPS devrait être exposé
+  sur Internet (TLS + auth) pour les workers Cloud. À reconsidérer si les workers passent
+  un jour sur le VPS.
+- **Dégradation silencieuse** : `getRedis()` renvoie `null` si `UPSTASH_REDIS_REST_URL`/
+  `_TOKEN` absents → `withAiCache` appelle `fn()` direct, rien ne casse. Toute erreur
+  réseau Redis (get/set) est avalée. Dev + prod-sans-Upstash fonctionnent identiquement.
+- `withAiCache(input, { namespace, ttlSeconds }, fn)` dans `packages/shared/src/cache/`.
+  Clé = `ai:{namespace}:{sha256(input)[:24]}` — **jamais** de secret dans la clé, hash du
+  contenu seul. `@upstash/redis` sérialise/désérialise le JSON tout seul (pas de
+  `JSON.parse` manuel, contrairement au snippet du patch écrit pour ioredis).
+- **Les `null`/`undefined` ne sont jamais cachés** → un parse failure est re-tenté au
+  prochain appel au lieu d'être figé pour tout le TTL. `score-overlap` retourne `null`
+  dans le `fn` en cas d'échec (pas le fallback array) pour que le fallback ne soit jamais
+  mis en cache.
+
+### Routing modèle via `AI_CONFIG`, pas un système `MODELS`/`ModelTier`
+- Le patch proposait `MODELS = { fast, smart }` + `complete({ model: "fast" })`. La vraie
+  API est `complete(config: AITaskConfig, options)` et le routing modèle se fait **déjà**
+  via les clés d'`AI_CONFIG`. Ajouter un `MODELS`/`ModelTier` parallèle aurait dupliqué
+  cette abstraction → écarté (Simplicity First).
+- Ajout d'**une** entrée `AI_CONFIG.classificationFast` (`groq` + `llama-3.1-8b-instant`).
+  `classify` + `score-overlap` pointent dessus (8b). `analyze-product` **reste** sur
+  `classification` (70b) — profiling produit = raisonnement plus riche (contrainte patch).
+  Tout le reste (insight/digest/battle-card/extract-*/summaries) inchangé sur 70b.
+
+### Cache appliqué SANS changer les signatures publiques
+- Décision : wrapping cache **interne** aux tâches, signatures inchangées
+  (`classifyChange → Classification|null`, etc.), `console.debug("[ai-cache] hit …")`
+  dans `withAiCache`. Raison : le flag `cached` n'a **aucun consommateur** tant que
+  patch-02 (`ai_runs` + `logAiRun`) n'est pas appliqué — exposer `{ result, cached }` +
+  migrer tous les appelants = du churn pour rien. À rebrancher avec patch-02.
+
+### Filtre de significativité — placement
+- Helper pur `evaluateSignificance({ added, removed })` dans `packages/ai/src/filters/`,
+  exposé en **subpath `@outrival/ai/significance`** (comme `@outrival/scrapers/
+  conditional-fetch`) → `scrape-monitor` l'importe sans tirer groq/anthropic au parse.
+- Placé dans **`scrape-monitor.job.ts`** juste avant `tasks.trigger("classify-change")` :
+  le diff `{ added, removed }` y est déjà calculé, le **Change reste inséré** (historique
+  préservé), et on économise à la fois le run Trigger ET l'appel Groq. `diff.added`/
+  `removed` sont des `string[]` → joints en `\n` au call site.
+- `logAiRun` / statut `skipped`/`cached` **non implémentés** : table `ai_runs` n'existe
+  pas (patch-02 pas appliqué). Le patch prévoit ce cas — à brancher avec patch-02.
+
+### Heuristique : règles partiellement masquées (pas un bug)
+- Mesuré via les tests unitaires : un diff **timestamps-only** (quasi aucune lettre) est
+  attrapé par la **règle 2 `no_significant_text`** avant la règle 4 `timestamps_only` ;
+  un **hash court** (<50 chars) par la règle 1 `too_short`. La règle 4 est de fait
+  **dead code** (son charset n'autorise que `T`/`Z` comme lettres → impossible d'avoir
+  ≥30 chars « significatifs »). Le diff est **bien skippé** dans tous les cas (`worth:
+  false`) — seul le `reason` exact diffère. Helper **non modifié** (heuristique imposée
+  par le patch, conservatrice, comportement correct). Tests assertent `worth` ; le
+  `reason` n'est pinné que sur les règles réellement atteignables (hash long, token long).
+
+### Tests
+- Repo sans runner de test → introduit **`bun test`** (Bun déjà le runtime api/workers,
+  zéro nouvelle dep). `packages/ai` : script `"test": "bun test"`, `tsconfig` exclut
+  `**/*.test.ts` (sinon `bun:test` casserait `tsc --noEmit`). 8 tests verts.
+
+### Mesures runtime (TODO — 24h-7j, nécessite creds Upstash + patch-02)
+- Taux de cache hit classify (objectif 30-50 %), taux de skip (30-60 %), volume Groq
+  (-60 à -80 %). À lire dans le dashboard ops (patch-02) une fois `ai_runs` branché.
+- Vérifs runtime non faisables ici : cache hit observable (2e appel = hit), Redis coupé →
+  app continue, `llama-3.1-8b-instant` dans les logs Groq pour classify/score vs
+  `llama-3.3-70b-versatile` pour signal/digest/battle-card.
+
+### Vérif
+`pnpm typecheck` 7/7 ✓ · `pnpm build` 7/7 ✓ · `bun test` (@outrival/ai) 8/8 ✓.
+0 nouvelle erreur TS.

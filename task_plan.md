@@ -29,7 +29,35 @@ appliqué le 2026-05-27. Reste landing page + polish global via Claude Design
       SKIP — no-op sur runtime Trigger.dev à machine isolée/run. Détails + à-revisiter
       dans findings.md § "Patch 07".
 - [x] patch-08 — Onboarding par stade de projet (implémenté 2026-05-31 — complete)
-- [ ] patch-02 — Admin ops (prochain — vue riche feedbacks + ops dashboard)
+- [x] patch-09 — Optimisation coût IA (implémenté 2026-06-01 — cache Redis déterministe
+      + filtre significativité + routing 8b/70b ; complete, détails findings.md § Patch-09)
+- [ ] patch-02 — Admin ops (prochain — vue riche feedbacks + ops dashboard +
+      `ai_runs`/`logAiRun` → rebrancher cache `cached`/`skipped` de patch-09)
+
+## Étapes patch-09 (implémentées 2026-06-01)
+
+- [x] 0 — env : UPSTASH_REDIS_REST_* (.env.local, déjà dans .env.example) +
+      AI_CACHE_TTL_{CLASSIFY,ANALYZE,SCORE}_DAYS (.env.local + .env.example)
+- [x] 1 — @outrival/shared : @upstash/redis dep + src/redis.ts (lazy, null si non config)
+      + src/cache/ai-cache.ts (withAiCache, dégradation silencieuse, ne cache pas null)
+- [x] 2 — @outrival/ai : src/filters/significance.ts (pur) + subpath ./significance
+      + significance.test.ts (bun test, 8 verts) + tsconfig exclut *.test.ts
+- [x] 3 — AI_CONFIG.classificationFast (llama-3.1-8b-instant) — pas de MODELS/ModelTier
+- [x] 4 — cache + routing : classify (8b), score-overlap (8b), analyze-product (70b) ;
+      signatures publiques inchangées (cache interne) ; PAS de cache sur signal/digest/
+      battle-card (contrainte)
+- [x] 5 — scrape-monitor : evaluateSignificance avant trigger classify-change (Change
+      préservé) ; logAiRun skip (ai_runs absent → patch-02)
+- [x] 6 — pnpm typecheck 7/7 ✓ + build 7/7 ✓ + bun test 8/8 ✓
+
+### Décisions patch-09 (cf. findings.md § Patch-09 pour le détail)
+- Backend = Upstash (REST joignable depuis Trigger.dev Cloud où tournent les workers ;
+  Redis VPS exigerait une expo Internet). Réintroduit la dep retirée Phase 6, cache IA only.
+- Routing via AI_CONFIG (pas de MODELS/ModelTier parallèle). Retour { result, cached }
+  reporté à patch-02 (flag sans consommateur). Règle 4 (timestamps_only) = dead code
+  masqué par règle 2, helper non modifié (patch-imposé, comportement correct).
+- Commits laissés à l'utilisateur (working tree avait du WIP non lié patch-13/14 au
+  démarrage → pas de git add -A pour ne pas mélanger).
 
 ## Étapes patch-08 (implémentées 2026-05-31 — commits laissés à l'utilisateur)
 
@@ -538,3 +566,56 @@ pas au code réel. Adaptations :
 ## Blockers
 - Capture de fixtures = lancer Playwright (4 pages). MEMORY: full `pnpm dev`
   OOM la VM WSL 7.4GB → capture en isolé (4 fetch), pas tout le stack.
+
+---
+
+# Patch 12 — Monitoring du produit utilisateur (self-competitor)
+
+## Session du 2026-06-01
+
+## Objectif
+Traiter le site user comme un "concurrent spécial" (type="self", isUserProduct=true) :
+fiche "Mon produit" riche et éditable, enrichissement Phase 5 réutilisé, changements
+détectés routés vers self_product_changes (JAMAIS de signal classique), re-scan
+périodique + re-discovery proposée sur changement majeur.
+
+## Décisions périmètre (validées avec l'utilisateur)
+- Q1=B : fiche complète (mockup 1:1) → extraction IA features + stack technique
+  (nouveau prompt @outrival/ai) + stockage jsonb `selfProfile` par champ.
+- Q2=A : j'implémente + typecheck/build verts, commits laissés à l'utilisateur
+  (working tree a du WIP patch-11 non commité → pas de git add -A).
+
+## Divergences réelles vs patch (adaptées)
+1. Pas de `enrich-competitor.job`. Enrichment = monitors (homepage/pricing/jobs) +
+   scrape-monitor force par monitor (pattern de /complete) + refresh-competitor-summary.
+2. Le signal se déclenche dans classify-change.job (pas scrape-monitor) → interception
+   du self là (type==="self" → self_product_changes + notif, return avant generate-signal).
+3. Skip reviews self = pas de monitor reviews créé pour le self (+ garde scrape-monitor).
+4. Web sous dashboard/ → app/dashboard/my-product/page.tsx.
+5. Pas de productName/productRepoUrl sur org → self gated par org.productUrl seul ;
+   nom dérivé du hostname.
+6. selfProfile jsonb par champ { value, isFromAutoDetect, lastEditedByUserAt } (la table
+   competitor_profiles du patch n'existe pas) ; pricing reste sur champs patch-11.
+
+## Étapes (commits laissés à l'utilisateur)
+- [ ] 0 — env USER_PRODUCT_RESCAN_DAYS=14 (.env.example + .env.local), lue côté API/workers
+- [ ] 1 — schéma : competitors.type + isUserProduct + selfProfile(jsonb) ;
+      notification_type += "self_change" ; nouvelle table self_product_changes
+      (+ enums status/severity) ; index.ts ; db:push
+- [ ] 2 — /complete : crée self-competitor si org.productUrl + monitors homepage/pricing/jobs
+      (freq weekly, nextRunAt seed RESCAN_DAYS) + scrape force par monitor
+- [ ] 3 — extraction features/stack : prompt @outrival/ai extractSelfProfile +
+      job extract-self-profile (trigger après homepage scrape self) ; n'écrase jamais
+      un champ édité ; isFromAutoDetect=true à l'auto-détection
+- [ ] 4 — classify-change : branche self → determineSelfChangeSeverity + insert
+      self_product_changes + notifySelfChange ; AUCUN signal
+- [ ] 5 — API my-product.ts : GET / PATCH / POST rescan / GET changes /
+      changes/:id/{accept,modify,ignore}
+- [ ] 6 — UI dashboard/my-product + nav "Mon produit" + bloc changements pending
+- [ ] 7 — re-discovery proposée sur major (accept renvoie suggestion + modal + reuse discover)
+- [ ] 8 — re-scan périodique (monitors self ramassés par schedule-scraping) + bouton re-scan
+- [ ] 9 — exclusion self : liste concurrents (type='competitor'), quota, discovery
+- [ ] 10 — vérif build + typecheck + findings/task_plan à jour
+
+## Blockers patch-12
+- Aucun pour l'instant. db:push requiert .env.local (déjà auto-load via drizzle.config).

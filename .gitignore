@@ -8,3 +8,6 @@ dist/
 .codegraph/
 .trigger/
 next-env.d.ts
+
+# Crawlee runtime cache (regenerated; never source)
+storage/

@@ -4,6 +4,9 @@ import { organizations } from "./organizations";
 export const notificationTypeEnum = pgEnum("notification_type", [
   "signal",
   "new_competitor",
+  // A change detected on the user's own product site (patch-12). Routed here
+  // instead of a signal — the user resolves it on the "My product" page.
+  "self_change",
 ]);
 
 export const notifications = pgTable("notifications", {

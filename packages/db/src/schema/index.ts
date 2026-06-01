@@ -14,3 +14,4 @@ export * from "./battle_cards";
 export * from "./notifications";
 export * from "./competitor_candidates";
 export * from "./feedback";
+export * from "./self_product_changes";

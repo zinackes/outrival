@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import {
   RefreshCw,
   Loader2,
@@ -38,6 +37,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { PageHead } from "@/components/dashboard/page-head";
+import { ChangeProductUrlDialog } from "@/components/outrival/change-product-url-dialog";
 
 const PRICING_LABELS: Record<string, string> = {
   public: "Public",
@@ -253,6 +253,7 @@ export default function MyProductPage() {
   const [enabling, setEnabling] = useState(false);
   const [repoUrl, setRepoUrl] = useState("");
   const [trackingRepo, setTrackingRepo] = useState(false);
+  const [changeUrlOpen, setChangeUrlOpen] = useState(false);
 
   async function load() {
     try {
@@ -380,10 +381,15 @@ export default function MyProductPage() {
               ? "We couldn't load your product."
               : "Add a product URL to track your own site like a competitor — pricing, features and changes."}
           </p>
-          <Button asChild>
-            <Link href="/onboarding">Set a product URL</Link>
-          </Button>
+          <Button onClick={() => setChangeUrlOpen(true)}>Set a product URL</Button>
         </Card>
+
+        <ChangeProductUrlDialog
+          open={changeUrlOpen}
+          onOpenChange={setChangeUrlOpen}
+          currentUrl={null}
+          onSaved={load}
+        />
       </div>
     );
   }
@@ -421,14 +427,22 @@ export default function MyProductPage() {
         }
         actions={
           p.url || p.repoUrl ? (
-            <Button onClick={rescan} disabled={rescanning} variant="outline" size="sm">
-              {rescanning ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <RefreshCw className="size-3.5" />
+            <div className="flex items-center gap-2">
+              {p.url && (
+                <Button onClick={() => setChangeUrlOpen(true)} variant="outline" size="sm">
+                  <Pencil className="size-3.5" />
+                  Change URL
+                </Button>
               )}
-              Re-scan
-            </Button>
+              <Button onClick={rescan} disabled={rescanning} variant="outline" size="sm">
+                {rescanning ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="size-3.5" />
+                )}
+                Re-scan
+              </Button>
+            </div>
           ) : undefined
         }
       />
@@ -647,6 +661,13 @@ export default function MyProductPage() {
           </Card>
         )}
       </div>
+
+      <ChangeProductUrlDialog
+        open={changeUrlOpen}
+        onOpenChange={setChangeUrlOpen}
+        currentUrl={p.url}
+        onSaved={load}
+      />
 
       <Dialog open={rediscover !== null} onOpenChange={(o) => !o && setRediscover(null)}>
         <DialogContent>

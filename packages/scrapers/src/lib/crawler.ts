@@ -1,11 +1,15 @@
 import { PlaywrightCrawler, CheerioCrawler } from "crawlee";
+import type { ScrapingBeeTier } from "@outrival/shared";
 import { scrapeViaScrapingBee } from "./scrapingbee";
 import type { ScraperResult, ScrapeOptions, ScrapeOutcome } from "../types";
+
+const PREMIUM_TIER: ScrapingBeeTier = { renderJs: true, premiumProxy: true };
 
 interface RunCrawlerOptions {
   useProxy: boolean;
   fullPage?: boolean;
   waitForSelector?: string;
+  proxyTier?: ScrapingBeeTier;
 }
 
 function looksBlocked(html: string, statusCode?: number): boolean {
@@ -23,7 +27,11 @@ function looksBlocked(html: string, statusCode?: number): boolean {
 
 async function runCrawler(url: string, opts: RunCrawlerOptions): Promise<ScraperResult> {
   if (opts.useProxy) {
-    return scrapeViaScrapingBee(url, { renderJs: true, premiumProxy: true });
+    const tier = opts.proxyTier ?? PREMIUM_TIER;
+    return scrapeViaScrapingBee(url, {
+      renderJs: tier.renderJs,
+      premiumProxy: tier.premiumProxy,
+    });
   }
 
   let result: ScraperResult | null = null;
@@ -39,6 +47,11 @@ async function runCrawler(url: string, opts: RunCrawlerOptions): Promise<Scraper
           "--disable-dev-shm-usage", // /dev/shm tiny under WSL → otherwise swap/crash
           "--disable-gpu",
           "--no-sandbox",
+          // Hide the `navigator.webdriver` automation tell at the browser level
+          // (cheapest anti-bot win) — Crawlee already injects human-like
+          // fingerprints + headers by default, so the free path stays robust and
+          // we fall back to paid ScrapingBee less often.
+          "--disable-blink-features=AutomationControlled",
           // single-process slashes Chromium RAM but can break JS-heavy pages,
           // so it's dev-only — prod (Trigger.dev cloud) keeps the default model.
           ...(process.env.NODE_ENV !== "production" ? ["--single-process"] : []),
@@ -94,6 +107,7 @@ export async function scrapePage(
       useProxy: true,
       fullPage: options.fullPage,
       waitForSelector: options.waitForSelector,
+      proxyTier: options.proxyTier,
     });
     return { ...result, usedProxy: true };
   }
@@ -115,6 +129,7 @@ export async function scrapePage(
     useProxy: true,
     fullPage: options.fullPage,
     waitForSelector: options.waitForSelector,
+    proxyTier: options.proxyTier,
   });
   return { ...result, usedProxy: true };
 }

@@ -10,9 +10,9 @@ import {
   organizations,
   users,
 } from "@outrival/db";
-import { generateInsight, generateRepositioningInsight, ClassificationSchema } from "@outrival/ai";
+import { generateInsight, generateRepositioningInsight, ClassificationSchema, AI_CONFIG } from "@outrival/ai";
 import { PLAN_LIMITS, PRICING_STATUSES, PRICING_STATUS_LABELS } from "@outrival/shared";
-import { insertSignalFeed } from "../lib/clickhouse";
+import { insertSignalFeed, logAiRun } from "../lib/clickhouse";
 import { captureWorkerEvent, shutdownPostHog } from "../lib/posthog";
 import { groqQueue } from "../lib/queues";
 
@@ -89,21 +89,31 @@ export const generateSignalJob = task({
       ? PRICING_STATUS_LABELS[input.pricingTransition.current]
       : (input.classification!.humanChangeAfter ?? null);
 
-    const insight = input.pricingTransition
-      ? await generateRepositioningInsight({
-          competitorName: competitor.name,
-          competitorCategory: competitor.category,
-          previous: input.pricingTransition.previous,
-          current: input.pricingTransition.current,
-          type: input.pricingTransition.type,
-          diffText: change.diffText,
-        })
-      : await generateInsight(
-          change.diffText,
-          competitor.name,
-          competitor.category,
-          input.classification!,
-        );
+    // Ops quality logging (patch-02): success / parse_failed (null) / error
+    // (thrown). Both insight paths use the 70b model.
+    const { provider, model } = AI_CONFIG.insights;
+    let insight;
+    try {
+      insight = input.pricingTransition
+        ? await generateRepositioningInsight({
+            competitorName: competitor.name,
+            competitorCategory: competitor.category,
+            previous: input.pricingTransition.previous,
+            current: input.pricingTransition.current,
+            type: input.pricingTransition.type,
+            diffText: change.diffText,
+          })
+        : await generateInsight(
+            change.diffText,
+            competitor.name,
+            competitor.category,
+            input.classification!,
+          );
+    } catch (err) {
+      await logAiRun("insight", provider, model, "error");
+      throw err;
+    }
+    await logAiRun("insight", provider, model, insight ? "success" : "parse_failed");
     if (!insight) {
       logger.error("Insight generation failed", { changeId: input.changeId });
       throw new AbortTaskRunError("Insight returned null");

@@ -133,6 +133,9 @@ battle_cards           id, competitor_id (unique), status (pending|generating|re
 competitor_candidates  id, org_id, url, title, overlap_score, reason,
                        status (new|dismissed|added),
                        source (detection|onboarding), first_seen_at
+
+audit_log              id, actor_email, action (view_user|force_scrape|update_feedback),
+                       target_type, target_id, metadata (jsonb), created_at   — ops (patch-02)
 ```
 
 ### Enums Postgres
@@ -158,6 +161,10 @@ pricing_history     competitor_id, plan_name, price, currency, billing_period, r
 job_counts          competitor_id, department, count, recorded_at
 review_scores       competitor_id, source, score, review_count, sentiment_score, recorded_at
 signal_feed         org_id, competitor_id, category, severity, recorded_at
+scrape_runs         monitor_id, competitor_id, source_type, status (success|no_change|
+                    failed), used_proxy (0|1), duration_ms, recorded_at  — ops (patch-02)
+ai_runs             task (classify|insight|digest|battle_card|…), provider, model,
+                    status (success|parse_failed|error), recorded_at      — ops (patch-02)
 ```
 
 **Pattern d'accès** :
@@ -285,7 +292,19 @@ Côté web, l'état vide d'un onglet (Hiring, Reviews…) sans monitor affiche u
 [cron */5 min] keep-clickhouse-warm
   └─ SELECT 1 best-effort → empêche le cold-start du free tier CH
      (sinon 1ère lecture pricing/hiring/reviews ~30s)
+
+[cron */6h] ops-health-check (patch-02)
+  └─ seuils conservateurs sur scrape_runs / ai_runs / signal_feed (gardes
+     d'échantillon min anti alert-fatigue) → 1 message OPS_SLACK_WEBHOOK_URL si dégradé
 ```
+
+> **Observabilité ops (patch-02)** : chaque scrape (`scrape_runs`) et chaque appel IA
+> (`ai_runs`) est loggé best-effort en ClickHouse par les **jobs** (la tâche `@outrival/ai`
+> reste pure). Le logging ne casse jamais le scrape/l'IA (try/catch silencieux). Le
+> dashboard interne `/admin` (Next route group `(admin)`) est gaté par l'allowlist
+> `ADMIN_EMAILS` (≠ role owner) : santé scraping/IA, coût (estimations), feedbacks,
+> debug user + force scrape, audit log (`audit_log` Postgres). Routes `/api/admin/*` :
+> `authMiddleware` PUIS `adminMiddleware`.
 
 ## Temps-réel : SSE DB-backed
 

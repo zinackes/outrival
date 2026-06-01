@@ -18,6 +18,32 @@ export function supportsConditionalFetch(sourceType: SourceType): boolean {
   return CONDITIONAL_FETCH_SOURCES.includes(sourceType);
 }
 
+export interface ScrapingBeeTier {
+  renderJs: boolean;
+  premiumProxy: boolean;
+}
+
+/**
+ * ScrapingBee is the paid fallback. `render_js` + `premium_proxy` (residential)
+ * is the costly tier (~25 credits/call); a plain datacenter fetch is ~1. Only
+ * sources behind real anti-bot justify the premium tier: homepage/pricing reach
+ * the fallback *because* the direct attempt was blocked, and reviews (G2/Capterra/
+ * AppStore) are always protected. ATS job boards are not anti-bot heavy — they
+ * still need JS but not a premium proxy. Static content (blog/changelog) never
+ * reaches ScrapingBee at all (Cheerio, direct-only) — listed here for intent.
+ */
+export function scrapingBeeTier(sourceType: SourceType): ScrapingBeeTier {
+  switch (sourceType) {
+    case "blog":
+    case "changelog":
+      return { renderJs: false, premiumProxy: false };
+    case "jobs":
+      return { renderJs: true, premiumProxy: false };
+    default:
+      return { renderJs: true, premiumProxy: true };
+  }
+}
+
 export const MONITOR_FREQUENCIES = ["realtime", "daily", "weekly"] as const;
 export type MonitorFrequency = typeof MONITOR_FREQUENCIES[number];
 

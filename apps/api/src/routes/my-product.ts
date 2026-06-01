@@ -11,6 +11,7 @@ import {
   type SelfProfile,
   type SelfProfileField,
 } from "@outrival/db";
+import { normalizeHostname } from "@outrival/shared";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
@@ -27,6 +28,44 @@ async function getSelf(orgId: string) {
   return db.query.competitors.findFirst({
     where: and(eq(competitors.orgId, orgId), eq(competitors.type, "self")),
   });
+}
+
+/**
+ * The org's self-competitor, lazily creating a bare one (no monitors) if it doesn't
+ * exist yet. Orgs onboarded before patch-15 have no self; this lets them attach a
+ * product URL / repo from My Product without re-onboarding. The caller seeds monitors.
+ */
+async function ensureSelf(orgId: string) {
+  const existing = await getSelf(orgId);
+  if (existing) return existing;
+
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, orgId),
+  });
+  const pp = org?.productProfile;
+  const seed = <T,>(value: T | null | undefined): SelfProfileField<T> | undefined =>
+    value == null || (typeof value === "string" && value.trim() === "")
+      ? undefined
+      : { value, isFromAutoDetect: true, lastEditedByUserAt: null };
+  const selfProfile: SelfProfile = {
+    category: seed(pp?.category),
+    audience: seed(pp?.audience),
+    valueProp: seed(pp?.valueProp),
+  };
+
+  const [created] = await db
+    .insert(competitors)
+    .values({
+      orgId,
+      name: normalizeHostname(org?.productUrl) ?? "My product",
+      url: org?.productUrl ?? null,
+      category: pp?.category ?? null,
+      type: "self",
+      isUserProduct: true,
+      selfProfile,
+    })
+    .returning();
+  return created ?? null;
 }
 
 /** Mark a profile field as user-edited (sticky against future auto-detection). */
@@ -177,28 +216,35 @@ myProductRouter.post("/site", async (c) => {
     return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
   }
 
-  const self = await getSelf(orgId);
-  if (!self) return c.json({ error: "no_self_product" }, 404);
+  const self = await ensureSelf(orgId);
+  if (!self) return c.json({ error: "no_self_product" }, 500);
 
   const url = parsed.data.url;
+  const urlChanged = self.url !== url;
   // Persist on both the self-competitor (the monitored entity) and the org
-  // (org.productUrl feeds competitor discovery).
-  await db.update(competitors).set({ url, updatedAt: new Date() }).where(eq(competitors.id, self.id));
+  // (org.productUrl feeds competitor discovery). Name the self from its first URL.
+  const competitorUpdate: { url: string; updatedAt: Date; name?: string } = {
+    url,
+    updatedAt: new Date(),
+  };
+  if (!self.url) competitorUpdate.name = normalizeHostname(url) ?? self.name;
+  await db.update(competitors).set(competitorUpdate).where(eq(competitors.id, self.id));
   await db
     .update(organizations)
     .set({ productUrl: url, updatedAt: new Date() })
     .where(eq(organizations.id, orgId));
 
-  // Seed the site monitors that don't exist yet, then scrape immediately.
+  // Seed the site monitors that don't exist yet.
   const existing = await db.query.monitors.findMany({
     where: eq(monitors.competitorId, self.id),
   });
   const have = new Set(existing.map((m) => m.sourceType));
   const wanted = (["homepage", "pricing", "jobs"] as const).filter((s) => !have.has(s));
+  let seeded: typeof existing = [];
   if (wanted.length > 0) {
     const rescanDays = Number(process.env.USER_PRODUCT_RESCAN_DAYS ?? 14) || 14;
     const nextRunAt = new Date(Date.now() + rescanDays * 24 * 60 * 60 * 1000);
-    const rows = await db
+    seeded = await db
       .insert(monitors)
       .values(
         wanted.map((sourceType) => ({
@@ -209,12 +255,20 @@ myProductRouter.post("/site", async (c) => {
         })),
       )
       .returning();
-    for (const m of rows) {
-      try {
-        await tasks.trigger("scrape-monitor", { monitorId: m.id, force: true });
-      } catch (e) {
-        console.error("Failed to trigger self scrape", { monitorId: m.id, error: String(e) });
-      }
+  }
+
+  // Scrape now: always the freshly seeded monitors; and when the URL actually changed,
+  // the existing site monitors too — homepage/pricing/jobs derive their target from
+  // competitor.url, so the new URL must be re-scraped immediately, not at the next run.
+  const SITE_SOURCES = new Set(["homepage", "pricing", "jobs"]);
+  const toScrape = urlChanged
+    ? [...existing.filter((m) => SITE_SOURCES.has(m.sourceType)), ...seeded]
+    : seeded;
+  for (const m of toScrape) {
+    try {
+      await tasks.trigger("scrape-monitor", { monitorId: m.id, force: true });
+    } catch (e) {
+      console.error("Failed to trigger self scrape", { monitorId: m.id, error: String(e) });
     }
   }
 

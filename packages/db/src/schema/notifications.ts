@@ -7,6 +7,10 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   // A change detected on the user's own product site (patch-12). Routed here
   // instead of a signal — the user resolves it on the "My product" page.
   "self_change",
+  // The first post-onboarding analysis pass finished (all selected competitors
+  // have an AI summary, or the watcher timed out). Lets the user leave the
+  // onboarding "done" screen for the dashboard and get pinged when it's ready.
+  "onboarding_complete",
 ]);
 
 export const notifications = pgTable("notifications", {

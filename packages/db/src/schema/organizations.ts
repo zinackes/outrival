@@ -53,6 +53,10 @@ export const organizations = pgTable("organizations", {
   // True when the user chose "leave for now" — grants dashboard access without
   // having completed onboarding (non-blocking completion banner shown instead).
   onboardingSkipped: boolean("onboarding_skipped").notNull().default(false),
+  // Set once the first post-onboarding analysis pass finishes (all selected
+  // competitors have an AI summary) or the watcher times out. One-shot guard for
+  // the "analysis ready" notification so it never fires twice (e.g. re-onboarding).
+  analysisNotifiedAt: timestamp("analysis_notified_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

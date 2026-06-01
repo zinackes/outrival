@@ -24,6 +24,7 @@ import { feedbackRouter } from "./routes/feedback";
 import { searchRouter } from "./routes/search";
 import { myProductRouter } from "./routes/my-product";
 import { sectoralRouter } from "./routes/sectoral";
+import { adminRouter } from "./routes/admin";
 import { devRouter } from "./routes/dev";
 
 const app = new Hono();
@@ -63,6 +64,7 @@ app.route("/api/feedback", feedbackRouter);
 app.route("/api/search", searchRouter);
 app.route("/api/my-product", myProductRouter);
 app.route("/api/sectoral", sectoralRouter);
+app.route("/api/admin", adminRouter);
 
 // DEV-ONLY — manual cron trigger console. Never mounted in production; remove
 // this block and ./routes/dev.ts before shipping.

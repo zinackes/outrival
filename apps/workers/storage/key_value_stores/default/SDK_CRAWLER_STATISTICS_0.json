@@ -1,29 +1,52 @@
 {
-  "requestsFinished": 1,
-  "requestsFailed": 0,
-  "requestsRetries": 0,
+  "requestsFinished": 0,
+  "requestsFailed": 1,
+  "requestsRetries": 1,
   "requestsFailedPerMinute": 0,
-  "requestsFinishedPerMinute": 1,
-  "requestMinDurationMillis": 16722,
-  "requestMaxDurationMillis": 16722,
-  "requestTotalFailedDurationMillis": 0,
-  "requestTotalFinishedDurationMillis": 16722,
-  "crawlerStartedAt": "2026-06-01T12:18:19.999Z",
-  "crawlerFinishedAt": "2026-06-01T12:19:06.910Z",
-  "statsPersistedAt": "2026-06-01T12:19:06.910Z",
-  "crawlerRuntimeMillis": 47045,
-  "crawlerLastStartTimestamp": 1780316299865,
+  "requestsFinishedPerMinute": 0,
+  "requestMinDurationMillis": null,
+  "requestMaxDurationMillis": 0,
+  "requestTotalFailedDurationMillis": 49828,
+  "requestTotalFinishedDurationMillis": 0,
+  "crawlerStartedAt": "2026-06-01T15:14:46.582Z",
+  "crawlerFinishedAt": "2026-06-01T15:17:54.238Z",
+  "statsPersistedAt": "2026-06-01T15:17:54.238Z",
+  "crawlerRuntimeMillis": 187799,
+  "crawlerLastStartTimestamp": 1780326886439,
   "requestRetryHistogram": [
+    null,
+    null,
+    null,
     1
   ],
   "statsId": 0,
-  "requestAvgFailedDurationMillis": null,
-  "requestAvgFinishedDurationMillis": 16722,
-  "requestTotalDurationMillis": 16722,
+  "requestAvgFailedDurationMillis": 49828,
+  "requestAvgFinishedDurationMillis": null,
+  "requestTotalDurationMillis": 49828,
   "requestsTotal": 1,
   "requestsWithStatusCode": {
-    "200": 1
+    "200": 4
   },
-  "errors": {},
-  "retryErrors": {}
+  "errors": {
+    "/home/tmfzi/outrival/packages/scrapers/src/lib/crawler.ts:62:18": {
+      "missing error code": {
+        "TimeoutError": {
+          "page.goto: Timeout 45000ms exceeded.": {
+            "count": 1
+          }
+        }
+      }
+    }
+  },
+  "retryErrors": {
+    "/home/tmfzi/outrival/packages/scrapers/src/lib/crawler.ts:62:18": {
+      "missing error code": {
+        "TimeoutError": {
+          "page.goto: Timeout 45000ms exceeded.": {
+            "count": 3
+          }
+        }
+      }
+    }
+  }
 }

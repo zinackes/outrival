@@ -57,6 +57,8 @@ import {
   PLAN_LABELS,
   minPlanForSource,
   planIncludesSource,
+  minPlanForFrequency,
+  planIncludesFrequency,
   aggregateFreshness,
   type Plan,
   type SourceType,
@@ -193,7 +195,15 @@ export default function CompetitorDetailPage({ params }: Props) {
   const [paywall, setPaywall] = useState<PaywallReason | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scrapingStartRef = useRef<
-    Map<string, { startedAt: number; lastRunAt: string | null; lastFailedAt: string | null }>
+    Map<
+      string,
+      {
+        startedAt: number;
+        lastRunAt: string | null;
+        lastFailedAt: string | null;
+        lastChangedAt: string | null;
+      }
+    >
   >(new Map());
   const seededRef = useRef(false);
 
@@ -226,6 +236,7 @@ export default function CompetitorDetailPage({ params }: Props) {
         startedAt: m.scrapeStartedAt ? new Date(m.scrapeStartedAt).getTime() : Date.now(),
         lastRunAt: m.lastRunAt,
         lastFailedAt: m.lastFailedAt,
+        lastChangedAt: m.lastChangedAt,
       });
     }
     setScrapingIds(new Set(running.map((m) => m.id)));
@@ -245,6 +256,9 @@ export default function CompetitorDetailPage({ params }: Props) {
       const fresh = await refresh();
       if (!fresh) return;
       const finished: string[] = [];
+      // Subset of `finished` whose lastChangedAt moved during the run — i.e. the
+      // scrape produced a real diff, not just a no-op re-fetch of identical content.
+      const changed: string[] = [];
       const failed: string[] = [];
       const timedOut: string[] = [];
       const now = Date.now();
@@ -256,6 +270,10 @@ export default function CompetitorDetailPage({ params }: Props) {
         const updatedFailed = updated?.lastFailedAt ?? null;
         if (updatedRun !== null && updatedRun !== tracker.lastRunAt) {
           finished.push(monitorId);
+          const updatedChanged = updated?.lastChangedAt ?? null;
+          if (updatedChanged !== null && updatedChanged !== tracker.lastChangedAt) {
+            changed.push(monitorId);
+          }
         } else if (updatedFailed !== null && updatedFailed !== tracker.lastFailedAt) {
           failed.push(monitorId);
         } else if (now - tracker.startedAt > POLL_TIMEOUT_MS) {
@@ -274,10 +292,19 @@ export default function CompetitorDetailPage({ params }: Props) {
       });
 
       if (finished.length > 0) {
-        const labels = finished
-          .map((mid) => fresh.monitors.find((m) => m.id === mid)?.sourceType ?? mid)
-          .join(", ");
-        toast.success("Scrape completed", { description: labels });
+        const changedSet = new Set(changed);
+        const label = (mid: string) =>
+          fresh.monitors.find((m) => m.id === mid)?.sourceType ?? mid;
+        const changedLabels = finished.filter((mid) => changedSet.has(mid)).map(label);
+        const unchangedLabels = finished.filter((mid) => !changedSet.has(mid)).map(label);
+        if (changedLabels.length > 0) {
+          toast.success("Change detected", {
+            description: `${changedLabels.join(", ")} — new snapshot captured`,
+          });
+        }
+        if (unchangedLabels.length > 0) {
+          toast.info("Scrape complete · no change", { description: unchangedLabels.join(", ") });
+        }
         setRefreshTick((t) => t + 1);
       }
       if (failed.length > 0) {
@@ -403,6 +430,7 @@ export default function CompetitorDetailPage({ params }: Props) {
       startedAt: Date.now(),
       lastRunAt: monitor.lastRunAt,
       lastFailedAt: monitor.lastFailedAt,
+      lastChangedAt: monitor.lastChangedAt,
     });
     setScrapingIds((prev) => new Set(prev).add(monitorId));
     try {
@@ -463,6 +491,10 @@ export default function CompetitorDetailPage({ params }: Props) {
           disabled={
             runningAll ||
             monitors.every((m) => scrapingIds.has(m.id) || isServerScraping(m))
+          }
+          plan={plan}
+          onLockedFrequency={(freq) =>
+            setPaywall({ code: "plan_locked_frequency", frequency: freq, plan })
           }
         />
 
@@ -538,11 +570,15 @@ export default function CompetitorDetailPage({ params }: Props) {
                 onLockedSource={(source) =>
                   setPaywall({ code: "plan_locked_source", source, plan })
                 }
+                onLockedFrequency={(freq) =>
+                  setPaywall({ code: "plan_locked_frequency", frequency: freq, plan })
+                }
               />
             </TabsContent>
             <TabsContent value="content">
               <ContentTab
                 changes={recentChanges}
+                signals={recentSignals}
                 monitors={monitors}
                 scrapingIds={scrapingIds}
                 onRun={runMonitor}
@@ -677,6 +713,8 @@ function MonitorSources({
   competitorUrl,
   runningAll,
   disabled,
+  plan,
+  onLockedFrequency,
 }: {
   monitors: Monitor[];
   scrapingIds: Set<string>;
@@ -686,6 +724,8 @@ function MonitorSources({
   competitorUrl: string;
   runningAll: boolean;
   disabled: boolean;
+  plan: Plan;
+  onLockedFrequency: (freq: MonitorFrequency) => void;
 }) {
   const [editing, setEditing] = useState<Monitor | null>(null);
   if (monitors.length === 0) return null;
@@ -788,8 +828,10 @@ function MonitorSources({
       <MonitorEditDialog
         monitor={editing}
         competitorUrl={competitorUrl}
+        plan={plan}
         onClose={() => setEditing(null)}
         onSave={onEdit}
+        onLockedFrequency={onLockedFrequency}
       />
     </Card>
   );
@@ -797,19 +839,62 @@ function MonitorSources({
 
 const EDITABLE_FREQUENCIES: MonitorFrequency[] = [...MONITOR_FREQUENCIES];
 
+// A single frequency choice, plan-gated like ReviewSourceButton: a frequency the
+// plan doesn't allow shows a lock + min-plan badge and routes to the paywall on
+// click instead of selecting (which would only fail server-side on save).
+function FrequencyButton({
+  freq,
+  plan,
+  selected,
+  disabled,
+  onSelect,
+  onLocked,
+}: {
+  freq: MonitorFrequency;
+  plan: Plan;
+  selected: boolean;
+  disabled?: boolean;
+  onSelect: () => void;
+  onLocked: () => void;
+}) {
+  const locked = !planIncludesFrequency(plan, freq);
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant={selected ? "default" : "outline"}
+      onClick={() => (locked ? onLocked() : onSelect())}
+      disabled={disabled}
+      className="h-7 gap-1.5 text-[11px] capitalize"
+    >
+      {locked && <Lock size={10} className="opacity-70" />}
+      {freq}
+      {locked && (
+        <span className="inline-flex items-center rounded bg-muted-foreground/15 px-1 py-0.5 text-[8px] font-mono uppercase leading-none tracking-wider text-muted-foreground">
+          {PLAN_LABELS[minPlanForFrequency(freq)]}
+        </span>
+      )}
+    </Button>
+  );
+}
+
 // Per-monitor config: override the auto-detected page URL and the check cadence.
 // Frequency is the upper bound (the scheduler backs off when a source is stable),
-// gated server-side by plan — an over-plan choice surfaces the paywall.
+// gated by plan — an over-plan choice is locked in the picker and routes to the paywall.
 function MonitorEditDialog({
   monitor,
   competitorUrl,
+  plan,
   onClose,
   onSave,
+  onLockedFrequency,
 }: {
   monitor: Monitor | null;
   competitorUrl: string;
+  plan: Plan;
   onClose: () => void;
   onSave: (id: string, patch: { url?: string; frequency?: MonitorFrequency }) => Promise<void>;
+  onLockedFrequency: (freq: MonitorFrequency) => void;
 }) {
   const [frequency, setFrequency] = useState<MonitorFrequency>("daily");
   const [url, setUrl] = useState("");
@@ -867,16 +952,17 @@ function MonitorEditDialog({
             </p>
             <div className="flex gap-1.5">
               {EDITABLE_FREQUENCIES.map((f) => (
-                <Button
+                <FrequencyButton
                   key={f}
-                  type="button"
-                  size="sm"
-                  variant={frequency === f ? "default" : "outline"}
-                  onClick={() => setFrequency(f)}
-                  className="h-7 text-[11px] capitalize"
-                >
-                  {f}
-                </Button>
+                  freq={f}
+                  plan={plan}
+                  selected={frequency === f}
+                  onSelect={() => setFrequency(f)}
+                  onLocked={() => {
+                    onClose();
+                    onLockedFrequency(f);
+                  }}
+                />
               ))}
             </div>
           </div>
@@ -1148,14 +1234,19 @@ function ChangeCard({
   change,
   onRefresh,
   fallbackUrl,
+  insight,
 }: {
   change: ChangeRow;
   onRefresh?: () => void;
   fallbackUrl?: string;
+  insight?: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const [classifying, setClassifying] = useState(false);
-  const hasSummary = change.summary && change.summary.trim().length > 0;
+  // Prefer the strategic signal insight (when this change became a signal) over
+  // the change's own classification summary.
+  const summary = insight && insight.trim().length > 0 ? insight : change.summary;
+  const hasSummary = !!summary && summary.trim().length > 0;
 
   async function classify() {
     setClassifying(true);
@@ -1197,7 +1288,7 @@ function ChangeCard({
       </div>
 
       {hasSummary ? (
-        <p className="text-[13px] leading-relaxed text-foreground">{change.summary}</p>
+        <p className="text-[13px] leading-relaxed text-foreground">{summary}</p>
       ) : (
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <p className="text-[12px] text-muted-foreground/70 italic">
@@ -1795,7 +1886,7 @@ function ReviewSourceButton({
       {option.label}
       <span
         className={cn(
-          "rounded px-1 py-px text-[8px] font-mono uppercase tracking-wider",
+          "inline-flex items-center rounded px-1 py-0.5 text-[8px] leading-none font-mono uppercase tracking-wider",
           selected ? "bg-primary-foreground/15" : "bg-muted-foreground/15 text-muted-foreground",
         )}
       >
@@ -1910,11 +2001,13 @@ function ReviewsTab({
   refreshTick,
   plan,
   onLockedSource,
+  onLockedFrequency,
 }: {
   competitorId: string;
   refreshTick?: number;
   plan: Plan;
   onLockedSource?: (source: ReviewSourceType) => void;
+  onLockedFrequency: (freq: MonitorFrequency) => void;
   onEdit: (id: string, patch: { url?: string; frequency?: MonitorFrequency }) => Promise<void>;
   onSwitch: (oldMonitorId: string, source: SourceType, url: string) => Promise<void>;
 } & MonitorSourceProps) {
@@ -2034,6 +2127,7 @@ function ReviewsTab({
         onEdit={onEdit}
         onSwitch={onSwitch}
         onLockedSource={onLockedSource}
+        onLockedFrequency={onLockedFrequency}
       />
     </div>
   );
@@ -2074,6 +2168,7 @@ function ReviewSourceDialog({
   onEdit,
   onSwitch,
   onLockedSource,
+  onLockedFrequency,
 }: {
   open: boolean;
   monitor: Monitor;
@@ -2082,6 +2177,7 @@ function ReviewSourceDialog({
   onEdit: (id: string, patch: { url?: string; frequency?: MonitorFrequency }) => Promise<void>;
   onSwitch: (oldMonitorId: string, source: SourceType, url: string) => Promise<void>;
   onLockedSource?: (source: ReviewSourceType) => void;
+  onLockedFrequency: (freq: MonitorFrequency) => void;
 }) {
   const currentSource = monitor.sourceType as ReviewSourceType;
   const currentUrl = monitor.config?.url ?? "";
@@ -2161,17 +2257,18 @@ function ReviewSourceDialog({
             </p>
             <div className="flex gap-1.5">
               {MONITOR_FREQUENCIES.map((f) => (
-                <Button
+                <FrequencyButton
                   key={f}
-                  type="button"
-                  size="sm"
-                  variant={frequency === f ? "default" : "outline"}
-                  onClick={() => setFrequency(f)}
-                  className="h-7 text-[11px] capitalize"
+                  freq={f}
+                  plan={plan}
+                  selected={frequency === f}
                   disabled={sourceChanged}
-                >
-                  {f}
-                </Button>
+                  onSelect={() => setFrequency(f)}
+                  onLocked={() => {
+                    onClose();
+                    onLockedFrequency(f);
+                  }}
+                />
               ))}
             </div>
           </div>
@@ -2217,6 +2314,7 @@ const CONTENT_SOURCES = new Set(["homepage", "blog", "changelog"]);
 
 function ContentTab({
   changes,
+  signals,
   monitors,
   scrapingIds,
   onRun,
@@ -2224,11 +2322,18 @@ function ContentTab({
   competitorUrl,
 }: {
   changes: ChangeRow[];
+  signals: CompetitorSignal[];
   onRefresh?: () => void;
   competitorUrl: string;
 } & MonitorSourceProps) {
   const contentChanges = changes.filter((c) => CONTENT_SOURCES.has(c.sourceType));
   const contentMonitors = monitors.filter((m) => CONTENT_SOURCES.has(m.sourceType));
+  // A content change that became a signal shows the strategic insight instead of
+  // the plain classification summary.
+  const insightByChangeId = new Map<string, string>();
+  for (const s of signals) {
+    if (s.changeId) insightByChangeId.set(s.changeId, s.insight);
+  }
 
   if (contentChanges.length === 0) {
     if (contentMonitors.length === 0) {
@@ -2276,7 +2381,12 @@ function ContentTab({
     <ul className="flex flex-col gap-2">
       {contentChanges.map((c) => (
         <li key={c.id}>
-          <ChangeCard change={c} onRefresh={onRefresh} fallbackUrl={competitorUrl} />
+          <ChangeCard
+            change={c}
+            onRefresh={onRefresh}
+            fallbackUrl={competitorUrl}
+            insight={insightByChangeId.get(c.id)}
+          />
         </li>
       ))}
     </ul>

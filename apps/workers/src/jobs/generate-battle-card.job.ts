@@ -9,8 +9,9 @@ import {
   reviews,
   signals,
 } from "@outrival/db";
-import { generateBattleCard } from "@outrival/ai";
+import { generateBattleCard, AI_CONFIG } from "@outrival/ai";
 import { uploadToR2 } from "@outrival/shared";
+import { logAiRun } from "../lib/clickhouse";
 
 const InputSchema = z.object({
   competitorId: z.string(),
@@ -62,18 +63,27 @@ export const generateBattleCardJob = task({
       limit: 8,
     });
 
-    const content = await generateBattleCard({
-      myProduct: { category: profile.category, valueProp: profile.valueProp },
-      competitorName: competitor.name,
-      competitorSummary: competitor.aiSummary ?? competitor.description ?? null,
-      reviewPraises: praisesRows.map((r) => r.content ?? "").filter(Boolean),
-      reviewComplaints: complaintsRows.map((r) => r.content ?? "").filter(Boolean),
-      recentSignals: recentSignals.map((s) => ({
-        category: s.category,
-        severity: s.severity,
-        insight: s.insight,
-      })),
-    });
+    // Ops quality logging (patch-02): success / parse_failed (null) / error.
+    const { provider, model } = AI_CONFIG.insights;
+    let content;
+    try {
+      content = await generateBattleCard({
+        myProduct: { category: profile.category, valueProp: profile.valueProp },
+        competitorName: competitor.name,
+        competitorSummary: competitor.aiSummary ?? competitor.description ?? null,
+        reviewPraises: praisesRows.map((r) => r.content ?? "").filter(Boolean),
+        reviewComplaints: complaintsRows.map((r) => r.content ?? "").filter(Boolean),
+        recentSignals: recentSignals.map((s) => ({
+          category: s.category,
+          severity: s.severity,
+          insight: s.insight,
+        })),
+      });
+    } catch (err) {
+      await logAiRun("battle_card", provider, model, "error");
+      throw err;
+    }
+    await logAiRun("battle_card", provider, model, content ? "success" : "parse_failed");
 
     if (!content) {
       throw new AbortTaskRunError("Battle card generation returned null");

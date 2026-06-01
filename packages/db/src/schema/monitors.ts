@@ -17,6 +17,10 @@ export const monitors = pgTable("monitors", {
   config: jsonb("config"),
   isActive: boolean("is_active").notNull().default(true),
   requiresProxy: boolean("requires_proxy").notNull().default(false),
+  // When requiresProxy was last (re)confirmed. Drives the periodic re-probe of
+  // the free direct path so a site that stopped blocking us is unpinned from the
+  // paid proxy instead of being billed forever.
+  requiresProxySince: timestamp("requires_proxy_since"),
   lastRunAt: timestamp("last_run_at"),
   nextRunAt: timestamp("next_run_at"),
   lastChangedAt: timestamp("last_changed_at"),

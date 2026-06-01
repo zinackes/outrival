@@ -38,11 +38,14 @@ export async function scrape(
   const lowered = url.toLowerCase();
   const direct = CAREERS_KEYWORDS.some((k) => lowered.includes(k));
 
+  const pageOpts = {
+    fullPage: true,
+    preferProxy: options.preferProxy,
+    proxyTier: options.proxyTier,
+  };
   const result = direct
-    ? await scrapePage(url, { fullPage: true, preferProxy: options.preferProxy })
-    : await scrapeFirstSuccess(url, CAREERS_PATHS, (u) =>
-        scrapePage(u, { fullPage: true, preferProxy: options.preferProxy }),
-      );
+    ? await scrapePage(url, pageOpts)
+    : await scrapeFirstSuccess(url, CAREERS_PATHS, (u) => scrapePage(u, pageOpts));
 
   const ats = detectAts(result.html);
   return {

@@ -80,3 +80,13 @@ export function planIncludesSource(plan: Plan, source: SourceType): boolean {
 export function minPlanForSource(source: SourceType): Plan {
   return PLANS.find((p) => PLAN_LIMITS[p].allowedSources.includes(source)) ?? "business";
 }
+
+/** Whether `plan` may scrape at `freq`. Mirrors the API frequency gate. */
+export function planIncludesFrequency(plan: Plan, freq: MonitorFrequency): boolean {
+  return PLAN_LIMITS[plan].allowedFrequencies.includes(freq);
+}
+
+/** Cheapest plan whose allowed frequencies include `freq` — drives badges/upsell copy. */
+export function minPlanForFrequency(freq: MonitorFrequency): Plan {
+  return PLANS.find((p) => PLAN_LIMITS[p].allowedFrequencies.includes(freq)) ?? "business";
+}

@@ -77,6 +77,87 @@ export async function insertSignalFeed(row: SignalFeedRow): Promise<void> {
   await insertBestEffort("signal_feed", [row]);
 }
 
+// --- Ops observability (patch-02). Best-effort, never throws: an ops-logging
+//     failure must never break a scrape or an AI job. ---
+
+export interface ScrapeRunRow {
+  monitor_id: string;
+  competitor_id: string;
+  source_type: string;
+  status: "success" | "no_change" | "failed";
+  used_proxy: number; // 0 | 1 (ClickHouse UInt8)
+  duration_ms: number;
+  recorded_at: Date;
+}
+
+export async function logScrapeRun(row: ScrapeRunRow): Promise<void> {
+  await insertBestEffort("scrape_runs", [row]);
+}
+
+export type AiRunStatus = "success" | "parse_failed" | "error";
+
+// The job logs the AI run, never the @outrival/ai task (kept pure, no DB). The
+// task returns null on a parse miss → "parse_failed"; a thrown call → "error".
+export async function logAiRun(
+  task: string,
+  provider: string,
+  model: string,
+  status: AiRunStatus,
+): Promise<void> {
+  await insertBestEffort("ai_runs", [
+    { task, provider, model, status, recorded_at: new Date() },
+  ]);
+}
+
+// --- Ops health reads (patch-02, ops-health-check job). Best-effort: null when
+//     CH is down/unset → the health check simply skips that threshold. ---
+
+export interface ScrapeHealthWindow {
+  total: number;
+  failed: number;
+  proxy: number;
+}
+
+export async function getScrapeHealth(hours: number): Promise<ScrapeHealthWindow | null> {
+  const rows = await queryBestEffort<{ total: string; failed: string; proxy: string }>(
+    `SELECT count() AS total,
+            countIf(status = 'failed') AS failed,
+            countIf(used_proxy = 1) AS proxy
+     FROM scrape_runs
+     WHERE recorded_at >= now() - toIntervalHour({h:UInt32})`,
+    { h: hours },
+  );
+  if (!rows || !rows[0]) return null;
+  return {
+    total: Number(rows[0].total),
+    failed: Number(rows[0].failed),
+    proxy: Number(rows[0].proxy),
+  };
+}
+
+export async function getAiParseHealth(
+  hours: number,
+): Promise<{ total: number; parseFailed: number } | null> {
+  const rows = await queryBestEffort<{ total: string; parse_failed: string }>(
+    `SELECT count() AS total, countIf(status = 'parse_failed') AS parse_failed
+     FROM ai_runs
+     WHERE recorded_at >= now() - toIntervalHour({h:UInt32})`,
+    { h: hours },
+  );
+  if (!rows || !rows[0]) return null;
+  return { total: Number(rows[0].total), parseFailed: Number(rows[0].parse_failed) };
+}
+
+export async function getRecentSignalCount(hours: number): Promise<number | null> {
+  const rows = await queryBestEffort<{ c: string }>(
+    `SELECT count() AS c FROM signal_feed
+     WHERE recorded_at >= now() - toIntervalHour({h:UInt32})`,
+    { h: hours },
+  );
+  if (!rows || !rows[0]) return null;
+  return Number(rows[0].c);
+}
+
 export interface PricingHistoryRow {
   competitor_id: string;
   plan_name: string;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ExternalLink, Pencil, RefreshCw, Tag } from "lucide-react";
 import { api, type Competitor, type PricingStatus } from "@/lib/api";
@@ -103,7 +103,7 @@ export function CompetitorPricingCard({
               href={competitor.pricingDemoUrl}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
+              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
             >
               <ExternalLink className="size-3" /> Demo / contact page
             </a>
@@ -147,6 +147,15 @@ function PricingOverrideDialog({
   const [note, setNote] = useState(competitor.pricingNote ?? "");
   const [demoUrl, setDemoUrl] = useState(competitor.pricingDemoUrl ?? "");
   const [saving, setSaving] = useState(false);
+
+  // Pre-fill the form from the latest detected/saved values each time it opens
+  // (the dialog stays mounted, so useState initializers alone would go stale).
+  useEffect(() => {
+    if (!open) return;
+    setStatus(competitor.pricingStatus ?? "unknown");
+    setNote(competitor.pricingNote ?? "");
+    setDemoUrl(competitor.pricingDemoUrl ?? "");
+  }, [open, competitor.pricingStatus, competitor.pricingNote, competitor.pricingDemoUrl]);
 
   async function save() {
     setSaving(true);

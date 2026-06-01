@@ -31,8 +31,10 @@ appliqué le 2026-05-27. Reste landing page + polish global via Claude Design
 - [x] patch-08 — Onboarding par stade de projet (implémenté 2026-05-31 — complete)
 - [x] patch-09 — Optimisation coût IA (implémenté 2026-06-01 — cache Redis déterministe
       + filtre significativité + routing 8b/70b ; complete, détails findings.md § Patch-09)
-- [ ] patch-02 — Admin ops (prochain — vue riche feedbacks + ops dashboard +
-      `ai_runs`/`logAiRun` → rebrancher cache `cached`/`skipped` de patch-09)
+- [x] patch-02 — Admin ops (implémenté 2026-06-01 — complete : scrape_runs/ai_runs CH
+      + audit_log PG + instrumentation scrape/IA + routes admin allowlist + ops-health
+      cron + dashboard /admin ; détails findings.md § Patch-02. Rebranchement cache
+      `cached` NON fait — déféré, cf. findings)
 
 ## Étapes patch-09 (implémentées 2026-06-01)
 
@@ -805,3 +807,51 @@ nécessite services + creds (GROQ/CH/DB + Trigger.dev). Voir findings "Runtime T
 ## Blockers
 - Aucun bloquant. CH requis pour 2 des 4 détecteurs (pricing/positioning) — sans CH,
   seuls feature/hiring tournent. Test E2E runtime = manuel (services + creds).
+
+---
+
+# Patch 02 — Admin ops (observabilité backend)
+
+## Session du 2026-06-01
+
+## Objectif
+Tour de contrôle interne gatée à l'allowlist `ADMIN_EMAILS` (PAS le role owner) :
+santé scraping/IA, coût (estimations), feedbacks (vue riche patch-05), debug user
++ force scrape, audit log, alertes Slack ops conservatrices.
+
+## Politique de session
+"Je code, tu commites" (comme 11-14) : typecheck/build verts par étape, AUCUN
+commit fait par Claude.
+
+## patch-02 = COMPLETE (2026-06-01)
+Typecheck 7/7 ✓ · build 7/7 ✓ · ch:setup OK (scrape_runs + ai_runs) · db:push OK
+(audit_log) · requêtes CH+PG smoke-testées sur l'instance réelle.
+
+## Étapes
+- [x] 0 — env ADMIN_EMAILS (.env.example + .env.local) — pas de commit
+- [x] 1 — CH scrape_runs + ai_runs dans ensureClickhouseTables (préfixe ${DATABASE}.)
+- [x] 2 — PG table audit_log + schema/index.ts + db:push
+- [x] 3 — logScrapeRun (lib) + instrumentation scrape-monitor (3 points + onFailure)
+- [x] 4 — logAiRun (lib) + instrumentation classify/insight/digest/battle_card
+- [x] 5 — adminMiddleware (allowlist) + routes/admin.ts (overview, scraping-health,
+      ai-health, cost, users, users/:id, force-scrape, feedback, feedback/:id/screenshot,
+      audit-log) + audit_log sur view_user/force_scrape/update_feedback + mount API
+- [x] 6 — ops-health-check.job.ts (cron 6h, seuils conservateurs, Slack groupé)
+- [x] 7 — UI app/(admin)/admin (page.tsx gate allowlist serveur → 404 + admin-dashboard
+      client : 7 sections, recharts, force-scrape, feedback status, user search, screenshot)
+      + types/méthodes admin dans lib/api.ts
+- [x] 8 — typecheck 7/7 + build 7/7 + ch:setup + smoke CH/PG
+
+## Décisions clés (détail findings.md § Patch-02)
+- scrape-monitor non linéaire → 3 points in-run + onFailure (skip recent_snapshot guard).
+- Tâche @outrival/ai reste PURE : le JOB logge ai_runs (try/catch → error ; null →
+  parse_failed ; sinon success).
+- Rebranchement cache `cached` (patch-09) NON fait : exigerait de changer la signature
+  publique de withAiCache + colonne hors enum → déféré. Coût IA sur-compte les hits cache.
+- Allowlist lue dans process.env (pas env.ts). Web re-check serveur (404) + API re-gate
+  chaque route (defense in depth). Allowlist vide = personne ne passe.
+- Seuils ops hardcodés (KISS), gardes d'échantillon min anti alert-fatigue.
+
+## Blockers
+- Aucun. Runtime E2E (403 allowlist, alerte Slack dégradée, screenshot, force-scrape) =
+  manuel, creds + Trigger.dev requis.

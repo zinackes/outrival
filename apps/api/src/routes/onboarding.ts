@@ -579,6 +579,25 @@ onboardingRouter.post("/complete", async (c) => {
     .set({ onboardingCompleted: true, onboardingStep: "done", updatedAt: new Date() })
     .where(eq(organizations.id, orgId));
 
+  // Watch the first analysis pass and ping the user (in-app notification) once
+  // every competitor has an AI summary — so they can leave the onboarding "done"
+  // screen for the dashboard instead of waiting. Idempotency-keyed per org so a
+  // re-run of /complete doesn't spawn a second watcher.
+  if (created.length > 0) {
+    try {
+      await tasks.trigger(
+        "notify-onboarding-analysis",
+        { orgId, competitorIds: created.map((c) => c.competitorId) },
+        { idempotencyKey: `onboarding-analysis-${orgId}` },
+      );
+    } catch (e) {
+      console.error("Failed to trigger onboarding analysis watcher", {
+        orgId,
+        error: String(e),
+      });
+    }
+  }
+
   return c.json({
     competitorsCreated: created.length,
     candidatesSaved: candidateRows.length,

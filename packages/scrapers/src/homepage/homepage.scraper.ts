@@ -6,5 +6,9 @@ export async function scrape(
   url: string,
   options: ScrapeOptions = {},
 ): Promise<ScrapeOutcome> {
-  return scrapePage(url, { fullPage: true, preferProxy: options.preferProxy });
+  return scrapePage(url, {
+    fullPage: true,
+    preferProxy: options.preferProxy,
+    proxyTier: options.proxyTier,
+  });
 }

@@ -12,9 +12,11 @@ import {
   computeHash,
   computeNextRun,
   computeTextDiff,
+  normalizeHtmlForDiff,
   uploadToR2,
   getFromR2,
   supportsConditionalFetch,
+  scrapingBeeTier,
   detectPricingRepositioning,
   type PricingStatus,
   type PricingRepositioning,
@@ -23,6 +25,7 @@ import {
 import { evaluateSignificance } from "@outrival/ai/significance";
 // Pure subpath — cheerio only, never crawlee/playwright.
 import { analyzePricingHtml, type PricingAnalysis } from "@outrival/scrapers/pricing";
+import { logScrapeRun } from "../lib/clickhouse";
 
 const SCRAPER_REGION = process.env.SCRAPER_REGION ?? "FR";
 
@@ -32,6 +35,11 @@ const InputSchema = z.object({
 });
 
 const IDEMPOTENCE_WINDOW_MS = 60 * 60 * 1000;
+
+// How long a monitor stays pinned to the paid proxy before we re-attempt the
+// free direct path. A site that stopped blocking us is then unpinned instead of
+// being billed ScrapingBee credits forever.
+const PROXY_REPROBE_INTERVAL_MS = 14 * 24 * 60 * 60 * 1000;
 
 // Global throttle on concurrent scrapes. Each run is an isolated machine, so
 // this does not protect memory — it bounds ScrapingBee burst usage and Trigger
@@ -53,6 +61,10 @@ export const scrapeMonitorJob = task({
   async run(payload: z.input<typeof InputSchema>) {
     const input = InputSchema.parse(payload);
     logger.log("Starting scrape-monitor", { monitorId: input.monitorId, force: input.force });
+    // Ops timing (patch-02): wall-clock of the run, logged to scrape_runs at each
+    // real outcome (no_change / success / failure). The recent_snapshot dedup
+    // guard below returns before any fetch, so it is deliberately not logged.
+    const startedAt = Date.now();
 
     const monitor = await db.query.monitors.findFirst({
       where: eq(monitors.id, input.monitorId),
@@ -127,23 +139,55 @@ export const scrapeMonitorJob = task({
             lastError: null,
           })
           .where(eq(monitors.id, monitor.id));
+        await logScrapeRun({
+          monitor_id: monitor.id,
+          competitor_id: monitor.competitorId,
+          source_type: monitor.sourceType,
+          status: "no_change",
+          used_proxy: 0, // conditional GET — never the paid proxy
+          duration_ms: Date.now() - startedAt,
+          recorded_at: new Date(),
+        });
         return { changed: false, reason: "not_modified" };
       }
     }
+
+    // Re-probe the free direct path periodically even on a monitor pinned to the
+    // proxy: if the site stopped blocking us, we want to stop paying ScrapingBee.
+    const shouldReprobe =
+      monitor.requiresProxy &&
+      (!monitor.requiresProxySince ||
+        Date.now() - monitor.requiresProxySince.getTime() > PROXY_REPROBE_INTERVAL_MS);
+    const preferProxy = monitor.requiresProxy && !shouldReprobe;
 
     // Lazy-import to avoid loading crawlee/playwright at module parse time
     // (trigger.dev warns on >1 s import — crawlee is the culprit).
     const { getScraper } = await import("@outrival/scrapers");
     const scraper = getScraper(monitor.sourceType);
     const result = await scraper(competitor.id, scrapeUrl, {
-      preferProxy: monitor.requiresProxy,
+      preferProxy,
+      proxyTier: scrapingBeeTier(monitor.sourceType),
     });
-    const newHash = computeHash(result.html);
+    const newHash = computeHash(normalizeHtmlForDiff(result.html));
 
+    // Reconcile the learned "this site blocks direct scraping" flag:
+    //  - first proxy use → pin the monitor (skip the wasted direct attempt next run)
+    //  - a re-probe that succeeded direct → unpin (stop paying ScrapingBee)
+    //  - a re-probe still blocked → push the next re-probe window out
     if (result.usedProxy && !monitor.requiresProxy) {
       await db
         .update(monitors)
-        .set({ requiresProxy: true })
+        .set({ requiresProxy: true, requiresProxySince: new Date() })
+        .where(eq(monitors.id, monitor.id));
+    } else if (!result.usedProxy && monitor.requiresProxy) {
+      await db
+        .update(monitors)
+        .set({ requiresProxy: false, requiresProxySince: null })
+        .where(eq(monitors.id, monitor.id));
+    } else if (result.usedProxy && shouldReprobe) {
+      await db
+        .update(monitors)
+        .set({ requiresProxySince: new Date() })
         .where(eq(monitors.id, monitor.id));
     }
 
@@ -164,6 +208,15 @@ export const scrapeMonitorJob = task({
           lastError: null,
         })
         .where(eq(monitors.id, monitor.id));
+      await logScrapeRun({
+        monitor_id: monitor.id,
+        competitor_id: monitor.competitorId,
+        source_type: monitor.sourceType,
+        status: "no_change",
+        used_proxy: result.usedProxy ? 1 : 0,
+        duration_ms: Date.now() - startedAt,
+        recorded_at: new Date(),
+      });
       return { changed: false, snapshotId: lastSnapshot.id };
     }
 
@@ -226,7 +279,10 @@ export const scrapeMonitorJob = task({
     let changedAt: Date | null = null;
     if (lastSnapshot) {
       const beforeHtml = await getFromR2(`${lastSnapshot.r2Key}.html`);
-      const diff = computeTextDiff(beforeHtml, result.html);
+      const diff = computeTextDiff(
+        normalizeHtmlForDiff(beforeHtml),
+        normalizeHtmlForDiff(result.html),
+      );
       if (diff.hasChanges) {
         const [newChange] = await db
           .insert(changes)
@@ -371,6 +427,16 @@ export const scrapeMonitorJob = task({
       })
       .where(eq(monitors.id, monitor.id));
 
+    await logScrapeRun({
+      monitor_id: monitor.id,
+      competitor_id: monitor.competitorId,
+      source_type: monitor.sourceType,
+      status: "success",
+      used_proxy: result.usedProxy ? 1 : 0,
+      duration_ms: Date.now() - startedAt,
+      recorded_at: new Date(),
+    });
+
     logger.log("Completed scrape-monitor", {
       monitorId: monitor.id,
       snapshotId: newSnapshot.id,
@@ -391,6 +457,11 @@ export const scrapeMonitorJob = task({
     const parsed = InputSchema.safeParse(payload);
     if (!parsed.success) return;
     const message = error instanceof Error ? error.message : String(error);
+    // Resolve competitor/source before the update so the ops failure log is
+    // attributable to a source in the /admin scraping-health table.
+    const monitor = await db.query.monitors.findFirst({
+      where: eq(monitors.id, parsed.data.monitorId),
+    });
     await db
       .update(monitors)
       .set({
@@ -399,5 +470,16 @@ export const scrapeMonitorJob = task({
         lastError: message.slice(0, 1000),
       })
       .where(eq(monitors.id, parsed.data.monitorId));
+    // Runs in a separate invocation after all retries — no run timing/proxy
+    // outcome available, so duration is 0 and used_proxy is the learned flag.
+    await logScrapeRun({
+      monitor_id: parsed.data.monitorId,
+      competitor_id: monitor?.competitorId ?? "",
+      source_type: monitor?.sourceType ?? "",
+      status: "failed",
+      used_proxy: monitor?.requiresProxy ? 1 : 0,
+      duration_ms: 0,
+      recorded_at: new Date(),
+    });
   },
 });

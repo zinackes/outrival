@@ -84,6 +84,34 @@ export async function ensureClickhouseTables(): Promise<void> {
         ) ENGINE = MergeTree() ORDER BY (org_id, recorded_at)
       `,
     });
+
+    // Ops observability (patch-02). Append-only run logs powering the /admin
+    // health dashboard: scraping reliability/proxy-cost and AI parse quality.
+    await ch.command({
+      query: `
+        CREATE TABLE IF NOT EXISTS ${DATABASE}.scrape_runs (
+          monitor_id String,
+          competitor_id String,
+          source_type String,
+          status String,           -- success | no_change | failed
+          used_proxy UInt8,        -- 0 | 1
+          duration_ms UInt32,
+          recorded_at DateTime DEFAULT now()
+        ) ENGINE = MergeTree() ORDER BY (recorded_at)
+      `,
+    });
+
+    await ch.command({
+      query: `
+        CREATE TABLE IF NOT EXISTS ${DATABASE}.ai_runs (
+          task String,             -- classify | insight | digest | analyze_product | score_overlap | battle_card
+          provider String,         -- groq | claude
+          model String,
+          status String,           -- success | parse_failed | error
+          recorded_at DateTime DEFAULT now()
+        ) ENGINE = MergeTree() ORDER BY (recorded_at)
+      `,
+    });
   } finally {
     await ch.close();
   }

@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { Loader2, RefreshCw, Pencil } from "lucide-react";
 import { api, type ProjectStage, type WorkspaceSettings } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { FormSkeleton } from "@/components/dashboard/skeletons";
+import { ChangeProductUrlDialog } from "@/components/outrival/change-product-url-dialog";
 
 const STAGE_LABELS: Record<ProjectStage, string> = {
   idea: "Idea to explore",
@@ -55,7 +56,7 @@ export function WorkspaceSettingsForm() {
   const [slug, setSlug] = useState("");
   const [stage, setStage] = useState<ProjectStage | null>(null);
   const [saving, setSaving] = useState(false);
-  const [analyzing, setAnalyzing] = useState(false);
+  const [changeUrlOpen, setChangeUrlOpen] = useState(false);
   const [reonboarding, setReonboarding] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -104,7 +105,6 @@ export function WorkspaceSettingsForm() {
     try {
       const body: {
         name: string;
-        productUrl?: string;
         productProfile?: {
           category: string;
           audience: string;
@@ -112,7 +112,6 @@ export function WorkspaceSettingsForm() {
           pricingModel: string;
         };
       } = { name: draft.name.trim() };
-      if (draft.productUrl.trim()) body.productUrl = draft.productUrl.trim();
       const anyProfile = [
         draft.category,
         draft.audience,
@@ -135,37 +134,6 @@ export function WorkspaceSettingsForm() {
       setError(String(e));
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function reanalyze() {
-    if (!draft) return;
-    const url = draft.productUrl.trim();
-    if (!url) {
-      setError("Enter a product URL first");
-      return;
-    }
-    setAnalyzing(true);
-    setError(null);
-    try {
-      // analyze persists productUrl + productProfile server-side.
-      const { profile } = await api.analyzeUrl(url);
-      const patch = {
-        productUrl: url,
-        category: profile.category,
-        audience: profile.audience,
-        valueProp: profile.valueProp,
-        pricingModel: profile.pricingModel,
-      };
-      setDraft((d) => (d ? { ...d, ...patch } : d));
-      // url + profile are now persisted; keep any unsaved name change dirty.
-      setPristine((p) => (p ? { ...p, ...patch } : p));
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setAnalyzing(false);
     }
   }
 
@@ -204,27 +172,23 @@ export function WorkspaceSettingsForm() {
             id="ws-url"
             type="url"
             value={draft.productUrl}
-            onChange={(e) => set("productUrl", e.target.value)}
-            placeholder="https://yourproduct.com"
+            placeholder="No product URL set"
+            readOnly
+            className="bg-muted/40"
           />
           <Button
             type="button"
             variant="outline"
-            onClick={reanalyze}
-            disabled={analyzing || !draft.productUrl.trim()}
-            title="Re-analyze the profile from this URL"
+            onClick={() => setChangeUrlOpen(true)}
+            title="Change the monitored product URL"
           >
-            {analyzing ? (
-              <Loader2 size={13} className="animate-spin" />
-            ) : (
-              <Sparkles size={13} />
-            )}
-            {analyzing ? "Analyzing…" : "Re-analyze"}
+            <Pencil size={13} />
+            Change URL
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          Used as the reference for competitor discovery. Re-analyze to refresh
-          the profile below from a new URL.
+          The site we monitor for your product, and the reference for competitor
+          discovery. Changing it re-scans the site and refreshes the profile.
         </p>
       </div>
 
@@ -325,6 +289,16 @@ export function WorkspaceSettingsForm() {
           </div>
         </div>
       )}
+
+      <ChangeProductUrlDialog
+        open={changeUrlOpen}
+        onOpenChange={setChangeUrlOpen}
+        currentUrl={draft.productUrl || null}
+        onSaved={(url) => {
+          setDraft((d) => (d ? { ...d, productUrl: url } : d));
+          setPristine((p) => (p ? { ...p, productUrl: url } : p));
+        }}
+      />
     </form>
   );
 }

@@ -209,6 +209,7 @@ export interface Monitor {
   frequency: string;
   config: { url?: string } | null;
   lastRunAt: string | null;
+  lastChangedAt: string | null;
   scrapeStartedAt: string | null;
   lastFailedAt: string | null;
   lastError: string | null;
@@ -520,6 +521,137 @@ export interface MyProductPatch {
   };
 }
 
+// --- Admin ops (patch-02). Mirrors /api/admin/* responses. ---
+export type AdminOverview = {
+  orgsByPlan: { plan: string; count: number }[];
+  totalUsers: number;
+  totalCompetitors: number;
+  signals7d: number;
+};
+
+export type AdminSourceHealth = {
+  sourceType: string;
+  total: number;
+  failed: number;
+  failureRate: number;
+  proxyRate: number;
+  avgMs: number;
+};
+
+export type AdminDeadMonitor = {
+  monitorId: string;
+  competitorId: string;
+  competitorName: string | null;
+  sourceType: string;
+  recentStatuses: string[];
+};
+
+export type AdminScrapingHealth = {
+  window: string;
+  sources: AdminSourceHealth[];
+  deadMonitors: AdminDeadMonitor[];
+};
+
+export type AdminTaskHealth = {
+  task: string;
+  total: number;
+  parseFailed: number;
+  parseFailedRate: number;
+  errors: number;
+  errorRate: number;
+};
+
+export type AdminAiHealth = {
+  window: string;
+  tasks: AdminTaskHealth[];
+  signalsByDay: { day: string; count: number }[];
+};
+
+export type AdminCost = {
+  estimated: boolean;
+  proxy: {
+    scrapes24h: number;
+    scrapes30d: number;
+    creditsPerScrape: number;
+    estUsd24h: number;
+    estUsd30d: number;
+  };
+  ai: { calls24h: number; calls30d: number; estUsd24h: number; estUsd30d: number };
+  storage: {
+    postgresBytes: number | null;
+    clickhouseBytes: number | null;
+    r2Bytes: number | null;
+  };
+};
+
+export type AdminUserRow = {
+  userId: string;
+  email: string;
+  name: string | null;
+  role: string;
+  createdAt: string;
+  orgId: string | null;
+  orgName: string | null;
+  plan: string | null;
+};
+
+export type AdminMonitorRow = {
+  id: string;
+  competitorId: string;
+  sourceType: string;
+  isActive: boolean;
+  requiresProxy: boolean;
+  lastRunAt: string | null;
+  nextRunAt: string | null;
+  lastChangedAt: string | null;
+  lastFailedAt: string | null;
+  lastError: string | null;
+};
+
+export type AdminUserDetail = {
+  user: { id: string; email: string; name: string | null; role: string; createdAt: string };
+  org: {
+    id: string;
+    name: string;
+    slug: string;
+    plan: string;
+    planPeriod: string | null;
+  } | null;
+  competitors: {
+    id: string;
+    name: string;
+    url: string | null;
+    type: string;
+    monitors: AdminMonitorRow[];
+  }[];
+};
+
+export type AdminFeedbackStatus = "new" | "reviewed" | "resolved";
+
+export type AdminFeedbackRow = {
+  id: string;
+  type: "bug" | "idea" | "other";
+  message: string;
+  pageUrl: string | null;
+  consoleErrors: { ts: number; message: string }[] | null;
+  screenshotR2Key: string | null;
+  userAgent: string | null;
+  status: AdminFeedbackStatus;
+  createdAt: string;
+  orgId: string | null;
+  userEmail: string | null;
+};
+
+export type AdminAuditEntry = {
+  id: string;
+  actorEmail: string;
+  action: string;
+  targetType: string | null;
+  targetId: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+};
+
 export const api = {
   search: (q: string) =>
     request<SearchResults>(`/api/search?q=${encodeURIComponent(q)}`),
@@ -789,4 +921,21 @@ export const api = {
     request<{ ok: true }>(`/api/my-product/changes/${id}/modify`, { method: "POST" }),
   ignoreMyProductChange: (id: string) =>
     request<{ ok: true }>(`/api/my-product/changes/${id}/ignore`, { method: "POST" }),
+
+  // --- Admin ops (patch-02). All gated server-side by the email allowlist. ---
+  adminSearchUsers: (q: string) =>
+    request<{ users: AdminUserRow[] }>(
+      `/api/admin/users${q ? `?q=${encodeURIComponent(q)}` : ""}`,
+    ),
+  adminGetUser: (id: string) => request<AdminUserDetail>(`/api/admin/users/${id}`),
+  adminForceScrape: (monitorId: string) =>
+    request<{ ok: boolean; runId: string }>(
+      `/api/admin/monitors/${monitorId}/force-scrape`,
+      { method: "POST" },
+    ),
+  adminUpdateFeedback: (id: string, status: AdminFeedbackStatus) =>
+    request<{ ok: boolean }>(`/api/admin/feedback/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }),
 };

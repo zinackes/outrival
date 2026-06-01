@@ -9,8 +9,9 @@ import {
   competitors,
   selfProductChanges,
 } from "@outrival/db";
-import { classifyChange, type Classification } from "@outrival/ai";
+import { classifyChange, AI_CONFIG, type Classification } from "@outrival/ai";
 import { groqQueue } from "../lib/queues";
+import { logAiRun } from "../lib/clickhouse";
 import { determineSelfChangeSeverity, notifySelfChange } from "../lib/self-change";
 
 const InputSchema = z.object({
@@ -46,7 +47,17 @@ export const classifyChangeJob = task({
       throw new AbortTaskRunError(`Change ${input.changeId} has no diffText`);
     }
 
-    const classification = await classifyChange(change.diffText);
+    // Ops quality logging (patch-02): success / parse_failed (null) / error
+    // (thrown). The classify task itself stays DB-free — the job logs it.
+    const { provider, model } = AI_CONFIG.classificationFast;
+    let classification: Classification | null;
+    try {
+      classification = await classifyChange(change.diffText);
+    } catch (err) {
+      await logAiRun("classify", provider, model, "error");
+      throw err;
+    }
+    await logAiRun("classify", provider, model, classification ? "success" : "parse_failed");
     if (!classification) {
       logger.error("Classification failed", { changeId: input.changeId });
       throw new AbortTaskRunError("Classification returned null");
@@ -58,6 +69,14 @@ export const classifyChangeJob = task({
       severity: classification.severity,
       is_significant: classification.is_significant,
     });
+
+    // Persist the one-line reason on the change so the UI's change cards
+    // (Activity orphans + Content tab) show what moved — even for non-significant
+    // changes that never become a signal.
+    await db
+      .update(changes)
+      .set({ summary: classification.reason })
+      .where(eq(changes.id, input.changeId));
 
     if (!classification.is_significant) {
       logger.log("Change not significant, no signal generated", {

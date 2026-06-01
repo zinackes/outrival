@@ -1601,15 +1601,17 @@ function DoneStep({
         Setup complete
       </h1>
       <p className="text-sm text-muted-foreground mt-3 max-w-md">
-        Your competitors are being analyzed. The first snapshot is running — you'll see the
-        first signals appear in the feed within a few minutes.
+        Your competitors are being analyzed in the background. You can head to your dashboard
+        now — we'll send you a notification the moment the first analysis is ready.
       </p>
 
       <div className="mt-6 inline-flex items-center gap-2 rounded-md border border-border bg-surface-2/60 px-4 py-2">
         {!allDone && <Loader2 size={14} className="animate-spin text-muted-foreground" />}
         {allDone && <Check size={14} className="text-positive" />}
         <span className="text-sm text-foreground">
-          {analyzed}/{totalCompetitors} competitors analyzed
+          {allDone
+            ? `${totalCompetitors} competitors analyzed`
+            : `Analyzing ${analyzed}/${totalCompetitors} competitors…`}
         </span>
       </div>
 

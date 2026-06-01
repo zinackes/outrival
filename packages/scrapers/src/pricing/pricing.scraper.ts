@@ -10,15 +10,16 @@ export async function scrape(
   options: ScrapeOptions = {},
 ): Promise<ScrapeOutcome> {
   const preferProxy = options.preferProxy;
+  const proxyTier = options.proxyTier;
 
   // URL already points at a pricing page → scrape it directly.
   if (PRICING_KEYWORDS.some((k) => url.toLowerCase().includes(k))) {
-    return scrapePage(url, { fullPage: true, preferProxy });
+    return scrapePage(url, { fullPage: true, preferProxy, proxyTier });
   }
 
   // Otherwise scrape the homepage and locate the real pricing page from it
   // (direct paths → nav → footer → embedded section).
-  const homepage = await scrapePage(url, { fullPage: true, preferProxy });
+  const homepage = await scrapePage(url, { fullPage: true, preferProxy, proxyTier });
   const candidate = await discoverPricingUrl(url, homepage.html);
 
   // Not found, or pricing is embedded in the homepage → analyse the homepage.
@@ -26,5 +27,5 @@ export async function scrape(
     return homepage;
   }
 
-  return scrapePage(candidate.url, { fullPage: true, preferProxy });
+  return scrapePage(candidate.url, { fullPage: true, preferProxy, proxyTier });
 }

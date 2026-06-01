@@ -1296,3 +1296,88 @@ traduites — règle `language.md` override le patch) ; commits laissés à l'ut
   signal pré-patch → why-panel "Detail unavailable" + lien live.
 - Forcer un scrape failed → pastille rouge "Last scan failed" sur la fiche + dot global.
 - Couper l'API → toast `network_error` 3-parties + écran sobre, Sentry reçoit (prod).
+
+---
+
+# Patch 02 — Admin ops (observabilité backend) — implémenté 2026-06-01
+
+Tour de contrôle interne. Gaté à l'**allowlist d'emails `ADMIN_EMAILS`**, JAMAIS
+le role `owner` d'org (qui exposerait tous les clients). Statut : **COMPLETE**
+(typecheck 7/7 ✓ · build 7/7 ✓ · ch:setup OK · db:push OK · queries CH+PG
+smoke-testées sur l'instance réelle). Commits laissés à l'utilisateur.
+
+## Divergences spec ↔ code réel (adaptées)
+- `clickhouse-schema.ts` préfixe chaque DDL `${DATABASE}.` → les 2 tables ops
+  suivent ce pattern (pas le snippet brut du patch).
+- `scrape-monitor.job.ts` N'EST PAS linéaire (4 sorties + `onFailure`). Le snippet
+  "startedAt … un seul insert" ne colle pas. → helper `logScrapeRun` appelé à
+  **3 points in-run** (304 `not_modified` → no_change/proxy0 ; hash identique →
+  no_change/proxy selon scrape ; succès → success) + `onFailure` → failed. Le skip
+  `recent_snapshot` (garde d'idempotence, aucun fetch) n'est **pas** loggé.
+- Onboarding analyze/score = **API synchrone, pas workers** → non instrumentés en
+  `ai_runs`. Tasks loggées (workers) : `classify` (classify-change, modèle
+  `classificationFast` 8b), `insight` (generate-signal, 70b), `digest`
+  (generate-weekly-digest), `battle_card` (generate-battle-card). `analyze_product`
+  / `score_overlap` restent dans l'enum CH mais sans producteur (API-side).
+- Feedback gating existant = `users.role === "owner"` (route `GET /api/feedback`
+  laissée intacte, surgical). L'admin a sa propre route `/api/admin/feedback*`
+  gatée allowlist.
+- `withAiCache` n'expose toujours pas `cached` à l'appelant (patch-09 l'avait
+  différé). L'enum `ai_runs` du patch = `success|parse_failed|error` (pas de
+  `cached`). → **rebranchement `cached` NON fait** : il faudrait changer la
+  signature publique de `withAiCache` (footprint packages/ai) + ajouter une
+  colonne hors enum. Déféré, noté ici. Conséquence : un hit de cache est compté
+  comme un appel IA "success" → l'estimation de coût Groq **sur-compte** les
+  appels réellement facturés (acceptable pour une tendance ; documenté côté UI
+  "estimates — trends, not accounting").
+
+## Tables (append-only)
+- ClickHouse `scrape_runs` (monitor_id, competitor_id, source_type, status,
+  used_proxy UInt8, duration_ms UInt32, recorded_at) — ORDER BY recorded_at.
+- ClickHouse `ai_runs` (task, provider, model, status, recorded_at).
+- Postgres `audit_log` (actor_email, action, target_type, target_id, metadata,
+  created_at). Actions : `view_user`, `force_scrape`, `update_feedback`.
+
+## Robustesse "ops logging ne casse jamais le scrape/l'IA"
+- `logScrapeRun`/`logAiRun` = `insertBestEffort` (try/catch silencieux, jamais de
+  throw, skip si CLICKHOUSE_URL absent).
+- Instrumentation IA = `try { call } catch { logAiRun(error); throw }` puis
+  `logAiRun(result ? success : parse_failed)`. La tâche `@outrival/ai` reste PURE
+  (aucun accès DB) — c'est le job qui logge.
+- `logAudit` (route admin) wrappé try/catch → un échec d'audit ne casse pas
+  l'action admin.
+
+## Seuils ops-health-check (cron `0 */6 * * *`, conservateurs, anti alert-fatigue)
+Chaque alerte de taux est gatée par un échantillon minimal :
+- Scraping fail > 30% / 6h (min 10 runs) → "⚠️ Scraping degraded".
+- AI parse_failed > 25% / 6h (min 10 runs) → "⚠️ AI parsing degraded".
+- 0 signal / 24h **MAIS** ≥20 scrape runs (sinon système idle = normal) →
+  "🚨 AI pipeline silent".
+- Proxy scrapes > 500 / 24h → "💸 Proxy cost rising".
+- 1 seul message Slack groupé via `sendSlackMessage(OPS_SLACK_WEBHOOK_URL)` (silent
+  si webhook vide). Seuils = constantes hardcodées (pas d'env, KISS).
+
+## Estimations de coût (route `GET /api/admin/cost`, étiquetées "estimates")
+- ScrapingBee : 25 crédits/scrape proxy (premium) × $49/100k crédits =
+  **$0.01225/scrape proxy**.
+- Groq : estimation forfaitaire mixte 8b/70b ≈ **$0.0012/appel IA** (~1.5k in +
+  0.5k out). Sur-compte les hits de cache (cf. divergence `cached` ci-dessus).
+- Tailles : Postgres `pg_database_size()`, ClickHouse `sum(bytes_on_disk)` sur
+  `system.parts WHERE active`, **R2 = n/a** (pas d'API usage cheap → tracké à part).
+
+## Allowlist admin
+- `ADMIN_EMAILS` (csv) lu directement dans `process.env` (comme
+  `OPS_SLACK_WEBHOOK_URL`), pas dans `env.ts` (vars requises au boot uniquement).
+- Web : `app/(admin)/admin/page.tsx` re-vérifie la même allowlist côté serveur →
+  `notFound()` (404) si non-admin. L'API re-gate **chaque** `/api/admin/*`
+  (`adminMiddleware` après `authMiddleware`) → defense in depth. Allowlist vide =
+  personne ne passe (safe default).
+
+## Runtime TODO (manuel — services + creds + Trigger.dev)
+- Vérifier 403 sur email hors allowlist vs accès admin OK.
+- Déclencher ops-health-check en conditions dégradées → alerte Slack reçue.
+- Lire un feedback avec screenshot → blob servi par `/api/admin/feedback/:id/screenshot`.
+- Forcer un scrape depuis le debug user → ligne `audit_log` `force_scrape`.
+- NB : au moment du smoke, `scrape_runs`/`ai_runs`/`signal_feed` contenaient déjà
+  des données (runner trigger:dev local actif) → toutes les requêtes admin
+  retournent des agrégats réels.

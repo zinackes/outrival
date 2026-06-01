@@ -1,9 +1,10 @@
 import { schedules, logger } from "@trigger.dev/sdk/v3";
 import { and, desc, eq, gte, isNull, lt } from "drizzle-orm";
 import { db, organizations, signals, digests, competitors, sectoralSignals } from "@outrival/db";
-import { generateDigest, type DigestInputSignal } from "@outrival/ai";
+import { generateDigest, AI_CONFIG, type DigestInputSignal } from "@outrival/ai";
 import { renderDigestEmail } from "../lib/digest-email";
 import { getResend, ALERT_FROM } from "../lib/resend";
+import { logAiRun } from "../lib/clickhouse";
 
 function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -83,7 +84,16 @@ export const generateWeeklyDigestJob = schedules.task({
         so_what: s.soWhat,
       }));
 
-      const digest = await generateDigest(input);
+      // Ops quality logging (patch-02): success / parse_failed (null) / error.
+      const { provider, model } = AI_CONFIG.digest;
+      let digest;
+      try {
+        digest = await generateDigest(input);
+      } catch (err) {
+        await logAiRun("digest", provider, model, "error");
+        throw err;
+      }
+      await logAiRun("digest", provider, model, digest ? "success" : "parse_failed");
       if (!digest) {
         logger.error("Digest generation failed", { orgId: org.id });
         skipped++;

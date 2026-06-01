@@ -6,7 +6,9 @@ config({ path: "../../.env.local" });
 async function main() {
   console.log("Ensuring ClickHouse tables exist...");
   await ensureClickhouseTables();
-  console.log("✓ pricing_history, job_counts, review_scores, signal_feed");
+  console.log(
+    "✓ pricing_history, job_counts, review_scores, signal_feed, scrape_runs, ai_runs",
+  );
 }
 
 main()

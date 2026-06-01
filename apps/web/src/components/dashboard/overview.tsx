@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Download, ArrowRight } from "lucide-react";
@@ -20,6 +20,8 @@ import { Kpi } from "./kpi";
 import { Sparkline } from "./sparkline";
 import { SeverityDot } from "./severity-pill";
 import { CompAvatar } from "./comp-avatar";
+import { SectoralSignalsSection } from "./sectoral-signals";
+import { ListError } from "@/components/outrival/list-error";
 import DashboardLoading from "@/app/dashboard/loading";
 
 type Range = 7 | 30 | 90;
@@ -84,17 +86,22 @@ export function OverviewView() {
   const [signals, setSignals] = useState<Signal[] | null>(null);
   const [competitors, setCompetitors] = useState<Competitor[] | null>(null);
   const [monitors, setMonitors] = useState<Monitor[] | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const [err, setErr] = useState<unknown>(null);
   const [range, setRange] = useState<Range>(7);
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setErr(null);
     Promise.all([api.listSignals({ limit: 200 }), api.listCompetitors()])
       .then(([s, c]) => {
         setSignals(s.signals);
         setCompetitors(c.competitors);
       })
-      .catch((e) => setErr(String(e)));
+      .catch((e) => setErr(e));
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   function exportCsv() {
     if (!signals) return;
@@ -217,8 +224,12 @@ export function OverviewView() {
   );
   const trend7Labels = useMemo(() => trendLabels(10), []);
 
-  if (err) {
-    return <p className="text-sm text-muted-foreground">Error: {err}</p>;
+  if (err && signals === null) {
+    return (
+      <div className="mt-10">
+        <ListError error={err} onRetry={load} />
+      </div>
+    );
   }
 
   if (signals === null || competitors === null) {
@@ -486,6 +497,9 @@ export function OverviewView() {
           </Card>
         </div>
       </div>
+
+      {/* Sector trends — meso-level, distinct from the micro signals above */}
+      <SectoralSignalsSection />
 
       {/* Competitors at a glance */}
       <Card>

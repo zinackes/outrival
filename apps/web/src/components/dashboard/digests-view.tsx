@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { toastApiError } from "@/lib/error-helpers";
+import { ListError } from "@/components/outrival/list-error";
 import { api, type Digest, type DigestRange } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -89,7 +91,7 @@ function fmtWeek(start: string, end: string) {
 export function DigestsView() {
   const [digests, setDigests] = useState<Digest[] | null>(null);
   const [active, setActive] = useState<Digest | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const [err, setErr] = useState<unknown>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
 
@@ -97,7 +99,7 @@ export function DigestsView() {
     api
       .listDigests()
       .then((r) => setDigests(r.digests))
-      .catch((e) => setErr(String(e)));
+      .catch((e) => setErr(e));
   }, []);
 
   async function handleGenerate(range: DigestRange) {
@@ -117,13 +119,13 @@ export function DigestsView() {
       setActive(digest);
       toast.success("Digest generated.");
     } catch (e) {
-      toast.error(`Generation failed: ${String(e)}`);
+      toastApiError(e, { title: "Couldn't generate the digest" });
     } finally {
       setGenerating(false);
     }
   }
 
-  if (err) return <p className="text-sm text-muted-foreground">Error: {err}</p>;
+  if (err && digests === null) return <ListError error={err} />;
 
   if (active) return <DigestReader d={active} onBack={() => setActive(null)} />;
 

@@ -31,6 +31,7 @@ import { cn } from "@/lib/utils";
 import { PageHead } from "./page-head";
 import { SignalCard } from "./signal-card";
 import { ListRowsSkeleton } from "./skeletons";
+import { ListError } from "@/components/outrival/list-error";
 
 type Sev = Signal["severity"];
 type QuickView = "all" | "unread" | "week" | "critical";
@@ -66,7 +67,7 @@ export function SignalsView() {
   const searchParams = useSearchParams();
 
   const [signals, setSignals] = useState<Signal[] | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const [err, setErr] = useState<unknown>(null);
 
   const quickView = (searchParams.get("view") as QuickView) || "all";
   const sev = useMemo(() => parseSet(searchParams.get("severity")) as Set<Sev>, [searchParams]);
@@ -87,12 +88,17 @@ export function SignalsView() {
     [router, searchParams],
   );
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setErr(null);
     api
       .listSignals({ limit: 200 })
       .then((r) => setSignals(r.signals))
-      .catch((e) => setErr(String(e)));
+      .catch((e) => setErr(e));
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   async function markRead(id: string) {
     await api.markSignalRead(id);
@@ -195,8 +201,13 @@ export function SignalsView() {
     downloadCsv(`outrival-signals-${date}.csv`, csv);
   }
 
-  if (err) {
-    return <p className="text-sm text-muted-foreground">Error: {err}</p>;
+  if (err && signals === null) {
+    return (
+      <div className="space-y-[22px]">
+        <PageHead title="Signals" sub="Classified by AI." />
+        <ListError error={err} onRetry={load} />
+      </div>
+    );
   }
 
   return (

@@ -15,3 +15,4 @@ export * from "./notifications";
 export * from "./competitor_candidates";
 export * from "./feedback";
 export * from "./self_product_changes";
+export * from "./sectoral_signals";

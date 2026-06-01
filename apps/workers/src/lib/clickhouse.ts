@@ -149,3 +149,51 @@ export async function getPreviousReviewScore(
   );
   return rows && rows.length > 0 ? (rows[0]?.score ?? null) : null;
 }
+
+// --- Sectoral analysis reads (patch-13). Best-effort: null when CH is down/unset,
+//     in which case the pricing/positioning detectors simply produce nothing. ---
+
+export interface PricingHistoryPointRow {
+  competitor_id: string;
+  plan_name: string;
+  price: number;
+  recorded_at: string;
+}
+
+export async function getPricingHistorySince(
+  competitorIds: string[],
+  days: number,
+): Promise<PricingHistoryPointRow[] | null> {
+  if (competitorIds.length === 0) return [];
+  return queryBestEffort<PricingHistoryPointRow>(
+    `SELECT competitor_id, plan_name, price, recorded_at
+     FROM pricing_history
+     WHERE competitor_id IN {ids:Array(String)}
+       AND price > 0
+       AND recorded_at >= now() - toIntervalDay({days:UInt32})
+     ORDER BY recorded_at ASC`,
+    { ids: competitorIds, days },
+  );
+}
+
+export interface PricingStatusPointRow {
+  competitor_id: string;
+  status: string;
+  recorded_at: string;
+}
+
+export async function getPricingStatusHistorySince(
+  competitorIds: string[],
+  days: number,
+): Promise<PricingStatusPointRow[] | null> {
+  if (competitorIds.length === 0) return [];
+  return queryBestEffort<PricingStatusPointRow>(
+    `SELECT competitor_id, status, recorded_at
+     FROM pricing_history
+     WHERE competitor_id IN {ids:Array(String)}
+       AND status != ''
+       AND recorded_at >= now() - toIntervalDay({days:UInt32})
+     ORDER BY recorded_at ASC`,
+    { ids: competitorIds, days },
+  );
+}

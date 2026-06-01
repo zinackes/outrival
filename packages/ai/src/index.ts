@@ -32,3 +32,23 @@ export { evaluateSignificance } from "./filters/significance";
 export type { DiffInput, SignificanceResult } from "./filters/significance";
 export { extractSelfProfile, SelfProfileExtractionSchema } from "./tasks/extract-self-profile";
 export type { SelfProfileExtraction } from "./tasks/extract-self-profile";
+export {
+  detectFeatureTrends,
+  detectHiringTrends,
+  detectPricingTrends,
+  detectPositioningShifts,
+  FEATURE_THEMES,
+} from "./sectoral/detectors";
+export { formulateSectoralSignal, SectoralSignalDraftSchema } from "./sectoral/formulate";
+export type { SectoralSignalDraft, SectoralUserContext } from "./sectoral/formulate";
+export type {
+  SectoralCategory,
+  DetectedPattern,
+  PatternEvidence,
+  CompetitorRef,
+  CompetitorSectoralData,
+  ProductSignalInput,
+  JobInput,
+  PricePointInput,
+  PricingStatusPointInput,
+} from "./sectoral/types";

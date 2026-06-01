@@ -57,11 +57,16 @@ import {
   PLAN_LABELS,
   minPlanForSource,
   planIncludesSource,
+  aggregateFreshness,
   type Plan,
   type SourceType,
   type ReviewSourceType,
   type MonitorFrequency,
 } from "@outrival/shared";
+import { FreshnessDot } from "@/components/outrival/freshness-dot";
+import { SignalSourceLine } from "@/components/outrival/signal-source-line";
+import { ListError } from "@/components/outrival/list-error";
+import { toastApiError } from "@/lib/error-helpers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -111,6 +116,22 @@ const TABS: Array<{ key: TabKey; label: string; icon: typeof Activity }> = [
   { key: "content", label: "Content", icon: FileText },
   { key: "battlecard", label: "Battle Card", icon: Swords },
 ];
+
+// Per-tab freshness dot (patch-14): tabs backed by monitored sources show how
+// recent that section's data is. Activity (signal feed) and Battle Card have no
+// single source → no dot.
+const TAB_SOURCES: Partial<Record<TabKey, string[]>> = {
+  pricing: ["pricing"],
+  hiring: ["jobs"],
+  reviews: ["g2_reviews", "capterra_reviews", "appstore_reviews"],
+  content: ["homepage", "blog", "changelog"],
+};
+
+function tabFreshness(key: TabKey, monitors: Monitor[]) {
+  const sources = TAB_SOURCES[key];
+  if (!sources) return null;
+  return aggregateFreshness(monitors.filter((m) => sources.includes(m.sourceType)));
+}
 
 const SEVERITY_CLASS: Record<string, string> = {
   low: "bg-low text-background",
@@ -162,7 +183,7 @@ export default function CompetitorDetailPage({ params }: Props) {
   const { id } = use(params);
   const router = useRouter();
   const [data, setData] = useState<CompetitorData | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [scrapingIds, setScrapingIds] = useState<Set<string>>(new Set());
   const [runningAll, setRunningAll] = useState(false);
   const [tab, setTab] = useState<TabKey>("activity");
@@ -180,9 +201,10 @@ export default function CompetitorDetailPage({ params }: Props) {
     try {
       const fresh = await api.getCompetitor(id);
       setData(fresh);
+      setError(null);
       return fresh;
     } catch (e) {
-      setError(String(e));
+      setError(e);
       return null;
     }
   }
@@ -306,7 +328,7 @@ export default function CompetitorDetailPage({ params }: Props) {
       toast.success("Competitor deleted");
       router.push("/dashboard/competitors");
     } catch (e) {
-      toast.error("Failed to delete", { description: String(e) });
+      toastApiError(e, { title: "Couldn't delete the competitor" });
       setDeleting(false);
     }
   }
@@ -330,7 +352,7 @@ export default function CompetitorDetailPage({ params }: Props) {
         setPaywall(reason);
         return;
       }
-      toast.error("Failed to enable source", { description: String(e) });
+      toastApiError(e, { title: "Couldn't enable that source" });
     }
   }
 
@@ -348,7 +370,7 @@ export default function CompetitorDetailPage({ params }: Props) {
         setPaywall(reason);
         return;
       }
-      toast.error("Failed to update monitor", { description: String(e) });
+      toastApiError(e, { title: "Couldn't update the monitor" });
     }
   }
 
@@ -368,7 +390,7 @@ export default function CompetitorDetailPage({ params }: Props) {
         setPaywall(reason);
         return;
       }
-      toast.error("Failed to switch review source", { description: String(e) });
+      toastApiError(e, { title: "Couldn't switch the review source" });
     }
   }
 
@@ -396,12 +418,16 @@ export default function CompetitorDetailPage({ params }: Props) {
         next.delete(monitorId);
         return next;
       });
-      toast.error("Failed to trigger scrape", { description: String(e) });
+      toastApiError(e, { title: "Couldn't start the scrape" });
     }
   }
 
-  if (error) {
-    return <p className="text-sm text-muted-foreground">Error: {error}</p>;
+  if (error && !data) {
+    return (
+      <div className="mt-10">
+        <ListError error={error} onRetry={refresh} />
+      </div>
+    );
   }
   if (!data) return <CompetitorDetailLoading />;
 
@@ -451,9 +477,17 @@ export default function CompetitorDetailPage({ params }: Props) {
           <TabsList variant="line" className="w-full justify-start overflow-x-auto">
             {TABS.map((t) => {
               const Icon = t.icon;
+              const fresh = tabFreshness(t.key, monitors);
               return (
                 <TabsTrigger key={t.key} value={t.key}>
                   <Icon size={13} /> {t.label}
+                  {fresh && (
+                    <FreshnessDot
+                      lastScrapedAt={fresh.lastScrapedAt}
+                      status={fresh.status}
+                      className="ml-1.5"
+                    />
+                  )}
                 </TabsTrigger>
               );
             })}
@@ -1002,7 +1036,7 @@ function AiSummary({
         setRefreshing(false);
       }, 6000);
     } catch (e) {
-      toast.error("Failed to refresh summary", { description: String(e) });
+      toastApiError(e, { title: "Couldn't refresh the summary" });
       setRefreshing(false);
     }
   }
@@ -1135,7 +1169,7 @@ function ChangeCard({
         setClassifying(false);
       }, 4000);
     } catch (e) {
-      toast.error("Failed to classify", { description: String(e) });
+      toastApiError(e, { title: "Couldn't classify that change" });
       setClassifying(false);
     }
   }
@@ -1328,6 +1362,13 @@ function ActivityTab({
                     Action: {s.recommendedAction}
                   </p>
                 )}
+                <div className="mt-2.5 pt-2.5 border-t border-border">
+                  <SignalSourceLine
+                    signalId={s.id}
+                    sourceType={s.sourceType}
+                    detectedAt={s.createdAt}
+                  />
+                </div>
               </Card>
             );
           })}
@@ -1469,7 +1510,7 @@ function PricingTab({
     [history],
   );
 
-  if (err) return <Empty text={`Error: ${err}`} />;
+  if (err) return <Empty text="Couldn't load this data right now — try again in a moment." />;
   if (history === null) return <TabLoading />;
   if (history.length === 0 || !series) {
     return (
@@ -1598,7 +1639,7 @@ function HiringTab({
     };
   }, [competitorId, refreshTick]);
 
-  if (err) return <Empty text={`Error: ${err}`} />;
+  if (err) return <Empty text="Couldn't load this data right now — try again in a moment." />;
   if (!jobs || !trends) return <TabLoading />;
   if (jobs.total === 0) {
     return (
@@ -1898,7 +1939,7 @@ function ReviewsTab({
     };
   }, [competitorId, refreshTick]);
 
-  if (err) return <Empty text={`Error: ${err}`} />;
+  if (err) return <Empty text="Couldn't load this data right now — try again in a moment." />;
   if (!reviews || !scores) return <TabLoading />;
 
   const reviewMonitor = monitors.find(

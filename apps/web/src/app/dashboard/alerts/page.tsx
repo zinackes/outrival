@@ -10,6 +10,7 @@ import {
   Settings as SettingsIcon,
 } from "lucide-react";
 import { api, type NotificationSettings } from "@/lib/api";
+import { ListError } from "@/components/outrival/list-error";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -21,7 +22,7 @@ import {
 
 export default function AlertsPage() {
   const [settings, setSettings] = useState<NotificationSettings | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const [err, setErr] = useState<unknown>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetChannel, setSheetChannel] = useState<AlertChannel>("slack");
 
@@ -29,7 +30,7 @@ export default function AlertsPage() {
     api
       .getNotificationSettings()
       .then(setSettings)
-      .catch((e) => setErr(String(e)));
+      .catch((e) => setErr(e));
   }
 
   useEffect(() => {
@@ -68,7 +69,7 @@ export default function AlertsPage() {
         onSaved={refresh}
       />
 
-      {err && <p className="text-sm text-muted-foreground">Error: {err}</p>}
+      {err ? <ListError error={err} /> : null}
 
       <Card className="px-4 py-3 flex items-center gap-2 flex-wrap">
         <span className="font-mono text-[10px] tracking-widest text-muted-foreground/80 uppercase mr-2">

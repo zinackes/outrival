@@ -21,6 +21,17 @@ export const PRICING_STATUSES = [
 
 export type PricingStatus = (typeof PRICING_STATUSES)[number];
 
+// Plain-language label per status, for the user-facing before/after of a pricing
+// repositioning signal (patch-14 "Why this insight?" panel). English only.
+export const PRICING_STATUS_LABELS: Record<PricingStatus, string> = {
+  public: "Public pricing",
+  public_partial: "Partially public pricing",
+  gated_demo: "Gated — contact sales",
+  gated_signup: "Gated — sign-up required",
+  dynamic: "Usage-based / calculator",
+  unknown: "Pricing not detected",
+};
+
 export type PricingRepositioningType =
   | "pricing_gated" // pulled public prices behind a gate
   | "pricing_public" // exposed previously gated prices

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { ExternalLink, Pencil, RefreshCw, Tag } from "lucide-react";
 import { api, type Competitor, type PricingStatus } from "@/lib/api";
+import { toastApiError } from "@/lib/error-helpers";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -60,7 +61,7 @@ export function CompetitorPricingCard({
       );
       onUpdated();
     } catch (e) {
-      toast.error(`Could not re-detect: ${String(e)}`);
+      toastApiError(e, { title: "Couldn't re-detect pricing" });
     } finally {
       setBusy(false);
     }
@@ -152,7 +153,7 @@ function PricingOverrideDialog({
       onOpenChange(false);
       onSaved();
     } catch (e) {
-      toast.error(`Could not save: ${String(e)}`);
+      toastApiError(e, { title: "Couldn't save pricing" });
     } finally {
       setSaving(false);
     }

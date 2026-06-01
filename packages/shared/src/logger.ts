@@ -26,12 +26,22 @@ const baseOptions: LoggerOptions = {
   },
 };
 
-export const logger = isDev
-  ? pino({
+function createLogger() {
+  if (!isDev) return pino(baseOptions);
+  try {
+    return pino({
       ...baseOptions,
       transport: { target: "pino-pretty", options: { colorize: true } },
-    })
-  : pino(baseOptions);
+    });
+  } catch {
+    // Some runtimes (e.g. the `trigger dev` indexer) cannot spin up the
+    // pino-pretty transport worker and throw at construction. Fall back to
+    // plain pino rather than crashing every job's module import.
+    return pino(baseOptions);
+  }
+}
+
+export const logger = createLogger();
 
 export function childLogger(context: Record<string, unknown>) {
   return logger.child(context);

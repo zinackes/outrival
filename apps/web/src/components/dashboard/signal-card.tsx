@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { SeverityPill } from "./severity-pill";
 import { CatPill } from "./cat-pill";
 import { CompAvatar } from "./comp-avatar";
+import { SignalSourceLine } from "@/components/outrival/signal-source-line";
 
 interface SignalCardProps {
   signal: Signal;
@@ -103,6 +104,14 @@ export function SignalCard({
             <Check size={11} /> Mark as read
           </Button>
         )}
+      </div>
+
+      <div className="mt-3.5 pt-3.5 border-t border-border">
+        <SignalSourceLine
+          signalId={signal.id}
+          sourceType={signal.sourceType}
+          detectedAt={signal.createdAt}
+        />
       </div>
     </div>
   );

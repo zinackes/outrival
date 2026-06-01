@@ -27,6 +27,7 @@ import {
   PRICING_STATUSES,
   isReviewSource,
   validateMonitorUrl,
+  aggregateFreshness,
   type SourceType,
   type MonitorFrequency,
 } from "@outrival/shared";
@@ -217,10 +218,42 @@ competitorsRouter.get("/", async (c) => {
 
   const byCompetitor = new Map(aggregates.map((a) => [a.competitorId, a]));
 
+  // Per-competitor freshness for the global list dot (patch-14). A competitor is
+  // only as fresh as its STALEST active source, and a failed last scan wins. We
+  // ship the (lastScrapedAt, status) pair the FreshnessDot expects and let the
+  // shared computeFreshness derive the level client-side.
+  const monitorRows = await db
+    .select({
+      competitorId: monitors.competitorId,
+      lastRunAt: monitors.lastRunAt,
+      lastFailedAt: monitors.lastFailedAt,
+    })
+    .from(monitors)
+    .where(
+      and(
+        inArray(
+          monitors.competitorId,
+          list.map((c) => c.id),
+        ),
+        eq(monitors.isActive, true),
+      ),
+    );
+
+  const monitorsByCompetitor = new Map<string, typeof monitorRows>();
+  for (const m of monitorRows) {
+    const arr = monitorsByCompetitor.get(m.competitorId) ?? [];
+    arr.push(m);
+    monitorsByCompetitor.set(m.competitorId, arr);
+  }
+
   const enriched = list.map((c) => {
     const a = byCompetitor.get(c.id);
+    const freshness =
+      aggregateFreshness(monitorsByCompetitor.get(c.id) ?? []) ??
+      ({ lastScrapedAt: null, status: "success" } as const);
     return {
       ...c,
+      freshness,
       stats: {
         signals7d: a?.signals7d ?? 0,
         signalsPrev: a?.signalsPrev ?? 0,

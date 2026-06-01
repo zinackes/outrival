@@ -11,7 +11,7 @@ import {
   users,
 } from "@outrival/db";
 import { generateInsight, generateRepositioningInsight, ClassificationSchema } from "@outrival/ai";
-import { PLAN_LIMITS, PRICING_STATUSES } from "@outrival/shared";
+import { PLAN_LIMITS, PRICING_STATUSES, PRICING_STATUS_LABELS } from "@outrival/shared";
 import { insertSignalFeed } from "../lib/clickhouse";
 import { captureWorkerEvent, shutdownPostHog } from "../lib/posthog";
 import { groqQueue } from "../lib/queues";
@@ -77,6 +77,18 @@ export const generateSignalJob = task({
       : input.classification!.severity;
     const category = input.pricingTransition ? "pricing" : input.classification!.category;
 
+    // Human-readable before/after for the "Why this insight?" panel (patch-14).
+    // A pricing transition has no price text, so we label its status change
+    // ("Public pricing" → "Gated — contact sales"); the generic path uses the
+    // before/after the classifier extracted from the diff (e.g. "$99/mo" → "$79/mo").
+    // Both stay null when unavailable → the UI falls back gracefully.
+    const humanChangeBefore = input.pricingTransition
+      ? PRICING_STATUS_LABELS[input.pricingTransition.previous]
+      : (input.classification!.humanChangeBefore ?? null);
+    const humanChangeAfter = input.pricingTransition
+      ? PRICING_STATUS_LABELS[input.pricingTransition.current]
+      : (input.classification!.humanChangeAfter ?? null);
+
     const insight = input.pricingTransition
       ? await generateRepositioningInsight({
           competitorName: competitor.name,
@@ -108,6 +120,8 @@ export const generateSignalJob = task({
         insight: insight.insight,
         soWhat: insight.so_what,
         recommendedAction: insight.recommended_action,
+        humanChangeBefore,
+        humanChangeAfter,
       })
       .returning();
 

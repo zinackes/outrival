@@ -6,6 +6,7 @@ import { Sparkles, Check } from "lucide-react";
 import { api, type Signal } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ListError } from "@/components/outrival/list-error";
 
 const SEVERITY_STYLE: Record<
   Signal["severity"],
@@ -19,13 +20,13 @@ const SEVERITY_STYLE: Record<
 
 export function ActivityFeed() {
   const [signals, setSignals] = useState<Signal[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
 
   useEffect(() => {
     api
       .listSignals({ limit: 50 })
       .then((r) => setSignals(r.signals))
-      .catch((e) => setError(String(e)));
+      .catch((e) => setError(e));
   }, []);
 
   async function markRead(id: string) {
@@ -35,12 +36,7 @@ export function ActivityFeed() {
     );
   }
 
-  if (error)
-    return (
-      <p style={{ color: "var(--muted)" }} className="text-sm">
-        Error: {error}
-      </p>
-    );
+  if (error && signals === null) return <ListError error={error} />;
   if (signals === null)
     return (
       <ul className="flex flex-col gap-3" aria-busy="true">

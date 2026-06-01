@@ -1,6 +1,6 @@
 import { schedules, logger } from "@trigger.dev/sdk/v3";
-import { and, eq, gte, lt } from "drizzle-orm";
-import { db, organizations, signals, digests, competitors } from "@outrival/db";
+import { and, desc, eq, gte, isNull, lt } from "drizzle-orm";
+import { db, organizations, signals, digests, competitors, sectoralSignals } from "@outrival/db";
 import { generateDigest, type DigestInputSignal } from "@outrival/ai";
 import { renderDigestEmail } from "../lib/digest-email";
 import { getResend, ALERT_FROM } from "../lib/resend";
@@ -89,6 +89,24 @@ export const generateWeeklyDigestJob = schedules.task({
         skipped++;
         continue;
       }
+
+      // Sector trends (patch-13): unread + non-dismissed sectoral_signals, attached
+      // verbatim (already AI-formulated) as a distinct digest section. Absent → no
+      // section. analyze-sectoral runs at 07:00 UTC, this at 08:00, so the week's
+      // freshly-created trends are still unread here.
+      const sectoral = await db
+        .select({ title: sectoralSignals.title, insight: sectoralSignals.insight })
+        .from(sectoralSignals)
+        .where(
+          and(
+            eq(sectoralSignals.orgId, org.id),
+            isNull(sectoralSignals.readAt),
+            isNull(sectoralSignals.dismissedAt),
+          ),
+        )
+        .orderBy(desc(sectoralSignals.createdAt))
+        .limit(10);
+      if (sectoral.length > 0) digest.sectoralTrends = sectoral;
 
       // An unsent preview (from "generate now") gets finalized in place; otherwise insert.
       const [stored] = existing

@@ -45,6 +45,9 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 import { PageHead } from "./page-head";
 import { CompAvatar } from "./comp-avatar";
+import { FreshnessDot } from "@/components/outrival/freshness-dot";
+import { ListError } from "@/components/outrival/list-error";
+import { toastApiError } from "@/lib/error-helpers";
 import { CatPill } from "./cat-pill";
 import { CategoryBar, CategoryLegend } from "./category-bar";
 import { TableSkeleton, GridCardsSkeleton } from "./skeletons";
@@ -89,7 +92,7 @@ function computeDelta(curr: number, prev: number): {
 export function CompetitorsList() {
   const router = useRouter();
   const [competitors, setCompetitors] = useState<Competitor[] | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const [err, setErr] = useState<unknown>(null);
   const [view, setView] = useState<"table" | "cards">("table");
   const [sortBy, setSortBy] = useState<SortBy>("signals");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -104,8 +107,9 @@ export function CompetitorsList() {
     try {
       const c = await api.listCompetitors();
       setCompetitors(c.competitors);
+      setErr(null);
     } catch (e) {
-      setErr(String(e));
+      setErr(e);
     }
   }
 
@@ -126,7 +130,7 @@ export function CompetitorsList() {
       setDeleteTarget(null);
       await refresh();
     } catch (e) {
-      toast.error("Failed to delete", { description: String(e) });
+      toastApiError(e);
     } finally {
       setDeleting(false);
     }
@@ -230,8 +234,13 @@ export function CompetitorsList() {
     [competitors],
   );
 
-  if (err) {
-    return <p className="text-sm text-muted-foreground">Error: {err}</p>;
+  if (err && competitors === null) {
+    return (
+      <div className="space-y-[22px]">
+        <PageHead title="Competitors" sub="Everyone you're tracking." />
+        <ListError error={err} onRetry={refresh} />
+      </div>
+    );
   }
 
   return (
@@ -462,7 +471,15 @@ export function CompetitorsList() {
                     <CompAvatar name={c.name} />
                   </td>
                   <td className="px-3.5 py-3 align-middle">
-                    <div className="font-medium">{c.name}</div>
+                    <div className="flex items-center gap-1.5 font-medium">
+                      {c.name}
+                      {c.freshness && (
+                        <FreshnessDot
+                          lastScrapedAt={c.freshness.lastScrapedAt}
+                          status={c.freshness.status}
+                        />
+                      )}
+                    </div>
                     <a
                       href={c.url}
                       target="_blank"
@@ -559,7 +576,15 @@ export function CompetitorsList() {
                 <div className="flex items-center gap-2.5 mb-3.5">
                   <CompAvatar name={c.name} />
                   <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-[15px]">{c.name}</div>
+                    <div className="flex items-center gap-1.5 font-semibold text-[15px]">
+                      {c.name}
+                      {c.freshness && (
+                        <FreshnessDot
+                          lastScrapedAt={c.freshness.lastScrapedAt}
+                          status={c.freshness.status}
+                        />
+                      )}
+                    </div>
                     <a
                       href={c.url}
                       target="_blank"

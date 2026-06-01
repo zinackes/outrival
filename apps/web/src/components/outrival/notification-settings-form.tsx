@@ -15,6 +15,8 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FormSkeleton } from "@/components/dashboard/skeletons";
 import { toast } from "sonner";
+import { toastApiError } from "@/lib/error-helpers";
+import { ListError } from "@/components/outrival/list-error";
 
 function isEqual(a: NotificationSettings, b: NotificationSettings) {
   return (
@@ -32,7 +34,7 @@ export function NotificationSettingsForm() {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [paywall, setPaywall] = useState<PaywallReason | null>(null);
   const [testing, setTesting] = useState(false);
 
@@ -43,7 +45,7 @@ export function NotificationSettingsForm() {
         setPristine(s);
         setPlan(billing.plan);
       })
-      .catch((e) => setError(String(e)));
+      .catch((e) => setError(e));
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -68,7 +70,7 @@ export function NotificationSettingsForm() {
       if (reason) {
         setPaywall(reason);
       } else {
-        setError(String(e));
+        toastApiError(e, { title: "Couldn't save settings" });
       }
     } finally {
       setSaving(false);
@@ -101,14 +103,13 @@ export function NotificationSettingsForm() {
         );
       }
     } catch (e) {
-      toast.error("Couldn't send test alert", { description: String(e) });
+      toastApiError(e, { title: "Couldn't send test alert" });
     } finally {
       setTesting(false);
     }
   }
 
-  if (error && !settings)
-    return <p className="text-sm text-muted-foreground">Error: {error}</p>;
+  if (error && !settings) return <ListError error={error} />;
   if (!settings || !pristine || !plan) return <FormSkeleton fields={2} />;
 
   const dirty = !isEqual(settings, pristine);
@@ -269,7 +270,6 @@ export function NotificationSettingsForm() {
       {saved && !dirty && (
         <p className="text-sm text-positive">✓ Saved</p>
       )}
-      {error && <p className="text-sm text-destructive">{error}</p>}
 
       {dirty && (
         <div className="sticky bottom-4 z-10 flex items-center justify-between gap-3 px-4 py-2.5 rounded-md border border-border-strong bg-surface/95 backdrop-blur-sm shadow-lg">

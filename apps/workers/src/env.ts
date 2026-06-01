@@ -24,6 +24,11 @@ const EnvSchema = z.object({
   RESEND_API_KEY: z.string().optional(),
   EXA_API_KEY: z.string().optional(),
   POSTHOG_API_KEY: z.string().optional(),
+
+  // Sectoral analysis (patch-13). Runtime knobs with sane defaults so a missing
+  // env never breaks the weekly job. The cron itself is static (Mon 07:00 UTC).
+  SECTORAL_MIN_COMPETITORS: z.coerce.number().int().min(2).default(4),
+  SECTORAL_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.6),
 });
 
 export type WorkerEnv = z.infer<typeof EnvSchema>;

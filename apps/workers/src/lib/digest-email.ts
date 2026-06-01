@@ -41,6 +41,25 @@ export function renderDigestEmail(
     .map((t) => `<li style="margin-bottom:6px;">${t}</li>`)
     .join("");
 
+  // Sector trends (patch-13): a clearly separated block after the micro signals.
+  const sectoral = digest.sectoralTrends ?? [];
+  const sectoralHtml =
+    sectoral.length === 0
+      ? ""
+      : `
+<div style="margin-top:8px;margin-bottom:24px;border-top:1px solid #262626;padding-top:20px;">
+  <h3 style="font-family:Syne,sans-serif;color:#fafafa;font-size:16px;margin:0 0 12px;">🌍 Sector trends</h3>
+  ${sectoral
+    .map(
+      (t) => `
+  <div style="background:#171717;border:1px solid #262626;border-radius:6px;padding:16px;margin-bottom:12px;">
+    <div style="color:#fafafa;font-size:14px;font-weight:600;margin-bottom:6px;">${t.title}</div>
+    <div style="color:#a3a3a3;font-size:13px;">${t.insight}</div>
+  </div>`,
+    )
+    .join("")}
+</div>`;
+
   return `<!doctype html>
 <html>
   <body style="margin:0;padding:24px;background:#0a0a0a;color:#fafafa;font-family:Inter,sans-serif;">
@@ -54,6 +73,7 @@ export function renderDigestEmail(
         <ul style="margin:0;padding-left:18px;font-size:14px;color:#fafafa;">${tldrHtml}</ul>
       </div>
       ${sectionsHtml}
+      ${sectoralHtml}
       <div style="margin-top:32px;font-size:11px;color:#525252;text-align:center;">Outrival · Automated competitive intelligence</div>
     </div>
   </body>

@@ -125,6 +125,9 @@ export interface Competitor {
   createdAt: string;
   updatedAt: string;
   stats?: CompetitorStats;
+  // Aggregate freshness for the global list dot (patch-14): the stalest active
+  // source's last scrape + whether any source's last scan failed.
+  freshness?: { lastScrapedAt: string | null; status: "success" | "failed" };
 }
 
 export interface CompetitorJob {
@@ -238,6 +241,51 @@ export interface Signal {
   competitorId: string;
   competitorName: string;
   changeId: string;
+  sourceType: string | null;
+}
+
+// User-safe "Why this insight?" payload (patch-14). No raw HTML, no diff, no AI
+// classification — only what the user can read and act on.
+export interface SignalDetail {
+  id: string;
+  insight: string;
+  severity: "low" | "medium" | "high" | "critical";
+  category: string;
+  detectedAt: string;
+  humanChangeBefore: string | null;
+  humanChangeAfter: string | null;
+  sourceType: string | null;
+  sourceUrl: string | null;
+  competitor: { id: string; name: string };
+}
+
+// Meso-level sector trend across the org's own competitors (patch-13). Distinct
+// from the micro `Signal`. `confidence` arrives as a numeric string ("0.78").
+export type SectoralCategory =
+  | "feature_trend"
+  | "hiring_trend"
+  | "pricing_trend"
+  | "positioning_shift"
+  | "category_emergence";
+
+export interface SectoralEvidence {
+  competitors: Array<{ id: string; name: string }>;
+  dataPoints: unknown[];
+  metric: string;
+  value: number | string;
+}
+
+export interface SectoralSignal {
+  id: string;
+  category: SectoralCategory;
+  title: string;
+  insight: string;
+  evidence: SectoralEvidence;
+  confidence: string;
+  periodStart: string;
+  periodEnd: string;
+  readAt: string | null;
+  createdAt: string;
 }
 
 export interface DigestSection {
@@ -561,6 +609,16 @@ export const api = {
   },
   markSignalRead: (id: string) =>
     request<{ ok: true }>(`/api/signals/${id}/read`, { method: "PATCH" }),
+  getSignalDetail: (id: string) =>
+    request<{ signal: SignalDetail }>(`/api/signals/${id}/detail`),
+  listSectoral: (params?: { limit?: number }) => {
+    const qs = params?.limit ? `?limit=${params.limit}` : "";
+    return request<{ signals: SectoralSignal[] }>(`/api/sectoral${qs}`);
+  },
+  markSectoralRead: (id: string) =>
+    request<{ ok: true }>(`/api/sectoral/${id}/read`, { method: "POST" }),
+  dismissSectoral: (id: string) =>
+    request<{ ok: true }>(`/api/sectoral/${id}/dismiss`, { method: "POST" }),
   listDigests: () => request<{ digests: Digest[] }>("/api/digests"),
   getDigest: (id: string) => request<{ digest: Digest }>(`/api/digests/${id}`),
   generateDigest: (range: DigestRange = "this_week") =>

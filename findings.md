@@ -1113,3 +1113,186 @@ réutilisant l'infra Phase 5. Q1=B (fiche complète : extraction IA features+sta
 pré-existantes patch-03 ont disparu entre-temps — web clean). `db:push` applied
 (competitors.type/isUserProduct/selfProfile + notification_type self_change +
 self_product_changes table).
+
+---
+
+## Patch 13 — Intelligence sectorielle (méso) — implémenté 2026-06-01
+
+Couche méso : croise les concurrents d'une MÊME org pour détecter des tendances.
+Réutilise 100% des données déjà collectées. Distinct des signals micro.
+
+### Sources réelles utilisées (≠ ce que le patch imaginait)
+- **Features** = `signals` `category="product"` (déjà classifiés + significatifs), PAS
+  une catégorie `feature_added` (inexistante). Thèmes via **buckets de mots-clés**
+  (matching par token, pas substring → "ai" ne matche pas "email"). FEATURE_THEMES :
+  AI, integrations, mobile, security, analytics, collaboration, automation.
+- **Hiring** = `job_postings` (department + title) → ROLE_CATEGORIES (sales, ai/ml,
+  engineering, marketing, product, design, support).
+- **Pricing** = ClickHouse `pricing_history.price` (Float64), variation médiane des
+  prix moyens début↔fin de fenêtre par concurrent.
+- **Positioning** = ClickHouse `pricing_history.status` (taxonomie patch-11), timeline
+  open→gated (gated_demo/contact_sales/gated).
+- `logAiRun`/`ai_runs` (patch-02) **n'existent pas** → remplacé par `logger.log("formulate_sectoral", …)`.
+
+### Seuils & formules de confidence (à recalibrer avec la vraie distribution)
+- **feature_trend** : candidat si ≥40% des concurrents ET ≥2 partagent un thème ;
+  `confidence = share` (count/total). Publié si ≥ SECTORAL_MIN_CONFIDENCE (0.6) → en
+  pratique ≥60% des concurrents.
+- **hiring_trend** : candidat si ≥3 concurrents même catégorie ; `confidence = share`.
+  ⚠️ Sur une grande org (8+ concurrents), 3 recruteurs = 0.375 < 0.6 → non publié.
+  Voulu (vraie "tendance"), mais à surveiller (faux négatifs sur grosses orgs).
+- **pricing_trend** : ≥3 concurrents avec trajectoire réelle, |Δmédian| > 10% ;
+  `confidence = |Δ| / 0.2` → 12% = 0.6 (= seuil), 20%+ = 1.0.
+- **positioning_shift** : ≥2 concurrents open→gated ; `confidence = 0.4 + 0.2·(n−1)`
+  → 2 = 0.6 (= seuil), 4+ = 1.0. (Pas basé sur le share : 2 gating = signal fort
+  même dans une grande org.)
+
+### Garde-fous codés explicitement (constraints du patch)
+- **a. Confidence threshold** : aucun signal publié si confidence < SECTORAL_MIN_CONFIDENCE
+  (0.6). Filtre `significant = patterns.filter(p => p.confidence >= minConfidence)`.
+- **b. Min concurrents** : `analyzeOneOrg` skip propre (return -1, log) si < SECTORAL_MIN_COMPETITORS
+  (4) concurrents actifs (non deleted, `type != "self"`).
+- **c. Pas d'inter-org** : `loadOrgSectoralData(orgId, …)` ne lit QUE les concurrents de
+  l'org. Aucune query cross-org. La route API filtre `eq(orgId)`. RGPD-clean.
+- **d. Pas de prédiction** : le prompt formulate interdit explicitement le forecasting
+  ("Describe what IS happening, not what WILL happen. No forecasting."). L'enum
+  `category_emergence` existe mais aucun détecteur ne l'émet (réservé futur).
+- **e. Pas de sources externes** : tous les patterns viennent de Postgres (`signals`,
+  `job_postings`) + ClickHouse (`pricing_history`). Zéro RSS/news API.
+
+### Décisions d'archi
+- Détecteurs = fonctions **pures** dans `packages/ai/src/sectoral/detectors.ts` (aucun
+  I/O, aucune IA). Testés via `bun test` (10 tests, fixtures 8 concurrents + piège
+  anti-faux-positif "email"). Le job assemble les données et appelle les détecteurs.
+- IA **uniquement** pour la formulation (`formulate.ts`, modèle `AI_CONFIG.insights`
+  70b, json, **pas de cache** car sortie créative). Grounding strict sur l'evidence.
+- ClickHouse **best-effort** : si CH down/absent → pricing + positioning ne produisent
+  rien (skip propre), feature + hiring tournent quand même. 2 nouveaux query helpers
+  batchés (`getPricingHistorySince` / `getPricingStatusHistorySince`, `IN {ids:Array}`).
+- **Idempotence** : skip un pattern déjà publié pour l'org < 7j (match sur
+  `evidence.metric` stable, PAS sur le title formulé qui varie d'un run à l'autre).
+- Cron **statique** lundi 7h UTC (Trigger.dev ne supporte pas de cron piloté par env) ;
+  `SECTORAL_ANALYSIS_DAY` documenté mais non câblé. MIN_COMPETITORS/MIN_CONFIDENCE lues
+  au runtime via worker `env.ts` (z.coerce, defaults 4 / 0.6).
+- **Digest** : les sectoral_signals ne repassent PAS dans l'IA. Le job attache les
+  signaux non lus/non dismissed (`digest.sectoralTrends`) après `generateDigest`, et
+  `renderDigestEmail` ajoute une section séparée. Limite assumée : une semaine
+  sectorielle-seule (0 signal micro) n'envoie pas d'email (skip micro conservé) — les
+  signaux restent visibles sur le dashboard.
+
+### UI
+- `SectoralSignalsSection` (self-fetch `api.listSectoral`) dans `OverviewView`, section
+  Card distincte "🌍 Sector trends" sous la grille des signals micro. Masquée si vide
+  (pas de placeholder). Card par signal (icône catégorie, titre, insight, confidence,
+  pastille non-lu, dismiss). Modal evidence (concurrents + dataPoints + metric).
+  Mark-read à l'ouverture du détail, dismiss optimiste.
+
+### Déféré (non bloquant)
+- Recalibrage des seuils/confidence avec la vraie distribution (à faire après 1ers runs).
+- `category_emergence` : enum présent, aucun détecteur (pas de signal clair "nouveau
+  type de feature" sans NLP — hors scope pur-stats).
+- Vue digest **web** non étendue (sectoralTrends rendu seulement dans l'email + dashboard).
+- Email/notification sur nouveau sectoral_signal (in-app dashboard seulement).
+
+### Runtime TODO (manuel — services + creds requis)
+- Org test 5+ concurrents avec données simulant des patterns → déclencher
+  `analyze-sectoral` (MCP trigger / dashboard) → vérifier sectoral_signals + evidence.
+- Org < 4 concurrents → skip propre, log debug, aucun signal.
+- Pricing/positioning nécessitent un historique CH réel (plusieurs scrapes/90j).
+- Digest : générer après des sectoral_signals non lus → section "🌍 Sector trends".
+
+### Vérif
+`pnpm typecheck` 7/7 ✓ · `pnpm build` 7/7 ✓. `bun test` détecteurs 10/10 ✓.
+`db:push` applied (table `sectoral_signals` + enum `sectoral_category`). Commits laissés
+à l'utilisateur (auto-committer concurrent — a aussi ajouté du patch-14 en parallèle).
+
+### E2E run réel (Trigger.dev MCP, dev, 2026-06-01)
+`analyze-sectoral` déclenchée manuellement (run_cmpv1plmd0i9v0in9a5yzwf5h, build 20260601.20)
+→ `completed` en 1.4s, output `{ orgs: 4, analyzed: 1, signals: 0 }`. Confirme le flow
+complet contre la vraie DB Railway + ClickHouse : 4 orgs onboardées, 3 skip propre (<4
+concurrents), 1 analysée, 0 pattern significatif (données dev éparses — attendu : pas
+assez d'historique features/hiring/pricing pour franchir les seuils). Aucun crash, aucun
+appel Groq (0 pattern → 0 formulate). Recalibrage seuils impossible tant qu'il n'y a pas
+de vraies données denses.
+
+### Pré-requis débloqué : logger `trigger dev`
+`packages/shared/src/logger.ts` : `pino({transport:"pino-pretty"})` throwait à la
+construction sous le runtime d'indexation `trigger dev` (gated `NODE_ENV=development`),
+cassant l'import de TOUS les jobs en local (le worker déployé NODE_ENV=production était
+épargné). Fix : `createLogger()` enveloppe le transport pretty dans un try/catch →
+fallback `pino(baseOptions)`. Hors périmètre patch-13 (infra partagée) mais nécessaire
+pour le trigger local ; débloque `pnpm trigger:dev` pour tout le monde. Commit laissé au user.
+
+---
+
+## Patch-14 — Trust & clarity (divulgation progressive) — implémenté 2026-06-01
+
+**Décisions de cadrage (validées user) :** UI 100% anglais (les strings FR du patch
+traduites — règle `language.md` override le patch) ; commits laissés à l'utilisateur
+(typecheck 7/7 ✓ + build 7/7 ✓ + bun test 18/18 ✓).
+
+### Divergences réelles vs patch (le patch invente une archi qui diverge — cf. memory)
+- **`signals` n'a NI `title` NI `detectedAt`** → l'endpoint detail renvoie `insight`
+  + `category` + `createdAt` (aliasé `detectedAt`). Pas de `title` inventé.
+- **Classification réelle = `{category, severity, is_significant, reason}`** (le patch
+  invente `type:"pricing_decrease"`). On a AJOUTÉ `humanChangeBefore/After` nullable.
+- **2 chemins vers un signal** : classification générique (before/after extrait par le
+  modèle) ET `pricingTransition` patch-11 (before/after dérivé des labels de statut via
+  nouveau `PRICING_STATUS_LABELS` dans shared).
+- **Cache patch-09 compatible** : `withAiCache` retourne l'objet stocké SANS re-valider
+  → champs en `.nullable().optional()`, même clé (hash diff) → vieux cache = champs
+  `undefined` (fallback gracieux), nouveau cache = champs présents.
+- **`GET /competitors/:id` expose déjà `monitors` + `recentSignals`** (sourceType,
+  monitorUrl, lastRunAt/lastFailedAt) → freshness par section dérivée côté web (dots sur
+  les TabsTrigger), pas de changement de l'endpoint detail. Seuls `GET /` (liste, dot
+  global agrégé) + le nouveau `GET /signals/:id/detail` ont touché l'API.
+- **Toast = sonner** (déjà monté), PAS un `<Toast>` shadcn neuf comme le patch.
+- **ErrorBoundary root = idiome Next** → `app/global-error.tsx` (html/body + styles
+  inline car globals.css/theme pas montés là) + Sentry.captureException ; `dashboard/error.tsx`
+  amélioré (Sentry + "Back to dashboard"). Pas de classe montée à la main.
+- **Format API erreurs : envelope PLAT rétro-compatible** (`lib/errors.ts`) — `error`
+  reste le code string (sinon `paywallFromError` + `ApiError.code` cassent partout), on
+  AJOUTE `message/userAction/retryAfterSeconds`. PAS de format nested (aurait tout cassé).
+- **Typo réelle = Bricolage Grotesque + DM Mono** (ni General Sans/Geist du design-system,
+  ni Syne/Inter du web/CLAUDE.md) → `font-mono` (var), pas de nom de police hardcodé.
+
+### Composants atomiques livrés (réutilisés)
+- `shared/constants/freshness.ts` : `FRESHNESS_THRESHOLDS` + `computeFreshness` (pur) +
+  `aggregateFreshness` (collapse N sources → 1 dot, stalest+failed wins) — utilisé par
+  l'API liste ET la page concurrent (DRY).
+- `outrival/signal-source-line.tsx` (N1, ×2 : feed + fiche) + `why-insight-panel.tsx`
+  (N2, fetch `/detail` à l'ouverture, before/after en `font-mono`, fallback "Detail
+  unavailable" + lien live si humanChange null) + `lib/source-labels.ts`.
+- `outrival/freshness-dot.tsx` (4 niveaux, tooltip date exacte, focusable a11y, classes
+  Tailwind statiques pour le JIT) — ×2 (liste + TabsTrigger fiche).
+- `outrival/list-error.tsx` (réutilise `errorConfig`) — ×9 vues.
+- `lib/error-helpers.ts` : `ERROR_CONFIGS` (3 parties) + `errorConfig` + `toastApiError(err,
+  {title?, onRetry?})` — ×7 vues.
+
+### Bug réel corrigé au passage
+- `signals-view` + `competitors-list` + overview + activity-feed restaient en **skeleton
+  infini sur erreur** (le `err` capturé via `String(e)` n'était jamais rendu, ou rendu en
+  brut). Remplacé par `<ListError>` (gated sur `data===null`, retry où une fn load existe).
+
+### Résiduels (NON faits — documentés, bornés volontairement)
+- **Fuites `Error: {error}` techniques restantes** dans des **sheets/secondaires** :
+  `detection-config-sheet`, `digest-settings-sheet`, `alert-channels-sheet` (sheets settings),
+  `billing-dashboard`, `workspace-settings-form`. Lower-traffic, derrière des sheets. Une
+  passe de conversion `<ListError>`/`toastApiError` reste à faire (même pattern mécanique).
+- `outrival/digests-list.tsx` a une fuite mais **n'est importé nulle part** (mort — non touché).
+- **FreshnessDot sur /my-product** (patch-12) : déféré — nécessiterait que l'API my-product
+  expose la freshness par monitor self (plomberie en plus). My-product affiche déjà un
+  message d'erreur propre + a ses toasts convertis.
+- **Source line "adaptée" sur sectoral signals (patch-13)** : déféré — les sectoral signals
+  sont multi-concurrents sans `sourceType`/`changeId` unique ; la source line micro ne
+  s'applique pas tel quel.
+- **Battle cards : SignalSourceLine sur signals cités** : déféré (les battle cards citent
+  des insights agrégés, pas des signals individuels avec changeId).
+- `ui/dialog.tsx` a un `<span className="sr-only">Fermer</span>` FR **pré-existant**
+  (dette language.md hors périmètre — non touché, surgical).
+
+### Runtime TODO (manuel — creds requis)
+- Signal réel généré post-patch → vérifier `humanChangeBefore/After` peuplés (Groq) ;
+  signal pré-patch → why-panel "Detail unavailable" + lien live.
+- Forcer un scrape failed → pastille rouge "Last scan failed" sur la fiche + dot global.
+- Couper l'API → toast `network_error` 3-parties + écran sobre, Sentry reçoit (prod).

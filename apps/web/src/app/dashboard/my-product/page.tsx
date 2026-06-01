@@ -14,6 +14,7 @@ import {
   Store,
 } from "lucide-react";
 import { toast } from "sonner";
+import { toastApiError } from "@/lib/error-helpers";
 import { formatDistanceToNow } from "date-fns";
 import {
   api,
@@ -279,7 +280,7 @@ export default function MyProductPage() {
       await api.rescanMyProduct();
       toast.success("Re-scan started", { description: "Fresh data will appear shortly." });
     } catch (e) {
-      toast.error("Re-scan failed", { description: String(e) });
+      toastApiError(e, { title: "Re-scan failed" });
     } finally {
       setRescanning(false);
     }
@@ -299,7 +300,7 @@ export default function MyProductPage() {
       }
       setChanges((cs) => cs.filter((c) => c.id !== change.id));
     } catch (e) {
-      toast.error("Action failed", { description: String(e) });
+      toastApiError(e, { title: "Action failed" });
     } finally {
       setActingId(null);
     }
@@ -317,7 +318,7 @@ export default function MyProductPage() {
       );
       setRediscover(null);
     } catch (e) {
-      toast.error("Re-discovery failed", { description: String(e) });
+      toastApiError(e, { title: "Re-discovery failed" });
     } finally {
       setDiscovering(false);
     }

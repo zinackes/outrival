@@ -18,6 +18,12 @@ export const signals = pgTable("signals", {
   insight: text("insight").notNull(),
   soWhat: text("so_what"),
   recommendedAction: text("recommended_action"),
+  // Human-readable before/after of the main change, in plain language
+  // ("Standard · $99/mo" → "Standard · $79/mo"), surfaced in the "Why this
+  // insight?" panel. Nullable: pre-patch signals and failed extractions stay
+  // null and the UI falls back gracefully (patch-14).
+  humanChangeBefore: text("human_change_before"),
+  humanChangeAfter: text("human_change_after"),
   isRead: boolean("is_read").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

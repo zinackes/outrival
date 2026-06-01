@@ -12,6 +12,8 @@ import {
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { ApiError, api, type CompetitorCandidate } from "@/lib/api";
+import { toastApiError } from "@/lib/error-helpers";
+import { ListError } from "@/components/outrival/list-error";
 import {
   PaywallDialog,
   paywallFromError,
@@ -31,7 +33,7 @@ type SortMode = "overlap" | "recent";
 
 export default function CandidatesPage() {
   const [items, setItems] = useState<CompetitorCandidate[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [actingId, setActingId] = useState<string | null>(null);
   const [paywall, setPaywall] = useState<PaywallReason | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -44,7 +46,7 @@ export default function CandidatesPage() {
       const { candidates } = await api.listCandidates("new");
       setItems(candidates);
     } catch (e) {
-      setError(String(e));
+      setError(e);
     }
   }
 
@@ -72,7 +74,7 @@ export default function CandidatesPage() {
           description: "Your product profile is required to detect competitors.",
         });
       } else {
-        toast.error("Detection failed", { description: String(e) });
+        toastApiError(e, { title: "Detection failed" });
       }
     } finally {
       setRefreshing(false);
@@ -93,7 +95,7 @@ export default function CandidatesPage() {
       if (reason) {
         setPaywall(reason);
       } else {
-        setError(String(e));
+        setError(e);
       }
     } finally {
       setActingId(null);
@@ -106,14 +108,13 @@ export default function CandidatesPage() {
       await api.dismissCandidate(id);
       setItems((prev) => prev?.filter((c) => c.id !== id) ?? null);
     } catch (e) {
-      setError(String(e));
+      setError(e);
     } finally {
       setActingId(null);
     }
   }
 
-  if (error)
-    return <p className="text-sm text-muted-foreground">Error: {error}</p>;
+  if (error && items === null) return <ListError error={error} />;
 
   const view = (items ?? [])
     .filter((c) => (c.overlapScore ?? 0) >= minOverlap)

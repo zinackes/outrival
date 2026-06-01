@@ -630,3 +630,178 @@ périodique + re-discovery proposée sur changement majeur.
 ## Blockers patch-12
 - Aucun. Test E2E runtime (onboarding live → self créé → enrich → /my-product) =
   manuel, nécessite services + creds (GROQ/EXA/R2/DB + Trigger.dev).
+
+---
+
+# Patch 14 — Trust & clarity (divulgation progressive)
+
+## Session du 2026-06-01
+
+## Objectif
+3 trous UX sous un principe directeur DIVULGATION PROGRESSIVE :
+1. Confiance signal — 3 niveaux (source line inline / why-panel sur clic / admin brut).
+2. Freshness — pastilles colorées par section + tooltip date (pas de timestamp inline).
+3. Erreurs — système cohérent (global-error Sentry + toasts sonner + format API),
+   messages en 3 parties (passé / présent / action user).
+JAMAIS de HTML brut, jamais de stack/SQL/chemin visible user. **UI 100% anglais**
+(règle language.md override les strings FR du patch).
+
+## Décisions périmètre (validées avec l'utilisateur)
+- UI en anglais (les exemples FR du patch sont traduits).
+- Commits laissés à l'utilisateur — j'implémente + typecheck/build verts par étape.
+
+## Divergences réelles vs patch (adaptées AVANT de coder)
+- `signals` n'a NI `title` NI `detectedAt` → API detail utilise `insight`/`category`
+  + `createdAt`. Pas de `title` inventé.
+- Classification réelle = `{ category, severity, is_significant, reason }` (pas le
+  `type:"pricing_decrease"` du patch). On AJOUTE `humanChangeBefore/After` nullable.
+- 2 chemins vers un signal : classification générique ET `pricingTransition` (patch-11).
+  Before/After humain = via classify pour le 1er ; dérivé des statuts pour le 2e.
+- Cache patch-09 : `withAiCache` retourne l'objet stocké SANS re-valider → champs en
+  `.nullable().optional()`, même clé (hash diff) → compatible.
+- `GET /competitors/:id` retourne DÉJÀ `monitors` (lastRunAt/lastFailedAt/sourceType)
+  + `recentSignals` (sourceType + monitorUrl) → freshness par section dérivée côté web,
+  pas de changement API détail. Seuls la LISTE (`GET /`) + le nouveau
+  `GET /signals/:id/detail` touchent l'API.
+- Toast = **sonner** (déjà monté `app/layout.tsx`), PAS un `<Toast>` shadcn neuf.
+- `lib/scrape-errors.ts` (humanisation) existe déjà → on l'étend / réutilise, on ne
+  duplique pas. Nouveau `lib/error-helpers.ts` = mapping codes API → config UI.
+- ErrorBoundary "root" = idiome Next App Router → `app/global-error.tsx` (+ amélioration
+  du `app/dashboard/error.tsx` existant), pas une classe montée à la main.
+- Typo réelle = Bricolage Grotesque + DM Mono → `font-mono` (var existante), pas de nom
+  de police hardcodé. Tokens `bg-{positive,high,medium,critical}` confirmés (@theme).
+- patch-02 (vue admin brute) PAS encore fait : on ne construit que l'endpoint user-safe.
+
+## Étapes
+- [x] 0 — shared/constants/freshness.ts (FRESHNESS_THRESHOLDS + computeFreshness + aggregateFreshness purs) — no commit
+- [x] 1 — schéma signals += human_change_before/after (nullable) + db:push applied
+- [x] 2 — classify.ts (schema+prompt EN) + generate-signal persiste humanChange* (2 chemins) + PRICING_STATUS_LABELS
+- [x] 3 — API GET /signals/:id/detail (user-safe) + freshness agrégée sur GET /competitors + lib/errors.ts
+- [x] 4 — SignalSourceLine (N1) + WhyInsightPanel (N2) + source-labels + getSignalDetail + intégration signal-card
+- [x] 5 — FreshnessDot (4 niveaux + tooltip) + fiche concurrent (TabsTrigger par source) + liste (dot global)
+- [x] 6 — erreurs : global-error.tsx (Sentry) + dashboard/error.tsx + api lib/errors.ts + web error-helpers.ts
+         + ListError + toasts sonner 3-parties + fix skeleton-infini-sur-erreur (signals/competitors)
+- [x] 7 — passe transversale : fiche concurrent (SignalSourceLine ActivityTab + toasts), overview,
+         my-product/candidates/digests/alerts/notif-settings/pricing-card (toasts + ListError + écrans propres)
+- [x] 8 — typecheck 7/7 ✓ + build 7/7 ✓ + bun test 18/18 ✓ + findings.md à jour
+
+## patch-14 = COMPLETE (implémenté 2026-06-01, commits laissés à l'utilisateur)
+
+Commits suggérés (1 par étape) :
+- `feat(db): add human-readable change description to signals`
+- `feat(ai): extract human-readable before/after on classification`
+- `feat(api): expose user-safe signal detail and per-source freshness`
+- `feat(web): add progressive signal traceability (source line + why panel)`
+- `feat(web): add subtle freshness indicators with progressive tooltip`
+- `feat(web): add coherent error handling with progressive disclosure`
+- `feat(web): apply trust and clarity patterns across main views`
+
+### Déférés (cf. findings.md § Patch-14)
+- Fuites `Error:{error}` restantes dans sheets settings (detection/digest/alert-channels) +
+  billing-dashboard + workspace-settings-form (lower-traffic, même pattern mécanique à appliquer).
+- FreshnessDot /my-product (besoin freshness self côté API), source line sectorielle (patch-13,
+  multi-concurrents), SignalSourceLine sur battle cards (citent des insights agrégés).
+- `ui/dialog.tsx` "Fermer" FR = dette pré-existante (hors périmètre).
+
+## Blockers patch-14
+- Aucun pour l'implémentation. Tests E2E runtime (signal réel avec humanChange,
+  scrape failed → pastille rouge, erreur API → toast) = manuels, creds requis.
+
+---
+
+# Patch 13 — Intelligence sectorielle depuis les données existantes
+
+## Session du 2026-06-01
+
+## Objectif
+Couche **méso** : croiser les concurrents d'une MÊME org pour détecter des tendances
+sectorielles (vagues de features, recrutement, dérive pricing, repositionnement),
+formulées par IA. Distinct des signals micro. AUCUNE source externe, AUCUNE
+agrégation cross-org, AUCUNE prédiction.
+
+## Politique de session (validée)
+- "Plan d'abord, validation ensuite" → ce plan attend l'OK avant tout code.
+- "Tu commites" (comme patch-11/12) : j'implémente + typecheck/build verts, AUCUN
+  commit fait par moi (auto-committer concurrent observé — il a d'ailleurs ajouté la
+  section patch-14 ci-dessus pendant cette session). `git add -A`/commit = user.
+
+## Divergences spec ↔ code réel (vérifiées AVANT de planifier)
+1. **`logAiRun`/table `ai_runs` (patch-02) N'EXISTENT PAS** (grep vide). Le spec
+   appelle `await logAiRun("formulate_sectoral", …)`. → REMPLACÉ par `logger.info`
+   structuré dans le job. La case verif "ai_runs loggue formulate_sectoral" devient
+   "logger.info loggue chaque formulate_sectoral".
+2. **Provider IA** : `import { complete } from "../provider"` (pas `../provider/groq`),
+   signature `complete(config, opts)` avec `config` ∈ `AI_CONFIG`. Modèle "smart" 70b
+   = `AI_CONFIG.insights`. `safeParseJson(raw, zodSchema)`. Pas de cache (provider n'en
+   a pas ; spec dit "PAS de cache" → rien à faire).
+3. **Pas de catégorie `feature_added`** : la classif réelle = pricing|product|hiring|
+   reviews|content|funding. Les "features ajoutées" = `signals` de `category="product"`.
+   → `detectFeatureTrends` lit les `signals` (déjà classifiés + significatifs) et
+   regroupe par **thème via buckets de mots-clés** (pur, sans IA).
+4. **Statut pricing SANS table d'historique Postgres** (`competitors.pricing_status` =
+   état courant uniquement). MAIS ClickHouse `pricing_history` **a `status` + `price` +
+   `recorded_at`** (patch-11). → détecteurs pricing/positioning lisent CH. Les workers
+   PEUVENT query CH (`queryBestEffort` privé) → j'ajoute des query helpers exportés.
+   CH best-effort : si `CLICKHOUSE_URL` absent → null → ces 2 détecteurs ne produisent
+   rien (skip propre). Documenté.
+5. **`org.productProfile`** = `{ category, audience, valueProp, pricingModel }` → fournit
+   exactement `category`+`audience` pour le userContext de la formulation.
+6. **Jobs auto-découverts** via `dirs: ["./src/jobs"]` (trigger.config.ts) → créer le
+   fichier suffit. Cron Trigger.dev = **statique** → `SECTORAL_ANALYSIS_DAY` ne peut pas
+   piloter le cron dynamiquement → cron hardcodé `0 7 * * 1` (lundi 7h) ; l'env var est
+   documentée mais non câblée (noté). `SECTORAL_MIN_COMPETITORS` + `SECTORAL_MIN_CONFIDENCE`
+   lues au runtime (worker env.ts, avec defaults).
+7. **Détecteurs purs exportés depuis la racine `@outrival/ai`** (pas de subpath
+   `@outrival/ai/sectoral` — l'index re-exporte déjà classify/insight/digest ; les
+   workers importent déjà `@outrival/ai`). Évite de configurer package.json exports.
+8. **Nom de fichier schéma** : `sectoral_signals.ts` (underscore, comme job_postings /
+   battle_cards / self_product_changes), pas `sectoral-signals.ts` du spec.
+9. **API read/dismiss** : le spec dit POST ; signals.ts existant utilise PATCH. → je
+   suis le spec (POST /:id/read, POST /:id/dismiss) pour rester fidèle ; trivial.
+10. **Digest** : `generateDigest(signals)` + `renderDigestEmail` existants. J'étends le
+    schéma/prompt/render avec une section optionnelle. Le skip "0 signal micro → pas de
+    digest" RESTE (une semaine sectorielle-seule n'enverra pas d'email ; visible sur le
+    dashboard). Noté comme limite assumée.
+
+## Étapes (1 commit/étape → laissés à l'utilisateur)
+- [x] 0 — Env : `.env.example` + `.env.local` += SECTORAL_ANALYSIS_DAY/MIN_COMPETITORS/
+      MIN_CONFIDENCE ; worker env.ts += MIN_COMPETITORS (coerce int ≥2 def 4) +
+      MIN_CONFIDENCE (coerce 0-1 def 0.6). (pas de commit)
+- [x] 1 — Schéma `packages/db/src/schema/sectoral_signals.ts` + index.ts + `db:push`
+      OK (table + enum `sectoral_category` créés, "Changes applied").
+- [x] 2 — `packages/ai/src/sectoral/{types,detectors}.ts` (4 détecteurs purs, buckets
+      mots-clés par token anti-faux-positif) + `detectors.test.ts` `bun test` 10/10 ✓ +
+      export index.ts.
+- [x] 3 — `packages/ai/src/sectoral/formulate.ts` (AI_CONFIG.insights, json, Zod
+      {title,insight}, prompt EN, grounding evidence, no forecasting) + export index.ts.
+- [x] 4 — `apps/workers/src/jobs/analyze-sectoral.job.ts` (cron `0 7 * * 1`,
+      loadOrgSectoralData PG+CH, skip <MIN, try/catch/org, filtre confidence, idempotence
+      7j sur evidence.metric, logger.log formulate_sectoral) + 2 query helpers CH.
+- [x] 5 — `apps/api/src/routes/sectoral.ts` (GET / org-scoped non-dismissed DESC ?limit,
+      POST /:id/read, POST /:id/dismiss) monté `/api/sectoral`.
+- [x] 6 — UI `SectoralSignalsSection` + card + modal evidence dans OverviewView (section
+      "🌍 Sector trends" distincte, masquée si vide) + `api.listSectoral/markSectoralRead/
+      dismissSectoral` + type `SectoralSignal`.
+- [x] 7 — Digest : `DigestSchema.sectoralTrends` optionnel + `renderDigestEmail` section
+      séparée + job charge sectoral non lus/non dismissed → `digest.sectoralTrends`
+      (attaché APRÈS generateDigest, pas re-passé dans l'IA).
+- [x] 8 — Garde-fous + seuils + formules confidence documentés dans findings.md.
+- [x] 9 — `pnpm typecheck` 7/7 ✓ + `pnpm build` 7/7 ✓ + `bun test` 10/10 ✓.
+      findings.md/task_plan.md à jour.
+
+## patch-13 = COMPLETE (implémenté 2026-06-01, commits laissés à l'utilisateur)
+E2E runtime (déclenchement réel du job, données CH historiques, email digest) = manuel,
+nécessite services + creds (GROQ/CH/DB + Trigger.dev). Voir findings "Runtime TODO".
+
+## Décisions prises
+- detectFeatureTrends source = `signals` product (déjà significatifs) + buckets mots-clés,
+  PAS une catégorie `feature_added` inexistante.
+- Pricing/positioning lisent ClickHouse pricing_history (status+price patch-11), pas
+  Postgres ; best-effort → skip propre si CH absent.
+- logAiRun supprimé (patch-02 jamais implémenté) → logger.info.
+- Détecteurs purs exportés depuis la racine @outrival/ai (pas de subpath).
+- Cron statique lundi 7h ; SECTORAL_ANALYSIS_DAY documenté mais non câblé.
+
+## Blockers
+- Aucun bloquant. CH requis pour 2 des 4 détecteurs (pricing/positioning) — sans CH,
+  seuls feature/hiring tournent. Test E2E runtime = manuel (services + creds).

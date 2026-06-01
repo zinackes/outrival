@@ -1,4 +1,4 @@
-import { and, eq, isNull, count } from "drizzle-orm";
+import { and, eq, isNull, ne, count } from "drizzle-orm";
 import { competitors, organizations } from "@outrival/db";
 import {
   PLAN_LIMITS,
@@ -26,7 +26,14 @@ export async function countActiveCompetitors(orgId: string): Promise<number> {
   const [row] = await db
     .select({ value: count() })
     .from(competitors)
-    .where(and(eq(competitors.orgId, orgId), isNull(competitors.deletedAt)));
+    // The self-competitor (the user's own product) never counts against the quota.
+    .where(
+      and(
+        eq(competitors.orgId, orgId),
+        isNull(competitors.deletedAt),
+        ne(competitors.type, "self"),
+      ),
+    );
   return row?.value ?? 0;
 }
 

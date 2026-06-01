@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, isNull, ne, or, sql } from "drizzle-orm";
 import { competitors, signals, digests } from "@outrival/db";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
@@ -44,6 +44,7 @@ searchRouter.get("/", async (c) => {
         and(
           eq(competitors.orgId, orgId),
           isNull(competitors.deletedAt),
+          ne(competitors.type, "self"),
           or(
             ilike(competitors.name, pat),
             ilike(competitors.description, pat),

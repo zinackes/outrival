@@ -97,6 +97,14 @@ export interface CompetitorStats {
   categoryCounts: Record<string, number>;
 }
 
+export type PricingStatus =
+  | "public"
+  | "public_partial"
+  | "gated_demo"
+  | "gated_signup"
+  | "dynamic"
+  | "unknown";
+
 export interface Competitor {
   id: string;
   name: string;
@@ -107,6 +115,13 @@ export interface Competitor {
   aiSummary: string | null;
   aiSummaryUpdatedAt: string | null;
   metadata: Record<string, unknown> | null;
+  // Pricing taxonomy (patch-11)
+  pricingStatus: PricingStatus | null;
+  pricingObservedRegion: string | null;
+  pricingPromotional: boolean;
+  pricingDemoUrl: string | null;
+  pricingNote: string | null;
+  pricingManualOverride: boolean;
   createdAt: string;
   updatedAt: string;
   stats?: CompetitorStats;
@@ -378,6 +393,84 @@ export interface SearchResults {
   digests: SearchDigestHit[];
 }
 
+export interface SelfProfileField<T> {
+  value: T;
+  isFromAutoDetect: boolean;
+  lastEditedByUserAt: string | null;
+}
+
+export interface SelfProfile {
+  category?: SelfProfileField<string>;
+  audience?: SelfProfileField<string>;
+  valueProp?: SelfProfileField<string>;
+  features?: SelfProfileField<string[]>;
+  techStack?: SelfProfileField<string[]>;
+}
+
+export interface MyProductPricingTier {
+  plan_name: string;
+  price: number;
+  currency: string;
+  billing_period: string;
+}
+
+export interface MyProductJob {
+  id: string;
+  title: string;
+  department: string | null;
+  location: string | null;
+  url: string | null;
+}
+
+export interface MyProduct {
+  id: string;
+  name: string;
+  url: string;
+  lastScanAt: string | null;
+  aiSummary: string | null;
+  profile: SelfProfile;
+  pricing: {
+    status: string | null;
+    observedRegion: string | null;
+    promotional: boolean;
+    demoUrl: string | null;
+    note: string | null;
+    manualOverride: boolean;
+    tiers: MyProductPricingTier[];
+  };
+  jobs: { total: number; items: MyProductJob[] };
+}
+
+export type SelfChangeStatus = "pending" | "accepted" | "modified" | "ignored";
+export type SelfChangeSeverity = "minor" | "major";
+
+export interface SelfProductChange {
+  id: string;
+  fieldPath: string;
+  previousValue: unknown;
+  newValue: unknown;
+  summary: string | null;
+  severity: SelfChangeSeverity;
+  status: SelfChangeStatus;
+  detectedAt: string;
+  resolvedAt: string | null;
+}
+
+export interface MyProductPatch {
+  category?: string;
+  audience?: string;
+  valueProp?: string;
+  features?: string[];
+  techStack?: string[];
+  pricing?: {
+    status?: string;
+    observedRegion?: string | null;
+    promotional?: boolean;
+    demoUrl?: string | null;
+    note?: string | null;
+  };
+}
+
 export const api = {
   search: (q: string) =>
     request<SearchResults>(`/api/search?q=${encodeURIComponent(q)}`),
@@ -400,6 +493,18 @@ export const api = {
     request<{ scores: ReviewScorePoint[] }>(`/api/competitors/${id}/review-scores`),
   getCompetitorPricingHistory: (id: string) =>
     request<{ history: PricingHistoryPoint[] }>(`/api/competitors/${id}/pricing-history`),
+  updateCompetitorPricing: (
+    id: string,
+    body: { status: PricingStatus; demoUrl?: string | null; note?: string | null },
+  ) =>
+    request<{ ok: true }>(`/api/competitors/${id}/pricing`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  redetectCompetitorPricing: (id: string) =>
+    request<{ ok: true; rescraped: boolean }>(`/api/competitors/${id}/pricing/redetect`, {
+      method: "POST",
+    }),
   getCompetitorSignals: (id: string, limit = 50) =>
     request<{ signals: CompetitorSignal[] }>(`/api/competitors/${id}/signals?limit=${limit}`),
   createCompetitor: (body: { name: string; url: string; description?: string }) =>
@@ -594,4 +699,25 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  getMyProduct: () => request<{ product: MyProduct | null }>("/api/my-product"),
+  updateMyProduct: (patch: MyProductPatch) =>
+    request<{ ok: true; profile: SelfProfile }>("/api/my-product", {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  rescanMyProduct: () =>
+    request<{ ok: true; monitors: number }>("/api/my-product/rescan", { method: "POST" }),
+  listMyProductChanges: (status?: SelfChangeStatus) =>
+    request<{ changes: SelfProductChange[] }>(
+      `/api/my-product/changes${status ? `?status=${status}` : ""}`,
+    ),
+  acceptMyProductChange: (id: string) =>
+    request<{ ok: true; suggestion: { action: string; reason: string } | null }>(
+      `/api/my-product/changes/${id}/accept`,
+      { method: "POST" },
+    ),
+  modifyMyProductChange: (id: string) =>
+    request<{ ok: true }>(`/api/my-product/changes/${id}/modify`, { method: "POST" }),
+  ignoreMyProductChange: (id: string) =>
+    request<{ ok: true }>(`/api/my-product/changes/${id}/ignore`, { method: "POST" }),
 };

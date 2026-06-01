@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { and, desc, eq, gte, isNull, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, ne, inArray, sql } from "drizzle-orm";
 import { tasks } from "@trigger.dev/sdk/v3";
 import {
   competitors,
@@ -24,6 +24,7 @@ import {
 import {
   SOURCE_TYPES,
   MONITOR_FREQUENCIES,
+  PRICING_STATUSES,
   isReviewSource,
   validateMonitorUrl,
   type SourceType,
@@ -174,7 +175,12 @@ competitorsRouter.get("/", async (c) => {
   const orgId = await ensureUserOrg(user.id);
 
   const list = await db.query.competitors.findMany({
-    where: and(eq(competitors.orgId, orgId), isNull(competitors.deletedAt)),
+    // Exclude the self-competitor (the user's own product) — it has its own page.
+    where: and(
+      eq(competitors.orgId, orgId),
+      isNull(competitors.deletedAt),
+      ne(competitors.type, "self"),
+    ),
     orderBy: desc(competitors.createdAt),
   });
 
@@ -459,6 +465,60 @@ competitorsRouter.get("/:id/pricing-history", async (c) => {
   });
 
   return c.json({ history: rows });
+});
+
+const PricingOverrideSchema = z.object({
+  status: z.enum(PRICING_STATUSES),
+  demoUrl: z.string().url().nullable().optional(),
+  note: z.string().max(500).nullable().optional(),
+});
+
+// Manual override: the user fills pricing in by hand (typically after an
+// "unknown" auto-detection). Sets pricingManualOverride so scrapes stop
+// overwriting it.
+competitorsRouter.put("/:id/pricing", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor) return c.json({ error: "Not found" }, 404);
+
+  const body = PricingOverrideSchema.safeParse(await c.req.json());
+  if (!body.success) return c.json({ error: "Invalid body" }, 400);
+
+  await db
+    .update(competitors)
+    .set({
+      pricingStatus: body.data.status,
+      pricingDemoUrl: body.data.demoUrl ?? null,
+      pricingNote: body.data.note ?? null,
+      pricingManualOverride: true,
+      updatedAt: new Date(),
+    })
+    .where(eq(competitors.id, id));
+  return c.json({ ok: true });
+});
+
+// Hand pricing back to auto-detection and re-scrape now if a pricing monitor exists.
+competitorsRouter.post("/:id/pricing/redetect", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor) return c.json({ error: "Not found" }, 404);
+
+  await db
+    .update(competitors)
+    .set({ pricingManualOverride: false, updatedAt: new Date() })
+    .where(eq(competitors.id, id));
+
+  const pricingMonitor = await db.query.monitors.findFirst({
+    where: and(eq(monitors.competitorId, id), eq(monitors.sourceType, "pricing")),
+  });
+  if (pricingMonitor) {
+    await tasks.trigger("scrape-monitor", { monitorId: pricingMonitor.id, force: true });
+  }
+  return c.json({ ok: true, rescraped: Boolean(pricingMonitor) });
 });
 
 competitorsRouter.post("/:id/refresh-summary", async (c) => {

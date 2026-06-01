@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, ne } from "drizzle-orm";
 import { tasks } from "@trigger.dev/sdk/v3";
 import { changes, monitors, competitors } from "@outrival/db";
 import { db } from "../lib/db";
@@ -37,6 +37,8 @@ changesRouter.get("/", async (c) => {
       and(
         eq(competitors.orgId, orgId),
         isNull(competitors.deletedAt),
+        // Self-competitor changes live on the "My product" page, not here.
+        ne(competitors.type, "self"),
         competitorIdFilter ? eq(competitors.id, competitorIdFilter) : undefined,
       ),
     )

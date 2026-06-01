@@ -43,6 +43,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { BattleCardTab } from "@/components/outrival/battle-card-tab";
+import { CompetitorPricingCard } from "@/components/outrival/competitor-pricing-card";
 import {
   PaywallDialog,
   paywallFromError,
@@ -469,11 +470,13 @@ export default function CompetitorDetailPage({ params }: Props) {
             </TabsContent>
             <TabsContent value="pricing">
               <PricingTab
+                competitor={competitor}
                 competitorId={id}
                 monitors={monitors}
                 scrapingIds={scrapingIds}
                 onRun={runMonitor}
                 onEnable={enableMonitor}
+                onRefresh={refresh}
                 refreshTick={refreshTick}
               />
             </TabsContent>
@@ -1437,13 +1440,20 @@ function MonitorEmptyState({
 }
 
 function PricingTab({
+  competitor,
   competitorId,
   monitors,
   scrapingIds,
   onRun,
   onEnable,
+  onRefresh,
   refreshTick,
-}: { competitorId: string; refreshTick?: number } & MonitorSourceProps) {
+}: {
+  competitor: Competitor;
+  competitorId: string;
+  refreshTick?: number;
+  onRefresh: () => void;
+} & MonitorSourceProps) {
   const [history, setHistory] = useState<PricingHistoryPoint[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -1463,14 +1473,17 @@ function PricingTab({
   if (history === null) return <TabLoading />;
   if (history.length === 0 || !series) {
     return (
-      <MonitorEmptyState
-        source="pricing"
-        label="pricing"
-        monitors={monitors}
-        scrapingIds={scrapingIds}
-        onRun={onRun}
-        onEnable={onEnable}
-      />
+      <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-1 duration-300">
+        <CompetitorPricingCard competitor={competitor} onUpdated={onRefresh} />
+        <MonitorEmptyState
+          source="pricing"
+          label="pricing"
+          monitors={monitors}
+          scrapingIds={scrapingIds}
+          onRun={onRun}
+          onEnable={onEnable}
+        />
+      </div>
     );
   }
 
@@ -1487,6 +1500,7 @@ function PricingTab({
 
   return (
     <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-1 duration-300">
+      <CompetitorPricingCard competitor={competitor} onUpdated={onRefresh} />
       <SourceSummary
         summary={pricingMonitor?.aiSummary}
         updatedAt={pricingMonitor?.aiSummaryUpdatedAt}

@@ -13,6 +13,7 @@ import {
   Settings,
   ChevronsUpDown,
   CreditCard,
+  Store,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -63,6 +64,7 @@ const NAV: NavGroup[] = [
     items: [
       { href: "/dashboard", label: "Overview", icon: Home, exact: true },
       { href: "/dashboard/signals", label: "Signals", icon: Activity },
+      { href: "/dashboard/my-product", label: "My product", icon: Store },
       { href: "/dashboard/competitors", label: "Competitors", icon: Users },
       { href: "/dashboard/candidates", label: "Detections", icon: Sparkles },
     ],

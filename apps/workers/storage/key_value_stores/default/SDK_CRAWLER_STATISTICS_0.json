@@ -1,52 +1,29 @@
 {
-  "requestsFinished": 0,
-  "requestsFailed": 1,
-  "requestsRetries": 1,
+  "requestsFinished": 1,
+  "requestsFailed": 0,
+  "requestsRetries": 0,
   "requestsFailedPerMinute": 0,
-  "requestsFinishedPerMinute": 0,
-  "requestMinDurationMillis": null,
-  "requestMaxDurationMillis": 0,
-  "requestTotalFailedDurationMillis": 49828,
-  "requestTotalFinishedDurationMillis": 0,
-  "crawlerStartedAt": "2026-06-01T15:14:46.582Z",
-  "crawlerFinishedAt": "2026-06-01T15:17:54.238Z",
-  "statsPersistedAt": "2026-06-01T15:17:54.238Z",
-  "crawlerRuntimeMillis": 187799,
-  "crawlerLastStartTimestamp": 1780326886439,
+  "requestsFinishedPerMinute": 7,
+  "requestMinDurationMillis": 8227,
+  "requestMaxDurationMillis": 8227,
+  "requestTotalFailedDurationMillis": 0,
+  "requestTotalFinishedDurationMillis": 8227,
+  "crawlerStartedAt": "2026-06-01T15:37:32.804Z",
+  "crawlerFinishedAt": "2026-06-01T15:37:41.405Z",
+  "statsPersistedAt": "2026-06-01T15:37:41.405Z",
+  "crawlerRuntimeMillis": 8776,
+  "crawlerLastStartTimestamp": 1780328252629,
   "requestRetryHistogram": [
-    null,
-    null,
-    null,
     1
   ],
   "statsId": 0,
-  "requestAvgFailedDurationMillis": 49828,
-  "requestAvgFinishedDurationMillis": null,
-  "requestTotalDurationMillis": 49828,
+  "requestAvgFailedDurationMillis": null,
+  "requestAvgFinishedDurationMillis": 8227,
+  "requestTotalDurationMillis": 8227,
   "requestsTotal": 1,
   "requestsWithStatusCode": {
-    "200": 4
+    "200": 1
   },
-  "errors": {
-    "/home/tmfzi/outrival/packages/scrapers/src/lib/crawler.ts:62:18": {
-      "missing error code": {
-        "TimeoutError": {
-          "page.goto: Timeout 45000ms exceeded.": {
-            "count": 1
-          }
-        }
-      }
-    }
-  },
-  "retryErrors": {
-    "/home/tmfzi/outrival/packages/scrapers/src/lib/crawler.ts:62:18": {
-      "missing error code": {
-        "TimeoutError": {
-          "page.goto: Timeout 45000ms exceeded.": {
-            "count": 3
-          }
-        }
-      }
-    }
-  }
+  "errors": {},
+  "retryErrors": {}
 }

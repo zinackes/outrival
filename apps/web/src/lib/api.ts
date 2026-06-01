@@ -652,6 +652,25 @@ export type AdminAuditEntry = {
   createdAt: string;
 };
 
+export type AdminJobRun = {
+  id: string;
+  taskIdentifier: string;
+  status: string;
+  isTest: boolean;
+  version: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  durationMs: number | null;
+  costInCents: number | null;
+};
+
+export type AdminJobDetail = AdminJobRun & {
+  attemptCount: number | null;
+  error: string | null;
+  payload: unknown;
+};
+
 export const api = {
   search: (q: string) =>
     request<SearchResults>(`/api/search?q=${encodeURIComponent(q)}`),
@@ -938,4 +957,15 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ status }),
     }),
+  adminListJobs: (params?: { status?: string; task?: string; after?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.status) q.set("status", params.status);
+    if (params?.task) q.set("task", params.task);
+    if (params?.after) q.set("after", params.after);
+    const qs = q.toString();
+    return request<{ runs: AdminJobRun[]; nextCursor: string | null; error?: string }>(
+      `/api/admin/jobs${qs ? `?${qs}` : ""}`,
+    );
+  },
+  adminGetJob: (id: string) => request<{ run: AdminJobDetail }>(`/api/admin/jobs/${id}`),
 };

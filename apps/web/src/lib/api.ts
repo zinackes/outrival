@@ -388,6 +388,7 @@ export const api = {
       monitors: Monitor[];
       recentChanges: ChangeRow[];
       recentSignals: CompetitorSignal[];
+      plan: Plan;
     }>(`/api/competitors/${id}`),
   getCompetitorJobs: (id: string) =>
     request<JobsByDepartment>(`/api/competitors/${id}/jobs`),

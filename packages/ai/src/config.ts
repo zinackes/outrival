@@ -6,10 +6,13 @@ export interface AITaskConfig {
 }
 
 export const AI_CONFIG: Record<
-  "classification" | "insights" | "digest",
+  "classification" | "classificationFast" | "insights" | "digest",
   AITaskConfig
 > = {
-  classification: { provider: "groq", model: "llama-3.3-70b-versatile" },
-  insights:       { provider: "groq", model: "llama-3.3-70b-versatile" },
-  digest:         { provider: "groq", model: "llama-3.3-70b-versatile" },
+  // "smart" 70b — rich extraction/reasoning (analyze, extract-*, summaries).
+  classification:     { provider: "groq", model: "llama-3.3-70b-versatile" },
+  // "fast" 8b — cheap, plenty for change classification and overlap scoring.
+  classificationFast: { provider: "groq", model: "llama-3.1-8b-instant" },
+  insights:           { provider: "groq", model: "llama-3.3-70b-versatile" },
+  digest:             { provider: "groq", model: "llama-3.3-70b-versatile" },
 };

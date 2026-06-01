@@ -40,7 +40,7 @@ export type SourceSummaryInput =
 
 function pricingBlock(plans: PricingState[]): string {
   return plans
-    .map((p) => `- ${p.plan_name} : ${p.price} ${p.currency} / ${p.billing_period}`)
+    .map((p) => `- ${p.plan_name}: ${p.price} ${p.currency} / ${p.billing_period}`)
     .join("\n");
 }
 
@@ -51,31 +51,31 @@ function buildContext(input: SourceSummaryInput): string {
 ${pricingBlock(input.current)}
 </pricing_current>
 <pricing_previous>
-${input.previous && input.previous.length ? pricingBlock(input.previous) : "Première capture — aucune donnée antérieure."}
+${input.previous && input.previous.length ? pricingBlock(input.previous) : "First capture — no prior data."}
 </pricing_previous>`;
     case "jobs":
       return `<hiring_current>
-Total postes actifs : ${input.total}
-Par département : ${input.departments.map((d) => `${d.department} ${d.count}`).join(", ") || "n/c"}
+Active postings: ${input.total}
+By department: ${input.departments.map((d) => `${d.department} ${d.count}`).join(", ") || "n/a"}
 </hiring_current>
 <hiring_delta>
 ${
         input.previousTotal === null
-          ? "Première capture — aucune donnée antérieure."
-          : `Total précédent : ${input.previousTotal}
-Nouveaux postes (${input.added.length}) : ${input.added.slice(0, 10).join(", ") || "aucun"}
-Postes fermés (${input.closed.length}) : ${input.closed.slice(0, 10).join(", ") || "aucun"}`
+          ? "First capture — no prior data."
+          : `Previous total: ${input.previousTotal}
+New postings (${input.added.length}): ${input.added.slice(0, 10).join(", ") || "none"}
+Closed postings (${input.closed.length}): ${input.closed.slice(0, 10).join(", ") || "none"}`
       }
 </hiring_delta>`;
     case "reviews":
       return `<reviews_current>
-Source : ${input.source}
-Note : ${input.score ?? "n/c"} / 5 (${input.reviewCount ?? "n/c"} avis) · sentiment ${input.sentiment}/100
-Points forts : ${input.praises.slice(0, 5).join(", ") || "n/c"}
-Reproches : ${input.complaints.slice(0, 5).join(", ") || "n/c"}
+Source: ${input.source}
+Score: ${input.score ?? "n/a"} / 5 (${input.reviewCount ?? "n/a"} reviews) · sentiment ${input.sentiment}/100
+Strengths: ${input.praises.slice(0, 5).join(", ") || "n/a"}
+Complaints: ${input.complaints.slice(0, 5).join(", ") || "n/a"}
 </reviews_current>
 <reviews_previous>
-${input.previousScore === null ? "Première capture — aucune donnée antérieure." : `Note précédente : ${input.previousScore} / 5`}
+${input.previousScore === null ? "First capture — no prior data." : `Previous score: ${input.previousScore} / 5`}
 </reviews_previous>`;
   }
 }
@@ -89,16 +89,16 @@ export async function summarizeSource(
   const prompt = `${buildContext(input)}
 
 <task>
-Rédige une synthèse factuelle de la dernière capture de cette source, en français, en 1-2 phrases courtes.
-- Décris ce qui a été capturé (l'état actuel chiffré).
-- Si des données antérieures sont fournies, indique ce qui a changé depuis (prix, nombre de postes, note…). Sinon, présente-le comme l'état initial.
-- Pas de superlatifs, pas de spéculation, pas de recommandation.
+Write a factual summary of this source's latest capture, in English, in 1-2 short sentences.
+- Describe what was captured (the current state, with numbers).
+- If prior data is provided, state what changed since (price, number of postings, score…). Otherwise present it as the initial state.
+- No superlatives, no speculation, no recommendations.
 
-Réponds UNIQUEMENT avec un objet JSON valide, sans markdown ni texte autour.
+Reply ONLY with a valid JSON object, no markdown and no surrounding text.
 </task>
 
 <format>
-{ "summary": "Une à deux phrases factuelles." }
+{ "summary": "One or two factual sentences." }
 </format>`;
 
   const raw = await complete(AI_CONFIG.classification, { prompt, json: true, maxTokens: 256 });

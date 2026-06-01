@@ -5,7 +5,7 @@ export function PageHeadSkeleton({ withActions = true }: { withActions?: boolean
   return (
     <div className="flex items-start md:items-center justify-between gap-4 md:gap-6 mb-6 md:mb-8 flex-wrap">
       <div className="flex-1 min-w-0">
-        <Skeleton className="h-6 w-48 mb-2" />
+        <Skeleton className="h-7 w-48 mb-2" />
         <Skeleton className="h-3.5 w-72 max-w-full" />
       </div>
       {withActions && (

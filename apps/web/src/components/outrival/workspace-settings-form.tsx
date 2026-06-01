@@ -11,10 +11,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { FormSkeleton } from "@/components/dashboard/skeletons";
 
 const STAGE_LABELS: Record<ProjectStage, string> = {
-  idea: "Idée à explorer",
+  idea: "Idea to explore",
   document: "Pitch / brief",
-  developing: "En développement (repo)",
-  live: "Produit en ligne",
+  developing: "In development (repo)",
+  live: "Live product",
 };
 
 interface Draft {
@@ -274,10 +274,10 @@ export function WorkspaceSettingsForm() {
       </div>
 
       <div className="flex flex-col gap-3 pt-4 border-t border-border">
-        <h3 className="text-sm font-medium tracking-tight">Stade du projet</h3>
+        <h3 className="text-sm font-medium tracking-tight">Project stage</h3>
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <p className="text-sm text-muted-foreground">
-            {stage ? STAGE_LABELS[stage] : "Non défini"}
+            {stage ? STAGE_LABELS[stage] : "Not set"}
           </p>
           <Button
             type="button"
@@ -292,11 +292,11 @@ export function WorkspaceSettingsForm() {
             ) : (
               <RefreshCw size={13} />
             )}
-            Mettre à jour mon profil produit
+            Update my product profile
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          Recommencer l'onboarding ne supprime pas vos concurrents suivis.
+          Re-running onboarding doesn&apos;t remove the competitors you track.
         </p>
       </div>
 

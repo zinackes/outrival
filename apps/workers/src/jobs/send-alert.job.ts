@@ -154,7 +154,7 @@ export const sendAlertJob = task({
   <h2 style="margin: 0 0 12px; font-family: Syne, sans-serif;">${competitor.name}</h2>
   <p style="margin: 0 0 12px;">${signal.insight}</p>
   ${signal.soWhat ? `<p style="color: #f59e0b; margin: 0 0 12px;">→ ${signal.soWhat}</p>` : ""}
-  ${signal.recommendedAction ? `<p style="margin: 0; color: #d4d4d4;"><strong>Action :</strong> ${signal.recommendedAction}</p>` : ""}
+  ${signal.recommendedAction ? `<p style="margin: 0; color: #d4d4d4;"><strong>Action:</strong> ${signal.recommendedAction}</p>` : ""}
 </div>`;
         await getResend().emails.send({
           from: ALERT_FROM,

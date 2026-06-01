@@ -4,9 +4,9 @@ const URGENCY_META: Record<
   "action_required" | "watch" | "fyi",
   { emoji: string; label: string; color: string }
 > = {
-  action_required: { emoji: "🔴", label: "Action requise", color: "#ef4444" },
-  watch: { emoji: "🟡", label: "À surveiller", color: "#f59e0b" },
-  fyi: { emoji: "🟢", label: "Pour info", color: "#22c55e" },
+  action_required: { emoji: "🔴", label: "Action required", color: "#ef4444" },
+  watch: { emoji: "🟡", label: "Watch", color: "#f59e0b" },
+  fyi: { emoji: "🟢", label: "FYI", color: "#22c55e" },
 };
 
 export function renderDigestEmail(
@@ -47,14 +47,14 @@ export function renderDigestEmail(
     <div style="max-width:640px;margin:0 auto;">
       <div style="margin-bottom:24px;">
         <span style="font-family:Syne,sans-serif;font-size:24px;font-weight:bold;">Out<span style="color:#f59e0b;">rival</span></span>
-        <div style="font-size:12px;color:#a3a3a3;margin-top:4px;">Digest du ${weekStart} au ${weekEnd}</div>
+        <div style="font-size:12px;color:#a3a3a3;margin-top:4px;">Digest from ${weekStart} to ${weekEnd}</div>
       </div>
       <div style="background:#171717;border:1px solid #262626;border-radius:6px;padding:20px;margin-bottom:24px;">
-        <div style="font-size:12px;color:#a3a3a3;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">Température · ${digest.temperature}</div>
+        <div style="font-size:12px;color:#a3a3a3;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">Temperature · ${digest.temperature}</div>
         <ul style="margin:0;padding-left:18px;font-size:14px;color:#fafafa;">${tldrHtml}</ul>
       </div>
       ${sectionsHtml}
-      <div style="margin-top:32px;font-size:11px;color:#525252;text-align:center;">Outrival · Veille concurrentielle automatisée</div>
+      <div style="margin-top:32px;font-size:11px;color:#525252;text-align:center;">Outrival · Automated competitive intelligence</div>
     </div>
   </body>
 </html>`;

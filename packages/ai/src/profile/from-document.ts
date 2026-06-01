@@ -21,18 +21,19 @@ ${text}
 </document>
 
 <task>
-Ce texte provient d'un pitch deck ou business plan. Déduis le profil du produit décrit.
-Ignore les pages de garde, sommaires et répétitions. Concentre-toi sur ce que fait le
-produit, pour qui, et son modèle économique.
-Réponds UNIQUEMENT avec un objet JSON valide, sans markdown ni texte autour.
+This text comes from a pitch deck or business plan. Infer the profile of the product described.
+Ignore cover pages, tables of contents and repetitions. Focus on what the
+product does, for whom, and its business model.
+Reply ONLY with a valid JSON object, no markdown and no surrounding text.
+Write all text values in English.
 </task>
 
 <format>
 {
-  "category": "ex: SaaS B2B / Productivité",
-  "audience": "ex: Startups 1-50 personnes",
-  "valueProp": "ex: Automatisation de X en une phrase",
-  "pricingModel": "ex: Freemium + abonnement"
+  "category": "e.g. B2B SaaS / Productivity",
+  "audience": "e.g. Startups of 1-50 people",
+  "valueProp": "e.g. Automating X, in one sentence",
+  "pricingModel": "e.g. Freemium + subscription"
 }
 </format>`;
 

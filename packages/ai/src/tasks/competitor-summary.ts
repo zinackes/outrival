@@ -33,24 +33,24 @@ export async function generateCompetitorSummary(
         .slice(0, 8)
         .map((s) => `- [${s.severity}] ${s.category} — ${s.insight}`)
         .join("\n")
-    : "Aucun signal récent.";
+    : "No recent signals.";
 
   const reviewBlock = input.reviewSummary
-    ? `Note moyenne : ${input.reviewSummary.score ?? "n/c"}\nReproches récurrents : ${
+    ? `Average score: ${input.reviewSummary.score ?? "n/a"}\nRecurring complaints: ${
         input.reviewSummary.topComplaints.length
           ? input.reviewSummary.topComplaints.join(", ")
-          : "n/c"
+          : "n/a"
       }`
-    : "Pas de données reviews.";
+    : "No review data.";
 
   const homepageBlock = input.homepageContent?.trim()
     ? input.homepageContent.trim().slice(0, 4000)
     : null;
 
   const prompt = `<competitor>
-Nom : ${input.name}
-Catégorie : ${input.category ?? "inconnue"}
-Description : ${input.description ?? "n/c"}
+Name: ${input.name}
+Category: ${input.category ?? "unknown"}
+Description: ${input.description ?? "n/a"}
 </competitor>
 
 ${homepageBlock ? `<homepage_content>\n${homepageBlock}\n</homepage_content>\n\n` : ""}<recent_signals>
@@ -62,18 +62,18 @@ ${reviewBlock}
 </reviews>
 
 <task>
-Rédige un résumé exécutif en 2-3 phrases factuelles sur ce concurrent.
-- Ton informatif, en français
-- Inclure : ce qu'ils font, où ils se situent, dynamique récente
-- Pas de superlatifs, pas de spéculation
-- Si du contenu de page (homepage_content) est fourni, base-toi en priorité dessus pour décrire leur offre, leur positionnement et leur cible
-- Sinon, si pas de signal récent, indique simplement le profil produit
+Write an executive summary of this competitor in 2-3 factual sentences.
+- Informative tone, in English
+- Include: what they do, where they sit, recent momentum
+- No superlatives, no speculation
+- If page content (homepage_content) is provided, rely on it first to describe their offering, positioning and target
+- Otherwise, if there are no recent signals, just state the product profile
 
-Réponds UNIQUEMENT avec un objet JSON valide, sans markdown ni texte autour.
+Reply ONLY with a valid JSON object, no markdown and no surrounding text.
 </task>
 
 <format>
-{ "summary": "Deux à trois phrases factuelles." }
+{ "summary": "Two to three factual sentences." }
 </format>`;
 
   const raw = await complete(AI_CONFIG.classification, { prompt, json: true, maxTokens: 512 });

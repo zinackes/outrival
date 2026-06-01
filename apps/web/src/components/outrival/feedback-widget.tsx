@@ -24,8 +24,8 @@ type FeedbackType = "bug" | "idea" | "other";
 
 const TYPE_OPTIONS: Array<{ value: FeedbackType; label: string }> = [
   { value: "bug", label: "Bug" },
-  { value: "idea", label: "Idée" },
-  { value: "other", label: "Autre" },
+  { value: "idea", label: "Idea" },
+  { value: "other", label: "Other" },
 ];
 
 export function FeedbackWidget() {
@@ -77,11 +77,11 @@ export function FeedbackWidget() {
         userAgent:
           typeof navigator !== "undefined" ? navigator.userAgent : undefined,
       });
-      toast.success("Merci, c'est bien reçu 🙏");
+      toast.success("Thanks, got it 🙏");
       setOpen(false);
       reset();
     } catch {
-      toast.error("Échec de l'envoi — réessaye dans un instant");
+      toast.error("Send failed — try again in a moment");
     } finally {
       setSubmitting(false);
     }
@@ -91,7 +91,7 @@ export function FeedbackWidget() {
     <>
       <button
         type="button"
-        aria-label="Envoyer un feedback"
+        aria-label="Send feedback"
         onClick={() => setOpen(true)}
         className="fixed bottom-5 right-5 z-40 flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface-2 text-text-muted shadow-lg backdrop-blur-sm transition-colors hover:border-border-strong hover:text-primary"
       >
@@ -107,9 +107,9 @@ export function FeedbackWidget() {
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Envoyer un feedback</DialogTitle>
+            <DialogTitle>Send feedback</DialogTitle>
             <DialogDescription>
-              Bug, idée ou remarque — un mot suffit.
+              Bug, idea or note — a few words is enough.
             </DialogDescription>
           </DialogHeader>
 
@@ -137,7 +137,7 @@ export function FeedbackWidget() {
                 id="feedback-message"
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                placeholder="Décrivez le bug ou votre idée..."
+                placeholder="Describe the bug or your idea..."
                 rows={5}
                 maxLength={5000}
                 className="resize-none"
@@ -151,12 +151,12 @@ export function FeedbackWidget() {
                 onChange={(e) => setWithScreenshot(e.target.checked)}
                 className="h-4 w-4 rounded border-border bg-surface-2 accent-primary"
               />
-              Joindre une capture d&apos;écran
+              Attach a screenshot
             </label>
 
             <p className="text-xs text-text-subtle">
-              La page actuelle et les erreurs techniques récentes sont jointes
-              automatiquement pour nous aider à débuguer.
+              The current page and recent technical errors are attached
+              automatically to help us debug.
             </p>
           </div>
 
@@ -166,15 +166,15 @@ export function FeedbackWidget() {
               onClick={() => setOpen(false)}
               disabled={submitting}
             >
-              Annuler
+              Cancel
             </Button>
             <Button onClick={handleSubmit} disabled={!message.trim() || submitting}>
               {submitting ? (
                 <>
-                  <Loader2 size={14} className="animate-spin" /> Envoi...
+                  <Loader2 size={14} className="animate-spin" /> Sending...
                 </>
               ) : (
-                "Envoyer"
+                "Send"
               )}
             </Button>
           </DialogFooter>

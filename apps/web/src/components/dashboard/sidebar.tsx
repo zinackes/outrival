@@ -36,6 +36,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { SidebarCompetitors } from "@/components/dashboard/sidebar-competitors";
 
 interface Org {
   name: string;
@@ -192,6 +193,9 @@ export function AppSidebar({ org }: { org: Org }) {
             <SidebarGroupContent>
               <SidebarMenu>
                 {g.items.map((it) => {
+                  if (it.href === "/dashboard/competitors") {
+                    return <SidebarCompetitors key={it.href} />;
+                  }
                   const Ic = it.icon;
                   const active = isActive(it.href, it.exact);
                   return (

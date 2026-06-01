@@ -1,7 +1,10 @@
 import { z } from "zod";
+import { withAiCache } from "@outrival/shared";
 import { complete } from "../provider";
 import { AI_CONFIG } from "../config";
 import { safeParseJson } from "../lib/parse";
+
+const CACHE_TTL_SECONDS = Number(process.env.AI_CACHE_TTL_ANALYZE_DAYS ?? 30) * 86400;
 
 export const ProductProfileSchema = z.object({
   category: z.string(),
@@ -40,24 +43,33 @@ ${homepageText.slice(0, 4000)}
 </homepage>
 
 <task>
-Analyse ce site de produit/SaaS et déduis son profil.
-Réponds UNIQUEMENT avec un objet JSON valide, sans markdown ni texte autour.
+Analyze this product/SaaS website and infer its profile.
+Reply ONLY with a valid JSON object, no markdown and no surrounding text.
+Write all text values in English.
 </task>
 
 <format>
 {
-  "category": "ex: SaaS B2B / Productivité",
-  "audience": "ex: Startups 1-50 personnes",
-  "valueProp": "ex: Automatisation de X en une phrase",
-  "pricingModel": "ex: Freemium + abonnement"
+  "category": "e.g. B2B SaaS / Productivity",
+  "audience": "e.g. Startups of 1-50 people",
+  "valueProp": "e.g. Automating X, in one sentence",
+  "pricingModel": "e.g. Freemium + subscription"
 }
 </format>`;
 
-  const raw = await complete(AI_CONFIG.classification, { prompt, json: true });
-  const result = safeParseJson(raw, ProductProfileSchema);
-  if (!result.ok) {
-    console.error("Product analysis parse failed:", result.error, "raw:", raw.slice(0, 500));
-    return null;
-  }
-  return result.value;
+  const { value } = await withAiCache(
+    homepageText,
+    { namespace: "analyze", ttlSeconds: CACHE_TTL_SECONDS },
+    async () => {
+      // Keep the 70b model here — product profiling needs richer reasoning.
+      const raw = await complete(AI_CONFIG.classification, { prompt, json: true });
+      const result = safeParseJson(raw, ProductProfileSchema);
+      if (!result.ok) {
+        console.error("Product analysis parse failed:", result.error, "raw:", raw.slice(0, 500));
+        return null;
+      }
+      return result.value;
+    },
+  );
+  return value;
 }

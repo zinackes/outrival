@@ -70,3 +70,13 @@ export const PLAN_LABELS: Record<Plan, string> = {
   pro: "Pro",
   business: "Business",
 };
+
+/** Whether `plan` is entitled to monitor `source`. Mirrors the API source gate. */
+export function planIncludesSource(plan: Plan, source: SourceType): boolean {
+  return PLAN_LIMITS[plan].allowedSources.includes(source);
+}
+
+/** Cheapest plan whose allowed sources include `source` — drives badges/upsell copy. */
+export function minPlanForSource(source: SourceType): Plan {
+  return PLANS.find((p) => PLAN_LIMITS[p].allowedSources.includes(source)) ?? "business";
+}

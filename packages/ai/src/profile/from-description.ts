@@ -31,18 +31,19 @@ ${category ? `\n<category>${category}</category>` : ""}
 ${inspirations.length ? `\n<inspirations>${inspirations.join(", ")}</inspirations>` : ""}
 
 <task>
-À partir de cette idée de produit/SaaS, déduis son profil produit.
-Si une catégorie est donnée, respecte-la. Si des inspirations sont citées,
-ancre le ton et le positionnement dans le même espace concurrentiel sans les copier.
-Réponds UNIQUEMENT avec un objet JSON valide, sans markdown ni texte autour.
+From this product/SaaS idea, infer its product profile.
+If a category is given, respect it. If inspirations are cited,
+anchor the tone and positioning in the same competitive space without copying them.
+Reply ONLY with a valid JSON object, no markdown and no surrounding text.
+Write all text values in English.
 </task>
 
 <format>
 {
-  "category": "ex: SaaS B2B / Productivité",
-  "audience": "ex: Startups 1-50 personnes",
-  "valueProp": "ex: Automatisation de X en une phrase",
-  "pricingModel": "ex: Freemium + abonnement"
+  "category": "e.g. B2B SaaS / Productivity",
+  "audience": "e.g. Startups of 1-50 people",
+  "valueProp": "e.g. Automating X, in one sentence",
+  "pricingModel": "e.g. Freemium + subscription"
 }
 </format>`;
 

@@ -16,6 +16,8 @@ import {
   getFromR2,
   supportsConditionalFetch,
 } from "@outrival/shared";
+// Pure subpath — pulls only the heuristic, never the groq/anthropic SDKs.
+import { evaluateSignificance } from "@outrival/ai/significance";
 
 const InputSchema = z.object({
   monitorId: z.string(),
@@ -207,7 +209,22 @@ export const scrapeMonitorJob = task({
             .update(monitors)
             .set({ lastChangedAt: changedAt })
             .where(eq(monitors.id, monitor.id));
-          await tasks.trigger("classify-change", { changeId });
+
+          // Skip the classification call (Trigger run + Groq) on trivial diffs —
+          // timestamps, hashes, nonces. The change row is still recorded.
+          const significance = evaluateSignificance({
+            added: diff.added.join("\n"),
+            removed: diff.removed.join("\n"),
+          });
+          if (significance.worth) {
+            await tasks.trigger("classify-change", { changeId });
+          } else {
+            logger.log("Skipping classification (trivial diff)", {
+              monitorId: monitor.id,
+              changeId,
+              reason: significance.reason,
+            });
+          }
         }
       }
     }

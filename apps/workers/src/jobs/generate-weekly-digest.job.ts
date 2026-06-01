@@ -123,7 +123,7 @@ export const generateWeeklyDigestJob = schedules.task({
           await getResend().emails.send({
             from: ALERT_FROM,
             to: org.digestEmail,
-            subject: `Outrival — Digest semaine du ${isoDate(weekStart)}`,
+            subject: `Outrival — Weekly digest, week of ${isoDate(weekStart)}`,
             html,
           });
           await db

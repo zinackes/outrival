@@ -314,6 +314,7 @@ export function OverviewView() {
         <div className="bg-surface">
           <Kpi
             label="Last signal"
+            valueClassName="text-[17px]"
             value={
               recentSignals[0]
                 ? formatDistanceToNow(new Date(recentSignals[0].createdAt), {

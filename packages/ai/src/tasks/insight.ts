@@ -19,9 +19,9 @@ export async function generateInsight(
   classification: Classification,
 ): Promise<Insight | null> {
   const prompt = `<context>
-Concurrent : ${competitorName}
-Catégorie produit : ${competitorCategory ?? "inconnue"}
-Type de changement : ${classification.category} (sévérité ${classification.severity})
+Competitor: ${competitorName}
+Product category: ${competitorCategory ?? "unknown"}
+Change type: ${classification.category} (severity ${classification.severity})
 </context>
 
 <change>
@@ -29,15 +29,16 @@ ${diffText.slice(0, 8000)}
 </change>
 
 <task>
-Génère un insight stratégique pour ce changement concurrent.
-Réponds UNIQUEMENT avec un objet JSON valide, sans markdown ni texte autour.
+Generate a strategic insight for this competitor change.
+Reply ONLY with a valid JSON object, no markdown and no surrounding text.
+Write all text values in English.
 </task>
 
 <format>
 {
-  "insight": "Ce qui s'est passé, 1-2 phrases factuelles",
-  "so_what": "Implication stratégique pour l'utilisateur, 1-2 phrases",
-  "recommended_action": "Action concrète ou null"
+  "insight": "What happened, 1-2 factual sentences",
+  "so_what": "Strategic implication for the user, 1-2 sentences",
+  "recommended_action": "A concrete action, or null"
 }
 </format>`;
 

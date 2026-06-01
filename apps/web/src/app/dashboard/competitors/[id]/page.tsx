@@ -26,6 +26,7 @@ import {
   MoreHorizontal,
   Plus,
   Settings2,
+  Lock,
 } from "lucide-react";
 import {
   Dialog,
@@ -52,6 +53,10 @@ import {
   validateReviewUrl,
   validateMonitorUrl,
   MONITOR_FREQUENCIES,
+  PLAN_LABELS,
+  minPlanForSource,
+  planIncludesSource,
+  type Plan,
   type SourceType,
   type ReviewSourceType,
   type MonitorFrequency,
@@ -149,6 +154,7 @@ type CompetitorData = {
   monitors: Monitor[];
   recentChanges: ChangeRow[];
   recentSignals: CompetitorSignal[];
+  plan: Plan;
 };
 
 export default function CompetitorDetailPage({ params }: Props) {
@@ -398,7 +404,7 @@ export default function CompetitorDetailPage({ params }: Props) {
   }
   if (!data) return <CompetitorDetailLoading />;
 
-  const { competitor, monitors, recentChanges, recentSignals } = data;
+  const { competitor, monitors, recentChanges, recentSignals, plan } = data;
   const lastRunMs = monitors
     .map((m) => (m.lastRunAt ? new Date(m.lastRunAt).getTime() : 0))
     .reduce((a, b) => Math.max(a, b), 0);
@@ -491,6 +497,10 @@ export default function CompetitorDetailPage({ params }: Props) {
                 onEdit={editMonitor}
                 onSwitch={switchReviewSource}
                 refreshTick={refreshTick}
+                plan={plan}
+                onLockedSource={(source) =>
+                  setPaywall({ code: "plan_locked_source", source, plan })
+                }
               />
             </TabsContent>
             <TabsContent value="content">
@@ -560,7 +570,7 @@ function Header({
     <div className="flex items-start md:items-center justify-between gap-4 flex-wrap">
       <div className="min-w-0">
         <div className="flex items-baseline gap-3 flex-wrap mb-1">
-          <h1 className="font-bold text-[20px] tracking-tight leading-tight m-0">
+          <h1 className="font-bold text-[22px] md:text-[26px] tracking-tight leading-tight m-0">
             {competitor.name}
           </h1>
           {competitor.category && (
@@ -1701,15 +1711,65 @@ const REVIEW_SOURCE_OPTIONS: {
   },
 ];
 
-function ReviewEnableState({
-  onEnable,
+// A review-source pill carrying the plan it's included in. Sources the current
+// plan doesn't cover are locked (lock icon) and route to the paywall on click
+// instead of being selectable — keeping the picker in sync with the server gate.
+function ReviewSourceButton({
+  option,
+  plan,
+  selected,
+  onSelect,
+  onLocked,
 }: {
-  onEnable?: (source: SourceType, url?: string) => Promise<void>;
+  option: { value: ReviewSourceType; label: string };
+  plan: Plan;
+  selected: boolean;
+  onSelect: () => void;
+  onLocked: () => void;
 }) {
-  const [source, setSource] = useState<ReviewSourceType>("g2_reviews");
+  const locked = !planIncludesSource(plan, option.value);
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant={selected ? "default" : "secondary"}
+      onClick={() => (locked ? onLocked() : onSelect())}
+      className="h-7 gap-1.5 text-[11px]"
+    >
+      {locked && <Lock size={10} className="opacity-70" />}
+      {option.label}
+      <span
+        className={cn(
+          "rounded px-1 py-px text-[8px] font-mono uppercase tracking-wider",
+          selected ? "bg-primary-foreground/15" : "bg-muted-foreground/15 text-muted-foreground",
+        )}
+      >
+        {PLAN_LABELS[minPlanForSource(option.value)]}
+      </span>
+    </Button>
+  );
+}
+
+function ReviewEnableState({
+  plan,
+  onEnable,
+  onLockedSource,
+}: {
+  plan: Plan;
+  onEnable?: (source: SourceType, url?: string) => Promise<void>;
+  onLockedSource?: (source: ReviewSourceType) => void;
+}) {
+  // Default to a source the plan actually covers so the form is usable out of the
+  // gate; falls back to the first option when the plan covers none — then the form
+  // is locked and the primary CTA routes to the paywall.
+  const firstAllowed =
+    REVIEW_SOURCE_OPTIONS.find((o) => planIncludesSource(plan, o.value))?.value ??
+    REVIEW_SOURCE_OPTIONS[0]!.value;
+  const [source, setSource] = useState<ReviewSourceType>(firstAllowed);
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const active = REVIEW_SOURCE_OPTIONS.find((o) => o.value === source)!;
+  const sourceLocked = !planIncludesSource(plan, source);
   const trimmed = url.trim();
   const valid = trimmed.length > 0 && validateReviewUrl(source, trimmed).ok;
 
@@ -1725,15 +1785,14 @@ function ReviewEnableState({
 
       <div className="flex gap-1.5">
         {REVIEW_SOURCE_OPTIONS.map((o) => (
-          <Button
+          <ReviewSourceButton
             key={o.value}
-            type="button"
-            size="sm"
-            variant={o.value === source ? "default" : "secondary"}
-            onClick={() => setSource(o.value)}
-          >
-            {o.label}
-          </Button>
+            option={o}
+            plan={plan}
+            selected={o.value === source}
+            onSelect={() => setSource(o.value)}
+            onLocked={() => onLockedSource?.(o.value)}
+          />
         ))}
       </div>
 
@@ -1744,16 +1803,20 @@ function ReviewEnableState({
           placeholder={active.placeholder}
           inputMode="url"
           autoComplete="off"
+          disabled={sourceLocked}
         />
         <p className="text-[11px] text-muted-foreground">
-          Must be a {active.host} URL. Requires a plan that includes this source.
+          {sourceLocked
+            ? `${active.label} reviews are included in the ${PLAN_LABELS[minPlanForSource(active.value)]} plan.`
+            : `Must be a ${active.host} URL.`}
         </p>
       </div>
 
       <Button
         size="sm"
-        disabled={!valid || busy || !onEnable}
+        disabled={!onEnable || (!sourceLocked && (!valid || busy))}
         onClick={async () => {
+          if (sourceLocked) return onLockedSource?.(source);
           if (!onEnable) return;
           setBusy(true);
           try {
@@ -1766,6 +1829,10 @@ function ReviewEnableState({
         {busy ? (
           <>
             <Loader2 size={12} className="animate-spin" /> Enabling…
+          </>
+        ) : sourceLocked ? (
+          <>
+            <Lock size={12} /> Upgrade to enable
           </>
         ) : (
           <>
@@ -1786,9 +1853,13 @@ function ReviewsTab({
   onEdit,
   onSwitch,
   refreshTick,
+  plan,
+  onLockedSource,
 }: {
   competitorId: string;
   refreshTick?: number;
+  plan: Plan;
+  onLockedSource?: (source: ReviewSourceType) => void;
   onEdit: (id: string, patch: { url?: string; frequency?: MonitorFrequency }) => Promise<void>;
   onSwitch: (oldMonitorId: string, source: SourceType, url: string) => Promise<void>;
 } & MonitorSourceProps) {
@@ -1825,7 +1896,7 @@ function ReviewsTab({
 
   // No review monitor yet → collect the review-page URL before enabling.
   if (!reviewMonitor) {
-    return <ReviewEnableState onEnable={onEnable} />;
+    return <ReviewEnableState plan={plan} onEnable={onEnable} onLockedSource={onLockedSource} />;
   }
 
   const hasData = reviews.recent.length > 0 || scores.length > 0;
@@ -1903,9 +1974,11 @@ function ReviewsTab({
       <ReviewSourceDialog
         open={managing}
         monitor={reviewMonitor}
+        plan={plan}
         onClose={() => setManaging(false)}
         onEdit={onEdit}
         onSwitch={onSwitch}
+        onLockedSource={onLockedSource}
       />
     </div>
   );
@@ -1941,15 +2014,19 @@ function ReviewSourceToolbar({ monitor, onManage }: { monitor: Monitor; onManage
 function ReviewSourceDialog({
   open,
   monitor,
+  plan,
   onClose,
   onEdit,
   onSwitch,
+  onLockedSource,
 }: {
   open: boolean;
   monitor: Monitor;
+  plan: Plan;
   onClose: () => void;
   onEdit: (id: string, patch: { url?: string; frequency?: MonitorFrequency }) => Promise<void>;
   onSwitch: (oldMonitorId: string, source: SourceType, url: string) => Promise<void>;
+  onLockedSource?: (source: ReviewSourceType) => void;
 }) {
   const currentSource = monitor.sourceType as ReviewSourceType;
   const currentUrl = monitor.config?.url ?? "";
@@ -2009,16 +2086,17 @@ function ReviewSourceDialog({
             </p>
             <div className="flex gap-1.5">
               {REVIEW_SOURCE_OPTIONS.map((o) => (
-                <Button
+                <ReviewSourceButton
                   key={o.value}
-                  type="button"
-                  size="sm"
-                  variant={o.value === source ? "default" : "secondary"}
-                  onClick={() => setSource(o.value)}
-                  className="h-7 text-[11px]"
-                >
-                  {o.label}
-                </Button>
+                  option={o}
+                  plan={plan}
+                  selected={o.value === source}
+                  onSelect={() => setSource(o.value)}
+                  onLocked={() => {
+                    onClose();
+                    onLockedSource?.(o.value);
+                  }}
+                />
               ))}
             </div>
           </div>

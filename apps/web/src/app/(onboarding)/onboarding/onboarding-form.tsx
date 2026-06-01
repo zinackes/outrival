@@ -73,31 +73,31 @@ const STAGE_META: Record<
 > = {
   idea: {
     icon: Lightbulb,
-    title: "J'ai une idée à explorer",
-    description: "Décrivez votre concept en quelques mots",
+    title: "I have an idea to explore",
+    description: "Describe your concept in a few words",
   },
   document: {
     icon: FileText,
-    title: "J'ai un pitch ou un brief",
-    description: "Uploadez votre pitch deck ou business plan",
+    title: "I have a pitch or a brief",
+    description: "Upload your pitch deck or business plan",
   },
   developing: {
     icon: GitBranch,
-    title: "Je suis en train de le développer",
-    description: "Connectez votre repo GitHub public",
+    title: "I'm building it",
+    description: "Connect your public GitHub repo",
   },
   live: {
     icon: Globe,
-    title: "Mon produit est en ligne",
-    description: "Donnez-nous votre URL",
+    title: "My product is live",
+    description: "Give us your URL",
   },
 };
 
 const LOADING_MESSAGE: Record<ProjectStage, string> = {
-  idea: "Analyse de votre concept…",
-  document: "Lecture de votre document…",
-  developing: "Lecture de votre repo…",
-  live: "Analyse de votre site…",
+  idea: "Analyzing your concept…",
+  document: "Reading your document…",
+  developing: "Reading your repo…",
+  live: "Analyzing your site…",
 };
 
 const CATEGORY_SUGGESTIONS = [
@@ -275,7 +275,7 @@ export function OnboardingForm({
 
   function handleAnalyzeError(e: unknown, prefill: string) {
     if (fallbackFromError(e)) {
-      toast.error("L'analyse automatique n'a pas abouti.");
+      toast.error("Automatic analysis didn't work out.");
       setFallbackOffer({ prefill });
       return;
     }
@@ -301,7 +301,7 @@ export function OnboardingForm({
         onProfileReady(res.profile, null);
       } else if (stage === "document") {
         if (!file) {
-          setError("Sélectionnez un fichier.");
+          setError("Select a file.");
           return;
         }
         const res = await api.analyzeDocument(file);
@@ -374,7 +374,7 @@ export function OnboardingForm({
       (k) => !profile[k].trim(),
     );
     if (empty.length > 0) {
-      setError("Tous les champs sont requis. Complétez ceux qui sont vides.");
+      setError("All fields are required. Fill in the empty ones.");
       return;
     }
     try {
@@ -441,11 +441,11 @@ export function OnboardingForm({
   function addManualCompetitor() {
     const trimmed = manualUrl.trim();
     if (!isValidUrl(trimmed)) {
-      setError("URL invalide.");
+      setError("Invalid URL.");
       return;
     }
     if (competitors.some((c) => c.url === trimmed)) {
-      setError("Ce concurrent est déjà dans la liste.");
+      setError("This competitor is already in the list.");
       return;
     }
     const current = competitors.filter((c) => c.selected).length;
@@ -458,7 +458,7 @@ export function OnboardingForm({
       {
         url: trimmed,
         title: u.hostname.replace(/^www\./, ""),
-        snippet: "Ajouté manuellement.",
+        snippet: "Added manually.",
         overlapScore: 0,
         reason: "Manual",
         selected: true,
@@ -471,7 +471,7 @@ export function OnboardingForm({
 
   function handleCompetitorsConfirm() {
     if (selectedCount === 0) {
-      setError("Sélectionnez au moins un concurrent.");
+      setError("Select at least one competitor.");
       return;
     }
     goTo("monitoring");
@@ -491,12 +491,12 @@ export function OnboardingForm({
 
   async function handleComplete() {
     if (sources.length === 0) {
-      setError("Sélectionnez au moins une source à surveiller.");
+      setError("Select at least one source to monitor.");
       return;
     }
     const selected = competitors.filter((c) => c.selected);
     if (selected.length === 0) {
-      setError("Aucun concurrent sélectionné. Revenez à l'étape précédente.");
+      setError("No competitor selected. Go back to the previous step.");
       return;
     }
     // Discovered-but-untracked → saved as "new" candidates; trashed → "dismissed".
@@ -623,7 +623,7 @@ export function OnboardingForm({
           )}
 
           {screen === "done" && (
-            <DoneStep totalCompetitors={selectedCount} onDashboard={() => router.push("/dashboard")} />
+            <DoneStep totalCompetitors={selectedCount} plan={plan} onDashboard={() => router.push("/dashboard")} />
           )}
         </div>
       </main>
@@ -656,10 +656,10 @@ function Header({
           {showControls && (
             <>
               <Button variant="ghost" size="sm" onClick={onRestart}>
-                <RotateCcw size={14} /> Recommencer
+                <RotateCcw size={14} /> Restart
               </Button>
               <Button variant="ghost" size="sm" onClick={() => void onSkip()}>
-                <LogOut size={14} /> Quitter pour l'instant
+                <LogOut size={14} /> Leave for now
               </Button>
             </>
           )}
@@ -677,10 +677,10 @@ function ProgressBar({ step }: { step: number }) {
     <div>
       <div className="flex items-center justify-between mb-2">
         <span className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
-          Configuration en moins de 3 minutes
+          Set up in under 3 minutes
         </span>
         <span className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
-          Étape {step} sur 5
+          Step {step} of 5
         </span>
       </div>
       <div className="flex gap-1.5">
@@ -723,13 +723,13 @@ function FallbackOffer({ onAccept, onDismiss }: { onAccept: () => void; onDismis
     <div className="mt-6 flex items-start gap-3 rounded-md border border-border-strong bg-surface-2/60 px-4 py-3">
       <Sparkles size={16} className="mt-0.5 text-foreground shrink-0" />
       <div className="flex-1">
-        <p className="text-sm text-foreground">Décrivez plutôt votre produit en quelques mots.</p>
+        <p className="text-sm text-foreground">Describe your product in a few words instead.</p>
         <div className="mt-2 flex gap-2">
           <Button size="sm" onClick={onAccept}>
-            Continuer en mode description
+            Continue in description mode
           </Button>
           <Button size="sm" variant="ghost" onClick={onDismiss}>
-            Réessayer
+            Try again
           </Button>
         </div>
       </div>
@@ -760,7 +760,7 @@ function FooterNav({
         <div>
           {onBack && (
             <Button type="button" variant="ghost" onClick={onBack} disabled={busy}>
-              <ArrowLeft size={14} /> Modifier
+              <ArrowLeft size={14} /> Edit
             </Button>
           )}
         </div>
@@ -799,10 +799,10 @@ function StageChooser({
   return (
     <div>
       <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight font-[var(--font-display)]">
-        Où en êtes-vous avec votre projet ?
+        Where are you with your project?
       </h1>
       <p className="text-sm text-muted-foreground mt-3">
-        Chaque point de départ ouvre une façon adaptée de nous décrire votre produit.
+        Each starting point opens a way to describe your product that fits.
       </p>
       <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-3">
         {(Object.keys(STAGE_META) as ProjectStage[]).map((s) => {
@@ -895,23 +895,23 @@ function ModeForm({
           <>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="description" className="text-sm">
-                Décrivez votre concept
+                Describe your concept
               </Label>
               <Textarea
                 id="description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Ex: un outil de veille concurrentielle pour les startups B2B SaaS…"
+                placeholder="E.g. a competitive-intelligence tool for B2B SaaS startups…"
                 rows={4}
                 maxLength={600}
                 disabled={busy}
                 autoFocus
               />
-              <p className="text-xs text-muted-foreground">~ 300 caractères suffisent.</p>
+              <p className="text-xs text-muted-foreground">~ 300 characters is enough.</p>
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="category" className="text-sm">
-                Catégorie
+                Category
               </Label>
               <Input
                 id="category"
@@ -929,13 +929,13 @@ function ModeForm({
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="inspirations" className="text-sm">
-                Vous vous inspirez de… <span className="text-muted-foreground">(optionnel)</span>
+                Inspired by… <span className="text-muted-foreground">(optional)</span>
               </Label>
               <Input
                 id="inspirations"
                 value={inspirations}
                 onChange={(e) => setInspirations(e.target.value)}
-                placeholder="Linear, Crayon (jusqu'à 3, séparés par des virgules)"
+                placeholder="Linear, Crayon (up to 3, comma-separated)"
                 disabled={busy}
               />
             </div>
@@ -959,7 +959,7 @@ function ModeForm({
             >
               <Upload size={20} className="text-muted-foreground" />
               <span className="text-sm text-foreground">
-                {file ? file.name : "Déposez ou sélectionnez un fichier"}
+                {file ? file.name : "Drop or select a file"}
               </span>
               <span className="text-xs text-muted-foreground">PDF, DOCX, MD, TXT — max 10MB</span>
               <input
@@ -974,8 +974,8 @@ function ModeForm({
             <div className="flex items-start gap-2 rounded-md border border-positive/30 bg-positive/10 px-4 py-3">
               <Lock size={15} className="mt-0.5 text-positive shrink-0" />
               <p className="text-xs text-foreground leading-relaxed">
-                Votre document est analysé en mémoire et ne sera <strong>jamais stocké</strong>.
-                Seul le profil produit extrait sera sauvegardé.
+                Your document is analyzed in memory and will <strong>never be stored</strong>.
+                Only the extracted product profile is saved.
               </p>
             </div>
           </>
@@ -984,7 +984,7 @@ function ModeForm({
         {stage === "developing" && (
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="repo-url" className="text-sm">
-              URL du repo GitHub
+              GitHub repo URL
             </Label>
             <Input
               id="repo-url"
@@ -996,7 +996,7 @@ function ModeForm({
               autoFocus
             />
             <p className="text-xs text-muted-foreground">
-              Le repo doit être public. Vous pourrez connecter vos repos privés plus tard.
+              The repo must be public. You'll be able to connect private repos later.
             </p>
           </div>
         )}
@@ -1004,7 +1004,7 @@ function ModeForm({
         {stage === "live" && (
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="product-url" className="text-sm">
-              URL de votre produit
+              Your product URL
             </Label>
             <Input
               id="product-url"
@@ -1020,11 +1020,11 @@ function ModeForm({
                 <AlertCircle size={14} className="mt-0.5 text-foreground shrink-0" />
                 <div className="flex-1">
                   <p className="text-xs text-foreground">
-                    On dirait une URL temporaire. Voulez-vous plutôt utiliser le mode « En
-                    développement » avec votre repo ?
+                    This looks like a temporary URL. Would you rather use the “In
+                    development” mode with your repo?
                   </p>
                   <Button size="sm" variant="ghost" className="mt-1" onClick={onSwitchToRepo}>
-                    Changer de mode
+                    Switch mode
                   </Button>
                 </div>
               </div>
@@ -1038,9 +1038,9 @@ function ModeForm({
         onSubmit={onAnalyze}
         busy={busy}
         busyLabel={LOADING_MESSAGE[stage]}
-        primaryLabel="Analyser"
+        primaryLabel="Analyze"
         primaryDisabled={!canSubmit}
-        hint={busy ? "~ 3 à 15 secondes" : undefined}
+        hint={busy ? "~ 3 to 15 seconds" : undefined}
       />
     </div>
   );
@@ -1054,15 +1054,15 @@ const PROFILE_FIELDS: Array<{
   placeholder: string;
   multiline?: boolean;
 }> = [
-  { key: "category", label: "Catégorie", placeholder: "ex: B2B SaaS CRM" },
-  { key: "audience", label: "Audience cible", placeholder: "ex: Équipes sales de 10–200 personnes" },
+  { key: "category", label: "Category", placeholder: "e.g. B2B SaaS CRM" },
+  { key: "audience", label: "Target audience", placeholder: "e.g. Sales teams of 10–200 people" },
   {
     key: "valueProp",
-    label: "Proposition de valeur",
-    placeholder: "Ce qui rend votre produit unique",
+    label: "Value proposition",
+    placeholder: "What makes your product unique",
     multiline: true,
   },
-  { key: "pricingModel", label: "Modèle de prix", placeholder: "ex: Freemium + Pro à 20$/mois" },
+  { key: "pricingModel", label: "Pricing model", placeholder: "e.g. Freemium + Pro at $20/mo" },
 ];
 
 function ProfileForm({
@@ -1081,14 +1081,14 @@ function ProfileForm({
   return (
     <div>
       <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight font-[var(--font-display)]">
-        Avons-nous bien compris votre produit ?
+        Did we get your product right?
       </h1>
       <p className="text-sm text-muted-foreground mt-3">
-        Corrigez ce qui est inexact — cela améliore directement la pertinence des concurrents.
+        Fix anything that's off — it directly improves competitor relevance.
       </p>
 
       <div className="flex items-center gap-2 mt-6 mb-3 text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
-        <Sparkles size={12} /> Extrait par l'IA
+        <Sparkles size={12} /> Extracted by AI
       </div>
 
       <Card className="p-6 sm:p-8 flex flex-col gap-5">
@@ -1123,9 +1123,9 @@ function ProfileForm({
         onBack={onBack}
         onSubmit={onConfirm}
         busy={busy}
-        busyLabel="Recherche de concurrents…"
-        primaryLabel="C'est correct"
-        hint={busy ? "~ 15 à 30 secondes" : undefined}
+        busyLabel="Finding competitors…"
+        primaryLabel="Looks right"
+        hint={busy ? "~ 15 to 30 seconds" : undefined}
       />
     </div>
   );
@@ -1172,20 +1172,20 @@ function DiscoverStep({
   return (
     <div>
       <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight font-[var(--font-display)]">
-        Vos concurrents
+        Your competitors
       </h1>
       <p className="text-sm text-muted-foreground mt-3">
-        Cochez ceux qui comptent vraiment — vous pourrez en ajouter ou retirer plus tard.
+        Check the ones that really matter — you can add or remove more later.
       </p>
 
       {noStrongMatch && (
         <div className="mt-6 flex items-start gap-3 rounded-md border border-border-strong bg-surface-2/60 px-4 py-3">
           <AlertCircle size={16} className="mt-0.5 text-foreground shrink-0" />
           <div className="flex-1">
-            <p className="text-sm text-foreground">On n'a pas trouvé de concurrents évidents.</p>
+            <p className="text-sm text-foreground">We didn't find any obvious competitors.</p>
             <div className="mt-2 flex gap-2">
               <Button size="sm" variant="outline" onClick={onRefine}>
-                Affiner mon profil
+                Refine my profile
               </Button>
             </div>
           </div>
@@ -1194,21 +1194,21 @@ function DiscoverStep({
 
       <div className="flex items-center justify-between mt-6 mb-3 gap-3 flex-wrap">
         <p className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
-          {busy ? "Recherche…" : `${competitors.length} trouvés · ${limitLabel} sélectionnés`}
+          {busy ? "Searching…" : `${competitors.length} found · ${limitLabel} selected`}
         </p>
         <p className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
-          Plan {PLAN_LABELS[plan]}
+          {PLAN_LABELS[plan]} plan
         </p>
       </div>
 
       <Card className="p-2 sm:p-3 max-h-[420px] overflow-auto">
         {busy ? (
           <div className="px-4 py-12 flex items-center justify-center gap-2 text-sm text-muted-foreground">
-            <Loader2 size={16} className="animate-spin" /> Analyse de votre marché…
+            <Loader2 size={16} className="animate-spin" /> Analyzing your market…
           </div>
         ) : competitors.length === 0 ? (
           <div className="px-4 py-12 text-center text-sm text-muted-foreground">
-            Aucun concurrent suggéré. Ajoutez-en manuellement ci-dessous.
+            No competitors suggested. Add some manually below.
           </div>
         ) : (
           <ul className="flex flex-col">
@@ -1227,7 +1227,7 @@ function DiscoverStep({
 
       <div className="mt-6">
         <Label htmlFor="manual-url" className="text-sm mb-2 block">
-          Ajouter un concurrent manuellement
+          Add a competitor manually
         </Label>
         <div className="flex gap-2">
           <Input
@@ -1235,7 +1235,7 @@ function DiscoverStep({
             type="url"
             value={manualUrl}
             onChange={(e) => setManualUrl(e.target.value)}
-            placeholder="https://autre-concurrent.com"
+            placeholder="https://another-competitor.com"
             className="flex-1"
             onKeyDown={(e) => {
               if (e.key === "Enter") {
@@ -1245,23 +1245,23 @@ function DiscoverStep({
             }}
           />
           <Button type="button" variant="outline" onClick={addManualCompetitor}>
-            <Plus size={14} /> Ajouter
+            <Plus size={14} /> Add
           </Button>
         </div>
       </div>
 
       {competitors.length > 0 && (
         <p className="mt-4 text-xs text-muted-foreground leading-relaxed">
-          Les concurrents découverts mais non sélectionnés restent disponibles dans{" "}
-          <span className="text-foreground">Détections</span> — vous pourrez les suivre plus tard
-          (par exemple après un changement de plan).
+          Competitors we found but you didn't select stay available in{" "}
+          <span className="text-foreground">Detections</span> — you can track them later
+          (for example after a plan change).
         </p>
       )}
 
       <FooterNav
         onBack={onBack}
         onSubmit={onConfirm}
-        primaryLabel="Continuer"
+        primaryLabel="Continue"
         primaryDisabled={selectedCount === 0}
       />
     </div>
@@ -1383,24 +1383,24 @@ function MonitoringStep({
   return (
     <div>
       <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight font-[var(--font-display)]">
-        Préférences de monitoring
+        Monitoring preferences
       </h1>
       <p className="text-sm text-muted-foreground mt-3">
-        On a pré-sélectionné des réglages adaptés. Validez ou personnalisez.
+        We've pre-selected sensible settings. Confirm or customize.
       </p>
 
       <Card className="mt-6 p-6 sm:p-8 flex flex-col gap-4">
         <ul className="text-sm text-foreground flex flex-col gap-1.5">
           <li>
-            <span className="text-muted-foreground">Concurrents suivis : </span>
+            <span className="text-muted-foreground">Tracked competitors: </span>
             {selectedCount}
           </li>
           <li>
-            <span className="text-muted-foreground">Fréquence : </span>
-            {frequency === "daily" ? "Quotidien" : "Hebdomadaire"}
+            <span className="text-muted-foreground">Frequency: </span>
+            {frequency === "daily" ? "Daily" : "Weekly"}
           </li>
           <li>
-            <span className="text-muted-foreground">Sources : </span>
+            <span className="text-muted-foreground">Sources: </span>
             {sources.length > 0 ? sources.map((s) => SOURCE_DEF[s].label).join(" · ") : "—"}
           </li>
         </ul>
@@ -1411,14 +1411,14 @@ function MonitoringStep({
           className="self-start inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
           <ChevronDown size={13} className={cn("transition-transform", advanced && "rotate-180")} />
-          Personnaliser les préférences avancées
+          Customize advanced preferences
         </button>
 
         {advanced && (
           <div className="flex flex-col gap-6 pt-2 border-t border-border">
             <section>
               <p className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground mb-3">
-                Fréquence · Plan {PLAN_LABELS[plan]}
+                Frequency · {PLAN_LABELS[plan]} plan
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {(["daily", "weekly"] as const).map((f) => (
@@ -1427,9 +1427,9 @@ function MonitoringStep({
                     active={frequency === f}
                     locked={!allowedFrequencies.includes(f)}
                     onClick={() => setFrequency(f)}
-                    title={f === "daily" ? "Quotidien" : "Hebdomadaire"}
+                    title={f === "daily" ? "Daily" : "Weekly"}
                     description={
-                      f === "daily" ? "Scrape une fois par jour. Recommandé." : "Une fois par semaine."
+                      f === "daily" ? "Scrapes once a day. Recommended." : "Once a week."
                     }
                     variant="radio"
                   />
@@ -1438,7 +1438,7 @@ function MonitoringStep({
             </section>
             <section>
               <p className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground mb-3">
-                Sources à surveiller
+                Sources to monitor
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {(["homepage", "pricing", "blog"] as const).map((s) => (
@@ -1461,8 +1461,8 @@ function MonitoringStep({
         onBack={onBack}
         onSubmit={onConfirm}
         busy={busy}
-        busyLabel="Configuration…"
-        primaryLabel="Lancer le monitoring"
+        busyLabel="Setting up…"
+        primaryLabel="Start monitoring"
       />
     </div>
   );
@@ -1530,12 +1530,36 @@ function SegmentChoice({
 
 function DoneStep({
   totalCompetitors,
+  plan,
   onDashboard,
 }: {
   totalCompetitors: number;
+  plan: Plan;
   onDashboard: () => void;
 }) {
   const [analyzed, setAnalyzed] = useState(0);
+
+  // Only recommend steps the current plan can actually act on — recommending
+  // gated features right after sign-up is frustrating, not helpful.
+  const limits = PLAN_LIMITS[plan];
+  const nextSteps: string[] = [];
+  if (limits.allowedChannels.includes("slack")) {
+    nextSteps.push(
+      limits.features.realtimeAlerts
+        ? "Set up your Slack webhook for real-time alerts"
+        : "Set up your Slack webhook for alerts",
+    );
+  }
+  if (limits.features.multiUser) {
+    nextSteps.push("Invite a teammate");
+  }
+  if (limits.allowedFrequencies.length > 1) {
+    nextSteps.push("Customize your monitoring frequency");
+  }
+  nextSteps.push("Review your weekly digest settings");
+  if (nextSteps.length < 2) {
+    nextSteps.push("Browse your signal feed as it fills up");
+  }
 
   useEffect(() => {
     let active = true;
@@ -1574,46 +1598,40 @@ function DoneStep({
         <Check size={22} className="text-positive" />
       </div>
       <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight mt-5 font-[var(--font-display)]">
-        Configuration terminée
+        Setup complete
       </h1>
       <p className="text-sm text-muted-foreground mt-3 max-w-md">
-        Vos concurrents sont en cours d'analyse. Le premier snapshot est lancé — vous verrez les
-        premiers signaux apparaître dans le feed dans quelques minutes.
+        Your competitors are being analyzed. The first snapshot is running — you'll see the
+        first signals appear in the feed within a few minutes.
       </p>
 
       <div className="mt-6 inline-flex items-center gap-2 rounded-md border border-border bg-surface-2/60 px-4 py-2">
         {!allDone && <Loader2 size={14} className="animate-spin text-muted-foreground" />}
         {allDone && <Check size={14} className="text-positive" />}
         <span className="text-sm text-foreground">
-          {analyzed}/{totalCompetitors} concurrents analysés
+          {analyzed}/{totalCompetitors} competitors analyzed
         </span>
       </div>
 
       <p className="text-xs text-muted-foreground mt-6">
-        Votre premier digest hebdomadaire vous sera envoyé lundi prochain.
+        Your first weekly digest will be sent next Monday.
       </p>
 
       <Card className="mt-8 w-full max-w-md p-5 text-left">
         <p className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground mb-3">
-          Prochaines étapes recommandées
+          Recommended next steps
         </p>
         <ul className="flex flex-col gap-2 text-sm text-foreground">
-          <li className="flex items-center gap-2">
-            <span className="w-4 h-4 rounded-sm border border-border-strong" /> Configurer votre
-            webhook Slack pour les alertes temps-réel
-          </li>
-          <li className="flex items-center gap-2">
-            <span className="w-4 h-4 rounded-sm border border-border-strong" /> Inviter un coéquipier
-          </li>
-          <li className="flex items-center gap-2">
-            <span className="w-4 h-4 rounded-sm border border-border-strong" /> Personnaliser votre
-            fréquence de monitoring
-          </li>
+          {nextSteps.map((step) => (
+            <li key={step} className="flex items-center gap-2">
+              <span className="w-4 h-4 rounded-sm border border-border-strong" /> {step}
+            </li>
+          ))}
         </ul>
       </Card>
 
       <Button className="mt-8" onClick={onDashboard}>
-        Aller au dashboard <ArrowRight size={14} />
+        Go to dashboard <ArrowRight size={14} />
       </Button>
     </div>
   );

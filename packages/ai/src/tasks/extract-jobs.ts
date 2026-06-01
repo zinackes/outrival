@@ -22,16 +22,16 @@ ${careersPageText.slice(0, 10000)}
 </careers_page>
 
 <task>
-Extrais toutes les offres d'emploi listées sur cette page carrières.
-- "title" : intitulé exact (ex: "Senior Software Engineer")
-- "department" : catégorie standard ("Engineering", "Sales", "Marketing",
+Extract every job posting listed on this careers page.
+- "title": exact title (e.g. "Senior Software Engineer")
+- "department": standard category ("Engineering", "Sales", "Marketing",
   "Product", "Design", "Customer Success", "Operations", "Finance",
-  "People", "Data", "Other"). Mappe les variantes.
-- "location" : ville/pays/Remote tel qu'affiché, ou null
-- Ignore les liens hors offre (témoignages, valeurs, etc.)
-- Si aucune offre, renvoie un tableau "jobs" vide
+  "People", "Data", "Other"). Map variants to these.
+- "location": city/country/Remote as displayed, or null
+- Ignore non-posting links (testimonials, values, etc.)
+- If there are no postings, return an empty "jobs" array
 
-Réponds UNIQUEMENT avec un objet JSON valide, sans markdown ni texte autour.
+Reply ONLY with a valid JSON object, no markdown and no surrounding text.
 </task>
 
 <format>

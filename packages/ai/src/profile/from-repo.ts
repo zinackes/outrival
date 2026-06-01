@@ -50,18 +50,19 @@ ${artifacts.docsExcerpt ? `\ndocs:\n${artifacts.docsExcerpt.slice(0, 2000)}` : "
 </repo>
 
 <task>
-Ce dépôt GitHub correspond à un produit en cours de développement. Déduis son profil.
-Sers-toi du README comme source primaire de la promesse produit, des dependencies pour
-inférer la stack et le type de produit, et de la structure pour deviner les features.
-Réponds UNIQUEMENT avec un objet JSON valide, sans markdown ni texte autour.
+This GitHub repo is a product under development. Infer its profile.
+Use the README as the primary source of the product promise, the dependencies to
+infer the stack and product type, and the structure to guess the features.
+Reply ONLY with a valid JSON object, no markdown and no surrounding text.
+Write all text values in English.
 </task>
 
 <format>
 {
-  "category": "ex: SaaS B2B / DevTools",
-  "audience": "ex: Développeurs backend",
-  "valueProp": "ex: Automatisation de X en une phrase",
-  "pricingModel": "ex: Open-source + cloud payant"
+  "category": "e.g. B2B SaaS / DevTools",
+  "audience": "e.g. Backend developers",
+  "valueProp": "e.g. Automating X, in one sentence",
+  "pricingModel": "e.g. Open-source + paid cloud"
 }
 </format>`;
 

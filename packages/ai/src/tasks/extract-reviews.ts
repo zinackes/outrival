@@ -19,16 +19,16 @@ ${reviewsPageText.slice(0, 10000)}
 </reviews_page>
 
 <task>
-Cette page contient des avis utilisateurs (G2, Capterra, App Store...).
-Extrais une synthèse structurée :
-- "average_score" : note moyenne sur 5 (ex: 4.6), null si introuvable
-- "review_count" : nombre total d'avis, null si introuvable
-- "sentiment_score" : ton ressenti global de 0 (très négatif) à 100 (très positif)
-- "top_praises" : 3-5 points forts récurrents, en français, en phrases courtes
-- "top_complaints" : 3-5 reproches récurrents, en français, en phrases courtes
-- Ne pas inventer si l'info manque — laisser un tableau vide / null
+This page contains user reviews (G2, Capterra, App Store...).
+Extract a structured summary:
+- "average_score": average score out of 5 (e.g. 4.6), null if not found
+- "review_count": total number of reviews, null if not found
+- "sentiment_score": overall perceived tone from 0 (very negative) to 100 (very positive)
+- "top_praises": 3-5 recurring strengths, in English, as short phrases
+- "top_complaints": 3-5 recurring complaints, in English, as short phrases
+- Do not make things up if the info is missing — leave an empty array / null
 
-Réponds UNIQUEMENT avec un objet JSON valide, sans markdown ni texte autour.
+Reply ONLY with a valid JSON object, no markdown and no surrounding text.
 </task>
 
 <format>
@@ -36,8 +36,8 @@ Réponds UNIQUEMENT avec un objet JSON valide, sans markdown ni texte autour.
   "average_score": 4.5,
   "review_count": 1234,
   "sentiment_score": 78,
-  "top_praises": ["Interface intuitive", "Support réactif"],
-  "top_complaints": ["Prix élevé", "Manque d'intégrations"]
+  "top_praises": ["Intuitive interface", "Responsive support"],
+  "top_complaints": ["High price", "Lacks integrations"]
 }
 </format>`;
 

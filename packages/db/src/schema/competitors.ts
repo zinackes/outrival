@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, real, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, real, jsonb, boolean } from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
 
 export const competitors = pgTable("competitors", {
@@ -12,6 +12,15 @@ export const competitors = pgTable("competitors", {
   metadata: jsonb("metadata"),
   aiSummary: text("ai_summary"),
   aiSummaryUpdatedAt: timestamp("ai_summary_updated_at"),
+  // Pricing taxonomy (patch-11): latest detected state of the pricing page.
+  // pricingStatus is one of PricingStatus from @outrival/shared.
+  pricingStatus: text("pricing_status"),
+  pricingObservedRegion: text("pricing_observed_region"),
+  pricingPromotional: boolean("pricing_promotional").notNull().default(false),
+  pricingDemoUrl: text("pricing_demo_url"),
+  pricingNote: text("pricing_note"),
+  // When the user fills pricing in manually, scrapes must not overwrite it.
+  pricingManualOverride: boolean("pricing_manual_override").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   deletedAt: timestamp("deleted_at"),

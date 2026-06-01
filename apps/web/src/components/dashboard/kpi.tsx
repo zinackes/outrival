@@ -5,6 +5,7 @@ type DeltaKind = "pos" | "neg" | "neutral";
 interface KpiProps {
   label: string;
   value: string | number;
+  valueClassName?: string;
   suffix?: string;
   delta?: string;
   deltaKind?: DeltaKind;
@@ -24,6 +25,7 @@ const DELTA_COLOR: Record<DeltaKind, string> = {
 export function Kpi({
   label,
   value,
+  valueClassName,
   suffix,
   delta,
   deltaKind = "pos",
@@ -47,7 +49,9 @@ export function Kpi({
         )}
       </div>
       <div className="font-bold text-[30px] tracking-tighter leading-none flex items-baseline gap-2">
-        <span className="tabular-nums font-mono">{value}</span>
+        <span className={`tabular-nums font-mono ${valueClassName ?? ""}`}>
+          {value}
+        </span>
         {suffix && (
           <span className="text-[13px] font-sans font-medium text-muted-foreground tracking-normal">
             {suffix}

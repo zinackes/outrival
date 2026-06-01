@@ -23,15 +23,15 @@ ${pricingPageText.slice(0, 8000)}
 </pricing_page>
 
 <task>
-Extrais les plans tarifaires structurés de cette page pricing.
-- "plan_name" : nom exact du plan (ex: Free, Starter, Pro, Enterprise)
-- "price" : montant numérique (0 pour gratuit, retire la devise)
-- "currency" : code ISO ("USD", "EUR", "GBP"...) — par défaut "USD" si ambigu
-- "billing_period" : "monthly" | "yearly" | "one_time" | "custom" (Enterprise sur devis => "custom")
-- Ignore les add-ons et les options ; ne garde que les plans principaux
-- Si aucun prix n'est trouvable, renvoie un tableau "plans" vide
+Extract the structured pricing plans from this pricing page.
+- "plan_name": exact plan name (e.g. Free, Starter, Pro, Enterprise)
+- "price": numeric amount (0 for free, strip the currency symbol)
+- "currency": ISO code ("USD", "EUR", "GBP"...) — default to "USD" if ambiguous
+- "billing_period": "monthly" | "yearly" | "one_time" | "custom" (Enterprise quote-based => "custom")
+- Ignore add-ons and options; keep only the main plans
+- If no price can be found, return an empty "plans" array
 
-Réponds UNIQUEMENT avec un objet JSON valide, sans markdown ni texte autour.
+Reply ONLY with a valid JSON object, no markdown and no surrounding text.
 </task>
 
 <format>

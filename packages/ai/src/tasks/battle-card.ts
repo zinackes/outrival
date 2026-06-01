@@ -38,31 +38,31 @@ export async function generateBattleCard(
         .slice(0, 8)
         .map((s) => `- [${s.severity}] ${s.category} — ${s.insight}`)
         .join("\n")
-    : "Aucun signal récent.";
+    : "No recent signals.";
 
   const praisesBlock = input.reviewPraises.length
     ? input.reviewPraises.slice(0, 8).map((p) => `- ${p}`).join("\n")
-    : "n/c";
+    : "n/a";
 
   const complaintsBlock = input.reviewComplaints.length
     ? input.reviewComplaints.slice(0, 8).map((p) => `- ${p}`).join("\n")
-    : "n/c";
+    : "n/a";
 
   const prompt = `<my_product>
-Catégorie : ${input.myProduct.category}
-Proposition de valeur : ${input.myProduct.valueProp}
+Category: ${input.myProduct.category}
+Value proposition: ${input.myProduct.valueProp}
 </my_product>
 
 <competitor>
-Nom : ${input.competitorName}
-Résumé : ${input.competitorSummary ?? "inconnu"}
+Name: ${input.competitorName}
+Summary: ${input.competitorSummary ?? "unknown"}
 </competitor>
 
 <reviews>
-Ce que leurs clients adorent :
+What their customers love:
 ${praisesBlock}
 
-Ce dont leurs clients se plaignent :
+What their customers complain about:
 ${complaintsBlock}
 </reviews>
 
@@ -71,17 +71,17 @@ ${signalsBlock}
 </recent_signals>
 
 <task>
-Génère une battle card commerciale pour aider à gagner face à ce concurrent.
-Sois concret, factuel, actionnable. Phrases courtes, en français.
-- their_strengths : leurs vrais avantages (max 5)
-- our_strengths : nos atouts face à eux (max 5)
-- their_weaknesses : leurs vrais points faibles (max 5)
-- common_objections : objections qu'un prospect pourrait soulever pour les choisir
-  eux + ta réponse de vente (max 5)
-- when_we_win : profils / contextes où on l'emporte (max 4)
-- when_we_lose : profils / contextes où on perd (max 4)
+Generate a sales battle card to help win against this competitor.
+Be concrete, factual, actionable. Short sentences, in English.
+- their_strengths: their real advantages (max 5)
+- our_strengths: our edge against them (max 5)
+- their_weaknesses: their real weak points (max 5)
+- common_objections: objections a prospect might raise to pick them
+  + your sales response (max 5)
+- when_we_win: profiles / contexts where we win (max 4)
+- when_we_lose: profiles / contexts where we lose (max 4)
 
-Réponds UNIQUEMENT avec un objet JSON valide, sans markdown ni texte autour.
+Reply ONLY with a valid JSON object, no markdown and no surrounding text.
 </task>
 
 <format>

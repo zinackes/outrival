@@ -26,3 +26,5 @@ export { summarizeSource, SourceSummarySchema } from "./tasks/summarize-source";
 export type { SourceSummary, SourceSummaryInput } from "./tasks/summarize-source";
 export { generateBattleCard, BattleCardSchema } from "./tasks/battle-card";
 export type { BattleCardContent, BattleCardInput } from "./tasks/battle-card";
+export { evaluateSignificance } from "./filters/significance";
+export type { DiffInput, SignificanceResult } from "./filters/significance";

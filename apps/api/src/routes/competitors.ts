@@ -7,6 +7,7 @@ import {
   monitors,
   changes,
   signals,
+  snapshots,
   jobPostings,
   reviews,
 } from "@outrival/db";
@@ -241,6 +242,10 @@ competitorsRouter.get("/:id", async (c) => {
   const competitor = await assertOwnedCompetitor(id, orgId);
   if (!competitor) return c.json({ error: "Not found" }, 404);
 
+  // Org plan ships with the detail payload so the UI can gate per-source actions
+  // (e.g. lock review sources the plan doesn't include) without a second roundtrip.
+  const plan = await getOrgPlan(orgId);
+
   const monitorList = await db.query.monitors.findMany({
     where: eq(monitors.competitorId, competitor.id),
   });
@@ -255,10 +260,14 @@ competitorsRouter.get("/:id", async (c) => {
           detectedAt: changes.detectedAt,
           monitorId: changes.monitorId,
           sourceType: monitors.sourceType,
-          monitorUrl: sql<string | null>`(${monitors.config}->>'url')`,
+          // resolved_url is the exact page the scraper landed on (it discovers
+          // /pricing, /tarifs… from the homepage), so it's the right "View page"
+          // target. config.url is only set when the user pinned a URL manually.
+          monitorUrl: sql<string | null>`COALESCE(${snapshots.resolvedUrl}, ${monitors.config}->>'url')`,
         })
         .from(changes)
         .innerJoin(monitors, eq(monitors.id, changes.monitorId))
+        .leftJoin(snapshots, eq(snapshots.id, changes.snapshotAfterId))
         .where(inArray(changes.monitorId, monitorIds))
         .orderBy(desc(changes.detectedAt))
         .limit(20)
@@ -276,16 +285,17 @@ competitorsRouter.get("/:id", async (c) => {
       createdAt: signals.createdAt,
       changeId: signals.changeId,
       sourceType: monitors.sourceType,
-      monitorUrl: sql<string | null>`(${monitors.config}->>'url')`,
+      monitorUrl: sql<string | null>`COALESCE(${snapshots.resolvedUrl}, ${monitors.config}->>'url')`,
     })
     .from(signals)
     .leftJoin(changes, eq(changes.id, signals.changeId))
     .leftJoin(monitors, eq(monitors.id, changes.monitorId))
+    .leftJoin(snapshots, eq(snapshots.id, changes.snapshotAfterId))
     .where(eq(signals.competitorId, competitor.id))
     .orderBy(desc(signals.createdAt))
     .limit(20);
 
-  return c.json({ competitor, monitors: monitorList, recentChanges, recentSignals });
+  return c.json({ competitor, monitors: monitorList, recentChanges, recentSignals, plan });
 });
 
 competitorsRouter.get("/:id/signals", async (c) => {

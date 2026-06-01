@@ -452,3 +452,89 @@ Working tree avait 102 fichiers WIP non commités au démarrage → décision ut
 Aucun. Phase 5 livrable end-to-end. Reste creds ClickHouse à fournir pour
 runtime + URLs G2/Capterra par concurrent (monitor.config) à configurer
 côté UI (Phase 6).
+
+---
+
+# Patch 11 — Détection avancée du pricing (taxonomie 6 statuts)
+
+## Session du 2026-06-01
+
+## Objectif
+Remplacer le binaire "prix trouvé / pas trouvé" par une taxonomie à 6 statuts
+(public · public_partial · gated_demo · gated_signup · dynamic · unknown),
+détecter les promos pour ne JAMAIS générer de signal de changement de prix
+quand promotional=true, et générer un signal "pricing repositionné" sur
+transition de statut. Validé sur fixtures HTML réelles (Linear, Notion,
+Crayon, Segment), pas seulement en théorie.
+
+## Phase en cours
+Post-MVP — Patch 11 (s'appuie sur le pricing construit en Phase 5)
+
+## Réalité du code vs hypothèses du patch (divergences à acter)
+Le patch décrit des chemins/structure supposés de Phase 5 qui ne correspondent
+pas au code réel. Adaptations :
+
+1. Scraper réel = `packages/scrapers/src/pricing/pricing.scraper.ts`
+   (pas `scrapers/pricing.ts`). Il ne fait QUE fetch le HTML (Playwright).
+2. L'extraction des tiers n'est PAS dans le scraper : elle vit dans le job
+   worker `extract-pricing.job.ts` + l'IA `packages/ai/extractPricing()`,
+   qui écrit dans ClickHouse `pricing_history`. → On NE met pas `tiers` dans
+   le scraper ; les tiers restent extraits par l'IA dans le worker.
+3. Aucune donnée pricing sur `competitor` aujourd'hui → les 6 champs de statut
+   vont sur la table `competitors` (Postgres), conformément à l'option du patch.
+4. Pas de `competitor-pricing-card.tsx` : le `PricingTab` est inline dans
+   `app/dashboard/competitors/[id]/page.tsx` (~l.1439). On y ajoute une carte
+   statut + override manuel.
+5. Aucun test runner dans le repo (pas de vitest). Bun 1.3.13 dispo →
+   `bun test` zero-config dans le package scrapers + fixtures HTML réelles.
+6. cheerio n'est pas dép directe → `pnpm add cheerio --filter @outrival/scrapers`.
+7. `PricingStatus` (type) + `detectPricingRepositioning()` → `@outrival/shared`
+   (importable scrapers/workers/web), PAS packages/ai. Les détecteurs HTML
+   (signals, determine-status, discover-url) restent dans scrapers.
+8. `signals.changeId` est notNull + FK → tout signal s'accroche à une `change`.
+   Donc pour un changement sur monitor pricing, scrape-monitor route vers UN
+   seul résultat : promo→aucun signal · transition→signal repositionné ·
+   sinon→classify-change générique. (Évite la race de double-signal sur le
+   même changeId.)
+
+## Étapes (1 commit par étape)
+- [ ] Étape 1 — Schéma : 6 champs pricing sur `competitors` (pricingStatus,
+      pricingObservedRegion, pricingPromotional, pricingDemoUrl, pricingNote,
+      pricingManualOverride) + ClickHouse pricing_history (status, promotional,
+      observed_region) via CREATE étendu + ALTER ... ADD COLUMN IF NOT EXISTS.
+      db:push + ch:setup. → `feat(db): add pricing status taxonomy fields`
+- [ ] Étape 2 — `@outrival/shared` : type `PricingStatus` + `detectPricingRepositioning(prev, current)`.
+      → `feat(shared): pricing status type + repositioning detector`
+- [ ] Étape 3 — scrapers/pricing/discover-url.ts : cascade direct(HEAD)→nav→footer→homepage_section
+      (cheerio). + dép cheerio. → `feat(scrapers): multi-strategy pricing URL discovery`
+- [ ] Étape 4 — scrapers/pricing/signals.ts : detectPricingSignals (regex FR+EN,
+      price/gated/calculator/signup/promo) + infra bun test + fixtures réelles.
+      → `feat(scrapers): pricing signal detectors`
+- [ ] Étape 5 — scrapers/pricing/determine-status.ts : determineStatus (6 statuts)
+      + matrice de tests. → `feat(scrapers): pricing status determination logic`
+- [ ] Étape 6 — Brancher la découverte dans pricing.scraper.ts (signature
+      `scrape()` inchangée) + helper pur `analyzePricingHtml(html)` exporté pour
+      le worker. → `feat(scrapers): refactor pricing scraper around status taxonomy`
+- [ ] Étape 7 — Workers : scrape-monitor (pricing) calcule analyse sur result.html,
+      stocke les champs competitor (sauf manualOverride), route promo/transition/
+      générique, passe status+promo à extract-pricing (qui tague les lignes CH).
+      → `feat(workers): integrate pricing taxonomy and skip promotional signals`
+- [ ] Étape 8 — Signal repositionné : generate-signal (ou trigger dédié) reçoit
+      le contexte prev→current pour formuler insight/so_what.
+      → `feat(ai): detect pricing status repositioning signals`
+- [ ] Étape 9 — UI : carte statut dans PricingTab (6 variantes) + modal override
+      manuel + route API PATCH pricing + affichage région.
+      → `feat(web): adapt competitor pricing card to status taxonomy`
+- [ ] Étape 10 — Vérif finale : build+typecheck+ch:setup, fixtures passent,
+      findings.md + task_plan.md à jour.
+
+## Décisions prises
+- Détection lancée dans scrape-monitor (sur result.html en mémoire) car le
+  promo-gate ET le routing de transition doivent décider AVANT classify-change.
+  Les tiers restent extraits par l'IA dans extract-pricing.
+- Fixtures = HTML rendu réel capturé via le scraper Playwright existant
+  (sites JS-heavy → un curl statique renverrait un shell sans prix → faux unknown).
+
+## Blockers
+- Capture de fixtures = lancer Playwright (4 pages). MEMORY: full `pnpm dev`
+  OOM la VM WSL 7.4GB → capture en isolé (4 fetch), pas tout le stack.

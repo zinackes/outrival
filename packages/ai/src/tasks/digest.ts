@@ -4,7 +4,7 @@ import { AI_CONFIG } from "../config";
 import { safeParseJson } from "../lib/parse";
 
 export const DigestSchema = z.object({
-  temperature: z.enum(["calme", "modérée", "agitée"]),
+  temperature: z.enum(["low", "moderate", "high"]),
   tldr: z.array(z.string()).max(3),
   sections: z.array(
     z.object({
@@ -35,16 +35,17 @@ ${JSON.stringify(signals, null, 2)}
 </signals>
 
 <task>
-Génère un digest hebdomadaire de veille concurrentielle à partir de ces signaux.
-- Évalue la température globale (calme/modérée/agitée)
-- TL;DR : 3 points clés maximum
-- Groupe les signaux : critical/high → action_required, medium → watch, low → fyi
-Réponds UNIQUEMENT en JSON valide, sans markdown.
+Generate a weekly competitive-intelligence digest from these signals.
+- Assess the overall temperature (low/moderate/high)
+- TL;DR: 3 key points maximum
+- Group the signals: critical/high → action_required, medium → watch, low → fyi
+- Write all text values in English.
+Reply ONLY with valid JSON, no markdown.
 </task>
 
 <format>
 {
-  "temperature": "calme|modérée|agitée",
+  "temperature": "low|moderate|high",
   "tldr": ["point 1", "point 2", "point 3"],
   "sections": [
     { "urgency": "action_required|watch|fyi", "competitor": "...",

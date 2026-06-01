@@ -29,26 +29,26 @@ export function ConsentBanner() {
   return (
     <div
       role="dialog"
-      aria-label="Consentement analytics"
+      aria-label="Analytics consent"
       className="fixed inset-x-4 bottom-4 z-50 mx-auto max-w-2xl rounded-md border border-[var(--border-strong)] bg-[var(--surface)] p-4 text-sm shadow-lg sm:inset-x-auto sm:right-4 sm:left-auto"
     >
       <p className="text-[var(--foreground)]">
-        Nous utilisons des analytics pour améliorer Outrival. Vous pouvez
-        accepter ou refuser. Détails dans notre{" "}
+        We use analytics to improve Outrival. You can accept or decline.
+        Details in our{" "}
         <Link
           href="/privacy"
           className="underline underline-offset-2 hover:text-[var(--accent)]"
         >
-          politique de confidentialité
+          privacy policy
         </Link>
         .
       </p>
       <div className="mt-3 flex gap-2 justify-end">
         <Button variant="ghost" size="sm" onClick={refuse}>
-          Refuser
+          Decline
         </Button>
         <Button size="sm" onClick={accept}>
-          Accepter
+          Accept
         </Button>
       </div>
     </div>

@@ -1,7 +1,7 @@
 export const SOURCE_TYPES = [
   "homepage", "pricing", "blog", "changelog", "jobs",
   "g2_reviews", "capterra_reviews", "appstore_reviews",
-  "linkedin", "twitter",
+  "linkedin", "twitter", "github_repo",
 ] as const;
 
 export type SourceType = typeof SOURCE_TYPES[number];

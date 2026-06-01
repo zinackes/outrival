@@ -25,7 +25,9 @@ export const competitors = pgTable("competitors", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   orgId: text("org_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
-  url: text("url").notNull(),
+  // Nullable: a "self" product at the idea/document/developing stage has no live
+  // site to point at yet (patch-13). Real competitors always carry a URL.
+  url: text("url"),
   description: text("description"),
   overlapScore: real("overlap_score"),
   category: text("category"),

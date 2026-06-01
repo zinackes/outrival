@@ -249,6 +249,10 @@ export default function MyProductPage() {
   const [actingId, setActingId] = useState<string | null>(null);
   const [rediscover, setRediscover] = useState<{ reason: string } | null>(null);
   const [discovering, setDiscovering] = useState(false);
+  const [siteUrl, setSiteUrl] = useState("");
+  const [enabling, setEnabling] = useState(false);
+  const [repoUrl, setRepoUrl] = useState("");
+  const [trackingRepo, setTrackingRepo] = useState(false);
 
   async function load() {
     try {
@@ -272,6 +276,38 @@ export default function MyProductPage() {
     await api.updateMyProduct(body);
     await load();
     toast.success("Profile updated");
+  }
+
+  async function enableMonitoring() {
+    const url = siteUrl.trim();
+    if (!url) return;
+    setEnabling(true);
+    try {
+      await api.setMyProductSite(url);
+      toast.success("Monitoring enabled", { description: "Your site will be scanned shortly." });
+      setSiteUrl("");
+      await load();
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't enable monitoring" });
+    } finally {
+      setEnabling(false);
+    }
+  }
+
+  async function trackRepo() {
+    const url = repoUrl.trim();
+    if (!url) return;
+    setTrackingRepo(true);
+    try {
+      await api.setMyProductRepo(url);
+      toast.success("Repo tracked", { description: "Its activity will be scanned shortly." });
+      setRepoUrl("");
+      await load();
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't track repo" });
+    } finally {
+      setTrackingRepo(false);
+    }
   }
 
   async function rescan() {
@@ -361,31 +397,39 @@ export default function MyProductPage() {
         title="My product"
         sub={
           <span className="inline-flex items-center gap-2">
-            <a
-              href={p.url}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 hover:text-foreground"
-            >
-              {p.name} <ExternalLink className="size-3" />
-            </a>
+            {p.url || p.repoUrl ? (
+              <a
+                href={(p.url ?? p.repoUrl)!}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 hover:text-foreground"
+              >
+                {p.name} <ExternalLink className="size-3" />
+              </a>
+            ) : (
+              <span>{p.name}</span>
+            )}
             <span className="text-[var(--muted-2)]">·</span>
             <span>
-              {p.lastScanAt
-                ? `Last scan ${formatDistanceToNow(new Date(p.lastScanAt), { addSuffix: true })}`
-                : "Not scanned yet"}
+              {!p.url && !p.repoUrl
+                ? "Not live yet"
+                : p.lastScanAt
+                  ? `Last scan ${formatDistanceToNow(new Date(p.lastScanAt), { addSuffix: true })}`
+                  : "Not scanned yet"}
             </span>
           </span>
         }
         actions={
-          <Button onClick={rescan} disabled={rescanning} variant="outline" size="sm">
-            {rescanning ? (
-              <Loader2 className="size-3.5 animate-spin" />
-            ) : (
-              <RefreshCw className="size-3.5" />
-            )}
-            Re-scan
-          </Button>
+          p.url || p.repoUrl ? (
+            <Button onClick={rescan} disabled={rescanning} variant="outline" size="sm">
+              {rescanning ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="size-3.5" />
+              )}
+              Re-scan
+            </Button>
+          ) : undefined
         }
       />
 
@@ -441,6 +485,76 @@ export default function MyProductPage() {
                 </div>
               </div>
             ))}
+          </div>
+        </Card>
+      )}
+
+      {!p.url && (
+        <Card className="p-4 mb-6 border-dashed">
+          <h2 className="text-[14px] font-semibold mb-1">Not live yet</h2>
+          <p className="text-[13px] text-muted-foreground mb-3 max-w-prose">
+            Your product profile below is editable by hand. Add a public site URL to monitor
+            pricing, features and changes — or track its GitHub repo while you build.
+          </p>
+          <form
+            className="flex flex-col gap-2 sm:flex-row sm:items-center"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void enableMonitoring();
+            }}
+          >
+            <Input
+              type="url"
+              value={siteUrl}
+              onChange={(e) => setSiteUrl(e.target.value)}
+              placeholder="https://yourproduct.com"
+              className="sm:max-w-sm"
+            />
+            <Button type="submit" disabled={enabling || !siteUrl.trim()}>
+              {enabling ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+              Enable monitoring
+            </Button>
+          </form>
+
+          <div className="mt-3 pt-3 border-t border-border">
+            {p.repoUrl ? (
+              <p className="text-[13px] text-muted-foreground">
+                Tracking repo:{" "}
+                <a
+                  href={p.repoUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 hover:text-foreground underline"
+                >
+                  {p.repoUrl.replace(/^https?:\/\//, "")}
+                  <ExternalLink className="size-3" />
+                </a>
+              </p>
+            ) : (
+              <form
+                className="flex flex-col gap-2 sm:flex-row sm:items-center"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void trackRepo();
+                }}
+              >
+                <Input
+                  type="url"
+                  value={repoUrl}
+                  onChange={(e) => setRepoUrl(e.target.value)}
+                  placeholder="https://github.com/you/your-repo"
+                  className="sm:max-w-sm"
+                />
+                <Button type="submit" variant="outline" disabled={trackingRepo || !repoUrl.trim()}>
+                  {trackingRepo ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="size-3.5" />
+                  )}
+                  Track repo
+                </Button>
+              </form>
+            )}
           </div>
         </Card>
       )}

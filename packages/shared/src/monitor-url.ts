@@ -40,7 +40,7 @@ function isIpLiteral(hostname: string): boolean {
 export function validateMonitorUrl(
   sourceType: SourceType,
   raw: string,
-  competitorUrl: string,
+  competitorUrl: string | null,
 ): MonitorUrlValidation {
   if (isReviewSource(sourceType)) {
     return validateReviewUrl(sourceType, raw);

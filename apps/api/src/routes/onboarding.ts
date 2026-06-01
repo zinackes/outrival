@@ -49,30 +49,38 @@ onboardingRouter.use("*", authMiddleware);
  * itself lives in pure helpers (packages/ai + lib/github + lib/extract-document), so it
  * can be reused later from a public, session-less endpoint.
  */
-async function storeProfile(orgId: string, profile: ProductProfile, stage: ProjectStage) {
+async function storeProfile(
+  orgId: string,
+  profile: ProductProfile,
+  stage: ProjectStage,
+  repoUrl?: string | null,
+) {
   await db
     .update(organizations)
     .set({
       productProfile: profile,
       projectStage: stage,
       onboardingStep: "profile",
+      ...(repoUrl !== undefined && { productRepoUrl: repoUrl }),
       updatedAt: new Date(),
     })
     .where(eq(organizations.id, orgId));
 }
 
 /**
- * Patch-12: ensure the org has a "self" competitor (its own product) when it has a
- * product URL to monitor. No-op for idea/document onboarding (no URL) and idempotent
- * (one self per org). Seeds the editable selfProfile from the onboarding productProfile
- * (auto-detected), creates homepage/pricing/jobs monitors at the USER_PRODUCT_RESCAN_DAYS
- * cadence, and force-triggers the first scrape so the Phase 5 enrichment runs immediately.
+ * Patch-13: ensure the org has a "self" competitor (its own product) at EVERY stage.
+ * idea/document/developing have no live URL yet — the self is still created so the user
+ * can edit and track its profile manually, just without site monitors. live (a product
+ * URL) additionally seeds homepage/pricing/jobs monitors at the USER_PRODUCT_RESCAN_DAYS
+ * cadence and force-triggers the first scrape so the Phase 5 enrichment runs immediately.
+ * Idempotent (one self per org). Seeds the editable selfProfile from the onboarding
+ * productProfile (auto-detected). Monitors are activated later via POST /my-product/site.
  */
 async function createSelfCompetitor(orgId: string) {
   const org = await db.query.organizations.findFirst({
     where: eq(organizations.id, orgId),
   });
-  if (!org?.productUrl) return;
+  if (!org) return;
 
   const existingSelf = await db.query.competitors.findFirst({
     where: and(eq(competitors.orgId, orgId), eq(competitors.type, "self")),
@@ -104,22 +112,33 @@ async function createSelfCompetitor(orgId: string) {
     .returning();
   if (!selfCompetitor) return;
 
+  // Seed the monitors matching what we can actually watch: a live site
+  // (homepage/pricing/jobs) and/or a GitHub repo (developing stage). idea/document
+  // have neither, so the self stays manual-only — monitors are added later via
+  // POST /my-product/site or /my-product/repo.
   const rescanDays = Number(process.env.USER_PRODUCT_RESCAN_DAYS ?? 14) || 14;
   const nextRunAt = new Date(Date.now() + rescanDays * 24 * 60 * 60 * 1000);
-  // Reviews are skipped for the self-competitor (too early-stage, and G2/Capterra
-  // cost a proxy call) — we simply never create review monitors for it.
-  const selfMonitorRows = await db
-    .insert(monitors)
-    .values(
-      (["homepage", "pricing", "jobs"] as const).map((sourceType) => ({
-        competitorId: selfCompetitor.id,
-        sourceType,
-        frequency: "weekly" as const,
-        nextRunAt,
-      })),
-    )
-    .returning();
 
+  const monitorRows: Array<typeof monitors.$inferInsert> = [];
+  if (org.productUrl) {
+    // Reviews are skipped for the self-competitor (too early-stage, and G2/Capterra
+    // cost a proxy call) — we simply never create review monitors for it.
+    for (const sourceType of ["homepage", "pricing", "jobs"] as const) {
+      monitorRows.push({ competitorId: selfCompetitor.id, sourceType, frequency: "weekly", nextRunAt });
+    }
+  }
+  if (org.productRepoUrl) {
+    monitorRows.push({
+      competitorId: selfCompetitor.id,
+      sourceType: "github_repo",
+      frequency: "weekly",
+      nextRunAt,
+      config: { url: org.productRepoUrl },
+    });
+  }
+  if (monitorRows.length === 0) return;
+
+  const selfMonitorRows = await db.insert(monitors).values(monitorRows).returning();
   for (const m of selfMonitorRows) {
     try {
       await tasks.trigger("scrape-monitor", { monitorId: m.id, force: true });
@@ -291,7 +310,7 @@ onboardingRouter.post("/analyze-repo", async (c) => {
     return c.json({ error: "Could not derive a product profile", fallback: "description" }, 422);
   }
 
-  await storeProfile(orgId, profile, "developing");
+  await storeProfile(orgId, profile, "developing", parsed.data.repoUrl);
   return c.json({ profile });
 });
 

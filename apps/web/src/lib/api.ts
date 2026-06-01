@@ -473,7 +473,8 @@ export interface MyProductJob {
 export interface MyProduct {
   id: string;
   name: string;
-  url: string;
+  url: string | null;
+  repoUrl: string | null;
   lastScanAt: string | null;
   aiSummary: string | null;
   profile: SelfProfile;
@@ -765,6 +766,16 @@ export const api = {
     }),
   rescanMyProduct: () =>
     request<{ ok: true; monitors: number }>("/api/my-product/rescan", { method: "POST" }),
+  setMyProductSite: (url: string) =>
+    request<{ ok: true }>("/api/my-product/site", {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    }),
+  setMyProductRepo: (url: string) =>
+    request<{ ok: true }>("/api/my-product/repo", {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    }),
   listMyProductChanges: (status?: SelfChangeStatus) =>
     request<{ changes: SelfProductChange[] }>(
       `/api/my-product/changes${status ? `?status=${status}` : ""}`,

@@ -80,6 +80,11 @@ export const scrapeMonitorJob = task({
         ? String((monitor.config as { url: unknown }).url)
         : null;
     const scrapeUrl = configUrl ?? competitor.url;
+    if (!scrapeUrl) {
+      throw new AbortTaskRunError(
+        `Monitor ${monitor.id} has no URL to scrape (competitor ${competitor.id} has none)`,
+      );
+    }
 
     const lastSnapshot = await db.query.snapshots.findFirst({
       where: eq(snapshots.monitorId, monitor.id),

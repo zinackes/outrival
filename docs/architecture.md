@@ -141,7 +141,7 @@ plan              free | starter | pro | business
 billing_period    monthly | yearly
 source_type       homepage | pricing | blog | changelog | jobs |
                   g2_reviews | capterra_reviews | appstore_reviews |
-                  linkedin | twitter
+                  linkedin | twitter | github_repo
 frequency         realtime | daily | weekly
 signal_severity   low | medium | high | critical
 signal_category   pricing | product | hiring | reviews | content | funding
@@ -209,6 +209,25 @@ Un competitor n'a pas automatiquement un monitor par source. Trois chemins de cr
   plan (sinon `plan_locked_source` → paywall), idempotent (1 monitor par
   `(competitor, sourceType)`), fréquence par défaut `weekly` pour les reviews /
   `daily` sinon, clampée à une fréquence autorisée par le plan.
+
+### Self-product (« My Product ») — patch-13
+
+Le competitor `type = "self"` (le produit de l'utilisateur) est créé à
+l'onboarding complete **quel que soit le stade**, plus seulement quand il y a une
+URL live. `competitors.url` est donc **nullable** (un produit idée/document/dev n'a
+pas de site). Les monitors dépendent de ce qu'on peut réellement observer :
+
+- `live` (URL site) → `homepage` + `pricing` + `jobs` (reviews jamais, cf. patch-12).
+- `developing` (repo GitHub, `organizations.product_repo_url`) → source `github_repo`,
+  l'URL repo vivant dans `monitor.config.url`. Le « scraper » lit l'API REST GitHub
+  (description + dernière release + commits récents) et synthétise un document passé
+  au pipeline générique snapshot→diff→change→classify→signal (pas de Crawlee).
+- `idea` / `document` → aucun monitor : le self existe pour l'édition **manuelle** du
+  profil uniquement.
+
+Activation a posteriori (passage en prod, ou ajout d'un repo) sans re-onboarder :
+`POST /api/my-product/site` (pose l'URL + sème les monitors site) et
+`POST /api/my-product/repo` (pose/maj le repo + monitor `github_repo`).
 
 Côté web, l'état vide d'un onglet (Hiring, Reviews…) sans monitor affiche un bouton
 **"Enable … monitoring"** qui appelle cet endpoint puis déclenche le premier scrape.

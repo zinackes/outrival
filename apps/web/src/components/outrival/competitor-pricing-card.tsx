@@ -18,6 +18,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const STATUS_META: Record<PricingStatus, { label: string; blurb: string }> = {
   public: { label: "Public pricing", blurb: "Prices are fully visible." },
@@ -168,18 +175,18 @@ function PricingOverrideDialog({
         <div className="flex flex-col gap-4 py-2">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="pricing-status">Status</Label>
-            <select
-              id="pricing-status"
-              value={status}
-              onChange={(e) => setStatus(e.target.value as PricingStatus)}
-              className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
-            >
-              {STATUS_OPTIONS.map((s) => (
-                <option key={s} value={s}>
-                  {STATUS_META[s].label}
-                </option>
-              ))}
-            </select>
+            <Select value={status} onValueChange={(v) => setStatus(v as PricingStatus)}>
+              <SelectTrigger id="pricing-status" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {STATUS_OPTIONS.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {STATUS_META[s].label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="pricing-note">Note</Label>

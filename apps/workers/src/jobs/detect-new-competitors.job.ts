@@ -19,7 +19,8 @@ const CANDIDATES_PER_ORG = 20;
 const WEEKLY_MIN_MS = 6 * 24 * 60 * 60 * 1000;
 const MONTHLY_MIN_MS = 27 * 24 * 60 * 60 * 1000;
 
-function normalizeHostname(url: string): string | null {
+function normalizeHostname(url: string | null | undefined): string | null {
+  if (!url) return null;
   try {
     const h = new URL(url).hostname.toLowerCase();
     return h.startsWith("www.") ? h.slice(4) : h;

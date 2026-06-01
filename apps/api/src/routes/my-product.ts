@@ -5,6 +5,7 @@ import { tasks } from "@trigger.dev/sdk/v3";
 import {
   competitors,
   monitors,
+  organizations,
   jobPostings,
   selfProductChanges,
   type SelfProfile,
@@ -65,6 +66,12 @@ myProductRouter.get("/", async (c) => {
     .map((m) => m.lastRunAt?.getTime() ?? 0)
     .reduce((a, b) => Math.max(a, b), 0);
 
+  const repoMonitor = selfMonitors.find((m) => m.sourceType === "github_repo");
+  const repoUrl =
+    repoMonitor?.config && typeof repoMonitor.config === "object" && "url" in repoMonitor.config
+      ? String((repoMonitor.config as { url: unknown }).url)
+      : null;
+
   // Latest pricing batch from ClickHouse (best-effort: [] if CH is down/unset).
   const pricingRows = await chQuery<{
     plan_name: string;
@@ -96,6 +103,7 @@ myProductRouter.get("/", async (c) => {
       id: self.id,
       name: self.name,
       url: self.url,
+      repoUrl,
       lastScanAt: lastScanAt > 0 ? new Date(lastScanAt).toISOString() : null,
       aiSummary: self.aiSummary,
       profile: (self.selfProfile ?? {}) as SelfProfile,
@@ -152,6 +160,123 @@ myProductRouter.patch("/", async (c) => {
 
   await db.update(competitors).set(update).where(eq(competitors.id, self.id));
   return c.json({ ok: true, profile });
+});
+
+// POST /api/my-product/site — go live: attach a product URL to the self-competitor
+// and seed its site monitors. Used when an idea/document/developing product ships and
+// starts having a real site to monitor. Idempotent: only creates missing source monitors.
+const SetSiteSchema = z.object({ url: z.string().url() });
+
+myProductRouter.post("/site", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = SetSiteSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
+  }
+
+  const self = await getSelf(orgId);
+  if (!self) return c.json({ error: "no_self_product" }, 404);
+
+  const url = parsed.data.url;
+  // Persist on both the self-competitor (the monitored entity) and the org
+  // (org.productUrl feeds competitor discovery).
+  await db.update(competitors).set({ url, updatedAt: new Date() }).where(eq(competitors.id, self.id));
+  await db
+    .update(organizations)
+    .set({ productUrl: url, updatedAt: new Date() })
+    .where(eq(organizations.id, orgId));
+
+  // Seed the site monitors that don't exist yet, then scrape immediately.
+  const existing = await db.query.monitors.findMany({
+    where: eq(monitors.competitorId, self.id),
+  });
+  const have = new Set(existing.map((m) => m.sourceType));
+  const wanted = (["homepage", "pricing", "jobs"] as const).filter((s) => !have.has(s));
+  if (wanted.length > 0) {
+    const rescanDays = Number(process.env.USER_PRODUCT_RESCAN_DAYS ?? 14) || 14;
+    const nextRunAt = new Date(Date.now() + rescanDays * 24 * 60 * 60 * 1000);
+    const rows = await db
+      .insert(monitors)
+      .values(
+        wanted.map((sourceType) => ({
+          competitorId: self.id,
+          sourceType,
+          frequency: "weekly" as const,
+          nextRunAt,
+        })),
+      )
+      .returning();
+    for (const m of rows) {
+      try {
+        await tasks.trigger("scrape-monitor", { monitorId: m.id, force: true });
+      } catch (e) {
+        console.error("Failed to trigger self scrape", { monitorId: m.id, error: String(e) });
+      }
+    }
+  }
+
+  return c.json({ ok: true });
+});
+
+// POST /api/my-product/repo — attach (or update) a GitHub repo to monitor. Used at
+// the developing stage when there's no live site yet. Idempotent: reuses the existing
+// github_repo monitor if present, otherwise creates one.
+const SetRepoSchema = z.object({ url: z.string().url() });
+
+myProductRouter.post("/repo", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = SetRepoSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
+  }
+
+  const self = await getSelf(orgId);
+  if (!self) return c.json({ error: "no_self_product" }, 404);
+
+  const url = parsed.data.url;
+  await db
+    .update(organizations)
+    .set({ productRepoUrl: url, updatedAt: new Date() })
+    .where(eq(organizations.id, orgId));
+
+  const existing = await db.query.monitors.findMany({
+    where: eq(monitors.competitorId, self.id),
+  });
+  const repoMonitor = existing.find((m) => m.sourceType === "github_repo");
+  let monitorId: string;
+  if (repoMonitor) {
+    await db.update(monitors).set({ config: { url } }).where(eq(monitors.id, repoMonitor.id));
+    monitorId = repoMonitor.id;
+  } else {
+    const rescanDays = Number(process.env.USER_PRODUCT_RESCAN_DAYS ?? 14) || 14;
+    const nextRunAt = new Date(Date.now() + rescanDays * 24 * 60 * 60 * 1000);
+    const [row] = await db
+      .insert(monitors)
+      .values({
+        competitorId: self.id,
+        sourceType: "github_repo",
+        frequency: "weekly",
+        nextRunAt,
+        config: { url },
+      })
+      .returning();
+    if (!row) return c.json({ error: "failed_to_create_monitor" }, 500);
+    monitorId = row.id;
+  }
+
+  try {
+    await tasks.trigger("scrape-monitor", { monitorId, force: true });
+  } catch (e) {
+    console.error("Failed to trigger self repo scrape", { monitorId, error: String(e) });
+  }
+
+  return c.json({ ok: true });
 });
 
 // POST /api/my-product/rescan — force a fresh scrape of every self monitor now.

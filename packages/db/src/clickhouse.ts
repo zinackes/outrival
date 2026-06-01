@@ -11,7 +11,7 @@ export function getClickhouse(): ClickHouseClient {
     client = createClient({
       url,
       password: process.env.CLICKHOUSE_PASSWORD,
-      database: process.env.CLICKHOUSE_DATABASE ?? "default",
+      database: process.env.CLICKHOUSE_DATABASE ?? "outrival",
       // ClickHouse Cloud idles to zero — a cold query can hang ~30s. Bound it so
       // a slow wake-up surfaces as a thrown error (caught → [] by chQuery)
       // instead of an indefinite hang on the request handler.

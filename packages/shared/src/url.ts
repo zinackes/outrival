@@ -23,7 +23,8 @@ const MULTI_PART_TLDS = new Set([
   "or.jp",
 ]);
 
-export function extractHostname(input: string): string | null {
+export function extractHostname(input: string | null | undefined): string | null {
+  if (!input) return null;
   try {
     const u = input.includes("://") ? new URL(input) : new URL(`https://${input}`);
     return u.hostname.toLowerCase().replace(/\.$/, "") || null;
@@ -32,7 +33,7 @@ export function extractHostname(input: string): string | null {
   }
 }
 
-export function normalizeHostname(input: string): string | null {
+export function normalizeHostname(input: string | null | undefined): string | null {
   const h = extractHostname(input);
   if (!h) return null;
   const parts = h.split(".").filter(Boolean);
@@ -48,7 +49,7 @@ export function normalizeHostname(input: string): string | null {
  * Registrable brand label, TLD-stripped — `amazon` for amazon.com, amazon.fr,
  * www.amazon.de or amazon.co.uk. Used to detect the same company across TLDs.
  */
-export function extractBrand(input: string): string | null {
+export function extractBrand(input: string | null | undefined): string | null {
   const host = normalizeHostname(input);
   if (!host) return null;
   const label = host.split(".")[0];

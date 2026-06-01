@@ -4,7 +4,7 @@ import { competitors } from "./competitors";
 export const sourceTypeEnum = pgEnum("source_type", [
   "homepage", "pricing", "blog", "changelog", "jobs",
   "g2_reviews", "capterra_reviews", "appstore_reviews",
-  "linkedin", "twitter",
+  "linkedin", "twitter", "github_repo",
 ]);
 
 export const frequencyEnum = pgEnum("frequency", ["realtime", "daily", "weekly"]);

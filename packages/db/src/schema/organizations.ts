@@ -17,6 +17,9 @@ export const organizations = pgTable("organizations", {
   digestEnabled: boolean("digest_enabled").notNull().default(true),
   alertsEnabled: boolean("alerts_enabled").notNull().default(true),
   productUrl: text("product_url"),
+  // GitHub repo of the user's product (developing stage) — monitored via the
+  // github_repo source when there's no live site yet (patch-13).
+  productRepoUrl: text("product_repo_url"),
   productProfile: jsonb("product_profile").$type<{
     category: string;
     audience: string;

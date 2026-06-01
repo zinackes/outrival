@@ -46,6 +46,7 @@ const SOURCE_LABELS: Record<SourceType, string> = {
   appstore_reviews: "App Store reviews",
   linkedin: "LinkedIn",
   twitter: "Twitter / X",
+  github_repo: "GitHub repo",
 };
 
 const FEATURE_ROWS: Array<{

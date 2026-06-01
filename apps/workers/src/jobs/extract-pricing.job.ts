@@ -3,13 +3,18 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db, snapshots, monitors } from "@outrival/db";
 import { extractPricing, summarizeSource } from "@outrival/ai";
-import { getFromR2 } from "@outrival/shared";
+import { getFromR2, PRICING_STATUSES } from "@outrival/shared";
 import { htmlToText } from "../lib/html-to-text";
 import { insertPricingHistory, getPreviousPricing } from "../lib/clickhouse";
 
 const InputSchema = z.object({
   snapshotId: z.string(),
   competitorId: z.string(),
+  // patch-11 taxonomy, tagged onto each ClickHouse row. Optional so a manual
+  // re-trigger without scrape-monitor still works (falls back to unknown/FR).
+  status: z.enum(PRICING_STATUSES).optional().default("unknown"),
+  promotional: z.boolean().optional().default(false),
+  observedRegion: z.string().optional().default("FR"),
 });
 
 export const extractPricingJob = task({
@@ -51,6 +56,9 @@ export const extractPricingJob = task({
         price: p.price,
         currency: p.currency,
         billing_period: p.billing_period,
+        status: input.status,
+        promotional: input.promotional ? 1 : 0,
+        observed_region: input.observedRegion,
         recorded_at: recordedAt,
       })),
     );

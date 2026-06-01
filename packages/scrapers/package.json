@@ -18,6 +18,10 @@
     "./conditional-fetch": {
       "types": "./src/lib/conditional-fetch.ts",
       "default": "./src/lib/conditional-fetch.ts"
+    },
+    "./pricing": {
+      "types": "./src/pricing/index.ts",
+      "default": "./src/pricing/index.ts"
     }
   },
   "scripts": {

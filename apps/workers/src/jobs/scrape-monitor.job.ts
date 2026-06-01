@@ -15,9 +15,16 @@ import {
   uploadToR2,
   getFromR2,
   supportsConditionalFetch,
+  detectPricingRepositioning,
+  type PricingStatus,
+  type PricingRepositioning,
 } from "@outrival/shared";
 // Pure subpath — pulls only the heuristic, never the groq/anthropic SDKs.
 import { evaluateSignificance } from "@outrival/ai/significance";
+// Pure subpath — cheerio only, never crawlee/playwright.
+import { analyzePricingHtml, type PricingAnalysis } from "@outrival/scrapers/pricing";
+
+const SCRAPER_REGION = process.env.SCRAPER_REGION ?? "FR";
 
 const InputSchema = z.object({
   monitorId: z.string(),
@@ -184,6 +191,32 @@ export const scrapeMonitorJob = task({
 
     if (!newSnapshot) throw new Error("Failed to insert snapshot");
 
+    // Pricing taxonomy (patch-11): analyse the page we just captured, store the
+    // latest status on the competitor (unless the user took manual control), and
+    // remember the prior status to detect a repositioning when routing the change.
+    let pricingAnalysis: PricingAnalysis | null = null;
+    let pricingTransition: PricingRepositioning | null = null;
+    const previousPricingStatus = (competitor.pricingStatus as PricingStatus | null) ?? null;
+    if (monitor.sourceType === "pricing") {
+      pricingAnalysis = analyzePricingHtml(result.html, resolvedUrl);
+      pricingTransition = previousPricingStatus
+        ? detectPricingRepositioning(previousPricingStatus, pricingAnalysis.status)
+        : null;
+      if (!competitor.pricingManualOverride) {
+        await db
+          .update(competitors)
+          .set({
+            pricingStatus: pricingAnalysis.status,
+            pricingObservedRegion: SCRAPER_REGION,
+            pricingPromotional: pricingAnalysis.promotional,
+            pricingDemoUrl: pricingAnalysis.demoUrl,
+            pricingNote: pricingAnalysis.note,
+            updatedAt: new Date(),
+          })
+          .where(eq(competitors.id, competitor.id));
+      }
+    }
+
     let changeId: string | null = null;
     let changedAt: Date | null = null;
     if (lastSnapshot) {
@@ -210,20 +243,55 @@ export const scrapeMonitorJob = task({
             .set({ lastChangedAt: changedAt })
             .where(eq(monitors.id, monitor.id));
 
+          // Pricing changes route to exactly one outcome (signals.changeId is
+          // unique): a promo → no signal at all; a status repositioning → a
+          // dedicated repositioning signal (replaces the generic diff signal);
+          // otherwise → the generic classify pipeline (a plain price tweak).
+          let pricingSignalHandled = false;
+          if (monitor.sourceType === "pricing" && pricingAnalysis) {
+            if (pricingAnalysis.promotional) {
+              logger.log("Promotional pricing — skipping price-change signal", {
+                monitorId: monitor.id,
+                changeId,
+              });
+              pricingSignalHandled = true;
+            } else if (pricingTransition && previousPricingStatus) {
+              logger.log("Pricing repositioning detected", {
+                monitorId: monitor.id,
+                changeId,
+                from: previousPricingStatus,
+                to: pricingAnalysis.status,
+                type: pricingTransition.type,
+              });
+              await tasks.trigger("generate-signal", {
+                changeId,
+                pricingTransition: {
+                  type: pricingTransition.type,
+                  severity: pricingTransition.severity,
+                  previous: previousPricingStatus,
+                  current: pricingAnalysis.status,
+                },
+              });
+              pricingSignalHandled = true;
+            }
+          }
+
           // Skip the classification call (Trigger run + Groq) on trivial diffs —
           // timestamps, hashes, nonces. The change row is still recorded.
-          const significance = evaluateSignificance({
-            added: diff.added.join("\n"),
-            removed: diff.removed.join("\n"),
-          });
-          if (significance.worth) {
-            await tasks.trigger("classify-change", { changeId });
-          } else {
-            logger.log("Skipping classification (trivial diff)", {
-              monitorId: monitor.id,
-              changeId,
-              reason: significance.reason,
+          if (!pricingSignalHandled) {
+            const significance = evaluateSignificance({
+              added: diff.added.join("\n"),
+              removed: diff.removed.join("\n"),
             });
+            if (significance.worth) {
+              await tasks.trigger("classify-change", { changeId });
+            } else {
+              logger.log("Skipping classification (trivial diff)", {
+                monitorId: monitor.id,
+                changeId,
+                reason: significance.reason,
+              });
+            }
           }
         }
       }
@@ -250,6 +318,9 @@ export const scrapeMonitorJob = task({
       await tasks.trigger("extract-pricing", {
         snapshotId: newSnapshot.id,
         competitorId: competitor.id,
+        status: pricingAnalysis?.status,
+        promotional: pricingAnalysis?.promotional,
+        observedRegion: SCRAPER_REGION,
       });
     } else if (monitor.sourceType === "jobs") {
       await tasks.trigger("extract-jobs", {

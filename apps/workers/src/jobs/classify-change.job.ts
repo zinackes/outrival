@@ -67,6 +67,49 @@ export const classifyChangeJob = task({
       return { significant: false, classification };
     }
 
+    // Self-competitor (patch-12): the user's own product never produces a classic
+    // signal (no signal_feed, no alert). Record the change in self_product_changes
+    // for the user to accept/modify/ignore on the "My product" page, and stop here.
+    const monitor = await db.query.monitors.findFirst({
+      where: eq(monitors.id, change.monitorId),
+    });
+    const competitor = monitor
+      ? await db.query.competitors.findFirst({ where: eq(competitors.id, monitor.competitorId) })
+      : null;
+
+    if (competitor?.type === "self") {
+      const dupe = await db.query.selfProductChanges.findFirst({
+        where: eq(selfProductChanges.changeId, input.changeId),
+      });
+      if (dupe) {
+        logger.log("Self change already recorded for change, skipping", {
+          changeId: input.changeId,
+        });
+        return { self: true, skipped: true };
+      }
+
+      const severity = determineSelfChangeSeverity(classification);
+      const rawDiff = (change.rawDiff ?? {}) as { added?: string[]; removed?: string[] };
+      await db.insert(selfProductChanges).values({
+        orgId: competitor.orgId,
+        selfCompetitorId: competitor.id,
+        changeId: input.changeId,
+        fieldPath: classification.category,
+        previousValue: rawDiff.removed?.slice(0, 50) ?? null,
+        newValue: rawDiff.added?.slice(0, 50) ?? null,
+        summary: classification.reason,
+        severity,
+        status: "pending",
+      });
+      await notifySelfChange(competitor.orgId, severity);
+
+      logger.log("Self product change recorded (no signal)", {
+        changeId: input.changeId,
+        severity,
+      });
+      return { self: true, severity };
+    }
+
     await tasks.trigger("generate-signal", {
       changeId: input.changeId,
       classification,

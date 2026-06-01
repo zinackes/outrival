@@ -83,6 +83,10 @@ export interface PricingHistoryRow {
   price: number;
   currency: string;
   billing_period: string;
+  // patch-11 taxonomy columns. promotional is UInt8 in ClickHouse (0/1).
+  status: string;
+  promotional: number;
+  observed_region: string;
   recorded_at: Date;
 }
 

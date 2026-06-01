@@ -598,17 +598,16 @@ périodique + re-discovery proposée sur changement majeur.
    competitor_profiles du patch n'existe pas) ; pricing reste sur champs patch-11.
 
 ## Étapes (commits laissés à l'utilisateur)
-- [ ] 0 — env USER_PRODUCT_RESCAN_DAYS=14 (.env.example + .env.local), lue côté API/workers
-- [ ] 1 — schéma : competitors.type + isUserProduct + selfProfile(jsonb) ;
-      notification_type += "self_change" ; nouvelle table self_product_changes
-      (+ enums status/severity) ; index.ts ; db:push
-- [ ] 2 — /complete : crée self-competitor si org.productUrl + monitors homepage/pricing/jobs
-      (freq weekly, nextRunAt seed RESCAN_DAYS) + scrape force par monitor
-- [ ] 3 — extraction features/stack : prompt @outrival/ai extractSelfProfile +
-      job extract-self-profile (trigger après homepage scrape self) ; n'écrase jamais
-      un champ édité ; isFromAutoDetect=true à l'auto-détection
-- [ ] 4 — classify-change : branche self → determineSelfChangeSeverity + insert
-      self_product_changes + notifySelfChange ; AUCUN signal
+- [x] 0 — env USER_PRODUCT_RESCAN_DAYS=14 (.env.example + .env.local)
+- [x] 1 — schéma : competitors.type + isUserProduct + selfProfile(jsonb) ;
+      notification_type += "self_change" ; table self_product_changes (+ changeId unique,
+      summary, enums status/severity) ; index.ts ; db:push OK
+- [x] 2 — /complete : helper createSelfCompetitor (idempotent, gated org.productUrl) +
+      monitors homepage/pricing/jobs (weekly, nextRunAt seed RESCAN_DAYS) + scrape force
+- [x] 3 — extractSelfProfile (ai, features+stack, 70b) + extract-self-profile.job
+      (trigger homepage self ; merge préserve les champs édités) + garde reviews self
+- [x] 4 — classify-change : branche self → determineSelfChangeSeverity + insert
+      self_product_changes (idempotent par changeId) + notifySelfChange ; AUCUN signal
 - [ ] 5 — API my-product.ts : GET / PATCH / POST rescan / GET changes /
       changes/:id/{accept,modify,ignore}
 - [ ] 6 — UI dashboard/my-product + nav "Mon produit" + bloc changements pending

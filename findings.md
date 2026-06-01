@@ -1032,3 +1032,84 @@ markup, not JS-only, once the regexes were fixed:
 (pricing_history taxonomy columns, ALTER ADD COLUMN IF NOT EXISTS for existing).
 Runtime end-to-end (live scrape → status stored → repositioning signal → email)
 not exercised here — needs GROQ/R2/DB creds + a Trigger.dev run.
+
+---
+
+## Patch-12 — Monitoring du produit utilisateur / self-competitor (2026-06-01)
+
+Le site user est traité comme un "concurrent spécial" (`type="self"`, `isUserProduct=true`)
+réutilisant l'infra Phase 5. Q1=B (fiche complète : extraction IA features+stack), Q2=A
+(commits laissés à l'utilisateur — working tree avait du WIP patch-11 concurrent).
+
+### Divergences réelles vs patch (le patch décrivait une archi inexistante)
+- **Pas de `enrich-competitor.job`** : l'« enrichissement Phase 5 » = monitors par source
+  (`homepage`/`pricing`/`jobs`) → `scrape-monitor` → `extract-pricing`/`extract-jobs` +
+  `refresh-competitor-summary`. La création du self (helper `createSelfCompetitor` dans
+  `onboarding.ts`) sème ces monitors + un scrape `force:true` par monitor (pattern de
+  `/complete` et `candidates.add`). Aucun job d'enrichissement unique.
+- **Le signal se déclenche dans `classify-change.job`** (pas `scrape-monitor`, contrairement
+  au step 4 du patch). Interception du self là : après classification, si
+  `competitor.type==="self"` → insert `self_product_changes` + `notifySelfChange`, `return`
+  AVANT `generate-signal`. AUCUN signal / signal_feed / alerte pour le self.
+- **Pas de table `competitor_profiles`** : profil riche éditable dans un jsonb
+  `competitors.selfProfile`, **par champ** `{ value, isFromAutoDetect, lastEditedByUserAt }`
+  (category/audience/valueProp/features/techStack). Pricing reste sur colonnes patch-11
+  (`pricingStatus`… + `pricingManualOverride`), jobs dans `job_postings`.
+- **`org` n'a ni `productName` ni `productRepoUrl`** : self gated par `org.productUrl` seul
+  (modes idea/document = pas d'URL = pas de self) ; nom dérivé via `normalizeHostname`.
+- **Web sous `dashboard/`** → `app/dashboard/my-product/page.tsx` (pas `(dashboard)`).
+- `Classification` réelle = `{ category, severity, is_significant, reason }` — le patch
+  inventait des `type:"category_change"`. `determineSelfChangeSeverity` mappe
+  `severity ∈ {high,critical}` → `major`, sinon `minor`.
+
+### Modèle de mise à jour du profil (cohérence)
+- **Auto-détecté rafraîchi / édits user sticky** : `extract-self-profile.job` (nouveau,
+  prompt `extractSelfProfile` 70b, déclenché après chaque homepage scrape du self)
+  recalcule features+techStack et n'écrase un champ QUE si `isFromAutoDetect !== false`
+  (et jamais avec un résultat vide). PATCH `/my-product` passe le champ édité à
+  `isFromAutoDetect=false` + `lastEditedByUserAt=now` → sticky contre les scrapes suivants.
+- **`accept` n'écrit PAS le profil depuis le diff** : les `self_product_changes` issues de
+  classify-change portent des **lignes de diff brutes** (pas `pricing.tiers[1].price`). Le
+  profil auto-détecté est déjà tenu à jour en continu par le pipeline. Donc `accept` =
+  acquitter (status accepted) + suggestion re-discovery si `major` ; `modify` = status
+  modified (édition via PATCH) ; `ignore` = status ignored. Idempotence retries via
+  `self_product_changes.changeId` (unique, nullable — Postgres autorise plusieurs NULL).
+
+### Re-scan & cadence
+- `USER_PRODUCT_RESCAN_DAYS` (défaut 14) lu côté API à la création : seed `nextRunAt`.
+  Monitors self en `frequency="weekly"` (l'enum n'a que realtime/daily/weekly ; 14j non
+  représentable) → cadence réelle gouvernée par `computeNextRun` (patch-01). Bouton
+  "Re-scan" = `POST /my-product/rescan` (force par monitor).
+
+### Exclusion du self (cross-feature)
+- `ne(competitors.type, "self")` ajouté à : liste competitors (`competitors.ts` GET /),
+  search, feed changes org-wide, quota (`plan.ts countActiveCompetitors`). Discovery :
+  **aucun changement** — self est dans `existing` de `detect-candidates` (dédup hostname)
+  ET Exa exclut déjà le domaine `productUrl` (= URL du self). Reviews self : pas de monitor
+  reviews créé + garde `competitor.type !== "self"` dans le routing reviews de scrape-monitor.
+
+### Déféré (non bloquant)
+- Édition inline du pricing sur /my-product (PATCH le supporte ; UI read-only — le pricing
+  tab patch-11 fournit déjà l'override manuel).
+- Battle card "côté nous" depuis `selfProfile` (génère encore depuis `org.productProfile`).
+- Re-discovery ne re-score pas l'overlap des concurrents existants (ajoute suggestions +
+  préserve via `detectCandidates`). Pas de "re-scoring view" dédiée.
+- `self_change` : notification in-app seulement (pas d'email Resend dupliqué).
+
+### Concurrence working tree (cf. MEMORY concurrent-auto-committer)
+- Pendant l'implémentation, du WIP patch-11 (pricing-repositioning, `analyzePricingHtml`
+  dans scrape-monitor, exports `ai/index.ts` + `api.ts` web + `PricingStatus`) a été mergé
+  par un process tiers. Vérifié à chaque étape que mes edits survivaient (grep + typecheck).
+  0 conflit. Commits NON faits (Q2=A) → laissés à l'utilisateur.
+
+### Runtime TODO (manuel — services + creds requis)
+- Onboarding "live" avec URL → self créé + 3 monitors + scrape forcé → /my-product riche.
+- Forcer un changement du site → `self_product_changes` pending, vérifier `signals`/
+  `signal_feed` VIDES pour le self. Accept(major) → modal re-discovery.
+- Mode "idea" (sans URL) → pas de self, page affiche l'état vide "Set a product URL".
+
+### Vérif
+`pnpm typecheck` 7/7 ✓ · `pnpm build` 7/7 ✓. 0 nouvelle erreur TS (les 16 erreurs web
+pré-existantes patch-03 ont disparu entre-temps — web clean). `db:push` applied
+(competitors.type/isUserProduct/selfProfile + notification_type self_change +
+self_product_changes table).

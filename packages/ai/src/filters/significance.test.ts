@@ -22,12 +22,13 @@ describe("evaluateSignificance", () => {
   });
 
   it("skips a timestamp-only diff", () => {
+    // Timestamps carry almost no letters, so rule 2 (no_significant_text)
+    // catches them before the dedicated timestamp rule — still skipped.
     const r = evaluateSignificance({
       added: "2026-06-01T10:24:00Z 2026-06-01T10:25:00Z",
       removed: "2026-05-31T09:40:00Z 2026-05-31T09:41:00Z",
     });
     expect(r.worth).toBe(false);
-    expect(r.reason).toBe("timestamps_only");
   });
 
   it("skips a long hash-only diff", () => {

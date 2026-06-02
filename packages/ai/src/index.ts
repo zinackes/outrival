@@ -7,6 +7,20 @@ export { AIUnavailableError, checkGlobalBreaker } from "./provider/circuit-break
 export { loadProviders } from "./provider/provider-pool";
 export type { Provider } from "./provider/provider-pool";
 export { safeParseJson } from "./lib/parse";
+// Anti-hallucination: grounding + self-check (patch-24)
+export { groundedAiCall } from "./grounding/grounded-call";
+export { validateCitations, normalizeText } from "./grounding/citations";
+export type { Citation, GroundingValidation } from "./grounding/citations";
+export { attachQuality } from "./grounding/types";
+export type {
+  Confidence,
+  GroundedQuality,
+  GroundedResult,
+  GroundedCallParams,
+  SelfCheckResult,
+  SelfCheckTrigger,
+  WithQuality,
+} from "./grounding/types";
 export { classifyChange, ClassificationSchema } from "./tasks/classify";
 export type { Classification } from "./tasks/classify";
 export { classifyStructuredChanges } from "./tasks/classify-structured";

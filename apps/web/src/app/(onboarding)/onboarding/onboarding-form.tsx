@@ -151,6 +151,19 @@ function fallbackFromError(err: unknown): boolean {
   );
 }
 
+// Patch-25 hybrid parallelization: prefetch discovery in the background while
+// the user reviews/edits the profile. Default on; debounce avoids re-billing Exa
+// on every keystroke.
+const PARALLEL_DISCOVERY = process.env.NEXT_PUBLIC_ONBOARDING_PARALLEL_DISCOVERY !== "false";
+const DISCOVERY_DEBOUNCE_MS =
+  Number(process.env.NEXT_PUBLIC_ONBOARDING_DISCOVERY_DEBOUNCE_MS ?? 3000) || 3000;
+
+// Identity of a discovery input — a prefetch is reusable only for the exact same
+// profile + URL, so editing any field invalidates it (and re-bills, debounced).
+function profileKey(p: ProductProfile, url: string | null): string {
+  return JSON.stringify([p.category, p.audience, p.valueProp, p.pricingModel, url]);
+}
+
 function extractMessage(err: unknown): string {
   if (err instanceof ApiError) {
     const data = err.data as { message?: unknown; error?: unknown };
@@ -225,6 +238,12 @@ export function OnboardingForm({
     allowedFrequencies.includes("daily") ? "daily" : "weekly",
   );
   const [sources, setSources] = useState<SourceType[]>(["homepage", "pricing", "blog"]);
+
+  // Background discovery prefetch (patch-25): status drives the discreet profile
+  // indicator; refs hold the in-flight controller and the last completed result.
+  const [discoveryStatus, setDiscoveryStatus] = useState<"idle" | "running" | "completed">("idle");
+  const prefetchRef = useRef<{ key: string; competitors: DiscoveredCompetitor[] } | null>(null);
+  const prefetchAbort = useRef<AbortController | null>(null);
 
   // Fire onboarding_started once the session id is known (so every funnel event
   // shares it). The session loads async; this waits for it.
@@ -410,6 +429,41 @@ export function OnboardingForm({
     [discoveryDisabled, sessionId, updateSession, applyDiscovered],
   );
 
+  // Prefetch discovery in the background while the user reviews the profile, so
+  // confirming is often instant. Debounced + abortable: each profile edit cancels
+  // the in-flight request and reschedules; a result is cached by profile identity.
+  useEffect(() => {
+    if (!PARALLEL_DISCOVERY || screen !== "profile" || !profile || discoveryDisabled) return;
+    const key = profileKey(profile, committedUrl);
+    if (prefetchRef.current?.key === key) {
+      setDiscoveryStatus("completed");
+      return;
+    }
+    setDiscoveryStatus("idle");
+    const timer = setTimeout(() => {
+      const controller = new AbortController();
+      prefetchAbort.current = controller;
+      setDiscoveryStatus("running");
+      trackOnboarding(ONBOARDING_EVENTS.DISCOVERY_STARTED, sessionId, { trigger: "background" });
+      api
+        .discoverCompetitors(profile, committedUrl, controller.signal)
+        .then((res) => {
+          if (prefetchAbort.current !== controller) return;
+          prefetchRef.current = { key, competitors: res.competitors };
+          setDiscoveryStatus("completed");
+        })
+        .catch(() => {
+          if (prefetchAbort.current !== controller) return;
+          setDiscoveryStatus("idle");
+        });
+    }, DISCOVERY_DEBOUNCE_MS);
+    return () => {
+      clearTimeout(timer);
+      prefetchAbort.current?.abort();
+      prefetchAbort.current = null;
+    };
+  }, [screen, profile, committedUrl, discoveryDisabled, sessionId]);
+
   async function handleProfileConfirm() {
     if (!profile) return;
     setError(null);
@@ -430,8 +484,15 @@ export function OnboardingForm({
     void updateSession({
       timings: { [milestoneKey(ONBOARDING_EVENTS.PRODUCT_PROFILE_CONFIRMED)]: Date.now() },
     });
+    const key = profileKey(profile, committedUrl);
     goTo("discover");
-    await runDiscovery(profile, committedUrl);
+    // If the background prefetch already resolved for this exact profile, use it
+    // (instant); otherwise fall back to a synchronous discovery on the next screen.
+    if (prefetchRef.current?.key === key) {
+      applyDiscovered(prefetchRef.current.competitors);
+    } else {
+      await runDiscovery(profile, committedUrl);
+    }
   }
 
   // Auto-run discovery when entering an empty discover screen (resume / back-nav).
@@ -639,6 +700,7 @@ export function OnboardingForm({
               onConfirm={handleProfileConfirm}
               onBack={() => goTo("input")}
               busy={busy === "discover"}
+              prefetchStatus={discoveryStatus}
             />
           )}
 
@@ -1141,12 +1203,14 @@ function ProfileForm({
   onConfirm,
   onBack,
   busy,
+  prefetchStatus,
 }: {
   profile: ProductProfile;
   setProfile: (p: ProductProfile) => void;
   onConfirm: () => void | Promise<void>;
   onBack: () => void;
   busy: boolean;
+  prefetchStatus: "idle" | "running" | "completed";
 }) {
   return (
     <div>
@@ -1188,6 +1252,17 @@ function ProfileForm({
           </div>
         ))}
       </Card>
+
+      {prefetchStatus === "running" && (
+        <p className="mt-4 flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
+          <Loader2 size={11} className="animate-spin" /> Searching competitors…
+        </p>
+      )}
+      {prefetchStatus === "completed" && (
+        <p className="mt-4 flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-wider text-positive">
+          <Check size={11} /> Competitors found
+        </p>
+      )}
 
       <FooterNav
         onBack={onBack}

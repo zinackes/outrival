@@ -166,6 +166,10 @@ export const generateSignalJob = task({
         humanChangeBefore,
         humanChangeAfter,
         narrative,
+        // Carry the change's persisted relevance (patch-17/26) onto the signal so
+        // the per-org threshold layer and the weekly recalc can reason about it.
+        // Null for non-homepage / lexical changes → layer 1 simply skips them.
+        relevanceScore: change.relevanceScore,
       })
       .returning();
 

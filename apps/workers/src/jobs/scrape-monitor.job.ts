@@ -830,6 +830,10 @@ export const scrapeMonitorJob = task({
             removed.push(...c.bodyDiff.removed);
           }
         }
+        // Strongest change drives the change-level relevance, persisted for the
+        // patch-26 per-org threshold + weekly recalc (the dispatcher reads it off
+        // the signal). Only the structured homepage path carries a score.
+        const changeRelevance = Math.max(...significant.map((s) => s.relevance.score));
         const [newChange] = await db
           .insert(changes)
           .values({
@@ -840,6 +844,7 @@ export const scrapeMonitorJob = task({
             diffType: "structured",
             structuredDiff: significantChanges,
             rawDiff: { added, removed },
+            relevanceScore: Number(changeRelevance.toFixed(3)),
             detectedAt: new Date(),
           })
           .returning();

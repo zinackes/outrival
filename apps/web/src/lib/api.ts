@@ -403,6 +403,44 @@ export interface DiscoveredCompetitor {
   reason: string;
 }
 
+// Patch-25: resumable onboarding attempt + step-timing store.
+export type OnboardingSessionStage =
+  | "started"
+  | "input"
+  | "profile"
+  | "discover"
+  | "monitoring"
+  | "analysis_in_progress"
+  | "completed"
+  | "abandoned";
+export type OnboardingMode = "quick_start" | "full";
+
+export interface OnboardingSession {
+  id: string;
+  userId: string;
+  orgId: string | null;
+  stage: OnboardingSessionStage;
+  mode: OnboardingMode;
+  productUrl: string | null;
+  productProfile: ProductProfile | null;
+  discoverySuggestions: DiscoveredCompetitor[] | null;
+  addedCompetitorIds: string[] | null;
+  timings: Record<string, number>;
+  startedAt: string;
+  lastActivityAt: string;
+  completedAt: string | null;
+}
+
+export interface OnboardingSessionPatch {
+  stage?: OnboardingSessionStage;
+  mode?: OnboardingMode;
+  productUrl?: string | null;
+  productProfile?: ProductProfile;
+  discoverySuggestions?: DiscoveredCompetitor[];
+  addedCompetitorIds?: string[];
+  timings?: Record<string, number>;
+}
+
 export interface BattleCardContent {
   their_strengths: string[];
   our_strengths: string[];
@@ -1016,10 +1054,34 @@ export const api = {
     }),
   skipOnboarding: () =>
     request<{ ok: true }>("/api/onboarding/skip", { method: "POST" }),
-  discoverCompetitors: (profile: ProductProfile, productUrl?: string | null) =>
+  discoverCompetitors: (
+    profile: ProductProfile,
+    productUrl?: string | null,
+    signal?: AbortSignal,
+  ) =>
     request<{ competitors: DiscoveredCompetitor[] }>("/api/onboarding/discover", {
       method: "POST",
       body: JSON.stringify({ profile, productUrl: productUrl ?? null }),
+      // When provided, the caller's abort signal replaces the default request
+      // timeout — used by the onboarding background prefetch to cancel in-flight
+      // discovery when the profile changes (patch-25).
+      ...(signal ? { signal } : {}),
+    }),
+  getOnboardingSession: () =>
+    request<{ session: OnboardingSession | null }>("/api/onboarding-session/current"),
+  createOnboardingSession: (mode?: OnboardingMode) =>
+    request<{ session: OnboardingSession }>("/api/onboarding-session", {
+      method: "POST",
+      body: JSON.stringify({ mode }),
+    }),
+  patchOnboardingSession: (id: string, patch: OnboardingSessionPatch) =>
+    request<{ session: OnboardingSession }>(`/api/onboarding-session/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  completeOnboardingSession: (id: string) =>
+    request<{ session: OnboardingSession }>(`/api/onboarding-session/${id}/complete`, {
+      method: "POST",
     }),
   // manualFields: profile keys the user typed by hand (vs accepted from a
   // re-analysis) — drives self-profile stickiness server-side (update modal).

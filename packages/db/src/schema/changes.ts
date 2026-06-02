@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, jsonb, real } from "drizzle-orm/pg-core";
 import { monitors } from "./monitors";
 import { snapshots } from "./snapshots";
 
@@ -17,6 +17,10 @@ export const changes = pgTable("changes", {
   // for lexical (non-homepage / fallback) changes. Untyped here to keep
   // @outrival/db a leaf package — cast at the call site.
   structuredDiff: jsonb("structured_diff"),
+  // Max composite relevance of the significant structured changes that produced
+  // this change (patch-17 scoring, persisted for patch-26 moderation). Set only
+  // on the structured homepage path; null for lexical/other-source changes.
+  relevanceScore: real("relevance_score"),
   summary: text("summary"),
   detectedAt: timestamp("detected_at").notNull().defaultNow(),
 });

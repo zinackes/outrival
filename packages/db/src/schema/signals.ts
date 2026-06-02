@@ -1,8 +1,9 @@
-import { pgTable, text, timestamp, boolean, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, real, pgEnum } from "drizzle-orm/pg-core";
 import { changes } from "./changes";
 import { organizations } from "./organizations";
 import { competitors } from "./competitors";
 import { users } from "./users";
+import { signalBatches } from "./signal-batches";
 
 export const severityEnum = pgEnum("severity", ["low", "medium", "high", "critical"]);
 export const categoryEnum = pgEnum("category", [
@@ -37,6 +38,21 @@ export const signals = pgTable("signals", {
   hiddenForUserAt: timestamp("hidden_for_user_at"),
   severityOverride: severityEnum("severity_override"),
   severityOverriddenBy: text("severity_overridden_by").references(() => users.id),
+  // Notification moderation (patch-26). relevanceScore is the max composite
+  // relevance of the structured homepage changes behind this signal (patch-17),
+  // persisted here so the per-org threshold (layer 1) and the weekly recalc can
+  // reason about it. Null for non-homepage / lexical signals → layer 1 skipped.
+  relevanceScore: real("relevance_score"),
+  // The dispatcher's decision for this signal: the channel it routed to, and —
+  // when it was held back from an immediate email — why. The signal feed reads
+  // filteredReason to show "N less relevant signals hidden". Both null until the
+  // dispatcher runs (and for critical signals, which bypass every filter).
+  dispatchedChannel: text("dispatched_channel"),
+  filteredReason: text("filtered_reason"),
+  filteredAt: timestamp("filtered_at"),
+  // Set when this signal was rolled up into a batch (layer 5); the feed then
+  // shows the batch instead of the individual signal.
+  batchedIntoId: text("batched_into_id").references(() => signalBatches.id),
   isRead: boolean("is_read").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

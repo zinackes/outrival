@@ -48,10 +48,14 @@ export interface CompletionOptions {
   json?: boolean;
 }
 
-// A 429 (rate limit) or 5xx is transient and worth failing over to another
-// provider; a 4xx (bad request/auth) is a real error every provider would hit.
-function isTransient(err: unknown): boolean {
-  return err instanceof OpenAI.APIError && (err.status === 429 || (err.status ?? 0) >= 500);
+// A 429/5xx is transient. A per-provider 401/403/404 (bad key or missing model at
+// THIS provider) is permanent for this provider, but the next one — different key
+// and model — may still work, so fail over too. Only a 400 (a request WE built
+// wrong) would hit every provider identically → fail fast.
+function shouldFailover(err: unknown): boolean {
+  if (!(err instanceof OpenAI.APIError)) return false;
+  const s = err.status ?? 0;
+  return s === 429 || s === 401 || s === 403 || s === 404 || s >= 500;
 }
 
 /**
@@ -83,7 +87,7 @@ async function callLLM(options: CompletionOptions): Promise<string> {
       await recordSuccess();
       return res.choices[0]?.message?.content ?? "";
     } catch (err) {
-      if (isTransient(err)) {
+      if (shouldFailover(err)) {
         const rateLimited = err instanceof OpenAI.APIError && err.status === 429;
         await tripBreaker(provider.id, rateLimited ? "rate_limited" : "provider_error");
         await recordFailure(provider.id);

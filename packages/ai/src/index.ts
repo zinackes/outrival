@@ -11,7 +11,8 @@ export { safeParseJson } from "./lib/parse";
 export { groundedAiCall } from "./grounding/grounded-call";
 export { validateCitations, normalizeText } from "./grounding/citations";
 export type { Citation, GroundingValidation } from "./grounding/citations";
-export { attachQuality } from "./grounding/types";
+export { attachQuality, emptyQuality } from "./grounding/types";
+export { runSelfCheck, decideIfSelfCheck } from "./self-check/run-self-check";
 export type {
   Confidence,
   GroundedQuality,

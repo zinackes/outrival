@@ -9,6 +9,7 @@ import {
   signals,
   organizations,
   users,
+  insertAiQualityCheck,
 } from "@outrival/db";
 import {
   generateInsight,
@@ -169,6 +170,17 @@ export const generateSignalJob = task({
       .returning();
 
     if (!newSignal) throw new Error("Failed to insert signal");
+
+    // Anti-hallucination (patch-24): persist the grounding + self-check envelope for
+    // this signal so the UI can surface a ConfidenceDot / flagged warning and the ops
+    // review queue + metrics can see it. Best-effort — never blocks the signal.
+    await insertAiQualityCheck({
+      aiTask: input.pricingTransition ? "detect_pricing_strategy" : "generate_signal",
+      targetType: "signal",
+      targetId: newSignal.id,
+      orgId: competitor.orgId,
+      quality: insight._quality,
+    });
 
     await insertSignalFeed({
       org_id: competitor.orgId,

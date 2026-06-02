@@ -3,6 +3,11 @@ import { withAiCache } from "@outrival/shared";
 import { complete } from "../provider";
 import { safeParseJson } from "../lib/parse";
 import { validateCitations, type Citation, type GroundingValidation } from "./citations";
+import {
+  runSelfCheck,
+  decideIfSelfCheck,
+  downgradeConfidence,
+} from "../self-check/run-self-check";
 import type {
   Confidence,
   GroundedCallParams,
@@ -94,8 +99,34 @@ export async function groundedAiCall<T>(
       flaggedForHumanReview: false,
     };
 
-    // Self-check (patch-24 layer 3) is wired in here at the generation site in a
-    // later step, inside this closure so it never runs on a cache hit.
+    // Self-check (patch-24 layer 3) runs here in the generation closure, so it
+    // only fires on a fresh call, never on a cache hit, and is cached with the
+    // result. A self-check failure (rate limit / breaker) must never fail the
+    // primary generation — patch-22 graceful degradation — so it's best-effort.
+    const decision = decideIfSelfCheck(params.taskName, quality.confidence);
+    if (decision.run && decision.reason) {
+      try {
+        const check = await runSelfCheck({
+          originalOutput: output,
+          originalCitations: citations,
+          sourceText: params.sourceText,
+          taskName: params.taskName,
+        });
+        if (check) {
+          quality.selfCheck = check;
+          quality.selfCheckTriggeredBy = decision.reason;
+          quality.flaggedForHumanReview = !check.passed;
+          if (!check.passed || check.confidenceAdjustment === "downgrade") {
+            quality.confidence = downgradeConfidence(quality.confidence);
+          }
+        }
+      } catch (err) {
+        console.error(
+          `self-check skipped for ${params.taskName}:`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
 
     return { output, quality, raw };
   };

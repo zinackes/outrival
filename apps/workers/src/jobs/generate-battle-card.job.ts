@@ -9,6 +9,7 @@ import {
   reviews,
   signals,
   selfProfileLastEditedAt,
+  insertAiQualityCheck,
 } from "@outrival/db";
 import { generateBattleCard, AI_CONFIG } from "@outrival/ai";
 import { uploadToR2 } from "@outrival/shared";
@@ -137,6 +138,17 @@ export const generateBattleCardJob = task({
       if (!created) throw new Error("Failed to insert battle card");
       battleCardId = created.id;
     }
+
+    // Anti-hallucination (patch-24): battle cards always get a systematic self-check
+    // (the most visible critical output). Persist its envelope so a failed check
+    // surfaces a warning on the card and lands in the ops review queue. Best-effort.
+    await insertAiQualityCheck({
+      aiTask: "generate_battle_card",
+      targetType: "battle_card",
+      targetId: battleCardId,
+      orgId: org.id,
+      quality: content._quality,
+    });
 
     // Lazy-import to avoid loading playwright/Chromium bindings at module parse
     // time (trigger.dev warns on >1 s import — playwright is the culprit).

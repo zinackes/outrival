@@ -1,6 +1,14 @@
 import { schedules, logger } from "@trigger.dev/sdk/v3";
 import { and, desc, eq, gte, isNull, lt } from "drizzle-orm";
-import { db, organizations, signals, digests, competitors, sectoralSignals } from "@outrival/db";
+import {
+  db,
+  organizations,
+  signals,
+  digests,
+  competitors,
+  sectoralSignals,
+  insertAiQualityCheck,
+} from "@outrival/db";
 import { generateDigest, AI_CONFIG, checkGlobalBreaker, type DigestInputSignal } from "@outrival/ai";
 import { signDigestFeedbackToken } from "@outrival/shared";
 import { renderDigestEmail } from "../lib/digest-email";
@@ -159,6 +167,17 @@ export const generateWeeklyDigestJob = schedules.task({
         skipped++;
         continue;
       }
+
+      // Anti-hallucination (patch-24): persist the digest's grounding + self-check
+      // envelope (grounded against the week's signals) for the ConfidenceDot and the
+      // ops metrics. Best-effort.
+      await insertAiQualityCheck({
+        aiTask: "generate_digest",
+        targetType: "digest",
+        targetId: stored.id,
+        orgId: org.id,
+        quality: digest._quality,
+      });
 
       if (org.digestEmail) {
         try {

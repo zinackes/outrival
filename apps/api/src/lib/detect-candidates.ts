@@ -4,6 +4,7 @@ import {
   competitorCandidates,
   notifications,
   organizations,
+  insertAiQualityCheck,
 } from "@outrival/db";
 import { findSimilarCompanies } from "@outrival/scrapers/discovery";
 import { scoreOverlap, buildDiscoveryQuery } from "@outrival/ai";
@@ -85,6 +86,15 @@ export async function detectCandidatesForOrg(orgId: string): Promise<DetectResul
 
   const scored = await scoreOverlap(org.productProfile, fresh);
   const scoredByUrl = new Map(scored.map((s) => [s.url, s]));
+
+  // Anti-hallucination (patch-24): persist the call-level grounding + self-check
+  // envelope for the overlap scoring (one per discovery run). Best-effort.
+  await insertAiQualityCheck({
+    aiTask: "score_overlap",
+    targetType: "overlap_scoring",
+    orgId,
+    quality: scored._quality,
+  });
   // TEMP debug — à retirer
   console.log("[detect] scores", scored.map((s) => `${s.overlapScore} ${s.url}`));
 

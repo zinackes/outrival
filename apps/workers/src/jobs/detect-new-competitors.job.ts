@@ -6,6 +6,7 @@ import {
   competitorCandidates,
   notifications,
   organizations,
+  insertAiQualityCheck,
 } from "@outrival/db";
 import { findSimilarCompanies } from "@outrival/scrapers/discovery";
 import { scoreOverlap, buildDiscoveryQuery } from "@outrival/ai";
@@ -112,6 +113,15 @@ export const detectNewCompetitorsJob = schedules.task({
 
         const scored = await scoreOverlap(org.productProfile, fresh);
         const scoredByUrl = new Map(scored.map((s) => [s.url, s]));
+
+        // Anti-hallucination (patch-24): one call-level quality envelope per weekly
+        // scoring run. Best-effort.
+        await insertAiQualityCheck({
+          aiTask: "score_overlap",
+          targetType: "overlap_scoring",
+          orgId: org.id,
+          quality: scored._quality,
+        });
 
         const detectedTitles: string[] = [];
         for (const d of fresh) {

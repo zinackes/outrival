@@ -24,6 +24,7 @@ import { PLAN_LIMITS, PRICING_STATUSES, PRICING_STATUS_LABELS } from "@outrival/
 import { insertSignalFeed, logAiRun } from "../lib/clickhouse";
 import { captureWorkerEvent, shutdownPostHog } from "../lib/posthog";
 import { groqQueue } from "../lib/queues";
+import { decideDispatch } from "../lib/notification-dispatcher";
 
 // A pricing status transition (patch-11) carries its own severity and replaces
 // the generic diff classification for that change.
@@ -194,12 +195,32 @@ export const generateSignalJob = task({
       recorded_at: new Date(),
     });
 
-    const isHigh = severity === "high" || severity === "critical";
+    // Notification moderation (patch-26): the dispatcher decides how this signal is
+    // delivered — an immediate email, a deferred digest, or dropped. Critical
+    // bypasses every filter. The decision is stamped on the signal so the feed,
+    // the digest jobs, and the ops metrics can read it.
+    const decision = await decideDispatch(competitor.orgId, {
+      signalId: newSignal.id,
+      severity,
+      relevanceScore: newSignal.relevanceScore,
+      competitorId: competitor.id,
+      category,
+    });
+    await db
+      .update(signals)
+      .set({
+        dispatchedChannel: decision.channel,
+        filteredReason: decision.filteredReason ?? null,
+        filteredAt: decision.filteredReason ? new Date() : null,
+      })
+      .where(eq(signals.id, newSignal.id));
 
-    if (isHigh) {
+    if (decision.send && decision.channel === "email_immediate") {
       const org = await db.query.organizations.findFirst({
         where: eq(organizations.id, competitor.orgId),
       });
+      // Plan entitlement still applies (moderation never overrides gating): only
+      // realtime-alert plans get an immediate email/Slack/webhook.
       if (org?.alertsEnabled && PLAN_LIMITS[org.plan].features.realtimeAlerts) {
         await tasks.trigger(
           "send-alert",
@@ -208,6 +229,12 @@ export const generateSignalJob = task({
         );
         logger.log("Alert triggered", { signalId: newSignal.id });
       }
+    } else {
+      logger.log("Signal deferred by moderation", {
+        signalId: newSignal.id,
+        channel: decision.channel,
+        reason: decision.filteredReason ?? null,
+      });
     }
 
     const orgOwner = await db.query.users.findFirst({

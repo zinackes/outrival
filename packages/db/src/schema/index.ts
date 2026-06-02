@@ -14,6 +14,7 @@ export * from "./battle_cards";
 export * from "./notifications";
 export * from "./competitor_candidates";
 export * from "./discovery_runs";
+export * from "./onboarding-sessions";
 export * from "./feedback";
 export * from "./self_product_changes";
 export * from "./sectoral_signals";

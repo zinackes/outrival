@@ -233,7 +233,7 @@ export function OnboardingForm({
   async function handleSignOut() {
     await signOut();
     resetUser();
-    router.push("/login");
+    router.push("/auth");
   }
 
   async function handleSkip() {

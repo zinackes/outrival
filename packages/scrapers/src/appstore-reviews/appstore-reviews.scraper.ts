@@ -71,6 +71,7 @@ export async function scrape(_competitorId: string, url: string): Promise<Scrape
       reviewCount: reviews.length,
     },
     statusCode: lastStatus,
-    usedProxy: false,
+    level: 0, // RSS JSON, no browser/proxy
+    attempts: 1,
   };
 }

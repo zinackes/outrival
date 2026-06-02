@@ -22,18 +22,75 @@
     "./pricing": {
       "types": "./src/pricing/index.ts",
       "default": "./src/pricing/index.ts"
+    },
+    "./extract": {
+      "types": "./src/lib/extract-content.ts",
+      "default": "./src/lib/extract-content.ts"
+    },
+    "./homepage-structure": {
+      "types": "./src/parsers/homepage-structure.ts",
+      "default": "./src/parsers/homepage-structure.ts"
+    },
+    "./homepage-diff": {
+      "types": "./src/diff/homepage-diff.ts",
+      "default": "./src/diff/homepage-diff.ts"
+    },
+    "./phash": {
+      "types": "./src/lib/phash.ts",
+      "default": "./src/lib/phash.ts"
+    },
+    "./numeric-claims": {
+      "types": "./src/parsers/numeric-claims.ts",
+      "default": "./src/parsers/numeric-claims.ts"
+    },
+    "./social-proof": {
+      "types": "./src/parsers/social-proof.ts",
+      "default": "./src/parsers/social-proof.ts"
+    },
+    "./relevance": {
+      "types": "./src/scoring/relevance.ts",
+      "default": "./src/scoring/relevance.ts"
+    },
+    "./anti-void": {
+      "types": "./src/lib/anti-void.ts",
+      "default": "./src/lib/anti-void.ts"
+    },
+    "./volatile": {
+      "types": "./src/learning/volatile-detector.ts",
+      "default": "./src/learning/volatile-detector.ts"
+    },
+    "./tech-stack": {
+      "types": "./src/tech-stack/index.ts",
+      "default": "./src/tech-stack/index.ts"
+    },
+    "./diagnose-failure": {
+      "types": "./src/lib/diagnose-failure.ts",
+      "default": "./src/lib/diagnose-failure.ts"
+    },
+    "./alternatives": {
+      "types": "./src/alternatives/generate.ts",
+      "default": "./src/alternatives/generate.ts"
+    },
+    "./structural": {
+      "types": "./src/structural/detect-pivot.ts",
+      "default": "./src/structural/detect-pivot.ts"
+    },
+    "./spa-filter": {
+      "types": "./src/spa/filter.ts",
+      "default": "./src/spa/filter.ts"
     }
   },
   "scripts": {
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "bun test src/pricing"
+    "test": "bun test src/pricing src/lib src/parsers src/diff src/scoring src/learning src/tech-stack src/structural src/spa"
   },
   "dependencies": {
     "@outrival/shared": "workspace:*",
+    "camoufox-js": "^0.10.2",
     "cheerio": "^1.2.0",
-    "crawlee": "^3.16.0",
     "exa-js": "^2.13.0",
-    "playwright": "^1.60.0"
+    "patchright": "^1.60.2",
+    "sharp": "^0.34.5"
   }
 }

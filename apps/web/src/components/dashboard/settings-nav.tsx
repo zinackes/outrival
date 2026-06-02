@@ -28,7 +28,7 @@ const NAV: NavGroup[] = [
         exact: true,
       },
       {
-        href: "/dashboard/settings",
+        href: "/dashboard/settings/notifications",
         label: "Notifications",
         icon: Bell,
         exact: true,

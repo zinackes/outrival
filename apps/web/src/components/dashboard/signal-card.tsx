@@ -9,6 +9,8 @@ import { SeverityPill } from "./severity-pill";
 import { CatPill } from "./cat-pill";
 import { CompAvatar } from "./comp-avatar";
 import { SignalSourceLine } from "@/components/outrival/signal-source-line";
+import { FeedbackButtons } from "@/components/outrival/feedback-buttons";
+import { SeverityFeedback } from "@/components/outrival/severity-feedback";
 
 interface SignalCardProps {
   signal: Signal;
@@ -40,7 +42,8 @@ export function SignalCard({
       )}
     >
       <div className="flex items-center gap-3 mb-3.5 flex-wrap">
-        <SeverityPill severity={signal.severity} />
+        {/* Prefer the user's severity override (patch-21) over the AI rating. */}
+        <SeverityPill severity={signal.severityOverride ?? signal.severity} />
         <CatPill>{signal.category}</CatPill>
         <span className="w-px h-3 bg-border" />
         <CompAvatar name={signal.competitorName} size={24} />
@@ -59,6 +62,15 @@ export function SignalCard({
       <p className="text-[15px] leading-normal mb-4 font-medium tracking-tight">
         {signal.insight}
       </p>
+
+      {/* Strategic narrative (patch-16): contextual explanation of a significant
+          structured homepage change. Visually distinct (amber, left rule, italic),
+          adds context below the title — never replaces it. Absent → unchanged. */}
+      {signal.narrative && (
+        <p className="mb-4 border-l-2 border-primary/40 pl-3 text-[13.5px] italic leading-relaxed text-primary/90">
+          {signal.narrative}
+        </p>
+      )}
 
       {hasDetails && (
         <div className="grid grid-cols-[100px_1fr] gap-x-8 gap-y-3.5 pt-4 border-t border-border">
@@ -112,6 +124,16 @@ export function SignalCard({
           sourceType={signal.sourceType}
           detectedAt={signal.createdAt}
         />
+        {/* Inline quality feedback (patch-21): verdict on the signal + a discreet
+            severity-adjustment control. */}
+        <div className="mt-2.5 flex items-center justify-between gap-3">
+          <FeedbackButtons
+            targetType="signal"
+            targetId={signal.id}
+            currentVerdict={signal.feedbackVerdict}
+          />
+          <SeverityFeedback signalId={signal.id} />
+        </div>
       </div>
     </div>
   );

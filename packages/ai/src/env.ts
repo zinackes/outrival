@@ -1,7 +1,10 @@
 import { z } from "zod";
 
+// The Groq/provider keys are read directly by the provider pool (provider-pool.ts,
+// patch-22) from AI_PROVIDER_N_* / GROQ_API_KEY, so they are no longer validated
+// here — the pool tolerates a partial config and degrades. Only Claude's key (the
+// non-pool fallback provider) is read through this schema.
 const EnvSchema = z.object({
-  GROQ_API_KEY: z.string().min(1),
   ANTHROPIC_API_KEY: z.string().optional(),
 });
 

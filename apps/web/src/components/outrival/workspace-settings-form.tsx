@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import { Loader2, RefreshCw, Pencil } from "lucide-react";
 import { api, type ProjectStage, type WorkspaceSettings } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -10,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { FormSkeleton } from "@/components/dashboard/skeletons";
 import { ChangeProductUrlDialog } from "@/components/outrival/change-product-url-dialog";
+import { UpdateProfileDialog } from "@/components/outrival/update-profile-dialog";
 
 const STAGE_LABELS: Record<ProjectStage, string> = {
   idea: "Idea to explore",
@@ -50,18 +50,17 @@ function isEqual(a: Draft, b: Draft) {
 }
 
 export function WorkspaceSettingsForm() {
-  const router = useRouter();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [pristine, setPristine] = useState<Draft | null>(null);
   const [slug, setSlug] = useState("");
   const [stage, setStage] = useState<ProjectStage | null>(null);
   const [saving, setSaving] = useState(false);
   const [changeUrlOpen, setChangeUrlOpen] = useState(false);
-  const [reonboarding, setReonboarding] = useState(false);
+  const [updateOpen, setUpdateOpen] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     api
       .getWorkspaceSettings()
       .then((s) => {
@@ -74,19 +73,9 @@ export function WorkspaceSettingsForm() {
       .catch((e) => setError(String(e)));
   }, []);
 
-  // Re-run the onboarding flow to refine the profile / change stage. Existing
-  // competitors are preserved — /complete only ever inserts.
-  async function reonboard() {
-    setReonboarding(true);
-    setError(null);
-    try {
-      await api.patchOnboardingProgress("stage");
-      router.push("/onboarding");
-    } catch (e) {
-      setError(String(e));
-      setReonboarding(false);
-    }
-  }
+  useEffect(() => {
+    load();
+  }, [load]);
 
   function set<K extends keyof Draft>(key: K, value: Draft[K]) {
     setDraft((d) => (d ? { ...d, [key]: value } : d));
@@ -247,20 +236,15 @@ export function WorkspaceSettingsForm() {
             type="button"
             variant="outline"
             size="sm"
-            onClick={reonboard}
-            disabled={reonboarding}
-            title="Re-run onboarding to refine your profile — your competitors stay"
+            onClick={() => setUpdateOpen(true)}
+            title="Refine your profile or re-analyze your source — your competitors stay"
           >
-            {reonboarding ? (
-              <Loader2 size={13} className="animate-spin" />
-            ) : (
-              <RefreshCw size={13} />
-            )}
+            <RefreshCw size={13} />
             Update my product profile
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          Re-running onboarding doesn&apos;t remove the competitors you track.
+          Edit the profile or re-analyze your source — your tracked competitors stay.
         </p>
       </div>
 
@@ -299,6 +283,8 @@ export function WorkspaceSettingsForm() {
           setPristine((p) => (p ? { ...p, productUrl: url } : p));
         }}
       />
+
+      <UpdateProfileDialog open={updateOpen} onOpenChange={setUpdateOpen} onSaved={load} />
     </form>
   );
 }

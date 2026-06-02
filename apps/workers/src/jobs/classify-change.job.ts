@@ -9,7 +9,14 @@ import {
   competitors,
   selfProductChanges,
 } from "@outrival/db";
-import { classifyChange, AI_CONFIG, type Classification } from "@outrival/ai";
+import {
+  classifyChange,
+  classifyStructuredChanges,
+  AI_CONFIG,
+  type Classification,
+  type PerChangeAssessment,
+} from "@outrival/ai";
+import type { StructuredChange } from "@outrival/scrapers/homepage-diff";
 import { groqQueue } from "../lib/queues";
 import { logAiRun } from "../lib/clickhouse";
 import { determineSelfChangeSeverity, notifySelfChange } from "../lib/self-change";
@@ -47,17 +54,51 @@ export const classifyChangeJob = task({
       throw new AbortTaskRunError(`Change ${input.changeId} has no diffText`);
     }
 
+    // Resolve monitor + competitor up front: their source type and name ground
+    // the classifier (a homepage tweak vs a pricing move), and they're reused for
+    // the self-competitor branch below.
+    const monitor = await db.query.monitors.findFirst({
+      where: eq(monitors.id, change.monitorId),
+    });
+    const competitor = monitor
+      ? await db.query.competitors.findFirst({ where: eq(competitors.id, monitor.competitorId) })
+      : null;
+
     // Ops quality logging (patch-02): success / parse_failed (null) / error
     // (thrown). The classify task itself stays DB-free — the job logs it.
-    const { provider, model } = AI_CONFIG.classificationFast;
+    // Homepage structured changes (patch-16) take the structured classifier (70b,
+    // per-change significance); everything else keeps the lexical 8b classifier.
     let classification: Classification | null;
-    try {
-      classification = await classifyChange(change.diffText);
-    } catch (err) {
-      await logAiRun("classify", provider, model, "error");
-      throw err;
+    let perChange: PerChangeAssessment[] | null = null;
+    if (change.diffType === "structured" && change.structuredDiff) {
+      const structured = change.structuredDiff as StructuredChange[];
+      const { provider, model } = AI_CONFIG.classification;
+      let res;
+      try {
+        res = await classifyStructuredChanges(structured, {
+          sourceType: monitor?.sourceType,
+          competitorName: competitor?.name,
+        });
+      } catch (err) {
+        await logAiRun("classify_structured", provider, model, "error");
+        throw err;
+      }
+      await logAiRun("classify_structured", provider, model, res ? "success" : "parse_failed");
+      classification = res?.classification ?? null;
+      perChange = res?.perChangeAssessment ?? null;
+    } else {
+      const { provider, model } = AI_CONFIG.classificationFast;
+      try {
+        classification = await classifyChange(change.diffText, {
+          sourceType: monitor?.sourceType,
+          competitorName: competitor?.name,
+        });
+      } catch (err) {
+        await logAiRun("classify", provider, model, "error");
+        throw err;
+      }
+      await logAiRun("classify", provider, model, classification ? "success" : "parse_failed");
     }
-    await logAiRun("classify", provider, model, classification ? "success" : "parse_failed");
     if (!classification) {
       logger.error("Classification failed", { changeId: input.changeId });
       throw new AbortTaskRunError("Classification returned null");
@@ -72,10 +113,15 @@ export const classifyChangeJob = task({
 
     // Persist the one-line reason on the change so the UI's change cards
     // (Activity orphans + Content tab) show what moved — even for non-significant
-    // changes that never become a signal.
+    // changes that never become a signal. For structured homepage changes, also
+    // overwrite structuredDiff with the per-change significance so the "Why this
+    // insight?" panel (patch-16) can list the individual changes.
     await db
       .update(changes)
-      .set({ summary: classification.reason })
+      .set({
+        summary: classification.reason,
+        ...(perChange ? { structuredDiff: perChange } : {}),
+      })
       .where(eq(changes.id, input.changeId));
 
     if (!classification.is_significant) {
@@ -89,13 +135,7 @@ export const classifyChangeJob = task({
     // Self-competitor (patch-12): the user's own product never produces a classic
     // signal (no signal_feed, no alert). Record the change in self_product_changes
     // for the user to accept/modify/ignore on the "My product" page, and stop here.
-    const monitor = await db.query.monitors.findFirst({
-      where: eq(monitors.id, change.monitorId),
-    });
-    const competitor = monitor
-      ? await db.query.competitors.findFirst({ where: eq(competitors.id, monitor.competitorId) })
-      : null;
-
+    // (monitor + competitor were resolved up front for the classifier context.)
     if (competitor?.type === "self") {
       const dupe = await db.query.selfProductChanges.findFirst({
         where: eq(selfProductChanges.changeId, input.changeId),

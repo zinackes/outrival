@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { tasks } from "@trigger.dev/sdk/v3";
 import {
   competitors,
@@ -14,6 +14,7 @@ import {
 import { normalizeHostname } from "@outrival/shared";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
+import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
 import { chQuery } from "../lib/clickhouse-safe";
 
@@ -73,6 +74,23 @@ function editedField<T>(value: T): SelfProfileField<T> {
   return { value, isFromAutoDetect: false, lastEditedByUserAt: new Date().toISOString() };
 }
 
+/** Flag monitors as scraping so the page derives "scanning…" (see isScanning) and
+ * survives a refresh. Clears any prior failure so the state flips straight to live. */
+async function markScanning(monitorIds: string[]) {
+  if (monitorIds.length === 0) return;
+  await db
+    .update(monitors)
+    .set({ scrapeStartedAt: new Date(), lastFailedAt: null, lastError: null })
+    .where(inArray(monitors.id, monitorIds));
+}
+
+const PricingTierSchema = z.object({
+  plan_name: z.string().min(1).max(80),
+  price: z.number().min(0).max(1_000_000),
+  currency: z.string().max(8),
+  billing_period: z.string().max(20),
+});
+
 const PatchSchema = z.object({
   category: z.string().max(200).optional(),
   audience: z.string().max(500).optional(),
@@ -86,9 +104,27 @@ const PatchSchema = z.object({
       promotional: z.boolean().optional(),
       demoUrl: z.string().max(2000).nullable().optional(),
       note: z.string().max(1000).nullable().optional(),
+      tiers: z.array(PricingTierSchema).max(20).optional(),
     })
     .optional(),
 });
+
+/** A self monitor is "scanning" when its scrape was started after the last
+ * terminal event (run or failure) and hasn't blown past the poll window.
+ * Mirrors isServerScraping on the competitor page so the UI behaves the same. */
+const SCAN_TIMEOUT_MS = 5 * 60 * 1000;
+function isScanning(m: {
+  scrapeStartedAt: Date | null;
+  lastRunAt: Date | null;
+  lastFailedAt: Date | null;
+}): boolean {
+  if (!m.scrapeStartedAt) return false;
+  const started = m.scrapeStartedAt.getTime();
+  const lastRun = m.lastRunAt?.getTime() ?? 0;
+  const lastFailed = m.lastFailedAt?.getTime() ?? 0;
+  if (started <= lastRun || started <= lastFailed) return false;
+  return Date.now() - started < SCAN_TIMEOUT_MS;
+}
 
 // GET /api/my-product — the enriched self profile, or { product: null }.
 myProductRouter.get("/", async (c) => {
@@ -104,6 +140,15 @@ myProductRouter.get("/", async (c) => {
   const lastScanAt = selfMonitors
     .map((m) => m.lastRunAt?.getTime() ?? 0)
     .reduce((a, b) => Math.max(a, b), 0);
+
+  // Live scan state so the page can show "scanning…" and surface a failure
+  // instead of leaving the user guessing whether a re-scan finished.
+  const scanning = selfMonitors.some(isScanning);
+  const failed = selfMonitors
+    .filter((m) => !isScanning(m) && m.lastError && m.lastFailedAt)
+    .filter((m) => (m.lastFailedAt?.getTime() ?? 0) > (m.lastRunAt?.getTime() ?? 0))
+    .sort((a, b) => (b.lastFailedAt?.getTime() ?? 0) - (a.lastFailedAt?.getTime() ?? 0))[0];
+  const scanError = scanning ? null : (failed?.lastError ?? null);
 
   const repoMonitor = selfMonitors.find((m) => m.sourceType === "github_repo");
   const repoUrl =
@@ -129,7 +174,13 @@ myProductRouter.get("/", async (c) => {
     params: { competitorId: self.id },
   });
   const latestAt = pricingRows[0]?.recorded_at ?? null;
-  const tiers = latestAt ? pricingRows.filter((r) => r.recorded_at === latestAt) : [];
+  const chTiers = latestAt ? pricingRows.filter((r) => r.recorded_at === latestAt) : [];
+
+  // User-entered tiers (sticky) win over the auto-detected ClickHouse batch — and
+  // are the only ones available when ClickHouse isn't configured.
+  const profile = (self.selfProfile ?? {}) as SelfProfile;
+  const manualTiers = profile.pricingTiers;
+  const tiers = manualTiers ? manualTiers.value : chTiers;
 
   const jobs = await db.query.jobPostings.findMany({
     where: and(eq(jobPostings.competitorId, self.id), eq(jobPostings.isActive, true)),
@@ -144,8 +195,10 @@ myProductRouter.get("/", async (c) => {
       url: self.url,
       repoUrl,
       lastScanAt: lastScanAt > 0 ? new Date(lastScanAt).toISOString() : null,
+      scanning,
+      scanError,
       aiSummary: self.aiSummary,
-      profile: (self.selfProfile ?? {}) as SelfProfile,
+      profile,
       pricing: {
         status: self.pricingStatus,
         observedRegion: self.pricingObservedRegion,
@@ -154,6 +207,8 @@ myProductRouter.get("/", async (c) => {
         note: self.pricingNote,
         manualOverride: self.pricingManualOverride,
         tiers,
+        tiersManual: !!manualTiers,
+        tiersEditedAt: manualTiers?.lastEditedByUserAt ?? null,
       },
       jobs: { total: jobs.length, items: jobs },
     },
@@ -182,6 +237,7 @@ myProductRouter.patch("/", async (c) => {
   if (valueProp !== undefined) profile.valueProp = editedField(valueProp);
   if (features !== undefined) profile.features = editedField(features);
   if (techStack !== undefined) profile.techStack = editedField(techStack);
+  if (pricing?.tiers !== undefined) profile.pricingTiers = editedField(pricing.tiers);
 
   const update: Partial<typeof competitors.$inferInsert> = {
     selfProfile: profile,
@@ -271,6 +327,7 @@ myProductRouter.post("/site", async (c) => {
       console.error("Failed to trigger self scrape", { monitorId: m.id, error: String(e) });
     }
   }
+  await markScanning(toScrape.map((m) => m.id));
 
   return c.json({ ok: true });
 });
@@ -329,14 +386,39 @@ myProductRouter.post("/repo", async (c) => {
   } catch (e) {
     console.error("Failed to trigger self repo scrape", { monitorId, error: String(e) });
   }
+  await markScanning([monitorId]);
 
   return c.json({ ok: true });
 });
 
-// POST /api/my-product/rescan — force a fresh scrape of every self monitor now.
-myProductRouter.post("/rescan", async (c) => {
+// Each My Product card maps to the monitor source(s) that feed it. profile, features
+// and techStack all derive from the homepage scrape (extract-self-profile), so picking
+// any of them re-runs homepage exactly once (deduped); pricing has its own monitor.
+const RESCAN_CATEGORY_SOURCES = {
+  profile: ["homepage"],
+  pricing: ["pricing"],
+  features: ["homepage"],
+  techStack: ["homepage"],
+} as const satisfies Record<string, readonly string[]>;
+
+const RescanSchema = z.object({
+  categories: z
+    .array(z.enum(["profile", "pricing", "features", "techStack"]))
+    .min(1)
+    .optional(),
+});
+
+// POST /api/my-product/rescan — force a fresh scrape now. No body (or no categories) →
+// every self monitor. With categories → only the monitors feeding the picked cards.
+myProductRouter.post("/rescan", aiIntensiveRateLimit, async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = RescanSchema.safeParse(body ?? {});
+  if (!parsed.success) {
+    return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
+  }
 
   const self = await getSelf(orgId);
   if (!self) return c.json({ error: "no_self_product" }, 404);
@@ -344,14 +426,24 @@ myProductRouter.post("/rescan", async (c) => {
   const selfMonitors = await db.query.monitors.findMany({
     where: eq(monitors.competitorId, self.id),
   });
-  for (const m of selfMonitors) {
+
+  const categories = parsed.data.categories;
+  const wantedSources = categories
+    ? new Set<string>(categories.flatMap((cat) => RESCAN_CATEGORY_SOURCES[cat]))
+    : null;
+  const toScrape = wantedSources
+    ? selfMonitors.filter((m) => wantedSources.has(m.sourceType))
+    : selfMonitors;
+
+  for (const m of toScrape) {
     try {
       await tasks.trigger("scrape-monitor", { monitorId: m.id, force: true });
     } catch (e) {
       console.error("Failed to trigger self rescan", { monitorId: m.id, error: String(e) });
     }
   }
-  return c.json({ ok: true, monitors: selfMonitors.length });
+  await markScanning(toScrape.map((m) => m.id));
+  return c.json({ ok: true, monitors: toScrape.length });
 });
 
 // GET /api/my-product/changes?status=pending — detected changes awaiting review.

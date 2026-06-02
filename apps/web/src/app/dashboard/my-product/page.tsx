@@ -1,16 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   RefreshCw,
   Loader2,
   Pencil,
   Check,
   X,
+  Plus,
+  Trash2,
   AlertTriangle,
   ExternalLink,
   Sparkles,
   Store,
+  ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { toastApiError } from "@/lib/error-helpers";
@@ -19,6 +22,8 @@ import {
   api,
   type MyProduct,
   type MyProductPatch,
+  type MyProductPricingTier,
+  type MyProductRescanCategory,
   type SelfProfileField,
   type SelfProductChange,
 } from "@/lib/api";
@@ -27,7 +32,15 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -36,8 +49,18 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { PageHead } from "@/components/dashboard/page-head";
 import { ChangeProductUrlDialog } from "@/components/outrival/change-product-url-dialog";
+import { UpdateProfileDialog } from "@/components/outrival/update-profile-dialog";
 
 const PRICING_LABELS: Record<string, string> = {
   public: "Public",
@@ -236,10 +259,355 @@ function EditableList({
   );
 }
 
+const PRICING_STATUS_OPTIONS = Object.entries(PRICING_LABELS).map(([value, label]) => ({
+  value,
+  label,
+}));
+
+/** Editable pricing block: hand-entered tiers (sticky vs scrapes) plus status,
+ * promo flag and note. Tiers are the only pricing surface with no source outside
+ * ClickHouse, so without it the user can still maintain them by hand. */
+function PricingCard({
+  pricing,
+  onSave,
+}: {
+  pricing: MyProduct["pricing"];
+  onSave: (p: NonNullable<MyProductPatch["pricing"]>) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [tiers, setTiers] = useState<MyProductPricingTier[]>([]);
+  const [status, setStatus] = useState("unknown");
+  const [promotional, setPromotional] = useState(false);
+  const [note, setNote] = useState("");
+
+  function startEdit() {
+    setTiers(pricing.tiers.map((t) => ({ ...t })));
+    setStatus(pricing.status ?? "unknown");
+    setPromotional(pricing.promotional);
+    setNote(pricing.note ?? "");
+    setEditing(true);
+  }
+
+  function setTier(i: number, patch: Partial<MyProductPricingTier>) {
+    setTiers((ts) => ts.map((t, idx) => (idx === i ? { ...t, ...patch } : t)));
+  }
+
+  async function save() {
+    setSaving(true);
+    try {
+      await onSave({
+        status,
+        promotional,
+        note: note.trim() || null,
+        tiers: tiers
+          .filter((t) => t.plan_name.trim())
+          .map((t) => ({
+            plan_name: t.plan_name.trim(),
+            price: Number.isFinite(t.price) ? t.price : 0,
+            currency: (t.currency || "USD").trim(),
+            billing_period: (t.billing_period || "monthly").trim(),
+          })),
+      });
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card className="p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <h3 className="text-[13px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Pricing
+          </h3>
+          {pricing.tiers.length > 0 && (
+            <span className="text-[11px] text-[var(--muted-2)] inline-flex items-center gap-1">
+              {pricing.tiersManual ? (
+                <>
+                  edited by you
+                  {pricing.tiersEditedAt
+                    ? ` ${formatDistanceToNow(new Date(pricing.tiersEditedAt), { addSuffix: true })}`
+                    : ""}
+                </>
+              ) : (
+                <>
+                  <Sparkles className="size-3" /> detected auto
+                </>
+              )}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {!editing && pricing.promotional && (
+            <Badge variant="secondary" className="text-[10px]">
+              promo
+            </Badge>
+          )}
+          {!editing && (
+            <Badge variant="outline" className="text-[11px]">
+              {PRICING_LABELS[pricing.status ?? "unknown"] ?? "Unknown"}
+            </Badge>
+          )}
+          {!editing && (
+            <Button size="sm" variant="ghost" onClick={startEdit}>
+              <Pencil className="size-3.5" /> Edit
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {editing ? (
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            {tiers.map((t, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <Input
+                  value={t.plan_name}
+                  onChange={(e) => setTier(i, { plan_name: e.target.value })}
+                  placeholder="Plan name"
+                  className="flex-1"
+                />
+                <Input
+                  type="number"
+                  min={0}
+                  value={Number.isFinite(t.price) ? t.price : 0}
+                  onChange={(e) =>
+                    setTier(i, { price: e.target.value === "" ? 0 : Number(e.target.value) })
+                  }
+                  placeholder="0"
+                  className="w-24"
+                />
+                <Input
+                  value={t.currency}
+                  onChange={(e) => setTier(i, { currency: e.target.value })}
+                  placeholder="USD"
+                  className="w-20"
+                />
+                <Input
+                  value={t.billing_period}
+                  onChange={(e) => setTier(i, { billing_period: e.target.value })}
+                  placeholder="monthly"
+                  className="w-28"
+                />
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="shrink-0"
+                  onClick={() => setTiers((ts) => ts.filter((_, idx) => idx !== i))}
+                  aria-label="Remove tier"
+                >
+                  <Trash2 className="size-3.5" />
+                </Button>
+              </div>
+            ))}
+            <Button
+              size="sm"
+              variant="outline"
+              className="self-start"
+              onClick={() =>
+                setTiers((ts) => [
+                  ...ts,
+                  { plan_name: "", price: 0, currency: "USD", billing_period: "monthly" },
+                ])
+              }
+            >
+              <Plus className="size-3.5" /> Add tier
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-[140px_1fr] gap-3 items-center">
+            <div className="text-[13px] text-muted-foreground">Pricing model</div>
+            <Select value={status} onValueChange={setStatus}>
+              <SelectTrigger className="sm:max-w-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PRICING_STATUS_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <div className="text-[13px] text-muted-foreground">Note</div>
+            <Input
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Optional context (e.g. enterprise only on request)"
+            />
+
+            <div className="text-[13px] text-muted-foreground">Promotional</div>
+            <label className="inline-flex items-center gap-2 text-[13px]">
+              <Checkbox
+                checked={promotional}
+                onCheckedChange={(v) => setPromotional(v === true)}
+              />
+              Pricing currently shows a promotion
+            </label>
+          </div>
+
+          <div className="flex gap-2">
+            <Button size="sm" onClick={save} disabled={saving}>
+              {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
+              Save
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setEditing(false)} disabled={saving}>
+              <X className="size-3.5" /> Cancel
+            </Button>
+          </div>
+        </div>
+      ) : pricing.tiers.length > 0 ? (
+        <div className="flex flex-col gap-1.5">
+          {pricing.tiers.map((t, i) => (
+            <div key={`${t.plan_name}-${i}`} className="flex items-center justify-between text-[14px]">
+              <span>{t.plan_name}</span>
+              <span style={mono} className="text-foreground">
+                {t.price === 0 ? "Free" : `${t.price} ${t.currency}`}
+                <span className="text-[var(--muted-2)]">/{t.billing_period}</span>
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-[13px] text-[var(--muted-2)]">
+          No pricing tiers yet.{" "}
+          <button type="button" className="underline" onClick={startEdit}>
+            Add them by hand
+          </button>{" "}
+          or re-scan your pricing page.
+        </div>
+      )}
+
+      {!editing && (pricing.observedRegion || pricing.note) && (
+        <div className="text-[11px] text-[var(--muted-2)] mt-2">
+          {pricing.observedRegion ? `Seen from ${pricing.observedRegion}` : ""}
+          {pricing.note ? ` · ${pricing.note}` : ""}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/** Category enum on a self change → human label. */
+const FIELD_LABELS: Record<string, string> = {
+  pricing: "Pricing",
+  product: "Product",
+  hiring: "Hiring",
+  reviews: "Reviews",
+  content: "Content / messaging",
+  funding: "Funding",
+};
+
+/** Coerce a stored diff side (string[] | null | unknown) into display lines. */
+function asLines(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  return v.filter((x): x is string => typeof x === "string" && x.trim().length > 0);
+}
+
+const DIFF_MAX_LINES = 6;
+
+/** Compact before/after view of a detected change so the user sees what moved. */
+function ChangeDiff({ before, after }: { before: string[]; after: string[] }) {
+  if (before.length === 0 && after.length === 0) return null;
+  const beforeShown = before.slice(0, DIFF_MAX_LINES);
+  const afterShown = after.slice(0, DIFF_MAX_LINES);
+  return (
+    <div
+      style={mono}
+      className="text-[12px] rounded border border-border bg-[var(--muted)]/30 overflow-hidden mb-2"
+    >
+      {beforeShown.map((line, i) => (
+        <div key={`b-${i}`} className="flex gap-1.5 px-2 py-0.5 text-destructive">
+          <span className="select-none opacity-60">−</span>
+          <span className="break-words min-w-0">{line}</span>
+        </div>
+      ))}
+      {before.length > DIFF_MAX_LINES && (
+        <div className="px-2 py-0.5 text-[var(--muted-2)]">+{before.length - DIFF_MAX_LINES} more removed</div>
+      )}
+      {afterShown.map((line, i) => (
+        <div key={`a-${i}`} className="flex gap-1.5 px-2 py-0.5 text-primary">
+          <span className="select-none opacity-60">+</span>
+          <span className="break-words min-w-0">{line}</span>
+        </div>
+      ))}
+      {after.length > DIFF_MAX_LINES && (
+        <div className="px-2 py-0.5 text-[var(--muted-2)]">+{after.length - DIFF_MAX_LINES} more added</div>
+      )}
+    </div>
+  );
+}
+
 const SEVERITY_STYLE: Record<string, string> = {
   minor: "border-l-2 border-l-primary",
   major: "border-l-2 border-l-destructive",
 };
+
+const RESCAN_CATEGORIES: { key: MyProductRescanCategory; label: string }[] = [
+  { key: "profile", label: "Profile" },
+  { key: "pricing", label: "Pricing" },
+  { key: "features", label: "Features" },
+  { key: "techStack", label: "Tech stack" },
+];
+
+/** Re-scan control with selective targets. Picking cards re-scans only their sources
+ * (Features + Tech stack share one homepage scrape server-side); "Everything" hits
+ * every source. Shown for live products; repo/idea stages use a plain button. */
+function RescanMenu({
+  busy,
+  onRescan,
+}: {
+  busy: boolean;
+  onRescan: (categories?: MyProductRescanCategory[]) => void;
+}) {
+  const [selected, setSelected] = useState<Set<MyProductRescanCategory>>(new Set());
+  const toggle = (key: MyProductRescanCategory) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm" disabled={busy}>
+          {busy ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+          {busy ? "Scanning…" : "Re-scan"}
+          <ChevronDown className="size-3.5" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-52">
+        <DropdownMenuLabel>Re-scan only</DropdownMenuLabel>
+        {RESCAN_CATEGORIES.map((cat) => (
+          <DropdownMenuCheckboxItem
+            key={cat.key}
+            checked={selected.has(cat.key)}
+            onCheckedChange={() => toggle(cat.key)}
+            onSelect={(e) => e.preventDefault()}
+          >
+            {cat.label}
+          </DropdownMenuCheckboxItem>
+        ))}
+        <DropdownMenuItem
+          disabled={selected.size === 0}
+          onSelect={() => {
+            onRescan([...selected]);
+            setSelected(new Set());
+          }}
+        >
+          Re-scan selected{selected.size > 0 ? ` (${selected.size})` : ""}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => onRescan()}>Everything</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 export default function MyProductPage() {
   const [product, setProduct] = useState<MyProduct | null | undefined>(undefined);
@@ -254,6 +622,7 @@ export default function MyProductPage() {
   const [repoUrl, setRepoUrl] = useState("");
   const [trackingRepo, setTrackingRepo] = useState(false);
   const [changeUrlOpen, setChangeUrlOpen] = useState(false);
+  const [updateOpen, setUpdateOpen] = useState(false);
 
   async function load() {
     try {
@@ -272,6 +641,29 @@ export default function MyProductPage() {
   useEffect(() => {
     load();
   }, []);
+
+  // While a scan is in progress, poll until it settles, then refresh + toast the
+  // outcome — so a re-scan visibly finishes instead of leaving the user guessing.
+  const wasScanning = useRef(false);
+  useEffect(() => {
+    const scanning = product?.scanning ?? false;
+    if (scanning) {
+      wasScanning.current = true;
+      const t = setInterval(() => load(), 4000);
+      return () => clearInterval(t);
+    }
+    if (wasScanning.current) {
+      wasScanning.current = false;
+      if (product?.scanError) {
+        toast.error("Scan failed", { description: product.scanError });
+      } else {
+        // Features/tech stack are written by downstream tasks that finish just
+        // after the scrape — one more load grabs them.
+        void load();
+        toast.success("Scan complete", { description: "Your profile is up to date." });
+      }
+    }
+  }, [product?.scanning, product?.scanError]);
 
   async function patch(body: MyProductPatch) {
     await api.updateMyProduct(body);
@@ -311,11 +703,12 @@ export default function MyProductPage() {
     }
   }
 
-  async function rescan() {
+  async function rescan(categories?: MyProductRescanCategory[]) {
     setRescanning(true);
     try {
-      await api.rescanMyProduct();
-      toast.success("Re-scan started", { description: "Fresh data will appear shortly." });
+      await api.rescanMyProduct(categories);
+      toast.success("Re-scan started", { description: "Scanning your sources now…" });
+      await load(); // pick up scanning=true so the progress poll kicks in
     } catch (e) {
       toastApiError(e, { title: "Re-scan failed" });
     } finally {
@@ -416,34 +809,56 @@ export default function MyProductPage() {
               <span>{p.name}</span>
             )}
             <span className="text-[var(--muted-2)]">·</span>
-            <span>
-              {!p.url && !p.repoUrl
-                ? "Not live yet"
-                : p.lastScanAt
-                  ? `Last scan ${formatDistanceToNow(new Date(p.lastScanAt), { addSuffix: true })}`
-                  : "Not scanned yet"}
-            </span>
+            {p.scanning ? (
+              <span className="inline-flex items-center gap-1 text-foreground">
+                <Loader2 className="size-3 animate-spin" /> Scanning…
+              </span>
+            ) : p.scanError ? (
+              <span className="inline-flex items-center gap-1 text-destructive">
+                <AlertTriangle className="size-3" /> Last scan failed
+              </span>
+            ) : (
+              <span>
+                {!p.url && !p.repoUrl
+                  ? "Not live yet"
+                  : p.lastScanAt
+                    ? `Last scan ${formatDistanceToNow(new Date(p.lastScanAt), { addSuffix: true })}`
+                    : "Not scanned yet"}
+              </span>
+            )}
           </span>
         }
         actions={
-          p.url || p.repoUrl ? (
-            <div className="flex items-center gap-2">
-              {p.url && (
-                <Button onClick={() => setChangeUrlOpen(true)} variant="outline" size="sm">
-                  <Pencil className="size-3.5" />
-                  Change URL
-                </Button>
-              )}
-              <Button onClick={rescan} disabled={rescanning} variant="outline" size="sm">
-                {rescanning ? (
+          <div className="flex items-center gap-2">
+            {/* Stage / source / profile update — works at every stage, including
+                idea/document with no live URL yet. */}
+            <Button onClick={() => setUpdateOpen(true)} variant="outline" size="sm">
+              <RefreshCw className="size-3.5" />
+              Update profile
+            </Button>
+            {p.url ? (
+              // Live product: site + pricing monitors exist, so offer selective re-scan.
+              <RescanMenu
+                busy={rescanning || p.scanning}
+                onRescan={(categories) => void rescan(categories)}
+              />
+            ) : p.repoUrl ? (
+              // Repo-only (developing) product: nothing to scope, plain re-scan.
+              <Button
+                onClick={() => rescan()}
+                disabled={rescanning || p.scanning}
+                variant="outline"
+                size="sm"
+              >
+                {rescanning || p.scanning ? (
                   <Loader2 className="size-3.5 animate-spin" />
                 ) : (
                   <RefreshCw className="size-3.5" />
                 )}
-                Re-scan
+                {p.scanning ? "Scanning…" : "Re-scan"}
               </Button>
-            </div>
-          ) : undefined
+            ) : null}
+          </div>
         }
       />
 
@@ -456,7 +871,9 @@ export default function MyProductPage() {
             {changes.map((ch) => (
               <div key={ch.id} className={`pl-3 ${SEVERITY_STYLE[ch.severity] ?? ""}`}>
                 <div className="flex items-center gap-2 mb-0.5">
-                  <span className="text-[12px] font-medium capitalize">{ch.fieldPath}</span>
+                  <span className="text-[12px] font-medium">
+                    {FIELD_LABELS[ch.fieldPath] ?? ch.fieldPath}
+                  </span>
                   {ch.severity === "major" && (
                     <Badge variant="destructive" className="text-[10px]">
                       major
@@ -466,6 +883,7 @@ export default function MyProductPage() {
                 <div className="text-[13px] text-muted-foreground mb-2">
                   {ch.summary ?? "Change detected."}
                 </div>
+                <ChangeDiff before={asLines(ch.previousValue)} after={asLines(ch.newValue)} />
                 {ch.severity === "major" && (
                   <div className="text-[12px] text-[var(--muted-2)] inline-flex items-start gap-1 mb-2">
                     <AlertTriangle className="size-3.5 mt-0.5 shrink-0" />
@@ -598,47 +1016,7 @@ export default function MyProductPage() {
           />
         </Card>
 
-        <Card className="p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-[13px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Pricing
-            </h3>
-            <div className="flex items-center gap-2">
-              {p.pricing.promotional && (
-                <Badge variant="secondary" className="text-[10px]">
-                  promo
-                </Badge>
-              )}
-              <Badge variant="outline" className="text-[11px]">
-                {PRICING_LABELS[p.pricing.status ?? "unknown"] ?? "Unknown"}
-              </Badge>
-            </div>
-          </div>
-          {p.pricing.tiers.length > 0 ? (
-            <div className="flex flex-col gap-1.5">
-              {p.pricing.tiers.map((t, i) => (
-                <div
-                  key={`${t.plan_name}-${i}`}
-                  className="flex items-center justify-between text-[14px]"
-                >
-                  <span>{t.plan_name}</span>
-                  <span style={mono} className="text-foreground">
-                    {t.price === 0 ? "Free" : `${t.price} ${t.currency}`}
-                    <span className="text-[var(--muted-2)]">/{t.billing_period}</span>
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-[13px] text-[var(--muted-2)]">No pricing tiers detected yet.</div>
-          )}
-          {(p.pricing.observedRegion || p.pricing.note) && (
-            <div className="text-[11px] text-[var(--muted-2)] mt-2">
-              {p.pricing.observedRegion ? `Seen from ${p.pricing.observedRegion}` : ""}
-              {p.pricing.note ? ` · ${p.pricing.note}` : ""}
-            </div>
-          )}
-        </Card>
+        <PricingCard pricing={p.pricing} onSave={(pr) => patch({ pricing: pr })} />
 
         <EditableList
           label={`Features detected${profile.features?.value?.length ? ` (${profile.features.value.length})` : ""}`}
@@ -668,6 +1046,8 @@ export default function MyProductPage() {
         currentUrl={p.url}
         onSaved={load}
       />
+
+      <UpdateProfileDialog open={updateOpen} onOpenChange={setUpdateOpen} onSaved={load} />
 
       <Dialog open={rediscover !== null} onOpenChange={(o) => !o && setRediscover(null)}>
         <DialogContent>

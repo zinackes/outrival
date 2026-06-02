@@ -123,6 +123,48 @@ monitorsRouter.delete("/:id", async (c) => {
   return c.json({ ok: true });
 });
 
+// Whether a manual re-scrape is worth it (patch-22 intelligent rate limiting).
+// signals carry no monitorId (linked via change_id), so staleness uses the monitor's
+// own lastRunAt + lastChangedAt: scraped <30min ago → "very_recent"; scraped <24h ago
+// with no change detected since that run → "fresh"; otherwise "outdated". Never blocking.
+monitorsRouter.get("/:id/staleness", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const monitor = await db.query.monitors.findFirst({ where: eq(monitors.id, id) });
+  if (!monitor) return c.json({ error: "Monitor not found" }, 404);
+
+  const competitor = await db.query.competitors.findFirst({
+    where: and(
+      eq(competitors.id, monitor.competitorId),
+      eq(competitors.orgId, orgId),
+      isNull(competitors.deletedAt),
+    ),
+  });
+  if (!competitor) return c.json({ error: "Forbidden" }, 403);
+
+  const lastRunAt = monitor.lastRunAt;
+  const minutesSince = lastRunAt ? (Date.now() - lastRunAt.getTime()) / 60000 : Infinity;
+  // A change detected at/after the last run means the page is actively moving.
+  const changedSinceRun =
+    !!monitor.lastChangedAt &&
+    !!lastRunAt &&
+    monitor.lastChangedAt.getTime() >= lastRunAt.getTime();
+
+  let staleness: "very_recent" | "fresh" | "outdated";
+  if (minutesSince < 30) staleness = "very_recent";
+  else if (minutesSince < 1440 && !changedSinceRun) staleness = "fresh";
+  else staleness = "outdated";
+
+  return c.json({
+    staleness,
+    needsRescrape: staleness === "outdated",
+    lastRunAt,
+    lastChangedAt: monitor.lastChangedAt,
+  });
+});
+
 monitorsRouter.post("/:id/run", async (c) => {
   const id = c.req.param("id");
   const user = c.get("user");

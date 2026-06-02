@@ -31,7 +31,7 @@ export function UserMenu({ user }: { user: User }) {
   async function handleSignOut() {
     await signOut();
     resetUser();
-    router.push("/login");
+    router.push("/auth");
     router.refresh();
   }
 

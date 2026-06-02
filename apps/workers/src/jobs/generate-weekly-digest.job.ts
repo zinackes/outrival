@@ -1,7 +1,8 @@
 import { schedules, logger } from "@trigger.dev/sdk/v3";
 import { and, desc, eq, gte, isNull, lt } from "drizzle-orm";
 import { db, organizations, signals, digests, competitors, sectoralSignals } from "@outrival/db";
-import { generateDigest, AI_CONFIG, type DigestInputSignal } from "@outrival/ai";
+import { generateDigest, AI_CONFIG, checkGlobalBreaker, type DigestInputSignal } from "@outrival/ai";
+import { signDigestFeedbackToken } from "@outrival/shared";
 import { renderDigestEmail } from "../lib/digest-email";
 import { getResend, ALERT_FROM } from "../lib/resend";
 import { logAiRun } from "../lib/clickhouse";
@@ -14,6 +15,11 @@ export const generateWeeklyDigestJob = schedules.task({
   id: "generate-weekly-digest",
   cron: "0 8 * * 1",
   maxDuration: 600,
+  // When the AI circuit breaker is open at cron time (patch-22), the job throws and
+  // retries on a backoff that spreads over ~the next hour instead of burning the
+  // week's single run against dead providers. Idempotent per (org, weekStart), so a
+  // retry only re-processes orgs whose digest wasn't sent yet.
+  retry: { maxAttempts: 4, minTimeoutInMs: 60_000, maxTimeoutInMs: 1_800_000, factor: 6 },
 
   async run(payload) {
     const now = payload.timestamp ?? new Date();
@@ -21,6 +27,15 @@ export const generateWeeklyDigestJob = schedules.task({
     weekEnd.setUTCHours(0, 0, 0, 0);
     const weekStart = new Date(weekEnd);
     weekStart.setUTCDate(weekStart.getUTCDate() - 7);
+
+    const breaker = await checkGlobalBreaker();
+    if (breaker.open) {
+      logger.warn("AI circuit breaker open — deferring weekly digest to retry", {
+        reason: breaker.reason,
+        resetInSec: breaker.resetInSec,
+      });
+      throw new Error(`ai_circuit_breaker_open:${breaker.reason ?? "unknown"}`);
+    }
 
     logger.log("Starting generate-weekly-digest", {
       weekStart: isoDate(weekStart),
@@ -147,7 +162,30 @@ export const generateWeeklyDigestJob = schedules.task({
 
       if (org.digestEmail) {
         try {
-          const html = renderDigestEmail(digest, isoDate(weekStart), isoDate(weekEnd));
+          // One-click feedback links (patch-21), signed so the email needs no
+          // session. Degrades to no links if the secret / API base isn't set.
+          const apiBase =
+            process.env.NEXT_PUBLIC_API_URL ?? process.env.BETTER_AUTH_URL ?? "";
+          const secret = process.env.BETTER_AUTH_SECRET ?? "";
+          const feedbackLinks =
+            apiBase && secret
+              ? {
+                  useful: `${apiBase}/api/digest-feedback?token=${signDigestFeedbackToken(
+                    { orgId: org.id, digestId: stored.id, verdict: "useful" },
+                    secret,
+                  )}`,
+                  notUseful: `${apiBase}/api/digest-feedback?token=${signDigestFeedbackToken(
+                    { orgId: org.id, digestId: stored.id, verdict: "not_useful" },
+                    secret,
+                  )}`,
+                }
+              : undefined;
+          const html = renderDigestEmail(
+            digest,
+            isoDate(weekStart),
+            isoDate(weekEnd),
+            feedbackLinks,
+          );
           await getResend().emails.send({
             from: ALERT_FROM,
             to: org.digestEmail,

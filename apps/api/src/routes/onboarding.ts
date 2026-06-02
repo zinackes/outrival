@@ -26,6 +26,7 @@ import { quickFetchText } from "@outrival/scrapers/quick-fetch";
 import { tasks } from "@trigger.dev/sdk/v3";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
+import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
 import { fetchRepoArtifacts } from "../lib/github";
 import { extractDocumentText } from "../lib/extract-document";
@@ -42,6 +43,18 @@ type ProjectStage = "idea" | "document" | "developing" | "live";
 export const onboardingRouter = new Hono<{ Variables: Variables }>();
 
 onboardingRouter.use("*", authMiddleware);
+
+// A profile extractor failing two ways — a parse miss (null) or a provider error
+// (an empty/rate-limited completion now throws at the provider boundary) — both
+// mean the same thing here: we couldn't derive a profile, so degrade to the
+// manual-description fallback (`if (!profile)` → 422) instead of a bare 500.
+async function deriveProfile<T>(fn: () => Promise<T | null>): Promise<T | null> {
+  try {
+    return await fn();
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Persist a freshly analysed profile + the stage it came from, and mark progress at
@@ -173,7 +186,7 @@ const AnalyzeUrlSchema = z.object({
   productUrl: z.string().url(),
 });
 
-onboardingRouter.post("/analyze-url", async (c) => {
+onboardingRouter.post("/analyze-url", aiIntensiveRateLimit, async (c) => {
   const body = await c.req.json().catch(() => null);
   const parsed = AnalyzeUrlSchema.safeParse(body);
   if (!parsed.success) {
@@ -194,7 +207,7 @@ onboardingRouter.post("/analyze-url", async (c) => {
     return c.json({ error: "Page content too short to analyse", fallback: "description" }, 422);
   }
 
-  const profile = await fromUrl(text);
+  const profile = await deriveProfile(() => fromUrl(text));
   if (!profile) {
     return c.json({ error: "Could not derive a product profile", fallback: "description" }, 422);
   }
@@ -230,7 +243,7 @@ onboardingRouter.post("/analyze-description", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
 
-  const profile = await fromDescription(parsed.data);
+  const profile = await deriveProfile(() => fromDescription(parsed.data));
   if (!profile) {
     return c.json({ error: "Could not derive a product profile", fallback: "description" }, 422);
   }
@@ -269,7 +282,7 @@ onboardingRouter.post(
       );
     }
 
-    const profile = await fromDocument(extracted.value);
+    const profile = await deriveProfile(() => fromDocument(extracted.value));
     if (!profile) {
       return c.json({ error: "Could not derive a product profile", fallback: "description" }, 422);
     }
@@ -305,7 +318,7 @@ onboardingRouter.post("/analyze-repo", async (c) => {
     return c.json({ error: message, fallback: "description" }, 422);
   }
 
-  const profile = await fromRepo(artifacts.value);
+  const profile = await deriveProfile(() => fromRepo(artifacts.value));
   if (!profile) {
     return c.json({ error: "Could not derive a product profile", fallback: "description" }, 422);
   }
@@ -359,7 +372,58 @@ onboardingRouter.post("/discover", async (c) => {
   return c.json({ competitors: out });
 });
 
-const PatchProfileSchema = z.object({ profile: ProductProfileSchema });
+// Keep the My Product self-profile in step with the org product profile when the
+// update modal saves (patch: dual-profile sync). Only the three fields both
+// profiles share are mirrored — features/techStack/pricingTiers stay self-only and
+// pricingModel stays org-only. Stickiness: a field the user manually typed freezes
+// against future auto-scans (isFromAutoDetect=false); a value merely accepted from a
+// re-analysis stays auto-detected. Unchanged fields keep their prior sticky state.
+// No-op during first-time onboarding (the self-competitor doesn't exist until
+// /complete). Best-effort: never blocks the profile save.
+const SELF_SHARED_FIELDS = ["category", "audience", "valueProp"] as const;
+type SelfSharedField = (typeof SELF_SHARED_FIELDS)[number];
+
+async function syncSelfProfile(
+  orgId: string,
+  profile: ProductProfile,
+  manualFields: Set<string>,
+) {
+  const self = await db.query.competitors.findFirst({
+    where: and(eq(competitors.orgId, orgId), eq(competitors.type, "self")),
+  });
+  if (!self) return;
+
+  const prev = (self.selfProfile ?? {}) as SelfProfile;
+  const next: SelfProfile = { ...prev };
+  const now = new Date().toISOString();
+
+  for (const key of SELF_SHARED_FIELDS) {
+    const value = profile[key]?.trim() ?? "";
+    const prevField = prev[key] as SelfProfileField<string> | undefined;
+    // Don't wipe an existing self value with an empty incoming one.
+    if (!value) continue;
+    // Unchanged value → preserve its current sticky state untouched.
+    if (prevField && prevField.value === value) continue;
+    const isManual = manualFields.has(key);
+    next[key] = {
+      value,
+      isFromAutoDetect: !isManual,
+      lastEditedByUserAt: isManual ? now : null,
+    };
+  }
+
+  await db
+    .update(competitors)
+    .set({ selfProfile: next, category: profile.category?.trim() || self.category, updatedAt: new Date() })
+    .where(eq(competitors.id, self.id));
+}
+
+const PatchProfileSchema = z.object({
+  profile: ProductProfileSchema,
+  // Fields the user manually typed (vs merely accepted from a re-analysis). Drives
+  // self-profile stickiness on sync. Absent during onboarding → treated as none.
+  manualFields: z.array(z.enum(SELF_SHARED_FIELDS)).optional(),
+});
 
 onboardingRouter.patch("/profile", async (c) => {
   const body = await c.req.json().catch(() => null);
@@ -375,6 +439,12 @@ onboardingRouter.patch("/profile", async (c) => {
     .update(organizations)
     .set({ productProfile: parsed.data.profile, updatedAt: new Date() })
     .where(eq(organizations.id, orgId));
+
+  await syncSelfProfile(
+    orgId,
+    parsed.data.profile,
+    new Set<SelfSharedField>(parsed.data.manualFields ?? []),
+  );
 
   return c.json({ profile: parsed.data.profile });
 });

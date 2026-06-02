@@ -71,39 +71,50 @@ export default function AlertsPage() {
 
       {err ? <ListError error={err} /> : null}
 
-      <Card className="px-4 py-3 flex items-center gap-2 flex-wrap">
-        <span className="font-mono text-[10px] tracking-widest text-muted-foreground/80 uppercase mr-2">
-          Channels
-        </span>
-        <ChannelChip
-          icon={<MessageSquare size={11} />}
-          label="Slack"
-          ok={slackOk}
-          detail={
-            settings?.slackWebhookUrl
-              ? truncate(settings.slackWebhookUrl.replace(/^https?:\/\//, ""), 22)
-              : undefined
-          }
-          onClick={() => openSheet("slack")}
-        />
-        <ChannelChip
-          icon={<Mail size={11} />}
-          label="Email"
-          ok={emailOk}
-          detail={settings?.digestEmail ?? undefined}
-          onClick={() => openSheet("email")}
-        />
-        <ChannelChip
-          icon={<Code size={11} />}
-          label="Webhook"
-          ok={webhookOk}
-          comingSoon
-          onClick={() => openSheet("webhook")}
-        />
-        <div className="flex-1" />
-        <span className="text-[11px] text-muted-foreground/80 font-mono">
-          Thresholds: critical · high
-        </span>
+      <Card className="overflow-hidden">
+        <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+          <div>
+            <div className="font-semibold text-[13px] tracking-tight">
+              Channels
+            </div>
+            <div className="text-muted-foreground/80 text-[11px] font-mono">
+              Where critical &amp; high alerts get delivered.
+            </div>
+          </div>
+          <span className="hidden items-center rounded-md border border-border px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground/70 sm:inline-flex">
+            Thresholds: critical · high
+          </span>
+        </div>
+        <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+          <ChannelCard
+            icon={<MessageSquare size={13} />}
+            label="Slack"
+            ok={slackOk}
+            detail={
+              settings?.slackWebhookUrl
+                ? truncate(
+                    settings.slackWebhookUrl.replace(/^https?:\/\//, ""),
+                    24,
+                  )
+                : undefined
+            }
+            onClick={() => openSheet("slack")}
+          />
+          <ChannelCard
+            icon={<Mail size={13} />}
+            label="Email"
+            ok={emailOk}
+            detail={settings?.digestEmail ?? undefined}
+            onClick={() => openSheet("email")}
+          />
+          <ChannelCard
+            icon={<Code size={13} />}
+            label="Webhook"
+            ok={webhookOk}
+            comingSoon
+            onClick={() => openSheet("webhook")}
+          />
+        </div>
       </Card>
 
       <Card>
@@ -152,7 +163,7 @@ function truncate(s: string, max: number) {
   return s.slice(0, max - 1) + "…";
 }
 
-function ChannelChip({
+function ChannelCard({
   icon,
   label,
   ok,
@@ -170,31 +181,50 @@ function ChannelChip({
   return (
     <button
       onClick={onClick}
-      className={cn(
-        "inline-flex items-center gap-2 px-2.5 py-1.5 rounded-md border text-[12px] transition-colors",
-        ok
-          ? "border-positive/30 bg-positive/[0.06] text-foreground hover:bg-positive/[0.1]"
-          : "border-border bg-card text-muted-foreground hover:bg-accent/40 hover:text-foreground",
-      )}
+      className="group flex flex-col gap-2.5 px-4 py-3.5 text-left outline-none transition-colors hover:bg-accent/30 focus-visible:bg-accent/30"
     >
-      <span
-        className={cn(
-          "w-[7px] h-[7px] rounded-full inline-block",
-          ok ? "bg-positive" : "bg-muted-foreground/40",
+      <div className="flex items-center gap-2.5">
+        <span
+          className={cn(
+            "flex size-7 shrink-0 items-center justify-center rounded-md border",
+            ok
+              ? "border-positive/30 bg-positive/[0.08] text-positive"
+              : "border-border bg-background text-muted-foreground/70",
+          )}
+        >
+          {icon}
+        </span>
+        <span className="text-[13px] font-medium text-foreground">{label}</span>
+        {comingSoon && !ok ? (
+          <span className="ml-auto font-mono text-[9px] uppercase tracking-widest text-muted-foreground/60">
+            soon
+          </span>
+        ) : ok ? (
+          <span className="ml-auto inline-flex items-center gap-1.5 font-mono text-[10px] text-positive">
+            <span className="size-[7px] rounded-full bg-positive" />
+            Connected
+          </span>
+        ) : (
+          <span className="ml-auto size-[7px] rounded-full bg-muted-foreground/30" />
         )}
-      />
-      <span className={ok ? "text-foreground" : ""}>{icon}</span>
-      <span className="font-medium">{label}</span>
-      {detail && (
-        <span className="font-mono text-[10px] text-muted-foreground/80 max-w-[180px] truncate">
-          {detail}
-        </span>
-      )}
-      {comingSoon && !ok && (
-        <span className="font-mono text-[9px] uppercase tracking-widest text-muted-foreground/60">
-          soon
-        </span>
-      )}
+      </div>
+
+      <div className="flex min-h-[18px] items-center justify-between gap-2">
+        {ok && detail ? (
+          <span className="truncate font-mono text-[11px] text-muted-foreground/80">
+            {detail}
+          </span>
+        ) : (
+          <span className="text-[11px] text-muted-foreground/70">
+            {comingSoon ? "Available soon" : "Not connected"}
+          </span>
+        )}
+        {!comingSoon && (
+          <span className="shrink-0 font-mono text-[10px] text-muted-foreground/0 transition-colors group-hover:text-foreground">
+            Configure →
+          </span>
+        )}
+      </div>
     </button>
   );
 }

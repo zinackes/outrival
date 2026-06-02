@@ -1,6 +1,7 @@
 # @outrival/scrapers — Sources de données
 
-Stack : Crawlee, ScrapingBee, Exa.ai
+Stack : Patchright (stealth Chromium) + ProxyScrape (datacenter→residential) +
+Camoufox (dernier recours), Exa.ai — cascade 5 niveaux, cf. .claude/rules/scraping.md (patch-20)
 
 ## Conventions
 - Lire @.claude/skills/crawlee-patterns/SKILL.md avant toute modification

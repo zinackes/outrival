@@ -855,3 +855,793 @@ Typecheck 7/7 ✓ · build 7/7 ✓ · ch:setup OK (scrape_runs + ai_runs) · db:
 ## Blockers
 - Aucun. Runtime E2E (403 allowlist, alerte Slack dégradée, screenshot, force-scrape) =
   manuel, creds + Trigger.dev requis.
+
+---
+
+# Patch 16 — Homepage scraping v2 (diff structuré + scroll + synthèse)
+
+## Session du 2026-06-01
+
+## Objectif
+Pour les monitors **homepage uniquement** : parser le HTML en structure sémantique,
+diff structuré (remplace le diff lexical), capture scroll progressif (lazy content),
+synthèse narrative IA réservée aux changements severity >= "medium". Fallback gracieux
+sur les snapshots pre-patch. Zéro régression sur pricing/jobs/blog/reviews.
+
+## Divergences vérifiées vs spec patch (le patch suppose une archi qui diverge)
+- **Pas de `render.ts`/`captureHomepage`.** La capture est dans `packages/scrapers/
+  src/lib/crawler.ts::runCrawler` — crawler GÉNÉRIQUE partagé par toutes les sources
+  Playwright. Le homepage.scraper appelle juste `scrapePage`. → le scroll doit être
+  opt-in par source (option threadée `ScrapeOptions.progressiveScroll`), actif côté
+  path Playwright direct seulement (ScrapingBee rend déjà le JS, pas de scroll).
+- **Le diff n'est PAS lexical-sur-HTML-brut.** C'est déjà `computeTextDiff(
+  extractContent(html), …)` (visible-content, extract-content.ts = WIP non commité).
+  C'est CE path qui sert de fallback "lexical". Fallback déjà en place.
+- **Screenshot = PNG, clé `.png`, partagé toutes sources.** JPEG q80 = optim stockage
+  sans consommateur (le diff visuel est patch-17). → décision: défèrer (à confirmer).
+- **classify = `packages/ai/src/tasks/classify.ts`** (`classifyChange(diffText, ctx)`
+  → `Classification | null`). On AJOUTE `classifyStructuredChanges` (garde classifyChange
+  pour le reste). humanChangeBefore/After vivent sur `signals` (générés par classify,
+  persistés par generate-signal).
+- **ai_runs.task = string libre** → `classify_structured` / `narrate_change` OK. Loggé
+  par le JOB, la tâche @outrival/ai reste PURE.
+- **Transport des StructuredChange[]**: les stocker sur la row `changes` (jsonb +
+  `diffType="structured"`), payload trigger inchangé (`{changeId}`), idempotent.
+
+## patch-16 = COMPLETE (2026-06-01)
+typecheck 7/7 ✓ · build 7/7 ✓ · scrapers tests 79 pass (15 parser + 23 diff neufs) ✓ ·
+db:push appliqué (snapshots.homepage_structure, changes.structured_diff, signals.narrative).
+Runtime E2E (scrape sites réels, mesure +30-50% texte, ratio narratives, coût Groq) =
+manuel (creds + Trigger.dev), cf. findings § Patch-16 Runtime TODO.
+
+## Étapes (1 unité = typecheck/build vert)
+- [x] 0 — env (3 vars dans .env.example) ; cheerio déjà présent — pas de commit
+- [x] 1 — scroll progressif opt-in homepage (crawler.ts scrollThroughPage + ScrapeOptions
+      .progressiveScroll + homepage.scraper ; path Playwright direct seulement)
+- [x] 2 — parser pur `src/parsers/homepage-structure.ts` (marche DOM déterministe) + 15 tests
+- [x] 3 — db: `snapshots.homepageStructure` + `changes.structuredDiff` jsonb (untyped, cast
+      au call site pour garder @outrival/db leaf) + db:push
+- [x] 4 — `src/diff/homepage-diff.ts` (pur) + renderStructuredChanges + 23 tests + subpaths
+- [x] 5 — intégration scrape-monitor (homepage+2 structures → structuré ; sinon/fallback → lexical)
+- [x] 6 — `classifyStructuredChanges` (70b, cache) + wiring classify-change.job (perChange→structuredDiff)
+- [x] 7 — `narrateChange` + `shouldNarrate` (gated) + `signals.narrative` + wiring generate-signal (best-effort)
+- [x] 8 — API signals (narrative liste+détail, breakdown détail) + UI signal-card + why-insight-panel
+- [x] 9 — typecheck 7/7 + build 7/7 + tests 79 + db:push + findings/task_plan
+
+## Décisions prises (2026-06-01)
+- **Je code, tu commites** : AUCUN commit fait par Claude, typecheck/build vert par étape.
+- **JPEG screenshot DÉFÉRÉ** : on garde PNG (étape 1 = scroll seul, pas de changement de
+  format). Le diff visuel patch-17 décidera du format.
+
+## Blockers
+- WIP non commité déjà présent (patch-15 self-product, 10 fichiers + extract-content.ts
+  non tracké mais load-bearing). À ne pas balayer.
+
+---
+
+# Patch 17 — Homepage enrichments (visuel, claims, social proof, score, garde-fous)
+
+## Session du 2026-06-01
+
+## Objectif
+6 enrichissements TOUS additifs sur le pipeline homepage patch-16, zéro régression
+patch-14/16 :
+1. pHash (dHash 64-bit) sur le screenshot → détecte un redesign visuel raté par le diff texte.
+2. Claims chiffrés ("15,000 teams", "99.9% uptime") extraits par regex + suivi ClickHouse.
+3. Logos clients ajoutés/retirés (matching normalisé).
+4. Score de pertinence composite → peut **SILENCER** un change faible (seuil conservateur 0.5).
+5. Garde anti-vide basée sur la médiane des 5 derniers (complète, ne remplace pas, isContentCollapsed).
+6. Apprentissage auto des lignes volatiles par monitor (table volatile_lines).
++ Étape UI : enrichir le why-insight-panel (claims / logos / redesign / score discret).
+
+## Phase en cours
+Post-MVP — Patch 17 (suite directe patch-16, prérequis COMPLETE).
+
+## Divergences vérifiées vs spec patch (à adapter AVANT de coder)
+1. **Monorepo : `@outrival/scrapers` = leaf (shared only).** Le patch met `db`/`snapshots`/
+   `volatileLines` DANS scrapers (checkAntiVoid(…, db), updateVolatileTracking lit db) →
+   viole monorepo.md. → tous les nouveaux modules scrapers restent **PURS** (phash,
+   numeric-claims, social-proof diff, relevance, anti-void décision, volatile normalize/
+   transition/filter). Tout l'I/O DB+ClickHouse est orchestré dans **scrape-monitor.job.ts**
+   (qui importe déjà db) — comme `evaluateSignificance` (ai pur) / parsers (scrapers purs).
+2. **Screenshot = PNG (clé `.png`), pas JPEG.** pHash calculé sur `result.screenshotBuffer`
+   via sharp (format-agnostique), gardé `length > 0`. On NE change PAS le format (patch-16
+   l'a déféré ; non bloquant pour le pHash). Si un scraper ne rend pas de screenshot → pHash skip.
+3. **Détection redesign UNIQUEMENT dans le bloc structured-diff** (l.329-373 de scrape-monitor),
+   donc seulement quand un change de contenu existe déjà (`distance > seuil && structuredChanges
+   .length < 3`). Un redesign PUR (texte extrait identique) sort tôt l.206 (hash identique) →
+   hors scope, conservateur. Noté comme limite.
+4. **Anti-vide = ADDITIF.** L'existant `isContentCollapsed` (vide absolu → throw/retry) reste.
+   On AJOUTE le garde médiane (chute < 30% médiane des 5 derniers `contentSize`). Déclenche
+   un `throw` (retry Trigger, cohérent avec l'existant), pas un nouveau `retryLater`. Fallback
+   gracieux si < 2 snapshots d'historique.
+5. **Testimonials détaillés = IN (choix user), sans nouvelle table.** Hash stable par quote
+   (`socialProof.testimonials[]` ajouté à HomepageStructure). Contrainte dure « carousel =
+   jamais de signal » respectée par une **garde de stabilité ≥3 scrapes consécutifs dans
+   LES DEUX SENS** : `testimonial_added` seulement si le hash est présent dans les 3 derniers
+   scrapes consécutifs ; `testimonial_removed` seulement si absent des 3 derniers. Un carousel
+   qui tourne ne stabilise jamais → 0 signal ; un wall statique stabilise → détecté. L'historique
+   vient des `homepageStructure` des derniers snapshots (déjà stockés) → **pas de table dédiée**.
+   Donc cette détection est **worker-orchestrée** (helper pur `diffTestimonialsStable(recentSets,
+   current)` dans social-proof.ts), pas dans `diffHomepages` (2-arg). **Logos = full add/remove**
+   dans diffHomepages (réutilise `customerLogos: string[]`, normalisé à la volée).
+6. **Nouveaux ChangeKind + metadata.** `StructuredChange` (homepage-diff.ts) gagne les kinds
+   `visual_redesign | numeric_claim_changed | customer_logo_added | customer_logo_removed`
+   + un champ optionnel `metadata?: Record<string, unknown>`. classify-structured apprend 2
+   règles (visual_redesign ≥ medium ; numeric_claim_changed major si variation forte) sans
+   casser le reste. KIND_LABELS (why-insight-panel) étendu.
+7. **Relevance SILENCE en amont de classify.** Scoré dans scrape-monitor après diffHomepages
+   (+ changes enrichis poussés) ; si 0 change ≥ 0.5 → on stocke le snapshot baseline, **aucune
+   row `changes`, aucun classify, loggé** (cohérent avec le path "no structural change").
+   `previousChangesInLast7Days` = count `changes` (join monitors) du competitor sur 7j.
+8. **numeric_claims = ClickHouse** (append-only, time-series). Ajout à `ensureClickhouseTables`
+   + helper `insertNumericClaims`/`getLastNumericClaims` dans `apps/workers/src/lib/clickhouse.ts`
+   (insertBestEffort existant). `volatile_lines` = **Postgres** (état mutable par monitor).
+9. **UI** : `/signals/:id/detail` (signals.ts) expose déjà narrative + breakdown ; on AJOUTE
+   claims/logos/redesign/relevanceScore (depuis `changes.structuredDiff` + signal). `SignalDetail`
+   (api.ts) étendu. Sections modulaires (affichées seulement si présentes).
+
+## patch-17 = COMPLETE (2026-06-01, commits laissés à l'utilisateur)
+typecheck 7/7 ✓ · build 7/7 ✓ · scrapers 115 tests pass (13 fichiers) · db:push
+(snapshots.screenshot_phash + content_size ; table volatile_lines) + ch:setup
+(numeric_claims) appliqués. Détails findings.md § Patch 17. Runtime E2E = manuel.
+
+## Étapes (1 unité = typecheck/build vert ; commits laissés à l'utilisateur)
+- [x] 0 — env : 5 vars ENRICHMENTS_* (.env.example + .env.local) ; sharp@0.34.5 ajouté (scrapers)
+- [x] 1 — pHash : `scrapers/lib/phash.ts` (pur, dHash+hamming, +test) + `snapshots.screenshotPhash`
+      (text hex) + db:push + wire scrape-monitor (calcul best-effort à l'insert, redesign dans bloc structuré)
+- [x] 2 — claims : `scrapers/parsers/numeric-claims.ts` (pur, +test) + CH `numeric_claims` + ch:setup +
+      worker insert/query + détection variation > 20% → `numeric_claim_changed` (nouveau claim ne fire pas seul)
+- [x] 3 — social proof : `diffLogos` (homepage-diff, normalisé, asset ignoré) + `socialProof.testimonials[]`
+      (hash FNV) + `diffTestimonialsStable` pur (2 windows → carousel jamais, 6 snapshots requis) worker-orchestré
+- [x] 4 — relevance : `scrapers/scoring/relevance.ts` (pur, magnitude = dissimilarité tokens, +test) +
+      filtrage scrape-monitor (count 7j) ; seuil 0.5 → silence + log ; relevanceScore dans change.metadata
+- [x] 5 — anti-vide : `scrapers/lib/anti-void.ts` (pur, médiane + plafond absolu 600, +test) +
+      `snapshots.contentSize` + db:push + wire ADDITIF (à côté de isContentCollapsed, throw→retry)
+- [x] 6 — volatile : `db/schema/volatile-lines.ts` + db:push + `scrapers/learning/volatile-detector.ts`
+      (pur, +test) + wire scrape-monitor (upsert + filter bodyDiff + drop section_body_changed vidés)
+- [x] 7 — UI : why-insight-panel (labels nouveaux kinds + variation % claims + score discret) +
+      `/signals/:id/detail` (metadata + relevanceScore max) + SignalChange/SignalDetail types
+- [x] 8 — typecheck 7/7 + build 7/7 + bun test scrapers 115 + db:push + ch:setup + findings + task_plan
+
+## Commits suggérés (1 par étape, laissés à l'utilisateur)
+- `feat(scrapers): perceptual hash for visual redesign detection`
+- `feat(scrapers): extract and track numeric claims over time`
+- `feat(scrapers): track customer logos and testimonials over time`
+- `feat(scrapers): relevance score to filter low-impact changes`
+- `feat(scrapers): anti-void guard based on historical median`
+- `feat(scrapers): auto-learn volatile line patterns per monitor`
+- `feat(web): display enrichments in why-insight panel`
+
+## Décisions prises (confirmées 2026-06-01)
+- **Je code, tu commites** : AUCUN commit/git add fait par Claude, typecheck/build vert par étape.
+- **Testimonials détaillés IN** (logos + témoignages, garde ≥3 scrapes). Anti-vide ADDITIF.
+  pHash redesign-only-on-change. Scrapers reste leaf (modules purs, I/O orchestré worker).
+
+## Blockers patch-17
+- Aucun connu. Test E2E runtime (scrape réel, distance pHash, claims CH, filtrage relevance) = manuel.
+
+---
+
+# Patch 18 — Détection du tech stack des concurrents
+
+## Session du 2026-06-01
+
+## Objectif
+Scraper INDÉPENDANT (pas couplé à la homepage / scrape-monitor) qui détecte le
+tech stack d'un concurrent (headers HTTP + scripts + DOM + footer + page
+/integrations) à fréquence MENSUELLE. Catalogue non-exhaustif au départ, enrichi
+par observation. État courant en Postgres, historique apparition/disparition en
+ClickHouse. « Signal » généré uniquement pour les apparitions d'importance >= medium.
+Aucune dépendance à un service tiers payant (pas de Wappalyzer API).
+
+## Divergences spec ↔ code réel (vérifiées AVANT de planifier)
+1. **`scrapePage` ne renvoie PAS headers ni scriptUrls** (crawler.ts : html/text/
+   screenshot/statusCode/etag/lastModified). La spec suppose
+   `scrapePage(url,{captureHeaders,captureScriptUrls})`. → Le scraper tech-stack
+   fait un **`fetch()` natif** (headers gratuits + HTML), scriptUrls parsés via
+   cheerio (`script[src]`). Pas de Playwright/Crawlee/ScrapingBee → vraiment
+   indépendant + léger + zéro coût. Fail silencieux (non-2xx → skip).
+2. **`signals.changeId` NOT NULL → FK `changes` → `changes.snapshotAfterId` NOT
+   NULL → `snapshots`**. Impossible d'écrire dans le feed `signals` sans monitor +
+   snapshot (R2) + change. La spec appelle `generateTechStackSignal(competitor,…)`
+   directement — IMPOSSIBLE en l'état. → cf. **DÉCISION surfacing** ci-dessous.
+3. **Pas de catégorie `tech_stack_change`** (categoryEnum = pricing|product|hiring|
+   reviews|content|funding). **Pas de fréquence `monthly`** (frequencyEnum =
+   realtime|daily|weekly).
+4. **Scheduling indépendant** : ne PAS créer un monitor `tech_stack` (sinon
+   `schedule-scraping` l'enverrait vers `scrape-monitor` = pipeline homepage).
+   → cron dédié `schedule-tech-stack` + colonne `competitors.techStackScrapedAt`
+   (null ou < now-30j → dû). batchTrigger `scrape-tech-stack`.
+5. Précédents « signal-like hors table signals » DÉJÀ dans le code :
+   `self_product_changes` + notif `self_change` (patch-12), `sectoral_signals`
+   (patch-13). Le notif in-app est le canal établi pour ces events découplés.
+6. Détecteur PUR (html+headers+scriptUrls) → testable bun sur fixtures réelles.
+   Scraper fait l'I/O (pattern pricing : `analyzePricingHtml` pur + scraper I/O).
+   Subpath export `@outrival/scrapers/tech-stack`.
+
+## DÉCISION surfacing = OPTION B (validée par l'utilisateur 2026-06-01)
+Feed `signals` complet. Le scraper/scheduling RESTE indépendant (fetch natif +
+cron mensuel dédié + tables tech_stack propres) ; seule l'apparition importante
+emprunte le pipeline existant pour produire un vrai signal :
+- `source_type` enum += `tech_stack` (monitor d'ancrage `isActive=false` par
+  competitor, JAMAIS ramassé par schedule-scraping ni getScraper).
+- apparition importante (>= medium) → upload R2 du HTML fetché → 1 snapshot →
+  1 `change` par tech (diffType "text", diffText = "New tech detected: …") →
+  `generate-signal` avec une `Classification` synthétique (category "product",
+  severity = high si importance high sinon medium). generateInsight produit
+  l'insight stratégique (pas de nouveau prompt IA).
+- Le monitor `tech_stack` est exclu des onglets-source de la fiche (Étape 5/6) :
+  c'est de l'infra, pas une source user-facing. La section tech stack a sa propre UI.
+- snapshot/change/R2 créés UNIQUEMENT s'il y a une apparition importante (pas à
+  chaque scrape mensuel no-op). CH history "confirmed" NON écrit (lastDetectedAt PG
+  suffit) — seulement appeared/disappeared, conforme spec step 6.
+
+## Étapes (1 unité = typecheck/build vert ; commits laissés à l'utilisateur)
+- [x] 0 — env : TECH_STACK_SCRAPE_INTERVAL_DAYS=30 + TECH_STACK_SIGNAL_MIN_IMPORTANCE=medium
+      (.env.example + .env.local)
+- [x] 1 — `scrapers/tech-stack/catalog.ts` : types + TECH_CATALOG (25 tech, 12 catégories)
+- [x] 2 — `scrapers/tech-stack/detector.ts` (pur, cheerio footer lazy) + `scraper.ts`
+      (fetch natif + extractScriptUrls résolution rel/protocol-rel) + `index.ts` +
+      subpath `@outrival/scrapers/tech-stack` + 9 tests bun (Stripe script+footer,
+      Vercel headers, Cloudflare cf-ray, Salesforce footer, Next.js dom, dedup)
+- [x] 3 — schéma : `tech_stack_entries` (PG, uniqueIndex competitor+tech) +
+      `competitors.techStackScrapedAt` + `source_type += tech_stack` (+ resync
+      `SOURCE_TYPES` shared) + CH `tech_stack_history` ; db:push + ch:setup appliqués
+- [x] 4 — workers : `scrape-tech-stack.job` (fetch→detect→merge /integrations→diff
+      appeared/disappeared→upsert PG→CH history→techStackScrapedAt→emit signals
+      important via monitor tech_stack isActive=false + snapshot R2 + change +
+      generate-signal classif synthétique product) + cron `schedule-tech-stack`
+      (daily, gate 30j, exclut self) + helper `insertTechStackHistory`
+- [x] 5 — API : techStack dans GET /competitors/:id (entries actives + lastScrapedAt) ;
+      monitor tech_stack exclu des onglets-source ; enable-monitor rejette tech_stack
+- [x] 6 — UI : `competitor-tech-stack.tsx` (groupé par catégorie, FreshnessDot,
+      « new · Xd ago » si <30j) après AiSummary + source-label "tech stack" + types api.ts
+- [x] 7 — vérif : typecheck 7/7 ✓ · build 7/7 ✓ · scrapers 59 tests verts (9 tech-stack) ·
+      db:push + ch:setup appliqués ✓ · findings.md + architecture.md + task_plan.md à jour
+
+## patch-18 = COMPLETE (2026-06-01, commits laissés à l'utilisateur)
+Détails findings.md § Patch 18. Test E2E runtime (cron mensuel, fetch réel, apparition
+→ signal feed) = manuel (creds DB/R2/GROQ + Trigger.dev). Commits suggérés (1 par étape) :
+- `feat(scrapers): tech stack catalog with detection patterns`
+- `feat(scrapers): tech stack detector + native-fetch scraper`
+- `feat(db): add tech stack tables (postgres + clickhouse)`
+- `feat(workers): monthly tech stack scrape job with signal generation`
+- `feat(api): include tech stack in competitor detail response`
+- `feat(web): display tech stack on competitor profile page`
+
+## Décisions périmètre (défauts, signalés)
+- Scope = concurrents externes avec `url` non-null, `deletedAt` null. Self
+  (`type="self"`) exclu pour cette passe (sa page a son propre traitement) — déféré.
+- Catalogue volontairement partiel ; enrichi par observation (findings.md).
+
+## Blockers patch-18
+- Aucun (décision B prise). Limite connue : fetch natif bloqué par Cloudflare/anti-bot
+  sur certains sites → détection dégradée ce mois-là (cf-ray header capté quand même).
+  Pas de fallback Playwright/ScrapingBee (indépendance + zéro coût). À reconsidérer si
+  taux d'échec élevé observé.
+
+---
+
+# Patch 19 — Refonte auth (magic link + Google + password fallback)
+
+## Session du 2026-06-02
+
+## Objectif
+Refonte du flow d'auth : magic link primaire + Google OAuth secondaire + password
+fallback, page UNIQUE /auth, anti-enumeration ABSOLUE, Turnstile + rate-limit + email
+strict + HIBP. Rétrocompat : anciens comptes email+password fonctionnent.
+
+## État des lieux (vérifié dans le code, pas supposé)
+- Better Auth v1.6.11 mountée via `app.on(["POST","GET"], "/api/auth/*", ...)` dans
+  apps/api/src/index.ts (ligne 45) → un endpoint custom sous /api/auth doit être
+  enregistré AVANT ce wildcard sinon il est avalé.
+- Auth config = apps/api/src/lib/auth.ts (pas de packages/auth). emailAndPassword only,
+  hook user.create.after → miroir vers table `users` (app) depuis `user` (Better Auth).
+- Org créée LAZY via ensureUserOrg() (pas au signup) → magic-link signup compatible.
+- Upstash Redis présent (packages/shared/src/redis.ts → getRedis() null si pas de creds).
+- PostHog branché : web `@/lib/posthog/events` (track/identifyUser, consent-gated),
+  serveur apps/api/src/lib/posthog.ts.
+- Erreurs patch-14 : apps/api/src/lib/errors.ts (errorBody(code,message,{userAction})).
+- Resend : SDK dans apps/workers seulement (pas dans apps/api). Pattern email = HTML inline.
+- Web auth actuel : groupe (auth) avec /login + /register séparés (pas /auth).
+- Liens internes vers /login : dashboard/layout, onboarding (x2), user-menu, nav, robots ;
+  vers /register : cta. (auth)/layout.tsx redirige déjà si session.
+
+## Décisions (divergences assumées vs le doc patch — Karpathy/simplicity + règles repo)
+1. Magic link : auto-signup NATIF Better Auth (signInMagicLink, disableSignUp défaut
+   false → compte créé au verify). PAS le hack signUp({password:randomUUID}) du doc.
+2. Email magic link : HTML inline dans l'API (comme digest-email), pas React Email.
+   → add `resend` à apps/api, lib/magic-link-email.ts. Copy EN (language.md).
+3. Endpoint custom monté AVANT le wildcard /api/auth/* (sinon avalé par Better Auth).
+4. Google : authClient.signIn.social({provider:"google"}), pas un GET window.location.
+5. HIBP/password util créé + testé ; password mode /auth = LOGIN only (rétrocompat).
+   set-password depuis settings = follow-up (déjà déféré par le doc Étape 11.C).
+6. TOUTE copy user-facing en ANGLAIS (language.md) — le doc patch était en FR.
+7. Rate-limit dégrade en no-op si Upstash absent (getRedis() null) — dev safe.
+8. Callback Google dérivé de BETTER_AUTH_URL (= API). dev :3001, prod api.outrival.io.
+
+## Étapes
+- [ ] 0 — env (.env.example) GOOGLE_*, TURNSTILE_*, AUTH_RATE_LIMIT_* + deps
+- [ ] 1 — Better Auth config : magicLink + google + minPasswordLength 12 + session 30j
+- [x] 2 — email magic link HTML inline (API, lib/magic-link-email.ts)
+- [x] 3 — shared validation/email.ts (zod strict + disposable) + tests ✓
+- [x] 4 — shared validation/password.ts (HIBP k-anon + schema) + tests ✓
+- [x] 5 — middleware auth-rate-limit (email + IP, Upstash, anti-enum 429)
+- [x] 6 — lib/turnstile.ts (verify, bypass dev si pas de secret)
+- [x] 7 — route /api/auth/check-and-send-magic-link (anti-enum, monté avant wildcard)
+- [x] 8 — page /auth unifiée (magic link > Google > password) + Turnstile invisible
+- [x] 9 — suppression /login /register → redirects 308 + maj liens internes
+- [x] 10 — events PostHog funnel (consent-gated) client + serveur
+- [x] 11 — vérif typecheck (shared/ai/db/api/web ✓) + findings.md + architecture.md
+
+## patch-19 = DÉVELOPPÉ (2026-06-02, commits laissés à l'utilisateur)
+- typecheck mes packages ✓ ; scrapers/workers échouent = WIP patch-20 préexistant, hors scope.
+- 11 tests verts (bun test src/validation/), HIBP live inclus.
+- Setup manuel requis avant runtime (Google/Turnstile/Resend/Upstash) — cf findings.md.
+- Commits suggérés (1/étape) = bloc <commit> du doc patch-19.
+
+## Blockers patch-19
+- Aucun côté code. Test runtime bloqué tant que le setup manuel (Google OAuth creds +
+  Turnstile site + domaine auth@outrival.io Resend) n'est pas fait. Le code dégrade
+  proprement sans (Turnstile bypass dev, magic link no-op, rate-limit no-op).
+
+---
+
+# Patch 20 — Refonte stack scraping (Patchright + ProxyScrape + Camoufox)
+
+## Session du 2026-06-02 (planning)
+
+## Objectif
+Remplacer la cascade actuelle (Crawlee/Playwright direct-first → ScrapingBee) par une
+cascade 5 niveaux découplée (fingerprint vs réputation IP) :
+- L0 — `fetch()` HTTP direct, sans proxy (SSR/statique, ~0 coût)
+- L1 — Patchright SANS proxy (IP serveur, sites JS non bloqués)
+- L2 — Patchright + proxy DATACENTER ProxyScrape (~$10/mois, BP illimitée)
+- L3 — Patchright + proxy RESIDENTIAL ProxyScrape (pay-per-GB)
+- L4 — Camoufox + residential (dernier recours, fingerprint Chromium démasqué, rare)
+Patchright = drop-in Playwright (stealth Chromium). ScrapingBee + Webshare SUPPRIMÉS.
+`requiresProxy` (bool) → `requiresLevel` (0|1|2|3|4|null) + re-probe 14j.
+scrape_runs tracke `level` + `failure_reason` (drop `used_proxy`/`used_scrapingbee`).
+
+## État du code actuel (constaté 2026-06-02)
+- Orchestrateur = `packages/scrapers/src/lib/crawler.ts` : `scrapePage` (direct Crawlee
+  PlaywrightCrawler → fallback `scrapeViaScrapingBee`), `scrapeStatic` (CheerioCrawler),
+  `scrapeFirstSuccess`. `looksBlocked()` heuristique. Pas de scrape-page.ts/proxy.ts/
+  scrape-patchright.ts/fingerprint.ts. Pas de browser pool (patch-07 = conditional fetch).
+- Call sites consommateurs (à préserver) : homepage / pricing (×3, preferProxy+proxyTier) /
+  jobs / g2-reviews (preferProxy) / capterra-reviews (preferProxy) / blog (scrapeStatic).
+  `quick-fetch.ts` (ScrapingBee fallback) + tech-stack/scraper.ts (fetch natif, indépendant).
+- Webshare = ABSENT du code (seulement ScrapingBee). patch-23 / `diagnoseFailure` =
+  ABSENTS (ni doc PHASES ni code) → routage par type d'échec fait inline.
+- ScrapingBee référencé : quick-fetch.ts, scrapingbee.ts, crawler.ts, types.ts,
+  tech-stack/scraper.ts, shared/constants/sources.ts, api/routes/admin.ts,
+  workers/ops-health-check.job.ts, workers/scrape-monitor.job.ts, workers/env.ts,
+  web/lib/scrape-errors.ts.
+- ScraperResult actuel = { html, text, screenshotBuffer, metadata, statusCode, etag,
+  lastModified } + ScrapeOutcome ajoute usedProxy. La nouvelle ScrapeResult du patch a
+  une forme différente (ok/failureReason/level/...) → besoin adaptateur OU réécriture
+  des scrapers source.
+
+## DÉCISIONS À TRANCHER AVEC L'UTILISATEUR (avant code)
+- D1 (MAJEURE) — Crawlee vs Patchright brut. Règle projet scraping.md = "TOUJOURS
+  Crawlee, jamais Playwright/Puppeteer brut". Le patch dicte du `patchright` brut
+  (chromium.launch direct, pool par tier, contexte manuel) → perd l'infra Crawlee
+  (fingerprint injection, session pool, retry, concurrency/domaine), couverte en partie
+  par le stealth Patchright. Option A = suivre le patch (brut, mettre à jour la règle).
+  Option B = garder Crawlee avec launcher patchright (respecte la règle, plus d'intégration,
+  risque double-stealth). Le patch est explicite pour A.
+- D2 — Scope/séquencement sans creds + WSL. L2/L3/L4 non testables (pas de creds
+  ProxyScrape) ; Camoufox binaire 300-500MB + WSL OOM → L4 difficilement testable local.
+  Option A = tout coder L0-L4 (seuls L0/L1 vérifiés runtime, reste typecheck/build only).
+  Option B = livrer L0/L1 + refonte structurelle (suppression ScrapingBee, migration
+  requiresLevel, scrape_runs) maintenant ; L2-L4 derrière un suivi quand creds dispo.
+- D3 — Migration DB `requiresProxy`→`requiresLevel` (PG) + colonnes scrape_runs (CH) :
+  confirmer db:push / ch:setup dans cette branche (rename de colonne breaking).
+
+## Décisions tranchées (2026-06-02)
+- D1 = **Patchright brut** (suivre le patch, pas Crawlee) → règle scraping.md réécrite.
+- D2 = **code complet L0→L4** (L2/L3/L4 non testés runtime sans creds ; L0/L1 + typecheck/build).
+- D3 = migration DB OK (db:push + ch:setup laissés à l'utilisateur — voir Blockers).
+
+## Étapes (DÉVELOPPÉ ; commits laissés à l'utilisateur)
+- [x] 0 — env : PROXYSCRAPE_DC_*/RESI_* + CAMOUFOX_* + SCRAPING_LEVEL_*_ENABLED ajoutés
+        (.env.example + workers/env.ts) ; SCRAPINGBEE_API_KEY retiré.
+- [x] 1 — deps : +patchright +camoufox-js ; -crawlee -playwright (plus aucun import).
+        `scrapingbee` n'était PAS une dep npm (fetch API) → rien à retirer.
+- [x] 2 — `lib/fingerprint.ts` + `lib/proxy.ts` (ProxyTier direct|datacenter|residential).
+- [x] 3 — `lib/scrape-patchright.ts` (ScrapeResult, pool par tier, capturePage partagée,
+        isCloudflareChallenge exporté, /// <ref lib=dom>) + `lib/scrape-direct.ts` (L0).
+- [x] 4 — `lib/scrape-camoufox.ts` (L4, residential, timeout 60s, types narrow → green).
+- [x] 5 — `lib/scrape-page.ts` orchestrateur L0→L4 + lastFailureNeedsBrowserNotProxy
+        (inline) + ESCALATING_FAILURES + skip niveau si proxy absent.
+- [x] 6 — adaptateur `lib/crawler.ts` (mêmes exports → 0 churn d'import) ; scrapers source
+        swap preferProxy→knownLevel ; g2/capterra plancher L2 ; appstore/github level:0 ;
+        quick-fetch léger (no browser, garde le subpath API mince).
+- [x] 7 — schéma monitors : requiresLevel + requiresLevelSince + requiresLevelLastReprobe
+        + consecutiveFailures + markedUnscrapable (requiresProxy* supprimés).
+- [x] 8 — scrape_runs (CH) : +level +attempts +failure_reason, DROP used_proxy/used_scrapingbee
+        (CREATE + ALTER backfill) ; workers logScrapeRun + getScrapeHealth ; admin /cost
+        + /scraping-health (level>=2 + breakdown l0..l4) ; web view (Cascade levels) ;
+        ops-health-check alertes L2>25% / L3>5%.
+- [x] 9 — re-probe 14j depuis L0 (pinned >=2) dans scrape-monitor + reconcile requiresLevel.
+- [x] 10 — ScrapingBee/Webshare : grep code = 0 réf fonctionnelle ; scrapingbee.ts supprimé ;
+        env/ops/admin/scrape-errors nettoyés ; copy landing (faq/json-ld/sources) corrigée.
+- [x] 11 — UX unscrapable : 3 échecs consécutifs → markedUnscrapable (onFailure) ; exposé /admin.
+        NOTE: message UI user-facing fiche competitor = TODO (voir Blockers).
+- [x] 12 — vérif : typecheck 7/7 ✓ · scrapers 124 tests ✓ · grep scrapingbee/webshare code = 0 ·
+        scraping.md + architecture.md + scrapers/CLAUDE.md à jour. (Build web = `tsc` ; next
+        build a un bug rootDir préexistant hors-scope.)
+
+## patch-20 = DÉVELOPPÉ (2026-06-02, commits laissés à l'utilisateur)
+
+## Blockers / restant patch-20
+- **db:push** : rename requires_proxy→requires_level = prompt interactif drizzle-kit
+  (non supporté ici) + mutation DB live → LAISSÉ à l'utilisateur. Pas de data-migration
+  nécessaire (monitors pinned re-apprennent leur niveau ; cascade auto-corrige).
+- **ch:setup** (`pnpm --filter @outrival/db ch:setup`) : ajoute level/attempts/failure_reason
+  + DROP used_proxy → mutation ClickHouse live, LAISSÉ à l'utilisateur (idempotent).
+- **Prérequis manuels** : souscrire ProxyScrape (DC + residential), remplir les env,
+  `npx patchright install chromium` (worker), `npx camoufox-js fetch` (~300-500MB, VPS 1Go).
+  Sans creds : L0/L1 seuls actifs (cascade s'arrête → markedUnscrapable sur sites durs).
+- **L2/L3/L4 non testés runtime** (pas de creds). Camoufox = types narrowés (path non vérifié).
+- **TODO UI** : message "temporarily unavailable" sur la fiche competitor quand
+  markedUnscrapable — flag posé en DB + /admin, pas encore rendu côté user.
+
+---
+
+# Patch 21 — Feedback loop qualité IA (session 2026-06-02)
+
+## Objectif
+Vrai feedback loop sur les sorties IA (signals, discovery, battle cards, digest,
+severity, NPS) en 3 couches : capture inline 1-clic, action immédiate visible,
+action systémique (dashboard ops + Slack sur patterns). PAS d'auto-ajustement IA.
+
+## Décisions tranchées (avec l'utilisateur)
+- Branche : **patch-02-admin-ops** (courante, on continue dessus).
+- Feedback email digest : **inclus** via token HMAC signé court (route publique).
+
+## Divergences carte Notion ↔ code réel (vérifiées avant code)
+- session : `c.get("user").id` + `ensureUserOrg(user.id)` (PAS `session.userId/orgId`).
+- PostHog serveur : `captureServerEvent()` de `lib/posthog` (PAS `posthogServer`).
+- toasts : `sonner` `toast()` (PAS `showToast`).
+- discovery : table réelle = `competitor_candidates` (statut new|dismissed|added) →
+  action = `status="dismissed"` (PAS table `discoverySuggestions`).
+- battle_cards : pas de colonne `status` → on ajoute juste `flaggedForRegenerationAt`.
+- admin : route group `(admin)/admin/feedback-quality/page.tsx`.
+- NPS : pas de table dédiée → `max(createdAt)` sur quality_feedback targetType='nps'.
+
+## Étapes (commit après chaque) — TOUTES FAITES
+- [x] 1 — schema quality_feedback.ts + 3 enums + index.ts (db:push DIFFÉRÉ, tree sale)
+- [x] 2 — API routes/feedback-quality.ts (POST upsert / GET / DELETE / nps-status) + triggerImmediateAction (org-scopé) + revert au DELETE
+- [x] 3 — signals (hiddenForUserAt/severityOverride/severityOverriddenBy) + battle_cards (flaggedForRegenerationAt) ;
+        competitor_candidates réutilise status=dismissed ; feed signals filtre hidden + override + preload verdict
+- [x] 4 — FeedbackButtons + reason selector (sonner) + cancel par re-clic
+- [x] 5 — 6 points : signal-card (a) + severity (e) ; discovery via Track/Dismiss (b) ;
+        battle-card-tab (c) ; digest email + token HMAC (d) ; NpsPrompt modal 1×/30j (f)
+- [x] 6 — page (admin)/admin/feedback-quality + API admin stats/patterns + nav
+- [x] 7 — job feedback-pattern-detection (cron lundi 9h UTC) → Slack
+- [x] 8 — doc docs/feedback-loop.md + env .env.example (FEEDBACK_NPS_INTERVAL_DAYS / FEEDBACK_AGGREGATE_MIN_COUNT)
+- [x] 9 — pnpm build + typecheck 7/7 verts (next build non lancé : WSL OOM). Notion → Done.
+
+## Blockers patch-21
+- db:push DIFFÉRÉ : le tree porte du WIP patch-20 destructif (monitors requires_proxy→requires_level).
+  quality_feedback + colonnes signals/battle_cards sont ADDITIVES → à pusher quand le tree sera propre.
+  Code + typecheck OK → patch considéré développé.
+
+---
+
+# Patch 22 — Résilience IA (pool de providers + rate limit intelligent) — session 2026-06-02
+
+## Objectif
+Résilience complète de la stack IA. **Source = pool de PROVIDERS légaux OpenAI-compatibles**
+(Cerebras free prio1, Groq prio2, Hyperbolic payant prio3) via env `AI_PROVIDER_N_*`,
+PAS de multi-comptes Groq (viole ToS). Moteur identique au prompt : rotation free→payant +
+tracking quota tokens (Redis) + circuit breaker par provider & global + graceful degradation
++ rate limiting INTELLIGENT (staleness) + rate limit DUR (10 actions IA/h/user). 1 commit/étape.
+
+## Décisions tranchées (avec l'utilisateur)
+- "On fait ce que le prompt dit, se coller au max" → on suit le pivot option-A (providers),
+  on code le moteur tel quel, on adapte SEULEMENT aux contraintes du vrai code.
+- Branche : patch-02-admin-ops (courante).
+- COMMITS (2026-06-02) : PAS de commit manuel (tree sale ~50 fichiers WIP patch-02/auth ;
+  auto-committer concurrent). On code + typecheck par étape, on signale le vert ; l'historique
+  est géré hors-Claude. Les "Commit:" ci-dessous = libellés indicatifs, NON exécutés.
+
+## Avancement
+- [x] 0 — env .env.example (AI_PROVIDER_1..3, breaker, intensive rate limit). Typecheck OK.
+- [x] 1 — provider-pool.ts (loadProviders back-compat GROQ_API_KEY / pickProvider / trackUsage /
+      tripBreaker) + export `redis` sûr (no-op si Upstash absent) dans @outrival/shared. shared+ai typecheck OK.
+- [x] 2 — circuit-breaker.ts (global, Slack ops via sendSlackMessage) + provider-context.ts (ALS) +
+      provider.ts rewrite (callLLM pool openai-SDK, failover borné 429/5xx, Claude conservé) +
+      env.ts simplifié (GROQ_API_KEY plus requis) + index exports + logAiRun tagge provider réel.
+      groq-sdk retiré (orphelin). shared+ai+workers typecheck OK.
+- [x] 3 — GET /api/system/ai-status étendu (status healthy|degraded|down + estimatedRecovery via
+      breaker) + type web + banner (copy "down" + recovery time) + digest job: guard breaker → throw,
+      retry spread ~1h. api+web+workers typecheck OK.
+- [x] 4 — Schema : battle_cards +basedOnUserUpdateAt/+basedOnCompetitorSignalAt + helper pur
+      selfProfileLastEditedAt ; nouvelle table discovery_runs. db typecheck OK. db:push = USER (cf blockers).
+- [x] 5 — Battle card staleness : GET /competitors/:id/battle-card/staleness (userChanged via
+      selfProfileLastEditedAt, competitorChanged via dernier signal, +flaggedForRegenerationAt patch-21) +
+      job battle-card pose basedOn* à la génération (clear flag). api+workers typecheck OK.
+- [x] 6 — UI battle card : staleness fetch + bouton "Regenerate · up to date" (grisé+tooltip) vs
+      "Regenerate" (amber/primary) + confirm inline force. Intégré dans battle-card-tab (pas de composant
+      séparé = plus surgical). web typecheck OK.
+- [x] 7 — Re-scrape staleness : GET /monitors/:id/staleness (lastRunAt+lastChangedAt) + UI friction
+      via toast "Re-scan anyway" (requestRunMonitor wrappe les 6 onRun user ; enable/switch/run-all
+      inchangés). DÉVIATION carte : toast confirm au lieu de bouton grisé (page 700+ lignes). web+api OK.
+- [x] 8 — Discovery staleness : GET /candidates/staleness (daysSince<7 + selfProfile changé) + upsert
+      discovery_runs sur /detect réussi + UI friction toast "Search anyway" sur la page candidates. OK.
+- [x] 9 — Rate limit DUR : middleware ai-intensive-rate-limit.ts (getRedis no-op, errorBody 3-parties EN,
+      AI_INTENSIVE_RATE_LIMIT/WINDOW) appliqué sur battle-card/generate, candidates/detect,
+      my-product/rescan, onboarding/analyze-url. Lecture jamais gatée. api typecheck OK.
+- [x] 10 — Dashboard ops : ÉTENDU /admin/ai existant (pas de page ai-health en double) — endpoint
+      /api/admin/ai-health + providers (quota tokens Redis, %, breaker), globalBreaker, prédiction
+      saturation ; vue admin/ai/view.tsx (section Providers + banner breaker). api+web typecheck OK.
+- [x] 11 — apps/workers/src/jobs/ai-capacity-check.job.ts cron */30 (auto-discover dirs) : usage global %
+      paliers 80/90 + épuisés → Slack ops, max 1 ping/2h. workers typecheck OK.
+- [x] 12 — Vérif finale : pnpm typecheck 7/7 ✓ · next build web ✓ Compiled (erreur validator.ts rootDir
+      = pré-existante, non liée) · bun test ai 18/18 ✓. Cohérence patch-02/09/12/14 OK. Strings EN.
+      RESTE : db:push (USER) + clés providers/Upstash réelles (USER) + Notion Done.
+
+## Divergences carte Notion ↔ code réel (vérifiées avant code) — cf. findings.md
+- `@outrival/shared` exporte `getRedis(): Redis|null` (no-op si pas de creds), pas `redis`.
+  → ajouter un export `redis` (proxy lazy sûr) pour coller au `import { redis }` de la carte.
+- Provider actuel = `packages/ai/src/provider.ts` (pool multi-CLÉS Groq, groq-sdk, cooldown
+  in-memory) + fallback Claude. `complete(config, options)` = entrée unique de tous les prompts.
+  → le pool s'intègre DANS `complete()` (branche provider="groq" → callLLM pool). Callers inchangés.
+- Nouvelle dép `openai` dans @outrival/ai (Cerebras/Groq/Hyperbolic OpenAI-compatibles).
+- AiStatusBanner + `GET /api/system/ai-status` EXISTENT (patch-02) → on ÉTEND (breaker → degraded/down
+  + estimatedRecovery), on ne crée PAS `/api/health/ai`.
+- `signals` n'a PAS de `monitorId` (lien via change_id). monitor staleness via `monitors.lastChangedAt`
+  vs `lastRunAt` (déjà trackés) au lieu de `eq(signals.monitorId, …)`.
+- `monitor.lastScrapedAt` → vrai champ = `lastRunAt`.
+- `lastEditedByUserAt` = imbriqué par-champ dans `selfProfile` jsonb (SelfProfileField), PAS colonne
+  → dériver le max sur les champs du profil self.
+- battle_cards a `generatedAt` + `flaggedForRegenerationAt` ; AJOUTER basedOnUserUpdateAt +
+  basedOnCompetitorSignalAt (db:push).
+- Discovery on-demand = `candidatesRouter.post("/detect")` ; pas de table run → créer discovery_runs.
+- Admin web = route group `(admin)/admin/…` → `(admin)/admin/ai-health` (renommé groq→ai = providers).
+- Slack = `sendSlackMessage(OPS_SLACK_WEBHOOK_URL, …)` ; @outrival/ai reste pur (helper minimal/guard).
+- Session API = `c.get("user")` + `ensureUserOrg(user.id)` (pas session.userId/orgId).
+- ai_runs.provider reçoit le "groq" statique d'AI_CONFIG → propager le VRAI provider du pool
+  (AsyncLocalStorage lu par loggedAi/logAiRun, callers inchangés).
+
+## Étapes (commit après chaque)
+- [ ] 0 — Env : AI_PROVIDER_1..N_* (Cerebras/Groq/Hyperbolic) + AI_CIRCUIT_BREAKER_* +
+        AI_INTENSIVE_RATE_LIMIT/WINDOW dans .env.example. Pas de commit isolé (→ étape 1).
+- [ ] 1 — `packages/ai/src/provider/provider-pool.ts` : Provider iface + loadProviders() +
+        pickProvider() (free→payant, skip épuisés/breaker, round-robin même priorité) +
+        trackUsage(tokens) + tripBreaker. Export `redis` sûr dans @outrival/shared.
+        Commit: feat(ai): provider pool with redis quota tracking and rotation
+- [ ] 2 — `circuit-breaker.ts` (global) : checkGlobalBreaker / recordFailure / recordSuccess /
+        tripGlobalBreaker (+ Slack ops guard). `callLLM` (openai SDK, route baseUrl) intégré
+        dans `complete()` (provider="groq"). Propagation provider → ai_runs.
+        Commit: feat(ai): global circuit breaker + provider-routed callLLM
+- [ ] 3 — Graceful degradation : `GET /api/system/ai-status` étendu (healthy|degraded|down +
+        estimatedRecovery depuis breaker) ; banner existant branché. Digest cron retry +1h si breaker.
+        Commit: feat(web): graceful degradation banner when ai is down
+- [ ] 4 — Schéma : battle_cards +basedOnUserUpdateAt/basedOnCompetitorSignalAt ;
+        nouvelle table discovery_runs (orgId, lastDiscoveryAt, basedOnProfileUpdateAt). db:push.
+        Commit: feat(db): change-tracking fields for intelligent rate limiting
+- [ ] 5 — Battle card staleness : GET `/competitors/:id/battle-card/staleness` (userChanged via
+        max selfProfile edits, competitorChanged via dernier signal competitor). Set based* à la génération.
+        Commit: feat(api): battle card staleness detection
+- [ ] 6 — UI bouton "already up to date" (grisé+tooltip) vs "Regenerate" (amber) + confirm inline force.
+        Commit: feat(web): smart regenerate button with staleness indicator
+- [ ] 7 — Re-scrape manuel staleness : GET staleness via monitor.lastRunAt + lastChangedAt
+        (very_recent <30min / fresh <24h sans change / outdated). UI même pattern.
+        Commit: feat(api+web): smart manual rescrape with staleness
+- [ ] 8 — Discovery staleness : GET `/candidates/staleness` (daysSince + profil self changé) +
+        track discovery_runs sur /detect. UI bouton + lien profil produit.
+        Commit: feat(api+web): smart discovery with profile-based staleness
+- [ ] 9 — Rate limit DUR : middleware `ai-intensive-rate-limit.ts` (redis incr/expire, 429 message
+        3-parties EN). Appliqué : battle-card generate, candidates/detect, my-product/rescan,
+        onboarding analyze-url. Lecture jamais limitée.
+        Commit: feat(api): hard rate limiting for ai-intensive actions per user
+- [ ] 10 — Dashboard ops `(admin)/admin/ai-health` + `GET /api/admin/ai-health` : par provider
+        (quota tokens/j, %, breaker), breaker global, usage 7j (ai_runs CH), top actions, prédiction saturation.
+        Commit: feat(admin): ai providers health dashboard with prediction
+- [ ] 11 — `apps/workers/src/jobs/ai-capacity-check.job.ts` cron */30 : usage global % par paliers
+        (80/90 + épuisés) → Slack ops, max 1 ping/2h.
+        Commit: feat(workers): ai capacity monitoring with paced slack alerts
+- [ ] 12 — Vérif finale : pnpm build + typecheck (7/7). Cohérence patch-02 (ai_runs provider),
+        patch-09 (cache hit → skip pool), patch-12 (selfProfile edits), patch-14 (messages 3-parties EN).
+        Strings EN (language.md). MAJ findings.md + Notion Done. Commit: docs.
+
+## Blockers patch-22
+- Upstash réel requis pour que le moteur soit effectif (quota/breaker/round-robin). Sans creds:
+  no-op → dégrade vers "1er provider, pas de tracking". Provisioning = utilisateur.
+- Clés Cerebras/Hyperbolic réelles = utilisateur (le code charge ce qui est configuré en env).
+- db:push (battle_cards + discovery_runs) = mutation DB live → utilisateur si prompt interactif.
+
+---
+
+# Patch 23 — Edge cases scraping (diagnostic + alternatives + pivot + API capture)
+
+## Session du 2026-06-02
+
+## Objectif
+Quatre couches pour les cas où patch-20 (cascade anti-bot) ne suffit pas, au lieu
+de juste marquer `markedUnscrapable` :
+1. Diagnostic fin des échecs (7 catégories).
+2. Alternatives proposées à l'user (URL publique / saisie manuelle / pause).
+3. Détection pivot/mort/rachat = signal structurel + vérification IA (anti faux positif A/B).
+4. Capture d'API runtime pour SPA pures (opt-in monitor + auto-activation).
+**Tout user-facing + AI-facing en ANGLAIS** (language.md override les strings FR du patch).
+Login requis = HORS SCOPE (juste alternatives, pas de scraping connecté). Geo-block = documenté.
+
+## Phase en cours
+Post-MVP — Patch 23 (s'appuie sur patch-20 cascade, patch-17 pHash, patch-14 messages 3-parties).
+
+## Divergences réelles vs spec Notion (à acter AVANT de coder)
+1. **`diagnoseFailure` n'a pas accès au `CascadeOutcome` complet dans `onFailure`.**
+   `scrape-monitor.job.ts onFailure({error})` ne reçoit que le message d'erreur ; l'adaptateur
+   `lib/crawler.ts > scrapePage` throw `failureReason` et JETTE déjà `attempts`/`finalUrl`/`statusCode`.
+   `ScrapeOutcome` (types.ts) n'expose que `level` + `attempts:number` (compte), pas le tableau.
+   → Le diagnostic doit tourner **dans le body du run, là où on a encore le CascadeOutcome riche**
+   (avant le throw final), pas dans `onFailure`. Soit l'adaptateur remonte un échec structuré
+   (`{ok:false, attempts, finalUrl, statusCode, failureReason}`) au lieu de throw, soit on appelle
+   `diagnoseFailure` dans le catch du body. Décision = remonter un résultat structuré.
+2. **Les snapshots ne stockent PAS le `text` en Postgres** (seulement `r2Key`, `contentHash`,
+   `contentSize`, `screenshotPhash`). La spec pivot lit `snapshot.text` → faux. Le texte vit
+   dans le HTML sur R2. → `detectStructuralChange` doit **fetch les N derniers HTML depuis R2 +
+   extractContent** pour le textDiff. `screenshotPhash` (hex) lui EST stocké → phash diff direct.
+   Règle archi : JAMAIS de HTML/texte en PG → on ne rajoute pas de colonne `text`.
+3. **Les competitors externes n'ont pas de `productProfile`.** Ils ont `category`, `description`,
+   `aiSummary` (org.productProfile = self uniquement). → `verifyContentMatchesProfile` consomme
+   `competitor.{name,category,description,aiSummary}`, pas `productProfile`.
+4. **AI : provider abstrait + `ai_runs` logging (patch-02).** `verify_content_profile` passe par
+   le provider `@outrival/ai` et se logge via le wrapper `loggedAi`/équivalent (task tag).
+   PAS de cache (contexte-dépendant). Le hard rate-limit IA est patch-22 (planifié, non implémenté)
+   → on se contente du logging `ai_runs` existant ; pas de dépendance bloquante.
+5. **Admin = route group `(admin)/admin/`** (pas `app/admin/`). Sous-pages existantes :
+   ai/audit/cost/feedback/feedback-quality/jobs/scraping/users. → page edge-cases sous
+   `(admin)/admin/scraping-edge-cases/` (cohérent), data via `GET /api/admin/*`.
+6. **FailureReason réel** = `blocked_403|blocked_503|cloudflare_challenge|soft_block|needs_render|
+   network_error|timeout`. Pas de `404/410` dans failureReason (un 404 sort en `statusCode` sur un
+   résultat `ok:false` ou via needs_render selon le niveau). → diagnostic lit `statusCode` ET
+   `failureReason`. Vérifier que L0/scrapeDirect remonte bien le `statusCode` 404/410/30x + `finalUrl`.
+7. **3 nouvelles tables** (monitor_alternatives, structural_changes, manual_snapshots) +
+   colonnes monitors (lastFailure*, apiCaptureEnabled, apiCaptureEndpoints). db:push = live.
+   ⚠️ MEMORY : patch-21 a déjà du schéma non-pushé + tree sale → vérifier l'état db:push avant.
+
+## Étapes (1 commit par étape — laissés à l'utilisateur si tree sale au démarrage)
+- [ ] 0 — env (.env.example + .env.local) : PIVOT_DETECTION_MIN_SCRAPES,
+      PIVOT_DETECTION_TEXT_DIFF_THRESHOLD, PIVOT_DETECTION_PHASH_DISTANCE,
+      SPA_DETECTION_HTML_MIN_TEXT_LENGTH, SPA_API_CAPTURE_TIMEOUT_MS. Pas de dép. Pas de commit.
+- [ ] 1 — `packages/scrapers/src/lib/diagnose-failure.ts` (pur, <100ms) : FailureCategory(7) +
+      DiagnosisResult + diagnoseFailure(cascadeOutcome, monitorUrl, recentSnapshots) + helpers
+      detectsLoginPage/detectsGeoBlock/sameRootDomain. Adaptateur crawler.ts remonte un échec
+      structuré (cf. divergence 1). Schéma monitors += lastFailure{Category,Confidence,Evidence,
+      DiagnosedAt}. Branché dans scrape-monitor body. db:push.
+      Commit: feat(scrapers): fine-grained failure diagnosis
+- [ ] 2 — Schéma : monitor-alternatives.ts (+enums status/type) + structural-changes.ts
+      (+enums type/status) + index.ts. db:push.
+      Commit: feat(db): add monitor alternatives and structural changes tables
+- [ ] 3 — `packages/scrapers/src/alternatives/generate.ts` : generateAlternatives(monitor,diagnosis)
+      → toujours manual_data_entry + pause_source ; login→findPublicAlternatives (blog/changelog/
+      docs/about, isQuicklyReachable via quick-fetch existant) ; site_dead/redirected→replace_competitor.
+      Appelé quand markedUnscrapable passe à true → insert monitor_alternatives. Strings EN.
+      Commit: feat(scrapers): generate alternatives for unscrapable monitors
+- [ ] 4 — `packages/scrapers/src/structural/detect-pivot.ts` (fetch 3 derniers HTML R2 + extractContent
+      + hammingDistance phash, anti-A/B via diff milieu<0.3) + `packages/ai/.../verify-content-profile.ts`
+      (prompt EN, "Write all text in English", smart 70b, no cache, tag ai_runs) +
+      `apps/workers/src/jobs/detect-structural-changes.job.ts` (cron hebdo, ≥3 snapshots).
+      Insert structural_changes status=detected. Strings EN.
+      Commit: feat(scrapers+ai): detect pivot/death/acquisition with structural + ai verification
+- [ ] 5 — `packages/scrapers/src/spa/api-capture.ts` : scrapeWithApiCapture(page,url) (listener
+      response xhr/fetch json) + filterRelevantApiCalls. Schéma monitors += apiCaptureEnabled +
+      apiCaptureEndpoints. Auto-activation sur diagnosis spa_empty (découverte 1 fois → si appels
+      pertinents, enable + stocke endpoints, sinon unscrapable). Intégré dans le flow Patchright.
+      Commit: feat(scrapers): capture api calls at runtime for spa-pure sites
+- [ ] 6 — UI `apps/web/src/components/outrival/monitor-alternatives.tsx` (messages 3-parties EN,
+      design sobre) + `POST /api/monitor-alternatives/:id/accept` (different_url→nouveau monitor +
+      archive ancien ; manual→form ; pause→isActive=false). Branché sur l'état unscrapable patch-20.
+      Commit: feat(web): display monitor alternatives with clear actions
+- [ ] 7 — Saisie manuelle : schéma manual-snapshots.ts + UI manual-data-entry.tsx (champs par
+      sourceType : pricing/features/jobs/reviews) + route POST. Tag "manual" (FreshnessDot "entered
+      manually on X"). db:push. Strings EN.
+      Commit: feat(web): manual data entry for unscrapable sources
+- [ ] 8 — Notifications structural change : in-app (notification_type += structural_change?) +
+      banner feed + email Resend EN (max 1/competitor/mois) + endpoints GET /api/structural-changes?
+      status=detected + POST /:id/resolve (confirmed_paused|replaced_with:id|false_positive|
+      confirmed_continue). Résolution user obligatoire.
+      Commit: feat(web+api): structural change notifications in-app and email
+- [ ] 9 — `(admin)/admin/scraping-edge-cases/page.tsx` + `GET /api/admin/*` : échecs par catégorie
+      (7j, scrape_runs/monitors), alternatives proposées/acceptées, structural changes, capture API.
+      Commit: feat(admin): scraping edge cases dashboard
+- [ ] 10 — Vérif : pnpm build + typecheck (7/7). Tests E2E A–F de la spec (manuels, creds).
+      Cohérence patch-14/17/20/22. Strings EN. MAJ findings.md + task_plan.md + Notion Done.
+
+## Décisions à confirmer avec l'utilisateur (avant Étape 1)
+- D1 (intégration diagnostic) : remonter un échec structuré depuis l'adaptateur `crawler.ts`
+  (au lieu de throw) pour avoir attempts/finalUrl/statusCode dans le body. ✔ recommandé.
+- D2 (texte pivot) : fetch les 3 derniers HTML depuis R2 + extractContent pour le textDiff
+  (PAS de colonne text en PG). ✔ recommandé (respecte l'archi R2).
+- D3 (profil verify) : competitor.{name,category,description,aiSummary} (external) ;
+  org.productProfile pour le self. ✔.
+- D4 (périmètre) : implémenter les 10 étapes d'un coup, ou par lots (1-2 scrapers, 3-5 pivot/spa,
+  6-9 web/admin) avec validation entre lots ?
+
+## patch-23 = COMPLETE (implémenté 2026-06-02, commits + db:push laissés à l'utilisateur)
+Typecheck 6/6 non-web verts + web 0 erreur src (seul l'artefact stale `.next/types/validator.ts`
+rootDir subsiste, pré-existant). 149 tests bun verts (27 nouveaux : diagnose-failure 10,
+detect-pivot 9, spa filter 8). `next build` NON lancé (risque OOM WSL ; standard client components).
+
+Décisions d'implémentation actées (vs spec) :
+- D1 : `ScrapeFailedError` (crawler.ts) porte le `CascadeOutcome` → diagnostic dans le body
+  catch (même invocation). Les shells login/SPA vides tombent déjà en échec via les gardes
+  collapse/anti-void → diagnostic failure-path only (pas sur chaque succès). 404 lu via
+  `attempts[].statusCode` (scrapeDirect ne fait pas échouer sur 404 mais porte le status).
+- D2 : pivot textDiff = Jaccard de mots (pur), pas computeTextDiff (qui renvoie added/removed).
+  Textes des 3 derniers snapshots fetchés depuis R2 + extractContent. phash optionnel si absent.
+- D3 : verify-content-profile consomme competitor.{name,category,description,aiSummary}.
+- SPA reuse : capture → document HTML synthétique (comme github_repo) → pipeline générique
+  inchangé. Récupération sur transition unscrapable (spa_empty) : enable + reset failure state
+  → pas de boucle (le prochain run via capture produit du contenu).
+- "different_url" : repointe le monitor existant (invariant 1/(competitor,source)) au lieu de
+  dupliquer/archiver.
+- Notif structural change (in-app + email throttlé 1/mois) faite dans la lib worker (Étape 4+8
+  fusionnées côté détection) ; API endpoints + UI banner = Étape 8.
+
+## Blockers patch-23
+- db:push (4 tables : monitor_alternatives, structural_changes, manual_snapshots + colonnes
+  monitors lastFailure*/apiCapture* + enum notification_type += structural_change + 3 enums)
+  = mutation DB live. NON poussé (MEMORY patch-21 schéma déjà non-pushé + tree sale). À faire
+  à la main avant runtime.
+- patch-22 (hard rate-limit IA) non implémenté → verify_content_profile loggé via loggedAi
+  (ai_runs) seulement, pas de quota dur.
+- Tests E2E (SPA réelle, pivot forcé, email) = runtime, creds GROQ/R2/DB/Resend/Trigger.dev = manuel.
+- `next build` web non lancé (OOM WSL) → vérif bundle client/serveur à faire si besoin.
+
+---
+
+# Patch-24 — Anti-hallucinations IA (grounding + self-check + transparence)
+
+## Objectif
+5 couches de défense contre les hallucinations IA. Le grounding INFORME, ne bloque pas.
+Contenu flagged reste affiché (transparence).
+
+## Décisions (validées par l'utilisateur)
+- **ai_runs reste ClickHouse** (append-only). Nouvelle table **Postgres `ai_quality_checks`**
+  pour l'état mutable (grounding/self-check/review humaine), lookup par (target_type, target_id).
+  ai_runs CH reçoit en plus 2-3 colonnes append-only (confidence, self_check_passed, grounding_score)
+  pour les métriques agrégées.
+- **XL complet, 1 commit par étape.** **12 surfaces migrées d'un coup.**
+- `@outrival/ai` reste **pure** : `groundedAiCall` (pur) renvoie le résultat enrichi ;
+  la **persistance** ai_quality_checks se fait côté appelant (jobs workers + routes API).
+  → diverge de la carte qui mettait logAiRun+db.update DANS le wrapper (impossible : tasks pures).
+
+## Mapping des 12 "tasks" carte → code réel
+1 classify_change → tasks/classify.ts + classify-structured.ts
+2 generate_signal → job generate-signal.job.ts via tasks/insight.ts
+3 score_overlap → tasks/score-overlap.ts
+4 generate_battle_card → tasks/battle-card.ts
+5 analyze_product → tasks/analyze-product.ts
+6 summarize_competitor → tasks/competitor-summary.ts
+7 detect_pricing_strategy → tasks/pricing-repositioning.ts
+8 extract_features → tasks/extract-self-profile.ts
+9 classify_severity → inclus dans classify/classify-structured
+10 verify_content_profile → tasks/verify-content-profile.ts (patch-23)
+11 generate_digest → tasks/digest.ts
+12 detect_sector_signals → sectoral/formulate.ts (patch-13)
+
+## Étapes (1 commit chacune)
+[ ] 0 — Env vars (.env.example) — pas de commit
+[ ] 1 — Schéma : table PG ai_quality_checks + colonnes CH ai_runs — db:push
+[ ] 2 — Helper citations.ts (validateCitations fuzzy 0.85) + test
+[ ] 3 — Wrapper groundedAiCall (pur)
+[ ] 4 — Migrer les 12 tasks vers groundedAiCall
+[ ] 5 — Self-check 2e passe (run-self-check + decideIfSelfCheck) + persistQualityCheck helpers
+[ ] 6 — ConfidenceDot (UI)
+[ ] 7 — AiOutputWarning (UI, boutons feedback patch-21)
+[ ] 8 — Admin review queue (/admin/ai-review-queue + API)
+[ ] 9 — Métriques AI Quality dashboard + alerte Slack >3%/7j
+[ ] 10 — build + typecheck
+
+## Contraintes clés
+- Citations inventées → logger mais NE PAS rejeter la sortie (grounding informe).
+- Pas de cache sur self-check (run dans le miss closure → 1x par génération).
+- ConfidenceDot seulement si confidence < high. Warning affiche le contenu.
+- Review queue ADMIN_EMAILS only. Messages en 3 parties (patch-14).

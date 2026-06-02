@@ -3,7 +3,7 @@ const SITE_URL = "https://outrival.io";
 const FAQS = [
   {
     q: "How do you monitor sites with anti-bot protection?",
-    a: "Crawlee with proxy rotation handles the majority of sources. ScrapingBee acts as a managed headless-browser fallback for the most protected sites. No source needs manual setup on your side.",
+    a: "A stealth browser handles the majority of sources directly. For protected sites it escalates through a datacenter-to-residential proxy cascade, only paying for the heavier path when a site actually blocks us. No source needs manual setup on your side.",
   },
   {
     q: "What qualifies a change as a signal?",

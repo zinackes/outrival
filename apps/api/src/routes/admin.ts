@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { and, desc, eq, ne, gte, ilike, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, ne, gte, ilike, inArray, isNull, isNotNull, or, sql } from "drizzle-orm";
 import {
   db,
   organizations,
@@ -9,20 +9,25 @@ import {
   monitors,
   signals,
   feedback,
+  qualityFeedback,
   auditLog,
+  monitorAlternatives,
+  structuralChanges,
 } from "@outrival/db";
-import { getBytesFromR2, logger } from "@outrival/shared";
+import { getBytesFromR2, logger, redis } from "@outrival/shared";
+import { loadProviders, checkGlobalBreaker } from "@outrival/ai";
 import { tasks, runs } from "@trigger.dev/sdk/v3";
 import { authMiddleware } from "../middleware/auth";
 import { adminMiddleware } from "../middleware/admin";
 import { chQuery } from "../lib/clickhouse-safe";
 
 // --- Cost estimation constants. TRENDS, not accounting. Documented in
-//     findings.md § Patch-02. Tune as real invoices come in. ---
-// ScrapingBee premium_proxy ≈ 25 credits/request; $49 buys 100k credits.
-const SCRAPINGBEE_CREDITS_PER_PROXY = 25;
-const SCRAPINGBEE_USD_PER_CREDIT = 49 / 100_000;
-const USD_PER_PROXY_SCRAPE = SCRAPINGBEE_CREDITS_PER_PROXY * SCRAPINGBEE_USD_PER_CREDIT;
+//     findings.md § Patch-02/20. Tune as real invoices come in. ---
+// Patch-20 proxy model: datacenter is a FIXED monthly cost (flat, bandwidth
+// unlimited), residential is pay-per-GB. We don't meter GB, so we surface the
+// fixed datacenter line plus a rough per-residential-scrape estimate as a trend.
+const DATACENTER_FIXED_USD_PER_MONTH = 10;
+const USD_PER_RESIDENTIAL_SCRAPE = 0.05; // ~a few hundred KB/page at ~$4.7/GB
 // Groq llama-3.x blended per-call estimate (~1.5k in + ~0.5k out, mixed 8b/70b).
 const USD_PER_AI_CALL = 0.0012;
 
@@ -108,7 +113,7 @@ adminRouter.get("/scraping-health", async (c) => {
       SELECT source_type,
              count() AS total,
              countIf(status = 'failed') AS failed,
-             countIf(used_proxy = 1) AS proxy,
+             countIf(level >= 2) AS proxy,
              round(avg(duration_ms)) AS avg_ms
       FROM scrape_runs
       WHERE recorded_at >= now() - INTERVAL 24 HOUR
@@ -116,6 +121,25 @@ adminRouter.get("/scraping-health", async (c) => {
       ORDER BY total DESC
     `,
   });
+
+  // Cascade-level distribution (patch-20): what % of scrapes stay free (L0/L1)
+  // vs escalate to paid datacenter (L2) / residential (L3) / Camoufox (L4).
+  const levelRows = await chQuery<{ level: number; c: string }>({
+    query: `
+      SELECT level, count() AS c
+      FROM scrape_runs
+      WHERE recorded_at >= now() - INTERVAL 24 HOUR
+      GROUP BY level
+    `,
+  });
+  const levelCount = (l: number) => num(levelRows.find((r) => Number(r.level) === l)?.c ?? "0");
+  const levels = {
+    l0: levelCount(0),
+    l1: levelCount(1),
+    l2: levelCount(2),
+    l3: levelCount(3),
+    l4: levelCount(4),
+  };
 
   const sources = bySource.map((r) => {
     const total = num(r.total);
@@ -175,7 +199,7 @@ adminRouter.get("/scraping-health", async (c) => {
     recentStatuses: d.statuses,
   }));
 
-  return c.json({ window: "24h", sources, deadMonitors });
+  return c.json({ window: "24h", sources, levels, deadMonitors });
 });
 
 // --- AI health: per-task parse_failed/error rates (7d) + signals/day (7d) ---
@@ -220,19 +244,74 @@ adminRouter.get("/ai-health", async (c) => {
     `,
   });
 
+  // Provider pool health (patch-22): per-provider token quota used today + breaker
+  // state from Redis, plus the global breaker and a saturation forecast. Redis is the
+  // safe facade — values read 0 / null when Upstash is unset, so this never throws.
+  const today = new Date().toISOString().slice(0, 10);
+  const providerDefs = loadProviders();
+  const providers = await Promise.all(
+    providerDefs.map(async (p) => {
+      const [usedRaw, breaker] = await Promise.all([
+        redis.get(`ai:usage:${p.id}:${today}`),
+        redis.get(`ai:breaker:${p.id}`),
+      ]);
+      const usedTokens = Number(usedRaw ?? 0);
+      return {
+        id: p.id,
+        tier: p.tier,
+        priority: p.priority,
+        dailyTokenQuota: p.dailyTokenQuota,
+        usedTokens,
+        pct: p.dailyTokenQuota > 0 ? usedTokens / p.dailyTokenQuota : 0,
+        breaker: breaker ? String(breaker) : null,
+      };
+    }),
+  );
+
+  const globalBreaker = await checkGlobalBreaker();
+
+  const totalUsed = providers.reduce((a, p) => a + p.usedTokens, 0);
+  const totalCapacity = providers.reduce((a, p) => a + p.dailyTokenQuota, 0);
+  const now = new Date();
+  const msSinceMidnight =
+    Date.now() - Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const hoursElapsed = Math.max(0.1, msSinceMidnight / 3_600_000);
+  const ratePerHour = totalUsed / hoursElapsed;
+  const remaining = Math.max(0, totalCapacity * 0.95 - totalUsed);
+  const hoursToSaturation = ratePerHour > 0 ? remaining / ratePerHour : null;
+
   return c.json({
     window: "7d",
     tasks: tasksHealth,
     signalsByDay: signalsByDay.map((r) => ({ day: r.day, count: num(r.count) })),
+    providers,
+    globalBreaker: {
+      open: globalBreaker.open,
+      reason: globalBreaker.reason ?? null,
+      resetInSec: globalBreaker.resetInSec ?? null,
+    },
+    prediction: {
+      usagePct: totalCapacity > 0 ? totalUsed / totalCapacity : 0,
+      totalUsed,
+      totalCapacity,
+      hoursToSaturation,
+    },
   });
 });
 
 // --- Cost: trend estimates (NOT accounting), clearly flagged ---
 adminRouter.get("/cost", async (c) => {
-  const proxyRows = await chQuery<{ proxy_24h: string; proxy_30d: string }>({
+  const proxyRows = await chQuery<{
+    paid_24h: string;
+    paid_30d: string;
+    resi_24h: string;
+    resi_30d: string;
+  }>({
     query: `
-      SELECT countIf(used_proxy = 1 AND recorded_at >= now() - INTERVAL 24 HOUR) AS proxy_24h,
-             countIf(used_proxy = 1 AND recorded_at >= now() - INTERVAL 30 DAY) AS proxy_30d
+      SELECT countIf(level >= 2 AND recorded_at >= now() - INTERVAL 24 HOUR) AS paid_24h,
+             countIf(level >= 2 AND recorded_at >= now() - INTERVAL 30 DAY) AS paid_30d,
+             countIf(level >= 3 AND recorded_at >= now() - INTERVAL 24 HOUR) AS resi_24h,
+             countIf(level >= 3 AND recorded_at >= now() - INTERVAL 30 DAY) AS resi_30d
       FROM scrape_runs
     `,
   });
@@ -257,19 +336,22 @@ adminRouter.get("/cost", async (c) => {
     logger.error({ err }, "pg_database_size query failed");
   }
 
-  const proxy24h = num(proxyRows[0]?.proxy_24h);
-  const proxy30d = num(proxyRows[0]?.proxy_30d);
+  const paid24h = num(proxyRows[0]?.paid_24h);
+  const paid30d = num(proxyRows[0]?.paid_30d);
+  const resi24h = num(proxyRows[0]?.resi_24h);
+  const resi30d = num(proxyRows[0]?.resi_30d);
   const ai24h = num(aiRows[0]?.ai_24h);
   const ai30d = num(aiRows[0]?.ai_30d);
 
   return c.json({
     estimated: true,
     proxy: {
-      scrapes24h: proxy24h,
-      scrapes30d: proxy30d,
-      creditsPerScrape: SCRAPINGBEE_CREDITS_PER_PROXY,
-      estUsd24h: proxy24h * USD_PER_PROXY_SCRAPE,
-      estUsd30d: proxy30d * USD_PER_PROXY_SCRAPE,
+      // paid (level >= 2) scrapes; residential (>= 3) drives the variable cost.
+      scrapes24h: paid24h,
+      scrapes30d: paid30d,
+      fixedUsdPerMonth: DATACENTER_FIXED_USD_PER_MONTH,
+      estUsd24h: DATACENTER_FIXED_USD_PER_MONTH / 30 + resi24h * USD_PER_RESIDENTIAL_SCRAPE,
+      estUsd30d: DATACENTER_FIXED_USD_PER_MONTH + resi30d * USD_PER_RESIDENTIAL_SCRAPE,
     },
     ai: {
       calls24h: ai24h,
@@ -404,7 +486,8 @@ adminRouter.get("/users/:id", async (c) => {
           competitorId: monitors.competitorId,
           sourceType: monitors.sourceType,
           isActive: monitors.isActive,
-          requiresProxy: monitors.requiresProxy,
+          requiresLevel: monitors.requiresLevel,
+          markedUnscrapable: monitors.markedUnscrapable,
           lastRunAt: monitors.lastRunAt,
           nextRunAt: monitors.nextRunAt,
           lastChangedAt: monitors.lastChangedAt,
@@ -519,4 +602,173 @@ adminRouter.get("/audit-log", async (c) => {
     limit: 100,
   });
   return c.json({ auditLog: rows });
+});
+
+// --- Quality feedback ops (patch-21) ---
+
+type VerdictKey = "useful" | "not_useful" | "neutral";
+
+// Verdict mix per AI output type + the org-wide NPS over the last 30 days.
+adminRouter.get("/feedback-quality/stats", async (c) => {
+  const period = c.req.query("period") === "30d" ? 30 : 7;
+  const cutoff = new Date(Date.now() - period * 24 * 60 * 60 * 1000);
+
+  const rows = await db
+    .select({
+      targetType: qualityFeedback.targetType,
+      verdict: qualityFeedback.verdict,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(qualityFeedback)
+    .where(gte(qualityFeedback.createdAt, cutoff))
+    .groupBy(qualityFeedback.targetType, qualityFeedback.verdict);
+
+  const byType: Record<
+    string,
+    { useful: number; not_useful: number; neutral: number; total: number; notUsefulRate: number }
+  > = {};
+  for (const r of rows) {
+    const t = (byType[r.targetType] ??= {
+      useful: 0,
+      not_useful: 0,
+      neutral: 0,
+      total: 0,
+      notUsefulRate: 0,
+    });
+    t[r.verdict as VerdictKey] += r.count;
+    t.total += r.count;
+  }
+  for (const t of Object.values(byType)) {
+    t.notUsefulRate = t.total > 0 ? t.not_useful / t.total : 0;
+  }
+
+  // NPS always over a fixed 30-day window (the prompt is monthly).
+  const npsCutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const npsRows = await db
+    .select({ score: qualityFeedback.npsScore })
+    .from(qualityFeedback)
+    .where(and(eq(qualityFeedback.targetType, "nps"), gte(qualityFeedback.createdAt, npsCutoff)));
+  const scores = npsRows
+    .map((r) => r.score)
+    .filter((s): s is number => typeof s === "number");
+  const promoters = scores.filter((s) => s >= 9).length;
+  const detractors = scores.filter((s) => s <= 6).length;
+  const nps = {
+    score:
+      scores.length > 0
+        ? Math.round(((promoters - detractors) / scores.length) * 100)
+        : null,
+    responses: scores.length,
+    average:
+      scores.length > 0
+        ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10
+        : null,
+    promoters,
+    detractors,
+  };
+
+  return c.json({ period, byType, nps });
+});
+
+// Patterns worth fixing: per type over 14 days, flag a high not-useful rate above
+// a minimum sample, with the top reasons for context (never an auto-adjustment).
+adminRouter.get("/feedback-quality/patterns", async (c) => {
+  const minCount = Number(process.env.FEEDBACK_AGGREGATE_MIN_COUNT ?? 5);
+  const windowDays = 14;
+  const cutoff = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+
+  const verdictRows = await db
+    .select({
+      targetType: qualityFeedback.targetType,
+      verdict: qualityFeedback.verdict,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(qualityFeedback)
+    .where(gte(qualityFeedback.createdAt, cutoff))
+    .groupBy(qualityFeedback.targetType, qualityFeedback.verdict);
+
+  const reasonRows = await db
+    .select({
+      targetType: qualityFeedback.targetType,
+      reason: qualityFeedback.reason,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(qualityFeedback)
+    .where(and(gte(qualityFeedback.createdAt, cutoff), eq(qualityFeedback.verdict, "not_useful")))
+    .groupBy(qualityFeedback.targetType, qualityFeedback.reason);
+
+  const totals: Record<string, { total: number; notUseful: number }> = {};
+  for (const r of verdictRows) {
+    const t = (totals[r.targetType] ??= { total: 0, notUseful: 0 });
+    t.total += r.count;
+    if (r.verdict === "not_useful") t.notUseful += r.count;
+  }
+
+  const reasonsByType: Record<string, Array<{ reason: string; count: number }>> = {};
+  for (const r of reasonRows) {
+    (reasonsByType[r.targetType] ??= []).push({
+      reason: r.reason ?? "unspecified",
+      count: r.count,
+    });
+  }
+
+  const patterns = Object.entries(totals)
+    .map(([targetType, t]) => ({
+      targetType,
+      total: t.total,
+      notUseful: t.notUseful,
+      notUsefulRate: t.total > 0 ? t.notUseful / t.total : 0,
+      topReasons: (reasonsByType[targetType] ?? []).sort((a, b) => b.count - a.count).slice(0, 3),
+    }))
+    .filter((p) => p.total >= minCount && p.notUsefulRate > 0.6)
+    .sort((a, b) => b.notUsefulRate - a.notUsefulRate);
+
+  return c.json({ windowDays, minCount, patterns });
+});
+
+// patch-23 — scraping edge cases overview: failure categories (latest diagnosis
+// per monitor, last 7 days), proposed alternatives and their outcomes, structural
+// changes, and SPA API-capture adoption. Used to calibrate the heuristics.
+adminRouter.get("/scraping-edge-cases", async (c) => {
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+  const failureRows = await db
+    .select({ category: monitors.lastFailureCategory, count: sql<number>`count(*)::int` })
+    .from(monitors)
+    .where(
+      and(
+        isNotNull(monitors.lastFailureCategory),
+        gte(monitors.lastFailureDiagnosedAt, sevenDaysAgo),
+      ),
+    )
+    .groupBy(monitors.lastFailureCategory);
+  const failuresByCategory: Record<string, number> = {};
+  for (const r of failureRows) if (r.category) failuresByCategory[r.category] = r.count;
+
+  const altRows = await db
+    .select({ status: monitorAlternatives.status, count: sql<number>`count(*)::int` })
+    .from(monitorAlternatives)
+    .groupBy(monitorAlternatives.status);
+  const alternativesByStatus: Record<string, number> = {};
+  for (const r of altRows) alternativesByStatus[r.status] = r.count;
+
+  const structRows = await db
+    .select({ status: structuralChanges.status, count: sql<number>`count(*)::int` })
+    .from(structuralChanges)
+    .groupBy(structuralChanges.status);
+  const structuralByStatus: Record<string, number> = {};
+  for (const r of structRows) structuralByStatus[r.status] = r.count;
+
+  const [capture] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(monitors)
+    .where(eq(monitors.apiCaptureEnabled, true));
+
+  return c.json({
+    windowDays: 7,
+    failuresByCategory,
+    alternativesByStatus,
+    structuralByStatus,
+    apiCaptureEnabledMonitors: capture?.count ?? 0,
+  });
 });

@@ -50,14 +50,31 @@ const STATUS_OPTIONS: PricingStatus[] = [
 export function CompetitorPricingCard({
   competitor,
   onUpdated,
+  hasCapturedTiers = false,
+  isCapturing = false,
 }: {
   competitor: Competitor;
   onUpdated: () => void;
+  // Whether any priced tiers have actually been extracted (ClickHouse history).
+  // The detected status can be "public" from price tokens alone, before the tiers
+  // are parsed — so we don't claim prices are visible when none were captured.
+  hasCapturedTiers?: boolean;
+  // A pricing scrape is in flight — show a "capturing" hint instead of an empty state.
+  isCapturing?: boolean;
 }) {
   const status: PricingStatus = competitor.pricingStatus ?? "unknown";
   const meta = STATUS_META[status];
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  // "public"/"public_partial" promise visible prices; if none were captured yet,
+  // override the reassuring blurb with an honest one instead of the misleading
+  // "Prices are fully visible." (the original bug: status set, zero tiers shown).
+  const expectsTiers = status === "public" || status === "public_partial";
+  const tiersMissing = expectsTiers && !hasCapturedTiers;
+  const blurb = tiersMissing
+    ? "Tiers not captured yet — they'll appear after the next successful pricing scan."
+    : (competitor.pricingNote ?? meta.blurb);
 
   async function redetect() {
     setBusy(true);
@@ -92,7 +109,12 @@ export function CompetitorPricingCard({
               </Badge>
             )}
           </div>
-          <p className="text-xs text-muted-foreground">{competitor.pricingNote ?? meta.blurb}</p>
+          <p className="text-xs text-muted-foreground">{blurb}</p>
+          {isCapturing && (
+            <p className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <RefreshCw className="size-3 animate-spin" /> Capturing pricing…
+            </p>
+          )}
           {competitor.pricingObservedRegion && (
             <p className="text-[11px] text-muted-foreground">
               Observed from region {competitor.pricingObservedRegion}

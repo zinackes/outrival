@@ -13,6 +13,9 @@ export function renderDigestEmail(
   digest: Digest,
   weekStart: string,
   weekEnd: string,
+  // Optional one-click feedback links (patch-21). Absent → footer without them
+  // (e.g. when the signing secret or API base URL isn't configured).
+  feedbackLinks?: { useful: string; notUseful: string },
 ): string {
   const sectionsHtml = (["action_required", "watch", "fyi"] as const)
     .map((urgency) => {
@@ -74,6 +77,15 @@ export function renderDigestEmail(
       </div>
       ${sectionsHtml}
       ${sectoralHtml}
+      ${
+        feedbackLinks
+          ? `<div style="margin-top:28px;border-top:1px solid #262626;padding-top:18px;text-align:center;font-size:13px;color:#a3a3a3;">
+        Was this digest useful?
+        <a href="${feedbackLinks.useful}" style="color:#22c55e;text-decoration:none;margin:0 8px;">👍 Yes</a>
+        <a href="${feedbackLinks.notUseful}" style="color:#ef4444;text-decoration:none;margin:0 8px;">👎 No</a>
+      </div>`
+          : ""
+      }
       <div style="margin-top:32px;font-size:11px;color:#525252;text-align:center;">Outrival · Automated competitive intelligence</div>
     </div>
   </body>

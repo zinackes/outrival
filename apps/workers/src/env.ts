@@ -20,10 +20,24 @@ const EnvSchema = z.object({
   CLICKHOUSE_PASSWORD: z.string().optional(),
   GROQ_API_KEY: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
-  SCRAPINGBEE_API_KEY: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
   EXA_API_KEY: z.string().optional(),
   POSTHOG_API_KEY: z.string().optional(),
+
+  // Scraping cascade proxies (patch-20). All optional: a missing tier degrades to
+  // the direct IP for that level (best-effort), so the worker still boots without
+  // proxies configured. ProxyScrape: datacenter (L2), residential (L3/L4).
+  PROXYSCRAPE_DC_ENDPOINT: z.string().optional(),
+  PROXYSCRAPE_DC_USERNAME: z.string().optional(),
+  PROXYSCRAPE_DC_PASSWORD: z.string().optional(),
+  PROXYSCRAPE_RESI_ENDPOINT: z.string().optional(),
+  PROXYSCRAPE_RESI_USERNAME: z.string().optional(),
+  PROXYSCRAPE_RESI_PASSWORD: z.string().optional(),
+  CAMOUFOX_HEADLESS: z.string().optional(),
+  CAMOUFOX_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
+  SCRAPING_LEVEL_1_ENABLED: z.string().optional(),
+  SCRAPING_LEVEL_2_ENABLED: z.string().optional(),
+  SCRAPING_LEVEL_3_ENABLED: z.string().optional(),
 
   // Sectoral analysis (patch-13). Runtime knobs with sane defaults so a missing
   // env never breaks the weekly job. The cron itself is static (Mon 07:00 UTC).

@@ -1,9 +1,22 @@
 export { AI_CONFIG } from "./config";
 export type { AIProvider, AITaskConfig } from "./config";
 export { complete } from "./provider";
+// Provider pool + resilience (patch-22)
+export { getActiveProvider } from "./provider/provider-context";
+export { AIUnavailableError, checkGlobalBreaker } from "./provider/circuit-breaker";
+export { loadProviders } from "./provider/provider-pool";
+export type { Provider } from "./provider/provider-pool";
 export { safeParseJson } from "./lib/parse";
 export { classifyChange, ClassificationSchema } from "./tasks/classify";
 export type { Classification } from "./tasks/classify";
+export { classifyStructuredChanges } from "./tasks/classify-structured";
+export type {
+  StructuredChangeInput,
+  PerChangeAssessment,
+  StructuredClassification,
+} from "./tasks/classify-structured";
+export { narrateChange, shouldNarrate } from "./tasks/narrate-change";
+export type { NarrateChangeInput } from "./tasks/narrate-change";
 export { generateInsight, InsightSchema } from "./tasks/insight";
 export type { Insight } from "./tasks/insight";
 export { generateRepositioningInsight } from "./tasks/pricing-repositioning";
@@ -32,6 +45,8 @@ export { evaluateSignificance } from "./filters/significance";
 export type { DiffInput, SignificanceResult } from "./filters/significance";
 export { extractSelfProfile, SelfProfileExtractionSchema } from "./tasks/extract-self-profile";
 export type { SelfProfileExtraction } from "./tasks/extract-self-profile";
+export { verifyContentMatchesProfile, VerifyContentSchema } from "./tasks/verify-content-profile";
+export type { VerifyContentResult, VerifyContentInput } from "./tasks/verify-content-profile";
 export {
   detectFeatureTrends,
   detectHiringTrends,

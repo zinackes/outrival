@@ -2,9 +2,10 @@ import { task, logger, AbortTaskRunError } from "@trigger.dev/sdk/v3";
 import { z } from "zod";
 import { and, desc, eq } from "drizzle-orm";
 import { db, competitors, signals, reviews, monitors, snapshots } from "@outrival/db";
-import { generateCompetitorSummary } from "@outrival/ai";
+import { generateCompetitorSummary, AI_CONFIG } from "@outrival/ai";
 import { getFromR2 } from "@outrival/shared";
 import { htmlToText } from "../lib/html-to-text";
+import { loggedAi } from "../lib/clickhouse";
 
 const InputSchema = z.object({
   competitorId: z.string(),
@@ -60,7 +61,8 @@ export const refreshCompetitorSummaryJob = task({
       }
     }
 
-    const result = await generateCompetitorSummary({
+    const result = await loggedAi("competitor_summary", AI_CONFIG.classification, () =>
+      generateCompetitorSummary({
       name: competitor.name,
       category: competitor.category ?? null,
       description: competitor.description,
@@ -76,7 +78,8 @@ export const refreshCompetitorSummaryJob = task({
             topComplaints: recentComplaints.map((r) => r.content ?? "").filter(Boolean),
           }
         : undefined,
-    });
+      }),
+    );
 
     if (!result) {
       logger.warn("Competitor summary generation returned null");

@@ -215,6 +215,11 @@ export interface Monitor {
   lastError: string | null;
   aiSummary: string | null;
   aiSummaryUpdatedAt: string | null;
+  // patch-23 — surfaced so the UI can show alternatives for an unscrapable source.
+  isActive?: boolean;
+  markedUnscrapable?: boolean;
+  lastFailureCategory?: string | null;
+  apiCaptureEnabled?: boolean;
 }
 
 export interface ChangeRow {
@@ -233,20 +238,39 @@ export interface ChangeRow {
 export interface Signal {
   id: string;
   severity: "low" | "medium" | "high" | "critical";
+  // User severity override (patch-21); prefer it over `severity` for display.
+  severityOverride: "low" | "medium" | "high" | "critical" | null;
   category: string;
   insight: string;
   soWhat: string | null;
   recommendedAction: string | null;
+  // Strategic narrative for significant structured homepage changes (patch-16);
+  // null otherwise → the card shows just the insight title.
+  narrative: string | null;
   isRead: boolean;
   createdAt: string;
   competitorId: string;
   competitorName: string;
   changeId: string;
   sourceType: string | null;
+  // The current user's quality verdict on this signal (patch-21), preloaded so
+  // the inline feedback buttons render in the right state. null = no verdict yet.
+  feedbackVerdict: "useful" | "not_useful" | "neutral" | null;
 }
 
 // User-safe "Why this insight?" payload (patch-14). No raw HTML, no diff, no AI
 // classification — only what the user can read and act on.
+// One typed semantic change in the structured homepage breakdown (patch-16).
+export interface SignalChange {
+  kind: string;
+  field: string;
+  before: string | null;
+  after: string | null;
+  significance: string | null;
+  // patch-17 extras: claim variation, hamming distance, relevance score, etc.
+  metadata: Record<string, unknown> | null;
+}
+
 export interface SignalDetail {
   id: string;
   insight: string;
@@ -255,6 +279,13 @@ export interface SignalDetail {
   detectedAt: string;
   humanChangeBefore: string | null;
   humanChangeAfter: string | null;
+  // Strategic narrative + per-change breakdown for structured homepage changes
+  // (patch-16). narrative is null and changes is empty for lexical / pre-patch signals.
+  narrative: string | null;
+  changes: SignalChange[];
+  // Composite relevance score (patch-17), max across the change set. null when
+  // not scored (lexical / pre-patch). Shown discreetly.
+  relevanceScore: number | null;
   sourceType: string | null;
   sourceUrl: string | null;
   competitor: { id: string; name: string };
@@ -477,6 +508,10 @@ export interface MyProduct {
   url: string | null;
   repoUrl: string | null;
   lastScanAt: string | null;
+  // True while at least one self monitor is mid-scrape; scanError carries the
+  // last failure message once scanning settles.
+  scanning: boolean;
+  scanError: string | null;
   aiSummary: string | null;
   profile: SelfProfile;
   pricing: {
@@ -487,6 +522,9 @@ export interface MyProduct {
     note: string | null;
     manualOverride: boolean;
     tiers: MyProductPricingTier[];
+    // tiers were entered by the user (vs auto-detected from ClickHouse).
+    tiersManual: boolean;
+    tiersEditedAt: string | null;
   };
   jobs: { total: number; items: MyProductJob[] };
 }
@@ -506,6 +544,10 @@ export interface SelfProductChange {
   resolvedAt: string | null;
 }
 
+// Selective re-scan targets, one per My Product card. profile/features/techStack
+// all map to the homepage scrape server-side (deduped); pricing to the pricing monitor.
+export type MyProductRescanCategory = "profile" | "pricing" | "features" | "techStack";
+
 export interface MyProductPatch {
   category?: string;
   audience?: string;
@@ -518,6 +560,7 @@ export interface MyProductPatch {
     promotional?: boolean;
     demoUrl?: string | null;
     note?: string | null;
+    tiers?: MyProductPricingTier[];
   };
 }
 
@@ -549,6 +592,8 @@ export type AdminDeadMonitor = {
 export type AdminScrapingHealth = {
   window: string;
   sources: AdminSourceHealth[];
+  // Patch-20 cascade-level distribution over the window (counts per level).
+  levels: { l0: number; l1: number; l2: number; l3: number; l4: number };
   deadMonitors: AdminDeadMonitor[];
 };
 
@@ -561,10 +606,28 @@ export type AdminTaskHealth = {
   errorRate: number;
 };
 
+export type AdminAiProvider = {
+  id: string;
+  tier: "free" | "paid";
+  priority: number;
+  dailyTokenQuota: number;
+  usedTokens: number;
+  pct: number;
+  breaker: string | null;
+};
+
 export type AdminAiHealth = {
   window: string;
   tasks: AdminTaskHealth[];
   signalsByDay: { day: string; count: number }[];
+  providers: AdminAiProvider[];
+  globalBreaker: { open: boolean; reason: string | null; resetInSec: number | null };
+  prediction: {
+    usagePct: number;
+    totalUsed: number;
+    totalCapacity: number;
+    hoursToSaturation: number | null;
+  };
 };
 
 export type AdminCost = {
@@ -572,7 +635,7 @@ export type AdminCost = {
   proxy: {
     scrapes24h: number;
     scrapes30d: number;
-    creditsPerScrape: number;
+    fixedUsdPerMonth: number;
     estUsd24h: number;
     estUsd30d: number;
   };
@@ -600,7 +663,8 @@ export type AdminMonitorRow = {
   competitorId: string;
   sourceType: string;
   isActive: boolean;
-  requiresProxy: boolean;
+  requiresLevel: number | null;
+  markedUnscrapable: boolean;
   lastRunAt: string | null;
   nextRunAt: string | null;
   lastChangedAt: string | null;
@@ -671,6 +735,103 @@ export type AdminJobDetail = AdminJobRun & {
   payload: unknown;
 };
 
+// Detected tech stack on a competitor (patch-18).
+export type TechStackEntry = {
+  techId: string;
+  name: string;
+  category: string;
+  importance: "high" | "medium" | "low";
+  firstDetectedAt: string;
+  lastDetectedAt: string;
+};
+
+export type TechStackData = {
+  entries: TechStackEntry[];
+  lastScrapedAt: string | null;
+};
+
+// Competitor "fact sheet" — the state view behind the Overview tab. Pure
+// surfacing of already-captured data (homepage structure patch-16/17, pricing /
+// reviews ClickHouse, active job postings); no AI generation. Any field can be
+// empty/null when that source was never captured or ClickHouse is unavailable.
+export type CompetitorOverview = {
+  // When the homepage facts below were captured (last homepage snapshot). null
+  // when no homepage snapshot carries a parsed structure yet.
+  capturedAt: string | null;
+  homepage: {
+    headline: string | null;
+    subheadline: string | null;
+    valueProps: string[];
+    customerLogos: string[];
+    testimonials: Array<{ quote: string; author: string | null }>;
+  } | null;
+  numericClaims: Array<{
+    pattern: string;
+    value: number | null;
+    unit: string | null;
+    raw_text: string;
+  }>;
+  pricingNow: Array<{
+    plan_name: string;
+    price: number;
+    currency: string;
+    billing_period: string;
+  }>;
+  reviews: Array<{
+    source: string;
+    score: number;
+    review_count: number;
+    sentiment_score: number;
+  }>;
+  hiring: { openRoles: number };
+};
+
+// --- Quality feedback on AI outputs (patch-21) ---
+export type QualityFeedbackTargetType =
+  | "signal"
+  | "discovery_suggestion"
+  | "battle_card"
+  | "digest"
+  | "severity_classification"
+  | "nps";
+
+export type QualityFeedbackVerdict = "useful" | "not_useful" | "neutral";
+
+export type QualityFeedbackReason =
+  | "irrelevant"
+  | "incorrect"
+  | "trivial"
+  | "too_high_severity"
+  | "too_low_severity"
+  | "duplicate"
+  | "outdated"
+  | "other";
+
+export interface QualityFeedbackInput {
+  targetType: QualityFeedbackTargetType;
+  targetId: string;
+  verdict: QualityFeedbackVerdict;
+  reason?: QualityFeedbackReason;
+  freeText?: string;
+  npsScore?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface QualityImmediateAction {
+  type: string;
+  description: string;
+}
+
+export interface QualityFeedbackRow {
+  id: string;
+  targetType: QualityFeedbackTargetType;
+  targetId: string;
+  verdict: QualityFeedbackVerdict;
+  reason: QualityFeedbackReason | null;
+  npsScore: number | null;
+  createdAt: string;
+}
+
 export const api = {
   search: (q: string) =>
     request<SearchResults>(`/api/search?q=${encodeURIComponent(q)}`),
@@ -681,6 +842,8 @@ export const api = {
       monitors: Monitor[];
       recentChanges: ChangeRow[];
       recentSignals: CompetitorSignal[];
+      techStack: TechStackData;
+      overview: CompetitorOverview;
       plan: Plan;
     }>(`/api/competitors/${id}`),
   getCompetitorJobs: (id: string) =>
@@ -693,6 +856,16 @@ export const api = {
     request<{ scores: ReviewScorePoint[] }>(`/api/competitors/${id}/review-scores`),
   getCompetitorPricingHistory: (id: string) =>
     request<{ history: PricingHistoryPoint[] }>(`/api/competitors/${id}/pricing-history`),
+  // Whether AI generations are currently failing (rate limits) — drives the
+  // "AI is catching up" dashboard banner. `since` keys the current incident.
+  getAiStatus: () =>
+    request<{
+      status: "healthy" | "degraded" | "down";
+      degraded: boolean;
+      errorCount: number;
+      since: string | null;
+      estimatedRecovery: string | null;
+    }>("/api/system/ai-status"),
   updateCompetitorPricing: (
     id: string,
     body: { status: PricingStatus; demoUrl?: string | null; note?: string | null },
@@ -720,6 +893,10 @@ export const api = {
     }),
   runMonitor: (id: string) =>
     request<{ runId: string; monitorId: string }>(`/api/monitors/${id}/run`, { method: "POST" }),
+  // Dev-only: force a tech-stack scan (the /api/dev router is mounted only when
+  // NODE_ENV !== "production"). Tech stack otherwise runs on its own monthly cron.
+  scrapeTechStack: (id: string) =>
+    request<{ runId: string }>(`/api/dev/competitors/${id}/scrape-tech-stack`, { method: "POST" }),
   updateMonitor: (id: string, patch: { url?: string; frequency?: MonitorFrequency }) =>
     request<{ monitor: Monitor }>(`/api/monitors/${id}`, {
       method: "PATCH",
@@ -838,10 +1015,15 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ profile, productUrl: productUrl ?? null }),
     }),
-  patchProductProfile: (profile: ProductProfile) =>
+  // manualFields: profile keys the user typed by hand (vs accepted from a
+  // re-analysis) — drives self-profile stickiness server-side (update modal).
+  patchProductProfile: (
+    profile: ProductProfile,
+    manualFields?: Array<"category" | "audience" | "valueProp">,
+  ) =>
     request<{ profile: ProductProfile }>("/api/onboarding/profile", {
       method: "PATCH",
-      body: JSON.stringify({ profile }),
+      body: JSON.stringify({ profile, manualFields }),
     }),
   completeOnboarding: (body: {
     selectedCompetitors: Array<{ name: string; url: string; overlapScore?: number }>;
@@ -855,6 +1037,14 @@ export const api = {
     }),
   getBattleCard: (competitorId: string) =>
     request<{ battleCard: BattleCard }>(`/api/competitors/${competitorId}/battle-card`),
+  // Whether regenerating is worth it (patch-22): "fresh" → greyed-out button.
+  getBattleCardStaleness: (competitorId: string) =>
+    request<{
+      staleness: "never_generated" | "fresh" | "outdated";
+      needsRegeneration: boolean;
+      lastGeneratedAt?: string;
+      reason?: { userChanged: boolean; competitorChanged: boolean; flagged: boolean };
+    }>(`/api/competitors/${competitorId}/battle-card/staleness`),
   generateBattleCard: (competitorId: string) =>
     request<{ status: string; runId: string }>(
       `/api/competitors/${competitorId}/battle-card/generate`,
@@ -873,6 +1063,14 @@ export const api = {
     ),
   detectCandidates: () =>
     request<{ detected: number }>(`/api/candidates/detect`, { method: "POST" }),
+  // Whether re-running discovery is worth it (patch-22): "fresh" → greyed-out button.
+  getDiscoveryStaleness: () =>
+    request<{
+      staleness: "never_run" | "fresh" | "outdated";
+      needsRediscovery: boolean;
+      lastDiscoveryAt?: string;
+      reason?: string;
+    }>(`/api/candidates/staleness`),
   getDetectionConfig: () =>
     request<{ config: DetectionConfig; lastRunAt: string | null }>(
       `/api/candidates/config`,
@@ -915,8 +1113,11 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(patch),
     }),
-  rescanMyProduct: () =>
-    request<{ ok: true; monitors: number }>("/api/my-product/rescan", { method: "POST" }),
+  rescanMyProduct: (categories?: MyProductRescanCategory[]) =>
+    request<{ ok: true; monitors: number }>("/api/my-product/rescan", {
+      method: "POST",
+      body: categories?.length ? JSON.stringify({ categories }) : undefined,
+    }),
   setMyProductSite: (url: string) =>
     request<{ ok: true }>("/api/my-product/site", {
       method: "POST",
@@ -968,4 +1169,95 @@ export const api = {
     );
   },
   adminGetJob: (id: string) => request<{ run: AdminJobDetail }>(`/api/admin/jobs/${id}`),
+
+  // --- Quality feedback (patch-21) ---
+  submitQualityFeedback: (input: QualityFeedbackInput) =>
+    request<{ ok: true; feedbackId: string; immediateAction: QualityImmediateAction | null }>(
+      `/api/feedback-quality`,
+      { method: "POST", body: JSON.stringify(input) },
+    ),
+  getQualityFeedback: (targetType: QualityFeedbackTargetType, targetId: string) =>
+    request<{ feedback: QualityFeedbackRow | null }>(
+      `/api/feedback-quality?targetType=${targetType}&targetId=${encodeURIComponent(targetId)}`,
+    ),
+  getNpsStatus: () => request<{ eligible: boolean }>(`/api/feedback-quality/nps-status`),
+  deleteQualityFeedback: (id: string) =>
+    request<{ ok: true }>(`/api/feedback-quality/${id}`, { method: "DELETE" }),
+
+  // --- Edge cases scraping (patch-23) ---
+  getMonitorAlternatives: (monitorId: string) =>
+    request<{ alternatives: MonitorAlternative[] }>(`/api/monitor-alternatives/${monitorId}`),
+  acceptAlternative: (id: string) =>
+    request<{ ok: true; runId: string | null }>(`/api/monitor-alternatives/${id}/accept`, {
+      method: "POST",
+    }),
+  rejectAlternative: (id: string) =>
+    request<{ ok: true }>(`/api/monitor-alternatives/${id}/reject`, { method: "POST" }),
+  submitManualSnapshot: (
+    monitorId: string,
+    input: { data: Record<string, unknown>; evidenceUrl?: string },
+  ) =>
+    request<{ snapshot: ManualSnapshotRow }>(`/api/manual-snapshots/${monitorId}`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  getLatestManualSnapshot: (monitorId: string) =>
+    request<{ snapshot: ManualSnapshotRow | null }>(`/api/manual-snapshots/${monitorId}/latest`),
+  getStructuralChanges: (status = "detected") =>
+    request<{ changes: StructuralChangeRow[] }>(
+      `/api/structural-changes?status=${encodeURIComponent(status)}`,
+    ),
+  resolveStructuralChange: (id: string, resolution: string) =>
+    request<{ ok: true; status: string }>(`/api/structural-changes/${id}/resolve`, {
+      method: "POST",
+      body: JSON.stringify({ resolution }),
+    }),
 };
+
+// --- Edge cases scraping (patch-23) types ---
+export type AlternativeType =
+  | "different_url"
+  | "manual_data_entry"
+  | "pause_source"
+  | "replace_competitor";
+
+export interface MonitorAlternative {
+  id: string;
+  monitorId: string;
+  type: AlternativeType;
+  description: string;
+  suggestedUrl: string | null;
+  rationale: string | null;
+  status: string;
+  createdAt: string;
+}
+
+export interface ManualSnapshotRow {
+  id: string;
+  monitorId: string;
+  sourceType: string;
+  data: Record<string, unknown>;
+  evidenceUrl: string | null;
+  enteredAt: string;
+}
+
+export type StructuralChangeType = "pivot" | "site_dead" | "acquired" | "category_shift";
+
+export interface StructuralChangeRow {
+  id: string;
+  competitorId: string;
+  competitorName: string | null;
+  type: StructuralChangeType;
+  evidence: Record<string, unknown>;
+  confidence: string;
+  status: string;
+  detectedAt: string;
+}
+
+export interface AdminEdgeCases {
+  windowDays: number;
+  failuresByCategory: Record<string, number>;
+  alternativesByStatus: Record<string, number>;
+  structuralByStatus: Record<string, number>;
+  apiCaptureEnabledMonitors: number;
+}

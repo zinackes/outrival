@@ -8,9 +8,10 @@ import {
   type SelfProfile,
   type SelfProfileField,
 } from "@outrival/db";
-import { extractSelfProfile } from "@outrival/ai";
+import { extractSelfProfile, AI_CONFIG } from "@outrival/ai";
 import { getFromR2 } from "@outrival/shared";
 import { htmlToText } from "../lib/html-to-text";
+import { loggedAi } from "../lib/clickhouse";
 
 const InputSchema = z.object({
   snapshotId: z.string(),
@@ -30,10 +31,15 @@ function refreshAuto<T>(
   return { value, isFromAutoDetect: true, lastEditedByUserAt: null };
 }
 
+/** A string value the extraction couldn't determine (so we keep the prior one). */
+const isBlank = (s: string) => s.trim().length === 0;
+
 /**
- * Patch-12: fill the structured part of the self-competitor's profile (features +
- * tech stack) that has no other source. Runs after each homepage scrape of the self
- * product. Auto-detected fields are refreshed; fields the user corrected stay sticky.
+ * Patch-12: fill the self-competitor's profile from its homepage — category,
+ * audience and value proposition (so a re-scan keeps them current) plus features +
+ * tech stack (which have no other source). Runs after each homepage scrape of the
+ * self product. Auto-detected fields are refreshed; fields the user corrected stay
+ * sticky.
  */
 export const extractSelfProfileJob = task({
   id: "extract-self-profile",
@@ -61,7 +67,9 @@ export const extractSelfProfileJob = task({
     const html = await getFromR2(`${snapshot.r2Key}.html`);
     const text = htmlToText(html).slice(0, 8000);
 
-    const extracted = await extractSelfProfile(text);
+    const extracted = await loggedAi("extract_self_profile", AI_CONFIG.classification, () =>
+      extractSelfProfile(text),
+    );
     if (!extracted) {
       logger.warn("Self profile extraction returned null");
       return { ok: false, reason: "parse_failed" };
@@ -70,6 +78,9 @@ export const extractSelfProfileJob = task({
     const current: SelfProfile = competitor.selfProfile ?? {};
     const next: SelfProfile = {
       ...current,
+      category: refreshAuto(current.category, extracted.category, isBlank(extracted.category)),
+      audience: refreshAuto(current.audience, extracted.audience, isBlank(extracted.audience)),
+      valueProp: refreshAuto(current.valueProp, extracted.valueProp, isBlank(extracted.valueProp)),
       features: refreshAuto(current.features, extracted.features, extracted.features.length === 0),
       techStack: refreshAuto(current.techStack, extracted.techStack, extracted.techStack.length === 0),
     };

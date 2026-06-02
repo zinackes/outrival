@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { and, desc, eq, gte, isNull, ne, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, isNotNull, ne, inArray, sql } from "drizzle-orm";
 import { tasks } from "@trigger.dev/sdk/v3";
 import {
   competitors,
@@ -10,6 +10,7 @@ import {
   snapshots,
   jobPostings,
   reviews,
+  techStackEntries,
 } from "@outrival/db";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
@@ -48,6 +49,152 @@ async function assertOwnedCompetitor(competitorId: string, orgId: string) {
   return db.query.competitors.findFirst({
     where: and(eq(competitors.id, competitorId), eq(competitors.orgId, orgId)),
   });
+}
+
+// Subset of @outrival/scrapers' HomepageStructure we read off the snapshot jsonb.
+// The API can't import the scrapers package (monorepo boundary), so the shape the
+// parser produces (patch-16/17) is restated here for the fields the fact sheet needs.
+type StoredHomepage = {
+  hero?: { headline?: string | null; subheadline?: string | null };
+  sections?: Array<{ heading?: string; type?: string }>;
+  socialProof?: {
+    customerLogos?: string[];
+    testimonials?: Array<{ quote?: string; author?: string | null }>;
+  };
+};
+
+// "Fact sheet" / state view of a competitor (Overview tab): the current homepage
+// facts we capture but never surfaced — positioning, value props, customers,
+// numeric claims — plus a compact snapshot of pricing/hiring/reviews. Pure
+// surfacing of existing data: no AI call, no scrape. ClickHouse reads are bounded
+// (return [] when CH is down), so the fact sheet degrades gracefully.
+async function buildOverview(
+  competitorId: string,
+  monitorList: Array<{ id: string; sourceType: string }>,
+) {
+  // Positioning + value props + social proof from the latest homepage snapshot's
+  // parsed structure (only homepage snapshots carry it; null pre-patch).
+  let capturedAt: Date | null = null;
+  let homepage: {
+    headline: string | null;
+    subheadline: string | null;
+    valueProps: string[];
+    customerLogos: string[];
+    testimonials: Array<{ quote: string; author: string | null }>;
+  } | null = null;
+
+  const homepageMonitor = monitorList.find((m) => m.sourceType === "homepage");
+  if (homepageMonitor) {
+    const [snap] = await db
+      .select({ structure: snapshots.homepageStructure, scrapedAt: snapshots.scrapedAt })
+      .from(snapshots)
+      .where(
+        and(
+          eq(snapshots.monitorId, homepageMonitor.id),
+          eq(snapshots.status, "success"),
+          isNotNull(snapshots.homepageStructure),
+        ),
+      )
+      .orderBy(desc(snapshots.scrapedAt))
+      .limit(1);
+    if (snap?.structure) {
+      const s = snap.structure as StoredHomepage;
+      capturedAt = snap.scrapedAt;
+      homepage = {
+        headline: s.hero?.headline ?? null,
+        subheadline: s.hero?.subheadline ?? null,
+        // Section headings carrying the value proposition (feature blocks and
+        // integration showcases), in document order, capped for the glance.
+        valueProps: (s.sections ?? [])
+          .filter((sec) => sec.type === "features" || sec.type === "integrations")
+          .map((sec) => sec.heading?.trim() ?? "")
+          .filter((h) => h.length > 0)
+          .slice(0, 8),
+        customerLogos: (s.socialProof?.customerLogos ?? [])
+          .map((l) => l.trim())
+          .filter((l) => l.length > 0)
+          .slice(0, 24),
+        testimonials: (s.socialProof?.testimonials ?? [])
+          .map((t) => ({ quote: t.quote?.trim() ?? "", author: t.author ?? null }))
+          .filter((t) => t.quote.length > 0)
+          .slice(0, 3),
+      };
+    }
+  }
+
+  const numericClaims = await chQuery<{
+    pattern: string;
+    value: number | null;
+    unit: string | null;
+    raw_text: string;
+  }>({
+    query: `
+      SELECT pattern,
+             argMax(value, observed_at) AS value,
+             argMax(unit, observed_at) AS unit,
+             argMax(raw_text, observed_at) AS raw_text
+      FROM numeric_claims
+      WHERE competitor_id = {competitorId: String}
+        AND observed_at >= now() - INTERVAL 90 DAY
+      GROUP BY pattern
+      ORDER BY max(observed_at) DESC
+      LIMIT 8
+    `,
+    params: { competitorId },
+  });
+
+  // Current tier set = the most recent recorded_at batch for this competitor.
+  const pricingNow = await chQuery<{
+    plan_name: string;
+    price: number;
+    currency: string;
+    billing_period: string;
+  }>({
+    query: `
+      SELECT plan_name, price, currency, billing_period
+      FROM pricing_history
+      WHERE competitor_id = {competitorId: String}
+        AND recorded_at = (
+          SELECT max(recorded_at) FROM pricing_history
+          WHERE competitor_id = {competitorId: String}
+        )
+      ORDER BY price ASC
+    `,
+    params: { competitorId },
+  });
+
+  const reviews = await chQuery<{
+    source: string;
+    score: number;
+    review_count: number;
+    sentiment_score: number;
+  }>({
+    query: `
+      SELECT source,
+             argMax(score, recorded_at) AS score,
+             argMax(review_count, recorded_at) AS review_count,
+             argMax(sentiment_score, recorded_at) AS sentiment_score
+      FROM review_scores
+      WHERE competitor_id = {competitorId: String}
+      GROUP BY source
+      ORDER BY max(recorded_at) DESC
+    `,
+    params: { competitorId },
+  });
+
+  const [hiringRow] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(jobPostings)
+    .where(and(eq(jobPostings.competitorId, competitorId), eq(jobPostings.isActive, true)));
+
+  return {
+    capturedAt,
+    homepage,
+    numericClaims,
+    pricingNow,
+    reviews,
+    hiring: { openRoles: hiringRow?.count ?? 0 },
+  };
 }
 
 competitorsRouter.post("/", async (c) => {
@@ -117,6 +264,10 @@ competitorsRouter.post("/:id/monitors", async (c) => {
   if (!competitor || competitor.deletedAt) return c.json({ error: "Competitor not found" }, 404);
 
   const { sourceType } = parsed.data;
+  // tech_stack is an internal anchor source (patch-18), not user-enableable.
+  if (sourceType === "tech_stack") {
+    return c.json({ error: "source_not_enableable", source: sourceType }, 400);
+  }
   const plan = await getOrgPlan(orgId);
   if (!isSourceAllowed(plan, sourceType)) {
     return c.json({ error: "plan_locked_source", source: sourceType, plan }, 403);
@@ -285,9 +436,14 @@ competitorsRouter.get("/:id", async (c) => {
   // (e.g. lock review sources the plan doesn't include) without a second roundtrip.
   const plan = await getOrgPlan(orgId);
 
-  const monitorList = await db.query.monitors.findMany({
+  const allMonitors = await db.query.monitors.findMany({
     where: eq(monitors.competitorId, competitor.id),
   });
+  // Hide the tech_stack anchor monitor (patch-18) — it's infra, not a user-facing
+  // source. Tech stack surfaces as its own read-only tab; the dev-only manual scan
+  // (POST /api/dev/competitors/:id/scrape-tech-stack) drives a synthetic Sources
+  // row, so the anchor monitor never needs to appear here.
+  const monitorList = allMonitors.filter((m) => m.sourceType !== "tech_stack");
 
   const monitorIds = monitorList.map((m) => m.id);
   const recentChanges = monitorIds.length
@@ -334,7 +490,37 @@ competitorsRouter.get("/:id", async (c) => {
     .orderBy(desc(signals.createdAt))
     .limit(20);
 
-  return c.json({ competitor, monitors: monitorList, recentChanges, recentSignals, plan });
+  // Detected tech stack (patch-18): current (active) entries for the profile
+  // section, plus the last scrape time for the freshness dot. Grouped client-side.
+  const techRows = await db.query.techStackEntries.findMany({
+    where: and(
+      eq(techStackEntries.competitorId, competitor.id),
+      eq(techStackEntries.isActive, true),
+    ),
+  });
+  const techStack = {
+    entries: techRows.map((t) => ({
+      techId: t.techId,
+      name: t.techName,
+      category: t.category,
+      importance: t.importance,
+      firstDetectedAt: t.firstDetectedAt,
+      lastDetectedAt: t.lastDetectedAt,
+    })),
+    lastScrapedAt: competitor.techStackScrapedAt,
+  };
+
+  const overview = await buildOverview(competitor.id, monitorList);
+
+  return c.json({
+    competitor,
+    monitors: monitorList,
+    recentChanges,
+    recentSignals,
+    techStack,
+    overview,
+    plan,
+  });
 });
 
 competitorsRouter.get("/:id/signals", async (c) => {

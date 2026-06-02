@@ -21,11 +21,18 @@ import { candidatesRouter } from "./routes/candidates";
 import { billingRouter } from "./routes/billing";
 import { stripeWebhookRouter } from "./routes/stripe-webhook";
 import { feedbackRouter } from "./routes/feedback";
+import { feedbackQualityRouter } from "./routes/feedback-quality";
+import { digestFeedbackRouter } from "./routes/digest-feedback";
 import { searchRouter } from "./routes/search";
 import { myProductRouter } from "./routes/my-product";
 import { sectoralRouter } from "./routes/sectoral";
+import { systemRouter } from "./routes/system";
 import { adminRouter } from "./routes/admin";
 import { devRouter } from "./routes/dev";
+import { authRouter } from "./routes/auth";
+import { monitorAlternativesRouter } from "./routes/monitor-alternatives";
+import { manualSnapshotsRouter } from "./routes/manual-snapshots";
+import { structuralChangesRouter } from "./routes/structural-changes";
 
 const app = new Hono();
 
@@ -40,6 +47,10 @@ app.use(
     credentials: true,
   }),
 );
+
+// Custom auth flow routes (patch-19). MUST be registered before Better Auth's
+// catch-all below, or the wildcard handler swallows them.
+app.route("/api/auth", authRouter);
 
 app.on(["POST", "GET"], "/api/auth/*", (c) => auth.handler(c.req.raw));
 
@@ -61,9 +72,16 @@ app.route("/api/notifications", notificationsRouter);
 app.route("/api/candidates", candidatesRouter);
 app.route("/api/billing", billingRouter);
 app.route("/api/feedback", feedbackRouter);
+app.route("/api/feedback-quality", feedbackQualityRouter);
+// Public (token-authenticated) digest email feedback — no session middleware.
+app.route("/api/digest-feedback", digestFeedbackRouter);
 app.route("/api/search", searchRouter);
 app.route("/api/my-product", myProductRouter);
 app.route("/api/sectoral", sectoralRouter);
+app.route("/api/system", systemRouter);
+app.route("/api/monitor-alternatives", monitorAlternativesRouter);
+app.route("/api/manual-snapshots", manualSnapshotsRouter);
+app.route("/api/structural-changes", structuralChangesRouter);
 app.route("/api/admin", adminRouter);
 
 // DEV-ONLY — manual cron trigger console. Never mounted in production; remove

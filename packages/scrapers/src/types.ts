@@ -1,4 +1,6 @@
-import type { ScrapingBeeTier } from "@outrival/shared";
+import type { ScrapeLevel } from "./lib/scrape-patchright";
+
+export type { ScrapeLevel };
 
 export interface ScraperResult {
   html: string;
@@ -14,16 +16,22 @@ export interface ScraperResult {
 export interface ScrapeOptions {
   fullPage?: boolean;
   waitForSelector?: string;
-  /** If true, skip the direct attempt and go straight through the ScrapingBee proxy. */
-  preferProxy?: boolean;
   /**
-   * ScrapingBee tier to use when (and only when) the proxy fallback fires.
-   * Lets cheaper sources (jobs ATS) skip the premium proxy. Defaults to the
-   * premium tier when omitted.
+   * Progressively scroll the page after networkidle to trigger lazy-loaded /
+   * scroll-revealed content before capture (patch-16). Homepage-only.
    */
-  proxyTier?: ScrapingBeeTier;
+  progressiveScroll?: boolean;
+  /**
+   * Start the scraping cascade at this level instead of L0 (patch-20). Set from
+   * the monitor's learned `requiresLevel` so a site known to need a proxy skips
+   * the cheaper attempts. Levels 0/1 are free, 2/3/4 cost money.
+   */
+  knownLevel?: ScrapeLevel;
 }
 
 export interface ScrapeOutcome extends ScraperResult {
-  usedProxy: boolean;
+  /** Cascade level that served this result — learned per monitor for next run. */
+  level: ScrapeLevel;
+  /** Number of cascade attempts made before success (ops logging). */
+  attempts: number;
 }

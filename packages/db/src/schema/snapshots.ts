@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, pgEnum, jsonb, integer } from "drizzle-orm/pg-core";
 import { monitors } from "./monitors";
 
 export const snapshotStatusEnum = pgEnum("snapshot_status", [
@@ -18,4 +18,16 @@ export const snapshots = pgTable("snapshots", {
   etag: text("etag"),
   lastModified: text("last_modified"),
   resolvedUrl: text("resolved_url"),
+  // Semantic structure of a homepage capture (patch-16): hero, sections, nav,
+  // footer, social proof. Present only for homepage snapshots scraped post-patch;
+  // null for other sources and for pre-patch snapshots (diff falls back to lexical
+  // for one iteration). Typed as HomepageStructure from @outrival/scrapers at the
+  // call site — kept untyped here so @outrival/db stays a leaf package.
+  homepageStructure: jsonb("homepage_structure"),
+  // Perceptual (dHash) of the screenshot as a hex string (patch-17): catches a
+  // visual redesign the text diff misses. Homepage snapshots with a screenshot only.
+  screenshotPhash: text("screenshot_phash"),
+  // Char length of the extracted visible content (patch-17): feeds the anti-void
+  // median guard. Populated on every snapshot post-patch; null for older rows.
+  contentSize: integer("content_size"),
 });

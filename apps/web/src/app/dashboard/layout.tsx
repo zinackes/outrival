@@ -4,7 +4,10 @@ import { headers, cookies } from "next/headers";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { PostHogIdentitySync } from "@/lib/posthog/identity-sync";
 import { FeedbackWidget } from "@/components/outrival/feedback-widget";
+import { NpsPrompt } from "@/components/outrival/nps-prompt";
 import { OnboardingBanner } from "@/components/outrival/onboarding-banner";
+import { AiStatusBanner } from "@/components/outrival/ai-status-banner";
+import { StructuralChangeBanner } from "@/components/outrival/structural-change-banner";
 
 export const metadata: Metadata = {
   title: "Dashboard",
@@ -70,7 +73,7 @@ export default async function DashboardLayout({
     getBilling(h),
   ]);
 
-  if (!session) redirect("/login");
+  if (!session) redirect("/auth");
   // Skip mode grants dashboard access without completing onboarding.
   if (status && !status.onboardingCompleted && !status.onboardingSkipped) {
     redirect("/onboarding");
@@ -101,8 +104,13 @@ export default async function DashboardLayout({
     <DashboardShell user={user} org={org} defaultOpen={defaultOpen}>
       {userId && <PostHogIdentitySync userId={userId} plan={org.plan} />}
       {showOnboardingBanner && <OnboardingBanner />}
+      <AiStatusBanner />
+      <div className="px-4 pt-4 sm:px-6 empty:hidden">
+        <StructuralChangeBanner />
+      </div>
       {children}
       <FeedbackWidget />
+      <NpsPrompt />
     </DashboardShell>
   );
 }

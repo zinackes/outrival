@@ -90,3 +90,8 @@ export function planIncludesFrequency(plan: Plan, freq: MonitorFrequency): boole
 export function minPlanForFrequency(freq: MonitorFrequency): Plan {
   return PLANS.find((p) => PLAN_LIMITS[p].allowedFrequencies.includes(freq)) ?? "business";
 }
+
+/** Cheapest plan that unlocks `feature` — drives badges/upsell copy. */
+export function minPlanForFeature(feature: PlanFeature): Plan {
+  return PLANS.find((p) => PLAN_LIMITS[p].features[feature]) ?? "business";
+}

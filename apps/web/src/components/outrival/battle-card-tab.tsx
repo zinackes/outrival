@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
+import { FeedbackButtons } from "@/components/outrival/feedback-buttons";
 
 const EMPTY_CONTENT: BattleCardContent = {
   their_strengths: [],
@@ -27,6 +28,8 @@ const EMPTY_CONTENT: BattleCardContent = {
 
 type Status = "loading" | "absent" | "ready" | "generating" | "saving" | "error";
 
+type Staleness = Awaited<ReturnType<typeof api.getBattleCardStaleness>> | null;
+
 interface Props {
   competitorId: string;
 }
@@ -38,7 +41,17 @@ export function BattleCardTab({ competitorId }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<BattleCardContent>(EMPTY_CONTENT);
   const [paywall, setPaywall] = useState<PaywallReason | null>(null);
+  const [staleness, setStaleness] = useState<Staleness>(null);
+  const [confirmingRegen, setConfirmingRegen] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  async function refreshStaleness() {
+    try {
+      setStaleness(await api.getBattleCardStaleness(competitorId));
+    } catch {
+      setStaleness(null); // best-effort — fall back to always-enabled regenerate
+    }
+  }
 
   async function load(silent = false) {
     if (!silent) setStatus("loading");
@@ -60,7 +73,10 @@ export function BattleCardTab({ competitorId }: Props) {
   }
 
   useEffect(() => {
-    load();
+    (async () => {
+      const loaded = await load();
+      if (loaded) await refreshStaleness();
+    })();
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
@@ -75,11 +91,13 @@ export function BattleCardTab({ competitorId }: Props) {
         if (pollRef.current) clearInterval(pollRef.current);
         pollRef.current = null;
         setStatus("ready");
+        void refreshStaleness(); // regenerated → should now read "fresh"
       }
     }, 3000);
   }
 
   async function onGenerate() {
+    setConfirmingRegen(false);
     setStatus("generating");
     setError(null);
     try {
@@ -185,9 +203,25 @@ export function BattleCardTab({ competitorId }: Props) {
             <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
               Edit
             </Button>
-            <Button variant="outline" size="sm" onClick={onGenerate}>
-              <RefreshCw size={12} /> Regenerate
-            </Button>
+            {staleness && !staleness.needsRegeneration ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-muted-foreground"
+                    onClick={() => setConfirmingRegen(true)}
+                  >
+                    <RefreshCw size={12} /> Regenerate · up to date
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>No changes since the last generation.</TooltipContent>
+              </Tooltip>
+            ) : (
+              <Button size="sm" onClick={onGenerate}>
+                <RefreshCw size={12} /> Regenerate
+              </Button>
+            )}
             <Button
               asChild={canDownload}
               size="sm"
@@ -210,6 +244,29 @@ export function BattleCardTab({ competitorId }: Props) {
           </>
         )}
       </div>
+
+      {!editing && confirmingRegen && (
+        <div className="flex flex-col gap-2 rounded-md border border-primary/30 bg-primary/5 p-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-muted-foreground">
+            This battle card is already up to date
+            {staleness?.lastGeneratedAt &&
+              ` (generated ${new Date(staleness.lastGeneratedAt).toLocaleDateString("en-US", {
+                day: "2-digit",
+                month: "long",
+                year: "numeric",
+              })})`}
+            . Regenerating now will likely produce similar content.
+          </p>
+          <div className="flex shrink-0 gap-2">
+            <Button size="sm" onClick={onGenerate}>
+              Regenerate anyway
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setConfirmingRegen(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <Section
@@ -259,15 +316,19 @@ export function BattleCardTab({ competitorId }: Props) {
         />
       </div>
 
-      <p className="text-xs text-muted-foreground">
-        Generated on{" "}
-        {new Date(card.generatedAt).toLocaleDateString("en-US", {
-          day: "2-digit",
-          month: "long",
-          year: "numeric",
-        })}
-        {!card.pdfR2Key && " · PDF pending generation"}
-      </p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          Generated on{" "}
+          {new Date(card.generatedAt).toLocaleDateString("en-US", {
+            day: "2-digit",
+            month: "long",
+            year: "numeric",
+          })}
+          {!card.pdfR2Key && " · PDF pending generation"}
+        </p>
+        {/* Quality feedback (patch-21): "not useful" flags the card for regeneration. */}
+        {!editing && <FeedbackButtons targetType="battle_card" targetId={card.id} />}
+      </div>
       {paywallNode}
     </div>
   );

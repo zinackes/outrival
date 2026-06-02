@@ -10,7 +10,15 @@ import {
   organizations,
   users,
 } from "@outrival/db";
-import { generateInsight, generateRepositioningInsight, ClassificationSchema, AI_CONFIG } from "@outrival/ai";
+import {
+  generateInsight,
+  generateRepositioningInsight,
+  narrateChange,
+  shouldNarrate,
+  ClassificationSchema,
+  AI_CONFIG,
+} from "@outrival/ai";
+import type { StructuredChange } from "@outrival/scrapers/homepage-diff";
 import { PLAN_LIMITS, PRICING_STATUSES, PRICING_STATUS_LABELS } from "@outrival/shared";
 import { insertSignalFeed, logAiRun } from "../lib/clickhouse";
 import { captureWorkerEvent, shutdownPostHog } from "../lib/posthog";
@@ -119,6 +127,30 @@ export const generateSignalJob = task({
       throw new AbortTaskRunError("Insight returned null");
     }
 
+    // Strategic narrative (patch-16): only for significant STRUCTURED homepage
+    // changes, gated by HOMEPAGE_NARRATIVE_MIN_SEVERITY to control AI cost. Best
+    // effort — a narration failure must never block the signal (unlike the insight
+    // above, the narrative is an optional enhancement).
+    let narrative: string | null = null;
+    if (change.diffType === "structured" && change.structuredDiff && shouldNarrate(severity)) {
+      const narrateModel = AI_CONFIG.insights;
+      try {
+        narrative = await narrateChange({
+          changes: change.structuredDiff as StructuredChange[],
+          competitor: { name: competitor.name, category: competitor.category ?? "unknown" },
+        });
+        await logAiRun(
+          "narrate_change",
+          narrateModel.provider,
+          narrateModel.model,
+          narrative ? "success" : "parse_failed",
+        );
+      } catch {
+        await logAiRun("narrate_change", narrateModel.provider, narrateModel.model, "error");
+        logger.warn("Narrative generation failed (non-fatal)", { changeId: input.changeId });
+      }
+    }
+
     const [newSignal] = await db
       .insert(signals)
       .values({
@@ -132,6 +164,7 @@ export const generateSignalJob = task({
         recommendedAction: insight.recommended_action,
         humanChangeBefore,
         humanChangeAfter,
+        narrative,
       })
       .returning();
 

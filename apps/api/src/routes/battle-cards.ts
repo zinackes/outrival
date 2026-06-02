@@ -1,11 +1,12 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { tasks } from "@trigger.dev/sdk/v3";
-import { battleCards, competitors } from "@outrival/db";
+import { battleCards, competitors, signals, selfProfileLastEditedAt } from "@outrival/db";
 import { getBytesFromR2 } from "@outrival/shared";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
+import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
 import { getOrgPlan, isFeatureAllowed } from "../lib/plan";
 
@@ -54,7 +55,57 @@ battleCardsRouter.get("/:id/battle-card", async (c) => {
   return c.json({ battleCard: card });
 });
 
-battleCardsRouter.post("/:id/battle-card/generate", async (c) => {
+// Whether the battle card is worth regenerating (patch-22 intelligent rate limiting):
+// stale when the user's self-profile changed, a new competitor signal landed since the
+// card was generated, or the user flagged it "not useful" (patch-21). Drives the
+// greyed-out "already up to date" vs amber "Regenerate" button; never blocking.
+battleCardsRouter.get("/:id/battle-card/staleness", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor) return c.json({ error: "Not found" }, 404);
+
+  const card = await db.query.battleCards.findFirst({
+    where: eq(battleCards.competitorId, competitor.id),
+  });
+  if (!card) {
+    return c.json({ staleness: "never_generated", needsRegeneration: true });
+  }
+
+  const self = await db.query.competitors.findFirst({
+    where: and(
+      eq(competitors.orgId, orgId),
+      eq(competitors.type, "self"),
+      isNull(competitors.deletedAt),
+    ),
+  });
+  const userLastChange = selfProfileLastEditedAt(self?.selfProfile) ?? self?.updatedAt ?? null;
+
+  const lastSignal = await db.query.signals.findFirst({
+    where: eq(signals.competitorId, competitor.id),
+    orderBy: desc(signals.createdAt),
+  });
+  const competitorLastChange = lastSignal?.createdAt ?? null;
+
+  const userChanged =
+    !!userLastChange && (!card.basedOnUserUpdateAt || userLastChange > card.basedOnUserUpdateAt);
+  const competitorChanged =
+    !!competitorLastChange &&
+    (!card.basedOnCompetitorSignalAt || competitorLastChange > card.basedOnCompetitorSignalAt);
+  const flagged = !!card.flaggedForRegenerationAt;
+  const needsRegeneration = userChanged || competitorChanged || flagged;
+
+  return c.json({
+    staleness: needsRegeneration ? "outdated" : "fresh",
+    needsRegeneration,
+    lastGeneratedAt: card.generatedAt,
+    reason: { userChanged, competitorChanged, flagged },
+  });
+});
+
+battleCardsRouter.post("/:id/battle-card/generate", aiIntensiveRateLimit, async (c) => {
   const id = c.req.param("id");
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);

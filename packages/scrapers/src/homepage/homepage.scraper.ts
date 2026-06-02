@@ -8,7 +8,9 @@ export async function scrape(
 ): Promise<ScrapeOutcome> {
   return scrapePage(url, {
     fullPage: true,
-    preferProxy: options.preferProxy,
-    proxyTier: options.proxyTier,
+    knownLevel: options.knownLevel,
+    // patch-16: reveal lazy-loaded / below-the-fold content before capture.
+    // Homepage-only — other sources don't request it.
+    progressiveScroll: true,
   });
 }

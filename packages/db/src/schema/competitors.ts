@@ -10,16 +10,44 @@ export type SelfProfileField<T> = {
   lastEditedByUserAt: string | null; // ISO timestamp, null while auto-detected
 };
 
+// One pricing plan as shown on the product. Auto-detected tiers live in ClickHouse
+// (pricing_history); these are the user's hand-entered tiers, kept on the self
+// profile so they survive without ClickHouse and stay sticky against scrapes.
+export type SelfPricingTier = {
+  plan_name: string;
+  price: number;
+  currency: string;
+  billing_period: string;
+};
+
 // Rich, user-editable profile of the user's own product (type = "self"). Pricing
-// lives on the pricing* columns (patch-11); jobs in job_postings. Features and
-// techStack are extracted by extract-self-profile and have no other home.
+// status/meta lives on the pricing* columns (patch-11); jobs in job_postings.
+// category/audience/valueProp/features/techStack are refreshed from the homepage by
+// extract-self-profile (sticky vs user edits); pricingTiers are user-entered (no auto
+// source outside ClickHouse) and have no other home.
 export type SelfProfile = {
   category?: SelfProfileField<string>;
   audience?: SelfProfileField<string>;
   valueProp?: SelfProfileField<string>;
   features?: SelfProfileField<string[]>;
   techStack?: SelfProfileField<string[]>;
+  pricingTiers?: SelfProfileField<SelfPricingTier[]>;
 };
+
+// Most recent moment the user hand-edited any self-profile field (patch-22). Used
+// to decide whether a battle card / discovery run is stale. Null when every field is
+// still auto-detected (no manual edit yet).
+export function selfProfileLastEditedAt(
+  profile: SelfProfile | null | undefined,
+): Date | null {
+  if (!profile) return null;
+  const times = Object.values(profile)
+    .map((f) => f?.lastEditedByUserAt)
+    .filter((t): t is string => typeof t === "string" && t.length > 0)
+    .map((t) => new Date(t).getTime())
+    .filter((n) => Number.isFinite(n));
+  return times.length > 0 ? new Date(Math.max(...times)) : null;
+}
 
 export const competitors = pgTable("competitors", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -50,6 +78,10 @@ export const competitors = pgTable("competitors", {
   pricingNote: text("pricing_note"),
   // When the user fills pricing in manually, scrapes must not overwrite it.
   pricingManualOverride: boolean("pricing_manual_override").notNull().default(false),
+  // Last time the independent monthly tech-stack scraper ran for this competitor
+  // (patch-18). Null = never scraped → due immediately. Drives schedule-tech-stack
+  // (no monitor row, so this is the per-competitor cadence anchor).
+  techStackScrapedAt: timestamp("tech_stack_scraped_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   deletedAt: timestamp("deleted_at"),

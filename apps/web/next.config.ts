@@ -3,6 +3,13 @@ import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   transpilePackages: ["@outrival/shared"],
+  async redirects() {
+    // patch-19: /login and /register were consolidated into the single /auth page.
+    return [
+      { source: "/login", destination: "/auth", permanent: true },
+      { source: "/register", destination: "/auth", permanent: true },
+    ];
+  },
 };
 
 export default process.env.NODE_ENV === "development"

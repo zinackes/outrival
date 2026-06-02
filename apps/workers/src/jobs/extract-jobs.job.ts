@@ -2,10 +2,10 @@ import { task, logger, AbortTaskRunError } from "@trigger.dev/sdk/v3";
 import { z } from "zod";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db, snapshots, jobPostings, monitors } from "@outrival/db";
-import { extractJobs, summarizeSource } from "@outrival/ai";
+import { extractJobs, summarizeSource, AI_CONFIG } from "@outrival/ai";
 import { getFromR2 } from "@outrival/shared";
 import { htmlToText } from "../lib/html-to-text";
-import { insertJobCounts } from "../lib/clickhouse";
+import { insertJobCounts, loggedAi } from "../lib/clickhouse";
 
 const InputSchema = z.object({
   snapshotId: z.string(),
@@ -33,7 +33,9 @@ export const extractJobsJob = task({
     const html = await getFromR2(`${snapshot.r2Key}.html`);
     const text = htmlToText(html);
 
-    const extracted = await extractJobs(text);
+    const extracted = await loggedAi("extract_jobs", AI_CONFIG.classification, () =>
+      extractJobs(text),
+    );
     if (!extracted) {
       logger.warn("Jobs extraction returned null");
       return { ok: false, reason: "parse_failed" };
@@ -104,17 +106,19 @@ export const extractJobsJob = task({
       const closedTitles = existing
         .filter((j) => closedIds.includes(j.id))
         .map((j) => j.title);
-      const summary = await summarizeSource({
-        kind: "jobs",
-        departments: Array.from(countsByDept.entries()).map(([department, count]) => ({
-          department,
-          count,
-        })),
-        total: extracted.jobs.length,
-        added: inserts.map((j) => j.title),
-        closed: closedTitles,
-        previousTotal: existing.length > 0 ? existing.length : null,
-      });
+      const summary = await loggedAi("source_summary", AI_CONFIG.classification, () =>
+        summarizeSource({
+          kind: "jobs",
+          departments: Array.from(countsByDept.entries()).map(([department, count]) => ({
+            department,
+            count,
+          })),
+          total: extracted.jobs.length,
+          added: inserts.map((j) => j.title),
+          closed: closedTitles,
+          previousTotal: existing.length > 0 ? existing.length : null,
+        }),
+      );
       if (summary) {
         await db
           .update(monitors)

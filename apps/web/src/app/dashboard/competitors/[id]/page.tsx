@@ -27,6 +27,9 @@ import {
   Plus,
   Settings2,
   Lock,
+  LayoutGrid,
+  Users,
+  Cpu,
 } from "lucide-react";
 import {
   Dialog,
@@ -55,7 +58,9 @@ import {
   validateMonitorUrl,
   MONITOR_FREQUENCIES,
   PLAN_LABELS,
+  PLAN_LIMITS,
   minPlanForSource,
+  minPlanForFeature,
   planIncludesSource,
   minPlanForFrequency,
   planIncludesFrequency,
@@ -66,6 +71,8 @@ import {
   type MonitorFrequency,
 } from "@outrival/shared";
 import { FreshnessDot } from "@/components/outrival/freshness-dot";
+import { MonitorAlternatives } from "@/components/outrival/monitor-alternatives";
+import { CompetitorTechStack } from "@/components/outrival/competitor-tech-stack";
 import { SignalSourceLine } from "@/components/outrival/signal-source-line";
 import { ListError } from "@/components/outrival/list-error";
 import { toastApiError } from "@/lib/error-helpers";
@@ -106,16 +113,28 @@ import {
   type PricingHistoryPoint,
   type ReviewScorePoint,
   type ReviewsData,
+  type TechStackData,
+  type CompetitorOverview,
 } from "@/lib/api";
 
-type TabKey = "activity" | "pricing" | "hiring" | "reviews" | "content" | "battlecard";
+type TabKey =
+  | "overview"
+  | "activity"
+  | "pricing"
+  | "hiring"
+  | "reviews"
+  | "content"
+  | "techstack"
+  | "battlecard";
 
 const TABS: Array<{ key: TabKey; label: string; icon: typeof Activity }> = [
+  { key: "overview", label: "Overview", icon: LayoutGrid },
   { key: "activity", label: "Activity", icon: Activity },
   { key: "pricing", label: "Pricing", icon: DollarSign },
   { key: "hiring", label: "Hiring", icon: Briefcase },
   { key: "reviews", label: "Reviews", icon: Star },
   { key: "content", label: "Content", icon: FileText },
+  { key: "techstack", label: "Tech stack", icon: Cpu },
   { key: "battlecard", label: "Battle Card", icon: Swords },
 ];
 
@@ -133,6 +152,36 @@ function tabFreshness(key: TabKey, monitors: Monitor[]) {
   const sources = TAB_SOURCES[key];
   if (!sources) return null;
   return aggregateFreshness(monitors.filter((m) => sources.includes(m.sourceType)));
+}
+
+// Plan-gated tabs: a tab whose data the current plan can't access is locked at
+// the trigger (lock icon + min-plan tooltip) and opens the paywall on click
+// instead of switching. Mirrors the API gates — battle cards (feature), the jobs
+// source (hiring), and the cheapest review source (reviews). Tabs without a plan
+// requirement (overview/activity/pricing/content/techstack) return null.
+function tabLock(key: TabKey, plan: Plan): { reason: PaywallReason; minPlan: Plan } | null {
+  switch (key) {
+    case "battlecard":
+      if (PLAN_LIMITS[plan].features.battleCards) return null;
+      return {
+        reason: { code: "plan_locked_feature", feature: "battleCards", plan },
+        minPlan: minPlanForFeature("battleCards"),
+      };
+    case "hiring":
+      if (planIncludesSource(plan, "jobs")) return null;
+      return {
+        reason: { code: "plan_locked_source", source: "jobs", plan },
+        minPlan: minPlanForSource("jobs"),
+      };
+    case "reviews":
+      if (planIncludesSource(plan, "g2_reviews")) return null;
+      return {
+        reason: { code: "plan_locked_source", source: "g2_reviews", plan },
+        minPlan: minPlanForSource("g2_reviews"),
+      };
+    default:
+      return null;
+  }
 }
 
 const SEVERITY_CLASS: Record<string, string> = {
@@ -178,6 +227,8 @@ type CompetitorData = {
   monitors: Monitor[];
   recentChanges: ChangeRow[];
   recentSignals: CompetitorSignal[];
+  techStack: TechStackData;
+  overview: CompetitorOverview;
   plan: Plan;
 };
 
@@ -188,7 +239,8 @@ export default function CompetitorDetailPage({ params }: Props) {
   const [error, setError] = useState<unknown>(null);
   const [scrapingIds, setScrapingIds] = useState<Set<string>>(new Set());
   const [runningAll, setRunningAll] = useState(false);
-  const [tab, setTab] = useState<TabKey>("activity");
+  const [techScraping, setTechScraping] = useState(false);
+  const [tab, setTab] = useState<TabKey>("overview");
   const [showDelete, setShowDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
@@ -348,6 +400,26 @@ export default function CompetitorDetailPage({ params }: Props) {
     }
   }
 
+  // Dev-only: force a tech-stack scan. The job (scrape-tech-stack) updates
+  // techStackScrapedAt + entries, so a timed refresh surfaces the result — no
+  // monitor-keyed polling like the normal sources.
+  async function scrapeTechStack() {
+    setTechScraping(true);
+    try {
+      await api.scrapeTechStack(id);
+      toast.info("Tech-stack scan triggered", {
+        description: "Detecting third-party tech… refreshing shortly.",
+      });
+      setTimeout(() => {
+        refresh();
+        setTechScraping(false);
+      }, 8000);
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't trigger the tech-stack scan" });
+      setTechScraping(false);
+    }
+  }
+
   async function confirmDelete() {
     setDeleting(true);
     try {
@@ -450,6 +522,42 @@ export default function CompetitorDetailPage({ params }: Props) {
     }
   }
 
+  // Intelligent rate limiting (patch-22): a manual re-scrape of a source that was
+  // checked recently with no change is friction, not blocked. Mirrors the server
+  // GET /monitors/:id/staleness thresholds, computed client-side from data we already
+  // have. The user can always force it. Only gates explicit per-source "Run" — first
+  // scrapes (enable/switch) and "Run all" still scrape unconditionally.
+  function monitorStaleness(m: Monitor): "very_recent" | "fresh" | "outdated" {
+    const minutesSince = m.lastRunAt
+      ? (Date.now() - new Date(m.lastRunAt).getTime()) / 60000
+      : Infinity;
+    const changedSinceRun =
+      !!m.lastChangedAt &&
+      !!m.lastRunAt &&
+      new Date(m.lastChangedAt).getTime() >= new Date(m.lastRunAt).getTime();
+    if (minutesSince < 30) return "very_recent";
+    if (minutesSince < 1440 && !changedSinceRun) return "fresh";
+    return "outdated";
+  }
+
+  function requestRunMonitor(monitorId: string, list?: Monitor[]) {
+    const monitor = (list ?? data?.monitors)?.find((m) => m.id === monitorId);
+    if (monitor) {
+      const s = monitorStaleness(monitor);
+      if (s !== "outdated") {
+        toast.info(s === "very_recent" ? "Scraped just now" : "No changes since last scrape", {
+          description:
+            s === "very_recent"
+              ? "This source was checked in the last 30 minutes."
+              : "Nothing has changed since the last scrape — re-scanning will likely find nothing new.",
+          action: { label: "Re-scan anyway", onClick: () => void runMonitor(monitorId) },
+        });
+        return;
+      }
+    }
+    void runMonitor(monitorId);
+  }
+
   if (error && !data) {
     return (
       <div className="mt-10">
@@ -459,7 +567,7 @@ export default function CompetitorDetailPage({ params }: Props) {
   }
   if (!data) return <CompetitorDetailLoading />;
 
-  const { competitor, monitors, recentChanges, recentSignals, plan } = data;
+  const { competitor, monitors, recentChanges, recentSignals, techStack, overview, plan } = data;
   const lastRunMs = monitors
     .map((m) => (m.lastRunAt ? new Date(m.lastRunAt).getTime() : 0))
     .reduce((a, b) => Math.max(a, b), 0);
@@ -483,7 +591,7 @@ export default function CompetitorDetailPage({ params }: Props) {
         <MonitorSources
           monitors={monitors}
           scrapingIds={scrapingIds}
-          onRun={runMonitor}
+          onRun={requestRunMonitor}
           onRunAll={runAllMonitors}
           onEdit={editMonitor}
           competitorUrl={competitor.url}
@@ -496,23 +604,57 @@ export default function CompetitorDetailPage({ params }: Props) {
           onLockedFrequency={(freq) =>
             setPaywall({ code: "plan_locked_frequency", frequency: freq, plan })
           }
+          techLastScrapedAt={techStack.lastScrapedAt}
+          onScrapeTech={scrapeTechStack}
+          techScraping={techScraping}
         />
 
-        <StatsOverview
-          competitor={competitor}
-          signals={recentSignals}
-        />
+        {monitors
+          .filter((m) => m.markedUnscrapable)
+          .map((m) => (
+            <MonitorAlternatives
+              key={m.id}
+              monitorId={m.id}
+              sourceType={m.sourceType}
+              failureCategory={m.lastFailureCategory}
+              onResolved={refresh}
+            />
+          ))}
 
         <AiSummary competitor={competitor} onRefresh={refresh} />
 
-        <Tabs value={tab} onValueChange={(v) => setTab(v as TabKey)}>
+        <Tabs
+          value={tab}
+          onValueChange={(v) => {
+            const key = v as TabKey;
+            const lock = tabLock(key, plan);
+            if (lock) {
+              setPaywall(lock.reason);
+              return;
+            }
+            setTab(key);
+          }}
+        >
           <TabsList variant="line" className="w-full justify-start overflow-x-auto">
             {TABS.map((t) => {
               const Icon = t.icon;
-              const fresh = tabFreshness(t.key, monitors);
-              return (
-                <TabsTrigger key={t.key} value={t.key}>
-                  <Icon size={13} /> {t.label}
+              const lock = tabLock(t.key, plan);
+              // Tech stack isn't monitor-backed (its own monthly cron), so its
+              // freshness comes from techStackScrapedAt rather than TAB_SOURCES.
+              const fresh = lock
+                ? null
+                : t.key === "techstack"
+                  ? techStack.lastScrapedAt
+                    ? { lastScrapedAt: techStack.lastScrapedAt, status: "success" as const }
+                    : null
+                  : tabFreshness(t.key, monitors);
+              const trigger = (
+                <TabsTrigger
+                  key={t.key}
+                  value={t.key}
+                  className={cn(lock && "text-muted-foreground/50 hover:text-muted-foreground/70")}
+                >
+                  {lock ? <Lock size={13} /> : <Icon size={13} />} {t.label}
                   {fresh && (
                     <FreshnessDot
                       lastScrapedAt={fresh.lastScrapedAt}
@@ -522,10 +664,28 @@ export default function CompetitorDetailPage({ params }: Props) {
                   )}
                 </TabsTrigger>
               );
+              if (!lock) return trigger;
+              return (
+                <Tooltip key={t.key}>
+                  <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+                  <TooltipContent side="top" className="text-[11px]">
+                    Available on the {PLAN_LABELS[lock.minPlan]} plan
+                  </TooltipContent>
+                </Tooltip>
+              );
             })}
           </TabsList>
 
           <div className="mt-6">
+            <TabsContent value="overview">
+              <OverviewTab
+                overview={overview}
+                monitors={monitors}
+                scrapingIds={scrapingIds}
+                onRun={requestRunMonitor}
+                onOpenTab={setTab}
+              />
+            </TabsContent>
             <TabsContent value="activity">
               <ActivityTab
                 signals={recentSignals}
@@ -540,7 +700,7 @@ export default function CompetitorDetailPage({ params }: Props) {
                 competitorId={id}
                 monitors={monitors}
                 scrapingIds={scrapingIds}
-                onRun={runMonitor}
+                onRun={requestRunMonitor}
                 onEnable={enableMonitor}
                 onRefresh={refresh}
                 refreshTick={refreshTick}
@@ -551,7 +711,7 @@ export default function CompetitorDetailPage({ params }: Props) {
                 competitorId={id}
                 monitors={monitors}
                 scrapingIds={scrapingIds}
-                onRun={runMonitor}
+                onRun={requestRunMonitor}
                 onEnable={enableMonitor}
                 refreshTick={refreshTick}
               />
@@ -561,7 +721,7 @@ export default function CompetitorDetailPage({ params }: Props) {
                 competitorId={id}
                 monitors={monitors}
                 scrapingIds={scrapingIds}
-                onRun={runMonitor}
+                onRun={requestRunMonitor}
                 onEnable={enableMonitor}
                 onEdit={editMonitor}
                 onSwitch={switchReviewSource}
@@ -581,10 +741,13 @@ export default function CompetitorDetailPage({ params }: Props) {
                 signals={recentSignals}
                 monitors={monitors}
                 scrapingIds={scrapingIds}
-                onRun={runMonitor}
+                onRun={requestRunMonitor}
                 onRefresh={refresh}
                 competitorUrl={competitor.url}
               />
+            </TabsContent>
+            <TabsContent value="techstack">
+              <CompetitorTechStack techStack={techStack} />
             </TabsContent>
             <TabsContent value="battlecard">
               <BattleCardTab competitorId={id} />
@@ -651,6 +814,35 @@ function Header({
               {competitor.category}
             </Badge>
           )}
+          {competitor.overlapScore != null && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button type="button" aria-label="About overlap" className="cursor-help">
+                  <Badge variant="outline" className="gap-1.5 font-mono text-[10px] tracking-widest">
+                    <span className="h-1.5 w-9 overflow-hidden rounded border border-border bg-background">
+                      <span
+                        className="block h-full rounded bg-primary"
+                        style={{
+                          width: `${Math.max(0, Math.min(100, competitor.overlapScore))}%`,
+                        }}
+                      />
+                    </span>
+                    <span className="tabular-nums font-bold text-foreground">
+                      {Math.round(competitor.overlapScore)}
+                    </span>
+                    <span className="uppercase text-muted-foreground">overlap</span>
+                  </Badge>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent
+                side="top"
+                className="max-w-[240px] text-[11px] leading-relaxed text-pretty normal-case"
+              >
+                How similar this competitor is to your product (0–100). Computed at
+                discovery via Exa + AI scoring against your product profile.
+              </TooltipContent>
+            </Tooltip>
+          )}
         </div>
         <a
           href={competitor.url}
@@ -715,6 +907,9 @@ function MonitorSources({
   disabled,
   plan,
   onLockedFrequency,
+  techLastScrapedAt,
+  onScrapeTech,
+  techScraping,
 }: {
   monitors: Monitor[];
   scrapingIds: Set<string>;
@@ -726,6 +921,9 @@ function MonitorSources({
   disabled: boolean;
   plan: Plan;
   onLockedFrequency: (freq: MonitorFrequency) => void;
+  techLastScrapedAt: string | null;
+  onScrapeTech: () => void;
+  techScraping: boolean;
 }) {
   const [editing, setEditing] = useState<Monitor | null>(null);
   if (monitors.length === 0) return null;
@@ -825,6 +1023,51 @@ function MonitorSources({
           </div>
         );
       })}
+      {/* Dev-only: tech stack runs on its own monthly cron (no user-facing Run).
+          This synthetic row lets the operator force a scan on demand. Stripped
+          from production bundles via NODE_ENV; the /api/dev endpoint is likewise
+          unmounted in prod. Non-configurable (weekly, no gear). */}
+      {process.env.NODE_ENV !== "production" && (
+        <div className="flex items-center gap-3 px-4 py-2.5">
+          <SourceStatusIcon status={techScraping ? "running" : techLastScrapedAt ? "ok" : "idle"} />
+          <span className="font-medium text-[13px] w-[104px] truncate">tech_stack</span>
+          <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground/60 w-12">
+            weekly
+          </span>
+          <span className="text-[11px] font-mono text-muted-foreground/70">
+            {techScraping
+              ? "scanning…"
+              : techLastScrapedAt
+                ? formatDistanceToNow(new Date(techLastScrapedAt), { addSuffix: true })
+                : "never scanned"}
+          </span>
+          <Badge
+            variant="outline"
+            className="text-[8px] font-mono uppercase tracking-wider px-1 py-0 text-muted-foreground/70"
+          >
+            dev
+          </Badge>
+          <div className="ml-auto flex items-center gap-1.5">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onScrapeTech}
+              disabled={techScraping}
+              className="h-7 text-[11px] min-w-[84px]"
+            >
+              {techScraping ? (
+                <>
+                  <Loader2 size={11} className="animate-spin" /> Scanning…
+                </>
+              ) : (
+                <>
+                  <Play size={11} /> Run
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      )}
       <MonitorEditDialog
         monitor={editing}
         competitorUrl={competitorUrl}
@@ -992,112 +1235,6 @@ function MonitorEditDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function StatsOverview({
-  competitor,
-  signals,
-}: {
-  competitor: Competitor;
-  signals: CompetitorSignal[];
-}) {
-  const now = Date.now();
-  const sevenDaysAgo = now - 7 * 24 * 3600 * 1000;
-  const signals7d = signals.filter(
-    (s) => new Date(s.createdAt).getTime() >= sevenDaysAgo,
-  ).length;
-
-  return (
-    <Card className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-border">
-      <KpiCell
-        label="Overlap"
-        tooltip="How similar this competitor is to your product (0–100). Computed at discovery via Exa + AI scoring against your product profile."
-        value={
-          competitor.overlapScore != null ? (
-            <div className="flex items-center gap-2.5">
-              <div className="h-1.5 w-[70px] bg-background rounded border border-border overflow-hidden">
-                <span
-                  className="block h-full bg-primary rounded"
-                  style={{
-                    width: `${Math.max(0, Math.min(100, competitor.overlapScore))}%`,
-                  }}
-                />
-              </div>
-              <span className="tabular-nums font-mono text-[18px] font-bold">
-                {Math.round(competitor.overlapScore)}
-              </span>
-              <span className="text-muted-foreground/80 text-xs font-mono">/100</span>
-            </div>
-          ) : (
-            "—"
-          )
-        }
-        raw
-      />
-      <KpiCell
-        label="Signals 7d"
-        value={signals7d}
-        sub={`${signals.length} total tracked`}
-      />
-    </Card>
-  );
-}
-
-function KpiCell({
-  label,
-  tooltip,
-  value,
-  sub,
-  raw,
-}: {
-  label: string;
-  tooltip?: string;
-  value: React.ReactNode;
-  sub?: string;
-  raw?: boolean;
-}) {
-  return (
-    <div className="px-5 py-4 flex flex-col gap-1.5 text-left min-w-0">
-      <div className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase flex items-center gap-1.5">
-        <span>{label}</span>
-        {tooltip && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                className="text-muted-foreground/60 hover:text-foreground transition-colors"
-                aria-label={`About ${label}`}
-              >
-                <Info size={11} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="top" className="max-w-[240px] text-[11px] leading-relaxed text-pretty normal-case">
-              {tooltip}
-            </TooltipContent>
-          </Tooltip>
-        )}
-      </div>
-      {raw ? (
-        <div>{value}</div>
-      ) : (
-        <div
-          className={cn(
-            "font-bold tracking-tight leading-none truncate",
-            typeof value === "number"
-              ? "text-[26px] font-mono tabular-nums"
-              : "text-[18px]",
-          )}
-        >
-          {value}
-        </div>
-      )}
-      {sub && (
-        <div className="text-muted-foreground/80 text-[11px] font-mono truncate">
-          {sub}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -1383,6 +1520,256 @@ function DiffPreview({ diffText }: { diffText: string }) {
   );
 }
 
+// Small section label shared by the Overview fact-sheet cards.
+function OverviewLabel({
+  icon: Icon,
+  children,
+}: {
+  icon: typeof Activity;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase flex items-center gap-1.5 mb-2">
+      <Icon size={11} /> {children}
+    </div>
+  );
+}
+
+// Compact summary cell (pricing / hiring / reviews) whose header links through to
+// the matching detail tab.
+function OverviewStat({
+  icon: Icon,
+  label,
+  onClick,
+  children,
+}: {
+  icon: typeof Activity;
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Card className="px-4 py-3 flex flex-col gap-2">
+      <button
+        type="button"
+        onClick={onClick}
+        className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase flex items-center gap-1.5 hover:text-foreground transition-colors w-fit"
+      >
+        <Icon size={11} /> {label} <ChevronRight size={11} />
+      </button>
+      <div>{children}</div>
+    </Card>
+  );
+}
+
+function formatTierPrice(p: { price: number; currency: string; billing_period: string }): string {
+  if (p.price === 0) return "Free";
+  const sym =
+    p.currency === "USD" ? "$" : p.currency === "EUR" ? "€" : p.currency === "GBP" ? "£" : "";
+  const amount = sym ? `${sym}${p.price}` : `${p.price} ${p.currency}`;
+  const per =
+    p.billing_period === "monthly" ? "/mo" : p.billing_period === "yearly" ? "/yr" : "";
+  return `${amount}${per}`;
+}
+
+// State view ("fact sheet") — what this competitor says about itself right now:
+// positioning, value props, customers, claims, all surfaced from the latest
+// homepage capture, plus a compact pricing/hiring/reviews summary. AI summary,
+// tech stack and KPIs already live above the tabs, so they're not repeated here.
+function OverviewTab({
+  overview,
+  monitors,
+  scrapingIds,
+  onRun,
+  onOpenTab,
+}: {
+  overview: CompetitorOverview;
+  monitors: Monitor[];
+  scrapingIds: Set<string>;
+  onRun: (id: string) => void;
+  onOpenTab: (tab: TabKey) => void;
+}) {
+  const { homepage, numericClaims, pricingNow, reviews, hiring, capturedAt } = overview;
+  const hasFacts =
+    !!homepage &&
+    !!(
+      homepage.headline ||
+      homepage.subheadline ||
+      homepage.valueProps.length > 0 ||
+      homepage.customerLogos.length > 0 ||
+      homepage.testimonials.length > 0
+    );
+  const hasAnything =
+    hasFacts ||
+    numericClaims.length > 0 ||
+    pricingNow.length > 0 ||
+    reviews.length > 0 ||
+    hiring.openRoles > 0;
+
+  if (!hasAnything) {
+    const homepageMonitor = monitors.find((m) => m.sourceType === "homepage");
+    const running = homepageMonitor ? scrapingIds.has(homepageMonitor.id) : false;
+    return (
+      <Card className="px-6 py-10 text-center border-dashed flex flex-col items-center gap-3">
+        <p className="text-[14px] font-semibold text-foreground">Nothing captured yet</p>
+        <p className="text-[12px] text-muted-foreground max-w-md">
+          Once the homepage is scraped, this is where you&apos;ll see what this
+          competitor says about itself — positioning, value props, customers and
+          pricing — at a glance.
+        </p>
+        {homepageMonitor && (
+          <Button size="sm" disabled={running} onClick={() => onRun(homepageMonitor.id)}>
+            {running ? (
+              <>
+                <Loader2 size={12} className="animate-spin" /> Scraping…
+              </>
+            ) : (
+              <>
+                <Play size={12} /> Scrape homepage now
+              </>
+            )}
+          </Button>
+        )}
+      </Card>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-1 duration-300">
+      {homepage && (homepage.headline || homepage.subheadline) && (
+        <Card className="px-5 py-4">
+          <OverviewLabel icon={Sparkles}>Positioning</OverviewLabel>
+          {homepage.headline && (
+            <p className="text-[18px] font-semibold leading-snug tracking-tight">
+              {homepage.headline}
+            </p>
+          )}
+          {homepage.subheadline && (
+            <p className="text-[13px] text-muted-foreground leading-relaxed mt-1.5">
+              {homepage.subheadline}
+            </p>
+          )}
+        </Card>
+      )}
+
+      {homepage && homepage.valueProps.length > 0 && (
+        <Card className="px-5 py-4">
+          <OverviewLabel icon={FileText}>What they highlight</OverviewLabel>
+          <ul className="flex flex-col gap-1.5 mt-1">
+            {homepage.valueProps.map((v, i) => (
+              <li key={i} className="text-[13px] leading-relaxed flex gap-2">
+                <span className="text-primary shrink-0">•</span>
+                <span>{v}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      {homepage && (homepage.customerLogos.length > 0 || homepage.testimonials.length > 0) && (
+        <Card className="px-5 py-4">
+          <OverviewLabel icon={Users}>Customers &amp; proof</OverviewLabel>
+          {homepage.customerLogos.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-1">
+              {homepage.customerLogos.map((l, i) => (
+                <Badge key={i} variant="outline" className="text-[11px] font-normal">
+                  {l}
+                </Badge>
+              ))}
+            </div>
+          )}
+          {homepage.testimonials.length > 0 && (
+            <ul className="flex flex-col gap-2.5 mt-3">
+              {homepage.testimonials.map((t, i) => (
+                <li key={i} className="border-l-2 border-border pl-3">
+                  <p className="text-[13px] italic leading-relaxed">“{t.quote}”</p>
+                  {t.author && (
+                    <p className="text-[11px] font-mono text-muted-foreground/80 mt-1">
+                      — {t.author}
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      )}
+
+      {numericClaims.length > 0 && (
+        <Card className="px-5 py-4">
+          <OverviewLabel icon={Activity}>Claims</OverviewLabel>
+          <div className="flex flex-wrap gap-1.5 mt-1">
+            {numericClaims.map((cl, i) => (
+              <Badge key={i} variant="secondary" className="text-[11px] font-normal">
+                {cl.raw_text}
+              </Badge>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <OverviewStat icon={DollarSign} label="Pricing now" onClick={() => onOpenTab("pricing")}>
+          {pricingNow.length > 0 ? (
+            <ul className="flex flex-col gap-0.5">
+              {pricingNow.slice(0, 4).map((p, i) => (
+                <li
+                  key={i}
+                  className="text-[12px] flex items-baseline justify-between gap-2"
+                >
+                  <span className="truncate">{p.plan_name}</span>
+                  <span className="font-mono tabular-nums shrink-0">{formatTierPrice(p)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <span className="text-[12px] text-muted-foreground/70">Not captured</span>
+          )}
+        </OverviewStat>
+
+        <OverviewStat icon={Briefcase} label="Open roles" onClick={() => onOpenTab("hiring")}>
+          {hiring.openRoles > 0 ? (
+            <span className="text-[22px] font-bold font-mono tabular-nums">
+              {hiring.openRoles}
+            </span>
+          ) : (
+            <span className="text-[12px] text-muted-foreground/70">None tracked</span>
+          )}
+        </OverviewStat>
+
+        <OverviewStat icon={Star} label="Reviews" onClick={() => onOpenTab("reviews")}>
+          {reviews.length > 0 ? (
+            <div className="flex flex-col gap-0.5">
+              {reviews.slice(0, 2).map((r, i) => (
+                <div
+                  key={i}
+                  className="text-[12px] flex items-baseline justify-between gap-2"
+                >
+                  <span className="uppercase font-mono text-[10px] tracking-wide text-muted-foreground">
+                    {r.source}
+                  </span>
+                  <span className="font-mono tabular-nums">
+                    {r.score.toFixed(1)}★{" "}
+                    <span className="text-muted-foreground/70">({r.review_count})</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <span className="text-[12px] text-muted-foreground/70">Not captured</span>
+          )}
+        </OverviewStat>
+      </div>
+
+      {capturedAt && (
+        <p className="text-[11px] font-mono text-muted-foreground/70">
+          homepage facts captured {formatDistanceToNow(new Date(capturedAt), { addSuffix: true })}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function ActivityTab({
   signals,
   changes,
@@ -1601,12 +1988,25 @@ function PricingTab({
     [history],
   );
 
+  // A pricing scrape in flight (client-triggered or server-side, refresh-safe)
+  // lets the card say "Capturing pricing…" instead of a bare empty state.
+  const pricingMonitor = monitors.find((m) => m.sourceType === "pricing");
+  const isCapturing = pricingMonitor
+    ? scrapingIds.has(pricingMonitor.id) || isServerScraping(pricingMonitor)
+    : false;
+  const hasCapturedTiers = (history?.length ?? 0) > 0;
+
   if (err) return <Empty text="Couldn't load this data right now — try again in a moment." />;
   if (history === null) return <TabLoading />;
   if (history.length === 0 || !series) {
     return (
       <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-1 duration-300">
-        <CompetitorPricingCard competitor={competitor} onUpdated={onRefresh} />
+        <CompetitorPricingCard
+          competitor={competitor}
+          onUpdated={onRefresh}
+          hasCapturedTiers={hasCapturedTiers}
+          isCapturing={isCapturing}
+        />
         <MonitorEmptyState
           source="pricing"
           label="pricing"
@@ -1628,11 +2028,14 @@ function PricingTab({
   for (const p of sorted) latestByPlan.set(p.plan_name, p);
   for (const p of sorted) if (!firstByPlan.has(p.plan_name)) firstByPlan.set(p.plan_name, p);
 
-  const pricingMonitor = monitors.find((m) => m.sourceType === "pricing");
-
   return (
     <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-1 duration-300">
-      <CompetitorPricingCard competitor={competitor} onUpdated={onRefresh} />
+      <CompetitorPricingCard
+        competitor={competitor}
+        onUpdated={onRefresh}
+        hasCapturedTiers={hasCapturedTiers}
+        isCapturing={isCapturing}
+      />
       <SourceSummary
         summary={pricingMonitor?.aiSummary}
         updatedAt={pricingMonitor?.aiSummaryUpdatedAt}

@@ -11,6 +11,9 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   // have an AI summary, or the watcher timed out). Lets the user leave the
   // onboarding "done" screen for the dashboard and get pinged when it's ready.
   "onboarding_complete",
+  // A radical change on a competitor's site (pivot/death/acquisition), patch-23.
+  // The user resolves it on the competitor — never auto-resolved.
+  "structural_change",
 ]);
 
 export const notifications = pgTable("notifications", {

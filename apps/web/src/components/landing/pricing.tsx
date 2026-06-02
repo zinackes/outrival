@@ -1,4 +1,5 @@
 import { Check } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 type Plan = {
   tag: string;
@@ -79,64 +80,72 @@ const PLANS: Plan[] = [
 export function Pricing() {
   return (
     <section
-      className="section"
+      className="border-y border-border bg-background-2 py-20 sm:py-28"
       id="pricing"
-      style={{
-        background: "var(--background-2)",
-        borderTop: "1px solid var(--border)",
-        borderBottom: "1px solid var(--border)",
-      }}
     >
-      <div className="wrap">
-        <div className="head-C">
-          <h2>
+      <div className="mx-auto w-full max-w-6xl px-6">
+        <div className="grid gap-x-10 gap-y-4 lg:grid-cols-2 lg:items-end">
+          <h2 className="text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">
             Four plans.
             <br />
             AI cost included.
           </h2>
-          <p className="lede">
+          <p className="text-text-muted leading-relaxed">
             You pay by user and by number of competitors. Claude + Groq API
             calls are baked into the price — no usage-based billing.
           </p>
         </div>
-        <div className="pricing">
+
+        <div className="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {PLANS.map((p) => (
             <div
               key={p.name}
-              className={"plan " + (p.featured ? "featured" : "")}
+              className={`relative flex flex-col rounded-xl border bg-surface p-6 ${
+                p.featured
+                  ? "border-primary/60 ring-1 ring-primary/30"
+                  : "border-border"
+              }`}
             >
-              <div>
-                <div className="plan-tag">{p.tag}</div>
-                <div className="plan-name" style={{ marginTop: 6 }}>
-                  {p.name}
-                </div>
-              </div>
-              <div className="plan-price">
-                <span
-                  className="plan-price-num"
-                  style={p.price.length > 4 ? { fontSize: 28 } : {}}
-                >
-                  {p.price}
+              {p.featured && (
+                <span className="absolute -top-2.5 left-6 rounded-full bg-primary px-2.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-primary-foreground">
+                  Most popular
                 </span>
-                {p.suffix && (
-                  <span className="plan-price-suffix">{p.suffix}</span>
-                )}
+              )}
+              <div>
+                <div
+                  className={`font-mono text-xs uppercase tracking-wider ${
+                    p.featured ? "text-primary" : "text-text-subtle"
+                  }`}
+                >
+                  {p.tag}
+                </div>
+                <div className="mt-1.5 text-lg font-semibold">{p.name}</div>
               </div>
-              <p className="plan-desc">{p.desc}</p>
-              <ul className="plan-list">
+              <div className="mt-4 flex items-baseline gap-1">
+                <span className="text-4xl font-semibold">{p.price}</span>
+                <span className="text-sm text-text-subtle">{p.suffix}</span>
+              </div>
+              <p className="mt-3 text-sm leading-relaxed text-text-muted">
+                {p.desc}
+              </p>
+              <ul className="mt-5 flex-1 space-y-2.5 text-sm">
                 {p.features.map((f, i) => (
-                  <li key={i}>
-                    <Check size={14} /> <span>{f}</span>
+                  <li key={i} className="flex items-start gap-2">
+                    <Check
+                      size={14}
+                      className="mt-0.5 shrink-0 text-primary"
+                    />
+                    <span>{f}</span>
                   </li>
                 ))}
               </ul>
-              <a
-                href="#cta"
-                className={"btn " + (p.featured ? "btn-primary" : "btn-ghost")}
-                style={{ justifyContent: "center", marginTop: "auto" }}
+              <Button
+                asChild
+                variant={p.featured ? "default" : "outline"}
+                className="mt-6 w-full"
               >
-                {p.cta}
-              </a>
+                <a href="#cta">{p.cta}</a>
+              </Button>
             </div>
           ))}
         </div>

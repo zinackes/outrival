@@ -5,6 +5,7 @@ import { ExternalLink } from "lucide-react";
 import { format } from "date-fns";
 import { api, type SignalDetail } from "@/lib/api";
 import { sourceLabel } from "@/lib/source-labels";
+import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -35,6 +36,37 @@ const SectionLabel = ({ children }: { children: React.ReactNode }) => (
     {children}
   </div>
 );
+
+// Readable label per structured change kind (patch-16). Falls back to the raw
+// kind if a new kind ships before this map is updated.
+const KIND_LABELS: Record<string, string> = {
+  hero_headline_changed: "Hero headline",
+  hero_subheadline_changed: "Hero subheadline",
+  hero_cta_changed: "Hero CTA",
+  section_added: "New section",
+  section_removed: "Removed section",
+  section_renamed: "Renamed section",
+  section_body_changed: "Section content",
+  section_reordered: "Reordered sections",
+  navigation_changed: "Navigation",
+  meta_changed: "Page metadata",
+  social_proof_changed: "Social proof",
+  // patch-17 enrichments
+  visual_redesign: "Visual redesign",
+  numeric_claim_changed: "Business claim",
+  customer_logo_added: "New customer logo",
+  customer_logo_removed: "Removed customer logo",
+  testimonial_added: "New testimonial",
+  testimonial_removed: "Removed testimonial",
+};
+
+// patch-17: a signed percentage badge for a numeric-claim change ("+233%").
+function variationLabel(metadata: Record<string, unknown> | null): string | null {
+  const v = metadata?.variation;
+  if (typeof v !== "number" || !Number.isFinite(v)) return null;
+  const pct = Math.round(v * 100);
+  return `${pct > 0 ? "+" : ""}${pct}%`;
+}
 
 // Progressive disclosure level 2 (patch-14): the user gets, in five seconds,
 // WHAT changed, WHERE it was seen, and WHEN. No raw HTML, no diff, no AI
@@ -94,6 +126,13 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
 
         {state === "idle" && detail && (
           <div className="space-y-5">
+            {/* Strategic narrative (patch-16) — shown first when present. */}
+            {detail.narrative && (
+              <p className="border-l-2 border-primary/40 pl-3 text-[13px] italic leading-relaxed text-primary/90">
+                {detail.narrative}
+              </p>
+            )}
+
             <section className="space-y-2.5">
               <SectionLabel>Detected change</SectionLabel>
               {hasChange ? (
@@ -118,6 +157,49 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
                 </p>
               )}
             </section>
+
+            {/* Per-change breakdown (patch-16): the typed structured changes with
+                their significance. Empty for lexical / pre-patch signals. */}
+            {detail.changes.length > 0 && (
+              <>
+                <Separator />
+                <section className="space-y-3">
+                  <SectionLabel>Changes detected</SectionLabel>
+                  <ul className="space-y-3">
+                    {detail.changes.map((ch, i) => (
+                      <li key={i} className="grid grid-cols-[56px_1fr] gap-x-3 items-baseline">
+                        <span
+                          className={cn(
+                            "font-mono text-[10px] uppercase tracking-wide",
+                            ch.significance === "major" ? "text-primary" : "text-muted-foreground/70",
+                          )}
+                        >
+                          {ch.significance ?? "—"}
+                        </span>
+                        <div className="space-y-0.5">
+                          <div className="text-[13px] text-white/85">
+                            {KIND_LABELS[ch.kind] ?? ch.kind}
+                            {ch.kind === "numeric_claim_changed" &&
+                              variationLabel(ch.metadata) && (
+                                <span className="ml-2 font-mono text-[11px] text-primary">
+                                  {variationLabel(ch.metadata)}
+                                </span>
+                              )}
+                          </div>
+                          {(ch.before || ch.after) && (
+                            <div className="font-mono text-[12px] text-muted-foreground/80">
+                              {ch.before ?? "∅"}{" "}
+                              <span className="text-muted-foreground/50">→</span>{" "}
+                              <span className="text-white/80">{ch.after ?? "∅"}</span>
+                            </div>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              </>
+            )}
 
             <Separator />
 
@@ -148,6 +230,12 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
               <p className="text-[13px] text-white/85 font-mono">
                 Detected on {format(new Date(detail.detectedAt), "MMM d, yyyy 'at' HH:mm")}
               </p>
+              {/* Relevance score (patch-17) — discreet; mostly for beta calibration. */}
+              {typeof detail.relevanceScore === "number" && (
+                <p className="text-[11px] text-muted-foreground/60 font-mono">
+                  Relevance score: {detail.relevanceScore.toFixed(2)}
+                </p>
+              )}
             </section>
           </div>
         )}

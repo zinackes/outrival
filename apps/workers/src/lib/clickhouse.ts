@@ -1,5 +1,6 @@
 import { createClient, type ClickHouseClient } from "@clickhouse/client";
 import { logger } from "@trigger.dev/sdk/v3";
+import { getActiveProvider } from "@outrival/ai";
 
 let client: ClickHouseClient | null = null;
 
@@ -85,7 +86,9 @@ export interface ScrapeRunRow {
   competitor_id: string;
   source_type: string;
   status: "success" | "no_change" | "failed";
-  used_proxy: number; // 0 | 1 (ClickHouse UInt8)
+  level: number; // patch-20 cascade level: 0/1 free, 2/3/4 paid (ClickHouse UInt8)
+  attempts: number;
+  failure_reason: string;
   duration_ms: number;
   recorded_at: Date;
 }
@@ -104,9 +107,33 @@ export async function logAiRun(
   model: string,
   status: AiRunStatus,
 ): Promise<void> {
+  // Prefer the real pool provider the call ran on (cerebras|groq|hyperbolic),
+  // captured by complete() in the same async context (patch-22). Falls back to the
+  // static provider from AI_CONFIG when the pool didn't run (e.g. Claude fallback).
+  const actual = getActiveProvider() ?? provider;
   await insertBestEffort("ai_runs", [
-    { task, provider, model, status, recorded_at: new Date() },
+    { task, provider: actual, model, status, recorded_at: new Date() },
   ]);
+}
+
+// Wrap an @outrival/ai task call so its outcome lands in ai_runs (patch-02):
+// a value → success, null → parse_failed, a throw (e.g. Groq 429 after the SDK's
+// own retries) → error, rethrown so Trigger.dev still retries the job. Feeds both
+// the admin AI-health panel and the user-facing "AI is catching up" banner — the
+// extract/summary jobs went unlogged before, so a rate limit there was silent.
+export async function loggedAi<T>(
+  task: string,
+  config: { provider: string; model: string },
+  fn: () => Promise<T>,
+): Promise<T> {
+  try {
+    const res = await fn();
+    await logAiRun(task, config.provider, config.model, res == null ? "parse_failed" : "success");
+    return res;
+  } catch (err) {
+    await logAiRun(task, config.provider, config.model, "error");
+    throw err;
+  }
 }
 
 // --- Ops health reads (patch-02, ops-health-check job). Best-effort: null when
@@ -115,14 +142,21 @@ export async function logAiRun(
 export interface ScrapeHealthWindow {
   total: number;
   failed: number;
-  proxy: number;
+  proxy: number; // paid scrapes (level >= 2: datacenter/residential/camoufox)
+  residential: number; // level >= 3 (residential + camoufox) — the expensive tier
 }
 
 export async function getScrapeHealth(hours: number): Promise<ScrapeHealthWindow | null> {
-  const rows = await queryBestEffort<{ total: string; failed: string; proxy: string }>(
+  const rows = await queryBestEffort<{
+    total: string;
+    failed: string;
+    proxy: string;
+    residential: string;
+  }>(
     `SELECT count() AS total,
             countIf(status = 'failed') AS failed,
-            countIf(used_proxy = 1) AS proxy
+            countIf(level >= 2) AS proxy,
+            countIf(level >= 3) AS residential
      FROM scrape_runs
      WHERE recorded_at >= now() - toIntervalHour({h:UInt32})`,
     { h: hours },
@@ -132,6 +166,7 @@ export async function getScrapeHealth(hours: number): Promise<ScrapeHealthWindow
     total: Number(rows[0].total),
     failed: Number(rows[0].failed),
     proxy: Number(rows[0].proxy),
+    residential: Number(rows[0].residential),
   };
 }
 
@@ -229,6 +264,62 @@ export async function getPreviousReviewScore(
     { cid: competitorId, source },
   );
   return rows && rows.length > 0 ? (rows[0]?.score ?? null) : null;
+}
+
+// --- Numeric claims (patch-17). Append-only tracking of quantified homepage
+//     claims ("15,000 teams", "99.9% uptime"). Best-effort. ---
+
+export interface NumericClaimRow {
+  competitor_id: string;
+  monitor_id: string;
+  pattern: string;
+  unit: string;
+  context: string;
+  value: number;
+  raw_text: string;
+  observed_at: Date;
+}
+
+export async function insertNumericClaims(rows: NumericClaimRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  await insertBestEffort("numeric_claims", rows);
+}
+
+// --- Tech stack history (patch-18). Append-only appearance/disappearance
+//     timeline; Postgres tech_stack_entries holds the present state. Best-effort. ---
+
+export interface TechStackHistoryRow {
+  competitor_id: string;
+  tech_id: string;
+  event: "appeared" | "disappeared";
+  importance: string;
+  recorded_at: Date;
+}
+
+export async function insertTechStackHistory(rows: TechStackHistoryRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  await insertBestEffort("tech_stack_history", rows);
+}
+
+export interface LastNumericClaim {
+  pattern: string;
+  unit: string;
+  context: string;
+  value: number;
+}
+
+// Latest value per (pattern, unit, context) for a competitor. Called BEFORE
+// inserting the current scrape's claims, so it reflects the prior observation.
+export async function getLastNumericClaims(
+  competitorId: string,
+): Promise<LastNumericClaim[] | null> {
+  return queryBestEffort<LastNumericClaim>(
+    `SELECT pattern, unit, context, argMax(value, observed_at) AS value
+     FROM numeric_claims
+     WHERE competitor_id = {cid:String}
+     GROUP BY pattern, unit, context`,
+    { cid: competitorId },
+  );
 }
 
 // --- Sectoral analysis reads (patch-13). Best-effort: null when CH is down/unset,

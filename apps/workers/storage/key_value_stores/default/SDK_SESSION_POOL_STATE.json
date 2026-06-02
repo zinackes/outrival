@@ -1,9 +1,9 @@
 {
-  "usableSessionsCount": 2,
+  "usableSessionsCount": 4,
   "retiredSessionsCount": 0,
   "sessions": [
     {
-      "id": "session_KyB2MGSiae",
+      "id": "session_NiSxs1W7Ij",
       "cookieJar": {
         "version": "tough-cookie@6.0.1",
         "storeType": "MemoryCookieStore",
@@ -16,14 +16,14 @@
       "userData": {},
       "maxErrorScore": 3,
       "errorScoreDecrement": 0.5,
-      "expiresAt": "2026-06-01T16:27:32.913Z",
-      "createdAt": "2026-06-01T15:37:32.913Z",
+      "expiresAt": "2026-06-02T17:23:48.359Z",
+      "createdAt": "2026-06-02T16:33:48.359Z",
       "usageCount": 0,
       "maxUsageCount": 50,
       "errorScore": 0
     },
     {
-      "id": "session_PkGlTC1GHM",
+      "id": "session_IdyWR1FlMT",
       "cookieJar": {
         "version": "tough-cookie@6.0.1",
         "storeType": "MemoryCookieStore",
@@ -36,8 +36,48 @@
       "userData": {},
       "maxErrorScore": 3,
       "errorScoreDecrement": 0.5,
-      "expiresAt": "2026-06-01T16:27:32.917Z",
-      "createdAt": "2026-06-01T15:37:32.917Z",
+      "expiresAt": "2026-06-02T17:23:48.367Z",
+      "createdAt": "2026-06-02T16:33:48.367Z",
+      "usageCount": 1,
+      "maxUsageCount": 50,
+      "errorScore": 0
+    },
+    {
+      "id": "session_CcnwFyhCqH",
+      "cookieJar": {
+        "version": "tough-cookie@6.0.1",
+        "storeType": "MemoryCookieStore",
+        "rejectPublicSuffixes": true,
+        "enableLooseMode": false,
+        "allowSpecialUseDomain": true,
+        "prefixSecurity": "silent",
+        "cookies": []
+      },
+      "userData": {},
+      "maxErrorScore": 3,
+      "errorScoreDecrement": 0.5,
+      "expiresAt": "2026-06-02T17:23:57.073Z",
+      "createdAt": "2026-06-02T16:33:57.073Z",
+      "usageCount": 0,
+      "maxUsageCount": 50,
+      "errorScore": 0
+    },
+    {
+      "id": "session_UmLfd5uLRq",
+      "cookieJar": {
+        "version": "tough-cookie@6.0.1",
+        "storeType": "MemoryCookieStore",
+        "rejectPublicSuffixes": true,
+        "enableLooseMode": false,
+        "allowSpecialUseDomain": true,
+        "prefixSecurity": "silent",
+        "cookies": []
+      },
+      "userData": {},
+      "maxErrorScore": 3,
+      "errorScoreDecrement": 0.5,
+      "expiresAt": "2026-06-02T17:23:57.075Z",
+      "createdAt": "2026-06-02T16:33:57.075Z",
       "usageCount": 1,
       "maxUsageCount": 50,
       "errorScore": 0

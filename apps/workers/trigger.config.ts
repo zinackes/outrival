@@ -46,6 +46,14 @@ export default defineConfig({
       "crawlee",
       "playwright",
       "playwright-core",
+      // patch-20 cascade: stealth browsers must not be bundled (like playwright
+      // above). patchright-core lazy-requires chromium-bidi, camoufox-js
+      // lazy-imports bun:sqlite under Bun — both unresolvable at bundle time.
+      "patchright",
+      "patchright-core",
+      "camoufox-js",
+      "chromium-bidi",
+      "bun:sqlite",
       "jsdom",
       "pino",
       "pino-pretty",

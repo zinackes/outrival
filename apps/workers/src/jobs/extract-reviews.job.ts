@@ -2,10 +2,10 @@ import { task, logger, AbortTaskRunError } from "@trigger.dev/sdk/v3";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db, snapshots, reviews, monitors } from "@outrival/db";
-import { extractReviews, summarizeSource } from "@outrival/ai";
+import { extractReviews, summarizeSource, AI_CONFIG } from "@outrival/ai";
 import { getFromR2, parseAppStoreSnapshot } from "@outrival/shared";
 import { htmlToText } from "../lib/html-to-text";
-import { insertReviewScore, getPreviousReviewScore } from "../lib/clickhouse";
+import { insertReviewScore, getPreviousReviewScore, loggedAi } from "../lib/clickhouse";
 
 const SourceEnum = z.enum(["g2", "capterra", "appstore", "playstore"]);
 
@@ -52,7 +52,9 @@ export const extractReviewsJob = task({
       text = htmlToText(html);
     }
 
-    const extractedRaw = await extractReviews(text);
+    const extractedRaw = await loggedAi("extract_reviews", AI_CONFIG.classification, () =>
+      extractReviews(text),
+    );
     if (!extractedRaw) {
       logger.warn("Reviews extraction returned null");
       return { ok: false, reason: "parse_failed" };
@@ -119,16 +121,18 @@ export const extractReviewsJob = task({
       recorded_at: now,
     });
 
-    const summary = await summarizeSource({
-      kind: "reviews",
-      source: input.source,
-      score: extracted.average_score,
-      reviewCount: extracted.review_count,
-      sentiment: extracted.sentiment_score,
-      praises: extracted.top_praises,
-      complaints: extracted.top_complaints,
-      previousScore,
-    });
+    const summary = await loggedAi("source_summary", AI_CONFIG.classification, () =>
+      summarizeSource({
+        kind: "reviews",
+        source: input.source,
+        score: extracted.average_score,
+        reviewCount: extracted.review_count,
+        sentiment: extracted.sentiment_score,
+        praises: extracted.top_praises,
+        complaints: extracted.top_complaints,
+        previousScore,
+      }),
+    );
     if (summary) {
       await db
         .update(monitors)

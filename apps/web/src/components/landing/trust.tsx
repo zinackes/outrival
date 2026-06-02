@@ -1,35 +1,47 @@
 export function Trust() {
   return (
-    <section className="trust">
-      <div className="wrap trust-grid">
-        <div className="trust-narrative">
-          <div className="eyebrow" style={{ color: "var(--accent)" }}>
+    <section className="border-y border-border bg-background-2 py-16">
+      <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-10 px-6 lg:grid-cols-[1.1fr_1fr] lg:items-center">
+        <div>
+          <div className="font-mono text-xs uppercase tracking-[0.2em] text-primary">
             What it actually solves
           </div>
-          <p className="trust-line">
+          <p className="mt-4 text-xl font-medium leading-snug sm:text-2xl">
             Monday morning, you read <b>12 signals that matter</b> instead of
             scrolling through <b>847 changes</b>. The triage is the AI&apos;s
             job — not yours.
           </p>
         </div>
-        <div className="trust-specs">
-          <div className="trust-spec">
-            <div className="trust-spec-num">70<span>:1</span></div>
-            <div className="trust-spec-label">noise to signal ratio</div>
-          </div>
-          <div className="trust-spec">
-            <div className="trust-spec-num">10</div>
-            <div className="trust-spec-label">sources per competitor</div>
-          </div>
-          <div className="trust-spec">
-            <div className="trust-spec-num">
-              ≤ 5<span>min</span>
+        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border">
+          <div className="bg-surface p-5">
+            <div className="text-3xl font-semibold">
+              70<span className="text-lg text-text-subtle">:1</span>
             </div>
-            <div className="trust-spec-label">critical alert latency</div>
+            <div className="mt-1 text-xs text-text-muted">
+              noise to signal ratio
+            </div>
           </div>
-          <div className="trust-spec">
-            <div className="trust-spec-num">100<span>%</span></div>
-            <div className="trust-spec-label">EU · Hetzner · Railway · R2</div>
+          <div className="bg-surface p-5">
+            <div className="text-3xl font-semibold">10</div>
+            <div className="mt-1 text-xs text-text-muted">
+              sources per competitor
+            </div>
+          </div>
+          <div className="bg-surface p-5">
+            <div className="text-3xl font-semibold">
+              ≤ 5<span className="text-lg text-text-subtle">min</span>
+            </div>
+            <div className="mt-1 text-xs text-text-muted">
+              critical alert latency
+            </div>
+          </div>
+          <div className="bg-surface p-5">
+            <div className="text-3xl font-semibold">
+              100<span className="text-lg text-text-subtle">%</span>
+            </div>
+            <div className="mt-1 text-xs text-text-muted">
+              EU · Hetzner · Railway · R2
+            </div>
           </div>
         </div>
       </div>

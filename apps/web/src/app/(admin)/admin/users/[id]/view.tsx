@@ -88,7 +88,8 @@ export function UserDetailView({ detail }: { detail: AdminUserDetail }) {
                         <TableRow key={m.id}>
                           <TableCell style={mono}>
                             {m.sourceType}
-                            {m.requiresProxy ? " 🛡" : ""}
+                            {m.requiresLevel != null && m.requiresLevel >= 2 ? ` 🛡L${m.requiresLevel}` : ""}
+                            {m.markedUnscrapable ? " ⚠" : ""}
                           </TableCell>
                           <TableCell className="text-xs text-muted-foreground">
                             {dateFmt(m.lastRunAt)}

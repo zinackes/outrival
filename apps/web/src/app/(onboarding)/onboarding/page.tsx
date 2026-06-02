@@ -48,7 +48,7 @@ export default async function OnboardingPage() {
     getOnboardingStatus(h),
   ]);
 
-  if (!session) redirect("/login");
+  if (!session) redirect("/auth");
   // A fully completed run lands on "done". Skipped users (completed, step !== "done")
   // and re-onboarding users (step reset to "stage") stay here.
   if (status?.onboardingCompleted && status.onboardingStep === "done") {

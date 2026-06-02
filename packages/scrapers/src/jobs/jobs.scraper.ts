@@ -40,8 +40,7 @@ export async function scrape(
 
   const pageOpts = {
     fullPage: true,
-    preferProxy: options.preferProxy,
-    proxyTier: options.proxyTier,
+    knownLevel: options.knownLevel,
   };
   const result = direct
     ? await scrapePage(url, pageOpts)

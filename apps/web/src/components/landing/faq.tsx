@@ -10,7 +10,7 @@ type Faq = { q: string; a: string };
 const FAQS: Faq[] = [
   {
     q: "How do you monitor sites with anti-bot protection?",
-    a: "Crawlee with proxy rotation handles the majority of sources. ScrapingBee acts as a managed headless-browser fallback for the most protected sites. No source needs manual setup on your side.",
+    a: "A stealth browser handles the majority of sources directly. For protected sites it escalates through a datacenter-to-residential proxy cascade, only paying for the heavier path when a site actually blocks us. No source needs manual setup on your side.",
   },
   {
     q: "What qualifies a change as a signal?",
@@ -36,15 +36,15 @@ const FAQS: Faq[] = [
 
 export function FAQ() {
   return (
-    <section className="section" id="faq">
-      <div className="wrap">
-        <div className="head-B">
-          <h2>
+    <section className="py-20 sm:py-28" id="faq">
+      <div className="mx-auto w-full max-w-6xl px-6">
+        <div className="grid gap-x-10 gap-y-4 lg:grid-cols-2 lg:items-end">
+          <h2 className="text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">
             The questions
             <br />
             we get asked.
           </h2>
-          <p className="lede">
+          <p className="text-text-muted leading-relaxed">
             For anything else, write to{" "}
             <a
               href="mailto:hello@outrival.io"
@@ -58,7 +58,7 @@ export function FAQ() {
         <Accordion
           type="single"
           collapsible
-          className="mx-auto max-w-2xl rounded-md border border-border bg-card text-card-foreground"
+          className="mx-auto mt-10 max-w-2xl rounded-md border border-border bg-card text-card-foreground"
         >
           {FAQS.map((f, i) => (
             <AccordionItem

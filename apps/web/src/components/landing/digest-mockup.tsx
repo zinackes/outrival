@@ -10,6 +10,13 @@ type Signal = {
   time: string;
 };
 
+const SEV_DOT: Record<Signal["sev"], string> = {
+  critical: "bg-critical",
+  high: "bg-high",
+  medium: "bg-medium",
+  low: "bg-low",
+};
+
 const SIGNALS: Signal[] = [
   {
     sev: "critical",
@@ -100,34 +107,31 @@ export function DigestMockup({ animate = true }: { animate?: boolean }) {
 
   return (
     <div
-      className="digest-shell"
+      className="overflow-hidden rounded-xl border border-border bg-surface shadow-2xl shadow-black/40"
       role="img"
       aria-label="Outrival weekly digest"
     >
-      <div className="digest-header">
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span className="logo" style={{ fontSize: 15 }}>
-            Out<span className="accent">rival</span>
+      <div className="flex items-center justify-between border-b border-border bg-background-2 px-4 py-3">
+        <div className="flex items-center gap-2.5">
+          <span className="text-[15px] font-semibold">
+            Out<span className="text-primary">rival</span>
           </span>
-          <span
-            style={{
-              color: "var(--muted-2)",
-              fontFamily: "var(--font-mono)",
-              fontSize: 11,
-            }}
-          >
+          <span className="font-mono text-[11px] text-text-subtle">
             / weekly digest
           </span>
         </div>
-        <div className="digest-tabs">
-          <span className="digest-tab active">This week</span>
-          <span className="digest-tab">Previous</span>
+        <div className="flex gap-1 font-mono text-[11px]">
+          <span className="rounded bg-surface-3 px-2 py-1 text-foreground">
+            This week
+          </span>
+          <span className="rounded px-2 py-1 text-text-subtle">Previous</span>
         </div>
       </div>
-      <div className="digest-meta-row">
+
+      <div className="flex items-center justify-between px-4 py-3">
         <div>
-          <div className="digest-meta-title">Week 21 — 12 signals</div>
-          <div className="digest-meta-date">
+          <div className="text-sm font-semibold">Week 21 — 12 signals</div>
+          <div className="text-xs text-text-subtle">
             May 19 → 25, 2026 · 4 competitors
           </div>
         </div>
@@ -135,36 +139,44 @@ export function DigestMockup({ animate = true }: { animate?: boolean }) {
           <a href="#">See all</a>
         </Button>
       </div>
-      <div className="digest-stats">
-        <div className="stat">
-          <div className="stat-label">Signals</div>
-          <div className="stat-value">
-            12<span className="stat-delta">+4</span>
+
+      <div className="grid grid-cols-4 gap-px border-y border-border bg-border">
+        {[
+          { label: "Signals", value: "12", delta: "+4" },
+          { label: "Critical", value: "2" },
+          { label: "Changes", value: "847" },
+          { label: "Sources", value: "36" },
+        ].map((s) => (
+          <div key={s.label} className="bg-surface px-3 py-2.5">
+            <div className="font-mono text-[10px] uppercase tracking-wider text-text-subtle">
+              {s.label}
+            </div>
+            <div className="mt-0.5 flex items-baseline gap-1 text-lg font-semibold">
+              {s.value}
+              {s.delta && (
+                <span className="text-xs text-positive">{s.delta}</span>
+              )}
+            </div>
           </div>
-        </div>
-        <div className="stat">
-          <div className="stat-label">Critical</div>
-          <div className="stat-value">2</div>
-        </div>
-        <div className="stat">
-          <div className="stat-label">Changes</div>
-          <div className="stat-value">847</div>
-        </div>
-        <div className="stat">
-          <div className="stat-label">Sources</div>
-          <div className="stat-value">36</div>
-        </div>
+        ))}
       </div>
-      <div
-        className="signal-list scroll-mini"
-        style={{ maxHeight: 290, overflowY: "auto" }}
-      >
+
+      <div className="max-h-[290px] divide-y divide-border overflow-y-auto">
         {SIGNALS.slice(0, visible).map((s, i) => (
-          <div key={i} className="signal">
-            <span className={`signal-sev ${s.sev}`}></span>
-            <span className="signal-cat">{s.cat}</span>
-            <span className="signal-text">{s.text}</span>
-            <span className="signal-time">{s.time}</span>
+          <div
+            key={i}
+            className="flex items-center gap-2.5 px-4 py-2.5 text-xs"
+          >
+            <span className={`size-2 shrink-0 rounded-full ${SEV_DOT[s.sev]}`} />
+            <span className="w-14 shrink-0 font-mono text-[10px] uppercase text-text-subtle">
+              {s.cat}
+            </span>
+            <span className="flex-1 text-text-muted [&_b]:text-foreground">
+              {s.text}
+            </span>
+            <span className="ml-auto shrink-0 font-mono text-[10px] text-text-subtle">
+              {s.time}
+            </span>
           </div>
         ))}
       </div>

@@ -8,6 +8,7 @@ import {
   organizations,
   reviews,
   signals,
+  selfProfileLastEditedAt,
 } from "@outrival/db";
 import { generateBattleCard, AI_CONFIG } from "@outrival/ai";
 import { uploadToR2 } from "@outrival/shared";
@@ -91,6 +92,17 @@ export const generateBattleCardJob = task({
 
     const generatedAt = new Date();
 
+    // Snapshot the inputs this card is based on (patch-22 staleness). The latest
+    // competitor signal is recentSignals[0] (already ordered desc); the user's last
+    // self-profile edit comes from the self-competitor. Clear the patch-21 "not
+    // useful" flag — a fresh generation supersedes it.
+    const self = await db.query.competitors.findFirst({
+      where: and(eq(competitors.orgId, org.id), eq(competitors.type, "self")),
+    });
+    const basedOnUserUpdateAt =
+      selfProfileLastEditedAt(self?.selfProfile) ?? self?.updatedAt ?? null;
+    const basedOnCompetitorSignalAt = recentSignals[0]?.createdAt ?? null;
+
     const existing = await db.query.battleCards.findFirst({
       where: eq(battleCards.competitorId, competitor.id),
     });
@@ -99,7 +111,14 @@ export const generateBattleCardJob = task({
     if (existing) {
       await db
         .update(battleCards)
-        .set({ content, generatedAt, updatedAt: generatedAt })
+        .set({
+          content,
+          generatedAt,
+          updatedAt: generatedAt,
+          basedOnUserUpdateAt,
+          basedOnCompetitorSignalAt,
+          flaggedForRegenerationAt: null,
+        })
         .where(eq(battleCards.id, existing.id));
       battleCardId = existing.id;
     } else {
@@ -111,6 +130,8 @@ export const generateBattleCardJob = task({
           content,
           generatedAt,
           updatedAt: generatedAt,
+          basedOnUserUpdateAt,
+          basedOnCompetitorSignalAt,
         })
         .returning();
       if (!created) throw new Error("Failed to insert battle card");

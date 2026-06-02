@@ -4,7 +4,11 @@
 // mount before shipping to production.
 import { Hono } from "hono";
 import { tasks, runs } from "@trigger.dev/sdk/v3";
+import { and, eq, isNull } from "drizzle-orm";
+import { competitors } from "@outrival/db";
 import { authMiddleware } from "../middleware/auth";
+import { db } from "../lib/db";
+import { ensureUserOrg } from "../lib/org";
 
 type Variables = { user: { id: string } };
 
@@ -68,6 +72,28 @@ devRouter.post("/crons/:id/trigger", async (c) => {
   // Scheduled tasks ignore the payload here — every job's run() reads none, so
   // an empty object is enough to fire a manual run.
   const handle = await tasks.trigger(id, {});
+  return c.json({ runId: handle.id });
+});
+
+// Force a tech-stack scan for one competitor. Tech stack runs on its own monthly
+// cron (schedule-tech-stack, keyed on competitors.techStackScrapedAt), so there's
+// no user-facing "Run" for it — this dev-only trigger lets the operator scan on
+// demand from the Sources card. Org-scoped so an id from another workspace 404s.
+devRouter.post("/competitors/:id/scrape-tech-stack", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const competitor = await db.query.competitors.findFirst({
+    where: and(
+      eq(competitors.id, id),
+      eq(competitors.orgId, orgId),
+      isNull(competitors.deletedAt),
+    ),
+  });
+  if (!competitor) return c.json({ error: "Competitor not found" }, 404);
+
+  const handle = await tasks.trigger("scrape-tech-stack", { competitorId: id });
   return c.json({ runId: handle.id });
 });
 

@@ -89,6 +89,36 @@ export function ScrapingView({ data }: { data: AdminScrapingHealth | null }) {
         )}
       </Section>
 
+      <Section title="Cascade levels" note={data?.window ?? "24h"}>
+        {(() => {
+          const lv = data?.levels;
+          const total = lv ? lv.l0 + lv.l1 + lv.l2 + lv.l3 + lv.l4 : 0;
+          if (!lv || total === 0) {
+            return <Empty>No scrape runs in the window.</Empty>;
+          }
+          const cells: { label: string; n: number }[] = [
+            { label: "L0 direct", n: lv.l0 },
+            { label: "L1 browser", n: lv.l1 },
+            { label: "L2 datacenter", n: lv.l2 },
+            { label: "L3 residential", n: lv.l3 },
+            { label: "L4 camoufox", n: lv.l4 },
+          ];
+          return (
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+              {cells.map((c) => (
+                <div key={c.label} className="flex flex-col gap-1">
+                  <span className="text-xs text-muted-foreground">{c.label}</span>
+                  <span style={mono}>{pctFmt(c.n / total)}</span>
+                  <span className="text-xs text-muted-foreground" style={mono}>
+                    {c.n}
+                  </span>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+      </Section>
+
       <Section title="Dead monitors">
         {dead.length === 0 ? (
           <Empty>None — every monitor has a recent success.</Empty>

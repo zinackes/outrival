@@ -1,16 +1,19 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { tasks } from "@trigger.dev/sdk/v3";
 import {
   competitorCandidates,
   competitors,
+  discoveryRuns,
   monitors,
   organizations,
+  selfProfileLastEditedAt,
 } from "@outrival/db";
 import { DetectionConfigSchema, resolveDetectionConfig } from "@outrival/shared";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
+import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
 import { checkCompetitorQuota, getOrgPlan } from "../lib/plan";
 import { detectCandidatesForOrg } from "../lib/detect-candidates";
@@ -41,6 +44,19 @@ function normalizeDomain(raw: string): string | null {
   } catch {
     return null;
   }
+}
+
+// Latest moment the user hand-edited their self-product profile (patch-22): drives
+// discovery staleness — editing the profile makes a past discovery worth re-running.
+async function selfProfileEditedAt(orgId: string): Promise<Date | null> {
+  const self = await db.query.competitors.findFirst({
+    where: and(
+      eq(competitors.orgId, orgId),
+      eq(competitors.type, "self"),
+      isNull(competitors.deletedAt),
+    ),
+  });
+  return self ? (selfProfileLastEditedAt(self.selfProfile) ?? self.updatedAt) : null;
 }
 
 function deriveCompetitorName(url: string, title: string | null): string {
@@ -117,6 +133,44 @@ candidatesRouter.put("/config", async (c) => {
   return c.json({ config });
 });
 
+// Whether re-running discovery is worth it (patch-22 intelligent rate limiting):
+// "fresh" while the last run is <7 days old AND the self-profile hasn't been edited
+// since. UI greys the button and suggests editing the profile. Never blocking.
+candidatesRouter.get("/staleness", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const lastRun = await db.query.discoveryRuns.findFirst({
+    where: eq(discoveryRuns.orgId, orgId),
+    orderBy: desc(discoveryRuns.lastDiscoveryAt),
+  });
+  if (!lastRun) {
+    return c.json({ staleness: "never_run", needsRediscovery: true });
+  }
+
+  const daysSince = (Date.now() - lastRun.lastDiscoveryAt.getTime()) / 86400000;
+  const profileAt = await selfProfileEditedAt(orgId);
+  const profileChanged =
+    !!profileAt &&
+    (!lastRun.basedOnProfileUpdateAt || profileAt > lastRun.basedOnProfileUpdateAt);
+
+  if (daysSince < 7 && !profileChanged) {
+    return c.json({
+      staleness: "fresh",
+      needsRediscovery: false,
+      lastDiscoveryAt: lastRun.lastDiscoveryAt,
+      reason: "profile_unchanged_recent_run",
+    });
+  }
+
+  return c.json({
+    staleness: "outdated",
+    needsRediscovery: true,
+    lastDiscoveryAt: lastRun.lastDiscoveryAt,
+    reason: profileChanged ? "profile_changed" : "stale_run",
+  });
+});
+
 candidatesRouter.post("/:id/add", async (c) => {
   const id = c.req.param("id");
   const user = c.get("user");
@@ -173,7 +227,7 @@ candidatesRouter.post("/:id/add", async (c) => {
   return c.json({ competitor, monitors: monitorRows });
 });
 
-candidatesRouter.post("/detect", async (c) => {
+candidatesRouter.post("/detect", aiIntensiveRateLimit, async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
 
@@ -190,6 +244,24 @@ candidatesRouter.post("/detect", async (c) => {
       lastDetectAt.delete(orgId);
       return c.json({ error: result.error }, 400);
     }
+
+    // Record the run for staleness (patch-22): snapshot the profile edit it was based
+    // on so a later profile edit (or 7+ days) marks the next discovery worth running.
+    const profileAt = await selfProfileEditedAt(orgId);
+    const existingRun = await db.query.discoveryRuns.findFirst({
+      where: eq(discoveryRuns.orgId, orgId),
+    });
+    if (existingRun) {
+      await db
+        .update(discoveryRuns)
+        .set({ lastDiscoveryAt: new Date(), basedOnProfileUpdateAt: profileAt })
+        .where(eq(discoveryRuns.id, existingRun.id));
+    } else {
+      await db
+        .insert(discoveryRuns)
+        .values({ orgId, lastDiscoveryAt: new Date(), basedOnProfileUpdateAt: profileAt });
+    }
+
     return c.json({ detected: result.detected });
   } catch (e) {
     lastDetectAt.delete(orgId);

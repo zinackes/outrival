@@ -25,23 +25,25 @@ export const metadata: Metadata = {
 
 export default function HomePage() {
   return (
-    <>
+    <div className="dark min-h-screen bg-background font-sans text-foreground antialiased">
       <JsonLd />
       <Nav />
-      <Hero />
-      <Trust />
-      <Monitors />
-      <Sources />
-      <Pipeline />
-      <Categories />
-      <DigestFeature />
-      <Alerts />
-      <Comparison />
-      <Quote />
-      <Pricing />
-      <FAQ />
-      <CTA />
+      <main>
+        <Hero />
+        <Trust />
+        <Monitors />
+        <Sources />
+        <Pipeline />
+        <Categories />
+        <DigestFeature />
+        <Alerts />
+        <Comparison />
+        <Quote />
+        <Pricing />
+        <FAQ />
+        <CTA />
+      </main>
       <Footer />
-    </>
+    </div>
   );
 }

@@ -20,7 +20,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",
     "@outrival/shared": "workspace:*",
-    "groq-sdk": "^1.2.0",
+    "openai": "^6.41.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

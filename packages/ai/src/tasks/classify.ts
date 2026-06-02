@@ -12,19 +12,58 @@ export const ClassificationSchema = z.object({
   is_significant: z.boolean(),
   reason: z.string(),
   // Plain-language before/after of the main change, for the "Why this insight?"
-  // panel (patch-14). nullable+optional so: (a) the model may return null when it
-  // can't extract a clean pair, and (b) pre-patch cached classifications that lack
-  // the keys still parse — withAiCache returns the stored object without
-  // re-validating, so the cache key (diff hash) is unchanged and stays compatible.
+  // panel (patch-14). nullable+optional so the model may return null when it
+  // can't extract a clean pair, and so any cached classification that predates
+  // these keys still parses (withAiCache returns the stored object without
+  // re-validating).
   humanChangeBefore: z.string().nullable().optional(),
   humanChangeAfter: z.string().nullable().optional(),
 });
 
 export type Classification = z.infer<typeof ClassificationSchema>;
 
-export async function classifyChange(diffText: string): Promise<Classification | null> {
-  const prompt = `You are a competitive-intelligence analyst. Classify this change detected on a competitor.
+export interface ClassifyContext {
+  /** Monitor source type, e.g. "homepage" | "pricing" | "blog". */
+  sourceType?: string;
+  competitorName?: string;
+}
 
+// Human-readable page type for the prompt. Lets the model weigh significance by
+// where the change happened (a homepage testimonial rotating vs a pricing tier
+// moving) instead of judging a context-free blob of diff lines.
+const SOURCE_LABELS: Record<string, string> = {
+  homepage: "homepage / landing page",
+  pricing: "pricing page",
+  blog: "blog or changelog index",
+  changelog: "changelog",
+  jobs: "careers / jobs page",
+  g2_reviews: "G2 reviews page",
+  capterra_reviews: "Capterra reviews page",
+  appstore_reviews: "App Store reviews page",
+  github_repo: "GitHub repository",
+  linkedin: "LinkedIn page",
+  twitter: "X / Twitter profile",
+};
+
+export async function classifyChange(
+  diffText: string,
+  context: ClassifyContext = {},
+): Promise<Classification | null> {
+  const sourceLabel = context.sourceType
+    ? (SOURCE_LABELS[context.sourceType] ?? context.sourceType)
+    : null;
+  const where = [context.competitorName, sourceLabel].filter(Boolean).join(" — ");
+  const contextBlock = where
+    ? `
+<context>
+This change was detected on: ${where}.
+Use the page type to judge significance: rotating testimonials, social-proof counters, cosmetic copy/nav tweaks are usually NOT significant; pricing, plan, feature, hiring, or positioning changes are.
+</context>
+`
+    : "";
+
+  const prompt = `You are a competitive-intelligence analyst. Classify this change detected on a competitor.
+${contextBlock}
 <change>
 ${diffText.slice(0, 8000)}
 </change>
@@ -51,8 +90,11 @@ return null for BOTH fields.
 }
 </format>`;
 
+  // Key on the context too: the same diff on different page types / competitors
+  // now yields a different prompt, so it must not share a cache entry.
+  const cacheKey = [context.sourceType ?? "", context.competitorName ?? "", diffText].join("\n");
   const { value } = await withAiCache(
-    diffText,
+    cacheKey,
     { namespace: "classify", ttlSeconds: CACHE_TTL_SECONDS },
     async () => {
       const raw = await complete(AI_CONFIG.classificationFast, { prompt, json: true });

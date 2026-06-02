@@ -14,6 +14,8 @@ const SOURCE_LABELS: Record<string, string> = {
   appstore_reviews: "App Store page",
   linkedin: "LinkedIn",
   twitter: "X / Twitter",
+  // patch-18: signals from the independent tech-stack scraper.
+  tech_stack: "tech stack",
 };
 
 export function sourceLabel(sourceType: string | null | undefined): string {

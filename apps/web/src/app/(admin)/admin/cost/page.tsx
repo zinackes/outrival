@@ -20,11 +20,15 @@ export default async function CostPage() {
     <div className="flex flex-col gap-5">
       <PageHeader title="Cost" subtitle="Estimates — trends, not accounting. Tune the constants as real invoices land." />
 
-      <Section title="Proxy — ScrapingBee" note="estimate">
+      <Section title="Proxy — ProxyScrape (datacenter + residential)" note="estimate">
         <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
-          <Stat label="Scrapes (24h)" value={cost.proxy.scrapes24h} />
-          <Stat label="Scrapes (30d)" value={cost.proxy.scrapes30d} />
-          <Stat label="≈ 24h" value={usdFmt(cost.proxy.estUsd24h)} hint={`${cost.proxy.creditsPerScrape} credits/scrape`} />
+          <Stat label="Paid scrapes (24h)" value={cost.proxy.scrapes24h} />
+          <Stat label="Paid scrapes (30d)" value={cost.proxy.scrapes30d} />
+          <Stat
+            label="≈ 24h"
+            value={usdFmt(cost.proxy.estUsd24h)}
+            hint={`+ $${cost.proxy.fixedUsdPerMonth}/mo datacenter`}
+          />
           <Stat label="≈ 30d" value={usdFmt(cost.proxy.estUsd30d)} />
         </div>
       </Section>

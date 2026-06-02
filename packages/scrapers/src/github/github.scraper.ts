@@ -153,7 +153,8 @@ export async function scrape(
     text,
     screenshotBuffer: Buffer.alloc(0),
     metadata: { url, owner, repo, stars, defaultBranch, archived },
-    usedProxy: false,
+    level: 0, // GitHub REST, no browser/proxy
+    attempts: 1,
     statusCode: 200,
   };
 }

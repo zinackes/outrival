@@ -47,6 +47,8 @@ const SOURCE_LABELS: Record<SourceType, string> = {
   linkedin: "LinkedIn",
   twitter: "Twitter / X",
   github_repo: "GitHub repo",
+  // patch-18: internal anchor source, never shown in plan source lists.
+  tech_stack: "Tech stack",
 };
 
 const FEATURE_ROWS: Array<{

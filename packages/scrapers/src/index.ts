@@ -41,3 +41,12 @@ export type { PricingAnalysis } from "./pricing/analyze";
 export { detectPricingSignals } from "./pricing/signals";
 export type { PricingSignals } from "./pricing/signals";
 export { discoverPricingUrl } from "./pricing/discover-url";
+export { scrapeWithApiCapture } from "./spa/api-capture";
+export type { SpaCaptureResult } from "./spa/api-capture";
+export {
+  filterRelevantApiCalls,
+  apiCallsToText,
+  apiCallsToHtmlDoc,
+  toEndpoints,
+} from "./spa/filter";
+export type { CapturedApiCall, CapturedEndpoint } from "./spa/filter";

@@ -35,27 +35,25 @@ export function friendlyScrapeError(
     return "This URL doesn't look right for this source — double-check it in the monitor settings.";
   }
 
-  // ScrapingBee proxy budget exhausted / unauthorized — NOT the site blocking us.
-  // Distinct message so an out-of-credits proxy isn't mistaken for anti-bot
-  // protection (G2/Capterra always go through the proxy).
+  // Anti-bot protection — the scraping cascade (patch-20) exhausted every level
+  // (direct → Patchright → datacenter → residential → Camoufox) and stayed blocked.
   if (
-    e.includes("limit reached") ||
-    e.includes("scrapingbee fetch failed (401)") ||
-    e.includes("scrapingbee fetch failed (402)") ||
-    e.includes("scrapingbee fetch failed (429)")
-  ) {
-    return "Our scraping proxy ran out of quota, so protected pages (G2, Capterra) can't be fetched right now. This clears when the proxy plan renews.";
-  }
-
-  // Anti-bot protection, including through the ScrapingBee proxy fallback.
-  if (
-    e.includes("scrapingbee") ||
     e.includes("cloudflare") ||
+    e.includes("cloudflare_challenge") ||
     e.includes("captcha") ||
     e.includes("access denied") ||
+    e.includes("blocked_403") ||
+    e.includes("blocked_503") ||
+    e.includes("soft_block") ||
     e.includes("403")
   ) {
     return "The site is blocking automated access, so we couldn't read the page.";
+  }
+
+  // L0 fetched HTML but the page needs a browser to render and the cascade still
+  // couldn't capture usable content.
+  if (e.includes("needs_render")) {
+    return `Couldn't load the ${page} — it needs a browser to render and we couldn't capture it.`;
   }
 
   // Domain unreachable / DNS.
@@ -68,11 +66,13 @@ export function friendlyScrapeError(
     return "Couldn't reach the site — the domain may be down or misconfigured.";
   }
 
-  // Connection refused / reset mid-request.
+  // Connection refused / reset mid-request, or a generic network failure from the
+  // cascade (failureReason "network_error").
   if (
     e.includes("econnrefused") ||
     e.includes("econnreset") ||
-    e.includes("err_connection")
+    e.includes("err_connection") ||
+    e.includes("network_error")
   ) {
     return "The site refused the connection.";
   }
@@ -87,8 +87,8 @@ export function friendlyScrapeError(
     return "The site has an invalid SSL certificate, so we couldn't load it securely.";
   }
 
-  // Generic crawler failures: "Scraping failed for <url>" / "Static scraping failed for <url>".
-  if (e.includes("scraping failed")) {
+  // Generic cascade failures: "scraping_failed" / "static_scraping_failed".
+  if (e.includes("scraping failed") || e.includes("scraping_failed")) {
     return `Couldn't load the ${page}.`;
   }
 

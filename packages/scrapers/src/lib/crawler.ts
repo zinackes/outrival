@@ -1,172 +1,97 @@
-import { PlaywrightCrawler, CheerioCrawler } from "crawlee";
-import type { ScrapingBeeTier } from "@outrival/shared";
-import { scrapeViaScrapingBee } from "./scrapingbee";
-import type { ScraperResult, ScrapeOptions, ScrapeOutcome } from "../types";
+// Thin adapter over the patch-20 scraping cascade. Preserves the public surface
+// the source scrapers depend on — scrapePage / scrapeStatic / scrapeFirstSuccess
+// returning a ScrapeOutcome (or throwing on total failure) — while delegating the
+// actual fetch to the decoupled L0→L4 cascade in scrape-page.ts. Crawlee and
+// ScrapingBee are gone; the browser is Patchright (stealth Chromium).
+import { scrapePage as cascadeScrape, type CascadeOutcome } from "./scrape-page";
+import { scrapeDirect } from "./scrape-direct";
+import type { ScrapeLevel } from "./scrape-patchright";
+import type { ScrapeOptions, ScrapeOutcome } from "../types";
 
-const PREMIUM_TIER: ScrapingBeeTier = { renderJs: true, premiumProxy: true };
-
-interface RunCrawlerOptions {
-  useProxy: boolean;
-  fullPage?: boolean;
-  waitForSelector?: string;
-  proxyTier?: ScrapingBeeTier;
-}
-
-function looksBlocked(html: string, statusCode?: number): boolean {
-  if (statusCode === 403 || statusCode === 429 || statusCode === 503) return true;
-  if (html.trim().length < 500) return true;
-  const lower = html.toLowerCase();
-  return (
-    lower.includes("captcha") ||
-    lower.includes("cf-challenge") ||
-    lower.includes("attention required") ||
-    lower.includes("access denied") ||
-    lower.includes("just a moment")
-  );
-}
-
-async function runCrawler(url: string, opts: RunCrawlerOptions): Promise<ScraperResult> {
-  if (opts.useProxy) {
-    const tier = opts.proxyTier ?? PREMIUM_TIER;
-    return scrapeViaScrapingBee(url, {
-      renderJs: tier.renderJs,
-      premiumProxy: tier.premiumProxy,
-    });
+/**
+ * Error thrown when the whole cascade was blocked. Carries the raw cascade
+ * outcome (every attempt's status/reason/finalUrl) so the worker can run
+ * `diagnoseFailure` (patch-23) in the same invocation — Trigger.dev's onFailure
+ * only sees the message, so the rich data has to ride along here.
+ */
+export class ScrapeFailedError extends Error {
+  constructor(
+    message: string,
+    public readonly cascadeOutcome: CascadeOutcome,
+  ) {
+    super(message);
+    this.name = "ScrapeFailedError";
   }
+}
 
-  let result: ScraperResult | null = null;
+const LEVEL_NAME: Record<ScrapeLevel, string> = {
+  0: "direct",
+  1: "patchright",
+  2: "patchright-datacenter",
+  3: "patchright-residential",
+  4: "camoufox",
+};
 
-  const crawler = new PlaywrightCrawler({
-    maxRequestRetries: 3,
-    maxConcurrency: 1,
-    requestHandlerTimeoutSecs: 60,
-    headless: true,
-    launchContext: {
-      launchOptions: {
-        args: [
-          "--disable-dev-shm-usage", // /dev/shm tiny under WSL → otherwise swap/crash
-          "--disable-gpu",
-          "--no-sandbox",
-          // Hide the `navigator.webdriver` automation tell at the browser level
-          // (cheapest anti-bot win) — Crawlee already injects human-like
-          // fingerprints + headers by default, so the free path stays robust and
-          // we fall back to paid ScrapingBee less often.
-          "--disable-blink-features=AutomationControlled",
-          // single-process slashes Chromium RAM but can break JS-heavy pages,
-          // so it's dev-only — prod (Trigger.dev cloud) keeps the default model.
-          ...(process.env.NODE_ENV !== "production" ? ["--single-process"] : []),
-        ],
-      },
-    },
-    async requestHandler({ page, request, response }) {
-      await page.goto(request.url, { waitUntil: "networkidle", timeout: 45000 });
-      if (opts.waitForSelector) {
-        await page
-          .waitForSelector(opts.waitForSelector, { timeout: 10000 })
-          .catch(() => {});
-      }
-
-      const html = await page.content();
-      const text = await page.evaluate(() => document.body?.innerText ?? "");
-      const screenshotBuffer = await page.screenshot({
-        fullPage: opts.fullPage ?? true,
-        type: "png",
-      });
-
-      const respHeaders = response?.headers();
-      result = {
-        html,
-        text,
-        screenshotBuffer: Buffer.from(screenshotBuffer),
-        metadata: { url: request.url, scrapedWith: "playwright" },
-        statusCode: response?.status(),
-        etag: respHeaders?.["etag"],
-        lastModified: respHeaders?.["last-modified"],
-      };
-    },
-  });
-
-  await crawler.run([url]);
-  await crawler.teardown();
-
-  if (!result) throw new Error(`Scraping failed for ${url}`);
-  return result;
+function stripHtml(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /**
- * Direct-first scrape of a JS-heavy page. Falls back to ScrapingBee when
- * the direct attempt looks blocked. Set `preferProxy: true` to skip the
- * direct attempt entirely (e.g. for sites already known to be protected).
+ * Scrape a page through the full L0→L4 cascade. Throws (with the failure reason
+ * as the message) when every enabled level was blocked, so existing scraper
+ * error handling + friendlyScrapeError keep working.
  */
 export async function scrapePage(
   url: string,
   options: ScrapeOptions = {},
 ): Promise<ScrapeOutcome> {
-  if (options.preferProxy) {
-    const result = await runCrawler(url, {
-      useProxy: true,
-      fullPage: options.fullPage,
-      waitForSelector: options.waitForSelector,
-      proxyTier: options.proxyTier,
-    });
-    return { ...result, usedProxy: true };
-  }
-
-  try {
-    const result = await runCrawler(url, {
-      useProxy: false,
-      fullPage: options.fullPage,
-      waitForSelector: options.waitForSelector,
-    });
-    if (!looksBlocked(result.html, result.statusCode)) {
-      return { ...result, usedProxy: false };
-    }
-  } catch {
-    // direct attempt failed → fall through to proxy
-  }
-
-  const result = await runCrawler(url, {
-    useProxy: true,
+  const outcome = await cascadeScrape(url, {
+    knownLevel: options.knownLevel,
     fullPage: options.fullPage,
     waitForSelector: options.waitForSelector,
-    proxyTier: options.proxyTier,
+    progressiveScroll: options.progressiveScroll,
   });
-  return { ...result, usedProxy: true };
+
+  if (!outcome.ok || outcome.level === null || !outcome.html) {
+    throw new ScrapeFailedError(outcome.failureReason ?? "scraping_failed", outcome);
+  }
+
+  return {
+    html: outcome.html,
+    text: outcome.text ?? stripHtml(outcome.html),
+    screenshotBuffer: outcome.screenshotBuffer ?? Buffer.alloc(0),
+    metadata: { url: outcome.finalUrl ?? url, scrapedWith: LEVEL_NAME[outcome.level] },
+    statusCode: outcome.statusCode,
+    etag: outcome.etag ?? undefined,
+    lastModified: outcome.lastModified ?? undefined,
+    level: outcome.level,
+    attempts: outcome.attempts.length,
+  };
 }
 
 /**
- * Static (no JS) scrape. Always direct — no proxy fallback because Cheerio
- * pages are typically blog/changelog content not behind anti-bot.
+ * Static (no JS) scrape — L0 fetch only. Used for SSR content (blog/changelog)
+ * that isn't behind anti-bot. Throws on failure (e.g. a SPA that needs render).
  */
 export async function scrapeStatic(url: string): Promise<ScrapeOutcome> {
-  let result: ScraperResult | null = null;
-
-  const crawler = new CheerioCrawler({
-    maxRequestRetries: 3,
-    maxConcurrency: 1,
-    async requestHandler({ $, request, body, response }) {
-      const html = typeof body === "string" ? body : body.toString("utf-8");
-      const text = $("body").text().replace(/\s+/g, " ").trim();
-      const etagHeader = response?.headers?.["etag"];
-      const lastModifiedHeader = response?.headers?.["last-modified"];
-      result = {
-        html,
-        text,
-        screenshotBuffer: Buffer.alloc(0),
-        metadata: { url: request.url, scrapedWith: "cheerio" },
-        statusCode: response?.statusCode,
-        etag: typeof etagHeader === "string" ? etagHeader : undefined,
-        lastModified: typeof lastModifiedHeader === "string" ? lastModifiedHeader : undefined,
-      };
-    },
-  });
-
-  await crawler.run([url]);
-  await crawler.teardown();
-
-  const captured = result as ScraperResult | null;
-  if (!captured) throw new Error(`Static scraping failed for ${url}`);
-  return { ...captured, usedProxy: false };
+  const r = await scrapeDirect(url);
+  if (!r.ok || !r.html) throw new Error(r.failureReason ?? "static_scraping_failed");
+  return {
+    html: r.html,
+    text: r.text ?? stripHtml(r.html),
+    screenshotBuffer: Buffer.alloc(0),
+    metadata: { url: r.finalUrl ?? url, scrapedWith: "direct" },
+    statusCode: r.statusCode,
+    etag: r.etag ?? undefined,
+    lastModified: r.lastModified ?? undefined,
+    level: 0,
+    attempts: 1,
+  };
 }
 
 /**

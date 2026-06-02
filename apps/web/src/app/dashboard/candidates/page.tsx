@@ -40,6 +40,7 @@ export default function CandidatesPage() {
   const [configOpen, setConfigOpen] = useState(false);
   const [sort, setSort] = useState<SortMode>("overlap");
   const [minOverlap, setMinOverlap] = useState(0);
+  const [discoveryFresh, setDiscoveryFresh] = useState(false);
 
   async function load() {
     try {
@@ -48,6 +49,27 @@ export default function CandidatesPage() {
     } catch (e) {
       setError(e);
     }
+    try {
+      const s = await api.getDiscoveryStaleness();
+      setDiscoveryFresh(!s.needsRediscovery);
+    } catch {
+      setDiscoveryFresh(false); // best-effort — fall back to always-enabled
+    }
+  }
+
+  // Intelligent rate limiting (patch-22): re-running discovery when nothing changed
+  // is friction, not blocked. If the last run is recent and the profile is unchanged,
+  // nudge the user to edit their profile instead — but let them search anyway.
+  function requestDetection() {
+    if (discoveryFresh) {
+      toast.info("Already up to date", {
+        description:
+          "No profile changes since the last search — new suggestions are unlikely. Edit your product profile for fresh matches.",
+        action: { label: "Search anyway", onClick: () => void runDetection() },
+      });
+      return;
+    }
+    void runDetection();
   }
 
   async function runDetection() {
@@ -85,10 +107,20 @@ export default function CandidatesPage() {
     load();
   }, []);
 
+  // Quality feedback (patch-21): tracking a suggestion is an implicit "useful"
+  // verdict, dismissing it a "not useful" one. Best-effort — never block the
+  // primary action on the feedback write.
+  function recordDiscoveryFeedback(id: string, verdict: "useful" | "not_useful") {
+    void api
+      .submitQualityFeedback({ targetType: "discovery_suggestion", targetId: id, verdict })
+      .catch(() => {});
+  }
+
   async function add(id: string) {
     setActingId(id);
     try {
       await api.addCandidate(id);
+      recordDiscoveryFeedback(id, "useful");
       setItems((prev) => prev?.filter((c) => c.id !== id) ?? null);
     } catch (e) {
       const reason = paywallFromError(e);
@@ -106,6 +138,7 @@ export default function CandidatesPage() {
     setActingId(id);
     try {
       await api.dismissCandidate(id);
+      recordDiscoveryFeedback(id, "not_useful");
       setItems((prev) => prev?.filter((c) => c.id !== id) ?? null);
     } catch (e) {
       setError(e);
@@ -147,7 +180,7 @@ export default function CandidatesPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={runDetection}
+              onClick={requestDetection}
               disabled={refreshing}
             >
               {refreshing ? (

@@ -34,6 +34,8 @@ export { narrateChange, shouldNarrate } from "./tasks/narrate-change";
 export type { NarrateChangeInput } from "./tasks/narrate-change";
 export { generateInsight, InsightSchema } from "./tasks/insight";
 export type { Insight } from "./tasks/insight";
+export { generateBatchSummary } from "./tasks/batch-summary";
+export type { BatchSummaryInput } from "./tasks/batch-summary";
 export { generateRepositioningInsight } from "./tasks/pricing-repositioning";
 export type { RepositioningInput } from "./tasks/pricing-repositioning";
 export { generateDigest, DigestSchema } from "./tasks/digest";

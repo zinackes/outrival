@@ -7,6 +7,7 @@ import {
   monitors,
   snapshots,
   qualityFeedback,
+  aiQualityChecks,
 } from "@outrival/db";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
@@ -61,6 +62,12 @@ signalsRouter.get("/", async (c) => {
       // The current user's quality verdict on this signal (patch-21), so the
       // inline feedback buttons render in the right state without an extra request.
       feedbackVerdict: qualityFeedback.verdict,
+      // AI self-confidence + self-check flag (patch-24): drives the ConfidenceDot
+      // and the "couldn't be verified" warning. One quality check per signal
+      // (generate-signal is idempotent by changeId), so this join stays 1:1.
+      aiConfidence: aiQualityChecks.confidence,
+      aiFlagged: aiQualityChecks.flaggedForHumanReview,
+      aiQualityCheckId: aiQualityChecks.id,
     })
     .from(signals)
     .innerJoin(competitors, eq(competitors.id, signals.competitorId))
@@ -72,6 +79,13 @@ signalsRouter.get("/", async (c) => {
         eq(qualityFeedback.targetId, signals.id),
         eq(qualityFeedback.targetType, "signal"),
         eq(qualityFeedback.userId, user.id),
+      ),
+    )
+    .leftJoin(
+      aiQualityChecks,
+      and(
+        eq(aiQualityChecks.targetId, signals.id),
+        eq(aiQualityChecks.targetType, "signal"),
       ),
     )
     .where(and(...conds))

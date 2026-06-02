@@ -256,6 +256,12 @@ export interface Signal {
   // The current user's quality verdict on this signal (patch-21), preloaded so
   // the inline feedback buttons render in the right state. null = no verdict yet.
   feedbackVerdict: "useful" | "not_useful" | "neutral" | null;
+  // AI self-confidence + self-check flag (patch-24). aiConfidence drives the
+  // ConfidenceDot (hidden when "high"); aiFlagged shows the "couldn't be verified"
+  // warning. Both null when the signal predates grounding.
+  aiConfidence: "low" | "medium" | "high" | null;
+  aiFlagged: boolean | null;
+  aiQualityCheckId: string | null;
 }
 
 // User-safe "Why this insight?" payload (patch-14). No raw HTML, no diff, no AI

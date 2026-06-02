@@ -11,6 +11,7 @@ import { CompAvatar } from "./comp-avatar";
 import { SignalSourceLine } from "@/components/outrival/signal-source-line";
 import { FeedbackButtons } from "@/components/outrival/feedback-buttons";
 import { SeverityFeedback } from "@/components/outrival/severity-feedback";
+import { ConfidenceDot } from "@/components/outrival/confidence-dot";
 
 interface SignalCardProps {
   signal: Signal;
@@ -50,6 +51,8 @@ export function SignalCard({
         <span className="font-semibold text-[13px]">
           {signal.competitorName}
         </span>
+        {/* AI confidence (patch-24): renders nothing when confidence is high. */}
+        <ConfidenceDot confidence={signal.aiConfidence ?? "high"} />
         <span className="flex-1" />
         <span className="tabular-nums font-mono text-muted-foreground/80 text-[11px]">
           {timeAgo}

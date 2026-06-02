@@ -1932,3 +1932,24 @@ pivot/mort/rachat (structurel + IA), capture API runtime pour SPA pures. Tout us
 - self-check optionnel (decideIfSelfCheck) lancé DANS le cache-miss closure (pas de cache self-check).
 - Renvoie {output, confidence, citations, groundingValidation, selfCheck?, flaggedForHumanReview, generated}.
 - Persistance ai_quality_checks: helper insertQualityCheck (exporté par @outrival/db, importable api+workers).
+
+---
+
+# Patch 25 — findings (réconciliation spec ↔ code)
+
+- Onboarding = **wizard single-page** `apps/web/src/app/(onboarding)/onboarding/onboarding-form.tsx`,
+  state `screen: stage→input→profile→discover→monitoring→done`. PAS de pages séparées.
+- `track()` (`lib/posthog/events.ts`) déjà **consent-gated** (`has_opted_in_capturing`). Étendu via
+  `lib/posthog/onboarding-events.ts` (ONBOARDING_EVENTS + trackOnboarding). Jamais `posthog.capture` direct.
+- Resume org-level déjà là : `organizations.{onboardingStep,projectStage,productProfile}` +
+  `patchOnboardingProgress` + `GET /api/onboarding/status`. La table `onboarding_sessions` (patch-25)
+  s'ajoute pour le timing/metrics + resume riche, sans remplacer le gate org.
+- Discovery = `POST /api/onboarding/discover` (`api.discoverCompetitors`), synchrone ~15-30s. Le
+  `request()` wrapper (`api.ts`) : `init.signal` override le timeout par défaut → utilisé pour l'abort.
+- Progression déjà polled par `DoneStep` (listCompetitors /5s, aiSummary = proxy "analysé") +
+  job `notify-onboarding-analysis` (ping in-app, `analysisNotifiedAt`, notif type `onboarding_complete`).
+  Le streaming dashboard réutilise ce même proxy aiSummary.
+- Admin : `(admin)/admin/*` + `adminFetch` (`_lib/server`) + shell (`_components/shell`: PageHeader/
+  Section/Stat/Empty/durationFmt/pctFmt) ; API `routes/admin.ts` (auth+adminMiddleware). Events PostHog
+  NON requêtables en ClickHouse → métriques calculées depuis Postgres (percentiles en JS).
+- `db.query.onboardingSessions` OK : table exportée via `schema/index.ts`, client drizzle `{ schema }`.

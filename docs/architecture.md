@@ -147,6 +147,13 @@ competitor_candidates  id, org_id, url, title, overlap_score, reason,
 discovery_runs         id, org_id, last_discovery_at, based_on_profile_update_at
                        — patch-22, staleness discovery on-demand (1 ligne/org, upsert sur /detect)
 
+onboarding_sessions    id, user_id, org_id, stage (onboarding_session_stage),
+                       mode (quick_start|full), product_url, product_profile (jsonb),
+                       discovery_suggestions (jsonb), added_competitor_ids (jsonb),
+                       timings (jsonb — milestone→epoch ms), started_at, last_activity_at,
+                       completed_at — patch-25, resumable attempt + funnel metrics
+                       (1 active/user, TTL ONBOARDING_RESUME_TTL_DAYS)
+
 audit_log              id, actor_email, action (view_user|force_scrape|update_feedback),
                        target_type, target_id, metadata (jsonb), created_at   — ops (patch-02)
 
@@ -179,6 +186,8 @@ notification_type signal | new_competitor
 candidate_status  new | added | dismissed
 candidate_source  detection | onboarding
 battle_card_status pending | generating | ready | failed
+onboarding_session_stage  started | input | profile | discover | monitoring |
+                  analysis_in_progress | completed | abandoned   (patch-25)
 ```
 
 ## Schéma ClickHouse (time-series, ENGINE = MergeTree)
@@ -493,6 +502,10 @@ SCRAPING_LEVEL_1_ENABLED=true  # kill-switch L2 (datacenter)
 SCRAPING_LEVEL_2_ENABLED=true  # kill-switch L3 (residential)
 SCRAPING_LEVEL_3_ENABLED=true  # kill-switch L4 (camoufox)
 EXA_API_KEY=
+# Onboarding (patch-25)
+NEXT_PUBLIC_ONBOARDING_PARALLEL_DISCOVERY=true   # prefetch discovery during profile edit
+NEXT_PUBLIC_ONBOARDING_DISCOVERY_DEBOUNCE_MS=3000 # debounce before prefetch (limits Exa spend)
+ONBOARDING_RESUME_TTL_DAYS=7                      # days an unfinished session stays resumable
 HOMEPAGE_SCROLL_PASSES=2              # patch-16 — progressive scroll passes (homepage only)
 HOMEPAGE_LAZY_WAIT_MS=2000            # patch-16 — wait after each scroll pass
 HOMEPAGE_NARRATIVE_MIN_SEVERITY=medium  # patch-16 — min severity to spend an AI narrative

@@ -1653,3 +1653,30 @@ Contenu flagged reste affiché (transparence).
 - Pas de cache sur self-check (run dans le miss closure → 1x par génération).
 - ConfidenceDot seulement si confidence < high. Warning affiche le contenu.
 - Review queue ADMIN_EMAILS only. Messages en 3 parties (patch-14).
+
+---
+
+# Patch 25 — Latence onboarding & background processing
+
+Réconcilié avec le code réel (le spec assumait des pages séparées / events ClickHouse /
+`/api/discovery/run` — tous faux). Wizard = single-page `onboarding-form.tsx`. Tracking,
+resume org-level et polling `DoneStep` existaient déjà ; on solidifie + on ajoute la table.
+
+[x] 2 — Schéma `onboarding_sessions` (stage enum + timings jsonb) — db:push OK
+[x] 3 — Endpoints `/api/onboarding-session` (current/active-analysis/POST/PATCH/complete) + hook
+[x] 1 — Events PostHog funnel (consent-gated via track()) + session id + timings
+[x] 4 — Prefetch discovery background (debounce 3s, AbortController, dédup par profileKey)
+[x] 5 — Streaming dashboard (use-onboarding-streaming + panel OverviewView) + /complete flip +
+        backstop notify-onboarding-analysis (worker, PAS le pipeline)
+[x] 6 — Mode quick_start (défaut) vs full ("Customize more" → advanced monitoring)
+[x] 7 — Resume banner dashboard (3 parties patch-14, supersede OnboardingBanner)
+[x] 8 — /api/admin/onboarding-metrics (Postgres, percentiles JS) + page /admin/onboarding + nav
+[x] 9 — Vérif : 4 pkgs typecheck clean ; web src clean (seul l'artefact .next/validator.ts échoue)
+
+## Notes
+- Décisions user : table dédiée + prefetch background + refonte QS (les 3 options spec-fidèles).
+- first_signal_received / analysis_completed = client-side (streaming hook), backstop worker —
+  AUCUNE modif du pipeline scraping/IA (contrainte spec respectée).
+- Modifs pré-existantes hors patch : `onboarding.ts` logging (commit séparé `fix(onboarding)`),
+  `provider.ts` failover (laissé non-commité, WIP tiers).
+- Commits scopés par étape (pas de git add -A global cette fois — `provider.ts` non lié laissé).

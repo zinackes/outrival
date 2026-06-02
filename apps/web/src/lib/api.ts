@@ -1196,6 +1196,15 @@ export const api = {
       `/api/ai-quality/${targetType}/${encodeURIComponent(targetId)}/acknowledge`,
       { method: "POST" },
     ),
+  // Admin: resolve a flagged output in the review queue (patch-24).
+  adminResolveAiReview: (
+    id: string,
+    resolution: "correct" | "hallucination_confirmed" | "false_positive",
+  ) =>
+    request<{ ok: true }>(`/api/admin/ai-review/${id}/resolve`, {
+      method: "POST",
+      body: JSON.stringify({ resolution }),
+    }),
 
   // --- Edge cases scraping (patch-23) ---
   getMonitorAlternatives: (monitorId: string) =>

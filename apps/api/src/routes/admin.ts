@@ -13,6 +13,11 @@ import {
   auditLog,
   monitorAlternatives,
   structuralChanges,
+  listFlaggedQualityChecks,
+  resolveQualityCheck,
+  getQualityReviewStats,
+  getQualityByTask,
+  getConfidenceDistribution,
 } from "@outrival/db";
 import { getBytesFromR2, logger, redis } from "@outrival/shared";
 import { loadProviders, checkGlobalBreaker } from "@outrival/ai";
@@ -771,4 +776,43 @@ adminRouter.get("/scraping-edge-cases", async (c) => {
     structuralByStatus,
     apiCaptureEnabledMonitors: capture?.count ?? 0,
   });
+});
+
+// --- AI review queue + quality metrics (patch-24) ---
+
+// Flagged outputs awaiting a human verdict, plus the 30-day header stats.
+adminRouter.get("/ai-review-queue", async (c) => {
+  const [items, stats] = await Promise.all([
+    listFlaggedQualityChecks(100),
+    getQualityReviewStats(30),
+  ]);
+  return c.json({ items, stats });
+});
+
+const ResolveSchema = z.object({
+  resolution: z.enum(["correct", "hallucination_confirmed", "false_positive"]),
+});
+
+adminRouter.post("/ai-review/:id/resolve", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json().catch(() => ({}));
+  const parsed = ResolveSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: "invalid_resolution" }, 400);
+
+  const user = c.get("user");
+  await resolveQualityCheck(id, parsed.data.resolution, user.id);
+  await logAudit(user.email, "resolve_ai_review", "ai_quality_check", id, {
+    resolution: parsed.data.resolution,
+  });
+  return c.json({ ok: true });
+});
+
+// Aggregated AI quality metrics for the ops dashboard (patch-24, step 9).
+adminRouter.get("/ai-quality-metrics", async (c) => {
+  const [stats, byTask, confidence] = await Promise.all([
+    getQualityReviewStats(30),
+    getQualityByTask(30),
+    getConfidenceDistribution(30),
+  ]);
+  return c.json({ windowDays: 30, stats, byTask, confidence });
 });

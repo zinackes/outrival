@@ -10,6 +10,7 @@ import {
   Users,
   MessageSquare,
   ThumbsUp,
+  ShieldAlert,
   DollarSign,
   ScrollText,
   Unplug,
@@ -24,6 +25,7 @@ const ITEMS = [
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/feedback", label: "Feedback", icon: MessageSquare },
   { href: "/admin/feedback-quality", label: "AI quality", icon: ThumbsUp },
+  { href: "/admin/ai-review-queue", label: "AI review", icon: ShieldAlert },
   { href: "/admin/cost", label: "Cost", icon: DollarSign },
   { href: "/admin/audit", label: "Audit", icon: ScrollText },
 ] as const;

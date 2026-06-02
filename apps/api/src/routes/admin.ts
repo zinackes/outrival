@@ -14,6 +14,9 @@ import {
   onboardingSessions,
   monitorAlternatives,
   structuralChanges,
+  orgNotificationPreferences,
+  orgRelevanceThreshold,
+  signalBatches,
   listFlaggedQualityChecks,
   resolveQualityCheck,
   getQualityReviewStats,
@@ -674,6 +677,95 @@ adminRouter.get("/feedback-quality/stats", async (c) => {
   };
 
   return c.json({ period, byType, nps });
+});
+
+// Notification moderation metrics (patch-26): where the volume goes, how it's
+// filtered per layer, and how orgs have configured the knobs. All Postgres, 30d.
+adminRouter.get("/notification-moderation", async (c) => {
+  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+  const [generatedRow] = await db
+    .select({ value: sql<number>`count(*)::int` })
+    .from(signals)
+    .where(gte(signals.createdAt, cutoff));
+  const generated = generatedRow?.value ?? 0;
+
+  // Filtered per layer (filteredReason set by the dispatcher).
+  const reasonRows = await db
+    .select({ reason: signals.filteredReason, count: sql<number>`count(*)::int` })
+    .from(signals)
+    .where(and(gte(signals.createdAt, cutoff), isNotNull(signals.filteredReason)))
+    .groupBy(signals.filteredReason);
+  const filteredByReason: Record<string, number> = {};
+  for (const r of reasonRows) if (r.reason) filteredByReason[r.reason] = r.count;
+
+  // Delivery channel the dispatcher routed each signal to.
+  const channelRows = await db
+    .select({ channel: signals.dispatchedChannel, count: sql<number>`count(*)::int` })
+    .from(signals)
+    .where(and(gte(signals.createdAt, cutoff), isNotNull(signals.dispatchedChannel)))
+    .groupBy(signals.dispatchedChannel);
+  const byChannel: Record<string, number> = {};
+  for (const r of channelRows) if (r.channel) byChannel[r.channel] = r.count;
+
+  const [batchedRow] = await db
+    .select({ value: sql<number>`count(*)::int` })
+    .from(signals)
+    .where(and(gte(signals.createdAt, cutoff), isNotNull(signals.batchedIntoId)));
+  const batchedSignals = batchedRow?.value ?? 0;
+
+  const [batchesRow] = await db
+    .select({ value: sql<number>`count(*)::int` })
+    .from(signalBatches)
+    .where(gte(signalBatches.createdAt, cutoff));
+  const batchesCreated = batchesRow?.value ?? 0;
+
+  // Org configuration distribution.
+  const [prefsRow] = await db
+    .select({
+      total: sql<number>`count(*)::int`,
+      timezoneAuto: sql<number>`count(*) filter (where timezone_detected_at is not null)::int`,
+      timezoneManual: sql<number>`count(*) filter (where timezone_detected_at is null)::int`,
+      batchingOn: sql<number>`count(*) filter (where batching_enabled)::int`,
+      defaultQuietHours: sql<number>`count(*) filter (where quiet_hours_start = 22 and quiet_hours_end = 8 and weekend_off)::int`,
+    })
+    .from(orgNotificationPreferences);
+
+  // Relevance threshold distribution (orgs without a row run the default).
+  const thresholdRows = await db
+    .select({
+      source: orgRelevanceThreshold.source,
+      count: sql<number>`count(*)::int`,
+      avg: sql<number>`avg(threshold)`,
+      stddev: sql<number>`coalesce(stddev_pop(threshold), 0)`,
+    })
+    .from(orgRelevanceThreshold)
+    .groupBy(orgRelevanceThreshold.source);
+
+  return c.json({
+    period: 30,
+    volume: {
+      generated,
+      filteredByReason,
+      batchedSignals,
+      batchingRate: generated > 0 ? batchedSignals / generated : 0,
+    },
+    byChannel,
+    batches: { created: batchesCreated },
+    orgConfig: {
+      total: prefsRow?.total ?? 0,
+      timezoneAuto: prefsRow?.timezoneAuto ?? 0,
+      timezoneManual: prefsRow?.timezoneManual ?? 0,
+      batchingOn: prefsRow?.batchingOn ?? 0,
+      defaultQuietHours: prefsRow?.defaultQuietHours ?? 0,
+    },
+    thresholds: thresholdRows.map((r) => ({
+      source: r.source,
+      count: r.count,
+      avg: r.avg != null ? Number(r.avg) : null,
+      stddev: r.stddev != null ? Number(r.stddev) : null,
+    })),
+  });
 });
 
 // Patterns worth fixing: per type over 14 days, flag a high not-useful rate above

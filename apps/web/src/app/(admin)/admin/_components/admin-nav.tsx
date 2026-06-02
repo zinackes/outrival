@@ -15,6 +15,7 @@ import {
   DollarSign,
   ScrollText,
   Unplug,
+  BellRing,
 } from "lucide-react";
 
 const ITEMS = [
@@ -27,6 +28,7 @@ const ITEMS = [
   { href: "/admin/onboarding", label: "Onboarding", icon: Rocket },
   { href: "/admin/feedback", label: "Feedback", icon: MessageSquare },
   { href: "/admin/feedback-quality", label: "AI quality", icon: ThumbsUp },
+  { href: "/admin/notification-moderation", label: "Notifications", icon: BellRing },
   { href: "/admin/ai-review-queue", label: "AI review", icon: ShieldAlert },
   { href: "/admin/cost", label: "Cost", icon: DollarSign },
   { href: "/admin/audit", label: "Audit", icon: ScrollText },

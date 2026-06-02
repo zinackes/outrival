@@ -1,5 +1,6 @@
 import { schedules, logger } from "@trigger.dev/sdk/v3";
 import { sendSlackMessage } from "@outrival/shared";
+import { getQualityByTask } from "@outrival/db";
 import {
   getScrapeHealth,
   getAiParseHealth,
@@ -27,6 +28,11 @@ const SIGNAL_MIN_ACTIVITY = 20; // scrape runs in 24h before 0-signals is suspic
 const CASCADE_MIN_SAMPLE = 20;
 const DATACENTER_RATE_THRESHOLD = 0.25; // >25% of scrapes need datacenter (L2+)
 const RESIDENTIAL_RATE_THRESHOLD = 0.05; // >5% need residential/camoufox (L3+)
+
+// Anti-hallucination (patch-24): a task whose confirmed-hallucination rate over the
+// last 7 days crosses the configured threshold, gated by a min number of self-checks.
+const HALLUCINATION_WINDOW_DAYS = 7;
+const HALLUCINATION_MIN_SAMPLE = 10;
 
 function pct(part: number, total: number): string {
   return total > 0 ? `${Math.round((part / total) * 100)}%` : "0%";
@@ -92,6 +98,23 @@ export const opsHealthCheckJob = schedules.task({
             `of scrapes need a paid level (${scrape24h.proxy}/${scrape24h.total}, last ${SIGNAL_WINDOW_HOURS}h)`,
         );
       }
+    }
+
+    // Hallucination rate per task (patch-24). Best-effort: a Postgres hiccup here
+    // must not break the rest of the health check.
+    try {
+      const hallucThreshold = Number(process.env.AI_HALLUCINATION_ALERT_RATE) || 0.03;
+      const byTask = await getQualityByTask(HALLUCINATION_WINDOW_DAYS);
+      for (const t of byTask) {
+        if (t.selfChecked >= HALLUCINATION_MIN_SAMPLE && t.hallucinationRate > hallucThreshold) {
+          alerts.push(
+            `🧠 Hallucination rate high on ${t.aiTask}: ${pct(t.confirmed, t.selfChecked)} ` +
+              `(${t.confirmed}/${t.selfChecked} checks, last ${HALLUCINATION_WINDOW_DAYS}d)`,
+          );
+        }
+      }
+    } catch (err) {
+      logger.warn("Hallucination-rate check skipped", { err: String(err) });
     }
 
     if (alerts.length > 0) {

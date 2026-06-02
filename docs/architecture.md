@@ -166,6 +166,22 @@ tech_stack_entries     id, competitor_id, tech_id, tech_name, category, importan
 
 competitors            + tech_stack_scraped_at (patch-18 — cadence du scraper tech-stack
                        mensuel indépendant ; pas de monitor, cf. pipeline)
+
+org_notification_preferences  id, org_id (unique), channel_critical/high/medium/low
+                       (channel_mode), timezone, timezone_detected_at (null = override
+                       manuel), quiet_hours_start/end, weekend_off, daily_email_cap,
+                       batching_enabled — patch-26, modération notif ORG-scoped (1/org)
+org_relevance_threshold       id, org_id (unique), threshold (real, def 0.5), source
+                       (default|auto_adjusted|user_set), feedback_count_at_calc,
+                       last_recalculated_at — patch-26, seuil pertinence auto-ajusté
+signal_batches         id, org_id, competitor_id, signal_ids (jsonb), category, count,
+                       summary (IA), highest_severity, window_start/end — patch-26, layer 5
+
+signals                + relevance_score (patch-17 persisté patch-26), dispatched_channel,
+                       filtered_reason, filtered_at (décision du dispatcher),
+                       batched_into_id (→ signal_batches), daily_digest_sent_at — patch-26
+changes                + relevance_score (real, nullable — max des changes significatifs,
+                       structured homepage only) — patch-26
 ```
 
 ### Enums Postgres
@@ -188,6 +204,8 @@ candidate_source  detection | onboarding
 battle_card_status pending | generating | ready | failed
 onboarding_session_stage  started | input | profile | discover | monitoring |
                   analysis_in_progress | completed | abandoned   (patch-25)
+channel_mode      email_immediate | digest_daily | digest_weekly | in_app_only | muted
+                  (patch-26 — canal de notif par severity)
 ```
 
 ## Schéma ClickHouse (time-series, ENGINE = MergeTree)
@@ -202,7 +220,7 @@ scrape_runs         monitor_id, competitor_id, source_type, status (success|no_c
                     duration_ms, recorded_at  — ops (patch-02/20)
 ai_runs             task (classify|classify_structured|narrate_change|insight|digest|
                     battle_card|extract_pricing|extract_jobs|extract_reviews|
-                    extract_self_profile|source_summary|competitor_summary|…),
+                    extract_self_profile|source_summary|competitor_summary|batch_summary|…),
                     provider, model,
                     status (success|parse_failed|error), recorded_at      — ops (patch-02)
 numeric_claims      competitor_id, monitor_id, pattern (user_count|uptime|scale|…),
@@ -338,9 +356,13 @@ carte (état live uniquement).
   └─ insight + so_what + recommended_action
   └─ patch-16 : si change structuré + severity ≥ HOMEPAGE_NARRATIVE_MIN_SEVERITY (medium)
        → narrate_change (70b, non caché, best-effort) → signals.narrative
-  └─ insert signal (idempotent par changeId)
+  └─ insert signal (idempotent par changeId) + copie change.relevance_score (patch-26)
   └─ insert ClickHouse signal_feed (best-effort)
-  └─ si severity ∈ {high, critical} → trigger send-alert
+  └─ MODÉRATION (patch-26) : decideDispatch(orgId, {severity, relevanceScore, …}) applique
+       5 couches ORG-scoped dans l'ordre — (1) seuil pertinence (skip si pas de score) ,
+       (2) canal par severity, (3) quiet hours, (4) frequency cap ; critical bypasse TOUT.
+       Stamp signals.dispatched_channel/filtered_reason/filtered_at. email_immediate →
+       trigger send-alert (gating plan inchangé) ; sinon déféré au digest (daily/weekly)
 
 [par signal critique] send-alert
   └─ insert notification (in-app, si realtimeAlerts dans le plan)
@@ -352,6 +374,20 @@ carte (état live uniquement).
   └─ idempotent par (orgId, weekStart)
   └─ skip orgs sans signal de la semaine
   └─ Groq insight global → HTML inline → Resend
+
+[cron horaire] generate-daily-digest (patch-26)
+  └─ canal digest_daily (high par défaut + signals déférés par quiet hours / freq cap)
+  └─ fire par org quand l'heure LOCALE = quiet_hours_end (matin) → 1 digest/jour local
+  └─ idempotent via signals.daily_digest_sent_at
+
+[cron */6h] signal-batching (patch-26)
+  └─ layer 5 : 3+ signals même competitor+category sur BATCHING_WINDOW_HOURS → 1 batch +
+     summary IA (best-effort), stamp signals.batched_into_id ; critical jamais batché ;
+     orgs opt-out via batching_enabled
+
+[cron dimanche 3h UTC] relevance-threshold-recalculation (patch-26)
+  └─ par org : quality_feedback (signal) ⋈ signals.relevance_score → seuil = milieu
+     avg(useful)/avg(not_useful), clamp 0.2-0.8 ; ≥10 feedbacks & ≥3 de chaque côté
 
 [cron dimanche 20h UTC] detect-new-competitors
   └─ par org onboardée : Exa findSimilar + scoreOverlap (batché)
@@ -542,6 +578,18 @@ AI_INTENSIVE_WINDOW_SEC=3600       # fenêtre 1h
 
 # Notifications
 RESEND_API_KEY=
+
+# Notification moderation (patch-26)
+NOTIFICATION_DAILY_EMAIL_CAP=10        # max emails immédiats/jour/org (critical bypasse)
+NOTIFICATION_CRITICAL_BYPASS=true      # critical ignore tous les filtres
+QUIET_HOURS_DEFAULT_START=22           # quiet hours début, 0-23 heure locale org
+QUIET_HOURS_DEFAULT_END=8              # quiet hours fin (aussi heure d'envoi du daily digest)
+QUIET_HOURS_WEEKEND_OFF=true           # samedi+dimanche muets par défaut
+RELEVANCE_THRESHOLD_DEFAULT=0.5        # seuil pertinence par défaut (0-1)
+RELEVANCE_AUTO_ADJUST_MIN_FEEDBACKS=10 # min feedbacks org avant auto-ajustement
+RELEVANCE_RECALC_INTERVAL_HOURS=168    # cadence recalc (hebdo)
+BATCHING_WINDOW_HOURS=24               # fenêtre de regroupement
+BATCHING_MIN_SIGNALS=3                 # min signals similaires pour un batch
 
 # Billing
 STRIPE_SECRET_KEY=

@@ -22,6 +22,7 @@ import { SeverityDot } from "./severity-pill";
 import { CompAvatar } from "./comp-avatar";
 import { SectoralSignalsSection } from "./sectoral-signals";
 import { ListError } from "@/components/outrival/list-error";
+import { OnboardingAnalysisPanel } from "@/components/onboarding/onboarding-analysis-panel";
 import DashboardLoading from "@/app/dashboard/loading";
 
 type Range = 7 | 30 | 90;
@@ -240,6 +241,10 @@ export function OverviewView() {
 
   return (
     <div className="space-y-[22px]">
+      {/* Progressive streaming right after onboarding (patch-25) — refreshes this
+          view each poll so signals/competitors fill in live. Self-hides otherwise. */}
+      <OnboardingAnalysisPanel onTick={load} />
+
       <PageHead
         title="Overview"
         sub={

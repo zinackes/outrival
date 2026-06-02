@@ -1,7 +1,13 @@
 import { task, logger, wait } from "@trigger.dev/sdk/v3";
 import { z } from "zod";
-import { and, count, eq, inArray, isNull, isNotNull } from "drizzle-orm";
-import { db, competitors, notifications, organizations } from "@outrival/db";
+import { and, count, desc, eq, inArray, isNull, isNotNull } from "drizzle-orm";
+import {
+  db,
+  competitors,
+  notifications,
+  organizations,
+  onboardingSessions,
+} from "@outrival/db";
 
 const InputSchema = z.object({
   orgId: z.string(),
@@ -61,6 +67,31 @@ export const notifyOnboardingAnalysisJob = task({
         : `We analyzed ${analyzed} of ${total} competitor${total > 1 ? "s" : ""} so far. The rest will appear in your dashboard as monitoring continues.`,
       linkUrl: "/dashboard",
     });
+
+    // Patch-25 backstop: close the onboarding session for metrics even if the
+    // user left the tab before the client streaming hook could stamp it.
+    try {
+      const session = await db.query.onboardingSessions.findFirst({
+        where: and(
+          eq(onboardingSessions.orgId, orgId),
+          eq(onboardingSessions.stage, "analysis_in_progress"),
+        ),
+        orderBy: desc(onboardingSessions.lastActivityAt),
+      });
+      if (session) {
+        await db
+          .update(onboardingSessions)
+          .set({
+            stage: "completed",
+            completedAt: new Date(),
+            lastActivityAt: new Date(),
+            timings: { ...(session.timings ?? {}), analysis_completed: Date.now() },
+          })
+          .where(eq(onboardingSessions.id, session.id));
+      }
+    } catch (e) {
+      logger.error("Failed to close onboarding session", { orgId, error: String(e) });
+    }
 
     logger.log("Completed notify-onboarding-analysis", { orgId, analyzed, total });
     return { notified: true, analyzed, total };

@@ -1069,6 +1069,10 @@ export const api = {
     }),
   getOnboardingSession: () =>
     request<{ session: OnboardingSession | null }>("/api/onboarding-session/current"),
+  getActiveAnalysisSession: () =>
+    request<{ session: OnboardingSession | null }>(
+      "/api/onboarding-session/active-analysis",
+    ),
   createOnboardingSession: (mode?: OnboardingMode) =>
     request<{ session: OnboardingSession }>("/api/onboarding-session", {
       method: "POST",
@@ -1098,6 +1102,9 @@ export const api = {
     savedCandidates?: Array<{ url: string; title?: string; overlapScore?: number; reason?: string }>;
     dismissedCandidates?: Array<{ url: string; title?: string; overlapScore?: number; reason?: string }>;
     monitoringPrefs: { frequency: "daily" | "weekly"; sources: Array<"homepage" | "pricing" | "blog"> };
+    // Links the run to its resumable session so /complete can flip it to
+    // analysis_in_progress (patch-25 — drives the dashboard streaming panel).
+    onboardingSessionId?: string;
   }) =>
     request<{ competitorsCreated: number }>("/api/onboarding/complete", {
       method: "POST",

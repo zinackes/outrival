@@ -629,6 +629,7 @@ export function OnboardingForm({
         savedCandidates: competitors.filter((c) => !c.selected).map(toCandidate),
         dismissedCandidates: removed.map(toCandidate),
         monitoringPrefs: { frequency, sources },
+        onboardingSessionId: sessionId ?? undefined,
       });
       trackOnboarding(ONBOARDING_EVENTS.COMPETITORS_FINALIZED, sessionId, {
         competitorCount: selected.length,

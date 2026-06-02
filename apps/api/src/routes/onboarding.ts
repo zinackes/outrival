@@ -7,6 +7,7 @@ import {
   competitors,
   monitors,
   competitorCandidates,
+  onboardingSessions,
   type SelfProfile,
   type SelfProfileField,
 } from "@outrival/db";
@@ -516,6 +517,9 @@ const CompleteSchema = z.object({
     frequency: FrequencySchema,
     sources: z.array(SourceTypeSchema).min(1),
   }),
+  // Patch-25: the resumable session for this run, flipped to analysis_in_progress
+  // so the dashboard streaming panel knows the first pass is underway.
+  onboardingSessionId: z.string().optional(),
 });
 
 onboardingRouter.post("/complete", async (c) => {
@@ -527,8 +531,13 @@ onboardingRouter.post("/complete", async (c) => {
 
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
-  const { selectedCompetitors, savedCandidates, dismissedCandidates, monitoringPrefs } =
-    parsed.data;
+  const {
+    selectedCompetitors,
+    savedCandidates,
+    dismissedCandidates,
+    monitoringPrefs,
+    onboardingSessionId,
+  } = parsed.data;
 
   const plan = await getOrgPlan(orgId);
 
@@ -649,6 +658,20 @@ onboardingRouter.post("/complete", async (c) => {
     .update(organizations)
     .set({ onboardingCompleted: true, onboardingStep: "done", updatedAt: new Date() })
     .where(eq(organizations.id, orgId));
+
+  // Flip the resumable session to analysis_in_progress (drives the dashboard
+  // streaming panel). Ownership-guarded; backfills orgId if it was null.
+  if (onboardingSessionId) {
+    await db
+      .update(onboardingSessions)
+      .set({ stage: "analysis_in_progress", orgId, lastActivityAt: new Date() })
+      .where(
+        and(
+          eq(onboardingSessions.id, onboardingSessionId),
+          eq(onboardingSessions.userId, user.id),
+        ),
+      );
+  }
 
   // Watch the first analysis pass and ping the user (in-app notification) once
   // every competitor has an AI summary — so they can leave the onboarding "done"

@@ -48,6 +48,21 @@ onboardingSessionRouter.get("/current", async (c) => {
   return c.json({ session: session ?? null });
 });
 
+// The session whose first analysis pass is still running (post-/complete) —
+// drives the dashboard progressive streaming panel. Survives a refresh, unlike a
+// URL flag. GET literal registered before the PATCH/POST "/:id" handlers.
+onboardingSessionRouter.get("/active-analysis", async (c) => {
+  const user = c.get("user");
+  const session = await db.query.onboardingSessions.findFirst({
+    where: and(
+      eq(onboardingSessions.userId, user.id),
+      eq(onboardingSessions.stage, "analysis_in_progress"),
+    ),
+    orderBy: desc(onboardingSessions.lastActivityAt),
+  });
+  return c.json({ session: session ?? null });
+});
+
 const CreateSchema = z.object({ mode: ModeSchema.optional() });
 
 // Start a fresh attempt. Enforces one active session per user by retiring any

@@ -486,3 +486,26 @@ re-onboarding, **vérif zéro-stockage live** (disque/R2/logs/Sentry après uplo
 3. URL temporaire (vercel preview) → warning ; skip → bannière dashboard
 4. Re-onboarding depuis settings → concurrents préservés
 5. Commits par étape (à faire par l'utilisateur, working tree à nettoyer)
+
+---
+
+## Patch-24 — Anti-hallucinations IA — COMPLETE (2026-06-02)
+
+10 étapes, 9 commits (1380f01..8675b05). 5 couches de défense :
+1. Grounding : groundedAiCall augmente le prompt (enveloppe {output,citations,confidence}),
+   valide les citations vs source (fuzzy substring Levenshtein, seuil 0.85, sans dep).
+2. Confidence scoring : low/medium/high self-reporté → tri + UI + déclenche self-check.
+3. Self-check 2e passe : systématique battle cards, auto low-confidence, sampling 10%.
+4. Transparence UI : ConfidenceDot (caché si high), AiOutputWarning (contenu préservé).
+5. Review humaine : /admin/ai-review-queue + métriques /admin/ai + alerte Slack >3%/7j.
+
+12 tasks migrées vers groundedAiCall. État mutable en Postgres ai_quality_checks
+(ai_runs ClickHouse étendu append-only). _quality attaché non-enumerable (0 pollution jsonb).
+
+Vérif : shared/db/ai/scrapers/api/workers typecheck clean ; web src clean ; next build
+compile (seule erreur = artefact .next/types/validator.ts pré-existant, hors scope) ;
+tests citations 8/8.
+
+Reste optionnel (non bloquant) : per-candidate ConfidenceDot (discovery), ConfidenceDot sur
+battle card/digest UI, rendu "removed" sur hallucination confirmée, persist des tasks
+sans entité (classify/summary/verify/sectoral).

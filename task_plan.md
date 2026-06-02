@@ -1627,18 +1627,26 @@ Contenu flagged reste affiché (transparence).
 11 generate_digest → tasks/digest.ts
 12 detect_sector_signals → sectoral/formulate.ts (patch-13)
 
-## Étapes (1 commit chacune)
-[ ] 0 — Env vars (.env.example) — pas de commit
-[ ] 1 — Schéma : table PG ai_quality_checks + colonnes CH ai_runs — db:push
-[ ] 2 — Helper citations.ts (validateCitations fuzzy 0.85) + test
-[ ] 3 — Wrapper groundedAiCall (pur)
-[ ] 4 — Migrer les 12 tasks vers groundedAiCall
-[ ] 5 — Self-check 2e passe (run-self-check + decideIfSelfCheck) + persistQualityCheck helpers
-[ ] 6 — ConfidenceDot (UI)
-[ ] 7 — AiOutputWarning (UI, boutons feedback patch-21)
-[ ] 8 — Admin review queue (/admin/ai-review-queue + API)
-[ ] 9 — Métriques AI Quality dashboard + alerte Slack >3%/7j
-[ ] 10 — build + typecheck
+## Étapes (1 commit chacune) — TOUTES COMPLÈTES
+[x] 0 — Env vars (.env.example)
+[x] 1 — Schéma : table PG ai_quality_checks + colonnes CH ai_runs — db:push OK
+[x] 2 — citations.ts (validateCitations fuzzy substring 0.85) + test 8/8
+[x] 3 — Wrapper groundedAiCall (pur, enveloppe + fallback schéma nu)
+[x] 4 — Migré les 12 tasks → groundedAiCall (_quality non-enumerable, 0 régression)
+[x] 5 — Self-check + persist (signal/battle_card/digest/overlap_scoring)
+[x] 6 — ConfidenceDot + join signals API + SignalCard
+[x] 7 — AiOutputWarning + endpoint user acknowledge + SignalCard
+[x] 8 — Admin review queue (/admin/ai-review-queue + GET/POST API + helpers db)
+[x] 9 — Section AI Quality (/admin/ai) + alerte Slack >3%/7j (ops-health-check)
+[x] 10 — Vérif : 6 pkgs typecheck clean, web src clean, next build compile OK, tests 8/8
+
+## Notes finales
+- next build : seule erreur = .next/types/validator.ts (rootDir:src vs include .next/types) —
+  conflit Next16 PRÉ-EXISTANT, hors scope patch-24 (non corrigé, règle surgical).
+- ⚠️ Commit Étape 1 a balayé l'arbre non-commité des patches 16-23 (git add -A, règle git.md).
+  Arbre propre depuis ; commits 2-9 correctement scopés.
+- Persist limité à signal/battle_card/digest/overlap_scoring (surfaces UI/entité). Les autres
+  tasks routent par grounding+self-check mais ne créent pas de row ai_quality_checks.
 
 ## Contraintes clés
 - Citations inventées → logger mais NE PAS rejeter la sortie (grounding informe).

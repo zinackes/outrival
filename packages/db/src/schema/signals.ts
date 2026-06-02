@@ -53,6 +53,9 @@ export const signals = pgTable("signals", {
   // Set when this signal was rolled up into a batch (layer 5); the feed then
   // shows the batch instead of the individual signal.
   batchedIntoId: text("batched_into_id").references(() => signalBatches.id),
+  // Stamped once a deferred signal (dispatchedChannel = digest_daily) has gone out
+  // in a daily digest email — the daily digest job's idempotency marker.
+  dailyDigestSentAt: timestamp("daily_digest_sent_at"),
   isRead: boolean("is_read").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

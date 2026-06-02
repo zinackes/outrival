@@ -124,6 +124,12 @@ function wallClock(timezone: string, at = new Date()): { hour: number; day: numb
   return { hour: wall.getUTCHours(), day: wall.getUTCDay() };
 }
 
+// Current hour (0-23) in `timezone` — used by the daily digest job to fire at each
+// org's local morning.
+export function localHour(timezone: string, at = new Date()): number {
+  return wallClock(timezone, at).hour;
+}
+
 // Start of the current calendar day in `timezone`, as a real UTC instant.
 export function startOfDayInTz(timezone: string, at = new Date()): Date {
   const offset = tzOffsetMs(timezone, at);

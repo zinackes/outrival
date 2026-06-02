@@ -1641,6 +1641,8 @@ function MonitoringStep({
         )}
       </Card>
 
+      <TimezoneNote />
+
       <FooterNav
         onBack={onBack}
         onSubmit={onConfirm}
@@ -1649,6 +1651,43 @@ function MonitoringStep({
         primaryLabel="Start monitoring"
       />
     </div>
+  );
+}
+
+// Patch-26: reassure the user about notification timing right before they finish.
+// Defaults (quiet hours, weekend off, grouping) are applied automatically and the
+// detected timezone is synced once they reach the dashboard — this is just a heads-up,
+// fully skippable, with everything adjustable later in Settings → Notifications.
+function TimezoneNote() {
+  const [tz, setTz] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      setTz(Intl.DateTimeFormat().resolvedOptions().timeZone || null);
+    } catch {
+      // Keep the generic copy.
+    }
+  }, []);
+
+  return (
+    <Card className="mt-4 p-5 sm:p-6 flex flex-col gap-1.5">
+      <p className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
+        When you'll be notified
+      </p>
+      <p className="text-sm text-foreground">
+        {tz ? (
+          <>
+            Detected timezone: <span className="font-medium">{tz}</span>.
+          </>
+        ) : (
+          <>We'll use your local timezone.</>
+        )}
+      </p>
+      <p className="text-xs text-muted-foreground">
+        By default we won't email you between 10pm and 8am or on weekends, and similar
+        updates are grouped. Critical alerts always come through. Fine-tune all of this
+        anytime in Settings → Notifications.
+      </p>
+    </Card>
   );
 }
 

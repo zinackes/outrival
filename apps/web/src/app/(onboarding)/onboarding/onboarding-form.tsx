@@ -36,7 +36,13 @@ import {
   type ProjectStage,
 } from "@/lib/api";
 import { signOut } from "@/lib/auth-client";
-import { resetUser, track } from "@/lib/posthog/events";
+import { resetUser } from "@/lib/posthog/events";
+import {
+  ONBOARDING_EVENTS,
+  milestoneKey,
+  trackOnboarding,
+} from "@/lib/posthog/onboarding-events";
+import { useOnboardingSession } from "@/hooks/use-onboarding-session";
 import {
   PaywallDialog,
   paywallFromError,
@@ -175,6 +181,7 @@ export function OnboardingForm({
   initialProfile: ProductProfile | null;
 }) {
   const router = useRouter();
+  const { sessionId, updateSession } = useOnboardingSession();
   const planLimits = PLAN_LIMITS[plan];
   const maxCompetitors = planLimits.maxCompetitors;
   const allowedFrequencies = planLimits.allowedFrequencies;
@@ -219,16 +226,28 @@ export function OnboardingForm({
   );
   const [sources, setSources] = useState<SourceType[]>(["homepage", "pricing", "blog"]);
 
+  // Fire onboarding_started once the session id is known (so every funnel event
+  // shares it). The session loads async; this waits for it.
+  const startedFired = useRef(false);
   useEffect(() => {
-    track("onboarding_started");
-  }, []);
+    if (sessionId && !startedFired.current) {
+      startedFired.current = true;
+      trackOnboarding(ONBOARDING_EVENTS.STARTED, sessionId);
+    }
+  }, [sessionId]);
 
-  // Persist progress on each screen transition (fire-and-forget).
-  const goTo = useCallback((next: Screen) => {
-    setError(null);
-    setScreen(next);
-    void api.patchOnboardingProgress(next as OnboardingStep).catch(() => {});
-  }, []);
+  // Persist progress on each screen transition (fire-and-forget). Mirrors the
+  // step onto both the org (routing gate) and the onboarding session (resume +
+  // metrics). "done" isn't a session stage — /complete flips it to analysis.
+  const goTo = useCallback(
+    (next: Screen) => {
+      setError(null);
+      setScreen(next);
+      void api.patchOnboardingProgress(next as OnboardingStep).catch(() => {});
+      if (next !== "done") void updateSession({ stage: next });
+    },
+    [updateSession],
+  );
 
   async function handleSignOut() {
     await signOut();
@@ -269,7 +288,12 @@ export function OnboardingForm({
     setCommittedUrl(url);
     setCompetitors([]);
     setRemoved([]);
-    track("onboarding_product_analyzed");
+    trackOnboarding(ONBOARDING_EVENTS.PRODUCT_ANALYZED, sessionId);
+    void updateSession({
+      productProfile: p,
+      productUrl: url,
+      timings: { [milestoneKey(ONBOARDING_EVENTS.PRODUCT_ANALYZED)]: Date.now() },
+    });
     goTo("profile");
   }
 
@@ -310,6 +334,7 @@ export function OnboardingForm({
         const res = await api.analyzeRepo(repoUrl.trim());
         onProfileReady(res.profile, null);
       } else {
+        trackOnboarding(ONBOARDING_EVENTS.PRODUCT_URL_SUBMITTED, sessionId);
         const res = await api.analyzeUrl(productUrl.trim());
         onProfileReady(res.profile, productUrl.trim());
       }
@@ -336,6 +361,30 @@ export function OnboardingForm({
   }
 
   // ── Discovery ──────────────────────────────────────────────────────────
+  // Apply a discovery result set (network or background prefetch) to the UI:
+  // sort by overlap, pre-select the strongest up to the plan limit, persist the
+  // suggestions and stamp the discovery_completed milestone.
+  const applyDiscovered = useCallback(
+    (found: DiscoveredCompetitor[]) => {
+      const sorted = [...found].sort((a, b) => b.overlapScore - a.overlapScore);
+      let picked = 0;
+      setRemoved([]);
+      setCompetitors(
+        sorted.map((c) => {
+          const wantSelect = c.overlapScore > 60 && picked < maxCompetitors;
+          if (wantSelect) picked += 1;
+          return { ...c, selected: wantSelect };
+        }),
+      );
+      trackOnboarding(ONBOARDING_EVENTS.DISCOVERY_COMPLETED, sessionId, { count: sorted.length });
+      void updateSession({
+        discoverySuggestions: sorted,
+        timings: { [milestoneKey(ONBOARDING_EVENTS.DISCOVERY_COMPLETED)]: Date.now() },
+      });
+    },
+    [maxCompetitors, sessionId, updateSession],
+  );
+
   const runDiscovery = useCallback(
     async (p: ProductProfile, url: string | null) => {
       if (discoveryDisabled) {
@@ -345,26 +394,20 @@ export function OnboardingForm({
         return;
       }
       setBusy("discover");
+      trackOnboarding(ONBOARDING_EVENTS.DISCOVERY_STARTED, sessionId, { trigger: "confirm" });
+      void updateSession({
+        timings: { [milestoneKey(ONBOARDING_EVENTS.DISCOVERY_STARTED)]: Date.now() },
+      });
       try {
         const res = await api.discoverCompetitors(p, url);
-        const sorted = [...res.competitors].sort((a, b) => b.overlapScore - a.overlapScore);
-        let picked = 0;
-        setRemoved([]);
-        setCompetitors(
-          sorted.map((c) => {
-            const wantSelect = c.overlapScore > 60 && picked < maxCompetitors;
-            if (wantSelect) picked += 1;
-            return { ...c, selected: wantSelect };
-          }),
-        );
-        track("onboarding_competitors_found", { count: sorted.length });
+        applyDiscovered(res.competitors);
       } catch (e) {
         setError(extractMessage(e));
       } finally {
         setBusy(null);
       }
     },
-    [discoveryDisabled, maxCompetitors],
+    [discoveryDisabled, sessionId, updateSession, applyDiscovered],
   );
 
   async function handleProfileConfirm() {
@@ -383,6 +426,10 @@ export function OnboardingForm({
       setError(extractMessage(e));
       return;
     }
+    trackOnboarding(ONBOARDING_EVENTS.PRODUCT_PROFILE_CONFIRMED, sessionId);
+    void updateSession({
+      timings: { [milestoneKey(ONBOARDING_EVENTS.PRODUCT_PROFILE_CONFIRMED)]: Date.now() },
+    });
     goTo("discover");
     await runDiscovery(profile, committedUrl);
   }
@@ -467,6 +514,7 @@ export function OnboardingForm({
     ]);
     setManualUrl("");
     setError(null);
+    trackOnboarding(ONBOARDING_EVENTS.COMPETITOR_ADDED, sessionId, { source: "manual" });
   }
 
   function handleCompetitorsConfirm() {
@@ -521,7 +569,12 @@ export function OnboardingForm({
         dismissedCandidates: removed.map(toCandidate),
         monitoringPrefs: { frequency, sources },
       });
-      track("onboarding_completed", { competitorCount: selected.length });
+      trackOnboarding(ONBOARDING_EVENTS.COMPETITORS_FINALIZED, sessionId, {
+        competitorCount: selected.length,
+      });
+      void updateSession({
+        timings: { [milestoneKey(ONBOARDING_EVENTS.COMPETITORS_FINALIZED)]: Date.now() },
+      });
       setScreen("done");
     } catch (e) {
       const reason = paywallFromError(e);
@@ -623,7 +676,14 @@ export function OnboardingForm({
           )}
 
           {screen === "done" && (
-            <DoneStep totalCompetitors={selectedCount} plan={plan} onDashboard={() => router.push("/dashboard")} />
+            <DoneStep
+              totalCompetitors={selectedCount}
+              plan={plan}
+              onDashboard={() => {
+                trackOnboarding(ONBOARDING_EVENTS.REDIRECT_TO_DASHBOARD, sessionId);
+                router.push("/dashboard");
+              }}
+            />
           )}
         </div>
       </main>

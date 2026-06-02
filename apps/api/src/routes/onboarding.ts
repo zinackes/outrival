@@ -51,7 +51,8 @@ onboardingRouter.use("*", authMiddleware);
 async function deriveProfile<T>(fn: () => Promise<T | null>): Promise<T | null> {
   try {
     return await fn();
-  } catch {
+  } catch (err) {
+    console.error("[onboarding] deriveProfile failed:", err);
     return null;
   }
 }

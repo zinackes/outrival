@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { headers, cookies } from "next/headers";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { PostHogIdentitySync } from "@/lib/posthog/identity-sync";
+import { TimezoneSync } from "@/components/outrival/timezone-sync";
 import { FeedbackWidget } from "@/components/outrival/feedback-widget";
 import { NpsPrompt } from "@/components/outrival/nps-prompt";
 import { OnboardingBanner } from "@/components/outrival/onboarding-banner";
@@ -120,6 +121,7 @@ export default async function DashboardLayout({
   return (
     <DashboardShell user={user} org={org} defaultOpen={defaultOpen}>
       {userId && <PostHogIdentitySync userId={userId} plan={org.plan} />}
+      {userId && <TimezoneSync />}
       {resumeSession && <OnboardingResumeBanner session={resumeSession} />}
       {showOnboardingBanner && <OnboardingBanner />}
       <AiStatusBanner />

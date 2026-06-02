@@ -35,6 +35,7 @@ import { monitorAlternativesRouter } from "./routes/monitor-alternatives";
 import { manualSnapshotsRouter } from "./routes/manual-snapshots";
 import { structuralChangesRouter } from "./routes/structural-changes";
 import { aiQualityRouter } from "./routes/ai-quality";
+import { notificationPreferencesRouter } from "./routes/notification-preferences";
 
 const app = new Hono();
 
@@ -72,6 +73,7 @@ app.route("/api/settings", settingsRouter);
 app.route("/api/onboarding", onboardingRouter);
 app.route("/api/onboarding-session", onboardingSessionRouter);
 app.route("/api/notifications", notificationsRouter);
+app.route("/api/notification-preferences", notificationPreferencesRouter);
 app.route("/api/candidates", candidatesRouter);
 app.route("/api/billing", billingRouter);
 app.route("/api/feedback", feedbackRouter);

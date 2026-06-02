@@ -361,6 +361,35 @@ export interface NotificationSettings {
   alertsEnabled: boolean;
 }
 
+// Notification moderation (patch-26) — org-scoped.
+export type ChannelMode =
+  | "email_immediate"
+  | "digest_daily"
+  | "digest_weekly"
+  | "in_app_only"
+  | "muted";
+
+export interface NotificationPreferences {
+  channelCritical: ChannelMode;
+  channelHigh: ChannelMode;
+  channelMedium: ChannelMode;
+  channelLow: ChannelMode;
+  timezone: string;
+  timezoneDetectedAt: string | null;
+  quietHoursStart: number;
+  quietHoursEnd: number;
+  weekendOff: boolean;
+  dailyEmailCap: number;
+  batchingEnabled: boolean;
+}
+
+export interface RelevanceThresholdInfo {
+  threshold: number;
+  source: "default" | "auto_adjusted" | "user_set";
+  feedbackCountAtCalc: number;
+  lastRecalculatedAt: string | null;
+}
+
 export interface WorkspaceSettings {
   name: string;
   slug: string;
@@ -1022,6 +1051,17 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
+  getNotificationPreferences: () =>
+    request<{ preferences: NotificationPreferences }>("/api/notification-preferences"),
+  updateNotificationPreferences: (
+    body: Partial<NotificationPreferences>,
+  ) =>
+    request<{ preferences: NotificationPreferences }>("/api/notification-preferences", {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  getRelevanceThreshold: () =>
+    request<RelevanceThresholdInfo>("/api/notification-preferences/relevance-threshold"),
   sendTestAlert: () =>
     request<{
       results: Record<"email" | "slack" | "webhook", "sent" | "not_configured" | "error">;

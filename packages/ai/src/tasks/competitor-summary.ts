@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { complete } from "../provider";
 import { AI_CONFIG } from "../config";
-import { safeParseJson } from "../lib/parse";
+import { groundedAiCall } from "../grounding/grounded-call";
+import { attachQuality, type WithQuality } from "../grounding/types";
 
 export const SummarySchema = z.object({
   summary: z.string(),
@@ -27,7 +27,7 @@ export interface CompetitorSummaryInput {
 
 export async function generateCompetitorSummary(
   input: CompetitorSummaryInput,
-): Promise<CompetitorSummary | null> {
+): Promise<WithQuality<CompetitorSummary> | null> {
   const signalsBlock = input.recentSignals.length
     ? input.recentSignals
         .slice(0, 8)
@@ -76,11 +76,14 @@ Reply ONLY with a valid JSON object, no markdown and no surrounding text.
 { "summary": "Two to three factual sentences." }
 </format>`;
 
-  const raw = await complete(AI_CONFIG.classification, { prompt, json: true, maxTokens: 512 });
-  const result = safeParseJson(raw, SummarySchema);
-  if (!result.ok) {
-    console.error("Competitor summary parse failed:", result.error, "raw:", raw.slice(0, 500));
-    return null;
-  }
-  return result.value;
+  const sourceText = [homepageBlock ?? "", signalsBlock, reviewBlock].join("\n\n");
+  const result = await groundedAiCall({
+    taskName: "summarize_competitor",
+    config: AI_CONFIG.classification,
+    prompt,
+    sourceText,
+    schema: SummarySchema,
+    maxTokens: 512,
+  });
+  return result ? attachQuality(result.output, result.quality) : null;
 }

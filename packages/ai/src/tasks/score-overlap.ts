@@ -1,8 +1,7 @@
 import { z } from "zod";
-import { withAiCache } from "@outrival/shared";
-import { complete } from "../provider";
 import { AI_CONFIG } from "../config";
-import { safeParseJson } from "../lib/parse";
+import { groundedAiCall } from "../grounding/grounded-call";
+import { attachQuality, emptyQuality, type WithQuality } from "../grounding/types";
 import type { ProductProfile } from "./analyze-product";
 
 const CACHE_TTL_SECONDS = Number(process.env.AI_CACHE_TTL_SCORE_DAYS ?? 30) * 86400;
@@ -32,8 +31,8 @@ export interface ScoredCandidate {
 export async function scoreOverlap(
   profile: ProductProfile,
   candidates: Candidate[],
-): Promise<ScoredCandidate[]> {
-  if (candidates.length === 0) return [];
+): Promise<WithQuality<ScoredCandidate[]>> {
+  if (candidates.length === 0) return attachQuality<ScoredCandidate[]>([], emptyQuality("high"));
 
   const prompt = `<my_product>
 Category: ${profile.category}
@@ -64,34 +63,34 @@ Write the "reason" in English.
   // Canonical key over both inputs — same product + same candidate set → cached.
   const cacheInput = JSON.stringify({ profile, candidates });
 
-  const { value } = await withAiCache<ScoredCandidate[] | null>(
-    cacheInput,
-    { namespace: "score-overlap", ttlSeconds: CACHE_TTL_SECONDS },
-    async () => {
-      const raw = await complete(AI_CONFIG.classificationFast, {
-        prompt,
-        json: true,
-        maxTokens: 2048,
-      });
-      const result = safeParseJson(raw, ScoredSchema);
-      if (!result.ok) {
-        console.error("Overlap scoring parse failed:", result.error, "raw:", raw.slice(0, 500));
-        return null; // never cache a scoring failure
-      }
+  const result = await groundedAiCall({
+    taskName: "score_overlap",
+    config: AI_CONFIG.classificationFast,
+    prompt,
+    sourceText: cacheInput,
+    schema: ScoredSchema,
+    maxTokens: 2048,
+    cache: { input: cacheInput, namespace: "score-overlap", ttlSeconds: CACHE_TTL_SECONDS },
+  });
 
-      const byUrl = new Map<string, { overlapScore: number; reason: string }>();
-      for (const s of result.value.scores) {
-        byUrl.set(s.url, { overlapScore: s.overlap_score, reason: s.reason });
-      }
+  if (!result) {
+    return attachQuality(
+      candidates.map((c) => ({ url: c.url, overlapScore: 0, reason: "scoring failed" })),
+      emptyQuality("low"),
+    );
+  }
 
-      return candidates.map((c) => {
-        const scored = byUrl.get(c.url);
-        return scored
-          ? { url: c.url, overlapScore: scored.overlapScore, reason: scored.reason }
-          : { url: c.url, overlapScore: 0, reason: "not scored" };
-      });
-    },
-  );
+  const byUrl = new Map<string, { overlapScore: number; reason: string }>();
+  for (const s of result.output.scores) {
+    byUrl.set(s.url, { overlapScore: s.overlap_score, reason: s.reason });
+  }
 
-  return value ?? candidates.map((c) => ({ url: c.url, overlapScore: 0, reason: "scoring failed" }));
+  const scored = candidates.map((c) => {
+    const hit = byUrl.get(c.url);
+    return hit
+      ? { url: c.url, overlapScore: hit.overlapScore, reason: hit.reason }
+      : { url: c.url, overlapScore: 0, reason: "not scored" };
+  });
+
+  return attachQuality(scored, result.quality);
 }

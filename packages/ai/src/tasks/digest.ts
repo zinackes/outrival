@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { complete } from "../provider";
 import { AI_CONFIG } from "../config";
-import { safeParseJson } from "../lib/parse";
+import { groundedAiCall } from "../grounding/grounded-call";
+import { attachQuality, type WithQuality } from "../grounding/types";
 
 export const DigestSchema = z.object({
   temperature: z.enum(["low", "moderate", "high"]),
@@ -35,7 +35,7 @@ export interface DigestInputSignal {
 
 export async function generateDigest(
   signals: DigestInputSignal[],
-): Promise<Digest | null> {
+): Promise<WithQuality<Digest> | null> {
   const prompt = `<signals>
 ${JSON.stringify(signals, null, 2)}
 </signals>
@@ -60,11 +60,13 @@ Reply ONLY with valid JSON, no markdown.
 }
 </format>`;
 
-  const raw = await complete(AI_CONFIG.digest, { prompt, json: true, maxTokens: 2048 });
-  const result = safeParseJson(raw, DigestSchema);
-  if (!result.ok) {
-    console.error("Digest parse failed:", result.error, "raw:", raw.slice(0, 500));
-    return null;
-  }
-  return result.value;
+  const result = await groundedAiCall({
+    taskName: "generate_digest",
+    config: AI_CONFIG.digest,
+    prompt,
+    sourceText: JSON.stringify(signals, null, 2),
+    schema: DigestSchema,
+    maxTokens: 2048,
+  });
+  return result ? attachQuality(result.output, result.quality) : null;
 }

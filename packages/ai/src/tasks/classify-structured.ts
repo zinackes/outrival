@@ -1,8 +1,7 @@
 import { z } from "zod";
-import { withAiCache } from "@outrival/shared";
-import { complete } from "../provider";
 import { AI_CONFIG } from "../config";
-import { safeParseJson } from "../lib/parse";
+import { groundedAiCall } from "../grounding/grounded-call";
+import { attachQuality, type WithQuality } from "../grounding/types";
 import { ClassificationSchema, type Classification } from "./classify";
 
 const CACHE_TTL_SECONDS = Number(process.env.AI_CACHE_TTL_CLASSIFY_DAYS ?? 7) * 86400;
@@ -66,7 +65,7 @@ function renderForPrompt(changes: StructuredChangeInput[]): string {
 export async function classifyStructuredChanges(
   changes: StructuredChangeInput[],
   context: ClassifyStructuredContext = {},
-): Promise<StructuredClassification | null> {
+): Promise<WithQuality<StructuredClassification> | null> {
   if (changes.length === 0) return null;
 
   const where = [context.competitorName, context.sourceType === "homepage" ? "homepage" : context.sourceType]
@@ -127,22 +126,17 @@ SAME ORDER as the numbered list above.
     JSON.stringify(changes),
   ].join("\n");
 
-  const { value } = await withAiCache(
-    cacheKey,
-    { namespace: "classify-structured", ttlSeconds: CACHE_TTL_SECONDS },
-    async () => {
-      const raw = await complete(AI_CONFIG.classification, { prompt, json: true });
-      const result = safeParseJson(raw, StructuredOutputSchema);
-      if (!result.ok) {
-        console.error("Structured classification parse failed:", result.error, "raw:", raw.slice(0, 500));
-        return null;
-      }
-      return result.value;
-    },
-  );
-  if (!value) return null;
+  const result = await groundedAiCall({
+    taskName: "classify_change",
+    config: AI_CONFIG.classification,
+    prompt,
+    sourceText: renderForPrompt(changes).slice(0, 8000),
+    schema: StructuredOutputSchema,
+    cache: { input: cacheKey, namespace: "classify-structured", ttlSeconds: CACHE_TTL_SECONDS },
+  });
+  if (!result) return null;
 
-  const { assessments, ...classification } = value;
+  const { assessments, ...classification } = result.output;
   // Zip the model's significances back onto the input changes by index. If the
   // model returned a mismatched length, default to "minor" — never crash.
   const perChangeAssessment: PerChangeAssessment[] = changes.map((c, i) => ({
@@ -150,5 +144,5 @@ SAME ORDER as the numbered list above.
     significance: assessments[i] ?? "minor",
   }));
 
-  return { classification, perChangeAssessment };
+  return attachQuality({ classification, perChangeAssessment }, result.quality);
 }

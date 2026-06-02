@@ -1,6 +1,6 @@
-import { complete } from "../provider";
 import { AI_CONFIG } from "../config";
-import { safeParseJson } from "../lib/parse";
+import { groundedAiCall } from "../grounding/grounded-call";
+import { attachQuality, type WithQuality } from "../grounding/types";
 import { InsightSchema, type Insight } from "./insight";
 import type { PricingStatus, PricingRepositioningType } from "@outrival/shared";
 
@@ -26,7 +26,7 @@ const STATUS_MEANINGS = `- public: prices fully visible
  */
 export async function generateRepositioningInsight(
   input: RepositioningInput,
-): Promise<Insight | null> {
+): Promise<WithQuality<Insight> | null> {
   const prompt = `<context>
 Competitor: ${input.competitorName}
 Product category: ${input.competitorCategory ?? "unknown"}
@@ -54,11 +54,12 @@ text. Write all text values in English.
 }
 </format>`;
 
-  const raw = await complete(AI_CONFIG.insights, { prompt, json: true });
-  const result = safeParseJson(raw, InsightSchema);
-  if (!result.ok) {
-    console.error("Repositioning insight parse failed:", result.error, "raw:", raw.slice(0, 500));
-    return null;
-  }
-  return result.value;
+  const result = await groundedAiCall({
+    taskName: "detect_pricing_strategy",
+    config: AI_CONFIG.insights,
+    prompt,
+    sourceText: input.diffText.slice(0, 4000),
+    schema: InsightSchema,
+  });
+  return result ? attachQuality(result.output, result.quality) : null;
 }

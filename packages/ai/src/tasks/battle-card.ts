@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { complete } from "../provider";
 import { AI_CONFIG } from "../config";
-import { safeParseJson } from "../lib/parse";
+import { groundedAiCall } from "../grounding/grounded-call";
+import { attachQuality, type WithQuality } from "../grounding/types";
 
 export const BattleCardSchema = z.object({
   their_strengths: z.array(z.string()).max(5),
@@ -32,7 +32,7 @@ export interface BattleCardInput {
 
 export async function generateBattleCard(
   input: BattleCardInput,
-): Promise<BattleCardContent | null> {
+): Promise<WithQuality<BattleCardContent> | null> {
   const signalsBlock = input.recentSignals.length
     ? input.recentSignals
         .slice(0, 8)
@@ -95,11 +95,22 @@ Reply ONLY with a valid JSON object, no markdown and no surrounding text.
 }
 </format>`;
 
-  const raw = await complete(AI_CONFIG.insights, { prompt, json: true, maxTokens: 2048 });
-  const result = safeParseJson(raw, BattleCardSchema);
-  if (!result.ok) {
-    console.error("Battle card parse failed:", result.error, "raw:", raw.slice(0, 500));
-    return null;
-  }
-  return result.value;
+  // Ground the card against the real inputs we fed it (summary + reviews + signals),
+  // so cited "their strength / weakness" claims must trace back to evidence.
+  const sourceText = [
+    input.competitorSummary ?? "",
+    `What their customers love:\n${praisesBlock}`,
+    `What their customers complain about:\n${complaintsBlock}`,
+    `Recent signals:\n${signalsBlock}`,
+  ].join("\n\n");
+
+  const result = await groundedAiCall({
+    taskName: "generate_battle_card",
+    config: AI_CONFIG.insights,
+    prompt,
+    sourceText,
+    schema: BattleCardSchema,
+    maxTokens: 2048,
+  });
+  return result ? attachQuality(result.output, result.quality) : null;
 }

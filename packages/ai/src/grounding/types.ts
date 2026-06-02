@@ -58,9 +58,34 @@ export interface GroundedCallParams<T> {
 /** Output object with the quality envelope attached for the persisting caller. */
 export type WithQuality<T> = T & { _quality: GroundedQuality };
 
+/**
+ * Attach the quality envelope to a task's output as a NON-ENUMERABLE property, so
+ * `JSON.stringify` (and therefore Drizzle jsonb persistence, the Redis cache, and
+ * object spreads) never serialises it into stored domain data — only an explicit
+ * `output._quality` read sees it. Callers' output path is unchanged; the persisting
+ * job/route reads `._quality`.
+ */
+/** A neutral quality envelope (no citations, no self-check) for fallback paths. */
+export function emptyQuality(confidence: Confidence = "low"): GroundedQuality {
+  return {
+    confidence,
+    citations: [],
+    groundingValidation: { passed: true, score: 1, failedCitations: [], validCitations: [] },
+    selfCheck: null,
+    selfCheckTriggeredBy: null,
+    flaggedForHumanReview: false,
+  };
+}
+
 export function attachQuality<T extends object>(
   output: T,
   quality: GroundedQuality,
 ): WithQuality<T> {
-  return Object.assign(output as object, { _quality: quality }) as WithQuality<T>;
+  Object.defineProperty(output, "_quality", {
+    value: quality,
+    enumerable: false,
+    writable: true,
+    configurable: true,
+  });
+  return output as WithQuality<T>;
 }

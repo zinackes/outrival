@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { complete } from "../provider";
 import { AI_CONFIG } from "../config";
-import { safeParseJson } from "../lib/parse";
+import { groundedAiCall } from "../grounding/grounded-call";
+import { attachQuality, type WithQuality } from "../grounding/types";
 
 export const SelfProfileExtractionSchema = z.object({
   // One short phrase for the kind of product this is (e.g. "Competitive intelligence
@@ -28,7 +28,7 @@ export type SelfProfileExtraction = z.infer<typeof SelfProfileExtractionSchema>;
  */
 export async function extractSelfProfile(
   homepageText: string,
-): Promise<SelfProfileExtraction | null> {
+): Promise<WithQuality<SelfProfileExtraction> | null> {
   const prompt = `<homepage>
 ${homepageText.slice(0, 6000)}
 </homepage>
@@ -58,11 +58,12 @@ Write all text values in English. Cap each list at 12 items.
 }
 </format>`;
 
-  const raw = await complete(AI_CONFIG.classification, { prompt, json: true });
-  const result = safeParseJson(raw, SelfProfileExtractionSchema);
-  if (!result.ok) {
-    console.error("Self profile extraction parse failed:", result.error, "raw:", raw.slice(0, 500));
-    return null;
-  }
-  return result.value;
+  const result = await groundedAiCall({
+    taskName: "extract_features",
+    config: AI_CONFIG.classification,
+    prompt,
+    sourceText: homepageText.slice(0, 6000),
+    schema: SelfProfileExtractionSchema,
+  });
+  return result ? attachQuality(result.output, result.quality) : null;
 }

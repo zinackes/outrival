@@ -1,8 +1,7 @@
 import { z } from "zod";
-import { withAiCache } from "@outrival/shared";
-import { complete } from "../provider";
 import { AI_CONFIG } from "../config";
-import { safeParseJson } from "../lib/parse";
+import { groundedAiCall } from "../grounding/grounded-call";
+import { attachQuality, type WithQuality } from "../grounding/types";
 
 const CACHE_TTL_SECONDS = Number(process.env.AI_CACHE_TTL_ANALYZE_DAYS ?? 30) * 86400;
 
@@ -37,7 +36,9 @@ export function buildDiscoveryQuery(
   return extra ? `${base} ${extra}` : base;
 }
 
-export async function analyzeProduct(homepageText: string): Promise<ProductProfile | null> {
+export async function analyzeProduct(
+  homepageText: string,
+): Promise<WithQuality<ProductProfile> | null> {
   const prompt = `<homepage>
 ${homepageText.slice(0, 4000)}
 </homepage>
@@ -57,19 +58,14 @@ Write all text values in English.
 }
 </format>`;
 
-  const { value } = await withAiCache(
-    homepageText,
-    { namespace: "analyze", ttlSeconds: CACHE_TTL_SECONDS },
-    async () => {
-      // Keep the 70b model here — product profiling needs richer reasoning.
-      const raw = await complete(AI_CONFIG.classification, { prompt, json: true });
-      const result = safeParseJson(raw, ProductProfileSchema);
-      if (!result.ok) {
-        console.error("Product analysis parse failed:", result.error, "raw:", raw.slice(0, 500));
-        return null;
-      }
-      return result.value;
-    },
-  );
-  return value;
+  // Keep the 70b model here — product profiling needs richer reasoning.
+  const result = await groundedAiCall({
+    taskName: "analyze_product",
+    config: AI_CONFIG.classification,
+    prompt,
+    sourceText: homepageText.slice(0, 4000),
+    schema: ProductProfileSchema,
+    cache: { input: homepageText, namespace: "analyze", ttlSeconds: CACHE_TTL_SECONDS },
+  });
+  return result ? attachQuality(result.output, result.quality) : null;
 }

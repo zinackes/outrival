@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { complete } from "../provider";
 import { AI_CONFIG } from "../config";
-import { safeParseJson } from "../lib/parse";
+import { groundedAiCall } from "../grounding/grounded-call";
+import { attachQuality, type WithQuality } from "../grounding/types";
 import type { DetectedPattern } from "./types";
 
 export const SectoralSignalDraftSchema = z.object({
@@ -22,7 +22,7 @@ export interface SectoralUserContext {
 export async function formulateSectoralSignal(
   pattern: DetectedPattern,
   userContext: SectoralUserContext,
-): Promise<SectoralSignalDraft | null> {
+): Promise<WithQuality<SectoralSignalDraft> | null> {
   const prompt = `You are a sector analyst writing for a company in the "${userContext.category || "software"}" space (audience: ${userContext.audience || "businesses"}).
 
 A statistical detector found this trend across THEIR OWN tracked competitors:
@@ -48,11 +48,13 @@ Reply ONLY with valid JSON, no markdown.
 { "title": "...", "insight": "..." }
 </format>`;
 
-  const raw = await complete(AI_CONFIG.insights, { prompt, json: true, maxTokens: 512 });
-  const result = safeParseJson(raw, SectoralSignalDraftSchema);
-  if (!result.ok) {
-    console.error("Sectoral formulation parse failed:", result.error, "raw:", raw.slice(0, 300));
-    return null;
-  }
-  return result.value;
+  const result = await groundedAiCall({
+    taskName: "detect_sector_signals",
+    config: AI_CONFIG.insights,
+    prompt,
+    sourceText: `${pattern.rawSignal}\n${JSON.stringify(pattern.evidence, null, 2)}`,
+    schema: SectoralSignalDraftSchema,
+    maxTokens: 512,
+  });
+  return result ? attachQuality(result.output, result.quality) : null;
 }

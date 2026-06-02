@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { complete } from "../provider";
 import { AI_CONFIG } from "../config";
-import { safeParseJson } from "../lib/parse";
+import { groundedAiCall } from "../grounding/grounded-call";
+import { attachQuality, type WithQuality } from "../grounding/types";
 
 /**
  * Second stage of structural-change detection (patch-23): given a competitor's
@@ -38,7 +38,7 @@ export interface VerifyContentInput {
 
 export async function verifyContentMatchesProfile(
   input: VerifyContentInput,
-): Promise<VerifyContentResult | null> {
+): Promise<WithQuality<VerifyContentResult> | null> {
   const { competitor } = input;
   const prompt = `You verify whether the current content of a website still matches the profile of the competitor we are tracking.
 
@@ -63,7 +63,12 @@ Reply with strict JSON only, no markdown, no preamble. Write all text values in 
   "reasoning": string
 }`;
 
-  const raw = await complete(AI_CONFIG.insights, { prompt, json: true });
-  const parsed = safeParseJson(raw, VerifyContentSchema);
-  return parsed.ok ? parsed.value : null;
+  const result = await groundedAiCall({
+    taskName: "verify_content_profile",
+    config: AI_CONFIG.insights,
+    prompt,
+    sourceText: input.currentContent.slice(0, 3000),
+    schema: VerifyContentSchema,
+  });
+  return result ? attachQuality(result.output, result.quality) : null;
 }

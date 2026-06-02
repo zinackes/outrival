@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { complete } from "../provider";
 import { AI_CONFIG } from "../config";
-import { safeParseJson } from "../lib/parse";
+import { groundedAiCall } from "../grounding/grounded-call";
+import { attachQuality, type WithQuality } from "../grounding/types";
 import type { Classification } from "./classify";
 
 export const InsightSchema = z.object({
@@ -17,7 +17,7 @@ export async function generateInsight(
   competitorName: string,
   competitorCategory: string | null,
   classification: Classification,
-): Promise<Insight | null> {
+): Promise<WithQuality<Insight> | null> {
   const prompt = `<context>
 Competitor: ${competitorName}
 Product category: ${competitorCategory ?? "unknown"}
@@ -42,11 +42,12 @@ Write all text values in English.
 }
 </format>`;
 
-  const raw = await complete(AI_CONFIG.insights, { prompt, json: true });
-  const result = safeParseJson(raw, InsightSchema);
-  if (!result.ok) {
-    console.error("Insight parse failed:", result.error, "raw:", raw.slice(0, 500));
-    return null;
-  }
-  return result.value;
+  const result = await groundedAiCall({
+    taskName: "generate_signal",
+    config: AI_CONFIG.insights,
+    prompt,
+    sourceText: diffText.slice(0, 8000),
+    schema: InsightSchema,
+  });
+  return result ? attachQuality(result.output, result.quality) : null;
 }

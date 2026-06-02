@@ -1,8 +1,7 @@
 import { z } from "zod";
-import { withAiCache } from "@outrival/shared";
-import { complete } from "../provider";
 import { AI_CONFIG } from "../config";
-import { safeParseJson } from "../lib/parse";
+import { groundedAiCall } from "../grounding/grounded-call";
+import { attachQuality, type WithQuality } from "../grounding/types";
 
 const CACHE_TTL_SECONDS = Number(process.env.AI_CACHE_TTL_CLASSIFY_DAYS ?? 7) * 86400;
 
@@ -48,7 +47,7 @@ const SOURCE_LABELS: Record<string, string> = {
 export async function classifyChange(
   diffText: string,
   context: ClassifyContext = {},
-): Promise<Classification | null> {
+): Promise<WithQuality<Classification> | null> {
   const sourceLabel = context.sourceType
     ? (SOURCE_LABELS[context.sourceType] ?? context.sourceType)
     : null;
@@ -93,18 +92,13 @@ return null for BOTH fields.
   // Key on the context too: the same diff on different page types / competitors
   // now yields a different prompt, so it must not share a cache entry.
   const cacheKey = [context.sourceType ?? "", context.competitorName ?? "", diffText].join("\n");
-  const { value } = await withAiCache(
-    cacheKey,
-    { namespace: "classify", ttlSeconds: CACHE_TTL_SECONDS },
-    async () => {
-      const raw = await complete(AI_CONFIG.classificationFast, { prompt, json: true });
-      const result = safeParseJson(raw, ClassificationSchema);
-      if (!result.ok) {
-        console.error("Classification parse failed:", result.error, "raw:", raw.slice(0, 500));
-        return null;
-      }
-      return result.value;
-    },
-  );
-  return value;
+  const result = await groundedAiCall({
+    taskName: "classify_change",
+    config: AI_CONFIG.classificationFast,
+    prompt,
+    sourceText: diffText.slice(0, 8000),
+    schema: ClassificationSchema,
+    cache: { input: cacheKey, namespace: "classify", ttlSeconds: CACHE_TTL_SECONDS },
+  });
+  return result ? attachQuality(result.output, result.quality) : null;
 }

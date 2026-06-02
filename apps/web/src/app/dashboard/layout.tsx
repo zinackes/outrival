@@ -6,8 +6,10 @@ import { PostHogIdentitySync } from "@/lib/posthog/identity-sync";
 import { FeedbackWidget } from "@/components/outrival/feedback-widget";
 import { NpsPrompt } from "@/components/outrival/nps-prompt";
 import { OnboardingBanner } from "@/components/outrival/onboarding-banner";
+import { OnboardingResumeBanner } from "@/components/onboarding/resume-banner";
 import { AiStatusBanner } from "@/components/outrival/ai-status-banner";
 import { StructuralChangeBanner } from "@/components/outrival/structural-change-banner";
+import type { OnboardingSession } from "@/lib/api";
 
 export const metadata: Metadata = {
   title: "Dashboard",
@@ -36,6 +38,18 @@ async function getOnboardingStatus(
   );
   if (!res.ok) return null;
   return res.json();
+}
+
+async function getResumeSession(
+  h: Headers,
+): Promise<OnboardingSession | null> {
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_API_URL}/api/onboarding-session/current`,
+    { headers: h, cache: "no-store" },
+  );
+  if (!res.ok) return null;
+  const data = (await res.json()) as { session: OnboardingSession | null };
+  return data.session;
 }
 
 async function getBilling(h: Headers): Promise<{
@@ -67,10 +81,11 @@ export default async function DashboardLayout({
   const h = await headers();
   const cookieStore = await cookies();
 
-  const [session, status, billing] = await Promise.all([
+  const [session, status, billing, resumeSession] = await Promise.all([
     getSession(h),
     getOnboardingStatus(h),
     getBilling(h),
+    getResumeSession(h),
   ]);
 
   if (!session) redirect("/auth");
@@ -78,8 +93,10 @@ export default async function DashboardLayout({
   if (status && !status.onboardingCompleted && !status.onboardingSkipped) {
     redirect("/onboarding");
   }
+  // The richer resume banner supersedes the bare onboarding nudge when there's an
+  // unfinished session to pick up.
   const showOnboardingBanner = Boolean(
-    status?.onboardingSkipped && !status?.profile,
+    !resumeSession && status?.onboardingSkipped && !status?.profile,
   );
 
   const user = {
@@ -103,6 +120,7 @@ export default async function DashboardLayout({
   return (
     <DashboardShell user={user} org={org} defaultOpen={defaultOpen}>
       {userId && <PostHogIdentitySync userId={userId} plan={org.plan} />}
+      {resumeSession && <OnboardingResumeBanner session={resumeSession} />}
       {showOnboardingBanner && <OnboardingBanner />}
       <AiStatusBanner />
       <div className="px-4 pt-4 sm:px-6 empty:hidden">

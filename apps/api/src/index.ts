@@ -33,6 +33,7 @@ import { authRouter } from "./routes/auth";
 import { monitorAlternativesRouter } from "./routes/monitor-alternatives";
 import { manualSnapshotsRouter } from "./routes/manual-snapshots";
 import { structuralChangesRouter } from "./routes/structural-changes";
+import { aiQualityRouter } from "./routes/ai-quality";
 
 const app = new Hono();
 
@@ -82,6 +83,7 @@ app.route("/api/system", systemRouter);
 app.route("/api/monitor-alternatives", monitorAlternativesRouter);
 app.route("/api/manual-snapshots", manualSnapshotsRouter);
 app.route("/api/structural-changes", structuralChangesRouter);
+app.route("/api/ai-quality", aiQualityRouter);
 app.route("/api/admin", adminRouter);
 
 // DEV-ONLY — manual cron trigger console. Never mounted in production; remove

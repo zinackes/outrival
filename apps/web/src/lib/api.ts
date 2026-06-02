@@ -1190,6 +1190,13 @@ export const api = {
   deleteQualityFeedback: (id: string) =>
     request<{ ok: true }>(`/api/feedback-quality/${id}`, { method: "DELETE" }),
 
+  // --- Anti-hallucination (patch-24): user acknowledges a flagged output ---
+  acknowledgeAiQuality: (targetType: "signal" | "battle_card" | "digest", targetId: string) =>
+    request<{ ok: true }>(
+      `/api/ai-quality/${targetType}/${encodeURIComponent(targetId)}/acknowledge`,
+      { method: "POST" },
+    ),
+
   // --- Edge cases scraping (patch-23) ---
   getMonitorAlternatives: (monitorId: string) =>
     request<{ alternatives: MonitorAlternative[] }>(`/api/monitor-alternatives/${monitorId}`),

@@ -1,3 +1,4 @@
+import { and, eq } from "drizzle-orm";
 import { db } from "../client";
 import { aiQualityChecks } from "../schema";
 
@@ -53,4 +54,31 @@ export async function insertAiQualityCheck(input: QualityCheckInput): Promise<st
     console.error("insertAiQualityCheck failed (non-fatal):", err instanceof Error ? err.message : err);
     return null;
   }
+}
+
+/**
+ * User self-acknowledges a flagged output ("I checked, it's fine"): clears the
+ * flag and records a false-positive resolution. Scoped to the user's org so a user
+ * can only resolve their own workspace's outputs.
+ */
+export async function acknowledgeQualityChecks(
+  targetType: string,
+  targetId: string,
+  orgId: string,
+): Promise<void> {
+  await db
+    .update(aiQualityChecks)
+    .set({
+      flaggedForHumanReview: false,
+      reviewResolution: "false_positive",
+      reviewedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(aiQualityChecks.targetType, targetType),
+        eq(aiQualityChecks.targetId, targetId),
+        eq(aiQualityChecks.orgId, orgId),
+        eq(aiQualityChecks.flaggedForHumanReview, true),
+      ),
+    );
 }

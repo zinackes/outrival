@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Check } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import type { Signal } from "@/lib/api";
@@ -12,6 +13,7 @@ import { SignalSourceLine } from "@/components/outrival/signal-source-line";
 import { FeedbackButtons } from "@/components/outrival/feedback-buttons";
 import { SeverityFeedback } from "@/components/outrival/severity-feedback";
 import { ConfidenceDot } from "@/components/outrival/confidence-dot";
+import { AiOutputWarning } from "@/components/outrival/ai-output-warning";
 
 interface SignalCardProps {
   signal: Signal;
@@ -26,6 +28,7 @@ export function SignalCard({
   onOpenCompetitor,
   first,
 }: SignalCardProps) {
+  const [flagged, setFlagged] = useState(signal.aiFlagged ?? false);
   const hasDetails = Boolean(
     signal.soWhat ||
       (signal.recommendedAction && signal.recommendedAction !== "—"),
@@ -61,6 +64,16 @@ export function SignalCard({
           <span className="w-[7px] h-[7px] rounded-full bg-primary" />
         )}
       </div>
+
+      {/* Self-check warning (patch-24): shown above the content, which stays
+          visible — transparency, not silent removal. */}
+      {flagged && (
+        <AiOutputWarning
+          targetType="signal"
+          targetId={signal.id}
+          onResolved={() => setFlagged(false)}
+        />
+      )}
 
       <p className="text-[15px] leading-normal mb-4 font-medium tracking-tight">
         {signal.insight}

@@ -31,6 +31,7 @@ import {
   ApiError,
   api,
   type DiscoveredCompetitor,
+  type OnboardingMode,
   type OnboardingStep,
   type ProductProfile,
   type ProjectStage,
@@ -194,7 +195,7 @@ export function OnboardingForm({
   initialProfile: ProductProfile | null;
 }) {
   const router = useRouter();
-  const { sessionId, updateSession } = useOnboardingSession();
+  const { session, sessionId, updateSession } = useOnboardingSession();
   const planLimits = PLAN_LIMITS[plan];
   const maxCompetitors = planLimits.maxCompetitors;
   const allowedFrequencies = planLimits.allowedFrequencies;
@@ -244,6 +245,23 @@ export function OnboardingForm({
   const [discoveryStatus, setDiscoveryStatus] = useState<"idle" | "running" | "completed">("idle");
   const prefetchRef = useRef<{ key: string; competitors: DiscoveredCompetitor[] } | null>(null);
   const prefetchAbort = useRef<AbortController | null>(null);
+
+  // Onboarding mode (patch-25): quick_start (default) keeps to the essentials;
+  // "Customize more" switches to full and opens the advanced monitoring controls.
+  const [mode, setMode] = useState<OnboardingMode>("quick_start");
+  const modeAdopted = useRef(false);
+  useEffect(() => {
+    if (session?.mode && !modeAdopted.current) {
+      modeAdopted.current = true;
+      setMode(session.mode);
+    }
+  }, [session?.mode]);
+
+  function enableFullMode() {
+    if (mode === "full") return;
+    setMode("full");
+    void updateSession({ mode: "full" });
+  }
 
   // Fire onboarding_started once the session id is known (so every funnel event
   // shares it). The session loads async; this waits for it.
@@ -633,6 +651,7 @@ export function OnboardingForm({
       });
       trackOnboarding(ONBOARDING_EVENTS.COMPETITORS_FINALIZED, sessionId, {
         competitorCount: selected.length,
+        mode,
       });
       void updateSession({
         timings: { [milestoneKey(ONBOARDING_EVENTS.COMPETITORS_FINALIZED)]: Date.now() },
@@ -702,6 +721,8 @@ export function OnboardingForm({
               onBack={() => goTo("input")}
               busy={busy === "discover"}
               prefetchStatus={discoveryStatus}
+              mode={mode}
+              onCustomize={enableFullMode}
             />
           )}
 
@@ -735,6 +756,7 @@ export function OnboardingForm({
               busy={busy === "complete"}
               onConfirm={handleComplete}
               onBack={() => goTo("discover")}
+              defaultAdvanced={mode === "full"}
             />
           )}
 
@@ -1205,6 +1227,8 @@ function ProfileForm({
   onBack,
   busy,
   prefetchStatus,
+  mode,
+  onCustomize,
 }: {
   profile: ProductProfile;
   setProfile: (p: ProductProfile) => void;
@@ -1212,6 +1236,8 @@ function ProfileForm({
   onBack: () => void;
   busy: boolean;
   prefetchStatus: "idle" | "running" | "completed";
+  mode: OnboardingMode;
+  onCustomize: () => void;
 }) {
   return (
     <div>
@@ -1265,12 +1291,22 @@ function ProfileForm({
         </p>
       )}
 
+      {mode === "quick_start" && (
+        <button
+          type="button"
+          onClick={onCustomize}
+          className="mt-4 inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ChevronDown size={13} /> Customize more
+        </button>
+      )}
+
       <FooterNav
         onBack={onBack}
         onSubmit={onConfirm}
         busy={busy}
         busyLabel="Finding competitors…"
-        primaryLabel="Looks right"
+        primaryLabel={mode === "quick_start" ? "Looks right, find competitors" : "Looks right"}
         hint={busy ? "~ 15 to 30 seconds" : undefined}
       />
     </div>
@@ -1512,6 +1548,7 @@ function MonitoringStep({
   busy,
   onConfirm,
   onBack,
+  defaultAdvanced,
 }: {
   frequency: Frequency;
   setFrequency: (f: Frequency) => void;
@@ -1523,8 +1560,9 @@ function MonitoringStep({
   busy: boolean;
   onConfirm: () => void | Promise<void>;
   onBack: () => void;
+  defaultAdvanced: boolean;
 }) {
-  const [advanced, setAdvanced] = useState(false);
+  const [advanced, setAdvanced] = useState(defaultAdvanced);
 
   return (
     <div>

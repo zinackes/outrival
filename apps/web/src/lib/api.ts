@@ -691,6 +691,22 @@ export type AdminCost = {
   };
 };
 
+export type AdminOnboardingMetrics = {
+  windowDays: number;
+  total: number;
+  byStatus: { completed: number; abandoned: number; inProgress: number; other: number };
+  modeSplit: { quick_start: number; full: number };
+  segments: Array<{
+    key: string;
+    label: string;
+    count: number;
+    medianMs: number | null;
+    p90Ms: number | null;
+    p95Ms: number | null;
+  }>;
+  funnel: Array<{ key: string; label: string; reached: number; dropoffPct: number | null }>;
+};
+
 export type AdminUserRow = {
   userId: string;
   email: string;

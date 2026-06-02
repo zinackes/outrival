@@ -11,6 +11,7 @@ import {
   feedback,
   qualityFeedback,
   auditLog,
+  onboardingSessions,
   monitorAlternatives,
   structuralChanges,
   listFlaggedQualityChecks,
@@ -815,4 +816,92 @@ adminRouter.get("/ai-quality-metrics", async (c) => {
     getConfidenceDistribution(30),
   ]);
   return c.json({ windowDays: 30, stats, byTask, confidence });
+});
+
+// Onboarding metrics from onboarding_sessions (patch-25). Computed in JS — the
+// 30d row count is small — over the per-milestone timings: step durations
+// (median/p90/p95), funnel drop-off, status + mode split. No PostHog/ClickHouse
+// dependency (PostHog events aren't queryable there).
+function percentile(values: number[], p: number): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const idx = Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length));
+  return sorted[idx] ?? null;
+}
+
+const ONBOARDING_SEGMENTS: Array<{ key: string; label: string; from: string; to: string }> = [
+  { key: "analyze", label: "URL → Product analyzed", from: "product_url_submitted", to: "product_analyzed" },
+  { key: "review", label: "Analyzed → Profile confirmed", from: "product_analyzed", to: "product_profile_confirmed" },
+  { key: "discovery", label: "Profile → Discovery completed", from: "product_profile_confirmed", to: "discovery_completed" },
+  { key: "choose", label: "Discovery → Competitors finalized", from: "discovery_completed", to: "competitors_finalized" },
+  { key: "first_signal", label: "Finalized → First signal", from: "competitors_finalized", to: "first_signal_received" },
+  { key: "aha", label: "Signup → First signal", from: "started", to: "first_signal_received" },
+  { key: "full", label: "Signup → Analysis completed", from: "started", to: "analysis_completed" },
+];
+
+// Funnel stages by milestone key, in order — drop-off is measured between them.
+const ONBOARDING_FUNNEL: Array<{ key: string; label: string }> = [
+  { key: "started", label: "Started" },
+  { key: "product_analyzed", label: "Product analyzed" },
+  { key: "product_profile_confirmed", label: "Profile confirmed" },
+  { key: "discovery_completed", label: "Discovery completed" },
+  { key: "competitors_finalized", label: "Competitors finalized" },
+  { key: "analysis_completed", label: "Analysis completed" },
+];
+
+adminRouter.get("/onboarding-metrics", async (c) => {
+  const windowDays = 30;
+  const cutoff = new Date(Date.now() - windowDays * 86_400_000);
+  const rows = await db
+    .select({
+      stage: onboardingSessions.stage,
+      mode: onboardingSessions.mode,
+      timings: onboardingSessions.timings,
+    })
+    .from(onboardingSessions)
+    .where(gte(onboardingSessions.startedAt, cutoff));
+
+  const total = rows.length;
+  const byStatus = { completed: 0, abandoned: 0, inProgress: 0, other: 0 };
+  const modeSplit = { quick_start: 0, full: 0 };
+  for (const r of rows) {
+    if (r.stage === "completed") byStatus.completed += 1;
+    else if (r.stage === "abandoned") byStatus.abandoned += 1;
+    else if (r.stage === "analysis_in_progress") byStatus.inProgress += 1;
+    else byStatus.other += 1;
+    if (r.mode === "full") modeSplit.full += 1;
+    else modeSplit.quick_start += 1;
+  }
+
+  const segments = ONBOARDING_SEGMENTS.map((seg) => {
+    const durations: number[] = [];
+    for (const r of rows) {
+      const t = (r.timings ?? {}) as Record<string, number>;
+      const a = t[seg.from];
+      const b = t[seg.to];
+      if (typeof a === "number" && typeof b === "number" && b >= a) durations.push(b - a);
+    }
+    return {
+      key: seg.key,
+      label: seg.label,
+      count: durations.length,
+      medianMs: percentile(durations, 50),
+      p90Ms: percentile(durations, 90),
+      p95Ms: percentile(durations, 95),
+    };
+  });
+
+  let prevReached: number | null = null;
+  const funnel = ONBOARDING_FUNNEL.map((stage) => {
+    const reached = rows.filter((r) => {
+      const t = (r.timings ?? {}) as Record<string, number>;
+      return typeof t[stage.key] === "number";
+    }).length;
+    const dropoffPct =
+      prevReached && prevReached > 0 ? (prevReached - reached) / prevReached : null;
+    prevReached = reached;
+    return { key: stage.key, label: stage.label, reached, dropoffPct };
+  });
+
+  return c.json({ windowDays, total, byStatus, modeSplit, segments, funnel });
 });

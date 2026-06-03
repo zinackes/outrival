@@ -17,6 +17,7 @@ import {
   Unplug,
   BellRing,
   Gauge,
+  Boxes,
 } from "lucide-react";
 
 const ITEMS = [
@@ -28,6 +29,7 @@ const ITEMS = [
   { href: "/admin/jobs", label: "Jobs", icon: ListChecks },
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/onboarding", label: "Onboarding", icon: Rocket },
+  { href: "/admin/multi-product", label: "Products", icon: Boxes },
   { href: "/admin/feedback", label: "Feedback", icon: MessageSquare },
   { href: "/admin/feedback-quality", label: "AI quality", icon: ThumbsUp },
   { href: "/admin/notification-moderation", label: "Notifications", icon: BellRing },

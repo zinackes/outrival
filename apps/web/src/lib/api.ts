@@ -921,6 +921,22 @@ export interface QualityFeedbackRow {
   createdAt: string;
 }
 
+// patch-28 — admin multi-product adoption metrics.
+export interface AdminMultiProductMetrics {
+  orgsWithProducts: number;
+  multiProductOrgs: number;
+  totalActiveProducts: number;
+  distribution: {
+    one: number;
+    two: number;
+    three: number;
+    fourToFive: number;
+    sixPlus: number;
+  };
+  associations: { shared: number; specific: number };
+  battleCards: { total: number; couples: number; avgPerProduct: number };
+}
+
 // patch-28 — a product (SKU) in the multi-product selector / settings.
 export interface ProductSummary {
   id: string;

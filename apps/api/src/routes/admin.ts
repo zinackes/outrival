@@ -6,6 +6,9 @@ import {
   organizations,
   users,
   competitors,
+  products,
+  productCompetitors,
+  battleCards,
   monitors,
   signals,
   feedback,
@@ -1116,4 +1119,54 @@ adminRouter.get("/onboarding-metrics", async (c) => {
   });
 
   return c.json({ windowDays, total, byStatus, modeSplit, segments, funnel });
+});
+
+// patch-28 — multi-product adoption: how many orgs run >1 SKU, the shared-vs-
+// specific competitor split (validates the hybrid model), and battle-card spread.
+adminRouter.get("/multi-product-metrics", async (c) => {
+  const perOrg = await db
+    .select({ orgId: products.orgId, n: sql<number>`count(*)::int` })
+    .from(products)
+    .where(ne(products.status, "archived"))
+    .groupBy(products.orgId);
+
+  const distribution = { one: 0, two: 0, three: 0, fourToFive: 0, sixPlus: 0 };
+  let multiProductOrgs = 0;
+  let totalActiveProducts = 0;
+  for (const r of perOrg) {
+    totalActiveProducts += r.n;
+    if (r.n >= 2) multiProductOrgs += 1;
+    if (r.n === 1) distribution.one += 1;
+    else if (r.n === 2) distribution.two += 1;
+    else if (r.n === 3) distribution.three += 1;
+    else if (r.n <= 5) distribution.fourToFive += 1;
+    else distribution.sixPlus += 1;
+  }
+
+  const [assoc] = await db
+    .select({
+      shared: sql<number>`count(*) filter (where ${productCompetitors.isSpecific} = false)::int`,
+      specific: sql<number>`count(*) filter (where ${productCompetitors.isSpecific} = true)::int`,
+    })
+    .from(productCompetitors);
+
+  const [cards] = await db
+    .select({
+      total: sql<number>`count(*)::int`,
+      couples: sql<number>`count(distinct (${battleCards.productId}, ${battleCards.competitorId}))::int`,
+    })
+    .from(battleCards);
+
+  return c.json({
+    orgsWithProducts: perOrg.length,
+    multiProductOrgs,
+    totalActiveProducts,
+    distribution,
+    associations: { shared: assoc?.shared ?? 0, specific: assoc?.specific ?? 0 },
+    battleCards: {
+      total: cards?.total ?? 0,
+      couples: cards?.couples ?? 0,
+      avgPerProduct: totalActiveProducts > 0 ? (cards?.total ?? 0) / totalActiveProducts : 0,
+    },
+  });
 });

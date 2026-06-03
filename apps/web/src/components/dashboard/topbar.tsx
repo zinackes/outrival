@@ -25,7 +25,7 @@ const ROUTE_TITLES: Record<string, string> = {
   "/dashboard/products": "Products",
   "/dashboard/discovery": "Discovery",
   "/dashboard/battle-cards": "Battle cards",
-  "/dashboard/settings/workspace": "Settings",
+  "/dashboard/settings/general": "Settings",
   "/dashboard/settings/notifications": "Settings",
   "/dashboard/digests": "Digests",
   "/dashboard/alerts": "Alerts",

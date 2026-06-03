@@ -19,6 +19,12 @@ const nextConfig: NextConfig = {
         destination: "/dashboard/discovery",
         permanent: true,
       },
+      // patch-29: settings General was renamed from Workspace.
+      {
+        source: "/dashboard/settings/workspace",
+        destination: "/dashboard/settings/general",
+        permanent: true,
+      },
     ];
   },
 };

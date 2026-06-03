@@ -47,7 +47,7 @@ const PERSONAL: NavItem[] = [
 ];
 
 const WORKSPACE: NavItem[] = [
-  { href: "/dashboard/settings/workspace", label: "General", icon: Building2, exact: true },
+  { href: "/dashboard/settings/general", label: "General", icon: Building2, exact: true },
   { href: "/dashboard/settings/products", label: "Products", icon: Boxes, exact: true },
   { href: "/dashboard/settings/billing", label: "Subscription", icon: CreditCard },
 ];

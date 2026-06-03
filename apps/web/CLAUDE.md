@@ -17,7 +17,8 @@ Stack : Next.js 15, Tailwind v4, shadcn/ui new-york, Better Auth client
 - hooks/        Custom hooks React
 
 ## Design system Outrival
-- Couleurs : dark theme, primary amber #F59E0B
-- Typo : Syne (headings, logo) + Inter (body)
+- Source de vérité : `PRODUCT.md` (stratégie/register) + `DESIGN.md` (système visuel) à la racine du repo
+- Couleurs : light + dark à parité (next-themes, `:root` = light), accent unique amber #F59E0B
+- Typo : Bricolage Grotesque (sans + display) + DM Mono (data/metadata) — défini dans `globals.css` + `layout.tsx`
 - Ne jamais utiliser de couleurs hardcodées — variables CSS Tailwind
 - Icônes : lucide-react uniquement

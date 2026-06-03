@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-06-03T00:00:00.000Z",
+  "title": "Design System: Outrival",
+  "extensions": {
+    "colorMeta": {
+      "signal-amber": {
+        "role": "primary",
+        "displayName": "Signal Amber",
+        "canonical": "#f59e0b",
+        "tonalRamp": ["#4a3203", "#7a5106", "#a86f09", "#d4890b", "#f59e0b", "#fbb734", "#fccb63", "#fde7bd"]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "rgba(0,0,0,0.92)",
+        "tonalRamp": ["#0b0b0d", "#131316", "#1a1a1f", "#26262d", "#737373", "#a1a1a6", "#e8e8eb", "#fafafa"]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Surface",
+        "canonical": "#ffffff",
+        "tonalRamp": ["#0b0b0d", "#131316", "#1a1a1f", "#26262d", "#e8e8eb", "#f4f4f5", "#ffffff", "#ffffff"]
+      },
+      "critical": { "role": "tertiary", "displayName": "Critical", "canonical": "#dc2626", "tonalRamp": ["#dc2626", "#ff4d4d"] },
+      "high": { "role": "tertiary", "displayName": "High", "canonical": "#ea580c", "tonalRamp": ["#ea580c", "#ff9f43"] },
+      "medium": { "role": "tertiary", "displayName": "Medium", "canonical": "#d97706", "tonalRamp": ["#d97706", "#ffc542"] },
+      "low": { "role": "tertiary", "displayName": "Low", "canonical": "#71717a", "tonalRamp": ["#71717a", "#8a8a94"] },
+      "positive": { "role": "tertiary", "displayName": "Positive", "canonical": "#059669", "tonalRamp": ["#059669", "#34d399"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Page-level titles on product surfaces; the landing may run larger." },
+      "title": { "displayName": "Title", "purpose": "Card titles and group headers. Small and tight; titles label, they don't shout." },
+      "body": { "displayName": "Body", "purpose": "Default UI text. Prose caps at 65-75ch; tables may run wider." },
+      "mono": { "displayName": "Mono (DM Mono)", "purpose": "The machine-truth voice: timestamps, counts, IDs, prices, diffs, metadata. Never prose or headings." }
+    },
+    "shadows": [
+      { "name": "overlay", "value": "0 8px 24px rgba(0,0,0,0.18)", "purpose": "Detached overlays only (dialog, dropdown, popover). Never on resting surfaces; the system is flat by default." },
+      { "name": "hairline", "value": "0 1px 2px rgba(0,0,0,0.05)", "purpose": "The browser-default shadow-xs on inputs and outline buttons; reads as a hairline, not a lift." }
+    ],
+    "motion": [
+      { "name": "ease-standard", "value": "cubic-bezier(0.4, 0, 0.2, 1)", "purpose": "Default easing for state transitions (hover, focus, selection)." },
+      { "name": "duration-fast", "value": "150ms", "purpose": "Most state transitions. Users are in flow." },
+      { "name": "duration-base", "value": "250ms", "purpose": "Ceiling for product transitions. No orchestrated page-load sequences." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" },
+      { "name": "xl", "value": "1280px" },
+      { "name": "2xl", "value": "1536px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single amber call to action: generate, save, confirm.",
+      "html": "<button class=\"ds-btn-primary\">Generate battle card</button>",
+      "css": ".ds-btn-primary { display:inline-flex; align-items:center; justify-content:center; gap:8px; height:36px; padding:0 16px; border:none; border-radius:4px; background:var(--accent,#f59e0b); color:var(--accent-foreground,#0b0b0d); font-size:14px; font-weight:500; cursor:pointer; transition:background .15s cubic-bezier(0.4,0,0.2,1); } .ds-btn-primary:hover { background:var(--accent-bright,#fbb734); } .ds-btn-primary:active { background:var(--accent-dim,#e8920a); } .ds-btn-primary:focus-visible { outline:none; box-shadow:0 0 0 3px color-mix(in srgb, var(--accent,#f59e0b) 50%, transparent); }"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Secondary action on a neutral stroke; recedes next to the amber primary.",
+      "html": "<button class=\"ds-btn-outline\">View sources</button>",
+      "css": ".ds-btn-outline { display:inline-flex; align-items:center; justify-content:center; gap:8px; height:36px; padding:0 16px; border:1px solid var(--border,rgba(0,0,0,0.1)); border-radius:4px; background:transparent; color:var(--foreground,#131313); font-size:14px; font-weight:500; cursor:pointer; transition:background .15s cubic-bezier(0.4,0,0.2,1); } .ds-btn-outline:hover { background:var(--surface-3,#e8e8eb); } .ds-btn-outline:focus-visible { outline:none; box-shadow:0 0 0 3px color-mix(in srgb, var(--accent,#f59e0b) 50%, transparent); }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Lowest-emphasis action; fill appears only on hover.",
+      "html": "<button class=\"ds-btn-ghost\">Dismiss</button>",
+      "css": ".ds-btn-ghost { display:inline-flex; align-items:center; gap:8px; height:36px; padding:0 16px; border:none; border-radius:4px; background:transparent; color:var(--foreground,#131313); font-size:14px; font-weight:500; cursor:pointer; transition:background .15s cubic-bezier(0.4,0,0.2,1); } .ds-btn-ghost:hover { background:var(--surface-3,#e8e8eb); }"
+    },
+    {
+      "name": "Signal Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Flat content surface with a mono metadata description; the core unit of the feed.",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card-header\"><div class=\"ds-card-title\">Pricing change detected</div><div class=\"ds-card-desc\">2026-06-03 · acme.com/pricing</div></div><div class=\"ds-card-body\">Pro plan rose from $49 to $59/mo, likely a response to last week's launch.</div></div>",
+      "css": ".ds-card { display:flex; flex-direction:column; border:1px solid var(--border,rgba(0,0,0,0.1)); border-radius:4px; background:var(--surface,#ffffff); color:var(--foreground,#131313); overflow:hidden; } .ds-card-header { padding:16px 20px; border-bottom:1px solid var(--border,rgba(0,0,0,0.1)); } .ds-card-title { font-size:13px; font-weight:600; letter-spacing:-0.01em; line-height:1.25; } .ds-card-desc { margin-top:2px; font-family:\"DM Mono\",ui-monospace,SFMono-Regular,monospace; font-size:11px; color:var(--muted,#737373); } .ds-card-body { padding:16px 20px; font-size:14px; line-height:1.5; }"
+    },
+    {
+      "name": "Search Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Hairline field that lifts a 3px amber ring on focus.",
+      "html": "<input class=\"ds-input\" placeholder=\"Search competitors\" />",
+      "css": ".ds-input { height:36px; width:100%; padding:4px 12px; border:1px solid var(--border,rgba(0,0,0,0.1)); border-radius:4px; background:transparent; color:var(--foreground,#131313); font-size:14px; outline:none; transition:box-shadow .15s cubic-bezier(0.4,0,0.2,1),border-color .15s cubic-bezier(0.4,0,0.2,1); } .ds-input::placeholder { color:var(--muted,#737373); } .ds-input:focus-visible { border-color:var(--accent,#f59e0b); box-shadow:0 0 0 3px color-mix(in srgb, var(--accent,#f59e0b) 50%, transparent); }"
+    },
+    {
+      "name": "Severity Badge",
+      "kind": "chip",
+      "refersTo": "badge-default",
+      "description": "Signature severity chip: tinted background of its own hue, icon plus label, never color alone.",
+      "html": "<span class=\"ds-badge-critical\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z\"/><line x1=\"12\" y1=\"9\" x2=\"12\" y2=\"13\"/><line x1=\"12\" y1=\"17\" x2=\"12.01\" y2=\"17\"/></svg>Critical</span>",
+      "css": ".ds-badge-critical { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:4px; background:color-mix(in srgb, var(--critical,#dc2626) 14%, transparent); color:var(--critical,#dc2626); font-size:12px; font-weight:500; line-height:1.4; } .ds-badge-critical svg { width:12px; height:12px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Analyst's Terminal",
+    "overview": "Outrival looks like the surface a competitive analyst would actually want open between meetings: terminal-grade density, dark-capable, monospaced where the data lives, with a single amber that lights up only when something has earned attention. It borrows the trading terminal's economy (every pixel earns its place, nothing decorative) but bends it toward the analyst's desk: the finding leads, the evidence is one click away, and the interface recedes the moment it has handed you the decision. The system is built on tonal neutrals and one accent; depth comes from stacking surfaces, not shadow. Type does the heavy lifting: a single grotesque sans for voice and a mono for the machine-truth layer.",
+    "keyCharacteristics": [
+      "One accent (amber), spent only on action and live signal.",
+      "Flat surfaces; depth by tonal layering, never decorative shadow.",
+      "Single sans (Bricolage Grotesque) + mono (DM Mono) as a deliberate data voice.",
+      "Tight radii (4px on controls), fixed type scale, high information density.",
+      "Severity is a semantic color system, kept separate from the brand accent.",
+      "Calm by default; color and motion are spent only when severity earns them."
+    ],
+    "rules": [
+      { "name": "The One Voice Rule", "body": "Amber is the only brand color, and it appears on a small fraction of any screen: a primary action, the current selection, a focus ring, a live signal. Its rarity is what makes it read as signal. Never use it for decoration or large fills.", "section": "colors" },
+      { "name": "The Severity-Is-Not-Amber Rule", "body": "Medium severity (#d97706) is close to amber by hue; they are different systems and must never be confused. Severity reinforces with label and icon, never hue alone.", "section": "colors" },
+      { "name": "The Machine-Truth Rule", "body": "DM Mono is reserved for values the machine produced: timestamps, counts, IDs, prices, diffs, metadata. It is never used for prose or headings.", "section": "typography" },
+      { "name": "The No-Display-In-UI Rule", "body": "No display sizing or expressive type in labels, buttons, or data. Product chrome uses the fixed scale; expressive type is a landing (brand) move only.", "section": "typography" },
+      { "name": "The Flat-By-Default Rule", "body": "Surfaces are flat at rest. Reach for a tonal step or a border before a shadow. Only a true overlay (dialog, dropdown, popover) may carry a single soft shadow; everywhere else, shadow is forbidden.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do spend Signal Amber only on action, selection, focus, and live signal, on a small fraction of any screen (the One Voice Rule).",
+      "Do build depth with tonal surfaces (Canvas to Surface to Surface-2 to Surface-3) and hairline borders, not shadow (the Flat-By-Default Rule).",
+      "Do use DM Mono for data, metadata, timestamps, counts, IDs, and diffs, and only for those (the Machine-Truth Rule).",
+      "Do reinforce severity with label and icon, not color alone, and keep the five severity hues separate from the brand amber.",
+      "Do ship every interactive component's full state set, including focus-visible (3px amber ring) and disabled.",
+      "Do hold body and placeholder text to at least 4.5:1 contrast; bump muted text toward Ink rather than letting it drift light.",
+      "Do keep transitions in the 150-250ms range and give every animation a prefers-reduced-motion alternative."
+    ],
+    "donts": [
+      "Don't ship the generic 2026 SaaS look: cards nested in cards, purple-to-blue gradients, the hero-metric block, or an all-caps tracked eyebrow over every section.",
+      "Don't drift toward heavy enterprise BI: dull gray chart-soup, density without hierarchy, intimidating walls of controls.",
+      "Don't go playful or toy-like: emoji-as-UI, blobby radii, mascot illustrations, saturated toy palette.",
+      "Don't build the anxiety wall: a screen of red numbers and charts with no hierarchy.",
+      "Don't put a decorative drop shadow on a card, or use border-left/border-right greater than 1px as a colored stripe accent.",
+      "Don't use gradient text (background-clip: text) or glassmorphism as decoration.",
+      "Don't use amber for large fills, and don't use white text on amber (use Accent Ink).",
+      "Don't set mono on prose or headings, or display type in UI labels, buttons, or data."
+    ]
+  }
+}

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bell, LogOut, Settings } from "lucide-react";
+import { Bell, LogOut, Settings, User } from "lucide-react";
 import { signOut } from "@/lib/auth-client";
 import { resetUser } from "@/lib/posthog/events";
 import {
@@ -69,7 +69,12 @@ export function UserMenu({ user }: { user: User }) {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        {/* patch-29 — personal shortcuts; Profile joins here once its page ships. */}
+        {/* patch-29 — personal shortcuts to the two most-visited sections. */}
+        <DropdownMenuItem asChild>
+          <Link href="/dashboard/settings/profile">
+            <User className="size-3.5" /> Profile
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuItem asChild>
           <Link href="/dashboard/settings/notifications">
             <Bell className="size-3.5" /> Notifications

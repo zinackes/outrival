@@ -9,6 +9,7 @@ import {
   Boxes,
   CreditCard,
   Trash2,
+  User,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -39,6 +40,7 @@ interface NavItem {
 // gains Profile + Security; Workspace gains Members (flag), Integrations, API keys,
 // Data. Routes here point at the pages that already exist.
 const PERSONAL: NavItem[] = [
+  { href: "/dashboard/settings/profile", label: "Profile", icon: User, exact: true },
   { href: "/dashboard/settings/notifications", label: "Notifications", icon: Bell, exact: true },
 ];
 

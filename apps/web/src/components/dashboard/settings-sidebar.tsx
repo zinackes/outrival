@@ -11,8 +11,10 @@ import {
   Lock,
   Trash2,
   User,
+  Users,
   type LucideIcon,
 } from "lucide-react";
+import { FEATURE_FLAGS } from "@outrival/shared";
 import {
   Sidebar,
   SidebarContent,
@@ -34,6 +36,7 @@ interface NavItem {
   icon: LucideIcon;
   exact?: boolean;
   danger?: boolean;
+  multiUserOnly?: boolean;
 }
 
 // patch-29 — Variante 1 settings nav. Organised Personal / Workspace / Danger to be
@@ -49,6 +52,7 @@ const PERSONAL: NavItem[] = [
 const WORKSPACE: NavItem[] = [
   { href: "/dashboard/settings/general", label: "General", icon: Building2, exact: true },
   { href: "/dashboard/settings/products", label: "Products", icon: Boxes, exact: true },
+  { href: "/dashboard/settings/members", label: "Members", icon: Users, exact: true, multiUserOnly: true },
   { href: "/dashboard/settings/billing", label: "Subscription", icon: CreditCard },
 ];
 
@@ -115,7 +119,11 @@ export function SettingsSidebar() {
         <SidebarGroup>
           <SidebarGroupLabel style={GROUP_LABEL_STYLE}>Workspace</SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu>{WORKSPACE.map(renderItem)}</SidebarMenu>
+            <SidebarMenu>
+              {WORKSPACE.filter(
+                (it) => !it.multiUserOnly || FEATURE_FLAGS.multiUser,
+              ).map(renderItem)}
+            </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>

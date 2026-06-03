@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CreditCard, LogOut, Settings } from "lucide-react";
+import { Bell, LogOut, Settings } from "lucide-react";
 import { signOut } from "@/lib/auth-client";
 import { resetUser } from "@/lib/posthog/events";
 import {
@@ -69,14 +69,16 @@ export function UserMenu({ user }: { user: User }) {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        {/* patch-29 — personal shortcuts; Profile joins here once its page ships. */}
+        <DropdownMenuItem asChild>
+          <Link href="/dashboard/settings/notifications">
+            <Bell className="size-3.5" /> Notifications
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
           <Link href="/dashboard/settings">
             <Settings className="size-3.5" /> Settings
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <Link href="/dashboard/settings/billing">
-            <CreditCard className="size-3.5" /> Subscription
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />

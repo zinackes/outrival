@@ -1,6 +1,5 @@
 import { pgTable, text, timestamp, boolean, jsonb, integer, pgEnum } from "drizzle-orm/pg-core";
 import { competitors } from "./competitors";
-import { products } from "./products";
 
 export const sourceTypeEnum = pgEnum("source_type", [
   "homepage", "pricing", "blog", "changelog", "jobs",
@@ -17,11 +16,6 @@ export const frequencyEnum = pgEnum("frequency", ["realtime", "daily", "weekly"]
 export const monitors = pgTable("monitors", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   competitorId: text("competitor_id").notNull().references(() => competitors.id, { onDelete: "cascade" }),
-  // patch-28 — a self/product monitor belongs to a product instead of a competitor.
-  // Added nullable here; competitorId is relaxed to nullable in the pipeline
-  // re-anchor step (so this additive commit stays green). Going forward exactly one
-  // of competitorId / productId is set and the scrape pipeline branches on it.
-  productId: text("product_id").references(() => products.id, { onDelete: "cascade" }),
   sourceType: sourceTypeEnum("source_type").notNull(),
   frequency: frequencyEnum("frequency").notNull().default("daily"),
   config: jsonb("config"),

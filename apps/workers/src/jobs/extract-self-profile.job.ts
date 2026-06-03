@@ -13,7 +13,7 @@ import { extractSelfProfile, AI_CONFIG } from "@outrival/ai";
 import { getFromR2 } from "@outrival/shared";
 import { htmlToText } from "../lib/html-to-text";
 import { loggedAi } from "../lib/clickhouse";
-import { notifySelfChange } from "../lib/self-changes";
+import { notifySelfChange } from "../lib/self-change";
 
 const InputSchema = z.object({
   snapshotId: z.string(),

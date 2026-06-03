@@ -28,7 +28,6 @@ const ROUTE_TITLES: Record<string, string> = {
   "/dashboard/settings/general": "Settings",
   "/dashboard/settings/notifications": "Settings",
   "/dashboard/digests": "Digests",
-  "/dashboard/alerts": "Alerts",
   "/dashboard/settings": "Settings",
   "/dashboard/settings/billing": "Subscription",
 };

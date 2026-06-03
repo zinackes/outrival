@@ -25,6 +25,13 @@ const nextConfig: NextConfig = {
         destination: "/dashboard/settings/general",
         permanent: true,
       },
+      // patch-29: the standalone Alerts page (outbound channel config) folded into
+      // notification settings; the urgent feed now lives in the Signals "Alerts" tab.
+      {
+        source: "/dashboard/alerts",
+        destination: "/dashboard/settings/notifications",
+        permanent: true,
+      },
     ];
   },
 };

@@ -11,3 +11,7 @@ next-env.d.ts
 
 # Crawlee runtime cache (regenerated; never source)
 storage/
+
+# Global Impeccable plugin (auto-installed into .claude/, not Outrival source)
+.claude/skills/impeccable/
+.claude/agents/impeccable-manual-edit-applier.md

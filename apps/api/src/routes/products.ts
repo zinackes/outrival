@@ -51,8 +51,12 @@ productsRouter.get("/", async (c) => {
     .groupBy(productCompetitors.productId);
   const countBy = new Map(counts.map((r) => [r.productId, r.value]));
 
+  // The plan + product limit drive the settings page's "N / limit" + upgrade hint.
+  const plan = await getOrgPlan(orgId);
   return c.json({
     products: rows.map((p) => ({ ...p, competitorCount: countBy.get(p.id) ?? 0 })),
+    plan,
+    limit: productLimit(plan),
   });
 });
 

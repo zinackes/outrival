@@ -1058,7 +1058,24 @@ export const api = {
   getSignalDetail: (id: string) =>
     request<{ signal: SignalDetail }>(`/api/signals/${id}/detail`),
   listProducts: () =>
-    request<{ products: ProductSummary[] }>(`/api/products`),
+    request<{ products: ProductSummary[]; plan: string; limit: number }>(
+      `/api/products`,
+    ),
+  createProduct: (body: { name: string; url?: string }) =>
+    request<{ product: { id: string } }>(`/api/products`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateProduct: (
+    id: string,
+    body: { name?: string; position?: number; isPrimary?: true },
+  ) =>
+    request<{ product: ProductSummary }>(`/api/products/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  archiveProduct: (id: string) =>
+    request<{ ok: true }>(`/api/products/${id}`, { method: "DELETE" }),
   listSectoral: (params?: { limit?: number }) => {
     const qs = params?.limit ? `?limit=${params.limit}` : "";
     return request<{ signals: SectoralSignal[] }>(`/api/sectoral${qs}`);

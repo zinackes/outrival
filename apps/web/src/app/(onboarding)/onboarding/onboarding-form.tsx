@@ -757,6 +757,7 @@ export function OnboardingForm({
               onConfirm={handleComplete}
               onBack={() => goTo("discover")}
               defaultAdvanced={mode === "full"}
+              multiProduct={mode === "full"}
             />
           )}
 
@@ -1549,6 +1550,7 @@ function MonitoringStep({
   onConfirm,
   onBack,
   defaultAdvanced,
+  multiProduct,
 }: {
   frequency: Frequency;
   setFrequency: (f: Frequency) => void;
@@ -1561,6 +1563,7 @@ function MonitoringStep({
   onConfirm: () => void | Promise<void>;
   onBack: () => void;
   defaultAdvanced: boolean;
+  multiProduct: boolean;
 }) {
   const [advanced, setAdvanced] = useState(defaultAdvanced);
 
@@ -1641,6 +1644,8 @@ function MonitoringStep({
         )}
       </Card>
 
+      {multiProduct && <MultiProductNote />}
+
       <TimezoneNote />
 
       <FooterNav
@@ -1651,6 +1656,28 @@ function MonitoringStep({
         primaryLabel="Start monitoring"
       />
     </div>
+  );
+}
+
+// patch-28: in full mode, let multi-SKU users know they can track more than one
+// product — without adding a wizard step. Quick Start stays single-product. Adding
+// products (each with its own competitors + battle cards) happens in Settings →
+// Products, the "you can always add more later" pattern.
+function MultiProductNote() {
+  return (
+    <Card className="mt-4 p-5 sm:p-6 flex flex-col gap-1.5">
+      <p className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
+        More than one product?
+      </p>
+      <p className="text-sm text-foreground">
+        We&apos;re setting up your main product now.
+      </p>
+      <p className="text-xs text-muted-foreground">
+        If you sell several products (separate SKUs, hubs, or tiers), you can add
+        them anytime in Settings → Products — each gets its own competitors and
+        battle cards.
+      </p>
+    </Card>
   );
 }
 

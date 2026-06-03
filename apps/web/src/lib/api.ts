@@ -1229,28 +1229,34 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  getBattleCard: (competitorId: string) =>
-    request<{ battleCard: BattleCard }>(`/api/competitors/${competitorId}/battle-card`),
+  // patch-28 — battle cards are per (product, competitor); productId scopes the
+  // couple (the API defaults to the org's primary product when omitted).
+  getBattleCard: (competitorId: string, productId?: string) =>
+    request<{ battleCard: BattleCard }>(
+      `/api/competitors/${competitorId}/battle-card${productId ? `?productId=${productId}` : ""}`,
+    ),
   // Whether regenerating is worth it (patch-22): "fresh" → greyed-out button.
-  getBattleCardStaleness: (competitorId: string) =>
+  getBattleCardStaleness: (competitorId: string, productId?: string) =>
     request<{
       staleness: "never_generated" | "fresh" | "outdated";
       needsRegeneration: boolean;
       lastGeneratedAt?: string;
       reason?: { userChanged: boolean; competitorChanged: boolean; flagged: boolean };
-    }>(`/api/competitors/${competitorId}/battle-card/staleness`),
-  generateBattleCard: (competitorId: string) =>
+    }>(
+      `/api/competitors/${competitorId}/battle-card/staleness${productId ? `?productId=${productId}` : ""}`,
+    ),
+  generateBattleCard: (competitorId: string, productId?: string) =>
     request<{ status: string; runId: string }>(
-      `/api/competitors/${competitorId}/battle-card/generate`,
+      `/api/competitors/${competitorId}/battle-card/generate${productId ? `?productId=${productId}` : ""}`,
       { method: "POST" },
     ),
-  patchBattleCard: (competitorId: string, content: BattleCardContent) =>
-    request<{ battleCard: BattleCard }>(`/api/competitors/${competitorId}/battle-card`, {
-      method: "PATCH",
-      body: JSON.stringify({ content }),
-    }),
-  battleCardPdfUrl: (competitorId: string) =>
-    `${BASE}/api/competitors/${competitorId}/battle-card/pdf`,
+  patchBattleCard: (competitorId: string, content: BattleCardContent, productId?: string) =>
+    request<{ battleCard: BattleCard }>(
+      `/api/competitors/${competitorId}/battle-card${productId ? `?productId=${productId}` : ""}`,
+      { method: "PATCH", body: JSON.stringify({ content }) },
+    ),
+  battleCardPdfUrl: (competitorId: string, productId?: string) =>
+    `${BASE}/api/competitors/${competitorId}/battle-card/pdf${productId ? `?productId=${productId}` : ""}`,
   listCandidates: (status?: "new" | "dismissed" | "added") =>
     request<{ candidates: CompetitorCandidate[] }>(
       `/api/candidates${status ? `?status=${status}` : ""}`,

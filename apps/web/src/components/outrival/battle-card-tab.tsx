@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Download, HelpCircle, Loader2, RefreshCw, Save, Sparkles, X } from "lucide-react";
 import { api, type BattleCard, type BattleCardContent } from "@/lib/api";
 import { track } from "@/lib/posthog/events";
@@ -35,6 +36,9 @@ interface Props {
 }
 
 export function BattleCardTab({ competitorId }: Props) {
+  // patch-28 — scope the card to the active product (selector sets ?product=);
+  // omitted = the org's primary product (the API default).
+  const productId = useSearchParams().get("product") ?? undefined;
   const [card, setCard] = useState<BattleCard | null>(null);
   const [status, setStatus] = useState<Status>("loading");
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +51,7 @@ export function BattleCardTab({ competitorId }: Props) {
 
   async function refreshStaleness() {
     try {
-      setStaleness(await api.getBattleCardStaleness(competitorId));
+      setStaleness(await api.getBattleCardStaleness(competitorId, productId));
     } catch {
       setStaleness(null); // best-effort — fall back to always-enabled regenerate
     }
@@ -56,7 +60,7 @@ export function BattleCardTab({ competitorId }: Props) {
   async function load(silent = false) {
     if (!silent) setStatus("loading");
     try {
-      const res = await api.getBattleCard(competitorId);
+      const res = await api.getBattleCard(competitorId, productId);
       setCard(res.battleCard);
       setDraft(res.battleCard.content);
       setStatus("ready");
@@ -80,7 +84,7 @@ export function BattleCardTab({ competitorId }: Props) {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [competitorId]);
+  }, [competitorId, productId]);
 
   function startPolling() {
     if (pollRef.current) clearInterval(pollRef.current);
@@ -101,7 +105,7 @@ export function BattleCardTab({ competitorId }: Props) {
     setStatus("generating");
     setError(null);
     try {
-      await api.generateBattleCard(competitorId);
+      await api.generateBattleCard(competitorId, productId);
       track("battle_card_generated", { competitorId });
       startPolling();
     } catch (e) {
@@ -120,7 +124,7 @@ export function BattleCardTab({ competitorId }: Props) {
     if (!card) return;
     setStatus("saving");
     try {
-      const res = await api.patchBattleCard(competitorId, draft);
+      const res = await api.patchBattleCard(competitorId, draft, productId);
       setCard(res.battleCard);
       setDraft(res.battleCard.content);
       setEditing(false);
@@ -229,7 +233,7 @@ export function BattleCardTab({ competitorId }: Props) {
             >
               {canDownload ? (
                 <a
-                  href={api.battleCardPdfUrl(competitorId)}
+                  href={api.battleCardPdfUrl(competitorId, productId)}
                   target="_blank"
                   rel="noreferrer"
                 >

@@ -95,3 +95,34 @@ export function minPlanForFrequency(freq: MonitorFrequency): Plan {
 export function minPlanForFeature(feature: PlanFeature): Plan {
   return PLANS.find((p) => PLAN_LIMITS[p].features[feature]) ?? "business";
 }
+
+/** patch-28 — default max active products (SKUs) per org by plan. */
+const PRODUCT_LIMIT_DEFAULTS: Record<Plan, number> = {
+  free: 1,
+  starter: 2,
+  pro: 5,
+  business: 999,
+};
+
+/**
+ * Max active products (SKUs) an org on `plan` may have. Env-configurable
+ * (PRODUCT_LIMIT_FREE/STARTER/PRO/BUSINESS) with the defaults above. Read
+ * server-side for gating; on the client `process.env` is undefined so it falls
+ * back to the same defaults, and the API echoes the authoritative limit in
+ * `product_limit_reached` errors / the products endpoint.
+ */
+export function productLimit(plan: Plan): number {
+  const raw = {
+    free: process.env.PRODUCT_LIMIT_FREE,
+    starter: process.env.PRODUCT_LIMIT_STARTER,
+    pro: process.env.PRODUCT_LIMIT_PRO,
+    business: process.env.PRODUCT_LIMIT_BUSINESS,
+  }[plan];
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : PRODUCT_LIMIT_DEFAULTS[plan];
+}
+
+/** Cheapest plan whose product limit is ≥ `count` — drives upgrade hints. */
+export function minPlanForProductCount(count: number): Plan {
+  return PLANS.find((p) => productLimit(p) >= count) ?? "business";
+}

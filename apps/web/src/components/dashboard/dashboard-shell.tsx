@@ -1,8 +1,10 @@
 "use client";
 
 import * as React from "react";
+import { usePathname } from "next/navigation";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/dashboard/sidebar";
+import { SettingsSidebar } from "@/components/dashboard/settings-sidebar";
 import { Topbar } from "@/components/dashboard/topbar";
 
 interface User {
@@ -28,9 +30,14 @@ export function DashboardShell({
   children: React.ReactNode;
   defaultOpen?: boolean;
 }) {
+  // patch-29 — Variante 1: the contextual settings sidebar replaces the main rail
+  // on /dashboard/settings/* instead of stacking a second nav next to the content.
+  const pathname = usePathname();
+  const inSettings = pathname.startsWith("/dashboard/settings");
+
   return (
     <SidebarProvider defaultOpen={defaultOpen}>
-      <AppSidebar org={org} />
+      {inSettings ? <SettingsSidebar /> : <AppSidebar org={org} />}
       <SidebarInset>
         <div className="flex min-h-full w-full flex-col text-sm min-w-0">
           <Topbar user={user} />

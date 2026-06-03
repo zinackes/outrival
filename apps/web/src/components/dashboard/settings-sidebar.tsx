@@ -8,6 +8,7 @@ import {
   Building2,
   Boxes,
   CreditCard,
+  Lock,
   Trash2,
   User,
   type LucideIcon,
@@ -42,6 +43,7 @@ interface NavItem {
 const PERSONAL: NavItem[] = [
   { href: "/dashboard/settings/profile", label: "Profile", icon: User, exact: true },
   { href: "/dashboard/settings/notifications", label: "Notifications", icon: Bell, exact: true },
+  { href: "/dashboard/settings/security", label: "Security", icon: Lock, exact: true },
 ];
 
 const WORKSPACE: NavItem[] = [

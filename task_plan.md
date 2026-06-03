@@ -1841,7 +1841,49 @@ tabs All/Alerts sur Signals, battle cards hors sidebar, refonte user-menu, redir
     Commit `chore(web): redirects for old settings and sidebar urls`.
 13. `pnpm build && pnpm typecheck` + checklist A–I + MAJ findings/progress + docs/architecture.
 
-## Blockers patch-29
-- Décisions A/B/C ci-dessus à confirmer avant de coder au-delà de l'étape 1.
-- Auto-committer concurrent connu → vérifier le tree, commits par étape (le patch les demande).
-- WSL mémoire : pas de `pnpm dev` complet ; typecheck par filter.
+## Décisions TRANCHÉES (user, 2026-06-03)
+- A. Découpage : **Navigation d'abord** (Phase 1 = étapes 1-5 + redirects), pages settings
+  détaillées (6-11) en Phase 2.
+- B. Digests/Alerts : **rediriger** (retirer de la sidebar + 301). MAIS divergence
+  découverte (cf. ci-dessous) : les pages réelles ne sont pas ce que le patch supposait.
+- C. Backend : **câbler l'existant + stub le reste** (surtout Phase 2).
+
+## Avancement Phase 1 — FAIT (commits 9ff4d72 → ee7e8cd)
+- [x] Étape 1 — sidebar rationalisée + renames routes (my-product→products,
+      candidates→discovery) + 301 (next.config). `9ff4d72`
+- [x] Étape 2 — tab "Alerts" (critical+high) dans Signals, réutilise `?view=` client. `a0e0368`
+- [x] Étape 3 — `GET /api/battle-cards` (liste org) + page `/dashboard/battle-cards` +
+      section "Recent battle cards" overview. `b537d3f`
+- [x] Étape 4 — sub-sidebar Variante 1 : `settings-sidebar.tsx` + swap dans
+      `DashboardShell` (usePathname) + `settings/layout` simplifié + suppr `settings-nav`. `1b8a8aa`
+- [x] Étape 5 — user-menu refondu (Notifications + Settings + Logout, Subscription retiré). `ee7e8cd`
+
+## DIVERGENCE à arbitrer avant les redirects alerts/digests (étape 12)
+Le patch + décision B supposaient : Alerts = signaux urgents (→ tab Signals), Digest =
+config (→ Notifications). RÉEL :
+- `/dashboard/alerts` = **config des canaux** (Slack/Email/Webhook) + historique vide.
+  Sa config est DÉJÀ dupliquée dans Settings > Notifications (notification-settings-form
+  + moderation-form). → rediriger vers `/dashboard/signals?view=alerts` (signaux) perd le
+  point de config ; vers `/settings/notifications` (config) a plus de sens.
+- `/dashboard/digests` = **vue des rapports hebdo générés** (digests-view), PAS la config.
+  Accessible aussi via global-search (Cmd+K). Rediriger vers `/settings/notifications` perd
+  l'accès aux rapports. → soit garder la vue (point d'accès ?), soit déplacer.
+→ EN PHASE 1 : alerts/digests juste retirés de la sidebar (toujours atteignables par URL /
+  Cmd+K). Redirects définitifs reportés en Phase 2 (étape 7, quand Settings>Notifications
+  devient le home canonique config alertes+digest, et on décide du sort des vues).
+
+## Reste Phase 2 (à valider)
+- 6 Profile · 7 Notifications 2 modes (+ sort alerts/digests) · 8 Security · 9 General
+  (rename workspace→general)/Subscription/limits · 10 Members (feature flag) · 11
+  Integrations/API keys/Data/Delete · 12 redirects settings · 13 build+checklist+docs.
+- Ajouter alors : Profile dans user-menu + settings-sidebar (Personal), Members (flag),
+  etc. La structure Personal/Workspace/Danger est déjà posée dans settings-sidebar.
+
+## Contexte technique persistant
+- Auto-committer concurrent + activité design (skill impeccable : hero.tsx, CLAUDE.md,
+  DESIGN.md, .impeccable/) dans le tree → NE PAS embarquer dans mes commits ; je stage
+  explicitement mes fichiers patch-29.
+- WSL mémoire : pas de `pnpm dev` complet ; typecheck par filter (`.next` stale déplacé en
+  /tmp pour éviter le faux positif validator.ts rootDir).
+- 3 erreurs typecheck web PRÉ-EXISTANTES (héritées patch-25/28), pas les miennes :
+  onboarding-form.tsx(284), competitors/[id]/page.tsx(986), products-settings.tsx(126).

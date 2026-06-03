@@ -34,10 +34,13 @@ import { ListRowsSkeleton } from "./skeletons";
 import { ListError } from "@/components/outrival/list-error";
 
 type Sev = Signal["severity"];
-type QuickView = "all" | "unread" | "week" | "critical";
+type QuickView = "all" | "alerts" | "unread" | "week" | "critical";
 
+// patch-29 — "Alerts" surfaces the urgent feed (critical + high) as a first-class
+// tab, replacing the standalone /dashboard/alerts page in the navigation.
 const QUICK_VIEWS: { value: QuickView; label: string }[] = [
   { value: "all", label: "All" },
+  { value: "alerts", label: "Alerts" },
   { value: "unread", label: "Unread" },
   { value: "week", label: "This week" },
   { value: "critical", label: "Critical" },
@@ -126,6 +129,12 @@ export function SignalsView() {
     const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 }).getTime();
     return signals.filter((s) => {
       if (quickView === "unread" && s.isRead) return false;
+      if (
+        quickView === "alerts" &&
+        s.severity !== "critical" &&
+        s.severity !== "high"
+      )
+        return false;
       if (quickView === "critical" && s.severity !== "critical") return false;
       if (quickView === "week") {
         const t = new Date(s.createdAt).getTime();
@@ -145,9 +154,10 @@ export function SignalsView() {
   }, [signals, sev, cat, comp, quickView, query]);
 
   const quickCounts = useMemo(() => {
-    if (!signals) return { all: 0, unread: 0, week: 0, critical: 0 };
+    if (!signals) return { all: 0, alerts: 0, unread: 0, week: 0, critical: 0 };
     const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 }).getTime();
     const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 }).getTime();
+    let alerts = 0;
     let unread = 0;
     let week = 0;
     let critical = 0;
@@ -156,8 +166,9 @@ export function SignalsView() {
       const t = new Date(s.createdAt).getTime();
       if (t >= weekStart && t <= weekEnd) week++;
       if (s.severity === "critical") critical++;
+      if (s.severity === "critical" || s.severity === "high") alerts++;
     }
-    return { all: signals.length, unread, week, critical };
+    return { all: signals.length, alerts, unread, week, critical };
   }, [signals]);
 
   const allCategories = useMemo(() => {

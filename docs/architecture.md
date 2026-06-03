@@ -22,6 +22,8 @@ Mise à jour à chaque phase / patch.
 | BattleCard            | Fiche stratégique IA exportable en PDF (sections jsonb editables) |
 | CompetitorCandidate   | Concurrent suggéré à valider — détecté chaque semaine (Exa, `source=detection`) ou sauvé depuis la découverte d'onboarding non sélectionnée (`source=onboarding`) |
 | TechStackEntry        | Technologie tierce détectée chez un concurrent (paiements, CRM, analytics…) via headers/scripts/DOM/footer — scraper mensuel indépendant (patch-18) |
+| Product               | SKU de l'org (patch-28) — wrapper fin sur un self-competitor (`selfCompetitorId`, ancre de monitoring) ; multi-SKU = N self-competitors. isPrimary/status/position |
+| ProductCompetitor     | Junction product↔competitor (patch-28) — competitors au niveau Org, partagés (isSpecific=false) ou spécifiques ; pilote le tagging signals + les feeds par product |
 
 ## Stack
 
@@ -135,10 +137,20 @@ reviews                id, competitor_id, source (g2|capterra|appstore|playstore
                        score, content, author (praise|complaint|<name>),
                        detected_at
 
-battle_cards           id, competitor_id (unique), org_id, content (jsonb — 6 sections
+battle_cards           id, competitor_id, org_id, content (jsonb — 6 sections
                        editables), pdf_r2_key, flagged_for_regeneration_at (patch-21),
                        based_on_user_update_at, based_on_competitor_signal_at (patch-22 —
-                       staleness : inputs au moment de générer), generated_at, updated_at
+                       staleness : inputs au moment de générer), product_id (patch-28),
+                       generated_at, updated_at
+                       — patch-28 : unique (product_id, competitor_id) ; une carte
+                       par couple product↔competitor (plus competitor_id seul)
+
+products               id, org_id, name, self_competitor_id (unique — l'ancre de
+                       monitoring type=self ; url/profil/pricing/monitors y vivent),
+                       is_primary, status (active|paused|archived), position,
+                       created_at, updated_at  — patch-28, multi-SKU (wrapper fin)
+product_competitors    product_id, competitor_id (PK composite), is_specific,
+                       relevance_score, created_at  — patch-28, junction org-level
 
 competitor_candidates  id, org_id, url, title, overlap_score, reason,
                        status (new|dismissed|added),
@@ -179,7 +191,9 @@ signal_batches         id, org_id, competitor_id, signal_ids (jsonb), category, 
 
 signals                + relevance_score (patch-17 persisté patch-26), dispatched_channel,
                        filtered_reason, filtered_at (décision du dispatcher),
-                       batched_into_id (→ signal_batches), daily_digest_sent_at — patch-26
+                       batched_into_id (→ signal_batches), daily_digest_sent_at — patch-26,
+                       + product_ids (jsonb — patch-28, products affectés, taggés
+                       déterministe via product_competitors ; feed filtre `@> [id]`)
 changes                + relevance_score (real, nullable — max des changes significatifs,
                        structured homepage only) — patch-26
 forced_rescan_log      id, user_id, org_id, monitor_id, task_id, triggered_at,
@@ -213,6 +227,7 @@ onboarding_session_stage  started | input | profile | discover | monitoring |
                   analysis_in_progress | completed | abandoned   (patch-25)
 channel_mode      email_immediate | digest_daily | digest_weekly | in_app_only | muted
                   (patch-26 — canal de notif par severity)
+product_status    active | paused | archived   (patch-28 — SKU ; archivage soft)
 ```
 
 ## Schéma ClickHouse (time-series, ENGINE = MergeTree)
@@ -622,6 +637,12 @@ FORCED_RESCAN_LIMIT_PRO=20
 FORCED_RESCAN_LIMIT_BUSINESS=999       # ~illimité
 SILENT_MONITOR_ALERT_THRESHOLD_DAYS=60 # alerte ops + user si source sans signal depuis Nj
 
+# Self-product multi-SKU (patch-28)
+PRODUCT_LIMIT_FREE=1                    # max products (SKUs) actifs par org / tier
+PRODUCT_LIMIT_STARTER=2
+PRODUCT_LIMIT_PRO=5
+PRODUCT_LIMIT_BUSINESS=999
+
 # Billing
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
@@ -639,6 +660,15 @@ WEB_URL=                     # https://outrival.io (callbacks Stripe)
 
 ## Décisions architecturales clés
 
+- **Multi-SKU non-destructif (patch-28)** — une org gère 1+ `products`. Plutôt que
+  de remplacer le self-competitor (`competitors.type="self"`, tissé dans ~11 jobs +
+  clés ClickHouse + R2), un `product` est un **wrapper fin** qui le référence
+  (`products.selfCompetitorId`, 1:1) : le self-competitor reste l'ancre de monitoring,
+  donc le pipeline scrape/extraction/CH/R2 est **intouché**. Multi-product = N
+  self-competitors. Concurrents au niveau Org, liés via `product_competitors`
+  (partagés/spécifiques). Signals taggés **déterministe** (`signals.product_ids`, pas
+  IA) selon les associations. Battle cards par couple `(product, competitor)`. Limite
+  de products par tier (`PRODUCT_LIMIT_*`). Mono-product = transparent (selector caché).
 - **Pool de providers IA légaux (patch-22)** — remplace le pool multi-comptes Groq
   (qui violait les ToS Groq). `complete(config, options)` reste l'entrée unique de tous
   les prompts ; pour `provider="groq"` elle route via `callLLM` vers un **pool de providers

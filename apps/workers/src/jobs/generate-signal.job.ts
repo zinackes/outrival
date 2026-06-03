@@ -1,11 +1,13 @@
 import { task, logger, tasks, AbortTaskRunError } from "@trigger.dev/sdk/v3";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import {
   db,
   changes,
   monitors,
   competitors,
+  products,
+  productCompetitors,
   signals,
   organizations,
   users,
@@ -153,6 +155,23 @@ export const generateSignalJob = task({
       }
     }
 
+    // patch-28 — deterministically tag the products (SKUs) this signal affects:
+    // every non-archived product of the org whose competitor set includes this
+    // competitor (via product_competitors). A competitor shared by two products
+    // tags its signals into both feeds. Empty when the org has no product yet.
+    const associatedProducts = await db
+      .select({ productId: productCompetitors.productId })
+      .from(productCompetitors)
+      .innerJoin(products, eq(products.id, productCompetitors.productId))
+      .where(
+        and(
+          eq(productCompetitors.competitorId, competitor.id),
+          eq(products.orgId, competitor.orgId),
+          ne(products.status, "archived"),
+        ),
+      );
+    const productIds = associatedProducts.map((p) => p.productId);
+
     const [newSignal] = await db
       .insert(signals)
       .values({
@@ -167,6 +186,7 @@ export const generateSignalJob = task({
         humanChangeBefore,
         humanChangeAfter,
         narrative,
+        productIds,
         // Carry the change's persisted relevance (patch-17/26) onto the signal so
         // the per-org threshold layer and the weekly recalc can reason about it.
         // Null for non-homepage / lexical changes → layer 1 simply skips them.

@@ -16,6 +16,7 @@ import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
+import { ensurePrimaryProductForSelf } from "../lib/products";
 import { chQuery } from "../lib/clickhouse-safe";
 
 type Variables = { user: { id: string } };
@@ -66,7 +67,10 @@ async function ensureSelf(orgId: string) {
       selfProfile,
     })
     .returning();
-  return created ?? null;
+  if (!created) return null;
+  // patch-28 — wrap the freshly created self-competitor in a primary product.
+  await ensurePrimaryProductForSelf(orgId, created.id, created.name);
+  return created;
 }
 
 /** Mark a profile field as user-edited (sticky against future auto-detection). */

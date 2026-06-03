@@ -29,6 +29,10 @@ import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
+import {
+  ensurePrimaryProductForSelf,
+  associateCompetitorWithPrimaryProduct,
+} from "../lib/products";
 import { fetchRepoArtifacts } from "../lib/github";
 import { extractDocumentText } from "../lib/extract-document";
 import {
@@ -126,6 +130,10 @@ async function createSelfCompetitor(orgId: string) {
     })
     .returning();
   if (!selfCompetitor) return;
+
+  // patch-28 — wrap the self-competitor in a primary product (the monitoring anchor
+  // stays the self-competitor; products is the multi-SKU layer on top).
+  await ensurePrimaryProductForSelf(orgId, selfCompetitor.id, selfCompetitor.name);
 
   // Seed the monitors matching what we can actually watch: a live site
   // (homepage/pricing/jobs) and/or a GitHub repo (developing stage). idea/document
@@ -612,6 +620,13 @@ onboardingRouter.post("/complete", async (c) => {
   // the user later re-onboards with a URL, /complete runs again and creates it.
   // Idempotent: never create a second self for the same org.
   await createSelfCompetitor(orgId);
+
+  // patch-28 — link the discovery-added competitors to the org's primary product so
+  // their signals are tagged into its feed (createSelfCompetitor created the product
+  // just above, so the primary now exists). Shared by default; reclassify later.
+  for (const c of created) {
+    await associateCompetitorWithPrimaryProduct(orgId, c.competitorId);
+  }
 
   // Save the discovered-but-untracked competitors as candidates so they remain
   // reachable in Detections (e.g. to track after a plan upgrade). Dedup by

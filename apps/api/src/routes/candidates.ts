@@ -15,6 +15,7 @@ import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
+import { associateCompetitorWithPrimaryProduct } from "../lib/products";
 import { checkCompetitorQuota, getOrgPlan } from "../lib/plan";
 import { detectCandidatesForOrg } from "../lib/detect-candidates";
 
@@ -201,6 +202,9 @@ candidatesRouter.post("/:id/add", async (c) => {
     })
     .returning();
   if (!competitor) return c.json({ error: "Failed to create competitor" }, 500);
+
+  // patch-28 — tag this competitor into the org's primary product (shared).
+  await associateCompetitorWithPrimaryProduct(orgId, competitor.id);
 
   const monitorRows = await db
     .insert(monitors)

@@ -28,10 +28,16 @@ signalsRouter.get("/", async (c) => {
   const competitorIdFilter = c.req.query("competitorId");
   const severityFilter = c.req.query("severity");
   const unreadOnly = c.req.query("unreadOnly") === "true";
+  // patch-28 — scope the feed to one product (SKU). Signals are tagged with the
+  // products affected (signals.productIds) at creation; "All products" omits it.
+  const productIdFilter = c.req.query("productId");
 
   // Hide signals the user marked "not useful" (patch-21).
   const conds = [eq(signals.orgId, orgId), isNull(signals.hiddenForUserAt)];
   if (competitorIdFilter) conds.push(eq(signals.competitorId, competitorIdFilter));
+  if (productIdFilter) {
+    conds.push(sql`${signals.productIds} @> ${JSON.stringify([productIdFilter])}::jsonb`);
+  }
   if (severityFilter === "low" || severityFilter === "medium" || severityFilter === "high" || severityFilter === "critical") {
     conds.push(eq(signals.severity, severityFilter));
   }

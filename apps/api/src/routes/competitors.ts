@@ -15,6 +15,7 @@ import {
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
+import { associateCompetitorWithPrimaryProduct } from "../lib/products";
 import { chQuery } from "../lib/clickhouse-safe";
 import {
   checkCompetitorQuota,
@@ -224,6 +225,10 @@ competitorsRouter.post("/", async (c) => {
     })
     .returning();
   if (!competitor) return c.json({ error: "Failed to create competitor" }, 500);
+
+  // patch-28 — tag this competitor into the org's primary product so its signals
+  // show in that product's feed (shared; reclassify/attach to others from the UI).
+  await associateCompetitorWithPrimaryProduct(orgId, competitor.id);
 
   const createdMonitors = await db
     .insert(monitors)

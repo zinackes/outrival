@@ -25,10 +25,14 @@ export const myProductRouter = new Hono<{ Variables: Variables }>();
 
 myProductRouter.use("*", authMiddleware);
 
-/** The org's single self-competitor (its own product), or null if not created yet. */
+/** The org's self-competitor (its own product), or null if not created yet. With
+ * multi-product (patch-28) an org can have several self-competitors; this returns the
+ * oldest (the original / primary product's anchor) so the behaviour stays stable for
+ * mono-product orgs. Phase 2 scopes My Product by the selected product. */
 async function getSelf(orgId: string) {
   return db.query.competitors.findFirst({
     where: and(eq(competitors.orgId, orgId), eq(competitors.type, "self")),
+    orderBy: (t, { asc }) => asc(t.createdAt),
   });
 }
 

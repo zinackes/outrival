@@ -97,8 +97,11 @@ export const generateBattleCardJob = task({
     // competitor signal is recentSignals[0] (already ordered desc); the user's last
     // self-profile edit comes from the self-competitor. Clear the patch-21 "not
     // useful" flag — a fresh generation supersedes it.
+    // Oldest self-competitor = the original/primary product's anchor (patch-28
+    // multi-product); keeps mono-product staleness identical.
     const self = await db.query.competitors.findFirst({
       where: and(eq(competitors.orgId, org.id), eq(competitors.type, "self")),
+      orderBy: (t, { asc }) => asc(t.createdAt),
     });
     const basedOnUserUpdateAt =
       selfProfileLastEditedAt(self?.selfProfile) ?? self?.updatedAt ?? null;

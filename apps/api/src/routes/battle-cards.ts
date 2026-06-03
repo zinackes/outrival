@@ -80,6 +80,8 @@ battleCardsRouter.get("/:id/battle-card/staleness", async (c) => {
       eq(competitors.type, "self"),
       isNull(competitors.deletedAt),
     ),
+    // Oldest self = original/primary product's anchor (patch-28 multi-product).
+    orderBy: (t, { asc }) => asc(t.createdAt),
   });
   const userLastChange = selfProfileLastEditedAt(self?.selfProfile) ?? self?.updatedAt ?? null;
 

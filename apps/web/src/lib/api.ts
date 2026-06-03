@@ -489,6 +489,19 @@ export interface BattleCard {
   updatedAt: string;
 }
 
+// patch-29 — org-wide battle card list item for /dashboard/battle-cards and the
+// overview "recent" section. productName is null for legacy cards with no product.
+export interface BattleCardSummary {
+  id: string;
+  competitorId: string;
+  competitorName: string;
+  productId: string | null;
+  productName: string | null;
+  hasPdf: boolean;
+  generatedAt: string;
+  updatedAt: string;
+}
+
 export interface CompetitorCandidate {
   id: string;
   orgId: string;
@@ -1257,6 +1270,9 @@ export const api = {
     ),
   battleCardPdfUrl: (competitorId: string, productId?: string) =>
     `${BASE}/api/competitors/${competitorId}/battle-card/pdf${productId ? `?productId=${productId}` : ""}`,
+  // patch-29 — org-wide list for the dedicated battle cards page + overview section.
+  listBattleCards: () =>
+    request<{ battleCards: BattleCardSummary[] }>("/api/battle-cards"),
   listCandidates: (status?: "new" | "dismissed" | "added") =>
     request<{ candidates: CompetitorCandidate[] }>(
       `/api/candidates${status ? `?status=${status}` : ""}`,

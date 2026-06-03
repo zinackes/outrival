@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { PageHead } from "./page-head";
+import { RecentBattleCards } from "./recent-battle-cards";
 import { Kpi } from "./kpi";
 import { Sparkline } from "./sparkline";
 import { SeverityDot } from "./severity-pill";
@@ -628,6 +629,8 @@ export function OverviewView() {
           </table>
         </div>
       </Card>
+
+      <RecentBattleCards />
     </div>
   );
 }

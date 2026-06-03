@@ -69,6 +69,49 @@ function battleCardWhere(competitorId: string, productId: string | undefined) {
     : eq(battleCards.competitorId, competitorId);
 }
 
+// patch-29 — org-wide battle card list, mounted at /api/battle-cards. Powers the
+// dedicated /dashboard/battle-cards page and the "recent" section on the overview;
+// the rail no longer links battle cards directly. Filtering by product/competitor
+// is done client-side (the list per org is small).
+export const battleCardsListRouter = new Hono<{ Variables: Variables }>();
+
+battleCardsListRouter.use("*", authMiddleware);
+
+battleCardsListRouter.get("/", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const rows = await db
+    .select({
+      id: battleCards.id,
+      competitorId: battleCards.competitorId,
+      competitorName: competitors.name,
+      productId: battleCards.productId,
+      productName: products.name,
+      hasPdf: battleCards.pdfR2Key,
+      generatedAt: battleCards.generatedAt,
+      updatedAt: battleCards.updatedAt,
+    })
+    .from(battleCards)
+    .innerJoin(competitors, eq(competitors.id, battleCards.competitorId))
+    .leftJoin(products, eq(products.id, battleCards.productId))
+    .where(and(eq(battleCards.orgId, orgId), isNull(competitors.deletedAt)))
+    .orderBy(desc(battleCards.updatedAt));
+
+  return c.json({
+    battleCards: rows.map((r) => ({
+      id: r.id,
+      competitorId: r.competitorId,
+      competitorName: r.competitorName,
+      productId: r.productId,
+      productName: r.productName,
+      hasPdf: Boolean(r.hasPdf),
+      generatedAt: r.generatedAt,
+      updatedAt: r.updatedAt,
+    })),
+  });
+});
+
 battleCardsRouter.get("/:id/battle-card", async (c) => {
   const id = c.req.param("id");
   const user = c.get("user");

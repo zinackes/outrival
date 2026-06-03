@@ -8,7 +8,10 @@ import {
   Building2,
   Boxes,
   CreditCard,
+  Database,
+  Key,
   Lock,
+  Puzzle,
   Trash2,
   User,
   Users,
@@ -54,6 +57,9 @@ const WORKSPACE: NavItem[] = [
   { href: "/dashboard/settings/products", label: "Products", icon: Boxes, exact: true },
   { href: "/dashboard/settings/members", label: "Members", icon: Users, exact: true, multiUserOnly: true },
   { href: "/dashboard/settings/billing", label: "Subscription", icon: CreditCard },
+  { href: "/dashboard/settings/integrations", label: "Integrations", icon: Puzzle, exact: true },
+  { href: "/dashboard/settings/api-keys", label: "API keys", icon: Key, exact: true },
+  { href: "/dashboard/settings/data", label: "Data", icon: Database, exact: true },
 ];
 
 const DANGER: NavItem[] = [

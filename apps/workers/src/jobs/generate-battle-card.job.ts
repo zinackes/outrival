@@ -1,15 +1,17 @@
 import { task, logger, AbortTaskRunError } from "@trigger.dev/sdk/v3";
 import { z } from "zod";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, ne } from "drizzle-orm";
 import {
   db,
   battleCards,
   competitors,
+  products,
   organizations,
   reviews,
   signals,
   selfProfileLastEditedAt,
   insertAiQualityCheck,
+  type SelfProfile,
 } from "@outrival/db";
 import { generateBattleCard, AI_CONFIG } from "@outrival/ai";
 import { uploadToR2 } from "@outrival/shared";
@@ -18,6 +20,9 @@ import { logAiRun } from "../lib/clickhouse";
 const InputSchema = z.object({
   competitorId: z.string(),
   orgId: z.string(),
+  // patch-28 — which product (SKU) this card defends. Optional: defaults to the
+  // org's primary product (so single-product orgs and legacy callers are unchanged).
+  productId: z.string().optional(),
 });
 
 export const generateBattleCardJob = task({
@@ -41,12 +46,44 @@ export const generateBattleCardJob = task({
     });
     if (!org) throw new AbortTaskRunError(`Organization ${input.orgId} not found`);
 
-    const profile = org.productProfile;
-    if (!profile) {
+    // patch-28 — resolve the product this card is for (the given one, else the org's
+    // primary) and source "my product" from its self-competitor profile, so each
+    // (product, competitor) couple gets a product-specific card. Falls back to the
+    // org productProfile for a legacy org with no product row yet.
+    const product = input.productId
+      ? await db.query.products.findFirst({
+          where: and(eq(products.id, input.productId), eq(products.orgId, org.id)),
+        })
+      : await db.query.products.findFirst({
+          where: and(
+            eq(products.orgId, org.id),
+            eq(products.isPrimary, true),
+            ne(products.status, "archived"),
+          ),
+        });
+    const productSelf = product
+      ? await db.query.competitors.findFirst({
+          where: eq(competitors.id, product.selfCompetitorId),
+        })
+      : null;
+    const sp = (productSelf?.selfProfile ?? null) as SelfProfile | null;
+    const myCategory = sp?.category?.value ?? org.productProfile?.category ?? null;
+    const myValueProp = sp?.valueProp?.value ?? org.productProfile?.valueProp ?? "";
+    if (!myCategory) {
       throw new AbortTaskRunError(
-        `Organization ${input.orgId} has no productProfile — onboarding incomplete`,
+        `No product profile for org ${input.orgId} — onboarding incomplete`,
       );
     }
+    const otherProducts = product
+      ? await db.query.products.findMany({
+          where: and(
+            eq(products.orgId, org.id),
+            ne(products.id, product.id),
+            ne(products.status, "archived"),
+          ),
+          columns: { name: true },
+        })
+      : [];
 
     const recentSignals = await db.query.signals.findMany({
       where: eq(signals.competitorId, competitor.id),
@@ -70,7 +107,7 @@ export const generateBattleCardJob = task({
     let content;
     try {
       content = await generateBattleCard({
-        myProduct: { category: profile.category, valueProp: profile.valueProp },
+        myProduct: { name: product?.name, category: myCategory, valueProp: myValueProp },
         competitorName: competitor.name,
         competitorSummary: competitor.aiSummary ?? competitor.description ?? null,
         reviewPraises: praisesRows.map((r) => r.content ?? "").filter(Boolean),
@@ -80,6 +117,7 @@ export const generateBattleCardJob = task({
           severity: s.severity,
           insight: s.insight,
         })),
+        otherProductNames: otherProducts.map((p) => p.name),
       });
     } catch (err) {
       await logAiRun("battle_card", provider, model, "error");
@@ -95,21 +133,22 @@ export const generateBattleCardJob = task({
 
     // Snapshot the inputs this card is based on (patch-22 staleness). The latest
     // competitor signal is recentSignals[0] (already ordered desc); the user's last
-    // self-profile edit comes from the self-competitor. Clear the patch-21 "not
-    // useful" flag — a fresh generation supersedes it.
-    // Oldest self-competitor = the original/primary product's anchor (patch-28
-    // multi-product); keeps mono-product staleness identical.
-    const self = await db.query.competitors.findFirst({
-      where: and(eq(competitors.orgId, org.id), eq(competitors.type, "self")),
-      orderBy: (t, { asc }) => asc(t.createdAt),
-    });
+    // self-profile edit comes from this product's self-competitor (patch-28). Clear
+    // the patch-21 "not useful" flag — a fresh generation supersedes it.
     const basedOnUserUpdateAt =
-      selfProfileLastEditedAt(self?.selfProfile) ?? self?.updatedAt ?? null;
+      selfProfileLastEditedAt(productSelf?.selfProfile) ?? productSelf?.updatedAt ?? null;
     const basedOnCompetitorSignalAt = recentSignals[0]?.createdAt ?? null;
 
-    const existing = await db.query.battleCards.findFirst({
-      where: eq(battleCards.competitorId, competitor.id),
-    });
+    const existing = product
+      ? await db.query.battleCards.findFirst({
+          where: and(
+            eq(battleCards.productId, product.id),
+            eq(battleCards.competitorId, competitor.id),
+          ),
+        })
+      : await db.query.battleCards.findFirst({
+          where: eq(battleCards.competitorId, competitor.id),
+        });
 
     let battleCardId: string;
     if (existing) {
@@ -130,6 +169,7 @@ export const generateBattleCardJob = task({
         .insert(battleCards)
         .values({
           competitorId: competitor.id,
+          productId: product?.id ?? null,
           orgId: org.id,
           content,
           generatedAt,
@@ -162,7 +202,7 @@ export const generateBattleCardJob = task({
 
     const html = renderBattleCardHtml({
       competitorName: competitor.name,
-      myProductCategory: profile.category,
+      myProductCategory: myCategory,
       generatedAt,
       content,
     });

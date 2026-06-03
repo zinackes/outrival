@@ -22,12 +22,15 @@ export const BattleCardSchema = z.object({
 export type BattleCardContent = z.infer<typeof BattleCardSchema>;
 
 export interface BattleCardInput {
-  myProduct: { category: string; valueProp: string };
+  myProduct: { name?: string; category: string; valueProp: string };
   competitorName: string;
   competitorSummary: string | null;
   reviewComplaints: string[];
   reviewPraises: string[];
   recentSignals: Array<{ category: string; severity: string; insight: string }>;
+  // patch-28 — names of the org's OTHER products (multi-SKU). When present, the card
+  // is told to stay focused on `myProduct` only, to avoid cross-contamination.
+  otherProductNames?: string[];
 }
 
 export async function generateBattleCard(
@@ -48,9 +51,19 @@ export async function generateBattleCard(
     ? input.reviewComplaints.slice(0, 8).map((p) => `- ${p}`).join("\n")
     : "n/a";
 
+  // Multi-SKU focus guard: keep the card about THIS product, not the org's others.
+  const focusNote =
+    input.otherProductNames && input.otherProductNames.length > 0
+      ? `\nNote: the same organization also sells other products (${input.otherProductNames.join(
+          ", ",
+        )}). This battle card is about ${
+          input.myProduct.name ?? "our product"
+        } ONLY — do not describe or reference the other products.`
+      : "";
+
   const prompt = `<my_product>
-Category: ${input.myProduct.category}
-Value proposition: ${input.myProduct.valueProp}
+${input.myProduct.name ? `Name: ${input.myProduct.name}\n` : ""}Category: ${input.myProduct.category}
+Value proposition: ${input.myProduct.valueProp}${focusNote}
 </my_product>
 
 <competitor>

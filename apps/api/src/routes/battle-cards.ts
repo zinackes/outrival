@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, ne } from "drizzle-orm";
 import { tasks } from "@trigger.dev/sdk/v3";
-import { battleCards, competitors, signals, selfProfileLastEditedAt } from "@outrival/db";
+import { battleCards, competitors, products, signals, selfProfileLastEditedAt } from "@outrival/db";
 import { getBytesFromR2 } from "@outrival/shared";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
@@ -39,6 +39,36 @@ async function assertOwnedCompetitor(competitorId: string, orgId: string) {
   });
 }
 
+// patch-28 — the product (SKU) a battle-card request is scoped to: the given product
+// (owned by the org), else the org's primary. Null for a legacy org with no product
+// row yet (cards then fall back to one-per-competitor). Returns the self-competitor
+// anchor too, for staleness against the product's own profile.
+async function resolveProduct(orgId: string, given?: string) {
+  if (given) {
+    const p = await db.query.products.findFirst({
+      where: and(eq(products.id, given), eq(products.orgId, orgId)),
+      columns: { id: true, selfCompetitorId: true },
+    });
+    if (p) return p;
+  }
+  return db.query.products.findFirst({
+    where: and(
+      eq(products.orgId, orgId),
+      eq(products.isPrimary, true),
+      ne(products.status, "archived"),
+    ),
+    columns: { id: true, selfCompetitorId: true },
+  });
+}
+
+// The battle-card lookup for a (product, competitor) couple, falling back to
+// one-per-competitor when the org has no product row (legacy / pre-migration).
+function battleCardWhere(competitorId: string, productId: string | undefined) {
+  return productId
+    ? and(eq(battleCards.productId, productId), eq(battleCards.competitorId, competitorId))
+    : eq(battleCards.competitorId, competitorId);
+}
+
 battleCardsRouter.get("/:id/battle-card", async (c) => {
   const id = c.req.param("id");
   const user = c.get("user");
@@ -47,8 +77,9 @@ battleCardsRouter.get("/:id/battle-card", async (c) => {
   const competitor = await assertOwnedCompetitor(id, orgId);
   if (!competitor) return c.json({ error: "Not found" }, 404);
 
+  const product = await resolveProduct(orgId, c.req.query("productId"));
   const card = await db.query.battleCards.findFirst({
-    where: eq(battleCards.competitorId, competitor.id),
+    where: battleCardWhere(competitor.id, product?.id),
   });
   if (!card) return c.json({ error: "Not generated" }, 404);
 
@@ -67,22 +98,29 @@ battleCardsRouter.get("/:id/battle-card/staleness", async (c) => {
   const competitor = await assertOwnedCompetitor(id, orgId);
   if (!competitor) return c.json({ error: "Not found" }, 404);
 
+  const product = await resolveProduct(orgId, c.req.query("productId"));
   const card = await db.query.battleCards.findFirst({
-    where: eq(battleCards.competitorId, competitor.id),
+    where: battleCardWhere(competitor.id, product?.id),
   });
   if (!card) {
     return c.json({ staleness: "never_generated", needsRegeneration: true });
   }
 
-  const self = await db.query.competitors.findFirst({
-    where: and(
-      eq(competitors.orgId, orgId),
-      eq(competitors.type, "self"),
-      isNull(competitors.deletedAt),
-    ),
-    // Oldest self = original/primary product's anchor (patch-28 multi-product).
-    orderBy: (t, { asc }) => asc(t.createdAt),
-  });
+  // The user's last edit comes from this product's self-competitor (patch-28) — the
+  // same anchor the job snapshots basedOnUserUpdateAt from. Falls back to any self
+  // for a legacy org with no product row.
+  const self = product?.selfCompetitorId
+    ? await db.query.competitors.findFirst({
+        where: eq(competitors.id, product.selfCompetitorId),
+      })
+    : await db.query.competitors.findFirst({
+        where: and(
+          eq(competitors.orgId, orgId),
+          eq(competitors.type, "self"),
+          isNull(competitors.deletedAt),
+        ),
+        orderBy: (t, { asc }) => asc(t.createdAt),
+      });
   const userLastChange = selfProfileLastEditedAt(self?.selfProfile) ?? self?.updatedAt ?? null;
 
   const lastSignal = await db.query.signals.findFirst({
@@ -120,9 +158,11 @@ battleCardsRouter.post("/:id/battle-card/generate", aiIntensiveRateLimit, async 
   const competitor = await assertOwnedCompetitor(id, orgId);
   if (!competitor) return c.json({ error: "Not found" }, 404);
 
+  const product = await resolveProduct(orgId, c.req.query("productId"));
   const handle = await tasks.trigger("generate-battle-card", {
     competitorId: competitor.id,
     orgId,
+    productId: product?.id,
   });
 
   return c.json({ status: "generating", runId: handle.id });
@@ -142,8 +182,9 @@ battleCardsRouter.patch("/:id/battle-card", async (c) => {
     return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
   }
 
+  const product = await resolveProduct(orgId, c.req.query("productId"));
   const existing = await db.query.battleCards.findFirst({
-    where: eq(battleCards.competitorId, competitor.id),
+    where: battleCardWhere(competitor.id, product?.id),
   });
   if (!existing) return c.json({ error: "Not generated" }, 404);
 
@@ -164,8 +205,9 @@ battleCardsRouter.get("/:id/battle-card/pdf", async (c) => {
   const competitor = await assertOwnedCompetitor(id, orgId);
   if (!competitor) return c.json({ error: "Not found" }, 404);
 
+  const product = await resolveProduct(orgId, c.req.query("productId"));
   const card = await db.query.battleCards.findFirst({
-    where: eq(battleCards.competitorId, competitor.id),
+    where: battleCardWhere(competitor.id, product?.id),
   });
   if (!card?.pdfR2Key) return c.json({ error: "PDF not available" }, 404);
 

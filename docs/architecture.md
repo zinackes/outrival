@@ -660,6 +660,18 @@ WEB_URL=                     # https://outrival.io (callbacks Stripe)
 
 ## Décisions architecturales clés
 
+- **Sub-sidebar contextuelle Variante 1 (patch-29)** — sur `/dashboard/settings/*`, la
+  sidebar settings **remplace** la rail principale (pattern Vercel/Stripe) au lieu d'empiler
+  une 2e colonne nav. Implémenté dans `DashboardShell` (client) par un swap `usePathname`
+  `AppSidebar ↔ SettingsSidebar` (même `SidebarProvider`/topbar/cookie). Settings organisés
+  **Personal / Workspace / Danger** (prêt multi-user) ; Members caché par
+  `FEATURE_FLAGS.multiUser` (`@outrival/shared`, false). Rail principale rationalisée
+  (Overview/Signals/Competitors/Products/Discovery + Settings en footer divisé) ; renames de
+  route `my-product→products`, `candidates→discovery`, `settings/workspace→settings/general`
+  (301 via `next.config`). Alerts = tab `?view=alerts` du feed Signals ; la page `/alerts`
+  (config canaux) redirige vers Settings>Notifications. Battle cards hors rail : endpoint
+  liste org-wide `GET /api/battle-cards` → page `/dashboard/battle-cards` + section "Recent"
+  de l'overview. Pur frontend/nav (1 endpoint liste, aucun schéma DB).
 - **Multi-SKU non-destructif (patch-28)** — une org gère 1+ `products`. Plutôt que
   de remplacer le self-competitor (`competitors.type="self"`, tissé dans ~11 jobs +
   clés ClickHouse + R2), un `product` est un **wrapper fin** qui le référence

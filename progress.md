@@ -546,3 +546,59 @@ limite via count DB (Redis no-op sans Upstash).
 2. Commits par étape (auto-committer concurrent → aucun commit fait par Claude).
 3. Runtime à tester : tiers A–H de la carte (limite 429, bypass, toast contextuel, silent cron,
    dashboard admin). Item Notion → Done. TODO suite : page Notion "Repenser limites par tier".
+
+---
+
+## Patch-29 — Rework Settings & Navigation — IMPLÉMENTÉ (2026-06-03)
+
+**Branche** `patch-29-rework-settings-navigation` (off `patch-28`). 13 commits perso (9ff4d72 →
+a49b1a5) ; un commit design concurrent `ed1fdcd` + landing/* insérés par l'auto-committer
+(skill impeccable, indépendants — pas embarqués dans mes commits). Typecheck web/api/shared
+propre. **Aucun schéma DB** — pur frontend/nav + 1 endpoint liste. Les 3 erreurs TS web
+(onboarding-form 284 · competitors/[id] 986 · products-settings 126) sont PRÉ-EXISTANTES
+(patch-25/28), pas touchées.
+
+**Code réel ≠ patch (remappé)** : tout sous `/dashboard/*` ; composants `components/dashboard/`
+(sidebar/dashboard-shell/topbar/user-menu) ; pas de `useUser` ; UI **anglais** (mockups FR du
+patch ignorés, rule language.md). Variante 1 = swap `AppSidebar↔SettingsSidebar` dans
+`DashboardShell` (usePathname), même SidebarProvider/topbar/cookie.
+
+**Décisions user** : phase nav d'abord (puis tout enchaîné) · alerts/digests = **préserver
+l'accès** (alerts→301 Notifications + page supprimée ; digests garde sa vue + lien depuis
+notifications/Cmd+K) · backend = câbler l'existant + stub le reste.
+
+**Nouveaux fichiers** :
+- `packages/shared/src/feature-flags.ts` (`FEATURE_FLAGS.multiUser=false`)
+- `apps/api/src/routes/battle-cards.ts` → `battleCardsListRouter` (GET org-wide) monté
+  `/api/battle-cards`
+- `apps/web/src/components/dashboard/settings-sidebar.tsx`, `recent-battle-cards.tsx`
+- `apps/web/src/components/outrival/{profile-settings-form,security-settings,integrations-settings,data-settings}.tsx`
+- `apps/web/src/app/dashboard/battle-cards/page.tsx`
+- `apps/web/src/app/dashboard/settings/{profile,security,integrations,api-keys,data,members}/page.tsx`
+
+**Renommés / supprimés** : routes `my-product→products`, `candidates→discovery`,
+`settings/workspace→settings/general` (git mv + 301) ; `settings-nav.tsx` supprimé (remplacé
+par la sub-sidebar) ; page `/dashboard/alerts` supprimée (→301 notifications).
+
+**Modifiés** : sidebar.tsx (rail rationalisée + footer Settings), dashboard-shell.tsx (swap),
+topbar.tsx (titres), user-menu.tsx (Profile/Notifications/Settings/Logout), signals-view.tsx
+(tab Alerts), overview.tsx (section), settings/layout.tsx (simplifié), settings/notifications
+(2 tabs), settings/page.tsx (redirect general), lib/api.ts (BattleCardSummary + listBattleCards),
+api/index.ts (mount), shared/index.ts (export flag), next.config.ts (4 redirects 301),
+docs/architecture.md.
+
+**Câblé (vrai backend)** : profile name (Better Auth updateUser), security sessions
+(listSessions/revokeSession/revokeOtherSessions Better Auth — réels), data export (client-side
+via listCompetitors/listSignals/getWorkspaceSettings), notifications (forms patch-26 existants),
+battle-cards list (nouvel endpoint), integrations (AlertChannelsSheet existant).
+
+**Stub / non câblé (suite)** : 2FA · API keys (placeholder) · data import · Delete workspace
+(page danger = bouton disabled, pas de flow confirmation multi-étapes ni endpoint DELETE) ·
+email change (RO) · password set · products/forced-rescans usage dans Subscription
+(billing-dashboard couvre déjà plan+limites+competitors) · avatar upload · langue (English-only) ·
+deep-link tab battle-card depuis la liste (linke la fiche).
+
+**À FAIRE par l'utilisateur** :
+1. Validation visuelle : `pnpm dev --filter @outrival/web` (WSL ne tient pas le dev complet).
+   Checklist A–I de la carte Notion. Le `.next` périmé déplacé en `/tmp` (régénéré au dev).
+2. Item Notion patch-29 → Done.

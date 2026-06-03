@@ -4,29 +4,28 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Home,
-  Activity,
+  LayoutDashboard,
+  Radio,
   Users,
-  Sparkles,
-  FileText,
-  Bell,
+  Box,
+  Search,
   Settings,
   ChevronsUpDown,
   CreditCard,
-  Store,
   type LucideIcon,
 } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
+  SidebarSeparator,
   useSidebar,
 } from "@/components/ui/sidebar";
 import {
@@ -53,35 +52,16 @@ interface NavItem {
   exact?: boolean;
 }
 
-interface NavGroup {
-  group: string;
-  items: NavItem[];
-}
+const NAV: NavItem[] = [
+  { href: "/dashboard", label: "Overview", icon: LayoutDashboard, exact: true },
+  { href: "/dashboard/signals", label: "Signals", icon: Radio },
+  { href: "/dashboard/competitors", label: "Competitors", icon: Users },
+  { href: "/dashboard/products", label: "Products", icon: Box },
+  { href: "/dashboard/discovery", label: "Discovery", icon: Search },
+];
 
-const NAV: NavGroup[] = [
-  {
-    group: "Monitoring",
-    items: [
-      { href: "/dashboard", label: "Overview", icon: Home, exact: true },
-      { href: "/dashboard/signals", label: "Signals", icon: Activity },
-      { href: "/dashboard/my-product", label: "My product", icon: Store },
-      { href: "/dashboard/competitors", label: "Competitors", icon: Users },
-      { href: "/dashboard/candidates", label: "Detections", icon: Sparkles },
-    ],
-  },
-  {
-    group: "Delivery",
-    items: [
-      { href: "/dashboard/digests", label: "Digests", icon: FileText },
-      { href: "/dashboard/alerts", label: "Alerts", icon: Bell },
-    ],
-  },
-  {
-    group: "Workspace",
-    items: [
-      { href: "/dashboard/settings", label: "Settings", icon: Settings },
-    ],
-  },
+const BOTTOM_NAV: NavItem[] = [
+  { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 
 function initials(name?: string | null, fallback = "?") {
@@ -173,53 +153,40 @@ export function AppSidebar({ org }: { org: Org }) {
     return pathname === href || pathname.startsWith(href + "/");
   }
 
+  function renderItem(it: NavItem) {
+    if (it.href === "/dashboard/competitors") {
+      return <SidebarCompetitors key={it.href} />;
+    }
+    const Ic = it.icon;
+    const active = isActive(it.href, it.exact);
+    return (
+      <SidebarMenuItem key={it.href}>
+        <SidebarMenuButton asChild isActive={active} tooltip={it.label}>
+          <Link href={it.href}>
+            <Ic />
+            <span>{it.label}</span>
+          </Link>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    );
+  }
+
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
         <WorkspaceSwitcher org={org} />
       </SidebarHeader>
       <SidebarContent>
-        {NAV.map((g) => (
-          <SidebarGroup key={g.group}>
-            <SidebarGroupLabel
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 10,
-                letterSpacing: "0.14em",
-                textTransform: "uppercase",
-                color: "var(--muted-2)",
-              }}
-            >
-              {g.group}
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {g.items.map((it) => {
-                  if (it.href === "/dashboard/competitors") {
-                    return <SidebarCompetitors key={it.href} />;
-                  }
-                  const Ic = it.icon;
-                  const active = isActive(it.href, it.exact);
-                  return (
-                    <SidebarMenuItem key={it.href}>
-                      <SidebarMenuButton
-                        asChild
-                        isActive={active}
-                        tooltip={it.label}
-                      >
-                        <Link href={it.href}>
-                          <Ic />
-                          <span>{it.label}</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        ))}
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>{NAV.map(renderItem)}</SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
       </SidebarContent>
+      <SidebarFooter>
+        <SidebarSeparator />
+        <SidebarMenu>{BOTTOM_NAV.map(renderItem)}</SidebarMenu>
+      </SidebarFooter>
       <SidebarRail />
     </Sidebar>
   );

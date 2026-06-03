@@ -1771,3 +1771,77 @@ Post-MVP, patch ad-hoc (Effort L). Build sur patches 14/20/22/23/26.
 - Décisions A/B/C à confirmer (cf. ci-dessus).
 - Commits : working tree au démarrage à vérifier (auto-committer concurrent connu) →
   "j'implémente, commits laissés à l'utilisateur" si tree sale.
+
+---
+
+# Patch-29 — Rework Settings & Navigation (2026-06-03)
+
+**Branche** : `patch-29-rework-settings-navigation` (off `patch-28-self-product-multi-sku`).
+**Effort L · 13 étapes · 1 commit/étape.** Notion 37307f32ce4781ada66bdd8574cd4fd5.
+
+## Objectif
+Sub-sidebar contextuelle Variante 1 (Vercel/Stripe : remplace la sidebar principale sur
+`/dashboard/settings/*`), structure Personal/Workspace prête multi-user (Members caché par
+feature flag), 11 sections settings (12 multi-user). Rationaliser la sidebar principale,
+tabs All/Alerts sur Signals, battle cards hors sidebar, refonte user-menu, redirects 301.
+
+## Divergences spec → code réel (VÉRIFIÉES en lisant le code)
+- Routes : patch suppose `/settings/*`, `/signals`, `/overview` top-level → RÉEL tout sous
+  `/dashboard/*`. On garde `/dashboard/*` (pas de migration de route).
+- `components/outrival/main-sidebar.tsx` → RÉEL `components/dashboard/sidebar.tsx` (`AppSidebar`,
+  shadcn `Sidebar` collapsible="icon", groupes Monitoring/Delivery/Workspace).
+- `settings-sidebar.tsx` à créer → RÉEL `components/dashboard/settings-nav.tsx` existe
+  (colonne 180px dans `settings/layout.tsx` = la "2e sidebar" anti-pattern à remplacer).
+- `user-dropdown.tsx` → RÉEL `components/dashboard/user-menu.tsx` (`UserMenu`).
+- `useUser().isMultiUserEnabled` n'existe pas → feature flag `@outrival/shared` + `useSession`.
+- "Détection"/`/detection` → RÉEL label "Detections", route `/dashboard/candidates`.
+- "My Product"/`/my-product` → RÉEL label "My product", route `/dashboard/my-product`.
+- Mockups patch en FRANÇAIS → repo English-only (rule language.md) : tout en ANGLAIS.
+- Variante 1 : `DashboardShell` (client) swap `AppSidebar` ↔ `SettingsSidebar` via
+  `usePathname` (garde SidebarProvider/topbar/trigger/mobile/cookie intacts) ; virer la
+  colonne `SettingsNav` du settings/layout. Pas de route hors groupe dashboard.
+
+## Décisions à confirmer (user)
+- A. Découpage session : phase navigation (1-5+12) d'abord vs tout d'une traite.
+- B. Pages existantes Digests (`/dashboard/digests`) + Alerts (`/dashboard/alerts`) : le patch
+  les retire de la sidebar (Alerts→tab Signals, Digest→config Notifications). Rediriger /
+  garder-par-URL / garder-en-sidebar ?
+- C. Profondeur backend nouvelles pages : câbler l'existant (notif patch-26, billing, products
+  patch-28, sessions Better Auth, export) + stub le reste (2FA, API keys, import, members) ?
+
+## Étapes (1 commit/étape, adaptées au code réel)
+1. Renames + réorg `components/dashboard/sidebar.tsx` : Detections→Discovery, My product→
+   Products ; ordre Overview/Signals/Competitors/Products/Discovery + divider + Settings bas ;
+   sortir Digests/Alerts selon décision B. Redirects `/dashboard/candidates`→`/dashboard/discovery`,
+   `/dashboard/my-product`→`/dashboard/products` (ou garder routes + renommer labels — à trancher).
+   Commit `refactor(web): rename and reorganize main sidebar items`.
+2. Tabs Signals All/Alerts (`?tab=`) + API `GET /api/signals?filter=alerts` (severity high|critical).
+   Commit `feat(web): signals page with all/alerts tabs`.
+3. Section "Recent battle cards" dans overview + page `/dashboard/battle-cards` (liste, filtres
+   product/competitor), hors sidebar. Commit `feat(web): battle cards section in overview with full list page`.
+4. Sub-sidebar Variante 1 : `settings-sidebar.tsx` (Personal/Workspace/Danger, feature flag
+   Members) + swap dans `DashboardShell` + virer `SettingsNav` du settings/layout + "← Back".
+   Commit `feat(web): settings sub-sidebar layout replacing main sidebar`.
+5. Refonte `user-menu.tsx` : Profile, Notifications, Settings, Logout (+ email).
+   Commit `feat(web): user dropdown with personal shortcuts and settings link`.
+6. `/dashboard/settings/profile` (réutiliser update-profile-dialog existant).
+   Commit `feat(web): settings profile page`.
+7. `/dashboard/settings/notifications` 2 modes (alertes patch-26 via notification-moderation-form
+   + digest récurrent via notification-settings-form/digest existant).
+   Commit `feat(web): settings notifications with alerts and digest modes`.
+8. `/dashboard/settings/security` (2FA stub + sessions Better Auth).
+   Commit `feat(web): settings security page with 2fa stub and sessions`.
+9. `/dashboard/settings/general` (renommé de workspace) + products (redirect patch-28) +
+   subscription (limites par tier patch-27/28). Commit `feat(web): settings general, products redirect, subscription pages`.
+10. `/dashboard/settings/members` caché derrière `FEATURE_FLAGS.multiUser`.
+    Commit `feat(web): members settings page hidden behind multi-user flag`.
+11. integrations + api-keys (placeholder) + data (export) + delete (multi-step).
+    Commit `feat(web): settings integrations, api-keys, data, delete pages`.
+12. Redirects 301 (`/dashboard/settings/workspace`→`/general`, sidebar renames).
+    Commit `chore(web): redirects for old settings and sidebar urls`.
+13. `pnpm build && pnpm typecheck` + checklist A–I + MAJ findings/progress + docs/architecture.
+
+## Blockers patch-29
+- Décisions A/B/C ci-dessus à confirmer avant de coder au-delà de l'étape 1.
+- Auto-committer concurrent connu → vérifier le tree, commits par étape (le patch les demande).
+- WSL mémoire : pas de `pnpm dev` complet ; typecheck par filter.

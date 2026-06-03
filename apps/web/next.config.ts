@@ -4,10 +4,21 @@ import { withSentryConfig } from "@sentry/nextjs";
 const nextConfig: NextConfig = {
   transpilePackages: ["@outrival/shared"],
   async redirects() {
-    // patch-19: /login and /register were consolidated into the single /auth page.
     return [
+      // patch-19: /login and /register were consolidated into the single /auth page.
       { source: "/login", destination: "/auth", permanent: true },
       { source: "/register", destination: "/auth", permanent: true },
+      // patch-29: main sidebar renames (My product → Products, Detections → Discovery).
+      {
+        source: "/dashboard/my-product",
+        destination: "/dashboard/products",
+        permanent: true,
+      },
+      {
+        source: "/dashboard/candidates",
+        destination: "/dashboard/discovery",
+        permanent: true,
+      },
     ];
   },
 };

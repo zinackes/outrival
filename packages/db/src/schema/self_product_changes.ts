@@ -1,6 +1,7 @@
 import { pgTable, text, timestamp, jsonb, pgEnum } from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
 import { competitors } from "./competitors";
+import { products } from "./products";
 import { changes } from "./changes";
 
 export const selfChangeStatusEnum = pgEnum("self_change_status", [
@@ -26,6 +27,11 @@ export const selfProductChanges = pgTable("self_product_changes", {
   selfCompetitorId: text("self_competitor_id")
     .notNull()
     .references(() => competitors.id, { onDelete: "cascade" }),
+  // patch-28 — self changes now belong to a product (the self-competitor is being
+  // removed). Nullable until backfilled by the migration (via orgId → primary
+  // product); the pipeline re-anchor step writes it going forward and relaxes
+  // selfCompetitorId so the migration can null it before deleting the competitor.
+  productId: text("product_id").references(() => products.id, { onDelete: "cascade" }),
   // Originating change (when detected via the scrape diff pipeline). Unique so a
   // classify-change retry can't record the same self change twice. Nullable: a
   // change may be recorded from another source later. Postgres allows multiple NULLs.

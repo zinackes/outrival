@@ -2,6 +2,8 @@ export * from "./auth";
 export * from "./organizations";
 export * from "./users";
 export * from "./competitors";
+export * from "./products";
+export * from "./product-competitors";
 export * from "./monitors";
 export * from "./snapshots";
 export * from "./changes";

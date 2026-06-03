@@ -1,4 +1,5 @@
-import { pgTable, text, timestamp, boolean, real, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, real, jsonb, pgEnum } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { changes } from "./changes";
 import { organizations } from "./organizations";
 import { competitors } from "./competitors";
@@ -56,6 +57,11 @@ export const signals = pgTable("signals", {
   // Stamped once a deferred signal (dispatchedChannel = digest_daily) has gone out
   // in a daily digest email — the daily digest job's idempotency marker.
   dailyDigestSentAt: timestamp("daily_digest_sent_at"),
+  // patch-28 — products (SKUs) this signal affects, derived deterministically from
+  // product_competitors at signal creation (not via AI). A competitor shared by
+  // Marketing Hub and Sales Hub tags its signals into both. Empty for orgs with no
+  // product associations; the per-product feed filters with `productIds @> [id]`.
+  productIds: jsonb("product_ids").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
   isRead: boolean("is_read").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

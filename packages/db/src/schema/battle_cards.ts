@@ -1,12 +1,17 @@
-import { pgTable, text, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
 import { competitors } from "./competitors";
 import { organizations } from "./organizations";
+import { products } from "./products";
 
 export const battleCards = pgTable("battle_cards", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   competitorId: text("competitor_id")
     .notNull()
     .references(() => competitors.id, { onDelete: "cascade" }),
+  // patch-28 — a battle card is now scoped to a (product, competitor) couple:
+  // "Marketing Hub vs Mailchimp" differs from "Sales Hub vs Mailchimp". Nullable
+  // until backfilled by the patch-28 migration; new cards always set it.
+  productId: text("product_id").references(() => products.id, { onDelete: "cascade" }),
   orgId: text("org_id")
     .notNull()
     .references(() => organizations.id, { onDelete: "cascade" }),
@@ -22,4 +27,8 @@ export const battleCards = pgTable("battle_cards", {
   basedOnCompetitorSignalAt: timestamp("based_on_competitor_signal_at"),
   generatedAt: timestamp("generated_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+}, (t) => [
+  // One card per (product, competitor) couple. Postgres treats NULL productId as
+  // distinct, so legacy rows (pre-backfill) don't collide; new rows always set it.
+  uniqueIndex("battle_cards_product_competitor_uq").on(t.productId, t.competitorId),
+]);

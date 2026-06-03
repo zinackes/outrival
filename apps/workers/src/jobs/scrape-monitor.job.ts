@@ -9,6 +9,7 @@ import {
   changes,
   volatileLines,
   monitorAlternatives,
+  forcedRescanLog,
 } from "@outrival/db";
 import {
   computeHash,
@@ -229,6 +230,13 @@ async function tryEnableApiCapture(
 const InputSchema = z.object({
   monitorId: z.string(),
   force: z.boolean().optional().default(false),
+  // patch-27 — present when a user explicitly forced this re-scan. `force` already
+  // bypasses the idempotence window + hash dedup; these fields only let us write
+  // the outcome (change found or not) back to forced_rescan_log for the contextual
+  // toast and the admin useful/wasted ratio.
+  triggeredBy: z.enum(["user_forced_rescan"]).optional(),
+  userId: z.string().optional(),
+  forcedRescanLogId: z.string().optional(),
 });
 
 const IDEMPOTENCE_WINDOW_MS = 60 * 60 * 1000;
@@ -1023,6 +1031,18 @@ export const scrapeMonitorJob = task({
       duration_ms: Date.now() - startedAt,
       recorded_at: new Date(),
     });
+
+    // patch-27 — stamp the user-forced re-scan outcome. A detected change means a
+    // change row was created (and classify/generate-signal triggered downstream);
+    // since signals are generated asynchronously, "found a change" is the honest
+    // synchronous proxy for "the re-scan was useful". Forced runs always reach
+    // this return (force bypasses every early no-op return above).
+    if (input.triggeredBy === "user_forced_rescan" && input.forcedRescanLogId) {
+      await db
+        .update(forcedRescanLog)
+        .set({ resultCapturedAt: new Date(), hadNewSignal: changeId !== null })
+        .where(eq(forcedRescanLog.id, input.forcedRescanLogId));
+    }
 
     logger.log("Completed scrape-monitor", {
       monitorId: monitor.id,

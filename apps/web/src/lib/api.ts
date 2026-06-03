@@ -982,6 +982,20 @@ export const api = {
     }),
   runMonitor: (id: string) =>
     request<{ runId: string; monitorId: string }>(`/api/monitors/${id}/run`, { method: "POST" }),
+  // patch-27 — user-forced re-scan (per-tier daily limit; 429 → rescan_limit_reached).
+  forceRescan: (id: string) =>
+    request<{
+      ok: true;
+      runId: string;
+      rescanLogId: string;
+      monitorId: string;
+      usageToday: number;
+      dailyLimit: number;
+    }>(`/api/monitors/${id}/force-rescan`, { method: "POST" }),
+  forceRescanStatus: (logId: string) =>
+    request<{ done: boolean; hadNewSignal: boolean | null; nextRunAt: string | null }>(
+      `/api/monitors/force-rescan/${logId}/status`,
+    ),
   // Dev-only: force a tech-stack scan (the /api/dev router is mounted only when
   // NODE_ENV !== "production"). Tech stack otherwise runs on its own monthly cron.
   scrapeTechStack: (id: string) =>

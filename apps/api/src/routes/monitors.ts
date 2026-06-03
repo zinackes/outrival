@@ -1,18 +1,37 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { and, eq, inArray, isNull } from "drizzle-orm";
-import { monitors, competitors, changes, signals, alerts } from "@outrival/db";
+import { and, count, eq, gte, inArray, isNull } from "drizzle-orm";
+import { monitors, competitors, changes, signals, alerts, forcedRescanLog } from "@outrival/db";
 import { tasks } from "@trigger.dev/sdk/v3";
 import {
   MONITOR_FREQUENCIES,
   validateMonitorUrl,
   computeNextRun,
   type MonitorFrequency,
+  type Plan,
 } from "@outrival/shared";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
 import { getOrgPlan, isFrequencyAllowed } from "../lib/plan";
+
+// Patch-27 — per-tier daily cap on user-forced re-scans (env-overridable).
+const FORCED_RESCAN_FALLBACK: Record<Plan, number> = {
+  free: 1,
+  starter: 5,
+  pro: 20,
+  business: 999,
+};
+function dailyForcedRescanLimit(plan: Plan): number {
+  const env: Record<Plan, string | undefined> = {
+    free: process.env.FORCED_RESCAN_LIMIT_FREE,
+    starter: process.env.FORCED_RESCAN_LIMIT_STARTER,
+    pro: process.env.FORCED_RESCAN_LIMIT_PRO,
+    business: process.env.FORCED_RESCAN_LIMIT_BUSINESS,
+  };
+  const n = Number(env[plan]);
+  return Number.isFinite(n) && n > 0 ? n : FORCED_RESCAN_FALLBACK[plan];
+}
 
 type Variables = { user: { id: string } };
 
@@ -196,4 +215,106 @@ monitorsRouter.post("/:id/run", async (c) => {
     .where(eq(monitors.id, monitor.id));
 
   return c.json({ runId: handle.id, monitorId: monitor.id });
+});
+
+// Patch-27 — user-forced re-scan from the stale-data "Re-scan" affordance.
+// Distinct from /:id/run: it enforces a per-tier daily limit (counted per user)
+// and records a forced_rescan_log row so the worker can stamp the outcome and the
+// admin dashboard can measure the useful/wasted ratio. The scrape itself reuses
+// `force: true`, which already bypasses the idempotence window and the hash dedup.
+monitorsRouter.post("/:id/force-rescan", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const monitor = await db.query.monitors.findFirst({ where: eq(monitors.id, id) });
+  if (!monitor) return c.json({ error: "Monitor not found" }, 404);
+
+  const competitor = await db.query.competitors.findFirst({
+    where: and(
+      eq(competitors.id, monitor.competitorId),
+      eq(competitors.orgId, orgId),
+      isNull(competitors.deletedAt),
+    ),
+  });
+  if (!competitor) return c.json({ error: "Forbidden" }, 403);
+
+  const plan = await getOrgPlan(orgId);
+  const limit = dailyForcedRescanLimit(plan);
+  const dayStart = new Date();
+  dayStart.setUTCHours(0, 0, 0, 0);
+  const [usage] = await db
+    .select({ value: count() })
+    .from(forcedRescanLog)
+    .where(
+      and(eq(forcedRescanLog.userId, user.id), gte(forcedRescanLog.triggeredAt, dayStart)),
+    );
+  const usageToday = usage?.value ?? 0;
+  if (usageToday >= limit) {
+    return c.json(
+      {
+        error: {
+          code: "rescan_limit_reached",
+          message: `You've reached your limit of ${limit} forced re-scan${limit > 1 ? "s" : ""} today (${plan} plan). It resets tomorrow.`,
+          upgradeHint: plan !== "business",
+        },
+      },
+      429,
+    );
+  }
+
+  // Log first so the worker can stamp resultCapturedAt/hadNewSignal via the id.
+  const [log] = await db
+    .insert(forcedRescanLog)
+    .values({ userId: user.id, orgId, monitorId: monitor.id })
+    .returning({ id: forcedRescanLog.id });
+  const logId = log!.id;
+
+  const handle = await tasks.trigger("scrape-monitor", {
+    monitorId: monitor.id,
+    force: true,
+    triggeredBy: "user_forced_rescan",
+    userId: user.id,
+    forcedRescanLogId: logId,
+  });
+
+  await db.update(forcedRescanLog).set({ taskId: handle.id }).where(eq(forcedRescanLog.id, logId));
+  await db
+    .update(monitors)
+    .set({ scrapeStartedAt: new Date(), lastFailedAt: null, lastError: null })
+    .where(eq(monitors.id, monitor.id));
+
+  return c.json({
+    ok: true,
+    runId: handle.id,
+    rescanLogId: logId,
+    monitorId: monitor.id,
+    usageToday: usageToday + 1,
+    dailyLimit: limit,
+  });
+});
+
+// Patch-27 — poll a forced re-scan's outcome. Signals are generated downstream,
+// so the worker records "found a change?" on the log row when the scrape ends;
+// the client polls this until `done` to show the contextual toast.
+monitorsRouter.get("/force-rescan/:logId/status", async (c) => {
+  const logId = c.req.param("logId");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const log = await db.query.forcedRescanLog.findFirst({
+    where: eq(forcedRescanLog.id, logId),
+  });
+  if (!log || log.orgId !== orgId) return c.json({ error: "Not found" }, 404);
+
+  const monitor = await db.query.monitors.findFirst({
+    where: eq(monitors.id, log.monitorId),
+    columns: { nextRunAt: true },
+  });
+
+  return c.json({
+    done: log.resultCapturedAt !== null,
+    hadNewSignal: log.hadNewSignal,
+    nextRunAt: monitor?.nextRunAt ?? null,
+  });
 });

@@ -29,3 +29,4 @@ export * from "./signal-batches";
 export * from "./monitor-alternatives";
 export * from "./structural-changes";
 export * from "./manual-snapshots";
+export * from "./forced-rescan-log";

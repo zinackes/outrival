@@ -14,6 +14,9 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   // A radical change on a competitor's site (pivot/death/acquisition), patch-23.
   // The user resolves it on the competitor — never auto-resolved.
   "structural_change",
+  // A monitored source has produced nothing for a long time (patch-27). The user
+  // is prompted to re-scan, pause, or swap it. Rate-limited to 1 per org / 30 days.
+  "silent_monitor",
 ]);
 
 export const notifications = pgTable("notifications", {

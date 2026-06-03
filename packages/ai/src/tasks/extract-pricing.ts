@@ -5,7 +5,9 @@ import { safeParseJson } from "../lib/parse";
 
 export const PricingPlanSchema = z.object({
   plan_name: z.string(),
-  price: z.number(),
+  // null for quote-based tiers ("Contact sales"). A single such plan must not
+  // discard the whole extraction, so the field is nullable, not required.
+  price: z.number().nullable(),
   currency: z.string(),
   billing_period: z.enum(["monthly", "yearly", "one_time", "custom"]),
 });
@@ -46,7 +48,7 @@ ${focusPricingText(pricingPageText)}
 <task>
 Extract the structured pricing plans from this pricing page.
 - "plan_name": exact plan name (e.g. Free, Starter, Pro, Enterprise)
-- "price": numeric amount (0 for free, strip the currency symbol)
+- "price": numeric amount (0 for free, strip the currency symbol). Use null for quote-based plans with no public price (e.g. "Contact sales", "Custom").
 - "currency": ISO code ("USD", "EUR", "GBP"...) — default to "USD" if ambiguous
 - "billing_period": "monthly" | "yearly" | "one_time" | "custom" (Enterprise quote-based => "custom")
 - Ignore add-ons and options; keep only the main plans
@@ -58,7 +60,8 @@ Reply ONLY with a valid JSON object, no markdown and no surrounding text.
 <format>
 {
   "plans": [
-    { "plan_name": "Pro", "price": 29, "currency": "USD", "billing_period": "monthly" }
+    { "plan_name": "Pro", "price": 29, "currency": "USD", "billing_period": "monthly" },
+    { "plan_name": "Enterprise", "price": null, "currency": "USD", "billing_period": "custom" }
   ]
 }
 </format>`;

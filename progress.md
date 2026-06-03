@@ -509,3 +509,40 @@ tests citations 8/8.
 Reste optionnel (non bloquant) : per-candidate ConfidenceDot (discovery), ConfidenceDot sur
 battle card/digest UI, rendu "removed" sur hallucination confirmée, persist des tasks
 sans entité (classify/summary/verify/sectoral).
+
+---
+
+## Patch-27 — Données obsolètes : actions concrètes — IMPLÉMENTÉ (2026-06-03)
+
+8 étapes (0→7) typecheck clean (shared/db/ai/scrapers/api/workers ✓ ; web = seul artefact
+`.next/types/validator.ts` pré-existant). **Branche** `patch-27-stale-data-actions` (rebranchée
+sur `patch-26-notification-moderation` après une fausse manip qui l'avait créée sur `main`,
+très en retard). Décisions user : mapping option-1 + `github_repo→features` (features câblé) ·
+limite re-scan **par user** · notif silent **in-app + email best-effort**.
+
+**Nouveaux fichiers** :
+- `packages/shared/src/staleness.ts` (4 états par type de source, env-overridable, mapping 12→6)
+- `packages/db/src/schema/forced-rescan-log.ts`
+- `apps/api/src/routes/...` → route ajoutée dans `monitors.ts` (pas de nouveau router)
+- `apps/web/src/hooks/use-force-rescan.ts` + `components/outrival/monitor-freshness.tsx`
+- `apps/workers/src/jobs/detect-silent-monitors.job.ts` (cron 0 8 * * *)
+- `apps/web/src/app/(admin)/admin/monitors-health/page.tsx`
+
+**Fichiers modifiés** : shared/index · db/schema/index · db/schema/notifications (enum
++silent_monitor) · api/routes/monitors (force-rescan + status) · api/lib/api.ts (web client) ·
+api/routes/admin (endpoint monitors-health) · workers/scrape-monitor.job (payload + stamp log) ·
+web freshness-dot.tsx (mode actionnable opt-in) · web competitor page (MonitorSources row) ·
+admin-nav · .env.example · docs/architecture.md.
+
+**Divergences spec corrigées** : `monitors` sans orgId/userId/status (join competitors, isActive,
+lastRunAt) · notifications org-scoped (enum +silent_monitor, cooldown par org) · **bypass déjà
+existant** via `force:true` (réutilisé, pas de nouveau flag) · `getOrgTier`=org.plan · dispatcher
+ne fait que décider (création notif faite à la main) · lastSignal via join changes⋈signals ·
+limite via count DB (Redis no-op sans Upstash).
+
+**À FAIRE par l'utilisateur (laissé exprès)** :
+1. `pnpm db:push` — applique `forced_rescan_log` (table) + `silent_monitor` (valeur d'enum).
+   drizzle-kit push est interactif (peut prompter sur l'enum) + touche la DB prod → pas lancé.
+2. Commits par étape (auto-committer concurrent → aucun commit fait par Claude).
+3. Runtime à tester : tiers A–H de la carte (limite 429, bypass, toast contextuel, silent cron,
+   dashboard admin). Item Notion → Done. TODO suite : page Notion "Repenser limites par tier".

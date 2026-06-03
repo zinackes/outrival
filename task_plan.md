@@ -1680,3 +1680,94 @@ resume org-level et polling `DoneStep` existaient déjà ; on solidifie + on ajo
 - Modifs pré-existantes hors patch : `onboarding.ts` logging (commit séparé `fix(onboarding)`),
   `provider.ts` failover (laissé non-commité, WIP tiers).
 - Commits scopés par étape (pas de git add -A global cette fois — `provider.ts` non lié laissé).
+
+---
+
+# Patch 27 — Données obsolètes : actions concrètes — PLAN (session 2026-06-03)
+
+## Objectif
+Transformer la `FreshnessDot` (patch-14, passive) en action concrète. 3 axes :
+(1) états de fraîcheur par type de source + bouton "Re-scan" inline ; (2) re-scrape
+forcé par tier (bypass dedup scrape) + tracking + feedback contextuel ; (3) détection
+des monitors silencieux (60j+) → Slack ops + notif user (cooldown 30j).
+
+## Phase en cours
+Post-MVP, patch ad-hoc (Effort L). Build sur patches 14/20/22/23/26.
+
+## Divergences spec Notion ↔ code réel (VÉRIFIÉES avant code)
+1. `monitors` n'a PAS `orgId`/`userId`/`status` enum. → org via join `competitors.orgId` ;
+   `isActive` (boolean) pas `status="active"` ; champ `lastRunAt` pas `lastScrapedAt`.
+2. `notifications` est ORG-scoped (`orgId`, pas `userId`). `notificationTypeEnum` n'a pas
+   de valeur silent → AJOUTER `silent_monitor` (migration). Cooldown 30j par ORG, pas user.
+3. **Le bypass existe déjà** : `scrape-monitor` a déjà `force: boolean` qui saute la fenêtre
+   d'idempotence (recent_snapshot) ET la dedup par content-hash (l.231/280/437). La carte
+   confond "patch-22 intelligent rate limit" (= pool IA, pas le scrape) avec la dedup scrape.
+   → RÉUTILISER `force: true`, ne PAS introduire `forceBypass`. Étape 4 ≈ déjà faite ;
+   j'ajoute seulement `triggeredBy`/`userId`/`forcedRescanLogId` au payload + write résultat.
+4. Pas de `getOrgTier` à écrire : le tier = `organizations.plan` directement.
+5. `decideDispatch` RETOURNE une décision de canal ; il n'envoie/insère RIEN. `send-alert`
+   est spécifique aux signals. → la notif silent a besoin de sa PROPRE création
+   (insert notification org-scoped + email best-effort), guidée par la décision. Le
+   `sendSilentMonitorNotification` de la carte est hand-wavé.
+6. "dernier signal d'un monitor" = pas de lien direct monitor→signal. Join
+   `changes`(monitorId) ⋈ `signals`(changeId), max(createdAt). Fallback `monitor.createdAt`.
+7. Redis = facade `redis` (SafeRedis) de `@outrival/shared`, NO-OP sans Upstash. → la limite
+   de re-scan doit s'appuyer sur le COUNT DB `forced_rescan_log` (autoritaire), Redis en
+   fast-path optionnel seulement. Sinon limite non appliquée en dev/sans Upstash.
+
+## Décisions TRANCHÉES (user, 2026-06-03)
+- A. Mapping : pricing→pricing · jobs→jobs · g2/capterra/appstore_reviews→reviews ·
+  blog+changelog→blog · homepage→homepage · **github_repo→features** (features câblé au-delà
+  du self-product) · linkedin/twitter/tech_stack→homepage (fallback). Les 6 clés de seuils
+  existent toutes.
+- B. Limite re-scan = count DB `forced_rescan_log` du jour, **PAR USER** (Redis fast-path opt).
+  → le log porte userId (compteur) + orgId (gating tier via plan de l'org + breakdown admin).
+- C. Notif silent = in-app org-scoped (cooldown 30j/org) + email best-effort si
+  `decideDispatch` ≠ muted/digest. Pas de couplage digest.
+
+## Étapes (1 commit par étape)
+0. Env (.env.example) : STALENESS_THRESHOLDS_* (6), FORCED_RESCAN_LIMIT_* (4),
+   SILENT_MONITOR_ALERT_THRESHOLD_DAYS. Pas de commit (groupé avec étape 1).
+1. `packages/shared/src/staleness.ts` (+export index) : type `StalenessCategory`,
+   `FreshnessState=fresh|yellow|orange|red`, seuils par catégorie + parse env,
+   `mapSourceTypeToCategory(sourceType)`, `computeFreshnessState(lastUpdatedAt, sourceType, now)`.
+   N'écrase PAS `freshness.ts`/`computeFreshness` (patch-14) — module séparé.
+   → vérif : pricing 8j=yellow, reviews 50j=orange, homepage 70j=red, null=red, parse env.
+   Commit `feat(shared): freshness state computation with per-source-type thresholds`.
+2. Étendre `apps/web/.../freshness-dot.tsx` : nouveau mode actionnable (props
+   `sourceType`, `monitorId`, `canForceRescan`, `onForceRescan`) → orange/red affichent le
+   bouton "Re-scan". Garder le rendu patch-14 compat (props existantes lastScrapedAt/status).
+   Couleurs via variables design-system (pas de hardcode). Copy EN.
+   Commit `feat(web): extend freshness dot with inline rescan action`.
+3. `packages/db/src/schema/forced-rescan-log.ts` (+ index export) :
+   userId→users, monitorId→monitors, taskId, triggeredAt, resultCapturedAt, hadNewSignal.
+   `apps/api/src/routes/monitors-force-rescan.ts` : POST /monitors/:id/force-rescan,
+   authMiddleware → org via competitor join, limite par tier (env, count DB du jour),
+   429 `rescan_limit_reached` + upgradeHint, trigger `scrape-monitor` {force:true,
+   triggeredBy, userId, forcedRescanLogId}, insert log. Monter la route. `pnpm db:push`.
+   Commit `feat(api): force rescan endpoint with per-tier limits and tracking`.
+4. `scrape-monitor.job.ts` : étendre InputSchema (`triggeredBy?`, `userId?`,
+   `forcedRescanLogId?`) ; en fin de run si triggeredBy=user_forced_rescan → calcul
+   hadNewSignal + update log (resultCapturedAt). Réutilise `force` (pas de nouveau flag).
+   Commit `feat(workers): record user-forced rescan outcome (reuse force bypass)`.
+5. `apps/web/src/hooks/use-force-rescan.ts` + branchement sur la dot : POST, poll statut,
+   toast contextuel 3-parties (signal trouvé vs rien + prochaine vérif), 429 → toast upgrade.
+   Commit `feat(web): force rescan ui with contextual feedback`.
+6. `apps/workers/src/jobs/detect-silent-monitors.job.ts` (cron 0 8 * * *) : monitors
+   isActive && !markedUnscrapable, exclure competitors type=self & sourceType=tech_stack ;
+   org via competitor ; lastSignal via join changes⋈signals ; > seuil → Slack ops +
+   notif in-app org (type silent_monitor, cooldown 30j/org) via décision decideDispatch +
+   email best-effort. Suggestions = monitor-alternatives (patch-23) si présentes.
+   Enregistrer le job dans trigger.config. Enum notification + db:push (étape 3 ou ici).
+   Commit `feat(workers): detect silent monitors with ops slack and user notifications`.
+7. `apps/web/src/app/(admin)/admin/monitors-health/` + route `/api/admin/monitors-health` :
+   distribution par état, red par catégorie, re-scans 30j (count log) + ratio hadNewSignal,
+   alertes silent. Mirror du pattern admin existant (notification-moderation).
+   Commit `feat(admin): monitors health dashboard`.
+8. `pnpm build && pnpm typecheck` (0 err), tests A–H de la carte, MAJ findings/progress + docs
+   architecture (enum notification_type, table forced_rescan_log, 3 crons/env).
+
+## Blockers patch-27
+- Décisions A/B/C à confirmer (cf. ci-dessus).
+- Commits : working tree au démarrage à vérifier (auto-committer concurrent connu) →
+  "j'implémente, commits laissés à l'utilisateur" si tree sale.

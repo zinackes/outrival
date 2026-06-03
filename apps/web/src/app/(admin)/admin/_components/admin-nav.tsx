@@ -16,11 +16,13 @@ import {
   ScrollText,
   Unplug,
   BellRing,
+  Gauge,
 } from "lucide-react";
 
 const ITEMS = [
   { href: "/admin", label: "Overview", icon: LayoutDashboard },
   { href: "/admin/scraping", label: "Scraping", icon: Activity },
+  { href: "/admin/monitors-health", label: "Monitors health", icon: Gauge },
   { href: "/admin/scraping-edge-cases", label: "Edge cases", icon: Unplug },
   { href: "/admin/ai", label: "AI", icon: Brain },
   { href: "/admin/jobs", label: "Jobs", icon: ListChecks },

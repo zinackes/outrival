@@ -17,13 +17,23 @@ import {
   orgNotificationPreferences,
   orgRelevanceThreshold,
   signalBatches,
+  notifications,
+  changes,
+  forcedRescanLog,
   listFlaggedQualityChecks,
   resolveQualityCheck,
   getQualityReviewStats,
   getQualityByTask,
   getConfidenceDistribution,
 } from "@outrival/db";
-import { getBytesFromR2, logger, redis } from "@outrival/shared";
+import {
+  getBytesFromR2,
+  logger,
+  redis,
+  computeFreshnessState,
+  mapSourceTypeToCategory,
+  type FreshnessState,
+} from "@outrival/shared";
 import { loadProviders, checkGlobalBreaker } from "@outrival/ai";
 import { tasks, runs } from "@trigger.dev/sdk/v3";
 import { authMiddleware } from "../middleware/auth";
@@ -765,6 +775,116 @@ adminRouter.get("/notification-moderation", async (c) => {
       avg: r.avg != null ? Number(r.avg) : null,
       stddev: r.stddev != null ? Number(r.stddev) : null,
     })),
+  });
+});
+
+// Patch-27 — monitors health: freshness distribution (what users see as dots),
+// red-by-category, silent (no signal in N days), and the forced re-scan
+// useful/wasted ratio by tier. Scope mirrors the silent-monitor job.
+adminRouter.get("/monitors-health", async (c) => {
+  const now = new Date();
+  const silentDays = Number(process.env.SILENT_MONITOR_ALERT_THRESHOLD_DAYS ?? 60);
+
+  const rows = await db
+    .select({
+      monitorId: monitors.id,
+      sourceType: monitors.sourceType,
+      lastRunAt: monitors.lastRunAt,
+      lastFailedAt: monitors.lastFailedAt,
+      monitorCreatedAt: monitors.createdAt,
+    })
+    .from(monitors)
+    .innerJoin(competitors, eq(monitors.competitorId, competitors.id))
+    .where(
+      and(
+        eq(monitors.isActive, true),
+        eq(monitors.markedUnscrapable, false),
+        ne(monitors.sourceType, "tech_stack"),
+        ne(competitors.type, "self"),
+        isNull(competitors.deletedAt),
+      ),
+    );
+
+  // Freshness state per monitor — based on the last scrape, so this matches the
+  // dot users actually see. A failed last scan forces red.
+  const distribution: Record<FreshnessState, number> = { fresh: 0, yellow: 0, orange: 0, red: 0 };
+  const redByCategory: Record<string, number> = {};
+  for (const r of rows) {
+    const failed = !!r.lastFailedAt && (!r.lastRunAt || r.lastFailedAt >= r.lastRunAt);
+    const { state } = computeFreshnessState(r.lastRunAt ?? null, r.sourceType, now);
+    const effective: FreshnessState = failed ? "red" : state;
+    distribution[effective] += 1;
+    if (effective === "red") {
+      const cat = mapSourceTypeToCategory(r.sourceType);
+      redByCategory[cat] = (redByCategory[cat] ?? 0) + 1;
+    }
+  }
+
+  // Silent (no signal in N days) — signal-based, mirrors the ops job.
+  const silentCutoffMs = now.getTime() - silentDays * 86_400_000;
+  const lastSignalRows = await db
+    .select({
+      monitorId: changes.monitorId,
+      last: sql<string | Date | null>`max(${signals.createdAt})`,
+    })
+    .from(signals)
+    .innerJoin(changes, eq(signals.changeId, changes.id))
+    .groupBy(changes.monitorId);
+  const lastSignal = new Map<string, number>();
+  for (const r of lastSignalRows) {
+    if (r.last) lastSignal.set(r.monitorId, new Date(r.last).getTime());
+  }
+  let silentCount = 0;
+  for (const r of rows) {
+    const ref = lastSignal.get(r.monitorId) ?? r.monitorCreatedAt.getTime();
+    if (ref < silentCutoffMs) silentCount += 1;
+  }
+
+  // Forced re-scans (30d): by tier + useful/wasted (only completed runs counted
+  // toward the ratio; pending ones haven't reported an outcome yet).
+  const cutoff30 = new Date(now.getTime() - 30 * 86_400_000);
+  const rescanRows = await db
+    .select({
+      plan: organizations.plan,
+      count: sql<number>`count(*)::int`,
+      useful: sql<number>`count(*) filter (where had_new_signal)::int`,
+      done: sql<number>`count(*) filter (where result_captured_at is not null)::int`,
+    })
+    .from(forcedRescanLog)
+    .innerJoin(organizations, eq(forcedRescanLog.orgId, organizations.id))
+    .where(gte(forcedRescanLog.triggeredAt, cutoff30))
+    .groupBy(organizations.plan);
+  const byTier: Record<string, number> = {};
+  let rescanTotal = 0;
+  let rescanUseful = 0;
+  let rescanDone = 0;
+  for (const r of rescanRows) {
+    byTier[r.plan] = r.count;
+    rescanTotal += r.count;
+    rescanUseful += r.useful;
+    rescanDone += r.done;
+  }
+
+  const [silentNotifRow] = await db
+    .select({ value: sql<number>`count(*)::int` })
+    .from(notifications)
+    .where(and(eq(notifications.type, "silent_monitor"), gte(notifications.createdAt, cutoff30)));
+
+  return c.json({
+    period: 30,
+    silentThresholdDays: silentDays,
+    total: rows.length,
+    distribution,
+    redByCategory,
+    silentCount,
+    rescans: {
+      total: rescanTotal,
+      byTier,
+      useful: rescanUseful,
+      wasted: rescanDone - rescanUseful,
+      usefulRate: rescanDone > 0 ? rescanUseful / rescanDone : 0,
+    },
+    silentNotificationsSent: silentNotifRow?.value ?? 0,
   });
 });
 

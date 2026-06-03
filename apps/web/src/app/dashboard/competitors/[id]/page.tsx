@@ -71,6 +71,7 @@ import {
   type MonitorFrequency,
 } from "@outrival/shared";
 import { FreshnessDot } from "@/components/outrival/freshness-dot";
+import { MonitorFreshnessAction } from "@/components/outrival/monitor-freshness";
 import { MonitorAlternatives } from "@/components/outrival/monitor-alternatives";
 import { CompetitorTechStack } from "@/components/outrival/competitor-tech-stack";
 import { SignalSourceLine } from "@/components/outrival/signal-source-line";
@@ -592,6 +593,9 @@ export default function CompetitorDetailPage({ params }: Props) {
           monitors={monitors}
           scrapingIds={scrapingIds}
           onRun={requestRunMonitor}
+          onForceRescanStarted={(mid) =>
+            setScrapingIds((prev) => new Set(prev).add(mid))
+          }
           onRunAll={runAllMonitors}
           onEdit={editMonitor}
           competitorUrl={competitor.url}
@@ -900,6 +904,7 @@ function MonitorSources({
   monitors,
   scrapingIds,
   onRun,
+  onForceRescanStarted,
   onRunAll,
   onEdit,
   competitorUrl,
@@ -914,6 +919,7 @@ function MonitorSources({
   monitors: Monitor[];
   scrapingIds: Set<string>;
   onRun: (id: string) => void;
+  onForceRescanStarted?: (id: string) => void;
   onRunAll: () => void;
   onEdit: (id: string, patch: { url?: string; frequency?: MonitorFrequency }) => Promise<void>;
   competitorUrl: string;
@@ -975,6 +981,14 @@ function MonitorSources({
               {ageText}
             </span>
             <div className="ml-auto flex items-center gap-1.5">
+              <MonitorFreshnessAction
+                monitorId={m.id}
+                sourceType={m.sourceType}
+                lastScrapedAt={m.lastRunAt}
+                status={status === "failed" ? "failed" : "success"}
+                canForceRescan={!running}
+                onStarted={() => onForceRescanStarted?.(m.id)}
+              />
               {status === "failed" && m.lastError && (
                 <Tooltip>
                   <TooltipTrigger asChild>

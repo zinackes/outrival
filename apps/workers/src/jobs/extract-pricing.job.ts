@@ -68,18 +68,26 @@ export const extractPricingJob = task({
     const previous = await getPreviousPricing(input.competitorId);
 
     const recordedAt = new Date();
+    // Quote-based tiers (price null) carry no point for the numeric price
+    // history — keep them in the extraction/summary but skip the ClickHouse row.
     await insertPricingHistory(
-      extracted.plans.map((p) => ({
-        competitor_id: input.competitorId,
-        plan_name: p.plan_name,
-        price: p.price,
-        currency: p.currency,
-        billing_period: p.billing_period,
-        status: input.status,
-        promotional: input.promotional ? 1 : 0,
-        observed_region: input.observedRegion,
-        recorded_at: recordedAt,
-      })),
+      extracted.plans.flatMap((p) =>
+        p.price === null
+          ? []
+          : [
+              {
+                competitor_id: input.competitorId,
+                plan_name: p.plan_name,
+                price: p.price,
+                currency: p.currency,
+                billing_period: p.billing_period,
+                status: input.status,
+                promotional: input.promotional ? 1 : 0,
+                observed_region: input.observedRegion,
+                recorded_at: recordedAt,
+              },
+            ],
+      ),
     );
 
     const summary = await loggedAi("source_summary", AI_CONFIG.classification, () =>

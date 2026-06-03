@@ -182,6 +182,10 @@ signals                + relevance_score (patch-17 persisté patch-26), dispatch
                        batched_into_id (→ signal_batches), daily_digest_sent_at — patch-26
 changes                + relevance_score (real, nullable — max des changes significatifs,
                        structured homepage only) — patch-26
+forced_rescan_log      id, user_id, org_id, monitor_id, task_id, triggered_at,
+                       result_captured_at, had_new_signal — patch-27, audit/analytics des
+                       re-scans forcés user. Limite/jour/tier comptée ici (par user) ;
+                       had_new_signal stampé par le worker (change trouvé ou non)
 ```
 
 ### Enums Postgres
@@ -198,7 +202,10 @@ source_type       homepage | pricing | blog | changelog | jobs |
 frequency         realtime | daily | weekly
 signal_severity   low | medium | high | critical
 signal_category   pricing | product | hiring | reviews | content | funding
-notification_type signal | new_competitor
+notification_type signal | new_competitor | self_change | onboarding_complete |
+                  structural_change | silent_monitor
+                  (silent_monitor = patch-27, source sans signal depuis 60j+ ;
+                   1/org/30j via le dispatcher patch-26)
 candidate_status  new | added | dismissed
 candidate_source  detection | onboarding
 battle_card_status pending | generating | ready | failed
@@ -388,6 +395,17 @@ carte (état live uniquement).
 [cron dimanche 3h UTC] relevance-threshold-recalculation (patch-26)
   └─ par org : quality_feedback (signal) ⋈ signals.relevance_score → seuil = milieu
      avg(useful)/avg(not_useful), clamp 0.2-0.8 ; ≥10 feedbacks & ≥3 de chaque côté
+
+[cron quotidien 8h UTC] detect-silent-monitors (patch-27)
+  └─ monitors actifs, !markedUnscrapable, !self, !tech_stack — dernier signal
+     (signals ⋈ changes) ou createdAt < now - SILENT_MONITOR_ALERT_THRESHOLD_DAYS
+  └─ 1 ping Slack ops (liste) + notif user "silent_monitor" 1/org/30j via dispatcher
+     patch-26 (in-app toujours ; email best-effort si canal medium = email_immediate)
+
+[on-demand] force-rescan (patch-27, POST /api/monitors/:id/force-rescan)
+  └─ user-forced : limite/jour par tier (env, comptée par user dans forced_rescan_log),
+     trigger scrape-monitor {force:true} (réutilise le bypass dedup existant) ; le worker
+     stampe forced_rescan_log.had_new_signal ; le web poll le statut → toast contextuel
 
 [cron dimanche 20h UTC] detect-new-competitors
   └─ par org onboardée : Exa findSimilar + scoreOverlap (batché)
@@ -590,6 +608,19 @@ RELEVANCE_AUTO_ADJUST_MIN_FEEDBACKS=10 # min feedbacks org avant auto-ajustement
 RELEVANCE_RECALC_INTERVAL_HOURS=168    # cadence recalc (hebdo)
 BATCHING_WINDOW_HOURS=24               # fenêtre de regroupement
 BATCHING_MIN_SIGNALS=3                 # min signals similaires pour un batch
+
+# Stale-data actions (patch-27)
+STALENESS_THRESHOLDS_PRICING=7,14,30   # seuils jaune,orange,rouge par type de source (jours)
+STALENESS_THRESHOLDS_FEATURES=14,30,60 # (github_repo → features)
+STALENESS_THRESHOLDS_REVIEWS=21,45,90
+STALENESS_THRESHOLDS_JOBS=14,30,60
+STALENESS_THRESHOLDS_BLOG=30,60,120
+STALENESS_THRESHOLDS_HOMEPAGE=14,30,60
+FORCED_RESCAN_LIMIT_FREE=1             # re-scans forcés/jour/user par tier
+FORCED_RESCAN_LIMIT_STARTER=5
+FORCED_RESCAN_LIMIT_PRO=20
+FORCED_RESCAN_LIMIT_BUSINESS=999       # ~illimité
+SILENT_MONITOR_ALERT_THRESHOLD_DAYS=60 # alerte ops + user si source sans signal depuis Nj
 
 # Billing
 STRIPE_SECRET_KEY=

@@ -1953,3 +1953,28 @@ pivot/mort/rachat (structurel + IA), capture API runtime pour SPA pures. Tout us
   Section/Stat/Empty/durationFmt/pctFmt) ; API `routes/admin.ts` (auth+adminMiddleware). Events PostHog
   NON requêtables en ClickHouse → métriques calculées depuis Postgres (percentiles en JS).
 - `db.query.onboardingSessions` OK : table exportée via `schema/index.ts`, client drizzle `{ schema }`.
+
+## Patch-27 — Données obsolètes : actions concrètes
+- **Le "bypass rate-limit patch-22" de la carte n'existe pas comme décrit** : patch-22 = pool IA
+  (pas le scrape). Le vrai bypass scrape est `scrape-monitor` `force:true` (saute fenêtre
+  d'idempotence l.280 + dedup content-hash l.437). Réutilisé tel quel ; ajouté seulement
+  `triggeredBy/userId/forcedRescanLogId` au payload + stamp `forced_rescan_log` avant le return final
+  (les forced runs ne touchent jamais les early-returns guardés par `!force`).
+- **`hadNewSignal` ≠ "signal créé"** : les signals sont générés en aval (classify→generate-signal,
+  async) ; à la fin de scrape-monitor le signal n'existe pas encore. Proxy synchrone honnête =
+  `changeId !== null` ("un change a été détecté"). Le toast/dashboard parlent de "found an update".
+- **`decideDispatch` ne crée/n'envoie rien** : il retourne juste une décision de canal. La notif
+  silent fait sa propre création (insert `notifications` org-scoped + email Resend best-effort si
+  canal medium = `email_immediate`). Pas de couplage digest (les digests agrègent des signals).
+- **lastSignal par monitor** : pas de lien direct ; `signals ⋈ changes` (changeId→change.monitorId),
+  `max(created_at)` groupé. Fallback `monitor.createdAt`.
+- **Limite re-scan via count DB** (`forced_rescan_log`), pas Redis : la facade `redis` no-op sans
+  Upstash → un compteur Redis seul ne limiterait rien en dev. Comptage **par user** (décision user).
+- **FreshnessDot** : 2e module `staleness.ts` (états fresh/yellow/orange/red, seuils par type), SANS
+  toucher `freshness.ts` patch-14 (fresh/aging/stale/failed). Dot étendue en **opt-in** (`sourceType`
+  fourni → mode actionnable ; sinon rendu legacy inchangé). Wiring = `MonitorSources` row (1 monitor
+  unique), `onForceRescanStarted` réutilise le polling `scrapingIds` existant de la page competitor.
+- **Web typecheck** = `next build`/tsc casse sur `.next/types/validator.ts` (rootDir) pré-existant,
+  hors scope — confirmé seule erreur via grep `error TS | grep -v TS6059`.
+- **Branche** : créée par erreur depuis `main` (34 commits en retard, version Crawlee/ScrapingBee) ;
+  `main...patch-26` = `0 34` → patch-26 est le vrai tip. Rebranché depuis `patch-26-notification-moderation`.

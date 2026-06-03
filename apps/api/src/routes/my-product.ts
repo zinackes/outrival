@@ -489,14 +489,42 @@ async function resolveChange(
   return change;
 }
 
-// POST /api/my-product/changes/:id/accept — acknowledge the change. The auto-detected
-// profile already reflects the new state (the scrape pipeline keeps it current), so
-// accepting just resolves the change. A major change suggests a competitor re-discovery.
+// Profile fields a divergence proposal can target (recorded by extract-self-profile
+// when the freshly detected value diverged from a field the user had edited).
+const PROFILE_FIELD_KEYS = ["category", "audience", "valueProp", "features", "techStack"] as const;
+function isProfileFieldPath(p: string): p is (typeof PROFILE_FIELD_KEYS)[number] {
+  return (PROFILE_FIELD_KEYS as readonly string[]).includes(p);
+}
+
+// POST /api/my-product/changes/:id/accept — acknowledge the change. For HTML-diff
+// changes the auto-detected profile already reflects the new state, so accepting just
+// resolves the change. For a profile-divergence proposal (changeId null) the field was
+// kept sticky, so accepting must apply newValue and hand it back to auto-detection.
+// A major change also suggests a competitor re-discovery.
 myProductRouter.post("/changes/:id/accept", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
   const change = await resolveChange(orgId, c.req.param("id"), "accepted");
   if (!change) return c.json({ error: "Not found" }, 404);
+
+  if (change.changeId === null && isProfileFieldPath(change.fieldPath) && change.newValue != null) {
+    const self = await getSelf(orgId);
+    if (self) {
+      const profile = (self.selfProfile ?? {}) as SelfProfile;
+      const nextProfile = {
+        ...profile,
+        [change.fieldPath]: {
+          value: change.newValue,
+          isFromAutoDetect: true,
+          lastEditedByUserAt: null,
+        },
+      } as SelfProfile;
+      await db
+        .update(competitors)
+        .set({ selfProfile: nextProfile, updatedAt: new Date() })
+        .where(eq(competitors.id, self.id));
+    }
+  }
 
   if (change.severity === "major") {
     return c.json({

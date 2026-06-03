@@ -8,7 +8,7 @@ export type SourceSummary = z.infer<typeof SourceSummarySchema>;
 
 interface PricingState {
   plan_name: string;
-  price: number;
+  price: number | null;
   currency: string;
   billing_period: string;
 }
@@ -40,7 +40,11 @@ export type SourceSummaryInput =
 
 function pricingBlock(plans: PricingState[]): string {
   return plans
-    .map((p) => `- ${p.plan_name}: ${p.price} ${p.currency} / ${p.billing_period}`)
+    .map((p) =>
+      p.price === null
+        ? `- ${p.plan_name}: quote-based / ${p.billing_period}`
+        : `- ${p.plan_name}: ${p.price} ${p.currency} / ${p.billing_period}`,
+    )
     .join("\n");
 }
 

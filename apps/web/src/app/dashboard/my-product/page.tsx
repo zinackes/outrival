@@ -499,10 +499,16 @@ const FIELD_LABELS: Record<string, string> = {
   reviews: "Reviews",
   content: "Content / messaging",
   funding: "Funding",
+  category: "Category",
+  audience: "Audience",
+  valueProp: "Value proposition",
+  features: "Features",
+  techStack: "Tech stack",
 };
 
-/** Coerce a stored diff side (string[] | null | unknown) into display lines. */
+/** Coerce a stored diff side (string | string[] | null | unknown) into display lines. */
 function asLines(v: unknown): string[] {
+  if (typeof v === "string") return v.trim().length > 0 ? [v] : [];
   if (!Array.isArray(v)) return [];
   return v.filter((x): x is string => typeof x === "string" && x.trim().length > 0);
 }

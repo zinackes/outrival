@@ -84,8 +84,24 @@ async function callLLM(options: CompletionOptions): Promise<string> {
         ...(options.json && { response_format: { type: "json_object" as const } }),
       });
       await trackUsage(provider.id, res.usage?.total_tokens ?? 0);
+      const content = res.choices[0]?.message?.content ?? "";
+      // A 200 with empty content is a failed generation, never a valid answer (every
+      // prompt asks for JSON or prose). It happens when a reasoning model's hidden
+      // reasoning eats the whole max_tokens budget before any answer, or on a silent
+      // refusal. Treat it like a transient provider fault: trip THIS provider's
+      // breaker and fail over to the next, instead of returning "" — which used to
+      // surface as a hard "Empty completion" throw that failed the task without ever
+      // trying another provider, taking down every AI task when the priority-1
+      // provider was a reasoning one. Per-provider only: an empty 200 is provider
+      // misbehaviour, not the infra distress the global breaker watches for, so it
+      // must not count toward tripping it (recordFailure is intentionally skipped).
+      if (!content.trim()) {
+        await tripBreaker(provider.id, "empty_completion");
+        lastErr = new Error(`empty completion from ${provider.id}`);
+        continue;
+      }
       await recordSuccess();
-      return res.choices[0]?.message?.content ?? "";
+      return content;
     } catch (err) {
       if (shouldFailover(err)) {
         const rateLimited = err instanceof OpenAI.APIError && err.status === 429;

@@ -88,13 +88,17 @@ export function SignalsView() {
     [router, searchParams],
   );
 
+  // patch-28 — scope the feed to the active product (selector sets ?product=);
+  // absent = aggregate "All products".
+  const productId = searchParams.get("product");
+
   const load = useCallback(() => {
     setErr(null);
     api
-      .listSignals({ limit: 200 })
+      .listSignals({ limit: 200, productId: productId ?? undefined })
       .then((r) => setSignals(r.signals))
       .catch((e) => setErr(e));
-  }, []);
+  }, [productId]);
 
   useEffect(() => {
     load();

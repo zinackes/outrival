@@ -8,6 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { NotificationsBell } from "@/components/outrival/notifications-bell";
+import { ProductSelector } from "@/components/outrival/product-selector";
 import { GlobalSearch } from "@/components/dashboard/global-search";
 import { ThemeToggle } from "@/components/dashboard/theme-toggle";
 import { UserMenu } from "@/components/dashboard/user-menu";
@@ -78,6 +79,7 @@ export function Topbar({ user }: { user: User }) {
         )}
       </div>
       <div className="flex-1" />
+      <ProductSelector />
       <GlobalSearch />
       <Tooltip>
         <TooltipTrigger asChild>

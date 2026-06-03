@@ -921,6 +921,18 @@ export interface QualityFeedbackRow {
   createdAt: string;
 }
 
+// patch-28 — a product (SKU) in the multi-product selector / settings.
+export interface ProductSummary {
+  id: string;
+  name: string;
+  isPrimary: boolean;
+  status: "active" | "paused" | "archived";
+  position: number;
+  url: string | null;
+  selfCompetitorId: string;
+  competitorCount: number;
+}
+
 export const api = {
   search: (q: string) =>
     request<SearchResults>(`/api/search?q=${encodeURIComponent(q)}`),
@@ -1028,12 +1040,14 @@ export const api = {
   listSignals: (params?: {
     limit?: number;
     competitorId?: string;
+    productId?: string;
     severity?: string;
     unreadOnly?: boolean;
   }) => {
     const q = new URLSearchParams();
     if (params?.limit) q.set("limit", String(params.limit));
     if (params?.competitorId) q.set("competitorId", params.competitorId);
+    if (params?.productId) q.set("productId", params.productId);
     if (params?.severity) q.set("severity", params.severity);
     if (params?.unreadOnly) q.set("unreadOnly", "true");
     const qs = q.toString();
@@ -1043,6 +1057,8 @@ export const api = {
     request<{ ok: true }>(`/api/signals/${id}/read`, { method: "PATCH" }),
   getSignalDetail: (id: string) =>
     request<{ signal: SignalDetail }>(`/api/signals/${id}/detail`),
+  listProducts: () =>
+    request<{ products: ProductSummary[] }>(`/api/products`),
   listSectoral: (params?: { limit?: number }) => {
     const qs = params?.limit ? `?limit=${params.limit}` : "";
     return request<{ signals: SectoralSignal[] }>(`/api/sectoral${qs}`);

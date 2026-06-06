@@ -21,11 +21,11 @@ export function OnboardingAnalysisPanel({ onTick }: { onTick?: () => void }) {
           ) : (
             <Loader2 size={15} className="animate-spin text-muted-foreground" />
           )}
-          <span className="text-[13px] font-semibold tracking-tight">
+          <span className="text-dense font-semibold tracking-tight">
             {done ? "First analysis complete" : "Analyzing your competitors"}
           </span>
         </div>
-        <span className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground tabular-nums">
+        <span className="font-mono text-meta uppercase tracking-widest text-muted-foreground tabular-nums">
           {analyzed}/{total}
         </span>
       </div>
@@ -34,7 +34,7 @@ export function OnboardingAnalysisPanel({ onTick }: { onTick?: () => void }) {
         {competitors.map((c) => (
           <li
             key={c.id}
-            className="flex items-center gap-2 text-[13px] animate-in fade-in duration-500"
+            className="flex items-center gap-2 text-dense animate-in fade-in duration-500"
           >
             {c.ready ? (
               <Check size={12} className="shrink-0 text-positive" />
@@ -42,14 +42,14 @@ export function OnboardingAnalysisPanel({ onTick }: { onTick?: () => void }) {
               <Loader2 size={12} className="shrink-0 animate-spin text-muted-foreground" />
             )}
             <span className="truncate">{c.name}</span>
-            <span className="ml-auto font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            <span className="ml-auto font-mono text-micro uppercase tracking-widest text-muted-foreground">
               {c.ready ? "ready" : "analyzing…"}
             </span>
           </li>
         ))}
       </ul>
 
-      <p className="mt-3 text-[11px] text-muted-foreground">
+      <p className="mt-3 text-meta text-muted-foreground">
         First signals appear here as soon as a change is detected — no need to wait.
       </p>
     </Card>

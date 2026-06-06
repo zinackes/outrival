@@ -23,10 +23,10 @@ export default function DashboardError({
       <div className="font-semibold text-base text-foreground mb-1.5 tracking-tight">
         Something went wrong
       </div>
-      <div className="text-[13px] max-w-[380px] mx-auto mb-4">
+      <div className="text-dense max-w-[380px] mx-auto mb-4">
         Our team has been notified. Try again, or head back to your dashboard.
         {error.digest && (
-          <div className="mt-2 font-mono text-[11px] text-muted-foreground/80">
+          <div className="mt-2 font-mono text-meta text-muted-foreground">
             ref: {error.digest}
           </div>
         )}

@@ -62,6 +62,14 @@ export const signals = pgTable("signals", {
   // Marketing Hub and Sales Hub tags its signals into both. Empty for orgs with no
   // product associations; the per-product feed filters with `productIds @> [id]`.
   productIds: jsonb("product_ids").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  // Intel → action loop (Phase B). User-set triage status so a signal's
+  // recommended_action becomes trackable. null = untriaged; otherwise one of
+  // todo | doing | done | dismissed (validated app-side, no enum to keep the
+  // migration additive). The action board = signals where action_status in
+  // (todo, doing). See docs/activation-retention.md.
+  actionStatus: text("action_status"),
+  actionNote: text("action_note"),
+  actionUpdatedAt: timestamp("action_updated_at"),
   isRead: boolean("is_read").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

@@ -142,12 +142,12 @@ export default function BattleCardsPage() {
           {filtered.length === 0 ? (
             <div className="px-6 py-14 text-center text-muted-foreground">
               <div className="w-10 h-10 mx-auto mb-3 rounded-full bg-background border border-border flex items-center justify-center">
-                <Swords size={16} className="text-muted-foreground/60" />
+                <Swords size={16} className="text-muted-foreground" />
               </div>
               <div className="font-semibold text-base text-foreground mb-1.5 tracking-tight">
                 {cards.length === 0 ? "No battle cards yet" : "No matching battle cards"}
               </div>
-              <div className="text-[13px] max-w-[400px] mx-auto">
+              <div className="text-dense max-w-[400px] mx-auto">
                 {cards.length === 0
                   ? "Generate one from a competitor's page to compare it against your product."
                   : "Adjust the filters to see results."}
@@ -166,11 +166,11 @@ export default function BattleCardsPage() {
                   <div className="min-w-0 flex-1">
                     <Link
                       href={`/dashboard/competitors/${c.competitorId}`}
-                      className="block truncate text-[13px] font-medium text-foreground hover:underline"
+                      className="block truncate text-dense font-medium text-foreground hover:underline"
                     >
                       {cardTitle(c)}
                     </Link>
-                    <div className="text-[11px] text-muted-foreground/80 font-mono">
+                    <div className="text-meta text-muted-foreground font-mono">
                       Updated {formatDistanceToNow(new Date(c.updatedAt), { addSuffix: true })}
                     </div>
                   </div>

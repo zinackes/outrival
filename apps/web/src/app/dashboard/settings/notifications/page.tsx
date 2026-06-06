@@ -34,7 +34,7 @@ export default function NotificationSettingsPage() {
           <NotificationSettingsForm />
           <Link
             href="/dashboard/digests"
-            className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             View past digests
             <ArrowRight size={12} />

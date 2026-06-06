@@ -11,7 +11,7 @@ import { competitors } from "./competitors";
 
 // Current detected tech stack per competitor (patch-18). Postgres holds the
 // present state (what's active now, powering the competitor profile section);
-// ClickHouse `tech_stack_history` holds the appearance/disappearance timeline.
+// The `tech_stack_history` table holds the appearance/disappearance timeline.
 // One row per (competitor, tech); a tech that disappears is kept with
 // isActive=false (and reactivated in place if it comes back) rather than deleted,
 // so firstDetectedAt and the history stay intact.

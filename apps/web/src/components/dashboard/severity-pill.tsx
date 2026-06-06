@@ -10,7 +10,7 @@ const SEV_CLASS: Record<Severity, string> = {
     "bg-high/15 text-high border-high/30 hover:bg-high/15",
   medium:
     "bg-medium/15 text-medium border-medium/30 hover:bg-medium/15",
-  low: "bg-white/5 text-muted-foreground border-border hover:bg-white/5",
+  low: "bg-muted-foreground/10 text-muted-foreground border-border hover:bg-muted-foreground/10",
 };
 
 export function SeverityPill({
@@ -21,7 +21,7 @@ export function SeverityPill({
   children?: React.ReactNode;
 }) {
   return (
-    <Badge variant="outline" className={cn("text-[10px] uppercase tracking-wider font-medium", SEV_CLASS[severity])}>
+    <Badge variant="outline" className={cn("text-meta uppercase tracking-wider font-medium", SEV_CLASS[severity])}>
       {children ?? severity}
     </Badge>
   );
@@ -43,5 +43,27 @@ export function SeverityDot({ severity }: { severity: Severity }) {
       )}
       aria-hidden
     />
+  );
+}
+
+// Solid severity badge mirroring the competitor Activity tab badges (filled
+// severity color, light ink). Uppercase is allowed here: it's a badge.
+const SEV_BADGE: Record<Severity, string> = {
+  critical: "bg-critical text-background",
+  high: "bg-high text-background",
+  medium: "bg-medium text-background",
+  low: "bg-low text-background",
+};
+
+export function SeverityBadge({ severity }: { severity: Severity }) {
+  return (
+    <Badge
+      className={cn(
+        "uppercase tracking-wide text-micro font-bold px-2 py-0",
+        SEV_BADGE[severity],
+      )}
+    >
+      {severity}
+    </Badge>
   );
 }

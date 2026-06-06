@@ -74,6 +74,15 @@ describe("diffHomepages — real signals", () => {
     expect(added?.field).toBe("sections[pricing]");
     expect(added?.after).toBe("Pricing");
   });
+
+  it("an og:image swap produces meta_changed field og.image (patch-32)", () => {
+    const withOg = (img: string) =>
+      BEFORE.replace("</head>", `<meta property="og:image" content="${img}"></head>`);
+    const changes = diffHomepages(parse(withOg("https://acme.com/hero-v1.png")), parse(withOg("https://acme.com/hero-v2.png")));
+    const meta = changes.find((c) => c.kind === "meta_changed" && c.field === "og.image");
+    expect(meta).toBeDefined();
+    expect(meta?.after).toBe("https://acme.com/hero-v2.png");
+  });
 });
 
 describe("diffHomepages — reordering only", () => {

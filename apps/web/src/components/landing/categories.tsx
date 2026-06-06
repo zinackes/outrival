@@ -12,7 +12,7 @@ function SevPill({
     low: "bg-low",
   }[sev];
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 font-mono text-[11px] text-text-muted">
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 font-mono text-meta text-text-muted">
       <span className={`size-1.5 rounded-full ${dot}`} /> {label}
     </span>
   );
@@ -71,10 +71,11 @@ export function Categories() {
               Plan added or removed · price change · billing model shift (per
               seat → flat) · new billing period · feature gating.
             </p>
-            <div className="mt-4 border-l-2 border-primary/40 pl-4 text-sm italic leading-relaxed text-text-muted">
-              Linear drops Business from $16 → $14/seat and removes the 250
-              member cap. Read: Business gets repositioned as the entry tier —
-              your Pro plan loses $2 of competitive headroom.
+            <div className="mt-4 rounded-md bg-background-2 p-4 text-sm leading-relaxed text-text-muted">
+              <span className="font-medium text-foreground">Read:</span> Linear
+              drops Business from $16 → $14/seat and removes the 250 member cap.
+              Business gets repositioned as the entry tier — your Pro plan loses
+              $2 of competitive headroom.
             </div>
           </div>
 

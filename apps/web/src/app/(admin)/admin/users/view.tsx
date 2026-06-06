@@ -39,7 +39,10 @@ export function UsersView({ initial }: { initial: AdminUserRow[] }) {
     <div className="flex flex-col gap-5">
       <PageHeader title="Users" subtitle="Search across users and orgs. Click a row to inspect." />
 
-      <Section title={`Users (${rows.length})`}>
+      <Section
+        title={`Users (${rows.length})`}
+        info="All users with their organisation and plan. Search by email or org name; click a row to inspect the account."
+      >
         <form
           className="mb-3 flex gap-2"
           onSubmit={(e) => {

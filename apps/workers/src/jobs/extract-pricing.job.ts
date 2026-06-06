@@ -2,15 +2,24 @@ import { task, logger, AbortTaskRunError } from "@trigger.dev/sdk/v3";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db, snapshots, monitors } from "@outrival/db";
-import { extractPricing, summarizeSource, AI_CONFIG } from "@outrival/ai";
+import {
+  extractPricing,
+  summarizeSource,
+  AI_CONFIG,
+  PricingSchema,
+  type PricingExtraction,
+} from "@outrival/ai";
 import { getFromR2, PRICING_STATUSES } from "@outrival/shared";
+import { pricingFromStructured } from "@outrival/scrapers/structured-data";
+import { pricingRatiosPlausible } from "@outrival/scrapers/pricing";
 import { htmlToText } from "../lib/html-to-text";
-import { insertPricingHistory, getPreviousPricing, loggedAi } from "../lib/clickhouse";
+import { insertPricingHistory, getPreviousPricing, loggedAi } from "../lib/analytics";
+import { stagedExtract } from "../lib/staged-extract";
 
 const InputSchema = z.object({
   snapshotId: z.string(),
   competitorId: z.string(),
-  // patch-11 taxonomy, tagged onto each ClickHouse row. Optional so a manual
+  // patch-11 taxonomy, tagged onto each pricing_history row. Optional so a manual
   // re-trigger without scrape-monitor still works (falls back to unknown/FR).
   status: z.enum(PRICING_STATUSES).optional().default("unknown"),
   promotional: z.boolean().optional().default(false),
@@ -51,14 +60,34 @@ export const extractPricingJob = task({
       priceHits,
     };
 
-    const extracted = await loggedAi("extract_pricing", AI_CONFIG.classification, () =>
-      extractPricing(text),
-    );
+    // Staged extraction (patch-30): structured-first (schema.org Offer) → cached
+    // selector parser → AI self-heal → direct AI extraction (the floor). Logs its
+    // resolution to extraction_runs; ai_runs is logged via the wrapped aiFallback.
+    const result = await stagedExtract<PricingExtraction>({
+      kind: "pricing",
+      sourceType: "pricing",
+      competitorId: input.competitorId,
+      html,
+      url: snapshot.resolvedUrl,
+      schema: PricingSchema,
+      // Reject empty results, and a monthly↔yearly ratio that betrays a mis-parse,
+      // so a broken structured/cached result falls through to the AI floor (patch-32).
+      plausible: (d) => d.plans.length > 0 && pricingRatiosPlausible(d.plans),
+      structuredFn: (h) => pricingFromStructured(h),
+      aiFallback: (t) => extractPricing(t),
+      aiFallbackTask: "extract_pricing",
+      htmlToText,
+    });
+    const extracted = result.data;
     if (!extracted) {
       logger.warn("Pricing extraction returned null", debug);
       return { ok: false, reason: "parse_failed", debug };
     }
-    logger.log("Pricing plans extracted", { count: extracted.plans.length, debug });
+    logger.log("Pricing plans extracted", {
+      count: extracted.plans.length,
+      resolution: result.resolution,
+      debug,
+    });
     if (extracted.plans.length === 0) {
       return { ok: true, plansInserted: 0, debug };
     }
@@ -69,7 +98,7 @@ export const extractPricingJob = task({
 
     const recordedAt = new Date();
     // Quote-based tiers (price null) carry no point for the numeric price
-    // history — keep them in the extraction/summary but skip the ClickHouse row.
+    // history — keep them in the extraction/summary but skip the pricing_history row.
     await insertPricingHistory(
       extracted.plans.flatMap((p) =>
         p.price === null

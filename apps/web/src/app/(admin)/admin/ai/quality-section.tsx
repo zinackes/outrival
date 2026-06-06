@@ -43,7 +43,10 @@ function pct(n: number): string {
 export function AiQualitySection({ metrics }: { metrics: AiQualityMetrics | null }) {
   if (!metrics) {
     return (
-      <Section title="AI quality (anti-hallucination)">
+      <Section
+        title="AI quality (anti-hallucination)"
+        info="Anti-hallucination metrics: estimated hallucination rate (confirmed failures over self-checked outputs) and the confidence distribution of AI generations."
+      >
         <Empty>No quality data yet.</Empty>
       </Section>
     );
@@ -56,7 +59,11 @@ export function AiQualitySection({ metrics }: { metrics: AiQualityMetrics | null
   const ranked = [...byTask].sort((a, b) => b.hallucinationRate - a.hallucinationRate);
 
   return (
-    <Section title="AI quality (anti-hallucination)" note={`${metrics.windowDays}d`}>
+    <Section
+      title="AI quality (anti-hallucination)"
+      note={`${metrics.windowDays}d`}
+      info="Anti-hallucination metrics: estimated hallucination rate (confirmed failures over self-checked outputs) and the confidence distribution of AI generations."
+    >
       <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
         <Stat
           label="Est. hallucination rate"

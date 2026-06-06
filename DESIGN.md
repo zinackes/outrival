@@ -2,17 +2,18 @@
 name: Outrival
 description: Competitive-intelligence terminal that turns competitor moves into decisions.
 colors:
-  signal-amber: "#f59e0b"
-  signal-amber-bright: "#fbb734"
-  signal-amber-dim: "#e8920a"
-  accent-ink: "#0b0b0d"
-  canvas: "#fafafa"
-  surface: "#ffffff"
-  surface-2: "#f4f4f5"
-  surface-3: "#e8e8eb"
-  border: "#e6e6e6"
-  ink: "#131313"
-  muted: "#737373"
+  signal-cyan: "oklch(0.7 0.16 200)"
+  signal-cyan-bright: "oklch(0.78 0.14 200)"
+  signal-cyan-dim: "oklch(0.64 0.17 200)"
+  accent-ink: "oklch(0.17 0.02 230)"
+  link: "oklch(0.55 0.14 200)"
+  canvas: "oklch(0.985 0.002 260)"
+  surface: "oklch(0.998 0.001 260)"
+  surface-2: "oklch(0.96 0.004 260)"
+  surface-3: "oklch(0.93 0.006 260)"
+  border: "oklch(0.9 0.005 260)"
+  ink: "oklch(0.22 0.01 260)"
+  muted: "oklch(0.46 0.015 260)"
   critical: "#dc2626"
   high: "#ea580c"
   medium: "#d97706"
@@ -21,45 +22,45 @@ colors:
 typography:
   display:
     fontFamily: "Bricolage Grotesque, ui-sans-serif, system-ui, sans-serif"
-    fontSize: "2rem"
-    fontWeight: 600
+    fontSize: "1.625rem"
+    fontWeight: 560
     lineHeight: 1.1
     letterSpacing: "-0.02em"
   headline:
     fontFamily: "Bricolage Grotesque, ui-sans-serif, system-ui, sans-serif"
-    fontSize: "1.25rem"
+    fontSize: "0.9375rem"
     fontWeight: 600
-    lineHeight: 1.2
-    letterSpacing: "-0.01em"
+    lineHeight: 1.15
+    letterSpacing: "-0.015em"
   title:
-    fontFamily: "Bricolage Grotesque, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "Geist Sans, ui-sans-serif, system-ui, sans-serif"
     fontSize: "0.8125rem"
     fontWeight: 600
-    lineHeight: 1.25
+    lineHeight: 1.35
     letterSpacing: "-0.01em"
   body:
-    fontFamily: "Bricolage Grotesque, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "Geist Sans, ui-sans-serif, system-ui, sans-serif"
     fontSize: "0.875rem"
     fontWeight: 400
     lineHeight: 1.5
     letterSpacing: "normal"
   label:
-    fontFamily: "Bricolage Grotesque, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "Geist Sans, ui-sans-serif, system-ui, sans-serif"
     fontSize: "0.75rem"
     fontWeight: 500
     lineHeight: 1.4
     letterSpacing: "normal"
   mono:
-    fontFamily: "DM Mono, ui-monospace, SFMono-Regular, monospace"
+    fontFamily: "Geist Mono, ui-monospace, SFMono-Regular, monospace"
     fontSize: "0.6875rem"
     fontWeight: 400
     lineHeight: 1.4
     letterSpacing: "normal"
 rounded:
-  sm: "2px"
-  md: "4px"
-  lg: "6px"
-  xl: "10px"
+  sm: "4px"
+  md: "6px"
+  lg: "12px"
+  xl: "16px"
 spacing:
   xs: "4px"
   sm: "8px"
@@ -68,16 +69,16 @@ spacing:
   xl: "24px"
 components:
   button-primary:
-    backgroundColor: "{colors.signal-amber}"
+    backgroundColor: "{colors.signal-cyan}"
     textColor: "{colors.accent-ink}"
     rounded: "{rounded.md}"
     padding: "8px 16px"
     height: "36px"
   button-primary-hover:
-    backgroundColor: "{colors.signal-amber-bright}"
+    backgroundColor: "{colors.signal-cyan-bright}"
     textColor: "{colors.accent-ink}"
   button-primary-active:
-    backgroundColor: "{colors.signal-amber-dim}"
+    backgroundColor: "{colors.signal-cyan-dim}"
     textColor: "{colors.accent-ink}"
   button-outline:
     backgroundColor: "{colors.canvas}"
@@ -102,13 +103,18 @@ components:
     padding: "4px 12px"
     height: "36px"
   badge-default:
-    backgroundColor: "{colors.signal-amber}"
+    backgroundColor: "{colors.signal-cyan}"
     textColor: "{colors.accent-ink}"
-    rounded: "{rounded.md}"
+    rounded: "{rounded.sm}"
     padding: "2px 8px"
 ---
 
 # Design System: Outrival
+
+> Source of truth is the code: tokens live in `apps/web/src/app/globals.css`
+> (`:root` light, `.dark` overrides) and are consumed as Tailwind v4 utilities.
+> This file documents that system; when they disagree, the code wins and this
+> file is stale. Keep them in sync.
 
 ## 1. Overview
 
@@ -116,7 +122,7 @@ components:
 
 Outrival looks like the surface a competitive analyst would actually want open
 between meetings: terminal-grade density, dark-capable, monospaced where the data
-lives, with a single amber that lights up only when something has earned attention.
+lives, with a single cyan that lights up only when something has earned attention.
 It borrows the trading terminal's economy (every pixel earns its place, nothing
 decorative) but bends it toward the analyst's desk: the finding leads, the evidence
 is one click away, and the interface recedes the moment it has handed you the
@@ -124,10 +130,10 @@ decision. Familiarity is a feature. A power user of Linear, Stripe, or Raycast
 should sit down and trust it on sight.
 
 The system is built on tonal neutrals and one accent. Depth comes from stacking
-surfaces, not from shadow. Type does the heavy lifting: a single grotesque sans for
-voice and a mono for the machine-truth layer (timestamps, counts, IDs, diffs). The
-palette is quiet on purpose so that severity reads instantly when it appears, the
-same way the product itself suppresses noise to surface signal.
+surfaces, not from shadow. Type does the heavy lifting: a grotesque for headings, a
+neutral sans for voice, and a mono for the machine-truth layer (timestamps, counts,
+IDs, diffs). The palette is quiet on purpose so that severity reads instantly when
+it appears, the same way the product itself suppresses noise to surface signal.
 
 It explicitly rejects the generic 2026 SaaS look (cards nested in cards, purple-blue
 gradients, the hero-metric block, an all-caps eyebrow over every section), the heavy
@@ -136,38 +142,41 @@ playful or toy-like (emoji-as-UI, blobby radii, mascots), and the anxiety wall o
 red numbers with no hierarchy.
 
 **Key Characteristics:**
-- One accent (amber), spent only on action and live signal.
+- One accent (cyan), spent only on action, selection, focus, and live signal.
 - Flat surfaces; depth by tonal layering, never decorative shadow.
-- Single sans (Bricolage Grotesque) + mono (DM Mono) as a deliberate data voice.
-- Tight radii (4px on controls), fixed type scale, high information density.
+- Bricolage Grotesque (headings) + Geist Sans (body/UI) + Geist Mono (data voice).
+- Tight radii (6px on controls/cards), a fixed token type scale, high density.
 - Severity is a semantic color system, kept separate from the brand accent.
 - Calm by default; color and motion are spent only when severity earns them.
 
 ## 2. Colors
 
-A near-monochrome neutral field carrying one amber accent and a five-step severity
-scale. The system is maintained at light/dark parity (`:root` is light, `.dark`
-overrides); the frontmatter carries the light values as canonical, the dark ramp
-lives in the sidecar.
+A near-monochrome neutral field (hue 260, tinted, never pure black/white) carrying
+one cyan accent and a five-step severity scale. Maintained at light/dark parity
+(`:root` is light, `.dark` overrides). All values are OKLCH so contrast tracks
+lightness predictably; the frontmatter carries the light values as canonical.
 
 ### Primary
-- **Signal Amber** (`#f59e0b`): the only brand accent. Primary buttons, current
-  selection, focus ring, progress, and live-signal highlights. Hover lifts to
-  **Amber Bright** (`#fbb734`), active presses to **Amber Dim** (`#e8920a`). On amber,
-  text is **Accent Ink** (`#0b0b0d`), never white.
+- **Signal Cyan** (`oklch(0.7 0.16 200)`): the only brand accent — a "signal/radar"
+  cyan, non-violet by design. Primary buttons, current selection, focus ring,
+  progress, and live-signal highlights. Hover lifts to **Cyan Bright**
+  (`oklch(0.78 0.14 200)`), active presses to **Cyan Dim** (`oklch(0.64 0.17 200)`).
+  On cyan, text is **Accent Ink** (`oklch(0.17 0.02 230)`), never white.
+- **Link** (`oklch(0.55 0.14 200)`): links and meaningful icons. A darker step of
+  the same hue so the rationed CTA fill stays the rarest cyan on screen.
 
 ### Neutral
-- **Canvas** (`#fafafa` light / `#0b0b0d` dark): the page background.
-- **Surface** (`#ffffff` light / `#131316` dark): cards and raised content, one step
-  brighter than canvas in light, one step lighter than canvas in dark.
-- **Surface-2** (`#f4f4f5` light / `#1a1a1f` dark): popovers, secondary fills.
-- **Surface-3** (`#e8e8eb` light / `#26262d` dark): elevated hover state. Must stay
+- **Canvas** (`oklch(0.985 …)` light / `oklch(0.16 …)` dark): the page background.
+- **Surface** (`oklch(0.998 …)` / `oklch(0.2 …)`): cards and raised content.
+- **Surface-2** (`oklch(0.96 …)` / `oklch(0.24 …)`): popovers, secondary fills.
+- **Surface-3** (`oklch(0.93 …)` / `oklch(0.28 …)`): elevated hover state. Stays
   distinct from Surface-2 (popover) so hover never reads as a popover.
-- **Ink** (`rgba(0,0,0,0.92)` / `rgba(255,255,255,0.95)`): primary text.
-- **Muted** (`rgba(0,0,0,0.55)` / `rgba(255,255,255,0.6)`): secondary text, never
-  below 4.5:1 on its surface.
-- **Border** (`rgba(0,0,0,0.1)` / `rgba(255,255,255,0.08)`): hairline dividers and
-  control strokes; `border-strong` for emphasis.
+- **Foreground / Ink** (`oklch(0.22 …)` / `oklch(0.96 …)`): primary text.
+- **Muted** (`oklch(0.46 …)` / `oklch(0.72 …)`): secondary text. Held at full
+  strength on its surface — **do not dim it further with `/70`–`/80` alpha**, which
+  drops it under 4.5:1. Need more contrast? Step toward Foreground, never lighter.
+- **Border** (`oklch(0.9 …)` / `oklch(0.31 …)`): hairline dividers and control
+  strokes; `border-strong` for emphasis.
 
 ### Severity (the semantic scale; not decorative, never the brand accent)
 - **Critical** (`#dc2626` / `#ff4d4d`), **High** (`#ea580c` / `#ff9f43`),
@@ -175,42 +184,68 @@ lives in the sidecar.
   **Positive** (`#059669` / `#34d399`). Darkened on light surfaces for contrast,
   brightened on dark.
 
+### Category (wayfinding, a third system)
+- Six desaturated hues for the signal categories (pricing/product/hiring/reviews/
+  content/funding), `--cat-*`, consumed as `text-cat-*` / `bg-cat-*/12` /
+  `border-cat-*/30` on the feed pills. Separate from severity AND from the brand
+  cyan; the data-viz line palette (`--chart-1..6`) is the same six hues tuned for
+  thin strokes.
+
 ### Named Rules
-**The One Voice Rule.** Amber is the only brand color, and it appears on a small
+**The One Voice Rule.** Cyan is the only brand color, and it appears on a small
 fraction of any screen: a primary action, the current selection, a focus ring, a
 live signal. Its rarity is what makes it read as signal. Never use it for decoration
 or for large fills.
 
-**The Severity-Is-Not-Amber Rule.** Medium severity (`#d97706`) is close to amber by
-hue; they are different systems and must never be confused. Severity reinforces with
-label and icon, never hue alone.
+**The Three-Systems Rule.** Brand cyan, severity (red→amber→gray→green), and
+category (cool→rose wayfinding) are three independent color systems. Never borrow a
+severity or category hue for the brand accent, or vice versa. Severity and category
+are always reinforced with label and icon, never hue alone.
 
 ## 3. Typography
 
-**Display / Body Font:** Bricolage Grotesque (with `ui-sans-serif, system-ui, sans-serif`)
-**Label / Mono Font:** DM Mono (with `ui-monospace, SFMono-Regular, monospace`)
+**Heading Font:** Bricolage Grotesque (`--font-display`; `ui-sans-serif, system-ui`)
+— headings only (`h1`–`h5`, weight 560, optical sizing on).
+**Body / UI Font:** Geist Sans (`--font-sans`) — body, labels, buttons, nav, data prose.
+**Mono Font:** Geist Mono (`--font-mono`; tabular-nums + slashed-zero) — the data voice.
 
-**Character:** One expressive grotesque carries everything from page titles to body
-to labels, paired with a single mono that does the machine-truth work. The contrast
-is sans-vs-mono, not display-vs-body, which keeps the product dense and consistent
-rather than editorial.
+**Character:** A grotesque does the headings, a neutral sans does the voice, a mono
+does the machine-truth work. The contrast that matters most is sans-vs-mono (voice
+vs. data), which keeps the product dense and consistent rather than editorial.
 
-### Hierarchy
-- **Display** (600, 2rem fixed, 1.1): page-level titles on product surfaces. The
-  marketing landing may run larger with a clamp; product UI stays fixed.
-- **Headline** (600, 1.25rem, 1.2): section titles, dialog titles.
-- **Title** (600, 0.8125rem / 13px, tracking -0.01em, 1.25): card titles, table
-  group headers. Deliberately small and tight; titles label, they don't shout.
-- **Body** (400, 0.875rem / 14px, 1.5): default UI text. Prose blocks cap at 65–75ch;
-  tables and dense panels may run wider.
-- **Label** (500, 0.75rem / 12px): buttons, form labels, nav items.
-- **Mono** (400, 0.6875rem / 11px): timestamps, counts, IDs, metadata, diffs, and
-  card descriptions. The data voice.
+### Scale (token-only — never `text-[Npx]`)
+
+The scale is tokenized in `globals.css` and consumed as Tailwind utilities. **Do not
+hand-code arbitrary pixel sizes** (`text-[13px]`); reach for a role token. Each px is
+defined once, so the scale stays enforceable and changes in one place.
+
+| Utility | Size | Role |
+|---|---|---|
+| `text-title-lg` | 26px | page title (≥ md) — `h1` |
+| `text-title` | 22px | page title (mobile) — `h1` |
+| `text-xl` | 20px | dialog / headline titles |
+| `text-lg` | 18px | large headings, lead sub |
+| `text-lead` | 17px | signal insight lead |
+| `text-base` | 16px | base / document body root |
+| `text-content` | 15px | comfortable reading body (so-what, action) |
+| `text-sm` | 14px | **default UI body** |
+| `text-dense` | 13px | card / section titles, dense body |
+| `text-xs` | 12px | labels, table headers, badges |
+| `text-meta` | 11px | **mono** meta: timestamps, counts, IDs |
+| `text-micro` | 10px | **mono** badges — the a11y floor; smaller is banned |
+| `text-stat` | 32px | KPI numerals (mono) |
+
+Larger display steps (`text-2xl`…`text-7xl`, 25→76px) exist for the marketing
+landing (brand register); product chrome stays on the table above.
 
 ### Named Rules
-**The Machine-Truth Rule.** DM Mono is reserved for values the machine produced:
-timestamps, counts, IDs, prices, diffs, metadata. It is never used for prose or
-headings. When you see mono, you are looking at data, not voice.
+**The Machine-Truth Rule.** Geist Mono is reserved for values the machine produced:
+timestamps, counts, IDs, prices, diffs, metadata. Never used for prose or headings.
+When you see mono, you are looking at data, not voice.
+
+**The No-Arbitrary-Size Rule.** No `text-[Npx]` in product UI. If a size you need
+isn't a token, the answer is almost always the nearest token, not a new arbitrary
+value. A genuinely new role gets a new token in `globals.css`, documented here.
 
 **The No-Display-In-UI Rule.** No display sizing or expressive type in labels,
 buttons, or data. Product chrome uses the fixed scale; expressive type is a landing
@@ -221,7 +256,8 @@ buttons, or data. Product chrome uses the fixed scale; expressive type is a land
 Flat by default. The system defines no shadow tokens; depth is built by stacking
 tonal surfaces (Canvas → Surface → Surface-2 → Surface-3) and separating regions with
 hairline borders. The only ambient shadow in use is the browser-default `shadow-xs`
-on inputs and outline buttons, which reads as a hairline, not a lift.
+on inputs and outline buttons, which reads as a hairline, not a lift. The KPI strip
+uses a faint `bg-gradient-card` (a ~0.03L diagonal lift), the one sanctioned gradient.
 
 ### Named Rules
 **The Flat-By-Default Rule.** Surfaces are flat at rest. Reach for a tonal step or a
@@ -233,66 +269,81 @@ shadow is forbidden. A 2014-app drop shadow on a card is always wrong here.
 
 Precise and restrained. Tight radii, mono metadata, no decoration. Every interactive
 component ships its full state set: default, hover, focus-visible, active, disabled,
-and (where relevant) loading and error.
+and (where relevant) loading and error. Radius scale: `sm` 4px (badges/pills), `md`
+6px (controls **and** cards), `lg` 12px / `xl` 16px (larger surfaces, dialogs).
 
 ### Buttons
-- **Shape:** gently squared (`rounded-md`, 4px). Default height 36px (`h-9`);
+- **Shape:** gently squared (`rounded-md`, 6px). Default height 36px (`h-9`);
   sizes xs/sm/lg and icon variants share the radius.
-- **Primary:** Signal Amber fill, Accent Ink text, `text-sm` weight 500.
-  Hover → Amber Bright, active → Amber Dim.
-- **Focus:** 3px amber ring at 50% (`ring-ring/50`) plus border shift. Always visible.
+- **Primary:** Signal Cyan fill, Accent Ink text, `text-sm` weight 500.
+  Hover → Cyan Bright, active → Cyan Dim.
+- **Focus:** 3px cyan ring at 50% (`ring-ring/50`) plus border shift. Always visible
+  — including on raw `<button>` elements, which must carry `focus-visible` rings too
+  (don't `outline-none` without a replacement).
 - **Outline / Secondary / Ghost / Link:** outline carries a border on canvas with a
-  neutral hover fill; ghost is fill-on-hover only; link is amber text with underline
+  neutral hover fill; ghost is fill-on-hover only; link is cyan text with underline
   on hover. Disabled drops to 50% opacity, pointer-events off.
 
 ### Cards / Containers
-- **Corner Style:** `rounded-md` (4px).
+- **Corner Style:** `rounded-md` (6px). (The `lg`/`xl` radii are for larger surfaces
+  and dialogs, not content cards.)
 - **Background:** Surface, on the darker Canvas. No nested cards.
 - **Shadow Strategy:** none (see Elevation). Separation is the border plus the tonal step.
 - **Border:** 1px Border hairline; header and footer are divided by the same hairline.
 - **Internal Padding:** 16px vertical / 20px horizontal (`px-5 py-4`).
-- **Title/Description:** title is 13px semibold tracking-tight; description is 11px
-  **mono**, muted, the metadata voice.
+- **Title/Description:** title is `text-dense` (13px) semibold tracking-tight;
+  description is `text-meta` (11px) **mono**, muted (full strength, not `/80`).
+- **Boxless is preferred** for dashboard sections: a `SectionHead` (title + mono sub,
+  bounded by one hairline) over per-section card chrome. Depth from rhythm, not boxes.
 
 ### Inputs / Fields
 - **Style:** 36px tall, `rounded-md`, 1px Border stroke, transparent fill
   (`bg-input/30` in dark), `text-sm`. Hairline `shadow-xs`.
-- **Focus:** border shifts to ring color, 3px amber ring at 50%.
+- **Focus:** border shifts to ring color, 3px cyan ring at 50%.
 - **Error / Disabled:** `aria-invalid` shows a destructive border + ring; disabled is
   50% opacity, not-allowed cursor.
 
 ### Badges / Chips
-- **Style:** `rounded-md`, `px-2 py-0.5`, `text-xs` weight 500. Variants:
-  default (amber), secondary (neutral fill), destructive, outline (border only), ghost,
-  link. Severity badges map to the severity scale, reinforced with an icon.
+- **Style:** `rounded-sm` (4px), `px-2 py-0.5`, `text-xs` weight 500 (mono micro
+  badges may run `text-micro`/`text-meta`). Variants: default (cyan), secondary
+  (neutral fill), destructive, outline (border only), ghost, link. Severity and
+  category badges map to their scales, reinforced with an icon. Uppercase is allowed
+  on badges only (short labels), never on buttons or body.
 
 ### Navigation (signature)
 - The dashboard runs a custom **sidebar** app shell (`components/ui/sidebar.tsx`) on
   the `--sidebar` surface, a half-step off the content surface. Nav items are `label`
-  type, with neutral hover/active fills and an amber active indicator. Collapses
-  structurally on small screens (not fluid type).
+  type, with neutral hover/active fills and a cyan active indicator. Collapses
+  structurally on small screens (not fluid type). On `/dashboard/settings/*` the
+  contextual `SettingsSidebar` replaces the main rail (Vercel/Stripe pattern).
 
 ## 6. Do's and Don'ts
 
 ### Do:
-- **Do** spend Signal Amber only on action, selection, focus, and live signal, on a
+- **Do** spend Signal Cyan only on action, selection, focus, and live signal, on a
   small fraction of any screen (the One Voice Rule).
 - **Do** build depth with tonal surfaces (Canvas → Surface → Surface-2 → Surface-3)
-  and hairline borders, not shadow (the Flat-By-Default Rule).
-- **Do** use DM Mono for data, metadata, timestamps, counts, IDs, and diffs, and only
-  for those (the Machine-Truth Rule).
-- **Do** reinforce severity with label and icon, not color alone, and keep the five
-  severity hues separate from the brand amber.
+  and hairline borders, not shadow (the Flat-By-Default Rule). Prefer boxless sections.
+- **Do** use the type-scale role tokens; never hand-code `text-[Npx]`
+  (the No-Arbitrary-Size Rule).
+- **Do** use Geist Mono for data, metadata, timestamps, counts, IDs, and diffs, and
+  only for those (the Machine-Truth Rule).
+- **Do** reinforce severity and category with label and icon, not color alone, and
+  keep the three color systems separate.
 - **Do** ship every interactive component's full state set, including focus-visible
-  (3px amber ring) and disabled.
-- **Do** hold body and placeholder text to ≥4.5:1 contrast; bump muted text toward
-  Ink rather than letting it drift light "for elegance".
+  (3px cyan ring) and disabled — on raw `<button>`s too.
+- **Do** hold body and placeholder text to ≥4.5:1; keep muted text at full strength
+  and bump toward Foreground when you need contrast, never lighter "for elegance".
 - **Do** keep transitions in the 150–250ms range and give every animation a
   `prefers-reduced-motion` alternative.
 
 ### Don't:
 - **Don't** ship the generic 2026 SaaS look: cards nested in cards, purple-to-blue
   gradients, the hero-metric block, or an all-caps tracked eyebrow over every section.
+- **Don't** hand-code arbitrary type sizes (`text-[13px]`) or reinvent the page
+  header per view — use the scale tokens and `PageHead`/`SectionHead`.
+- **Don't** dim muted text with `/70`–`/80` alpha, or set `text-white`/`bg-white/N`
+  (breaks in light mode); use the theme tokens so both modes hold.
 - **Don't** drift toward heavy enterprise BI: dull gray chart-soup, density without
   hierarchy, intimidating walls of controls.
 - **Don't** go playful or toy-like: emoji-as-UI, blobby radii, mascot illustrations,
@@ -302,5 +353,5 @@ and (where relevant) loading and error.
 - **Don't** put a decorative drop shadow on a card, or use `border-left`/`border-right`
   greater than 1px as a colored stripe accent.
 - **Don't** use gradient text (`background-clip: text`) or glassmorphism as decoration.
-- **Don't** use amber for large fills, and don't use white text on amber (use Accent Ink).
+- **Don't** use cyan for large fills, and don't use white text on cyan (use Accent Ink).
 - **Don't** set mono on prose or headings, or display type in UI labels, buttons, or data.

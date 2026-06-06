@@ -18,6 +18,9 @@ import {
   BellRing,
   Gauge,
   Boxes,
+  Network,
+  Send,
+  Telescope,
 } from "lucide-react";
 
 const ITEMS = [
@@ -25,14 +28,17 @@ const ITEMS = [
   { href: "/admin/scraping", label: "Scraping", icon: Activity },
   { href: "/admin/monitors-health", label: "Monitors health", icon: Gauge },
   { href: "/admin/scraping-edge-cases", label: "Edge cases", icon: Unplug },
+  { href: "/admin/platform-detection", label: "Platform", icon: Network },
   { href: "/admin/ai", label: "AI", icon: Brain },
   { href: "/admin/jobs", label: "Jobs", icon: ListChecks },
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/onboarding", label: "Onboarding", icon: Rocket },
   { href: "/admin/multi-product", label: "Products", icon: Boxes },
+  { href: "/admin/discovery", label: "Discovery", icon: Telescope },
   { href: "/admin/feedback", label: "Feedback", icon: MessageSquare },
   { href: "/admin/feedback-quality", label: "AI quality", icon: ThumbsUp },
   { href: "/admin/notification-moderation", label: "Notifications", icon: BellRing },
+  { href: "/admin/delivery", label: "Delivery", icon: Send },
   { href: "/admin/ai-review-queue", label: "AI review", icon: ShieldAlert },
   { href: "/admin/cost", label: "Cost", icon: DollarSign },
   { href: "/admin/audit", label: "Audit", icon: ScrollText },

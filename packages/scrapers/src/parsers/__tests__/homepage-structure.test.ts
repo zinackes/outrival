@@ -131,8 +131,12 @@ describe("parseHomepageStructure — navigation, footer, social proof", () => {
     expect(s.footer.text).toContain("«year»");
     expect(s.footer.text).not.toContain("2026");
   });
-  it("counts customer logos and testimonials", () => {
+  it("captures customer logos with brand name and resolved absolute src", () => {
     expect(s.socialProof.customerLogos.length).toBe(4);
+    expect(s.socialProof.customerLogos[0]).toEqual({
+      name: "Globex",
+      src: "https://acme.com/l1.svg",
+    });
     expect(s.socialProof.testimonialCount).toBeGreaterThanOrEqual(2);
   });
 });
@@ -159,5 +163,25 @@ describe("parseHomepageStructure — real fixtures don't throw", () => {
     const s = parseHomepageStructure(html, `https://${name}.com`);
     expect(typeof s.title).toBe("string");
     expect(Array.isArray(s.sections)).toBe(true);
+  });
+
+  it("seeds identity from JSON-LD when OpenGraph tags are absent (patch-30)", () => {
+    const html = `<!doctype html><html><head>
+      <title>Acme</title>
+      <script type="application/ld+json">${JSON.stringify({
+        "@type": "Organization",
+        name: "Acme Inc",
+        description: "Acme helps teams ship faster.",
+      })}</script>
+    </head><body><h1>Hi</h1></body></html>`;
+    const s = parseHomepageStructure(html, BASE);
+    expect(s.openGraph.title).toBe("Acme Inc");
+    expect(s.openGraph.description).toBe("Acme helps teams ship faster.");
+  });
+
+  it("does not override present OpenGraph tags with JSON-LD", () => {
+    const s = parseHomepageStructure(HOMEPAGE, BASE);
+    expect(s.openGraph.title).toBe("Acme OG");
+    expect(s.openGraph.description).toBe("OG desc");
   });
 });

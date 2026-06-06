@@ -1,4 +1,5 @@
 import { pgTable, text, timestamp, real, jsonb, boolean } from "drizzle-orm/pg-core";
+import type { PlatformProfile } from "@outrival/shared";
 import { organizations } from "./organizations";
 
 // One editable profile field on the self-competitor (patch-12). Tracks whether the
@@ -10,9 +11,9 @@ export type SelfProfileField<T> = {
   lastEditedByUserAt: string | null; // ISO timestamp, null while auto-detected
 };
 
-// One pricing plan as shown on the product. Auto-detected tiers live in ClickHouse
+// One pricing plan as shown on the product. Auto-detected tiers live in pricing_history
 // (pricing_history); these are the user's hand-entered tiers, kept on the self
-// profile so they survive without ClickHouse and stay sticky against scrapes.
+// profile so they survive without scraped history and stay sticky against scrapes.
 export type SelfPricingTier = {
   plan_name: string;
   price: number;
@@ -24,7 +25,7 @@ export type SelfPricingTier = {
 // status/meta lives on the pricing* columns (patch-11); jobs in job_postings.
 // category/audience/valueProp/features/techStack are refreshed from the homepage by
 // extract-self-profile (sticky vs user edits); pricingTiers are user-entered (no auto
-// source outside ClickHouse) and have no other home.
+// source outside the scraped pricing history) and have no other home.
 export type SelfProfile = {
   category?: SelfProfileField<string>;
   audience?: SelfProfileField<string>;
@@ -82,6 +83,15 @@ export const competitors = pgTable("competitors", {
   // (patch-18). Null = never scraped → due immediately. Drives schedule-tech-stack
   // (no monitor row, so this is the per-competitor cadence anchor).
   techStackScrapedAt: timestamp("tech_stack_scraped_at"),
+  // Cached, AI-free platform detection (patch-31): framework/cms/ats/pricingWidget/
+  // statusPage/changelog/analytics + per-field confidence + detectedAt. Read on every
+  // scrape to route a source to its structured connector. Null = never detected → due
+  // immediately (detectedAt inside drives the ~30d re-detect cadence, like techStackScrapedAt).
+  platformProfile: jsonb("platform_profile").$type<PlatformProfile>(),
+  // Cadence anchor for platform re-detection (patch-31), mirroring techStackScrapedAt:
+  // a dedicated column the scheduler can compare in SQL (the detectedAt INSIDE the jsonb
+  // profile is for display/audit). Null = never detected → due immediately.
+  platformDetectedAt: timestamp("platform_detected_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   deletedAt: timestamp("deleted_at"),

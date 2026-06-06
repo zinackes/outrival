@@ -56,4 +56,4 @@ lastModified?, level, attempts }. Le `level` est remonté pour l'apprentissage p
   tous les niveaux activés sont bloqués (message = `failureReason`).
 - 3 échecs consécutifs (jusqu'à L4 inclus) → `monitors.markedUnscrapable`.
 - En cas d'échec définitif → loguer competitor_id + source_type + failure_reason
-  (scrape_runs ClickHouse). Ne jamais silently swallow les erreurs de scraping.
+  (table Postgres scrape_runs). Ne jamais silently swallow les erreurs de scraping.

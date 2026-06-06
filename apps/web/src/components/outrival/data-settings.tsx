@@ -55,8 +55,8 @@ export function DataSettings() {
 
       <Card className="flex items-start gap-4 px-5 py-4">
         <div className="flex-1">
-          <div className="text-[13px] font-medium">Export</div>
-          <div className="text-[13px] text-muted-foreground mt-1">
+          <div className="text-dense font-medium">Export</div>
+          <div className="text-dense text-muted-foreground mt-1">
             Download your competitors, signals and product profile as JSON.
           </div>
         </div>
@@ -68,8 +68,8 @@ export function DataSettings() {
 
       <Card className="flex items-start gap-4 px-5 py-4 opacity-70">
         <div className="flex-1">
-          <div className="text-[13px] font-medium">Import</div>
-          <div className="text-[13px] text-muted-foreground mt-1">
+          <div className="text-dense font-medium">Import</div>
+          <div className="text-dense text-muted-foreground mt-1">
             Import a list of competitors from CSV.
           </div>
         </div>

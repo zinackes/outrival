@@ -113,14 +113,14 @@ export function DigestMockup({ animate = true }: { animate?: boolean }) {
     >
       <div className="flex items-center justify-between border-b border-border bg-background-2 px-4 py-3">
         <div className="flex items-center gap-2.5">
-          <span className="text-[15px] font-semibold">
+          <span className="text-content font-semibold">
             Out<span className="text-primary">rival</span>
           </span>
-          <span className="font-mono text-[11px] text-text-subtle">
+          <span className="font-mono text-meta text-text-subtle">
             / weekly digest
           </span>
         </div>
-        <div className="flex gap-1 font-mono text-[11px]">
+        <div className="flex gap-1 font-mono text-meta">
           <span className="rounded bg-surface-3 px-2 py-1 text-foreground">
             This week
           </span>
@@ -148,7 +148,7 @@ export function DigestMockup({ animate = true }: { animate?: boolean }) {
           { label: "Sources", value: "36" },
         ].map((s) => (
           <div key={s.label} className="bg-surface px-3 py-2.5">
-            <div className="font-mono text-[10px] uppercase tracking-wider text-text-subtle">
+            <div className="font-mono text-micro uppercase tracking-wider text-text-subtle">
               {s.label}
             </div>
             <div className="mt-0.5 flex items-baseline gap-1 text-lg font-semibold">
@@ -168,13 +168,13 @@ export function DigestMockup({ animate = true }: { animate?: boolean }) {
             className="flex items-center gap-2.5 px-4 py-2.5 text-xs"
           >
             <span className={`size-2 shrink-0 rounded-full ${SEV_DOT[s.sev]}`} />
-            <span className="w-14 shrink-0 font-mono text-[10px] uppercase text-text-subtle">
+            <span className="w-14 shrink-0 font-mono text-micro uppercase text-text-subtle">
               {s.cat}
             </span>
             <span className="flex-1 text-text-muted [&_b]:text-foreground">
               {s.text}
             </span>
-            <span className="ml-auto shrink-0 font-mono text-[10px] text-text-subtle">
+            <span className="ml-auto shrink-0 font-mono text-micro text-text-subtle">
               {s.time}
             </span>
           </div>

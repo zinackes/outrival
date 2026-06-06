@@ -1,13 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { Check, X } from "lucide-react";
+import { ThumbsUp, ThumbsDown, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   api,
   type QualityFeedbackReason,
   type QualityFeedbackVerdict,
 } from "@/lib/api";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 // Atomic 1-click feedback on an AI output (patch-21). The verdict is one click;
@@ -107,32 +112,42 @@ export function FeedbackButtons({
   return (
     <div className={cn("flex items-center gap-1.5 text-xs text-text-subtle", className)}>
       <span className="sr-only">Was this useful?</span>
-      <button
-        type="button"
-        aria-label="Mark as useful"
-        aria-pressed={verdict === "useful"}
-        disabled={busy}
-        onClick={() => handleVerdict("useful")}
-        className={cn(
-          "rounded p-1 transition-colors hover:text-foreground disabled:opacity-50",
-          verdict === "useful" && "text-positive",
-        )}
-      >
-        <Check size={iconSize} />
-      </button>
-      <button
-        type="button"
-        aria-label="Mark as not useful"
-        aria-pressed={verdict === "not_useful"}
-        disabled={busy}
-        onClick={() => handleVerdict("not_useful")}
-        className={cn(
-          "rounded p-1 transition-colors hover:text-foreground disabled:opacity-50",
-          verdict === "not_useful" && "text-critical",
-        )}
-      >
-        <X size={iconSize} />
-      </button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-label="Mark as useful"
+            aria-pressed={verdict === "useful"}
+            disabled={busy}
+            onClick={() => handleVerdict("useful")}
+            className={cn(
+              "rounded p-1 transition-colors hover:text-foreground disabled:opacity-50",
+              verdict === "useful" && "text-positive",
+            )}
+          >
+            <ThumbsUp size={iconSize} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>{verdict === "useful" ? "Remove feedback" : "Useful"}</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-label="Mark as not useful"
+            aria-pressed={verdict === "not_useful"}
+            disabled={busy}
+            onClick={() => handleVerdict("not_useful")}
+            className={cn(
+              "rounded p-1 transition-colors hover:text-foreground disabled:opacity-50",
+              verdict === "not_useful" && "text-critical",
+            )}
+          >
+            <ThumbsDown size={iconSize} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>{verdict === "not_useful" ? "Remove feedback" : "Not useful"}</TooltipContent>
+      </Tooltip>
 
       {showReasons && (
         <div className="flex flex-wrap items-center gap-1">
@@ -142,7 +157,7 @@ export function FeedbackButtons({
               type="button"
               disabled={busy}
               onClick={() => handleReason(reason)}
-              className="rounded border border-border px-1.5 py-0.5 text-[11px] text-text-subtle transition-colors hover:border-border-strong hover:text-foreground disabled:opacity-50"
+              className="rounded border border-border px-1.5 py-0.5 text-meta text-text-subtle transition-colors hover:border-border-strong hover:text-foreground disabled:opacity-50"
             >
               {REASON_LABELS[reason]}
             </button>

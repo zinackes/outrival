@@ -18,7 +18,7 @@ import {
 } from "@outrival/ai";
 import type { StructuredChange } from "@outrival/scrapers/homepage-diff";
 import { groqQueue } from "../lib/queues";
-import { logAiRun } from "../lib/clickhouse";
+import { logAiRun } from "../lib/analytics";
 import { determineSelfChangeSeverity, notifySelfChange } from "../lib/self-change";
 
 const InputSchema = z.object({

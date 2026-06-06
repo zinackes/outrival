@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { AnimatePresence, motion } from "motion/react";
 import {
   Download,
   Check,
@@ -11,11 +12,12 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { startOfWeek, endOfWeek } from "date-fns";
-import { api, type Signal } from "@/lib/api";
+import { api, type Signal, type ActionStatus, type SavedViewFilters } from "@/lib/api";
 import { toCsv, downloadCsv } from "@/lib/csv";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SavedViewsMenu } from "./saved-views-menu";
 import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
@@ -28,22 +30,25 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { feedItemMotion } from "@/lib/motion";
 import { PageHead } from "./page-head";
 import { SignalCard } from "./signal-card";
 import { ListRowsSkeleton } from "./skeletons";
 import { ListError } from "@/components/outrival/list-error";
 
 type Sev = Signal["severity"];
-type QuickView = "all" | "alerts" | "unread" | "week" | "critical";
+type QuickView = "all" | "alerts" | "unread" | "week" | "critical" | "actions";
 
 // patch-29 — "Alerts" surfaces the urgent feed (critical + high) as a first-class
 // tab, replacing the standalone /dashboard/alerts page in the navigation.
+// Phase B — "Actions" surfaces the intel→action board (todo + doing).
 const QUICK_VIEWS: { value: QuickView; label: string }[] = [
   { value: "all", label: "All" },
   { value: "alerts", label: "Alerts" },
   { value: "unread", label: "Unread" },
   { value: "week", label: "This week" },
   { value: "critical", label: "Critical" },
+  { value: "actions", label: "Actions" },
 ];
 
 const SEVERITIES: Sev[] = ["critical", "high", "medium", "low"];
@@ -71,7 +76,10 @@ export function SignalsView() {
 
   const [signals, setSignals] = useState<Signal[] | null>(null);
   const [err, setErr] = useState<unknown>(null);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const focusedRef = useRef<string | null>(null);
 
+  const focusId = searchParams.get("focus");
   const quickView = (searchParams.get("view") as QuickView) || "all";
   const sev = useMemo(() => parseSet(searchParams.get("severity")) as Set<Sev>, [searchParams]);
   const cat = useMemo(() => parseSet(searchParams.get("category")), [searchParams]);
@@ -107,6 +115,23 @@ export function SignalsView() {
     load();
   }, [load]);
 
+  // patch-29 — arriving from a "Recent signals" link (?focus=<id>): scroll the
+  // matching card into view and flash it, then drop the param so it doesn't re-fire.
+  useEffect(() => {
+    if (!focusId || !signals) return;
+    if (focusedRef.current === focusId) return;
+    const el = document.getElementById(`signal-${focusId}`);
+    if (!el) return;
+    focusedRef.current = focusId;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightId(focusId);
+    const t = setTimeout(() => {
+      setHighlightId(null);
+      setParam({ focus: null });
+    }, 1900);
+    return () => clearTimeout(t);
+  }, [focusId, signals, setParam]);
+
   async function markRead(id: string) {
     await api.markSignalRead(id);
     setSignals((prev) =>
@@ -119,6 +144,14 @@ export function SignalsView() {
     await Promise.all(unread.map((s) => api.markSignalRead(s.id)));
     setSignals((prev) =>
       prev ? prev.map((s) => ({ ...s, isRead: true })) : prev,
+    );
+  }
+
+  // Intel → action loop (Phase B): SignalCard persists the status; keep the local
+  // array in sync so the "Actions" tab and its count update immediately.
+  function onActionChange(id: string, status: ActionStatus | null) {
+    setSignals((prev) =>
+      prev ? prev.map((s) => (s.id === id ? { ...s, actionStatus: status } : s)) : prev,
     );
   }
 
@@ -136,6 +169,12 @@ export function SignalsView() {
       )
         return false;
       if (quickView === "critical" && s.severity !== "critical") return false;
+      if (
+        quickView === "actions" &&
+        s.actionStatus !== "todo" &&
+        s.actionStatus !== "doing"
+      )
+        return false;
       if (quickView === "week") {
         const t = new Date(s.createdAt).getTime();
         if (t < weekStart || t > weekEnd) return false;
@@ -154,21 +193,23 @@ export function SignalsView() {
   }, [signals, sev, cat, comp, quickView, query]);
 
   const quickCounts = useMemo(() => {
-    if (!signals) return { all: 0, alerts: 0, unread: 0, week: 0, critical: 0 };
+    if (!signals) return { all: 0, alerts: 0, unread: 0, week: 0, critical: 0, actions: 0 };
     const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 }).getTime();
     const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 }).getTime();
     let alerts = 0;
     let unread = 0;
     let week = 0;
     let critical = 0;
+    let actions = 0;
     for (const s of signals) {
       if (!s.isRead) unread++;
       const t = new Date(s.createdAt).getTime();
       if (t >= weekStart && t <= weekEnd) week++;
       if (s.severity === "critical") critical++;
       if (s.severity === "critical" || s.severity === "high") alerts++;
+      if (s.actionStatus === "todo" || s.actionStatus === "doing") actions++;
     }
-    return { all: signals.length, alerts, unread, week, critical };
+    return { all: signals.length, alerts, unread, week, critical, actions };
   }, [signals]);
 
   const allCategories = useMemo(() => {
@@ -197,6 +238,22 @@ export function SignalsView() {
 
   function clearFilters() {
     setParam({ severity: null, category: null, competitor: null });
+  }
+
+  // Saved views (Phase B): snapshot the current feed filters, and apply a saved set.
+  const currentFilters: SavedViewFilters = {
+    severities: Array.from(sev),
+    categories: Array.from(cat),
+    competitorIds: Array.from(comp),
+    view: quickView,
+  };
+  function applyView(f: SavedViewFilters) {
+    setParam({
+      severity: f.severities?.length ? f.severities.join(",") : null,
+      category: f.categories?.length ? f.categories.join(",") : null,
+      competitor: f.competitorIds?.length ? f.competitorIds.join(",") : null,
+      view: f.view && f.view !== "all" ? f.view : null,
+    });
   }
 
   function exportCsv() {
@@ -264,7 +321,7 @@ export function SignalsView() {
             {QUICK_VIEWS.map((v) => (
               <TabsTrigger key={v.value} value={v.value}>
                 {v.label}
-                <span className="ml-1.5 tabular-nums font-mono text-[10px] text-muted-foreground/80">
+                <span className="ml-1.5 tabular-nums font-mono text-meta text-muted-foreground">
                   {quickCounts[v.value]}
                 </span>
               </TabsTrigger>
@@ -274,13 +331,15 @@ export function SignalsView() {
 
         <div className="flex-1" />
 
+        <SavedViewsMenu current={currentFilters} onApply={applyView} />
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm">
               <SlidersHorizontal size={13} />
               Filters
               {activeFilterCount > 0 && (
-                <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-[16px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-mono tabular-nums">
+                <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-[16px] px-1 rounded-full bg-primary text-primary-foreground text-meta font-mono tabular-nums">
                   {activeFilterCount}
                 </span>
               )}
@@ -365,7 +424,7 @@ export function SignalsView() {
             placeholder="Search…"
             value={query}
             onChange={(e) => setParam({ q: e.target.value || null })}
-            className="h-8 pl-8 text-xs w-48"
+            className="h-8 pl-8 text-dense w-48"
           />
         </div>
       </div>
@@ -401,7 +460,7 @@ export function SignalsView() {
           })}
           <button
             onClick={clearFilters}
-            className="text-[11px] text-muted-foreground hover:text-foreground transition-colors px-2"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2"
           >
             Clear all
           </button>
@@ -410,29 +469,32 @@ export function SignalsView() {
 
       {signals === null ? (
         <ListRowsSkeleton rows={5} />
-      ) : (
-      <Card className="overflow-hidden">
-        {filtered.length === 0 && (
-          <div className="px-6 py-12 text-center text-muted-foreground">
-            <div className="font-semibold text-base text-foreground mb-1.5 tracking-tight">
-              No matching signals
-            </div>
-            <div className="text-[13px] max-w-[380px] mx-auto">
-              {signals.length === 0
-                ? "No signals detected yet. The first ones will appear here after the next scan."
-                : "Current filters exclude every signal. Remove one to see results."}
-            </div>
+      ) : filtered.length === 0 ? (
+        <Card className="px-6 py-12 text-center text-muted-foreground">
+          <div className="font-semibold text-base text-foreground mb-1.5 tracking-tight">
+            No matching signals
           </div>
-        )}
-        {filtered.map((s, i) => (
-          <SignalCard
-            key={s.id}
-            signal={s}
-            first={i === 0}
-            onMarkRead={markRead}
-          />
-        ))}
-      </Card>
+          <div className="text-sm max-w-[380px] mx-auto">
+            {signals.length === 0
+              ? "No signals detected yet. The first ones will appear here after the next scan."
+              : "Current filters exclude every signal. Remove one to see results."}
+          </div>
+        </Card>
+      ) : (
+        <div className="flex flex-col gap-2.5">
+          <AnimatePresence initial={false} mode="popLayout">
+            {filtered.map((s) => (
+              <motion.div key={s.id} id={`signal-${s.id}`} {...feedItemMotion}>
+                <SignalCard
+                  signal={s}
+                  onMarkRead={markRead}
+                  onActionChange={onActionChange}
+                  highlight={s.id === highlightId}
+                />
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
       )}
     </div>
   );
@@ -446,7 +508,7 @@ function FilterChip({
   onRemove: () => void;
 }) {
   return (
-    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border border-border bg-card text-[11px]">
+    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border border-border bg-card text-xs">
       {children}
       <Tooltip>
         <TooltipTrigger asChild>

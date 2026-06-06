@@ -100,6 +100,7 @@ export function JobsView({
 
       <Section
         title="Runs"
+        info="Live Trigger.dev run history — every background task with its status, duration and timestamps. Filter by status and refresh to poll the latest runs."
         action={
           <Button variant="ghost" size="sm" disabled={busy} onClick={() => reload()}>
             <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
@@ -155,7 +156,7 @@ export function JobsView({
                   <TableRow key={r.id}>
                     <TableCell style={mono}>
                       {r.taskIdentifier}
-                      {r.isTest ? <span className="ml-1 text-[10px] text-muted-foreground">(test)</span> : null}
+                      {r.isTest ? <span className="ml-1 text-micro text-muted-foreground">(test)</span> : null}
                     </TableCell>
                     <TableCell>
                       <StatusPill status={r.status} />
@@ -221,7 +222,7 @@ export function JobsView({
                 <div>
                   <span className="text-xs text-muted-foreground">Error</span>
                   <pre
-                    className="mt-1 max-h-40 overflow-auto rounded p-2 text-[11px]"
+                    className="mt-1 max-h-40 overflow-auto rounded p-2 text-meta"
                     style={{ ...mono, background: "var(--surface-2)", color: "var(--critical)" }}
                   >
                     {detail.error}
@@ -231,7 +232,7 @@ export function JobsView({
               {detail.payload != null ? (
                 <div>
                   <span className="text-xs text-muted-foreground">Payload</span>
-                  <pre className="mt-1 max-h-48 overflow-auto rounded bg-secondary p-2 text-[11px]" style={mono}>
+                  <pre className="mt-1 max-h-48 overflow-auto rounded bg-secondary p-2 text-meta" style={mono}>
                     {JSON.stringify(detail.payload, null, 2)}
                   </pre>
                 </div>

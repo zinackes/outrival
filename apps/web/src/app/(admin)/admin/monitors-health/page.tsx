@@ -51,7 +51,11 @@ export default async function MonitorsHealthPage() {
         subtitle="Freshness of active sources (what users see as dots), silent sources, and the forced re-scan useful/wasted ratio."
       />
 
-      <Section title="Freshness distribution" note={`${m.total} active sources`}>
+      <Section
+        title="Freshness distribution"
+        note={`${m.total} active sources`}
+        info="Active sources by freshness — the colored dots users see. Fresh, then yellow/orange/red as data ages past per-source-type staleness thresholds."
+      >
         <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
           <Stat label="Fresh" value={m.distribution.fresh} hint={pct(m.distribution.fresh, m.total)} />
           <Stat label="Yellow" value={m.distribution.yellow} hint={pct(m.distribution.yellow, m.total)} />
@@ -60,7 +64,10 @@ export default async function MonitorsHealthPage() {
         </div>
       </Section>
 
-      <Section title="Red by source category">
+      <Section
+        title="Red by source category"
+        info="The stalest (red) sources broken down by source type — shows which categories are falling behind their freshness threshold."
+      >
         {redCats.length === 0 ? (
           <Empty>No source is red right now.</Empty>
         ) : (
@@ -72,7 +79,11 @@ export default async function MonitorsHealthPage() {
         )}
       </Section>
 
-      <Section title="Silent sources" note={`no signal in ${m.silentThresholdDays}+ days`}>
+      <Section
+        title="Silent sources"
+        note={`no signal in ${m.silentThresholdDays}+ days`}
+        info="Active sources that have produced no signal beyond the silent threshold (often a quietly-broken monitor), and how many user alerts were sent for them in the period."
+      >
         <div className="grid grid-cols-2 gap-6 md:grid-cols-3">
           <Stat label="Silent sources" value={m.silentCount} />
           <Stat
@@ -83,7 +94,11 @@ export default async function MonitorsHealthPage() {
         </div>
       </Section>
 
-      <Section title="Forced re-scans" note={`last ${m.period} days`}>
+      <Section
+        title="Forced re-scans"
+        note={`last ${m.period} days`}
+        info="User-triggered re-scans over the period: how many surfaced a change (useful) vs found nothing (wasted), and the split by plan tier. A low useful rate suggests the limit is too generous."
+      >
         {m.rescans.total === 0 ? (
           <Empty>No forced re-scan in this window.</Empty>
         ) : (

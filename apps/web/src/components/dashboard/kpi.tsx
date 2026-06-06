@@ -1,3 +1,4 @@
+import { ArrowDown, ArrowUp, Minus, type LucideIcon } from "lucide-react";
 import { Sparkline } from "./sparkline";
 
 type DeltaKind = "pos" | "neg" | "neutral";
@@ -22,6 +23,12 @@ const DELTA_COLOR: Record<DeltaKind, string> = {
   neutral: "text-muted-foreground",
 };
 
+const DELTA_ICON: Record<DeltaKind, LucideIcon> = {
+  pos: ArrowUp,
+  neg: ArrowDown,
+  neutral: Minus,
+};
+
 export function Kpi({
   label,
   value,
@@ -35,31 +42,32 @@ export function Kpi({
   sparkLabels,
   sparkValueLabel,
 }: KpiProps) {
-  const arrow = deltaKind === "pos" ? "▲" : deltaKind === "neg" ? "▼" : "·";
+  const DeltaIcon = DELTA_ICON[deltaKind];
   return (
     <div className="px-5 py-4 flex flex-col gap-2 relative min-w-0">
-      <div className="font-mono text-[11px] tracking-widest text-muted-foreground uppercase flex items-center justify-between gap-2">
+      <div className="font-mono text-dense text-muted-foreground flex items-center justify-between gap-2">
         <span>{label}</span>
         {delta && (
           <span
-            className={`font-mono text-[11px] inline-flex items-center gap-0.5 ${DELTA_COLOR[deltaKind]}`}
+            className={`font-mono text-meta inline-flex items-center gap-1 ${DELTA_COLOR[deltaKind]}`}
           >
-            {arrow} {delta}
+            <DeltaIcon size={11} strokeWidth={2.25} aria-hidden />
+            {delta}
           </span>
         )}
       </div>
-      <div className="font-bold text-[30px] tracking-tighter leading-none flex items-baseline gap-2">
+      <div className="font-semibold text-stat tracking-tighter leading-none flex items-baseline gap-2">
         <span className={`tabular-nums font-mono ${valueClassName ?? ""}`}>
           {value}
         </span>
         {suffix && (
-          <span className="text-[13px] font-sans font-medium text-muted-foreground tracking-normal">
+          <span className="text-dense font-sans font-medium text-muted-foreground tracking-normal">
             {suffix}
           </span>
         )}
       </div>
       {meta && (
-        <div className="text-muted-foreground/80 text-xs">{meta}</div>
+        <div className="text-muted-foreground text-xs">{meta}</div>
       )}
       {spark && (
         <div className="mt-1 h-7">

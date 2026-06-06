@@ -11,7 +11,7 @@ const FAQS = [
   },
   {
     q: "Where is the data stored?",
-    a: "All in the EU. Application server on Hetzner (Germany), PostgreSQL on Railway EU, ClickHouse Cloud EU for time-series, HTML snapshots and screenshots on Cloudflare R2. Nothing transits outside the EU.",
+    a: "All in the EU. Application server on Hetzner (Germany), PostgreSQL on Neon (EU), HTML snapshots and screenshots on Cloudflare R2. Nothing transits outside the EU.",
   },
   {
     q: "Can I connect my own source?",

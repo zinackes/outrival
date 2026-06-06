@@ -9,3 +9,5 @@ export { determineStatus } from "./determine-status";
 export type { StatusDecision } from "./determine-status";
 export { discoverPricingUrl } from "./discover-url";
 export type { PricingPageCandidate } from "./discover-url";
+export { pricingRatiosPlausible } from "./validate-ratios";
+export type { PricingRatioPlan } from "./validate-ratios";

@@ -11,6 +11,7 @@ import { NotificationsBell } from "@/components/outrival/notifications-bell";
 import { ProductSelector } from "@/components/outrival/product-selector";
 import { GlobalSearch } from "@/components/dashboard/global-search";
 import { ThemeToggle } from "@/components/dashboard/theme-toggle";
+import { WhatsNewButton } from "@/components/dashboard/whats-new-button";
 import { UserMenu } from "@/components/dashboard/user-menu";
 
 interface User {
@@ -28,6 +29,7 @@ const ROUTE_TITLES: Record<string, string> = {
   "/dashboard/settings/general": "Settings",
   "/dashboard/settings/notifications": "Settings",
   "/dashboard/digests": "Digests",
+  "/dashboard/whats-new": "What's new",
   "/dashboard/settings": "Settings",
   "/dashboard/settings/billing": "Subscription",
 };
@@ -64,24 +66,23 @@ export function Topbar({ user }: { user: User }) {
         orientation="vertical"
         className="mr-2 data-[orientation=vertical]:h-4"
       />
-      <div className="font-mono text-xs text-muted-foreground/80 flex items-center gap-2">
-        <span className="hidden sm:inline">Outrival</span>
-        <ChevronRight size={12} className="hidden sm:inline" />
-        <span className="text-foreground font-sans font-medium text-[13px]">
+      <div className="flex items-center gap-2">
+        <span className="text-foreground font-sans font-medium text-dense">
           {primary}
         </span>
         {sub && (
           <>
-            <ChevronRight size={12} />
-            <span className="text-muted-foreground font-sans font-medium text-[13px]">
+            <ChevronRight size={12} className="text-muted-foreground" />
+            <span className="text-muted-foreground font-sans font-medium text-dense">
               {sub}
             </span>
           </>
         )}
       </div>
       <div className="flex-1" />
-      <ProductSelector />
       <GlobalSearch />
+      <div className="flex-1" />
+      <ProductSelector />
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
@@ -97,6 +98,7 @@ export function Topbar({ user }: { user: User }) {
         <TooltipContent>Refresh</TooltipContent>
       </Tooltip>
       <ThemeToggle />
+      <WhatsNewButton />
       <NotificationsBell compact />
       <UserMenu user={user} />
     </header>

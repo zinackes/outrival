@@ -42,7 +42,7 @@ async function throwApiError(res: Response): Promise<never> {
   throw new ApiError(res.status, body, `API ${res.status}: ${text || res.statusText}`);
 }
 
-// Browser-side ceiling. Sits above the API's ClickHouse bound (~10s) so a slow
+// Browser-side ceiling. Sits above the API's own request bound so a slow
 // endpoint resolves server-side (gracefully empty) before the browser aborts —
 // this only fires when the API itself is unreachable, turning the opaque
 // "TypeError: Failed to fetch" into a clear, actionable error.
@@ -205,7 +205,7 @@ export interface CompetitorSignal {
 export interface Monitor {
   id: string;
   competitorId: string;
-  sourceType: string;
+  sourceType: SourceType;
   frequency: string;
   config: { url?: string } | null;
   lastRunAt: string | null;
@@ -235,6 +235,9 @@ export interface ChangeRow {
   competitorUrl?: string;
 }
 
+// Intel → action loop (Phase B). User-set triage status on a signal.
+export type ActionStatus = "todo" | "doing" | "done" | "dismissed";
+
 export interface Signal {
   id: string;
   severity: "low" | "medium" | "high" | "critical";
@@ -248,6 +251,9 @@ export interface Signal {
   // null otherwise → the card shows just the insight title.
   narrative: string | null;
   isRead: boolean;
+  // Intel → action loop (Phase B): the user's triage status + note; null = untriaged.
+  actionStatus: ActionStatus | null;
+  actionNote: string | null;
   createdAt: string;
   competitorId: string;
   competitorName: string;
@@ -323,7 +329,193 @@ export interface SectoralSignal {
   periodStart: string;
   periodEnd: string;
   readAt: string | null;
+  dismissedAt: string | null;
   createdAt: string;
+}
+
+// Activity — user-facing view of the scraping work done for the org.
+export type ActivitySourceStatus = "ok" | "failing" | "paused" | "unscrapable";
+
+export interface ActivitySource {
+  monitorId: string;
+  competitorId: string;
+  competitorName: string;
+  sourceType: string;
+  lastRunAt: string | null;
+  nextRunAt: string | null;
+  status: ActivitySourceStatus;
+}
+
+export interface ActivityEvent {
+  competitorId: string;
+  competitorName: string;
+  sourceType: string;
+  status: "success" | "no_change" | "failed";
+  durationMs: number;
+  recordedAt: string;
+  // What the "Change detected" run actually found (null for no-change/failed runs
+  // or when the diff isn't text, e.g. structured homepage changes).
+  changeId?: string | null;
+  changeSummary?: string | null;
+}
+
+// Consumption cockpit (Phase A) — quantified per-tier caps with current use.
+export type UsageDimension =
+  | "competitors"
+  | "products"
+  | "battleCardsPerDay"
+  | "discoveriesPerMonth"
+  | "forcedRescansPerDay";
+
+export interface UsageItem {
+  dimension: UsageDimension;
+  used: number;
+  limit: number;
+  period: "current" | "day" | "month";
+  suggestedPlan: Plan | null;
+}
+
+export interface UsageSnapshot {
+  plan: Plan;
+  items: UsageItem[];
+}
+
+// Consumption cockpit (Phase A) — cross-competitor trend leaderboards + drill series.
+export interface PricingMove {
+  competitorId: string;
+  competitorName: string;
+  planName: string;
+  price: number;
+  prevPrice: number | null;
+  currency: string;
+  billingPeriod: string;
+  recordedAt: string;
+}
+export interface HiringMove {
+  competitorId: string;
+  competitorName: string;
+  latest: number;
+  earliest: number;
+  net: number;
+}
+export interface ReviewMove {
+  competitorId: string;
+  competitorName: string;
+  source: string;
+  score: number;
+  reviewCount: number;
+  recordedAt: string;
+}
+export interface TechMove {
+  competitorId: string;
+  competitorName: string;
+  techId: string;
+  event: string;
+  importance: string;
+  recordedAt: string;
+}
+export interface TrendsSummary {
+  window: number;
+  pricing: PricingMove[];
+  hiring: HiringMove[];
+  reviews: ReviewMove[];
+  tech: TechMove[];
+}
+export type TrendMetric = "pricing" | "hiring" | "reviews";
+export interface TrendSeriesPoint {
+  t: string;
+  key: string;
+  value: number;
+}
+export interface TrendsSeries {
+  metric: TrendMetric;
+  competitorId: string;
+  points: TrendSeriesPoint[];
+}
+
+// Consumption cockpit (Phase A) — N-way comparison matrix column.
+export interface CompareColumn {
+  id: string;
+  name: string;
+  url: string | null;
+  positioning: { category: string | null; summary: string | null };
+  pricing: {
+    entry: number;
+    top: number;
+    currency: string | null;
+    billingPeriod: string | null;
+    plans: Array<{ name: string; price: number; billingPeriod: string | null }>;
+  } | null;
+  hiring: {
+    totalOpen: number;
+    topDepartment: string | null;
+    departments: Array<{ department: string; count: number }>;
+  } | null;
+  reviews: Array<{
+    source: string;
+    score: number;
+    reviewCount: number;
+    sub: { ease: number; support: number; features: number; value: number } | null;
+  }>;
+  tech: string[];
+  platform: {
+    framework: string | null;
+    cms: string | null;
+    ats: string | null;
+    hosting: string | null;
+  } | null;
+  latestSignal: { severity: string; createdAt: string } | null;
+}
+
+// Activation checklist (Phase B) — booleans derived from existing data.
+export type ChecklistStepKey =
+  | "product"
+  | "competitor"
+  | "monitoring"
+  | "notifications"
+  | "signal";
+export interface ChecklistStep {
+  key: ChecklistStepKey;
+  done: boolean;
+}
+export interface OnboardingChecklist {
+  steps: ChecklistStep[];
+  complete: boolean;
+}
+
+// Saved Signals-feed filter sets (Phase B).
+export interface SavedViewFilters {
+  competitorIds?: string[];
+  categories?: string[];
+  severities?: string[];
+  view?: string;
+}
+export interface SavedView {
+  id: string;
+  name: string;
+  filters: SavedViewFilters;
+  createdAt: string;
+}
+
+// Outbound webhook destinations (Phase C). Secrets are never returned — only `hasSecret`.
+export interface CrmDestination {
+  id: string;
+  name: string;
+  url: string;
+  enabled: boolean;
+  hasSecret: boolean;
+  lastPushedAt: string | null;
+  createdAt: string;
+}
+
+// Signal comments (Phase C). `mine` flags the caller's own comments.
+export interface SignalComment {
+  id: string;
+  userId: string;
+  authorName: string;
+  body: string;
+  createdAt: string;
+  mine: boolean;
 }
 
 export interface DigestSection {
@@ -608,7 +800,7 @@ export interface MyProduct {
     note: string | null;
     manualOverride: boolean;
     tiers: MyProductPricingTier[];
-    // tiers were entered by the user (vs auto-detected from ClickHouse).
+    // tiers were entered by the user (vs auto-detected from scraping).
     tiersManual: boolean;
     tiersEditedAt: string | null;
   };
@@ -620,6 +812,8 @@ export type SelfChangeSeverity = "minor" | "major";
 
 export interface SelfProductChange {
   id: string;
+  // Originating pipeline change; null = a profile-divergence proposal (editable).
+  changeId: string | null;
   fieldPath: string;
   previousValue: unknown;
   newValue: unknown;
@@ -680,6 +874,8 @@ export type AdminScrapingHealth = {
   sources: AdminSourceHealth[];
   // Patch-20 cascade-level distribution over the window (counts per level).
   levels: { l0: number; l1: number; l2: number; l3: number; l4: number };
+  // Patch-30 staged-extraction resolution distribution over the window (counts).
+  extraction: { structured: number; cache: number; heal: number; aiFallback: number };
   deadMonitors: AdminDeadMonitor[];
 };
 
@@ -728,9 +924,79 @@ export type AdminCost = {
   ai: { calls24h: number; calls30d: number; estUsd24h: number; estUsd30d: number };
   storage: {
     postgresBytes: number | null;
-    clickhouseBytes: number | null;
     r2Bytes: number | null;
   };
+};
+
+export type AdminPlatformDetection = {
+  window: string;
+  stages: { aStatic: number; bBrowser: number };
+  avgMsByStage: { aStatic: number; bBrowser: number };
+  connectors: {
+    total: number;
+    ats: number;
+    statusPage: number;
+    changelog: number;
+    pricingWidget: number;
+  };
+  topFrameworks: { name: string; count: number }[];
+  topCms: { name: string; count: number }[];
+  topAts: { name: string; count: number }[];
+};
+
+export type AdminDelivery = {
+  alerts: {
+    windowDays: number;
+    byChannel: {
+      channel: string;
+      total: number;
+      sent: number;
+      failed: number;
+      failRate: number;
+    }[];
+    recentFailures: {
+      id: string;
+      channel: string;
+      error: string | null;
+      orgName: string | null;
+      createdAt: string | null;
+    }[];
+  };
+  digests: {
+    windowDays: number;
+    generated: number;
+    sent: number;
+    unsent: number;
+    temperature: { low: number; moderate: number; high: number; unknown: number };
+  };
+};
+
+export type AdminDiscovery = {
+  windowDays: number;
+  candidates: {
+    total: number;
+    new: number;
+    added: number;
+    dismissed: number;
+    acceptanceRate: number;
+    avgOverlap: number;
+  };
+  bySource: {
+    source: string;
+    total: number;
+    added: number;
+    dismissed: number;
+    acceptanceRate: number;
+  }[];
+  discovery: { month: string; detectThisMonth: number; activeOrgs: number };
+  recent: {
+    url: string;
+    title: string | null;
+    overlapScore: number | null;
+    status: string;
+    source: string;
+    firstSeenAt: string | null;
+  }[];
 };
 
 export type AdminOnboardingMetrics = {
@@ -854,8 +1120,8 @@ export type TechStackData = {
 
 // Competitor "fact sheet" — the state view behind the Overview tab. Pure
 // surfacing of already-captured data (homepage structure patch-16/17, pricing /
-// reviews ClickHouse, active job postings); no AI generation. Any field can be
-// empty/null when that source was never captured or ClickHouse is unavailable.
+// reviews analytics, active job postings); no AI generation. Any field can be
+// empty/null when that source was never captured or analytics are unavailable.
 export type CompetitorOverview = {
   // When the homepage facts below were captured (last homepage snapshot). null
   // when no homepage snapshot carries a parsed structure yet.
@@ -864,7 +1130,7 @@ export type CompetitorOverview = {
     headline: string | null;
     subheadline: string | null;
     valueProps: string[];
-    customerLogos: string[];
+    customerLogos: Array<{ name: string | null; src: string | null }>;
     testimonials: Array<{ quote: string; author: string | null }>;
   } | null;
   numericClaims: Array<{
@@ -1072,6 +1338,7 @@ export const api = {
     productId?: string;
     severity?: string;
     unreadOnly?: boolean;
+    actionStatus?: string;
   }) => {
     const q = new URLSearchParams();
     if (params?.limit) q.set("limit", String(params.limit));
@@ -1079,11 +1346,17 @@ export const api = {
     if (params?.productId) q.set("productId", params.productId);
     if (params?.severity) q.set("severity", params.severity);
     if (params?.unreadOnly) q.set("unreadOnly", "true");
+    if (params?.actionStatus) q.set("actionStatus", params.actionStatus);
     const qs = q.toString();
     return request<{ signals: Signal[] }>(`/api/signals${qs ? `?${qs}` : ""}`);
   },
   markSignalRead: (id: string) =>
     request<{ ok: true }>(`/api/signals/${id}/read`, { method: "PATCH" }),
+  setSignalAction: (id: string, status: ActionStatus | null, note?: string) =>
+    request<{ ok: true }>(`/api/signals/${id}/action`, {
+      method: "PATCH",
+      body: JSON.stringify({ status, note }),
+    }),
   getSignalDetail: (id: string) =>
     request<{ signal: SignalDetail }>(`/api/signals/${id}/detail`),
   listProducts: () =>
@@ -1105,21 +1378,116 @@ export const api = {
     }),
   archiveProduct: (id: string) =>
     request<{ ok: true }>(`/api/products/${id}`, { method: "DELETE" }),
-  listSectoral: (params?: { limit?: number }) => {
-    const qs = params?.limit ? `?limit=${params.limit}` : "";
-    return request<{ signals: SectoralSignal[] }>(`/api/sectoral${qs}`);
+  listSectoral: (params?: {
+    limit?: number;
+    offset?: number;
+    category?: SectoralCategory;
+    dismissed?: boolean;
+  }) => {
+    const q = new URLSearchParams();
+    if (params?.limit) q.set("limit", String(params.limit));
+    if (params?.offset) q.set("offset", String(params.offset));
+    if (params?.category) q.set("category", params.category);
+    if (params?.dismissed) q.set("dismissed", "1");
+    const qs = q.toString();
+    return request<{ signals: SectoralSignal[] }>(`/api/sectoral${qs ? `?${qs}` : ""}`);
   },
   markSectoralRead: (id: string) =>
     request<{ ok: true }>(`/api/sectoral/${id}/read`, { method: "POST" }),
   dismissSectoral: (id: string) =>
     request<{ ok: true }>(`/api/sectoral/${id}/dismiss`, { method: "POST" }),
+  activityHealth: () =>
+    request<{ sources: ActivitySource[] }>("/api/activity/health"),
+  activityTimeline: (params?: {
+    limit?: number;
+    offset?: number;
+    competitorId?: string;
+    sourceType?: string;
+    status?: ActivityEvent["status"];
+  }) => {
+    const q = new URLSearchParams();
+    if (params?.limit) q.set("limit", String(params.limit));
+    if (params?.offset) q.set("offset", String(params.offset));
+    if (params?.competitorId) q.set("competitorId", params.competitorId);
+    if (params?.sourceType) q.set("sourceType", params.sourceType);
+    if (params?.status) q.set("status", params.status);
+    const qs = q.toString();
+    return request<{ events: ActivityEvent[] }>(
+      `/api/activity/timeline${qs ? `?${qs}` : ""}`,
+    );
+  },
+  getUsage: () => request<UsageSnapshot>("/api/usage"),
+  getTrendsSummary: (range?: { from: Date; to: Date }) => {
+    const qs = range
+      ? `?from=${encodeURIComponent(range.from.toISOString())}&to=${encodeURIComponent(range.to.toISOString())}`
+      : "";
+    return request<TrendsSummary>(`/api/trends/summary${qs}`);
+  },
+  getTrendsSeries: (
+    competitorId: string,
+    metric: TrendMetric,
+    range?: { from: Date; to: Date },
+  ) => {
+    const base = `/api/trends/series?competitorId=${encodeURIComponent(competitorId)}&metric=${metric}`;
+    const qs = range
+      ? `&from=${encodeURIComponent(range.from.toISOString())}&to=${encodeURIComponent(range.to.toISOString())}`
+      : "";
+    return request<TrendsSeries>(`${base}${qs}`);
+  },
+  compareCompetitors: (ids: string[]) =>
+    request<{ competitors: CompareColumn[] }>(
+      `/api/compare?competitorIds=${ids.map(encodeURIComponent).join(",")}`,
+    ),
+  getOnboardingChecklist: () =>
+    request<OnboardingChecklist>("/api/onboarding/checklist"),
+  listSavedViews: () => request<{ views: SavedView[] }>("/api/saved-views"),
+  createSavedView: (name: string, filters: SavedViewFilters) =>
+    request<{ view: SavedView }>("/api/saved-views", {
+      method: "POST",
+      body: JSON.stringify({ name, filters }),
+    }),
+  updateSavedView: (
+    id: string,
+    patch: { name?: string; filters?: SavedViewFilters },
+  ) =>
+    request<{ view: SavedView }>(`/api/saved-views/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  deleteSavedView: (id: string) =>
+    request<{ ok: true }>(`/api/saved-views/${id}`, { method: "DELETE" }),
+  listCrmDestinations: () =>
+    request<{ destinations: CrmDestination[] }>("/api/crm-destinations"),
+  createCrmDestination: (name: string, url: string, secret?: string) =>
+    request<{ destination: CrmDestination }>("/api/crm-destinations", {
+      method: "POST",
+      body: JSON.stringify({ name, url, secret }),
+    }),
+  deleteCrmDestination: (id: string) =>
+    request<{ ok: true }>(`/api/crm-destinations/${id}`, { method: "DELETE" }),
+  testCrmDestination: (id: string) =>
+    request<{ ok: boolean }>(`/api/crm-destinations/${id}/test`, { method: "POST" }),
+  listSignalComments: (id: string) =>
+    request<{ comments: SignalComment[] }>(`/api/signals/${id}/comments`),
+  addSignalComment: (id: string, body: string) =>
+    request<{ comment: SignalComment }>(`/api/signals/${id}/comments`, {
+      method: "POST",
+      body: JSON.stringify({ body }),
+    }),
+  deleteSignalComment: (id: string, commentId: string) =>
+    request<{ ok: true }>(`/api/signals/${id}/comments/${commentId}`, { method: "DELETE" }),
   listDigests: () => request<{ digests: Digest[] }>("/api/digests"),
   getDigest: (id: string) => request<{ digest: Digest }>(`/api/digests/${id}`),
-  generateDigest: (range: DigestRange = "this_week") =>
-    request<{ digest: Digest | null; reason?: string }>("/api/digests/generate", {
+  generateDigest: (arg: DigestRange | { from: Date; to: Date } = "this_week") => {
+    const body =
+      typeof arg === "string"
+        ? { range: arg }
+        : { from: arg.from.toISOString(), to: arg.to.toISOString() };
+    return request<{ digest: Digest | null; reason?: string }>("/api/digests/generate", {
       method: "POST",
-      body: JSON.stringify({ range }),
-    }),
+      body: JSON.stringify(body),
+    });
+  },
   getNotificationSettings: () =>
     request<NotificationSettings>("/api/settings/notifications"),
   updateNotificationSettings: (body: Partial<NotificationSettings>) =>
@@ -1303,6 +1671,16 @@ export const api = {
     ),
   dismissCandidate: (id: string) =>
     request<{ ok: true }>(`/api/candidates/${id}/dismiss`, { method: "POST" }),
+  dismissCandidates: (ids: string[]) =>
+    request<{ dismissed: number }>(`/api/candidates/dismiss`, {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    }),
+  restoreCandidates: (ids: string[]) =>
+    request<{ restored: number }>(`/api/candidates/restore`, {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    }),
   getBilling: () => request<BillingInfo>("/api/billing"),
   createCheckout: (plan: Exclude<Plan, "free">, period: BillingPeriod) =>
     request<{ url: string }>("/api/billing/checkout", {
@@ -1348,10 +1726,12 @@ export const api = {
     request<{ changes: SelfProductChange[] }>(
       `/api/my-product/changes${status ? `?status=${status}` : ""}`,
     ),
-  acceptMyProductChange: (id: string) =>
+  // value = the curated result from the review sheet (granular pick / inline edit).
+  // Omitted → accept the detected value as-is (and keep tracking the live site).
+  acceptMyProductChange: (id: string, value?: string | string[]) =>
     request<{ ok: true; suggestion: { action: string; reason: string } | null }>(
       `/api/my-product/changes/${id}/accept`,
-      { method: "POST" },
+      { method: "POST", body: value !== undefined ? JSON.stringify({ value }) : undefined },
     ),
   modifyMyProductChange: (id: string) =>
     request<{ ok: true }>(`/api/my-product/changes/${id}/modify`, { method: "POST" }),

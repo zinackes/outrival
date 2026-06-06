@@ -25,6 +25,8 @@ export type PaywallReason = {
   source?: string;
   frequency?: string;
   channel?: string;
+  suggestedPlan?: Plan;
+  upgradeHint?: boolean;
 };
 
 export function paywallFromError(err: unknown): PaywallReason | null {
@@ -42,6 +44,28 @@ export function paywallFromError(err: unknown): PaywallReason | null {
     source: typeof d.source === "string" ? d.source : undefined,
     frequency: typeof d.frequency === "string" ? d.frequency : undefined,
     channel: typeof d.channel === "string" ? d.channel : undefined,
+  };
+}
+
+// Per-tier *quota* limits (battle cards/day, discoveries/month) come back as a 429
+// with a tierLimitBody payload — distinct from the 403 `plan_*` feature/source locks
+// that paywallFromError handles. Same dialog, just a quota-aware copy + an upgrade
+// suggestion. Scoped to the tierLimitBody codes; the forced-rescan and AI rate-limit
+// 429s carry their own shapes and are handled at their call sites.
+const TIER_LIMIT_CODES = ["battlecard_limit_reached", "discovery_limit_reached"] as const;
+
+export function tierLimitFromError(err: unknown): PaywallReason | null {
+  if (!(err instanceof ApiError) || err.status !== 429) return null;
+  const code = typeof err.code === "string" ? err.code : null;
+  if (!code || !(TIER_LIMIT_CODES as readonly string[]).includes(code)) return null;
+  const d = err.data as Record<string, unknown>;
+  return {
+    code,
+    plan: (d.plan as Plan | undefined) ?? undefined,
+    limit: typeof d.limit === "number" ? d.limit : undefined,
+    used: typeof d.used === "number" ? d.used : undefined,
+    suggestedPlan: (d.suggestedPlan as Plan | undefined) ?? undefined,
+    upgradeHint: typeof d.upgradeHint === "boolean" ? d.upgradeHint : undefined,
   };
 }
 
@@ -100,6 +124,22 @@ function copyFor(reason: PaywallReason): { title: string; body: string } {
         body: "This notification channel requires a higher plan.",
       };
     }
+    case "battlecard_limit_reached": {
+      const limit = reason.limit ?? 0;
+      const planLabel = reason.plan ? PLAN_LABELS[reason.plan] : "current";
+      return {
+        title: "Daily battle card limit reached",
+        body: `Your ${planLabel} plan generates ${limit} battle card${limit > 1 ? "s" : ""} per day. It resets tomorrow${reason.upgradeHint ? " — or upgrade for a higher daily limit." : "."}`,
+      };
+    }
+    case "discovery_limit_reached": {
+      const limit = reason.limit ?? 0;
+      const planLabel = reason.plan ? PLAN_LABELS[reason.plan] : "current";
+      return {
+        title: "Monthly discovery limit reached",
+        body: `Your ${planLabel} plan includes ${limit} competitor discover${limit === 1 ? "y" : "ies"} per month. It resets next month${reason.upgradeHint ? " — or upgrade to discover more." : "."}`,
+      };
+    }
     default:
       return {
         title: "This action is not available on your plan",
@@ -132,12 +172,14 @@ export function PaywallDialog({
           <DialogTitle>{copy?.title}</DialogTitle>
           <DialogDescription>{copy?.body}</DialogDescription>
         </DialogHeader>
-        {reason?.used !== undefined && reason?.limit !== undefined && (
-          <p className="text-xs text-muted-foreground">
-            You&apos;re currently using {reason.used} / {reason.limit}{" "}
-            competitors.
-          </p>
-        )}
+        {reason?.code === "plan_limit_competitors" &&
+          reason?.used !== undefined &&
+          reason?.limit !== undefined && (
+            <p className="text-xs text-muted-foreground">
+              You&apos;re currently using {reason.used} / {reason.limit}{" "}
+              competitors.
+            </p>
+          )}
         <DialogFooter>
           <Button variant="secondary" onClick={onClose}>
             Later

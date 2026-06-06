@@ -29,6 +29,24 @@ const PASSED_GROUNDING: GroundingValidation = {
 };
 
 /**
+ * Per-task grounding/citation policy (cost control). The grounding envelope makes
+ * the model emit a verbatim source quote for EVERY assertion — output tokens, the
+ * 3-5× expensive side — on every call. Only the hallucination-sensitive, low-volume,
+ * user-facing generations need that; the highest-volume tasks don't:
+ * `classify_change` returns an enum (nothing to cite, and it's Redis-cached) and
+ * `generate_signal` runs on every change. For those we drop the verbatim citations,
+ * but keep `confidence` on `generate_signal` so its low-confidence self-check
+ * trigger still fires. Anything not listed keeps full grounding (safe default for
+ * new tasks: battle_card / digest / summaries stay fully grounded). An explicit
+ * `requireGrounding` / `requireConfidence` on the call still wins.
+ */
+const DEFAULT_GROUNDING_POLICY = { grounding: true, confidence: true } as const;
+const GROUNDING_POLICY: Record<string, { grounding: boolean; confidence: boolean }> = {
+  classify_change: { grounding: false, confidence: false },
+  generate_signal: { grounding: false, confidence: true },
+};
+
+/**
  * Generic grounded AI call (patch-24, the wrapper the 12 tasks route through).
  *
  * Augments the task's own prompt with grounding + confidence instructions and an
@@ -46,9 +64,11 @@ const PASSED_GROUNDING: GroundingValidation = {
 export async function groundedAiCall<T>(
   params: GroundedCallParams<T>,
 ): Promise<GroundedResult<T> | null> {
+  const policy = GROUNDING_POLICY[params.taskName] ?? DEFAULT_GROUNDING_POLICY;
   const groundingEnabled =
-    process.env.GROUNDING_VALIDATION_ENABLED !== "false" && (params.requireGrounding ?? true);
-  const confidenceEnabled = params.requireConfidence ?? true;
+    process.env.GROUNDING_VALIDATION_ENABLED !== "false" &&
+    (params.requireGrounding ?? policy.grounding);
+  const confidenceEnabled = params.requireConfidence ?? policy.confidence;
 
   const augmentedPrompt = augmentPrompt(params.prompt, groundingEnabled, confidenceEnabled);
   const envelopeSchema = z.object({

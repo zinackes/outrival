@@ -67,7 +67,7 @@ export function AiOutputWarning({ targetType, targetId, onResolved, className }:
     <div
       role="alert"
       className={cn(
-        "mb-4 rounded-md border border-medium/40 bg-medium/10 px-3.5 py-3 text-[13px]",
+        "mb-4 rounded-md border border-medium/40 bg-medium/10 px-3.5 py-3 text-dense",
         className,
       )}
     >

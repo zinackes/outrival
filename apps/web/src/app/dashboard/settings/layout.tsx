@@ -6,5 +6,5 @@ export default function SettingsLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <div className="max-w-[760px]">{children}</div>;
+  return <div className="mx-auto w-full max-w-[880px]">{children}</div>;
 }

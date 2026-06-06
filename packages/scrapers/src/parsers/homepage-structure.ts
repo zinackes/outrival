@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
-import { hashTestimonial, type TestimonialItem } from "./social-proof";
+import { hashTestimonial, type TestimonialItem, type CustomerLogo } from "./social-proof";
+import { extractJsonLd, findByType, asText } from "../structured-data/json-ld";
 
 /**
  * Turns rendered homepage HTML into a typed, diff-friendly semantic structure
@@ -75,7 +76,7 @@ export interface HomepageStructure {
   // count-only fields (kept for the count diff); testimonials carries hashed
   // quotes for patch-17 stable add/remove tracking (worker-orchestrated).
   socialProof: {
-    customerLogos: string[];
+    customerLogos: CustomerLogo[];
     testimonialCount: number;
     testimonials: TestimonialItem[];
   };
@@ -313,8 +314,11 @@ function extractFooter($: CheerioRoot, baseUrl: string): HomepageStructure["foot
   return { links, text };
 }
 
-function extractSocialProof($: CheerioRoot): HomepageStructure["socialProof"] {
-  const logos: string[] = [];
+function extractSocialProof(
+  $: CheerioRoot,
+  baseUrl: string,
+): HomepageStructure["socialProof"] {
+  const logos: CustomerLogo[] = [];
   const seen = new Set<string>();
   $(
     '[class*="logo" i], [id*="logo" i], [class*="customer" i], [class*="trusted" i], [class*="brand" i], [class*="partner" i]',
@@ -323,10 +327,27 @@ function extractSocialProof($: CheerioRoot): HomepageStructure["socialProof"] {
     .each((_, el) => {
       if (logos.length >= MAX_LOGOS) return;
       const $el = $(el);
-      const key = ($el.attr("alt") || $el.attr("src") || "").trim();
+      const name = norm($el.attr("alt") || "") || null;
+      // Real asset, preferring a lazy attribute when the eager src is a
+      // placeholder (logo carousels ship a 1x1 data: URI in src, the asset in
+      // data-src / srcset), then resolved to an absolute URL so the UI can render it.
+      const eager = ($el.attr("src") || "").trim();
+      const lazy = (
+        $el.attr("data-src") ||
+        $el.attr("data-original") ||
+        $el.attr("data-lazy-src") ||
+        ""
+      ).trim();
+      const srcset = ($el.attr("srcset") || "").trim();
+      const rawSrc =
+        lazy && (!eager || /^data:/i.test(eager))
+          ? lazy
+          : eager || srcset.split(",")[0]?.trim().split(/\s+/)[0] || lazy;
+      const src = resolveHref(rawSrc, baseUrl);
+      const key = (name ?? src ?? "").toLowerCase();
       if (!key || seen.has(key)) return;
       seen.add(key);
-      logos.push(key);
+      logos.push({ name, src });
     });
 
   const testimonialCount =
@@ -367,6 +388,23 @@ export function parseHomepageStructure(html: string, baseUrl: string): HomepageS
     type: $('meta[property="og:type"]').attr("content")?.trim() || null,
   };
 
+  // Structured-first fallback (patch-30): some sites ship schema.org JSON-LD but no
+  // OpenGraph tags. Seed the identity (name/description) from it so the meta diff
+  // still tracks naming/positioning shifts — geo/language-agnostic. extractJsonLd
+  // reloads the raw HTML, so it sees the <script> blocks stripped below.
+  if (!openGraph.title || !openGraph.description) {
+    const ld = extractJsonLd(html);
+    const identity =
+      findByType(ld, "Organization")[0] ??
+      findByType(ld, "WebSite")[0] ??
+      findByType(ld, "SoftwareApplication")[0] ??
+      findByType(ld, "Product")[0];
+    if (identity) {
+      openGraph.title ??= asText(identity["name"]) ?? asText(identity["legalName"]);
+      openGraph.description ??= asText(identity["description"]) ?? asText(identity["slogan"]);
+    }
+  }
+
   // 2. Strip non-content: scripts/styles/SVG/iframes, aria-hidden, cookie banners.
   $("script, style, noscript, svg, template, head, iframe, object, embed, canvas").remove();
   $("[aria-hidden='true'], [hidden]").remove();
@@ -379,7 +417,7 @@ export function parseHomepageStructure(html: string, baseUrl: string): HomepageS
   const hero = extractHero($, baseUrl);
   const navigation = extractNavigation($, baseUrl);
   const footer = extractFooter($, baseUrl);
-  const socialProof = extractSocialProof($);
+  const socialProof = extractSocialProof($, baseUrl);
   $("nav, footer").remove();
 
   // 4. Section walk over the body, then heuristically type each section.

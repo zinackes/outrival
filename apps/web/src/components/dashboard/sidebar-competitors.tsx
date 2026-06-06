@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { Users, ChevronRight, MoreHorizontal } from "lucide-react";
 
 import { api, type Competitor } from "@/lib/api";
+import { onCompetitorsChanged } from "@/lib/competitor-events";
 import { cn } from "@/lib/utils";
 import {
   SidebarMenuAction,
@@ -19,6 +20,17 @@ import { CompAvatar } from "./comp-avatar";
 
 const CAP = 8;
 const POLL_MS = 60_000;
+
+// Competitor row: smooth neutral hover (was an instant snap) + an amber
+// current-selection marker pinned to the row's left edge (the design-system
+// "amber active indicator"). The marker is a clipped bar, not a border, so it
+// reads as a nav indicator rather than a decorative side-stripe.
+const COMP_ROW =
+  "group/comp relative w-full transition-colors duration-150 ease-out motion-reduce:transition-none " +
+  "data-[active=true]:font-medium " +
+  "before:absolute before:left-0 before:top-1/2 before:h-3.5 before:w-0.5 before:-translate-y-1/2 " +
+  "before:rounded-full before:bg-[var(--accent)] before:opacity-0 before:transition-opacity before:duration-150 " +
+  "motion-reduce:before:transition-none data-[active=true]:before:opacity-100";
 
 function activity(c: Competitor) {
   return c.stats?.signals7d ?? 0;
@@ -45,9 +57,11 @@ export function SidebarCompetitors() {
     }
     load();
     const id = setInterval(load, POLL_MS);
+    const unsubscribe = onCompetitorsChanged(load);
     return () => {
       alive = false;
       clearInterval(id);
+      unsubscribe();
     };
   }, []);
 
@@ -105,17 +119,21 @@ export function SidebarCompetitors() {
       )}
 
       {open && comps != null && comps.length > 0 && (
-        <SidebarMenuSub>
+        <SidebarMenuSub className="px-1.5">
           {shown.map((c) => {
             const n = activity(c);
             return (
               <SidebarMenuSubItem key={c.id}>
-                <SidebarMenuSubButton asChild isActive={c.id === activeId}>
+                <SidebarMenuSubButton
+                  asChild
+                  isActive={c.id === activeId}
+                  className={COMP_ROW}
+                >
                   <Link href={`/dashboard/competitors/${c.id}`}>
                     <CompAvatar name={c.name} size={18} />
                     <span className="truncate">{c.name}</span>
                     {n > 0 && (
-                      <span className="ml-auto shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
+                      <span className="ml-auto shrink-0 font-mono text-micro tabular-nums text-muted-foreground transition-colors duration-150 group-hover/comp:text-foreground group-data-[active=true]/comp:text-foreground motion-reduce:transition-none">
                         {n}
                       </span>
                     )}
@@ -126,7 +144,10 @@ export function SidebarCompetitors() {
           })}
           {hiddenCount > 0 && (
             <SidebarMenuSubItem>
-              <SidebarMenuSubButton asChild className="text-muted-foreground">
+              <SidebarMenuSubButton
+                asChild
+                className="w-full text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground motion-reduce:transition-none"
+              >
                 <Link href="/dashboard/competitors">
                   <MoreHorizontal />
                   <span>View all ({sorted.length})</span>

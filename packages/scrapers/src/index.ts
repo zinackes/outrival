@@ -1,11 +1,16 @@
 import * as homepage from "./homepage/homepage.scraper";
 import * as pricing from "./pricing/pricing.scraper";
 import * as blog from "./blog/blog.scraper";
+import * as changelog from "./changelog/changelog.scraper";
 import * as jobs from "./jobs/jobs.scraper";
 import * as g2Reviews from "./g2-reviews/g2-reviews.scraper";
 import * as capterraReviews from "./capterra-reviews/capterra-reviews.scraper";
 import * as appstoreReviews from "./appstore-reviews/appstore-reviews.scraper";
+import * as extraReviews from "./reviews/extra-platforms.scraper";
+import * as reddit from "./reddit/reddit.scraper";
 import * as github from "./github/github.scraper";
+import * as status from "./status/status.scraper";
+import * as sitemap from "./sitemap/sitemap.scraper";
 import type { SourceType } from "@outrival/shared";
 import type { ScrapeOptions, ScrapeOutcome } from "./types";
 
@@ -19,11 +24,19 @@ const scrapers: Partial<Record<SourceType, ScraperFn>> = {
   homepage: homepage.scrape,
   pricing: pricing.scrape,
   blog: blog.scrape,
+  changelog: changelog.scrape,
   jobs: jobs.scrape,
   g2_reviews: g2Reviews.scrape,
   capterra_reviews: capterraReviews.scrape,
   appstore_reviews: appstoreReviews.scrape,
+  trustpilot_reviews: extraReviews.trustpilot,
+  trustradius_reviews: extraReviews.trustradius,
+  gartner_reviews: extraReviews.gartner,
+  playstore_reviews: extraReviews.playstore,
+  reddit: reddit.scrape,
   github_repo: github.scrape,
+  status: status.scrape,
+  sitemap: sitemap.scrape,
 };
 
 export function getScraper(sourceType: SourceType): ScraperFn {

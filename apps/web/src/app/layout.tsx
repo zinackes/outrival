@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
-import { Bricolage_Grotesque, DM_Mono } from "next/font/google";
+import { Bricolage_Grotesque, Geist, Fira_Sans } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
@@ -9,16 +9,31 @@ import { PostHogPageView } from "@/lib/posthog/pageview";
 import { ConsentBanner } from "@/components/outrival/consent-banner";
 import "./globals.css";
 
+// Bricolage Grotesque (display/headings). Load the optical-size + width axes so
+// font-optical-sizing:auto and condensed titles work (globals.css uses both).
 const bricolage = Bricolage_Grotesque({
   subsets: ["latin"],
   variable: "--font-bricolage",
+  axes: ["opsz", "wdth"],
   display: "swap",
 });
 
-const dmMono = DM_Mono({
+// Body runs on Geist Sans (neutral, high x-height — built for the screen); the
+// grotesque (Bricolage) is reserved for display/headings. Decoupling the two is
+// what separates a product UI from a "generated template" look.
+const geistSans = Geist({
   subsets: ["latin"],
-  variable: "--font-dm-mono",
-  weight: ["300", "400", "500"],
+  variable: "--font-geist-sans",
+  display: "swap",
+});
+
+// Data voice (numbers, IDs, timestamps, metrics) — testing Fira Sans behind the
+// existing --font-geist-mono variable. tabular-nums + slashed-zero stay enforced
+// in globals.css.
+const geistMono = Fira_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-geist-mono",
   display: "swap",
 });
 
@@ -26,8 +41,8 @@ const SITE_URL = "https://outrival.io";
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#09090b" },
+    { media: "(prefers-color-scheme: light)", color: "#f8f8fa" },
+    { media: "(prefers-color-scheme: dark)", color: "#141518" },
   ],
   width: "device-width",
   initialScale: 1,
@@ -100,7 +115,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${bricolage.variable} ${dmMono.variable}`}
+      className={`${bricolage.variable} ${geistSans.variable} ${geistMono.variable}`}
       suppressHydrationWarning
     >
       <body>

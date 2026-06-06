@@ -34,7 +34,7 @@ function HealthTile({
       <span className="text-2xl font-semibold" style={{ ...mono, color }}>
         {value}
       </span>
-      <span className="text-[11px] text-muted-foreground">{hint}</span>
+      <span className="text-meta text-muted-foreground">{hint}</span>
     </Link>
   );
 }
@@ -62,7 +62,10 @@ export default async function OverviewPage() {
     <div className="flex flex-col gap-5">
       <PageHeader title="Overview" subtitle="Internal control tower — operator allowlist only." />
 
-      <Section title="Platform">
+      <Section
+        title="Platform"
+        info="Top-line platform counts: total users, tracked competitors (self excluded), signals over the last 7 days, and the org split by plan."
+      >
         {overview ? (
           <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
             <Stat label="Users" value={overview.totalUsers} />
@@ -90,7 +93,10 @@ export default async function OverviewPage() {
         )}
       </Section>
 
-      <Section title="Health at a glance">
+      <Section
+        title="Health at a glance"
+        info="Quick operational health: scrape failure rate (24h), monitors whose latest runs all failed, and AI parse-failure rate (7d). Click a tile for detail."
+      >
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
           <HealthTile
             href="/admin/scraping"

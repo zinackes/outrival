@@ -10,6 +10,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const OPTIONS = [
   { value: "light", label: "Light", icon: Sun },
@@ -25,17 +30,25 @@ export function ThemeToggle() {
   // avoid a hydration mismatch.
   useEffect(() => setMounted(true), []);
 
+  const currentLabel =
+    OPTIONS.find((o) => o.value === theme)?.label ?? "System";
+
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Toggle theme">
-          {mounted && resolvedTheme === "dark" ? (
-            <Moon size={14} />
-          ) : (
-            <Sun size={14} />
-          )}
-        </Button>
-      </DropdownMenuTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" aria-label="Toggle theme">
+              {mounted && resolvedTheme === "dark" ? (
+                <Moon size={14} />
+              ) : (
+                <Sun size={14} />
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent>Theme: {mounted ? currentLabel : "System"}</TooltipContent>
+      </Tooltip>
       <DropdownMenuContent align="end" sideOffset={8} className="w-36">
         {OPTIONS.map(({ value, label, icon: Icon }) => (
           <DropdownMenuItem

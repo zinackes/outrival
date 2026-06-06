@@ -4,11 +4,25 @@ import { competitors } from "./competitors";
 export const sourceTypeEnum = pgEnum("source_type", [
   "homepage", "pricing", "blog", "changelog", "jobs",
   "g2_reviews", "capterra_reviews", "appstore_reviews",
+  // patch-32: additional review platforms (enable-on-demand, pro+). Kept in sync
+  // with shared SOURCE_TYPES + reviewSourceEnum.
+  "trustpilot_reviews", "trustradius_reviews", "gartner_reviews", "playstore_reviews",
+  // patch-32: Reddit mention tracking (brand search → sentiment/themes, no star score).
+  "reddit",
   "linkedin", "twitter", "github_repo",
   // patch-18: anchor monitor for tech-stack signals only. Always isActive=false,
   // never enqueued by schedule-scraping / handled by getScraper — it exists solely
   // to satisfy the changes → snapshot FK chain when an important tech appears.
   "tech_stack",
+  // patch-31: competitor status page (Statuspage/Instatus JSON summary). Enabled
+  // on demand when platform detection found a statusPage; scraped via the pure
+  // status connector (getScraper), diffed for incident changes like any source.
+  "status",
+  // patch-32: sitemap discovery anchor. Internal source (like tech_stack) — never
+  // user-selectable. Seeded weekly at creation, isActive=true, enqueued by
+  // schedule-scraping and scraped via getScraper; the diff of its sorted URL-list
+  // snapshot surfaces brand-new pages.
+  "sitemap",
 ]);
 
 export const frequencyEnum = pgEnum("frequency", ["realtime", "daily", "weekly"]);

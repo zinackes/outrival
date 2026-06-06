@@ -8,7 +8,7 @@ import {
   orgNotificationPreferences,
 } from "@outrival/db";
 import { AI_CONFIG, generateBatchSummary } from "@outrival/ai";
-import { loggedAi } from "../lib/clickhouse";
+import { loggedAi } from "../lib/analytics";
 
 const SEVERITY_RANK: Record<string, number> = { low: 0, medium: 1, high: 2, critical: 3 };
 

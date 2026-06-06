@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Lock } from "lucide-react";
+import { Check, Loader2, Lock } from "lucide-react";
 import { PLANS, PLAN_LABELS, PLAN_LIMITS, type Plan } from "@outrival/shared";
 import { api, type NotificationSettings } from "@/lib/api";
 import {
@@ -268,7 +268,9 @@ export function NotificationSettingsForm() {
       </div>
 
       {saved && !dirty && (
-        <p className="text-sm text-positive">✓ Saved</p>
+        <p className="flex items-center gap-1.5 text-sm text-positive">
+          <Check className="size-4" /> Saved
+        </p>
       )}
 
       {dirty && (

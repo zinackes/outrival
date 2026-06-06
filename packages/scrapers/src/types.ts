@@ -1,4 +1,5 @@
 import type { ScrapeLevel } from "./lib/scrape-patchright";
+import type { PlatformProfile } from "@outrival/shared";
 
 export type { ScrapeLevel };
 
@@ -27,6 +28,13 @@ export interface ScrapeOptions {
    * the cheaper attempts. Levels 0/1 are free, 2/3/4 cost money.
    */
   knownLevel?: ScrapeLevel;
+  /**
+   * Cached platform profile (patch-31). When present, a scraper can route to a
+   * structured connector — e.g. the jobs scraper hits the ATS API directly from
+   * `platformProfile.ats` instead of discovering the careers page. Null/absent ⇒
+   * exactly today's behaviour (the profile only ever optimises).
+   */
+  platformProfile?: PlatformProfile | null;
 }
 
 export interface ScrapeOutcome extends ScraperResult {

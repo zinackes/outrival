@@ -23,6 +23,10 @@ import {
   notifications,
   changes,
   forcedRescanLog,
+  alerts,
+  digests,
+  competitorCandidates,
+  discoveryRuns,
   listFlaggedQualityChecks,
   resolveQualityCheck,
   getQualityReviewStats,
@@ -41,7 +45,7 @@ import { loadProviders, checkGlobalBreaker } from "@outrival/ai";
 import { tasks, runs } from "@trigger.dev/sdk/v3";
 import { authMiddleware } from "../middleware/auth";
 import { adminMiddleware } from "../middleware/admin";
-import { chQuery } from "../lib/clickhouse-safe";
+import { analyticsQuery } from "../lib/analytics-safe";
 
 // --- Cost estimation constants. TRENDS, not accounting. Documented in
 //     findings.md § Patch-02/20. Tune as real invoices come in. ---
@@ -124,36 +128,32 @@ adminRouter.get("/overview", async (c) => {
 
 // --- Scraping health: per-source reliability/proxy/duration (24h) + dead monitors ---
 adminRouter.get("/scraping-health", async (c) => {
-  const bySource = await chQuery<{
+  const bySource = await analyticsQuery<{
     source_type: string;
     total: string;
     failed: string;
     proxy: string;
     avg_ms: number;
-  }>({
-    query: `
-      SELECT source_type,
-             count() AS total,
-             countIf(status = 'failed') AS failed,
-             countIf(level >= 2) AS proxy,
-             round(avg(duration_ms)) AS avg_ms
-      FROM scrape_runs
-      WHERE recorded_at >= now() - INTERVAL 24 HOUR
-      GROUP BY source_type
-      ORDER BY total DESC
-    `,
-  });
+  }>(sql`
+    SELECT source_type,
+           count(*) AS total,
+           count(*) filter (where status = 'failed') AS failed,
+           count(*) filter (where level >= 2) AS proxy,
+           round(avg(duration_ms))::int AS avg_ms
+    FROM scrape_runs
+    WHERE recorded_at >= now() - make_interval(hours => 24)
+    GROUP BY source_type
+    ORDER BY total DESC
+  `);
 
   // Cascade-level distribution (patch-20): what % of scrapes stay free (L0/L1)
   // vs escalate to paid datacenter (L2) / residential (L3) / Camoufox (L4).
-  const levelRows = await chQuery<{ level: number; c: string }>({
-    query: `
-      SELECT level, count() AS c
-      FROM scrape_runs
-      WHERE recorded_at >= now() - INTERVAL 24 HOUR
-      GROUP BY level
-    `,
-  });
+  const levelRows = await analyticsQuery<{ level: number; c: string }>(sql`
+    SELECT level, count(*) AS c
+    FROM scrape_runs
+    WHERE recorded_at >= now() - make_interval(hours => 24)
+    GROUP BY level
+  `);
   const levelCount = (l: number) => num(levelRows.find((r) => Number(r.level) === l)?.c ?? "0");
   const levels = {
     l0: levelCount(0),
@@ -176,26 +176,24 @@ adminRouter.get("/scraping-health", async (c) => {
   });
 
   // Last few runs per monitor; a monitor whose latest N are all failures is dead.
-  const recent = await chQuery<{
+  const recent = await analyticsQuery<{
     monitor_id: string;
     competitor_id: string;
     source_type: string;
     statuses: string[];
-  }>({
-    query: `
-      SELECT monitor_id,
-             any(competitor_id) AS competitor_id,
-             any(source_type) AS source_type,
-             groupArray(status) AS statuses
-      FROM (
-        SELECT monitor_id, competitor_id, source_type, status, recorded_at
-        FROM scrape_runs
-        ORDER BY recorded_at DESC
-        LIMIT 5 BY monitor_id
-      )
-      GROUP BY monitor_id
-    `,
-  });
+  }>(sql`
+    SELECT monitor_id,
+           (array_agg(competitor_id ORDER BY recorded_at DESC))[1] AS competitor_id,
+           (array_agg(source_type ORDER BY recorded_at DESC))[1] AS source_type,
+           array_agg(status ORDER BY recorded_at DESC) AS statuses
+    FROM (
+      SELECT monitor_id, competitor_id, source_type, status, recorded_at,
+             row_number() OVER (PARTITION BY monitor_id ORDER BY recorded_at DESC) AS rn
+      FROM scrape_runs
+    ) t
+    WHERE rn <= 5
+    GROUP BY monitor_id
+  `);
 
   const deadRaw = recent.filter(
     (r) =>
@@ -221,28 +219,44 @@ adminRouter.get("/scraping-health", async (c) => {
     recentStatuses: d.statuses,
   }));
 
-  return c.json({ window: "24h", sources, levels, deadMonitors });
+  // Staged extraction resolution (patch-30): how extractions resolved — structured
+  // / cache stay free, heal / ai_fallback spend an AI call. The direct arbiter of
+  // extraction AI cost (the metric the patch is built around).
+  const extractionRows = await analyticsQuery<{ resolution: string; c: string }>(sql`
+    SELECT resolution, count(*) AS c
+    FROM extraction_runs
+    WHERE recorded_at >= now() - make_interval(hours => 24)
+    GROUP BY resolution
+  `);
+  const resCount = (r: string) =>
+    num(extractionRows.find((x) => x.resolution === r)?.c ?? "0");
+  const extraction = {
+    structured: resCount("structured"),
+    cache: resCount("cache"),
+    heal: resCount("heal"),
+    aiFallback: resCount("ai_fallback"),
+  };
+
+  return c.json({ window: "24h", sources, levels, extraction, deadMonitors });
 });
 
 // --- AI health: per-task parse_failed/error rates (7d) + signals/day (7d) ---
 adminRouter.get("/ai-health", async (c) => {
-  const byTask = await chQuery<{
+  const byTask = await analyticsQuery<{
     task: string;
     total: string;
     parse_failed: string;
     errors: string;
-  }>({
-    query: `
-      SELECT task,
-             count() AS total,
-             countIf(status = 'parse_failed') AS parse_failed,
-             countIf(status = 'error') AS errors
-      FROM ai_runs
-      WHERE recorded_at >= now() - INTERVAL 7 DAY
-      GROUP BY task
-      ORDER BY total DESC
-    `,
-  });
+  }>(sql`
+    SELECT task,
+           count(*) AS total,
+           count(*) filter (where status = 'parse_failed') AS parse_failed,
+           count(*) filter (where status = 'error') AS errors
+    FROM ai_runs
+    WHERE recorded_at >= now() - make_interval(days => 7)
+    GROUP BY task
+    ORDER BY total DESC
+  `);
 
   const tasksHealth = byTask.map((r) => {
     const total = num(r.total);
@@ -256,15 +270,13 @@ adminRouter.get("/ai-health", async (c) => {
     };
   });
 
-  const signalsByDay = await chQuery<{ day: string; count: string }>({
-    query: `
-      SELECT toDate(recorded_at) AS day, count() AS count
-      FROM signal_feed
-      WHERE recorded_at >= now() - INTERVAL 7 DAY
-      GROUP BY day
-      ORDER BY day
-    `,
-  });
+  const signalsByDay = await analyticsQuery<{ day: string; count: string }>(sql`
+    SELECT to_char(recorded_at, 'YYYY-MM-DD') AS day, count(*) AS count
+    FROM signal_feed
+    WHERE recorded_at >= now() - make_interval(days => 7)
+    GROUP BY day
+    ORDER BY day
+  `);
 
   // Provider pool health (patch-22): per-provider token quota used today + breaker
   // state from Redis, plus the global breaker and a saturation forecast. Redis is the
@@ -323,30 +335,23 @@ adminRouter.get("/ai-health", async (c) => {
 
 // --- Cost: trend estimates (NOT accounting), clearly flagged ---
 adminRouter.get("/cost", async (c) => {
-  const proxyRows = await chQuery<{
+  const proxyRows = await analyticsQuery<{
     paid_24h: string;
     paid_30d: string;
     resi_24h: string;
     resi_30d: string;
-  }>({
-    query: `
-      SELECT countIf(level >= 2 AND recorded_at >= now() - INTERVAL 24 HOUR) AS paid_24h,
-             countIf(level >= 2 AND recorded_at >= now() - INTERVAL 30 DAY) AS paid_30d,
-             countIf(level >= 3 AND recorded_at >= now() - INTERVAL 24 HOUR) AS resi_24h,
-             countIf(level >= 3 AND recorded_at >= now() - INTERVAL 30 DAY) AS resi_30d
-      FROM scrape_runs
-    `,
-  });
-  const aiRows = await chQuery<{ ai_24h: string; ai_30d: string }>({
-    query: `
-      SELECT countIf(recorded_at >= now() - INTERVAL 24 HOUR) AS ai_24h,
-             countIf(recorded_at >= now() - INTERVAL 30 DAY) AS ai_30d
-      FROM ai_runs
-    `,
-  });
-  const chSizeRows = await chQuery<{ bytes: string }>({
-    query: `SELECT sum(bytes_on_disk) AS bytes FROM system.parts WHERE database = 'outrival' AND active`,
-  });
+  }>(sql`
+    SELECT count(*) filter (where level >= 2 AND recorded_at >= now() - make_interval(hours => 24)) AS paid_24h,
+           count(*) filter (where level >= 2 AND recorded_at >= now() - make_interval(days => 30)) AS paid_30d,
+           count(*) filter (where level >= 3 AND recorded_at >= now() - make_interval(hours => 24)) AS resi_24h,
+           count(*) filter (where level >= 3 AND recorded_at >= now() - make_interval(days => 30)) AS resi_30d
+    FROM scrape_runs
+  `);
+  const aiRows = await analyticsQuery<{ ai_24h: string; ai_30d: string }>(sql`
+    SELECT count(*) filter (where recorded_at >= now() - make_interval(hours => 24)) AS ai_24h,
+           count(*) filter (where recorded_at >= now() - make_interval(days => 30)) AS ai_30d
+    FROM ai_runs
+  `);
 
   let postgresBytes: number | null = null;
   try {
@@ -382,8 +387,7 @@ adminRouter.get("/cost", async (c) => {
       estUsd30d: ai30d * USD_PER_AI_CALL,
     },
     storage: {
-      postgresBytes,
-      clickhouseBytes: chSizeRows[0] ? num(chSizeRows[0].bytes) : null,
+      postgresBytes, // analytics now live in the same Postgres database
       r2Bytes: null, // not measured (no cheap usage API) — tracked separately
     },
   });
@@ -1035,7 +1039,7 @@ adminRouter.get("/ai-quality-metrics", async (c) => {
 
 // Onboarding metrics from onboarding_sessions (patch-25). Computed in JS — the
 // 30d row count is small — over the per-milestone timings: step durations
-// (median/p90/p95), funnel drop-off, status + mode split. No PostHog/ClickHouse
+// (median/p90/p95), funnel drop-off, status + mode split. No PostHog
 // dependency (PostHog events aren't queryable there).
 function percentile(values: number[], p: number): number | null {
   if (values.length === 0) return null;
@@ -1168,5 +1172,237 @@ adminRouter.get("/multi-product-metrics", async (c) => {
       couples: cards?.couples ?? 0,
       avgPerProduct: totalActiveProducts > 0 ? (cards?.total ?? 0) / totalActiveProducts : 0,
     },
+  });
+});
+
+// --- Platform detection (patch-31): step A (no browser) vs step B (browser)
+//     resolution — the cost arbiter, twin of extraction. Detection is rare
+//     (competitor add + 30d cadence + drift) so the window is 7d, not 24h. ---
+adminRouter.get("/platform-detection", async (c) => {
+  const stageRows = await analyticsQuery<{ stage: string; c: string; avg_ms: number }>(sql`
+    SELECT stage, count(*) AS c, round(avg(duration_ms))::int AS avg_ms
+    FROM platform_detection_runs
+    WHERE recorded_at >= now() - make_interval(days => 7)
+    GROUP BY stage
+  `);
+  const stage = (s: string) => stageRows.find((r) => r.stage === s);
+  const aStatic = num(stage("a_static")?.c ?? "0");
+  const bBrowser = num(stage("b_browser")?.c ?? "0");
+
+  const [conn] = await analyticsQuery<{
+    ats: string;
+    status_page: string;
+    changelog: string;
+    pricing_widget: string;
+    total: string;
+  }>(sql`
+    SELECT count(*) filter (where ats <> '')            AS ats,
+           count(*) filter (where status_page <> '')    AS status_page,
+           count(*) filter (where changelog <> '')      AS changelog,
+           count(*) filter (where pricing_widget <> '') AS pricing_widget,
+           count(*)                                     AS total
+    FROM platform_detection_runs
+    WHERE recorded_at >= now() - make_interval(days => 7)
+  `);
+
+  // Top detected values per slot in one pass (split by `kind` in JS).
+  const topRows = await analyticsQuery<{ kind: string; name: string; c: string }>(sql`
+    SELECT 'framework' AS kind, framework AS name, count(*) AS c
+      FROM platform_detection_runs
+      WHERE recorded_at >= now() - make_interval(days => 7) AND framework <> ''
+      GROUP BY framework
+    UNION ALL
+    SELECT 'cms', cms, count(*)
+      FROM platform_detection_runs
+      WHERE recorded_at >= now() - make_interval(days => 7) AND cms <> ''
+      GROUP BY cms
+    UNION ALL
+    SELECT 'ats', ats, count(*)
+      FROM platform_detection_runs
+      WHERE recorded_at >= now() - make_interval(days => 7) AND ats <> ''
+      GROUP BY ats
+    ORDER BY c DESC
+  `);
+  const top = (kind: string) =>
+    topRows
+      .filter((r) => r.kind === kind)
+      .slice(0, 8)
+      .map((r) => ({ name: r.name, count: num(r.c) }));
+
+  return c.json({
+    window: "7d",
+    stages: { aStatic, bBrowser },
+    avgMsByStage: {
+      aStatic: num(stage("a_static")?.avg_ms ?? 0),
+      bBrowser: num(stage("b_browser")?.avg_ms ?? 0),
+    },
+    connectors: {
+      total: num(conn?.total ?? "0"),
+      ats: num(conn?.ats ?? "0"),
+      statusPage: num(conn?.status_page ?? "0"),
+      changelog: num(conn?.changelog ?? "0"),
+      pricingWidget: num(conn?.pricing_widget ?? "0"),
+    },
+    topFrameworks: top("framework"),
+    topCms: top("cms"),
+    topAts: top("ats"),
+  });
+});
+
+// --- Delivery: did alerts and digests actually go out? alerts.error is the
+//     ops blind spot today — surface failed email/slack/webhook sends. ---
+adminRouter.get("/delivery", async (c) => {
+  const sevenDaysAgo = new Date(Date.now() - 7 * 86400_000);
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 86400_000);
+
+  const [byChannel, recentFailures, digestAgg] = await Promise.all([
+    db
+      .select({
+        channel: alerts.channel,
+        total: sql<number>`count(*)::int`,
+        sent: sql<number>`count(*) filter (where ${alerts.sentAt} is not null and ${alerts.error} is null)::int`,
+        failed: sql<number>`count(*) filter (where ${alerts.error} is not null)::int`,
+      })
+      .from(alerts)
+      .where(gte(alerts.createdAt, sevenDaysAgo))
+      .groupBy(alerts.channel),
+    db
+      .select({
+        id: alerts.id,
+        channel: alerts.channel,
+        error: alerts.error,
+        createdAt: alerts.createdAt,
+        orgName: organizations.name,
+      })
+      .from(alerts)
+      .leftJoin(organizations, eq(alerts.orgId, organizations.id))
+      .where(and(gte(alerts.createdAt, sevenDaysAgo), isNotNull(alerts.error)))
+      .orderBy(desc(alerts.createdAt))
+      .limit(20),
+    db
+      .select({
+        generated: sql<number>`count(*)::int`,
+        sent: sql<number>`count(*) filter (where ${digests.sentAt} is not null)::int`,
+        low: sql<number>`count(*) filter (where ${digests.temperature} = 'low')::int`,
+        moderate: sql<number>`count(*) filter (where ${digests.temperature} = 'moderate')::int`,
+        high: sql<number>`count(*) filter (where ${digests.temperature} = 'high')::int`,
+      })
+      .from(digests)
+      .where(gte(digests.createdAt, thirtyDaysAgo)),
+  ]);
+
+  const d = digestAgg[0];
+  return c.json({
+    alerts: {
+      windowDays: 7,
+      byChannel: byChannel.map((r) => ({
+        channel: r.channel,
+        total: r.total,
+        sent: r.sent,
+        failed: r.failed,
+        failRate: rate(r.failed, r.total),
+      })),
+      recentFailures: recentFailures.map((r) => ({
+        id: r.id,
+        channel: r.channel,
+        error: r.error,
+        orgName: r.orgName,
+        createdAt: r.createdAt?.toISOString() ?? null,
+      })),
+    },
+    digests: {
+      windowDays: 30,
+      generated: d?.generated ?? 0,
+      sent: d?.sent ?? 0,
+      unsent: (d?.generated ?? 0) - (d?.sent ?? 0),
+      temperature: {
+        low: d?.low ?? 0,
+        moderate: d?.moderate ?? 0,
+        high: d?.high ?? 0,
+        unknown: (d?.generated ?? 0) - (d?.low ?? 0) - (d?.moderate ?? 0) - (d?.high ?? 0),
+      },
+    },
+  });
+});
+
+// --- Discovery: Exa candidate quality (acceptance rate) + on-demand /detect
+//     monthly consumption (the variable Exa cost). ---
+adminRouter.get("/discovery", async (c) => {
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 86400_000);
+  const monthKey = new Date().toISOString().slice(0, 7); // YYYY-MM
+
+  const [agg, bySource, discovery, recent] = await Promise.all([
+    db
+      .select({
+        total: sql<number>`count(*)::int`,
+        newC: sql<number>`count(*) filter (where ${competitorCandidates.status} = 'new')::int`,
+        added: sql<number>`count(*) filter (where ${competitorCandidates.status} = 'added')::int`,
+        dismissed: sql<number>`count(*) filter (where ${competitorCandidates.status} = 'dismissed')::int`,
+        avgOverlap: sql<number>`coalesce(round(avg(${competitorCandidates.overlapScore})::numeric, 1), 0)`,
+      })
+      .from(competitorCandidates)
+      .where(gte(competitorCandidates.firstSeenAt, thirtyDaysAgo)),
+    db
+      .select({
+        source: competitorCandidates.source,
+        total: sql<number>`count(*)::int`,
+        added: sql<number>`count(*) filter (where ${competitorCandidates.status} = 'added')::int`,
+        dismissed: sql<number>`count(*) filter (where ${competitorCandidates.status} = 'dismissed')::int`,
+      })
+      .from(competitorCandidates)
+      .where(gte(competitorCandidates.firstSeenAt, thirtyDaysAgo))
+      .groupBy(competitorCandidates.source),
+    db
+      .select({
+        detectThisMonth: sql<number>`coalesce(sum(case when ${discoveryRuns.detectCountMonth} = ${monthKey} then ${discoveryRuns.detectCount} else 0 end),0)::int`,
+        activeOrgs: sql<number>`count(*) filter (where ${discoveryRuns.detectCountMonth} = ${monthKey} and ${discoveryRuns.detectCount} > 0)::int`,
+      })
+      .from(discoveryRuns),
+    db
+      .select({
+        url: competitorCandidates.url,
+        title: competitorCandidates.title,
+        overlapScore: competitorCandidates.overlapScore,
+        status: competitorCandidates.status,
+        source: competitorCandidates.source,
+        firstSeenAt: competitorCandidates.firstSeenAt,
+      })
+      .from(competitorCandidates)
+      .orderBy(desc(competitorCandidates.firstSeenAt))
+      .limit(15),
+  ]);
+
+  const a = agg[0];
+  const decided = (a?.added ?? 0) + (a?.dismissed ?? 0);
+  return c.json({
+    windowDays: 30,
+    candidates: {
+      total: a?.total ?? 0,
+      new: a?.newC ?? 0,
+      added: a?.added ?? 0,
+      dismissed: a?.dismissed ?? 0,
+      acceptanceRate: rate(a?.added ?? 0, decided),
+      avgOverlap: Number(a?.avgOverlap ?? 0),
+    },
+    bySource: bySource.map((r) => ({
+      source: r.source,
+      total: r.total,
+      added: r.added,
+      dismissed: r.dismissed,
+      acceptanceRate: rate(r.added, r.added + r.dismissed),
+    })),
+    discovery: {
+      month: monthKey,
+      detectThisMonth: discovery[0]?.detectThisMonth ?? 0,
+      activeOrgs: discovery[0]?.activeOrgs ?? 0,
+    },
+    recent: recent.map((r) => ({
+      url: r.url,
+      title: r.title,
+      overlapScore: r.overlapScore,
+      status: r.status,
+      source: r.source,
+      firstSeenAt: r.firstSeenAt?.toISOString() ?? null,
+    })),
   });
 });

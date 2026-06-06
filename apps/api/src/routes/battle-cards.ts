@@ -8,7 +8,7 @@ import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
-import { getOrgPlan, isFeatureAllowed } from "../lib/plan";
+import { getOrgPlan, assertWithinLimit, tierLimitBody } from "../lib/plan";
 
 type Variables = { user: { id: string } };
 
@@ -193,10 +193,11 @@ battleCardsRouter.post("/:id/battle-card/generate", aiIntensiveRateLimit, async 
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
 
+  // Battle cards are open to every tier (decided 2026-06-04); the per-tier daily cap
+  // is the cost guard, replacing the old pro+ feature gate.
   const plan = await getOrgPlan(orgId);
-  if (!isFeatureAllowed(plan, "battleCards")) {
-    return c.json({ error: "plan_locked_feature", feature: "battleCards", plan }, 403);
-  }
+  const limit = await assertWithinLimit(orgId, "battleCardsPerDay", { plan });
+  if (!limit.ok) return c.json(tierLimitBody(limit), 429);
 
   const competitor = await assertOwnedCompetitor(id, orgId);
   if (!competitor) return c.json({ error: "Not found" }, 404);

@@ -1,3 +1,5 @@
+import type { SourceType } from "@outrival/shared";
+
 // Plain-language label for a monitored source type, shown to users in the signal
 // source line and the "Why this insight?" panel (patch-14). English only.
 // Distinct from lib/scrape-errors PAGE_LABEL (that one phrases sources for error
@@ -21,4 +23,34 @@ const SOURCE_LABELS: Record<string, string> = {
 export function sourceLabel(sourceType: string | null | undefined): string {
   if (!sourceType) return "monitored page";
   return SOURCE_LABELS[sourceType] ?? "monitored page";
+}
+
+// Short, Title-cased label for a source type — used as a noun title in source
+// lists, chips and plan source listings (e.g. "Jobs", "G2 reviews"). Exhaustive
+// over SourceType so a new source forces a label here. English only.
+export const SOURCE_SHORT_LABELS: Record<SourceType, string> = {
+  homepage: "Homepage",
+  pricing: "Pricing page",
+  blog: "Blog",
+  changelog: "Changelog",
+  jobs: "Jobs",
+  g2_reviews: "G2 reviews",
+  capterra_reviews: "Capterra reviews",
+  appstore_reviews: "App Store reviews",
+  trustpilot_reviews: "Trustpilot reviews",
+  trustradius_reviews: "TrustRadius reviews",
+  gartner_reviews: "Gartner reviews",
+  playstore_reviews: "Play Store reviews",
+  reddit: "Reddit mentions",
+  linkedin: "LinkedIn",
+  twitter: "Twitter / X",
+  github_repo: "GitHub repo",
+  tech_stack: "Tech stack",
+  status: "Status page",
+  sitemap: "Sitemap",
+};
+
+export function sourceShortLabel(sourceType: string | null | undefined): string {
+  if (!sourceType) return "Source";
+  return SOURCE_SHORT_LABELS[sourceType as SourceType] ?? sourceType;
 }

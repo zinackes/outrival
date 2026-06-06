@@ -5,7 +5,7 @@ import {
   getScrapeHealth,
   getAiParseHealth,
   getRecentSignalCount,
-} from "../lib/clickhouse";
+} from "../lib/analytics";
 
 // Conservative thresholds — this pings a human, so it must not cry wolf.
 // Every rate alert is gated by a minimum sample so we never alert on 1-of-2.

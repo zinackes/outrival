@@ -28,6 +28,12 @@ import { searchRouter } from "./routes/search";
 import { myProductRouter } from "./routes/my-product";
 import { productsRouter } from "./routes/products";
 import { sectoralRouter } from "./routes/sectoral";
+import { activityRouter } from "./routes/activity";
+import { usageRouter } from "./routes/usage";
+import { trendsRouter } from "./routes/trends";
+import { compareRouter } from "./routes/compare";
+import { savedViewsRouter } from "./routes/saved-views";
+import { crmDestinationsRouter } from "./routes/crm-destinations";
 import { systemRouter } from "./routes/system";
 import { adminRouter } from "./routes/admin";
 import { devRouter } from "./routes/dev";
@@ -86,6 +92,12 @@ app.route("/api/search", searchRouter);
 app.route("/api/my-product", myProductRouter);
 app.route("/api/products", productsRouter);
 app.route("/api/sectoral", sectoralRouter);
+app.route("/api/activity", activityRouter);
+app.route("/api/usage", usageRouter);
+app.route("/api/trends", trendsRouter);
+app.route("/api/compare", compareRouter);
+app.route("/api/saved-views", savedViewsRouter);
+app.route("/api/crm-destinations", crmDestinationsRouter);
 app.route("/api/system", systemRouter);
 app.route("/api/monitor-alternatives", monitorAlternativesRouter);
 app.route("/api/manual-snapshots", manualSnapshotsRouter);
@@ -110,5 +122,10 @@ app.onError((err, c) => {
 
 export default {
   port: env.PORT,
+  // Synchronous discovery (`POST /api/candidates/detect`) runs Exa + reachability
+  // checks and is designed to take up to ~15s. Bun's default idleTimeout is 10s,
+  // which severed the socket mid-request (200 logged at 12s). Bump it past the
+  // discovery budget. Value is in seconds (max 255).
+  idleTimeout: 30,
   fetch: app.fetch,
 };

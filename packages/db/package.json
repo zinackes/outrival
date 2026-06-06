@@ -14,11 +14,9 @@
     "db:push": "drizzle-kit push",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
-    "db:generate": "drizzle-kit generate",
-    "ch:setup": "bun run src/scripts/ch-setup.ts"
+    "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
-    "@clickhouse/client": "^1.18.5",
     "@outrival/shared": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "postgres": "^3.4.9"

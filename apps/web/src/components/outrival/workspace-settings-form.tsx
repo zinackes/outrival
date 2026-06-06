@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, RefreshCw, Pencil } from "lucide-react";
+import { Check, Loader2, RefreshCw, Pencil } from "lucide-react";
 import { api, type ProjectStage, type WorkspaceSettings } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -248,7 +248,11 @@ export function WorkspaceSettingsForm() {
         </p>
       </div>
 
-      {saved && !dirty && <p className="text-sm text-positive">✓ Saved</p>}
+      {saved && !dirty && (
+        <p className="flex items-center gap-1.5 text-sm text-positive">
+          <Check className="size-4" /> Saved
+        </p>
+      )}
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       {dirty && (

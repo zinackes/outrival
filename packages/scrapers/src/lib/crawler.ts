@@ -110,6 +110,10 @@ export async function scrapeFirstSuccess(
     const candidate = new URL(path, `${base.protocol}//${base.host}`).toString();
     try {
       const res = await scrapeFn(candidate);
+      // A guessed path that 404s (many sites serve a full custom 404 / SPA shell
+      // body, so `text.length` alone can't tell) is not a hit — skip it so the
+      // caller can fall back instead of locking onto a non-existent page.
+      if (res.statusCode && res.statusCode >= 400) continue;
       if (res.text.length > 50) return res;
     } catch (err) {
       lastError = err;

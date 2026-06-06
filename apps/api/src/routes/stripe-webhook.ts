@@ -61,7 +61,12 @@ async function applyPlanFromSubscription(orgId: string, sub: StripeSubscription)
     logger.error({ priceId, subId: sub.id }, "Unknown price id");
     return;
   }
-  const isActive = sub.status === "active" || sub.status === "trialing";
+  // Keep the paid plan through the dunning window: a failed charge moves the sub to
+  // `past_due` while Stripe retries the payment — downgrading on the spot would punish
+  // a transient card issue. Access is only cut once Stripe gives up, which arrives as
+  // `canceled`/`unpaid` here (or a `customer.subscription.deleted` event).
+  const isActive =
+    sub.status === "active" || sub.status === "trialing" || sub.status === "past_due";
   const plan: Plan = isActive ? mapped.plan : "free";
 
   await db

@@ -29,11 +29,12 @@ pnpm trigger:dev                # Runner Trigger.dev local
 
 ## Routage des données — CRITIQUE
 
-- Données relationnelles structurées    → PostgreSQL (Railway) via Drizzle
-- Time-series / analytics               → ClickHouse Cloud
-- Assets binaires (HTML, screenshots)   → Cloudflare R2
-- JAMAIS de snapshot HTML en PostgreSQL → toujours R2
-- JAMAIS de time-series en PostgreSQL   → toujours ClickHouse
+- Relationnel + time-series / analytics  → PostgreSQL (Neon) via Drizzle
+- Assets binaires (HTML, screenshots)    → Cloudflare R2
+- JAMAIS de snapshot HTML en PostgreSQL  → toujours R2
+- Tables analytics (ex-ClickHouse)       → `packages/db/src/schema/analytics.ts`,
+  append-only, écrites best-effort par les workers (`lib/analytics.ts`), lues
+  best-effort par l'API (`lib/analytics-safe.ts`). Plus de ClickHouse.
 
 ## Conventions fichiers
 

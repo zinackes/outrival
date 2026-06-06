@@ -5,14 +5,15 @@ import { api, type Digest, type DigestSection } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ArrowLeft, ArrowRight, Check, Circle, type LucideIcon } from "lucide-react";
 
 const URGENCY_META: Record<
   DigestSection["urgency"],
-  { emoji: string; label: string; tone: "critical" | "high" | "positive" }
+  { icon: LucideIcon; label: string; tone: "critical" | "high" | "positive" }
 > = {
-  action_required: { emoji: "🔴", label: "Action required", tone: "critical" },
-  watch: { emoji: "🟡", label: "Watch", tone: "high" },
-  fyi: { emoji: "🟢", label: "FYI", tone: "positive" },
+  action_required: { icon: Circle, label: "Action required", tone: "critical" },
+  watch: { icon: Circle, label: "Watch", tone: "high" },
+  fyi: { icon: Circle, label: "FYI", tone: "positive" },
 };
 
 const TONE_TEXT = {
@@ -68,7 +69,7 @@ export function DigestsList() {
           onClick={() => setActive(null)}
           className="mb-4 -ml-2"
         >
-          ← Back
+          <ArrowLeft className="size-4" /> Back
         </Button>
         <h2 className="text-xl font-bold mb-1 font-[var(--font-syne)]">
           Week of {active.weekStart} to {active.weekEnd}
@@ -90,12 +91,13 @@ export function DigestsList() {
           const items = content.sections.filter((s) => s.urgency === urgency);
           if (items.length === 0) return null;
           const meta = URGENCY_META[urgency];
+          const UrgencyIcon = meta.icon;
           return (
             <div key={urgency} className="mb-6">
               <h3
-                className={`text-base font-bold mb-2 font-[var(--font-syne)] ${TONE_TEXT[meta.tone]}`}
+                className={`flex items-center gap-2 text-base font-bold mb-2 font-[var(--font-syne)] ${TONE_TEXT[meta.tone]}`}
               >
-                {meta.emoji} {meta.label}
+                <UrgencyIcon className="size-3 fill-current" /> {meta.label}
               </h3>
               <ul className="flex flex-col gap-2">
                 {items.map((s, i) => (
@@ -105,7 +107,10 @@ export function DigestsList() {
                         {s.competitor} · {s.category}
                       </div>
                       <p className="text-sm mb-1">{s.insight}</p>
-                      <p className="text-sm text-primary">→ {s.so_what}</p>
+                      <p className="flex gap-1 text-sm text-primary">
+                        <ArrowRight className="size-3.5 mt-0.5 shrink-0" />
+                        {s.so_what}
+                      </p>
                     </Card>
                   </li>
                 ))}
@@ -133,8 +138,14 @@ export function DigestsList() {
                   Temperature · {d.content.temperature} · {d.content.sections.length} signals
                 </div>
               </div>
-              <div className="text-xs text-muted-foreground">
-                {d.sentAt ? "✓ sent" : "not sent"}
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                {d.sentAt ? (
+                  <>
+                    <Check className="size-3" /> sent
+                  </>
+                ) : (
+                  "not sent"
+                )}
               </div>
             </div>
           </button>

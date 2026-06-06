@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Download, ArrowRight } from "lucide-react";
+import { Download, ArrowRight, Lightbulb, Target } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import {
   api,
@@ -13,20 +13,29 @@ import {
 } from "@/lib/api";
 import { toCsv, downloadCsv } from "@/lib/csv";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import {
+  DateRangePicker,
+  lastNDays,
+  type DateRange,
+} from "@/components/ui/date-range-picker";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { PageHead } from "./page-head";
+import { SectionHead } from "./section-head";
 import { RecentBattleCards } from "./recent-battle-cards";
 import { Kpi } from "./kpi";
 import { Sparkline } from "./sparkline";
-import { SeverityDot } from "./severity-pill";
+import { SeverityBadge } from "./severity-pill";
 import { CompAvatar } from "./comp-avatar";
 import { SectoralSignalsSection } from "./sectoral-signals";
+import { OnboardingChecklistCard } from "./onboarding-checklist";
 import { ListError } from "@/components/outrival/list-error";
 import { OnboardingAnalysisPanel } from "@/components/onboarding/onboarding-analysis-panel";
 import DashboardLoading from "@/app/dashboard/loading";
-
-type Range = 7 | 30 | 90;
 
 const SEV_ORDER: Record<Signal["severity"], number> = {
   critical: 0,
@@ -35,13 +44,17 @@ const SEV_ORDER: Record<Signal["severity"], number> = {
   low: 3,
 };
 
+// The category wayfinding scale (globals.css --cat-*), shared with the feed pills
+// and the competitor charts. A system separate from severity and brand amber —
+// the old map borrowed those hues, which mislabeled pricing as critical-red and
+// spent the brand accent on a category.
 const CATEGORY_COLORS: Record<string, string> = {
-  pricing: "var(--critical)",
-  product: "var(--accent)",
-  hiring: "var(--medium)",
-  reviews: "var(--muted)",
-  content: "var(--muted-3)",
-  funding: "var(--muted-3)",
+  pricing: "var(--cat-pricing)",
+  product: "var(--cat-product)",
+  hiring: "var(--cat-hiring)",
+  reviews: "var(--cat-reviews)",
+  content: "var(--cat-content)",
+  funding: "var(--cat-funding)",
 };
 
 interface Counts {
@@ -49,6 +62,24 @@ interface Counts {
   critical: number;
   activeCompetitors: number;
   totalCompetitors: number;
+}
+
+// Scrape freshness folded into the competitor roster (replaces the standalone
+// Monitor health card): green = a monitor ran recently, amber = slowing, muted =
+// stale or never run / unknown.
+const HEALTH_RECENT_MS = 48 * 3600 * 1000;
+const HEALTH_SLOW_MS = 8 * 24 * 3600 * 1000;
+
+function healthDot(lastRun: number | null): { className: string; label: string } {
+  if (lastRun == null)
+    return { className: "bg-muted-foreground/35", label: "no scrape yet" };
+  const age = Date.now() - lastRun;
+  const rel = formatDistanceToNow(new Date(lastRun), { addSuffix: true });
+  if (age <= HEALTH_RECENT_MS)
+    return { className: "bg-positive", label: `scraped ${rel}` };
+  if (age <= HEALTH_SLOW_MS)
+    return { className: "bg-medium", label: `scraped ${rel}` };
+  return { className: "bg-muted-foreground/35", label: `stale · scraped ${rel}` };
 }
 
 function trendBuckets(signals: Signal[], days = 10): number[] {
@@ -76,20 +107,20 @@ function trendLabels(days = 10): string[] {
   return labels;
 }
 
-const SEV_TEXT: Record<Signal["severity"], string> = {
-  critical: "text-critical",
-  high: "text-high",
-  medium: "text-medium",
-  low: "text-muted-foreground",
-};
-
 export function OverviewView() {
   const router = useRouter();
   const [signals, setSignals] = useState<Signal[] | null>(null);
   const [competitors, setCompetitors] = useState<Competitor[] | null>(null);
   const [monitors, setMonitors] = useState<Monitor[] | null>(null);
   const [err, setErr] = useState<unknown>(null);
-  const [range, setRange] = useState<Range>(7);
+  const [range, setRange] = useState<DateRange>(() => lastNDays(7));
+  const rangeFrom = range.from.getTime();
+  const rangeTo = range.to.getTime();
+  const rangeDays = Math.max(1, Math.round((rangeTo - rangeFrom) / 86_400_000));
+  const inWindow = (iso: string) => {
+    const t = new Date(iso).getTime();
+    return t >= rangeFrom && t <= rangeTo;
+  };
 
   const load = useCallback(() => {
     setErr(null);
@@ -107,9 +138,8 @@ export function OverviewView() {
 
   function exportCsv() {
     if (!signals) return;
-    const since = Date.now() - range * 24 * 3600 * 1000;
     const rows = signals.filter(
-      (s) => new Date(s.createdAt).getTime() >= since,
+      (s) => inWindow(s.createdAt),
     );
     if (!rows.length) return;
     const csv = toCsv(rows, [
@@ -122,16 +152,18 @@ export function OverviewView() {
       { key: "recommendedAction", label: "Recommended action" },
     ]);
     const date = new Date().toISOString().slice(0, 10);
-    downloadCsv(`outrival-overview-${range}d-${date}.csv`, csv);
+    downloadCsv(`outrival-overview-${rangeDays}d-${date}.csv`, csv);
   }
 
+  // Fetch monitors for the same competitors the roster shows (top 8) so the
+  // per-row health dot is accurate across every visible row.
   useEffect(() => {
     if (!competitors || competitors.length === 0) {
       setMonitors([]);
       return;
     }
     Promise.all(
-      competitors.slice(0, 5).map((c) =>
+      competitors.slice(0, 8).map((c) =>
         api
           .getCompetitor(c.id)
           .then((r) => r.monitors)
@@ -141,9 +173,8 @@ export function OverviewView() {
   }, [competitors]);
 
   const counts = useMemo<Counts>(() => {
-    const since = Date.now() - range * 24 * 3600 * 1000;
     const inRange = (signals ?? []).filter(
-      (s) => new Date(s.createdAt).getTime() >= since,
+      (s) => inWindow(s.createdAt),
     );
     const critical = inRange.filter(
       (s) => s.severity === "critical" && !s.isRead,
@@ -171,14 +202,27 @@ export function OverviewView() {
       .slice(0, 5);
   }, [signals]);
 
+  // Scrape freshness + monitor count per competitor, derived from the monitors
+  // we fetched above.
+  const monitorHealth = useMemo(() => {
+    const map = new Map<string, { count: number; lastRun: number | null }>();
+    for (const m of monitors ?? []) {
+      const cur = map.get(m.competitorId) ?? { count: 0, lastRun: null };
+      cur.count += 1;
+      const t = m.lastRunAt ? new Date(m.lastRunAt).getTime() : null;
+      if (t != null) cur.lastRun = Math.max(cur.lastRun ?? 0, t);
+      map.set(m.competitorId, cur);
+    }
+    return map;
+  }, [monitors]);
+
   const competitorRows = useMemo(() => {
     if (!competitors || !signals) return [];
-    const since = Date.now() - range * 24 * 3600 * 1000;
     return competitors.slice(0, 8).map((c) => {
       const compSignals = signals.filter(
         (s) =>
           s.competitorId === c.id &&
-          new Date(s.createdAt).getTime() >= since,
+          inWindow(s.createdAt),
       );
       const trend = trendBuckets(compSignals, 10);
       const last = compSignals[0]?.createdAt
@@ -201,9 +245,8 @@ export function OverviewView() {
 
   const categoryBreakdown = useMemo(() => {
     if (!signals) return [];
-    const since = Date.now() - range * 24 * 3600 * 1000;
     const inRange = signals.filter(
-      (s) => new Date(s.createdAt).getTime() >= since,
+      (s) => inWindow(s.createdAt),
     );
     const map: Record<string, number> = {};
     for (const s of inRange) {
@@ -219,6 +262,7 @@ export function OverviewView() {
   }, [signals, range]);
 
   const totalCats = categoryBreakdown.reduce((a, b) => a + b.count, 0) || 1;
+  const [hoveredCat, setHoveredCat] = useState<string | null>(null);
 
   const trend7Sparkline = useMemo(
     () => (signals ? trendBuckets(signals, 10) : []),
@@ -238,37 +282,26 @@ export function OverviewView() {
     return <DashboardLoading />;
   }
 
-  const rangeLabel = range === 7 ? "last 7 days" : range === 30 ? "last 30 days" : "last 90 days";
+  const rangeLabel = `last ${rangeDays} days`;
 
   return (
-    <div className="space-y-[22px]">
+    <div className="space-y-9">
       {/* Progressive streaming right after onboarding (patch-25) — refreshes this
           view each poll so signals/competitors fill in live. Self-hides otherwise. */}
       <OnboardingAnalysisPanel onTick={load} />
+
+      <OnboardingChecklistCard />
 
       <PageHead
         title="Overview"
         sub={
           counts.signals > 0
             ? `${counts.activeCompetitors} competitor${counts.activeCompetitors > 1 ? "s" : ""} moved in this period · ${counts.critical} critical signal${counts.critical > 1 ? "s" : ""} pending.`
-            : `No signals in the last ${range} days.`
+            : `No signals in the last ${rangeDays} days.`
         }
         actions={
           <>
-            <ToggleGroup
-              type="single"
-              value={String(range)}
-              onValueChange={(v) => v && setRange(Number(v) as Range)}
-              variant="outline"
-              size="sm"
-              aria-label="Range"
-            >
-              {[7, 30, 90].map((r) => (
-                <ToggleGroupItem key={r} value={String(r)}>
-                  {r} days
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
+            <DateRangePicker value={range} onChange={setRange} />
             <Button
               variant="outline"
               size="sm"
@@ -281,9 +314,10 @@ export function OverviewView() {
         }
       />
 
-      {/* KPI strip */}
+      {/* KPI strip — banded surface cells, hairline dividers between them, closed
+          by a light rounded border like the controls. */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-px bg-border border border-border rounded-md overflow-hidden">
-        <div className="bg-surface">
+        <div className="bg-gradient-card">
           <Kpi
             label="Signals"
             value={counts.signals}
@@ -295,7 +329,7 @@ export function OverviewView() {
             sparkValueLabel="signals"
           />
         </div>
-        <div className="bg-surface">
+        <div className="bg-gradient-card">
           <Kpi
             label="Critical pending"
             value={counts.critical}
@@ -312,7 +346,7 @@ export function OverviewView() {
             }
           />
         </div>
-        <div className="bg-surface">
+        <div className="bg-gradient-card">
           <Kpi
             label="Active competitors"
             value={counts.activeCompetitors}
@@ -328,10 +362,10 @@ export function OverviewView() {
             }
           />
         </div>
-        <div className="bg-surface">
+        <div className="bg-gradient-card">
           <Kpi
             label="Last signal"
-            valueClassName="text-[17px]"
+            valueClassName="text-lg"
             value={
               recentSignals[0]
                 ? formatDistanceToNow(new Date(recentSignals[0].createdAt), {
@@ -343,62 +377,169 @@ export function OverviewView() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-[18px]">
-        {/* Recent signals */}
-        <Card>
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border gap-3">
-            <div>
-              <div className="font-semibold text-[13px] tracking-tight">
-                Recent signals
-              </div>
-              <div className="text-muted-foreground/80 text-[11px] font-mono">
-                sorted by severity then date
-              </div>
+      {/* Signal categories — a thin band, not a card. Self-hides with no signals. */}
+      {categoryBreakdown.length > 0 && (
+        <div>
+          <h2 className="font-semibold text-content tracking-tight leading-tight mb-2.5">
+            Signal categories
+          </h2>
+          <TooltipProvider delayDuration={80}>
+            <div className="flex h-2 rounded-full overflow-hidden bg-background">
+              {categoryBreakdown.map((c) => {
+                const pct = (c.count / totalCats) * 100;
+                const isActive = hoveredCat === c.name;
+                const isDimmed = hoveredCat !== null && !isActive;
+                return (
+                  <Tooltip key={c.name}>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label={`${c.name}: ${c.count} signals`}
+                        onMouseEnter={() => setHoveredCat(c.name)}
+                        onMouseLeave={() => setHoveredCat(null)}
+                        onFocus={() => setHoveredCat(c.name)}
+                        onBlur={() => setHoveredCat(null)}
+                        className="h-full cursor-default outline-none transition-[opacity,filter] duration-300 ease-out focus-visible:shadow-[inset_0_0_0_2px_var(--ring)]"
+                        style={{
+                          background: c.color,
+                          width: `${pct}%`,
+                          opacity: isDimmed ? 0.25 : 1,
+                          filter: isActive
+                            ? "brightness(1.15) saturate(1.1)"
+                            : undefined,
+                        }}
+                      />
+                    </TooltipTrigger>
+                    <TooltipContent className="flex items-center gap-2">
+                      <span
+                        className="w-2 h-2 rounded-sm"
+                        style={{ background: c.color }}
+                      />
+                      <span className="capitalize font-medium">{c.name}</span>
+                      <span className="tabular-nums text-muted-foreground">
+                        {c.count} · {Math.round(pct)}%
+                      </span>
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })}
             </div>
+          </TooltipProvider>
+          <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5">
+            {categoryBreakdown.map((c) => {
+              const isActive = hoveredCat === c.name;
+              const isDimmed = hoveredCat !== null && !isActive;
+              return (
+                <span
+                  key={c.name}
+                  onMouseEnter={() => setHoveredCat(c.name)}
+                  onMouseLeave={() => setHoveredCat(null)}
+                  className="flex items-center gap-1.5 text-xs cursor-default transition-opacity duration-200"
+                  style={{ opacity: isDimmed ? 0.4 : 1 }}
+                >
+                  <span
+                    className="w-2 h-2 rounded-sm transition-transform duration-200 ease-out"
+                    style={{
+                      background: c.color,
+                      transform: isActive ? "scale(1.4)" : undefined,
+                    }}
+                  />
+                  <span
+                    className={`capitalize text-meta transition-colors duration-200 ${
+                      isActive ? "text-foreground" : "text-muted-foreground"
+                    }`}
+                  >
+                    {c.name}
+                  </span>
+                  <span className="tabular-nums font-mono">{c.count}</span>
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Recent signals — the hero list, closed by a light rounded border like
+          the controls. */}
+      <section>
+        <SectionHead
+          title="Recent signals"
+          sub="sorted by severity then date"
+          divider={false}
+          action={
             <Button asChild variant="outline" size="sm">
               <Link href="/dashboard/signals">
                 View all <ArrowRight size={11} />
               </Link>
             </Button>
-          </div>
-          <div>
+          }
+        />
+        <TooltipProvider delayDuration={80}>
+          <div className="mt-3 max-h-[440px] overflow-y-auto rounded-md border border-border">
             {recentSignals.length === 0 ? (
-              <div className="px-6 py-12 text-center text-muted-foreground">
+              <div className="px-4 py-12 text-center text-muted-foreground">
                 <div className="font-semibold text-base text-foreground mb-1.5 tracking-tight">
                   No signals yet
                 </div>
-                <div className="text-[13px] max-w-[380px] mx-auto">
-                  Scans run continuously. The first signals will appear here
-                  as soon as a change is detected.
+                <div className="text-dense max-w-[380px] mx-auto">
+                  Scans run continuously. The first signals will appear here as
+                  soon as a change is detected.
                 </div>
               </div>
             ) : (
               recentSignals.map((s) => (
                 <Link
                   key={s.id}
-                  href="/dashboard/signals"
-                  className="grid grid-cols-[12px_1fr_auto] gap-3 max-sm:gap-2 items-start px-3.5 py-3 max-sm:px-3 max-sm:py-2.5 border-b border-border last:border-b-0 cursor-pointer hover:bg-accent/50 transition-colors"
+                  href={`/dashboard/signals?focus=${s.id}`}
+                  className="grid grid-cols-[1fr_auto] gap-3 max-sm:gap-2 items-start px-4 py-3.5 max-sm:py-2.5 border-b border-border last:border-b-0 cursor-pointer hover:bg-accent/50 transition-colors"
                 >
-                  <span className="mt-[6px]">
-                    <SeverityDot severity={s.severity} />
-                  </span>
-                  <div className="min-w-0">
-                    <div className="text-[13px] max-sm:text-[12.5px] leading-snug">
-                      <b className="font-semibold">{s.competitorName}.</b>{" "}
+                  <div className="min-w-0 max-w-[120ch]">
+                    {/* Classification header — who / severity / category grouped on
+                        one meta line, kept distinct from the body prose below so the
+                        eye reads "who & how bad" before "what & what to do". */}
+                    <div className="flex items-center gap-2 mb-1.5 min-w-0">
+                      <SeverityBadge severity={s.severity} />
+                      <span className="font-medium text-dense truncate">
+                        {s.competitorName}
+                      </span>
+                      <span className="font-mono text-meta text-muted-foreground shrink-0">
+                        {s.category}
+                      </span>
+                    </div>
+                    {/* The finding — the lead */}
+                    <div className="text-content max-sm:text-sm leading-snug">
                       {s.insight}
                     </div>
+                    {/* Why it matters — recedes (muted) */}
                     {s.soWhat && (
-                      <div className="text-muted-foreground text-xs mt-1">
-                        → {s.soWhat}
+                      <div className="flex items-start gap-1.5 text-muted-foreground text-dense mt-1">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="mt-[3px] shrink-0 inline-flex cursor-help">
+                              <Lightbulb size={13} aria-label="Why it matters" />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>Why it matters</TooltipContent>
+                        </Tooltip>
+                        <span>{s.soWhat}</span>
                       </div>
                     )}
-                    <div className="mt-1.5 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                      <span>{s.category}</span>
-                      <span className="text-muted-foreground/40">·</span>
-                      <span className={SEV_TEXT[s.severity]}>{s.severity}</span>
-                    </div>
+                    {/* What to do — pops by weight, not by colour */}
+                    {s.recommendedAction && (
+                      <div className="flex items-start gap-1.5 text-dense font-medium mt-1.5">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="mt-[3px] shrink-0 inline-flex cursor-help text-muted-foreground">
+                              <Target size={13} aria-label="Recommended action" />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>Recommended action</TooltipContent>
+                        </Tooltip>
+                        <span>{s.recommendedAction}</span>
+                      </div>
+                    )}
                   </div>
-                  <span className="font-mono text-[11px] text-muted-foreground/80 mt-[3px]">
+                  <span className="font-mono text-meta text-muted-foreground mt-[3px]">
                     {formatDistanceToNow(new Date(s.createdAt), {
                       addSuffix: true,
                     })}
@@ -407,143 +548,48 @@ export function OverviewView() {
               ))
             )}
           </div>
-        </Card>
-
-        {/* Right column */}
-        <div className="space-y-[14px]">
-          <Card>
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border gap-3">
-              <div className="font-semibold text-[13px] tracking-tight">
-                Categories — {range}d
-              </div>
-            </div>
-            <div className="px-5 py-[18px]">
-              {categoryBreakdown.length === 0 ? (
-                <p className="text-muted-foreground text-[13px]">
-                  No signals in the last {range} days.
-                </p>
-              ) : (
-                <>
-                  <div className="flex h-2.5 rounded overflow-hidden bg-background mb-4">
-                    {categoryBreakdown.map((c) => (
-                      <div
-                        key={c.name}
-                        title={`${c.name}: ${c.count}`}
-                        style={{
-                          background: c.color,
-                          width: `${(c.count / totalCats) * 100}%`,
-                        }}
-                      />
-                    ))}
-                  </div>
-                  <div className="grid gap-2">
-                    {categoryBreakdown.map((c) => (
-                      <div
-                        key={c.name}
-                        className="flex items-center gap-2.5 text-xs"
-                      >
-                        <span
-                          className="w-2 h-2 rounded-sm"
-                          style={{ background: c.color }}
-                        />
-                        <span className="flex-1 text-muted-foreground font-mono uppercase text-[10px] tracking-widest">
-                          {c.name}
-                        </span>
-                        <span className="tabular-nums font-mono">
-                          {c.count}
-                        </span>
-                        <span className="text-muted-foreground/80 text-[11px] w-9 text-right tabular-nums font-mono">
-                          {Math.round((c.count / totalCats) * 100)}%
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          </Card>
-
-          <Card>
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border gap-3">
-              <div>
-                <div className="font-semibold text-[13px] tracking-tight">
-                  Monitor health
-                </div>
-                <div className="text-muted-foreground/80 text-[11px] font-mono">
-                  {monitors ? `${monitors.length} monitors` : "loading…"}
-                </div>
-              </div>
-            </div>
-            <div>
-              {(monitors ?? []).slice(0, 5).map((m) => (
-                <div
-                  key={m.id}
-                  className="flex items-center gap-2.5 px-4 py-[11px] border-b border-border last:border-b-0"
-                >
-                  <span className="tabular-nums font-mono text-muted-foreground text-[11px]">
-                    {m.sourceType}
-                  </span>
-                  <div className="flex-1 text-[13px] font-medium">
-                    {competitors?.find((c) => c.id === m.competitorId)?.name ??
-                      "—"}
-                  </div>
-                  <span className="tabular-nums font-mono text-muted-foreground/80 text-[11px]">
-                    {m.lastRunAt
-                      ? formatDistanceToNow(new Date(m.lastRunAt), { addSuffix: true })
-                      : "never"}
-                  </span>
-                </div>
-              ))}
-              {monitors?.length === 0 && (
-                <div className="p-5 text-muted-foreground text-[13px]">
-                  No monitors configured.
-                </div>
-              )}
-            </div>
-          </Card>
-        </div>
-      </div>
+        </TooltipProvider>
+      </section>
 
       {/* Sector trends — meso-level, distinct from the micro signals above */}
       <SectoralSignalsSection />
 
-      {/* Competitors at a glance */}
-      <Card>
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border gap-3">
-          <div>
-            <div className="font-semibold text-[13px] tracking-tight">
-              Your competitors
-            </div>
-            <div className="text-muted-foreground/80 text-[11px] font-mono">
-              sorted by activity · last {range} days
-            </div>
-          </div>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/dashboard/competitors">
-              View all <ArrowRight size={11} />
-            </Link>
-          </Button>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-[13px] min-w-[640px]">
-            <thead className="bg-background">
+      {/* Competitors at a glance — boxless table; scrape health folded in as a
+          leading dot + monitor count (replaces the Monitor health card). */}
+      <section>
+        <SectionHead
+          title="Your competitors"
+          sub={`sorted by activity · last ${rangeDays} days`}
+          divider={false}
+          action={
+            <Button asChild variant="outline" size="sm">
+              <Link href="/dashboard/competitors">
+                View all <ArrowRight size={11} />
+              </Link>
+            </Button>
+          }
+        />
+        <div className="mt-3 overflow-x-auto rounded-md border border-border">
+          <table className="w-full border-collapse text-dense min-w-[640px]">
+            <thead>
               <tr>
-                <th className="text-left px-3.5 py-2.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground font-medium border-b border-border whitespace-nowrap">
+                <th className="w-6 border-b border-border" aria-label="Scrape health" />
+                <th className="text-left px-3.5 py-2.5 font-mono text-meta text-muted-foreground font-medium border-b border-border whitespace-nowrap">
                   Competitor
                 </th>
-                <th className="text-left px-3.5 py-2.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground font-medium border-b border-border whitespace-nowrap">
+                <th className="text-left px-3.5 py-2.5 font-mono text-meta text-muted-foreground font-medium border-b border-border whitespace-nowrap">
                   Category
                 </th>
-                <th className="text-left px-3.5 py-2.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground font-medium border-b border-border whitespace-nowrap">
+                <th className="text-left px-3.5 py-2.5 font-mono text-meta text-muted-foreground font-medium border-b border-border whitespace-nowrap">
                   Overlap
                 </th>
-                <th className="text-left px-3.5 py-2.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground font-medium border-b border-border whitespace-nowrap">
-                  Signals {range}d
+                <th className="text-left px-3.5 py-2.5 font-mono text-meta text-muted-foreground font-medium border-b border-border whitespace-nowrap">
+                  Signals {rangeDays}d
                 </th>
-                <th className="text-left px-3.5 py-2.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground font-medium border-b border-border whitespace-nowrap">
+                <th className="text-left px-3.5 py-2.5 font-mono text-meta text-muted-foreground font-medium border-b border-border whitespace-nowrap">
                   Trend
                 </th>
-                <th className="text-left px-3.5 py-2.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground font-medium border-b border-border whitespace-nowrap">
+                <th className="text-left px-3.5 py-2.5 font-mono text-meta text-muted-foreground font-medium border-b border-border whitespace-nowrap">
                   Last signal
                 </th>
                 <th className="border-b border-border" />
@@ -552,83 +598,97 @@ export function OverviewView() {
             <tbody>
               {competitorRows.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="p-7">
-                    <div className="text-center text-muted-foreground text-[13px]">
+                  <td colSpan={8} className="p-7">
+                    <div className="text-center text-muted-foreground text-dense">
                       No competitors. Add one to get started.
                     </div>
                   </td>
                 </tr>
               )}
-              {competitorRows.map((c) => (
-                <tr
-                  key={c.id}
-                  onClick={() =>
-                    router.push(`/dashboard/competitors/${c.id}`)
-                  }
-                  className="border-b border-border last:border-b-0 cursor-pointer transition-colors hover:bg-accent/50"
-                >
-                  <td className="px-3.5 py-3 align-middle">
-                    <div className="flex items-center gap-2.5">
-                      <CompAvatar name={c.name} />
-                      <div>
-                        <div className="font-medium">{c.name}</div>
-                        <div className="text-muted-foreground/80 text-[11px] mt-px font-mono">
-                          {c.url}
+              {competitorRows.map((c) => {
+                const health = monitorHealth.get(c.id);
+                const dot = healthDot(health?.lastRun ?? null);
+                return (
+                  <tr
+                    key={c.id}
+                    onClick={() =>
+                      router.push(`/dashboard/competitors/${c.id}`)
+                    }
+                    className="border-b border-border last:border-b-0 cursor-pointer transition-colors hover:bg-accent/50"
+                  >
+                    <td className="pl-1.5 align-middle">
+                      <span
+                        className={`block w-[7px] h-[7px] rounded-full ${dot.className}`}
+                        title={dot.label}
+                        aria-label={dot.label}
+                      />
+                    </td>
+                    <td className="px-3.5 py-3 align-middle">
+                      <div className="flex items-center gap-2.5">
+                        <CompAvatar name={c.name} />
+                        <div className="min-w-0">
+                          <div className="font-medium">{c.name}</div>
+                          <div className="text-muted-foreground text-meta mt-px font-mono truncate">
+                            {c.url}
+                            {health && health.count > 0
+                              ? ` · ${health.count} monitor${health.count > 1 ? "s" : ""}`
+                              : ""}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-3.5 py-3 align-middle text-muted-foreground">
-                    {c.category}
-                  </td>
-                  <td className="px-3.5 py-3 align-middle">
-                    {c.overlap != null ? (
-                      <div className="flex items-center gap-2.5 min-w-[140px]">
-                        <div className="h-1.5 w-20 bg-background rounded border border-border overflow-hidden">
-                          <span
-                            className="block h-full bg-primary rounded"
-                            style={{ width: `${c.overlap}%` }}
-                          />
+                    </td>
+                    <td className="px-3.5 py-3 align-middle text-muted-foreground">
+                      {c.category}
+                    </td>
+                    <td className="px-3.5 py-3 align-middle">
+                      {c.overlap != null ? (
+                        <div className="flex items-center gap-2.5 min-w-[140px]">
+                          <div className="h-1.5 w-20 bg-background rounded border border-border overflow-hidden">
+                            <span
+                              className="block h-full bg-foreground/35 rounded"
+                              style={{ width: `${c.overlap}%` }}
+                            />
+                          </div>
+                          <span className="tabular-nums font-mono text-xs text-muted-foreground">
+                            {c.overlap}
+                          </span>
                         </div>
-                        <span className="tabular-nums font-mono text-xs">
-                          {c.overlap}
-                        </span>
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </td>
-                  <td className="px-3.5 py-3 align-middle">
-                    <span className="tabular-nums font-mono font-semibold">
-                      {c.signals7d}
-                    </span>
-                  </td>
-                  <td className="px-3.5 py-3 align-middle">
-                    <Sparkline
-                      data={c.trend}
-                      labels={trend7Labels}
-                      valueLabel="signals"
-                      w={80}
-                      h={24}
-                      color="var(--accent)"
-                      interactive
-                    />
-                  </td>
-                  <td className="px-3.5 py-3 align-middle text-muted-foreground tabular-nums font-mono text-xs">
-                    {c.lastScrape}
-                  </td>
-                  <td className="w-8 text-right px-3.5 py-3 align-middle">
-                    <ArrowRight
-                      size={14}
-                      className="text-muted-foreground/80 inline"
-                    />
-                  </td>
-                </tr>
-              ))}
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="px-3.5 py-3 align-middle">
+                      <span className="tabular-nums font-mono font-semibold">
+                        {c.signals7d}
+                      </span>
+                    </td>
+                    <td className="px-3.5 py-3 align-middle">
+                      <Sparkline
+                        data={c.trend}
+                        labels={trend7Labels}
+                        valueLabel="signals"
+                        w={80}
+                        h={24}
+                        color="var(--muted-3)"
+                        interactive
+                      />
+                    </td>
+                    <td className="px-3.5 py-3 align-middle text-muted-foreground tabular-nums font-mono text-xs">
+                      {c.lastScrape}
+                    </td>
+                    <td className="w-8 text-right px-3.5 py-3 align-middle">
+                      <ArrowRight
+                        size={14}
+                        className="text-muted-foreground inline"
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
-      </Card>
+      </section>
 
       <RecentBattleCards />
     </div>

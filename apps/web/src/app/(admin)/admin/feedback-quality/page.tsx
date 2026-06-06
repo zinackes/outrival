@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ThumbsDown } from "lucide-react";
 import { adminFetch } from "../_lib/server";
 import { PageHeader, Section, Stat, Empty } from "../_components/shell";
 
@@ -97,6 +98,7 @@ export default async function FeedbackQualityPage({
       <Section
         title="Patterns to review"
         note={patterns ? `${patterns.windowDays}d · min ${patterns.minCount}` : undefined}
+        info="AI output types where users overwhelmingly voted 'not useful' (above the min feedback count). Signals worth a prompt or threshold review — never auto-applied."
       >
         {!patterns || patterns.patterns.length === 0 ? (
           <Empty>
@@ -129,7 +131,10 @@ export default async function FeedbackQualityPage({
         )}
       </Section>
 
-      <Section title={`By AI output · last ${p === "30d" ? "30" : "7"} days`}>
+      <Section
+        title={`By AI output · last ${p === "30d" ? "30" : "7"} days`}
+        info="User verdicts (useful / not useful) grouped by the type of AI output — insights, summaries, battle cards, etc. — over the selected window."
+      >
         {!stats || Object.keys(stats.byType).length === 0 ? (
           <Empty>No feedback recorded in this window.</Empty>
         ) : (
@@ -140,8 +145,13 @@ export default async function FeedbackQualityPage({
                 <Stat
                   key={t}
                   label={typeLabel(t)}
-                  value={`${pct(agg.notUsefulRate)} 👎`}
-                  hint={`${agg.useful} 👍 · ${agg.not_useful} 👎 · ${agg.total} total`}
+                  value={
+                    <span className="inline-flex items-center gap-1.5">
+                      {pct(agg.notUsefulRate)}
+                      <ThumbsDown className="size-4" />
+                    </span>
+                  }
+                  hint={`${agg.useful} useful · ${agg.not_useful} not useful · ${agg.total} total`}
                 />
               );
             })}
@@ -149,7 +159,10 @@ export default async function FeedbackQualityPage({
         )}
       </Section>
 
-      <Section title="NPS · last 30 days">
+      <Section
+        title="NPS · last 30 days"
+        info="Net Promoter Score over 30 days: % promoters (score ≥ 9) minus % detractors (≤ 6), plus the average score and raw counts."
+      >
         {!stats || stats.nps.responses === 0 ? (
           <Empty>No NPS responses yet.</Empty>
         ) : (

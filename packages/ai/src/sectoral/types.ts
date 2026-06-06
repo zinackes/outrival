@@ -45,14 +45,14 @@ export interface JobInput {
   detectedAt: Date;
 }
 
-// One pricing observation (a plan's price at a scrape time) from ClickHouse.
+// One pricing observation (a plan's price at a scrape time) from pricing_history.
 export interface PricePointInput {
   planName: string;
   price: number;
   recordedAt: Date;
 }
 
-// A pricing-status observation (patch-11 taxonomy) at a scrape time, from ClickHouse.
+// A pricing-status observation (patch-11 taxonomy) at a scrape time, from pricing_history.
 export interface PricingStatusPointInput {
   status: string;
   recordedAt: Date;

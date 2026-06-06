@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ExternalLink } from "lucide-react";
+import { ArrowRight, ExternalLink } from "lucide-react";
 import { format } from "date-fns";
 import { api, type SignalDetail } from "@/lib/api";
 import { sourceLabel } from "@/lib/source-labels";
@@ -32,7 +32,7 @@ function hostOf(url: string | null): string | null {
 }
 
 const SectionLabel = ({ children }: { children: React.ReactNode }) => (
-  <div className="font-mono text-[10px] tracking-widest uppercase text-muted-foreground/80">
+  <div className="font-mono text-micro tracking-widest uppercase text-muted-foreground">
     {children}
   </div>
 );
@@ -118,7 +118,7 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
         )}
 
         {state === "error" && (
-          <p className="text-[13px] text-muted-foreground">
+          <p className="text-dense text-muted-foreground">
             We couldn&apos;t load the details right now. Close this and try again
             in a moment.
           </p>
@@ -128,7 +128,7 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
           <div className="space-y-5">
             {/* Strategic narrative (patch-16) — shown first when present. */}
             {detail.narrative && (
-              <p className="border-l-2 border-primary/40 pl-3 text-[13px] italic leading-relaxed text-primary/90">
+              <p className="border-l-2 border-primary/40 pl-3 text-dense italic leading-relaxed text-primary/90">
                 {detail.narrative}
               </p>
             )}
@@ -137,21 +137,21 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
               <SectionLabel>Detected change</SectionLabel>
               {hasChange ? (
                 <div className="grid grid-cols-[64px_1fr] gap-x-4 gap-y-2 items-baseline">
-                  <span className="text-[11px] text-muted-foreground/70 uppercase tracking-wide">
+                  <span className="text-meta text-muted-foreground uppercase tracking-wide">
                     Before
                   </span>
-                  <span className="font-mono text-[13px] text-white/85">
+                  <span className="font-mono text-dense text-foreground/90">
                     {detail.humanChangeBefore ?? "—"}
                   </span>
-                  <span className="text-[11px] text-muted-foreground/70 uppercase tracking-wide">
+                  <span className="text-meta text-muted-foreground uppercase tracking-wide">
                     After
                   </span>
-                  <span className="font-mono text-[13px] text-white">
+                  <span className="font-mono text-dense text-foreground">
                     {detail.humanChangeAfter ?? "—"}
                   </span>
                 </div>
               ) : (
-                <p className="text-[13px] text-muted-foreground">
+                <p className="text-dense text-muted-foreground">
                   Detail unavailable for this signal — open the live page to see
                   the current state.
                 </p>
@@ -170,27 +170,27 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
                       <li key={i} className="grid grid-cols-[56px_1fr] gap-x-3 items-baseline">
                         <span
                           className={cn(
-                            "font-mono text-[10px] uppercase tracking-wide",
-                            ch.significance === "major" ? "text-primary" : "text-muted-foreground/70",
+                            "font-mono text-micro uppercase tracking-wide",
+                            ch.significance === "major" ? "text-primary" : "text-muted-foreground",
                           )}
                         >
                           {ch.significance ?? "—"}
                         </span>
                         <div className="space-y-0.5">
-                          <div className="text-[13px] text-white/85">
+                          <div className="text-dense text-foreground/90">
                             {KIND_LABELS[ch.kind] ?? ch.kind}
                             {ch.kind === "numeric_claim_changed" &&
                               variationLabel(ch.metadata) && (
-                                <span className="ml-2 font-mono text-[11px] text-primary">
+                                <span className="ml-2 font-mono text-meta text-primary">
                                   {variationLabel(ch.metadata)}
                                 </span>
                               )}
                           </div>
                           {(ch.before || ch.after) && (
-                            <div className="font-mono text-[12px] text-muted-foreground/80">
+                            <div className="font-mono text-xs text-muted-foreground">
                               {ch.before ?? "∅"}{" "}
-                              <span className="text-muted-foreground/50">→</span>{" "}
-                              <span className="text-white/80">{ch.after ?? "∅"}</span>
+                              <ArrowRight className="inline size-3 text-muted-foreground" />{" "}
+                              <span className="text-foreground/80">{ch.after ?? "∅"}</span>
                             </div>
                           )}
                         </div>
@@ -205,10 +205,10 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
 
             <section className="space-y-1.5">
               <SectionLabel>Source</SectionLabel>
-              <p className="text-[13px] text-white/85">
+              <p className="text-dense text-foreground/90">
                 {sourceLabel(detail.sourceType)} of {detail.competitor.name}
                 {host && (
-                  <span className="text-muted-foreground/70"> · {host}</span>
+                  <span className="text-muted-foreground"> · {host}</span>
                 )}
               </p>
               {detail.sourceUrl && (
@@ -216,7 +216,7 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
                   href={detail.sourceUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-[13px] text-primary hover:underline"
+                  className="inline-flex items-center gap-1 text-dense text-primary hover:underline"
                 >
                   View live page <ExternalLink size={12} />
                 </a>
@@ -227,12 +227,12 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
 
             <section className="space-y-1.5">
               <SectionLabel>Detection</SectionLabel>
-              <p className="text-[13px] text-white/85 font-mono">
+              <p className="text-dense text-foreground/90 font-mono">
                 Detected on {format(new Date(detail.detectedAt), "MMM d, yyyy 'at' HH:mm")}
               </p>
               {/* Relevance score (patch-17) — discreet; mostly for beta calibration. */}
               {typeof detail.relevanceScore === "number" && (
-                <p className="text-[11px] text-muted-foreground/60 font-mono">
+                <p className="text-meta text-muted-foreground font-mono">
                   Relevance score: {detail.relevanceScore.toFixed(2)}
                 </p>
               )}

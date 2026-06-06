@@ -52,7 +52,7 @@ export function Alerts() {
                 <div className="flex-1">
                   <div>
                     <span className="text-sm font-semibold">Outrival</span>
-                    <span className="ml-2 font-mono text-[11px] text-text-subtle">
+                    <span className="ml-2 font-mono text-meta text-text-subtle">
                       today · 09:42
                     </span>
                   </div>
@@ -61,8 +61,8 @@ export function Alerts() {
                     <b className="text-foreground">Linear</b> ·{" "}
                     <span className="font-mono">pricing</span>
                   </div>
-                  <div className="mt-2 rounded-md border-l-2 border-border bg-background-2 p-3 text-sm text-text-muted">
-                    <div className="mb-1 font-mono text-[11px] text-text-subtle">
+                  <div className="mt-2 rounded-md bg-background-2 p-3 text-sm text-text-muted">
+                    <div className="mb-1 font-mono text-meta text-text-subtle">
                       linear.app/pricing · diff at 09:31
                     </div>
                     <b className="text-foreground">Business</b> plan:{" "}
@@ -92,7 +92,7 @@ export function Alerts() {
                 <div className="text-sm font-semibold">
                   Linear repositions Business — action required
                 </div>
-                <div className="mt-0.5 font-mono text-[11px] text-text-subtle">
+                <div className="mt-0.5 font-mono text-meta text-text-subtle">
                   from Outrival · to you@team.com · 09:42
                 </div>
               </div>

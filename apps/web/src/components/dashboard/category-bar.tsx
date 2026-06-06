@@ -52,13 +52,31 @@ export function CategoryBar({
   );
 }
 
+// Static color → category key. Explains the stacked bar's colors once (e.g. in a
+// header tooltip) instead of per row, since the color mapping is fixed.
+export function CategoryKey() {
+  return (
+    <div className="flex flex-col gap-1 text-meta">
+      {Object.keys(CAT_COLOR).map((cat) => (
+        <span key={cat} className="inline-flex items-center gap-1.5 capitalize">
+          <span
+            className="w-[7px] h-[7px] rounded-full inline-block"
+            style={{ backgroundColor: CAT_COLOR[cat] }}
+          />
+          {cat}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export function CategoryLegend({ counts }: { counts: Record<string, number> }) {
   const entries = Object.entries(counts)
     .filter(([, n]) => n > 0)
     .sort((a, b) => b[1] - a[1]);
   if (entries.length === 0) return null;
   return (
-    <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] font-mono uppercase tracking-wider text-muted-foreground/80">
+    <div className="flex flex-wrap gap-x-3 gap-y-1 text-micro font-mono uppercase tracking-wider text-muted-foreground">
       {entries.map(([cat, n]) => (
         <span key={cat} className="inline-flex items-center gap-1.5">
           <span
@@ -66,7 +84,7 @@ export function CategoryLegend({ counts }: { counts: Record<string, number> }) {
             style={{ backgroundColor: CAT_COLOR[cat] ?? FALLBACK }}
           />
           {cat}
-          <span className="tabular-nums text-muted-foreground/60">{n}</span>
+          <span className="tabular-nums text-muted-foreground">{n}</span>
         </span>
       ))}
     </div>

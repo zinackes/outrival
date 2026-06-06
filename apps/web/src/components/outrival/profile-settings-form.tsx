@@ -55,7 +55,7 @@ export function ProfileSettingsForm() {
         <span className="flex aspect-square size-12 items-center justify-center rounded-full border border-border bg-surface text-sm font-semibold text-foreground">
           {initials(currentName, "?")}
         </span>
-        <p className="text-[13px] text-muted-foreground">
+        <p className="text-dense text-muted-foreground">
           Your avatar is generated from your name.
         </p>
       </div>
@@ -81,14 +81,14 @@ export function ProfileSettingsForm() {
           className="max-w-sm"
           data-ph-mask
         />
-        <p className="text-[12px] text-muted-foreground/80">
+        <p className="text-xs text-muted-foreground">
           Email changes aren&apos;t available yet — contact support to update it.
         </p>
       </div>
 
       <div className="flex flex-col gap-1.5">
         <Label>Password</Label>
-        <p className="text-[13px] text-muted-foreground">
+        <p className="text-dense text-muted-foreground">
           You sign in with a magic link or Google. Setting a password is optional and
           coming soon.
         </p>

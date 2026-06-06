@@ -107,7 +107,7 @@ export function Pricing() {
               }`}
             >
               {p.featured && (
-                <span className="absolute -top-2.5 left-6 rounded-full bg-primary px-2.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-primary-foreground">
+                <span className="absolute -top-2.5 left-6 rounded-full bg-primary px-2.5 py-0.5 font-mono text-micro font-semibold uppercase tracking-wider text-primary-foreground">
                   Most popular
                 </span>
               )}

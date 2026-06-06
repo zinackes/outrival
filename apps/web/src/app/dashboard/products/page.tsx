@@ -27,6 +27,7 @@ import {
   type SelfProfileField,
   type SelfProductChange,
 } from "@/lib/api";
+import { SelfChangesPanel } from "@/components/outrival/self-change-review";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -78,13 +79,13 @@ function FieldMeta({ field }: { field?: SelfProfileField<unknown> }) {
   if (!field) return null;
   if (field.isFromAutoDetect) {
     return (
-      <span className="text-[11px] text-[var(--muted-2)] inline-flex items-center gap-1">
+      <span className="text-meta text-[var(--muted-2)] inline-flex items-center gap-1">
         <Sparkles className="size-3" /> detected auto
       </span>
     );
   }
   return (
-    <span className="text-[11px] text-[var(--muted-2)]">
+    <span className="text-meta text-[var(--muted-2)]">
       edited by you
       {field.lastEditedByUserAt
         ? ` ${formatDistanceToNow(new Date(field.lastEditedByUserAt), { addSuffix: true })}`
@@ -120,7 +121,7 @@ function EditableText({
 
   return (
     <div className="grid grid-cols-[140px_1fr] gap-3 items-start py-2">
-      <div className="text-[13px] text-muted-foreground pt-1">{label}</div>
+      <div className="text-dense text-muted-foreground pt-1">{label}</div>
       <div className="min-w-0">
         {editing ? (
           <div className="flex flex-col gap-2">
@@ -150,7 +151,7 @@ function EditableText({
         ) : (
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-[14px] break-words">
+              <div className="text-content break-words">
                 {field?.value || <span className="text-[var(--muted-2)]">Not set</span>}
               </div>
               <div className="mt-0.5">
@@ -207,7 +208,7 @@ function EditableList({
     <Card className="p-4">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <h3 className="text-[13px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <h3 className="text-dense font-semibold uppercase tracking-wide text-muted-foreground">
             {label}
           </h3>
           <FieldMeta field={field} />
@@ -244,11 +245,11 @@ function EditableList({
           </div>
         </div>
       ) : items.length === 0 ? (
-        <div className="text-[13px] text-[var(--muted-2)]">Nothing detected yet.</div>
+        <div className="text-dense text-[var(--muted-2)]">Nothing detected yet.</div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5">
           {items.map((it, i) => (
-            <div key={`${it}-${i}`} className="flex items-center gap-2 text-[14px]">
+            <div key={`${it}-${i}`} className="flex items-center gap-2 text-content">
               <Check className="size-3.5 text-primary shrink-0" />
               <span className="break-words">{it}</span>
             </div>
@@ -266,7 +267,7 @@ const PRICING_STATUS_OPTIONS = Object.entries(PRICING_LABELS).map(([value, label
 
 /** Editable pricing block: hand-entered tiers (sticky vs scrapes) plus status,
  * promo flag and note. Tiers are the only pricing surface with no source outside
- * ClickHouse, so without it the user can still maintain them by hand. */
+ * scraped history, so without it the user can still maintain them by hand. */
 function PricingCard({
   pricing,
   onSave,
@@ -319,11 +320,11 @@ function PricingCard({
     <Card className="p-4">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <h3 className="text-[13px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <h3 className="text-dense font-semibold uppercase tracking-wide text-muted-foreground">
             Pricing
           </h3>
           {pricing.tiers.length > 0 && (
-            <span className="text-[11px] text-[var(--muted-2)] inline-flex items-center gap-1">
+            <span className="text-meta text-[var(--muted-2)] inline-flex items-center gap-1">
               {pricing.tiersManual ? (
                 <>
                   edited by you
@@ -341,12 +342,12 @@ function PricingCard({
         </div>
         <div className="flex items-center gap-2">
           {!editing && pricing.promotional && (
-            <Badge variant="secondary" className="text-[10px]">
+            <Badge variant="secondary" className="text-micro">
               promo
             </Badge>
           )}
           {!editing && (
-            <Badge variant="outline" className="text-[11px]">
+            <Badge variant="outline" className="text-meta">
               {PRICING_LABELS[pricing.status ?? "unknown"] ?? "Unknown"}
             </Badge>
           )}
@@ -418,7 +419,7 @@ function PricingCard({
           </div>
 
           <div className="grid grid-cols-[140px_1fr] gap-3 items-center">
-            <div className="text-[13px] text-muted-foreground">Pricing model</div>
+            <div className="text-dense text-muted-foreground">Pricing model</div>
             <Select value={status} onValueChange={setStatus}>
               <SelectTrigger className="sm:max-w-xs">
                 <SelectValue />
@@ -432,15 +433,15 @@ function PricingCard({
               </SelectContent>
             </Select>
 
-            <div className="text-[13px] text-muted-foreground">Note</div>
+            <div className="text-dense text-muted-foreground">Note</div>
             <Input
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder="Optional context (e.g. enterprise only on request)"
             />
 
-            <div className="text-[13px] text-muted-foreground">Promotional</div>
-            <label className="inline-flex items-center gap-2 text-[13px]">
+            <div className="text-dense text-muted-foreground">Promotional</div>
+            <label className="inline-flex items-center gap-2 text-dense">
               <Checkbox
                 checked={promotional}
                 onCheckedChange={(v) => setPromotional(v === true)}
@@ -462,7 +463,7 @@ function PricingCard({
       ) : pricing.tiers.length > 0 ? (
         <div className="flex flex-col gap-1.5">
           {pricing.tiers.map((t, i) => (
-            <div key={`${t.plan_name}-${i}`} className="flex items-center justify-between text-[14px]">
+            <div key={`${t.plan_name}-${i}`} className="flex items-center justify-between text-sm">
               <span>{t.plan_name}</span>
               <span style={mono} className="text-foreground">
                 {t.price === 0 ? "Free" : `${t.price} ${t.currency}`}
@@ -472,7 +473,7 @@ function PricingCard({
           ))}
         </div>
       ) : (
-        <div className="text-[13px] text-[var(--muted-2)]">
+        <div className="text-dense text-[var(--muted-2)]">
           No pricing tiers yet.{" "}
           <button type="button" className="underline" onClick={startEdit}>
             Add them by hand
@@ -482,7 +483,7 @@ function PricingCard({
       )}
 
       {!editing && (pricing.observedRegion || pricing.note) && (
-        <div className="text-[11px] text-[var(--muted-2)] mt-2">
+        <div className="text-meta text-[var(--muted-2)] mt-2">
           {pricing.observedRegion ? `Seen from ${pricing.observedRegion}` : ""}
           {pricing.note ? ` · ${pricing.note}` : ""}
         </div>
@@ -490,67 +491,6 @@ function PricingCard({
     </Card>
   );
 }
-
-/** Category enum on a self change → human label. */
-const FIELD_LABELS: Record<string, string> = {
-  pricing: "Pricing",
-  product: "Product",
-  hiring: "Hiring",
-  reviews: "Reviews",
-  content: "Content / messaging",
-  funding: "Funding",
-  category: "Category",
-  audience: "Audience",
-  valueProp: "Value proposition",
-  features: "Features",
-  techStack: "Tech stack",
-};
-
-/** Coerce a stored diff side (string | string[] | null | unknown) into display lines. */
-function asLines(v: unknown): string[] {
-  if (typeof v === "string") return v.trim().length > 0 ? [v] : [];
-  if (!Array.isArray(v)) return [];
-  return v.filter((x): x is string => typeof x === "string" && x.trim().length > 0);
-}
-
-const DIFF_MAX_LINES = 6;
-
-/** Compact before/after view of a detected change so the user sees what moved. */
-function ChangeDiff({ before, after }: { before: string[]; after: string[] }) {
-  if (before.length === 0 && after.length === 0) return null;
-  const beforeShown = before.slice(0, DIFF_MAX_LINES);
-  const afterShown = after.slice(0, DIFF_MAX_LINES);
-  return (
-    <div
-      style={mono}
-      className="text-[12px] rounded border border-border bg-[var(--muted)]/30 overflow-hidden mb-2"
-    >
-      {beforeShown.map((line, i) => (
-        <div key={`b-${i}`} className="flex gap-1.5 px-2 py-0.5 text-destructive">
-          <span className="select-none opacity-60">−</span>
-          <span className="break-words min-w-0">{line}</span>
-        </div>
-      ))}
-      {before.length > DIFF_MAX_LINES && (
-        <div className="px-2 py-0.5 text-[var(--muted-2)]">+{before.length - DIFF_MAX_LINES} more removed</div>
-      )}
-      {afterShown.map((line, i) => (
-        <div key={`a-${i}`} className="flex gap-1.5 px-2 py-0.5 text-primary">
-          <span className="select-none opacity-60">+</span>
-          <span className="break-words min-w-0">{line}</span>
-        </div>
-      ))}
-      {after.length > DIFF_MAX_LINES && (
-        <div className="px-2 py-0.5 text-[var(--muted-2)]">+{after.length - DIFF_MAX_LINES} more added</div>
-      )}
-    </div>
-  );
-}
-
-const SEVERITY_STYLE: Record<string, string> = {
-  minor: "border-l-2 border-l-primary",
-  major: "border-l-2 border-l-destructive",
-};
 
 const RESCAN_CATEGORIES: { key: MyProductRescanCategory; label: string }[] = [
   { key: "profile", label: "Profile" },
@@ -560,8 +500,9 @@ const RESCAN_CATEGORIES: { key: MyProductRescanCategory; label: string }[] = [
 ];
 
 /** Re-scan control with selective targets. Picking cards re-scans only their sources
- * (Features + Tech stack share one homepage scrape server-side); "Everything" hits
- * every source. Shown for live products; repo/idea stages use a plain button. */
+ * (Features + Tech stack share one homepage scrape server-side); "Everything" re-scans
+ * all the cards shown here (homepage + pricing) — not hidden self monitors like jobs.
+ * Shown for live products; repo/idea stages use a plain button. */
 function RescanMenu({
   busy,
   onRescan,
@@ -609,7 +550,9 @@ function RescanMenu({
           Re-scan selected{selected.size > 0 ? ` (${selected.size})` : ""}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => onRescan()}>Everything</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => onRescan(RESCAN_CATEGORIES.map((c) => c.key))}>
+          Everything
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -663,10 +606,17 @@ export default function MyProductPage() {
       if (product?.scanError) {
         toast.error("Scan failed", { description: product.scanError });
       } else {
-        // Features/tech stack are written by downstream tasks that finish just
-        // after the scrape — one more load grabs them.
-        void load();
         toast.success("Scan complete", { description: "Your profile is up to date." });
+        // Profile-divergence proposals + features/tech stack are written by
+        // downstream AI tasks (extract-self-profile, …) that finish a few seconds
+        // AFTER scrapeStartedAt clears, so a single reload races them. Keep polling
+        // a few more cycles to surface those late changes.
+        let n = 0;
+        const t = setInterval(() => {
+          void load();
+          if (++n >= 5) clearInterval(t);
+        }, 4000);
+        return () => clearInterval(t);
       }
     }
   }, [product?.scanning, product?.scanError]);
@@ -722,15 +672,17 @@ export default function MyProductPage() {
     }
   }
 
-  async function resolve(change: SelfProductChange, action: "accept" | "modify" | "ignore") {
+  async function resolve(
+    change: SelfProductChange,
+    action: "accept" | "ignore",
+    value?: string | string[],
+  ) {
     setActingId(change.id);
     try {
       if (action === "accept") {
-        const { suggestion } = await api.acceptMyProductChange(change.id);
+        const { suggestion } = await api.acceptMyProductChange(change.id, value);
         if (suggestion?.action === "rediscover") setRediscover({ reason: suggestion.reason });
-      } else if (action === "modify") {
-        await api.modifyMyProductChange(change.id);
-        toast.info("Edit the field below to record your version.");
+        toast.success("Change accepted");
       } else {
         await api.ignoreMyProductChange(change.id);
       }
@@ -774,8 +726,8 @@ export default function MyProductPage() {
         <PageHead title="My product" />
         <Card className="p-8 flex flex-col items-center text-center gap-3 max-w-lg mx-auto">
           <Store className="size-8 text-[var(--muted-2)]" />
-          <div className="text-[15px] font-semibold">No product site to monitor yet</div>
-          <p className="text-[13px] text-muted-foreground max-w-sm">
+          <div className="text-content font-semibold">No product site to monitor yet</div>
+          <p className="text-dense text-muted-foreground max-w-sm">
             {error
               ? "We couldn't load your product."
               : "Add a product URL to track your own site like a competitor — pricing, features and changes."}
@@ -868,69 +820,12 @@ export default function MyProductPage() {
         }
       />
 
-      {changes.length > 0 && (
-        <Card className="p-4 mb-6">
-          <h2 className="text-[14px] font-semibold mb-3">
-            {changes.length} change{changes.length > 1 ? "s" : ""} detected on your site
-          </h2>
-          <div className="flex flex-col gap-3">
-            {changes.map((ch) => (
-              <div key={ch.id} className={`pl-3 ${SEVERITY_STYLE[ch.severity] ?? ""}`}>
-                <div className="flex items-center gap-2 mb-0.5">
-                  <span className="text-[12px] font-medium">
-                    {FIELD_LABELS[ch.fieldPath] ?? ch.fieldPath}
-                  </span>
-                  {ch.severity === "major" && (
-                    <Badge variant="destructive" className="text-[10px]">
-                      major
-                    </Badge>
-                  )}
-                </div>
-                <div className="text-[13px] text-muted-foreground mb-2">
-                  {ch.summary ?? "Change detected."}
-                </div>
-                <ChangeDiff before={asLines(ch.previousValue)} after={asLines(ch.newValue)} />
-                {ch.severity === "major" && (
-                  <div className="text-[12px] text-[var(--muted-2)] inline-flex items-start gap-1 mb-2">
-                    <AlertTriangle className="size-3.5 mt-0.5 shrink-0" />
-                    This is a major change — your competitors may need re-evaluating.
-                  </div>
-                )}
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    onClick={() => resolve(ch, "accept")}
-                    disabled={actingId === ch.id}
-                  >
-                    {ch.severity === "major" ? "Accept & re-scan" : "Accept"}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => resolve(ch, "modify")}
-                    disabled={actingId === ch.id}
-                  >
-                    Modify
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => resolve(ch, "ignore")}
-                    disabled={actingId === ch.id}
-                  >
-                    Ignore
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
+      <SelfChangesPanel changes={changes} actingId={actingId} onResolve={resolve} />
 
       {!p.url && (
         <Card className="p-4 mb-6 border-dashed">
-          <h2 className="text-[14px] font-semibold mb-1">Not live yet</h2>
-          <p className="text-[13px] text-muted-foreground mb-3 max-w-prose">
+          <h2 className="text-sm font-semibold mb-1">Not live yet</h2>
+          <p className="text-dense text-muted-foreground mb-3 max-w-prose">
             Your product profile below is editable by hand. Add a public site URL to monitor
             pricing, features and changes — or track its GitHub repo while you build.
           </p>
@@ -956,7 +851,7 @@ export default function MyProductPage() {
 
           <div className="mt-3 pt-3 border-t border-border">
             {p.repoUrl ? (
-              <p className="text-[13px] text-muted-foreground">
+              <p className="text-dense text-muted-foreground">
                 Tracking repo:{" "}
                 <a
                   href={p.repoUrl}
@@ -999,7 +894,7 @@ export default function MyProductPage() {
 
       <div className="flex flex-col gap-6">
         <Card className="p-4">
-          <h3 className="text-[13px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">
+          <h3 className="text-dense font-semibold uppercase tracking-wide text-muted-foreground mb-1">
             Profile
           </h3>
           <Separator className="mb-1" />
@@ -1038,10 +933,10 @@ export default function MyProductPage() {
 
         {p.aiSummary && (
           <Card className="p-4">
-            <h3 className="text-[13px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+            <h3 className="text-dense font-semibold uppercase tracking-wide text-muted-foreground mb-2">
               Summary
             </h3>
-            <p className="text-[14px] text-muted-foreground leading-relaxed">{p.aiSummary}</p>
+            <p className="text-content text-muted-foreground leading-relaxed">{p.aiSummary}</p>
           </Card>
         )}
       </div>
@@ -1061,7 +956,7 @@ export default function MyProductPage() {
             <DialogTitle>Re-evaluate your competitors?</DialogTitle>
             <DialogDescription>{rediscover?.reason}</DialogDescription>
           </DialogHeader>
-          <p className="text-[13px] text-muted-foreground">
+          <p className="text-dense text-muted-foreground">
             Some of your current competitors may be less relevant, and new ones could appear. Your
             existing competitors are kept — nothing is removed automatically.
           </p>

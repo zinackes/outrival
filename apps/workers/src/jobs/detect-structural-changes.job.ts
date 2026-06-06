@@ -14,7 +14,7 @@ import {
 } from "@outrival/scrapers/structural";
 import { verifyContentMatchesProfile, AI_CONFIG } from "@outrival/ai";
 import { getFromR2 } from "../lib/r2";
-import { loggedAi } from "../lib/clickhouse";
+import { loggedAi } from "../lib/analytics";
 import { notifyStructuralChange } from "../lib/structural-change-notify";
 
 const MIN_SCRAPES = Number(process.env.PIVOT_DETECTION_MIN_SCRAPES ?? 3);

@@ -21,7 +21,7 @@ import {
 import {
   getPricingHistorySince,
   getPricingStatusHistorySince,
-} from "../lib/clickhouse";
+} from "../lib/analytics";
 import { validateWorkerEnv } from "../env";
 
 // Feature/hiring/positioning look at recent moves; pricing needs a longer window
@@ -78,7 +78,7 @@ async function loadOrgSectoralData(
           )
       : [];
 
-  // ClickHouse (best-effort): price + status history. null → empty (detectors skip).
+  // Analytics (best-effort): price + status history. null → empty (detectors skip).
   const pricing = (await getPricingHistorySince(ids, PRICING_DAYS)) ?? [];
   const statuses = (await getPricingStatusHistorySince(ids, PRICING_DAYS)) ?? [];
 

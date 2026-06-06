@@ -92,6 +92,10 @@ function diffMeta(prev: HomepageStructure, curr: HomepageStructure): StructuredC
     ["meta.description", prev.metaDescription, curr.metaDescription],
     ["og.title", prev.openGraph.title, curr.openGraph.title],
     ["og.description", prev.openGraph.description, curr.openGraph.description],
+    // patch-32 — an og:image swap is a brand / visual-identity change (rebrand,
+    // new hero art); og:type shifts when a site repositions (website↔product).
+    ["og.image", prev.openGraph.image, curr.openGraph.image],
+    ["og.type", prev.openGraph.type, curr.openGraph.type],
   ];
   for (const [field, before, after] of pairs) {
     if (norm(before) !== norm(after)) {

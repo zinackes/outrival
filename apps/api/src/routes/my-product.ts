@@ -17,7 +17,7 @@ import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
 import { ensurePrimaryProductForSelf } from "../lib/products";
-import { chQuery } from "../lib/clickhouse-safe";
+import { analyticsQuery, sql } from "../lib/analytics-safe";
 
 type Variables = { user: { id: string } };
 
@@ -164,31 +164,28 @@ myProductRouter.get("/", async (c) => {
       ? String((repoMonitor.config as { url: unknown }).url)
       : null;
 
-  // Latest pricing batch from ClickHouse (best-effort: [] if CH is down/unset).
-  const pricingRows = await chQuery<{
+  // Latest pricing batch from analytics (best-effort: [] on error).
+  const pricingRows = await analyticsQuery<{
     plan_name: string;
     price: number;
     currency: string;
     billing_period: string;
     recorded_at: string;
-  }>({
-    query: `
-      SELECT plan_name, price, currency, billing_period, toString(recorded_at) AS recorded_at
-      FROM pricing_history
-      WHERE competitor_id = {competitorId: String}
-      ORDER BY pricing_history.recorded_at DESC
-      LIMIT 40
-    `,
-    params: { competitorId: self.id },
-  });
+  }>(sql`
+    SELECT plan_name, price, currency, billing_period, recorded_at::text AS recorded_at
+    FROM pricing_history
+    WHERE competitor_id = ${self.id}
+    ORDER BY recorded_at DESC
+    LIMIT 40
+  `);
   const latestAt = pricingRows[0]?.recorded_at ?? null;
-  const chTiers = latestAt ? pricingRows.filter((r) => r.recorded_at === latestAt) : [];
+  const detectedTiers = latestAt ? pricingRows.filter((r) => r.recorded_at === latestAt) : [];
 
-  // User-entered tiers (sticky) win over the auto-detected ClickHouse batch — and
-  // are the only ones available when ClickHouse isn't configured.
+  // User-entered tiers (sticky) win over the auto-detected batch — and are the
+  // only ones available when nothing has been scraped yet.
   const profile = (self.selfProfile ?? {}) as SelfProfile;
   const manualTiers = profile.pricingTiers;
-  const tiers = manualTiers ? manualTiers.value : chTiers;
+  const tiers = manualTiers ? manualTiers.value : detectedTiers;
 
   const jobs = await db.query.jobPostings.findMany({
     where: and(eq(jobPostings.competitorId, self.id), eq(jobPostings.isActive, true)),
@@ -504,27 +501,56 @@ function isProfileFieldPath(p: string): p is (typeof PROFILE_FIELD_KEYS)[number]
   return (PROFILE_FIELD_KEYS as readonly string[]).includes(p);
 }
 
+// Optional curated value the user picked in the review sheet (granular accept or
+// inline edit). When absent, accepting applies the raw detected value as-is.
+const AcceptSchema = z.object({
+  value: z.union([z.string(), z.array(z.string().max(200)).max(60)]).optional(),
+});
+
+/** Order-independent canonical form, to tell an as-is accept from a curated one. */
+function canonProfileValue(v: unknown): string {
+  if (typeof v === "string") return v.trim();
+  if (Array.isArray(v)) return JSON.stringify([...v].map((x) => String(x).trim()).sort());
+  return JSON.stringify(v ?? null);
+}
+
 // POST /api/my-product/changes/:id/accept — acknowledge the change. For HTML-diff
 // changes the auto-detected profile already reflects the new state, so accepting just
 // resolves the change. For a profile-divergence proposal (changeId null) the field was
-// kept sticky, so accepting must apply newValue and hand it back to auto-detection.
-// A major change also suggests a competitor re-discovery.
+// kept sticky, so accepting applies the value and hands it back to auto-detection —
+// unless the user curated it (granular pick / edit), in which case it stays sticky so
+// the next scrape won't silently overwrite their choice. A major change also suggests
+// a competitor re-discovery.
 myProductRouter.post("/changes/:id/accept", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
+
+  const body = await c.req.json().catch(() => null);
+  const parsedBody = AcceptSchema.safeParse(body ?? {});
+  if (!parsedBody.success) {
+    return c.json({ error: "Invalid body", issues: parsedBody.error.issues }, 400);
+  }
+  const override = parsedBody.data.value;
+
   const change = await resolveChange(orgId, c.req.param("id"), "accepted");
   if (!change) return c.json({ error: "Not found" }, 404);
 
   if (change.changeId === null && isProfileFieldPath(change.fieldPath) && change.newValue != null) {
+    const applied = override ?? change.newValue;
+    // Curated (differs from what we detected) → keep sticky so auto-detect won't
+    // clobber it. Accepted as-is → hand back to auto-detection (tracks the live site).
+    const isCurated =
+      override !== undefined &&
+      canonProfileValue(override) !== canonProfileValue(change.newValue);
     const self = await getSelf(orgId);
     if (self) {
       const profile = (self.selfProfile ?? {}) as SelfProfile;
       const nextProfile = {
         ...profile,
         [change.fieldPath]: {
-          value: change.newValue,
-          isFromAutoDetect: true,
-          lastEditedByUserAt: null,
+          value: applied,
+          isFromAutoDetect: !isCurated,
+          lastEditedByUserAt: isCurated ? new Date().toISOString() : null,
         },
       } as SelfProfile;
       await db

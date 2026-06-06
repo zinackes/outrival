@@ -1,3 +1,5 @@
+import { ArrowRight } from "lucide-react";
+
 function DiffLine({
   kind = "ctx",
   children,
@@ -110,7 +112,10 @@ export function Pipeline() {
                 <span className="rounded bg-surface-3 px-1.5 py-0.5 text-text-subtle">
                   step 3
                 </span>
-                <span className="text-text-muted">→ signal · alert</span>
+                <span className="inline-flex items-center gap-1 text-text-muted">
+                  <ArrowRight className="size-3" />
+                  signal · alert
+                </span>
               </div>
               <div className="mt-3 text-sm leading-relaxed text-text-muted">
                 Stored in DB · pushed to Slack{" "}
@@ -120,7 +125,7 @@ export function Pipeline() {
                 .
                 <div className="mt-2.5 flex items-center gap-2 rounded border border-border bg-background-2 px-2.5 py-2">
                   <span className="size-2 rounded-full bg-critical" />
-                  <span className="font-mono text-[11px] text-text-muted">
+                  <span className="font-mono text-meta text-text-muted">
                     PRICING · CRITICAL
                   </span>
                 </div>
@@ -129,7 +134,7 @@ export function Pipeline() {
           </div>
         </div>
 
-        <p className="mt-6 text-center font-mono text-[13px] text-text-subtle">
+        <p className="mt-6 text-center font-mono text-dense text-text-subtle">
           ~70 changes scanned produce 1 signal · you don&apos;t pay Claude to
           read noise.
         </p>

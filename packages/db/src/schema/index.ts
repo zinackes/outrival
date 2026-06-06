@@ -32,3 +32,8 @@ export * from "./monitor-alternatives";
 export * from "./structural-changes";
 export * from "./manual-snapshots";
 export * from "./forced-rescan-log";
+export * from "./parser-extractors";
+export * from "./saved-views";
+export * from "./crm-destinations";
+export * from "./signal-comments";
+export * from "./analytics";

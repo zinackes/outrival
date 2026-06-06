@@ -1,104 +1,34 @@
 ---
 name: clickhouse
 description: >
-  Utiliser quand on écrit des requêtes analytiques ou qu'on interagit
-  avec ClickHouse Cloud dans Outrival. Contient le schema, les patterns
-  de connexion et les requêtes communes.
+  DEPRECATED. ClickHouse a été retiré d'Outrival — les time-series / analytics
+  vivent désormais dans Postgres (Neon). Lire ce fichier si du vieux code ou des
+  specs mentionnent encore ClickHouse, pour savoir où ça a migré.
 allowed-tools: [Read, Write, Edit]
 ---
 
-# ClickHouse — Outrival
+# ClickHouse — RETIRÉ (migré vers Postgres / Neon)
 
-## Quand utiliser ClickHouse vs PostgreSQL
+ClickHouse n'est plus utilisé. Toutes les tables time-series / analytics sont
+des tables Postgres ordinaires dans la **même base Neon** que le relationnel.
+Ne plus écrire de code ClickHouse, ne plus ajouter `@clickhouse/client`.
 
-ClickHouse : pricing_history, job_counts, review_scores, signal_feed
-  → Toute donnée avec un timestamp qu'on va requêter par période
-  → Aggregations sur grandes quantités de lignes
-  → Graphiques et timelines dans l'UI
+## Où ça vit maintenant
 
-PostgreSQL : tout le reste (users, competitors, monitors, snapshots, changes, signals, digests)
+- **Schéma** : `packages/db/src/schema/analytics.ts` — tables append-only sans FK
+  (pricing_history, job_counts, review_scores, signal_feed, scrape_runs, ai_runs,
+  extraction_runs, numeric_claims, tech_stack_history, platform_detection_runs),
+  index sur `(competitor_id, recorded_at)` / `(recorded_at)`. Créées par `db:push`.
+- **Écriture (workers)** : `apps/workers/src/lib/analytics.ts` — helpers best-effort
+  (`insertPricingHistory`, `logScrapeRun`, `logAiRun`, `loggedAi`, …) via Drizzle.
+  Une erreur de logging ne casse jamais un scrape / un job IA.
+- **Lecture (API)** : `apps/api/src/lib/analytics-safe.ts` — `analyticsQuery(sql)`,
+  best-effort (`[]` en cas d'erreur). SQL Postgres standard (`count(*) filter (…)`,
+  `distinct on`, `make_interval`, window functions).
 
-## Client
+## Règle de modélisation
 
-```typescript
-// packages/db/src/clickhouse.ts
-import { createClient } from "@clickhouse/client";
-
-export const ch = createClient({
-  url: process.env.CLICKHOUSE_URL,
-  password: process.env.CLICKHOUSE_PASSWORD,
-  database: "outrival",
-});
-```
-
-## Requêtes communes
-
-### Historique de prix d'un concurrent
-```typescript
-const rows = await ch.query({
-  query: `
-    SELECT plan_name, price, currency, recorded_at
-    FROM pricing_history
-    WHERE competitor_id = {competitorId: String}
-    ORDER BY recorded_at DESC
-    LIMIT 100
-  `,
-  query_params: { competitorId },
-  format: "JSONEachRow",
-});
-const data = await rows.json();
-```
-
-### Trend des offres d'emploi par département (30 derniers jours)
-```typescript
-const rows = await ch.query({
-  query: `
-    SELECT department, count, recorded_at
-    FROM job_counts
-    WHERE competitor_id = {competitorId: String}
-      AND recorded_at >= now() - INTERVAL 30 DAY
-    ORDER BY recorded_at ASC
-  `,
-  query_params: { competitorId },
-  format: "JSONEachRow",
-});
-```
-
-### Score moyen des reviews ce mois
-```typescript
-const rows = await ch.query({
-  query: `
-    SELECT source, avg(score) as avg_score, sum(review_count) as total_reviews
-    FROM review_scores
-    WHERE competitor_id = {competitorId: String}
-      AND recorded_at >= toStartOfMonth(now())
-    GROUP BY source
-  `,
-  query_params: { competitorId },
-  format: "JSONEachRow",
-});
-```
-
-## Insert
-
-```typescript
-await ch.insert({
-  table: "pricing_history",
-  values: [{
-    competitor_id: competitorId,
-    plan_name: "Pro",
-    price: 59,
-    currency: "EUR",
-    billing_period: "monthly",
-    recorded_at: new Date(),
-  }],
-  format: "JSONEachRow",
-});
-```
-
-## Important
-
-- ClickHouse est append-only — pas d'UPDATE ni de DELETE en usage normal
-- Les timestamps doivent être des objets Date (pas des strings ISO)
-- Toujours utiliser query_params pour éviter les injections SQL
-- Les noms de colonnes sont snake_case
+Une donnée horodatée requêtée par période = une table append-only dans
+`analytics.ts` (pas de FK pour préserver le best-effort), écrite via
+`lib/analytics.ts`, lue via `lib/analytics-safe.ts`. Tout le reste = schéma
+relationnel normal (`src/schema/<entity>.ts`).

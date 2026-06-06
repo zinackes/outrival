@@ -46,6 +46,18 @@ export function normalizeHostname(input: string | null | undefined): string | nu
 }
 
 /**
+ * Bare host for keying per-domain resources, lowercased with `www.` stripped so
+ * www/non-www share one entry (patch-30 parser-extractor cache). Keeps the full
+ * host below that — `sub.domain.com` stays distinct from `domain.com`, because a
+ * subdomain can ship a different layout. Null on an unparseable input.
+ */
+export function normalizeDomain(input: string | null | undefined): string | null {
+  const h = extractHostname(input);
+  if (!h) return null;
+  return h.startsWith("www.") ? h.slice(4) : h;
+}
+
+/**
  * Registrable brand label, TLD-stripped — `amazon` for amazon.com, amazon.fr,
  * www.amazon.de or amazon.co.uk. Used to detect the same company across TLDs.
  */

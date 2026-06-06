@@ -1,7 +1,7 @@
 /**
  * Quantified marketing claims pulled from homepage copy — patch-17. "15,000
  * teams", "99.9% uptime", "2 billion requests": the numbers a competitor brags
- * about. Tracked over time (ClickHouse) so a jump ("10,000 → 50,000 teams")
+ * about. Tracked over time (numeric_claims) so a jump ("10,000 → 50,000 teams")
  * surfaces as a business signal the section diff alone wouldn't flag.
  *
  * PURE: text in, claims out — no DB, no network. Regex-based, deterministic.

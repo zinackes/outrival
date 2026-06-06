@@ -17,12 +17,17 @@ function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
+type DigestRange = "this_week" | "last_7_days" | "last_30_days";
+
 const GenerateSchema = z.object({
-  range: z.enum(["this_week", "last_7_days", "last_30_days"]).default("this_week"),
+  range: z.enum(["this_week", "last_7_days", "last_30_days"]).optional(),
+  // Custom date-range picker: explicit ISO bounds win over `range` when both set.
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
 });
 
 // [start, end) signal window for on-demand generation, UTC-aligned like the cron.
-function rangeWindow(range: z.infer<typeof GenerateSchema>["range"]): {
+function rangeWindow(range: DigestRange): {
   start: Date;
   end: Date;
 } {
@@ -63,7 +68,11 @@ digestsRouter.post("/generate", async (c) => {
   if (!parsed.success) {
     return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
   }
-  const { start, end } = rangeWindow(parsed.data.range);
+  const { from, to } = parsed.data;
+  const { start, end } =
+    from && to
+      ? { start: new Date(from), end: new Date(to) }
+      : rangeWindow(parsed.data.range ?? "this_week");
 
   const rows = await db
     .select({

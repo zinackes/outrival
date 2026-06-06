@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Shield, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,7 +29,10 @@ export function UserDetailView({ detail }: { detail: AdminUserDetail }) {
         </Button>
       </div>
 
-      <Section title="Account">
+      <Section
+        title="Account"
+        info="Core account and organisation details for this user: role, org, plan and billing period, and signup date."
+      >
         <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
           <div>
             <span className="text-xs text-muted-foreground">Role</span>
@@ -55,7 +58,10 @@ export function UserDetailView({ detail }: { detail: AdminUserDetail }) {
         </div>
       </Section>
 
-      <Section title={`Competitors & monitors (${detail.competitors.length})`}>
+      <Section
+        title={`Competitors & monitors (${detail.competitors.length})`}
+        info="Competitors this org tracks and the monitors configured on each — the sources being scraped and their state."
+      >
         {detail.competitors.length === 0 ? (
           <Empty>No competitors.</Empty>
         ) : (
@@ -87,9 +93,15 @@ export function UserDetailView({ detail }: { detail: AdminUserDetail }) {
                       {comp.monitors.map((m) => (
                         <TableRow key={m.id}>
                           <TableCell style={mono}>
-                            {m.sourceType}
-                            {m.requiresLevel != null && m.requiresLevel >= 2 ? ` 🛡L${m.requiresLevel}` : ""}
-                            {m.markedUnscrapable ? " ⚠" : ""}
+                            <span className="inline-flex items-center gap-1">
+                              {m.sourceType}
+                              {m.requiresLevel != null && m.requiresLevel >= 2 && (
+                                <>
+                                  <Shield className="size-3" />L{m.requiresLevel}
+                                </>
+                              )}
+                              {m.markedUnscrapable && <AlertTriangle className="size-3" />}
+                            </span>
                           </TableCell>
                           <TableCell className="text-xs text-muted-foreground">
                             {dateFmt(m.lastRunAt)}

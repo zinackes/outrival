@@ -7,6 +7,9 @@ import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import {
   ArrowLeft,
+  ArrowRight,
+  ArrowUp,
+  ArrowDown,
   Play,
   ExternalLink,
   Activity,
@@ -43,6 +46,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { BattleCardTab } from "@/components/outrival/battle-card-tab";
@@ -58,9 +63,7 @@ import {
   validateMonitorUrl,
   MONITOR_FREQUENCIES,
   PLAN_LABELS,
-  PLAN_LIMITS,
   minPlanForSource,
-  minPlanForFeature,
   planIncludesSource,
   minPlanForFrequency,
   planIncludesFrequency,
@@ -74,6 +77,7 @@ import { FreshnessDot } from "@/components/outrival/freshness-dot";
 import { MonitorFreshnessAction } from "@/components/outrival/monitor-freshness";
 import { MonitorAlternatives } from "@/components/outrival/monitor-alternatives";
 import { CompetitorTechStack } from "@/components/outrival/competitor-tech-stack";
+import { TabCard, TabSection } from "@/components/outrival/tab-shell";
 import { SignalSourceLine } from "@/components/outrival/signal-source-line";
 import { ListError } from "@/components/outrival/list-error";
 import { toastApiError } from "@/lib/error-helpers";
@@ -90,6 +94,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { friendlyScrapeError } from "@/lib/scrape-errors";
+import { sourceShortLabel } from "@/lib/source-labels";
 import CompetitorDetailLoading from "./loading";
 import { ChartSkeleton } from "@/components/dashboard/skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -112,11 +117,14 @@ import {
   type JobsByDepartment,
   type JobTrendPoint,
   type PricingHistoryPoint,
+  type MyProduct,
+  type MyProductPricingTier,
   type ReviewScorePoint,
   type ReviewsData,
   type TechStackData,
   type CompetitorOverview,
 } from "@/lib/api";
+import { emitCompetitorsChanged } from "@/lib/competitor-events";
 
 type TabKey =
   | "overview"
@@ -157,17 +165,13 @@ function tabFreshness(key: TabKey, monitors: Monitor[]) {
 
 // Plan-gated tabs: a tab whose data the current plan can't access is locked at
 // the trigger (lock icon + min-plan tooltip) and opens the paywall on click
-// instead of switching. Mirrors the API gates — battle cards (feature), the jobs
-// source (hiring), and the cheapest review source (reviews). Tabs without a plan
-// requirement (overview/activity/pricing/content/techstack) return null.
+// instead of switching. Mirrors the API source gates — the jobs source (hiring)
+// and the cheapest review source (reviews). Tabs without a plan requirement
+// (overview/activity/pricing/content/techstack/battlecard) return null.
 function tabLock(key: TabKey, plan: Plan): { reason: PaywallReason; minPlan: Plan } | null {
   switch (key) {
-    case "battlecard":
-      if (PLAN_LIMITS[plan].features.battleCards) return null;
-      return {
-        reason: { code: "plan_locked_feature", feature: "battleCards", plan },
-        minPlan: minPlanForFeature("battleCards"),
-      };
+    // Battle cards are open to every tier now (governed by the daily-generation cap,
+    // enforced at generate time inside BattleCardTab) — the tab itself is never locked.
     case "hiring":
       if (planIncludesSource(plan, "jobs")) return null;
       return {
@@ -191,6 +195,11 @@ const SEVERITY_CLASS: Record<string, string> = {
   high: "bg-high text-background",
   critical: "bg-critical text-background",
 };
+
+// Shared shell for every tab body. Radix unmounts inactive TabsContent, so the
+// entrance animation replays on each switch — applying it here (not per-tab) means
+// every tab fades/slides in identically instead of some animating and some snapping.
+const TAB_PANEL_CLASS = "animate-in fade-in slide-in-from-bottom-1 duration-300";
 
 const POLL_INTERVAL_MS = 3000;
 const POLL_TIMEOUT_MS = 300_000;
@@ -275,6 +284,22 @@ export default function CompetitorDetailPage({ params }: Props) {
   useEffect(() => {
     refresh();
   }, [id]);
+
+  // Restore the active tab from the URL (?tab=) so a refresh stays on the same
+  // tab. Runs once on mount, before the Tabs render (data is still loading).
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get("tab");
+    if (t && TABS.some((x) => x.key === t)) setTab(t as TabKey);
+  }, []);
+
+  // Switch tab and mirror it into the URL so it survives a reload (replaceState,
+  // no history entry per tab click).
+  function selectTab(key: TabKey) {
+    setTab(key);
+    const params = new URLSearchParams(window.location.search);
+    params.set("tab", key);
+    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
+  }
 
   // Restore the in-progress state after a refresh: any monitor the server still
   // reports as scraping is re-tracked so the existing poll resumes and reports
@@ -426,6 +451,7 @@ export default function CompetitorDetailPage({ params }: Props) {
     try {
       await api.deleteCompetitor(id);
       toast.success("Competitor deleted");
+      emitCompetitorsChanged();
       router.push("/dashboard/competitors");
     } catch (e) {
       toastApiError(e, { title: "Couldn't delete the competitor" });
@@ -576,13 +602,6 @@ export default function CompetitorDetailPage({ params }: Props) {
   return (
     <TooltipProvider delayDuration={200}>
       <div className="space-y-[22px] animate-in fade-in slide-in-from-bottom-2 duration-500">
-        <Link
-          href="/dashboard/competitors"
-          className="text-[13px] text-muted-foreground flex items-center gap-1 hover:text-foreground transition-colors w-fit"
-        >
-          <ArrowLeft size={13} /> Back
-        </Link>
-
         <Header
           competitor={competitor}
           lastRunMs={lastRunMs}
@@ -636,7 +655,7 @@ export default function CompetitorDetailPage({ params }: Props) {
               setPaywall(lock.reason);
               return;
             }
-            setTab(key);
+            selectTab(key);
           }}
         >
           <TabsList variant="line" className="w-full justify-start overflow-x-auto">
@@ -656,7 +675,7 @@ export default function CompetitorDetailPage({ params }: Props) {
                 <TabsTrigger
                   key={t.key}
                   value={t.key}
-                  className={cn(lock && "text-muted-foreground/50 hover:text-muted-foreground/70")}
+                  className={cn(lock && "text-muted-foreground hover:text-muted-foreground")}
                 >
                   {lock ? <Lock size={13} /> : <Icon size={13} />} {t.label}
                   {fresh && (
@@ -672,7 +691,7 @@ export default function CompetitorDetailPage({ params }: Props) {
               return (
                 <Tooltip key={t.key}>
                   <TooltipTrigger asChild>{trigger}</TooltipTrigger>
-                  <TooltipContent side="top" className="text-[11px]">
+                  <TooltipContent side="top" className="text-meta">
                     Available on the {PLAN_LABELS[lock.minPlan]} plan
                   </TooltipContent>
                 </Tooltip>
@@ -680,17 +699,19 @@ export default function CompetitorDetailPage({ params }: Props) {
             })}
           </TabsList>
 
-          <div className="mt-6">
-            <TabsContent value="overview">
+          {/* min-height floor so a sparse tab (e.g. tech stack) doesn't collapse the
+              page after a dense one (activity) — switching tabs no longer jumps. */}
+          <div className="mt-6 min-h-[280px]">
+            <TabsContent value="overview" className={TAB_PANEL_CLASS}>
               <OverviewTab
                 overview={overview}
                 monitors={monitors}
                 scrapingIds={scrapingIds}
                 onRun={requestRunMonitor}
-                onOpenTab={setTab}
+                onOpenTab={selectTab}
               />
             </TabsContent>
-            <TabsContent value="activity">
+            <TabsContent value="activity" className={TAB_PANEL_CLASS}>
               <ActivityTab
                 signals={recentSignals}
                 changes={recentChanges}
@@ -698,7 +719,7 @@ export default function CompetitorDetailPage({ params }: Props) {
                 competitorUrl={competitor.url}
               />
             </TabsContent>
-            <TabsContent value="pricing">
+            <TabsContent value="pricing" className={TAB_PANEL_CLASS}>
               <PricingTab
                 competitor={competitor}
                 competitorId={id}
@@ -710,7 +731,7 @@ export default function CompetitorDetailPage({ params }: Props) {
                 refreshTick={refreshTick}
               />
             </TabsContent>
-            <TabsContent value="hiring">
+            <TabsContent value="hiring" className={TAB_PANEL_CLASS}>
               <HiringTab
                 competitorId={id}
                 monitors={monitors}
@@ -720,7 +741,7 @@ export default function CompetitorDetailPage({ params }: Props) {
                 refreshTick={refreshTick}
               />
             </TabsContent>
-            <TabsContent value="reviews">
+            <TabsContent value="reviews" className={TAB_PANEL_CLASS}>
               <ReviewsTab
                 competitorId={id}
                 monitors={monitors}
@@ -739,7 +760,7 @@ export default function CompetitorDetailPage({ params }: Props) {
                 }
               />
             </TabsContent>
-            <TabsContent value="content">
+            <TabsContent value="content" className={TAB_PANEL_CLASS}>
               <ContentTab
                 changes={recentChanges}
                 signals={recentSignals}
@@ -750,10 +771,10 @@ export default function CompetitorDetailPage({ params }: Props) {
                 competitorUrl={competitor.url}
               />
             </TabsContent>
-            <TabsContent value="techstack">
+            <TabsContent value="techstack" className={TAB_PANEL_CLASS}>
               <CompetitorTechStack techStack={techStack} />
             </TabsContent>
-            <TabsContent value="battlecard">
+            <TabsContent value="battlecard" className={TAB_PANEL_CLASS}>
               <BattleCardTab competitorId={id} />
             </TabsContent>
           </div>
@@ -808,60 +829,69 @@ function Header({
 }) {
   return (
     <div className="flex items-start md:items-center justify-between gap-4 flex-wrap">
-      <div className="min-w-0">
-        <div className="flex items-baseline gap-3 flex-wrap mb-1">
-          <h1 className="font-bold text-[22px] md:text-[26px] tracking-tight leading-tight m-0">
-            {competitor.name}
-          </h1>
-          {competitor.category && (
-            <Badge variant="outline" className="text-[10px] uppercase tracking-widest font-mono">
-              {competitor.category}
-            </Badge>
-          )}
-          {competitor.overlapScore != null && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button type="button" aria-label="About overlap" className="cursor-help">
-                  <Badge variant="outline" className="gap-1.5 font-mono text-[10px] tracking-widest">
-                    <span className="h-1.5 w-9 overflow-hidden rounded border border-border bg-background">
-                      <span
-                        className="block h-full rounded bg-primary"
-                        style={{
-                          width: `${Math.max(0, Math.min(100, competitor.overlapScore))}%`,
-                        }}
-                      />
-                    </span>
-                    <span className="tabular-nums font-bold text-foreground">
-                      {Math.round(competitor.overlapScore)}
-                    </span>
-                    <span className="uppercase text-muted-foreground">overlap</span>
-                  </Badge>
-                </button>
-              </TooltipTrigger>
-              <TooltipContent
-                side="top"
-                className="max-w-[240px] text-[11px] leading-relaxed text-pretty normal-case"
-              >
-                How similar this competitor is to your product (0–100). Computed at
-                discovery via Exa + AI scoring against your product profile.
-              </TooltipContent>
-            </Tooltip>
+      <div className="flex items-start gap-3 min-w-0">
+        <Link
+          href="/dashboard/competitors"
+          aria-label="Back to competitors"
+          className="mt-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <ArrowLeft size={16} />
+        </Link>
+        <div className="min-w-0">
+          <div className="flex items-baseline gap-3 flex-wrap mb-1">
+            <h1 className="font-bold text-title-lg md:text-stat tracking-tight leading-[1.05] m-0">
+              {competitor.name}
+            </h1>
+            {competitor.category && (
+              <Badge variant="outline" className="text-micro uppercase tracking-widest font-mono">
+                {competitor.category}
+              </Badge>
+            )}
+            {competitor.overlapScore != null && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button type="button" aria-label="About overlap" className="cursor-help">
+                    <Badge variant="outline" className="gap-1.5 py-1 font-mono text-meta tracking-widest">
+                      <span className="h-2 w-12 overflow-hidden rounded border border-border bg-background">
+                        <span
+                          className="block h-full rounded bg-primary"
+                          style={{
+                            width: `${Math.max(0, Math.min(100, competitor.overlapScore))}%`,
+                          }}
+                        />
+                      </span>
+                      <span className="tabular-nums font-bold text-foreground">
+                        {Math.round(competitor.overlapScore)}
+                      </span>
+                      <span className="uppercase text-muted-foreground">overlap</span>
+                    </Badge>
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="top"
+                  className="max-w-[240px] text-meta leading-relaxed text-pretty normal-case"
+                >
+                  How similar this competitor is to your product (0–100). Computed at
+                  discovery via Exa + AI scoring against your product profile.
+                </TooltipContent>
+              </Tooltip>
+            )}
+          </div>
+          <a
+            href={competitor.url}
+            target="_blank"
+            rel="noreferrer"
+            className="text-dense text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 transition-colors"
+          >
+            {competitor.url}
+            <ExternalLink size={12} />
+          </a>
+          {lastRunMs > 0 && (
+            <div className="text-meta text-muted-foreground font-mono mt-1">
+              last activity {formatDistanceToNow(new Date(lastRunMs), { addSuffix: true })}
+            </div>
           )}
         </div>
-        <a
-          href={competitor.url}
-          target="_blank"
-          rel="noreferrer"
-          className="text-[13px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 transition-colors"
-        >
-          {competitor.url}
-          <ExternalLink size={12} />
-        </a>
-        {lastRunMs > 0 && (
-          <div className="text-[11px] text-muted-foreground/80 font-mono mt-1">
-            last activity {formatDistanceToNow(new Date(lastRunMs), { addSuffix: true })}
-          </div>
-        )}
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <DropdownMenu>
@@ -932,19 +962,18 @@ function MonitorSources({
   techScraping: boolean;
 }) {
   const [editing, setEditing] = useState<Monitor | null>(null);
+  const [expanded, setExpanded] = useState(false);
   if (monitors.length === 0) return null;
   return (
-    <Card className="divide-y divide-border overflow-hidden">
-      <div className="flex items-center justify-between gap-3 px-4 py-2.5">
-        <span className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase">
-          Sources
-        </span>
+    <Card className="overflow-hidden">
+      <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-border">
+        <h3 className="text-dense font-semibold tracking-tight">Sources</h3>
         <Button
           size="sm"
           variant="default"
           onClick={onRunAll}
           disabled={disabled}
-          className="h-7 text-[11px]"
+          className="h-7 text-meta"
         >
           {runningAll ? (
             <Loader2 size={12} className="animate-spin" />
@@ -954,132 +983,170 @@ function MonitorSources({
           Scrape all
         </Button>
       </div>
-      {monitors.map((m) => {
-        const running = scrapingIds.has(m.id) || isServerScraping(m);
-        const status = monitorStatus(m, running);
-        const ageText =
-          status === "running"
-            ? "scraping…"
-            : status === "failed" && m.lastFailedAt
-              ? `failed ${formatDistanceToNow(new Date(m.lastFailedAt), { addSuffix: true })}`
-              : status === "ok" && m.lastRunAt
-                ? formatDistanceToNow(new Date(m.lastRunAt), { addSuffix: true })
-                : "never scraped";
-        return (
-          <div key={m.id} className="flex items-center gap-3 px-4 py-2.5">
-            <SourceStatusIcon status={status} />
-            <span className="font-medium text-[13px] w-[104px] truncate">{m.sourceType}</span>
-            <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground/60 w-12">
-              {m.frequency}
-            </span>
-            <span
-              className={cn(
-                "text-[11px] font-mono",
-                status === "failed" ? "text-critical/80" : "text-muted-foreground/70",
-              )}
-            >
-              {ageText}
-            </span>
-            <div className="ml-auto flex items-center gap-1.5">
-              <MonitorFreshnessAction
-                monitorId={m.id}
-                sourceType={m.sourceType}
-                lastScrapedAt={m.lastRunAt}
-                status={status === "failed" ? "failed" : "success"}
-                canForceRescan={!running}
-                onStarted={() => onForceRescanStarted?.(m.id)}
-              />
-              {status === "failed" && m.lastError && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      className="text-critical/70 hover:text-critical transition-colors"
-                      aria-label="Scrape error detail"
-                    >
-                      <Info size={13} />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent
-                    side="top"
-                    className="max-w-[280px] text-[11px] leading-relaxed text-pretty break-words"
+
+      {/* Compact default: one chip per source (status + name + age at a glance);
+          the per-source actions (Run, Configure) live in the chip's dropdown. The
+          full detail rows — including force-rescan and the error tooltip — fold
+          behind "Details". */}
+      <div className="flex flex-wrap items-center gap-1.5 px-4 py-3">
+        {monitors.map((m) => {
+          const running = scrapingIds.has(m.id) || isServerScraping(m);
+          return (
+            <SourceChip
+              key={m.id}
+              monitor={m}
+              running={running}
+              status={monitorStatus(m, running)}
+              onRun={onRun}
+              onConfigure={() => setEditing(m)}
+            />
+          );
+        })}
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          className="ml-auto h-7 gap-1 text-meta text-muted-foreground"
+        >
+          {expanded ? "Hide details" : "Details"}
+          <ChevronDown size={12} className={cn("transition-transform", expanded && "rotate-180")} />
+        </Button>
+      </div>
+
+      {expanded && (
+        <div className="divide-y divide-border border-t border-border">
+          {monitors.map((m) => {
+            const running = scrapingIds.has(m.id) || isServerScraping(m);
+            const status = monitorStatus(m, running);
+            const ageText =
+              status === "running"
+                ? "scraping…"
+                : status === "failed" && m.lastFailedAt
+                  ? `failed ${formatDistanceToNow(new Date(m.lastFailedAt), { addSuffix: true })}`
+                  : status === "ok" && m.lastRunAt
+                    ? formatDistanceToNow(new Date(m.lastRunAt), { addSuffix: true })
+                    : "never scraped";
+            return (
+              <div key={m.id} className="flex items-center gap-3 px-4 py-2.5">
+                <SourceStatusIcon status={status} />
+                <span className="font-medium text-dense w-[104px] truncate">{sourceShortLabel(m.sourceType)}</span>
+                <span className="text-micro font-mono uppercase tracking-widest text-muted-foreground w-12">
+                  {m.frequency}
+                </span>
+                <span
+                  className={cn(
+                    "text-meta font-mono",
+                    status === "failed" ? "text-critical/80" : "text-muted-foreground",
+                  )}
+                >
+                  {ageText}
+                </span>
+                <div className="ml-auto flex items-center gap-1.5">
+                  <MonitorFreshnessAction
+                    monitorId={m.id}
+                    sourceType={m.sourceType}
+                    lastScrapedAt={m.lastRunAt}
+                    status={status === "failed" ? "failed" : "success"}
+                    canForceRescan={!running}
+                    onStarted={() => onForceRescanStarted?.(m.id)}
+                  />
+                  {status === "failed" && m.lastError && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          className="text-critical/70 hover:text-critical transition-colors"
+                          aria-label="Scrape error detail"
+                        >
+                          <Info size={13} />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent
+                        side="top"
+                        className="max-w-[280px] text-meta leading-relaxed text-pretty break-words"
+                      >
+                        {friendlyScrapeError(m.lastError, m.sourceType)}
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    onClick={() => setEditing(m)}
+                    aria-label="Configure source"
                   >
-                    {friendlyScrapeError(m.lastError, m.sourceType)}
-                  </TooltipContent>
-                </Tooltip>
-              )}
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                onClick={() => setEditing(m)}
-                aria-label="Configure source"
-              >
-                <Settings2 size={13} />
-              </Button>
-              <Button
-                size="sm"
+                    <Settings2 size={13} />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onRun(m.id)}
+                    disabled={running}
+                    className="h-7 text-meta min-w-[84px]"
+                  >
+                    {running ? (
+                      <>
+                        <Loader2 size={11} className="animate-spin" /> Scraping…
+                      </>
+                    ) : (
+                      <>
+                        <Play size={11} /> Run
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+          {/* Dev-only: tech stack runs on its own monthly cron (no user-facing Run).
+              This synthetic row lets the operator force a scan on demand. Stripped
+              from production bundles via NODE_ENV; the /api/dev endpoint is likewise
+              unmounted in prod. Non-configurable (weekly, no gear). */}
+          {process.env.NODE_ENV !== "production" && (
+            <div className="flex items-center gap-3 px-4 py-2.5">
+              <SourceStatusIcon
+                status={techScraping ? "running" : techLastScrapedAt ? "ok" : "idle"}
+              />
+              <span className="font-medium text-dense w-[104px] truncate">tech_stack</span>
+              <span className="text-micro font-mono uppercase tracking-widest text-muted-foreground w-12">
+                weekly
+              </span>
+              <span className="text-meta font-mono text-muted-foreground">
+                {techScraping
+                  ? "scanning…"
+                  : techLastScrapedAt
+                    ? formatDistanceToNow(new Date(techLastScrapedAt), { addSuffix: true })
+                    : "never scanned"}
+              </span>
+              <Badge
                 variant="outline"
-                onClick={() => onRun(m.id)}
-                disabled={running}
-                className="h-7 text-[11px] min-w-[84px]"
+                className="text-micro font-mono uppercase tracking-wider px-1 py-0 text-muted-foreground"
               >
-                {running ? (
-                  <>
-                    <Loader2 size={11} className="animate-spin" /> Scraping…
-                  </>
-                ) : (
-                  <>
-                    <Play size={11} /> Run
-                  </>
-                )}
-              </Button>
+                dev
+              </Badge>
+              <div className="ml-auto flex items-center gap-1.5">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={onScrapeTech}
+                  disabled={techScraping}
+                  className="h-7 text-meta min-w-[84px]"
+                >
+                  {techScraping ? (
+                    <>
+                      <Loader2 size={11} className="animate-spin" /> Scanning…
+                    </>
+                  ) : (
+                    <>
+                      <Play size={11} /> Run
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
-          </div>
-        );
-      })}
-      {/* Dev-only: tech stack runs on its own monthly cron (no user-facing Run).
-          This synthetic row lets the operator force a scan on demand. Stripped
-          from production bundles via NODE_ENV; the /api/dev endpoint is likewise
-          unmounted in prod. Non-configurable (weekly, no gear). */}
-      {process.env.NODE_ENV !== "production" && (
-        <div className="flex items-center gap-3 px-4 py-2.5">
-          <SourceStatusIcon status={techScraping ? "running" : techLastScrapedAt ? "ok" : "idle"} />
-          <span className="font-medium text-[13px] w-[104px] truncate">tech_stack</span>
-          <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground/60 w-12">
-            weekly
-          </span>
-          <span className="text-[11px] font-mono text-muted-foreground/70">
-            {techScraping
-              ? "scanning…"
-              : techLastScrapedAt
-                ? formatDistanceToNow(new Date(techLastScrapedAt), { addSuffix: true })
-                : "never scanned"}
-          </span>
-          <Badge
-            variant="outline"
-            className="text-[8px] font-mono uppercase tracking-wider px-1 py-0 text-muted-foreground/70"
-          >
-            dev
-          </Badge>
-          <div className="ml-auto flex items-center gap-1.5">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={onScrapeTech}
-              disabled={techScraping}
-              className="h-7 text-[11px] min-w-[84px]"
-            >
-              {techScraping ? (
-                <>
-                  <Loader2 size={11} className="animate-spin" /> Scanning…
-                </>
-              ) : (
-                <>
-                  <Play size={11} /> Run
-                </>
-              )}
-            </Button>
-          </div>
+          )}
         </div>
       )}
       <MonitorEditDialog
@@ -1091,6 +1158,108 @@ function MonitorSources({
         onLockedFrequency={onLockedFrequency}
       />
     </Card>
+  );
+}
+
+// Compact relative age for the source chips ("2m" / "5h" / "3d") — the long
+// "about 2 hours ago" reads fine in a row but is too wide for a dense chip strip.
+function shortAge(d: Date): string {
+  const mins = Math.max(0, Math.floor((Date.now() - d.getTime()) / 60000));
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
+
+// One source as a chip: status + name + age at a glance, with Run / Configure in
+// a dropdown. A failed source carries the critical hue so it stays loud in the
+// strip. Force-rescan and the full error live in the expanded "Details" rows.
+function SourceChip({
+  monitor: m,
+  running,
+  status,
+  onRun,
+  onConfigure,
+}: {
+  monitor: Monitor;
+  running: boolean;
+  status: MonitorStatus;
+  onRun: (id: string) => void;
+  onConfigure: () => void;
+}) {
+  const failed = status === "failed";
+  const ageLabel =
+    status === "running"
+      ? "…"
+      : failed
+        ? null
+        : status === "ok" && m.lastRunAt
+          ? shortAge(new Date(m.lastRunAt))
+          : "never";
+  const ageText =
+    status === "running"
+      ? "scraping…"
+      : failed && m.lastFailedAt
+        ? `failed ${formatDistanceToNow(new Date(m.lastFailedAt), { addSuffix: true })}`
+        : status === "ok" && m.lastRunAt
+          ? formatDistanceToNow(new Date(m.lastRunAt), { addSuffix: true })
+          : "never scraped";
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            failed
+              ? "border-critical/40 text-critical hover:bg-critical/10"
+              : "border-border text-foreground hover:bg-accent",
+          )}
+        >
+          <SourceStatusIcon status={status} />
+          <span className="font-medium">{sourceShortLabel(m.sourceType)}</span>
+          {ageLabel && (
+            <span
+              className={cn(
+                "font-mono text-micro",
+                failed ? "text-critical/70" : "text-muted-foreground",
+              )}
+            >
+              {ageLabel}
+            </span>
+          )}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-56">
+        <DropdownMenuLabel className="flex items-center justify-between gap-2">
+          <span>{sourceShortLabel(m.sourceType)}</span>
+          <span className="font-mono text-micro uppercase tracking-widest text-muted-foreground">
+            {m.frequency}
+          </span>
+        </DropdownMenuLabel>
+        <p
+          className={cn(
+            "px-2 pb-1 text-meta font-mono",
+            failed ? "text-critical/80" : "text-muted-foreground",
+          )}
+        >
+          {ageText}
+        </p>
+        {failed && m.lastError && (
+          <p className="px-2 pb-1.5 text-meta leading-relaxed text-critical/80 break-words">
+            {friendlyScrapeError(m.lastError, m.sourceType)}
+          </p>
+        )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => onRun(m.id)} disabled={running}>
+          {running ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
+          {running ? "Scraping…" : "Run now"}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onConfigure}>
+          <Settings2 size={13} /> Configure
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -1122,12 +1291,12 @@ function FrequencyButton({
       variant={selected ? "default" : "outline"}
       onClick={() => (locked ? onLocked() : onSelect())}
       disabled={disabled}
-      className="h-7 gap-1.5 text-[11px] capitalize"
+      className="h-7 gap-1.5 text-meta capitalize"
     >
       {locked && <Lock size={10} className="opacity-70" />}
       {freq}
       {locked && (
-        <span className="inline-flex items-center rounded bg-muted-foreground/15 px-1 py-0.5 text-[8px] font-mono uppercase leading-none tracking-wider text-muted-foreground">
+        <span className="inline-flex items-center rounded bg-muted-foreground/15 px-1 py-0.5 text-micro font-mono uppercase leading-none tracking-wider text-muted-foreground">
           {PLAN_LABELS[minPlanForFrequency(freq)]}
         </span>
       )}
@@ -1197,14 +1366,14 @@ function MonitorEditDialog({
     <Dialog open={!!monitor} onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle className="capitalize">Configure {monitor.sourceType}</DialogTitle>
+          <DialogTitle>Configure {sourceShortLabel(monitor.sourceType)}</DialogTitle>
           <DialogDescription>
             Pin the exact page to watch and how often it is checked.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+            <p className="text-meta font-medium text-muted-foreground">
               Frequency
             </p>
             <div className="flex gap-1.5">
@@ -1224,7 +1393,7 @@ function MonitorEditDialog({
             </div>
           </div>
           <div className="space-y-1.5">
-            <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+            <p className="text-meta font-medium text-muted-foreground">
               Page URL (optional)
             </p>
             <Input
@@ -1233,7 +1402,7 @@ function MonitorEditDialog({
               placeholder="Leave empty to auto-detect"
             />
             {trimmed !== "" && !urlValid && (
-              <p className="text-[11px] text-critical/80">
+              <p className="text-meta text-critical/80">
                 This URL isn&apos;t allowed for this source.
               </p>
             )}
@@ -1281,11 +1450,11 @@ function AiSummary({
   if (!competitor.aiSummary) {
     return (
       <Card className="px-4 py-3 border-dashed flex items-start gap-2 justify-between">
-        <div className="flex items-start gap-2 text-muted-foreground text-[13px]">
+        <div className="flex items-start gap-2 text-muted-foreground text-dense">
           <Sparkles size={13} className="mt-0.5 shrink-0" />
           <span>AI summary not generated yet.</span>
         </div>
-        <Button size="sm" variant="secondary" onClick={refresh} disabled={refreshing} className="h-7 text-[11px]">
+        <Button size="sm" variant="secondary" onClick={refresh} disabled={refreshing} className="h-7 text-meta">
           {refreshing ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
           {refreshing ? "Generating…" : "Generate now"}
         </Button>
@@ -1294,28 +1463,28 @@ function AiSummary({
   }
   return (
     <Card className="px-5 py-4">
-      <div className="flex items-center justify-between gap-2 mb-2">
-        <div className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase flex items-center gap-1.5">
-          <Sparkles size={11} /> Summary
-        </div>
+      <div className="flex items-center justify-between gap-2 mb-2.5">
+        <h3 className="flex items-center gap-2 text-content font-semibold tracking-tight leading-tight">
+          <Sparkles size={14} className="text-muted-foreground" /> Summary
+        </h3>
         <Button
           size="sm"
           variant="ghost"
           onClick={refresh}
           disabled={refreshing}
-          className="h-6 px-2 text-[10px] font-mono uppercase tracking-widest text-muted-foreground hover:text-foreground"
+          className="h-7 text-meta text-muted-foreground"
         >
           {refreshing ? (
-            <Loader2 size={10} className="animate-spin" />
+            <Loader2 size={12} className="animate-spin" />
           ) : (
-            <RefreshCw size={10} />
+            <RefreshCw size={12} />
           )}
           {refreshing ? "Refreshing" : "Refresh"}
         </Button>
       </div>
-      <p className="text-[13px] leading-relaxed">{competitor.aiSummary}</p>
+      <p className="text-content leading-relaxed text-foreground/90">{competitor.aiSummary}</p>
       {competitor.aiSummaryUpdatedAt && (
-        <p className="text-[11px] font-mono text-muted-foreground/80 mt-2">
+        <p className="text-meta font-mono text-muted-foreground mt-2">
           updated {formatDistanceToNow(new Date(competitor.aiSummaryUpdatedAt), { addSuffix: true })}
         </p>
       )}
@@ -1335,17 +1504,14 @@ function SourceSummary({
 }) {
   if (!summary) return null;
   return (
-    <Card className="px-4 py-3">
-      <div className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase flex items-center gap-1.5 mb-1.5">
-        <Sparkles size={11} /> What we found
-      </div>
-      <p className="text-[13px] leading-relaxed">{summary}</p>
+    <TabSection title="What we found" icon={Sparkles}>
+      <p className="text-content leading-relaxed text-foreground/90">{summary}</p>
       {updatedAt && (
-        <p className="text-[11px] font-mono text-muted-foreground/80 mt-2">
+        <p className="text-meta font-mono text-muted-foreground">
           updated {formatDistanceToNow(new Date(updatedAt), { addSuffix: true })}
         </p>
       )}
-    </Card>
+    </TabSection>
   );
 }
 
@@ -1418,12 +1584,12 @@ function ChangeCard({
 
   const pageUrl = change.monitorUrl ?? fallbackUrl ?? null;
   return (
-    <Card className="px-3.5 py-3">
-      <div className="flex items-center gap-2 mb-2 text-[11px]">
-        <Badge variant="outline" className="text-[9px] font-mono uppercase tracking-wide px-2 py-0">
+    <div className="flex flex-col">
+      <div className="flex items-center gap-2 mb-2 text-meta">
+        <Badge variant="outline" className="text-micro font-mono uppercase tracking-wide px-2 py-0">
           {change.sourceType}
         </Badge>
-        <span className="text-muted-foreground/70 font-mono text-[10px]">
+        <span className="text-muted-foreground font-mono text-micro">
           · {formatDistanceToNow(new Date(change.detectedAt), { addSuffix: true })}
         </span>
         {pageUrl && (
@@ -1431,18 +1597,18 @@ function ChangeCard({
             href={pageUrl}
             target="_blank"
             rel="noreferrer noopener"
-            className="ml-auto inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-widest text-muted-foreground/70 hover:text-foreground transition-colors"
+            className="ml-auto inline-flex items-center gap-1 text-meta text-muted-foreground hover:text-foreground transition-colors"
           >
-            View page <ExternalLink size={10} />
+            View page <ExternalLink size={12} />
           </a>
         )}
       </div>
 
       {hasSummary ? (
-        <p className="text-[13px] leading-relaxed text-foreground">{summary}</p>
+        <p className="text-dense leading-relaxed text-foreground">{summary}</p>
       ) : (
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <p className="text-[12px] text-muted-foreground/70 italic">
+          <p className="text-xs text-muted-foreground italic">
             No AI summary yet — classification was never run for this change.
           </p>
           <Button
@@ -1450,7 +1616,7 @@ function ChangeCard({
             variant="secondary"
             disabled={classifying}
             onClick={classify}
-            className="h-7 text-[11px]"
+            className="h-7 text-meta"
           >
             {classifying ? (
               <>
@@ -1470,7 +1636,7 @@ function ChangeCard({
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
-            className="flex items-center gap-1 text-[10px] font-mono uppercase tracking-widest text-muted-foreground/70 hover:text-foreground transition-colors"
+            className="flex items-center gap-1 text-meta text-muted-foreground hover:text-foreground transition-colors"
           >
             {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
             {open ? "Hide raw diff" : "Show raw diff"}
@@ -1482,7 +1648,7 @@ function ChangeCard({
           )}
         </div>
       )}
-    </Card>
+    </div>
   );
 }
 
@@ -1490,7 +1656,7 @@ function DiffPreview({ diffText }: { diffText: string }) {
   const { lines, truncated } = useMemo(() => parseDiff(diffText), [diffText]);
   if (lines.length === 0) {
     return (
-      <p className="text-[11px] text-muted-foreground/70 italic">
+      <p className="text-meta text-muted-foreground italic">
         Only HTML/markup differences — nothing meaningful to display.
       </p>
     );
@@ -1499,11 +1665,11 @@ function DiffPreview({ diffText }: { diffText: string }) {
   const removed = lines.filter((l) => l.kind === "remove").length;
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex items-center gap-3 text-[10px] font-mono uppercase tracking-widest text-muted-foreground/80">
+      <div className="flex items-center gap-3 text-micro font-mono uppercase tracking-widest text-muted-foreground">
         {added > 0 && <span className="text-positive">+ {added} added</span>}
         {removed > 0 && <span className="text-critical">− {removed} removed</span>}
       </div>
-      <ul className="flex flex-col gap-1 text-[12px] leading-relaxed">
+      <ul className="flex flex-col gap-1 text-xs leading-relaxed">
         {lines.map((l, i) => (
           <li
             key={i}
@@ -1526,7 +1692,7 @@ function DiffPreview({ diffText }: { diffText: string }) {
         ))}
       </ul>
       {truncated && (
-        <p className="text-[10px] font-mono text-muted-foreground/70 uppercase tracking-widest">
+        <p className="text-micro font-mono text-muted-foreground uppercase tracking-widest">
           … more changes truncated
         </p>
       )}
@@ -1534,23 +1700,9 @@ function DiffPreview({ diffText }: { diffText: string }) {
   );
 }
 
-// Small section label shared by the Overview fact-sheet cards.
-function OverviewLabel({
-  icon: Icon,
-  children,
-}: {
-  icon: typeof Activity;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase flex items-center gap-1.5 mb-2">
-      <Icon size={11} /> {children}
-    </div>
-  );
-}
-
 // Compact summary cell (pricing / hiring / reviews) whose header links through to
-// the matching detail tab.
+// the matching detail tab. Rendered as a cell inside one bordered strip — not its
+// own card — so the three read as a single unit instead of three stacked boxes.
 function OverviewStat({
   icon: Icon,
   label,
@@ -1563,16 +1715,16 @@ function OverviewStat({
   children: React.ReactNode;
 }) {
   return (
-    <Card className="px-4 py-3 flex flex-col gap-2">
+    <div className="flex flex-col gap-2">
       <button
         type="button"
         onClick={onClick}
-        className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase flex items-center gap-1.5 hover:text-foreground transition-colors w-fit"
+        className="flex items-center gap-1.5 text-meta font-medium text-muted-foreground hover:text-foreground transition-colors w-fit"
       >
         <Icon size={11} /> {label} <ChevronRight size={11} />
       </button>
       <div>{children}</div>
-    </Card>
+    </div>
   );
 }
 
@@ -1584,6 +1736,60 @@ function formatTierPrice(p: { price: number; currency: string; billing_period: s
   const per =
     p.billing_period === "monthly" ? "/mo" : p.billing_period === "yearly" ? "/yr" : "";
   return `${amount}${per}`;
+}
+
+// A captured customer logo carries a brand name (from <img alt>) and/or a resolved
+// absolute image URL (`src`). Prefer rendering the real logo image — it reads far
+// better than a text badge — and fall back to the name only when there's no usable
+// image (no src, a non-absolute src, or the image failed to load).
+function isRenderableLogoSrc(value: string): boolean {
+  return /^(https?:\/\/|data:image\/)/i.test(value.trim());
+}
+
+function logoLabel(value: string): string {
+  const v = value.trim();
+  if (!v || /^data:/i.test(v)) return "";
+  const looksLikePath =
+    /^(https?:|\/\/|\/|\.\.?\/)/i.test(v) ||
+    /\.(png|jpe?g|svg|webp|gif|avif|ico)(\?|#|$)/i.test(v);
+  if (!looksLikePath) return v; // already a brand name (alt text)
+  const file = (v.split(/[?#]/)[0] ?? v).split("/").filter(Boolean).pop() ?? v;
+  return file
+    .replace(/\.(png|jpe?g|svg|webp|gif|avif|ico)$/i, "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function LogoChip({ logo }: { logo: { name: string | null; src: string | null } }) {
+  const [failed, setFailed] = useState(false);
+  const src = logo.src?.trim() || "";
+  // Name to label/alt the logo: the brand name when captured, else derived from
+  // the image filename so a path-only logo still reads as something.
+  const name = logo.name?.trim() || (src ? logoLabel(src) : "");
+  const showImage = !!src && isRenderableLogoSrc(src) && !failed;
+  if (!showImage && !name) return null;
+
+  // Logos are scraped artwork only — we don't know each customer's real URL, so
+  // the chip is non-interactive (no tooltip, no link) to avoid surfacing wrong info.
+  return showImage ? (
+    // Fixed white plate: customer logos are dark artwork made for light site
+    // backgrounds and would vanish on the (dark) dashboard surface otherwise.
+    <span className="inline-flex h-7 items-center rounded-md border border-border bg-white px-2.5">
+      {/* eslint-disable-next-line @next/next/no-img-element -- arbitrary external logo URL, next/image can't whitelist competitor domains */}
+      <img
+        src={src}
+        alt={name || "Customer logo"}
+        loading="lazy"
+        onError={() => setFailed(true)}
+        className="h-4 max-w-[96px] object-contain"
+      />
+    </span>
+  ) : (
+    <Badge variant="outline" className="text-meta font-normal">
+      {name}
+    </Badge>
+  );
 }
 
 // State view ("fact sheet") — what this competitor says about itself right now:
@@ -1625,8 +1831,8 @@ function OverviewTab({
     const running = homepageMonitor ? scrapingIds.has(homepageMonitor.id) : false;
     return (
       <Card className="px-6 py-10 text-center border-dashed flex flex-col items-center gap-3">
-        <p className="text-[14px] font-semibold text-foreground">Nothing captured yet</p>
-        <p className="text-[12px] text-muted-foreground max-w-md">
+        <p className="text-sm font-semibold text-foreground">Nothing captured yet</p>
+        <p className="text-xs text-muted-foreground max-w-md">
           Once the homepage is scraped, this is where you&apos;ll see what this
           competitor says about itself — positioning, value props, customers and
           pricing — at a glance.
@@ -1649,56 +1855,51 @@ function OverviewTab({
   }
 
   return (
-    <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-1 duration-300">
+    <TabCard>
       {homepage && (homepage.headline || homepage.subheadline) && (
-        <Card className="px-5 py-4">
-          <OverviewLabel icon={Sparkles}>Positioning</OverviewLabel>
+        <TabSection>
           {homepage.headline && (
-            <p className="text-[18px] font-semibold leading-snug tracking-tight">
+            <p className="text-lead font-semibold leading-snug tracking-tight text-balance">
               {homepage.headline}
             </p>
           )}
           {homepage.subheadline && (
-            <p className="text-[13px] text-muted-foreground leading-relaxed mt-1.5">
+            <p className="text-content text-muted-foreground leading-relaxed max-w-2xl">
               {homepage.subheadline}
             </p>
           )}
-        </Card>
+        </TabSection>
       )}
 
       {homepage && homepage.valueProps.length > 0 && (
-        <Card className="px-5 py-4">
-          <OverviewLabel icon={FileText}>What they highlight</OverviewLabel>
-          <ul className="flex flex-col gap-1.5 mt-1">
+        <TabSection title="What they highlight" icon={FileText}>
+          <ul className="flex flex-col gap-2">
             {homepage.valueProps.map((v, i) => (
-              <li key={i} className="text-[13px] leading-relaxed flex gap-2">
-                <span className="text-primary shrink-0">•</span>
+              <li key={i} className="text-content leading-relaxed flex gap-2.5">
+                <span className="text-primary shrink-0 mt-px">•</span>
                 <span>{v}</span>
               </li>
             ))}
           </ul>
-        </Card>
+        </TabSection>
       )}
 
       {homepage && (homepage.customerLogos.length > 0 || homepage.testimonials.length > 0) && (
-        <Card className="px-5 py-4">
-          <OverviewLabel icon={Users}>Customers &amp; proof</OverviewLabel>
+        <TabSection title="Customers & proof" icon={Users}>
           {homepage.customerLogos.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-1">
+            <div className="flex flex-wrap items-center gap-1.5">
               {homepage.customerLogos.map((l, i) => (
-                <Badge key={i} variant="outline" className="text-[11px] font-normal">
-                  {l}
-                </Badge>
+                <LogoChip key={i} logo={l} />
               ))}
             </div>
           )}
           {homepage.testimonials.length > 0 && (
-            <ul className="flex flex-col gap-2.5 mt-3">
+            <ul className="flex flex-col gap-3 mt-1">
               {homepage.testimonials.map((t, i) => (
-                <li key={i} className="border-l-2 border-border pl-3">
-                  <p className="text-[13px] italic leading-relaxed">“{t.quote}”</p>
+                <li key={i} className="border-l border-border pl-3.5">
+                  <p className="text-content italic leading-relaxed">“{t.quote}”</p>
                   {t.author && (
-                    <p className="text-[11px] font-mono text-muted-foreground/80 mt-1">
+                    <p className="text-meta font-mono text-muted-foreground mt-1">
                       — {t.author}
                     </p>
                   )}
@@ -1706,30 +1907,30 @@ function OverviewTab({
               ))}
             </ul>
           )}
-        </Card>
+        </TabSection>
       )}
 
       {numericClaims.length > 0 && (
-        <Card className="px-5 py-4">
-          <OverviewLabel icon={Activity}>Claims</OverviewLabel>
-          <div className="flex flex-wrap gap-1.5 mt-1">
+        <TabSection title="Claims" icon={Activity}>
+          <div className="flex flex-wrap gap-1.5">
             {numericClaims.map((cl, i) => (
-              <Badge key={i} variant="secondary" className="text-[11px] font-normal">
+              <Badge key={i} variant="secondary" className="text-meta font-normal">
                 {cl.raw_text}
               </Badge>
             ))}
           </div>
-        </Card>
+        </TabSection>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <TabSection title="At a glance" icon={LayoutGrid}>
+      <div className="grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-3">
         <OverviewStat icon={DollarSign} label="Pricing now" onClick={() => onOpenTab("pricing")}>
           {pricingNow.length > 0 ? (
             <ul className="flex flex-col gap-0.5">
               {pricingNow.slice(0, 4).map((p, i) => (
                 <li
                   key={i}
-                  className="text-[12px] flex items-baseline justify-between gap-2"
+                  className="text-xs flex items-baseline justify-between gap-2"
                 >
                   <span className="truncate">{p.plan_name}</span>
                   <span className="font-mono tabular-nums shrink-0">{formatTierPrice(p)}</span>
@@ -1737,17 +1938,17 @@ function OverviewTab({
               ))}
             </ul>
           ) : (
-            <span className="text-[12px] text-muted-foreground/70">Not captured</span>
+            <span className="text-xs text-muted-foreground">Not captured</span>
           )}
         </OverviewStat>
 
         <OverviewStat icon={Briefcase} label="Open roles" onClick={() => onOpenTab("hiring")}>
           {hiring.openRoles > 0 ? (
-            <span className="text-[22px] font-bold font-mono tabular-nums">
+            <span className="text-title-lg font-bold font-mono tabular-nums leading-none">
               {hiring.openRoles}
             </span>
           ) : (
-            <span className="text-[12px] text-muted-foreground/70">None tracked</span>
+            <span className="text-xs text-muted-foreground">None tracked</span>
           )}
         </OverviewStat>
 
@@ -1757,30 +1958,32 @@ function OverviewTab({
               {reviews.slice(0, 2).map((r, i) => (
                 <div
                   key={i}
-                  className="text-[12px] flex items-baseline justify-between gap-2"
+                  className="text-xs flex items-baseline justify-between gap-2"
                 >
-                  <span className="uppercase font-mono text-[10px] tracking-wide text-muted-foreground">
+                  <span className="uppercase font-mono text-micro tracking-wide text-muted-foreground">
                     {r.source}
                   </span>
-                  <span className="font-mono tabular-nums">
-                    {r.score.toFixed(1)}★{" "}
-                    <span className="text-muted-foreground/70">({r.review_count})</span>
+                  <span className="inline-flex items-center gap-0.5 font-mono tabular-nums">
+                    {r.score.toFixed(1)}
+                    <Star className="size-3 fill-current" />
+                    <span className="text-muted-foreground">({r.review_count})</span>
                   </span>
                 </div>
               ))}
             </div>
           ) : (
-            <span className="text-[12px] text-muted-foreground/70">Not captured</span>
+            <span className="text-xs text-muted-foreground">Not captured</span>
           )}
         </OverviewStat>
       </div>
 
       {capturedAt && (
-        <p className="text-[11px] font-mono text-muted-foreground/70">
+        <p className="text-meta font-mono text-muted-foreground">
           homepage facts captured {formatDistanceToNow(new Date(capturedAt), { addSuffix: true })}
         </p>
       )}
-    </div>
+      </TabSection>
+    </TabCard>
   );
 }
 
@@ -1798,8 +2001,8 @@ function ActivityTab({
   if (signals.length === 0 && changes.length === 0) {
     return (
       <Card className="px-6 py-10 text-center border-dashed flex flex-col items-center gap-2.5">
-        <p className="text-[13px] font-semibold text-foreground">No activity yet</p>
-        <p className="text-[12px] text-muted-foreground max-w-md">
+        <p className="text-dense font-semibold text-foreground">No activity yet</p>
+        <p className="text-xs text-muted-foreground max-w-md">
           Activity will appear once a monitor detects a change. Scrape from the
           Monitors section above to start tracking.
         </p>
@@ -1809,48 +2012,47 @@ function ActivityTab({
   const signalChangeIds = new Set(signals.map((s) => s.changeId).filter(Boolean));
   const orphanChanges = changes.filter((c) => !signalChangeIds.has(c.id));
   return (
-    <div className="flex flex-col gap-5">
+    <TabCard>
       {signals.length > 0 && (
-        <ul className="flex flex-col gap-2">
+        <TabSection title="Recent activity" icon={Activity}>
+        <ul className="flex flex-col divide-y divide-border">
           {signals.map((s) => {
             const pageUrl = s.monitorUrl ?? competitorUrl;
             return (
-              <Card key={s.id} className="px-3.5 py-3">
-                <div className="flex items-center gap-2 mb-1.5 text-[11px] flex-wrap">
+              <li key={s.id} className="flex flex-col py-3.5 first:pt-0 last:pb-0">
+                <div className="flex items-center gap-2 mb-1.5 text-meta flex-wrap">
                   <Badge
                     className={cn(
-                      "uppercase tracking-wide text-[9px] font-bold px-2 py-0",
+                      "uppercase tracking-wide text-micro font-bold px-2 py-0",
                       SEVERITY_CLASS[s.severity],
                     )}
                   >
                     {s.severity}
                   </Badge>
-                  <span className="text-muted-foreground uppercase tracking-widest font-mono text-[10px]">
+                  <span className="text-muted-foreground uppercase tracking-widest font-mono text-micro">
                     {s.category}
                   </span>
-                  {s.sourceType && (
-                    <Badge variant="outline" className="text-[9px] font-mono uppercase tracking-wide px-2 py-0">
-                      {s.sourceType}
-                    </Badge>
-                  )}
-                  <span className="text-muted-foreground/70 font-mono text-[10px]">
+                  <span className="text-muted-foreground font-mono text-micro">
                     · {formatDistanceToNow(new Date(s.createdAt), { addSuffix: true })}
                   </span>
                   <a
                     href={pageUrl}
                     target="_blank"
                     rel="noreferrer noopener"
-                    className="ml-auto inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-widest text-muted-foreground/70 hover:text-foreground transition-colors"
+                    className="ml-auto inline-flex items-center gap-1 text-meta text-muted-foreground hover:text-foreground transition-colors"
                   >
-                    View page <ExternalLink size={10} />
+                    View page <ExternalLink size={12} />
                   </a>
                 </div>
-                <p className="text-[13px] mb-1">{s.insight}</p>
+                <p className="text-dense mb-1">{s.insight}</p>
                 {s.soWhat && (
-                  <p className="text-muted-foreground text-[12px] mb-1">→ {s.soWhat}</p>
+                  <p className="flex gap-1 text-muted-foreground text-xs mb-1">
+                    <ArrowRight className="size-3 mt-0.5 shrink-0" />
+                    {s.soWhat}
+                  </p>
                 )}
                 {s.recommendedAction && (
-                  <p className="text-foreground text-[12px] font-medium">
+                  <p className="text-foreground text-xs font-medium">
                     Action: {s.recommendedAction}
                   </p>
                 )}
@@ -1861,27 +2063,25 @@ function ActivityTab({
                     detectedAt={s.createdAt}
                   />
                 </div>
-              </Card>
+              </li>
             );
           })}
         </ul>
+        </TabSection>
       )}
 
       {orphanChanges.length > 0 && (
-        <div>
-          <div className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase mb-2.5">
-            Detected changes · not classified as signals
-          </div>
-          <ul className="flex flex-col gap-2">
+        <TabSection title="Detected changes · not classified as signals">
+          <ul className="flex flex-col divide-y divide-border">
             {orphanChanges.map((c) => (
-              <li key={c.id}>
+              <li key={c.id} className="py-3.5 first:pt-0 last:pb-0">
                 <ChangeCard change={c} onRefresh={onRefresh} fallbackUrl={competitorUrl} />
               </li>
             ))}
           </ul>
-        </div>
+        </TabSection>
       )}
-    </div>
+    </TabCard>
   );
 }
 
@@ -1908,10 +2108,10 @@ function MonitorEmptyState({
   if (!monitor) {
     return (
       <Card className="px-6 py-10 text-center border-dashed flex flex-col items-center gap-3">
-        <p className="text-[14px] font-semibold text-foreground">
+        <p className="text-sm font-semibold text-foreground">
           No {label} monitoring yet
         </p>
-        <p className="text-[12px] text-muted-foreground max-w-md">
+        <p className="text-xs text-muted-foreground max-w-md">
           This competitor isn&apos;t tracking {label} yet. Enable it to start
           capturing {label} data — we&apos;ll run the first scrape right away.
           Requires a plan that includes this source.
@@ -1946,8 +2146,8 @@ function MonitorEmptyState({
   const running = scrapingIds.has(monitor.id);
   return (
     <Card className="px-6 py-10 text-center border-dashed flex flex-col items-center gap-3">
-      <p className="text-[14px] font-semibold text-foreground">No {label} data yet</p>
-      <p className="text-[12px] text-muted-foreground max-w-md">
+      <p className="text-sm font-semibold text-foreground">No {label} data yet</p>
+      <p className="text-xs text-muted-foreground max-w-md">
         {monitor.lastRunAt
           ? `Monitor was scraped ${formatDistanceToNow(new Date(monitor.lastRunAt), { addSuffix: true })}, but no ${label} data was extracted. The source page may not expose this data.`
           : `This monitor has never been scraped. Run it now to extract ${label} data.`}
@@ -1988,6 +2188,9 @@ function PricingTab({
   onRefresh: () => void;
 } & MonitorSourceProps) {
   const [history, setHistory] = useState<PricingHistoryPoint[] | null>(null);
+  // Our own product, for the You-vs-them pricing comparison (best-effort — its
+  // absence just hides the comparison, it never blocks the competitor's pricing).
+  const [myProduct, setMyProduct] = useState<MyProduct | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -1995,6 +2198,10 @@ function PricingTab({
       .getCompetitorPricingHistory(competitorId)
       .then((r) => setHistory(r.history))
       .catch((e) => setErr(String(e)));
+    api
+      .getMyProduct()
+      .then((r) => setMyProduct(r.product))
+      .catch(() => {});
   }, [competitorId, refreshTick]);
 
   const series = useMemo(
@@ -2014,13 +2221,17 @@ function PricingTab({
   if (history === null) return <TabLoading />;
   if (history.length === 0 || !series) {
     return (
-      <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-1 duration-300">
-        <CompetitorPricingCard
-          competitor={competitor}
-          onUpdated={onRefresh}
-          hasCapturedTiers={hasCapturedTiers}
-          isCapturing={isCapturing}
-        />
+      <div className="flex flex-col gap-4">
+        <TabCard>
+          <TabSection>
+            <CompetitorPricingCard
+              competitor={competitor}
+              onUpdated={onRefresh}
+              hasCapturedTiers={hasCapturedTiers}
+              isCapturing={isCapturing}
+            />
+          </TabSection>
+        </TabCard>
         <MonitorEmptyState
           source="pricing"
           label="pricing"
@@ -2043,18 +2254,30 @@ function PricingTab({
   for (const p of sorted) if (!firstByPlan.has(p.plan_name)) firstByPlan.set(p.plan_name, p);
 
   return (
-    <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-1 duration-300">
-      <CompetitorPricingCard
-        competitor={competitor}
-        onUpdated={onRefresh}
-        hasCapturedTiers={hasCapturedTiers}
-        isCapturing={isCapturing}
-      />
+    <TabCard>
+      <TabSection>
+        <CompetitorPricingCard
+          competitor={competitor}
+          onUpdated={onRefresh}
+          hasCapturedTiers={hasCapturedTiers}
+          isCapturing={isCapturing}
+        />
+      </TabSection>
       <SourceSummary
         summary={pricingMonitor?.aiSummary}
         updatedAt={pricingMonitor?.aiSummaryUpdatedAt}
       />
-      <Card className="p-4">
+      {myProduct && (
+        <TabSection>
+          <PricingComparison
+            competitorName={competitor.name}
+            competitorPricingStatus={competitor.pricingStatus}
+            ours={myProduct.pricing.tiers}
+            theirs={Array.from(latestByPlan.values())}
+          />
+        </TabSection>
+      )}
+      <TabSection title="Price over time" icon={Activity}>
         <ResponsiveContainer width="100%" height={260}>
           <LineChart data={series.points}>
             <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
@@ -2081,40 +2304,222 @@ function PricingTab({
             ))}
           </LineChart>
         </ResponsiveContainer>
-      </Card>
+      </TabSection>
 
-      <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-        {plans.map((plan) => {
-          const latest = latestByPlan.get(plan)!;
-          const first = firstByPlan.get(plan)!;
-          const delta = latest.price - first.price;
-          const pct = first.price > 0 ? (delta / first.price) * 100 : 0;
-          return (
-            <Card key={plan} className="px-3.5 py-3">
-              <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-mono">
-                {plan}
-              </p>
-              <p className="text-[18px] font-bold tracking-tight mt-1">
-                {latest.price} {latest.currency}{" "}
-                <span className="text-[11px] text-muted-foreground/80 font-mono font-normal">
-                  / {latest.billing_period}
-                </span>
-              </p>
-              {delta !== 0 && (
-                <p
-                  className={cn(
-                    "text-[11px] mt-1 font-mono tabular-nums",
-                    delta > 0 ? "text-critical" : "text-positive",
+      <TabSection title="Plan changes" icon={DollarSign}>
+        <ul className="flex flex-col divide-y divide-border">
+          {plans.map((plan) => {
+            const latest = latestByPlan.get(plan)!;
+            const first = firstByPlan.get(plan)!;
+            const delta = latest.price - first.price;
+            const pct = first.price > 0 ? (delta / first.price) * 100 : 0;
+            return (
+              <li
+                key={plan}
+                className="flex items-baseline justify-between gap-3 py-2.5 first:pt-0 last:pb-0"
+              >
+                <div className="flex items-baseline gap-2 min-w-0">
+                  <span className="shrink-0 text-micro uppercase tracking-widest text-muted-foreground font-mono">
+                    {plan}
+                  </span>
+                  <span className="text-sm font-semibold tabular-nums">
+                    {latest.price} {latest.currency}
+                    <span className="text-meta text-muted-foreground font-mono font-normal">
+                      {" "}
+                      / {latest.billing_period}
+                    </span>
+                  </span>
+                </div>
+                {delta !== 0 && (
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-0.5 shrink-0 text-meta font-mono tabular-nums",
+                      delta > 0 ? "text-critical" : "text-positive",
+                    )}
+                  >
+                    {delta > 0 ? (
+                      <ArrowUp className="size-3" />
+                    ) : (
+                      <ArrowDown className="size-3" />
+                    )}
+                    {Math.abs(delta).toFixed(0)} {latest.currency} ({pct.toFixed(0)}%)
+                  </span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </TabSection>
+    </TabCard>
+  );
+}
+
+// Deterministic pricing comparison (patch-29): our product's captured tiers vs the
+// competitor's latest tiers, aligned by ascending price rank. No AI — pure deltas.
+// A pair is only given a % when currency AND billing period match (a EUR/yr vs
+// USD/mo delta is noise); otherwise the row just shows both prices side by side.
+function PricingComparison({
+  competitorName,
+  competitorPricingStatus,
+  ours,
+  theirs,
+}: {
+  competitorName: string;
+  competitorPricingStatus: Competitor["pricingStatus"];
+  ours: MyProductPricingTier[];
+  theirs: PricingHistoryPoint[];
+}) {
+  const oursSorted = [...ours].sort((a, b) => a.price - b.price);
+  const theirsSorted = [...theirs].sort((a, b) => a.price - b.price);
+
+  if (oursSorted.length === 0) {
+    return (
+      <div className="flex flex-col gap-1">
+        <p className="text-sm font-medium">Pricing comparison</p>
+        <p className="text-xs text-muted-foreground">
+          Add your own plans in{" "}
+          <Link href="/dashboard/products" className="text-primary hover:underline">
+            Products
+          </Link>{" "}
+          to see how {competitorName} stacks up against your pricing.
+        </p>
+      </div>
+    );
+  }
+
+  const comparable = (
+    a: { currency: string; billing_period: string },
+    b: { currency: string; billing_period: string },
+  ) => a.currency === b.currency && a.billing_period === b.billing_period;
+
+  // % from our perspective, relative to their price (positive = we're pricier).
+  const deltaPct = (
+    a: { price: number; currency: string; billing_period: string },
+    b: { price: number; currency: string; billing_period: string },
+  ): number | null =>
+    comparable(a, b) && b.price > 0 ? ((a.price - b.price) / b.price) * 100 : null;
+
+  const rowCount = Math.max(oursSorted.length, theirsSorted.length);
+  const rankLabel = (i: number) =>
+    i === 0 ? "Entry" : i === rowCount - 1 ? "Top" : `Tier ${i + 1}`;
+
+  const ourEntry = oursSorted[0]!;
+  const theirEntry = theirsSorted[0]!;
+
+  // Honest summary lines for what the captured data actually supports.
+  const lines: string[] = [];
+  const entryPct = deltaPct(ourEntry, theirEntry);
+  if (entryPct !== null && Math.abs(entryPct) >= 1) {
+    lines.push(
+      `Your entry tier (${formatTierPrice(ourEntry)}) is ${Math.abs(entryPct).toFixed(0)}% ${
+        entryPct < 0 ? "below" : "above"
+      } theirs (${formatTierPrice(theirEntry)}).`,
+    );
+  }
+  if (theirEntry.price === 0 && ourEntry.price > 0) {
+    lines.push(`${competitorName} offers a free tier — you don't.`);
+  } else if (ourEntry.price === 0 && theirEntry.price > 0) {
+    lines.push(`You offer a free tier — ${competitorName} doesn't.`);
+  }
+  if (
+    competitorPricingStatus === "public_partial" ||
+    competitorPricingStatus === "gated_demo" ||
+    competitorPricingStatus === "gated_signup"
+  ) {
+    lines.push(`${competitorName}'s top tier is sales-gated — not every price is public.`);
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-sm font-medium">Pricing comparison</p>
+        <p className="truncate font-mono text-meta text-muted-foreground">
+          You vs {competitorName}
+        </p>
+      </div>
+
+      <table className="w-full text-dense">
+        <thead>
+          <tr className="text-meta text-muted-foreground">
+            <th className="w-16 py-1.5 text-left font-normal">Tier</th>
+            <th className="py-1.5 text-left font-normal">You</th>
+            <th className="py-1.5 text-left font-normal">
+              <span className="block max-w-[140px] truncate normal-case">{competitorName}</span>
+            </th>
+            <th className="py-1.5 text-right font-normal">Δ</th>
+          </tr>
+        </thead>
+        <tbody>
+          {Array.from({ length: rowCount }, (_, i) => {
+            const mine = oursSorted[i] ?? null;
+            const theirs = theirsSorted[i] ?? null;
+            const pct = mine && theirs ? deltaPct(mine, theirs) : null;
+            return (
+              <tr key={i} className="border-t border-border">
+                <td className="py-2 text-micro uppercase tracking-wide text-muted-foreground font-mono">
+                  {rankLabel(i)}
+                </td>
+                <td className="py-2">
+                  {mine ? <TierCell tier={mine} /> : <span className="text-muted-foreground">—</span>}
+                </td>
+                <td className="py-2">
+                  {theirs ? (
+                    <TierCell tier={theirs} />
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
                   )}
-                >
-                  {delta > 0 ? "▲" : "▼"} {Math.abs(delta).toFixed(0)} {latest.currency} (
-                  {pct.toFixed(0)}%)
-                </p>
-              )}
-            </Card>
-          );
-        })}
-      </ul>
+                </td>
+                <td className="py-2 text-right">
+                  {pct !== null && Math.abs(pct) >= 1 ? (
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-0.5 font-mono text-meta tabular-nums",
+                        pct < 0 ? "text-positive" : "text-critical",
+                      )}
+                    >
+                      {pct < 0 ? (
+                        <ArrowDown className="size-3" />
+                      ) : (
+                        <ArrowUp className="size-3" />
+                      )}
+                      {Math.abs(pct).toFixed(0)}%
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground/40">—</span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+
+      {lines.length > 0 && (
+        <ul className="flex flex-col gap-1 text-xs text-muted-foreground">
+          {lines.map((l, i) => (
+            <li key={i} className="flex gap-1.5">
+              <span className="text-muted-foreground">·</span>
+              <span>{l}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// One side's tier in the comparison table: price (bold) over its plan name (mono).
+function TierCell({
+  tier,
+}: {
+  tier: { plan_name: string; price: number; currency: string; billing_period: string };
+}) {
+  return (
+    <div className="flex flex-col">
+      <span className="font-semibold tabular-nums">{formatTierPrice(tier)}</span>
+      <span className="max-w-[140px] truncate font-mono text-micro uppercase tracking-wide text-muted-foreground">
+        {tier.plan_name}
+      </span>
     </div>
   );
 }
@@ -2166,15 +2571,15 @@ function HiringTab({
   const jobsMonitor = monitors.find((m) => m.sourceType === "jobs");
 
   return (
-    <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-1 duration-300">
+    <TabCard>
       <SourceSummary
         summary={jobsMonitor?.aiSummary}
         updatedAt={jobsMonitor?.aiSummaryUpdatedAt}
       />
-      <Card className="px-3 py-3">
-        <table className="w-full text-[13px]">
+      <TabSection title="Open roles" icon={Briefcase}>
+        <table className="w-full text-dense">
           <thead>
-            <tr className="text-[10px] uppercase tracking-widest text-muted-foreground font-mono">
+            <tr className="text-meta text-muted-foreground">
               <th className="text-left py-2">Department</th>
               <th className="text-right py-2">Active</th>
               <th className="text-right py-2">Trend 90d</th>
@@ -2202,20 +2607,28 @@ function HiringTab({
                             : "text-critical",
                       )}
                     >
-                      {delta === 0 ? "—" : delta > 0 ? `▲ +${delta}` : `▼ ${delta}`}
+                      {delta === 0 ? (
+                        "—"
+                      ) : (
+                        <span className="inline-flex items-center justify-end gap-0.5">
+                          {delta > 0 ? (
+                            <ArrowUp className="size-3" />
+                          ) : (
+                            <ArrowDown className="size-3" />
+                          )}
+                          {delta > 0 ? `+${delta}` : delta}
+                        </span>
+                      )}
                     </td>
                   </tr>
                 );
               })}
           </tbody>
         </table>
-      </Card>
+      </TabSection>
 
       {Object.keys(trendByDept).length > 0 && (
-        <Card className="p-4">
-          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-mono mb-2">
-            90-day trend
-          </p>
+        <TabSection title="90-day trend" icon={Activity}>
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={mergeTrendsByDate(trends)}>
               <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
@@ -2242,9 +2655,9 @@ function HiringTab({
               ))}
             </LineChart>
           </ResponsiveContainer>
-        </Card>
+        </TabSection>
       )}
-    </div>
+    </TabCard>
   );
 }
 
@@ -2297,13 +2710,13 @@ function ReviewSourceButton({
       size="sm"
       variant={selected ? "default" : "secondary"}
       onClick={() => (locked ? onLocked() : onSelect())}
-      className="h-7 gap-1.5 text-[11px]"
+      className="h-7 gap-1.5 text-meta"
     >
       {locked && <Lock size={10} className="opacity-70" />}
       {option.label}
       <span
         className={cn(
-          "inline-flex items-center rounded px-1 py-0.5 text-[8px] leading-none font-mono uppercase tracking-wider",
+          "inline-flex items-center rounded px-1 py-0.5 text-micro leading-none font-mono uppercase tracking-wider",
           selected ? "bg-primary-foreground/15" : "bg-muted-foreground/15 text-muted-foreground",
         )}
       >
@@ -2339,8 +2752,8 @@ function ReviewEnableState({
   return (
     <Card className="px-6 py-8 border-dashed flex flex-col items-center gap-4 text-center">
       <div className="flex flex-col items-center gap-1">
-        <p className="text-[14px] font-semibold text-foreground">Track reviews</p>
-        <p className="text-[12px] text-muted-foreground max-w-md">
+        <p className="text-sm font-semibold text-foreground">Track reviews</p>
+        <p className="text-xs text-muted-foreground max-w-md">
           Pick a review source and paste this competitor&apos;s review-page URL. We&apos;ll
           capture ratings, praises and complaints — and run the first scrape right away.
         </p>
@@ -2368,7 +2781,7 @@ function ReviewEnableState({
           autoComplete="off"
           disabled={sourceLocked}
         />
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-meta text-muted-foreground">
           {sourceLocked
             ? `${active.label} reviews are included in the ${PLAN_LABELS[minPlanForSource(active.value)]} plan.`
             : `Must be a ${active.host} URL.`}
@@ -2468,15 +2881,69 @@ function ReviewsTab({
   const series = scores.length > 0 ? buildReviewScoreSeries(scores) : null;
 
   return (
-    <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-1 duration-300">
-      <ReviewSourceToolbar monitor={reviewMonitor} onManage={() => setManaging(true)} />
+    <div className="flex flex-col gap-4">
+      <TabCard>
+        <TabSection>
+          <ReviewSourceToolbar monitor={reviewMonitor} onManage={() => setManaging(true)} />
+        </TabSection>
 
-      <SourceSummary
-        summary={reviewMonitor.aiSummary}
-        updatedAt={reviewMonitor.aiSummaryUpdatedAt}
-      />
+        <SourceSummary
+          summary={reviewMonitor.aiSummary}
+          updatedAt={reviewMonitor.aiSummaryUpdatedAt}
+        />
 
-      {!hasData ? (
+        {hasData && (
+          <>
+            {series && (
+              <TabSection title="Score over time" icon={Activity}>
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={series.points}>
+                    <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
+                    <XAxis dataKey="date" stroke="var(--muted)" fontSize={11} />
+                    <YAxis domain={[0, 5]} stroke="var(--muted)" fontSize={11} />
+                    <ChartTooltip
+                      contentStyle={{
+                        background: "var(--bg)",
+                        border: "1px solid var(--border)",
+                        borderRadius: 6,
+                        fontSize: 12,
+                      }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    {series.sources.map((src, i) => (
+                      <Line
+                        key={src}
+                        type="monotone"
+                        dataKey={src}
+                        stroke={lineColor(i)}
+                        strokeWidth={2}
+                        dot
+                      />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              </TabSection>
+            )}
+
+            <TabSection title="What customers say" icon={Star}>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-6">
+                <ReviewColumn
+                  title="What they love"
+                  items={reviews.summary.praises}
+                  accent="positive"
+                />
+                <ReviewColumn
+                  title="What they complain about"
+                  items={reviews.summary.complaints}
+                  accent="critical"
+                />
+              </div>
+            </TabSection>
+          </>
+        )}
+      </TabCard>
+
+      {!hasData && (
         <MonitorEmptyState
           source={reviewMonitor.sourceType as SourceType}
           label="reviews"
@@ -2485,55 +2952,6 @@ function ReviewsTab({
           onRun={onRun}
           onEnable={onEnable}
         />
-      ) : (
-        <>
-          {series && (
-            <Card className="p-4">
-              <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-mono mb-2">
-                Score over time
-              </p>
-              <ResponsiveContainer width="100%" height={220}>
-                <LineChart data={series.points}>
-                  <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
-                  <XAxis dataKey="date" stroke="var(--muted)" fontSize={11} />
-                  <YAxis domain={[0, 5]} stroke="var(--muted)" fontSize={11} />
-                  <ChartTooltip
-                    contentStyle={{
-                      background: "var(--bg)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 6,
-                      fontSize: 12,
-                    }}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                  {series.sources.map((src, i) => (
-                    <Line
-                      key={src}
-                      type="monotone"
-                      dataKey={src}
-                      stroke={lineColor(i)}
-                      strokeWidth={2}
-                      dot
-                    />
-                  ))}
-                </LineChart>
-              </ResponsiveContainer>
-            </Card>
-          )}
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <ReviewColumn
-              title="What they love"
-              items={reviews.summary.praises}
-              accent="positive"
-            />
-            <ReviewColumn
-              title="What they complain about"
-              items={reviews.summary.complaints}
-              accent="critical"
-            />
-          </div>
-        </>
       )}
 
       <ReviewSourceDialog
@@ -2552,22 +2970,26 @@ function ReviewsTab({
 
 // Header row above the reviews content: shows the active review source + the
 // pinned page, with one entry point to edit the URL/frequency or switch source.
-function ReviewSourceToolbar({ monitor, onManage }: { monitor: Monitor; onManage: () => void }) {
+function ReviewSourceToolbar({
+  monitor,
+  onManage,
+}: {
+  monitor: Monitor;
+  onManage: () => void;
+}) {
   const opt = REVIEW_SOURCE_OPTIONS.find((o) => o.value === monitor.sourceType);
   const url = monitor.config?.url ?? "";
   return (
-    <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
-      <div className="min-w-0">
-        <span className="text-[12px] font-medium text-foreground">
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex items-baseline gap-2 min-w-0">
+        <span className="shrink-0 text-xs font-medium text-foreground">
           {opt?.label ?? monitor.sourceType}
         </span>
         {url && (
-          <span className="ml-2 text-[11px] font-mono text-muted-foreground/70 truncate">
-            {url}
-          </span>
+          <span className="truncate text-meta font-mono text-muted-foreground">{url}</span>
         )}
       </div>
-      <Button size="sm" variant="outline" onClick={onManage} className="h-7 text-[11px] shrink-0">
+      <Button size="sm" variant="outline" onClick={onManage} className="h-7 text-meta shrink-0">
         <Settings2 size={12} /> Manage source
       </Button>
     </div>
@@ -2649,7 +3071,7 @@ function ReviewSourceDialog({
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+            <p className="text-meta font-medium text-muted-foreground">
               Source
             </p>
             <div className="flex gap-1.5">
@@ -2669,7 +3091,7 @@ function ReviewSourceDialog({
             </div>
           </div>
           <div className="space-y-1.5">
-            <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+            <p className="text-meta font-medium text-muted-foreground">
               Frequency
             </p>
             <div className="flex gap-1.5">
@@ -2690,7 +3112,7 @@ function ReviewSourceDialog({
             </div>
           </div>
           <div className="space-y-1.5">
-            <p className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+            <p className="text-meta font-medium text-muted-foreground">
               Page URL
             </p>
             <Input
@@ -2700,15 +3122,15 @@ function ReviewSourceDialog({
               inputMode="url"
               autoComplete="off"
             />
-            <p className="text-[11px] text-muted-foreground">Must be a {active.host} URL.</p>
+            <p className="text-meta text-muted-foreground">Must be a {active.host} URL.</p>
             {trimmed !== "" && !urlValid && (
-              <p className="text-[11px] text-critical/80">
+              <p className="text-meta text-critical/80">
                 This URL isn&apos;t valid for {active.label}.
               </p>
             )}
           </div>
           {sourceChanged && (
-            <p className="text-[11px] text-critical/80">
+            <p className="text-meta text-critical/80">
               Switching source replaces the current monitor and its captured history.
             </p>
           )}
@@ -2768,8 +3190,8 @@ function ContentTab({
     const running = scrapingIds.has(preferred.id);
     return (
       <Card className="px-6 py-10 text-center border-dashed flex flex-col items-center gap-3">
-        <p className="text-[14px] font-semibold text-foreground">No content changes yet</p>
-        <p className="text-[12px] text-muted-foreground max-w-md">
+        <p className="text-sm font-semibold text-foreground">No content changes yet</p>
+        <p className="text-xs text-muted-foreground max-w-md">
           {preferred.lastRunAt
             ? `The ${preferred.sourceType} monitor was scraped ${formatDistanceToNow(new Date(preferred.lastRunAt), { addSuffix: true })} — no change since.`
             : `The ${preferred.sourceType} monitor has never been scraped. Run it now.`}
@@ -2795,18 +3217,22 @@ function ContentTab({
   }
 
   return (
-    <ul className="flex flex-col gap-2">
-      {contentChanges.map((c) => (
-        <li key={c.id}>
-          <ChangeCard
-            change={c}
-            onRefresh={onRefresh}
-            fallbackUrl={competitorUrl}
-            insight={insightByChangeId.get(c.id)}
-          />
-        </li>
-      ))}
-    </ul>
+    <TabCard>
+      <TabSection title="Content changes" icon={FileText}>
+        <ul className="flex flex-col divide-y divide-border">
+          {contentChanges.map((c) => (
+            <li key={c.id} className="py-3.5 first:pt-0 last:pb-0">
+              <ChangeCard
+                change={c}
+                onRefresh={onRefresh}
+                fallbackUrl={competitorUrl}
+                insight={insightByChangeId.get(c.id)}
+              />
+            </li>
+          ))}
+        </ul>
+      </TabSection>
+    </TabCard>
   );
 }
 
@@ -2820,25 +3246,34 @@ function ReviewColumn({
   accent: "positive" | "critical";
 }) {
   return (
-    <Card className="px-3.5 py-3">
-      <p
+    <div className="flex flex-col gap-2.5">
+      <h3
         className={cn(
-          "text-[10px] uppercase tracking-widest font-mono mb-2",
+          "flex items-center gap-2 text-dense font-semibold tracking-tight",
           accent === "positive" ? "text-positive" : "text-critical",
         )}
       >
+        <span
+          className={cn(
+            "h-2 w-2 rounded-full shrink-0",
+            accent === "positive" ? "bg-positive" : "bg-critical",
+          )}
+        />
         {title}
-      </p>
+      </h3>
       {items.length === 0 ? (
-        <p className="text-[11px] text-muted-foreground">—</p>
+        <p className="text-xs text-muted-foreground">—</p>
       ) : (
-        <ul className="flex flex-col gap-1.5 text-[13px]">
+        <ul className="flex flex-col gap-2 text-content">
           {items.filter(Boolean).map((it, i) => (
-            <li key={i}>· {it}</li>
+            <li key={i} className="flex gap-2">
+              <span className="text-muted-foreground/40 shrink-0">·</span>
+              <span>{it}</span>
+            </li>
           ))}
         </ul>
       )}
-    </Card>
+    </div>
   );
 }
 
@@ -2862,15 +3297,16 @@ function TabLoading() {
 function Empty({ text, hint }: { text: string; hint?: string }) {
   return (
     <Card className="px-6 py-10 text-center border-dashed text-muted-foreground">
-      <p className="text-[13px]">{text}</p>
-      {hint && <p className="text-[11px] mt-2 max-w-md mx-auto text-muted-foreground/70">{hint}</p>}
+      <p className="text-dense">{text}</p>
+      {hint && <p className="text-meta mt-2 max-w-md mx-auto text-muted-foreground">{hint}</p>}
     </Card>
   );
 }
 
 function lineColor(i: number): string {
-  const palette = ["#fafafa", "#22d3ee", "#a855f7", "#10b981", "#ef4444", "#f97316"];
-  return palette[i % palette.length] ?? "#fafafa";
+  // Theme-aware data-viz palette (globals.css --chart-1..6); one series color
+  // reads on both light and dark surfaces.
+  return `var(--chart-${(i % 6) + 1})`;
 }
 
 function shortDate(iso: string): string {

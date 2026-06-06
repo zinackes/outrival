@@ -37,7 +37,10 @@ export default async function MultiProductMetricsPage() {
         subtitle={`Multi-SKU adoption — ${m.orgsWithProducts} org${m.orgsWithProducts === 1 ? "" : "s"} with products, ${m.multiProductOrgs} multi-product.`}
       />
 
-      <Section title="Overview">
+      <Section
+        title="Overview"
+        info="Multi-SKU (patch-28) adoption at a glance: orgs using products, those with more than one, total active products, and battle cards generated."
+      >
         <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
           <Stat label="Orgs with products" value={m.orgsWithProducts} />
           <Stat label="Multi-product orgs" value={m.multiProductOrgs} />
@@ -46,7 +49,10 @@ export default async function MultiProductMetricsPage() {
         </div>
       </Section>
 
-      <Section title="Orgs by product count">
+      <Section
+        title="Orgs by product count"
+        info="Distribution of orgs by how many active products (SKUs) they manage — shows how widely the multi-product capability is used."
+      >
         <div className="flex flex-col">
           {dist.map((d) => (
             <div
@@ -65,6 +71,7 @@ export default async function MultiProductMetricsPage() {
       <Section
         title="Shared vs specific competitors"
         note="hybrid model — most should be shared"
+        info="Product↔competitor associations split between shared (org-wide, tracked for every product) and product-specific links. Most should be shared."
       >
         {assocTotal === 0 ? (
           <Empty>No product–competitor associations yet.</Empty>
@@ -82,7 +89,10 @@ export default async function MultiProductMetricsPage() {
         )}
       </Section>
 
-      <Section title="Battle cards">
+      <Section
+        title="Battle cards"
+        info="Battle cards generated, the number of unique product↔competitor couples they cover, and the average per product."
+      >
         <div className="grid grid-cols-3 gap-6">
           <Stat label="Total" value={m.battleCards.total} />
           <Stat label="Unique couples" value={m.battleCards.couples} />

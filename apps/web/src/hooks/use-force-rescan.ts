@@ -33,9 +33,13 @@ export function useForceRescan(monitorId: string, options?: Options) {
     if (activeRef.current) return;
     activeRef.current = true;
     setIsRescanning(true);
+    // A forced scrape runs 30-150s; show a single live toast that transforms in
+    // place into the outcome instead of leaving the user with no feedback.
+    let toastId: string | number | undefined;
     try {
       const res = await api.forceRescan(monitorId);
       options?.onStarted?.();
+      toastId = toast.loading("Re-scanning… this can take up to a minute.");
 
       const start = Date.now();
       let outcome: { hadNewSignal: boolean | null; nextRunAt: string | null } | null = null;
@@ -51,18 +55,23 @@ export function useForceRescan(monitorId: string, options?: Options) {
       if (!outcome) {
         toast.info(
           "Re-scan started — it's taking a little longer than usual. The data will refresh shortly.",
+          { id: toastId },
         );
       } else if (outcome.hadNewSignal) {
-        toast.success("Re-scan complete — we found an update. It's in your latest signals.");
+        toast.success("Re-scan complete — we found an update. It's in your latest signals.", {
+          id: toastId,
+        });
       } else {
         toast.info(
           `Re-scan complete — nothing new. Next automatic check around ${formatDay(outcome.nextRunAt)}.`,
+          { id: toastId },
         );
       }
     } catch (err) {
       if (err instanceof ApiError && err.status === 429) {
         const detail = (err.data.error ?? {}) as { message?: string; upgradeHint?: boolean };
         toast.warning(detail.message ?? "Daily re-scan limit reached. It resets tomorrow.", {
+          id: toastId,
           action: detail.upgradeHint
             ? {
                 label: "View plans",
@@ -73,7 +82,9 @@ export function useForceRescan(monitorId: string, options?: Options) {
             : undefined,
         });
       } else {
-        toast.error(err instanceof Error ? err.message : "Re-scan failed. Please try again.");
+        toast.error(err instanceof Error ? err.message : "Re-scan failed. Please try again.", {
+          id: toastId,
+        });
       }
     } finally {
       activeRef.current = false;

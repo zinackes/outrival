@@ -1,11 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
-import { ArrowRight, X } from "lucide-react";
+import {
+  ArrowRight,
+  X,
+  Sparkles,
+  TrendingUp,
+  DollarSign,
+  Target,
+  Sprout,
+  Globe,
+  type LucideIcon,
+} from "lucide-react";
 import { api, type SectoralSignal, type SectoralCategory } from "@/lib/api";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { SectionHead } from "./section-head";
 import {
   Dialog,
   DialogContent,
@@ -13,15 +24,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-const CATEGORY_META: Record<SectoralCategory, { icon: string; label: string }> = {
-  feature_trend: { icon: "✨", label: "Features" },
-  hiring_trend: { icon: "📈", label: "Hiring" },
-  pricing_trend: { icon: "💰", label: "Pricing" },
-  positioning_shift: { icon: "🎯", label: "Positioning" },
-  category_emergence: { icon: "🌱", label: "Emerging" },
+export const CATEGORY_META: Record<SectoralCategory, { icon: LucideIcon; label: string }> = {
+  feature_trend: { icon: Sparkles, label: "Features" },
+  hiring_trend: { icon: TrendingUp, label: "Hiring" },
+  pricing_trend: { icon: DollarSign, label: "Pricing" },
+  positioning_shift: { icon: Target, label: "Positioning" },
+  category_emergence: { icon: Sprout, label: "Emerging" },
 };
 
-function confidencePct(raw: string): number {
+export function confidencePct(raw: string): number {
   return Math.round((Number(raw) || 0) * 100);
 }
 
@@ -34,7 +45,7 @@ function renderDataPoint(dp: unknown): string {
   return String(dp);
 }
 
-function EvidenceModal({
+export function EvidenceModal({
   signal,
   onClose,
 }: {
@@ -42,22 +53,23 @@ function EvidenceModal({
   onClose: () => void;
 }) {
   const open = signal !== null;
+  const Icon = signal ? CATEGORY_META[signal.category].icon : null;
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-lg">
         {signal && (
           <>
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-[15px]">
-                <span>{CATEGORY_META[signal.category].icon}</span>
+              <DialogTitle className="flex items-center gap-2 text-content">
+                {Icon && <Icon size={15} className="text-muted-foreground" aria-hidden />}
                 {signal.title}
               </DialogTitle>
             </DialogHeader>
-            <div className="space-y-4 text-[13px]">
+            <div className="space-y-4 text-dense">
               <p className="text-muted-foreground leading-snug">{signal.insight}</p>
 
               <div>
-                <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-1.5">
+                <div className="font-mono text-micro text-muted-foreground mb-1.5">
                   Competitors ({signal.evidence.competitors.length})
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -74,14 +86,14 @@ function EvidenceModal({
 
               {signal.evidence.dataPoints.length > 0 && (
                 <div>
-                  <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-1.5">
+                  <div className="font-mono text-micro text-muted-foreground mb-1.5">
                     Data points
                   </div>
                   <ul className="space-y-1">
                     {signal.evidence.dataPoints.map((dp, i) => (
                       <li
                         key={i}
-                        className="font-mono text-[11px] text-muted-foreground/90 leading-snug"
+                        className="font-mono text-meta text-muted-foreground/90 leading-snug"
                       >
                         {renderDataPoint(dp)}
                       </li>
@@ -90,7 +102,7 @@ function EvidenceModal({
                 </div>
               )}
 
-              <div className="flex items-center gap-3 border-t border-border pt-3 font-mono text-[11px] text-muted-foreground">
+              <div className="flex items-center gap-3 border-t border-border pt-3 font-mono text-meta text-muted-foreground">
                 <span>Confidence {confidencePct(signal.confidence)}%</span>
                 <span className="text-muted-foreground/40">·</span>
                 <span>{signal.evidence.metric}</span>
@@ -103,26 +115,30 @@ function EvidenceModal({
   );
 }
 
-function SectoralCard({
+export function SectoralRow({
   signal,
   onOpen,
   onDismiss,
 }: {
   signal: SectoralSignal;
   onOpen: () => void;
-  onDismiss: () => void;
+  // Omitted in the Dismissed view — there is nothing left to dismiss there.
+  onDismiss?: () => void;
 }) {
   const meta = CATEGORY_META[signal.category];
+  const Icon = meta.icon;
   const unread = signal.readAt === null;
   return (
-    <div className="px-4 py-3.5 border-b border-border last:border-b-0">
+    <div className="px-1.5 py-3.5 border-b border-border last:border-b-0">
       <div className="flex items-start gap-3">
-        <span className="text-base leading-none mt-0.5" aria-hidden>
-          {meta.icon}
-        </span>
+        <Icon
+          size={15}
+          className="text-muted-foreground mt-0.5 shrink-0"
+          aria-hidden
+        />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            <span className="font-mono text-micro text-muted-foreground">
               {meta.label}
             </span>
             {unread && (
@@ -132,32 +148,34 @@ function SectoralCard({
               />
             )}
           </div>
-          <div className="text-[13px] font-semibold tracking-tight mt-0.5 leading-snug">
+          <div className="text-content font-semibold tracking-tight mt-0.5 leading-snug">
             {signal.title}
           </div>
-          <div className="text-muted-foreground text-xs mt-1 leading-snug">
+          <div className="text-muted-foreground text-dense mt-1 leading-snug max-w-[78ch]">
             {signal.insight}
           </div>
           <div className="mt-2 flex items-center gap-2.5">
             <Button variant="outline" size="sm" onClick={onOpen}>
               View detail <ArrowRight size={11} />
             </Button>
-            <span className="font-mono text-[11px] text-muted-foreground/80">
+            <span className="font-mono text-meta text-muted-foreground">
               Confidence {confidencePct(signal.confidence)}%
             </span>
             <span className="text-muted-foreground/40">·</span>
-            <span className="font-mono text-[11px] text-muted-foreground/80">
+            <span className="font-mono text-meta text-muted-foreground">
               {formatDistanceToNow(new Date(signal.createdAt), { addSuffix: true })}
             </span>
           </div>
         </div>
-        <button
-          onClick={onDismiss}
-          aria-label="Dismiss"
-          className="text-muted-foreground/60 hover:text-foreground transition-colors mt-0.5"
-        >
-          <X size={14} />
-        </button>
+        {onDismiss && (
+          <button
+            onClick={onDismiss}
+            aria-label="Dismiss"
+            className="text-muted-foreground hover:text-foreground transition-colors mt-0.5"
+          >
+            <X size={14} />
+          </button>
+        )}
       </div>
     </div>
   );
@@ -168,8 +186,9 @@ export function SectoralSignalsSection() {
   const [active, setActive] = useState<SectoralSignal | null>(null);
 
   useEffect(() => {
+    // Overview teaser — the top few; the full feed lives on /dashboard/sector.
     api
-      .listSectoral({ limit: 50 })
+      .listSectoral({ limit: 3 })
       .then((r) => setSignals(r.signals))
       .catch(() => setSignals([]));
   }, []);
@@ -196,30 +215,30 @@ export function SectoralSignalsSection() {
   }
 
   return (
-    <>
-      <Card>
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border gap-3">
-          <div>
-            <div className="font-semibold text-[13px] tracking-tight flex items-center gap-1.5">
-              🌍 Sector trends
-            </div>
-            <div className="text-muted-foreground/80 text-[11px] font-mono">
-              patterns across your competitors · not single-competitor signals
-            </div>
-          </div>
-        </div>
-        <div>
-          {signals.map((s) => (
-            <SectoralCard
-              key={s.id}
-              signal={s}
-              onOpen={() => openDetail(s)}
-              onDismiss={() => dismiss(s.id)}
-            />
-          ))}
-        </div>
-      </Card>
+    <section>
+      <SectionHead
+        title="Sector trends"
+        icon={<Globe size={14} />}
+        sub="patterns across your competitors · not single-competitor signals"
+      />
+      <div>
+        {signals.map((s) => (
+          <SectoralRow
+            key={s.id}
+            signal={s}
+            onOpen={() => openDetail(s)}
+            onDismiss={() => dismiss(s.id)}
+          />
+        ))}
+      </div>
+      <div className="pt-2">
+        <Button asChild variant="ghost" size="sm">
+          <Link href="/dashboard/sector">
+            View all sector trends <ArrowRight size={11} />
+          </Link>
+        </Button>
+      </div>
       <EvidenceModal signal={active} onClose={() => setActive(null)} />
-    </>
+    </section>
   );
 }

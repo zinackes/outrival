@@ -18,7 +18,8 @@ Stack : Next.js 15, Tailwind v4, shadcn/ui new-york, Better Auth client
 
 ## Design system Outrival
 - Source de vérité : `PRODUCT.md` (stratégie/register) + `DESIGN.md` (système visuel) à la racine du repo
-- Couleurs : light + dark à parité (next-themes, `:root` = light), accent unique amber #F59E0B
-- Typo : Bricolage Grotesque (sans + display) + DM Mono (data/metadata) — défini dans `globals.css` + `layout.tsx`
-- Ne jamais utiliser de couleurs hardcodées — variables CSS Tailwind
+- Couleurs : OKLCH dark-first (hue 260 teinté), light + dark via next-themes (`:root` = light) ; accent unique cyan « signal » hue ~200 rationné au CTA + focus ring (`--link` pour liens/icônes). Tokens dans `globals.css`
+- Typo : Bricolage Grotesque (display/titres, axes opsz+wdth) + Geist Sans (corps/UI) + Geist Mono (data/IDs, tabular-nums + slashed-zero) — `globals.css` + `layout.tsx`
+- Échelle type = tokens uniquement, **jamais `text-[Npx]`** : `text-micro`(10) `text-meta`(11) `text-xs`(12) `text-dense`(13) `text-sm`(14) `text-content`(15) `text-base`(16) `text-lead`(17) `text-lg`(18) `text-xl`(20) · titres de page `text-title`(22)/`text-title-lg`(26) · KPI `text-stat`(32). Définis dans `globals.css @theme`, doc dans `DESIGN.md §3`. Un nouveau rôle = un nouveau token, pas une valeur arbitraire.
+- Ne jamais utiliser de couleurs hardcodées — variables CSS Tailwind. Pas de `text-white`/`bg-white/N` (casse en light), pas d'alpha `/70`–`/80` sur `text-muted-foreground` (passe sous 4.5:1).
 - Icônes : lucide-react uniquement

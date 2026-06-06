@@ -182,7 +182,7 @@ export function detectHiringTrends(
 
 // ---------------------------------------------------------------------------
 // 3. Pricing trends — sector-wide drift in price over the window.
-// Source: ClickHouse pricing_history (per competitor, mean price start vs end).
+// Source: pricing_history (per competitor, mean price start vs end).
 // ---------------------------------------------------------------------------
 
 export function detectPricingTrends(
@@ -239,7 +239,7 @@ export function detectPricingTrends(
 
 // ---------------------------------------------------------------------------
 // 4. Positioning shifts — competitors moving from public pricing to gated/demo.
-// Source: ClickHouse pricing_history status timeline (patch-11 taxonomy).
+// Source: pricing_history status timeline (patch-11 taxonomy).
 // ---------------------------------------------------------------------------
 
 const GATED_STATUSES = new Set(["gated_demo", "contact_sales", "gated"]);

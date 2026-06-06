@@ -17,7 +17,7 @@ export default function DangerZonePage() {
         <div className="flex items-center gap-3">
           <div className="flex-1">
             <div className="font-semibold text-sm">Delete workspace</div>
-            <div className="text-muted-foreground text-[13px] mt-1">
+            <div className="text-muted-foreground text-dense mt-1">
               Permanently erases all signals, digests and battle cards. This
               action cannot be undone.
             </div>

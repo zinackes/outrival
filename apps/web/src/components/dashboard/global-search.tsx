@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Search, Building2, FileText } from "lucide-react";
+import { Search, Building2, FileText, Command as CommandIcon } from "lucide-react";
 
 import { api, type SearchResults } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -91,14 +91,14 @@ export function GlobalSearch() {
         onClick={() => setOpen(true)}
         aria-label="Search"
         className={cn(
-          "inline-flex h-8 items-center gap-2 rounded-md border border-border bg-muted/40 px-2.5 text-xs text-muted-foreground",
+          "inline-flex h-8 items-center gap-2 rounded-md border border-border bg-muted/40 px-2.5 text-xs text-muted-foreground md:w-80",
           "transition-colors hover:bg-muted hover:text-foreground",
         )}
       >
         <Search size={14} />
         <span className="hidden md:inline">Search…</span>
-        <kbd className="hidden md:inline-flex pointer-events-none h-5 select-none items-center gap-1 rounded border border-border bg-background px-1.5 font-mono text-[10px] font-medium">
-          ⌘K
+        <kbd className="hidden md:inline-flex md:ml-auto pointer-events-none h-5 select-none items-center gap-0.5 rounded border border-border bg-background px-1.5 font-mono text-micro font-medium">
+          <CommandIcon className="size-3" />K
         </kbd>
       </button>
 

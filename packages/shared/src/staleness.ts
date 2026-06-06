@@ -46,6 +46,11 @@ export function mapSourceTypeToCategory(sourceType: SourceType): StalenessCatego
     case "g2_reviews":
     case "capterra_reviews":
     case "appstore_reviews":
+    case "trustpilot_reviews":
+    case "trustradius_reviews":
+    case "gartner_reviews":
+    case "playstore_reviews":
+    case "reddit":
       return "reviews";
     case "blog":
     case "changelog":

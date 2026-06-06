@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Turnstile } from "@marsidev/react-turnstile";
-import { ArrowLeft, ArrowRight, Loader2, Mail } from "lucide-react";
+import { ArrowLeft, ArrowRight, CornerDownRight, Loader2, Mail } from "lucide-react";
 import { emailSchema } from "@outrival/shared";
 import { signIn } from "@/lib/auth-client";
 import { track, identifyUser } from "@/lib/posthog/events";
@@ -216,9 +216,10 @@ export function AuthForm() {
                 <button
                   type="button"
                   onClick={togglePasswordMode}
-                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  {usePassword ? "↳ Use a magic link instead" : "↳ Prefer a password?"}
+                  <CornerDownRight className="size-3.5" />
+                  {usePassword ? "Use a magic link instead" : "Prefer a password?"}
                 </button>
               </div>
 

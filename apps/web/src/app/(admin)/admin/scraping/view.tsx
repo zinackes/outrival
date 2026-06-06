@@ -35,9 +35,13 @@ export function ScrapingView({ data }: { data: AdminScrapingHealth | null }) {
     <div className="flex flex-col gap-5">
       <PageHeader title="Scraping health" subtitle={`Window: ${data?.window ?? "24h"}.`} />
 
-      <Section title="Per source" note={data?.window ?? "24h"}>
+      <Section
+        title="Per source"
+        note={data?.window ?? "24h"}
+        info="Scrape runs grouped by source type over the window. Runs = total scrapes; Fail = % that failed; Proxy = % that needed a paid proxy level (L2+); Avg = mean scrape duration."
+      >
         {sources.length === 0 ? (
-          <Empty>No scrape runs in the window (ClickHouse empty or unavailable).</Empty>
+          <Empty>No scrape runs in the window.</Empty>
         ) : (
           <div className="grid gap-5 lg:grid-cols-2">
             <Table>
@@ -89,7 +93,11 @@ export function ScrapingView({ data }: { data: AdminScrapingHealth | null }) {
         )}
       </Section>
 
-      <Section title="Cascade levels" note={data?.window ?? "24h"}>
+      <Section
+        title="Cascade levels"
+        note={data?.window ?? "24h"}
+        info="Distribution of scrapes across the 5-level anti-bot cascade. L0 direct fetch and L1 browser are free; L2 datacenter, L3 residential and L4 Camoufox are paid. Most traffic should stay on L0/L1."
+      >
         {(() => {
           const lv = data?.levels;
           const total = lv ? lv.l0 + lv.l1 + lv.l2 + lv.l3 + lv.l4 : 0;
@@ -119,7 +127,52 @@ export function ScrapingView({ data }: { data: AdminScrapingHealth | null }) {
         })()}
       </Section>
 
-      <Section title="Dead monitors">
+      <Section
+        title="Extraction resolution"
+        note={data?.window ?? "24h"}
+        info="How pricing/jobs extractions resolved (patch-30). Structured (schema.org) and cached parser are free; self-heal and AI fallback spend an LLM call. The AI-free share is the direct arbiter of extraction cost — higher is cheaper."
+      >
+        {(() => {
+          const ex = data?.extraction;
+          const total = ex ? ex.structured + ex.cache + ex.heal + ex.aiFallback : 0;
+          if (!ex || total === 0) {
+            return <Empty>No extractions in the window.</Empty>;
+          }
+          const cells: { label: string; n: number; free: boolean }[] = [
+            { label: "Structured", n: ex.structured, free: true },
+            { label: "Cached parser", n: ex.cache, free: true },
+            { label: "AI self-heal", n: ex.heal, free: false },
+            { label: "AI fallback", n: ex.aiFallback, free: false },
+          ];
+          const aiFree = (ex.structured + ex.cache) / total;
+          return (
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1">
+                <span className="text-xs text-muted-foreground">AI-free</span>
+                <span style={{ ...mono, color: "var(--accent)" }}>{pctFmt(aiFree)}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                {cells.map((c) => (
+                  <div key={c.label} className="flex flex-col gap-1">
+                    <span className="text-xs text-muted-foreground">{c.label}</span>
+                    <span style={{ ...mono, color: c.free ? undefined : "var(--accent)" }}>
+                      {pctFmt(c.n / total)}
+                    </span>
+                    <span className="text-xs text-muted-foreground" style={mono}>
+                      {c.n}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+      </Section>
+
+      <Section
+        title="Dead monitors"
+        info="Monitors whose last few scrape runs were all failures — likely permanently broken. Force a scrape to retry one now."
+      >
         {dead.length === 0 ? (
           <Empty>None — every monitor has a recent success.</Empty>
         ) : (

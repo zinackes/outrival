@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ExternalLink, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { api, type NotificationSettings } from "@/lib/api";
 import {
   Sheet,
@@ -26,12 +27,10 @@ export function DigestSettingsSheet({
 }) {
   const [settings, setSettings] = useState<NotificationSettings | null>(null);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
-    setSaved(false);
     setError(null);
     api
       .getNotificationSettings()
@@ -43,14 +42,14 @@ export function DigestSettingsSheet({
     e.preventDefault();
     if (!settings) return;
     setSaving(true);
-    setSaved(false);
     setError(null);
     try {
       await api.updateNotificationSettings({
         digestEmail: settings.digestEmail || null,
         digestEnabled: settings.digestEnabled,
       });
-      setSaved(true);
+      toast.success("Digest settings saved");
+      onOpenChange(false);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -62,10 +61,10 @@ export function DigestSettingsSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="p-0 flex flex-col sm:max-w-md">
         <SheetHeader className="px-5 py-4 border-b border-border">
-          <SheetTitle className="tracking-tight text-[15px]">
+          <SheetTitle className="tracking-tight text-content">
             Digest settings
           </SheetTitle>
-          <SheetDescription className="text-[13px]">
+          <SheetDescription className="text-dense">
             Sent every Monday at 09:00 UTC. Customize destination and
             activation.
           </SheetDescription>
@@ -102,7 +101,7 @@ export function DigestSettingsSheet({
                   }
                   placeholder="you@company.com"
                 />
-                <p className="text-[11px] font-mono text-muted-foreground/80">
+                <p className="text-meta font-mono text-muted-foreground">
                   Address that will receive the weekly digest.
                 </p>
               </div>
@@ -119,17 +118,17 @@ export function DigestSettingsSheet({
                   <span className="block font-medium">
                     Enable weekly digest
                   </span>
-                  <span className="block text-[11px] font-mono text-muted-foreground/80 mt-0.5">
+                  <span className="block text-meta font-mono text-muted-foreground mt-0.5">
                     Disabling stops sending but keeps history.
                   </span>
                 </span>
               </label>
 
               <div className="rounded-md border border-border bg-card px-3.5 py-3">
-                <div className="text-[11px] font-mono uppercase tracking-widest text-muted-foreground/80 mb-1">
+                <div className="text-meta font-mono uppercase tracking-widest text-muted-foreground mb-1">
                   Coming soon
                 </div>
-                <ul className="text-[12px] text-muted-foreground space-y-0.5 list-disc list-inside marker:text-muted-foreground/40">
+                <ul className="text-xs text-muted-foreground space-y-0.5 list-disc list-inside marker:text-muted-foreground/40">
                   <li>Pick send day and time</li>
                   <li>Filter by severity or category</li>
                   <li>Multiple recipients</li>
@@ -151,9 +150,6 @@ export function DigestSettingsSheet({
             </Link>
           </Button>
           <div className="flex items-center gap-3">
-            {saved && (
-              <span className="text-xs text-primary">✓ Saved</span>
-            )}
             <Button
               type="submit"
               form="digest-settings-form"

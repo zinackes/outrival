@@ -2,8 +2,8 @@
 
 import { formatDistanceToNow } from "date-fns";
 import { Check, Cpu } from "lucide-react";
-import { Card } from "@/components/ui/card";
 import { FreshnessDot } from "./freshness-dot";
+import { TabCard, TabSection } from "./tab-shell";
 import type { TechStackData, TechStackEntry } from "@/lib/api";
 
 // English labels for the catalog categories (patch-18). Strategic/commercial
@@ -54,54 +54,55 @@ export function CompetitorTechStack({ techStack }: { techStack: TechStackData })
   );
 
   return (
-    <Card className="px-4 py-3">
-      <div className="flex items-center justify-between gap-2 mb-2.5">
-        <div className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase flex items-center gap-1.5">
-          <Cpu size={11} /> Detected tech stack
-        </div>
-        <div className="flex items-center gap-1.5 text-[11px] font-mono text-muted-foreground/80">
-          {lastScrapedAt && <FreshnessDot lastScrapedAt={lastScrapedAt} status="success" />}
-          <span>
+    <TabCard>
+      <TabSection
+        title="Detected tech stack"
+        icon={Cpu}
+        action={
+          <div className="flex items-center gap-1.5 text-meta font-mono text-muted-foreground">
+            {lastScrapedAt && <FreshnessDot lastScrapedAt={lastScrapedAt} status="success" />}
+            <span>
+              {lastScrapedAt
+                ? `scanned ${formatDistanceToNow(new Date(lastScrapedAt), { addSuffix: true })}`
+                : "scan pending"}
+            </span>
+          </div>
+        }
+      >
+        {entries.length === 0 ? (
+          <p className="text-dense text-muted-foreground">
             {lastScrapedAt
-              ? `scanned ${formatDistanceToNow(new Date(lastScrapedAt), { addSuffix: true })}`
-              : "scan pending"}
-          </span>
-        </div>
-      </div>
-
-      {entries.length === 0 ? (
-        <p className="text-[13px] text-muted-foreground">
-          {lastScrapedAt
-            ? "No recognizable third-party tech detected yet."
-            : "Tech stack scan scheduled — results appear after the first scan."}
-        </p>
-      ) : (
-        <div className="space-y-3">
-          {orderedCategories.map((cat) => (
-            <div key={cat}>
-              <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground/70 mb-1.5">
-                {CATEGORY_LABELS[cat] ?? cat}
+              ? "No recognizable third-party tech detected yet."
+              : "Tech stack scan scheduled — results appear after the first scan."}
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {orderedCategories.map((cat) => (
+              <div key={cat}>
+                <div className="text-micro font-mono uppercase tracking-wider text-muted-foreground mb-1.5">
+                  {CATEGORY_LABELS[cat] ?? cat}
+                </div>
+                <ul className="flex flex-wrap gap-1.5">
+                  {(groups.get(cat) ?? []).map((e) => (
+                    <li
+                      key={e.techId}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/30 px-2 py-1 text-xs"
+                    >
+                      <Check size={11} className="text-positive shrink-0" />
+                      <span>{e.name}</span>
+                      {isRecent(e.firstDetectedAt) && (
+                        <span className="text-micro text-muted-foreground">
+                          new · {formatDistanceToNow(new Date(e.firstDetectedAt), { addSuffix: true })}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
               </div>
-              <ul className="flex flex-wrap gap-1.5">
-                {(groups.get(cat) ?? []).map((e) => (
-                  <li
-                    key={e.techId}
-                    className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/30 px-2 py-1 text-[12px]"
-                  >
-                    <Check size={11} className="text-positive shrink-0" />
-                    <span>{e.name}</span>
-                    {isRecent(e.firstDetectedAt) && (
-                      <span className="text-[10px] text-muted-foreground">
-                        new · {formatDistanceToNow(new Date(e.firstDetectedAt), { addSuffix: true })}
-                      </span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      )}
-    </Card>
+            ))}
+          </div>
+        )}
+      </TabSection>
+    </TabCard>
   );
 }

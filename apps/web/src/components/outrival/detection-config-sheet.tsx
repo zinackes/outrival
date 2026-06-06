@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { DETECTION_OVERLAP_PRESETS } from "@outrival/shared";
 import { api, type DetectionConfig } from "@/lib/api";
 import {
@@ -31,12 +32,10 @@ export function DetectionConfigSheet({
   const [config, setConfig] = useState<DetectionConfig | null>(null);
   const [excludedText, setExcludedText] = useState("");
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
-    setSaved(false);
     setError(null);
     api
       .getDetectionConfig()
@@ -51,7 +50,6 @@ export function DetectionConfigSheet({
     e.preventDefault();
     if (!config) return;
     setSaving(true);
-    setSaved(false);
     setError(null);
     try {
       const excludedDomains = excludedText
@@ -64,8 +62,9 @@ export function DetectionConfigSheet({
       });
       setConfig(next);
       setExcludedText(next.excludedDomains.join("\n"));
-      setSaved(true);
       onSaved?.();
+      toast.success("Detection settings saved");
+      onOpenChange(false);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -77,10 +76,10 @@ export function DetectionConfigSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="p-0 flex flex-col sm:max-w-md">
         <SheetHeader className="px-5 py-4 border-b border-border">
-          <SheetTitle className="tracking-tight text-[15px]">
+          <SheetTitle className="tracking-tight text-content">
             Detection settings
           </SheetTitle>
-          <SheetDescription className="text-[13px]">
+          <SheetDescription className="text-dense">
             Tune how Outrival finds new competitors via Exa.ai.
           </SheetDescription>
         </SheetHeader>
@@ -125,7 +124,7 @@ export function DetectionConfigSheet({
                     Strict
                   </ToggleGroupItem>
                 </ToggleGroup>
-                <p className="text-[11px] font-mono text-muted-foreground/80">
+                <p className="text-meta font-mono text-muted-foreground">
                   Minimum overlap to surface a candidate (
                   {config.minOverlap}/100). Stricter = fewer, closer matches.
                 </p>
@@ -141,7 +140,7 @@ export function DetectionConfigSheet({
                 />
                 <span>
                   <span className="block font-medium">Auto-detection</span>
-                  <span className="block text-[11px] font-mono text-muted-foreground/80 mt-0.5">
+                  <span className="block text-meta font-mono text-muted-foreground mt-0.5">
                     Run on a schedule. Manual Refresh always works.
                   </span>
                 </span>
@@ -176,7 +175,7 @@ export function DetectionConfigSheet({
                   placeholder="e.g. enterprise, EU, open source"
                   maxLength={200}
                 />
-                <p className="text-[11px] font-mono text-muted-foreground/80">
+                <p className="text-meta font-mono text-muted-foreground">
                   Extra terms added to the auto query. Leave empty for default.
                 </p>
               </div>
@@ -189,9 +188,9 @@ export function DetectionConfigSheet({
                   onChange={(e) => setExcludedText(e.target.value)}
                   placeholder={"acme.com\npartner.io"}
                   rows={4}
-                  className="font-mono text-[12px]"
+                  className="font-mono text-xs"
                 />
-                <p className="text-[11px] font-mono text-muted-foreground/80">
+                <p className="text-meta font-mono text-muted-foreground">
                   One domain per line. Never surfaced (parent co, partners…).
                 </p>
               </div>
@@ -202,7 +201,6 @@ export function DetectionConfigSheet({
         </div>
 
         <div className="px-5 py-3 border-t border-border flex items-center justify-end gap-3">
-          {saved && <span className="text-xs text-primary">✓ Saved</span>}
           <Button
             type="submit"
             form="detection-config-form"

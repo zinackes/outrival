@@ -76,7 +76,10 @@ export default async function NotificationModerationPage() {
         subtitle="How much is generated, how it's filtered per layer, and how orgs configure it. Last 30 days."
       />
 
-      <Section title="Volume">
+      <Section
+        title="Volume"
+        info="How many signals were generated and how many were merged into batches (3+ similar signals collapsed into one notification) over the window."
+      >
         <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
           <Stat label="Signals generated" value={generated} />
           <Stat
@@ -88,7 +91,10 @@ export default async function NotificationModerationPage() {
         </div>
       </Section>
 
-      <Section title="Filtered per layer">
+      <Section
+        title="Filtered per layer"
+        info="Signals suppressed before delivery, grouped by which moderation layer caught them — relevance threshold, per-severity channel, quiet hours, or daily frequency cap. Critical signals bypass every layer."
+      >
         {Object.keys(m.volume.filteredByReason).length === 0 ? (
           <Empty>Nothing filtered in this window.</Empty>
         ) : (
@@ -105,7 +111,10 @@ export default async function NotificationModerationPage() {
         )}
       </Section>
 
-      <Section title="By delivery channel">
+      <Section
+        title="By delivery channel"
+        info="How delivered signals were routed: immediate email, daily or weekly digest, in-app only, or muted."
+      >
         {Object.keys(m.byChannel).length === 0 ? (
           <Empty>No dispatched signals yet.</Empty>
         ) : (
@@ -117,7 +126,11 @@ export default async function NotificationModerationPage() {
         )}
       </Section>
 
-      <Section title="Org configuration" note={`${m.orgConfig.total} configured`}>
+      <Section
+        title="Org configuration"
+        note={`${m.orgConfig.total} configured`}
+        info="How organisations have configured notifications: timezone source (auto-detected vs manual), whether batching is on, and whether they kept the default quiet hours."
+      >
         {m.orgConfig.total === 0 ? (
           <Empty>No org has saved notification preferences yet.</Empty>
         ) : (
@@ -146,7 +159,10 @@ export default async function NotificationModerationPage() {
         )}
       </Section>
 
-      <Section title="Relevance thresholds">
+      <Section
+        title="Relevance thresholds"
+        info="Per-org relevance threshold and where it came from — the 0.5 default, a user-set value, or one auto-adjusted from feedback. Signals scoring below it are suppressed."
+      >
         {m.thresholds.length === 0 ? (
           <Empty>No org has a stored threshold — all running the default 0.5.</Empty>
         ) : (

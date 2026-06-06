@@ -18,7 +18,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <aside className="sticky top-6 hidden h-fit w-52 shrink-0 md:block">
           <Link href="/admin" className="mb-4 flex items-center gap-2 px-3">
             <span className="text-sm font-semibold">Outrival</span>
-            <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+            <span className="rounded bg-secondary px-1.5 py-0.5 text-micro uppercase tracking-wide text-muted-foreground">
               ops
             </span>
           </Link>

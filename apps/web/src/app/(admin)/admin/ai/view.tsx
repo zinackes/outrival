@@ -17,6 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { AlertCircle } from "lucide-react";
 import { PageHeader, Section, Empty, mono, pctFmt } from "../_components/shell";
 import type { AdminAiHealth } from "@/lib/api";
 
@@ -43,9 +44,12 @@ export function AiView({ data }: { data: AdminAiHealth | null }) {
       <PageHeader title="AI health" subtitle={`Provider pool + parse/error quality per task. Window: ${data?.window ?? "7d"}.`} />
 
       {breaker?.open && (
-        <div className="rounded-md border border-critical/30 bg-critical/8 px-4 py-2.5 text-sm text-foreground">
-          🔴 Global circuit breaker OPEN ({breaker.reason ?? "unknown"})
-          {breaker.resetInSec != null && ` — resets in ~${Math.ceil(breaker.resetInSec / 60)}min`}. AI generation is paused; scrapes continue.
+        <div className="flex items-start gap-2 rounded-md border border-critical/30 bg-critical/8 px-4 py-2.5 text-sm text-foreground">
+          <AlertCircle className="mt-0.5 size-4 shrink-0 text-critical" />
+          <span>
+            Global circuit breaker OPEN ({breaker.reason ?? "unknown"})
+            {breaker.resetInSec != null && ` — resets in ~${Math.ceil(breaker.resetInSec / 60)}min`}. AI generation is paused; scrapes continue.
+          </span>
         </div>
       )}
 
@@ -56,6 +60,7 @@ export function AiView({ data }: { data: AdminAiHealth | null }) {
             ? `${pctFmt(prediction.usagePct)} of pooled daily quota used · saturation ${saturationLabel}`
             : undefined
         }
+        info="AI provider pool today: tokens used vs daily quota and circuit-breaker state per provider. Providers are tried free-first then paid; a tripped breaker is skipped until it resets."
       >
         {providers.length === 0 ? (
           <Empty>No providers configured (set AI_PROVIDER_N_* or GROQ_API_KEY).</Empty>
@@ -94,7 +99,11 @@ export function AiView({ data }: { data: AdminAiHealth | null }) {
         )}
       </Section>
 
-      <Section title="Per task" note={data?.window ?? "7d"}>
+      <Section
+        title="Per task"
+        note={data?.window ?? "7d"}
+        info="AI run quality per task over the window. Parse-fail = output the model returned but couldn't be parsed; Error = the call threw (e.g. rate limit). High rates flag a degrading prompt or provider."
+      >
         {tasks.length === 0 ? (
           <Empty>No AI runs in the window.</Empty>
         ) : (
@@ -133,7 +142,11 @@ export function AiView({ data }: { data: AdminAiHealth | null }) {
         )}
       </Section>
 
-      <Section title="Signals / day" note="7d">
+      <Section
+        title="Signals / day"
+        note="7d"
+        info="Signals generated per day over the last 7 days (from the signal_feed time-series). A sudden drop to zero usually means the pipeline stalled."
+      >
         {signalsByDay.length === 0 ? (
           <Empty>No signals recorded in the window.</Empty>
         ) : (

@@ -11,7 +11,7 @@ import type { InferSelectModel, InferInsertModel } from "drizzle-orm";
 import { users } from "./users";
 import { organizations } from "./organizations";
 
-// Anti-hallucination quality state (patch-24). The append-only ClickHouse `ai_runs`
+// Anti-hallucination quality state (patch-24). The append-only `ai_runs`
 // table (patch-02) records *volume*; this Postgres table holds the *mutable* per-output
 // grounding / self-check / human-review state that ai_runs (no row id, no FK, no UPDATE)
 // can't. One row per fresh AI generation that went through groundedAiCall. The UI looks

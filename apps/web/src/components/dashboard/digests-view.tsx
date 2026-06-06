@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import {
   ArrowLeft,
-  ChevronDown,
   Download,
   Loader2,
   Mail,
@@ -14,19 +13,19 @@ import {
   Activity,
   Minus,
 } from "lucide-react";
-import { format } from "date-fns";
+import { endOfDay, format, startOfWeek } from "date-fns";
 import { toast } from "sonner";
 import { toastApiError } from "@/lib/error-helpers";
 import { ListError } from "@/components/outrival/list-error";
-import { api, type Digest, type DigestRange } from "@/lib/api";
+import { api, type Digest } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  DateRangePicker,
+  lastNDays,
+  type DateRange,
+  type DatePreset,
+} from "@/components/ui/date-range-picker";
 import { PageHead } from "./page-head";
 import { SeverityPill } from "./severity-pill";
 import { CatPill } from "./cat-pill";
@@ -34,10 +33,16 @@ import { StatusPill } from "./status-pill";
 import { DigestSettingsSheet } from "./digest-settings-sheet";
 import { TableSkeleton } from "./skeletons";
 
-const RANGE_OPTIONS: { value: DigestRange; label: string }[] = [
-  { value: "this_week", label: "This week" },
-  { value: "last_7_days", label: "Last 7 days" },
-  { value: "last_30_days", label: "Last 30 days" },
+const DIGEST_PRESETS: DatePreset[] = [
+  {
+    label: "This week",
+    range: () => ({
+      from: startOfWeek(new Date(), { weekStartsOn: 1 }),
+      to: endOfDay(new Date()),
+    }),
+  },
+  { label: "Last 7 days", range: () => lastNDays(7) },
+  { label: "Last 30 days", range: () => lastNDays(30) },
 ];
 
 const TEMP_MAP: Record<
@@ -59,7 +64,7 @@ function TempIcon({ level }: { level: string }) {
   const Ic = m.Ic;
   return (
     <span
-      className="inline-flex items-center gap-1.5 text-[13px]"
+      className="inline-flex items-center gap-1.5 text-dense"
       style={{ color: m.color }}
     >
       <Ic size={13} />
@@ -94,6 +99,7 @@ export function DigestsView() {
   const [err, setErr] = useState<unknown>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [genRange, setGenRange] = useState<DateRange>(() => DIGEST_PRESETS[0]!.range());
 
   useEffect(() => {
     api
@@ -102,7 +108,7 @@ export function DigestsView() {
       .catch((e) => setErr(e));
   }, []);
 
-  async function handleGenerate(range: DigestRange) {
+  async function handleGenerate(range: DateRange) {
     setGenerating(true);
     try {
       const { digest, reason } = await api.generateDigest(range);
@@ -143,29 +149,24 @@ export function DigestsView() {
             >
               <SettingsIcon size={12} /> Settings
             </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" disabled={generating}>
-                  {generating ? (
-                    <Loader2 size={13} className="animate-spin" />
-                  ) : (
-                    <RefreshCw size={13} />
-                  )}
-                  Generate now
-                  <ChevronDown size={12} className="opacity-70" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {RANGE_OPTIONS.map((o) => (
-                  <DropdownMenuItem
-                    key={o.value}
-                    onSelect={() => handleGenerate(o.value)}
-                  >
-                    {o.label}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <DateRangePicker
+              value={genRange}
+              onChange={setGenRange}
+              presets={DIGEST_PRESETS}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={generating}
+              onClick={() => handleGenerate(genRange)}
+            >
+              {generating ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : (
+                <RefreshCw size={13} />
+              )}
+              Generate now
+            </Button>
           </>
         }
       />
@@ -182,7 +183,7 @@ export function DigestsView() {
           <div className="font-semibold text-base text-foreground mb-1.5 tracking-tight">
             No digest yet
           </div>
-          <div className="text-[13px] max-w-[380px] mx-auto">
+          <div className="text-dense max-w-[380px] mx-auto">
             The next digest is generated automatically every Monday morning
             once the week&apos;s signals have been consolidated.
           </div>
@@ -191,14 +192,14 @@ export function DigestsView() {
 
       {digests && digests.length > 0 && (
         <Card className="overflow-x-auto">
-          <table className="w-full border-collapse text-[13px] min-w-[640px]">
+          <table className="w-full border-collapse text-dense min-w-[640px]">
             <thead className="bg-background">
               <tr>
                 {["Week", "Signals", "Critical", "Activity", "Sent"].map(
                   (h) => (
                     <th
                       key={h}
-                      className="text-left px-3.5 py-2.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground font-medium border-b border-border whitespace-nowrap"
+                      className="text-left px-3.5 py-2.5 font-mono text-micro uppercase tracking-widest text-muted-foreground font-medium border-b border-border whitespace-nowrap"
                     >
                       {h}
                     </th>
@@ -247,7 +248,7 @@ export function DigestsView() {
                     <td className="w-8 text-right px-3.5 py-3 align-middle">
                       <ArrowRight
                         size={14}
-                        className="text-muted-foreground/80 inline"
+                        className="text-muted-foreground inline"
                       />
                     </td>
                   </tr>
@@ -281,19 +282,19 @@ function DigestReader({ d, onBack }: { d: Digest; onBack: () => void }) {
 
       <div className="flex items-baseline justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-[22px] font-bold tracking-tight m-0">
+          <h1 className="text-title font-bold tracking-tight m-0">
             Digest · {fmtWeek(d.weekStart, d.weekEnd)}
           </h1>
-          <div className="text-muted-foreground text-[13px] mt-1.5 flex items-center gap-1.5 flex-wrap">
+          <div className="text-muted-foreground text-dense mt-1.5 flex items-center gap-1.5 flex-wrap">
             <span>{sections.length} signals</span>
-            <span className="text-muted-foreground/80">·</span>
+            <span className="text-muted-foreground">·</span>
             <span>{crit.length} critical</span>
-            <span className="text-muted-foreground/80">·</span>
+            <span className="text-muted-foreground">·</span>
             <span>activity</span>
             <TempIcon level={d.content?.temperature ?? "low"} />
             {d.sentAt && (
               <>
-                <span className="text-muted-foreground/80">·</span>
+                <span className="text-muted-foreground">·</span>
                 <span>
                   sent {format(new Date(d.sentAt), "EEEE HH:mm")}
                 </span>
@@ -323,10 +324,10 @@ function DigestReader({ d, onBack }: { d: Digest; onBack: () => void }) {
 
       {tldr.length > 0 && (
         <Card className="px-5 py-[18px]">
-          <div className="font-mono text-[10px] tracking-widest text-primary uppercase mb-3">
+          <div className="font-mono text-micro tracking-widest text-primary uppercase mb-3">
             TL;DR
           </div>
-          <ul className="m-0 pl-5 text-sm leading-relaxed">
+          <ul className="m-0 pl-5 text-content leading-relaxed">
             {tldr.map((t, i) => (
               <li key={i}>{t}</li>
             ))}
@@ -358,12 +359,16 @@ function DigestSection({
 }) {
   return (
     <Card>
-      <div
-        className="flex items-center justify-between px-4 py-3 border-b border-border gap-3"
-        style={{ borderLeft: `3px solid ${meta.color}` }}
-      >
-        <div className="font-semibold text-[13px] tracking-tight">
-          {meta.title}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            className="size-2 shrink-0 rounded-sm"
+            style={{ background: meta.color }}
+            aria-hidden
+          />
+          <div className="font-semibold text-dense tracking-tight">
+            {meta.title}
+          </div>
         </div>
         <span className="text-muted-foreground tabular-nums font-mono text-xs">
           {items.length} signals
@@ -377,14 +382,15 @@ function DigestSection({
           >
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <CatPill>{s.category}</CatPill>
-              <span className="font-semibold text-[13px]">{s.competitor}</span>
+              <span className="font-semibold text-dense">{s.competitor}</span>
             </div>
-            <p className="m-0 mb-1.5 text-sm leading-snug font-medium">
+            <p className="m-0 mb-1.5 text-content leading-snug font-medium">
               {s.insight}
             </p>
             {s.so_what && (
-              <p className="m-0 text-muted-foreground text-[13px] leading-snug">
-                → {s.so_what}
+              <p className="m-0 flex gap-1 text-muted-foreground text-dense leading-snug">
+                <ArrowRight className="size-3.5 mt-0.5 shrink-0" />
+                {s.so_what}
               </p>
             )}
           </div>

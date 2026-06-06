@@ -7,31 +7,13 @@ import {
   MONITOR_FREQUENCIES,
   validateMonitorUrl,
   computeNextRun,
+  forcedRescansPerDay,
   type MonitorFrequency,
-  type Plan,
 } from "@outrival/shared";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
 import { getOrgPlan, isFrequencyAllowed } from "../lib/plan";
-
-// Patch-27 — per-tier daily cap on user-forced re-scans (env-overridable).
-const FORCED_RESCAN_FALLBACK: Record<Plan, number> = {
-  free: 1,
-  starter: 5,
-  pro: 20,
-  business: 999,
-};
-function dailyForcedRescanLimit(plan: Plan): number {
-  const env: Record<Plan, string | undefined> = {
-    free: process.env.FORCED_RESCAN_LIMIT_FREE,
-    starter: process.env.FORCED_RESCAN_LIMIT_STARTER,
-    pro: process.env.FORCED_RESCAN_LIMIT_PRO,
-    business: process.env.FORCED_RESCAN_LIMIT_BUSINESS,
-  };
-  const n = Number(env[plan]);
-  return Number.isFinite(n) && n > 0 ? n : FORCED_RESCAN_FALLBACK[plan];
-}
 
 type Variables = { user: { id: string } };
 
@@ -240,7 +222,7 @@ monitorsRouter.post("/:id/force-rescan", async (c) => {
   if (!competitor) return c.json({ error: "Forbidden" }, 403);
 
   const plan = await getOrgPlan(orgId);
-  const limit = dailyForcedRescanLimit(plan);
+  const limit = forcedRescansPerDay(plan);
   const dayStart = new Date();
   dayStart.setUTCHours(0, 0, 0, 0);
   const [usage] = await db

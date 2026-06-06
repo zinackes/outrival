@@ -1,10 +1,19 @@
 import { task, logger, AbortTaskRunError } from "@trigger.dev/sdk/v3";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
-import { db, signals, competitors, organizations, alerts, notifications } from "@outrival/db";
+import { and, eq } from "drizzle-orm";
+import {
+  db,
+  signals,
+  competitors,
+  organizations,
+  alerts,
+  notifications,
+  crmDestinations,
+} from "@outrival/db";
 import { PLAN_LIMITS } from "@outrival/shared";
 import { sendSlackMessage } from "../lib/slack";
 import { sendWebhook } from "../lib/webhook";
+import { pushWebhook } from "../lib/crm-webhook";
 import { getResend, ALERT_FROM } from "../lib/resend";
 
 const InputSchema = z.object({
@@ -180,13 +189,54 @@ export const sendAlertJob = task({
       }
     }
 
+    // Outbound webhook destinations (Phase C) — best-effort fan-out to the org's
+    // configured CRM/automation URLs. A push failure never affects the alert. Gated
+    // by !alreadyProcessed so a retry doesn't double-push (mirrors the notification).
+    let crmPushed = 0;
+    if (!alreadyProcessed) {
+      const destinations = await db.query.crmDestinations.findMany({
+        where: and(eq(crmDestinations.orgId, org.id), eq(crmDestinations.enabled, true)),
+      });
+      if (destinations.length > 0) {
+        const crmPayload = {
+          type: "signal" as const,
+          signal: {
+            id: signal.id,
+            severity: signal.severity,
+            category: signal.category,
+            insight: signal.insight,
+            soWhat: signal.soWhat,
+            recommendedAction: signal.recommendedAction,
+            createdAt: signal.createdAt,
+            competitor: { id: competitor.id, name: competitor.name },
+            url: `/dashboard/competitors/${competitor.id}`,
+          },
+        };
+        const results = await Promise.all(
+          destinations.map(async (d) => {
+            const ok = await pushWebhook(d.url, d.secret, crmPayload);
+            if (ok) {
+              await db
+                .update(crmDestinations)
+                .set({ lastPushedAt: new Date() })
+                .where(eq(crmDestinations.id, d.id))
+                .catch(() => {});
+            }
+            return ok;
+          }),
+        );
+        crmPushed = results.filter(Boolean).length;
+      }
+    }
+
     logger.log("Completed send-alert", {
       signalId: signal.id,
       slackSent,
       webhookSent,
       emailSent,
+      crmPushed,
     });
 
-    return { slackSent, webhookSent, emailSent };
+    return { slackSent, webhookSent, emailSent, crmPushed };
   },
 });

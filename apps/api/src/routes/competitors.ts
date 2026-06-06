@@ -16,7 +16,7 @@ import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
 import { associateCompetitorWithPrimaryProduct } from "../lib/products";
-import { chQuery } from "../lib/clickhouse-safe";
+import { analyticsQuery } from "../lib/analytics-safe";
 import {
   checkCompetitorQuota,
   getOrgPlan,
@@ -59,16 +59,32 @@ type StoredHomepage = {
   hero?: { headline?: string | null; subheadline?: string | null };
   sections?: Array<{ heading?: string; type?: string }>;
   socialProof?: {
-    customerLogos?: string[];
+    // Legacy snapshots stored a single string (alt || src); patch stores objects.
+    customerLogos?: Array<string | { name?: string | null; src?: string | null }>;
     testimonials?: Array<{ quote?: string; author?: string | null }>;
   };
 };
 
+// A captured customer logo surfaced to the fact sheet: brand name and/or absolute
+// image URL. Old string-shaped entries are mapped into this by `toLogo` below.
+type FactSheetLogo = { name: string | null; src: string | null };
+
+function toLogo(entry: string | { name?: string | null; src?: string | null }): FactSheetLogo {
+  if (typeof entry === "string") {
+    const v = entry.trim();
+    // Legacy single string was alt-or-src: an absolute URL is the image, else a name.
+    return /^(https?:\/\/|data:image\/)/i.test(v)
+      ? { name: null, src: v }
+      : { name: v || null, src: null };
+  }
+  return { name: entry.name?.trim() || null, src: entry.src?.trim() || null };
+}
+
 // "Fact sheet" / state view of a competitor (Overview tab): the current homepage
 // facts we capture but never surfaced — positioning, value props, customers,
 // numeric claims — plus a compact snapshot of pricing/hiring/reviews. Pure
-// surfacing of existing data: no AI call, no scrape. ClickHouse reads are bounded
-// (return [] when CH is down), so the fact sheet degrades gracefully.
+// surfacing of existing data: no AI call, no scrape. Analytics reads are
+// best-effort (return [] on error), so the fact sheet degrades gracefully.
 async function buildOverview(
   competitorId: string,
   monitorList: Array<{ id: string; sourceType: string }>,
@@ -80,7 +96,7 @@ async function buildOverview(
     headline: string | null;
     subheadline: string | null;
     valueProps: string[];
-    customerLogos: string[];
+    customerLogos: FactSheetLogo[];
     testimonials: Array<{ quote: string; author: string | null }>;
   } | null = null;
 
@@ -112,8 +128,8 @@ async function buildOverview(
           .filter((h) => h.length > 0)
           .slice(0, 8),
         customerLogos: (s.socialProof?.customerLogos ?? [])
-          .map((l) => l.trim())
-          .filter((l) => l.length > 0)
+          .map(toLogo)
+          .filter((l) => l.name || l.src)
           .slice(0, 24),
         testimonials: (s.socialProof?.testimonials ?? [])
           .map((t) => ({ quote: t.quote?.trim() ?? "", author: t.author ?? null }))
@@ -123,65 +139,56 @@ async function buildOverview(
     }
   }
 
-  const numericClaims = await chQuery<{
+  const numericClaims = await analyticsQuery<{
     pattern: string;
     value: number | null;
     unit: string | null;
     raw_text: string;
-  }>({
-    query: `
-      SELECT pattern,
-             argMax(value, observed_at) AS value,
-             argMax(unit, observed_at) AS unit,
-             argMax(raw_text, observed_at) AS raw_text
+  }>(sql`
+    SELECT pattern, value, unit, raw_text
+    FROM (
+      SELECT DISTINCT ON (pattern) pattern, value, unit, raw_text, observed_at
       FROM numeric_claims
-      WHERE competitor_id = {competitorId: String}
-        AND observed_at >= now() - INTERVAL 90 DAY
-      GROUP BY pattern
-      ORDER BY max(observed_at) DESC
-      LIMIT 8
-    `,
-    params: { competitorId },
-  });
+      WHERE competitor_id = ${competitorId}
+        AND observed_at >= now() - make_interval(days => 90)
+      ORDER BY pattern, observed_at DESC
+    ) t
+    ORDER BY observed_at DESC
+    LIMIT 8
+  `);
 
   // Current tier set = the most recent recorded_at batch for this competitor.
-  const pricingNow = await chQuery<{
+  const pricingNow = await analyticsQuery<{
     plan_name: string;
     price: number;
     currency: string;
     billing_period: string;
-  }>({
-    query: `
-      SELECT plan_name, price, currency, billing_period
-      FROM pricing_history
-      WHERE competitor_id = {competitorId: String}
-        AND recorded_at = (
-          SELECT max(recorded_at) FROM pricing_history
-          WHERE competitor_id = {competitorId: String}
-        )
-      ORDER BY price ASC
-    `,
-    params: { competitorId },
-  });
+  }>(sql`
+    SELECT plan_name, price, currency, billing_period
+    FROM pricing_history
+    WHERE competitor_id = ${competitorId}
+      AND recorded_at = (
+        SELECT max(recorded_at) FROM pricing_history
+        WHERE competitor_id = ${competitorId}
+      )
+    ORDER BY price ASC
+  `);
 
-  const reviews = await chQuery<{
+  const reviews = await analyticsQuery<{
     source: string;
     score: number;
     review_count: number;
     sentiment_score: number;
-  }>({
-    query: `
-      SELECT source,
-             argMax(score, recorded_at) AS score,
-             argMax(review_count, recorded_at) AS review_count,
-             argMax(sentiment_score, recorded_at) AS sentiment_score
+  }>(sql`
+    SELECT source, score, review_count, sentiment_score
+    FROM (
+      SELECT DISTINCT ON (source) source, score, review_count, sentiment_score, recorded_at
       FROM review_scores
-      WHERE competitor_id = {competitorId: String}
-      GROUP BY source
-      ORDER BY max(recorded_at) DESC
-    `,
-    params: { competitorId },
-  });
+      WHERE competitor_id = ${competitorId}
+      ORDER BY source, recorded_at DESC
+    ) t
+    ORDER BY recorded_at DESC
+  `);
 
   const [hiringRow] = await db
     .select({ count: sql<number>`count(*)::int` })
@@ -230,12 +237,26 @@ competitorsRouter.post("/", async (c) => {
   // show in that product's feed (shared; reclassify/attach to others from the UI).
   await associateCompetitorWithPrimaryProduct(orgId, competitor.id);
 
+  // patch-31 — detect the platform profile (fire-and-forget) so the first scrapes
+  // can route via structured connectors. Never blocks the create.
+  try {
+    await tasks.trigger("detect-platform", { competitorId: competitor.id });
+  } catch (e) {
+    console.error("Failed to trigger platform detection", {
+      competitorId: competitor.id,
+      error: String(e),
+    });
+  }
+
   const createdMonitors = await db
     .insert(monitors)
     .values([
       { competitorId: competitor.id, sourceType: "homepage", frequency: "daily" },
       { competitorId: competitor.id, sourceType: "pricing", frequency: "daily" },
       { competitorId: competitor.id, sourceType: "blog", frequency: "weekly" },
+      // patch-32: internal sitemap-diff anchor (weekly). Not user-facing; the diff
+      // of its sorted URL-list snapshot surfaces brand-new competitor pages.
+      { competitorId: competitor.id, sourceType: "sitemap", frequency: "weekly" },
     ])
     .returning();
 
@@ -269,8 +290,9 @@ competitorsRouter.post("/:id/monitors", async (c) => {
   if (!competitor || competitor.deletedAt) return c.json({ error: "Competitor not found" }, 404);
 
   const { sourceType } = parsed.data;
-  // tech_stack is an internal anchor source (patch-18), not user-enableable.
-  if (sourceType === "tech_stack") {
+  // tech_stack (patch-18) and sitemap (patch-32) are internal anchor sources, not
+  // user-enableable.
+  if (sourceType === "tech_stack" || sourceType === "sitemap") {
     return c.json({ error: "source_not_enableable", source: sourceType }, 400);
   }
   const plan = await getOrgPlan(orgId);
@@ -444,11 +466,12 @@ competitorsRouter.get("/:id", async (c) => {
   const allMonitors = await db.query.monitors.findMany({
     where: eq(monitors.competitorId, competitor.id),
   });
-  // Hide the tech_stack anchor monitor (patch-18) — it's infra, not a user-facing
-  // source. Tech stack surfaces as its own read-only tab; the dev-only manual scan
-  // (POST /api/dev/competitors/:id/scrape-tech-stack) drives a synthetic Sources
-  // row, so the anchor monitor never needs to appear here.
-  const monitorList = allMonitors.filter((m) => m.sourceType !== "tech_stack");
+  // Hide internal anchor monitors — they're infra, not user-facing sources:
+  // tech_stack (patch-18, surfaced as its own read-only tab) and sitemap (patch-32,
+  // a discovery anchor whose URL-diff feeds signals, never a Sources row).
+  const monitorList = allMonitors.filter(
+    (m) => m.sourceType !== "tech_stack" && m.sourceType !== "sitemap",
+  );
 
   const monitorIds = monitorList.map((m) => m.id);
   const recentChanges = monitorIds.length
@@ -593,20 +616,17 @@ competitorsRouter.get("/:id/job-trends", async (c) => {
   const competitor = await assertOwnedCompetitor(id, orgId);
   if (!competitor) return c.json({ error: "Not found" }, 404);
 
-  const rows = await chQuery<{
+  const rows = await analyticsQuery<{
     department: string;
     count: number;
     recorded_at: string;
-  }>({
-    query: `
-      SELECT department, count, toString(recorded_at) AS recorded_at
-      FROM job_counts
-      WHERE competitor_id = {competitorId: String}
-        AND job_counts.recorded_at >= now() - INTERVAL 90 DAY
-      ORDER BY job_counts.recorded_at ASC
-    `,
-    params: { competitorId: competitor.id },
-  });
+  }>(sql`
+    SELECT department, count, recorded_at::text AS recorded_at
+    FROM job_counts
+    WHERE competitor_id = ${competitor.id}
+      AND recorded_at >= now() - make_interval(days => 90)
+    ORDER BY recorded_at ASC
+  `);
 
   return c.json({ trends: rows });
 });
@@ -645,22 +665,19 @@ competitorsRouter.get("/:id/review-scores", async (c) => {
   const competitor = await assertOwnedCompetitor(id, orgId);
   if (!competitor) return c.json({ error: "Not found" }, 404);
 
-  const rows = await chQuery<{
+  const rows = await analyticsQuery<{
     source: string;
     score: number;
     review_count: number;
     sentiment_score: number;
     recorded_at: string;
-  }>({
-    query: `
-      SELECT source, score, review_count, sentiment_score, toString(recorded_at) AS recorded_at
-      FROM review_scores
-      WHERE competitor_id = {competitorId: String}
-        AND review_scores.recorded_at >= now() - INTERVAL 180 DAY
-      ORDER BY review_scores.recorded_at ASC
-    `,
-    params: { competitorId: competitor.id },
-  });
+  }>(sql`
+    SELECT source, score, review_count, sentiment_score, recorded_at::text AS recorded_at
+    FROM review_scores
+    WHERE competitor_id = ${competitor.id}
+      AND recorded_at >= now() - make_interval(days => 180)
+    ORDER BY recorded_at ASC
+  `);
 
   return c.json({ scores: rows });
 });
@@ -672,21 +689,18 @@ competitorsRouter.get("/:id/pricing-history", async (c) => {
   const competitor = await assertOwnedCompetitor(id, orgId);
   if (!competitor) return c.json({ error: "Not found" }, 404);
 
-  const rows = await chQuery<{
+  const rows = await analyticsQuery<{
     plan_name: string;
     price: number;
     currency: string;
     billing_period: string;
     recorded_at: string;
-  }>({
-    query: `
-      SELECT plan_name, price, currency, billing_period, toString(recorded_at) AS recorded_at
-      FROM pricing_history
-      WHERE competitor_id = {competitorId: String}
-      ORDER BY pricing_history.recorded_at ASC
-    `,
-    params: { competitorId: competitor.id },
-  });
+  }>(sql`
+    SELECT plan_name, price, currency, billing_period, recorded_at::text AS recorded_at
+    FROM pricing_history
+    WHERE competitor_id = ${competitor.id}
+    ORDER BY recorded_at ASC
+  `);
 
   return c.json({ history: rows });
 });

@@ -4,7 +4,7 @@ export function Quote() {
       <div className="mx-auto w-full max-w-6xl px-6">
         <div className="grid gap-10 rounded-2xl border border-border bg-surface p-8 sm:p-10 lg:grid-cols-[1.4fr_1fr] lg:items-center">
           <div>
-            <div className="font-mono text-xs uppercase tracking-[0.2em] text-primary">
+            <div className="font-mono text-xs text-text-subtle">
               Case · Series A B2B SaaS
             </div>
             <div className="mt-4 text-2xl font-medium leading-snug sm:text-3xl">

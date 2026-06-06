@@ -33,7 +33,10 @@ export default async function AiReviewQueuePage() {
         subtitle="Outputs that failed their self-check. Resolve each as a confirmed hallucination or a false positive — the content stays live for the user either way."
       />
 
-      <Section title="Last 30 days">
+      <Section
+        title="Last 30 days"
+        info="AI generation quality over 30 days: how many outputs ran a self-check, how many failed it, and how flagged items were triaged (confirmed hallucination / false positive / pending)."
+      >
         {!stats ? (
           <Empty>No quality data yet.</Empty>
         ) : (
@@ -56,7 +59,11 @@ export default async function AiReviewQueuePage() {
         )}
       </Section>
 
-      <Section title="To review" note={`${items.length} flagged`}>
+      <Section
+        title="To review"
+        note={`${items.length} flagged`}
+        info="AI outputs that failed their self-check and await triage. Mark each as a confirmed hallucination or a false positive — the content stays live for the user either way."
+      >
         <ReviewQueueView items={items} />
       </Section>
     </div>

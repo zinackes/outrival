@@ -6,6 +6,7 @@ import { api, type NotificationSettings } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ListError } from "@/components/outrival/list-error";
+import { CrmDestinations } from "@/components/outrival/crm-destinations";
 import {
   AlertChannelsSheet,
   type AlertChannel,
@@ -74,10 +75,13 @@ export function IntegrationsSettings() {
         />
       </Card>
 
+      <CrmDestinations />
+
       <div className="rounded-lg border border-dashed border-border px-4 py-3.5">
-        <div className="text-[13px] font-medium text-foreground">Coming soon</div>
-        <div className="text-[12px] text-muted-foreground/80 mt-0.5">
-          HubSpot, Salesforce, Linear and more outbound integrations.
+        <div className="text-dense font-medium text-foreground">Coming soon</div>
+        <div className="text-xs text-muted-foreground mt-0.5">
+          Native HubSpot &amp; Salesforce sync — until then, the webhook above pushes to
+          any of them via Zapier/Make.
         </div>
       </div>
     </section>
@@ -104,14 +108,14 @@ function IntegrationRow({
           "flex size-8 shrink-0 items-center justify-center rounded-md border",
           connected
             ? "border-positive/30 bg-positive/[0.08] text-positive"
-            : "border-border bg-background text-muted-foreground/70",
+            : "border-border bg-background text-muted-foreground",
         )}
       >
         {icon}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="text-[13px] font-medium text-foreground">{label}</div>
-        <div className="truncate text-[11px] text-muted-foreground/80 font-mono">
+        <div className="text-dense font-medium text-foreground">{label}</div>
+        <div className="truncate text-meta text-muted-foreground font-mono">
           {detail}
         </div>
       </div>

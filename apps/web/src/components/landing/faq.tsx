@@ -18,7 +18,7 @@ const FAQS: Faq[] = [
   },
   {
     q: "Where is the data stored?",
-    a: "All in the EU. Application server on Hetzner (Germany), PostgreSQL on Railway EU, ClickHouse Cloud EU for time-series, HTML snapshots and screenshots on Cloudflare R2. Nothing transits outside the EU.",
+    a: "All in the EU. Application server on Hetzner (Germany), PostgreSQL on Neon (EU), HTML snapshots and screenshots on Cloudflare R2. Nothing transits outside the EU.",
   },
   {
     q: "Can I connect my own source?",
@@ -38,28 +38,27 @@ export function FAQ() {
   return (
     <section className="py-20 sm:py-28" id="faq">
       <div className="mx-auto w-full max-w-6xl px-6">
-        <div className="grid gap-x-10 gap-y-4 lg:grid-cols-2 lg:items-end">
-          <h2 className="text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">
-            The questions
-            <br />
-            we get asked.
-          </h2>
-          <p className="text-text-muted leading-relaxed">
-            For anything else, write to{" "}
-            <a
-              href="mailto:hello@outrival.io"
-              className="text-primary hover:underline"
-            >
-              hello@outrival.io
-            </a>
-            .
-          </p>
-        </div>
-        <Accordion
-          type="single"
-          collapsible
-          className="mx-auto mt-10 max-w-2xl rounded-md border border-border bg-card text-card-foreground"
-        >
+        <div className="grid gap-x-12 gap-y-8 lg:grid-cols-[1fr_1.6fr]">
+          <div>
+            <h2 className="text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">
+              The questions we get asked.
+            </h2>
+            <p className="mt-4 text-text-muted leading-relaxed">
+              For anything else, write to{" "}
+              <a
+                href="mailto:hello@outrival.io"
+                className="text-primary hover:underline"
+              >
+                hello@outrival.io
+              </a>
+              .
+            </p>
+          </div>
+          <Accordion
+            type="single"
+            collapsible
+            className="rounded-md border border-border bg-card text-card-foreground"
+          >
           {FAQS.map((f, i) => (
             <AccordionItem
               key={i}
@@ -74,7 +73,8 @@ export function FAQ() {
               </AccordionContent>
             </AccordionItem>
           ))}
-        </Accordion>
+          </Accordion>
+        </div>
       </div>
     </section>
   );

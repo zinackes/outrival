@@ -123,7 +123,7 @@ export function ProductsSettings() {
         </p>
       )}
 
-      {err && (
+      {err != null && (
         <p className="text-sm text-destructive">Couldn&apos;t load products.</p>
       )}
 
@@ -142,7 +142,7 @@ export function ProductsSettings() {
                 <Boxes size={14} className="text-muted-foreground shrink-0" />
                 <span className="font-medium truncate">{p.name}</span>
                 {p.isPrimary && (
-                  <Badge variant="secondary" className="text-[10px]">
+                  <Badge variant="secondary" className="text-micro">
                     Primary
                   </Badge>
                 )}

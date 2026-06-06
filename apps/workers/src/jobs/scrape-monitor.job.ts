@@ -5,6 +5,7 @@ import {
   db,
   monitors,
   competitors,
+  organizations,
   snapshots,
   changes,
   volatileLines,
@@ -12,6 +13,7 @@ import {
   forcedRescanLog,
 } from "@outrival/db";
 import {
+  clampFrequencyToPlan,
   computeHash,
   computeNextRun,
   computeTextDiff,
@@ -19,8 +21,10 @@ import {
   getFromR2,
   supportsConditionalFetch,
   detectPricingRepositioning,
+  isReviewSource,
   type PricingStatus,
   type PricingRepositioning,
+  type PlatformProfile,
 } from "@outrival/shared";
 // Pure subpath — pulls only the heuristic, never the groq/anthropic SDKs.
 import { evaluateSignificance } from "@outrival/ai/significance";
@@ -61,7 +65,7 @@ import {
   logScrapeRun,
   insertNumericClaims,
   getLastNumericClaims,
-} from "../lib/clickhouse";
+} from "../lib/analytics";
 
 const SCRAPER_REGION = process.env.SCRAPER_REGION ?? "FR";
 
@@ -227,6 +231,52 @@ async function tryEnableApiCapture(
   }
 }
 
+// patch-31 — min hours between drift-triggered platform re-detections, so a
+// durably-migrated (or simply empty) ATS board re-detects at most once a day
+// instead of every scrape. The periodic 30d re-detection still covers the rest.
+const PLATFORM_DRIFT_COOLDOWN_MS =
+  Number(process.env.PLATFORM_REDETECT_DRIFT_COOLDOWN_HOURS ?? 24) * 3_600_000;
+
+// patch-31 — connector-failure self-heal. The cached profile promised a structured
+// connector (ATS API) but this scrape didn't serve via it (board migrated / API
+// down) → the profile is stale → re-detect (cooldown-bounded, fire-and-forget).
+// Best-effort: a re-detection hiccup must never affect the scrape that succeeded.
+async function maybeRedetectPlatformOnDrift(
+  competitor: {
+    id: string;
+    platformProfile: PlatformProfile | null;
+    platformDetectedAt: Date | null;
+  },
+  monitor: { sourceType: string },
+  result: ScrapeOutcome,
+): Promise<void> {
+  try {
+    const profile = competitor.platformProfile;
+    if (!profile) return;
+    if (
+      competitor.platformDetectedAt &&
+      Date.now() - competitor.platformDetectedAt.getTime() < PLATFORM_DRIFT_COOLDOWN_MS
+    ) {
+      return;
+    }
+    const atsDrift =
+      monitor.sourceType === "jobs" &&
+      Boolean(profile.ats) &&
+      result.metadata.scrapedWith !== "ats-api";
+    if (!atsDrift) return;
+    await tasks.trigger("detect-platform", { competitorId: competitor.id });
+    logger.log("Platform re-detection triggered on connector drift", {
+      competitorId: competitor.id,
+      sourceType: monitor.sourceType,
+    });
+  } catch (err) {
+    logger.warn("Platform drift re-detection skipped (non-fatal)", {
+      competitorId: competitor.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 const InputSchema = z.object({
   monitorId: z.string(),
   force: z.boolean().optional().default(false),
@@ -285,6 +335,16 @@ export const scrapeMonitorJob = task({
     });
     if (!competitor) throw new AbortTaskRunError(`Competitor ${monitor.competitorId} not found`);
 
+    // Clamp the reschedule cadence to the org's current plan: a downgraded org keeps
+    // its monitors but must not keep scraping at a frequency above its tier (e.g. a
+    // realtime monitor on free → weekly). Soft + reversible — we never touch the stored
+    // monitor.frequency, so re-upgrading restores the full cadence on the next run.
+    const org = await db.query.organizations.findFirst({
+      where: eq(organizations.id, competitor.orgId),
+      columns: { plan: true },
+    });
+    const effectiveFrequency = clampFrequencyToPlan(org?.plan ?? "free", monitor.frequency);
+
     if (!input.force) {
       const cutoff = new Date(Date.now() - IDEMPOTENCE_WINDOW_MS);
       const recent = await db.query.snapshots.findFirst({
@@ -334,7 +394,7 @@ export const scrapeMonitorJob = task({
           url: lastSnapshot.resolvedUrl,
         });
         const nextRunAt = computeNextRun(
-          monitor.frequency,
+          effectiveFrequency,
           monitor.lastChangedAt,
           monitor.createdAt,
         );
@@ -404,6 +464,9 @@ export const scrapeMonitorJob = task({
         const scraper = getScraper(monitor.sourceType);
         result = await scraper(competitor.id, scrapeUrl, {
           knownLevel: startLevel,
+          // patch-31 — lets a scraper route via a structured connector (e.g. jobs →
+          // ATS API). Null when never detected / detection disabled ⇒ today's path.
+          platformProfile: competitor.platformProfile,
         });
       }
     } catch (err) {
@@ -438,6 +501,11 @@ export const scrapeMonitorJob = task({
         .where(eq(monitors.id, monitor.id));
     }
 
+    // patch-31 — self-heal the platform profile when a promised structured connector
+    // didn't serve this run (e.g. ATS board migrated). Runs on success regardless of
+    // change/no-change, fire-and-forget, cooldown-bounded.
+    await maybeRedetectPlatformOnDrift(competitor, monitor, result);
+
     // A forced re-scan (manual "Re-scan", admin force-scrape) means "re-process now",
     // so it bypasses the hash dedup like it already bypasses the idempotence window and
     // the 304 pre-flight: even on identical content we insert a snapshot and re-run the
@@ -445,7 +513,7 @@ export const scrapeMonitorJob = task({
     if (!input.force && lastSnapshot && lastSnapshot.contentHash === newHash) {
       logger.log("Hash identical, no change", { lastSnapshotId: lastSnapshot.id });
       const nextRunAt = computeNextRun(
-        monitor.frequency,
+        effectiveFrequency,
         monitor.lastChangedAt,
         monitor.createdAt,
       );
@@ -641,7 +709,7 @@ export const scrapeMonitorJob = task({
 
       // Numeric claims (patch-17): extract the quantified brags from the page
       // copy, compare each to its last observed value, and flag a > 20% move as a
-      // business change. Track every observation in ClickHouse afterwards. All
+      // business change. Track every observation in the analytics tables afterwards. All
       // best-effort — a CH miss just means no claim comparison this run.
       const claimText = [
         homepageStructure.hero.headline ?? "",
@@ -983,27 +1051,30 @@ export const scrapeMonitorJob = task({
       // Reviews are never scraped for the self-competitor (defensive: we also
       // never create review monitors for it) — too early-stage + proxy cost.
       competitor.type !== "self" &&
-      (monitor.sourceType === "g2_reviews" ||
-        monitor.sourceType === "capterra_reviews" ||
-        monitor.sourceType === "appstore_reviews")
+      isReviewSource(monitor.sourceType)
     ) {
-      const reviewSource =
-        monitor.sourceType === "g2_reviews"
-          ? "g2"
-          : monitor.sourceType === "capterra_reviews"
-            ? "capterra"
-            : "appstore";
+      // source_type "<platform>_reviews" → the extract-reviews source value
+      // "<platform>" (g2/capterra/appstore/trustpilot/trustradius/gartner/playstore).
+      const reviewSource = monitor.sourceType.replace(/_reviews$/, "");
       await tasks.trigger("extract-reviews", {
         snapshotId: newSnapshot.id,
         competitorId: competitor.id,
         source: reviewSource,
+      });
+    } else if (competitor.type !== "self" && monitor.sourceType === "reddit") {
+      // patch-32 — Reddit mentions go through extract-reviews for sentiment +
+      // complaint themes (no AggregateRating → null star score, no CH score row).
+      await tasks.trigger("extract-reviews", {
+        snapshotId: newSnapshot.id,
+        competitorId: competitor.id,
+        source: "reddit",
       });
     }
 
     // frequency/createdAt are immutable for the run; lastChangedAt only moves if
     // we detected a change above (captured in changedAt) — no need to refetch.
     const nextRunAt = computeNextRun(
-      monitor.frequency,
+      effectiveFrequency,
       changedAt ?? monitor.lastChangedAt,
       monitor.createdAt,
     );

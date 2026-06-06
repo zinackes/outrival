@@ -20,3 +20,5 @@ export * from "./validation/email";
 export * from "./validation/password";
 export * from "./feedback-token";
 export * from "./feature-flags";
+export * from "./extraction/extractor-spec";
+export * from "./platform/profile";

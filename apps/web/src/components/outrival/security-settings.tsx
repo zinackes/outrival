@@ -112,8 +112,8 @@ export function SecuritySettings() {
             <ShieldCheck size={16} />
           </span>
           <div className="flex-1">
-            <div className="text-[13px] font-medium">Authenticator app</div>
-            <div className="text-[12px] text-muted-foreground/80 font-mono">
+            <div className="text-dense font-medium">Authenticator app</div>
+            <div className="text-xs text-muted-foreground font-mono">
               Status: disabled
             </div>
           </div>
@@ -149,7 +149,7 @@ export function SecuritySettings() {
         {sessions === null ? (
           <FormSkeleton />
         ) : sessions.length === 0 ? (
-          <Card className="px-5 py-6 text-[13px] text-muted-foreground">
+          <Card className="px-5 py-6 text-dense text-muted-foreground">
             No active sessions found.
           </Card>
         ) : (
@@ -162,16 +162,16 @@ export function SecuritySettings() {
                     <Monitor size={14} />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 text-[13px] font-medium">
+                    <div className="flex items-center gap-2 text-dense font-medium">
                       {deviceLabel(s.userAgent)}
                       {current && (
-                        <span className="inline-flex items-center gap-1.5 font-mono text-[10px] text-positive">
+                        <span className="inline-flex items-center gap-1.5 font-mono text-micro text-positive">
                           <span className="size-[7px] rounded-full bg-positive" />
                           This device
                         </span>
                       )}
                     </div>
-                    <div className="text-[11px] text-muted-foreground/80 font-mono" data-ph-mask>
+                    <div className="text-meta text-muted-foreground font-mono" data-ph-mask>
                       {[s.ipAddress, `Signed in ${formatDistanceToNow(new Date(s.createdAt), { addSuffix: true })}`]
                         .filter(Boolean)
                         .join(" · ")}

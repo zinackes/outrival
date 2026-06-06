@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { Sparkles, Check } from "lucide-react";
+import { Sparkles, Check, ArrowRight } from "lucide-react";
 import { api, type Signal } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -112,8 +112,12 @@ export function ActivityFeed() {
             </div>
             <p className="text-sm mb-2">{s.insight}</p>
             {s.soWhat && (
-              <p style={{ color: "var(--accent)" }} className="text-sm mb-2">
-                → {s.soWhat}
+              <p
+                style={{ color: "var(--accent)" }}
+                className="flex gap-1 text-sm mb-2"
+              >
+                <ArrowRight className="size-3.5 mt-0.5 shrink-0" />
+                {s.soWhat}
               </p>
             )}
             {s.recommendedAction && (

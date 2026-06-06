@@ -11,7 +11,7 @@ import {
 } from "@outrival/db";
 import { computeHash, uploadToR2 } from "@outrival/shared";
 import type { Classification } from "@outrival/ai";
-import { insertTechStackHistory } from "../lib/clickhouse";
+import { insertTechStackHistory } from "../lib/analytics";
 
 // Independent of the homepage pipeline (patch-18): native fetch + cheerio only,
 // no crawlee/playwright. Lazy subpath import keeps the (light) module out of the

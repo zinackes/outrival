@@ -78,11 +78,15 @@ export function toastApiError(
   opts?: { title?: string; onRetry?: () => void },
 ): void {
   const cfg = errorConfig(err);
+  const showRetry = cfg.action?.type === "retry" && Boolean(opts?.onRetry);
   toast.error(opts?.title ?? cfg.title, {
     description: cfg.description,
+    // An error carrying a Retry action must outlive the default 5s — the user
+    // reads the description, then decides. Plain errors keep the default.
+    duration: showRetry ? 12000 : undefined,
     action:
-      cfg.action?.type === "retry" && opts?.onRetry
-        ? { label: cfg.action.label, onClick: opts.onRetry }
+      showRetry && opts?.onRetry
+        ? { label: cfg.action!.label, onClick: opts.onRetry }
         : undefined,
   });
 }

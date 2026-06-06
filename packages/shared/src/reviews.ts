@@ -5,6 +5,14 @@ export const REVIEW_SOURCE_TYPES = [
   "g2_reviews",
   "capterra_reviews",
   "appstore_reviews",
+  // patch-32 — multi-platform review coverage. All web review sites with a
+  // schema.org AggregateRating (structured-first score) + AI verbatims, scraped
+  // like g2/capterra via the cascade. Play Store has no Apple-style RSS, so it
+  // goes through the same generic page path (not the appstore RSS path).
+  "trustpilot_reviews",
+  "trustradius_reviews",
+  "gartner_reviews",
+  "playstore_reviews",
 ] as const;
 export type ReviewSourceType = (typeof REVIEW_SOURCE_TYPES)[number];
 
@@ -22,6 +30,10 @@ const REVIEW_SOURCE_BRAND: Record<ReviewSourceType, string> = {
   g2_reviews: "g2",
   capterra_reviews: "capterra",
   appstore_reviews: "apple",
+  trustpilot_reviews: "trustpilot",
+  trustradius_reviews: "trustradius",
+  gartner_reviews: "gartner",
+  playstore_reviews: "google", // play.google.com → registrable brand "google"
 };
 
 export type ReviewUrlValidation =
@@ -50,7 +62,22 @@ export function validateReviewUrl(source: ReviewSourceType, raw: string): Review
   if (source === "appstore_reviews" && !parseAppStoreUrl(parsed.toString())) {
     return { ok: false, error: "appstore_id_missing" };
   }
+  if (source === "playstore_reviews" && !parsePlayStoreUrl(parsed.toString())) {
+    return { ok: false, error: "playstore_id_missing" };
+  }
   return { ok: true, url: parsed.toString() };
+}
+
+/** Extract the package id from a play.google.com app URL (?id=com.acme.app). */
+export function parsePlayStoreUrl(raw: string): { appId: string } | null {
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    return null;
+  }
+  const id = u.searchParams.get("id");
+  return id && /^[a-zA-Z0-9._]+$/.test(id) ? { appId: id } : null;
 }
 
 export interface AppStoreRef {

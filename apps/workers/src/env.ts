@@ -16,8 +16,6 @@ const EnvSchema = z.object({
   // present so a malformed value is caught early.
   TRIGGER_SECRET_KEY: z.string().optional(),
   TRIGGER_PROJECT_ID: z.string().optional(),
-  CLICKHOUSE_URL: z.string().url().optional(),
-  CLICKHOUSE_PASSWORD: z.string().optional(),
   GROQ_API_KEY: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),

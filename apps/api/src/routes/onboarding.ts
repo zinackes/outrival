@@ -1,11 +1,13 @@
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
-import { and, eq } from "drizzle-orm";
+import { and, eq, count, inArray, isNull } from "drizzle-orm";
 import {
   organizations,
   competitors,
   monitors,
+  signals,
+  orgNotificationPreferences,
   competitorCandidates,
   onboardingSessions,
   type SelfProfile,
@@ -189,6 +191,46 @@ onboardingRouter.get("/status", async (c) => {
     profile: org.productProfile,
     plan: org.plan,
   });
+});
+
+// Activation checklist (Phase B) — booleans derived from existing data, no new
+// schema. Drives the dismissible checklist card on the overview.
+onboardingRouter.get("/checklist", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const comps = await db
+    .select({ id: competitors.id, type: competitors.type })
+    .from(competitors)
+    .where(and(eq(competitors.orgId, orgId), isNull(competitors.deletedAt)));
+  const hasSelf = comps.some((x) => x.type === "self");
+  const competitorCount = comps.filter((x) => x.type !== "self").length;
+  const competitorIds = comps.map((x) => x.id);
+
+  const [monitorRows, signalRows, prefRows] = await Promise.all([
+    competitorIds.length
+      ? db
+          .select({ v: count() })
+          .from(monitors)
+          .where(inArray(monitors.competitorId, competitorIds))
+      : Promise.resolve([{ v: 0 }]),
+    db.select({ v: count() }).from(signals).where(eq(signals.orgId, orgId)),
+    db
+      .select({ id: orgNotificationPreferences.id })
+      .from(orgNotificationPreferences)
+      .where(eq(orgNotificationPreferences.orgId, orgId))
+      .limit(1),
+  ]);
+
+  const steps = [
+    { key: "product", done: hasSelf },
+    { key: "competitor", done: competitorCount > 0 },
+    { key: "monitoring", done: (monitorRows[0]?.v ?? 0) > 0 },
+    { key: "notifications", done: prefRows.length > 0 },
+    { key: "signal", done: (signalRows[0]?.v ?? 0) > 0 },
+  ];
+
+  return c.json({ steps, complete: steps.every((s) => s.done) });
 });
 
 // ── Mode: live (existing flow, renamed from /analyze) ──────────────────────

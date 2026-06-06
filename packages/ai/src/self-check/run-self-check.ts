@@ -84,9 +84,13 @@ export function decideIfSelfCheck(
   if (confidence === "low") {
     return { run: true, reason: "low_confidence" };
   }
+  // Random sampling spends a full second model call purely to measure the global
+  // hallucination rate. Off by default (cost) — the useful safety nets (battle
+  // cards, low-confidence) above still run. Set SELF_CHECK_SAMPLING_RATE > 0 to
+  // re-enable the metric.
   const samplingRate = Number(process.env.SELF_CHECK_SAMPLING_RATE);
-  const rate = Number.isFinite(samplingRate) && samplingRate >= 0 ? samplingRate : 0.1;
-  if (Math.random() < rate) {
+  const rate = Number.isFinite(samplingRate) && samplingRate >= 0 ? samplingRate : 0;
+  if (rate > 0 && Math.random() < rate) {
     return { run: true, reason: "sampling" };
   }
   return { run: false };

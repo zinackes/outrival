@@ -33,9 +33,8 @@ Mise à jour à chaque phase / patch.
 | UI                | Tailwind v4 + shadcn/ui new-york         | Itération rapide, composants cohérents |
 | API               | Hono sur Bun                             | 3-4× plus rapide que NestJS pour CRUD + triggers |
 | Auth              | Better Auth v1.6                         | Self-hosted, flexible, bon DX |
-| ORM               | Drizzle ORM                              | Type-safe, léger, Postgres + ClickHouse |
-| DB primaire       | PostgreSQL (Railway)                     | Connexions persistantes, même réseau que l'API |
-| DB analytics      | ClickHouse Cloud                         | Time-series 100× plus rapide que Postgres |
+| ORM               | Drizzle ORM                              | Type-safe, léger, Postgres |
+| DB                | PostgreSQL (Neon)                        | Serverless, scale-to-zero, branching ; relationnel + time-series/analytics dans une seule base |
 | Stockage binaire  | Cloudflare R2                            | Quasi-gratuit pour snapshots HTML/screenshots/PDFs |
 | Jobs              | **Trigger.dev v4** Cloud                 | Durable execution, retries, dashboard, schedules |
 | Scraping          | Patchright (stealth Chromium) + fetch    | Drop-in Playwright, patches CDP/webdriver — passe Cloudflare au niveau navigateur (patch-20) |
@@ -59,11 +58,9 @@ Hetzner CX32 (4 vCPU / 8GB RAM / 80GB SSD) — €8/mois
     ├── @outrival/api    → api.outrival.io    (:3001) Hono + Bun
     └── @outrival/workers (runner Trigger.dev local — dev only)
 
-Railway EU — ~$10/mois
-└── PostgreSQL (base de données principale)
-
-ClickHouse Cloud (EU) — €0 free tier → €20/mois à l'échelle
-└── Time-series (pricing_history, job_counts, review_scores, signal_feed)
+Neon (EU) — €0 free tier → ~$19/mois (Launch) à l'échelle
+└── PostgreSQL — relationnel + time-series/analytics (ex-ClickHouse) dans une
+    seule base. Connexion via le pooler (`-pooler`, ?sslmode=require).
 
 Cloudflare R2 — ~€1/mois
 └── Snapshots HTML, screenshots, PDFs battle cards
@@ -131,7 +128,10 @@ notifications          id, org_id, type (signal|new_competitor), title, body,
                        link_url, is_read, created_at
 
 job_postings           id, competitor_id, title, department, location, url,
-                       detected_at, closed_at, is_active
+                       seniority, posted_at, salary_min, salary_max,
+                       salary_currency (patch-32 — cross-ATS hiring enrichment,
+                       populated on the structured ATS API path, null on the
+                       LLM/careers fallback), detected_at, closed_at, is_active
 
 reviews                id, competitor_id, source (g2|capterra|appstore|playstore),
                        score, content, author (praise|complaint|<name>),
@@ -200,6 +200,20 @@ forced_rescan_log      id, user_id, org_id, monitor_id, task_id, triggered_at,
                        result_captured_at, had_new_signal — patch-27, audit/analytics des
                        re-scans forcés user. Limite/jour/tier comptée ici (par user) ;
                        had_new_signal stampé par le worker (change trouvé ou non)
+parser_extractors      id, domain (host www-stripped), source_type, spec (jsonb —
+                       ExtractorSpec : sélecteurs CSS + transforms whitelistés),
+                       version, heal_count, consecutive_failures, last_validated_at,
+                       last_heal_attempt_at — patch-30, cache de parser déterministe
+                       par (domain, source_type) ; généré par self-heal IA, rejoué
+                       sans IA. Clé domain (réutilisable cross-org). 📄 docs/staged-extraction.md
+
+competitors            + platform_profile (jsonb — patch-31, PlatformProfile :
+                       framework/cms/ats/pricingWidget/statusPage/changelog/analytics[]
+                       + confidence + evidence par champ) + platform_detected_at
+                       (cadence re-détection, comme tech_stack_scraped_at). Détection
+                       pure AI-free (Wappalyzer-format maison + signatures métier ID-bearing) ;
+                       lu à chaque scrape pour router une source vers son connecteur
+                       structuré (jobs→API ATS direct). 📄 docs/platform-detection.md
 ```
 
 ### Enums Postgres
@@ -208,11 +222,24 @@ plan              free | starter | pro | business
 billing_period    monthly | yearly
 source_type       homepage | pricing | blog | changelog | jobs |
                   g2_reviews | capterra_reviews | appstore_reviews |
-                  linkedin | twitter | github_repo | tech_stack
-                  (tech_stack = ancrage infra patch-18, monitor isActive=false,
+                  trustpilot_reviews | trustradius_reviews | gartner_reviews |
+                  playstore_reviews (patch-32 — plateformes review additionnelles,
+                   enable on-demand pro+, structured-first AggregateRating + verbatims IA,
+                   même chemin que g2/capterra ; Gartner best-effort/anti-bot) | reddit
+                  (patch-32 — mention tracking : PAS une page produit notée, recherché par
+                   marque via l'API JSON publique Reddit → sentiment + thèmes de plaintes par
+                   extract-reviews ; pas de score étoilé → aucune ligne CH review_scores) |
+                  linkedin | twitter | github_repo | tech_stack | status | sitemap
+                  (status = patch-31, page de statut concurrent Statuspage/Instatus
+                   via le connecteur JSON pur ; enable on-demand starter+, lazy.
+                   tech_stack = ancrage infra patch-18, monitor isActive=false,
                    jamais exposé dans la liste Sources — voir pipeline. Le tech
                    stack détecté est lui surfacé en lecture seule via un tab dédié
-                   sur la fiche competitor.)
+                   sur la fiche competitor.
+                   sitemap = patch-32, ancre de découverte interne. Comme tech_stack,
+                   jamais user-selectable (hors gating/enable/tabs) ; semée weekly à
+                   la création, isActive=true, scrapée via getScraper. Le scraper émet
+                   la liste d'URLs triée → le diff générique surface les pages neuves.)
 frequency         realtime | daily | weekly
 signal_severity   low | medium | high | critical
 signal_category   pricing | product | hiring | reviews | content | funding
@@ -230,35 +257,48 @@ channel_mode      email_immediate | digest_daily | digest_weekly | in_app_only |
 product_status    active | paused | archived   (patch-28 — SKU ; archivage soft)
 ```
 
-## Schéma ClickHouse (time-series, ENGINE = MergeTree)
+## Schéma analytics / time-series (Postgres, append-only — ex-ClickHouse)
+
+> Migré de ClickHouse vers Postgres : ces tables vivent dans la **même base Neon**
+> que le relationnel (`packages/db/src/schema/analytics.ts`). Append-only, sans FK
+> (best-effort logging), index sur `(competitor_id, recorded_at)` / `(recorded_at)`.
 
 ```sql
 pricing_history     competitor_id, plan_name, price, currency, billing_period, recorded_at
 job_counts          competitor_id, department, count, recorded_at
-review_scores       competitor_id, source, score, review_count, sentiment_score, recorded_at
+review_scores       competitor_id, source, score, review_count, sentiment_score,
+                    sub_ease_of_use, sub_support, sub_features, sub_value (Nullable —
+                    patch-32 sous-notes /5), recorded_at
 signal_feed         org_id, competitor_id, category, severity, recorded_at
 scrape_runs         monitor_id, competitor_id, source_type, status (success|no_change|
                     failed), level (0-4 cascade — patch-20), attempts, failure_reason,
                     duration_ms, recorded_at  — ops (patch-02/20)
 ai_runs             task (classify|classify_structured|narrate_change|insight|digest|
                     battle_card|extract_pricing|extract_jobs|extract_reviews|
-                    extract_self_profile|source_summary|competitor_summary|batch_summary|…),
-                    provider, model,
+                    extract_self_profile|generate_extractor|source_summary|
+                    competitor_summary|batch_summary|…), provider, model,
                     status (success|parse_failed|error), recorded_at      — ops (patch-02)
+extraction_runs     competitor_id, source_type, domain, resolution (structured|cache|
+                    heal|ai_fallback), extractor_version, ai_used (0/1), recorded_at
+                    — patch-30, % de scrapes résolus par étage = arbitre du coût IA
 numeric_claims      competitor_id, monitor_id, pattern (user_count|uptime|scale|…),
                     unit, context, value, raw_text, observed_at          — patch-17
 tech_stack_history  competitor_id, tech_id, event (appeared|disappeared),
                     importance, recorded_at                              — patch-18
+platform_detection_runs  competitor_id, domain, stage (a_static|b_browser),
+                    framework, cms, ats, pricing_widget, status_page, changelog,
+                    techs_found, duration_ms, recorded_at — patch-31, % résolu step A
+                    (sans navigateur) vs step B + connecteurs routés
 ```
 
 **Pattern d'accès** :
-- Client partagé via `packages/db/src/clickhouse.ts` (proxy lazy `ch`)
-- Inserts depuis workers via `apps/workers/src/lib/clickhouse.ts` (best-effort + logger)
-- Queries depuis API via `apps/api/src/lib/clickhouse-safe.ts` (return `[]` si CH down,
-  bordé par `request_timeout` 8s + race 10s → jamais de hang sur le handler si CH lent/froid)
-- Service maintenu chaud par le cron `keep-clickhouse-warm` (SELECT 1 toutes les 5 min)
-  pour éviter le cold-start ~30s du free tier qui faisait ramer les tabs pricing/hiring/reviews
-- Tables créées via `pnpm --filter @outrival/db ch:setup` (one-shot post-provisioning)
+- Inserts depuis workers via `apps/workers/src/lib/analytics.ts` (Drizzle, best-effort
+  + logger — une erreur de logging ne casse jamais un scrape/job IA)
+- Queries depuis API via `apps/api/src/lib/analytics-safe.ts` — `analyticsQuery(sql)`
+  best-effort (`[]` en cas d'erreur). SQL Postgres standard (`count(*) filter`,
+  `distinct on`, `make_interval`, window functions). Plus de race/timeout cold-start :
+  c'est la même base que le relationnel
+- Tables gérées par Drizzle (`pnpm db:push`) comme le reste du schéma — plus de `ch:setup`
 
 ## Structure R2
 ```
@@ -355,16 +395,34 @@ carte (état live uniquement).
   └─ diff :
        homepage + 2 structures → diff STRUCTURÉ (diffHomepages) ; enrichissements patch-17
          (poussés dans structuredChanges) : visual_redesign (pHash), numeric_claim_changed
-         (claims → ClickHouse numeric_claims), customer_logo_+/- , testimonial_+/- (stable 6
+         (claims → Postgres numeric_claims), customer_logo_+/- , testimonial_+/- (stable 6
          scrapes, carousel-safe) ; apprentissage volatile (volatile_lines) filtre la churn ;
          SCORE DE PERTINENCE filtre < 0.5 (silence) ; si [] / tout silencé → aucun change/signal ;
          sinon insert change (diff_type="structured") → classify-change
        sinon / homepage sans structure précédente (pre-patch) → diff lexical (fallback)
        si change : trigger classify-change
-  └─ routing par sourceType :
-       pricing → extract-pricing → ClickHouse pricing_history
-       jobs    → extract-jobs    → diff actives + ClickHouse job_counts
-       g2/capt → extract-reviews → praises/complaints + ClickHouse review_scores
+  └─ routing par sourceType (extraction étagée patch-30 — l'IA passe du chemin chaud au
+       chemin froid : structured-first JSON-LD → cache parser déterministe (parser_extractors)
+       → self-heal IA (régénère le parser, rare) → extraction IA directe = PLANCHER ; chaque
+       étage logué dans extraction_runs ; STAGED_EXTRACTION_ENABLED=false → plancher seul) :
+       pricing → extract-pricing → Postgres pricing_history   (pipeline complet)
+                  (patch-32 : gate plausible = ratio mensuel↔annuel ; un JSON-LD mé-parsé
+                   retombe sur l'IA. URL pricing auto-découverte depuis la home nav/footer)
+       jobs    → extract-jobs    → diff actives + Postgres job_counts
+                  (structured-first = ATS API JSON island puis JobPosting JSON-LD ; pipeline complet.
+                   patch-32 : 7 ATS — Greenhouse/Lever/Ashby/SmartRecruiters/Recruitee/Workable +
+                   Personio (feed XML) ; schéma cross-ATS enrichi séniorité/datePost/salaire normalisé)
+       g2/capt → extract-reviews → praises/complaints + Postgres review_scores
+                  (structured-first scores via AggregateRating ; résumé qualitatif reste IA.
+                   patch-32 : l'extraction IA renvoie en plus les sous-notes /5
+                   ease_of_use/support/features/value → CH review_scores (colonnes Nullable)
+                   + des THÈMES de plaintes clusterisés (IA-juge, même appel) → résumé)
+       changelog → diff générique (patch-32 : feed-first — si la page expose un RSS/Atom,
+                   on parse le feed → snapshot déterministe trié → le diff détecte les
+                   nouvelles entrées de release ; sinon change-detection HTML, comportement actuel)
+       sitemap → diff générique (patch-32 : scraper résout robots.txt Sitemap:/paths
+                   conventionnels, walk index + .gz, émet la liste d'URLs triée → le diff
+                   surface les pages neuves/retirées ; catégorisation par path. Interne, weekly)
   └─ reschedule : computeNextRun(frequency, lastChangedAt, createdAt)
        (multiplicateur ×1 / ×2 / ×3 / ×4 selon staleness — plafond MAX_INTERVAL)
 
@@ -379,7 +437,7 @@ carte (état live uniquement).
   └─ patch-16 : si change structuré + severity ≥ HOMEPAGE_NARRATIVE_MIN_SEVERITY (medium)
        → narrate_change (70b, non caché, best-effort) → signals.narrative
   └─ insert signal (idempotent par changeId) + copie change.relevance_score (patch-26)
-  └─ insert ClickHouse signal_feed (best-effort)
+  └─ insert Postgres signal_feed (best-effort)
   └─ MODÉRATION (patch-26) : decideDispatch(orgId, {severity, relevanceScore, …}) applique
        5 couches ORG-scoped dans l'ordre — (1) seuil pertinence (skip si pas de score) ,
        (2) canal par severity, (3) quiet hours, (4) frequency cap ; critical bypasse TOUT.
@@ -432,10 +490,6 @@ carte (état live uniquement).
   └─ Groq battle card 6 sections → upsert content
   └─ Playwright headless → page.pdf({format:"A4"}) → R2
 
-[cron */5 min] keep-clickhouse-warm
-  └─ SELECT 1 best-effort → empêche le cold-start du free tier CH
-     (sinon 1ère lecture pricing/hiring/reviews ~30s)
-
 [cron */6h] ops-health-check (patch-02)
   └─ seuils conservateurs sur scrape_runs / ai_runs / signal_feed (gardes
      d'échantillon min anti alert-fatigue) → 1 message OPS_SLACK_WEBHOOK_URL si dégradé
@@ -466,7 +520,7 @@ carte (état live uniquement).
 ```
 
 > **Observabilité ops (patch-02)** : chaque scrape (`scrape_runs`) et chaque appel IA
-> (`ai_runs`) est loggé best-effort en ClickHouse par les **jobs** (la tâche `@outrival/ai`
+> (`ai_runs`) est loggé best-effort en Postgres par les **jobs** (la tâche `@outrival/ai`
 > reste pure). Le logging ne casse jamais le scrape/l'IA (try/catch silencieux). Le
 > dashboard interne `/admin` (Next route group `(admin)`) est gaté par l'allowlist
 > `ADMIN_EMAILS` (≠ role owner) : santé scraping/IA, coût (estimations), feedbacks,
@@ -477,7 +531,7 @@ carte (état live uniquement).
 > `loggedAi` — avant ils ne loggaient rien, donc un rate-limit Groq y était silencieux.
 >
 > **Banner IA dégradée (user-facing)** : `GET /api/system/ai-status` (auth, tous users)
-> lit les `ai_runs` status=`error` des 15 dernières min via `clickhouse-safe` (≥2 →
+> lit les `ai_runs` status=`error` des 15 dernières min via `analytics-safe` (≥2 →
 > dégradé, sinon best-effort `{degraded:false}` si CH down). Le `<AiStatusBanner>` du
 > dashboard layout poll cet endpoint (60s) et affiche « AI insights are delayed » quand
 > dégradé ; dismiss persiste l'`incident key` (`since`) en localStorage → un nouvel
@@ -532,9 +586,7 @@ Route Hono `GET /api/notifications/stream` (auth required) :
 
 ```bash
 # DB
-DATABASE_URL=                # PostgreSQL Railway
-CLICKHOUSE_URL=              # ClickHouse Cloud HTTP endpoint (best-effort)
-CLICKHOUSE_PASSWORD=
+DATABASE_URL=                # PostgreSQL Neon (pooled endpoint, ?sslmode=require)
 
 # Storage
 R2_ACCOUNT_ID=
@@ -631,10 +683,10 @@ STALENESS_THRESHOLDS_REVIEWS=21,45,90
 STALENESS_THRESHOLDS_JOBS=14,30,60
 STALENESS_THRESHOLDS_BLOG=30,60,120
 STALENESS_THRESHOLDS_HOMEPAGE=14,30,60
-FORCED_RESCAN_LIMIT_FREE=1             # re-scans forcés/jour/user par tier
+FORCED_RESCAN_LIMIT_FREE=1             # override des défauts PLAN_LIMITS (re-scans forcés/jour/user)
 FORCED_RESCAN_LIMIT_STARTER=5
 FORCED_RESCAN_LIMIT_PRO=20
-FORCED_RESCAN_LIMIT_BUSINESS=999       # ~illimité
+FORCED_RESCAN_LIMIT_BUSINESS=100       # tier-limits 2026-06-04 : vrai cap, plus « illimité »
 SILENT_MONITOR_ALERT_THRESHOLD_DAYS=60 # alerte ops + user si source sans signal depuis Nj
 
 # Self-product multi-SKU (patch-28)
@@ -642,6 +694,18 @@ PRODUCT_LIMIT_FREE=1                    # max products (SKUs) actifs par org / t
 PRODUCT_LIMIT_STARTER=2
 PRODUCT_LIMIT_PRO=5
 PRODUCT_LIMIT_BUSINESS=999
+
+# Staged extraction pipeline (patch-30)
+STAGED_EXTRACTION_ENABLED=true         # false → bypass des étages, comportement actuel exact (plancher)
+EXTRACTOR_HEAL_COOLDOWN_HOURS=12       # min heures entre 2 self-heal sur un extracteur cassé (anti-thrash)
+PRUNE_HTML_MAX_CHARS=40000             # cap de l'HTML élagué envoyé au générateur de sélecteurs
+
+# Platform auto-detection (patch-31)
+PLATFORM_DETECTION_ENABLED=true        # false → pas de profil écrit, routage = comportement actuel exact
+PLATFORM_REDETECT_INTERVAL_DAYS=30     # cadence re-détection périodique par competitor
+PLATFORM_DNS_ENABLED=true              # résolution CNAME (signal 6, node:dns) ; false → skip
+PLATFORM_STEP_B_ENABLED=true           # autorise le fallback navigateur (api-capture) si step A maigre
+PLATFORM_REDETECT_DRIFT_COOLDOWN_HOURS=24  # min heures entre re-détections sur drift connecteur (self-heal)
 
 # Billing
 STRIPE_SECRET_KEY=
@@ -660,6 +724,102 @@ WEB_URL=                     # https://outrival.io (callbacks Stripe)
 
 ## Décisions architecturales clés
 
+- **Page Activity user-facing (feature ad-hoc)** — `/dashboard/activity` expose le
+  travail de scraping fait pour l'org (transparence/rétention), distinct du feed
+  Signals. Route `apps/api/src/routes/activity.ts` (`/api/activity`) : `/health`
+  (relationnel `monitors ⋈ competitors` org-scoped → dernier/prochain scan + statut
+  dérivé `ok|failing|paused|unscrapable`) et `/timeline` (`scrape_runs` filtré sur
+  les competitors de l'org via `analyticsQuery` best-effort, incl. no-change/échecs =
+  le travail invisible). Échecs adoucis côté user (pas de `blocked_403`/level brut),
+  sources internes (`tech_stack`/`sitemap`) exclues, tous tiers. 0 migration, 0 IA.
+- **Couverture des sources élargie (patch-32)** — étend la couverture par source
+  en s'appuyant sur la détection plateforme (patch-31) + le pipeline étagé (patch-30),
+  sans toucher la cascade de scraping. **HIRING** : 7 connecteurs ATS no-auth (ajout
+  de Personio via son feed XML public) + schéma d'offre **cross-ATS enrichi**
+  (séniorité canonique, datePost, salaire normalisé min/max/devise — `normalizeSalary`
+  pur+testé) ; l'enrichissement voyage dans le JSON island et se persiste sur
+  `job_postings` (5 colonnes, null sur le fallback LLM). **PRICING** : JSON-LD-first et
+  auto-découverte d'URL existaient déjà (patch-30) ; ajout d'un gate `plausible` de
+  **validation du ratio mensuel↔annuel** (un structured/cache mé-parsé retombe sur l'IA).
+  **SIGNALS vague 1** : (a) **changelog feed-first** — scraper dédié qui détecte un RSS/
+  Atom (link advertised → paths conventionnels), parse le feed et synthétise un snapshot
+  déterministe trié → le diff générique détecte les nouvelles entrées de release ; sinon
+  change-detection HTML (comportement actuel). (b) **sitemap-diff** — nouvelle source
+  interne `sitemap` (non user-selectable, comme tech_stack), semée weekly à la création ;
+  le scraper résout robots.txt/paths, walk index + `.gz`, émet la liste d'URLs triée → le
+  diff surface pages neuves/retirées, catégorisées par path. Découpage dep-rules : parsers
+  purs (RSS/Atom, sitemap, ratio) AI-free dans `scrapers` (subpaths `/feeds`, `/sitemap`,
+  `/pricing`), orchestration dans `workers`/scrapers, 1 enum DB + 5 colonnes `job_postings`
+  (migration stagée, `db:push` manuel). **REVIEWS** (approfondi, pas de nouvelle source) :
+  l'extraction IA renvoie en plus les **sous-notes** /5 (ease_of_use/support/features/value
+  → CH review_scores, colonnes Nullable additives + ALTER idempotent) et des **thèmes de
+  plaintes** clusterisés (IA-juge, même appel → zéro coût additionnel) surfacés dans le
+  résumé. **HOMEPAGE** : le triple-capture (texte + screenshot/pHash + meta/OG) et le diff
+  par régions (hero/CTA/sections) existaient déjà (patch-16/17) ; patch-32 ferme le seul gap
+  — `og:image`/`og:type` capturés mais non diffés → désormais `meta_changed` (rebrand/identité
+  visuelle). Reviews **multi-plateforme** : 4 nouvelles sources review (`trustpilot_reviews`,
+  `trustradius_reviews`, `gartner_reviews`, `playstore_reviews`) enable-on-demand pro+, URL
+  explicite brand-locked (`validateReviewUrl`, Play Store id-checké), scrapers minces (factory,
+  niveau cascade par posture anti-bot : Trustpilot/TrustRadius L2, Gartner L3 best-effort, Play
+  Store L1 render), routées via `isReviewSource` → extract-reviews (structured-first
+  AggregateRating + verbatims IA, même chemin que g2/capterra ; Play Store ≠ RSS Apple).
+  **Reddit** (source `reddit`, modèle de mentions ≠ page notée) : recherché par marque via l'API
+  JSON publique Reddit (pur fetch, pas de navigateur), snapshot déterministe des mentions → le diff
+  lexical surface les nouvelles mentions (buzz) ET extract-reviews juge sentiment + thèmes de
+  plaintes. Pas de score étoilé → le worker SKIP la ligne CH review_scores quand `average_score`
+  est null (pas de 0/5 fictif). Tests : 117 (ATS+Personio, salaire/séniorité, ratio pricing,
+  RSS/Atom, sitemap index/gz/catégorisation, island round-trip, reviews schema, og:image diff,
+  multi-platform review URL validation + SSRF, Reddit parse/déterminisme).
+- **Pipeline d'extraction étagé (patch-30)** — l'IA quitte le chemin chaud (chaque
+  scrape) pour le chemin froid (création + réparations rares d'un extracteur).
+  4 étages, du moins cher au plus cher, le dernier = comportement actuel (plancher,
+  jamais de régression ; kill-switch `STAGED_EXTRACTION_ENABLED`) : **(1) structured-first**
+  (schema.org JSON-LD/OpenGraph, 0 IA — `@outrival/scrapers/structured-data`) →
+  **(2) cache de parser** déterministe par `(domain, source_type)` (`parser_extractors`,
+  sélecteurs CSS + transforms whitelistés rejoués par `replayExtractor`, 0 IA) →
+  **(3) self-heal IA** (régénère le parser sur cache miss / validation cassée —
+  `generateExtractor`, le SEUL nouvel appel IA, tier smart, cooldown anti-thrash) →
+  **(4) extraction IA directe** (le plancher). Validation = le schéma Zod de la source
+  (`PricingSchema`/`JobsSchema`) + plausibilité, à chaque étage. Découpage dep-rules :
+  replay + structured-first dans `scrapers` (cheerio pur, AI-free), génération dans
+  `ai`, type `ExtractorSpec` dans `shared`, orchestration `stagedExtract` dans `workers`.
+  Plein gain sur **pricing + jobs** ; **reviews** = structured-first scores
+  (`AggregateRating`) mais le résumé qualitatif reste génératif. Métrique
+  `extraction_runs` (% par étage) = arbitre direct du coût IA, exposée dans
+  `/admin/scraping`. Pur worker/scrapers/ai + 1 table PG + 1 table CH ; aucun impact
+  sur la cascade de scraping. 📄 docs/staged-extraction.md (existe déjà).
+- **Détection auto de plateforme (patch-31)** — porte d'entrée du structured-first :
+  détecte la stack de chaque concurrent **et extrait l'identifiant** (token ATS,
+  host status-page, feed RSS), cache un `PlatformProfile` sur `competitors.platform_profile`,
+  et route chaque source vers son connecteur structuré. **Pur pattern-matching, 0 IA.**
+  Moteur compatible-**Wappalyzer** (le dataset `enthec/webappanalyzer` est GPL-3.0 →
+  NON vendorisé ; matcher maison `@outrival/scrapers/platform` + **dataset maison** au
+  même format) + signatures métier ID-bearing (ATS via `detectAtsBoard`, Stripe
+  pricing-table, Statuspage/Instatus, changelog Canny/Headway/Beamer/RSS) + 6 signaux
+  (headers/HTML/scripts/cookies/JS globals/**CNAME**). Pipeline cheap→expensive : step A
+  sans navigateur, step B (réutilise l'api-capture patch-23) seulement si A maigre +
+  SPA quasi-vide. Détection à l'ajout du competitor + périodique 30j (`detect-platform`
+  / `schedule-platform-detection`) + **self-heal sur drift connecteur** (profil promet
+  un ATS mais le scrape n'a pas servi via `ats-api` → re-détecte, cooldown). Routage :
+  `jobs` lit `profile.ats` → API ATS directe **sans render** ; `status` = nouvelle
+  source (Statuspage `/api/v2/summary.json`, starter+) ; changelog→RSS / pricing-widget
+  = différés (notés). Kill-switch `PLATFORM_DETECTION_ENABLED` → routage = exactement
+  aujourd'hui. Métrique CH `platform_detection_runs` (% step A vs B). Dep-rules :
+  détection pure dans `scrapers`, type `PlatformProfile` dans `shared`, orchestration
+  dans `workers`, 1 colonne jsonb + 1 colonne cadence PG + 1 table CH. 📄 docs/platform-detection.md
+- **Limites par tier centralisées (2026-06-04)** — `PLAN_LIMITS` (`@outrival/shared`)
+  est l'unique source de vérité de toute limite par tier (`Plan` *est* le tier ; pas de
+  table `TIER_LIMITS` parallèle). Ajout des dimensions chiffrées de la grille décidée
+  (competitors business **50**, forcedRescans business **100**, battleCardsPerDay,
+  discoveriesPerMonth, usersPerOrg, historyRetentionDays, scrapeFrequency, features
+  fullMode/crmIntegrations). Enforcement des caps période via `assertWithinLimit(orgId,
+  dimension)` + `tierLimitBody` (erreur structurée 429, jamais 500 → prompt d'upgrade
+  contextuel) : **battle cards/jour** (ouvertes aux 4 tiers, compteur `battle_cards`),
+  **discoveries/mois** (compteur sur `discovery_runs`, `/detect` on-demand seulement).
+  Competitors/products/forced-rescans gardent leur enforcement existant, désormais lus
+  depuis `PLAN_LIMITS`. Reste différé (valeur dans la source de vérité, gate TODO) :
+  purge `historyRetentionDays`, `usersPerOrg` (Phase 10), `daily_priority`,
+  `crmIntegrations`, fair-use anti-abus. 📄 docs/tier-limits.md (existe déjà).
 - **Sub-sidebar contextuelle Variante 1 (patch-29)** — sur `/dashboard/settings/*`, la
   sidebar settings **remplace** la rail principale (pattern Vercel/Stripe) au lieu d'empiler
   une 2e colonne nav. Implémenté dans `DashboardShell` (client) par un swap `usePathname`
@@ -674,7 +834,7 @@ WEB_URL=                     # https://outrival.io (callbacks Stripe)
   de l'overview. Pur frontend/nav (1 endpoint liste, aucun schéma DB).
 - **Multi-SKU non-destructif (patch-28)** — une org gère 1+ `products`. Plutôt que
   de remplacer le self-competitor (`competitors.type="self"`, tissé dans ~11 jobs +
-  clés ClickHouse + R2), un `product` est un **wrapper fin** qui le référence
+  clés analytics + R2), un `product` est un **wrapper fin** qui le référence
   (`products.selfCompetitorId`, 1:1) : le self-competitor reste l'ancre de monitoring,
   donc le pipeline scrape/extraction/CH/R2 est **intouché**. Multi-product = N
   self-competitors. Concurrents au niveau Org, liés via `product_competitors`
@@ -704,8 +864,11 @@ WEB_URL=                     # https://outrival.io (callbacks Stripe)
   par requête (ScrapingBee/Webshare supprimés).
 - **Reschedule adaptatif** : `computeNextRun()` dans `@outrival/shared` ralentit
   les monitors stables (×4 max). La fréquence utilisateur = plafond, pas valeur fixe.
-- **ClickHouse best-effort** : si `CLICKHOUSE_URL` absent, on log + skip. Permet de
-  développer/tester sans provisioner.
+- **Analytics best-effort** : les tables time-series (ex-ClickHouse) vivent dans la
+  même base Postgres (Neon). Les writes (workers `lib/analytics.ts`) et reads (API
+  `lib/analytics-safe.ts`) sont best-effort — une erreur de logging/lecture ne casse
+  jamais un scrape, un job IA ou un handler (l'UI dégrade gracieusement). ClickHouse
+  a été retiré (un seul Postgres, moins d'infra à opérer).
 - **R2 avant DB** systématique pour les snapshots : si upload R2 fail, on throw →
   retry Trigger.dev, pas de row orpheline.
 - **Idempotence Signal** : check `signals.changeId` (unique) dans BOTH `classify-change`

@@ -41,9 +41,9 @@ export function UserMenu({ user }: { user: User }) {
         <button
           type="button"
           aria-label="Account"
-          className="flex items-center gap-2 rounded-full p-0.5 sm:pr-2.5 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 data-[state=open]:bg-surface-2"
+          className="flex items-center gap-2 rounded-full p-0.5 sm:pr-2.5 transition-colors hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 data-[state=open]:bg-accent data-[state=open]:text-accent-foreground dark:data-[state=open]:bg-accent/50"
         >
-          <span className="flex aspect-square size-7 items-center justify-center rounded-full border border-border bg-surface text-[11px] font-semibold text-foreground">
+          <span className="flex aspect-square size-7 items-center justify-center rounded-full border border-border bg-surface text-meta font-semibold text-foreground">
             {initials(user.name, "?")}
           </span>
           <span

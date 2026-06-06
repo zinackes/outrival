@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AnimatePresence, motion } from "motion/react";
 import {
   Plus,
   Search,
@@ -13,10 +14,12 @@ import {
   MoreHorizontal,
   Trash2,
   ExternalLink,
+  Telescope,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { api, type Competitor } from "@/lib/api";
+import { emitCompetitorsChanged } from "@/lib/competitor-events";
 import { track } from "@/lib/posthog/events";
 import {
   PaywallDialog,
@@ -48,15 +51,21 @@ import { CompAvatar } from "./comp-avatar";
 import { FreshnessDot } from "@/components/outrival/freshness-dot";
 import { ListError } from "@/components/outrival/list-error";
 import { toastApiError } from "@/lib/error-helpers";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { CatPill } from "./cat-pill";
-import { CategoryBar, CategoryLegend } from "./category-bar";
+import { CategoryBar, CategoryLegend, CategoryKey } from "./category-bar";
 import { TableSkeleton, GridCardsSkeleton } from "./skeletons";
+import { feedItemMotion, feedItemVariants, feedItemTransition } from "@/lib/motion";
 
 type SortBy = "name" | "overlap" | "signals" | "delta" | "lastSignal";
 type SortDir = "asc" | "desc";
 
 const TH_BASE =
-  "text-left px-3.5 py-2.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground font-medium border-b border-border whitespace-nowrap";
+  "text-left px-3.5 py-2.5 font-mono text-micro uppercase tracking-widest text-muted-foreground font-medium border-b border-border whitespace-nowrap";
 
 function prettyUrl(url: string): string {
   return url
@@ -129,6 +138,7 @@ export function CompetitorsList() {
       toast.success(`${deleteTarget.name} deleted`);
       setDeleteTarget(null);
       await refresh();
+      emitCompetitorsChanged();
     } catch (e) {
       toastApiError(e);
     } finally {
@@ -312,7 +322,7 @@ export function CompetitorsList() {
       <div className="flex items-center gap-2 flex-wrap">
         {cats.length > 0 && (
           <>
-            <span className="font-mono text-[10px] tracking-widest text-muted-foreground/80 uppercase mr-1">
+            <span className="font-mono text-micro tracking-widest text-muted-foreground uppercase mr-1">
               Category
             </span>
             <ToggleGroup
@@ -339,7 +349,7 @@ export function CompetitorsList() {
               setFilterCat(new Set());
               setQuery("");
             }}
-            className="h-7 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+            className="h-7 px-2 text-meta text-muted-foreground hover:text-foreground"
           >
             Clear filters
           </Button>
@@ -380,18 +390,26 @@ export function CompetitorsList() {
           <div className="font-semibold text-base text-foreground mb-1.5 tracking-tight">
             No competitors
           </div>
-          <div className="text-[13px] max-w-[380px] mx-auto mb-4">
-            Add your first competitor to start monitoring.
+          <div className="text-dense mb-4">
+            Add one yourself, or let Discovery suggest competitors for you.
           </div>
-          <Button onClick={() => setShowDialog(true)}>
-            <Plus size={13} /> Add
-          </Button>
+          <div className="flex items-center justify-center gap-2">
+            <Button onClick={() => setShowDialog(true)}>
+              <Plus size={13} /> Add competitor
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => router.push("/dashboard/discovery")}
+            >
+              <Telescope size={13} /> Explore Discovery
+            </Button>
+          </div>
         </Card>
       )}
 
       {competitors && competitors.length > 0 && sorted.length === 0 && (
         <Card className="px-6 py-10 text-center border-dashed text-muted-foreground">
-          <p className="text-[13px] mb-3">No competitors match your filters.</p>
+          <p className="text-dense mb-3">No competitors match your filters.</p>
           <Button
             variant="secondary"
             size="sm"
@@ -407,7 +425,7 @@ export function CompetitorsList() {
 
       {competitors && competitors.length > 0 && sorted.length > 0 && view === "table" && (
         <Card className="overflow-x-auto">
-          <table className="w-full border-collapse text-[13px] min-w-[760px]">
+          <table className="w-full border-collapse text-dense min-w-[760px]">
             <thead className="bg-background">
               <tr>
                 <th className={cn(TH_BASE, "w-8")} />
@@ -443,10 +461,25 @@ export function CompetitorsList() {
                   sortDir={sortDir}
                   onClick={toggleSort}
                   num
+                  tip="Signals in the last 7 days vs the previous 7 days"
                 >
-                  Δ vs 7d
+                  7d trend
                 </SortHeader>
-                <th className={TH_BASE}>Categories</th>
+                <th className={TH_BASE}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex items-center gap-1 cursor-help">
+                        Signal mix (7d)
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="mb-1.5 font-medium normal-case tracking-normal">
+                        Share of the last 7 days&apos; signals by category
+                      </p>
+                      <CategoryKey />
+                    </TooltipContent>
+                  </Tooltip>
+                </th>
                 <SortHeader
                   col="lastSignal"
                   sortBy={sortBy}
@@ -459,9 +492,15 @@ export function CompetitorsList() {
               </tr>
             </thead>
             <tbody>
+              <AnimatePresence initial={false}>
               {sorted.map((c) => (
-                <tr
+                <motion.tr
                   key={c.id}
+                  variants={feedItemVariants}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
+                  transition={feedItemTransition}
                   onClick={() =>
                     router.push(`/dashboard/competitors/${c.id}`)
                   }
@@ -485,7 +524,7 @@ export function CompetitorsList() {
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
-                      className="group/url inline-flex items-center gap-1 mt-px w-fit max-w-full font-mono text-[11px] text-muted-foreground/80 transition-colors hover:text-foreground"
+                      className="group/url inline-flex items-center gap-1 mt-px w-fit max-w-full font-mono text-meta text-muted-foreground transition-colors hover:text-foreground"
                     >
                       <span className="truncate underline-offset-2 group-hover/url:underline">
                         {prettyUrl(c.url)}
@@ -557,8 +596,9 @@ export function CompetitorsList() {
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </td>
-                </tr>
+                </motion.tr>
               ))}
+              </AnimatePresence>
             </tbody>
           </table>
         </Card>
@@ -566,9 +606,10 @@ export function CompetitorsList() {
 
       {competitors && competitors.length > 0 && sorted.length > 0 && view === "cards" && (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3.5">
+          <AnimatePresence initial={false} mode="popLayout">
           {sorted.map((c) => (
+            <motion.div key={c.id} {...feedItemMotion}>
             <Card
-              key={c.id}
               onClick={() => router.push(`/dashboard/competitors/${c.id}`)}
               className="cursor-pointer transition-colors hover:bg-accent/30"
             >
@@ -576,7 +617,7 @@ export function CompetitorsList() {
                 <div className="flex items-center gap-2.5 mb-3.5">
                   <CompAvatar name={c.name} />
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 font-semibold text-[15px]">
+                    <div className="flex items-center gap-1.5 font-semibold text-content">
                       {c.name}
                       {c.freshness && (
                         <FreshnessDot
@@ -590,7 +631,7 @@ export function CompetitorsList() {
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
-                      className="group/url inline-flex max-w-full items-center gap-1 font-mono text-[11px] text-muted-foreground/80 transition-colors hover:text-foreground"
+                      className="group/url inline-flex max-w-full items-center gap-1 font-mono text-meta text-muted-foreground transition-colors hover:text-foreground"
                     >
                       <span className="truncate underline-offset-2 group-hover/url:underline">
                         {prettyUrl(c.url)}
@@ -609,7 +650,7 @@ export function CompetitorsList() {
                 )}
                 {c.overlap != null && (
                   <div className="mb-3">
-                    <div className="flex justify-between text-[11px] text-muted-foreground mb-1.5">
+                    <div className="flex justify-between text-meta text-muted-foreground mb-1.5">
                       <span>Overlap</span>
                       <span className="tabular-nums font-mono">
                         {c.overlap}/100
@@ -625,10 +666,10 @@ export function CompetitorsList() {
                 )}
                 <div className="flex justify-between items-end pt-3 border-t border-border">
                   <div>
-                    <div className="text-[22px] font-bold tracking-tight leading-none">
+                    <div className="text-title font-bold tracking-tight leading-none">
                       {c.signals7d}
                     </div>
-                    <div className="text-[10px] text-muted-foreground/80 font-mono uppercase tracking-widest mt-1">
+                    <div className="text-micro text-muted-foreground font-mono uppercase tracking-widest mt-1">
                       signals 7d
                     </div>
                   </div>
@@ -642,7 +683,9 @@ export function CompetitorsList() {
                 </div>
               </div>
             </Card>
+            </motion.div>
           ))}
+          </AnimatePresence>
         </div>
       )}
 
@@ -724,18 +767,25 @@ function KpiCell({
         onClick && "transition-colors hover:bg-accent/30",
       )}
     >
-      <div className="font-mono text-[10px] tracking-widest text-muted-foreground uppercase flex items-center justify-between gap-2">
+      <div className="font-mono text-micro tracking-widest text-muted-foreground uppercase flex items-center justify-between gap-2">
         <span>{label}</span>
         {delta && (
           <span
             className={cn(
-              "font-mono text-[11px] inline-flex items-center gap-0.5",
+              "font-mono text-meta inline-flex items-center gap-0.5",
               isPos && "text-positive",
               isNeg && "text-critical",
               !isPos && !isNeg && "text-muted-foreground",
             )}
           >
-            {isPos ? "▲" : isNeg ? "▼" : "·"} {delta}
+            {isPos ? (
+              <ArrowUp className="size-3" />
+            ) : isNeg ? (
+              <ArrowDown className="size-3" />
+            ) : (
+              "·"
+            )}{" "}
+            {delta}
           </span>
         )}
       </div>
@@ -743,8 +793,8 @@ function KpiCell({
         className={cn(
           "font-bold tracking-tight leading-none truncate flex items-center gap-2",
           typeof value === "number"
-            ? "text-[26px] font-mono tabular-nums"
-            : "text-[18px]",
+            ? "text-title-lg font-mono tabular-nums"
+            : "text-lg",
           highlight && "text-foreground",
         )}
       >
@@ -752,7 +802,7 @@ function KpiCell({
         <span className="truncate">{value}</span>
       </div>
       {sub && (
-        <div className="text-muted-foreground/80 text-[11px] font-mono truncate">
+        <div className="text-muted-foreground text-meta font-mono truncate">
           {sub}
         </div>
       )}
@@ -767,7 +817,7 @@ function DeltaPill({
 }) {
   if (delta.kind === "neutral") {
     return (
-      <span className="tabular-nums font-mono text-xs text-muted-foreground/60">
+      <span className="tabular-nums font-mono text-xs text-muted-foreground">
         {delta.label}
       </span>
     );
@@ -793,6 +843,7 @@ function SortHeader({
   onClick,
   children,
   num,
+  tip,
 }: {
   col: SortBy;
   sortBy: SortBy;
@@ -800,23 +851,34 @@ function SortHeader({
   onClick: (col: SortBy) => void;
   children: React.ReactNode;
   num?: boolean;
+  tip?: string;
 }) {
   const active = sortBy === col;
+  const label = (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1",
+        active && "text-foreground",
+      )}
+    >
+      {children}
+      {active &&
+        (sortDir === "desc" ? <ArrowDown size={10} /> : <ArrowUp size={10} />)}
+    </span>
+  );
   return (
     <th
       className={cn(TH_BASE, "cursor-pointer select-none", num && "text-right")}
       onClick={() => onClick(col)}
     >
-      <span
-        className={cn(
-          "inline-flex items-center gap-1",
-          active && "text-foreground",
-        )}
-      >
-        {children}
-        {active &&
-          (sortDir === "desc" ? <ArrowDown size={10} /> : <ArrowUp size={10} />)}
-      </span>
+      {tip ? (
+        <Tooltip>
+          <TooltipTrigger asChild>{label}</TooltipTrigger>
+          <TooltipContent>{tip}</TooltipContent>
+        </Tooltip>
+      ) : (
+        label
+      )}
     </th>
   );
 }
@@ -853,6 +915,7 @@ function AddCompetitorDialog({
       await api.createCompetitor({ name, url });
       track("competitor_added", { source: "manual" });
       await onAdded();
+      emitCompetitorsChanged();
       onOpenChange(false);
     } catch (e) {
       const reason = paywallFromError(e);

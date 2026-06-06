@@ -52,6 +52,8 @@ export { extractJobs, JobsSchema, JobPostingSchema } from "./tasks/extract-jobs"
 export type { JobsExtraction, ExtractedJob } from "./tasks/extract-jobs";
 export { extractReviews, ReviewsSchema } from "./tasks/extract-reviews";
 export type { ReviewsExtraction } from "./tasks/extract-reviews";
+export { generateExtractor } from "./tasks/generate-extractor";
+export type { ExtractorKind } from "./tasks/generate-extractor";
 export { generateCompetitorSummary, SummarySchema } from "./tasks/competitor-summary";
 export type { CompetitorSummary, CompetitorSummaryInput } from "./tasks/competitor-summary";
 export { summarizeSource, SourceSummarySchema } from "./tasks/summarize-source";

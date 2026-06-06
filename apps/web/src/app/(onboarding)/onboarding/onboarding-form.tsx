@@ -281,7 +281,12 @@ export function OnboardingForm({
       setError(null);
       setScreen(next);
       void api.patchOnboardingProgress(next as OnboardingStep).catch(() => {});
-      if (next !== "done") void updateSession({ stage: next });
+      // The wizard's first screen ("stage", project-stage pick) is the session's
+      // "started" stage; the other screens share their literal name with the stage.
+      // "done" isn't a session stage — /complete flips it to analysis.
+      if (next !== "done") {
+        void updateSession({ stage: next === "stage" ? "started" : next });
+      }
     },
     [updateSession],
   );
@@ -822,10 +827,10 @@ function ProgressBar({ step }: { step: number }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
-        <span className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
+        <span className="text-meta font-mono uppercase tracking-wider text-muted-foreground">
           Set up in under 3 minutes
         </span>
-        <span className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
+        <span className="text-meta font-mono uppercase tracking-wider text-muted-foreground">
           Step {step} of 5
         </span>
       </div>
@@ -929,7 +934,7 @@ function FooterNav({
         </Button>
       </div>
       {hint && (
-        <p className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground/70 mt-3 text-right">
+        <p className="text-meta font-mono uppercase tracking-wider text-muted-foreground/70 mt-3 text-right">
           {hint}
         </p>
       )}
@@ -1249,7 +1254,7 @@ function ProfileForm({
         Fix anything that's off — it directly improves competitor relevance.
       </p>
 
-      <div className="flex items-center gap-2 mt-6 mb-3 text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
+      <div className="flex items-center gap-2 mt-6 mb-3 text-meta font-mono uppercase tracking-wider text-muted-foreground">
         <Sparkles size={12} /> Extracted by AI
       </div>
 
@@ -1282,12 +1287,12 @@ function ProfileForm({
       </Card>
 
       {prefetchStatus === "running" && (
-        <p className="mt-4 flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
+        <p className="mt-4 flex items-center gap-1.5 text-meta font-mono uppercase tracking-wider text-muted-foreground">
           <Loader2 size={11} className="animate-spin" /> Searching competitors…
         </p>
       )}
       {prefetchStatus === "completed" && (
-        <p className="mt-4 flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-wider text-positive">
+        <p className="mt-4 flex items-center gap-1.5 text-meta font-mono uppercase tracking-wider text-positive">
           <Check size={11} /> Competitors found
         </p>
       )}
@@ -1376,10 +1381,10 @@ function DiscoverStep({
       )}
 
       <div className="flex items-center justify-between mt-6 mb-3 gap-3 flex-wrap">
-        <p className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
+        <p className="text-meta font-mono uppercase tracking-wider text-muted-foreground">
           {busy ? "Searching…" : `${competitors.length} found · ${limitLabel} selected`}
         </p>
-        <p className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
+        <p className="text-meta font-mono uppercase tracking-wider text-muted-foreground">
           {PLAN_LABELS[plan]} plan
         </p>
       </div>
@@ -1489,7 +1494,7 @@ function CompetitorRow({
           target="_blank"
           rel="noreferrer"
           onClick={(e) => e.stopPropagation()}
-          className="text-[11px] font-mono text-muted-foreground hover:text-foreground inline-flex items-center gap-1 mt-0.5 transition-colors"
+          className="text-meta font-mono text-muted-foreground hover:text-foreground inline-flex items-center gap-1 mt-0.5 transition-colors"
         >
           {competitor.url.replace(/^https?:\/\//, "")}
           <ExternalLink size={10} />
@@ -1527,7 +1532,7 @@ function OverlapBadge({ score }: { score: number }) {
   return (
     <span
       className={cn(
-        "text-[10px] px-1.5 py-0.5 font-medium border rounded font-mono uppercase tracking-wider",
+        "text-micro px-1.5 py-0.5 font-medium border rounded font-mono uppercase tracking-wider",
         classes,
       )}
     >
@@ -1604,7 +1609,7 @@ function MonitoringStep({
         {advanced && (
           <div className="flex flex-col gap-6 pt-2 border-t border-border">
             <section>
-              <p className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground mb-3">
+              <p className="text-meta font-mono uppercase tracking-wider text-muted-foreground mb-3">
                 Frequency · {PLAN_LABELS[plan]} plan
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1624,7 +1629,7 @@ function MonitoringStep({
               </div>
             </section>
             <section>
-              <p className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground mb-3">
+              <p className="text-meta font-mono uppercase tracking-wider text-muted-foreground mb-3">
                 Sources to monitor
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1666,7 +1671,7 @@ function MonitoringStep({
 function MultiProductNote() {
   return (
     <Card className="mt-4 p-5 sm:p-6 flex flex-col gap-1.5">
-      <p className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
+      <p className="text-meta font-mono uppercase tracking-wider text-muted-foreground">
         More than one product?
       </p>
       <p className="text-sm text-foreground">
@@ -1697,7 +1702,7 @@ function TimezoneNote() {
 
   return (
     <Card className="mt-4 p-5 sm:p-6 flex flex-col gap-1.5">
-      <p className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
+      <p className="text-meta font-mono uppercase tracking-wider text-muted-foreground">
         When you'll be notified
       </p>
       <p className="text-sm text-foreground">
@@ -1870,7 +1875,7 @@ function DoneStep({
       </p>
 
       <Card className="mt-8 w-full max-w-md p-5 text-left">
-        <p className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground mb-3">
+        <p className="text-meta font-mono uppercase tracking-wider text-muted-foreground mb-3">
           Recommended next steps
         </p>
         <ul className="flex flex-col gap-2 text-sm text-foreground">

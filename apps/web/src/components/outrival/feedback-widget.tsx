@@ -77,7 +77,7 @@ export function FeedbackWidget() {
         userAgent:
           typeof navigator !== "undefined" ? navigator.userAgent : undefined,
       });
-      toast.success("Thanks, got it 🙏");
+      toast.success("Thanks, got it");
       setOpen(false);
       reset();
     } catch {

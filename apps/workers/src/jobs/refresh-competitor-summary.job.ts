@@ -5,7 +5,7 @@ import { db, competitors, signals, reviews, monitors, snapshots } from "@outriva
 import { generateCompetitorSummary, AI_CONFIG } from "@outrival/ai";
 import { getFromR2 } from "@outrival/shared";
 import { htmlToText } from "../lib/html-to-text";
-import { loggedAi } from "../lib/clickhouse";
+import { loggedAi } from "../lib/analytics";
 
 const InputSchema = z.object({
   competitorId: z.string(),
@@ -86,9 +86,16 @@ export const refreshCompetitorSummaryJob = task({
       return { ok: false };
     }
 
+    // category is AI-derived (no manual edit path); refresh it whenever the model
+    // returns a non-empty label, otherwise keep whatever is already there.
+    const nextCategory = result.category?.trim();
     await db
       .update(competitors)
-      .set({ aiSummary: result.summary, aiSummaryUpdatedAt: new Date() })
+      .set({
+        aiSummary: result.summary,
+        aiSummaryUpdatedAt: new Date(),
+        ...(nextCategory ? { category: nextCategory } : {}),
+      })
       .where(eq(competitors.id, competitor.id));
 
     logger.log("Completed refresh-competitor-summary", { competitorId: competitor.id });

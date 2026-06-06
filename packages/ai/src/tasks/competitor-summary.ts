@@ -5,6 +5,7 @@ import { attachQuality, type WithQuality } from "../grounding/types";
 
 export const SummarySchema = z.object({
   summary: z.string(),
+  category: z.string().optional(),
 });
 
 export type CompetitorSummary = z.infer<typeof SummarySchema>;
@@ -62,10 +63,12 @@ ${reviewBlock}
 </reviews>
 
 <task>
-Write an executive summary of this competitor in 2-3 factual sentences.
+Write an executive summary of this competitor in 2-3 factual sentences, and classify its market category.
 - Informative tone, in English
-- Include: what they do, where they sit, recent momentum
-- No superlatives, no speculation
+- summary: what they do, where they sit, recent momentum. No superlatives, no speculation.
+- category: the market segment this competitor operates in — 1-3 words, Title Case, in English
+  (e.g. "CRM", "Project management", "Email marketing", "Observability", "Customer support").
+  Use the homepage content first. If it genuinely cannot be determined, return "".
 - If page content (homepage_content) is provided, rely on it first to describe their offering, positioning and target
 - Otherwise, if there are no recent signals, just state the product profile
 
@@ -73,7 +76,7 @@ Reply ONLY with a valid JSON object, no markdown and no surrounding text.
 </task>
 
 <format>
-{ "summary": "Two to three factual sentences." }
+{ "summary": "Two to three factual sentences.", "category": "Market segment" }
 </format>`;
 
   const sourceText = [homepageBlock ?? "", signalsBlock, reviewBlock].join("\n\n");

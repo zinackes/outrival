@@ -36,6 +36,9 @@ export type SourceSummaryInput =
       praises: string[];
       complaints: string[];
       previousScore: number | null;
+      // patch-32 — optional enrichment surfaced in the summary when present.
+      subScores?: { ease_of_use: number | null; support: number | null; features: number | null; value: number | null } | null;
+      themes?: { theme: string; prevalence: "low" | "medium" | "high" }[];
     };
 
 function pricingBlock(plans: PricingState[]): string {
@@ -71,16 +74,26 @@ New postings (${input.added.length}): ${input.added.slice(0, 10).join(", ") || "
 Closed postings (${input.closed.length}): ${input.closed.slice(0, 10).join(", ") || "none"}`
       }
 </hiring_delta>`;
-    case "reviews":
+    case "reviews": {
+      const ss = input.subScores;
+      const subLine =
+        ss && (ss.ease_of_use ?? ss.support ?? ss.features ?? ss.value) != null
+          ? `\nSub-scores /5: ease of use ${ss.ease_of_use ?? "n/a"}, support ${ss.support ?? "n/a"}, features ${ss.features ?? "n/a"}, value ${ss.value ?? "n/a"}`
+          : "";
+      const themeLine =
+        input.themes && input.themes.length
+          ? `\nRecurring complaint themes: ${input.themes.map((t) => `${t.theme} (${t.prevalence})`).join("; ")}`
+          : "";
       return `<reviews_current>
 Source: ${input.source}
-Score: ${input.score ?? "n/a"} / 5 (${input.reviewCount ?? "n/a"} reviews) · sentiment ${input.sentiment}/100
+Score: ${input.score ?? "n/a"} / 5 (${input.reviewCount ?? "n/a"} reviews) · sentiment ${input.sentiment}/100${subLine}
 Strengths: ${input.praises.slice(0, 5).join(", ") || "n/a"}
-Complaints: ${input.complaints.slice(0, 5).join(", ") || "n/a"}
+Complaints: ${input.complaints.slice(0, 5).join(", ") || "n/a"}${themeLine}
 </reviews_current>
 <reviews_previous>
 ${input.previousScore === null ? "First capture — no prior data." : `Previous score: ${input.previousScore} / 5`}
 </reviews_previous>`;
+    }
   }
 }
 

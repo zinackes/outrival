@@ -11,6 +11,7 @@ import {
   Lock,
   ArrowRight,
 } from "lucide-react";
+import { toast } from "sonner";
 import { PLAN_LIMITS, type Plan } from "@outrival/shared";
 import { api, ApiError, type NotificationSettings } from "@/lib/api";
 import {
@@ -44,7 +45,6 @@ export function AlertChannelsSheet({
   const [plan, setPlan] = useState<Plan | null>(null);
   const [settings, setSettings] = useState<NotificationSettings | null>(null);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -53,7 +53,6 @@ export function AlertChannelsSheet({
 
   useEffect(() => {
     if (!open) return;
-    setSaved(false);
     setError(null);
     api
       .getNotificationSettings()
@@ -71,7 +70,6 @@ export function AlertChannelsSheet({
   async function save() {
     if (!settings) return;
     setSaving(true);
-    setSaved(false);
     setError(null);
     try {
       await api.updateNotificationSettings({
@@ -81,8 +79,9 @@ export function AlertChannelsSheet({
         digestEnabled: settings.digestEnabled,
         alertsEnabled: settings.alertsEnabled,
       });
-      setSaved(true);
       onSaved?.();
+      toast.success("Alert channels saved");
+      onOpenChange(false);
     } catch (e) {
       const code = e instanceof ApiError ? e.code : undefined;
       const channel = e instanceof ApiError ? e.data.channel : undefined;
@@ -102,10 +101,10 @@ export function AlertChannelsSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="p-0 flex flex-col sm:max-w-md">
         <SheetHeader className="px-5 py-4 border-b border-border">
-          <SheetTitle className="tracking-tight text-[15px]">
+          <SheetTitle className="tracking-tight text-content">
             Alert channels
           </SheetTitle>
-          <SheetDescription className="text-[13px]">
+          <SheetDescription className="text-dense">
             Critical/high alerts sent in real-time to every connected channel.
           </SheetDescription>
         </SheetHeader>
@@ -123,7 +122,7 @@ export function AlertChannelsSheet({
               <span className="block font-medium">
                 Send high/critical alerts as they happen
               </span>
-              <span className="block text-[11px] font-mono text-muted-foreground/80 mt-0.5">
+              <span className="block text-meta font-mono text-muted-foreground mt-0.5">
                 Master switch for every channel. Medium/low always go in the
                 weekly digest.
               </span>
@@ -188,7 +187,7 @@ export function AlertChannelsSheet({
                   }
                   placeholder="https://hooks.slack.com/services/..."
                 />
-                <p className="text-[11px] font-mono text-muted-foreground/80">
+                <p className="text-meta font-mono text-muted-foreground">
                   Create an incoming webhook in Slack → paste the URL here.
                 </p>
               </div>
@@ -208,11 +207,11 @@ export function AlertChannelsSheet({
                   }
                   placeholder="you@company.com"
                 />
-                <p className="text-[11px] font-mono text-muted-foreground/80">
+                <p className="text-meta font-mono text-muted-foreground">
                   Same address as the weekly digest.
                 </p>
               </div>
-              <p className="text-[12px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 Email receives critical/high in real-time, and medium/low
                 grouped in the weekly digest.
               </p>
@@ -236,12 +235,12 @@ export function AlertChannelsSheet({
                   }
                   placeholder="https://your-endpoint.com/hooks/outrival"
                 />
-                <p className="text-[11px] font-mono text-muted-foreground/80">
+                <p className="text-meta font-mono text-muted-foreground">
                   We POST a JSON payload on each critical/high signal. Pro plan or
                   higher.
                 </p>
               </div>
-              <p className="text-[12px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 Ideal to connect Linear, Jira, Notion or an internal endpoint.
               </p>
             </div>
@@ -259,7 +258,6 @@ export function AlertChannelsSheet({
             {error && settings && (
               <span className="text-xs text-critical">{error}</span>
             )}
-            {saved && <span className="text-xs text-primary">✓ Saved</span>}
             <Button
               size="sm"
               onClick={save}
@@ -281,13 +279,13 @@ function ChannelLocked({ channel }: { channel: "slack" | "webhook" }) {
   return (
     <div className="flex flex-col items-center text-center gap-3 py-8">
       <div className="w-10 h-10 rounded-full bg-background border border-border flex items-center justify-center">
-        <Lock size={16} className="text-muted-foreground/70" />
+        <Lock size={16} className="text-muted-foreground" />
       </div>
       <div>
-        <div className="font-semibold text-[14px] tracking-tight">
+        <div className="font-semibold text-sm tracking-tight">
           {label} alerts
         </div>
-        <p className="text-[12px] text-muted-foreground mt-1 max-w-[280px]">
+        <p className="text-xs text-muted-foreground mt-1 max-w-[280px]">
           Require the {planName} plan or higher.
         </p>
       </div>

@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { InfoHint } from "./info-hint";
 
 export const mono = { fontFamily: "var(--font-mono)" } as const;
 
@@ -55,11 +56,13 @@ export function relativeFmt(iso: string | null): string {
 export function Section({
   title,
   note,
+  info,
   action,
   children,
 }: {
   title: string;
   note?: string;
+  info?: string;
   action?: React.ReactNode;
   children: React.ReactNode;
 }) {
@@ -69,10 +72,11 @@ export function Section({
         <CardTitle className="flex items-center gap-2 text-base">
           {title}
           {note ? (
-            <Badge variant="outline" className="text-[10px] font-normal text-muted-foreground">
+            <Badge variant="outline" className="text-micro font-normal text-muted-foreground">
               {note}
             </Badge>
           ) : null}
+          {info ? <InfoHint text={info} /> : null}
         </CardTitle>
         {action}
       </CardHeader>
@@ -88,7 +92,7 @@ export function Stat({ label, value, hint }: { label: string; value: React.React
       <span className="text-2xl font-semibold" style={mono}>
         {value}
       </span>
-      {hint ? <span className="text-[11px] text-muted-foreground">{hint}</span> : null}
+      {hint ? <span className="text-meta text-muted-foreground">{hint}</span> : null}
     </div>
   );
 }
@@ -124,7 +128,7 @@ export function StatusPill({ status }: { status: string }) {
           : "var(--muted)";
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px]"
+      className="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-meta"
       style={{ borderColor: "var(--border)", color }}
     >
       <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />

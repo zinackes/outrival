@@ -78,12 +78,40 @@
     "./spa-filter": {
       "types": "./src/spa/filter.ts",
       "default": "./src/spa/filter.ts"
+    },
+    "./jobs-ats": {
+      "types": "./src/jobs/ats.ts",
+      "default": "./src/jobs/ats.ts"
+    },
+    "./structured-data": {
+      "types": "./src/structured-data/index.ts",
+      "default": "./src/structured-data/index.ts"
+    },
+    "./cached-extractor": {
+      "types": "./src/parsers/cached-extractor.ts",
+      "default": "./src/parsers/cached-extractor.ts"
+    },
+    "./prune-html": {
+      "types": "./src/lib/prune-html.ts",
+      "default": "./src/lib/prune-html.ts"
+    },
+    "./platform": {
+      "types": "./src/platform/index.ts",
+      "default": "./src/platform/index.ts"
+    },
+    "./feeds": {
+      "types": "./src/feeds/index.ts",
+      "default": "./src/feeds/index.ts"
+    },
+    "./sitemap": {
+      "types": "./src/sitemap/index.ts",
+      "default": "./src/sitemap/index.ts"
     }
   },
   "scripts": {
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "bun test src/pricing src/lib src/parsers src/diff src/scoring src/learning src/tech-stack src/structural src/spa"
+    "test": "bun test src/pricing src/lib src/parsers src/diff src/scoring src/learning src/tech-stack src/structural src/spa src/jobs src/structured-data src/platform src/status"
   },
   "dependencies": {
     "@outrival/shared": "workspace:*",

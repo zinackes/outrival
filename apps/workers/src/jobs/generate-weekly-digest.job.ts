@@ -13,7 +13,7 @@ import { generateDigest, AI_CONFIG, checkGlobalBreaker, type DigestInputSignal }
 import { signDigestFeedbackToken } from "@outrival/shared";
 import { renderDigestEmail } from "../lib/digest-email";
 import { getResend, ALERT_FROM } from "../lib/resend";
-import { logAiRun } from "../lib/clickhouse";
+import { logAiRun } from "../lib/analytics";
 
 function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);

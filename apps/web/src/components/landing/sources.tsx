@@ -59,7 +59,7 @@ function Row({
   meta: string;
 }) {
   return (
-    <div className="flex items-center gap-3 bg-background-2/40 px-3.5 py-2.5 text-sm">
+    <div className="flex items-center gap-3 border-b border-border py-2.5 text-sm last:border-b-0">
       <span className="text-text-subtle">{icon}</span>
       <span className="font-medium">{label}</span>
       <span className="ml-auto text-right font-mono text-xs text-text-subtle">
@@ -69,21 +69,10 @@ function Row({
   );
 }
 
-function CardHeader({
-  eyebrow,
-  title,
-  desc,
-}: {
-  eyebrow: string;
-  title: string;
-  desc: string;
-}) {
+function CardHeader({ title, desc }: { title: string; desc: string }) {
   return (
     <div>
-      <div className="font-mono text-xs uppercase tracking-wider text-primary">
-        {eyebrow}
-      </div>
-      <h3 className="mt-2.5 text-lg font-semibold">{title}</h3>
+      <h3 className="text-lg font-semibold">{title}</h3>
       <p className="mt-2 text-sm leading-relaxed text-text-muted">{desc}</p>
     </div>
   );
@@ -97,13 +86,11 @@ export function Sources() {
   return (
     <section className="py-20 sm:py-28" id="sources">
       <div className="mx-auto w-full max-w-6xl px-6">
-        <div className="grid gap-x-10 gap-y-4 lg:grid-cols-2 lg:items-end">
+        <div className="max-w-3xl">
           <h2 className="text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">
-            Everything a competitor
-            <br />
-            publishes.
+            Everything a competitor publishes.
           </h2>
-          <p className="text-text-muted leading-relaxed">
+          <p className="mt-4 max-w-2xl text-text-muted leading-relaxed">
             Ten sources monitored by default, grouped into three families. Each
             one is scraped by a stealth browser that escalates through a
             datacenter-to-residential proxy cascade only when a site blocks us,
@@ -115,11 +102,10 @@ export function Sources() {
         <div className="mt-12 grid grid-cols-1 gap-4 lg:grid-cols-12">
           <div className={`${cardClass} lg:col-span-7`}>
             <CardHeader
-              eyebrow="Family 1"
               title="The public product"
               desc="Everything your competitor shows their own prospects. The densest layer — typically 70% of all surfaced signals."
             />
-            <div className="space-y-px overflow-hidden rounded-lg border border-border">
+            <div className="border-t border-border">
               <Row
                 icon={RowIcon(Globe)}
                 label="Homepage"
@@ -141,11 +127,10 @@ export function Sources() {
 
           <div className={`${cardClass} lg:col-span-5`}>
             <CardHeader
-              eyebrow="Family 2"
               title="The users"
               desc="What your competitor's actual customers say. Score, volume, sentiment — not just the star rating."
             />
-            <div className="space-y-px overflow-hidden rounded-lg border border-border">
+            <div className="border-t border-border">
               <Row
                 icon={RowIcon(Star)}
                 label="G2"
@@ -166,11 +151,10 @@ export function Sources() {
 
           <div className={`${cardClass} lg:col-span-5`}>
             <CardHeader
-              eyebrow="Family 3"
               title="The humans behind it"
               desc="Hires, official posts, announcements. The earliest indicator of strategic moves — often weeks before the product announcement."
             />
-            <div className="space-y-px overflow-hidden rounded-lg border border-border">
+            <div className="border-t border-border">
               <Row
                 icon={RowIcon(Briefcase)}
                 label="Job postings"
@@ -190,15 +174,19 @@ export function Sources() {
           </div>
 
           <div className={`${cardClass} bg-background-2 lg:col-span-7`}>
-            <CardHeader
-              eyebrow="Business plan"
-              title="Your own sources"
-              desc="Internal APIs, an intranet, a partner's shared Notion, custom Selenium scrapers. We accept anything that returns HTML or JSON. The classification pipeline stays the same."
-            />
+            <div className="flex flex-col gap-3">
+              <span className="inline-flex w-fit rounded-md border border-border px-2 py-0.5 font-mono text-meta text-text-subtle">
+                Business plan
+              </span>
+              <CardHeader
+                title="Your own sources"
+                desc="Internal APIs, an intranet, a partner's shared Notion, custom Selenium scrapers. We accept anything that returns HTML or JSON. The classification pipeline stays the same."
+              />
+            </div>
             <div className="mt-auto border-t border-border pt-4">
               <a
                 href="#cta"
-                className="inline-flex items-center gap-1.5 font-mono text-[13px] text-primary transition-colors hover:text-accent-bright"
+                className="inline-flex items-center gap-1.5 font-mono text-dense text-primary transition-colors hover:text-accent-bright"
               >
                 Talk about a custom source <ArrowRight size={12} />
               </a>

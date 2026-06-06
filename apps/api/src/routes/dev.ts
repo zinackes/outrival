@@ -26,13 +26,6 @@ const DEV_CRONS = [
     description: "Enqueue every active monitor whose nextRunAt is due.",
   },
   {
-    id: "keep-clickhouse-warm",
-    label: "Keep ClickHouse warm",
-    cron: "*/5 * * * *",
-    scope: "global",
-    description: "SELECT 1 against ClickHouse to dodge the free-tier cold start.",
-  },
-  {
     id: "detect-new-competitors",
     label: "Detect new competitors",
     cron: "0 20 * * 0",

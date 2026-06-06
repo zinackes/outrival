@@ -15,7 +15,7 @@ import {
 } from "@outrival/db";
 import { generateBattleCard, AI_CONFIG } from "@outrival/ai";
 import { uploadToR2 } from "@outrival/shared";
-import { logAiRun } from "../lib/clickhouse";
+import { logAiRun } from "../lib/analytics";
 
 const InputSchema = z.object({
   competitorId: z.string(),

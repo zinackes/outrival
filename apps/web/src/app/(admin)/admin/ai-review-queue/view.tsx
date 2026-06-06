@@ -65,14 +65,14 @@ export function ReviewQueueView({ items }: { items: ReviewItem[] }) {
                 {it.targetId ? ` · ${it.targetId.slice(0, 8)}` : ""}
               </span>
               {it.confidence && (
-                <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">
+                <span className="rounded-full border border-border px-2 py-0.5 text-meta text-muted-foreground">
                   confidence: {it.confidence}
                 </span>
               )}
               {it.selfCheckTriggeredBy && (
-                <span className="text-[11px] text-text-subtle">via {it.selfCheckTriggeredBy}</span>
+                <span className="text-meta text-text-subtle">via {it.selfCheckTriggeredBy}</span>
               )}
-              <span className="ml-auto text-[11px] text-text-subtle">
+              <span className="ml-auto text-meta text-text-subtle">
                 {it.flaggedAt ? new Date(it.flaggedAt).toLocaleString() : ""}
               </span>
             </div>
@@ -80,11 +80,11 @@ export function ReviewQueueView({ items }: { items: ReviewItem[] }) {
             {issues.length > 0 && (
               <ul className="mt-2.5 space-y-1.5">
                 {issues.map((iss, i) => (
-                  <li key={i} className="text-[13px]">
+                  <li key={i} className="text-dense">
                     <span className="font-medium text-medium">{iss.type}</span>
                     <span className="text-muted-foreground"> — {iss.description}</span>
                     {iss.affectedAssertion && (
-                      <span className="block text-[12px] text-text-subtle">
+                      <span className="block text-xs text-text-subtle">
                         “{iss.affectedAssertion}”
                       </span>
                     )}
@@ -94,7 +94,7 @@ export function ReviewQueueView({ items }: { items: ReviewItem[] }) {
             )}
 
             {failed.length > 0 && (
-              <p className="mt-2 text-[12px] text-text-subtle">
+              <p className="mt-2 text-xs text-text-subtle">
                 {failed.length} ungrounded citation{failed.length > 1 ? "s" : ""}:{" "}
                 {failed.map((cit) => `“${cit.sourceQuote.slice(0, 60)}”`).join(", ")}
               </p>

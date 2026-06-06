@@ -20,6 +20,15 @@ describe("logos", () => {
     expect(removed).toEqual(["HubSpot"]);
   });
 
+  test("object-shaped logos diff by name; legacy strings still work", () => {
+    const { added, removed } = diffLogos(
+      [{ name: "Acme Corp", src: "https://cdn.x/a.png" }, "HubSpot"],
+      [{ name: "acme corp", src: "https://cdn.x/a2.png" }, { name: "Salesforce", src: null }],
+    );
+    expect(added).toEqual(["Salesforce"]);
+    expect(removed).toEqual(["HubSpot"]);
+  });
+
   test("asset paths / urls are ignored, not signalled", () => {
     expect(normalizeLogo("https://cdn.x.com/logo.png")).toBeNull();
     expect(normalizeLogo("/assets/acme.svg")).toBeNull();

@@ -5,7 +5,6 @@ import { toast } from "sonner";
 import { ExternalLink, Pencil, RefreshCw, Tag } from "lucide-react";
 import { api, type Competitor, type PricingStatus } from "@/lib/api";
 import { toastApiError } from "@/lib/error-helpers";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -55,7 +54,7 @@ export function CompetitorPricingCard({
 }: {
   competitor: Competitor;
   onUpdated: () => void;
-  // Whether any priced tiers have actually been extracted (ClickHouse history).
+  // Whether any priced tiers have actually been extracted (pricing history).
   // The detected status can be "public" from price tokens alone, before the tiers
   // are parsed — so we don't claim prices are visible when none were captured.
   hasCapturedTiers?: boolean;
@@ -92,31 +91,31 @@ export function CompetitorPricingCard({
   }
 
   return (
-    <Card className="flex flex-col gap-3 p-4">
+    <div className="flex flex-col gap-3">
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <Tag className="size-4 text-muted-foreground" />
             <span className="text-sm font-medium">{meta.label}</span>
             {competitor.pricingPromotional && (
-              <Badge variant="secondary" className="text-[10px]">
+              <Badge variant="secondary" className="text-micro">
                 Promotional
               </Badge>
             )}
             {competitor.pricingManualOverride && (
-              <Badge variant="outline" className="text-[10px]">
+              <Badge variant="outline" className="text-micro">
                 Edited by you
               </Badge>
             )}
           </div>
           <p className="text-xs text-muted-foreground">{blurb}</p>
           {isCapturing && (
-            <p className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <p className="inline-flex items-center gap-1.5 text-meta text-muted-foreground">
               <RefreshCw className="size-3 animate-spin" /> Capturing pricing…
             </p>
           )}
           {competitor.pricingObservedRegion && (
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-meta text-muted-foreground">
               Observed from region {competitor.pricingObservedRegion}
             </p>
           )}
@@ -150,7 +149,7 @@ export function CompetitorPricingCard({
         onOpenChange={setEditing}
         onSaved={onUpdated}
       />
-    </Card>
+    </div>
   );
 }
 

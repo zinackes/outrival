@@ -4,10 +4,18 @@ import { eq } from "drizzle-orm";
 import { db, snapshots, reviews, monitors } from "@outrival/db";
 import { extractReviews, summarizeSource, AI_CONFIG } from "@outrival/ai";
 import { getFromR2, parseAppStoreSnapshot } from "@outrival/shared";
+import { reviewScoresFromStructured } from "@outrival/scrapers/structured-data";
 import { htmlToText } from "../lib/html-to-text";
-import { insertReviewScore, getPreviousReviewScore, loggedAi } from "../lib/clickhouse";
+import { insertReviewScore, getPreviousReviewScore, loggedAi } from "../lib/analytics";
 
-const SourceEnum = z.enum(["g2", "capterra", "appstore", "playstore"]);
+const SourceEnum = z.enum([
+  "g2", "capterra", "appstore", "playstore",
+  // patch-32 — additional review platforms (web pages, structured-first score path).
+  "trustpilot", "trustradius", "gartner",
+  // patch-32 — Reddit mentions: sentiment + themes, no star score (skips CH score row).
+  "reddit",
+]);
+type ReviewSource = z.infer<typeof SourceEnum>;
 
 const InputSchema = z.object({
   snapshotId: z.string(),
@@ -35,7 +43,7 @@ export const extractReviewsJob = task({
     // and review_count come straight from the structured data; the AI is used
     // only to synthesize qualitative praises/complaints.
     let text: string;
-    let structured: { averageScore: number | null; reviewCount: number } | null = null;
+    let structured: { averageScore: number | null; reviewCount: number | null } | null = null;
     if (input.source === "appstore") {
       const summary = parseAppStoreSnapshot(html);
       if (!summary) {
@@ -50,6 +58,14 @@ export const extractReviewsJob = task({
       structured = { averageScore: summary.averageScore, reviewCount: summary.reviewCount };
     } else {
       text = htmlToText(html);
+      // Structured-first scores (patch-30): G2/Capterra ship schema.org
+      // AggregateRating — trust those numbers over the LLM's. The qualitative
+      // summary (sentiment, praises, complaints) still needs AI, so this enriches
+      // rather than replaces. Null fields fall back to the AI values below.
+      const scores = reviewScoresFromStructured(html);
+      if (scores && (scores.average_score !== null || scores.review_count !== null)) {
+        structured = { averageScore: scores.average_score, reviewCount: scores.review_count };
+      }
     }
 
     const extractedRaw = await loggedAi("extract_reviews", AI_CONFIG.classification, () =>
@@ -63,7 +79,7 @@ export const extractReviewsJob = task({
       ? {
           ...extractedRaw,
           average_score: structured.averageScore ?? extractedRaw.average_score,
-          review_count: structured.reviewCount,
+          review_count: structured.reviewCount ?? extractedRaw.review_count,
         }
       : extractedRaw;
     logger.log("Reviews extracted", {
@@ -78,7 +94,7 @@ export const extractReviewsJob = task({
     const now = new Date();
     const verbatims: Array<{
       competitorId: string;
-      source: "g2" | "capterra" | "appstore" | "playstore";
+      source: ReviewSource;
       content: string;
       author: string;
       score: number | null;
@@ -112,14 +128,23 @@ export const extractReviewsJob = task({
     // Prior score before inserting the fresh one → summary can note the trend.
     const previousScore = await getPreviousReviewScore(input.competitorId, input.source);
 
-    await insertReviewScore({
-      competitor_id: input.competitorId,
-      source: input.source,
-      score: extracted.average_score ?? 0,
-      review_count: extracted.review_count ?? 0,
-      sentiment_score: extracted.sentiment_score,
-      recorded_at: now,
-    });
+    // Only record a star-score time-series point when there IS a rating. Reddit
+    // (mentions, no AggregateRating) carries sentiment + themes via the verbatims +
+    // summary instead — writing a 0/5 would pollute the score trend (patch-32).
+    if (extracted.average_score != null) {
+      await insertReviewScore({
+        competitor_id: input.competitorId,
+        source: input.source,
+        score: extracted.average_score,
+        review_count: extracted.review_count ?? 0,
+        sentiment_score: extracted.sentiment_score,
+        sub_ease_of_use: extracted.sub_scores?.ease_of_use ?? null,
+        sub_support: extracted.sub_scores?.support ?? null,
+        sub_features: extracted.sub_scores?.features ?? null,
+        sub_value: extracted.sub_scores?.value ?? null,
+        recorded_at: now,
+      });
+    }
 
     const summary = await loggedAi("source_summary", AI_CONFIG.classification, () =>
       summarizeSource({
@@ -131,6 +156,8 @@ export const extractReviewsJob = task({
         praises: extracted.top_praises,
         complaints: extracted.top_complaints,
         previousScore,
+        subScores: extracted.sub_scores,
+        themes: extracted.complaint_themes,
       }),
     );
     if (summary) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
 import {
   api,
   type ChannelMode,
@@ -285,7 +285,11 @@ export function NotificationModerationForm() {
         </div>
       )}
 
-      {saved && !dirty && <p className="text-sm text-positive">✓ Saved</p>}
+      {saved && !dirty && (
+        <p className="flex items-center gap-1.5 text-sm text-positive">
+          <Check className="size-4" /> Saved
+        </p>
+      )}
 
       {dirty && (
         <div className="sticky bottom-4 z-10 flex items-center justify-between gap-3 px-4 py-2.5 rounded-md border border-border-strong bg-surface/95 backdrop-blur-sm shadow-lg">

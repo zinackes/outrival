@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { tasks } from "@trigger.dev/sdk/v3";
 import {
   competitorCandidates,
@@ -16,7 +16,13 @@ import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
 import { associateCompetitorWithPrimaryProduct } from "../lib/products";
-import { checkCompetitorQuota, getOrgPlan } from "../lib/plan";
+import {
+  checkCompetitorQuota,
+  getOrgPlan,
+  assertWithinLimit,
+  tierLimitBody,
+  currentMonthKey,
+} from "../lib/plan";
 import { detectCandidatesForOrg } from "../lib/detect-candidates";
 
 type Variables = { user: { id: string } };
@@ -34,6 +40,9 @@ const ConfigBodySchema = DetectionConfigSchema.extend({
   excludedDomains: z.array(z.string()).max(50),
   keywords: z.string().max(200),
 });
+
+// Bulk dismiss / restore (quick triage): one round-trip to clear or undo a batch.
+const IdsBodySchema = z.object({ ids: z.array(z.string()).min(1).max(100) });
 
 /** Reduce a free-form entry ("https://www.Foo.com/x", "Foo.com") to a bare host. */
 function normalizeDomain(raw: string): string | null {
@@ -206,6 +215,17 @@ candidatesRouter.post("/:id/add", async (c) => {
   // patch-28 — tag this competitor into the org's primary product (shared).
   await associateCompetitorWithPrimaryProduct(orgId, competitor.id);
 
+  // patch-31 — detect the platform profile (fire-and-forget) so the first scrapes
+  // can route via structured connectors. Never blocks the add.
+  try {
+    await tasks.trigger("detect-platform", { competitorId: competitor.id });
+  } catch (e) {
+    console.error("Failed to trigger platform detection", {
+      competitorId: competitor.id,
+      error: String(e),
+    });
+  }
+
   const monitorRows = await db
     .insert(monitors)
     .values([
@@ -240,6 +260,12 @@ candidatesRouter.post("/detect", aiIntensiveRateLimit, async (c) => {
     const retryInSec = Math.ceil((DETECT_COOLDOWN_MS - (Date.now() - last)) / 1000);
     return c.json({ error: "cooldown", retryInSec }, 429);
   }
+
+  // Per-tier monthly discovery quota (tier-limits). On-demand /detect only — the
+  // weekly cron auto-discovery doesn't consume it.
+  const quota = await assertWithinLimit(orgId, "discoveriesPerMonth");
+  if (!quota.ok) return c.json(tierLimitBody(quota), 429);
+
   lastDetectAt.set(orgId, Date.now());
 
   try {
@@ -251,19 +277,32 @@ candidatesRouter.post("/detect", aiIntensiveRateLimit, async (c) => {
 
     // Record the run for staleness (patch-22): snapshot the profile edit it was based
     // on so a later profile edit (or 7+ days) marks the next discovery worth running.
+    // The same row carries the monthly quota counter (reset when the month rolls over).
     const profileAt = await selfProfileEditedAt(orgId);
+    const month = currentMonthKey();
     const existingRun = await db.query.discoveryRuns.findFirst({
       where: eq(discoveryRuns.orgId, orgId),
     });
+    const nextCount =
+      (existingRun?.detectCountMonth === month ? existingRun.detectCount : 0) + 1;
     if (existingRun) {
       await db
         .update(discoveryRuns)
-        .set({ lastDiscoveryAt: new Date(), basedOnProfileUpdateAt: profileAt })
+        .set({
+          lastDiscoveryAt: new Date(),
+          basedOnProfileUpdateAt: profileAt,
+          detectCount: nextCount,
+          detectCountMonth: month,
+        })
         .where(eq(discoveryRuns.id, existingRun.id));
     } else {
-      await db
-        .insert(discoveryRuns)
-        .values({ orgId, lastDiscoveryAt: new Date(), basedOnProfileUpdateAt: profileAt });
+      await db.insert(discoveryRuns).values({
+        orgId,
+        lastDiscoveryAt: new Date(),
+        basedOnProfileUpdateAt: profileAt,
+        detectCount: nextCount,
+        detectCountMonth: month,
+      });
     }
 
     return c.json({ detected: result.detected });
@@ -290,4 +329,58 @@ candidatesRouter.post("/:id/dismiss", async (c) => {
     .where(eq(competitorCandidates.id, candidate.id));
 
   return c.json({ ok: true });
+});
+
+// Bulk dismiss (quick triage): "Dismiss all" / threshold clear in discovery. Only
+// touches candidates still `new` so a stale id can't un-add a tracked competitor.
+candidatesRouter.post("/dismiss", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = IdsBodySchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
+  }
+
+  const rows = await db
+    .update(competitorCandidates)
+    .set({ status: "dismissed" })
+    .where(
+      and(
+        eq(competitorCandidates.orgId, orgId),
+        eq(competitorCandidates.status, "new"),
+        inArray(competitorCandidates.id, parsed.data.ids),
+      ),
+    )
+    .returning({ id: competitorCandidates.id });
+
+  return c.json({ dismissed: rows.length });
+});
+
+// Undo (quick triage): send dismissed candidates back to the review queue. Scoped to
+// `dismissed` so it can never resurrect an `added` candidate as `new`.
+candidatesRouter.post("/restore", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = IdsBodySchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
+  }
+
+  const rows = await db
+    .update(competitorCandidates)
+    .set({ status: "new" })
+    .where(
+      and(
+        eq(competitorCandidates.orgId, orgId),
+        eq(competitorCandidates.status, "dismissed"),
+        inArray(competitorCandidates.id, parsed.data.ids),
+      ),
+    )
+    .returning({ id: competitorCandidates.id });
+
+  return c.json({ restored: rows.length });
 });

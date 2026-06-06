@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   signals,
   competitors,
@@ -8,6 +8,8 @@ import {
   snapshots,
   qualityFeedback,
   aiQualityChecks,
+  signalComments,
+  users,
 } from "@outrival/db";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
@@ -20,6 +22,9 @@ export const signalsRouter = new Hono<{ Variables: Variables }>();
 
 signalsRouter.use("*", authMiddleware);
 
+// Intel → action loop (Phase B). Triage statuses a user can set on a signal.
+const ACTION_STATUSES = ["todo", "doing", "done", "dismissed"] as const;
+
 signalsRouter.get("/", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
@@ -31,12 +36,25 @@ signalsRouter.get("/", async (c) => {
   // patch-28 — scope the feed to one product (SKU). Signals are tagged with the
   // products affected (signals.productIds) at creation; "All products" omits it.
   const productIdFilter = c.req.query("productId");
+  // Phase B — action board: "open" = todo|doing; a specific status filters to it.
+  const actionStatusFilter = c.req.query("actionStatus");
 
-  // Hide signals the user marked "not useful" (patch-21).
-  const conds = [eq(signals.orgId, orgId), isNull(signals.hiddenForUserAt)];
+  // Hide signals the user marked "not useful" (patch-21). Also drop signals whose
+  // competitor was soft-deleted — otherwise the feed (and the filter dropdown built
+  // from it) keeps surfacing stale competitors the user no longer tracks.
+  const conds = [
+    eq(signals.orgId, orgId),
+    isNull(signals.hiddenForUserAt),
+    isNull(competitors.deletedAt),
+  ];
   if (competitorIdFilter) conds.push(eq(signals.competitorId, competitorIdFilter));
   if (productIdFilter) {
     conds.push(sql`${signals.productIds} @> ${JSON.stringify([productIdFilter])}::jsonb`);
+  }
+  if (actionStatusFilter === "open") {
+    conds.push(inArray(signals.actionStatus, ["todo", "doing"]));
+  } else if ((ACTION_STATUSES as readonly string[]).includes(actionStatusFilter ?? "")) {
+    conds.push(eq(signals.actionStatus, actionStatusFilter as (typeof ACTION_STATUSES)[number]));
   }
   if (severityFilter === "low" || severityFilter === "medium" || severityFilter === "high" || severityFilter === "critical") {
     conds.push(eq(signals.severity, severityFilter));
@@ -57,6 +75,9 @@ signalsRouter.get("/", async (c) => {
       // null for everything else → the card falls back to just the insight title.
       narrative: signals.narrative,
       isRead: signals.isRead,
+      // Intel → action loop (Phase B): the user's triage state on this signal.
+      actionStatus: signals.actionStatus,
+      actionNote: signals.actionNote,
       createdAt: signals.createdAt,
       competitorId: signals.competitorId,
       competitorName: competitors.name,
@@ -207,5 +228,115 @@ signalsRouter.patch("/:id/read", async (c) => {
   if (!signal) return c.json(notFound("signal"), 404);
 
   await db.update(signals).set({ isRead: true }).where(eq(signals.id, id));
+  return c.json({ ok: true });
+});
+
+// Intel → action loop (Phase B). Set/clear a signal's triage status + optional note.
+// status null untriages it. Org-scoped.
+signalsRouter.patch("/:id/action", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const id = c.req.param("id");
+
+  const body = (await c.req.json().catch(() => ({}))) as { status?: unknown; note?: unknown };
+  const status = body.status ?? null;
+  if (status !== null && !(ACTION_STATUSES as readonly string[]).includes(status as string)) {
+    return c.json({ error: "invalid_status" }, 400);
+  }
+  const note = typeof body.note === "string" ? body.note.slice(0, 2000) : null;
+
+  const signal = await db.query.signals.findFirst({
+    where: and(eq(signals.id, id), eq(signals.orgId, orgId)),
+    columns: { id: true },
+  });
+  if (!signal) return c.json(notFound("signal"), 404);
+
+  await db
+    .update(signals)
+    .set({
+      actionStatus: status as (typeof ACTION_STATUSES)[number] | null,
+      actionNote: note,
+      actionUpdatedAt: new Date(),
+    })
+    .where(eq(signals.id, id));
+  return c.json({ ok: true });
+});
+
+// ── Signal comments (Phase C) ──────────────────────────────────────────────────
+// Org-scoped thread on a signal. Single-user today; `mine` lets the client show a
+// delete affordance only on the caller's own comments. See docs/distribution-team.md.
+
+async function ownsSignal(id: string, orgId: string): Promise<boolean> {
+  const sig = await db.query.signals.findFirst({
+    where: and(eq(signals.id, id), eq(signals.orgId, orgId)),
+    columns: { id: true },
+  });
+  return Boolean(sig);
+}
+
+signalsRouter.get("/:id/comments", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const id = c.req.param("id");
+  if (!(await ownsSignal(id, orgId))) return c.json(notFound("signal"), 404);
+
+  const rows = await db
+    .select({
+      id: signalComments.id,
+      userId: signalComments.userId,
+      authorName: signalComments.authorName,
+      body: signalComments.body,
+      createdAt: signalComments.createdAt,
+    })
+    .from(signalComments)
+    .where(eq(signalComments.signalId, id))
+    .orderBy(signalComments.createdAt);
+
+  return c.json({ comments: rows.map((r) => ({ ...r, mine: r.userId === user.id })) });
+});
+
+signalsRouter.post("/:id/comments", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const id = c.req.param("id");
+  if (!(await ownsSignal(id, orgId))) return c.json(notFound("signal"), 404);
+
+  const body = (await c.req.json().catch(() => ({}))) as { body?: unknown };
+  const text = typeof body.body === "string" ? body.body.trim().slice(0, 2000) : "";
+  if (!text) return c.json({ error: "body_required" }, 400);
+
+  const u = await db.query.users.findFirst({
+    where: eq(users.id, user.id),
+    columns: { name: true, email: true },
+  });
+  const authorName = u?.name ?? u?.email ?? "You";
+
+  const [row] = await db
+    .insert(signalComments)
+    .values({ signalId: id, orgId, userId: user.id, authorName, body: text })
+    .returning({
+      id: signalComments.id,
+      userId: signalComments.userId,
+      authorName: signalComments.authorName,
+      body: signalComments.body,
+      createdAt: signalComments.createdAt,
+    });
+  return c.json({ comment: { ...row, mine: true } }, 201);
+});
+
+signalsRouter.delete("/:id/comments/:commentId", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const commentId = c.req.param("commentId");
+  // A user can delete only their own comment (within their org).
+  await db
+    .delete(signalComments)
+    .where(
+      and(
+        eq(signalComments.id, commentId),
+        eq(signalComments.orgId, orgId),
+        eq(signalComments.userId, user.id),
+      ),
+    );
   return c.json({ ok: true });
 });

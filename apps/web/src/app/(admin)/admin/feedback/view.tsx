@@ -65,6 +65,7 @@ export function FeedbackView({ initial }: { initial: AdminFeedbackRow[] }) {
 
       <Section
         title={`Feedback (${visible.length})`}
+        info="User-submitted reports with their screenshot and captured console errors. Filter by status and resolve each one."
         action={
           <Select value={filter} onValueChange={setFilter}>
             <SelectTrigger className="h-8 w-36 text-xs">
@@ -106,7 +107,7 @@ export function FeedbackView({ initial }: { initial: AdminFeedbackRow[] }) {
                     <summary className="cursor-pointer text-xs text-muted-foreground">
                       {f.consoleErrors.length} console error(s)
                     </summary>
-                    <pre className="mt-1 max-h-40 overflow-auto rounded bg-secondary p-2 text-[11px]" style={mono}>
+                    <pre className="mt-1 max-h-40 overflow-auto rounded bg-secondary p-2 text-meta" style={mono}>
                       {f.consoleErrors.map((e) => e.message).join("\n")}
                     </pre>
                   </details>

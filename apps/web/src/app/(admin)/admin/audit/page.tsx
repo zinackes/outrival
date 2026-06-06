@@ -18,7 +18,10 @@ export default async function AuditPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader title="Audit log" subtitle="Sensitive admin actions — most recent 100." />
-      <Section title="Actions">
+      <Section
+        title="Actions"
+        info="Most recent sensitive admin actions (viewing a user, forcing a scrape, editing feedback) — who did it, when, and on which target. Append-only audit trail."
+      >
         {rows.length === 0 ? (
           <Empty>No admin actions logged yet.</Empty>
         ) : (

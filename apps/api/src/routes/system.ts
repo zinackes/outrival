@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { checkGlobalBreaker } from "@outrival/ai";
 import { authMiddleware } from "../middleware/auth";
-import { chQuery } from "../lib/clickhouse-safe";
+import { analyticsQuery, sql } from "../lib/analytics-safe";
 
 type Variables = { user: { id: string } };
 
@@ -20,19 +20,17 @@ const ERROR_THRESHOLD = 2;
 // across the workspace, so degradation affects everyone. Two signals (patch-22):
 //   - global circuit breaker open (all providers down) → "down" + ETA
 //   - repeated ai_runs errors in the window (rate-limited but still trying) → "degraded"
-// Best-effort: breaker reads Redis (no-op → never open), chQuery returns [] when
-// ClickHouse is down/unset (→ never degraded). Drives the "AI is catching up" banner.
+// Best-effort: breaker reads Redis (no-op → never open), analyticsQuery returns []
+// on error (→ never degraded). Drives the "AI is catching up" banner.
 systemRouter.get("/ai-status", async (c) => {
   const breaker = await checkGlobalBreaker();
 
-  const rows = await chQuery<{ errors: string; since: string }>({
-    query: `
-      SELECT count() AS errors, max(recorded_at) AS since
-      FROM ai_runs
-      WHERE recorded_at >= now() - INTERVAL ${WINDOW_MINUTES} MINUTE
-        AND status = 'error'
-    `,
-  });
+  const rows = await analyticsQuery<{ errors: string; since: string | null }>(sql`
+    SELECT count(*) AS errors, max(recorded_at)::text AS since
+    FROM ai_runs
+    WHERE recorded_at >= now() - make_interval(mins => ${WINDOW_MINUTES})
+      AND status = 'error'
+  `);
   const errorCount = Number(rows[0]?.errors ?? 0);
 
   let status: "healthy" | "degraded" | "down" = "healthy";

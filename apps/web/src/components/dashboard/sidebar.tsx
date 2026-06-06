@@ -6,6 +6,10 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Radio,
+  Activity,
+  Globe,
+  LineChart,
+  Columns3,
   Users,
   Box,
   Search,
@@ -55,6 +59,10 @@ interface NavItem {
 const NAV: NavItem[] = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard, exact: true },
   { href: "/dashboard/signals", label: "Signals", icon: Radio },
+  { href: "/dashboard/activity", label: "Activity", icon: Activity },
+  { href: "/dashboard/sector", label: "Sector", icon: Globe },
+  { href: "/dashboard/trends", label: "Trends", icon: LineChart },
+  { href: "/dashboard/compare", label: "Compare", icon: Columns3 },
   { href: "/dashboard/competitors", label: "Competitors", icon: Users },
   { href: "/dashboard/products", label: "Products", icon: Box },
   { href: "/dashboard/discovery", label: "Discovery", icon: Search },
@@ -110,7 +118,7 @@ function WorkspaceSwitcher({ org }: { org: Org }) {
                   <span className="text-foreground">rival</span>
                 </span>
                 {meta && (
-                  <span className="truncate text-[11px] text-[var(--muted-2)]">
+                  <span className="truncate text-meta text-[var(--muted-2)]">
                     {meta}
                   </span>
                 )}

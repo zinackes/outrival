@@ -119,11 +119,11 @@ export function Hero() {
           <div className="flex items-center justify-between border-b border-border pb-4">
             <span className="text-sm font-semibold tracking-tight">
               Out<span className="text-primary">rival</span>
-              <span className="ml-2 font-mono text-[11px] font-normal text-text-subtle">
+              <span className="ml-2 font-mono text-meta font-normal text-text-subtle">
                 weekly digest
               </span>
             </span>
-            <span className="font-mono text-[11px] uppercase tracking-wider text-text-subtle">
+            <span className="font-mono text-meta uppercase tracking-wider text-text-subtle">
               Mon 09:00 · Week 21
             </span>
           </div>

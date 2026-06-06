@@ -11,6 +11,7 @@ import {
   Lightbulb,
   Upload,
   RefreshCw,
+  ArrowRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, type ProductProfile, type ProjectStage } from "@/lib/api";
@@ -255,7 +256,7 @@ export function UpdateProfileDialog({
           <div className="flex flex-col gap-5">
             {/* Stage */}
             <div className="flex flex-col gap-2">
-              <Label className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
+              <Label className="text-meta font-mono uppercase tracking-wider text-muted-foreground">
                 Stage
               </Label>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
@@ -269,7 +270,7 @@ export function UpdateProfileDialog({
                       onClick={() => setStage(s.key)}
                       aria-pressed={active}
                       className={cn(
-                        "flex flex-col items-center gap-1 rounded-md border px-2 py-2 text-[11px] transition-all",
+                        "flex flex-col items-center gap-1 rounded-md border px-2 py-2 text-meta transition-all",
                         active
                           ? "border-primary bg-primary/10 ring-1 ring-primary/40 text-foreground"
                           : "border-border hover:border-border-strong hover:bg-surface-2 text-muted-foreground",
@@ -285,7 +286,7 @@ export function UpdateProfileDialog({
 
             {/* Source + re-analyze */}
             <div className="flex flex-col gap-2">
-              <Label className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
+              <Label className="text-meta font-mono uppercase tracking-wider text-muted-foreground">
                 Source
               </Label>
               {stage === "live" && (
@@ -330,7 +331,7 @@ export function UpdateProfileDialog({
                 <p className="text-xs text-muted-foreground">Pick a stage to set a source.</p>
               )}
               <div className="flex items-center justify-between gap-2">
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-meta text-muted-foreground">
                   Re-analyze re-extracts the profile and updates your source.
                 </p>
                 <Button
@@ -353,7 +354,7 @@ export function UpdateProfileDialog({
             {/* Diff rows (only after a re-analysis, only for changed fields) */}
             {reanalysis && diffRows.length > 0 && (
               <div className="flex flex-col gap-2 rounded-md border border-primary/30 bg-primary/[0.04] px-3 py-3">
-                <div className="flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-wider text-primary">
+                <div className="flex items-center gap-1.5 text-meta font-mono uppercase tracking-wider text-primary">
                   <Sparkles size={12} /> Re-analysis · review {diffRows.length} change
                   {diffRows.length > 1 ? "s" : ""}
                 </div>
@@ -364,14 +365,14 @@ export function UpdateProfileDialog({
                   const cur = (working[key] ?? "").trim();
                   return (
                     <div key={key} className="flex flex-col gap-1 border-t border-border/50 pt-2 first:border-t-0 first:pt-0">
-                      <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+                      <span className="text-micro font-mono uppercase tracking-wider text-muted-foreground">
                         {label}
                       </span>
-                      <div className="text-[12px] leading-relaxed">
+                      <div className="text-xs leading-relaxed">
                         <span className="text-muted-foreground line-through">
                           {before || "—"}
                         </span>
-                        <span className="mx-1.5 text-muted-foreground/60">→</span>
+                        <ArrowRight className="mx-1.5 inline size-3 text-muted-foreground" />
                         <span className="text-foreground">{after || "—"}</span>
                       </div>
                       <div className="flex gap-1.5 mt-0.5">
@@ -379,7 +380,7 @@ export function UpdateProfileDialog({
                           type="button"
                           size="sm"
                           variant={cur === before ? "default" : "outline"}
-                          className="h-6 text-[11px]"
+                          className="h-6 text-meta"
                           onClick={() => pickDiff(key, "keep")}
                         >
                           Keep old
@@ -388,7 +389,7 @@ export function UpdateProfileDialog({
                           type="button"
                           size="sm"
                           variant={cur === after ? "default" : "outline"}
-                          className="h-6 text-[11px]"
+                          className="h-6 text-meta"
                           onClick={() => pickDiff(key, "new")}
                         >
                           Use new

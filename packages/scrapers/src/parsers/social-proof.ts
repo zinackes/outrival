@@ -14,6 +14,24 @@ export interface TestimonialItem {
   author: string | null;
 }
 
+/**
+ * A captured customer logo. `name` is the `<img alt>` brand name (drives the
+ * named add/remove diff) and `src` is the resolved absolute image URL (renders
+ * the real logo). Either can be null; a captured entry has at least one.
+ */
+export interface CustomerLogo {
+  name: string | null;
+  src: string | null;
+}
+
+/** Legacy snapshots stored a single string (alt || src); new ones store objects. */
+type LogoEntry = string | CustomerLogo;
+
+/** Brand name of a logo entry, tolerating the legacy string shape. */
+function logoEntryName(e: LogoEntry): string {
+  return typeof e === "string" ? e : (e.name ?? e.src ?? "");
+}
+
 const norm = (s: string): string => s.replace(/\s+/g, " ").trim();
 
 // Looks like a URL / filename (logo with no alt text) rather than a brand name —
@@ -35,16 +53,18 @@ export function normalizeLogo(raw: string): string | null {
  * side for adds, of the prior side for removals). Asset-only logos are ignored.
  */
 export function diffLogos(
-  prev: string[],
-  curr: string[],
+  prev: readonly LogoEntry[],
+  curr: readonly LogoEntry[],
 ): { added: string[]; removed: string[] } {
   const prevMap = new Map<string, string>();
-  for (const l of prev) {
+  for (const e of prev) {
+    const l = logoEntryName(e);
     const n = normalizeLogo(l);
     if (n && !prevMap.has(n)) prevMap.set(n, norm(l));
   }
   const currMap = new Map<string, string>();
-  for (const l of curr) {
+  for (const e of curr) {
+    const l = logoEntryName(e);
     const n = normalizeLogo(l);
     if (n && !currMap.has(n)) currMap.set(n, norm(l));
   }

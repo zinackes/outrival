@@ -23,7 +23,7 @@ import {
 } from "@outrival/ai";
 import type { StructuredChange } from "@outrival/scrapers/homepage-diff";
 import { PLAN_LIMITS, PRICING_STATUSES, PRICING_STATUS_LABELS } from "@outrival/shared";
-import { insertSignalFeed, logAiRun } from "../lib/clickhouse";
+import { insertSignalFeed, logAiRun } from "../lib/analytics";
 import { captureWorkerEvent, shutdownPostHog } from "../lib/posthog";
 import { groqQueue } from "../lib/queues";
 import { decideDispatch } from "../lib/notification-dispatcher";

@@ -632,6 +632,7 @@ export function SignalsView() {
                     item={item}
                     autoReadIds={autoReadIds}
                     highlightId={highlightId}
+                    openSignalId={focusId}
                     onMarkRead={markRead}
                     onAutoRead={autoRead}
                     onMarkUnread={markUnread}
@@ -653,6 +654,7 @@ function BatchGroupCard({
   item,
   autoReadIds,
   highlightId,
+  openSignalId,
   onMarkRead,
   onAutoRead,
   onMarkUnread,
@@ -661,12 +663,17 @@ function BatchGroupCard({
   item: Extract<FeedItem, { kind: "batch" }>;
   autoReadIds: Set<string>;
   highlightId: string | null;
+  // When a ?focus=<id> targets a member, mount the batch expanded so the parent's
+  // scroll-into-view finds the card instead of failing silently on a collapsed batch.
+  openSignalId?: string | null;
   onMarkRead: (id: string) => void;
   onAutoRead: (id: string) => void;
   onMarkUnread: (id: string) => void;
   onActionChange: (id: string, status: ActionStatus | null) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(
+    () => openSignalId != null && item.signals.some((s) => s.id === openSignalId),
+  );
   const first = item.signals[0]!;
   const maxSev = item.signals.reduce<Sev>(
     (m, s) => (SEV_RANK[s.severity] > SEV_RANK[m] ? s.severity : m),
@@ -686,7 +693,9 @@ function BatchGroupCard({
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="text-base font-semibold">{first.competitorName}</span>
             <span className="text-xs text-muted-foreground">
-              {item.count} similar {first.category} signals
+              {/* Reflect what's actually grouped here (filters/hidden/limit can trim
+                  the batch), not the stored batch count which may diverge. */}
+              {item.signals.length} similar {first.category} signals
             </span>
             {unreadCount > 0 && <span className="size-1.5 rounded-full bg-primary" />}
           </div>

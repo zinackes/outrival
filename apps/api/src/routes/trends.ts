@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { and, eq, isNull } from "drizzle-orm";
 import { competitors } from "@outrival/db";
 import { db } from "../lib/db";
-import { analyticsQuery, sql } from "../lib/analytics-safe";
+import { analyticsQuery, analyticsQueryResult, sql } from "../lib/analytics-safe";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
 
@@ -90,7 +90,7 @@ trendsRouter.get("/summary", async (c) => {
   const nameById = new Map(comps.map((x) => [x.id, x.name]));
   const ids = comps.map((x) => x.id);
   if (ids.length === 0) {
-    return c.json({ window: windowDays, pricing: [], hiring: [], reviews: [], tech: [] });
+    return c.json({ window: windowDays, pricing: [], hiring: [], reviews: [], tech: [], degraded: false });
   }
   const idList = sql.join(
     ids.map((id) => sql`${id}`),
@@ -98,7 +98,7 @@ trendsRouter.get("/summary", async (c) => {
   );
 
   // Recent price changes (a plan's price differs from its previous batch).
-  const pricing = await analyticsQuery<RawPricingMove>(sql`
+  const pricingRes = await analyticsQueryResult<RawPricingMove>(sql`
     WITH ranked AS (
       SELECT competitor_id, plan_name, price, currency, billing_period, recorded_at,
              lag(price) OVER (
@@ -118,7 +118,7 @@ trendsRouter.get("/summary", async (c) => {
   `);
 
   // Net open roles added over the window (latest total − earliest total).
-  const hiring = await analyticsQuery<RawHiringMove>(sql`
+  const hiringRes = await analyticsQueryResult<RawHiringMove>(sql`
     WITH totals AS (
       SELECT competitor_id, recorded_at, sum(count)::int AS total
       FROM job_counts
@@ -140,7 +140,7 @@ trendsRouter.get("/summary", async (c) => {
   `);
 
   // Latest score per (competitor, source).
-  const reviews = await analyticsQuery<RawReviewMove>(sql`
+  const reviewsRes = await analyticsQueryResult<RawReviewMove>(sql`
     SELECT DISTINCT ON (competitor_id, source)
            competitor_id AS "competitorId", source, score, review_count AS "reviewCount",
            recorded_at AS "recordedAt"
@@ -152,7 +152,7 @@ trendsRouter.get("/summary", async (c) => {
   `);
 
   // Recent tech appeared/disappeared across all competitors.
-  const tech = await analyticsQuery<RawTechMove>(sql`
+  const techRes = await analyticsQueryResult<RawTechMove>(sql`
     SELECT competitor_id AS "competitorId", tech_id AS "techId", event, importance,
            recorded_at AS "recordedAt"
     FROM tech_stack_history
@@ -165,12 +165,18 @@ trendsRouter.get("/summary", async (c) => {
   const withName = <T extends { competitorId: string }>(rows: T[]) =>
     rows.map((r) => ({ ...r, competitorName: nameById.get(r.competitorId) ?? "Unknown" }));
 
+  // Degraded when any sub-query actually failed (not merely returned no rows), so
+  // the UI can say "temporarily unavailable" instead of "no data yet" (gap-#2).
+  const degraded =
+    !pricingRes.ok || !hiringRes.ok || !reviewsRes.ok || !techRes.ok;
+
   return c.json({
     window: windowDays,
-    pricing: withName(pricing),
-    hiring: withName(hiring),
-    reviews: withName(reviews),
-    tech: withName(tech),
+    pricing: withName(pricingRes.rows),
+    hiring: withName(hiringRes.rows),
+    reviews: withName(reviewsRes.rows),
+    tech: withName(techRes.rows),
+    degraded,
   });
 });
 

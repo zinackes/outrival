@@ -483,6 +483,9 @@ export interface TrendsSummary {
   hiring: HiringMove[];
   reviews: ReviewMove[];
   tech: TechMove[];
+  // True when a sub-query failed (vs. genuinely no data) so the UI can show a
+  // "temporarily unavailable" state instead of an empty one. Optional for back-compat.
+  degraded?: boolean;
 }
 export type TrendMetric = "pricing" | "hiring" | "reviews";
 export interface TrendSeriesPoint {

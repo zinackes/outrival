@@ -8,12 +8,22 @@ import { db } from "./db";
 // (preserves the old "return [] when the store is down" contract). The cold-start
 // timeout race the ClickHouse helper needed is gone — it's the same DB now.
 export async function analyticsQuery<T>(query: SQL): Promise<T[]> {
+  return (await analyticsQueryResult<T>(query)).rows;
+}
+
+// Same best-effort read, but keeps the failure/empty distinction the bare
+// analyticsQuery throws away. Lets a handler tell the UI "temporarily unavailable"
+// (ok=false) apart from "no data yet" (ok=true, rows=[]). Opt-in: existing callers
+// keep using analyticsQuery unchanged.
+export async function analyticsQueryResult<T>(
+  query: SQL,
+): Promise<{ ok: boolean; rows: T[] }> {
   try {
     const rows = await db.execute(query);
-    return rows as unknown as T[];
+    return { ok: true, rows: rows as unknown as T[] };
   } catch (err) {
     logger.error({ err }, "analytics query failed");
-    return [];
+    return { ok: false, rows: [] };
   }
 }
 

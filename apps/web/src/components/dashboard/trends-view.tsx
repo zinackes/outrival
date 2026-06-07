@@ -255,6 +255,19 @@ export function TrendsView() {
             <Skeleton key={i} className="h-44 w-full" />
           ))}
         </div>
+      ) : summary.degraded && allEmpty ? (
+        <div className="rounded-lg border border-dashed border-border px-6 py-14 text-center text-muted-foreground">
+          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full border border-border bg-background">
+            <LineChartIcon size={16} className="text-muted-foreground" aria-hidden />
+          </div>
+          <div className="mb-1.5 text-base font-semibold tracking-tight text-foreground">
+            Trends temporarily unavailable
+          </div>
+          <div className="mx-auto max-w-[400px] text-dense">
+            We couldn&apos;t read the trend data just now — this is usually brief. Refresh in a
+            moment.
+          </div>
+        </div>
       ) : allEmpty ? (
         <div className="rounded-lg border border-dashed border-border px-6 py-14 text-center text-muted-foreground">
           <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full border border-border bg-background">

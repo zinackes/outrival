@@ -8,7 +8,9 @@
     "typecheck": "turbo typecheck",
     "test": "turbo test",
     "db:push": "pnpm --filter @outrival/db db:push",
+    "db:generate": "pnpm --filter @outrival/db db:generate",
     "db:migrate": "pnpm --filter @outrival/db db:migrate",
+    "db:baseline": "pnpm --filter @outrival/db db:baseline",
     "db:studio": "pnpm --filter @outrival/db db:studio",
     "trigger:dev": "pnpm --filter @outrival/workers trigger:dev"
   },

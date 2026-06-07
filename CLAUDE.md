@@ -14,10 +14,25 @@ pnpm dev --filter @outrival/api # API uniquement
 pnpm build                      # Build tous les packages
 pnpm typecheck                  # Typecheck tous les packages
 pnpm test                       # Tests
-pnpm db:push                    # Push schema Drizzle → Railway Postgres
-pnpm db:migrate                 # Migrations en attente
+pnpm db:generate                # Génère une migration versionnée depuis le schéma
+pnpm db:migrate                 # Applique les migrations en attente (dev + déploiement)
+pnpm db:baseline                # One-shot : marque les migrations existantes appliquées (env déjà créé via push)
 pnpm db:studio                  # Drizzle Studio
+pnpm db:push                    # ⚠️ legacy/prototypage local seulement — voir règle ci-dessous
 pnpm trigger:dev                # Runner Trigger.dev local
+
+## Migrations DB — CRITIQUE (versionnées, plus de push en prod)
+
+Le schéma est suivi par des **migrations versionnées** (`packages/db/migrations/`),
+plus par `db:push` direct (qui causait du drift + des colonnes manquantes en prod).
+
+- **Changer le schéma** : éditer `packages/db/src/schema/*` → `pnpm db:generate`
+  (crée `NNNN_*.sql` + snapshot, à committer) → `pnpm db:migrate` (applique en local).
+- **Déploiement / nouvel env** : `pnpm db:migrate` (applique tout depuis `0000`).
+- **Env existant créé via push** (prod actuelle) : `pnpm db:baseline` **une fois**
+  (marque les migrations déjà-appliquées sans les rejouer), puis `db:migrate`.
+- `db:push` reste toléré pour du prototypage **local jetable** uniquement — jamais
+  sur un env partagé : il ne laisse pas de trace versionnée.
 
 ## Règles monorepo — CRITIQUE
 

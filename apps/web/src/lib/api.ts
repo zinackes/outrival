@@ -1303,6 +1303,13 @@ export interface AdminMultiProductMetrics {
   battleCards: { total: number; couples: number; avgPerProduct: number };
 }
 
+// Enrichment completeness — how much of the structured enrichment actually lands.
+export interface AdminEnrichmentCompleteness {
+  hiring: { total: number; withSeniority: number; withSalary: number; viaAts: number };
+  reviews: { withScores: number; withSubScores: number; withThemes: number };
+  platform: { eligible: number; withProfile: number };
+}
+
 // patch-28 — a product (SKU) in the multi-product selector / settings.
 export interface ProductSummary {
   id: string;

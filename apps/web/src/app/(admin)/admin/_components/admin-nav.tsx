@@ -21,6 +21,7 @@ import {
   Network,
   Send,
   Telescope,
+  Sparkles,
 } from "lucide-react";
 
 const ITEMS = [
@@ -29,6 +30,7 @@ const ITEMS = [
   { href: "/admin/monitors-health", label: "Monitors health", icon: Gauge },
   { href: "/admin/scraping-edge-cases", label: "Edge cases", icon: Unplug },
   { href: "/admin/platform-detection", label: "Platform", icon: Network },
+  { href: "/admin/enrichment", label: "Enrichment", icon: Sparkles },
   { href: "/admin/ai", label: "AI", icon: Brain },
   { href: "/admin/jobs", label: "Jobs", icon: ListChecks },
   { href: "/admin/users", label: "Users", icon: Users },

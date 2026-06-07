@@ -9,6 +9,7 @@ import {
   products,
   productCompetitors,
   battleCards,
+  jobPostings,
   monitors,
   signals,
   feedback,
@@ -1171,6 +1172,63 @@ adminRouter.get("/multi-product-metrics", async (c) => {
       total: cards?.total ?? 0,
       couples: cards?.couples ?? 0,
       avgPerProduct: totalActiveProducts > 0 ? (cards?.total ?? 0) / totalActiveProducts : 0,
+    },
+  });
+});
+
+// --- Enrichment completeness: how much of the structured enrichment actually
+//     lands — salary/seniority on jobs, sub-scores/themes on reviews, platform
+//     profile on competitors. The arbiter for whether each enrichment is worth
+//     surfacing, or whether the extraction needs work. Relational + best-effort
+//     analytics (review_scores). Global (all orgs), not org-scoped. ---
+adminRouter.get("/enrichment-completeness", async (c) => {
+  const [hiring] = await db
+    .select({
+      total: sql<number>`count(*)::int`,
+      withSeniority: sql<number>`count(*) filter (where ${jobPostings.seniority} is not null)::int`,
+      withSalary: sql<number>`count(*) filter (where ${jobPostings.salaryMin} is not null)::int`,
+      viaAts: sql<number>`count(*) filter (where ${jobPostings.url} is not null)::int`,
+    })
+    .from(jobPostings)
+    .where(eq(jobPostings.isActive, true));
+
+  const [platform] = await db
+    .select({
+      eligible: sql<number>`count(*) filter (where ${competitors.url} is not null and ${competitors.type} <> 'self' and ${competitors.deletedAt} is null)::int`,
+      withProfile: sql<number>`count(*) filter (where ${competitors.platformProfile} is not null and ${competitors.type} <> 'self' and ${competitors.deletedAt} is null)::int`,
+    })
+    .from(competitors);
+
+  const [reviews] = await analyticsQuery<{
+    with_scores: number;
+    with_subscores: number;
+    with_themes: number;
+  }>(sql`
+    SELECT
+      count(distinct competitor_id)::int AS with_scores,
+      count(distinct competitor_id) filter (
+        where sub_ease_of_use is not null or sub_support is not null
+           or sub_features is not null or sub_value is not null
+      )::int AS with_subscores,
+      count(distinct competitor_id) filter (where complaint_themes is not null)::int AS with_themes
+    FROM review_scores
+  `);
+
+  return c.json({
+    hiring: {
+      total: hiring?.total ?? 0,
+      withSeniority: hiring?.withSeniority ?? 0,
+      withSalary: hiring?.withSalary ?? 0,
+      viaAts: hiring?.viaAts ?? 0,
+    },
+    reviews: {
+      withScores: reviews?.with_scores ?? 0,
+      withSubScores: reviews?.with_subscores ?? 0,
+      withThemes: reviews?.with_themes ?? 0,
+    },
+    platform: {
+      eligible: platform?.eligible ?? 0,
+      withProfile: platform?.withProfile ?? 0,
     },
   });
 });

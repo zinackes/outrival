@@ -10,8 +10,10 @@ import {
   SlidersHorizontal,
   X,
   ChevronDown,
+  ArrowUpDown,
 } from "lucide-react";
 import { startOfWeek, endOfWeek } from "date-fns";
+import { toast } from "sonner";
 import { api, type Signal, type ActionStatus, type SavedViewFilters } from "@/lib/api";
 import { toCsv, downloadCsv } from "@/lib/csv";
 import { Button } from "@/components/ui/button";
@@ -77,6 +79,9 @@ export function SignalsView() {
   const [signals, setSignals] = useState<Signal[] | null>(null);
   const [err, setErr] = useState<unknown>(null);
   const [highlightId, setHighlightId] = useState<string | null>(null);
+  // Signals read automatically by dwell (vs. an explicit click / "Mark all read").
+  // Only these can be reverted to unread by clicking the card.
+  const [autoReadIds, setAutoReadIds] = useState<Set<string>>(new Set());
   const focusedRef = useRef<string | null>(null);
 
   const focusId = searchParams.get("focus");
@@ -103,13 +108,18 @@ export function SignalsView() {
   // absent = aggregate "All products".
   const productId = searchParams.get("product");
 
+  // P0 — feed ordering. Default "threat" (server ranks by severity × overlap ×
+  // relevance); "recent" restores the chronological feed. Server-side, so changing
+  // it re-fetches.
+  const sort = searchParams.get("sort") === "recent" ? "recent" : "threat";
+
   const load = useCallback(() => {
     setErr(null);
     api
-      .listSignals({ limit: 200, productId: productId ?? undefined })
+      .listSignals({ limit: 200, productId: productId ?? undefined, sort })
       .then((r) => setSignals(r.signals))
       .catch((e) => setErr(e));
-  }, [productId]);
+  }, [productId, sort]);
 
   useEffect(() => {
     load();
@@ -133,10 +143,59 @@ export function SignalsView() {
   }, [focusId, signals, setParam]);
 
   async function markRead(id: string) {
-    await api.markSignalRead(id);
+    // Explicit read: drop any auto-read flag so the card stops offering "mark unread".
+    setAutoReadIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
     setSignals((prev) =>
       prev ? prev.map((s) => (s.id === id ? { ...s, isRead: true } : s)) : prev,
     );
+    await api.markSignalRead(id);
+  }
+
+  // Dwell auto-read (patch): the card scrolled into view and the user lingered on it.
+  // Tracked separately so a click can undo it; an explicit read can't be undone this way.
+  async function autoRead(id: string) {
+    setAutoReadIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+    setSignals((prev) =>
+      prev ? prev.map((s) => (s.id === id ? { ...s, isRead: true } : s)) : prev,
+    );
+    try {
+      await api.markSignalRead(id);
+    } catch {
+      // Roll back the optimistic read so the dwell observer can retry.
+      setAutoReadIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      setSignals((prev) =>
+        prev ? prev.map((s) => (s.id === id ? { ...s, isRead: false } : s)) : prev,
+      );
+    }
+  }
+
+  async function markUnread(id: string) {
+    setAutoReadIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    setSignals((prev) =>
+      prev ? prev.map((s) => (s.id === id ? { ...s, isRead: false } : s)) : prev,
+    );
+    try {
+      await api.markSignalRead(id, false);
+    } catch {
+      toast.error("Couldn't mark unread. Try again.");
+    }
   }
 
   async function markAllRead() {
@@ -336,6 +395,33 @@ export function SignalsView() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm">
+              <ArrowUpDown size={13} />
+              {sort === "recent" ? "Most recent" : "Most relevant"}
+              <ChevronDown size={11} className="opacity-60" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+            <DropdownMenuCheckboxItem
+              checked={sort === "threat"}
+              onSelect={(e) => e.preventDefault()}
+              onCheckedChange={() => setParam({ sort: null })}
+            >
+              Most relevant
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem
+              checked={sort === "recent"}
+              onSelect={(e) => e.preventDefault()}
+              onCheckedChange={() => setParam({ sort: "recent" })}
+            >
+              Most recent
+            </DropdownMenuCheckboxItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm">
               <SlidersHorizontal size={13} />
               Filters
               {activeFilterCount > 0 && (
@@ -488,6 +574,9 @@ export function SignalsView() {
                 <SignalCard
                   signal={s}
                   onMarkRead={markRead}
+                  onAutoRead={autoRead}
+                  onMarkUnread={markUnread}
+                  wasAutoRead={autoReadIds.has(s.id)}
                   onActionChange={onActionChange}
                   highlight={s.id === highlightId}
                 />

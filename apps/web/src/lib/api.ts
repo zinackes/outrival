@@ -137,6 +137,14 @@ export interface CompetitorJob {
   location: string | null;
   isActive: boolean;
   detectedAt: string;
+  // patch-32 hiring enrichment — populated on the structured ATS path, null on the
+  // LLM/careers fallback. seniority is a canonical bucket; salary is normalized.
+  url: string | null;
+  seniority: string | null;
+  postedAt: string | null;
+  salaryMin: number | null;
+  salaryMax: number | null;
+  salaryCurrency: string | null;
 }
 
 export interface JobsByDepartment {
@@ -179,11 +187,29 @@ export interface ReviewVerbatim {
   detectedAt: string;
 }
 
+export interface ReviewSubScores {
+  easeOfUse: number | null;
+  support: number | null;
+  features: number | null;
+  value: number | null;
+}
+
+export interface ReviewComplaintTheme {
+  theme: string;
+  prevalence: string;
+}
+
 export interface ReviewsData {
   summary: {
     praises: Array<string | null>;
     complaints: Array<string | null>;
     lastUpdatedAt: string | null;
+    // patch-32 per-criterion ratings (/5) from the latest scrape that carried a
+    // breakdown; null when no source exposes one.
+    subScores: ReviewSubScores | null;
+    // gap-B recurring complaint themes (clustered, with prevalence) — a repeated
+    // grievance is a competitive opening. Empty when none.
+    complaintThemes: ReviewComplaintTheme[];
   };
   recent: ReviewVerbatim[];
 }
@@ -268,6 +294,11 @@ export interface Signal {
   aiConfidence: "low" | "medium" | "high" | null;
   aiFlagged: boolean | null;
   aiQualityCheckId: string | null;
+  // P0 threat weighting: how much this competitor overlaps with us (0-100, nullable)
+  // and the server-computed threat score (0-1) the feed is ordered by.
+  overlapScore: number | null;
+  relevanceScore: number | null;
+  threatScore: number;
 }
 
 // User-safe "Why this insight?" payload (patch-14). No raw HTML, no diff, no AI
@@ -346,6 +377,15 @@ export interface ActivitySource {
   status: ActivitySourceStatus;
 }
 
+// One readable change in the expandable activity detail: a typed label + a
+// before/after. Shaped server-side from changes.structured_diff (homepage).
+export interface ActivityChange {
+  kind: string;
+  field: string;
+  before: string | null;
+  after: string | null;
+}
+
 export interface ActivityEvent {
   competitorId: string;
   competitorName: string;
@@ -357,7 +397,21 @@ export interface ActivityEvent {
   // or when the diff isn't text, e.g. structured homepage changes).
   changeId?: string | null;
   changeSummary?: string | null;
+  // Precise, readable breakdown shown when a run row is expanded. Typed homepage
+  // changes (before→after per region) + the AI-distilled plain before/after off
+  // the signal (any source). Empty/null when the run produced no signal/structure.
+  structuredChanges?: ActivityChange[];
+  humanChangeBefore?: string | null;
+  humanChangeAfter?: string | null;
+  // True only for a monitor's baseline capture (first snapshot, no diff possible).
+  // Distinguishes the first scrape from an actual "change detected" in the feed.
+  isFirstCapture?: boolean;
 }
+
+// The user-facing outcome buckets used to filter the activity feed — derived from
+// the raw run status + whether a change row / earlier snapshot exists (see the
+// /api/activity/timeline route). Not the same as ActivityEvent.status (raw run).
+export type ActivityStatusFilter = "change" | "first_capture" | "no_change" | "failed";
 
 // Consumption cockpit (Phase A) — quantified per-tier caps with current use.
 export type UsageDimension =
@@ -1339,6 +1393,8 @@ export const api = {
     severity?: string;
     unreadOnly?: boolean;
     actionStatus?: string;
+    // P0 — "threat" (default, server-side) | "recent" (chronological).
+    sort?: "threat" | "recent";
   }) => {
     const q = new URLSearchParams();
     if (params?.limit) q.set("limit", String(params.limit));
@@ -1347,11 +1403,15 @@ export const api = {
     if (params?.severity) q.set("severity", params.severity);
     if (params?.unreadOnly) q.set("unreadOnly", "true");
     if (params?.actionStatus) q.set("actionStatus", params.actionStatus);
+    if (params?.sort) q.set("sort", params.sort);
     const qs = q.toString();
     return request<{ signals: Signal[] }>(`/api/signals${qs ? `?${qs}` : ""}`);
   },
-  markSignalRead: (id: string) =>
-    request<{ ok: true }>(`/api/signals/${id}/read`, { method: "PATCH" }),
+  markSignalRead: (id: string, read = true) =>
+    request<{ ok: true }>(`/api/signals/${id}/read`, {
+      method: "PATCH",
+      body: JSON.stringify({ read }),
+    }),
   setSignalAction: (id: string, status: ActionStatus | null, note?: string) =>
     request<{ ok: true }>(`/api/signals/${id}/action`, {
       method: "PATCH",
@@ -1403,7 +1463,7 @@ export const api = {
     offset?: number;
     competitorId?: string;
     sourceType?: string;
-    status?: ActivityEvent["status"];
+    status?: ActivityStatusFilter;
   }) => {
     const q = new URLSearchParams();
     if (params?.limit) q.set("limit", String(params.limit));

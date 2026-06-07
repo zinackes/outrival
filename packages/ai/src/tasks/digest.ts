@@ -2,6 +2,7 @@ import { z } from "zod";
 import { AI_CONFIG } from "../config";
 import { groundedAiCall } from "../grounding/grounded-call";
 import { attachQuality, type WithQuality } from "../grounding/types";
+import type { MyProductContext } from "./insight";
 
 export const DigestSchema = z.object({
   temperature: z.enum(["low", "moderate", "high"]),
@@ -35,15 +36,28 @@ export interface DigestInputSignal {
 
 export async function generateDigest(
   signals: DigestInputSignal[],
+  myProduct?: MyProductContext,
 ): Promise<WithQuality<Digest> | null> {
+  const myProductBlock = myProduct
+    ? `\n<my_product>
+These signals are about OUR competitors. Read the week from our perspective.
+Category: ${myProduct.category}
+Audience: ${myProduct.audience}
+Value proposition: ${myProduct.valueProp}
+</my_product>\n`
+    : "";
+  const tldrGuidance = myProduct
+    ? "TL;DR: 3 key points maximum, each framed around what it means for OUR product (threat, opportunity, or non-event)"
+    : "TL;DR: 3 key points maximum";
+
   const prompt = `<signals>
 ${JSON.stringify(signals, null, 2)}
 </signals>
-
+${myProductBlock}
 <task>
 Generate a weekly competitive-intelligence digest from these signals.
 - Assess the overall temperature (low/moderate/high)
-- TL;DR: 3 key points maximum
+- ${tldrGuidance}
 - Group the signals: critical/high → action_required, medium → watch, low → fyi
 - Write all text values in English.
 Reply ONLY with valid JSON, no markdown.

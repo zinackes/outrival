@@ -1,6 +1,7 @@
 import { complete } from "../provider";
 import { AI_CONFIG } from "../config";
 import type { StructuredChangeInput } from "./classify-structured";
+import type { MyProductContext } from "./insight";
 
 // Minimum overall severity for which we spend an extra AI call on a strategic
 // narrative. Below this, the cost isn't worth it (patch-16 cost control).
@@ -24,6 +25,9 @@ export function shouldNarrate(severity: string): boolean {
 export interface NarrateChangeInput {
   changes: StructuredChangeInput[];
   competitor: { name: string; category: string };
+  // The org's own product profile (org-level). When present, the narrative is
+  // framed from our perspective; absent → the pre-P0 generic narrative.
+  myProduct?: MyProductContext;
 }
 
 /**
@@ -41,11 +45,18 @@ export async function narrateChange(input: NarrateChangeInput): Promise<string |
     .map((c) => `- [${c.kind}] ${c.field}: ${c.before ?? "∅"} → ${c.after ?? "∅"}`)
     .join("\n");
 
+  const myProductBlock = input.myProduct
+    ? `\n\nOUR product (judge the change from our perspective): ${input.myProduct.category} for ${input.myProduct.audience} — ${input.myProduct.valueProp}.`
+    : "";
+  const angle = input.myProduct
+    ? "what this change suggests strategically for OUR product (overlap, threat to our differentiation, or a gap we can exploit)"
+    : "what this change suggests strategically";
+
   const prompt = `You are a strategic competitive-intelligence analyst. Here is what changed on the homepage of ${input.competitor.name} (category: ${input.competitor.category}):
 
-${list.slice(0, 4000)}
+${list.slice(0, 4000)}${myProductBlock}
 
-Explain in 2-3 sentences what this change suggests strategically. Sober, factual tone. No superlatives. No gratuitous speculation. Write in English. If you don't have enough information to say anything useful, reply exactly: "Change noted, significance to be confirmed."
+Explain in 2-3 sentences ${angle}. Sober, factual tone. No superlatives. No gratuitous speculation. Write in English. If you don't have enough information to say anything useful, reply exactly: "Change noted, significance to be confirmed."
 
 Reply with the explanation text only — no markdown, no preamble.`;
 

@@ -20,6 +20,7 @@ import {
   shouldNarrate,
   ClassificationSchema,
   AI_CONFIG,
+  toMyProductContext,
 } from "@outrival/ai";
 import type { StructuredChange } from "@outrival/scrapers/homepage-diff";
 import { PLAN_LIMITS, PRICING_STATUSES, PRICING_STATUS_LABELS } from "@outrival/shared";
@@ -81,6 +82,13 @@ export const generateSignalJob = task({
     });
     if (!competitor) throw new AbortTaskRunError(`Competitor ${monitor.competitorId} not found`);
 
+    // Load the org once: its productProfile makes the insight/narrative user-aware
+    // (P0), and the same row is reused for the alert-gating check below (no re-fetch).
+    const org = await db.query.organizations.findFirst({
+      where: eq(organizations.id, competitor.orgId),
+    });
+    const myProduct = toMyProductContext(org?.productProfile);
+
     // A pricing repositioning replaces the generic classification: it sets the
     // category to "pricing", takes its severity from the transition, and gets a
     // transition-aware insight prompt.
@@ -120,6 +128,11 @@ export const generateSignalJob = task({
             competitor.name,
             competitor.category,
             input.classification!,
+            myProduct,
+            // Lexical diffs (diffType "text") are a raw blob → the most
+            // hallucination-prone path: require verbatim grounding. Structured
+            // homepage changes are already anchored, so they keep the cheap path.
+            change.diffType !== "structured",
           );
     } catch (err) {
       await logAiRun("insight", provider, model, "error");
@@ -142,6 +155,7 @@ export const generateSignalJob = task({
         narrative = await narrateChange({
           changes: change.structuredDiff as StructuredChange[],
           competitor: { name: competitor.name, category: competitor.category ?? "unknown" },
+          myProduct,
         });
         await logAiRun(
           "narrate_change",
@@ -236,11 +250,9 @@ export const generateSignalJob = task({
       .where(eq(signals.id, newSignal.id));
 
     if (decision.send && decision.channel === "email_immediate") {
-      const org = await db.query.organizations.findFirst({
-        where: eq(organizations.id, competitor.orgId),
-      });
       // Plan entitlement still applies (moderation never overrides gating): only
-      // realtime-alert plans get an immediate email/Slack/webhook.
+      // realtime-alert plans get an immediate email/Slack/webhook. Reuses the org
+      // loaded up front for the product-aware insight.
       if (org?.alertsEnabled && PLAN_LIMITS[org.plan].features.realtimeAlerts) {
         await tasks.trigger(
           "send-alert",

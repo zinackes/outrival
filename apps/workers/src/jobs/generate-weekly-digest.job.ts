@@ -9,7 +9,13 @@ import {
   sectoralSignals,
   insertAiQualityCheck,
 } from "@outrival/db";
-import { generateDigest, AI_CONFIG, checkGlobalBreaker, type DigestInputSignal } from "@outrival/ai";
+import {
+  generateDigest,
+  toMyProductContext,
+  AI_CONFIG,
+  checkGlobalBreaker,
+  type DigestInputSignal,
+} from "@outrival/ai";
 import { signDigestFeedbackToken } from "@outrival/shared";
 import { renderDigestEmail } from "../lib/digest-email";
 import { getResend, ALERT_FROM } from "../lib/resend";
@@ -111,7 +117,7 @@ export const generateWeeklyDigestJob = schedules.task({
       const { provider, model } = AI_CONFIG.digest;
       let digest;
       try {
-        digest = await generateDigest(input);
+        digest = await generateDigest(input, toMyProductContext(org.productProfile));
       } catch (err) {
         await logAiRun("digest", provider, model, "error");
         throw err;

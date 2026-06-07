@@ -6,6 +6,7 @@ export * from "./constants/freshness";
 export * from "./staleness";
 export * from "./r2/client";
 export * from "./diff";
+export * from "./scoring/threat";
 export * from "./scheduling";
 export * from "./url";
 export * from "./reviews";

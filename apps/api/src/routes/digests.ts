@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { and, desc, eq, gte, isNull, lt } from "drizzle-orm";
-import { digests, signals, competitors } from "@outrival/db";
-import { generateDigest, type DigestInputSignal } from "@outrival/ai";
+import { digests, signals, competitors, organizations } from "@outrival/db";
+import { generateDigest, toMyProductContext, type DigestInputSignal } from "@outrival/ai";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
@@ -104,7 +104,12 @@ digestsRouter.post("/generate", async (c) => {
     so_what: s.soWhat,
   }));
 
-  const content = await generateDigest(input);
+  // Frame the digest from the org's own product perspective when profiled (P1).
+  const orgRow = await db.query.organizations.findFirst({
+    where: eq(organizations.id, orgId),
+    columns: { productProfile: true },
+  });
+  const content = await generateDigest(input, toMyProductContext(orgRow?.productProfile));
   if (!content) {
     return c.json({ error: "generation_failed" }, 502);
   }

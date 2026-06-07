@@ -11,6 +11,7 @@ import {
   signalComments,
   users,
 } from "@outrival/db";
+import { computeThreatScore } from "@outrival/shared";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
@@ -38,6 +39,10 @@ signalsRouter.get("/", async (c) => {
   const productIdFilter = c.req.query("productId");
   // Phase B — action board: "open" = todo|doing; a specific status filters to it.
   const actionStatusFilter = c.req.query("actionStatus");
+  // P0 — feed ordering. Default "threat": severity × competitor overlap × relevance,
+  // so the frontal competitor moving on our turf outranks a tangential one. "recent"
+  // restores the chronological feed.
+  const sort = c.req.query("sort") === "recent" ? "recent" : "threat";
 
   // Hide signals the user marked "not useful" (patch-21). Also drop signals whose
   // competitor was soft-deleted — otherwise the feed (and the filter dropdown built
@@ -81,6 +86,11 @@ signalsRouter.get("/", async (c) => {
       createdAt: signals.createdAt,
       competitorId: signals.competitorId,
       competitorName: competitors.name,
+      // P0 threat inputs: how much this competitor overlaps with us (0-100, nullable)
+      // and the change's composite relevance (0-1, nullable). Surfaced so the client
+      // can show the threat indicator without recomputing.
+      overlapScore: competitors.overlapScore,
+      relevanceScore: signals.relevanceScore,
       changeId: signals.changeId,
       // Surfaced inline by the signal source line (patch-14). Joined through the
       // originating change → monitor; null for signals whose change/monitor was
@@ -116,10 +126,38 @@ signalsRouter.get("/", async (c) => {
       ),
     )
     .where(and(...conds))
-    .orderBy(desc(signals.createdAt))
+    // Threat ordering done in SQL so the LIMIT keeps the most threatening signals,
+    // not just the most recent N. Mirrors computeThreatScore (severity uses the
+    // user override when set), with createdAt as the tie-break. NULL overlap/relevance
+    // fall back to the same neutral 0.5 as the shared scorer.
+    .orderBy(
+      ...(sort === "recent"
+        ? [desc(signals.createdAt)]
+        : [
+            sql`(
+              CASE COALESCE(${signals.severityOverride}, ${signals.severity})
+                WHEN 'critical' THEN 1 WHEN 'high' THEN 0.75 WHEN 'medium' THEN 0.5 ELSE 0.25
+              END
+              * COALESCE(${competitors.overlapScore} / 100.0, 0.5)
+              * COALESCE(${signals.relevanceScore}, 0.5)
+            ) DESC`,
+            desc(signals.createdAt),
+          ]),
+    )
     .limit(limit);
 
-  return c.json({ signals: rows });
+  // Attach the threat score per row (same formula as the SQL ordering) so the feed
+  // can render a discreet indicator. Uses the effective severity (override wins).
+  const withThreat = rows.map((r) => ({
+    ...r,
+    threatScore: computeThreatScore({
+      severity: r.severityOverride ?? r.severity,
+      overlapScore: r.overlapScore,
+      relevanceScore: r.relevanceScore,
+    }),
+  }));
+
+  return c.json({ signals: withThreat });
 });
 
 // User-safe "Why this insight?" detail (patch-14, progressive disclosure level 2).
@@ -222,12 +260,18 @@ signalsRouter.patch("/:id/read", async (c) => {
   const orgId = await ensureUserOrg(user.id);
   const id = c.req.param("id");
 
+  // Body is optional and defaults to read=true (back-compat). `read: false` lets the
+  // feed revert an auto-read signal to unread.
+  const body = (await c.req.json().catch(() => ({}))) as { read?: unknown };
+  const read = body.read === undefined ? true : Boolean(body.read);
+
   const signal = await db.query.signals.findFirst({
     where: and(eq(signals.id, id), eq(signals.orgId, orgId)),
+    columns: { id: true },
   });
   if (!signal) return c.json(notFound("signal"), 404);
 
-  await db.update(signals).set({ isRead: true }).where(eq(signals.id, id));
+  await db.update(signals).set({ isRead: read }).where(eq(signals.id, id));
   return c.json({ ok: true });
 });
 

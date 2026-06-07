@@ -8,7 +8,6 @@ import { track } from "@/lib/posthog/events";
 import {
   PaywallDialog,
   paywallFromError,
-  tierLimitFromError,
   type PaywallReason,
 } from "@/components/outrival/paywall-dialog";
 import { Button } from "@/components/ui/button";
@@ -18,7 +17,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FeedbackButtons } from "@/components/outrival/feedback-buttons";
-import { TabCard, TabSection } from "@/components/outrival/tab-shell";
 
 const EMPTY_CONTENT: BattleCardContent = {
   their_strengths: [],
@@ -111,9 +109,7 @@ export function BattleCardTab({ competitorId }: Props) {
       track("battle_card_generated", { competitorId });
       startPolling();
     } catch (e) {
-      // 403 plan_* feature locks → paywallFromError; the 429 daily-cap quota →
-      // tierLimitFromError. Both render the same dialog with quota-aware copy.
-      const reason = paywallFromError(e) ?? tierLimitFromError(e);
+      const reason = paywallFromError(e);
       if (reason) {
         setPaywall(reason);
         setStatus(card ? "ready" : "absent");
@@ -179,10 +175,8 @@ export function BattleCardTab({ competitorId }: Props) {
   const canDownload = !editing && Boolean(card.pdfR2Key);
 
   return (
-    <TabCard>
-      <TabSection
-        action={
-          <div className="flex items-center gap-2">
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-end gap-2">
         {editing ? (
           <>
             <Button
@@ -253,9 +247,7 @@ export function BattleCardTab({ competitorId }: Props) {
             </Button>
           </>
         )}
-          </div>
-        }
-      >
+      </div>
 
       {!editing && confirmingRegen && (
         <div className="flex flex-col gap-2 rounded-md border border-primary/30 bg-primary/5 p-3 sm:flex-row sm:items-center sm:justify-between">
@@ -340,10 +332,9 @@ export function BattleCardTab({ competitorId }: Props) {
         </p>
         {/* Quality feedback (patch-21): "not useful" flags the card for regeneration. */}
         {!editing && <FeedbackButtons targetType="battle_card" targetId={card.id} />}
-        </div>
-      </TabSection>
+      </div>
       {paywallNode}
-    </TabCard>
+    </div>
   );
 }
 
@@ -361,7 +352,7 @@ function Section({
   onChange: (items: string[]) => void;
 }) {
   return (
-    <div className="flex flex-col">
+    <Card className="p-3">
       <p className={`text-xs uppercase tracking-wide mb-2 ${accent}`}>{title}</p>
       {editing ? (
         <EditableList items={items} onChange={onChange} max={5} />
@@ -374,7 +365,7 @@ function Section({
           ))}
         </ul>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -388,7 +379,7 @@ function ObjectionsSection({
   onChange: (items: Array<{ objection: string; response: string }>) => void;
 }) {
   return (
-    <div className="flex flex-col">
+    <Card className="p-3">
       <div className="flex items-center gap-1.5 mb-2">
         <p className="text-xs uppercase tracking-wide text-primary">
           Common objections
@@ -469,7 +460,7 @@ function ObjectionsSection({
           ))}
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 

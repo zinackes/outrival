@@ -32,8 +32,9 @@ export type {
 } from "./tasks/classify-structured";
 export { narrateChange, shouldNarrate } from "./tasks/narrate-change";
 export type { NarrateChangeInput } from "./tasks/narrate-change";
-export { generateInsight, InsightSchema } from "./tasks/insight";
-export type { Insight } from "./tasks/insight";
+export { generateInsight, buildInsightPrompt, toMyProductContext } from "./tasks/insight";
+export { InsightSchema } from "./tasks/insight";
+export type { Insight, MyProductContext } from "./tasks/insight";
 export { generateBatchSummary } from "./tasks/batch-summary";
 export type { BatchSummaryInput } from "./tasks/batch-summary";
 export { generateRepositioningInsight } from "./tasks/pricing-repositioning";

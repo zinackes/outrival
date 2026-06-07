@@ -648,11 +648,51 @@ competitorsRouter.get("/:id/reviews", async (c) => {
   const complaints = rows.filter((r) => r.author === "complaint");
   const recent = rows.slice(0, 30);
 
+  // Latest per-criterion breakdown (patch-32). Persisted on review_scores but never
+  // surfaced until now — take the most recent scrape that actually carried a
+  // breakdown (G2/Capterra expose it; App Store doesn't). Best-effort.
+  const [subRow] = await analyticsQuery<{
+    easeOfUse: number | null;
+    support: number | null;
+    features: number | null;
+    value: number | null;
+  }>(sql`
+    SELECT sub_ease_of_use AS "easeOfUse", sub_support AS "support",
+           sub_features AS "features", sub_value AS "value"
+    FROM review_scores
+    WHERE competitor_id = ${competitor.id}
+      AND (sub_ease_of_use IS NOT NULL OR sub_support IS NOT NULL
+           OR sub_features IS NOT NULL OR sub_value IS NOT NULL)
+    ORDER BY recorded_at DESC
+    LIMIT 1
+  `);
+
+  // Recurring complaint themes (gap-B): the latest scrape that clustered any. Cast
+  // to text + parse so it's driver-agnostic. Each theme = a competitive opening.
+  const [themeRow] = await analyticsQuery<{ themes: string | null }>(sql`
+    SELECT complaint_themes::text AS themes
+    FROM review_scores
+    WHERE competitor_id = ${competitor.id} AND complaint_themes IS NOT NULL
+    ORDER BY recorded_at DESC
+    LIMIT 1
+  `);
+  let complaintThemes: Array<{ theme: string; prevalence: string }> = [];
+  if (themeRow?.themes) {
+    try {
+      const parsed = JSON.parse(themeRow.themes);
+      if (Array.isArray(parsed)) complaintThemes = parsed;
+    } catch {
+      complaintThemes = [];
+    }
+  }
+
   return c.json({
     summary: {
       praises: praises.slice(0, 5).map((r) => r.content),
       complaints: complaints.slice(0, 5).map((r) => r.content),
       lastUpdatedAt: rows[0]?.detectedAt ?? null,
+      subScores: subRow ?? null,
+      complaintThemes,
     },
     recent,
   });

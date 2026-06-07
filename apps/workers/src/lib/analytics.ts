@@ -311,6 +311,8 @@ export interface ReviewScoreRow {
   sub_support?: number | null;
   sub_features?: number | null;
   sub_value?: number | null;
+  // gap-B — recurring complaint themes (AI-judge clusters), null/empty when none.
+  complaint_themes?: Array<{ theme: string; prevalence: "low" | "medium" | "high" }> | null;
   recorded_at: Date;
 }
 
@@ -326,6 +328,7 @@ export async function insertReviewScore(row: ReviewScoreRow): Promise<void> {
       subSupport: row.sub_support ?? null,
       subFeatures: row.sub_features ?? null,
       subValue: row.sub_value ?? null,
+      complaintThemes: row.complaint_themes ?? null,
       recordedAt: row.recorded_at,
     }),
   );

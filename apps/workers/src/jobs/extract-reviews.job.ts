@@ -142,6 +142,7 @@ export const extractReviewsJob = task({
         sub_support: extracted.sub_scores?.support ?? null,
         sub_features: extracted.sub_scores?.features ?? null,
         sub_value: extracted.sub_scores?.value ?? null,
+        complaint_themes: extracted.complaint_themes ?? null,
         recorded_at: now,
       });
     }

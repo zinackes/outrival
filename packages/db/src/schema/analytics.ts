@@ -5,6 +5,7 @@ import {
   doublePrecision,
   timestamp,
   index,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import type { InferSelectModel } from "drizzle-orm";
 
@@ -64,6 +65,11 @@ export const reviewScores = pgTable(
     subSupport: doublePrecision("sub_support"),
     subFeatures: doublePrecision("sub_features"),
     subValue: doublePrecision("sub_value"),
+    // patch-32 / gap-B: recurring complaint themes clustered by the AI judge (a
+    // repeated grievance = a competitive opening). Null when no complaints.
+    complaintThemes: jsonb("complaint_themes").$type<
+      Array<{ theme: string; prevalence: "low" | "medium" | "high" }>
+    >(),
     recordedAt: timestamp("recorded_at").notNull().defaultNow(),
   },
   (t) => [index("review_scores_competitor_recorded_idx").on(t.competitorId, t.recordedAt)],

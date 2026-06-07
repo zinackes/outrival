@@ -33,6 +33,7 @@ import {
   LayoutGrid,
   Users,
   Cpu,
+  Percent,
 } from "lucide-react";
 import {
   Dialog,
@@ -77,6 +78,7 @@ import { FreshnessDot } from "@/components/outrival/freshness-dot";
 import { MonitorFreshnessAction } from "@/components/outrival/monitor-freshness";
 import { MonitorAlternatives } from "@/components/outrival/monitor-alternatives";
 import { CompetitorTechStack } from "@/components/outrival/competitor-tech-stack";
+import { Eyebrow, eyebrowClass } from "@/components/outrival/eyebrow";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
 import { SignalSourceLine } from "@/components/outrival/signal-source-line";
 import { ListError } from "@/components/outrival/list-error";
@@ -691,7 +693,7 @@ export default function CompetitorDetailPage({ params }: Props) {
               return (
                 <Tooltip key={t.key}>
                   <TooltipTrigger asChild>{trigger}</TooltipTrigger>
-                  <TooltipContent side="top" className="text-meta">
+                  <TooltipContent side="top" className="text-xs">
                     Available on the {PLAN_LABELS[lock.minPlan]} plan
                   </TooltipContent>
                 </Tooltip>
@@ -838,12 +840,12 @@ function Header({
           <ArrowLeft size={16} />
         </Link>
         <div className="min-w-0">
-          <div className="flex items-baseline gap-3 flex-wrap mb-1">
+          <div className="flex items-center gap-3 flex-wrap mb-1">
             <h1 className="font-bold text-title-lg md:text-stat tracking-tight leading-[1.05] m-0">
               {competitor.name}
             </h1>
             {competitor.category && (
-              <Badge variant="outline" className="text-micro uppercase tracking-widest font-mono">
+              <Badge variant="outline" className="text-meta uppercase tracking-wide font-medium">
                 {competitor.category}
               </Badge>
             )}
@@ -851,8 +853,8 @@ function Header({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button type="button" aria-label="About overlap" className="cursor-help">
-                    <Badge variant="outline" className="gap-1.5 py-1 font-mono text-meta tracking-widest">
-                      <span className="h-2 w-12 overflow-hidden rounded border border-border bg-background">
+                    <Badge variant="outline" className="gap-1.5 py-1 font-mono text-micro tracking-widest">
+                      <span className="h-2 w-16 overflow-hidden rounded border border-border bg-background">
                         <span
                           className="block h-full rounded bg-primary"
                           style={{
@@ -869,7 +871,7 @@ function Header({
                 </TooltipTrigger>
                 <TooltipContent
                   side="top"
-                  className="max-w-[240px] text-meta leading-relaxed text-pretty normal-case"
+                  className="max-w-[240px] text-xs leading-relaxed text-pretty normal-case"
                 >
                   How similar this competitor is to your product (0–100). Computed at
                   discovery via Exa + AI scoring against your product profile.
@@ -881,13 +883,13 @@ function Header({
             href={competitor.url}
             target="_blank"
             rel="noreferrer"
-            className="text-dense text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 transition-colors"
+            className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 transition-colors"
           >
             {competitor.url}
             <ExternalLink size={12} />
           </a>
           {lastRunMs > 0 && (
-            <div className="text-meta text-muted-foreground font-mono mt-1">
+            <div className="text-xs text-muted-foreground font-mono mt-1">
               last activity {formatDistanceToNow(new Date(lastRunMs), { addSuffix: true })}
             </div>
           )}
@@ -967,13 +969,13 @@ function MonitorSources({
   return (
     <Card className="overflow-hidden">
       <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-border">
-        <h3 className="text-dense font-semibold tracking-tight">Sources</h3>
+        <h3 className="text-sm font-semibold tracking-tight">Sources</h3>
         <Button
           size="sm"
           variant="default"
           onClick={onRunAll}
           disabled={disabled}
-          className="h-7 text-meta"
+          className="h-7 text-xs"
         >
           {runningAll ? (
             <Loader2 size={12} className="animate-spin" />
@@ -1008,7 +1010,7 @@ function MonitorSources({
           variant="ghost"
           onClick={() => setExpanded((v) => !v)}
           aria-expanded={expanded}
-          className="ml-auto h-7 gap-1 text-meta text-muted-foreground"
+          className="ml-auto h-7 gap-1 text-xs text-muted-foreground"
         >
           {expanded ? "Hide details" : "Details"}
           <ChevronDown size={12} className={cn("transition-transform", expanded && "rotate-180")} />
@@ -1031,13 +1033,13 @@ function MonitorSources({
             return (
               <div key={m.id} className="flex items-center gap-3 px-4 py-2.5">
                 <SourceStatusIcon status={status} />
-                <span className="font-medium text-dense w-[104px] truncate">{sourceShortLabel(m.sourceType)}</span>
-                <span className="text-micro font-mono uppercase tracking-widest text-muted-foreground w-12">
+                <span className="font-medium text-sm w-[104px] truncate">{sourceShortLabel(m.sourceType)}</span>
+                <Eyebrow size="micro" className="w-12">
                   {m.frequency}
-                </span>
+                </Eyebrow>
                 <span
                   className={cn(
-                    "text-meta font-mono",
+                    "text-xs font-mono",
                     status === "failed" ? "text-critical/80" : "text-muted-foreground",
                   )}
                 >
@@ -1065,7 +1067,7 @@ function MonitorSources({
                       </TooltipTrigger>
                       <TooltipContent
                         side="top"
-                        className="max-w-[280px] text-meta leading-relaxed text-pretty break-words"
+                        className="max-w-[280px] text-xs leading-relaxed text-pretty break-words"
                       >
                         {friendlyScrapeError(m.lastError, m.sourceType)}
                       </TooltipContent>
@@ -1084,7 +1086,7 @@ function MonitorSources({
                     variant="outline"
                     onClick={() => onRun(m.id)}
                     disabled={running}
-                    className="h-7 text-meta min-w-[84px]"
+                    className="h-7 text-xs min-w-[84px]"
                   >
                     {running ? (
                       <>
@@ -1109,11 +1111,11 @@ function MonitorSources({
               <SourceStatusIcon
                 status={techScraping ? "running" : techLastScrapedAt ? "ok" : "idle"}
               />
-              <span className="font-medium text-dense w-[104px] truncate">tech_stack</span>
-              <span className="text-micro font-mono uppercase tracking-widest text-muted-foreground w-12">
+              <span className="font-medium text-sm w-[104px] truncate">tech_stack</span>
+              <Eyebrow size="micro" className="w-12">
                 weekly
-              </span>
-              <span className="text-meta font-mono text-muted-foreground">
+              </Eyebrow>
+              <span className="text-xs font-mono text-muted-foreground">
                 {techScraping
                   ? "scanning…"
                   : techLastScrapedAt
@@ -1122,7 +1124,7 @@ function MonitorSources({
               </span>
               <Badge
                 variant="outline"
-                className="text-micro font-mono uppercase tracking-wider px-1 py-0 text-muted-foreground"
+                className="text-meta uppercase tracking-wide font-medium px-1 py-0 text-muted-foreground"
               >
                 dev
               </Badge>
@@ -1132,7 +1134,7 @@ function MonitorSources({
                   variant="outline"
                   onClick={onScrapeTech}
                   disabled={techScraping}
-                  className="h-7 text-meta min-w-[84px]"
+                  className="h-7 text-xs min-w-[84px]"
                 >
                   {techScraping ? (
                     <>
@@ -1210,7 +1212,7 @@ function SourceChip({
         <button
           type="button"
           className={cn(
-            "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-dense transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             failed
               ? "border-critical/40 text-critical hover:bg-critical/10"
               : "border-border text-foreground hover:bg-accent",
@@ -1221,7 +1223,7 @@ function SourceChip({
           {ageLabel && (
             <span
               className={cn(
-                "font-mono text-micro",
+                "font-mono text-meta",
                 failed ? "text-critical/70" : "text-muted-foreground",
               )}
             >
@@ -1233,20 +1235,18 @@ function SourceChip({
       <DropdownMenuContent align="start" className="w-56">
         <DropdownMenuLabel className="flex items-center justify-between gap-2">
           <span>{sourceShortLabel(m.sourceType)}</span>
-          <span className="font-mono text-micro uppercase tracking-widest text-muted-foreground">
-            {m.frequency}
-          </span>
+          <Eyebrow size="micro">{m.frequency}</Eyebrow>
         </DropdownMenuLabel>
         <p
           className={cn(
-            "px-2 pb-1 text-meta font-mono",
+            "px-2 pb-1 text-xs font-mono",
             failed ? "text-critical/80" : "text-muted-foreground",
           )}
         >
           {ageText}
         </p>
         {failed && m.lastError && (
-          <p className="px-2 pb-1.5 text-meta leading-relaxed text-critical/80 break-words">
+          <p className="px-2 pb-1.5 text-xs leading-relaxed text-critical/80 break-words">
             {friendlyScrapeError(m.lastError, m.sourceType)}
           </p>
         )}
@@ -1291,12 +1291,12 @@ function FrequencyButton({
       variant={selected ? "default" : "outline"}
       onClick={() => (locked ? onLocked() : onSelect())}
       disabled={disabled}
-      className="h-7 gap-1.5 text-meta capitalize"
+      className="h-7 gap-1.5 text-xs capitalize"
     >
       {locked && <Lock size={10} className="opacity-70" />}
       {freq}
       {locked && (
-        <span className="inline-flex items-center rounded bg-muted-foreground/15 px-1 py-0.5 text-micro font-mono uppercase leading-none tracking-wider text-muted-foreground">
+        <span className="inline-flex items-center rounded bg-muted-foreground/15 px-1 py-0.5 text-meta font-medium uppercase leading-none tracking-wide text-muted-foreground">
           {PLAN_LABELS[minPlanForFrequency(freq)]}
         </span>
       )}
@@ -1373,7 +1373,7 @@ function MonitorEditDialog({
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <p className="text-meta font-medium text-muted-foreground">
+            <p className="text-xs font-medium text-muted-foreground">
               Frequency
             </p>
             <div className="flex gap-1.5">
@@ -1393,7 +1393,7 @@ function MonitorEditDialog({
             </div>
           </div>
           <div className="space-y-1.5">
-            <p className="text-meta font-medium text-muted-foreground">
+            <p className="text-xs font-medium text-muted-foreground">
               Page URL (optional)
             </p>
             <Input
@@ -1402,7 +1402,7 @@ function MonitorEditDialog({
               placeholder="Leave empty to auto-detect"
             />
             {trimmed !== "" && !urlValid && (
-              <p className="text-meta text-critical/80">
+              <p className="text-xs text-critical/80">
                 This URL isn&apos;t allowed for this source.
               </p>
             )}
@@ -1450,11 +1450,11 @@ function AiSummary({
   if (!competitor.aiSummary) {
     return (
       <Card className="px-4 py-3 border-dashed flex items-start gap-2 justify-between">
-        <div className="flex items-start gap-2 text-muted-foreground text-dense">
+        <div className="flex items-start gap-2 text-muted-foreground text-sm">
           <Sparkles size={13} className="mt-0.5 shrink-0" />
           <span>AI summary not generated yet.</span>
         </div>
-        <Button size="sm" variant="secondary" onClick={refresh} disabled={refreshing} className="h-7 text-meta">
+        <Button size="sm" variant="secondary" onClick={refresh} disabled={refreshing} className="h-7 text-xs">
           {refreshing ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
           {refreshing ? "Generating…" : "Generate now"}
         </Button>
@@ -1472,7 +1472,7 @@ function AiSummary({
           variant="ghost"
           onClick={refresh}
           disabled={refreshing}
-          className="h-7 text-meta text-muted-foreground"
+          className="h-7 text-xs text-muted-foreground"
         >
           {refreshing ? (
             <Loader2 size={12} className="animate-spin" />
@@ -1484,7 +1484,7 @@ function AiSummary({
       </div>
       <p className="text-content leading-relaxed text-foreground/90">{competitor.aiSummary}</p>
       {competitor.aiSummaryUpdatedAt && (
-        <p className="text-meta font-mono text-muted-foreground mt-2">
+        <p className="text-xs font-mono text-muted-foreground mt-2">
           updated {formatDistanceToNow(new Date(competitor.aiSummaryUpdatedAt), { addSuffix: true })}
         </p>
       )}
@@ -1495,6 +1495,8 @@ function AiSummary({
 // Per-source AI summary block, shown at the top of the structured tabs
 // (pricing/hiring/reviews). Populated by the extract-* jobs on every scrape, so
 // the user sees what was captured — and what moved — even on the first scrape.
+// Collapsed by default: the AI summary is valuable but often restates data shown
+// elsewhere on the tab, so it costs one line until the user opens it.
 function SourceSummary({
   summary,
   updatedAt,
@@ -1502,14 +1504,34 @@ function SourceSummary({
   summary: string | null | undefined;
   updatedAt: string | null | undefined;
 }) {
+  const [open, setOpen] = useState(false);
   if (!summary) return null;
   return (
-    <TabSection title="What we found" icon={Sparkles}>
-      <p className="text-content leading-relaxed text-foreground/90">{summary}</p>
-      {updatedAt && (
-        <p className="text-meta font-mono text-muted-foreground">
-          updated {formatDistanceToNow(new Date(updatedAt), { addSuffix: true })}
-        </p>
+    <TabSection>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-2 text-left"
+      >
+        <Sparkles size={14} className="shrink-0 text-muted-foreground" />
+        <span className="text-content font-semibold tracking-tight leading-tight">
+          What we found
+        </span>
+        <ChevronDown
+          size={14}
+          className={cn(
+            "shrink-0 text-muted-foreground transition-transform",
+            open && "rotate-180",
+          )}
+        />
+        {updatedAt && (
+          <span className="ml-auto text-xs font-mono text-muted-foreground">
+            {formatDistanceToNow(new Date(updatedAt), { addSuffix: true })}
+          </span>
+        )}
+      </button>
+      {open && (
+        <p className="text-content leading-relaxed text-foreground/90">{summary}</p>
       )}
     </TabSection>
   );
@@ -1585,11 +1607,11 @@ function ChangeCard({
   const pageUrl = change.monitorUrl ?? fallbackUrl ?? null;
   return (
     <div className="flex flex-col">
-      <div className="flex items-center gap-2 mb-2 text-meta">
-        <Badge variant="outline" className="text-micro font-mono uppercase tracking-wide px-2 py-0">
+      <div className="flex items-center gap-2 mb-2 text-xs">
+        <Badge variant="outline" className="text-meta uppercase tracking-wide font-medium px-2 py-0">
           {change.sourceType}
         </Badge>
-        <span className="text-muted-foreground font-mono text-micro">
+        <span className="text-muted-foreground font-mono text-meta">
           · {formatDistanceToNow(new Date(change.detectedAt), { addSuffix: true })}
         </span>
         {pageUrl && (
@@ -1597,7 +1619,7 @@ function ChangeCard({
             href={pageUrl}
             target="_blank"
             rel="noreferrer noopener"
-            className="ml-auto inline-flex items-center gap-1 text-meta text-muted-foreground hover:text-foreground transition-colors"
+            className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             View page <ExternalLink size={12} />
           </a>
@@ -1605,10 +1627,10 @@ function ChangeCard({
       </div>
 
       {hasSummary ? (
-        <p className="text-dense leading-relaxed text-foreground">{summary}</p>
+        <p className="text-sm leading-relaxed text-foreground">{summary}</p>
       ) : (
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <p className="text-xs text-muted-foreground italic">
+          <p className="text-dense text-muted-foreground italic">
             No AI summary yet — classification was never run for this change.
           </p>
           <Button
@@ -1616,7 +1638,7 @@ function ChangeCard({
             variant="secondary"
             disabled={classifying}
             onClick={classify}
-            className="h-7 text-meta"
+            className="h-7 text-xs"
           >
             {classifying ? (
               <>
@@ -1636,7 +1658,7 @@ function ChangeCard({
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
-            className="flex items-center gap-1 text-meta text-muted-foreground hover:text-foreground transition-colors"
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
             {open ? "Hide raw diff" : "Show raw diff"}
@@ -1656,7 +1678,7 @@ function DiffPreview({ diffText }: { diffText: string }) {
   const { lines, truncated } = useMemo(() => parseDiff(diffText), [diffText]);
   if (lines.length === 0) {
     return (
-      <p className="text-meta text-muted-foreground italic">
+      <p className="text-xs text-muted-foreground italic">
         Only HTML/markup differences — nothing meaningful to display.
       </p>
     );
@@ -1665,11 +1687,11 @@ function DiffPreview({ diffText }: { diffText: string }) {
   const removed = lines.filter((l) => l.kind === "remove").length;
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex items-center gap-3 text-micro font-mono uppercase tracking-widest text-muted-foreground">
+      <div className={cn("flex items-center gap-3", eyebrowClass("micro"))}>
         {added > 0 && <span className="text-positive">+ {added} added</span>}
         {removed > 0 && <span className="text-critical">− {removed} removed</span>}
       </div>
-      <ul className="flex flex-col gap-1 text-xs leading-relaxed">
+      <ul className="flex flex-col gap-1 text-dense leading-relaxed">
         {lines.map((l, i) => (
           <li
             key={i}
@@ -1692,9 +1714,7 @@ function DiffPreview({ diffText }: { diffText: string }) {
         ))}
       </ul>
       {truncated && (
-        <p className="text-micro font-mono text-muted-foreground uppercase tracking-widest">
-          … more changes truncated
-        </p>
+        <p className={eyebrowClass("micro")}>… more changes truncated</p>
       )}
     </div>
   );
@@ -1719,7 +1739,7 @@ function OverviewStat({
       <button
         type="button"
         onClick={onClick}
-        className="flex items-center gap-1.5 text-meta font-medium text-muted-foreground hover:text-foreground transition-colors w-fit"
+        className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors w-fit"
       >
         <Icon size={11} /> {label} <ChevronRight size={11} />
       </button>
@@ -1786,7 +1806,7 @@ function LogoChip({ logo }: { logo: { name: string | null; src: string | null } 
       />
     </span>
   ) : (
-    <Badge variant="outline" className="text-meta font-normal">
+    <Badge variant="outline" className="text-xs font-normal">
       {name}
     </Badge>
   );
@@ -1832,7 +1852,7 @@ function OverviewTab({
     return (
       <Card className="px-6 py-10 text-center border-dashed flex flex-col items-center gap-3">
         <p className="text-sm font-semibold text-foreground">Nothing captured yet</p>
-        <p className="text-xs text-muted-foreground max-w-md">
+        <p className="text-dense text-muted-foreground max-w-md">
           Once the homepage is scraped, this is where you&apos;ll see what this
           competitor says about itself — positioning, value props, customers and
           pricing — at a glance.
@@ -1899,7 +1919,7 @@ function OverviewTab({
                 <li key={i} className="border-l border-border pl-3.5">
                   <p className="text-content italic leading-relaxed">“{t.quote}”</p>
                   {t.author && (
-                    <p className="text-meta font-mono text-muted-foreground mt-1">
+                    <p className="text-xs font-mono text-muted-foreground mt-1">
                       — {t.author}
                     </p>
                   )}
@@ -1914,7 +1934,7 @@ function OverviewTab({
         <TabSection title="Claims" icon={Activity}>
           <div className="flex flex-wrap gap-1.5">
             {numericClaims.map((cl, i) => (
-              <Badge key={i} variant="secondary" className="text-meta font-normal">
+              <Badge key={i} variant="secondary" className="text-xs font-normal">
                 {cl.raw_text}
               </Badge>
             ))}
@@ -1930,7 +1950,7 @@ function OverviewTab({
               {pricingNow.slice(0, 4).map((p, i) => (
                 <li
                   key={i}
-                  className="text-xs flex items-baseline justify-between gap-2"
+                  className="text-dense flex items-baseline justify-between gap-2"
                 >
                   <span className="truncate">{p.plan_name}</span>
                   <span className="font-mono tabular-nums shrink-0">{formatTierPrice(p)}</span>
@@ -1938,7 +1958,7 @@ function OverviewTab({
               ))}
             </ul>
           ) : (
-            <span className="text-xs text-muted-foreground">Not captured</span>
+            <span className="text-dense text-muted-foreground">Not captured</span>
           )}
         </OverviewStat>
 
@@ -1948,7 +1968,7 @@ function OverviewTab({
               {hiring.openRoles}
             </span>
           ) : (
-            <span className="text-xs text-muted-foreground">None tracked</span>
+            <span className="text-dense text-muted-foreground">None tracked</span>
           )}
         </OverviewStat>
 
@@ -1958,11 +1978,9 @@ function OverviewTab({
               {reviews.slice(0, 2).map((r, i) => (
                 <div
                   key={i}
-                  className="text-xs flex items-baseline justify-between gap-2"
+                  className="text-dense flex items-baseline justify-between gap-2"
                 >
-                  <span className="uppercase font-mono text-micro tracking-wide text-muted-foreground">
-                    {r.source}
-                  </span>
+                  <Eyebrow size="micro">{r.source}</Eyebrow>
                   <span className="inline-flex items-center gap-0.5 font-mono tabular-nums">
                     {r.score.toFixed(1)}
                     <Star className="size-3 fill-current" />
@@ -1972,13 +1990,13 @@ function OverviewTab({
               ))}
             </div>
           ) : (
-            <span className="text-xs text-muted-foreground">Not captured</span>
+            <span className="text-dense text-muted-foreground">Not captured</span>
           )}
         </OverviewStat>
       </div>
 
       {capturedAt && (
-        <p className="text-meta font-mono text-muted-foreground">
+        <p className="text-xs font-mono text-muted-foreground">
           homepage facts captured {formatDistanceToNow(new Date(capturedAt), { addSuffix: true })}
         </p>
       )}
@@ -2001,8 +2019,8 @@ function ActivityTab({
   if (signals.length === 0 && changes.length === 0) {
     return (
       <Card className="px-6 py-10 text-center border-dashed flex flex-col items-center gap-2.5">
-        <p className="text-dense font-semibold text-foreground">No activity yet</p>
-        <p className="text-xs text-muted-foreground max-w-md">
+        <p className="text-sm font-semibold text-foreground">No activity yet</p>
+        <p className="text-dense text-muted-foreground max-w-md">
           Activity will appear once a monitor detects a change. Scrape from the
           Monitors section above to start tracking.
         </p>
@@ -2020,39 +2038,37 @@ function ActivityTab({
             const pageUrl = s.monitorUrl ?? competitorUrl;
             return (
               <li key={s.id} className="flex flex-col py-3.5 first:pt-0 last:pb-0">
-                <div className="flex items-center gap-2 mb-1.5 text-meta flex-wrap">
+                <div className="flex items-center gap-2 mb-1.5 text-xs flex-wrap">
                   <Badge
                     className={cn(
-                      "uppercase tracking-wide text-micro font-bold px-2 py-0",
+                      "uppercase tracking-wide text-meta font-bold px-2 py-0",
                       SEVERITY_CLASS[s.severity],
                     )}
                   >
                     {s.severity}
                   </Badge>
-                  <span className="text-muted-foreground uppercase tracking-widest font-mono text-micro">
-                    {s.category}
-                  </span>
-                  <span className="text-muted-foreground font-mono text-micro">
+                  <Eyebrow size="micro">{s.category}</Eyebrow>
+                  <span className="text-muted-foreground font-mono text-meta">
                     · {formatDistanceToNow(new Date(s.createdAt), { addSuffix: true })}
                   </span>
                   <a
                     href={pageUrl}
                     target="_blank"
                     rel="noreferrer noopener"
-                    className="ml-auto inline-flex items-center gap-1 text-meta text-muted-foreground hover:text-foreground transition-colors"
+                    className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
                   >
                     View page <ExternalLink size={12} />
                   </a>
                 </div>
-                <p className="text-dense mb-1">{s.insight}</p>
+                <p className="text-sm mb-1">{s.insight}</p>
                 {s.soWhat && (
-                  <p className="flex gap-1 text-muted-foreground text-xs mb-1">
+                  <p className="flex gap-1 text-muted-foreground text-dense mb-1">
                     <ArrowRight className="size-3 mt-0.5 shrink-0" />
                     {s.soWhat}
                   </p>
                 )}
                 {s.recommendedAction && (
-                  <p className="text-foreground text-xs font-medium">
+                  <p className="text-foreground text-dense font-medium">
                     Action: {s.recommendedAction}
                   </p>
                 )}
@@ -2111,7 +2127,7 @@ function MonitorEmptyState({
         <p className="text-sm font-semibold text-foreground">
           No {label} monitoring yet
         </p>
-        <p className="text-xs text-muted-foreground max-w-md">
+        <p className="text-dense text-muted-foreground max-w-md">
           This competitor isn&apos;t tracking {label} yet. Enable it to start
           capturing {label} data — we&apos;ll run the first scrape right away.
           Requires a plan that includes this source.
@@ -2147,7 +2163,7 @@ function MonitorEmptyState({
   return (
     <Card className="px-6 py-10 text-center border-dashed flex flex-col items-center gap-3">
       <p className="text-sm font-semibold text-foreground">No {label} data yet</p>
-      <p className="text-xs text-muted-foreground max-w-md">
+      <p className="text-dense text-muted-foreground max-w-md">
         {monitor.lastRunAt
           ? `Monitor was scraped ${formatDistanceToNow(new Date(monitor.lastRunAt), { addSuffix: true })}, but no ${label} data was extracted. The source page may not expose this data.`
           : `This monitor has never been scraped. Run it now to extract ${label} data.`}
@@ -2229,6 +2245,8 @@ function PricingTab({
               onUpdated={onRefresh}
               hasCapturedTiers={hasCapturedTiers}
               isCapturing={isCapturing}
+              summary={pricingMonitor?.aiSummary}
+              summaryUpdatedAt={pricingMonitor?.aiSummaryUpdatedAt}
             />
           </TabSection>
         </TabCard>
@@ -2253,6 +2271,62 @@ function PricingTab({
   for (const p of sorted) latestByPlan.set(p.plan_name, p);
   for (const p of sorted) if (!firstByPlan.has(p.plan_name)) firstByPlan.set(p.plan_name, p);
 
+  // A single capture is a one-dot line — not worth a 260px chart. The per-plan
+  // list also has no deltas yet on first capture, so it just restates current
+  // prices; we keep it full-width then (it's the only structured tier view),
+  // unless a "you vs them" comparison already shows those same prices above.
+  const hasTrend = series.points.length >= 2;
+  const planList = (
+    <TabSection
+      title={hasTrend ? "Plan changes" : "Current plans"}
+      icon={DollarSign}
+      className={hasTrend ? "border-t border-border lg:border-t-0 lg:border-l" : undefined}
+    >
+      <ul className="flex flex-col divide-y divide-border">
+        {plans.map((plan) => {
+          const latest = latestByPlan.get(plan)!;
+          const first = firstByPlan.get(plan)!;
+          const delta = latest.price - first.price;
+          const pct = first.price > 0 ? (delta / first.price) * 100 : 0;
+          return (
+            <li
+              key={plan}
+              className="flex items-baseline justify-between gap-3 py-2.5 first:pt-0 last:pb-0"
+            >
+              <div className="flex items-baseline gap-2 min-w-0">
+                <Eyebrow size="micro" className="shrink-0">
+                  {plan}
+                </Eyebrow>
+                <span className="text-sm font-semibold tabular-nums">
+                  {latest.price} {latest.currency}
+                  <span className="text-xs text-muted-foreground font-mono font-normal">
+                    {" "}
+                    / {latest.billing_period}
+                  </span>
+                </span>
+              </div>
+              {delta !== 0 && (
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-0.5 shrink-0 text-xs font-mono tabular-nums",
+                    delta > 0 ? "text-critical" : "text-positive",
+                  )}
+                >
+                  {delta > 0 ? (
+                    <ArrowUp className="size-3" />
+                  ) : (
+                    <ArrowDown className="size-3" />
+                  )}
+                  {Math.abs(delta).toFixed(0)} {latest.currency} ({pct.toFixed(0)}%)
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </TabSection>
+  );
+
   return (
     <TabCard>
       <TabSection>
@@ -2261,12 +2335,10 @@ function PricingTab({
           onUpdated={onRefresh}
           hasCapturedTiers={hasCapturedTiers}
           isCapturing={isCapturing}
+          summary={pricingMonitor?.aiSummary}
+          summaryUpdatedAt={pricingMonitor?.aiSummaryUpdatedAt}
         />
       </TabSection>
-      <SourceSummary
-        summary={pricingMonitor?.aiSummary}
-        updatedAt={pricingMonitor?.aiSummaryUpdatedAt}
-      />
       {myProduct && (
         <TabSection>
           <PricingComparison
@@ -2277,87 +2349,179 @@ function PricingTab({
           />
         </TabSection>
       )}
-      <TabSection title="Price over time" icon={Activity}>
-        <ResponsiveContainer width="100%" height={260}>
-          <LineChart data={series.points}>
-            <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
-            <XAxis dataKey="date" stroke="var(--muted)" fontSize={11} />
-            <YAxis stroke="var(--muted)" fontSize={11} />
-            <ChartTooltip
-              contentStyle={{
-                background: "var(--bg)",
-                border: "1px solid var(--border)",
-                borderRadius: 6,
-                fontSize: 12,
-              }}
-            />
-            <Legend wrapperStyle={{ fontSize: 11 }} />
-            {plans.map((plan, i) => (
-              <Line
-                key={plan}
-                type="monotone"
-                dataKey={plan}
-                stroke={lineColor(i)}
-                strokeWidth={2}
-                dot={false}
-              />
-            ))}
-          </LineChart>
-        </ResponsiveContainer>
-      </TabSection>
-
-      <TabSection title="Plan changes" icon={DollarSign}>
-        <ul className="flex flex-col divide-y divide-border">
-          {plans.map((plan) => {
-            const latest = latestByPlan.get(plan)!;
-            const first = firstByPlan.get(plan)!;
-            const delta = latest.price - first.price;
-            const pct = first.price > 0 ? (delta / first.price) * 100 : 0;
-            return (
-              <li
-                key={plan}
-                className="flex items-baseline justify-between gap-3 py-2.5 first:pt-0 last:pb-0"
-              >
-                <div className="flex items-baseline gap-2 min-w-0">
-                  <span className="shrink-0 text-micro uppercase tracking-widest text-muted-foreground font-mono">
-                    {plan}
-                  </span>
-                  <span className="text-sm font-semibold tabular-nums">
-                    {latest.price} {latest.currency}
-                    <span className="text-meta text-muted-foreground font-mono font-normal">
-                      {" "}
-                      / {latest.billing_period}
-                    </span>
-                  </span>
-                </div>
-                {delta !== 0 && (
-                  <span
-                    className={cn(
-                      "inline-flex items-center gap-0.5 shrink-0 text-meta font-mono tabular-nums",
-                      delta > 0 ? "text-critical" : "text-positive",
-                    )}
-                  >
-                    {delta > 0 ? (
-                      <ArrowUp className="size-3" />
-                    ) : (
-                      <ArrowDown className="size-3" />
-                    )}
-                    {Math.abs(delta).toFixed(0)} {latest.currency} ({pct.toFixed(0)}%)
-                  </span>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      </TabSection>
+      {hasTrend ? (
+        // Real history: chart + per-plan deltas side by side on lg — both
+        // describe the competitor's price trend, so pairing the wide chart with
+        // the narrow list halves the height vs stacking two full-width blocks.
+        <div className="grid lg:grid-cols-2">
+          <TabSection title="Price over time" icon={Activity}>
+            <ResponsiveContainer width="100%" height={260}>
+              <LineChart data={series.points}>
+                <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
+                <XAxis dataKey="date" stroke="var(--muted)" fontSize={11} />
+                <YAxis stroke="var(--muted)" fontSize={11} />
+                <ChartTooltip
+                  contentStyle={{
+                    background: "var(--bg)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 6,
+                    fontSize: 12,
+                  }}
+                />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                {plans.map((plan, i) => (
+                  <Line
+                    key={plan}
+                    type="monotone"
+                    dataKey={plan}
+                    stroke={lineColor(i)}
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          </TabSection>
+          {planList}
+        </div>
+      ) : (
+        // First capture, no trend yet: skip the one-dot chart. Show the bare tier
+        // list only when no comparison already lists those prices above.
+        !myProduct && planList
+      )}
     </TabCard>
   );
 }
 
-// Deterministic pricing comparison (patch-29): our product's captured tiers vs the
-// competitor's latest tiers, aligned by ascending price rank. No AI — pure deltas.
-// A pair is only given a % when currency AND billing period match (a EUR/yr vs
-// USD/mo delta is noise); otherwise the row just shows both prices side by side.
+// Best-effort FX rates (units of each currency per 1 USD) from the ECB via
+// frankfurter.dev — no API key, CORS-enabled (`access-control-allow-origin: *`).
+// The legacy api.frankfurter.app host now 301-redirects here, and a cross-origin
+// redirect breaks the browser CORS fetch, so we hit the .dev host directly.
+// Cached at module scope and shared across renders; a fetch failure (offline,
+// unsupported currency) leaves rates null and the comparison falls back to
+// flagging the mismatch instead of inventing a cross-currency %.
+type FxData = { rates: Record<string, number>; date: string };
+let fxCache: FxData | null = null;
+let fxPromise: Promise<FxData | null> | null = null;
+
+function loadFx(): Promise<FxData | null> {
+  if (fxCache) return Promise.resolve(fxCache);
+  if (fxPromise) return fxPromise;
+  fxPromise = fetch("https://api.frankfurter.dev/v1/latest?base=USD")
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d: { rates?: Record<string, number>; date?: string } | null) => {
+      if (!d?.rates) return null;
+      fxCache = { rates: { USD: 1, ...d.rates }, date: d.date ?? "" };
+      return fxCache;
+    })
+    .catch(() => null);
+  return fxPromise;
+}
+
+function useFx(): FxData | null {
+  const [fx, setFx] = useState<FxData | null>(fxCache);
+  useEffect(() => {
+    if (fx) return;
+    let alive = true;
+    void loadFx().then((r) => {
+      if (alive) setFx(r);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [fx]);
+  return fx;
+}
+
+// Convert an amount between currencies using USD-based rates; null when either
+// currency is missing from the rate table (or rates haven't loaded yet).
+function convertCurrency(
+  amount: number,
+  from: string,
+  to: string,
+  rates: Record<string, number> | null,
+): number | null {
+  if (from === to) return amount;
+  const rf = rates?.[from];
+  const rt = rates?.[to];
+  if (!rf || !rt) return null;
+  return (amount * rt) / rf;
+}
+
+type TierLite = { price: number; currency: string; billing_period: string };
+
+// Outcome of comparing our tier to theirs: either a % (positive = we're pricier),
+// flagged when it required a currency conversion, or null with a human reason the
+// pair can't be compared — so the cell explains itself instead of a bare dash.
+type TierCmp = { pct: number; converted: boolean } | { pct: null; reason: string };
+
+function compareTiers(
+  mine: TierLite,
+  theirs: TierLite,
+  rates: Record<string, number> | null,
+): TierCmp {
+  if (mine.billing_period !== theirs.billing_period) {
+    return {
+      pct: null,
+      reason: `Different billing period (theirs ${theirs.billing_period}, yours ${mine.billing_period})`,
+    };
+  }
+  if (theirs.price <= 0) {
+    return { pct: null, reason: "Their tier is free — no baseline to compute a %" };
+  }
+  const sameCurrency = mine.currency === theirs.currency;
+  const theirInOurs = sameCurrency
+    ? theirs.price
+    : convertCurrency(theirs.price, theirs.currency, mine.currency, rates);
+  if (theirInOurs === null) {
+    return {
+      pct: null,
+      reason: `Different currency (theirs ${theirs.currency}, yours ${mine.currency}) — no exchange rate available`,
+    };
+  }
+  return { pct: ((mine.price - theirInOurs) / theirInOurs) * 100, converted: !sameCurrency };
+}
+
+// The Δ cell: a signed % (prefixed ≈ when it came from a currency conversion), or
+// a dash whose tooltip explains why the pair isn't comparable.
+function DeltaCell({ cmp, from, to }: { cmp: TierCmp | null; from?: string; to?: string }) {
+  if (!cmp) return <span className="text-muted-foreground/40">—</span>;
+  if (cmp.pct === null) {
+    return (
+      <span className="cursor-help text-muted-foreground/40" title={cmp.reason}>
+        —
+      </span>
+    );
+  }
+  if (Math.abs(cmp.pct) < 1) {
+    return (
+      <span
+        className="cursor-help text-muted-foreground/40"
+        title="Within 1% — effectively the same"
+      >
+        —
+      </span>
+    );
+  }
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-0.5 font-mono text-xs tabular-nums",
+        cmp.pct < 0 ? "text-positive" : "text-critical",
+      )}
+      title={cmp.converted ? `Converted ${from} → ${to} at the ECB reference rate` : undefined}
+    >
+      {cmp.converted && <span className="text-muted-foreground">≈</span>}
+      {cmp.pct < 0 ? <ArrowDown className="size-3" /> : <ArrowUp className="size-3" />}
+      {Math.abs(cmp.pct).toFixed(0)}%
+    </span>
+  );
+}
+
+// Pricing comparison (patch-29): our product's captured tiers vs the competitor's
+// latest tiers, aligned by ascending price rank. No AI. A % is shown when the
+// billing period matches and the currencies either match or can be converted via
+// best-effort ECB rates (flagged ≈); otherwise the cell dashes and says why.
 function PricingComparison({
   competitorName,
   competitorPricingStatus,
@@ -2369,6 +2533,8 @@ function PricingComparison({
   ours: MyProductPricingTier[];
   theirs: PricingHistoryPoint[];
 }) {
+  // Called before the early return so the hook order stays stable (rules of hooks).
+  const fx = useFx();
   const oursSorted = [...ours].sort((a, b) => a.price - b.price);
   const theirsSorted = [...theirs].sort((a, b) => a.price - b.price);
 
@@ -2376,7 +2542,7 @@ function PricingComparison({
     return (
       <div className="flex flex-col gap-1">
         <p className="text-sm font-medium">Pricing comparison</p>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-dense text-muted-foreground">
           Add your own plans in{" "}
           <Link href="/dashboard/products" className="text-primary hover:underline">
             Products
@@ -2387,33 +2553,33 @@ function PricingComparison({
     );
   }
 
-  const comparable = (
-    a: { currency: string; billing_period: string },
-    b: { currency: string; billing_period: string },
-  ) => a.currency === b.currency && a.billing_period === b.billing_period;
-
-  // % from our perspective, relative to their price (positive = we're pricier).
-  const deltaPct = (
-    a: { price: number; currency: string; billing_period: string },
-    b: { price: number; currency: string; billing_period: string },
-  ): number | null =>
-    comparable(a, b) && b.price > 0 ? ((a.price - b.price) / b.price) * 100 : null;
+  const rates = fx?.rates ?? null;
+  const ourCurrency = oursSorted[0]?.currency ?? theirsSorted[0]?.currency ?? "";
 
   const rowCount = Math.max(oursSorted.length, theirsSorted.length);
   const rankLabel = (i: number) =>
     i === 0 ? "Entry" : i === rowCount - 1 ? "Top" : `Tier ${i + 1}`;
+
+  const rows = Array.from({ length: rowCount }, (_, i) => {
+    const mine = oursSorted[i] ?? null;
+    const theirs = theirsSorted[i] ?? null;
+    return { mine, theirs, cmp: mine && theirs ? compareTiers(mine, theirs, rates) : null };
+  });
+  const anyConverted = rows.some(
+    (r) => r.cmp !== null && r.cmp.pct !== null && r.cmp.converted,
+  );
 
   const ourEntry = oursSorted[0]!;
   const theirEntry = theirsSorted[0]!;
 
   // Honest summary lines for what the captured data actually supports.
   const lines: string[] = [];
-  const entryPct = deltaPct(ourEntry, theirEntry);
-  if (entryPct !== null && Math.abs(entryPct) >= 1) {
+  const entryCmp = compareTiers(ourEntry, theirEntry, rates);
+  if (entryCmp.pct !== null && Math.abs(entryCmp.pct) >= 1) {
     lines.push(
-      `Your entry tier (${formatTierPrice(ourEntry)}) is ${Math.abs(entryPct).toFixed(0)}% ${
-        entryPct < 0 ? "below" : "above"
-      } theirs (${formatTierPrice(theirEntry)}).`,
+      `Your entry tier (${formatTierPrice(ourEntry)}) is ${Math.abs(entryCmp.pct).toFixed(0)}% ${
+        entryCmp.pct < 0 ? "below" : "above"
+      } theirs (${formatTierPrice(theirEntry)})${entryCmp.converted ? ", currency-adjusted" : ""}.`,
     );
   }
   if (theirEntry.price === 0 && ourEntry.price > 0) {
@@ -2433,69 +2599,55 @@ function PricingComparison({
     <div className="flex flex-col gap-3">
       <div className="flex items-baseline justify-between gap-2">
         <p className="text-sm font-medium">Pricing comparison</p>
-        <p className="truncate font-mono text-meta text-muted-foreground">
+        <p className="truncate font-mono text-xs text-muted-foreground">
           You vs {competitorName}
         </p>
       </div>
 
-      <table className="w-full text-dense">
+      <table className="w-full text-sm">
         <thead>
-          <tr className="text-meta text-muted-foreground">
+          <tr className="text-xs text-muted-foreground">
             <th className="w-16 py-1.5 text-left font-normal">Tier</th>
             <th className="py-1.5 text-left font-normal">You</th>
             <th className="py-1.5 text-left font-normal">
               <span className="block max-w-[140px] truncate normal-case">{competitorName}</span>
             </th>
-            <th className="py-1.5 text-right font-normal">Δ</th>
+            <th className="py-1.5 text-right font-normal">
+              <Percent className="ml-auto size-3 text-muted-foreground" aria-label="Difference" />
+            </th>
           </tr>
         </thead>
         <tbody>
-          {Array.from({ length: rowCount }, (_, i) => {
-            const mine = oursSorted[i] ?? null;
-            const theirs = theirsSorted[i] ?? null;
-            const pct = mine && theirs ? deltaPct(mine, theirs) : null;
-            return (
-              <tr key={i} className="border-t border-border">
-                <td className="py-2 text-micro uppercase tracking-wide text-muted-foreground font-mono">
-                  {rankLabel(i)}
-                </td>
-                <td className="py-2">
-                  {mine ? <TierCell tier={mine} /> : <span className="text-muted-foreground">—</span>}
-                </td>
-                <td className="py-2">
-                  {theirs ? (
-                    <TierCell tier={theirs} />
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  )}
-                </td>
-                <td className="py-2 text-right">
-                  {pct !== null && Math.abs(pct) >= 1 ? (
-                    <span
-                      className={cn(
-                        "inline-flex items-center gap-0.5 font-mono text-meta tabular-nums",
-                        pct < 0 ? "text-positive" : "text-critical",
-                      )}
-                    >
-                      {pct < 0 ? (
-                        <ArrowDown className="size-3" />
-                      ) : (
-                        <ArrowUp className="size-3" />
-                      )}
-                      {Math.abs(pct).toFixed(0)}%
-                    </span>
-                  ) : (
-                    <span className="text-muted-foreground/40">—</span>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
+          {rows.map(({ mine, theirs, cmp }, i) => (
+            <tr key={i} className="border-t border-border">
+              <td className={cn("py-1.5", eyebrowClass("micro"))}>{rankLabel(i)}</td>
+              <td className="py-1.5">
+                {mine ? <TierCell tier={mine} /> : <span className="text-muted-foreground">—</span>}
+              </td>
+              <td className="py-1.5">
+                {theirs ? (
+                  <TierCell tier={theirs} />
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
+              </td>
+              <td className="py-1.5 text-right">
+                <DeltaCell cmp={cmp} from={theirs?.currency} to={mine?.currency} />
+              </td>
+            </tr>
+          ))}
         </tbody>
       </table>
 
+      {anyConverted && (
+        <p className="text-xs text-muted-foreground">
+          <span className="font-mono">≈</span> competitor prices converted to {ourCurrency} at ECB
+          reference rates{fx?.date ? ` (${fx.date})` : ""}.
+        </p>
+      )}
+
       {lines.length > 0 && (
-        <ul className="flex flex-col gap-1 text-xs text-muted-foreground">
+        <ul className="flex flex-col gap-1 text-dense text-muted-foreground">
           {lines.map((l, i) => (
             <li key={i} className="flex gap-1.5">
               <span className="text-muted-foreground">·</span>
@@ -2508,20 +2660,63 @@ function PricingComparison({
   );
 }
 
-// One side's tier in the comparison table: price (bold) over its plan name (mono).
+// One side's tier in the comparison table: price (bold) and its plan name inline
+// (muted) on a single line, so each row stays one line tall.
 function TierCell({
   tier,
 }: {
   tier: { plan_name: string; price: number; currency: string; billing_period: string };
 }) {
   return (
-    <div className="flex flex-col">
-      <span className="font-semibold tabular-nums">{formatTierPrice(tier)}</span>
-      <span className="max-w-[140px] truncate font-mono text-micro uppercase tracking-wide text-muted-foreground">
-        {tier.plan_name}
-      </span>
+    <div className="flex items-baseline gap-1.5 min-w-0">
+      <span className="font-semibold tabular-nums shrink-0">{formatTierPrice(tier)}</span>
+      <span className="truncate text-xs text-muted-foreground">{tier.plan_name}</span>
     </div>
   );
+}
+
+// Seniority ordering (low→high) so a role list surfaces the senior bets first.
+// Keys match the canonical buckets the ATS resolver emits (packages/scrapers jobs/ats).
+const SENIORITY_RANK: Record<string, number> = {
+  executive: 8,
+  lead: 7,
+  principal: 6,
+  staff: 5,
+  senior: 4,
+  mid: 3,
+  junior: 2,
+  intern: 1,
+};
+
+// Rank at/above which a role counts as a "senior+" bet (senior, staff, principal,
+// lead, executive) — a leading indicator of a serious build.
+const SENIOR_PLUS_THRESHOLD = 4;
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+const CURRENCY_SYMBOL: Record<string, string> = { USD: "$", EUR: "€", GBP: "£", INR: "₹" };
+
+// Compact money for a hiring badge, e.g. 120000 USD → "$120k".
+function formatMoney(n: number, currency: string | null): string {
+  const sym = CURRENCY_SYMBOL[currency ?? ""] ?? "";
+  const compact = n >= 1000 ? `${Math.round(n / 1000)}k` : String(Math.round(n));
+  if (sym) return `${sym}${compact}`;
+  return currency ? `${compact} ${currency}` : compact;
+}
+
+// Salary range label for one role, or null when the ATS exposed no compensation.
+function salaryLabel(r: {
+  salaryMin: number | null;
+  salaryMax: number | null;
+  salaryCurrency: string | null;
+}): string | null {
+  if (r.salaryMin == null && r.salaryMax == null) return null;
+  if (r.salaryMin != null && r.salaryMax != null && r.salaryMin !== r.salaryMax) {
+    return `${formatMoney(r.salaryMin, r.salaryCurrency)}–${formatMoney(r.salaryMax, r.salaryCurrency)}`;
+  }
+  return formatMoney((r.salaryMin ?? r.salaryMax)!, r.salaryCurrency);
 }
 
 function HiringTab({
@@ -2570,6 +2765,37 @@ function HiringTab({
   const trendByDept = buildJobTrend(trends);
   const jobsMonitor = monitors.find((m) => m.sourceType === "jobs");
 
+  // Flatten every open role and surface the senior bets first. Each role carries
+  // its department so the flat list stays readable without the grouping.
+  const allRoles = jobs.departments
+    .flatMap((d) => d.jobs.map((j) => ({ ...j, dept: d.department })))
+    .sort(
+      (a, b) =>
+        (SENIORITY_RANK[b.seniority ?? ""] ?? 0) - (SENIORITY_RANK[a.seniority ?? ""] ?? 0) ||
+        a.title.localeCompare(b.title),
+    );
+
+  // Strategic recap (patch-32 enrichment): how many senior+ bets, and the salary
+  // band the ATS disclosed. Both are leading indicators of budget / maturity —
+  // hiring Staff/Principal or posting high bands signals a serious build.
+  const seniorPlus = allRoles.filter(
+    (r) => (SENIORITY_RANK[r.seniority ?? ""] ?? 0) >= SENIOR_PLUS_THRESHOLD,
+  ).length;
+  const withSalary = allRoles.filter((r) => r.salaryMin != null || r.salaryMax != null);
+  const salaryLows = withSalary
+    .map((r) => r.salaryMin ?? r.salaryMax)
+    .filter((n): n is number => n != null);
+  const salaryHighs = withSalary
+    .map((r) => r.salaryMax ?? r.salaryMin)
+    .filter((n): n is number => n != null);
+  const salaryBand =
+    salaryLows.length > 0
+      ? `${formatMoney(Math.min(...salaryLows), withSalary[0]!.salaryCurrency)}–${formatMoney(
+          Math.max(...salaryHighs),
+          withSalary[0]!.salaryCurrency,
+        )}`
+      : null;
+
   return (
     <TabCard>
       <SourceSummary
@@ -2577,9 +2803,9 @@ function HiringTab({
         updatedAt={jobsMonitor?.aiSummaryUpdatedAt}
       />
       <TabSection title="Open roles" icon={Briefcase}>
-        <table className="w-full text-dense">
+        <table className="w-full text-sm">
           <thead>
-            <tr className="text-meta text-muted-foreground">
+            <tr className="text-xs text-muted-foreground">
               <th className="text-left py-2">Department</th>
               <th className="text-right py-2">Active</th>
               <th className="text-right py-2">Trend 90d</th>
@@ -2625,6 +2851,66 @@ function HiringTab({
               })}
           </tbody>
         </table>
+      </TabSection>
+
+      <TabSection title="Roles" icon={Briefcase}>
+        {(seniorPlus > 0 || salaryBand) && (
+          <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <span>
+              <span className="font-medium text-foreground tabular-nums">{seniorPlus}</span> of{" "}
+              <span className="tabular-nums">{allRoles.length}</span> senior+
+            </span>
+            {salaryBand && (
+              <span>
+                Salary observed:{" "}
+                <span className="font-medium text-foreground tabular-nums font-mono">
+                  {salaryBand}
+                </span>
+              </span>
+            )}
+          </div>
+        )}
+        <ul className="divide-y divide-border">
+          {allRoles.map((role) => {
+            const salary = salaryLabel(role);
+            return (
+              <li key={role.id} className="flex items-start justify-between gap-3 py-2.5">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    {role.url ? (
+                      <a
+                        href={role.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-dense font-medium hover:underline underline-offset-2 inline-flex items-center gap-1"
+                      >
+                        {role.title}
+                        <ExternalLink size={12} className="text-muted-foreground shrink-0" />
+                      </a>
+                    ) : (
+                      <span className="text-dense font-medium">{role.title}</span>
+                    )}
+                  </div>
+                  <div className="mt-0.5 text-xs text-muted-foreground">
+                    {[role.dept, role.location].filter(Boolean).join(" · ")}
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {salary && (
+                    <span className="tabular-nums font-mono text-xs text-foreground/85">
+                      {salary}
+                    </span>
+                  )}
+                  {role.seniority && (
+                    <span className="rounded-md border border-border bg-card px-1.5 py-0.5 text-xs text-muted-foreground">
+                      {capitalize(role.seniority)}
+                    </span>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
       </TabSection>
 
       {Object.keys(trendByDept).length > 0 && (
@@ -2710,13 +2996,13 @@ function ReviewSourceButton({
       size="sm"
       variant={selected ? "default" : "secondary"}
       onClick={() => (locked ? onLocked() : onSelect())}
-      className="h-7 gap-1.5 text-meta"
+      className="h-7 gap-1.5 text-xs"
     >
       {locked && <Lock size={10} className="opacity-70" />}
       {option.label}
       <span
         className={cn(
-          "inline-flex items-center rounded px-1 py-0.5 text-micro leading-none font-mono uppercase tracking-wider",
+          "inline-flex items-center rounded px-1 py-0.5 text-meta leading-none font-medium uppercase tracking-wide",
           selected ? "bg-primary-foreground/15" : "bg-muted-foreground/15 text-muted-foreground",
         )}
       >
@@ -2753,7 +3039,7 @@ function ReviewEnableState({
     <Card className="px-6 py-8 border-dashed flex flex-col items-center gap-4 text-center">
       <div className="flex flex-col items-center gap-1">
         <p className="text-sm font-semibold text-foreground">Track reviews</p>
-        <p className="text-xs text-muted-foreground max-w-md">
+        <p className="text-dense text-muted-foreground max-w-md">
           Pick a review source and paste this competitor&apos;s review-page URL. We&apos;ll
           capture ratings, praises and complaints — and run the first scrape right away.
         </p>
@@ -2781,7 +3067,7 @@ function ReviewEnableState({
           autoComplete="off"
           disabled={sourceLocked}
         />
-        <p className="text-meta text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           {sourceLocked
             ? `${active.label} reviews are included in the ${PLAN_LABELS[minPlanForSource(active.value)]} plan.`
             : `Must be a ${active.host} URL.`}
@@ -2880,6 +3166,17 @@ function ReviewsTab({
   const hasData = reviews.recent.length > 0 || scores.length > 0;
   const series = scores.length > 0 ? buildReviewScoreSeries(scores) : null;
 
+  // Per-criterion breakdown (patch-32): which axes the competitor wins/loses on.
+  const sub = reviews.summary.subScores;
+  const subRows: Array<{ label: string; v: number }> = sub
+    ? [
+        { label: "Ease of use", v: sub.easeOfUse },
+        { label: "Support", v: sub.support },
+        { label: "Features", v: sub.features },
+        { label: "Value", v: sub.value },
+      ].filter((r): r is { label: string; v: number } => r.v != null)
+    : [];
+
   return (
     <div className="flex flex-col gap-4">
       <TabCard>
@@ -2925,6 +3222,29 @@ function ReviewsTab({
               </TabSection>
             )}
 
+            {subRows.length > 0 && (
+              <TabSection title="Rating breakdown" icon={Star}>
+                <div className="space-y-2.5 max-w-md">
+                  {subRows.map((r) => (
+                    <div key={r.label} className="flex items-center gap-3">
+                      <span className="w-24 shrink-0 text-xs text-muted-foreground">
+                        {r.label}
+                      </span>
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-border">
+                        <div
+                          className="h-full rounded-full bg-foreground/80"
+                          style={{ width: `${(r.v / 5) * 100}%` }}
+                        />
+                      </div>
+                      <span className="w-8 shrink-0 text-right font-mono text-xs tabular-nums text-foreground/85">
+                        {r.v.toFixed(1)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </TabSection>
+            )}
+
             <TabSection title="What customers say" icon={Star}>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-6">
                 <ReviewColumn
@@ -2939,6 +3259,33 @@ function ReviewsTab({
                 />
               </div>
             </TabSection>
+
+            {reviews.summary.complaintThemes.length > 0 && (
+              <TabSection title="Recurring complaints" icon={Star}>
+                <p className="mb-3 text-xs text-muted-foreground">
+                  Repeated grievances across reviews — each is an angle you can lead with.
+                </p>
+                <ul className="space-y-2">
+                  {reviews.summary.complaintThemes.map((t, i) => (
+                    <li key={i} className="flex items-center justify-between gap-3">
+                      <span className="text-dense">{t.theme}</span>
+                      <span
+                        className={cn(
+                          "shrink-0 rounded-md border px-1.5 py-0.5 text-xs capitalize",
+                          t.prevalence === "high"
+                            ? "border-critical/40 text-critical"
+                            : t.prevalence === "medium"
+                              ? "border-border text-foreground/85"
+                              : "border-border text-muted-foreground",
+                        )}
+                      >
+                        {t.prevalence}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </TabSection>
+            )}
           </>
         )}
       </TabCard>
@@ -2982,14 +3329,14 @@ function ReviewSourceToolbar({
   return (
     <div className="flex items-center justify-between gap-3">
       <div className="flex items-baseline gap-2 min-w-0">
-        <span className="shrink-0 text-xs font-medium text-foreground">
+        <span className="shrink-0 text-dense font-medium text-foreground">
           {opt?.label ?? monitor.sourceType}
         </span>
         {url && (
-          <span className="truncate text-meta font-mono text-muted-foreground">{url}</span>
+          <span className="truncate text-xs font-mono text-muted-foreground">{url}</span>
         )}
       </div>
-      <Button size="sm" variant="outline" onClick={onManage} className="h-7 text-meta shrink-0">
+      <Button size="sm" variant="outline" onClick={onManage} className="h-7 text-xs shrink-0">
         <Settings2 size={12} /> Manage source
       </Button>
     </div>
@@ -3071,7 +3418,7 @@ function ReviewSourceDialog({
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <p className="text-meta font-medium text-muted-foreground">
+            <p className="text-xs font-medium text-muted-foreground">
               Source
             </p>
             <div className="flex gap-1.5">
@@ -3091,7 +3438,7 @@ function ReviewSourceDialog({
             </div>
           </div>
           <div className="space-y-1.5">
-            <p className="text-meta font-medium text-muted-foreground">
+            <p className="text-xs font-medium text-muted-foreground">
               Frequency
             </p>
             <div className="flex gap-1.5">
@@ -3112,7 +3459,7 @@ function ReviewSourceDialog({
             </div>
           </div>
           <div className="space-y-1.5">
-            <p className="text-meta font-medium text-muted-foreground">
+            <p className="text-xs font-medium text-muted-foreground">
               Page URL
             </p>
             <Input
@@ -3122,15 +3469,15 @@ function ReviewSourceDialog({
               inputMode="url"
               autoComplete="off"
             />
-            <p className="text-meta text-muted-foreground">Must be a {active.host} URL.</p>
+            <p className="text-xs text-muted-foreground">Must be a {active.host} URL.</p>
             {trimmed !== "" && !urlValid && (
-              <p className="text-meta text-critical/80">
+              <p className="text-xs text-critical/80">
                 This URL isn&apos;t valid for {active.label}.
               </p>
             )}
           </div>
           {sourceChanged && (
-            <p className="text-meta text-critical/80">
+            <p className="text-xs text-critical/80">
               Switching source replaces the current monitor and its captured history.
             </p>
           )}
@@ -3191,7 +3538,7 @@ function ContentTab({
     return (
       <Card className="px-6 py-10 text-center border-dashed flex flex-col items-center gap-3">
         <p className="text-sm font-semibold text-foreground">No content changes yet</p>
-        <p className="text-xs text-muted-foreground max-w-md">
+        <p className="text-dense text-muted-foreground max-w-md">
           {preferred.lastRunAt
             ? `The ${preferred.sourceType} monitor was scraped ${formatDistanceToNow(new Date(preferred.lastRunAt), { addSuffix: true })} — no change since.`
             : `The ${preferred.sourceType} monitor has never been scraped. Run it now.`}
@@ -3249,7 +3596,7 @@ function ReviewColumn({
     <div className="flex flex-col gap-2.5">
       <h3
         className={cn(
-          "flex items-center gap-2 text-dense font-semibold tracking-tight",
+          "flex items-center gap-2 text-sm font-semibold tracking-tight",
           accent === "positive" ? "text-positive" : "text-critical",
         )}
       >
@@ -3262,7 +3609,7 @@ function ReviewColumn({
         {title}
       </h3>
       {items.length === 0 ? (
-        <p className="text-xs text-muted-foreground">—</p>
+        <p className="text-dense text-muted-foreground">—</p>
       ) : (
         <ul className="flex flex-col gap-2 text-content">
           {items.filter(Boolean).map((it, i) => (
@@ -3297,8 +3644,8 @@ function TabLoading() {
 function Empty({ text, hint }: { text: string; hint?: string }) {
   return (
     <Card className="px-6 py-10 text-center border-dashed text-muted-foreground">
-      <p className="text-dense">{text}</p>
-      {hint && <p className="text-meta mt-2 max-w-md mx-auto text-muted-foreground">{hint}</p>}
+      <p className="text-sm">{text}</p>
+      {hint && <p className="text-xs mt-2 max-w-md mx-auto text-muted-foreground">{hint}</p>}
     </Card>
   );
 }

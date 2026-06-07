@@ -1,10 +1,32 @@
 "use client";
 
 import { formatDistanceToNow } from "date-fns";
-import { Check, Cpu } from "lucide-react";
-import { FreshnessDot } from "./freshness-dot";
+import { Check, Cpu, Layers } from "lucide-react";
 import { TabCard, TabSection } from "./tab-shell";
-import type { TechStackData, TechStackEntry } from "@/lib/api";
+import type { TechStackData, TechStackEntry, PlatformField } from "@/lib/api";
+
+function capitalizeWord(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// Build the readable "Platform" rows from the detected profile (patch-31). Only
+// fields actually detected appear. Changelog values may be "rss:<url>".
+function buildPlatformRows(
+  pp: TechStackData["platformProfile"],
+): Array<{ label: string; value: string }> {
+  if (!pp) return [];
+  const rows: Array<{ label: string; value: string }> = [];
+  const add = (label: string, f: PlatformField | undefined, fmt?: (v: string) => string) => {
+    if (f?.value) rows.push({ label, value: fmt ? fmt(f.value) : capitalizeWord(f.value) });
+  };
+  add("Framework", pp.framework);
+  add("CMS", pp.cms);
+  add("Hiring (ATS)", pp.ats);
+  add("Pricing", pp.pricingWidget);
+  add("Status page", pp.statusPage);
+  add("Changelog", pp.changelog, (v) => (v.startsWith("rss:") ? "RSS feed" : capitalizeWord(v)));
+  return rows;
+}
 
 // English labels for the catalog categories (patch-18). Strategic/commercial
 // categories first, generic infra last.
@@ -53,20 +75,32 @@ export function CompetitorTechStack({ techStack }: { techStack: TechStackData })
     (a, b) => categoryRank(a) - categoryRank(b),
   );
 
+  const platformRows = buildPlatformRows(techStack.platformProfile);
+
   return (
     <TabCard>
+      {platformRows.length > 0 && (
+        <TabSection title="Platform" icon={Layers}>
+          <div className="space-y-2 text-dense">
+            {platformRows.map((r) => (
+              <div key={r.label} className="flex items-center gap-3">
+                <span className="w-28 shrink-0 text-muted-foreground">{r.label}</span>
+                <span className="font-medium">{r.value}</span>
+              </div>
+            ))}
+          </div>
+        </TabSection>
+      )}
+
       <TabSection
         title="Detected tech stack"
         icon={Cpu}
         action={
-          <div className="flex items-center gap-1.5 text-meta font-mono text-muted-foreground">
-            {lastScrapedAt && <FreshnessDot lastScrapedAt={lastScrapedAt} status="success" />}
-            <span>
-              {lastScrapedAt
-                ? `scanned ${formatDistanceToNow(new Date(lastScrapedAt), { addSuffix: true })}`
-                : "scan pending"}
-            </span>
-          </div>
+          <span className="text-xs font-mono text-muted-foreground">
+            {lastScrapedAt
+              ? `scanned ${formatDistanceToNow(new Date(lastScrapedAt), { addSuffix: true })}`
+              : "scan pending"}
+          </span>
         }
       >
         {entries.length === 0 ? (
@@ -79,19 +113,19 @@ export function CompetitorTechStack({ techStack }: { techStack: TechStackData })
           <div className="space-y-3">
             {orderedCategories.map((cat) => (
               <div key={cat}>
-                <div className="text-micro font-mono uppercase tracking-wider text-muted-foreground mb-1.5">
+                <div className="text-meta font-mono uppercase tracking-wider text-muted-foreground mb-1.5">
                   {CATEGORY_LABELS[cat] ?? cat}
                 </div>
                 <ul className="flex flex-wrap gap-1.5">
                   {(groups.get(cat) ?? []).map((e) => (
                     <li
                       key={e.techId}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/30 px-2 py-1 text-xs"
+                      className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/30 px-2 py-1 text-dense"
                     >
-                      <Check size={11} className="text-positive shrink-0" />
+                      <Check size={12} className="text-positive shrink-0" />
                       <span>{e.name}</span>
                       {isRecent(e.firstDetectedAt) && (
-                        <span className="text-micro text-muted-foreground">
+                        <span className="text-meta text-muted-foreground">
                           new · {formatDistanceToNow(new Date(e.firstDetectedAt), { addSuffix: true })}
                         </span>
                       )}

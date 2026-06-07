@@ -1167,9 +1167,30 @@ export type TechStackEntry = {
   lastDetectedAt: string;
 };
 
+// Auto-detected platform profile (patch-31). Each field carries the detected
+// value + how it was proven; absent fields were not detected.
+export type PlatformField = {
+  value: string;
+  confidence: "low" | "medium" | "high";
+  evidence: string[];
+};
+
+export type PlatformProfile = {
+  framework?: PlatformField;
+  cms?: PlatformField;
+  ats?: PlatformField;
+  pricingWidget?: PlatformField;
+  statusPage?: PlatformField;
+  changelog?: PlatformField;
+  analytics?: PlatformField[];
+  detectedAt: string;
+  v: number;
+};
+
 export type TechStackData = {
   entries: TechStackEntry[];
   lastScrapedAt: string | null;
+  platformProfile: PlatformProfile | null;
 };
 
 // Competitor "fact sheet" — the state view behind the Overview tab. Pure

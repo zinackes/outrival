@@ -536,6 +536,10 @@ competitorsRouter.get("/:id", async (c) => {
       lastDetectedAt: t.lastDetectedAt,
     })),
     lastScrapedAt: competitor.techStackScrapedAt,
+    // Auto-detected platform profile (patch-31): framework / CMS / ATS / status
+    // page / changelog / pricing widget. Detected for routing, surfaced read-only
+    // here next to the third-party tech. Null when never detected.
+    platformProfile: competitor.platformProfile,
   };
 
   const overview = await buildOverview(competitor.id, monitorList);

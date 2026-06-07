@@ -9,6 +9,7 @@ import {
   qualityFeedback,
   aiQualityChecks,
   signalComments,
+  signalBatches,
   users,
 } from "@outrival/db";
 import { computeThreatScore } from "@outrival/shared";
@@ -91,6 +92,16 @@ signalsRouter.get("/", async (c) => {
       // can show the threat indicator without recomputing.
       overlapScore: competitors.overlapScore,
       relevanceScore: signals.relevanceScore,
+      // Signal batching (patch-26): when several similar signals were grouped, the
+      // feed collapses them under one card with the batch's AI summary instead of
+      // N near-duplicates. Null for un-batched signals.
+      batchedIntoId: signals.batchedIntoId,
+      batchSummary: signalBatches.summary,
+      batchCount: signalBatches.count,
+      // Notification moderation transparency (patch-26): why a signal wasn't sent
+      // as an immediate alert (quiet hours / cap / threshold / muted). Null = it
+      // wasn't held back. Critical signals bypass moderation entirely.
+      filteredReason: signals.filteredReason,
       changeId: signals.changeId,
       // Surfaced inline by the signal source line (patch-14). Joined through the
       // originating change → monitor; null for signals whose change/monitor was
@@ -125,6 +136,7 @@ signalsRouter.get("/", async (c) => {
         eq(aiQualityChecks.targetType, "signal"),
       ),
     )
+    .leftJoin(signalBatches, eq(signalBatches.id, signals.batchedIntoId))
     .where(and(...conds))
     // Threat ordering done in SQL so the LIMIT keeps the most threatening signals,
     // not just the most recent N. Mirrors computeThreatScore (severity uses the

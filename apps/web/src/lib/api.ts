@@ -299,6 +299,15 @@ export interface Signal {
   overlapScore: number | null;
   relevanceScore: number | null;
   threatScore: number;
+  // patch-26 batching: when several similar signals were grouped, the feed
+  // collapses them into one card with the batch summary. Null for un-batched.
+  batchedIntoId: string | null;
+  batchSummary: string | null;
+  batchCount: number | null;
+  // patch-26 moderation transparency: why this signal wasn't sent as an immediate
+  // alert (below_threshold | channel_muted | quiet_hours | frequency_cap). Null =
+  // not held back.
+  filteredReason: string | null;
 }
 
 // User-safe "Why this insight?" payload (patch-14). No raw HTML, no diff, no AI

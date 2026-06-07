@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowUpRight, MoreHorizontal, ListTodo, MessageSquare } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { SeverityPill } from "./severity-pill";
+import { SeverityBadge } from "./severity-pill";
 import { CatPill } from "./cat-pill";
 import { CompAvatar } from "./comp-avatar";
 import { SignalComments } from "./signal-comments";
@@ -29,9 +29,20 @@ import { AiOutputWarning } from "@/components/outrival/ai-output-warning";
 interface SignalCardProps {
   signal: Signal;
   onMarkRead?: (id: string) => void;
+  /** Dwell auto-read: fired once the card has lingered in the viewport. */
+  onAutoRead?: (id: string) => void;
+  /** Revert an auto-read signal back to unread. */
+  onMarkUnread?: (id: string) => void;
+  /** This signal was read automatically (by dwell), so the click-to-unread affordance shows. */
+  wasAutoRead?: boolean;
   onActionChange?: (id: string, status: ActionStatus | null) => void;
   highlight?: boolean;
 }
+
+// How long (ms) a card must stay substantially in view before it auto-reads.
+// A dwell gate — not first-pixel visibility — so a fast scroll-through doesn't
+// bulk-mark everything read (the well-documented "scroll = read" misread trap).
+const AUTO_READ_DWELL_MS = 1500;
 
 const ACTION_OPTIONS: { value: ActionStatus; label: string }[] = [
   { value: "todo", label: "To do" },
@@ -46,12 +57,80 @@ const ACTION_LABEL: Record<ActionStatus, string> = {
   dismissed: "Dismissed",
 };
 
-export function SignalCard({ signal, onMarkRead, onActionChange, highlight }: SignalCardProps) {
+// patch-26 moderation transparency (gap-E): why a signal wasn't sent as an alert.
+const FILTERED_REASON_LABEL: Record<string, string> = {
+  below_threshold: "below your relevance threshold",
+  channel_muted: "channel muted for this severity",
+  quiet_hours: "held during quiet hours",
+  frequency_cap: "daily email limit reached",
+};
+
+// Threat level (gap-F): bucket the composite threat score (severity × overlap ×
+// relevance) into a 3-bar meter so the feed order is legible per-card.
+function threatBars(score: number): number {
+  if (score >= 0.4) return 3;
+  if (score >= 0.2) return 2;
+  return 1;
+}
+
+export function SignalCard({
+  signal,
+  onMarkRead,
+  onAutoRead,
+  onMarkUnread,
+  wasAutoRead,
+  onActionChange,
+  highlight,
+}: SignalCardProps) {
   const [flagged, setFlagged] = useState(signal.aiFlagged ?? false);
   const [severityAdjusted, setSeverityAdjusted] = useState(false);
   const [actionStatus, setActionStatus] = useState<ActionStatus | null>(signal.actionStatus);
   const [showComments, setShowComments] = useState(false);
   const [commentCount, setCommentCount] = useState<number | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  // Held in a ref so the parent re-creating the callback each render doesn't tear
+  // down and rebuild the observer (which would keep resetting the dwell timer).
+  const onAutoReadRef = useRef(onAutoRead);
+  onAutoReadRef.current = onAutoRead;
+
+  // Intelligent auto-read: mark read only once the card has dwelled ≥60% in the
+  // viewport for AUTO_READ_DWELL_MS. IntersectionObserver tracks visibility; the
+  // timer is the dwell gate. Cleared the moment the card leaves view, so flicking
+  // past it doesn't mark it read.
+  const canRevert = Boolean(signal.isRead && wasAutoRead && onMarkUnread);
+  useEffect(() => {
+    if (signal.isRead || !onAutoReadRef.current) return;
+    const el = rootRef.current;
+    if (!el) return;
+    let dwell: ReturnType<typeof setTimeout> | null = null;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry) return;
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
+          if (!dwell)
+            dwell = setTimeout(() => onAutoReadRef.current?.(signal.id), AUTO_READ_DWELL_MS);
+        } else if (dwell) {
+          clearTimeout(dwell);
+          dwell = null;
+        }
+      },
+      { threshold: [0, 0.6, 1] },
+    );
+    observer.observe(el);
+    return () => {
+      if (dwell) clearTimeout(dwell);
+      observer.disconnect();
+    };
+  }, [signal.id, signal.isRead]);
+
+  // Click anywhere on an auto-read card (outside its own controls) to bring it back.
+  function handleCardClick(e: React.MouseEvent<HTMLDivElement>) {
+    if (!canRevert) return;
+    if ((e.target as HTMLElement).closest("a, button, input, [role='menuitem'], [data-comments]"))
+      return;
+    onMarkUnread?.(signal.id);
+  }
 
   async function setAction(status: ActionStatus | null) {
     const prev = actionStatus;
@@ -93,23 +172,27 @@ export function SignalCard({ signal, onMarkRead, onActionChange, highlight }: Si
 
   return (
     <div
+      ref={rootRef}
+      onClick={handleCardClick}
       className={cn(
-        "rounded-md border border-border bg-card p-[22px] transition-[box-shadow,background-color] duration-500",
-        signal.isRead && "opacity-65",
+        "rounded-md border border-border bg-card p-[22px] transition-[box-shadow,background-color,opacity] duration-500",
+        signal.isRead && "opacity-80",
+        canRevert && "cursor-pointer hover:opacity-90",
         highlight && "ring-2 ring-primary/70 bg-primary/[0.05]",
       )}
     >
       <div className="flex items-center gap-3 mb-3.5 flex-wrap">
-        {/* Prefer the user's severity override (patch-21) over the AI rating. */}
-        <SeverityPill severity={signal.severityOverride ?? signal.severity} />
-        <CatPill>{signal.category}</CatPill>
+        {/* Prefer the user's severity override (patch-21) over the AI rating.
+            Solid severity badge, matching the Overview's "Recent signals" list. */}
+        <SeverityBadge severity={signal.severityOverride ?? signal.severity} />
+        <CatPill size="micro">{signal.category}</CatPill>
         <span className="w-px h-3 bg-border" />
         <Link
           href={`/dashboard/competitors/${signal.competitorId}`}
           className="group inline-flex items-center gap-2 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
         >
           <CompAvatar name={signal.competitorName} size={24} />
-          <span className="font-semibold text-content group-hover:underline underline-offset-2">
+          <span className="font-semibold text-base group-hover:underline underline-offset-2">
             {signal.competitorName}
           </span>
           <ArrowUpRight
@@ -119,6 +202,24 @@ export function SignalCard({ signal, onMarkRead, onActionChange, highlight }: Si
         </Link>
         {/* AI confidence (patch-24): renders nothing when confidence is high. */}
         <ConfidenceDot confidence={signal.aiConfidence ?? "high"} />
+        {/* Threat level (gap-F): why this signal ranks where it does in the feed. */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="flex items-end gap-px" aria-label="Threat level">
+              {[0, 1, 2].map((i) => (
+                <span
+                  key={i}
+                  className={cn(
+                    "w-[3px] rounded-sm",
+                    i === 0 ? "h-1.5" : i === 1 ? "h-2" : "h-2.5",
+                    i < threatBars(signal.threatScore) ? "bg-foreground/70" : "bg-border",
+                  )}
+                />
+              ))}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>Threat level — severity × competitor overlap × relevance</TooltipContent>
+        </Tooltip>
         <span className="flex-1" />
         <span className="tabular-nums font-mono text-muted-foreground text-xs">
           {timeAgo}
@@ -143,6 +244,23 @@ export function SignalCard({ signal, onMarkRead, onActionChange, highlight }: Si
           ) : (
             <span className="size-2 rounded-full bg-primary" />
           ))}
+        {/* Auto-read affordance: a hollow dot to bring the signal back to unread.
+            (Clicking anywhere on the card body does the same.) */}
+        {canRevert && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={() => onMarkUnread?.(signal.id)}
+                aria-label="Mark as unread"
+                className="-m-1 rounded-full p-1 text-muted-foreground transition-colors hover:text-primary outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+              >
+                <span className="block size-2 rounded-full border border-current" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Read automatically · mark unread</TooltipContent>
+          </Tooltip>
+        )}
       </div>
 
       {/* Self-check warning (patch-24): shown above the content, which stays
@@ -155,7 +273,7 @@ export function SignalCard({ signal, onMarkRead, onActionChange, highlight }: Si
         />
       )}
 
-      <p className="text-lead leading-snug mb-4 font-medium tracking-tight">
+      <p className="text-content leading-snug mb-4 font-medium tracking-tight">
         {signal.insight}
       </p>
 
@@ -169,7 +287,7 @@ export function SignalCard({ signal, onMarkRead, onActionChange, highlight }: Si
       )}
 
       {hasDetails && (
-        <div className="grid grid-cols-[100px_1fr] gap-x-8 gap-y-3.5 pt-4">
+        <div className="grid grid-cols-[64px_1fr] gap-x-4 gap-y-3.5 pt-4">
           {signal.soWhat && (
             <>
               <div className="text-dense font-medium text-muted-foreground pt-0.5">
@@ -204,6 +322,18 @@ export function SignalCard({ signal, onMarkRead, onActionChange, highlight }: Si
             detectedAt={signal.createdAt}
             showDetected={false}
           />
+          {signal.filteredReason && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="shrink-0 text-xs text-muted-foreground">· Held back</span>
+              </TooltipTrigger>
+              <TooltipContent>
+                Not sent as an alert —{" "}
+                {FILTERED_REASON_LABEL[signal.filteredReason] ??
+                  signal.filteredReason.replace(/_/g, " ")}
+              </TooltipContent>
+            </Tooltip>
+          )}
           <Button
             variant="ghost"
             size="sm"
@@ -294,7 +424,9 @@ export function SignalCard({ signal, onMarkRead, onActionChange, highlight }: Si
       </div>
 
       {showComments && (
-        <SignalComments signalId={signal.id} onCountChange={setCommentCount} />
+        <div data-comments>
+          <SignalComments signalId={signal.id} onCountChange={setCommentCount} />
+        </div>
       )}
     </div>
   );

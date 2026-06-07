@@ -62,6 +62,14 @@ const SEV_DOT: Record<Sev, string> = {
   low: "bg-muted-foreground/45",
 };
 
+const SEV_RANK: Record<Sev, number> = { critical: 4, high: 3, medium: 2, low: 1 };
+
+// A feed row is either a standalone signal or a batch of similar ones (patch-26)
+// collapsed under a single summary card.
+type FeedItem =
+  | { kind: "single"; signal: Signal }
+  | { kind: "batch"; batchId: string; summary: string | null; count: number; signals: Signal[] };
+
 function parseSet(s: string | null): Set<string> {
   if (!s) return new Set();
   return new Set(s.split(",").filter(Boolean));
@@ -250,6 +258,38 @@ export function SignalsView() {
       return true;
     });
   }, [signals, sev, cat, comp, quickView, query]);
+
+  // Collapse batched signals (patch-26) into one group, preserving the feed order
+  // (the group sits at its first member's position). A batch left with a single
+  // visible member after filtering degrades back to a normal card.
+  const feedItems = useMemo<FeedItem[]>(() => {
+    const items: FeedItem[] = [];
+    const batchAt = new Map<string, number>();
+    for (const s of filtered) {
+      if (s.batchedIntoId) {
+        const at = batchAt.get(s.batchedIntoId);
+        if (at != null) {
+          (items[at] as Extract<FeedItem, { kind: "batch" }>).signals.push(s);
+          continue;
+        }
+        batchAt.set(s.batchedIntoId, items.length);
+        items.push({
+          kind: "batch",
+          batchId: s.batchedIntoId,
+          summary: s.batchSummary,
+          count: s.batchCount ?? 1,
+          signals: [s],
+        });
+      } else {
+        items.push({ kind: "single", signal: s });
+      }
+    }
+    return items.map((it) =>
+      it.kind === "batch" && it.signals.length === 1
+        ? ({ kind: "single", signal: it.signals[0]! } as FeedItem)
+        : it,
+    );
+  }, [filtered]);
 
   const quickCounts = useMemo(() => {
     if (!signals) return { all: 0, alerts: 0, unread: 0, week: 0, critical: 0, actions: 0 };
@@ -569,23 +609,120 @@ export function SignalsView() {
       ) : (
         <div className="flex flex-col gap-2.5">
           <AnimatePresence initial={false} mode="popLayout">
-            {filtered.map((s) => (
-              <motion.div key={s.id} id={`signal-${s.id}`} {...feedItemMotion}>
-                <SignalCard
-                  signal={s}
-                  onMarkRead={markRead}
-                  onAutoRead={autoRead}
-                  onMarkUnread={markUnread}
-                  wasAutoRead={autoReadIds.has(s.id)}
-                  onActionChange={onActionChange}
-                  highlight={s.id === highlightId}
-                />
-              </motion.div>
-            ))}
+            {feedItems.map((item) =>
+              item.kind === "single" ? (
+                <motion.div
+                  key={item.signal.id}
+                  id={`signal-${item.signal.id}`}
+                  {...feedItemMotion}
+                >
+                  <SignalCard
+                    signal={item.signal}
+                    onMarkRead={markRead}
+                    onAutoRead={autoRead}
+                    onMarkUnread={markUnread}
+                    wasAutoRead={autoReadIds.has(item.signal.id)}
+                    onActionChange={onActionChange}
+                    highlight={item.signal.id === highlightId}
+                  />
+                </motion.div>
+              ) : (
+                <motion.div key={item.batchId} {...feedItemMotion}>
+                  <BatchGroupCard
+                    item={item}
+                    autoReadIds={autoReadIds}
+                    highlightId={highlightId}
+                    onMarkRead={markRead}
+                    onAutoRead={autoRead}
+                    onMarkUnread={markUnread}
+                    onActionChange={onActionChange}
+                  />
+                </motion.div>
+              ),
+            )}
           </AnimatePresence>
         </div>
       )}
     </div>
+  );
+}
+
+// Collapsed batch of similar signals (patch-26): one summary card that expands to
+// the member signals. Replaces N near-duplicate cards in the feed.
+function BatchGroupCard({
+  item,
+  autoReadIds,
+  highlightId,
+  onMarkRead,
+  onAutoRead,
+  onMarkUnread,
+  onActionChange,
+}: {
+  item: Extract<FeedItem, { kind: "batch" }>;
+  autoReadIds: Set<string>;
+  highlightId: string | null;
+  onMarkRead: (id: string) => void;
+  onAutoRead: (id: string) => void;
+  onMarkUnread: (id: string) => void;
+  onActionChange: (id: string, status: ActionStatus | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const first = item.signals[0]!;
+  const maxSev = item.signals.reduce<Sev>(
+    (m, s) => (SEV_RANK[s.severity] > SEV_RANK[m] ? s.severity : m),
+    "low",
+  );
+  const unreadCount = item.signals.filter((s) => !s.isRead).length;
+
+  return (
+    <Card className="overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-3 p-[18px] text-left transition-colors hover:bg-muted/30"
+      >
+        <span className={cn("size-2 shrink-0 rounded-full", SEV_DOT[maxSev])} />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="text-base font-semibold">{first.competitorName}</span>
+            <span className="text-xs text-muted-foreground">
+              {item.count} similar {first.category} signals
+            </span>
+            {unreadCount > 0 && <span className="size-1.5 rounded-full bg-primary" />}
+          </div>
+          {item.summary && (
+            <p className="mt-1 text-dense leading-snug text-foreground/85">{item.summary}</p>
+          )}
+        </div>
+        <span className="shrink-0 text-xs text-muted-foreground">
+          {open ? "Hide" : "Show"}
+        </span>
+        <ChevronDown
+          size={16}
+          className={cn(
+            "shrink-0 text-muted-foreground transition-transform",
+            open && "rotate-180",
+          )}
+        />
+      </button>
+      {open && (
+        <div className="flex flex-col gap-2.5 border-t border-border bg-muted/20 p-2.5">
+          {item.signals.map((s) => (
+            <div key={s.id} id={`signal-${s.id}`}>
+              <SignalCard
+                signal={s}
+                onMarkRead={onMarkRead}
+                onAutoRead={onAutoRead}
+                onMarkUnread={onMarkUnread}
+                wasAutoRead={autoReadIds.has(s.id)}
+                onActionChange={onActionChange}
+                highlight={s.id === highlightId}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
   );
 }
 

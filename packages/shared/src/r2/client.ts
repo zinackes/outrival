@@ -1,4 +1,9 @@
-import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  DeleteObjectsCommand,
+} from "@aws-sdk/client-s3";
 import { gzipSync, gunzipSync } from "node:zlib";
 
 const r2 = new S3Client({
@@ -43,6 +48,18 @@ export async function getFromR2(key: string): Promise<string> {
   // Snapshots stored before the gzip patch have no ContentEncoding → read as-is.
   if (res.ContentEncoding === "gzip") return gunzipSync(buf).toString("utf-8");
   return buf.toString("utf-8");
+}
+
+export async function deleteManyFromR2(keys: string[]): Promise<void> {
+  // DeleteObjects caps at 1000 keys per request; missing keys delete as no-ops.
+  for (let i = 0; i < keys.length; i += 1000) {
+    await r2.send(
+      new DeleteObjectsCommand({
+        Bucket: BUCKET,
+        Delete: { Objects: keys.slice(i, i + 1000).map((Key) => ({ Key })), Quiet: true },
+      }),
+    );
+  }
 }
 
 export async function getBytesFromR2(key: string): Promise<Uint8Array> {

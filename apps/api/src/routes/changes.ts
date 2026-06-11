@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, desc, eq, isNull, ne } from "drizzle-orm";
+import { and, desc, eq, isNull, ne, sql } from "drizzle-orm";
 import { tasks } from "@trigger.dev/sdk/v3";
 import { changes, monitors, competitors } from "@outrival/db";
 import { db } from "../lib/db";
@@ -23,7 +23,9 @@ changesRouter.get("/", async (c) => {
   const rows = await db
     .select({
       id: changes.id,
-      diffText: changes.diffText,
+      // diff_text rows run up to 50KB; the feed preview renders at most 18
+      // lines, so cap the payload (200 rows × 50KB was a ~10MB response).
+      diffText: sql<string | null>`left(${changes.diffText}, 4000)`,
       detectedAt: changes.detectedAt,
       monitorId: changes.monitorId,
       sourceType: monitors.sourceType,

@@ -70,6 +70,65 @@ crmDestinationsRouter.post("/", async (c) => {
   return c.json({ destination: { ...row, hasSecret: Boolean(secret) } }, 201);
 });
 
+// Edit a destination in place — name/URL fixes and secret rotation without a
+// delete/recreate cycle (which would lose lastPushedAt and briefly drop pushes).
+// secret: a string sets it, null clears it, absent leaves it untouched.
+crmDestinationsRouter.patch("/:id", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const id = c.req.param("id");
+
+  const body = (await c.req.json().catch(() => ({}))) as {
+    name?: unknown;
+    url?: unknown;
+    secret?: unknown;
+    enabled?: unknown;
+  };
+
+  const update: Partial<{
+    name: string;
+    url: string;
+    secret: string | null;
+    enabled: boolean;
+  }> = {};
+  if (body.name !== undefined) {
+    const name = typeof body.name === "string" ? body.name.trim().slice(0, 80) : "";
+    if (!name) return c.json({ error: "name_required" }, 400);
+    update.name = name;
+  }
+  if (body.url !== undefined) {
+    const url = typeof body.url === "string" ? body.url.trim() : "";
+    if (!isSafeWebhookUrl(url)) return c.json({ error: "invalid_url" }, 400);
+    update.url = url;
+  }
+  if (body.secret !== undefined) {
+    update.secret =
+      typeof body.secret === "string" && body.secret ? body.secret.slice(0, 200) : null;
+  }
+  if (body.enabled !== undefined) {
+    if (typeof body.enabled !== "boolean") return c.json({ error: "invalid_enabled" }, 400);
+    update.enabled = body.enabled;
+  }
+  if (Object.keys(update).length === 0) return c.json({ error: "empty_update" }, 400);
+
+  const [row] = await db
+    .update(crmDestinations)
+    .set(update)
+    .where(and(eq(crmDestinations.id, id), eq(crmDestinations.orgId, orgId)))
+    .returning({
+      id: crmDestinations.id,
+      name: crmDestinations.name,
+      url: crmDestinations.url,
+      enabled: crmDestinations.enabled,
+      secret: crmDestinations.secret,
+      lastPushedAt: crmDestinations.lastPushedAt,
+      createdAt: crmDestinations.createdAt,
+    });
+  if (!row) return c.json({ error: "not_found" }, 404);
+  const { secret, ...dest } = row;
+  return c.json({ destination: { ...dest, hasSecret: Boolean(secret) } });
+});
+
 crmDestinationsRouter.delete("/:id", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);

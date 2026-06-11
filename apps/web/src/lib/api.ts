@@ -1563,6 +1563,14 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ name, url, secret }),
     }),
+  updateCrmDestination: (
+    id: string,
+    patch: { name?: string; url?: string; secret?: string | null; enabled?: boolean },
+  ) =>
+    request<{ destination: CrmDestination }>(`/api/crm-destinations/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
   deleteCrmDestination: (id: string) =>
     request<{ ok: true }>(`/api/crm-destinations/${id}`, { method: "DELETE" }),
   testCrmDestination: (id: string) =>

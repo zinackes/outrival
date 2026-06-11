@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Webhook, Trash2, Send, Plus, Loader2 } from "lucide-react";
+import { Webhook, Trash2, Send, Plus, Loader2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError, type CrmDestination } from "@/lib/api";
 import { Card } from "@/components/ui/card";
@@ -16,6 +16,11 @@ export function CrmDestinations() {
   const [adding, setAdding] = useState(false);
   const [locked, setLocked] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editUrl, setEditUrl] = useState("");
+  const [editSecret, setEditSecret] = useState("");
+  const [saving, setSaving] = useState(false);
 
   function refresh() {
     api
@@ -55,6 +60,37 @@ export function CrmDestinations() {
     await api.deleteCrmDestination(id).catch(() => {});
   }
 
+  function startEdit(d: CrmDestination) {
+    setEditingId(d.id);
+    setEditName(d.name);
+    setEditUrl(d.url);
+    setEditSecret("");
+  }
+
+  async function saveEdit() {
+    if (!editingId || !editName.trim() || !editUrl.trim()) return;
+    setSaving(true);
+    try {
+      const r = await api.updateCrmDestination(editingId, {
+        name: editName.trim(),
+        url: editUrl.trim(),
+        // Empty input = keep the current secret; typing a value rotates it.
+        ...(editSecret.trim() ? { secret: editSecret.trim() } : {}),
+      });
+      setList((p) => (p ? p.map((d) => (d.id === r.destination.id ? r.destination : d)) : p));
+      setEditingId(null);
+      toast.success(editSecret.trim() ? "Destination updated, secret rotated." : "Destination updated.");
+    } catch (e) {
+      if (e instanceof ApiError && e.code === "invalid_url") {
+        toast.error("Enter a valid https:// URL (no private hosts).");
+      } else {
+        toast.error("Couldn't update the destination.");
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function test(id: string) {
     setTestingId(id);
     try {
@@ -87,40 +123,82 @@ export function CrmDestinations() {
 
       {list && list.length > 0 && (
         <Card className="divide-y divide-border overflow-hidden">
-          {list.map((d) => (
-            <div key={d.id} className="flex items-center gap-3 px-4 py-3">
-              <Webhook size={14} className="text-muted-foreground shrink-0" aria-hidden />
-              <div className="min-w-0 flex-1">
-                <div className="text-dense font-medium">{d.name}</div>
-                <div className="text-muted-foreground truncate font-mono text-meta">
-                  {d.url.replace(/^https?:\/\//, "")}
-                  {d.hasSecret ? " · signed" : ""}
-                </div>
+          {list.map((d) =>
+            editingId === d.id ? (
+              <div key={d.id} className="flex flex-wrap items-center gap-2 px-4 py-3">
+                <Input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="Name"
+                  className="h-8 w-32 text-dense"
+                />
+                <Input
+                  value={editUrl}
+                  onChange={(e) => setEditUrl(e.target.value)}
+                  placeholder="https://…"
+                  className="h-8 min-w-[180px] flex-1 text-dense"
+                />
+                <Input
+                  value={editSecret}
+                  onChange={(e) => setEditSecret(e.target.value)}
+                  placeholder={d.hasSecret ? "New secret (kept if empty)" : "Secret (optional)"}
+                  className="h-8 w-44 text-dense"
+                />
+                <Button
+                  size="sm"
+                  onClick={saveEdit}
+                  disabled={saving || !editName.trim() || !editUrl.trim()}
+                >
+                  {saving ? <Loader2 size={12} className="animate-spin" /> : "Save"}
+                </Button>
+                <Button variant="ghost" size="sm" disabled={saving} onClick={() => setEditingId(null)}>
+                  Cancel
+                </Button>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => test(d.id)}
-                disabled={testingId === d.id}
-              >
-                {testingId === d.id ? (
-                  <Loader2 size={12} className="animate-spin" />
-                ) : (
-                  <Send size={12} />
-                )}
-                Test
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-label="Delete destination"
-                onClick={() => remove(d.id)}
-                className="text-muted-foreground"
-              >
-                <Trash2 size={13} />
-              </Button>
-            </div>
-          ))}
+            ) : (
+              <div key={d.id} className="flex items-center gap-3 px-4 py-3">
+                <Webhook size={14} className="text-muted-foreground shrink-0" aria-hidden />
+                <div className="min-w-0 flex-1">
+                  <div className="text-dense font-medium">{d.name}</div>
+                  <div className="text-muted-foreground truncate font-mono text-meta">
+                    {d.url.replace(/^https?:\/\//, "")}
+                    {d.hasSecret ? " · signed" : ""}
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => test(d.id)}
+                  disabled={testingId === d.id}
+                >
+                  {testingId === d.id ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : (
+                    <Send size={12} />
+                  )}
+                  Test
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label="Edit destination"
+                  onClick={() => startEdit(d)}
+                  className="text-muted-foreground"
+                >
+                  <Pencil size={13} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label="Delete destination"
+                  onClick={() => remove(d.id)}
+                  className="text-muted-foreground"
+                >
+                  <Trash2 size={13} />
+                </Button>
+              </div>
+            ),
+          )}
         </Card>
       )}
 

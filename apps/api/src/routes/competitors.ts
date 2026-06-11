@@ -478,7 +478,8 @@ competitorsRouter.get("/:id", async (c) => {
     ? await db
         .select({
           id: changes.id,
-          diffText: changes.diffText,
+          // Preview renders ≤18 lines — cap the payload (rows run up to 50KB).
+          diffText: sql<string | null>`left(${changes.diffText}, 4000)`,
           summary: changes.summary,
           detectedAt: changes.detectedAt,
           monitorId: changes.monitorId,

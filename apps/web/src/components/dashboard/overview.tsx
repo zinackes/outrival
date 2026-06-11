@@ -3,7 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Download, ArrowRight, Lightbulb, Target } from "lucide-react";
+import {
+  Download,
+  ArrowRight,
+  Lightbulb,
+  Target,
+  ExternalLink,
+} from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import {
   api,
@@ -12,6 +18,7 @@ import {
   type Monitor,
 } from "@/lib/api";
 import { toCsv, downloadCsv } from "@/lib/csv";
+import { prettyUrl } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   DateRangePicker,
@@ -28,9 +35,11 @@ import { PageHead } from "./page-head";
 import { SectionHead } from "./section-head";
 import { RecentBattleCards } from "./recent-battle-cards";
 import { Kpi } from "./kpi";
-import { Sparkline } from "./sparkline";
 import { SeverityBadge } from "./severity-pill";
+import { CatPill } from "./cat-pill";
 import { CompAvatar } from "./comp-avatar";
+import { CategoryBar, CategoryKey } from "./category-bar";
+import { DeltaPill, computeDelta } from "./delta-pill";
 import { SectoralSignalsSection } from "./sectoral-signals";
 import { OnboardingChecklistCard } from "./onboarding-checklist";
 import { ListError } from "@/components/outrival/list-error";
@@ -57,29 +66,16 @@ const CATEGORY_COLORS: Record<string, string> = {
   funding: "var(--cat-funding)",
 };
 
+// Header cell style, shared verbatim with the Competitors page table so the two
+// rosters read as one system.
+const TH =
+  "text-left px-3.5 py-2.5 font-mono text-micro uppercase tracking-widest text-muted-foreground font-medium border-b border-border whitespace-nowrap";
+
 interface Counts {
   signals: number;
   critical: number;
   activeCompetitors: number;
   totalCompetitors: number;
-}
-
-// Scrape freshness folded into the competitor roster (replaces the standalone
-// Monitor health card): green = a monitor ran recently, amber = slowing, muted =
-// stale or never run / unknown.
-const HEALTH_RECENT_MS = 48 * 3600 * 1000;
-const HEALTH_SLOW_MS = 8 * 24 * 3600 * 1000;
-
-function healthDot(lastRun: number | null): { className: string; label: string } {
-  if (lastRun == null)
-    return { className: "bg-muted-foreground/35", label: "no scrape yet" };
-  const age = Date.now() - lastRun;
-  const rel = formatDistanceToNow(new Date(lastRun), { addSuffix: true });
-  if (age <= HEALTH_RECENT_MS)
-    return { className: "bg-positive", label: `scraped ${rel}` };
-  if (age <= HEALTH_SLOW_MS)
-    return { className: "bg-medium", label: `scraped ${rel}` };
-  return { className: "bg-muted-foreground/35", label: `stale · scraped ${rel}` };
 }
 
 function trendBuckets(signals: Signal[], days = 10): number[] {
@@ -155,8 +151,8 @@ export function OverviewView() {
     downloadCsv(`outrival-overview-${rangeDays}d-${date}.csv`, csv);
   }
 
-  // Fetch monitors for the same competitors the roster shows (top 8) so the
-  // per-row health dot is accurate across every visible row.
+  // Fetch monitors for the top competitors to feed the "Active competitors"
+  // KPI meta (monitor count).
   useEffect(() => {
     if (!competitors || competitors.length === 0) {
       setMonitors([]);
@@ -202,46 +198,34 @@ export function OverviewView() {
       .slice(0, 5);
   }, [signals]);
 
-  // Scrape freshness + monitor count per competitor, derived from the monitors
-  // we fetched above.
-  const monitorHealth = useMemo(() => {
-    const map = new Map<string, { count: number; lastRun: number | null }>();
-    for (const m of monitors ?? []) {
-      const cur = map.get(m.competitorId) ?? { count: 0, lastRun: null };
-      cur.count += 1;
-      const t = m.lastRunAt ? new Date(m.lastRunAt).getTime() : null;
-      if (t != null) cur.lastRun = Math.max(cur.lastRun ?? 0, t);
-      map.set(m.competitorId, cur);
-    }
-    return map;
-  }, [monitors]);
-
+  // Top-8 competitor roster. Reads the same server-computed stats the dedicated
+  // Competitors page uses (signals7d / signalsPrev / categoryCounts / lastSignalAt)
+  // so the two tables show identical numbers — a fixed 7d window, not the range.
   const competitorRows = useMemo(() => {
-    if (!competitors || !signals) return [];
-    return competitors.slice(0, 8).map((c) => {
-      const compSignals = signals.filter(
-        (s) =>
-          s.competitorId === c.id &&
-          inWindow(s.createdAt),
-      );
-      const trend = trendBuckets(compSignals, 10);
-      const last = compSignals[0]?.createdAt
-        ? formatDistanceToNow(new Date(compSignals[0].createdAt), {
-            addSuffix: true,
-          })
-        : "—";
-      return {
-        id: c.id,
-        name: c.name,
-        url: c.url,
-        category: c.category ?? "—",
-        overlap: c.overlapScore != null ? Math.round(c.overlapScore) : null,
-        signals7d: compSignals.length,
-        trend,
-        lastScrape: last,
-      };
-    });
-  }, [competitors, signals, range]);
+    if (!competitors) return [];
+    return [...competitors]
+      .map((c) => {
+        const stats = c.stats ?? {
+          signals7d: 0,
+          signalsPrev: 0,
+          lastSignalAt: null,
+          categoryCounts: {},
+        };
+        return {
+          id: c.id,
+          name: c.name,
+          url: c.url,
+          category: c.category ?? "—",
+          overlap: c.overlapScore != null ? Math.round(c.overlapScore) : null,
+          signals7d: stats.signals7d,
+          delta: computeDelta(stats.signals7d, stats.signalsPrev),
+          categoryCounts: stats.categoryCounts,
+          lastSignal: stats.lastSignalAt,
+        };
+      })
+      .sort((a, b) => b.signals7d - a.signals7d)
+      .slice(0, 8);
+  }, [competitors]);
 
   const categoryBreakdown = useMemo(() => {
     if (!signals) return [];
@@ -316,6 +300,7 @@ export function OverviewView() {
 
       {/* KPI strip — banded surface cells, hairline dividers between them, closed
           by a light rounded border like the controls. */}
+      <TooltipProvider delayDuration={80}>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-px bg-border border border-border rounded-md overflow-hidden">
         <div className="bg-gradient-card">
           <Kpi
@@ -351,6 +336,7 @@ export function OverviewView() {
             label="Active competitors"
             value={counts.activeCompetitors}
             suffix={`/ ${counts.totalCompetitors}`}
+            hint={`Competitors that produced at least one signal in the selected period, out of the ${counts.totalCompetitors} you track. Not your plan's competitor limit.`}
             deltaKind="neutral"
             delta={
               counts.activeCompetitors < counts.totalCompetitors
@@ -376,11 +362,12 @@ export function OverviewView() {
           />
         </div>
       </div>
+      </TooltipProvider>
 
       {/* Signal categories — a thin band, not a card. Self-hides with no signals. */}
       {categoryBreakdown.length > 0 && (
         <div>
-          <h2 className="font-semibold text-content tracking-tight leading-tight mb-2.5">
+          <h2 className="font-semibold text-lg tracking-tight leading-tight mb-2.5">
             Signal categories
           </h2>
           <TooltipProvider delayDuration={80}>
@@ -498,16 +485,14 @@ export function OverviewView() {
                         one meta line, kept distinct from the body prose below so the
                         eye reads "who & how bad" before "what & what to do". */}
                     <div className="flex items-center gap-2 mb-1.5 min-w-0">
-                      <SeverityBadge severity={s.severity} />
-                      <span className="font-medium text-dense truncate">
+                      <span className="font-semibold text-content truncate">
                         {s.competitorName}
                       </span>
-                      <span className="font-mono text-meta text-muted-foreground shrink-0">
-                        {s.category}
-                      </span>
+                      <SeverityBadge severity={s.severity} />
+                      <CatPill size="micro">{s.category}</CatPill>
                     </div>
                     {/* The finding — the lead */}
-                    <div className="text-content max-sm:text-sm leading-snug">
+                    <div className="text-sm leading-snug">
                       {s.insight}
                     </div>
                     {/* Why it matters — recedes (muted) */}
@@ -554,12 +539,12 @@ export function OverviewView() {
       {/* Sector trends — meso-level, distinct from the micro signals above */}
       <SectoralSignalsSection />
 
-      {/* Competitors at a glance — boxless table; scrape health folded in as a
-          leading dot + monitor count (replaces the Monitor health card). */}
+      {/* Top-8 competitor roster — a condensed mirror of the Competitors page
+          table: same server stats, same columns, same look. */}
       <section>
         <SectionHead
           title="Your competitors"
-          sub={`sorted by activity · last ${rangeDays} days`}
+          sub="sorted by activity · last 7 days"
           divider={false}
           action={
             <Button asChild variant="outline" size="sm">
@@ -569,125 +554,144 @@ export function OverviewView() {
             </Button>
           }
         />
+        <TooltipProvider delayDuration={80}>
         <div className="mt-3 overflow-x-auto rounded-md border border-border">
-          <table className="w-full border-collapse text-dense min-w-[640px]">
+          <table className="w-full border-collapse text-dense min-w-[760px]">
             <thead>
               <tr>
-                <th className="w-6 border-b border-border" aria-label="Scrape health" />
-                <th className="text-left px-3.5 py-2.5 font-mono text-meta text-muted-foreground font-medium border-b border-border whitespace-nowrap">
-                  Competitor
+                <th className={`${TH} w-8`} />
+                <th className={TH}>Competitor</th>
+                <th className={TH}>Category</th>
+                <th className={TH}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex items-center gap-1 cursor-help">
+                        Overlap
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      How closely this competitor overlaps with your product
+                      (0–100).
+                    </TooltipContent>
+                  </Tooltip>
                 </th>
-                <th className="text-left px-3.5 py-2.5 font-mono text-meta text-muted-foreground font-medium border-b border-border whitespace-nowrap">
-                  Category
+                <th className={`${TH} text-right`}>Signals 7d</th>
+                <th className={`${TH} text-right`}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex items-center gap-1 cursor-help">
+                        7d trend
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      Signals in the last 7 days vs the previous 7 days
+                    </TooltipContent>
+                  </Tooltip>
                 </th>
-                <th className="text-left px-3.5 py-2.5 font-mono text-meta text-muted-foreground font-medium border-b border-border whitespace-nowrap">
-                  Overlap
+                <th className={TH}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex items-center gap-1 cursor-help">
+                        Signal mix (7d)
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="mb-1.5 font-medium normal-case tracking-normal">
+                        Share of the last 7 days&apos; signals by category
+                      </p>
+                      <CategoryKey />
+                    </TooltipContent>
+                  </Tooltip>
                 </th>
-                <th className="text-left px-3.5 py-2.5 font-mono text-meta text-muted-foreground font-medium border-b border-border whitespace-nowrap">
-                  Signals {rangeDays}d
-                </th>
-                <th className="text-left px-3.5 py-2.5 font-mono text-meta text-muted-foreground font-medium border-b border-border whitespace-nowrap">
-                  Trend
-                </th>
-                <th className="text-left px-3.5 py-2.5 font-mono text-meta text-muted-foreground font-medium border-b border-border whitespace-nowrap">
-                  Last signal
-                </th>
-                <th className="border-b border-border" />
+                <th className={TH}>Last signal</th>
+                <th className={`${TH} w-8`} />
               </tr>
             </thead>
             <tbody>
               {competitorRows.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="p-7">
+                  <td colSpan={9} className="p-7">
                     <div className="text-center text-muted-foreground text-dense">
                       No competitors. Add one to get started.
                     </div>
                   </td>
                 </tr>
               )}
-              {competitorRows.map((c) => {
-                const health = monitorHealth.get(c.id);
-                const dot = healthDot(health?.lastRun ?? null);
-                return (
-                  <tr
-                    key={c.id}
-                    onClick={() =>
-                      router.push(`/dashboard/competitors/${c.id}`)
-                    }
-                    className="border-b border-border last:border-b-0 cursor-pointer transition-colors hover:bg-accent/50"
-                  >
-                    <td className="pl-1.5 align-middle">
-                      <span
-                        className={`block w-[7px] h-[7px] rounded-full ${dot.className}`}
-                        title={dot.label}
-                        aria-label={dot.label}
-                      />
-                    </td>
-                    <td className="px-3.5 py-3 align-middle">
-                      <div className="flex items-center gap-2.5">
-                        <CompAvatar name={c.name} />
-                        <div className="min-w-0">
-                          <div className="font-medium">{c.name}</div>
-                          <div className="text-muted-foreground text-meta mt-px font-mono truncate">
-                            {c.url}
-                            {health && health.count > 0
-                              ? ` · ${health.count} monitor${health.count > 1 ? "s" : ""}`
-                              : ""}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-3.5 py-3 align-middle text-muted-foreground">
-                      {c.category}
-                    </td>
-                    <td className="px-3.5 py-3 align-middle">
-                      {c.overlap != null ? (
-                        <div className="flex items-center gap-2.5 min-w-[140px]">
-                          <div className="h-1.5 w-20 bg-background rounded border border-border overflow-hidden">
-                            <span
-                              className="block h-full bg-foreground/35 rounded"
-                              style={{ width: `${c.overlap}%` }}
-                            />
-                          </div>
-                          <span className="tabular-nums font-mono text-xs text-muted-foreground">
-                            {c.overlap}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </td>
-                    <td className="px-3.5 py-3 align-middle">
-                      <span className="tabular-nums font-mono font-semibold">
-                        {c.signals7d}
+              {competitorRows.map((c) => (
+                <tr
+                  key={c.id}
+                  onClick={() => router.push(`/dashboard/competitors/${c.id}`)}
+                  className="border-b border-border last:border-b-0 cursor-pointer transition-colors hover:bg-accent/50"
+                >
+                  <td className="px-3.5 py-3 align-middle">
+                    <CompAvatar name={c.name} />
+                  </td>
+                  <td className="px-3.5 py-3 align-middle">
+                    <div className="font-medium">{c.name}</div>
+                    <a
+                      href={c.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="group/url inline-flex items-center gap-1 mt-px w-fit max-w-full font-mono text-meta text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      <span className="truncate underline-offset-2 group-hover/url:underline">
+                        {prettyUrl(c.url)}
                       </span>
-                    </td>
-                    <td className="px-3.5 py-3 align-middle">
-                      <Sparkline
-                        data={c.trend}
-                        labels={trend7Labels}
-                        valueLabel="signals"
-                        w={80}
-                        h={24}
-                        color="var(--muted-3)"
-                        interactive
+                      <ExternalLink
+                        size={10}
+                        className="shrink-0 opacity-0 transition-opacity group-hover/url:opacity-100"
                       />
-                    </td>
-                    <td className="px-3.5 py-3 align-middle text-muted-foreground tabular-nums font-mono text-xs">
-                      {c.lastScrape}
-                    </td>
-                    <td className="w-8 text-right px-3.5 py-3 align-middle">
-                      <ArrowRight
-                        size={14}
-                        className="text-muted-foreground inline"
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
+                    </a>
+                  </td>
+                  <td className="px-3.5 py-3 align-middle text-muted-foreground">
+                    {c.category}
+                  </td>
+                  <td className="px-3.5 py-3 align-middle">
+                    {c.overlap != null ? (
+                      <div className="flex items-center gap-2.5">
+                        <div className="h-1.5 w-[70px] bg-background rounded border border-border overflow-hidden">
+                          <span
+                            className="block h-full bg-primary rounded"
+                            style={{ width: `${c.overlap}%` }}
+                          />
+                        </div>
+                        <span className="tabular-nums font-mono text-xs w-6">
+                          {c.overlap}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
+                  <td className="px-3.5 py-3 align-middle text-right tabular-nums font-mono font-semibold">
+                    {c.signals7d}
+                  </td>
+                  <td className="px-3.5 py-3 align-middle text-right">
+                    <DeltaPill delta={c.delta} />
+                  </td>
+                  <td className="px-3.5 py-3 align-middle">
+                    <CategoryBar counts={c.categoryCounts} w={110} />
+                  </td>
+                  <td className="px-3.5 py-3 align-middle text-muted-foreground tabular-nums font-mono text-xs">
+                    {c.lastSignal
+                      ? formatDistanceToNow(new Date(c.lastSignal), {
+                          addSuffix: true,
+                        })
+                      : "—"}
+                  </td>
+                  <td className="w-8 text-right px-3.5 py-3 align-middle">
+                    <ArrowRight
+                      size={14}
+                      className="text-muted-foreground inline"
+                    />
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
+        </TooltipProvider>
       </section>
 
       <RecentBattleCards />

@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { ExternalLink, Pencil, RefreshCw, Tag } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
+import { ChevronDown, ExternalLink, Pencil, RefreshCw, Sparkles, Tag } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { api, type Competitor, type PricingStatus } from "@/lib/api";
 import { toastApiError } from "@/lib/error-helpers";
 import { Badge } from "@/components/ui/badge";
@@ -51,6 +53,8 @@ export function CompetitorPricingCard({
   onUpdated,
   hasCapturedTiers = false,
   isCapturing = false,
+  summary,
+  summaryUpdatedAt,
 }: {
   competitor: Competitor;
   onUpdated: () => void;
@@ -60,20 +64,28 @@ export function CompetitorPricingCard({
   hasCapturedTiers?: boolean;
   // A pricing scrape is in flight — show a "capturing" hint instead of an empty state.
   isCapturing?: boolean;
+  // The pricing source's AI summary, folded into this header as a "Summary"
+  // toggle so the status and "what we found" share one row instead of two bands.
+  summary?: string | null;
+  summaryUpdatedAt?: string | null;
 }) {
   const status: PricingStatus = competitor.pricingStatus ?? "unknown";
   const meta = STATUS_META[status];
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [summaryOpen, setSummaryOpen] = useState(false);
 
   // "public"/"public_partial" promise visible prices; if none were captured yet,
   // override the reassuring blurb with an honest one instead of the misleading
   // "Prices are fully visible." (the original bug: status set, zero tiers shown).
   const expectsTiers = status === "public" || status === "public_partial";
   const tiersMissing = expectsTiers && !hasCapturedTiers;
+  // Drop the blurb for plain "public" pricing — "Prices are fully visible" is
+  // self-evident from the label, so the detected case collapses to one line. A
+  // manual note, the missing-tiers warning, or a non-obvious status still show.
   const blurb = tiersMissing
     ? "Tiers not captured yet — they'll appear after the next successful pricing scan."
-    : (competitor.pricingNote ?? meta.blurb);
+    : (competitor.pricingNote ?? (status === "public" ? null : meta.blurb));
 
   async function redetect() {
     setBusy(true);
@@ -91,46 +103,41 @@ export function CompetitorPricingCard({
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-2">
-            <Tag className="size-4 text-muted-foreground" />
-            <span className="text-sm font-medium">{meta.label}</span>
-            {competitor.pricingPromotional && (
-              <Badge variant="secondary" className="text-micro">
-                Promotional
-              </Badge>
-            )}
-            {competitor.pricingManualOverride && (
-              <Badge variant="outline" className="text-micro">
-                Edited by you
-              </Badge>
-            )}
-          </div>
-          <p className="text-xs text-muted-foreground">{blurb}</p>
-          {isCapturing && (
-            <p className="inline-flex items-center gap-1.5 text-meta text-muted-foreground">
-              <RefreshCw className="size-3 animate-spin" /> Capturing pricing…
-            </p>
-          )}
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <Tag className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="text-content font-semibold tracking-tight leading-tight">{meta.label}</span>
           {competitor.pricingObservedRegion && (
-            <p className="text-meta text-muted-foreground">
-              Observed from region {competitor.pricingObservedRegion}
-            </p>
+            <span className="shrink-0 text-xs text-muted-foreground">
+              · {competitor.pricingObservedRegion}
+            </span>
           )}
-          {status === "gated_demo" && competitor.pricingDemoUrl && (
-            <a
-              href={competitor.pricingDemoUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-            >
-              <ExternalLink className="size-3" /> Demo / contact page
-            </a>
+          {competitor.pricingPromotional && (
+            <Badge variant="secondary" className="text-meta">
+              Promotional
+            </Badge>
+          )}
+          {competitor.pricingManualOverride && (
+            <Badge variant="outline" className="text-meta">
+              Edited by you
+            </Badge>
           )}
         </div>
-        <div className="flex shrink-0 gap-2">
+        <div className="flex shrink-0 items-center gap-1">
+          {summary && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSummaryOpen((v) => !v)}
+              aria-expanded={summaryOpen}
+            >
+              <Sparkles className="size-3.5" /> Summary
+              <ChevronDown
+                className={cn("size-3.5 transition-transform", summaryOpen && "rotate-180")}
+              />
+            </Button>
+          )}
           {competitor.pricingManualOverride ? (
             <Button variant="ghost" size="sm" onClick={redetect} disabled={busy}>
               <RefreshCw className="size-3.5" /> Re-detect
@@ -142,6 +149,34 @@ export function CompetitorPricingCard({
           )}
         </div>
       </div>
+
+      {summary && summaryOpen && (
+        <div className="flex flex-col gap-1 border-t border-border pt-2">
+          <p className="text-content leading-relaxed text-foreground/90">{summary}</p>
+          {summaryUpdatedAt && (
+            <p className="text-xs font-mono text-muted-foreground">
+              updated {formatDistanceToNow(new Date(summaryUpdatedAt), { addSuffix: true })}
+            </p>
+          )}
+        </div>
+      )}
+
+      {blurb && <p className="text-dense text-muted-foreground">{blurb}</p>}
+      {isCapturing && (
+        <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+          <RefreshCw className="size-3 animate-spin" /> Capturing pricing…
+        </p>
+      )}
+      {status === "gated_demo" && competitor.pricingDemoUrl && (
+        <a
+          href={competitor.pricingDemoUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1 text-dense text-primary hover:underline"
+        >
+          <ExternalLink className="size-3" /> Demo / contact page
+        </a>
+      )}
 
       <PricingOverrideDialog
         competitor={competitor}

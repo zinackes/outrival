@@ -205,7 +205,7 @@ function EditableList({
   }
 
   return (
-    <Card className="p-4">
+    <Card className="bg-gradient-card-strong p-4">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <h3 className="text-dense font-semibold uppercase tracking-wide text-muted-foreground">
@@ -317,7 +317,7 @@ function PricingCard({
   }
 
   return (
-    <Card className="p-4">
+    <Card className="bg-gradient-card-strong p-4">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <h3 className="text-dense font-semibold uppercase tracking-wide text-muted-foreground">
@@ -749,7 +749,7 @@ export default function MyProductPage() {
   const profile = p.profile ?? {};
 
   return (
-    <div>
+    <div className="xl:px-6 2xl:px-12">
       <PageHead
         title="My product"
         sub={
@@ -893,7 +893,7 @@ export default function MyProductPage() {
       )}
 
       <div className="flex flex-col gap-6">
-        <Card className="p-4">
+        <Card className="bg-gradient-card-strong p-4">
           <h3 className="text-dense font-semibold uppercase tracking-wide text-muted-foreground mb-1">
             Profile
           </h3>
@@ -932,7 +932,7 @@ export default function MyProductPage() {
         />
 
         {p.aiSummary && (
-          <Card className="p-4">
+          <Card className="bg-gradient-card-strong p-4">
             <h3 className="text-dense font-semibold uppercase tracking-wide text-muted-foreground mb-2">
               Summary
             </h3>

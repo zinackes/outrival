@@ -21,16 +21,14 @@ import { CompAvatar } from "./comp-avatar";
 const CAP = 8;
 const POLL_MS = 60_000;
 
-// Competitor row: smooth neutral hover (was an instant snap) + an amber
-// current-selection marker pinned to the row's left edge (the design-system
-// "amber active indicator"). The marker is a clipped bar, not a border, so it
-// reads as a nav indicator rather than a decorative side-stripe.
+// Competitor row: smooth neutral hover (no side border / stripe). Two-tier
+// neutral fill encodes selection — hover is a light wash, the current row is a
+// full fill + medium weight. Active beats hover via the more specific
+// data-[active=true]:hover rule so hovering the selected row doesn't lighten it.
 const COMP_ROW =
-  "group/comp relative w-full transition-colors duration-150 ease-out motion-reduce:transition-none " +
-  "data-[active=true]:font-medium " +
-  "before:absolute before:left-0 before:top-1/2 before:h-3.5 before:w-0.5 before:-translate-y-1/2 " +
-  "before:rounded-full before:bg-[var(--accent)] before:opacity-0 before:transition-opacity before:duration-150 " +
-  "motion-reduce:before:transition-none data-[active=true]:before:opacity-100";
+  "group/comp w-full transition-colors duration-150 ease-out motion-reduce:transition-none " +
+  "hover:bg-sidebar-accent/60 " +
+  "data-[active=true]:bg-sidebar-accent data-[active=true]:hover:bg-sidebar-accent data-[active=true]:font-medium";
 
 function activity(c: Competitor) {
   return c.stats?.signals7d ?? 0;
@@ -119,7 +117,7 @@ export function SidebarCompetitors() {
       )}
 
       {open && comps != null && comps.length > 0 && (
-        <SidebarMenuSub className="px-1.5">
+        <SidebarMenuSub className="mr-0 px-1.5">
           {shown.map((c) => {
             const n = activity(c);
             return (

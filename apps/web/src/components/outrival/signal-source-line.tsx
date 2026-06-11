@@ -27,7 +27,7 @@ export function SignalSourceLine({
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-dense text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm text-muted-foreground">
         <span>Source: {sourceLabel(sourceType)}</span>
         {showDetected && (
           <>

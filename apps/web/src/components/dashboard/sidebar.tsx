@@ -21,9 +21,9 @@ import {
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -42,7 +42,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { SidebarCompetitors } from "@/components/dashboard/sidebar-competitors";
 
-interface Org {
+export interface Org {
   name: string;
   plan?: string;
   seatsUsed?: number;
@@ -56,16 +56,39 @@ interface NavItem {
   exact?: boolean;
 }
 
-const NAV: NavItem[] = [
-  { href: "/dashboard", label: "Overview", icon: LayoutDashboard, exact: true },
-  { href: "/dashboard/signals", label: "Signals", icon: Radio },
-  { href: "/dashboard/activity", label: "Activity", icon: Activity },
-  { href: "/dashboard/sector", label: "Sector", icon: Globe },
-  { href: "/dashboard/trends", label: "Trends", icon: LineChart },
-  { href: "/dashboard/compare", label: "Compare", icon: Columns3 },
-  { href: "/dashboard/competitors", label: "Competitors", icon: Users },
-  { href: "/dashboard/products", label: "Products", icon: Box },
-  { href: "/dashboard/discovery", label: "Discovery", icon: Search },
+// Overview stays ungrouped at the top (the landing); the rest split into three
+// job-to-be-done groups, mirroring the grouped settings-sidebar.
+const OVERVIEW: NavItem = {
+  href: "/dashboard",
+  label: "Overview",
+  icon: LayoutDashboard,
+  exact: true,
+};
+
+const GROUPS: { label: string; items: NavItem[] }[] = [
+  {
+    label: "Monitor",
+    items: [
+      { href: "/dashboard/signals", label: "Signals", icon: Radio },
+      { href: "/dashboard/activity", label: "Activity", icon: Activity },
+    ],
+  },
+  {
+    label: "Analyze",
+    items: [
+      { href: "/dashboard/sector", label: "Sector", icon: Globe },
+      { href: "/dashboard/trends", label: "Trends", icon: LineChart },
+      { href: "/dashboard/compare", label: "Compare", icon: Columns3 },
+    ],
+  },
+  {
+    label: "Manage",
+    items: [
+      { href: "/dashboard/competitors", label: "Competitors", icon: Users },
+      { href: "/dashboard/products", label: "Products", icon: Box },
+      { href: "/dashboard/discovery", label: "Discovery", icon: Search },
+    ],
+  },
 ];
 
 const BOTTOM_NAV: NavItem[] = [
@@ -78,7 +101,7 @@ function initials(name?: string | null, fallback = "?") {
   return parts.map((p) => p[0]?.toUpperCase() ?? "").join("") || fallback;
 }
 
-function WorkspaceSwitcher({ org }: { org: Org }) {
+export function WorkspaceSwitcher({ org }: { org: Org }) {
   const { isMobile } = useSidebar();
   const meta = [
     org.plan,
@@ -184,17 +207,29 @@ export function AppSidebar({ org }: { org: Org }) {
       <SidebarHeader>
         <WorkspaceSwitcher org={org} />
       </SidebarHeader>
-      <SidebarContent>
-        <SidebarGroup>
+      <SidebarContent className="gap-0">
+        <SidebarGroup className="py-1">
           <SidebarGroupContent>
-            <SidebarMenu>{NAV.map(renderItem)}</SidebarMenu>
+            <SidebarMenu>{renderItem(OVERVIEW)}</SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        {GROUPS.map((group) => (
+          <SidebarGroup key={group.label} className="py-1">
+            <SidebarGroupLabel className="font-normal uppercase tracking-wide">
+              {group.label}
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>{group.items.map(renderItem)}</SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
+        <SidebarSeparator className="my-1" />
+        <SidebarGroup className="py-1">
+          <SidebarGroupContent>
+            <SidebarMenu>{BOTTOM_NAV.map(renderItem)}</SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter>
-        <SidebarSeparator />
-        <SidebarMenu>{BOTTOM_NAV.map(renderItem)}</SidebarMenu>
-      </SidebarFooter>
       <SidebarRail />
     </Sidebar>
   );

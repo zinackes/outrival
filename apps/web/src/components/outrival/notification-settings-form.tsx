@@ -13,8 +13,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { FormSkeleton } from "@/components/dashboard/skeletons";
-import { toast } from "sonner";
 import { toastApiError } from "@/lib/error-helpers";
 import { ListError } from "@/components/outrival/list-error";
 
@@ -36,7 +40,6 @@ export function NotificationSettingsForm() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [paywall, setPaywall] = useState<PaywallReason | null>(null);
-  const [testing, setTesting] = useState(false);
 
   useEffect(() => {
     Promise.all([api.getNotificationSettings(), api.getBilling()])
@@ -82,33 +85,6 @@ export function NotificationSettingsForm() {
     setError(null);
   }
 
-  async function handleTest() {
-    setTesting(true);
-    try {
-      const { results } = await api.sendTestAlert();
-      const keys = Object.keys(results) as Array<keyof typeof results>;
-      const sent = keys.filter((k) => results[k] === "sent");
-      const failed = keys.filter((k) => results[k] === "error");
-      if (sent.length === 0 && failed.length === 0) {
-        toast.error("No channels configured", {
-          description: "Add a Slack URL, webhook URL, or digest email above, then save.",
-        });
-      } else if (failed.length === 0) {
-        toast.success(`Test alert sent to ${sent.join(", ")}`);
-      } else {
-        toast.warning(
-          sent.length
-            ? `Sent to ${sent.join(", ")} — failed: ${failed.join(", ")}`
-            : `Failed: ${failed.join(", ")}`,
-        );
-      }
-    } catch (e) {
-      toastApiError(e, { title: "Couldn't send test alert" });
-    } finally {
-      setTesting(false);
-    }
-  }
-
   if (error && !settings) return <ListError error={error} />;
   if (!settings || !pristine || !plan) return <FormSkeleton fields={2} />;
 
@@ -127,7 +103,23 @@ export function NotificationSettingsForm() {
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="slack-webhook" className="flex items-center gap-1.5">
           Slack webhook URL
-          {!slackAllowed && <Lock size={12} className="text-muted-foreground" />}
+          {!slackAllowed && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  className="inline-flex cursor-help"
+                  aria-label="Locked — requires a higher plan"
+                >
+                  <Lock size={12} className="text-muted-foreground" />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                Available on the{" "}
+                {slackMinPlan ? PLAN_LABELS[slackMinPlan] : "Starter"} plan and
+                above
+              </TooltipContent>
+            </Tooltip>
+          )}
         </Label>
         <Input
           id="slack-webhook"
@@ -165,7 +157,21 @@ export function NotificationSettingsForm() {
         <Label htmlFor="webhook-url" className="flex items-center gap-1.5">
           Webhook URL
           {!webhookAllowed && (
-            <Lock size={12} className="text-muted-foreground" />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  className="inline-flex cursor-help"
+                  aria-label="Locked — requires a higher plan"
+                >
+                  <Lock size={12} className="text-muted-foreground" />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                Available on the{" "}
+                {webhookMinPlan ? PLAN_LABELS[webhookMinPlan] : "Pro"} plan and
+                above
+              </TooltipContent>
+            </Tooltip>
           )}
         </Label>
         <Input
@@ -240,31 +246,6 @@ export function NotificationSettingsForm() {
           />
           Enable real-time alerts (high/critical)
         </label>
-      </div>
-
-      <div className="flex flex-col gap-2 pt-3 border-t border-border">
-        <span className="text-sm font-medium">Test alerts</span>
-        <p className="text-xs text-muted-foreground">
-          Sends a test message to your configured channels (Slack, webhook,
-          email) to check they're wired up correctly.
-        </p>
-        <div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handleTest}
-            disabled={testing || dirty}
-          >
-            {testing && <Loader2 size={12} className="animate-spin" />}
-            {testing ? "Sending…" : "Send test alert"}
-          </Button>
-        </div>
-        {dirty && (
-          <p className="text-xs text-muted-foreground">
-            Save your changes first — the test uses your saved channel settings.
-          </p>
-        )}
       </div>
 
       {saved && !dirty && (

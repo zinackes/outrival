@@ -19,6 +19,9 @@
   /* Stat-card gradient — surface is already near-white, so the lighter corner
      (top-left) stays at surface and the bottom-right settles a touch darker. */
   --gradient-card: linear-gradient(135deg, var(--surface) 0%, oklch(0.972 0.003 260) 100%);
+  /* Stronger variant — product content cards (larger, isolated) need a deeper
+     bottom-right to read the diagonal that the subtle stat gradient can't. */
+  --gradient-card-strong: linear-gradient(315deg, var(--surface) 0%, oklch(0.96 0.004 260) 100%);
   --border: oklch(0.9 0.005 260);
   --border-strong: oklch(0.85 0.007 260);
 
@@ -102,6 +105,9 @@
   /* Stat-card gradient — top-left lifts ~0.03L above the surface, bottom-right
      settles back to it. Faint diagonal elevation on the near-black canvas. */
   --gradient-card: linear-gradient(135deg, oklch(0.23 0.012 260) 0%, var(--surface) 100%);
+  /* Stronger variant — product content cards lift the top-left ~0.06L for a
+     clearly readable diagonal on the larger surface. */
+  --gradient-card-strong: linear-gradient(315deg, oklch(0.245 0.013 260) 0%, var(--surface) 100%);
   --border: oklch(0.31 0.014 260);       /* hairline — lighter than the card AND the page */
   --border-strong: oklch(0.37 0.016 260);
 
@@ -300,6 +306,11 @@
 /* Elevated stat-card surface — gradient swaps with the theme via --gradient-card. */
 @utility bg-gradient-card {
   background-image: var(--gradient-card);
+}
+
+/* Stronger elevated surface for larger product content cards. */
+@utility bg-gradient-card-strong {
+  background-image: var(--gradient-card-strong);
 }
 
 @layer base {

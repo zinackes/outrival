@@ -120,10 +120,44 @@ describe("isContentCollapsed", () => {
 });
 
 describe("extractContent — volatile text", () => {
-  it("treats relative timestamps as unchanged", () => {
+  it("treats EN relative timestamps as unchanged", () => {
     const before = extractContent(`<body><article><h3>Release 1.2</h3><span>2 hours ago</span></article></body>`, "blog");
     const after = extractContent(`<body><article><h3>Release 1.2</h3><span>5 hours ago</span></article></body>`, "blog");
     expect(after).toBe(before);
+    // "a day ago" / "an hour ago" (article instead of a number) too.
+    const art = (d: string) => extractContent(`<body><span>${d}</span></body>`, "blog");
+    expect(art("a day ago")).toBe(art("3 days ago"));
+  });
+
+  it("treats FR/DE/ES relative timestamps as unchanged (localised careers pages)", () => {
+    // The bug report: a French careers page shows "il y a 8 jours" and the label
+    // recomputes daily, flipping the content hash + firing a phantom job change.
+    // The date renders on its own line (its own block element), as on a real
+    // job card (title line / location line / posted-date line).
+    const fr = (d: string) =>
+      extractContent(`<body><ul><li><p>Senior Engineer — Paris</p><p>${d}</p></li></ul></body>`, "jobs");
+    expect(fr("il y a 9 jours")).toBe(fr("il y a 8 jours"));
+    expect(fr("il y a un mois")).toBe(fr("il y a 8 jours"));
+
+    const de = (d: string) =>
+      extractContent(`<body><ul><li><p>Backend — Berlin</p><p>${d}</p></li></ul></body>`, "jobs");
+    expect(de("vor 3 Tagen")).toBe(de("vor 5 Tagen"));
+    expect(de("vor einer Stunde")).toBe(de("vor 2 Stunden"));
+
+    const es = (d: string) =>
+      extractContent(`<body><ul><li><p>Data — Madrid</p><p>${d}</p></li></ul></body>`, "jobs");
+    expect(es("hace 2 días")).toBe(es("hace 9 días"));
+  });
+
+  it("only neutralises the date token — real numbers on the same line still surface", () => {
+    // Proves the normalisation is surgical: the relative date is silenced but a
+    // genuine count change ("5 postes" → "3 postes") is NOT swallowed.
+    const before = extractContent(`<body><li>Senior Engineer — Paris · il y a 8 jours · 5 postes</li></body>`, "jobs");
+    const after = extractContent(`<body><li>Senior Engineer — Paris · il y a 9 jours · 3 postes</li></body>`, "jobs");
+    const diff = computeTextDiff(before, after);
+    expect(diff.hasChanges).toBe(true);
+    expect(diff.added.join("")).toContain("3 postes");
+    expect(diff.added.join("")).not.toContain("jours");
   });
 });
 

@@ -47,7 +47,7 @@ export function RecentBattleCards() {
         {recent.map((c) => (
           <Link
             key={c.id}
-            href={`/dashboard/competitors/${c.competitorId}`}
+            href={`/dashboard/competitors/${c.competitorId}?tab=battlecard`}
             className="flex items-center gap-3 px-4 py-3 border-b border-border last:border-b-0 hover:bg-accent/30 transition-colors"
           >
             <span className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground">

@@ -22,7 +22,6 @@ import { FEATURE_FLAGS } from "@outrival/shared";
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -31,7 +30,9 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
+  SidebarSeparator,
 } from "@/components/ui/sidebar";
+import { WorkspaceSwitcher, type Org } from "@/components/dashboard/sidebar";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -68,15 +69,7 @@ const DANGER: NavItem[] = [
   { href: "/dashboard/settings/danger", label: "Delete workspace", icon: Trash2, danger: true },
 ];
 
-const GROUP_LABEL_STYLE: React.CSSProperties = {
-  fontFamily: "var(--font-mono)",
-  fontSize: 10,
-  letterSpacing: "0.14em",
-  textTransform: "uppercase",
-  color: "var(--muted-2)",
-};
-
-export function SettingsSidebar() {
+export function SettingsSidebar({ org }: { org: Org }) {
   const pathname = usePathname();
 
   function isActive(href: string, exact?: boolean) {
@@ -106,26 +99,36 @@ export function SettingsSidebar() {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild tooltip="Back to dashboard">
-              <Link href="/dashboard">
-                <ArrowLeft />
-                <span>Back to dashboard</span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        <WorkspaceSwitcher org={org} />
       </SidebarHeader>
       <SidebarContent>
+        <SidebarGroup className="py-1">
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip="Back to dashboard">
+                  <Link href="/dashboard">
+                    <ArrowLeft />
+                    <span>Back to dashboard</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarSeparator className="my-1" />
         <SidebarGroup>
-          <SidebarGroupLabel style={GROUP_LABEL_STYLE}>Personal</SidebarGroupLabel>
+          <SidebarGroupLabel className="font-normal uppercase tracking-wide">
+            Personal
+          </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>{PERSONAL.map(renderItem)}</SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
         <SidebarGroup>
-          <SidebarGroupLabel style={GROUP_LABEL_STYLE}>Workspace</SidebarGroupLabel>
+          <SidebarGroupLabel className="font-normal uppercase tracking-wide">
+            Workspace
+          </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {WORKSPACE.filter(
@@ -134,10 +137,13 @@ export function SettingsSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+        <SidebarSeparator className="my-1" />
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>{DANGER.map(renderItem)}</SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter>
-        <SidebarMenu>{DANGER.map(renderItem)}</SidebarMenu>
-      </SidebarFooter>
       <SidebarRail />
     </Sidebar>
   );

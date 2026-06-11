@@ -14,7 +14,15 @@ const CAT_CLASS: Record<string, string> = {
   funding: "bg-cat-funding/12 text-cat-funding border-cat-funding/30 hover:bg-cat-funding/12",
 };
 
-export function CatPill({ children }: { children: React.ReactNode }) {
+export function CatPill({
+  children,
+  size = "meta",
+}: {
+  children: React.ReactNode;
+  // "micro" (10px) when the pill sits beside a smaller solid badge (e.g. the
+  // overview severity badge); "meta" (11px) is the default feed/list size.
+  size?: "meta" | "micro";
+}) {
   const key = typeof children === "string" ? children.toLowerCase().trim() : "";
   const cat = CAT_CLASS[key];
 
@@ -22,7 +30,10 @@ export function CatPill({ children }: { children: React.ReactNode }) {
     <Badge
       variant={cat ? "outline" : "secondary"}
       className={cn(
-        "text-meta uppercase tracking-wider font-medium",
+        // micro sits beside the solid SeverityBadge — match its box (px-1.5 py-0)
+        // so the two read as one calibre and the same rounded-md radius shows alike.
+        size === "micro" ? "text-micro px-1.5 py-0" : "text-meta",
+        "uppercase tracking-wide font-medium",
         cat,
       )}
     >

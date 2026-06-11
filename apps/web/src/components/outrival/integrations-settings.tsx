@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Code, MessageSquare } from "lucide-react";
+import Link from "next/link";
+import { Code, Lock, MessageSquare } from "lucide-react";
+import { PLANS, PLAN_LABELS, PLAN_LIMITS, type Plan } from "@outrival/shared";
 import { api, type NotificationSettings } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,6 +21,7 @@ function truncate(s: string, max: number) {
 
 export function IntegrationsSettings() {
   const [settings, setSettings] = useState<NotificationSettings | null>(null);
+  const [plan, setPlan] = useState<Plan | null>(null);
   const [err, setErr] = useState<unknown>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [channel, setChannel] = useState<AlertChannel>("slack");
@@ -29,6 +32,10 @@ export function IntegrationsSettings() {
 
   useEffect(() => {
     refresh();
+    api
+      .getBilling()
+      .then((b) => setPlan(b.plan))
+      .catch(() => setPlan("free"));
   }, []);
 
   function openSheet(ch: AlertChannel) {
@@ -38,6 +45,12 @@ export function IntegrationsSettings() {
 
   const slackUrl = settings?.slackWebhookUrl ?? null;
   const webhookUrl = settings?.webhookUrl ?? null;
+  const webhookLocked =
+    plan != null && !PLAN_LIMITS[plan].allowedChannels.includes("webhook");
+  const webhookMinPlan = PLANS.find((p) =>
+    PLAN_LIMITS[p].allowedChannels.includes("webhook"),
+  );
+  const webhookPlanLabel = webhookMinPlan ? PLAN_LABELS[webhookMinPlan] : "Pro";
 
   return (
     <section className="flex flex-col gap-5">
@@ -70,7 +83,14 @@ export function IntegrationsSettings() {
           icon={<Code size={14} />}
           label="Webhook"
           connected={Boolean(webhookUrl)}
-          detail={webhookUrl ? truncate(webhookUrl.replace(/^https?:\/\//, ""), 32) : "Not configured"}
+          detail={
+            webhookLocked
+              ? `Requires the ${webhookPlanLabel} plan`
+              : webhookUrl
+                ? truncate(webhookUrl.replace(/^https?:\/\//, ""), 32)
+                : "Not configured"
+          }
+          locked={webhookLocked}
           onClick={() => openSheet("webhook")}
         />
       </Card>
@@ -94,19 +114,21 @@ function IntegrationRow({
   connected,
   detail,
   onClick,
+  locked = false,
 }: {
   icon: React.ReactNode;
   label: string;
   connected: boolean;
   detail: string;
   onClick: () => void;
+  locked?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-3 px-4 py-3.5">
+    <div className={cn("flex items-center gap-3 px-4 py-3.5", locked && "opacity-75")}>
       <span
         className={cn(
           "flex size-8 shrink-0 items-center justify-center rounded-md border",
-          connected
+          connected && !locked
             ? "border-positive/30 bg-positive/[0.08] text-positive"
             : "border-border bg-background text-muted-foreground",
         )}
@@ -114,14 +136,23 @@ function IntegrationRow({
         {icon}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="text-dense font-medium text-foreground">{label}</div>
+        <div className="flex items-center gap-1.5 text-dense font-medium text-foreground">
+          {label}
+          {locked && <Lock size={11} className="text-muted-foreground" />}
+        </div>
         <div className="truncate text-meta text-muted-foreground font-mono">
           {detail}
         </div>
       </div>
-      <Button variant="outline" size="sm" onClick={onClick}>
-        {connected ? "Manage" : "Connect"}
-      </Button>
+      {locked ? (
+        <Button asChild variant="outline" size="sm">
+          <Link href="/dashboard/settings/billing">Upgrade</Link>
+        </Button>
+      ) : (
+        <Button variant="outline" size="sm" onClick={onClick}>
+          {connected ? "Manage" : "Connect"}
+        </Button>
+      )}
     </div>
   );
 }

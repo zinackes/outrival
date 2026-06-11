@@ -31,11 +31,11 @@ export function SectionHead({
           </span>
         )}
         <div className="min-w-0">
-          <h2 className="font-semibold text-content tracking-tight leading-tight">
+          <h2 className="font-semibold text-lg tracking-tight leading-tight">
             {title}
           </h2>
           {sub && (
-            <div className="text-muted-foreground text-xs font-mono mt-0.5 truncate">
+            <div className="text-muted-foreground text-dense font-mono mt-0.5 truncate">
               {sub}
             </div>
           )}

@@ -59,7 +59,7 @@ export function SeverityBadge({ severity }: { severity: Severity }) {
   return (
     <Badge
       className={cn(
-        "uppercase tracking-wide text-micro font-bold px-2 py-0",
+        "uppercase tracking-wide text-micro font-bold px-1.5 py-0",
         SEV_BADGE[severity],
       )}
     >

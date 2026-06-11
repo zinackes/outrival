@@ -2796,66 +2796,114 @@ function HiringTab({
         )}`
       : null;
 
+  const hasTrend = Object.keys(trendByDept).length > 0;
+
+  // Department breakdown: current open count + 90-day delta. Paired with the
+  // trend chart on lg (border-l), so the two department views sit side by side
+  // instead of stacking — the narrow table fills the column the wide chart frees.
+  const deptTable = (
+    <TabSection
+      title="By department"
+      icon={Briefcase}
+      className={hasTrend ? "border-t border-border lg:border-t-0 lg:border-l" : undefined}
+    >
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-xs text-muted-foreground">
+            <th className="text-left py-2">Department</th>
+            <th className="text-right py-2">Active</th>
+            <th className="text-right py-2">Trend 90d</th>
+          </tr>
+        </thead>
+        <tbody>
+          {jobs.departments
+            .sort((a, b) => b.count - a.count)
+            .map((d) => {
+              const series = trendByDept[d.department] ?? [];
+              const first = series[0]?.count ?? d.count;
+              const last = series[series.length - 1]?.count ?? d.count;
+              const delta = last - first;
+              return (
+                <tr key={d.department} className="border-t border-border">
+                  <td className="py-2">{d.department}</td>
+                  <td className="py-2 text-right tabular-nums font-mono">{d.count}</td>
+                  <td
+                    className={cn(
+                      "py-2 text-right tabular-nums font-mono",
+                      delta === 0
+                        ? "text-muted-foreground"
+                        : delta > 0
+                          ? "text-positive"
+                          : "text-critical",
+                    )}
+                  >
+                    {delta === 0 ? (
+                      "—"
+                    ) : (
+                      <span className="inline-flex items-center justify-end gap-0.5">
+                        {delta > 0 ? (
+                          <ArrowUp className="size-3" />
+                        ) : (
+                          <ArrowDown className="size-3" />
+                        )}
+                        {delta > 0 ? `+${delta}` : delta}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+        </tbody>
+      </table>
+    </TabSection>
+  );
+
   return (
     <TabCard>
       <SourceSummary
         summary={jobsMonitor?.aiSummary}
         updatedAt={jobsMonitor?.aiSummaryUpdatedAt}
       />
-      <TabSection title="Open roles" icon={Briefcase}>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-xs text-muted-foreground">
-              <th className="text-left py-2">Department</th>
-              <th className="text-right py-2">Active</th>
-              <th className="text-right py-2">Trend 90d</th>
-            </tr>
-          </thead>
-          <tbody>
-            {jobs.departments
-              .sort((a, b) => b.count - a.count)
-              .map((d) => {
-                const series = trendByDept[d.department] ?? [];
-                const first = series[0]?.count ?? d.count;
-                const last = series[series.length - 1]?.count ?? d.count;
-                const delta = last - first;
-                return (
-                  <tr key={d.department} className="border-t border-border">
-                    <td className="py-2">{d.department}</td>
-                    <td className="py-2 text-right tabular-nums font-mono">{d.count}</td>
-                    <td
-                      className={cn(
-                        "py-2 text-right tabular-nums font-mono",
-                        delta === 0
-                          ? "text-muted-foreground"
-                          : delta > 0
-                            ? "text-positive"
-                            : "text-critical",
-                      )}
-                    >
-                      {delta === 0 ? (
-                        "—"
-                      ) : (
-                        <span className="inline-flex items-center justify-end gap-0.5">
-                          {delta > 0 ? (
-                            <ArrowUp className="size-3" />
-                          ) : (
-                            <ArrowDown className="size-3" />
-                          )}
-                          {delta > 0 ? `+${delta}` : delta}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-          </tbody>
-        </table>
-      </TabSection>
+
+      {hasTrend ? (
+        <div className="grid lg:grid-cols-2">
+          <TabSection title="90-day trend" icon={Activity}>
+            <ResponsiveContainer width="100%" height={240}>
+              <LineChart data={mergeTrendsByDate(trends)}>
+                <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
+                <XAxis dataKey="date" stroke="var(--muted)" fontSize={11} />
+                <YAxis stroke="var(--muted)" fontSize={11} allowDecimals={false} />
+                <ChartTooltip
+                  contentStyle={{
+                    background: "var(--bg)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 6,
+                    fontSize: 12,
+                  }}
+                />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                {Object.keys(trendByDept).map((dept, i) => (
+                  <Line
+                    key={dept}
+                    type="monotone"
+                    dataKey={dept}
+                    stroke={lineColor(i)}
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          </TabSection>
+          {deptTable}
+        </div>
+      ) : (
+        deptTable
+      )}
 
       <TabSection title="Roles" icon={Briefcase}>
         {(seniorPlus > 0 || salaryBand) && (
-          <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
             <span>
               <span className="font-medium text-foreground tabular-nums">{seniorPlus}</span> of{" "}
               <span className="tabular-nums">{allRoles.length}</span> senior+
@@ -2870,11 +2918,16 @@ function HiringTab({
             )}
           </div>
         )}
-        <ul className="divide-y divide-border">
+        {/* Two columns on sm+: the flat role list is the tallest block, so
+            splitting it across columns roughly halves the tab's height. */}
+        <ul className="grid gap-x-8 sm:grid-cols-2">
           {allRoles.map((role) => {
             const salary = salaryLabel(role);
             return (
-              <li key={role.id} className="flex items-start justify-between gap-3 py-2.5">
+              <li
+                key={role.id}
+                className="flex items-start justify-between gap-3 border-b border-border py-2.5"
+              >
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     {role.url ? (
@@ -2912,37 +2965,6 @@ function HiringTab({
           })}
         </ul>
       </TabSection>
-
-      {Object.keys(trendByDept).length > 0 && (
-        <TabSection title="90-day trend" icon={Activity}>
-          <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={mergeTrendsByDate(trends)}>
-              <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
-              <XAxis dataKey="date" stroke="var(--muted)" fontSize={11} />
-              <YAxis stroke="var(--muted)" fontSize={11} />
-              <ChartTooltip
-                contentStyle={{
-                  background: "var(--bg)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 6,
-                  fontSize: 12,
-                }}
-              />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              {Object.keys(trendByDept).map((dept, i) => (
-                <Line
-                  key={dept}
-                  type="monotone"
-                  dataKey={dept}
-                  stroke={lineColor(i)}
-                  strokeWidth={2}
-                  dot={false}
-                />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
-        </TabSection>
-      )}
     </TabCard>
   );
 }

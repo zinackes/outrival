@@ -41,7 +41,7 @@ export function DashboardShell({
     // feeds, etc.) drops transforms and keeps opacity for users who ask for it.
     <MotionConfig reducedMotion="user">
       <SidebarProvider defaultOpen={defaultOpen}>
-        {inSettings ? <SettingsSidebar /> : <AppSidebar org={org} />}
+        {inSettings ? <SettingsSidebar org={org} /> : <AppSidebar org={org} />}
         <SidebarInset>
           <div className="flex min-h-full w-full flex-col text-sm min-w-0">
             <Topbar user={user} />

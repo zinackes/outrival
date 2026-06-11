@@ -45,8 +45,9 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { cn } from "@/lib/utils";
+import { cn, prettyUrl } from "@/lib/utils";
 import { PageHead } from "./page-head";
+import { DeltaPill, computeDelta } from "./delta-pill";
 import { CompAvatar } from "./comp-avatar";
 import { FreshnessDot } from "@/components/outrival/freshness-dot";
 import { ListError } from "@/components/outrival/list-error";
@@ -66,37 +67,6 @@ type SortDir = "asc" | "desc";
 
 const TH_BASE =
   "text-left px-3.5 py-2.5 font-mono text-micro uppercase tracking-widest text-muted-foreground font-medium border-b border-border whitespace-nowrap";
-
-function prettyUrl(url: string): string {
-  return url
-    .replace(/^https?:\/\//, "")
-    .replace(/^www\./, "")
-    .replace(/\/+$/, "");
-}
-
-function computeDelta(curr: number, prev: number): {
-  delta: number;
-  kind: "pos" | "neg" | "neutral";
-  label: string;
-} {
-  if (prev === 0 && curr === 0) {
-    return { delta: 0, kind: "neutral", label: "—" };
-  }
-  if (prev === 0) {
-    return { delta: curr * 100, kind: "pos", label: "new" };
-  }
-  if (curr === 0) {
-    return { delta: -100, kind: "neg", label: "−100%" };
-  }
-  const pct = ((curr - prev) / prev) * 100;
-  const rounded = Math.round(pct);
-  if (rounded === 0) return { delta: 0, kind: "neutral", label: "0%" };
-  return {
-    delta: rounded,
-    kind: rounded > 0 ? "pos" : "neg",
-    label: `${rounded > 0 ? "+" : ""}${rounded}%`,
-  };
-}
 
 export function CompetitorsList() {
   const router = useRouter();
@@ -443,6 +413,7 @@ export function CompetitorsList() {
                   sortBy={sortBy}
                   sortDir={sortDir}
                   onClick={toggleSort}
+                  tip="How closely this competitor overlaps with your product (0–100)."
                 >
                   Overlap
                 </SortHeader>
@@ -807,32 +778,6 @@ function KpiCell({
         </div>
       )}
     </Wrap>
-  );
-}
-
-function DeltaPill({
-  delta,
-}: {
-  delta: { delta: number; kind: "pos" | "neg" | "neutral"; label: string };
-}) {
-  if (delta.kind === "neutral") {
-    return (
-      <span className="tabular-nums font-mono text-xs text-muted-foreground">
-        {delta.label}
-      </span>
-    );
-  }
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-0.5 tabular-nums font-mono text-xs",
-        delta.kind === "pos" && "text-positive",
-        delta.kind === "neg" && "text-critical",
-      )}
-    >
-      {delta.kind === "pos" ? <ArrowUp size={11} /> : <ArrowDown size={11} />}
-      {delta.label}
-    </span>
   );
 }
 

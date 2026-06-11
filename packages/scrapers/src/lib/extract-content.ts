@@ -156,17 +156,53 @@ function toLines(segments: string[], isBloglike: boolean): string[] {
   return result;
 }
 
+// Time-unit names across the languages competitors localise to (EN + the main
+// EU languages). Only ever matched inside a number/article-anchored relative-date
+// pattern, so the breadth here can never neutralise a real word on its own.
+const REL_UNITS = [
+  // English
+  "seconds?", "minutes?", "hours?", "days?", "weeks?", "months?", "years?",
+  // French — "il y a 8 jours"
+  "secondes?", "heures?", "jours?", "semaines?", "mois", "ans?", "années?",
+  // German — "vor 3 Tagen"
+  "sekunden?", "minuten?", "stunden?", "tag(?:en)?", "wochen?", "monat(?:en)?", "jahr(?:en)?",
+  // Spanish — "hace 2 días"
+  "segundos?", "minutos?", "horas?", "d[ií]as?", "semanas?", "mes(?:es)?", "años?",
+].join("|");
+
+// Quantity: a number or a singular article ("a day ago", "il y a un mois",
+// "vor einer Stunde", "hace una hora"). Worded numerals (deux/trois…) are left
+// out — the numeric form covers the overwhelming majority.
+const REL_QTY = "\\d+|une?|an?|eine?|einer|einem|una";
+
+// Prefix-form relative dates: "<since> <qty> <unit>". One compiled regex reused
+// across calls (String.replace resets a global regex's lastIndex, so it's safe).
+const REL_PREFIX_RE = new RegExp(
+  `\\b(?:il y a|vor|hace|in|about)\\s+(?:${REL_QTY})\\s+(?:${REL_UNITS})\\b`,
+  "gi",
+);
+
 /**
  * Neutralises content that legitimately changes between two captures of an
- * otherwise-unchanged page. Deliberately narrow: it never touches bare numbers,
- * because those carry real signal (a $10 → $20 price, a plan limit, a metric).
+ * otherwise-unchanged page — the #1 source of phantom changes on jobs/blog/
+ * changelog pages, where a "posted N days ago" label recomputes on every scrape.
+ *
+ * Deliberately narrow: every rule is anchored on a number (or a singular
+ * article) + an explicit time unit, so bare numbers carry real signal (a $10 →
+ * $20 price, a plan limit, a metric) and are never touched. Multi-language
+ * because competitors localise — a French careers page shows "il y a 8 jours",
+ * not "8 days ago".
  */
 function normalizeVolatile(line: string): string {
   return line
-    // "2 hours ago", "3 days ago" → constant token.
-    .replace(/\b\d+\s+(second|minute|hour|day|week|month|year)s?\s+ago\b/gi, "«ago»")
-    // "in 5 minutes", "about 2 hours" → constant token.
-    .replace(/\b(?:in|about)\s+\d+\s+(second|minute|hour|day|week|month|year)s?\b/gi, "«rel»")
+    // Suffix form (EN): "2 hours ago", "a day ago", "an hour ago".
+    .replace(
+      /\b(?:\d+|an?)\s+(?:second|minute|hour|day|week|month|year)s?\s+ago\b/gi,
+      "«ago»",
+    )
+    // Prefix form: FR "il y a 8 jours", DE "vor 3 Tagen", ES "hace 2 días",
+    // EN "in 5 minutes" / "about 2 hours".
+    .replace(REL_PREFIX_RE, "«rel»")
     // "© 2026", "Copyright 2024-2026" → constant year.
     .replace(/(©|copyright)\s*\d{4}(\s*[-–]\s*\d{4})?/gi, "$1 «year»");
 }

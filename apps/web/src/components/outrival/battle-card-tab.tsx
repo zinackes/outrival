@@ -1,13 +1,29 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
-import { Download, HelpCircle, Loader2, RefreshCw, Save, Sparkles, X } from "lucide-react";
+import {
+  CircleCheck,
+  CircleX,
+  Download,
+  HelpCircle,
+  Loader2,
+  MessageSquare,
+  RefreshCw,
+  Save,
+  Shield,
+  ShieldCheck,
+  Sparkles,
+  Swords,
+  Target,
+  X,
+} from "lucide-react";
 import { api, type BattleCard, type BattleCardContent } from "@/lib/api";
 import { track } from "@/lib/posthog/events";
 import {
   PaywallDialog,
   paywallFromError,
+  tierLimitFromError,
   type PaywallReason,
 } from "@/components/outrival/paywall-dialog";
 import { Button } from "@/components/ui/button";
@@ -17,6 +33,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FeedbackButtons } from "@/components/outrival/feedback-buttons";
+import { TabCard } from "@/components/outrival/tab-shell";
+import { cn } from "@/lib/utils";
 
 const EMPTY_CONTENT: BattleCardContent = {
   their_strengths: [],
@@ -30,6 +48,8 @@ const EMPTY_CONTENT: BattleCardContent = {
 type Status = "loading" | "absent" | "ready" | "generating" | "saving" | "error";
 
 type Staleness = Awaited<ReturnType<typeof api.getBattleCardStaleness>> | null;
+
+type IconType = ComponentType<{ size?: number; className?: string }>;
 
 interface Props {
   competitorId: string;
@@ -109,7 +129,9 @@ export function BattleCardTab({ competitorId }: Props) {
       track("battle_card_generated", { competitorId });
       startPolling();
     } catch (e) {
-      const reason = paywallFromError(e);
+      // 403 plan_* feature locks → paywallFromError; the 429 daily-cap quota →
+      // tierLimitFromError. Both render the same dialog with quota-aware copy.
+      const reason = paywallFromError(e) ?? tierLimitFromError(e);
       if (reason) {
         setPaywall(reason);
         setStatus(card ? "ready" : "absent");
@@ -146,7 +168,7 @@ export function BattleCardTab({ competitorId }: Props) {
       <>
         <Card className="p-6 text-center flex flex-col items-center gap-3 border-dashed">
           <Sparkles size={20} className="text-primary" />
-          <p className="text-sm text-muted-foreground">
+          <p className="text-dense text-muted-foreground">
             No battle card for this competitor yet. Generate one with AI in a
             few seconds.
           </p>
@@ -163,9 +185,7 @@ export function BattleCardTab({ competitorId }: Props) {
     return (
       <Card className="p-6 text-center flex flex-col items-center gap-2">
         <RefreshCw size={18} className="animate-spin text-primary" />
-        <p className="text-sm text-muted-foreground">
-          Generating… (~10-20s)
-        </p>
+        <p className="text-dense text-muted-foreground">Generating… (~10-20s)</p>
       </Card>
     );
   }
@@ -175,9 +195,14 @@ export function BattleCardTab({ competitorId }: Props) {
   const canDownload = !editing && Boolean(card.pdfR2Key);
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-end gap-2">
-        {editing ? (
+    <TabCard>
+      <div className="flex items-center justify-between gap-3 px-5 py-4">
+        <h2 className="flex items-center gap-2 text-content font-semibold tracking-tight leading-tight">
+          <Swords size={14} className="text-muted-foreground shrink-0" />
+          Battle card
+        </h2>
+        <div className="flex items-center gap-2">
+          {editing ? (
           <>
             <Button
               variant="outline"
@@ -189,11 +214,7 @@ export function BattleCardTab({ competitorId }: Props) {
             >
               <X size={12} /> Cancel
             </Button>
-            <Button
-              size="sm"
-              disabled={status === "saving"}
-              onClick={onSave}
-            >
+            <Button size="sm" disabled={status === "saving"} onClick={onSave}>
               {status === "saving" ? (
                 <Loader2 size={12} className="animate-spin" />
               ) : (
@@ -226,11 +247,7 @@ export function BattleCardTab({ competitorId }: Props) {
                 <RefreshCw size={12} /> Regenerate
               </Button>
             )}
-            <Button
-              asChild={canDownload}
-              size="sm"
-              disabled={!canDownload}
-            >
+            <Button asChild={canDownload} size="sm" disabled={!canDownload}>
               {canDownload ? (
                 <a
                   href={api.battleCardPdfUrl(competitorId, productId)}
@@ -247,10 +264,11 @@ export function BattleCardTab({ competitorId }: Props) {
             </Button>
           </>
         )}
+        </div>
       </div>
 
       {!editing && confirmingRegen && (
-        <div className="flex flex-col gap-2 rounded-md border border-primary/30 bg-primary/5 p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-2 bg-muted/40 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-muted-foreground">
             This battle card is already up to date
             {staleness?.lastGeneratedAt &&
@@ -272,30 +290,39 @@ export function BattleCardTab({ competitorId }: Props) {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <Section
+      <section className="grid grid-cols-1 gap-x-8 gap-y-6 p-5 sm:grid-cols-2">
+        <ListBlock
           title="Their strengths"
-          accent="text-destructive"
+          icon={Shield}
+          color="text-destructive"
           items={showContent.their_strengths}
           editing={editing}
           onChange={(items) => setDraft({ ...draft, their_strengths: items })}
         />
-        <Section
+        <ListBlock
           title="Our strengths"
-          accent="text-emerald-400"
+          icon={ShieldCheck}
+          color="text-positive"
           items={showContent.our_strengths}
           editing={editing}
           onChange={(items) => setDraft({ ...draft, our_strengths: items })}
         />
-      </div>
+      </section>
 
-      <Section
-        title="Their weaknesses"
-        accent="text-primary"
-        items={showContent.their_weaknesses}
-        editing={editing}
-        onChange={(items) => setDraft({ ...draft, their_weaknesses: items })}
-      />
+      <section className="flex flex-col gap-3 p-5">
+        <Heading icon={Target} color="text-primary">
+          Their weaknesses
+        </Heading>
+        {editing ? (
+          <EditableList
+            items={showContent.their_weaknesses}
+            onChange={(items) => setDraft({ ...draft, their_weaknesses: items })}
+            max={5}
+          />
+        ) : (
+          <BulletList items={showContent.their_weaknesses} />
+        )}
+      </section>
 
       <ObjectionsSection
         items={showContent.common_objections}
@@ -303,69 +330,115 @@ export function BattleCardTab({ competitorId }: Props) {
         onChange={(items) => setDraft({ ...draft, common_objections: items })}
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <Section
+      <section className="grid grid-cols-1 gap-x-8 gap-y-6 p-5 sm:grid-cols-2">
+        <ListBlock
           title="When we win"
-          accent="text-emerald-400"
+          icon={CircleCheck}
+          color="text-positive"
           items={showContent.when_we_win}
           editing={editing}
           onChange={(items) => setDraft({ ...draft, when_we_win: items })}
         />
-        <Section
+        <ListBlock
           title="When we lose"
-          accent="text-destructive"
+          icon={CircleX}
+          color="text-destructive"
           items={showContent.when_we_lose}
           editing={editing}
           onChange={(items) => setDraft({ ...draft, when_we_lose: items })}
         />
-      </div>
+      </section>
 
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-xs text-muted-foreground">
-          Generated on{" "}
+      <div className="flex items-center justify-between gap-3 px-5 py-3.5">
+        <p className="font-mono text-xs text-muted-foreground">
+          Generated{" "}
           {new Date(card.generatedAt).toLocaleDateString("en-US", {
             day: "2-digit",
             month: "long",
             year: "numeric",
           })}
-          {!card.pdfR2Key && " · PDF pending generation"}
+          {!card.pdfR2Key && " · PDF pending"}
         </p>
         {/* Quality feedback (patch-21): "not useful" flags the card for regeneration. */}
         {!editing && <FeedbackButtons targetType="battle_card" targetId={card.id} />}
       </div>
       {paywallNode}
+    </TabCard>
+  );
+}
+
+// Section heading matching the shared TabSection title (sentence case + icon),
+// so every block reads like the other competitor tabs — but carrying a semantic
+// color (icon + label) so our/their edge reads at a glance. `action` rides on
+// the right (e.g. the objections help tooltip).
+function Heading({
+  icon: Icon,
+  color,
+  action,
+  children,
+}: {
+  icon: IconType;
+  color?: string;
+  action?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <h3
+        className={cn(
+          "flex items-center gap-2 text-content font-semibold tracking-tight leading-tight",
+          color,
+        )}
+      >
+        <Icon size={14} className={cn("shrink-0", !color && "text-muted-foreground")} />
+        {children}
+      </h3>
+      {action}
     </div>
   );
 }
 
-function Section({
+function BulletList({ items }: { items: string[] }) {
+  if (items.length === 0)
+    return <p className="text-content text-muted-foreground">—</p>;
+  return (
+    <ul className="flex flex-col gap-2">
+      {items.map((it, i) => (
+        <li key={i} className="flex gap-2.5 text-content leading-relaxed">
+          <span className="mt-px shrink-0 text-primary">•</span>
+          <span>{it}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ListBlock({
   title,
-  accent,
+  icon,
+  color,
   items,
   editing,
   onChange,
 }: {
   title: string;
-  accent: string;
+  icon: IconType;
+  color?: string;
   items: string[];
   editing: boolean;
   onChange: (items: string[]) => void;
 }) {
   return (
-    <Card className="p-3">
-      <p className={`text-xs uppercase tracking-wide mb-2 ${accent}`}>{title}</p>
+    <div className="flex flex-col gap-3">
+      <Heading icon={icon} color={color}>
+        {title}
+      </Heading>
       {editing ? (
         <EditableList items={items} onChange={onChange} max={5} />
-      ) : items.length === 0 ? (
-        <p className="text-xs text-muted-foreground">—</p>
       ) : (
-        <ul className="flex flex-col gap-1.5 text-sm">
-          {items.map((it, i) => (
-            <li key={i}>· {it}</li>
-          ))}
-        </ul>
+        <BulletList items={items} />
       )}
-    </Card>
+    </div>
   );
 }
 
@@ -379,30 +452,30 @@ function ObjectionsSection({
   onChange: (items: Array<{ objection: string; response: string }>) => void;
 }) {
   return (
-    <Card className="p-3">
-      <div className="flex items-center gap-1.5 mb-2">
-        <p className="text-xs uppercase tracking-wide text-primary">
-          Common objections
-        </p>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <HelpCircle
-              size={13}
-              className="text-muted-foreground cursor-help"
-            />
-          </TooltipTrigger>
-          <TooltipContent className="max-w-xs">
-            Objections a prospect might raise to pick this competitor over you —
-            each paired with a sales response to counter it.
-          </TooltipContent>
-        </Tooltip>
-      </div>
+    <section className="flex flex-col gap-3 p-5">
+      <Heading
+        icon={MessageSquare}
+        color="text-primary"
+        action={
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <HelpCircle size={13} className="text-muted-foreground cursor-help" />
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">
+              Objections a prospect might raise to pick this competitor over you —
+              each paired with a sales response to counter it.
+            </TooltipContent>
+          </Tooltip>
+        }
+      >
+        Common objections
+      </Heading>
       {editing ? (
         <div className="flex flex-col gap-2">
           {items.map((o, i) => (
             <div
               key={i}
-              className="flex flex-col gap-1 p-2 border border-border rounded-md"
+              className="flex flex-col gap-1 rounded-md border border-border p-2"
             >
               <Input
                 value={o.objection}
@@ -426,10 +499,8 @@ function ObjectionsSection({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() =>
-                  onChange(items.filter((_, idx) => idx !== i))
-                }
-                className="self-start h-7 px-2 text-xs"
+                onClick={() => onChange(items.filter((_, idx) => idx !== i))}
+                className="h-7 self-start px-2 text-xs"
               >
                 Remove
               </Button>
@@ -440,27 +511,29 @@ function ObjectionsSection({
               variant="ghost"
               size="sm"
               onClick={() => onChange([...items, { objection: "", response: "" }])}
-              className="self-start h-7 px-2 text-xs text-primary"
+              className="h-7 self-start px-2 text-xs text-primary"
             >
               + Add an objection
             </Button>
           )}
         </div>
       ) : items.length === 0 ? (
-        <p className="text-xs text-muted-foreground">—</p>
+        <p className="text-content text-muted-foreground">—</p>
       ) : (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-4">
           {items.map((o, i) => (
-            <div key={i}>
-              <p className="text-sm font-medium">«&nbsp;{o.objection}&nbsp;»</p>
-              <p className="text-sm pl-3 mt-1 text-muted-foreground border-l-2 border-primary">
+            <div key={i} className="flex flex-col gap-1.5">
+              <p className="text-content font-medium leading-relaxed">
+                “{o.objection}”
+              </p>
+              <p className="border-l border-border pl-3.5 text-content leading-relaxed text-muted-foreground">
                 {o.response}
               </p>
             </div>
           ))}
         </div>
       )}
-    </Card>
+    </section>
   );
 }
 
@@ -507,7 +580,7 @@ function EditableList({
           variant="ghost"
           size="sm"
           onClick={() => onChange([...items, ""])}
-          className="self-start h-7 px-2 text-xs text-primary"
+          className="h-7 self-start px-2 text-xs text-primary"
         >
           + Add
         </Button>
@@ -516,44 +589,42 @@ function EditableList({
   );
 }
 
+function SkeletonColumn() {
+  return (
+    <div className="flex flex-col gap-3">
+      <Skeleton className="h-3.5 w-28" />
+      <Skeleton className="h-3 w-[90%]" />
+      <Skeleton className="h-3 w-[70%]" />
+      <Skeleton className="h-3 w-[80%]" />
+    </div>
+  );
+}
+
 function BattleCardSkeleton() {
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-end gap-2">
+    <TabCard>
+      <div className="flex items-center justify-end gap-2 px-5 py-4">
         <Skeleton className="h-8 w-16" />
         <Skeleton className="h-8 w-28" />
         <Skeleton className="h-8 w-36" />
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {Array.from({ length: 2 }).map((_, i) => (
-          <Card key={i} className="p-3 flex flex-col gap-2">
-            <Skeleton className="h-3 w-24 mb-1" />
-            <Skeleton className="h-3 w-[90%]" />
-            <Skeleton className="h-3 w-[70%]" />
-            <Skeleton className="h-3 w-[80%]" />
-          </Card>
-        ))}
+      <div className="grid grid-cols-1 gap-8 p-5 sm:grid-cols-2">
+        <SkeletonColumn />
+        <SkeletonColumn />
       </div>
-      <Card className="p-3 flex flex-col gap-2">
-        <Skeleton className="h-3 w-24 mb-1" />
-        <Skeleton className="h-3 w-[90%]" />
-        <Skeleton className="h-3 w-[75%]" />
-      </Card>
-      <Card className="p-3 flex flex-col gap-3">
-        <Skeleton className="h-3 w-32 mb-1" />
-        <Skeleton className="h-12 w-full" />
-        <Skeleton className="h-12 w-full" />
-      </Card>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {Array.from({ length: 2 }).map((_, i) => (
-          <Card key={i} className="p-3 flex flex-col gap-2">
-            <Skeleton className="h-3 w-24 mb-1" />
-            <Skeleton className="h-3 w-[80%]" />
-            <Skeleton className="h-3 w-[60%]" />
-          </Card>
-        ))}
+      <div className="flex flex-col gap-3 p-5">
+        <Skeleton className="h-3.5 w-36" />
+        <Skeleton className="h-3 w-[85%]" />
       </div>
-    </div>
+      <div className="flex flex-col gap-3 p-5">
+        <Skeleton className="h-3.5 w-40" />
+        <Skeleton className="h-12 w-full" />
+      </div>
+      <div className="grid grid-cols-1 gap-8 p-5 sm:grid-cols-2">
+        <SkeletonColumn />
+        <SkeletonColumn />
+      </div>
+    </TabCard>
   );
 }
 

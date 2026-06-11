@@ -165,7 +165,7 @@ export default function BattleCardsPage() {
                   </span>
                   <div className="min-w-0 flex-1">
                     <Link
-                      href={`/dashboard/competitors/${c.competitorId}`}
+                      href={`/dashboard/competitors/${c.competitorId}?tab=battlecard`}
                       className="block truncate text-dense font-medium text-foreground hover:underline"
                     >
                       {cardTitle(c)}

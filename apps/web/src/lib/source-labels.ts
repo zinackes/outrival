@@ -6,23 +6,23 @@ import type { SourceType } from "@outrival/shared";
 // sentences); this one phrases them as a noun for "Source: <label>".
 
 const SOURCE_LABELS: Record<string, string> = {
-  homepage: "homepage",
-  pricing: "pricing page",
-  blog: "blog",
-  changelog: "changelog",
-  jobs: "careers page",
+  homepage: "Homepage",
+  pricing: "Pricing page",
+  blog: "Blog",
+  changelog: "Changelog",
+  jobs: "Careers page",
   g2_reviews: "G2 reviews",
   capterra_reviews: "Capterra reviews",
   appstore_reviews: "App Store page",
   linkedin: "LinkedIn",
   twitter: "X / Twitter",
   // patch-18: signals from the independent tech-stack scraper.
-  tech_stack: "tech stack",
+  tech_stack: "Tech stack",
 };
 
 export function sourceLabel(sourceType: string | null | undefined): string {
-  if (!sourceType) return "monitored page";
-  return SOURCE_LABELS[sourceType] ?? "monitored page";
+  if (!sourceType) return "Monitored page";
+  return SOURCE_LABELS[sourceType] ?? "Monitored page";
 }
 
 // Short, Title-cased label for a source type — used as a noun title in source

@@ -44,7 +44,9 @@ function titleFor(path: string): { primary: string; sub?: string } {
   if (path.startsWith("/dashboard/settings/")) {
     return { primary: "Settings", sub: "Detail" };
   }
-  return { primary: "Outrival" };
+  const seg = path.split("/").filter(Boolean).pop();
+  if (!seg) return { primary: "Dashboard" };
+  return { primary: seg.charAt(0).toUpperCase() + seg.slice(1).replace(/-/g, " ") };
 }
 
 export function Topbar({ user }: { user: User }) {

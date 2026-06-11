@@ -1,5 +1,10 @@
-import { ArrowDown, ArrowUp, Minus, type LucideIcon } from "lucide-react";
+import { ArrowDown, ArrowUp, Info, Minus, type LucideIcon } from "lucide-react";
 import { Sparkline } from "./sparkline";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 type DeltaKind = "pos" | "neg" | "neutral";
 
@@ -11,6 +16,9 @@ interface KpiProps {
   delta?: string;
   deltaKind?: DeltaKind;
   meta?: string;
+  /** Optional explainer shown via an info icon next to the label. Needs a
+   *  TooltipProvider ancestor. */
+  hint?: string;
   spark?: number[];
   sparkColor?: string;
   sparkLabels?: string[];
@@ -37,6 +45,7 @@ export function Kpi({
   delta,
   deltaKind = "pos",
   meta,
+  hint,
   spark,
   sparkColor,
   sparkLabels,
@@ -46,7 +55,25 @@ export function Kpi({
   return (
     <div className="px-5 py-4 flex flex-col gap-2 relative min-w-0">
       <div className="font-mono text-dense text-muted-foreground flex items-center justify-between gap-2">
-        <span>{label}</span>
+        <span className="inline-flex items-center gap-1">
+          {label}
+          {hint && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={`About ${label}`}
+                  className="inline-flex cursor-help text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  <Info size={12} aria-hidden />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-[240px] font-sans text-xs font-normal normal-case tracking-normal">
+                {hint}
+              </TooltipContent>
+            </Tooltip>
+          )}
+        </span>
         {delta && (
           <span
             className={`font-mono text-meta inline-flex items-center gap-1 ${DELTA_COLOR[deltaKind]}`}

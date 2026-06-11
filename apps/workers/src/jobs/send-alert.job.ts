@@ -15,6 +15,7 @@ import { sendSlackMessage } from "../lib/slack";
 import { sendWebhook } from "../lib/webhook";
 import { pushWebhook } from "../lib/crm-webhook";
 import { getResend, ALERT_FROM } from "../lib/resend";
+import { escapeHtml } from "../lib/escape-html";
 
 const InputSchema = z.object({
   signalId: z.string(),
@@ -160,10 +161,10 @@ export const sendAlertJob = task({
       try {
         const html = `<div style="font-family: Inter, sans-serif; background: #0a0a0a; color: #fafafa; padding: 24px; border-radius: 6px;">
   <p style="font-size: 12px; color: #a3a3a3; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 8px;">${signal.severity.toUpperCase()} · ${signal.category}</p>
-  <h2 style="margin: 0 0 12px; font-family: Syne, sans-serif;">${competitor.name}</h2>
-  <p style="margin: 0 0 12px;">${signal.insight}</p>
-  ${signal.soWhat ? `<p style="color: #f59e0b; margin: 0 0 12px;">→ ${signal.soWhat}</p>` : ""}
-  ${signal.recommendedAction ? `<p style="margin: 0; color: #d4d4d4;"><strong>Action:</strong> ${signal.recommendedAction}</p>` : ""}
+  <h2 style="margin: 0 0 12px; font-family: Syne, sans-serif;">${escapeHtml(competitor.name)}</h2>
+  <p style="margin: 0 0 12px;">${escapeHtml(signal.insight)}</p>
+  ${signal.soWhat ? `<p style="color: #f59e0b; margin: 0 0 12px;">→ ${escapeHtml(signal.soWhat)}</p>` : ""}
+  ${signal.recommendedAction ? `<p style="margin: 0; color: #d4d4d4;"><strong>Action:</strong> ${escapeHtml(signal.recommendedAction)}</p>` : ""}
 </div>`;
         await getResend().emails.send({
           from: ALERT_FROM,

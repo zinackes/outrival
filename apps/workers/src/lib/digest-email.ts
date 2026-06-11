@@ -1,4 +1,5 @@
 import type { Digest } from "@outrival/ai";
+import { escapeHtml } from "./escape-html";
 
 const URGENCY_META: Record<
   "action_required" | "watch" | "fyi",
@@ -26,9 +27,9 @@ export function renderDigestEmail(
         .map(
           (s) => `
   <div style="background:#171717;border:1px solid #262626;border-radius:6px;padding:16px;margin-bottom:12px;">
-    <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#a3a3a3;margin-bottom:6px;">${s.competitor} · ${s.category}</div>
-    <div style="color:#fafafa;font-size:14px;margin-bottom:8px;">${s.insight}</div>
-    <div style="color:#f59e0b;font-size:13px;">→ ${s.so_what}</div>
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#a3a3a3;margin-bottom:6px;">${escapeHtml(s.competitor)} · ${escapeHtml(s.category)}</div>
+    <div style="color:#fafafa;font-size:14px;margin-bottom:8px;">${escapeHtml(s.insight)}</div>
+    <div style="color:#f59e0b;font-size:13px;">→ ${escapeHtml(s.so_what)}</div>
   </div>`,
         )
         .join("");
@@ -41,7 +42,7 @@ export function renderDigestEmail(
     .join("");
 
   const tldrHtml = digest.tldr
-    .map((t) => `<li style="margin-bottom:6px;">${t}</li>`)
+    .map((t) => `<li style="margin-bottom:6px;">${escapeHtml(t)}</li>`)
     .join("");
 
   // Sector trends (patch-13): a clearly separated block after the micro signals.
@@ -56,8 +57,8 @@ export function renderDigestEmail(
     .map(
       (t) => `
   <div style="background:#171717;border:1px solid #262626;border-radius:6px;padding:16px;margin-bottom:12px;">
-    <div style="color:#fafafa;font-size:14px;font-weight:600;margin-bottom:6px;">${t.title}</div>
-    <div style="color:#a3a3a3;font-size:13px;">${t.insight}</div>
+    <div style="color:#fafafa;font-size:14px;font-weight:600;margin-bottom:6px;">${escapeHtml(t.title)}</div>
+    <div style="color:#a3a3a3;font-size:13px;">${escapeHtml(t.insight)}</div>
   </div>`,
     )
     .join("")}
@@ -72,7 +73,7 @@ export function renderDigestEmail(
         <div style="font-size:12px;color:#a3a3a3;margin-top:4px;">Digest from ${weekStart} to ${weekEnd}</div>
       </div>
       <div style="background:#171717;border:1px solid #262626;border-radius:6px;padding:20px;margin-bottom:24px;">
-        <div style="font-size:12px;color:#a3a3a3;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">Temperature · ${digest.temperature}</div>
+        <div style="font-size:12px;color:#a3a3a3;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">Temperature · ${escapeHtml(digest.temperature)}</div>
         <ul style="margin:0;padding-left:18px;font-size:14px;color:#fafafa;">${tldrHtml}</ul>
       </div>
       ${sectionsHtml}

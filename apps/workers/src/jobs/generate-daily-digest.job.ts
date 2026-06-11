@@ -9,6 +9,7 @@ import {
 } from "@outrival/db";
 import { getResend, ALERT_FROM } from "../lib/resend";
 import { localHour } from "../lib/notification-dispatcher";
+import { escapeHtml } from "../lib/escape-html";
 
 const SEVERITY_EMOJI: Record<string, string> = {
   critical: "🚨",
@@ -87,9 +88,9 @@ export const generateDailyDigestJob = schedules.task({
           const emoji = SEVERITY_EMOJI[s.severity] ?? "🔔";
           return `
   <div style="background:#171717;border:1px solid #262626;border-radius:6px;padding:16px;margin-bottom:12px;">
-    <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#a3a3a3;margin-bottom:6px;">${emoji} ${s.competitorName} · ${s.category}</div>
-    <div style="color:#fafafa;font-size:14px;margin-bottom:8px;">${s.insight}</div>
-    ${s.soWhat ? `<div style="color:#f59e0b;font-size:13px;">→ ${s.soWhat}</div>` : ""}
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#a3a3a3;margin-bottom:6px;">${emoji} ${escapeHtml(s.competitorName)} · ${s.category}</div>
+    <div style="color:#fafafa;font-size:14px;margin-bottom:8px;">${escapeHtml(s.insight)}</div>
+    ${s.soWhat ? `<div style="color:#f59e0b;font-size:13px;">→ ${escapeHtml(s.soWhat)}</div>` : ""}
   </div>`;
         })
         .join("");

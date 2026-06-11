@@ -7,6 +7,7 @@ import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
 import { getOrgPlan, isChannelAllowed } from "../lib/plan";
+import { isSafeWebhookUrl } from "../lib/crm-webhook";
 
 type Variables = { user: { id: string } };
 
@@ -14,9 +15,16 @@ export const settingsRouter = new Hono<{ Variables: Variables }>();
 
 settingsRouter.use("*", authMiddleware);
 
+// The API and workers POST to these URLs server-side, so they get the same SSRF
+// guard as CRM destinations (https only, no loopback / private-range hosts).
+const safeWebhookUrl = z
+  .string()
+  .url()
+  .refine(isSafeWebhookUrl, { message: "URL must be https and publicly reachable" });
+
 const PatchSchema = z.object({
-  slackWebhookUrl: z.string().url().nullable().optional(),
-  webhookUrl: z.string().url().nullable().optional(),
+  slackWebhookUrl: safeWebhookUrl.nullable().optional(),
+  webhookUrl: safeWebhookUrl.nullable().optional(),
   digestEmail: z.string().email().nullable().optional(),
   digestEnabled: z.boolean().optional(),
   alertsEnabled: z.boolean().optional(),

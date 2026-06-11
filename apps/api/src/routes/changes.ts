@@ -4,6 +4,7 @@ import { tasks } from "@trigger.dev/sdk/v3";
 import { changes, monitors, competitors } from "@outrival/db";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
+import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
 
 type Variables = { user: { id: string } };
@@ -48,7 +49,7 @@ changesRouter.get("/", async (c) => {
   return c.json({ changes: rows });
 });
 
-changesRouter.post("/:id/classify", async (c) => {
+changesRouter.post("/:id/classify", aiIntensiveRateLimit, async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
   const id = c.req.param("id");

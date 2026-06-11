@@ -12,6 +12,7 @@ import {
 } from "@outrival/shared";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
+import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
 import { getOrgPlan, isFrequencyAllowed } from "../lib/plan";
 
@@ -166,7 +167,7 @@ monitorsRouter.get("/:id/staleness", async (c) => {
   });
 });
 
-monitorsRouter.post("/:id/run", async (c) => {
+monitorsRouter.post("/:id/run", aiIntensiveRateLimit, async (c) => {
   const id = c.req.param("id");
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);

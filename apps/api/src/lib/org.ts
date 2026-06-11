@@ -12,7 +12,11 @@ export async function ensureUserOrg(userId: string): Promise<string> {
   if (!user) throw new Error(`User ${userId} not found`);
   if (user.orgId) return user.orgId;
 
-  const slug = `org-${userId.slice(0, 8)}`;
+  // Full userId: a truncated prefix could collide across users, and the
+  // ON CONFLICT below would then silently attach this user to someone else's
+  // org (cross-tenant exposure). The conflict path must only ever match this
+  // user's own previously-created org.
+  const slug = `org-${userId}`;
   // ON CONFLICT DO UPDATE (no-op update on slug) so we always get the row back,
   // whether we just created it or it already existed from a previous attempt.
   const [org] = await db

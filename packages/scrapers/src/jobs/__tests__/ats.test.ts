@@ -60,9 +60,16 @@ describe("detectAtsBoard", () => {
 
 describe("appendAtsJobsToHtml → parseAtsJobsFromHtml round-trip", () => {
   const board = { provider: "lever", token: "acme", boardUrl: "https://jobs.lever.co/acme" };
+  const enrichment = {
+    seniority: null,
+    postedAt: null,
+    salaryMin: null,
+    salaryMax: null,
+    salaryCurrency: null,
+  };
   const jobs: AtsJob[] = [
-    { title: "Senior Backend Engineer", department: "Engineering", location: "Paris", url: "https://jobs.lever.co/acme/1" },
-    { title: "Product Designer", department: "Design", location: null, url: null },
+    { title: "Senior Backend Engineer", department: "Engineering", location: "Paris", url: "https://jobs.lever.co/acme/1", ...enrichment },
+    { title: "Product Designer", department: "Design", location: null, url: null, ...enrichment },
   ];
 
   it("embeds a parseable JSON island and keeps the postings visible", () => {
@@ -77,7 +84,7 @@ describe("appendAtsJobsToHtml → parseAtsJobsFromHtml round-trip", () => {
 
   it("neutralises a </script> injection in a posting field", () => {
     const evil: AtsJob[] = [
-      { title: "Hacker </script><script>alert(1)</script>", department: "Eng", location: null, url: null },
+      { title: "Hacker </script><script>alert(1)</script>", department: "Eng", location: null, url: null, ...enrichment },
     ];
     const html = appendAtsJobsToHtml("<html><body></body></html>", board, evil);
     // The raw HTML must not contain an early unescaped closing tag from the title.

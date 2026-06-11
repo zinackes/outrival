@@ -1619,6 +1619,11 @@ export const api = {
       results: Record<"email" | "slack" | "webhook", "sent" | "not_configured" | "error">;
       errors: Partial<Record<"email" | "slack" | "webhook", string>>;
     }>("/api/notifications/test", { method: "POST" }),
+  setPassword: (body: { newPassword: string; currentPassword?: string }) =>
+    request<{ ok: true; changed: boolean }>("/api/auth/set-password", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   getWorkspaceSettings: () =>
     request<WorkspaceSettings>("/api/settings/workspace"),
   updateWorkspaceSettings: (body: {

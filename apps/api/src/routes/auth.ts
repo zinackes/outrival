@@ -1,16 +1,17 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { eq } from "drizzle-orm";
-import { emailSchema } from "@outrival/shared";
+import { and, eq } from "drizzle-orm";
+import { emailSchema, validatePasswordWithHibp } from "@outrival/shared";
 import { db } from "../lib/db";
-import { users } from "@outrival/db";
+import { users, account } from "@outrival/db";
 import { auth } from "../lib/auth";
 import { verifyTurnstileToken } from "../lib/turnstile";
 import { captureServerEvent } from "../lib/posthog";
 import { authRateLimit } from "../middleware/auth-rate-limit";
+import { authMiddleware } from "../middleware/auth";
 import { errorBody } from "../lib/errors";
 
-export const authRouter = new Hono();
+export const authRouter = new Hono<{ Variables: { user: { id: string } } }>();
 
 function clientIp(c: Context): string {
   return (
@@ -89,4 +90,65 @@ authRouter.post("/check-and-send-magic-link", authRateLimit, async (c) => {
     ok: true,
     message: "If that email is valid, a sign-in link is on its way.",
   });
+});
+
+/**
+ * Set or change the account password from Settings > Security. Magic-link /
+ * Google accounts have no credential account, so the password fallback on the
+ * /auth page was unreachable for them until now. Length rules + HIBP breach
+ * check (fail-open) before Better Auth persists anything; with an existing
+ * password the current one is required and other sessions are revoked.
+ */
+authRouter.post("/set-password", authMiddleware, async (c) => {
+  const user = c.get("user");
+  const body = (await c.req.json().catch(() => ({}))) as {
+    newPassword?: unknown;
+    currentPassword?: unknown;
+  };
+  const newPassword = typeof body.newPassword === "string" ? body.newPassword : "";
+  const currentPassword =
+    typeof body.currentPassword === "string" ? body.currentPassword : "";
+
+  const check = await validatePasswordWithHibp(newPassword);
+  if (!check.valid) {
+    return c.json(errorBody("weak_password", check.reason, { userAction: "retry" }), 400);
+  }
+
+  const credential = await db.query.account.findFirst({
+    where: and(eq(account.userId, user.id), eq(account.providerId, "credential")),
+    columns: { id: true, password: true },
+  });
+
+  try {
+    if (credential?.password) {
+      if (!currentPassword) {
+        return c.json(
+          errorBody("current_password_required", "Enter your current password.", {
+            userAction: "retry",
+          }),
+          400,
+        );
+      }
+      await auth.api.changePassword({
+        headers: c.req.raw.headers,
+        body: { newPassword, currentPassword, revokeOtherSessions: true },
+      });
+    } else {
+      await auth.api.setPassword({
+        headers: c.req.raw.headers,
+        body: { newPassword },
+      });
+    }
+  } catch {
+    // Better Auth throws on a wrong current password (and on edge cases like a
+    // concurrent set). Generic message — don't oracle which check failed.
+    return c.json(
+      errorBody("password_update_failed", "Couldn't update the password. Check your current password and try again.", {
+        userAction: "retry",
+      }),
+      400,
+    );
+  }
+
+  return c.json({ ok: true, changed: Boolean(credential?.password) });
 });

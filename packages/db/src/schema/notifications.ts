@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, pgEnum, index } from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
 
 export const notificationTypeEnum = pgEnum("notification_type", [
@@ -30,4 +30,8 @@ export const notifications = pgTable("notifications", {
   linkUrl: text("link_url"),
   isRead: boolean("is_read").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  // SSE stream polls (orgId, createdAt > lastCheck) every 3s per connection;
+  // also serves the list and unread-count org filters.
+  index("notifications_org_created_idx").on(t.orgId, t.createdAt),
+]);

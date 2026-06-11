@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, real } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, jsonb, real, index } from "drizzle-orm/pg-core";
 import { monitors } from "./monitors";
 import { snapshots } from "./snapshots";
 
@@ -23,4 +23,7 @@ export const changes = pgTable("changes", {
   relevanceScore: real("relevance_score"),
   summary: text("summary"),
   detectedAt: timestamp("detected_at").notNull().defaultNow(),
-});
+}, (t) => [
+  // Changes feed + monitor teardown both walk changes by monitor, newest first.
+  index("changes_monitor_detected_idx").on(t.monitorId, t.detectedAt),
+]);

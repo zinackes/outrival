@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, index } from "drizzle-orm/pg-core";
 import { users } from "./users";
 import { organizations } from "./organizations";
 import { monitors } from "./monitors";
@@ -18,4 +18,7 @@ export const forcedRescanLog = pgTable("forced_rescan_log", {
   triggeredAt: timestamp("triggered_at").notNull().defaultNow(),
   resultCapturedAt: timestamp("result_captured_at"),
   hadNewSignal: boolean("had_new_signal"),
-});
+}, (t) => [
+  // Daily per-tier limit: count of one user's rescans since midnight.
+  index("forced_rescan_log_user_triggered_idx").on(t.userId, t.triggeredAt),
+]);

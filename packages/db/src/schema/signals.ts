@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, real, jsonb, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, real, jsonb, pgEnum, index } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { changes } from "./changes";
 import { organizations } from "./organizations";
@@ -72,4 +72,9 @@ export const signals = pgTable("signals", {
   actionUpdatedAt: timestamp("action_updated_at"),
   isRead: boolean("is_read").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  // Main signal feed: org-scoped, newest first.
+  index("signals_org_created_idx").on(t.orgId, t.createdAt),
+  // Competitor detail page: signals of one competitor, newest first.
+  index("signals_competitor_created_idx").on(t.competitorId, t.createdAt),
+]);

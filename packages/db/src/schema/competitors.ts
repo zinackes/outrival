@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, real, jsonb, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, real, jsonb, boolean, index } from "drizzle-orm/pg-core";
 import type { PlatformProfile } from "@outrival/shared";
 import { organizations } from "./organizations";
 
@@ -95,4 +95,7 @@ export const competitors = pgTable("competitors", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   deletedAt: timestamp("deleted_at"),
-});
+}, (t) => [
+  // Every org-scoped query joins or filters competitors by org.
+  index("competitors_org_idx").on(t.orgId),
+]);

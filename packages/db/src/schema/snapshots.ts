@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, pgEnum, jsonb, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, pgEnum, jsonb, integer, index } from "drizzle-orm/pg-core";
 import { monitors } from "./monitors";
 
 export const snapshotStatusEnum = pgEnum("snapshot_status", [
@@ -30,4 +30,7 @@ export const snapshots = pgTable("snapshots", {
   // Char length of the extracted visible content (patch-17): feeds the anti-void
   // median guard. Populated on every snapshot post-patch; null for older rows.
   contentSize: integer("content_size"),
-});
+}, (t) => [
+  // Every scrape fetches the previous snapshot: latest per monitor.
+  index("snapshots_monitor_scraped_idx").on(t.monitorId, t.scrapedAt),
+]);

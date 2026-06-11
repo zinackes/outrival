@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, jsonb, integer, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, jsonb, integer, pgEnum, index } from "drizzle-orm/pg-core";
 import { competitors } from "./competitors";
 
 export const sourceTypeEnum = pgEnum("source_type", [
@@ -69,4 +69,9 @@ export const monitors = pgTable("monitors", {
   aiSummary: text("ai_summary"),
   aiSummaryUpdatedAt: timestamp("ai_summary_updated_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  // Hourly scheduler scan: isActive && (nextRunAt null || <= now).
+  index("monitors_next_run_idx").on(t.nextRunAt),
+  // Competitor detail / provisioning: all monitors of one competitor.
+  index("monitors_competitor_idx").on(t.competitorId),
+]);

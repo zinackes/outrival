@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, integer, index } from "drizzle-orm/pg-core";
 import { competitors } from "./competitors";
 
 export const jobPostings = pgTable("job_postings", {
@@ -20,4 +20,7 @@ export const jobPostings = pgTable("job_postings", {
   isActive: boolean("is_active").notNull().default(true),
   detectedAt: timestamp("detected_at").notNull().defaultNow(),
   closedAt: timestamp("closed_at"),
-});
+}, (t) => [
+  // extract-jobs diffs the active postings of one competitor on every run.
+  index("job_postings_competitor_active_idx").on(t.competitorId, t.isActive),
+]);

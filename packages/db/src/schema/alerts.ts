@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, pgEnum, index } from "drizzle-orm/pg-core";
 import { signals } from "./signals";
 import { organizations } from "./organizations";
 
@@ -12,4 +12,7 @@ export const alerts = pgTable("alerts", {
   sentAt: timestamp("sent_at"),
   error: text("error"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  // Monitor teardown and signal detail both look alerts up by signal.
+  index("alerts_signal_idx").on(t.signalId),
+]);

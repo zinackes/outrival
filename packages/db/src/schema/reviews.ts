@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, real, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, real, pgEnum, index } from "drizzle-orm/pg-core";
 import { competitors } from "./competitors";
 
 export const reviewSourceEnum = pgEnum("review_source", [
@@ -15,4 +15,7 @@ export const reviews = pgTable("reviews", {
   content: text("content"),
   author: text("author"),
   detectedAt: timestamp("detected_at").notNull().defaultNow(),
-});
+}, (t) => [
+  // Reviews tab + battle-card context read one competitor's reviews, newest first.
+  index("reviews_competitor_detected_idx").on(t.competitorId, t.detectedAt),
+]);

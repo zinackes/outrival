@@ -1,5 +1,4 @@
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { DeleteWorkspaceCard } from "@/components/outrival/delete-workspace-card";
 
 export default function DangerZonePage() {
   return (
@@ -13,25 +12,7 @@ export default function DangerZonePage() {
         </p>
       </header>
 
-      <Card className="border-critical/20 px-5 py-[18px]">
-        <div className="flex items-center gap-3">
-          <div className="flex-1">
-            <div className="font-semibold text-sm">Delete workspace</div>
-            <div className="text-muted-foreground text-dense mt-1">
-              Permanently erases all signals, digests and battle cards. This
-              action cannot be undone.
-            </div>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled
-            className="text-destructive border-destructive/25"
-          >
-            Delete
-          </Button>
-        </div>
-      </Card>
+      <DeleteWorkspaceCard />
     </section>
   );
 }

@@ -1622,6 +1622,11 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
+  deleteWorkspace: (confirm: string) =>
+    request<{ ok: true }>("/api/settings/workspace", {
+      method: "DELETE",
+      body: JSON.stringify({ confirm }),
+    }),
   onboardingStatus: () => request<OnboardingStatus>("/api/onboarding/status"),
   analyzeUrl: (productUrl: string) =>
     request<{ profile: ProductProfile }>("/api/onboarding/analyze-url", {

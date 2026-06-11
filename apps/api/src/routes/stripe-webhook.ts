@@ -115,7 +115,8 @@ stripeWebhookRouter.post("/", async (c) => {
       { err, bodyLen: rawBody.byteLength, sigPrefix: sig.slice(0, 32) },
       "Stripe webhook: signature verification failed",
     );
-    return c.json({ error: "invalid_signature", detail: String(err) }, 400);
+    // Details stay in the log — the response goes to whoever sent the request.
+    return c.json({ error: "invalid_signature" }, 400);
   }
 
   try {

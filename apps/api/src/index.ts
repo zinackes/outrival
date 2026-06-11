@@ -105,9 +105,10 @@ app.route("/api/structural-changes", structuralChangesRouter);
 app.route("/api/ai-quality", aiQualityRouter);
 app.route("/api/admin", adminRouter);
 
-// DEV-ONLY — manual cron trigger console. Never mounted in production; remove
-// this block and ./routes/dev.ts before shipping.
-if (env.NODE_ENV !== "production") {
+// DEV-ONLY — manual cron trigger console. Strict equality: NODE_ENV defaults
+// to "development" when unset, so `!== "production"` would mount these on a
+// deployment that forgot the env var (fail-open).
+if (env.NODE_ENV === "development") {
   app.route("/api/dev", devRouter);
 }
 

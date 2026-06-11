@@ -16,7 +16,7 @@ import {
   checkGlobalBreaker,
   type DigestInputSignal,
 } from "@outrival/ai";
-import { signDigestFeedbackToken } from "@outrival/shared";
+import { signDigestFeedbackToken, signUnsubscribeToken } from "@outrival/shared";
 import { renderDigestEmail } from "../lib/digest-email";
 import { getResend, ALERT_FROM } from "../lib/resend";
 import { logAiRun } from "../lib/analytics";
@@ -205,17 +205,32 @@ export const generateWeeklyDigestJob = schedules.task({
                   )}`,
                 }
               : undefined;
+          const unsubscribeUrl =
+            apiBase && secret
+              ? `${apiBase}/api/digest-feedback/unsubscribe?token=${signUnsubscribeToken(org.id, secret)}`
+              : undefined;
           const html = renderDigestEmail(
             digest,
             isoDate(weekStart),
             isoDate(weekEnd),
             feedbackLinks,
+            unsubscribeUrl,
           );
           await getResend().emails.send({
             from: ALERT_FROM,
             to: org.digestEmail,
             subject: `Outrival — Weekly digest, week of ${isoDate(weekStart)}`,
             html,
+            // One-click unsubscribe headers improve inbox placement and let
+            // mail clients surface their native unsubscribe affordance.
+            ...(unsubscribeUrl
+              ? {
+                  headers: {
+                    "List-Unsubscribe": `<${unsubscribeUrl}>`,
+                    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+                  },
+                }
+              : {}),
           });
           await db
             .update(digests)

@@ -25,6 +25,37 @@ export function signDigestFeedbackToken(
   return `${body}.${sig}`;
 }
 
+// One-click digest unsubscribe from the email footer — same stateless HMAC
+// scheme. Only ever flips organizations.digestEnabled to false, so a leaked
+// link can't do worse than stopping emails the user can re-enable in settings.
+export function signUnsubscribeToken(orgId: string, secret: string): string {
+  const body = b64url(Buffer.from(`unsub:digest:${orgId}`, "utf8"));
+  const sig = b64url(createHmac("sha256", secret).update(body).digest());
+  return `${body}.${sig}`;
+}
+
+export function verifyUnsubscribeToken(
+  token: string,
+  secret: string,
+): { orgId: string } | null {
+  const dot = token.indexOf(".");
+  if (dot <= 0) return null;
+  const body = token.slice(0, dot);
+  const sig = token.slice(dot + 1);
+  if (!sig) return null;
+
+  const expected = b64url(createHmac("sha256", secret).update(body).digest());
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+
+  const parts = Buffer.from(body, "base64url").toString("utf8").split(":");
+  if (parts.length !== 3 || parts[0] !== "unsub" || parts[1] !== "digest" || !parts[2]) {
+    return null;
+  }
+  return { orgId: parts[2] };
+}
+
 export function verifyDigestFeedbackToken(
   token: string,
   secret: string,

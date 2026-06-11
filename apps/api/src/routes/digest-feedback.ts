@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { and, eq } from "drizzle-orm";
-import { qualityFeedback, digests, users } from "@outrival/db";
-import { verifyDigestFeedbackToken } from "@outrival/shared";
+import { qualityFeedback, digests, users, organizations } from "@outrival/db";
+import { verifyDigestFeedbackToken, verifyUnsubscribeToken } from "@outrival/shared";
 import { db } from "../lib/db";
 
 // Public one-click digest feedback from the weekly email (patch-21, point d).
@@ -20,6 +20,30 @@ function page(message: string): string {
 <p style="color:#a3a3a3;font-size:15px;">${message}</p>
 </div></body></html>`;
 }
+
+// One-click unsubscribe from the digest email footer. Same trust model as the
+// feedback link: the signed token is the credential, and the only effect is
+// flipping digestEnabled off (reversible from Settings > Notifications).
+// POST is the RFC 8058 List-Unsubscribe-Post path mail clients call directly.
+digestFeedbackRouter.on(["GET", "POST"], "/unsubscribe", async (c) => {
+  const token = c.req.query("token");
+  const secret = process.env.BETTER_AUTH_SECRET ?? "";
+  const payload = token && secret ? verifyUnsubscribeToken(token, secret) : null;
+  if (!payload) {
+    return c.html(page("This unsubscribe link is invalid."), 400);
+  }
+
+  await db
+    .update(organizations)
+    .set({ digestEnabled: false, updatedAt: new Date() })
+    .where(eq(organizations.id, payload.orgId));
+
+  return c.html(
+    page(
+      "You're unsubscribed from digest emails. You can re-enable them anytime in Settings → Notifications.",
+    ),
+  );
+});
 
 digestFeedbackRouter.get("/", async (c) => {
   const token = c.req.query("token");

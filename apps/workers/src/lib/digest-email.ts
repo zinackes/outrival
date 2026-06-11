@@ -17,6 +17,7 @@ export function renderDigestEmail(
   // Optional one-click feedback links (patch-21). Absent → footer without them
   // (e.g. when the signing secret or API base URL isn't configured).
   feedbackLinks?: { useful: string; notUseful: string },
+  unsubscribeUrl?: string,
 ): string {
   const sectionsHtml = (["action_required", "watch", "fyi"] as const)
     .map((urgency) => {
@@ -87,7 +88,11 @@ export function renderDigestEmail(
       </div>`
           : ""
       }
-      <div style="margin-top:32px;font-size:11px;color:#525252;text-align:center;">Outrival · Automated competitive intelligence</div>
+      <div style="margin-top:32px;font-size:11px;color:#525252;text-align:center;">Outrival · Automated competitive intelligence${
+        unsubscribeUrl
+          ? ` · <a href="${unsubscribeUrl}" style="color:#525252;text-decoration:underline;">Unsubscribe</a>`
+          : ""
+      }</div>
     </div>
   </body>
 </html>`;

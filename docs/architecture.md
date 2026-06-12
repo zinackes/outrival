@@ -284,8 +284,9 @@ scrape_runs         monitor_id, competitor_id, source_type, status (success|no_c
 ai_runs             task (classify|classify_structured|narrate_change|insight|digest|
                     battle_card|extract_pricing|extract_jobs|extract_reviews|
                     extract_self_profile|generate_extractor|source_summary|
-                    competitor_summary|batch_summary|…), provider, model,
-                    status (success|parse_failed|error), recorded_at      — ops (patch-02)
+                    competitor_summary|batch_summary|ask|…), provider, model,
+                    status (success|parse_failed|error), recorded_at      — ops (patch-02 ;
+                    `ask` = Ask Outrival, 1er logger ai_runs côté API via lib/ai-runs.ts)
 extraction_runs     competitor_id, source_type, domain, resolution (structured|cache|
                     heal|ai_fallback), extractor_version, ai_used (0/1), recorded_at
                     — patch-30, % de scrapes résolus par étage = arbitre du coût IA
@@ -734,6 +735,26 @@ WEB_URL=                     # https://outrival.io (callbacks Stripe)
 
 ## Décisions architecturales clés
 
+- **Ask Outrival — intelligence conversationnelle (feature ad-hoc)** — passe de
+  « dashboards qu'on visite » à « intelligence qu'on interroge » : NL → réponse anglaise
+  groundée sur la donnée Postgres **déjà** trackée de l'org (pas de RAG vectoriel, pas de
+  nouvelle ingestion). **Agent à OUTILS** : la donnée étant relationnelle, on expose au
+  modèle un registry d'outils **org-scopés** (`getSignals`/`getPricingHistory`/
+  `getJobTrends`/`getReviewThemes`/`getTechStackChanges`/`compareCompetitors`/
+  `listCompetitors`, `apps/api/src/lib/ask/tools.ts`) — jamais de SQL généré par le LLM.
+  `complete()` étant single-shot (pas de tool-calling natif), l'agent est une **boucle 2
+  passes** : PLAN (modèle rapide → `AskPlanSchema`, le roster competitors est injecté pour
+  résoudre nom→id en une passe) → exécution des outils côté API (`orgId` de la session,
+  **jamais** du modèle) → SYNTHÈSE (70b → `AskAnswerSchema`, réponse + citations
+  deep-linkées). **Isolation tenant absolue** : les tables analytics n'ont pas d'`org_id`
+  → chaque outil competitor-scopé résout d'abord le competitor *dans* l'org
+  (`ownedCompetitor`), un id étranger/forgé rend vide ; un outil inconnu nommé par le
+  modèle est ignoré. `POST /api/ask` (auth + `aiIntensiveRateLimit` 10/h/user), **SSE
+  event-streaming** (status→tool→answer→done, `streamSSE`, lu client-side via fetch-stream
+  car EventSource ne POST pas). Réutilise le pool providers (patch-22) + `getActiveProvider`
+  pour `ai_runs` (`task='ask'`, 1er logger ai_runs **côté API** : `lib/ai-runs.ts`). UI
+  page `/dashboard/ask`. v1 stateless (pas d'historique), pas de cache (fraîcheur prime).
+  Pur api/ai/web + 0 migration. 📄 docs/ask-outrival.md
 - **Page Activity user-facing (feature ad-hoc)** — `/dashboard/activity` expose le
   travail de scraping fait pour l'org (transparence/rétention), distinct du feed
   Signals. Route `apps/api/src/routes/activity.ts` (`/api/activity`) : `/health`

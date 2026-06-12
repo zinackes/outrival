@@ -61,6 +61,15 @@ export { summarizeSource, SourceSummarySchema } from "./tasks/summarize-source";
 export type { SourceSummary, SourceSummaryInput } from "./tasks/summarize-source";
 export { generateBattleCard, BattleCardSchema } from "./tasks/battle-card";
 export type { BattleCardContent, BattleCardInput } from "./tasks/battle-card";
+// Ask Outrival — conversational intelligence (tool-agent planner + grounded synthesis)
+export {
+  AskPlanSchema,
+  AskAnswerSchema,
+  AskCitationSchema,
+  buildAskPlanPrompt,
+  buildAskSynthesisPrompt,
+} from "./tasks/ask";
+export type { AskPlan, AskAnswer, AskToolSpec, AskRosterEntry } from "./tasks/ask";
 export { evaluateSignificance } from "./filters/significance";
 export type { DiffInput, SignificanceResult } from "./filters/significance";
 export { extractSelfProfile, SelfProfileExtractionSchema } from "./tasks/extract-self-profile";

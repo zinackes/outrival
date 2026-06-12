@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   Radio,
   Activity,
+  Sparkles,
   Globe,
   LineChart,
   Columns3,
@@ -76,6 +77,7 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: "Analyze",
     items: [
+      { href: "/dashboard/ask", label: "Ask", icon: Sparkles },
       { href: "/dashboard/sector", label: "Sector", icon: Globe },
       { href: "/dashboard/trends", label: "Trends", icon: LineChart },
       { href: "/dashboard/compare", label: "Compare", icon: Columns3 },

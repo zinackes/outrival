@@ -37,6 +37,8 @@ interface SignalCardProps {
   wasAutoRead?: boolean;
   onActionChange?: (id: string, status: ActionStatus | null) => void;
   highlight?: boolean;
+  /** Keyboard-nav focus (j/k). Reuses the deep-link highlight ring. */
+  focused?: boolean;
 }
 
 // How long (ms) a card must stay substantially in view before it auto-reads.
@@ -81,12 +83,14 @@ export function SignalCard({
   wasAutoRead,
   onActionChange,
   highlight,
+  focused,
 }: SignalCardProps) {
   const [flagged, setFlagged] = useState(signal.aiFlagged ?? false);
   const [severityAdjusted, setSeverityAdjusted] = useState(false);
   const [actionStatus, setActionStatus] = useState<ActionStatus | null>(signal.actionStatus);
   const [showComments, setShowComments] = useState(false);
   const [commentCount, setCommentCount] = useState<number | null>(null);
+  const [trackOpen, setTrackOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   // Held in a ref so the parent re-creating the callback each render doesn't tear
   // down and rebuild the observer (which would keep resetting the dwell timer).
@@ -123,6 +127,21 @@ export function SignalCard({
       observer.disconnect();
     };
   }, [signal.id, signal.isRead]);
+
+  // Keyboard actions: signals-view dispatches a `signal-kbd` CustomEvent on this
+  // card's root when it's the focused card. Handled with real React state — far
+  // more reliable than simulating clicks/keydowns on a Radix trigger.
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    function onKbd(e: Event) {
+      const action = (e as CustomEvent<string>).detail;
+      if (action === "track") setTrackOpen(true);
+      else if (action === "discuss") setShowComments((v) => !v);
+    }
+    el.addEventListener("signal-kbd", onKbd as EventListener);
+    return () => el.removeEventListener("signal-kbd", onKbd as EventListener);
+  }, []);
 
   // Click anywhere on an auto-read card (outside its own controls) to bring it back.
   function handleCardClick(e: React.MouseEvent<HTMLDivElement>) {
@@ -173,12 +192,17 @@ export function SignalCard({
   return (
     <div
       ref={rootRef}
+      id={`signal-${signal.id}`}
+      tabIndex={-1}
+      role="article"
+      aria-label={`${signal.competitorName}: ${signal.severityOverride ?? signal.severity} ${signal.category} signal`}
       onClick={handleCardClick}
       className={cn(
-        "rounded-md border border-border bg-card p-[22px] transition-[box-shadow,background-color,opacity] duration-500",
+        "rounded-md border border-border bg-card p-[22px] outline-none transition-[box-shadow,background-color,opacity] duration-500",
         signal.isRead && "opacity-80",
         canRevert && "cursor-pointer hover:opacity-90",
-        highlight && "ring-2 ring-primary/70 bg-primary/[0.05]",
+        (highlight || focused) && "ring-2 ring-primary/70",
+        highlight && "bg-primary/[0.05]",
       )}
     >
       <div className="flex items-center gap-3 mb-3.5 flex-wrap">
@@ -239,7 +263,12 @@ export function SignalCard({
                   <span className="block size-2 rounded-full bg-current" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent>Mark as read</TooltipContent>
+              <TooltipContent className="flex items-center gap-1.5">
+                Mark as read
+                <kbd className="rounded-sm border border-border/60 px-1 font-mono text-meta">
+                  R
+                </kbd>
+              </TooltipContent>
             </Tooltip>
           ) : (
             <span className="size-2 rounded-full bg-primary" />
@@ -258,7 +287,12 @@ export function SignalCard({
                 <span className="block size-2 rounded-full border border-current" />
               </button>
             </TooltipTrigger>
-            <TooltipContent>Read automatically · mark unread</TooltipContent>
+            <TooltipContent className="flex items-center gap-1.5">
+              Read automatically · mark unread
+              <kbd className="rounded-sm border border-border/60 px-1 font-mono text-meta">
+                R
+              </kbd>
+            </TooltipContent>
           </Tooltip>
         )}
       </div>
@@ -345,7 +379,7 @@ export function SignalCard({
           </Button>
         </div>
         <div className="flex items-center gap-1.5">
-          <DropdownMenu>
+          <DropdownMenu open={trackOpen} onOpenChange={setTrackOpen}>
             <DropdownMenuTrigger asChild>
               <Button
                 variant={actionStatus ? "outline" : "ghost"}

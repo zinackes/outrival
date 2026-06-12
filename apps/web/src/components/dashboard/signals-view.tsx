@@ -11,6 +11,7 @@ import {
   X,
   ChevronDown,
   ArrowUpDown,
+  Keyboard,
 } from "lucide-react";
 import { startOfWeek, endOfWeek } from "date-fns";
 import { toast } from "sonner";
@@ -35,8 +36,10 @@ import { cn } from "@/lib/utils";
 import { feedItemMotion } from "@/lib/motion";
 import { PageHead } from "./page-head";
 import { SignalCard } from "./signal-card";
+import { ShortcutsHelp } from "./shortcuts-help";
 import { ListRowsSkeleton } from "./skeletons";
 import { ListError } from "@/components/outrival/list-error";
+import { useListKeyboardNav } from "@/hooks/use-list-keyboard-nav";
 
 type Sev = Signal["severity"];
 type QuickView = "all" | "alerts" | "unread" | "week" | "critical" | "actions";
@@ -90,7 +93,20 @@ export function SignalsView() {
   // Signals read automatically by dwell (vs. an explicit click / "Mark all read").
   // Only these can be reverted to unread by clicking the card.
   const [autoReadIds, setAutoReadIds] = useState<Set<string>>(new Set());
+  // Batch open/close lifted here (was BatchGroupCard-local) so keyboard nav knows
+  // which member cards are visible and can traverse into an expanded group.
+  const [openBatches, setOpenBatches] = useState<Set<string>>(new Set());
+  const [helpOpen, setHelpOpen] = useState(false);
   const focusedRef = useRef<string | null>(null);
+
+  function toggleBatch(batchId: string) {
+    setOpenBatches((prev) => {
+      const next = new Set(prev);
+      if (next.has(batchId)) next.delete(batchId);
+      else next.add(batchId);
+      return next;
+    });
+  }
 
   const focusId = searchParams.get("focus");
   const quickView = (searchParams.get("view") as QuickView) || "all";
@@ -207,11 +223,38 @@ export function SignalsView() {
   }
 
   async function markAllRead() {
-    const unread = (signals ?? []).filter((s) => !s.isRead);
-    await Promise.all(unread.map((s) => api.markSignalRead(s.id)));
+    const unreadIds = (signals ?? []).filter((s) => !s.isRead).map((s) => s.id);
+    if (unreadIds.length === 0) return;
+    const idSet = new Set(unreadIds);
+    // Optimistic: flip them all read locally, then reconcile with the server.
     setSignals((prev) =>
-      prev ? prev.map((s) => ({ ...s, isRead: true })) : prev,
+      prev ? prev.map((s) => (idSet.has(s.id) ? { ...s, isRead: true } : s)) : prev,
     );
+    toast.success(
+      `${unreadIds.length} signal${unreadIds.length > 1 ? "s" : ""} marked read`,
+      {
+        action: {
+          label: "Undo",
+          onClick: () => {
+            setSignals((prev) =>
+              prev
+                ? prev.map((s) =>
+                    idSet.has(s.id) ? { ...s, isRead: false } : s,
+                  )
+                : prev,
+            );
+            Promise.all(
+              unreadIds.map((id) => api.markSignalRead(id, false)),
+            ).catch(() => toast.error("Couldn't undo. Some signals stay read."));
+          },
+        },
+      },
+    );
+    try {
+      await Promise.all(unreadIds.map((id) => api.markSignalRead(id)));
+    } catch {
+      toast.error("Couldn't mark all read. Try again.");
+    }
   }
 
   // Intel → action loop (Phase B): SignalCard persists the status; keep the local
@@ -290,6 +333,93 @@ export function SignalsView() {
         : it,
     );
   }, [filtered]);
+
+  // Deep-linking to a batched member (?focus=) opens its group so the scroll-into-
+  // view target exists (mirrors the old BatchGroupCard-local auto-open).
+  useEffect(() => {
+    if (!focusId) return;
+    const batch = feedItems.find(
+      (it) => it.kind === "batch" && it.signals.some((s) => s.id === focusId),
+    );
+    if (batch && batch.kind === "batch")
+      setOpenBatches((prev) =>
+        prev.has(batch.batchId) ? prev : new Set(prev).add(batch.batchId),
+      );
+  }, [focusId, feedItems]);
+
+  // Keyboard nav (j/k) traverses single cards plus the members of any open batch,
+  // in feed order. A collapsed batch is one focusable header (Enter expands it).
+  const navIds = useMemo(() => {
+    const out: string[] = [];
+    for (const it of feedItems) {
+      if (it.kind === "single") out.push(it.signal.id);
+      else {
+        out.push(`batch:${it.batchId}`);
+        if (openBatches.has(it.batchId))
+          for (const s of it.signals) out.push(s.id);
+      }
+    }
+    return out;
+  }, [feedItems, openBatches]);
+
+  const elementId = useCallback(
+    (id: string) =>
+      id.startsWith("batch:") ? `signal-batch-${id.slice(6)}` : `signal-${id}`,
+    [],
+  );
+
+  // App-specific keys; nav (j/k/arrows/Esc) is owned by the hook. Defined inline
+  // (the hook reads the latest via a ref) so it always sees current state.
+  function onKey(key: string, fid: string | null): boolean | void {
+    if (key === "?") {
+      setHelpOpen(true);
+      return true;
+    }
+    if (key === "/") {
+      document.getElementById("signals-search")?.focus();
+      return true;
+    }
+    if (key >= "1" && key <= "6") {
+      const v = QUICK_VIEWS[Number(key) - 1];
+      if (v) setParam({ view: v.value === "all" ? null : v.value });
+      return true;
+    }
+    if (!fid) return false;
+    if (fid.startsWith("batch:")) {
+      if (key === "Enter" || key === "o") {
+        toggleBatch(fid.slice(6));
+        return true;
+      }
+      return false;
+    }
+    const sig = (signals ?? []).find((s) => s.id === fid);
+    if (!sig) return false;
+    switch (key) {
+      case "Enter":
+      case "o":
+        router.push(`/dashboard/competitors/${sig.competitorId}`);
+        return true;
+      case "r":
+        if (sig.isRead) markUnread(fid);
+        else markRead(fid);
+        return true;
+      case "t":
+      case "c":
+        // The card owns these (open its Track dropdown / toggle comments) via
+        // real React state. Dispatch a CustomEvent on its root; the card listens.
+        document
+          .getElementById(`signal-${fid}`)
+          ?.dispatchEvent(
+            new CustomEvent("signal-kbd", {
+              detail: key === "t" ? "track" : "discuss",
+            }),
+          );
+        return true;
+    }
+    return false;
+  }
+
+  const { focusedId } = useListKeyboardNav({ ids: navIds, elementId, onKey });
 
   const quickCounts = useMemo(() => {
     if (!signals) return { all: 0, alerts: 0, unread: 0, week: 0, critical: 0, actions: 0 };
@@ -547,12 +677,30 @@ export function SignalsView() {
             className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
           />
           <Input
+            id="signals-search"
             placeholder="Search…"
             value={query}
             onChange={(e) => setParam({ q: e.target.value || null })}
             className="h-8 pl-8 text-sm w-48"
           />
         </div>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Keyboard shortcuts"
+              onClick={() => setHelpOpen(true)}
+            >
+              <Keyboard size={15} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            Keyboard shortcuts ·{" "}
+            <kbd className="font-mono">?</kbd>
+          </TooltipContent>
+        </Tooltip>
       </div>
 
       {activeFilterCount > 0 && (
@@ -611,11 +759,7 @@ export function SignalsView() {
           <AnimatePresence initial={false} mode="popLayout">
             {feedItems.map((item) =>
               item.kind === "single" ? (
-                <motion.div
-                  key={item.signal.id}
-                  id={`signal-${item.signal.id}`}
-                  {...feedItemMotion}
-                >
+                <motion.div key={item.signal.id} {...feedItemMotion}>
                   <SignalCard
                     signal={item.signal}
                     onMarkRead={markRead}
@@ -624,15 +768,18 @@ export function SignalsView() {
                     wasAutoRead={autoReadIds.has(item.signal.id)}
                     onActionChange={onActionChange}
                     highlight={item.signal.id === highlightId}
+                    focused={focusedId === item.signal.id}
                   />
                 </motion.div>
               ) : (
                 <motion.div key={item.batchId} {...feedItemMotion}>
                   <BatchGroupCard
                     item={item}
+                    open={openBatches.has(item.batchId)}
+                    onToggleOpen={() => toggleBatch(item.batchId)}
+                    focusedId={focusedId}
                     autoReadIds={autoReadIds}
                     highlightId={highlightId}
-                    openSignalId={focusId}
                     onMarkRead={markRead}
                     onAutoRead={autoRead}
                     onMarkUnread={markUnread}
@@ -644,6 +791,8 @@ export function SignalsView() {
           </AnimatePresence>
         </div>
       )}
+
+      <ShortcutsHelp open={helpOpen} onOpenChange={setHelpOpen} />
     </div>
   );
 }
@@ -652,28 +801,28 @@ export function SignalsView() {
 // the member signals. Replaces N near-duplicate cards in the feed.
 function BatchGroupCard({
   item,
+  open,
+  onToggleOpen,
+  focusedId,
   autoReadIds,
   highlightId,
-  openSignalId,
   onMarkRead,
   onAutoRead,
   onMarkUnread,
   onActionChange,
 }: {
   item: Extract<FeedItem, { kind: "batch" }>;
+  // Open/close is controlled by the parent so keyboard nav can traverse members.
+  open: boolean;
+  onToggleOpen: () => void;
+  focusedId: string | null;
   autoReadIds: Set<string>;
   highlightId: string | null;
-  // When a ?focus=<id> targets a member, mount the batch expanded so the parent's
-  // scroll-into-view finds the card instead of failing silently on a collapsed batch.
-  openSignalId?: string | null;
   onMarkRead: (id: string) => void;
   onAutoRead: (id: string) => void;
   onMarkUnread: (id: string) => void;
   onActionChange: (id: string, status: ActionStatus | null) => void;
 }) {
-  const [open, setOpen] = useState(
-    () => openSignalId != null && item.signals.some((s) => s.id === openSignalId),
-  );
   const first = item.signals[0]!;
   const maxSev = item.signals.reduce<Sev>(
     (m, s) => (SEV_RANK[s.severity] > SEV_RANK[m] ? s.severity : m),
@@ -685,8 +834,16 @@ function BatchGroupCard({
     <Card className="overflow-hidden">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-3 p-[18px] text-left transition-colors hover:bg-muted/30"
+        id={`signal-batch-${item.batchId}`}
+        tabIndex={-1}
+        aria-expanded={open}
+        aria-label={`${first.competitorName}: ${item.signals.length} similar ${first.category} signals`}
+        onClick={onToggleOpen}
+        className={cn(
+          "flex w-full items-center gap-3 p-[18px] text-left outline-none transition-colors hover:bg-muted/30",
+          focusedId === `batch:${item.batchId}` &&
+            "ring-2 ring-inset ring-primary/70",
+        )}
       >
         <span className={cn("size-2 shrink-0 rounded-full", SEV_DOT[maxSev])} />
         <div className="min-w-0 flex-1">
@@ -717,17 +874,17 @@ function BatchGroupCard({
       {open && (
         <div className="flex flex-col gap-2.5 border-t border-border bg-muted/20 p-2.5">
           {item.signals.map((s) => (
-            <div key={s.id} id={`signal-${s.id}`}>
-              <SignalCard
-                signal={s}
-                onMarkRead={onMarkRead}
-                onAutoRead={onAutoRead}
-                onMarkUnread={onMarkUnread}
-                wasAutoRead={autoReadIds.has(s.id)}
-                onActionChange={onActionChange}
-                highlight={s.id === highlightId}
-              />
-            </div>
+            <SignalCard
+              key={s.id}
+              signal={s}
+              onMarkRead={onMarkRead}
+              onAutoRead={onAutoRead}
+              onMarkUnread={onMarkUnread}
+              wasAutoRead={autoReadIds.has(s.id)}
+              onActionChange={onActionChange}
+              highlight={s.id === highlightId}
+              focused={focusedId === s.id}
+            />
           ))}
         </div>
       )}

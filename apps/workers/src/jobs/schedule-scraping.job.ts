@@ -14,7 +14,7 @@ async function selectWithinPlanCap<T extends DueMonitor>(due: T[]): Promise<T[]>
   const competitorIds = [...new Set(due.map((m) => m.competitorId))];
   const comps = await db.query.competitors.findMany({
     where: inArray(competitors.id, competitorIds),
-    columns: { id: true, orgId: true, type: true },
+    columns: { id: true, orgId: true, type: true, monitoringPaused: true },
   });
   const byId = new Map(comps.map((c) => [c.id, c]));
   const orgIds = [...new Set(comps.map((c) => c.orgId))];
@@ -51,6 +51,7 @@ async function selectWithinPlanCap<T extends DueMonitor>(due: T[]): Promise<T[]>
   return due.filter((m) => {
     const comp = byId.get(m.competitorId);
     if (!comp) return false; // competitor deleted out from under the monitor — skip
+    if (comp.monitoringPaused) return false; // user-paused → skip every source
     return comp.type === "self" || inCap.has(comp.id);
   });
 }

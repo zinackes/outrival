@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { and, desc, eq, gte, isNull, isNotNull, ne, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, isNotNull, ne, inArray, sql } from "drizzle-orm";
 import { tasks } from "@trigger.dev/sdk/v3";
 import {
   competitors,
@@ -11,9 +11,14 @@ import {
   jobPostings,
   reviews,
   techStackEntries,
+  organizations,
+  products,
+  productCompetitors,
 } from "@outrival/db";
+import { scoreOverlap } from "@outrival/ai";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
+import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
 import { associateCompetitorWithPrimaryProduct } from "../lib/products";
 import { analyticsQuery } from "../lib/analytics-safe";
@@ -29,6 +34,7 @@ import {
   PRICING_STATUSES,
   isReviewSource,
   validateMonitorUrl,
+  validatePublicUrl,
   aggregateFreshness,
   type SourceType,
   type MonitorFrequency,
@@ -210,6 +216,11 @@ competitorsRouter.post("/", async (c) => {
   const parsed = CreateCompetitorSchema.safeParse(body);
   if (!parsed.success) return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
 
+  // SSRF: this URL becomes the homepage monitor target the scraper fetches
+  // directly, so reject IP literals / internal hosts before it's persisted.
+  const safeUrl = validatePublicUrl(parsed.data.url);
+  if (!safeUrl.ok) return c.json({ error: "invalid_url", reason: safeUrl.error }, 400);
+
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
 
@@ -227,7 +238,7 @@ competitorsRouter.post("/", async (c) => {
     .values({
       orgId,
       name: parsed.data.name,
-      url: parsed.data.url,
+      url: safeUrl.url,
       description: parsed.data.description ?? null,
     })
     .returning();
@@ -804,7 +815,7 @@ competitorsRouter.post("/:id/pricing/redetect", async (c) => {
   return c.json({ ok: true, rescraped: Boolean(pricingMonitor) });
 });
 
-competitorsRouter.post("/:id/refresh-summary", async (c) => {
+competitorsRouter.post("/:id/refresh-summary", aiIntensiveRateLimit, async (c) => {
   const id = c.req.param("id");
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
@@ -816,6 +827,223 @@ competitorsRouter.post("/:id/refresh-summary", async (c) => {
     competitorId: id,
   });
   return c.json({ runId: handle.id });
+});
+
+// Edit the competitor's display fields (kebab → Edit details). Name/url/category/
+// description are user-correctable — scrapes don't own these. url is SSRF-validated
+// below (it's what the homepage monitor fetches), the rest are free text.
+const UpdateCompetitorSchema = z
+  .object({
+    name: z.string().min(1).max(200).optional(),
+    url: z.string().url().max(2048).optional(),
+    category: z.string().max(100).nullable().optional(),
+    description: z.string().max(2000).nullable().optional(),
+  })
+  .refine((b) => Object.keys(b).length > 0, { message: "No fields to update" });
+
+competitorsRouter.patch("/:id", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor || competitor.deletedAt) return c.json({ error: "Not found" }, 404);
+
+  const parsed = UpdateCompetitorSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
+
+  // SSRF: the scraper fetches competitor.url directly, so host-check any new url
+  // (IP literals / internal hosts) before it's persisted.
+  if (parsed.data.url !== undefined) {
+    const safeUrl = validatePublicUrl(parsed.data.url);
+    if (!safeUrl.ok) return c.json({ error: "invalid_url", reason: safeUrl.error }, 400);
+    parsed.data.url = safeUrl.url;
+  }
+
+  const patch: Record<string, unknown> = { updatedAt: new Date() };
+  for (const k of ["name", "url", "category", "description"] as const) {
+    if (parsed.data[k] !== undefined) patch[k] = parsed.data[k];
+  }
+
+  const [updated] = await db
+    .update(competitors)
+    .set(patch)
+    .where(eq(competitors.id, id))
+    .returning();
+  return c.json({ competitor: updated });
+});
+
+// Pause / resume monitoring (kebab → Pause). The scheduler skips a paused
+// competitor's monitors without mutating their isActive flags, so resuming keeps
+// each source's prior state. Per-source "Run now" still works while paused.
+const MonitoringSchema = z.object({ paused: z.boolean() });
+
+competitorsRouter.patch("/:id/monitoring", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor || competitor.deletedAt) return c.json({ error: "Not found" }, 404);
+
+  const parsed = MonitoringSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: "Invalid body" }, 400);
+
+  await db
+    .update(competitors)
+    .set({ monitoringPaused: parsed.data.paused, updatedAt: new Date() })
+    .where(eq(competitors.id, id));
+  return c.json({ ok: true, paused: parsed.data.paused });
+});
+
+// Mute / unmute real-time alerts (kebab → Mute alerts). Signals are still tracked
+// and surface in the feed + digests; generate-signal just skips the immediate
+// send-alert (email/Slack/in-app) when muted.
+const AlertsSchema = z.object({ muted: z.boolean() });
+
+competitorsRouter.patch("/:id/alerts", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor || competitor.deletedAt) return c.json({ error: "Not found" }, 404);
+
+  const parsed = AlertsSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: "Invalid body" }, 400);
+
+  await db
+    .update(competitors)
+    .set({ alertsMuted: parsed.data.muted, updatedAt: new Date() })
+    .where(eq(competitors.id, id));
+  return c.json({ ok: true, muted: parsed.data.muted });
+});
+
+// Recompute the overlap score (kebab → Recompute overlap). Re-scores this single
+// competitor against the org's current product profile — useful after the profile
+// changed. Synchronous AI call (like discovery), reusing the discovery scorer.
+competitorsRouter.post("/:id/recompute-overlap", aiIntensiveRateLimit, async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor || competitor.deletedAt) return c.json({ error: "Not found" }, 404);
+  if (!competitor.url) return c.json({ error: "no_url" }, 400);
+
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, orgId),
+    columns: { productProfile: true },
+  });
+  if (!org?.productProfile) return c.json({ error: "missing_profile" }, 400);
+
+  let scored: Awaited<ReturnType<typeof scoreOverlap>>;
+  try {
+    scored = await scoreOverlap(org.productProfile, [
+      { url: competitor.url, title: competitor.name, snippet: competitor.description ?? "" },
+    ]);
+  } catch {
+    return c.json({ error: "scoring_failed" }, 502);
+  }
+  const overlapScore = scored[0]?.overlapScore ?? null;
+
+  await db
+    .update(competitors)
+    .set({ overlapScore, updatedAt: new Date() })
+    .where(eq(competitors.id, id));
+  return c.json({ overlapScore, reason: scored[0]?.reason ?? null });
+});
+
+// Product memberships for the "Assign to products" dialog (patch-28): every org
+// product plus the subset this competitor is currently linked to. Attach/detach
+// reuse the products router endpoints (POST/DELETE /products/:pid/competitors/:cid).
+competitorsRouter.get("/:id/products", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor || competitor.deletedAt) return c.json({ error: "Not found" }, 404);
+
+  const all = await db
+    .select({
+      id: products.id,
+      name: products.name,
+      isPrimary: products.isPrimary,
+      status: products.status,
+    })
+    .from(products)
+    .where(eq(products.orgId, orgId))
+    .orderBy(asc(products.position), asc(products.name));
+
+  const links = await db
+    .select({
+      productId: productCompetitors.productId,
+      isSpecific: productCompetitors.isSpecific,
+    })
+    .from(productCompetitors)
+    .innerJoin(products, eq(products.id, productCompetitors.productId))
+    .where(and(eq(productCompetitors.competitorId, id), eq(products.orgId, orgId)));
+
+  return c.json({ products: all, links });
+});
+
+// CSV export of this competitor's signals (kebab → Export signals). Returns a
+// downloadable text/csv body, not JSON — the client triggers a Blob download.
+function csvCell(value: unknown): string {
+  let s = value == null ? "" : String(value);
+  // CSV/formula injection: a cell starting with = + - @ (or tab/CR) is executed
+  // as a formula by Excel/Sheets. Prefix a single quote to neutralize it.
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+competitorsRouter.get("/:id/export", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor || competitor.deletedAt) return c.json({ error: "Not found" }, 404);
+
+  const rows = await db
+    .select({
+      detectedAt: signals.createdAt,
+      severity: signals.severity,
+      category: signals.category,
+      insight: signals.insight,
+      soWhat: signals.soWhat,
+      recommendedAction: signals.recommendedAction,
+    })
+    .from(signals)
+    .where(eq(signals.competitorId, id))
+    .orderBy(desc(signals.createdAt))
+    .limit(1000);
+
+  const header = ["detected_at", "severity", "category", "insight", "so_what", "recommended_action"];
+  const lines = [header.join(",")];
+  for (const r of rows) {
+    lines.push(
+      [
+        r.detectedAt instanceof Date ? r.detectedAt.toISOString() : String(r.detectedAt),
+        r.severity,
+        r.category,
+        r.insight,
+        r.soWhat,
+        r.recommendedAction,
+      ]
+        .map(csvCell)
+        .join(","),
+    );
+  }
+
+  const slug = competitor.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "competitor";
+  return new Response(lines.join("\n"), {
+    headers: {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": `attachment; filename="${slug}-signals.csv"`,
+    },
+  });
 });
 
 competitorsRouter.delete("/:id", async (c) => {

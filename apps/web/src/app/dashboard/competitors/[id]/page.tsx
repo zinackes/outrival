@@ -34,6 +34,14 @@ import {
   Users,
   Cpu,
   Percent,
+  Pencil,
+  Pause,
+  Bell,
+  BellOff,
+  Download,
+  Link2,
+  Boxes,
+  Crosshair,
 } from "lucide-react";
 import {
   Dialog,
@@ -85,6 +93,9 @@ import { ListError } from "@/components/outrival/list-error";
 import { toastApiError } from "@/lib/error-helpers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -461,6 +472,127 @@ export default function CompetitorDetailPage({ params }: Props) {
     }
   }
 
+  // Kebab → Edit details. Patches name/url/category/description, then merges the
+  // returned row into local state (and refreshes the global list dot/name).
+  async function saveCompetitorDetails(patch: {
+    name?: string;
+    url?: string;
+    category?: string | null;
+    description?: string | null;
+  }) {
+    const { competitor } = await api.updateCompetitor(id, patch);
+    setData((d) => (d ? { ...d, competitor } : d));
+    emitCompetitorsChanged();
+    toast.success("Competitor updated");
+  }
+
+  // Kebab → Pause / Resume monitoring. Optimistic local flip; the scheduler honours
+  // the flag on its next cycle.
+  async function toggleMonitoringPaused() {
+    if (!data) return;
+    const next = !data.competitor.monitoringPaused;
+    try {
+      await api.setCompetitorMonitoring(id, next);
+      setData((d) => (d ? { ...d, competitor: { ...d.competitor, monitoringPaused: next } } : d));
+      toast.success(next ? "Monitoring paused" : "Monitoring resumed", {
+        description: next
+          ? "All sources frozen — no scheduled scrapes until you resume."
+          : "Sources will scrape on their normal schedule again.",
+      });
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't update monitoring" });
+    }
+  }
+
+  // Kebab → Mute / Unmute alerts. Signals keep flowing into the feed; only the
+  // real-time alert (email/Slack/in-app) is suppressed while muted.
+  async function toggleAlertsMuted() {
+    if (!data) return;
+    const next = !data.competitor.alertsMuted;
+    try {
+      await api.setCompetitorAlerts(id, next);
+      setData((d) => (d ? { ...d, competitor: { ...d.competitor, alertsMuted: next } } : d));
+      toast.success(next ? "Alerts muted" : "Alerts unmuted", {
+        description: next
+          ? "Signals are still tracked — you just won't get real-time alerts."
+          : "Real-time alerts re-enabled for this competitor.",
+      });
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't update alerts" });
+    }
+  }
+
+  // Kebab → Recompute overlap. Re-scores this competitor against the current
+  // product profile (synchronous AI call, a few seconds) and updates the header badge.
+  async function recomputeOverlap() {
+    const toastId = toast.loading("Recomputing overlap…");
+    try {
+      const { overlapScore } = await api.recomputeCompetitorOverlap(id);
+      setData((d) => (d ? { ...d, competitor: { ...d.competitor, overlapScore } } : d));
+      emitCompetitorsChanged();
+      toast.success("Overlap recomputed", {
+        id: toastId,
+        description:
+          overlapScore != null ? `New overlap score: ${Math.round(overlapScore)}` : undefined,
+      });
+    } catch (e) {
+      if ((e as { code?: string })?.code === "missing_profile") {
+        toast.error("No product profile yet", {
+          id: toastId,
+          description: "Finish onboarding so we can score competitors against your product.",
+        });
+        return;
+      }
+      toast.dismiss(toastId);
+      toastApiError(e, { title: "Couldn't recompute overlap" });
+    }
+  }
+
+  // Kebab → Refresh AI summary (same job as the Summary card's Refresh button).
+  async function refreshSummaryFromMenu() {
+    try {
+      await api.refreshCompetitorSummary(id);
+      toast.info("Summary refresh started", { description: "Regenerating the AI summary…" });
+      setTimeout(() => refresh(), 6000);
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't refresh the summary" });
+    }
+  }
+
+  // Kebab → Re-detect pricing. Hands pricing back to auto-detection + re-scrapes.
+  async function redetectPricingFromMenu() {
+    try {
+      const { rescraped } = await api.redetectCompetitorPricing(id);
+      toast.success("Pricing handed back to auto-detection", {
+        description: rescraped ? "Re-scraping the pricing page now…" : undefined,
+      });
+      await refresh();
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't re-detect pricing" });
+    }
+  }
+
+  // Kebab → Export signals as CSV (client-side Blob download).
+  async function exportSignals() {
+    try {
+      const blob = await api.exportCompetitorSignals(id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const name = (data?.competitor.name ?? "competitor")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "");
+      a.download = `${name || "competitor"}-signals.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't export signals" });
+    }
+  }
+
   async function enableMonitor(sourceType: SourceType, url?: string) {
     try {
       await api.addCompetitorMonitor(id, sourceType, url ? { url } : undefined);
@@ -608,6 +740,13 @@ export default function CompetitorDetailPage({ params }: Props) {
           competitor={competitor}
           lastRunMs={lastRunMs}
           onDelete={() => setShowDelete(true)}
+          onEditSave={saveCompetitorDetails}
+          onToggleMonitoring={toggleMonitoringPaused}
+          onToggleMute={toggleAlertsMuted}
+          onRecomputeOverlap={recomputeOverlap}
+          onRefreshSummary={refreshSummaryFromMenu}
+          onRedetectPricing={redetectPricingFromMenu}
+          onExport={exportSignals}
         />
 
         <MonitorSources
@@ -824,12 +963,44 @@ function Header({
   competitor,
   lastRunMs,
   onDelete,
+  onEditSave,
+  onToggleMonitoring,
+  onToggleMute,
+  onRecomputeOverlap,
+  onRefreshSummary,
+  onRedetectPricing,
+  onExport,
 }: {
   competitor: Competitor;
   lastRunMs: number;
   onDelete: () => void;
+  onEditSave: (patch: {
+    name?: string;
+    url?: string;
+    category?: string | null;
+    description?: string | null;
+  }) => Promise<void>;
+  onToggleMonitoring: () => void;
+  onToggleMute: () => void;
+  onRecomputeOverlap: () => void | Promise<void>;
+  onRefreshSummary: () => void;
+  onRedetectPricing: () => void;
+  onExport: () => void;
 }) {
+  const [editOpen, setEditOpen] = useState(false);
+  const [assignOpen, setAssignOpen] = useState(false);
+
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      toast.success("Link copied to clipboard");
+    } catch {
+      toast.error("Couldn't copy the link");
+    }
+  }
+
   return (
+    <>
     <div className="flex items-start md:items-center justify-between gap-4 flex-wrap">
       <div className="flex items-start gap-3 min-w-0">
         <Link
@@ -849,11 +1020,27 @@ function Header({
                 {competitor.category}
               </Badge>
             )}
+            {competitor.monitoringPaused && (
+              <Badge
+                variant="outline"
+                className="gap-1 text-meta uppercase tracking-wide font-medium text-muted-foreground"
+              >
+                <Pause size={11} /> Paused
+              </Badge>
+            )}
+            {competitor.alertsMuted && (
+              <Badge
+                variant="outline"
+                className="gap-1 text-meta uppercase tracking-wide font-medium text-muted-foreground"
+              >
+                <BellOff size={11} /> Muted
+              </Badge>
+            )}
             {competitor.overlapScore != null && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button type="button" aria-label="About overlap" className="cursor-help">
-                    <Badge variant="outline" className="gap-1.5 py-1 font-mono text-micro tracking-widest">
+                    <Badge variant="outline" className="gap-1.5 py-1 font-mono text-meta tracking-widest">
                       <span className="h-2 w-16 overflow-hidden rounded border border-border bg-background">
                         <span
                           className="block h-full rounded bg-primary"
@@ -907,7 +1094,61 @@ function Header({
               <MoreHorizontal size={14} />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
+          <DropdownMenuContent align="end" className="w-60">
+            {competitor.url && (
+              <DropdownMenuItem
+                onClick={() => window.open(competitor.url, "_blank", "noopener,noreferrer")}
+              >
+                <ExternalLink size={13} /> Open website
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem onClick={copyLink}>
+              <Link2 size={13} /> Copy link
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setEditOpen(true)}>
+              <Pencil size={13} /> Edit details
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setAssignOpen(true)}>
+              <Boxes size={13} /> Assign to products
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onRefreshSummary}>
+              <Sparkles size={13} /> Refresh AI summary
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onRedetectPricing}>
+              <RefreshCw size={13} /> Re-detect pricing
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onRecomputeOverlap()}>
+              <Crosshair size={13} /> Recompute overlap
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onExport}>
+              <Download size={13} /> Export signals (CSV)
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onToggleMonitoring}>
+              {competitor.monitoringPaused ? (
+                <>
+                  <Play size={13} /> Resume monitoring
+                </>
+              ) : (
+                <>
+                  <Pause size={13} /> Pause monitoring
+                </>
+              )}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onToggleMute}>
+              {competitor.alertsMuted ? (
+                <>
+                  <Bell size={13} /> Unmute alerts
+                </>
+              ) : (
+                <>
+                  <BellOff size={13} /> Mute alerts
+                </>
+              )}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onDelete} className="text-critical focus:text-critical">
               <Trash2 size={13} /> Delete competitor
             </DropdownMenuItem>
@@ -915,6 +1156,254 @@ function Header({
         </DropdownMenu>
       </div>
     </div>
+    <EditDetailsDialog
+      open={editOpen}
+      onOpenChange={setEditOpen}
+      competitor={competitor}
+      onSave={onEditSave}
+    />
+    <AssignProductsDialog open={assignOpen} onOpenChange={setAssignOpen} competitor={competitor} />
+    </>
+  );
+}
+
+function EditDetailsDialog({
+  open,
+  onOpenChange,
+  competitor,
+  onSave,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  competitor: Competitor;
+  onSave: (patch: {
+    name?: string;
+    url?: string;
+    category?: string | null;
+    description?: string | null;
+  }) => Promise<void>;
+}) {
+  const [name, setName] = useState(competitor.name);
+  const [url, setUrl] = useState(competitor.url ?? "");
+  const [category, setCategory] = useState(competitor.category ?? "");
+  const [description, setDescription] = useState(competitor.description ?? "");
+  const [saving, setSaving] = useState(false);
+
+  // Re-seed the form from the live competitor each time the dialog opens.
+  useEffect(() => {
+    if (!open) return;
+    setName(competitor.name);
+    setUrl(competitor.url ?? "");
+    setCategory(competitor.category ?? "");
+    setDescription(competitor.description ?? "");
+  }, [open, competitor]);
+
+  async function submit() {
+    const patch: {
+      name?: string;
+      url?: string;
+      category?: string | null;
+      description?: string | null;
+    } = {};
+    const trimmedName = name.trim();
+    if (trimmedName && trimmedName !== competitor.name) patch.name = trimmedName;
+    const trimmedUrl = url.trim();
+    if (trimmedUrl && trimmedUrl !== (competitor.url ?? "")) patch.url = trimmedUrl;
+    const trimmedCat = category.trim();
+    if (trimmedCat !== (competitor.category ?? "")) patch.category = trimmedCat || null;
+    const trimmedDesc = description.trim();
+    if (trimmedDesc !== (competitor.description ?? "")) patch.description = trimmedDesc || null;
+
+    if (Object.keys(patch).length === 0) {
+      onOpenChange(false);
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave(patch);
+      onOpenChange(false);
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't update the competitor" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit competitor</DialogTitle>
+          <DialogDescription>
+            Correct the name, website, category, or description. Scrapes won't overwrite these.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="cmp-name">Name</Label>
+            <Input id="cmp-name" value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="cmp-url">Website URL</Label>
+            <Input
+              id="cmp-url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://…"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="cmp-category">Category</Label>
+            <Input
+              id="cmp-category"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              placeholder="e.g. CRM, Analytics…"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="cmp-description">Description</Label>
+            <Textarea
+              id="cmp-description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={saving}>
+            Cancel
+          </Button>
+          <Button onClick={submit} disabled={saving || !name.trim()}>
+            {saving ? <Loader2 size={13} className="animate-spin" /> : null} Save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AssignProductsDialog({
+  open,
+  onOpenChange,
+  competitor,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  competitor: Competitor;
+}) {
+  const [products, setProducts] = useState<
+    Array<{ id: string; name: string; isPrimary: boolean; status: string }> | null
+  >(null);
+  const [linked, setLinked] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(false);
+  const [pending, setPending] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setLoading(true);
+    setProducts(null);
+    api
+      .getCompetitorProducts(competitor.id)
+      .then((res) => {
+        if (cancelled) return;
+        setProducts(res.products);
+        setLinked(new Set(res.links.map((l) => l.productId)));
+      })
+      .catch((e) => {
+        if (!cancelled) toastApiError(e, { title: "Couldn't load products" });
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, competitor.id]);
+
+  async function toggle(productId: string, next: boolean) {
+    setPending((p) => new Set(p).add(productId));
+    setLinked((s) => {
+      const n = new Set(s);
+      if (next) n.add(productId);
+      else n.delete(productId);
+      return n;
+    });
+    try {
+      if (next) await api.attachCompetitorToProduct(productId, competitor.id);
+      else await api.detachCompetitorFromProduct(productId, competitor.id);
+    } catch (e) {
+      // Revert the optimistic flip on failure.
+      setLinked((s) => {
+        const n = new Set(s);
+        if (next) n.delete(productId);
+        else n.add(productId);
+        return n;
+      });
+      toastApiError(e, { title: "Couldn't update the assignment" });
+    } finally {
+      setPending((p) => {
+        const n = new Set(p);
+        n.delete(productId);
+        return n;
+      });
+    }
+  }
+
+  const visible = products?.filter((p) => p.status !== "archived") ?? [];
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Assign to products</DialogTitle>
+          <DialogDescription>
+            Pick which of your products track {competitor.name}. Its signals show in each selected
+            product&apos;s feed.
+          </DialogDescription>
+        </DialogHeader>
+        {loading || !products ? (
+          <div className="flex justify-center py-6">
+            <Loader2 size={16} className="animate-spin text-muted-foreground" />
+          </div>
+        ) : visible.length === 0 ? (
+          <p className="py-4 text-sm text-muted-foreground">You don&apos;t have any products yet.</p>
+        ) : (
+          <div className="space-y-1">
+            {visible.map((p) => {
+              const checked = linked.has(p.id);
+              const isPending = pending.has(p.id);
+              return (
+                <label
+                  key={p.id}
+                  className="flex items-center gap-3 rounded-md px-2 py-2 hover:bg-accent cursor-pointer"
+                >
+                  <Checkbox
+                    checked={checked}
+                    disabled={isPending}
+                    onCheckedChange={(v) => toggle(p.id, v === true)}
+                  />
+                  <span className="flex-1 text-sm font-medium">{p.name}</span>
+                  {p.isPrimary && (
+                    <span className="text-meta uppercase tracking-wide text-muted-foreground">
+                      Primary
+                    </span>
+                  )}
+                  {isPending && <Loader2 size={12} className="animate-spin text-muted-foreground" />}
+                </label>
+              );
+            })}
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+            Done
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1246,7 +1735,7 @@ function SourceChip({
           {ageText}
         </p>
         {failed && m.lastError && (
-          <p className="px-2 pb-1.5 text-xs leading-relaxed text-critical/80 break-words">
+          <p className="px-2 pb-1.5 text-sm leading-relaxed text-critical/80 break-words">
             {friendlyScrapeError(m.lastError, m.sourceType)}
           </p>
         )}
@@ -1852,7 +2341,7 @@ function OverviewTab({
     return (
       <Card className="px-6 py-10 text-center border-dashed flex flex-col items-center gap-3">
         <p className="text-sm font-semibold text-foreground">Nothing captured yet</p>
-        <p className="text-dense text-muted-foreground max-w-md">
+        <p className="text-sm text-muted-foreground max-w-md">
           Once the homepage is scraped, this is where you&apos;ll see what this
           competitor says about itself — positioning, value props, customers and
           pricing — at a glance.
@@ -2020,7 +2509,7 @@ function ActivityTab({
     return (
       <Card className="px-6 py-10 text-center border-dashed flex flex-col items-center gap-2.5">
         <p className="text-sm font-semibold text-foreground">No activity yet</p>
-        <p className="text-dense text-muted-foreground max-w-md">
+        <p className="text-sm text-muted-foreground max-w-md">
           Activity will appear once a monitor detects a change. Scrape from the
           Monitors section above to start tracking.
         </p>
@@ -2127,7 +2616,7 @@ function MonitorEmptyState({
         <p className="text-sm font-semibold text-foreground">
           No {label} monitoring yet
         </p>
-        <p className="text-dense text-muted-foreground max-w-md">
+        <p className="text-sm text-muted-foreground max-w-md">
           This competitor isn&apos;t tracking {label} yet. Enable it to start
           capturing {label} data — we&apos;ll run the first scrape right away.
           Requires a plan that includes this source.
@@ -2163,7 +2652,7 @@ function MonitorEmptyState({
   return (
     <Card className="px-6 py-10 text-center border-dashed flex flex-col items-center gap-3">
       <p className="text-sm font-semibold text-foreground">No {label} data yet</p>
-      <p className="text-dense text-muted-foreground max-w-md">
+      <p className="text-sm text-muted-foreground max-w-md">
         {monitor.lastRunAt
           ? `Monitor was scraped ${formatDistanceToNow(new Date(monitor.lastRunAt), { addSuffix: true })}, but no ${label} data was extracted. The source page may not expose this data.`
           : `This monitor has never been scraped. Run it now to extract ${label} data.`}
@@ -2935,13 +3424,13 @@ function HiringTab({
                         href={role.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-dense font-medium hover:underline underline-offset-2 inline-flex items-center gap-1"
+                        className="text-sm font-medium hover:underline underline-offset-2 inline-flex items-center gap-1"
                       >
                         {role.title}
                         <ExternalLink size={12} className="text-muted-foreground shrink-0" />
                       </a>
                     ) : (
-                      <span className="text-dense font-medium">{role.title}</span>
+                      <span className="text-sm font-medium">{role.title}</span>
                     )}
                   </div>
                   <div className="mt-0.5 text-xs text-muted-foreground">
@@ -3061,7 +3550,7 @@ function ReviewEnableState({
     <Card className="px-6 py-8 border-dashed flex flex-col items-center gap-4 text-center">
       <div className="flex flex-col items-center gap-1">
         <p className="text-sm font-semibold text-foreground">Track reviews</p>
-        <p className="text-dense text-muted-foreground max-w-md">
+        <p className="text-sm text-muted-foreground max-w-md">
           Pick a review source and paste this competitor&apos;s review-page URL. We&apos;ll
           capture ratings, praises and complaints — and run the first scrape right away.
         </p>
@@ -3560,7 +4049,7 @@ function ContentTab({
     return (
       <Card className="px-6 py-10 text-center border-dashed flex flex-col items-center gap-3">
         <p className="text-sm font-semibold text-foreground">No content changes yet</p>
-        <p className="text-dense text-muted-foreground max-w-md">
+        <p className="text-sm text-muted-foreground max-w-md">
           {preferred.lastRunAt
             ? `The ${preferred.sourceType} monitor was scraped ${formatDistanceToNow(new Date(preferred.lastRunAt), { addSuffix: true })} — no change since.`
             : `The ${preferred.sourceType} monitor has never been scraped. Run it now.`}

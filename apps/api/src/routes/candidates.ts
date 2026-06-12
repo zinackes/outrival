@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { tasks } from "@trigger.dev/sdk/v3";
 import {
   competitorCandidates,
@@ -98,7 +98,24 @@ candidatesRouter.get("/", async (c) => {
     limit: 100,
   });
 
-  return c.json({ candidates: rows });
+  // Tab counts (org-scoped, status-independent) so the UI can badge both tabs
+  // without a second round-trip per tab switch.
+  const countRows = await db
+    .select({
+      status: competitorCandidates.status,
+      n: sql<number>`count(*)::int`,
+    })
+    .from(competitorCandidates)
+    .where(eq(competitorCandidates.orgId, orgId))
+    .groupBy(competitorCandidates.status);
+
+  const counts = { new: 0, dismissed: 0 };
+  for (const r of countRows) {
+    if (r.status === "new") counts.new = r.n;
+    else if (r.status === "dismissed") counts.dismissed = r.n;
+  }
+
+  return c.json({ candidates: rows, counts });
 });
 
 candidatesRouter.get("/config", async (c) => {

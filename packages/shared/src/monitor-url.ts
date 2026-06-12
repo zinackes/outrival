@@ -30,6 +30,44 @@ function isIpLiteral(hostname: string): boolean {
 }
 
 /**
+ * Hostnames that are never a real external product site and must never be
+ * fetched server-side (SSRF). Syntactic check only — no DNS resolution, in line
+ * with the rest of this module's defense.
+ */
+function isUnsafeHost(hostname: string): boolean {
+  const h = hostname.toLowerCase();
+  if (h === "localhost" || h.endsWith(".localhost")) return true;
+  if (h.endsWith(".local") || h.endsWith(".internal")) return true;
+  if (!h.includes(".")) return true; // single-label intranet name (redis, db, …)
+  return false;
+}
+
+/**
+ * SSRF guard for a user-supplied URL the scraper will fetch directly as the
+ * competitor's own site (create / edit), where there's no reference brand to
+ * lock against — unlike {@link validateMonitorUrl}. Syntactic checks only:
+ * http(s), no credentials, standard port, no IP literal, no internal host.
+ */
+export function validatePublicUrl(raw: string): MonitorUrlValidation {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw.trim());
+  } catch {
+    return { ok: false, error: "invalid_url" };
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    return { ok: false, error: "must_be_http" };
+  }
+  if (parsed.username || parsed.password) return { ok: false, error: "credentials_not_allowed" };
+  if (parsed.port && parsed.port !== "80" && parsed.port !== "443") {
+    return { ok: false, error: "port_not_allowed" };
+  }
+  if (isIpLiteral(parsed.hostname)) return { ok: false, error: "host_not_allowed" };
+  if (isUnsafeHost(parsed.hostname)) return { ok: false, error: "host_not_allowed" };
+  return { ok: true, url: parsed.toString() };
+}
+
+/**
  * Validate a user-supplied monitor URL. Review sources delegate to the
  * brand-locked {@link validateReviewUrl}. Every other source must resolve to
  * the competitor's own registrable domain — `jobs` may additionally point at a

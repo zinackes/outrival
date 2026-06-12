@@ -249,10 +249,11 @@ export const generateSignalJob = task({
       })
       .where(eq(signals.id, newSignal.id));
 
-    if (decision.send && decision.channel === "email_immediate") {
+    if (decision.send && decision.channel === "email_immediate" && !competitor.alertsMuted) {
       // Plan entitlement still applies (moderation never overrides gating): only
       // realtime-alert plans get an immediate email/Slack/webhook. Reuses the org
-      // loaded up front for the product-aware insight.
+      // loaded up front for the product-aware insight. A user-muted competitor
+      // (kebab → Mute alerts) keeps tracking signals but skips the immediate alert.
       if (org?.alertsEnabled && PLAN_LIMITS[org.plan].features.realtimeAlerts) {
         await tasks.trigger(
           "send-alert",

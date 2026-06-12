@@ -79,6 +79,14 @@ export const competitors = pgTable("competitors", {
   pricingNote: text("pricing_note"),
   // When the user fills pricing in manually, scrapes must not overwrite it.
   pricingManualOverride: boolean("pricing_manual_override").notNull().default(false),
+  // User froze monitoring for this competitor (kebab → Pause). The scheduler skips
+  // every monitor of a paused competitor (schedule-scraping) without touching the
+  // individual monitor.isActive flags, so resuming restores their exact prior state.
+  monitoringPaused: boolean("monitoring_paused").notNull().default(false),
+  // User muted real-time alerts for this competitor (kebab → Mute alerts). Signals
+  // are still tracked + shown in the feed/digests; generate-signal just skips the
+  // immediate send-alert (email/Slack/in-app) when this is set.
+  alertsMuted: boolean("alerts_muted").notNull().default(false),
   // Last time the independent monthly tech-stack scraper ran for this competitor
   // (patch-18). Null = never scraped → due immediately. Drives schedule-tech-stack
   // (no monitor row, so this is the per-competitor cadence anchor).

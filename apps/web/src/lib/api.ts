@@ -122,6 +122,10 @@ export interface Competitor {
   pricingDemoUrl: string | null;
   pricingNote: string | null;
   pricingManualOverride: boolean;
+  // Kebab actions (Pause monitoring / Mute alerts). Paused = scheduler skips every
+  // source; muted = signals still tracked but no immediate alert.
+  monitoringPaused: boolean;
+  alertsMuted: boolean;
   createdAt: string;
   updatedAt: string;
   stats?: CompetitorStats;
@@ -1377,6 +1381,63 @@ export const api = {
     }),
   deleteCompetitor: (id: string) =>
     request<{ ok: true }>(`/api/competitors/${id}`, { method: "DELETE" }),
+  // Kebab → Edit details. Any subset of name/url/category/description.
+  updateCompetitor: (
+    id: string,
+    body: { name?: string; url?: string; category?: string | null; description?: string | null },
+  ) =>
+    request<{ competitor: Competitor }>(`/api/competitors/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  // Kebab → Pause / Resume monitoring.
+  setCompetitorMonitoring: (id: string, paused: boolean) =>
+    request<{ ok: true; paused: boolean }>(`/api/competitors/${id}/monitoring`, {
+      method: "PATCH",
+      body: JSON.stringify({ paused }),
+    }),
+  // Kebab → Mute / Unmute alerts.
+  setCompetitorAlerts: (id: string, muted: boolean) =>
+    request<{ ok: true; muted: boolean }>(`/api/competitors/${id}/alerts`, {
+      method: "PATCH",
+      body: JSON.stringify({ muted }),
+    }),
+  // Kebab → Recompute overlap (synchronous AI re-score against the product profile).
+  recomputeCompetitorOverlap: (id: string) =>
+    request<{ overlapScore: number | null; reason: string | null }>(
+      `/api/competitors/${id}/recompute-overlap`,
+      { method: "POST" },
+    ),
+  // Kebab → Assign to products: all org products + the subset this competitor links to.
+  getCompetitorProducts: (id: string) =>
+    request<{
+      products: Array<{
+        id: string;
+        name: string;
+        isPrimary: boolean;
+        status: "active" | "paused" | "archived";
+      }>;
+      links: Array<{ productId: string; isSpecific: boolean }>;
+    }>(`/api/competitors/${id}/products`),
+  attachCompetitorToProduct: (productId: string, competitorId: string, isSpecific?: boolean) =>
+    request<{ ok: true }>(`/api/products/${productId}/competitors/${competitorId}`, {
+      method: "POST",
+      body: JSON.stringify({ isSpecific: isSpecific ?? false }),
+    }),
+  detachCompetitorFromProduct: (productId: string, competitorId: string) =>
+    request<{ ok: true }>(`/api/products/${productId}/competitors/${competitorId}`, {
+      method: "DELETE",
+    }),
+  // Kebab → Export signals as CSV. Bypasses `request` (the body is text/csv, not
+  // JSON); returns a Blob the caller turns into a download.
+  exportCompetitorSignals: async (id: string): Promise<Blob> => {
+    const res = await safeFetch(`${BASE}/api/competitors/${id}/export`, {
+      credentials: "include",
+      cache: "no-store",
+    });
+    if (!res.ok) await throwApiError(res);
+    return res.blob();
+  },
   refreshCompetitorSummary: (id: string) =>
     request<{ runId: string }>(`/api/competitors/${id}/refresh-summary`, {
       method: "POST",
@@ -1760,9 +1821,10 @@ export const api = {
   listBattleCards: () =>
     request<{ battleCards: BattleCardSummary[] }>("/api/battle-cards"),
   listCandidates: (status?: "new" | "dismissed" | "added") =>
-    request<{ candidates: CompetitorCandidate[] }>(
-      `/api/candidates${status ? `?status=${status}` : ""}`,
-    ),
+    request<{
+      candidates: CompetitorCandidate[];
+      counts: { new: number; dismissed: number };
+    }>(`/api/candidates${status ? `?status=${status}` : ""}`),
   detectCandidates: () =>
     request<{ detected: number }>(`/api/candidates/detect`, { method: "POST" }),
   // Whether re-running discovery is worth it (patch-22): "fresh" → greyed-out button.

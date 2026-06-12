@@ -15,6 +15,13 @@
       "when": 1781204193546,
       "tag": "0001_romantic_nico_minoru",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1781284924432,
+      "tag": "0002_late_lethal_legion",
+      "breakpoints": true
     }
   ]
 }

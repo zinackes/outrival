@@ -362,6 +362,74 @@ export function OverviewView() {
       </div>
       </TooltipProvider>
 
+      {/* Recent signals — the hero list, closed by a light rounded border like
+          the controls. */}
+      <section>
+        <SectionHead
+          title="Recent signals"
+          sub="sorted by severity then date"
+          divider={false}
+          action={
+            <Button asChild variant="outline" size="sm">
+              <Link href="/dashboard/signals">
+                View all <ArrowRight size={11} />
+              </Link>
+            </Button>
+          }
+        />
+        <TooltipProvider delayDuration={80}>
+          <div className="mt-3 max-h-[440px] overflow-y-auto rounded-md border border-border">
+            {recentSignals.length === 0 ? (
+              <div className="px-4 py-12 text-center text-muted-foreground">
+                <div className="font-semibold text-base text-foreground mb-1.5 tracking-tight">
+                  No signals yet
+                </div>
+                <div className="text-sm max-w-[380px] mx-auto">
+                  Scans run continuously. The first signals will appear here as
+                  soon as a change is detected.
+                </div>
+              </div>
+            ) : (
+              recentSignals.map((s) => (
+                <Link
+                  key={s.id}
+                  href={`/dashboard/signals?focus=${s.id}`}
+                  className="grid grid-cols-[1fr_auto] gap-3 max-sm:gap-2 items-start px-4 py-3.5 max-sm:py-2.5 border-b border-border last:border-b-0 cursor-pointer hover:bg-accent/50 transition-colors"
+                >
+                  <div className="min-w-0 max-w-[120ch]">
+                    {/* Classification header — who / severity / category grouped on
+                        one meta line, kept distinct from the body prose below so the
+                        eye reads "who & how bad" before "what & what to do". */}
+                    <div className="flex items-center gap-2 mb-1.5 min-w-0">
+                      <span className="font-semibold text-content truncate">
+                        {s.competitorName}
+                      </span>
+                      <SeverityBadge severity={s.severity} />
+                      <CatPill size="compact">{s.category}</CatPill>
+                    </div>
+                    {/* The finding — the lead, clamped to one line */}
+                    <div className="text-content leading-snug line-clamp-1">
+                      {s.insight}
+                    </div>
+                    {/* Why it matters — one muted supporting line, clamped */}
+                    {s.soWhat && (
+                      <div className="text-muted-foreground text-sm mt-1 line-clamp-1">
+                        {s.soWhat}
+                      </div>
+                    )}
+                  </div>
+                  <span className="font-mono text-meta text-muted-foreground mt-[3px]">
+                    {formatDistanceToNow(new Date(s.createdAt), {
+                      addSuffix: true,
+                    })}
+                  </span>
+                </Link>
+              ))
+            )}
+          </div>
+        </TooltipProvider>
+      </section>
+
       {/* Signal categories — a thin band, not a card. Self-hides with no signals. */}
       {categoryBreakdown.length > 0 && (
         <div>
@@ -443,74 +511,6 @@ export function OverviewView() {
           </div>
         </div>
       )}
-
-      {/* Recent signals — the hero list, closed by a light rounded border like
-          the controls. */}
-      <section>
-        <SectionHead
-          title="Recent signals"
-          sub="sorted by severity then date"
-          divider={false}
-          action={
-            <Button asChild variant="outline" size="sm">
-              <Link href="/dashboard/signals">
-                View all <ArrowRight size={11} />
-              </Link>
-            </Button>
-          }
-        />
-        <TooltipProvider delayDuration={80}>
-          <div className="mt-3 max-h-[440px] overflow-y-auto rounded-md border border-border">
-            {recentSignals.length === 0 ? (
-              <div className="px-4 py-12 text-center text-muted-foreground">
-                <div className="font-semibold text-base text-foreground mb-1.5 tracking-tight">
-                  No signals yet
-                </div>
-                <div className="text-sm max-w-[380px] mx-auto">
-                  Scans run continuously. The first signals will appear here as
-                  soon as a change is detected.
-                </div>
-              </div>
-            ) : (
-              recentSignals.map((s) => (
-                <Link
-                  key={s.id}
-                  href={`/dashboard/signals?focus=${s.id}`}
-                  className="grid grid-cols-[1fr_auto] gap-3 max-sm:gap-2 items-start px-4 py-3.5 max-sm:py-2.5 border-b border-border last:border-b-0 cursor-pointer hover:bg-accent/50 transition-colors"
-                >
-                  <div className="min-w-0 max-w-[120ch]">
-                    {/* Classification header — who / severity / category grouped on
-                        one meta line, kept distinct from the body prose below so the
-                        eye reads "who & how bad" before "what & what to do". */}
-                    <div className="flex items-center gap-2 mb-1.5 min-w-0">
-                      <span className="font-semibold text-content truncate">
-                        {s.competitorName}
-                      </span>
-                      <SeverityBadge severity={s.severity} />
-                      <CatPill size="compact">{s.category}</CatPill>
-                    </div>
-                    {/* The finding — the lead, clamped to one line */}
-                    <div className="text-content leading-snug line-clamp-1">
-                      {s.insight}
-                    </div>
-                    {/* Why it matters — one muted supporting line, clamped */}
-                    {s.soWhat && (
-                      <div className="text-muted-foreground text-sm mt-1 line-clamp-1">
-                        {s.soWhat}
-                      </div>
-                    )}
-                  </div>
-                  <span className="font-mono text-meta text-muted-foreground mt-[3px]">
-                    {formatDistanceToNow(new Date(s.createdAt), {
-                      addSuffix: true,
-                    })}
-                  </span>
-                </Link>
-              ))
-            )}
-          </div>
-        </TooltipProvider>
-      </section>
 
       {/* Sector trends — meso-level, distinct from the micro signals above */}
       <SectoralSignalsSection />

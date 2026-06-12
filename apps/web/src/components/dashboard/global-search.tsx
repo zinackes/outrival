@@ -97,7 +97,7 @@ export function GlobalSearch() {
       >
         <Search size={14} />
         <span className="hidden md:inline">Search…</span>
-        <kbd className="hidden md:inline-flex md:ml-auto pointer-events-none h-5 select-none items-center gap-0.5 rounded border border-border bg-background px-1.5 font-mono text-micro font-medium">
+        <kbd className="hidden md:inline-flex md:ml-auto pointer-events-none h-5 select-none items-center gap-0.5 rounded border border-border bg-background px-1.5 font-mono text-meta font-medium">
           <CommandIcon className="size-3" />K
         </kbd>
       </button>

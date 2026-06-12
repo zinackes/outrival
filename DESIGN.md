@@ -227,12 +227,12 @@ defined once, so the scale stays enforceable and changes in one place.
 | `text-lg` | 18px | large headings, lead sub |
 | `text-lead` | 17px | signal insight lead |
 | `text-base` | 16px | base / document body root |
-| `text-content` | 15px | comfortable reading body (so-what, action) |
-| `text-sm` | 14px | **default UI body** |
-| `text-dense` | 13px | card / section titles, dense body |
-| `text-xs` | 12px | labels, table headers, badges |
-| `text-meta` | 11px | **mono** meta: timestamps, counts, IDs |
-| `text-micro` | 10px | **mono** badges — the a11y floor; smaller is banned |
+| `text-content` | 15px | comfortable reading body — the primary read (insight, so-what, action, AI summary) |
+| `text-sm` | 14px | **default UI body & reading-prose floor** (descriptions, empty states, helper) |
+| `text-dense` | 13px | dense tables, secondary/meta lines, compact labels |
+| `text-xs` | 12px | labels, table-header text, controls |
+| `text-meta` | 11px | **mono** meta + the label/badge **floor**: timestamps, counts, IDs |
+| `text-micro` | 10px | a11y floor only — **not for labels**; defined but retired from usage |
 | `text-stat` | 32px | KPI numerals (mono) |
 
 Larger display steps (`text-2xl`…`text-7xl`, 25→76px) exist for the marketing
@@ -250,6 +250,15 @@ value. A genuinely new role gets a new token in `globals.css`, documented here.
 **The No-Display-In-UI Rule.** No display sizing or expressive type in labels,
 buttons, or data. Product chrome uses the fixed scale; expressive type is a landing
 (brand) move only.
+
+**The Small-Text Floor Rule.** Prose the user reads — insights, so-what,
+descriptions, helper text, empty states — floors at `text-sm` (14px); the primary
+read (signal insight, AI summaries, narratives) is `text-content` (15px). Labels and
+badges floor at `text-meta` (11px): `text-micro` (10px) stays defined as the WCAG
+a11y floor but is retired from real usage, because 10px uppercase/mono labels read as
+AI scaffolding. Below the body, get hierarchy from **weight + colour (muted)**, not
+from shrinking another step — the dashboard's centre of gravity sits at 14–15px, not
+12. (Form field-labels are the one place 12–13px is still correct.)
 
 ## 4. Elevation
 
@@ -291,8 +300,8 @@ and (where relevant) loading and error. Radius scale: `sm` 4px (badges/pills), `
 - **Shadow Strategy:** none (see Elevation). Separation is the border plus the tonal step.
 - **Border:** 1px Border hairline; header and footer are divided by the same hairline.
 - **Internal Padding:** 16px vertical / 20px horizontal (`px-5 py-4`).
-- **Title/Description:** title is `text-dense` (13px) semibold tracking-tight;
-  description is `text-meta` (11px) **mono**, muted (full strength, not `/80`).
+- **Title/Description:** title is `text-sm` (14px) semibold tracking-tight;
+  description is `text-dense` (13px) / `text-meta` **mono**, muted (full strength, not `/80`).
 - **Boxless is preferred** for dashboard sections: a `SectionHead` (title + mono sub,
   bounded by one hairline) over per-section card chrome. Depth from rhythm, not boxes.
 
@@ -304,8 +313,8 @@ and (where relevant) loading and error. Radius scale: `sm` 4px (badges/pills), `
   50% opacity, not-allowed cursor.
 
 ### Badges / Chips
-- **Style:** `rounded-sm` (4px), `px-2 py-0.5`, `text-xs` weight 500 (mono micro
-  badges may run `text-micro`/`text-meta`). Variants: default (cyan), secondary
+- **Style:** `rounded-sm` (4px), `px-2 py-0.5`, `text-xs` weight 500 (mono meta
+  badges floor at `text-meta` 11px — never `text-micro`). Variants: default (cyan), secondary
   (neutral fill), destructive, outline (border only), ghost, link. Severity and
   category badges map to their scales, reinforced with an icon. Uppercase is allowed
   on badges only (short labels), never on buttons or body.

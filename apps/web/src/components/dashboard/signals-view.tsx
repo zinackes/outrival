@@ -550,7 +550,7 @@ export function SignalsView() {
             placeholder="Search…"
             value={query}
             onChange={(e) => setParam({ q: e.target.value || null })}
-            className="h-8 pl-8 text-dense w-48"
+            className="h-8 pl-8 text-sm w-48"
           />
         </div>
       </div>
@@ -700,7 +700,7 @@ function BatchGroupCard({
             {unreadCount > 0 && <span className="size-1.5 rounded-full bg-primary" />}
           </div>
           {item.summary && (
-            <p className="mt-1 text-dense leading-snug text-foreground/85">{item.summary}</p>
+            <p className="mt-1 text-sm leading-snug text-foreground/85">{item.summary}</p>
           )}
         </div>
         <span className="shrink-0 text-xs text-muted-foreground">

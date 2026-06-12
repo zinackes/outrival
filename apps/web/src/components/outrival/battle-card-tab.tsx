@@ -290,7 +290,9 @@ export function BattleCardTab({ competitorId }: Props) {
         </div>
       )}
 
-      <section className="grid grid-cols-1 gap-x-8 gap-y-6 p-5 sm:grid-cols-2">
+      {/* Positioning triad on one row — their strengths / our strengths / their
+          weaknesses read as a single "where we stand" unit and save vertical space. */}
+      <section className="grid grid-cols-1 gap-x-8 gap-y-6 p-5 sm:grid-cols-2 lg:grid-cols-3">
         <ListBlock
           title="Their strengths"
           icon={Shield}
@@ -307,21 +309,14 @@ export function BattleCardTab({ competitorId }: Props) {
           editing={editing}
           onChange={(items) => setDraft({ ...draft, our_strengths: items })}
         />
-      </section>
-
-      <section className="flex flex-col gap-3 p-5">
-        <Heading icon={Target} color="text-primary">
-          Their weaknesses
-        </Heading>
-        {editing ? (
-          <EditableList
-            items={showContent.their_weaknesses}
-            onChange={(items) => setDraft({ ...draft, their_weaknesses: items })}
-            max={5}
-          />
-        ) : (
-          <BulletList items={showContent.their_weaknesses} />
-        )}
+        <ListBlock
+          title="Their weaknesses"
+          icon={Target}
+          color="text-primary"
+          items={showContent.their_weaknesses}
+          editing={editing}
+          onChange={(items) => setDraft({ ...draft, their_weaknesses: items })}
+        />
       </section>
 
       <ObjectionsSection
@@ -608,13 +603,10 @@ function BattleCardSkeleton() {
         <Skeleton className="h-8 w-28" />
         <Skeleton className="h-8 w-36" />
       </div>
-      <div className="grid grid-cols-1 gap-8 p-5 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-8 p-5 sm:grid-cols-2 lg:grid-cols-3">
         <SkeletonColumn />
         <SkeletonColumn />
-      </div>
-      <div className="flex flex-col gap-3 p-5">
-        <Skeleton className="h-3.5 w-36" />
-        <Skeleton className="h-3 w-[85%]" />
+        <SkeletonColumn />
       </div>
       <div className="flex flex-col gap-3 p-5">
         <Skeleton className="h-3.5 w-40" />

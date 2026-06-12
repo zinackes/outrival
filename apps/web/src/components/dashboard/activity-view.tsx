@@ -186,7 +186,7 @@ function ChangeLine({ change }: { change: ActivityChange }) {
       <span className="w-32 shrink-0 text-meta text-muted-foreground">
         {kindLabel(change.kind)}
       </span>
-      <div className="min-w-0 flex-1 text-dense">{body}</div>
+      <div className="min-w-0 flex-1 text-sm">{body}</div>
     </div>
   );
 }
@@ -221,7 +221,7 @@ function ChangeDetail({ event }: { event: ActivityEvent }) {
   }
 
   return (
-    <p className="text-dense text-muted-foreground">
+    <p className="text-sm text-muted-foreground">
       {event.changeSummary ?? "No detail captured for this change."}
     </p>
   );

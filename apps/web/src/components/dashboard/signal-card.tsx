@@ -185,7 +185,7 @@ export function SignalCard({
         {/* Prefer the user's severity override (patch-21) over the AI rating.
             Solid severity badge, matching the Overview's "Recent signals" list. */}
         <SeverityBadge severity={signal.severityOverride ?? signal.severity} />
-        <CatPill size="micro">{signal.category}</CatPill>
+        <CatPill size="compact">{signal.category}</CatPill>
         <span className="w-px h-3 bg-border" />
         <Link
           href={`/dashboard/competitors/${signal.competitorId}`}

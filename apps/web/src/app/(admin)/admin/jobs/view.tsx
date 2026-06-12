@@ -156,7 +156,7 @@ export function JobsView({
                   <TableRow key={r.id}>
                     <TableCell style={mono}>
                       {r.taskIdentifier}
-                      {r.isTest ? <span className="ml-1 text-micro text-muted-foreground">(test)</span> : null}
+                      {r.isTest ? <span className="ml-1 text-meta text-muted-foreground">(test)</span> : null}
                     </TableCell>
                     <TableCell>
                       <StatusPill status={r.status} />

@@ -275,14 +275,17 @@
      values already in the code (no visual change); migrate text-[Npx] → these.
        text-micro 10 · text-meta 11 · text-xs 12 · text-dense 13 · text-sm 14 ·
        text-content 15 · text-base 16 · text-lead 17 · text-lg 18 · text-xl 20 ·
-       page titles → text-title / text-title-lg · KPI numerals → text-stat. */
-  --text-micro: 0.625rem;     /* 10px — mono badges; the a11y floor, smaller is banned */
+       page titles → text-title / text-title-lg · KPI numerals → text-stat.
+     Floor (DESIGN.md §3 "Small-Text Floor Rule"): read-prose floors at text-sm (14),
+     primary read at text-content (15); labels/badges floor at text-meta (11).
+     text-micro (10) is the a11y floor only — retired from usage. */
+  --text-micro: 0.625rem;     /* 10px — a11y floor only; retired from usage (labels floor at meta 11) */
   --text-micro--line-height: 1.3;
   --text-meta: 0.6875rem;     /* 11px — mono meta: timestamps, counts, IDs */
   --text-meta--line-height: 1.4;
-  --text-dense: 0.8125rem;    /* 13px — card/section titles, dense body */
+  --text-dense: 0.8125rem;    /* 13px — dense tables, secondary lines, compact labels */
   --text-dense--line-height: 1.35;
-  --text-content: 0.9375rem;  /* 15px — comfortable reading body (so-what, action) */
+  --text-content: 0.9375rem;  /* 15px — primary read: insight, so-what, action, summary */
   --text-content--line-height: 1.5;
   --text-lead: 1.0625rem;     /* 17px — signal insight lead */
   --text-lead--line-height: 1.35;

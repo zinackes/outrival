@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { AlertTriangle, ArrowRight, PencilLine, PauseCircle, RefreshCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api, type MonitorAlternative } from "@/lib/api";
+import { sourceShortLabel } from "@/lib/source-labels";
 import { ManualDataEntry } from "./manual-data-entry";
 
 // Human cause line (patch-14 progressive disclosure) for the diagnosed category.
@@ -63,7 +64,7 @@ export function MonitorAlternatives({ monitorId, sourceType, failureCategory, on
         alt.type === "different_url"
           ? "Following the new URL — a fresh scrape is on its way."
           : alt.type === "pause_source"
-            ? "Source paused. You can re-enable it any time."
+            ? `${label} paused. You can re-enable it any time.`
             : "Done.",
       );
       setAlternatives((prev) => prev?.filter((a) => a.id !== alt.id) ?? null);
@@ -88,6 +89,7 @@ export function MonitorAlternatives({ monitorId, sourceType, failureCategory, on
   }
 
   const cause = CAUSE_LABEL[failureCategory ?? "unknown"] ?? CAUSE_LABEL.unknown;
+  const label = sourceShortLabel(sourceType);
 
   return (
     <div className="rounded-lg border border-border bg-secondary/30 p-4">
@@ -95,7 +97,7 @@ export function MonitorAlternatives({ monitorId, sourceType, failureCategory, on
       <div className="flex items-start gap-2.5">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
         <div className="text-sm">
-          <p className="font-medium text-foreground">This source is temporarily unavailable</p>
+          <p className="font-medium text-foreground">{label} is temporarily unavailable</p>
           <p className="mt-0.5 text-muted-foreground">
             Detected cause: {cause}. We&apos;ve stopped retrying for now — here&apos;s what you can
             do:

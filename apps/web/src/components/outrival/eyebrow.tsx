@@ -3,10 +3,10 @@ import { cn } from "@/lib/utils";
 
 // Canonical "eyebrow" — a small uppercase category/section label. Sans-serif (not
 // mono), lightly tracked, muted. Mirrors the dashboard sidebar group labels so every
-// eyebrow on the app reads the same. Size is the one dimension meant to flex per
-// context (dense table rows stay `micro`, standalone labels go `meta`/`xs`).
+// eyebrow on the app reads the same. Size flexes per context, but the floor is 11px:
+// 10px uppercase labels read as AI scaffolding, so `micro` resolves to `meta`.
 const EYEBROW_SIZE = {
-  micro: "text-micro",
+  micro: "text-meta",
   meta: "text-meta",
   xs: "text-xs",
 } as const;

@@ -72,7 +72,7 @@ export function Section({
         <CardTitle className="flex items-center gap-2 text-base">
           {title}
           {note ? (
-            <Badge variant="outline" className="text-micro font-normal text-muted-foreground">
+            <Badge variant="outline" className="text-meta font-normal text-muted-foreground">
               {note}
             </Badge>
           ) : null}

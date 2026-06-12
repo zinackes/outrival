@@ -24,6 +24,14 @@ import {
 } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { SectionHead } from "./section-head";
 import { PageHead } from "./page-head";
 import {
@@ -31,7 +39,6 @@ import {
   lastNDays,
   type DateRange,
 } from "@/components/ui/date-range-picker";
-import { cn } from "@/lib/utils";
 const METRICS: { value: TrendMetric; label: string }[] = [
   { value: "pricing", label: "Pricing" },
   { value: "hiring", label: "Hiring" },
@@ -97,7 +104,7 @@ function Card({
     <section className="rounded-lg border border-border p-4">
       <SectionHead title={title} icon={icon} sub={sub} />
       {empty ? (
-        <p className="text-muted-foreground py-2 text-dense">No data in this window yet.</p>
+        <p className="text-muted-foreground py-2 text-sm">No data in this window yet.</p>
       ) : (
         <div className="mt-1">{children}</div>
       )}
@@ -148,7 +155,7 @@ function DrillChart({
   if (points === null) return <Skeleton className="h-64 w-full" />;
   if (points.length === 0) {
     return (
-      <div className="text-muted-foreground flex h-64 items-center justify-center text-dense">
+      <div className="text-muted-foreground flex h-64 items-center justify-center text-sm">
         No {metric} history for this competitor in this window.
       </div>
     );
@@ -263,7 +270,7 @@ export function TrendsView() {
           <div className="mb-1.5 text-base font-semibold tracking-tight text-foreground">
             Trends temporarily unavailable
           </div>
-          <div className="mx-auto max-w-[400px] text-dense">
+          <div className="mx-auto max-w-[400px] text-sm">
             We couldn&apos;t read the trend data just now — this is usually brief. Refresh in a
             moment.
           </div>
@@ -276,7 +283,7 @@ export function TrendsView() {
           <div className="mb-1.5 text-base font-semibold tracking-tight text-foreground">
             No trends yet
           </div>
-          <div className="mx-auto max-w-[400px] text-dense">
+          <div className="mx-auto max-w-[400px] text-sm">
             Pricing, hiring, review and tech history build up over the next few scrapes — check back
             once your competitors have been monitored for a while.
           </div>
@@ -392,42 +399,38 @@ export function TrendsView() {
                 sub="one competitor over time"
               />
               <div className="flex items-center gap-2">
-                <select
-                  value={competitorId}
-                  onChange={(e) => setCompetitorId(e.target.value)}
-                  className="rounded-md border border-border bg-background px-2 py-1 text-xs"
-                  aria-label="Competitor"
+                <Select value={competitorId} onValueChange={setCompetitorId}>
+                  <SelectTrigger size="sm" aria-label="Competitor">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {competitorOptions.map((o) => (
+                      <SelectItem key={o.id} value={o.id}>
+                        {o.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <ToggleGroup
+                  type="single"
+                  variant="outline"
+                  size="sm"
+                  value={metric}
+                  onValueChange={(v) => v && setMetric(v as TrendMetric)}
                 >
-                  {competitorOptions.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.name}
-                    </option>
-                  ))}
-                </select>
-                <div className="flex items-center gap-1">
                   {METRICS.map((m) => (
-                    <button
-                      key={m.value}
-                      type="button"
-                      onClick={() => setMetric(m.value)}
-                      className={cn(
-                        "rounded-md border border-border px-2.5 py-1 text-xs transition-colors",
-                        metric === m.value
-                          ? "bg-accent text-foreground"
-                          : "text-muted-foreground hover:text-foreground",
-                      )}
-                    >
+                    <ToggleGroupItem key={m.value} value={m.value}>
                       {m.label}
-                    </button>
+                    </ToggleGroupItem>
                   ))}
-                </div>
+                </ToggleGroup>
               </div>
             </div>
             <div className="mt-3">
               {competitorId ? (
                 <DrillChart competitorId={competitorId} metric={metric} range={range} />
               ) : (
-                <p className="text-muted-foreground py-2 text-dense">
+                <p className="text-muted-foreground py-2 text-sm">
                   No competitor with trend data to drill into yet.
                 </p>
               )}

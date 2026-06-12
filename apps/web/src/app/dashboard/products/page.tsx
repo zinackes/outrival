@@ -245,7 +245,7 @@ function EditableList({
           </div>
         </div>
       ) : items.length === 0 ? (
-        <div className="text-dense text-[var(--muted-2)]">Nothing detected yet.</div>
+        <div className="text-sm text-[var(--muted-2)]">Nothing detected yet.</div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5">
           {items.map((it, i) => (
@@ -342,7 +342,7 @@ function PricingCard({
         </div>
         <div className="flex items-center gap-2">
           {!editing && pricing.promotional && (
-            <Badge variant="secondary" className="text-micro">
+            <Badge variant="secondary" className="text-meta">
               promo
             </Badge>
           )}
@@ -727,7 +727,7 @@ export default function MyProductPage() {
         <Card className="p-8 flex flex-col items-center text-center gap-3 max-w-lg mx-auto">
           <Store className="size-8 text-[var(--muted-2)]" />
           <div className="text-content font-semibold">No product site to monitor yet</div>
-          <p className="text-dense text-muted-foreground max-w-sm">
+          <p className="text-sm text-muted-foreground max-w-sm">
             {error
               ? "We couldn't load your product."
               : "Add a product URL to track your own site like a competitor — pricing, features and changes."}
@@ -825,7 +825,7 @@ export default function MyProductPage() {
       {!p.url && (
         <Card className="p-4 mb-6 border-dashed">
           <h2 className="text-sm font-semibold mb-1">Not live yet</h2>
-          <p className="text-dense text-muted-foreground mb-3 max-w-prose">
+          <p className="text-sm text-muted-foreground mb-3 max-w-prose">
             Your product profile below is editable by hand. Add a public site URL to monitor
             pricing, features and changes — or track its GitHub repo while you build.
           </p>

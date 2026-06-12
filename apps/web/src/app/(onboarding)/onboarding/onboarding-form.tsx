@@ -1532,7 +1532,7 @@ function OverlapBadge({ score }: { score: number }) {
   return (
     <span
       className={cn(
-        "text-micro px-1.5 py-0.5 font-medium border rounded font-mono uppercase tracking-wider",
+        "text-meta px-1.5 py-0.5 font-medium border rounded font-mono uppercase tracking-wider",
         classes,
       )}
     >
@@ -1776,7 +1776,7 @@ function SegmentChoice({
         )}
         <span className="text-sm font-medium">{title}</span>
       </div>
-      <p className="text-xs text-muted-foreground mt-2 leading-relaxed">{description}</p>
+      <p className="text-sm text-muted-foreground mt-2 leading-relaxed">{description}</p>
     </button>
   );
 }

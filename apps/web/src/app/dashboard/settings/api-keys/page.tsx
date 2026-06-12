@@ -20,7 +20,7 @@ export default function ApiKeysSettingsPage() {
         <div className="font-semibold text-base text-foreground tracking-tight">
           API access is coming soon
         </div>
-        <div className="text-dense text-muted-foreground max-w-[380px]">
+        <div className="text-sm text-muted-foreground max-w-[380px]">
           A public REST API will let you pull signals and competitor data
           programmatically. It will be available on the Business plan.
         </div>

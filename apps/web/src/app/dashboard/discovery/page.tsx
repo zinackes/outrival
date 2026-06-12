@@ -55,6 +55,9 @@ export default function CandidatesPage() {
   const [minOverlap, setMinOverlap] = useState(0);
   const [discoveryFresh, setDiscoveryFresh] = useState(false);
   const [tab, setTab] = useState<Tab>("new");
+  const [counts, setCounts] = useState<{ new: number; dismissed: number } | null>(
+    null,
+  );
   // Read the live tab inside async callbacks (a toast's Undo can fire after a switch).
   const tabRef = useRef<Tab>("new");
 
@@ -62,12 +65,28 @@ export default function CandidatesPage() {
     setError(null);
     setItems(null);
     try {
-      const { candidates } = await api.listCandidates(which);
+      const { candidates, counts } = await api.listCandidates(which);
       setItems(candidates);
+      setCounts(counts);
     } catch (e) {
       setError(e);
     }
   }, []);
+
+  // Keep the tab badges in sync with optimistic list mutations (a server reload only
+  // happens on tab switch / refresh). Clamps at 0 so a race can't show a negative.
+  const bumpCounts = useCallback(
+    (delta: { new?: number; dismissed?: number }) =>
+      setCounts((c) =>
+        c
+          ? {
+              new: Math.max(0, c.new + (delta.new ?? 0)),
+              dismissed: Math.max(0, c.dismissed + (delta.dismissed ?? 0)),
+            }
+          : c,
+      ),
+    [],
+  );
 
   // Intelligent rate limiting (patch-22): re-running discovery when nothing changed
   // is friction, not blocked. If the last run is recent and the profile is unchanged,
@@ -164,6 +183,7 @@ export default function CandidatesPage() {
       recordDiscoveryFeedback(id, "useful");
       emitCompetitorsChanged();
       setItems((prev) => prev?.filter((c) => c.id !== id) ?? null);
+      bumpCounts({ new: -1 });
     } catch (e) {
       const reason = paywallFromError(e);
       if (reason) {
@@ -183,10 +203,12 @@ export default function CandidatesPage() {
     const item = items?.find((c) => c.id === id);
     if (!item) return;
     setItems((prev) => prev?.filter((c) => c.id !== id) ?? null);
+    bumpCounts({ new: -1, dismissed: 1 });
     try {
       await api.dismissCandidate(id);
     } catch (e) {
       setItems((prev) => [...(prev ?? []), item]); // rollback
+      bumpCounts({ new: 1, dismissed: -1 });
       toastApiError(e, { title: "Dismiss failed" });
       return;
     }
@@ -203,10 +225,12 @@ export default function CandidatesPage() {
     if (targets.length === 0) return;
     const idSet = new Set(targets.map((t) => t.id));
     setItems((prev) => prev?.filter((c) => !idSet.has(c.id)) ?? null);
+    bumpCounts({ new: -targets.length, dismissed: targets.length });
     try {
       await api.dismissCandidates([...idSet]);
     } catch (e) {
       setItems((prev) => [...(prev ?? []), ...targets]); // rollback
+      bumpCounts({ new: targets.length, dismissed: -targets.length });
       toastApiError(e, { title: "Dismiss failed" });
       return;
     }
@@ -223,6 +247,7 @@ export default function CandidatesPage() {
     const ids = new Set(targets.map((t) => t.id));
     try {
       await api.restoreCandidates([...ids]);
+      bumpCounts({ new: ids.size, dismissed: -ids.size });
       setItems((prev) => {
         const base = prev ?? [];
         if (tabRef.current === "new") {
@@ -239,10 +264,12 @@ export default function CandidatesPage() {
   // Explicit restore from the Dismissed tab: optimistic removal + a toast that jumps back.
   async function restore(item: CompetitorCandidate) {
     setItems((prev) => prev?.filter((c) => c.id !== item.id) ?? null);
+    bumpCounts({ new: 1, dismissed: -1 });
     try {
       await api.restoreCandidates([item.id]);
     } catch (e) {
       setItems((prev) => [...(prev ?? []), item]); // rollback
+      bumpCounts({ new: -1, dismissed: 1 });
       toastApiError(e, { title: "Restore failed" });
       return;
     }
@@ -311,8 +338,22 @@ export default function CandidatesPage() {
         onValueChange={(v) => v && setTab(v as Tab)}
         className="w-fit"
       >
-        <ToggleGroupItem value="new">New</ToggleGroupItem>
-        <ToggleGroupItem value="dismissed">Dismissed</ToggleGroupItem>
+        <ToggleGroupItem value="new" className="gap-1.5">
+          New
+          {counts != null && (
+            <span className="text-meta tabular-nums text-muted-foreground">
+              {counts.new}
+            </span>
+          )}
+        </ToggleGroupItem>
+        <ToggleGroupItem value="dismissed" className="gap-1.5">
+          Dismissed
+          {counts != null && (
+            <span className="text-meta tabular-nums text-muted-foreground">
+              {counts.dismissed}
+            </span>
+          )}
+        </ToggleGroupItem>
       </ToggleGroup>
 
       {items === null && (
@@ -326,7 +367,7 @@ export default function CandidatesPage() {
               <div className="font-semibold text-base text-foreground mb-1.5 tracking-tight">
                 Nothing dismissed
               </div>
-              <div className="text-dense max-w-[380px] mx-auto">
+              <div className="text-sm max-w-[380px] mx-auto">
                 Suggestions you dismiss land here so you can restore them later.
               </div>
             </>
@@ -335,7 +376,7 @@ export default function CandidatesPage() {
               <div className="font-semibold text-base text-foreground mb-1.5 tracking-tight">
                 No new competitors to review
               </div>
-              <div className="text-dense max-w-[380px] mx-auto">
+              <div className="text-sm max-w-[380px] mx-auto">
                 Detection runs every Sunday evening. The next candidates will
                 appear here as soon as they cross the configured overlap threshold.
               </div>
@@ -456,8 +497,8 @@ export default function CandidatesPage() {
                   )}
 
                   {c.reason && (
-                    <p className="text-dense leading-snug m-0 mb-3.5 text-muted-foreground">
-                      <span className="text-primary font-mono text-micro tracking-widest uppercase mr-1.5">
+                    <p className="text-sm leading-snug m-0 mb-3.5 text-muted-foreground">
+                      <span className="text-primary font-mono text-meta tracking-widest uppercase mr-1.5">
                         reason
                       </span>
                       {c.reason}

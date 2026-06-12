@@ -39,7 +39,7 @@ function KindLabel({ kind }: { kind: WhatsNewKind }) {
     <Badge
       variant="outline"
       className={cn(
-        "min-w-[68px] text-micro font-medium tracking-wider uppercase",
+        "min-w-[68px] text-meta font-medium tracking-wider uppercase",
         KIND_CLASS[kind],
       )}
     >

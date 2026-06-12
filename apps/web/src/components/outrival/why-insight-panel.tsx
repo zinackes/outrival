@@ -32,7 +32,7 @@ function hostOf(url: string | null): string | null {
 }
 
 const SectionLabel = ({ children }: { children: React.ReactNode }) => (
-  <div className="font-mono text-micro tracking-widest uppercase text-muted-foreground">
+  <div className="font-mono text-meta tracking-widest uppercase text-muted-foreground">
     {children}
   </div>
 );
@@ -118,7 +118,7 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
         )}
 
         {state === "error" && (
-          <p className="text-dense text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             We couldn&apos;t load the details right now. Close this and try again
             in a moment.
           </p>
@@ -128,7 +128,7 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
           <div className="space-y-5">
             {/* Strategic narrative (patch-16) — shown first when present. */}
             {detail.narrative && (
-              <p className="border-l-2 border-primary/40 pl-3 text-dense italic leading-relaxed text-primary/90">
+              <p className="border-l-2 border-primary/40 pl-3 text-sm italic leading-relaxed text-primary/90">
                 {detail.narrative}
               </p>
             )}
@@ -151,7 +151,7 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
                   </span>
                 </div>
               ) : (
-                <p className="text-dense text-muted-foreground">
+                <p className="text-sm text-muted-foreground">
                   Detail unavailable for this signal — open the live page to see
                   the current state.
                 </p>
@@ -170,14 +170,14 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
                       <li key={i} className="grid grid-cols-[56px_1fr] gap-x-3 items-baseline">
                         <span
                           className={cn(
-                            "font-mono text-micro uppercase tracking-wide",
+                            "font-mono text-meta uppercase tracking-wide",
                             ch.significance === "major" ? "text-primary" : "text-muted-foreground",
                           )}
                         >
                           {ch.significance ?? "—"}
                         </span>
                         <div className="space-y-0.5">
-                          <div className="text-dense text-foreground/90">
+                          <div className="text-sm text-foreground/90">
                             {KIND_LABELS[ch.kind] ?? ch.kind}
                             {ch.kind === "numeric_claim_changed" &&
                               variationLabel(ch.metadata) && (
@@ -205,7 +205,7 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
 
             <section className="space-y-1.5">
               <SectionLabel>Source</SectionLabel>
-              <p className="text-dense text-foreground/90">
+              <p className="text-sm text-foreground/90">
                 {sourceLabel(detail.sourceType)} of {detail.competitor.name}
                 {host && (
                   <span className="text-muted-foreground"> · {host}</span>
@@ -216,7 +216,7 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
                   href={detail.sourceUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-dense text-primary hover:underline"
+                  className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
                 >
                   View live page <ExternalLink size={12} />
                 </a>

@@ -155,7 +155,7 @@ export function NotificationsBell({ compact = false }: { compact?: boolean } = {
               >
                 <Bell size={16} />
                 {unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full text-micro font-bold flex items-center justify-center bg-primary text-primary-foreground">
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full text-meta font-bold flex items-center justify-center bg-primary text-primary-foreground">
                     {unreadCount > 99 ? "99+" : unreadCount}
                   </span>
                 )}
@@ -211,7 +211,7 @@ export function NotificationsBell({ compact = false }: { compact?: boolean } = {
                               {n.body}
                             </p>
                           )}
-                          <p className="text-micro mt-1.5 text-muted-foreground">
+                          <p className="text-meta mt-1.5 text-muted-foreground">
                             {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
                           </p>
                         </div>

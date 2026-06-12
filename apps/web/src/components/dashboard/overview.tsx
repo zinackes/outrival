@@ -6,8 +6,6 @@ import { useRouter } from "next/navigation";
 import {
   Download,
   ArrowRight,
-  Lightbulb,
-  Target,
   ExternalLink,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
@@ -69,7 +67,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 // Header cell style, shared verbatim with the Competitors page table so the two
 // rosters read as one system.
 const TH =
-  "text-left px-3.5 py-2.5 font-mono text-micro uppercase tracking-widest text-muted-foreground font-medium border-b border-border whitespace-nowrap";
+  "text-left px-3.5 py-2.5 font-mono text-meta uppercase tracking-wide text-muted-foreground font-medium border-b border-border whitespace-nowrap";
 
 interface Counts {
   signals: number;
@@ -302,7 +300,7 @@ export function OverviewView() {
           by a light rounded border like the controls. */}
       <TooltipProvider delayDuration={80}>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-px bg-border border border-border rounded-md overflow-hidden">
-        <div className="bg-gradient-card">
+        <div className="bg-card">
           <Kpi
             label="Signals"
             value={counts.signals}
@@ -314,7 +312,7 @@ export function OverviewView() {
             sparkValueLabel="signals"
           />
         </div>
-        <div className="bg-gradient-card">
+        <div className="bg-card">
           <Kpi
             label="Critical pending"
             value={counts.critical}
@@ -331,7 +329,7 @@ export function OverviewView() {
             }
           />
         </div>
-        <div className="bg-gradient-card">
+        <div className="bg-card">
           <Kpi
             label="Active competitors"
             value={counts.activeCompetitors}
@@ -348,7 +346,7 @@ export function OverviewView() {
             }
           />
         </div>
-        <div className="bg-gradient-card">
+        <div className="bg-card">
           <Kpi
             label="Last signal"
             valueClassName="text-lg"
@@ -468,7 +466,7 @@ export function OverviewView() {
                 <div className="font-semibold text-base text-foreground mb-1.5 tracking-tight">
                   No signals yet
                 </div>
-                <div className="text-dense max-w-[380px] mx-auto">
+                <div className="text-sm max-w-[380px] mx-auto">
                   Scans run continuously. The first signals will appear here as
                   soon as a change is detected.
                 </div>
@@ -489,38 +487,16 @@ export function OverviewView() {
                         {s.competitorName}
                       </span>
                       <SeverityBadge severity={s.severity} />
-                      <CatPill size="micro">{s.category}</CatPill>
+                      <CatPill size="compact">{s.category}</CatPill>
                     </div>
-                    {/* The finding — the lead */}
-                    <div className="text-sm leading-snug">
+                    {/* The finding — the lead, clamped to one line */}
+                    <div className="text-content leading-snug line-clamp-1">
                       {s.insight}
                     </div>
-                    {/* Why it matters — recedes (muted) */}
+                    {/* Why it matters — one muted supporting line, clamped */}
                     {s.soWhat && (
-                      <div className="flex items-start gap-1.5 text-muted-foreground text-dense mt-1">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="mt-[3px] shrink-0 inline-flex cursor-help">
-                              <Lightbulb size={13} aria-label="Why it matters" />
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent>Why it matters</TooltipContent>
-                        </Tooltip>
-                        <span>{s.soWhat}</span>
-                      </div>
-                    )}
-                    {/* What to do — pops by weight, not by colour */}
-                    {s.recommendedAction && (
-                      <div className="flex items-start gap-1.5 text-dense font-medium mt-1.5">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="mt-[3px] shrink-0 inline-flex cursor-help text-muted-foreground">
-                              <Target size={13} aria-label="Recommended action" />
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent>Recommended action</TooltipContent>
-                        </Tooltip>
-                        <span>{s.recommendedAction}</span>
+                      <div className="text-muted-foreground text-sm mt-1 line-clamp-1">
+                        {s.soWhat}
                       </div>
                     )}
                   </div>

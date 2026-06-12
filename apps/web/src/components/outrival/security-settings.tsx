@@ -285,7 +285,7 @@ export function SecuritySettings() {
                     <div className="flex items-center gap-2 text-dense font-medium">
                       {deviceLabel(s.userAgent)}
                       {current && (
-                        <span className="inline-flex items-center gap-1.5 font-mono text-micro text-positive">
+                        <span className="inline-flex items-center gap-1.5 font-mono text-meta text-positive">
                           <span className="size-[7px] rounded-full bg-positive" />
                           This device
                         </span>

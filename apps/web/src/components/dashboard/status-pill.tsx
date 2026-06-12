@@ -18,7 +18,7 @@ export function StatusPill({
   children: React.ReactNode;
 }) {
   return (
-    <Badge variant="outline" className={cn("text-micro uppercase tracking-wider font-medium", STATUS_CLASS[status])}>
+    <Badge variant="outline" className={cn("text-meta uppercase tracking-wider font-medium", STATUS_CLASS[status])}>
       {children}
     </Badge>
   );

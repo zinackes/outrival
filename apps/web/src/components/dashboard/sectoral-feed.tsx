@@ -137,7 +137,7 @@ export function SectoralFeed() {
                 ? "No trends in this category"
                 : "No sector trends yet"}
           </div>
-          <div className="text-dense max-w-[400px] mx-auto">
+          <div className="text-sm max-w-[400px] mx-auto">
             {view === "dismissed"
               ? "Trends you dismiss land here so you can revisit them later."
               : category !== null

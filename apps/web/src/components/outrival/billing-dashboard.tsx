@@ -43,7 +43,7 @@ const PLAN_RANK: Record<Plan, number> = {
 };
 
 const EYEBROW =
-  "font-mono text-micro uppercase tracking-[0.14em] text-[var(--muted-2)]";
+  "font-mono text-meta uppercase tracking-[0.14em] text-[var(--muted-2)]";
 
 const SOURCE_LABELS: Record<SourceType, string> = {
   homepage: "Homepage",
@@ -286,7 +286,7 @@ export function BillingDashboard() {
                 {PLAN_LABELS[billing.plan]}
               </span>
               {billing.planPeriod && (
-                <span className="rounded border border-border px-1.5 py-0.5 font-mono text-micro uppercase tracking-wider text-muted-foreground">
+                <span className="rounded border border-border px-1.5 py-0.5 font-mono text-meta uppercase tracking-wider text-muted-foreground">
                   {billing.planPeriod}
                 </span>
               )}
@@ -342,7 +342,7 @@ export function BillingDashboard() {
                     usagePct >= 100 && "[&>div]:bg-destructive",
                   )}
                 />
-                <span className="font-mono text-micro tabular-nums text-[var(--muted-2)]">
+                <span className="font-mono text-meta tabular-nums text-[var(--muted-2)]">
                   {remaining} remaining
                 </span>
               </>
@@ -418,7 +418,7 @@ export function BillingDashboard() {
                           <div className="flex items-center gap-2">
                             <span className={EYEBROW}>{PLAN_LABELS[plan]}</span>
                             {isCurrent && (
-                              <span className="rounded bg-primary px-1.5 py-0.5 font-mono text-micro tracking-wider text-primary-foreground">
+                              <span className="rounded bg-primary px-1.5 py-0.5 font-mono text-meta tracking-wider text-primary-foreground">
                                 CURRENT
                               </span>
                             )}
@@ -438,7 +438,7 @@ export function BillingDashboard() {
                                 </span>
                               )}
                             </div>
-                            <span className="h-3 font-mono text-micro tabular-nums text-[var(--muted-2)]">
+                            <span className="h-3 font-mono text-meta tabular-nums text-[var(--muted-2)]">
                               {period === "yearly" && isPaid
                                 ? `€${pricing} billed yearly`
                                 : ""}

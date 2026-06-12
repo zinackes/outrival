@@ -142,7 +142,7 @@ export function ProductsSettings() {
                 <Boxes size={14} className="text-muted-foreground shrink-0" />
                 <span className="font-medium truncate">{p.name}</span>
                 {p.isPrimary && (
-                  <Badge variant="secondary" className="text-micro">
+                  <Badge variant="secondary" className="text-meta">
                     Primary
                   </Badge>
                 )}

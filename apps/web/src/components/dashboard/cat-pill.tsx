@@ -19,9 +19,9 @@ export function CatPill({
   size = "meta",
 }: {
   children: React.ReactNode;
-  // "micro" (10px) when the pill sits beside a smaller solid badge (e.g. the
-  // overview severity badge); "meta" (11px) is the default feed/list size.
-  size?: "meta" | "micro";
+  // "compact" trims the box to sit flush beside the solid SeverityBadge (e.g. the
+  // overview list); both render at 11px — 10px is below the label floor.
+  size?: "meta" | "compact";
 }) {
   const key = typeof children === "string" ? children.toLowerCase().trim() : "";
   const cat = CAT_CLASS[key];
@@ -30,9 +30,9 @@ export function CatPill({
     <Badge
       variant={cat ? "outline" : "secondary"}
       className={cn(
-        // micro sits beside the solid SeverityBadge — match its box (px-1.5 py-0)
+        // compact sits beside the solid SeverityBadge — match its box (px-1.5 py-0)
         // so the two read as one calibre and the same rounded-md radius shows alike.
-        size === "micro" ? "text-micro px-1.5 py-0" : "text-meta",
+        size === "compact" ? "text-meta px-1.5 py-0" : "text-meta",
         "uppercase tracking-wide font-medium",
         cat,
       )}

@@ -183,7 +183,7 @@ export function DigestsView() {
           <div className="font-semibold text-base text-foreground mb-1.5 tracking-tight">
             No digest yet
           </div>
-          <div className="text-dense max-w-[380px] mx-auto">
+          <div className="text-sm max-w-[380px] mx-auto">
             The next digest is generated automatically every Monday morning
             once the week&apos;s signals have been consolidated.
           </div>
@@ -199,7 +199,7 @@ export function DigestsView() {
                   (h) => (
                     <th
                       key={h}
-                      className="text-left px-3.5 py-2.5 font-mono text-micro uppercase tracking-widest text-muted-foreground font-medium border-b border-border whitespace-nowrap"
+                      className="text-left px-3.5 py-2.5 font-mono text-meta uppercase tracking-wide text-muted-foreground font-medium border-b border-border whitespace-nowrap"
                     >
                       {h}
                     </th>
@@ -324,7 +324,7 @@ function DigestReader({ d, onBack }: { d: Digest; onBack: () => void }) {
 
       {tldr.length > 0 && (
         <Card className="px-5 py-[18px]">
-          <div className="font-mono text-micro tracking-widest text-primary uppercase mb-3">
+          <div className="font-mono text-meta tracking-widest text-primary uppercase mb-3">
             TL;DR
           </div>
           <ul className="m-0 pl-5 text-content leading-relaxed">
@@ -366,7 +366,7 @@ function DigestSection({
             style={{ background: meta.color }}
             aria-hidden
           />
-          <div className="font-semibold text-dense tracking-tight">
+          <div className="font-semibold text-sm tracking-tight">
             {meta.title}
           </div>
         </div>
@@ -382,13 +382,13 @@ function DigestSection({
           >
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <CatPill>{s.category}</CatPill>
-              <span className="font-semibold text-dense">{s.competitor}</span>
+              <span className="font-semibold text-sm">{s.competitor}</span>
             </div>
             <p className="m-0 mb-1.5 text-content leading-snug font-medium">
               {s.insight}
             </p>
             {s.so_what && (
-              <p className="m-0 flex gap-1 text-muted-foreground text-dense leading-snug">
+              <p className="m-0 flex gap-1 text-muted-foreground text-sm leading-snug">
                 <ArrowRight className="size-3.5 mt-0.5 shrink-0" />
                 {s.so_what}
               </p>

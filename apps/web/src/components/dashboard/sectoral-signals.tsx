@@ -69,7 +69,7 @@ export function EvidenceModal({
               <p className="text-muted-foreground leading-snug">{signal.insight}</p>
 
               <div>
-                <div className="font-mono text-micro text-muted-foreground mb-1.5">
+                <div className="font-mono text-meta text-muted-foreground mb-1.5">
                   Competitors ({signal.evidence.competitors.length})
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -86,7 +86,7 @@ export function EvidenceModal({
 
               {signal.evidence.dataPoints.length > 0 && (
                 <div>
-                  <div className="font-mono text-micro text-muted-foreground mb-1.5">
+                  <div className="font-mono text-meta text-muted-foreground mb-1.5">
                     Data points
                   </div>
                   <ul className="space-y-1">
@@ -138,7 +138,7 @@ export function SectoralRow({
         />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="font-mono text-micro text-muted-foreground">
+            <span className="font-mono text-meta text-muted-foreground">
               {meta.label}
             </span>
             {unread && (
@@ -151,7 +151,7 @@ export function SectoralRow({
           <div className="text-content font-semibold tracking-tight mt-0.5 leading-snug">
             {signal.title}
           </div>
-          <div className="text-muted-foreground text-dense mt-1 leading-snug max-w-[78ch]">
+          <div className="text-muted-foreground text-sm mt-1 leading-snug max-w-[78ch]">
             {signal.insight}
           </div>
           <div className="mt-2 flex items-center gap-2.5">

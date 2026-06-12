@@ -365,7 +365,7 @@ export function UpdateProfileDialog({
                   const cur = (working[key] ?? "").trim();
                   return (
                     <div key={key} className="flex flex-col gap-1 border-t border-border/50 pt-2 first:border-t-0 first:pt-0">
-                      <span className="text-micro font-mono uppercase tracking-wider text-muted-foreground">
+                      <span className="text-meta font-mono uppercase tracking-wider text-muted-foreground">
                         {label}
                       </span>
                       <div className="text-xs leading-relaxed">

@@ -152,7 +152,7 @@ export function Sparkline({
           }}
         >
           {labels?.[hover] && (
-            <div className="font-mono text-micro text-muted-foreground">
+            <div className="font-mono text-meta text-muted-foreground">
               {labels[hover]}
             </div>
           )}

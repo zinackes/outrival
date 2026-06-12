@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Columns3,
+  Rows3,
   Check,
   Plus,
   X,
@@ -133,6 +134,10 @@ const dash = <span className="text-muted-foreground">—</span>;
 const dataCell = "font-mono text-dense tabular-nums";
 const detailKey = "text-muted-foreground text-xs";
 
+// Opaque "you"-column tint (CSS vars only). Opaque — not an alpha fill — so the
+// frozen column never shows the scrolling content bleeding through underneath it.
+const YOU_STICKY_BG = "bg-[color-mix(in_oklch,var(--primary)_5%,var(--background))]";
+
 const ROWS: Row[] = [
   {
     key: "positioning",
@@ -141,7 +146,7 @@ const ROWS: Row[] = [
       <div className="space-y-1.5">
         {c.positioning.category && <Badge variant="outline">{c.positioning.category}</Badge>}
         {c.positioning.summary ? (
-          <p className="text-muted-foreground line-clamp-3 text-dense leading-snug">
+          <p className="text-muted-foreground line-clamp-3 text-sm leading-snug">
             {c.positioning.summary}
           </p>
         ) : (
@@ -338,6 +343,19 @@ const ROWS: Row[] = [
 
 const ALL_ROW_KEYS = ROWS.map((r) => r.key);
 
+// Row grouping for the table body — a caption row is drawn when the group changes.
+// Positioning leads with no caption ("" group); the rest chunk into scannable bands.
+const ROW_GROUP: Record<string, string> = {
+  positioning: "",
+  pricing: "Metrics",
+  hiring: "Metrics",
+  reviews: "Metrics",
+  tech: "Stack",
+  platform: "Stack",
+  website: "Details",
+  latestSignal: "Details",
+};
+
 // ── Export ────────────────────────────────────────────────────────────────
 type ExportFormat = "csv" | "markdown" | "tsv";
 
@@ -409,6 +427,92 @@ function YouTag() {
     <span className="bg-primary text-primary-foreground inline-flex shrink-0 items-center rounded-[4px] px-1.5 py-0.5 text-meta font-semibold leading-none">
       You
     </span>
+  );
+}
+
+// ── Summary band ─────────────────────────────────────────────────────────────
+// One-glance "where you stand" verdicts above the matrix. Only the comparisons
+// that are unambiguous get a tone: cheapest entry price and best average rating
+// win/lose; hiring volume is shown as neutral context (more openings ≠ "better").
+type Tone = "good" | "bad" | "neutral";
+interface Takeaway {
+  key: string;
+  text: string;
+  tone: Tone;
+}
+
+function buildTakeaways(you: CompareColumn, comps: CompareColumn[]): Takeaway[] {
+  const out: Takeaway[] = [];
+
+  const youEntry = you.pricing?.entry ?? null;
+  const entries = comps.map((c) => c.pricing?.entry).filter((v): v is number => v != null);
+  if (youEntry != null && entries.length) {
+    const cheaper = entries.filter((e) => youEntry < e).length;
+    if (youEntry <= Math.min(...entries))
+      out.push({ key: "pricing", text: "Lowest entry price", tone: "good" });
+    else if (youEntry >= Math.max(...entries))
+      out.push({ key: "pricing", text: "Highest entry price", tone: "bad" });
+    else
+      out.push({
+        key: "pricing",
+        text: `Cheaper than ${cheaper} of ${entries.length}`,
+        tone: "neutral",
+      });
+  }
+
+  const youAvg = avgReview(you);
+  const avgs = comps.map(avgReview).filter((v): v is number => v != null);
+  if (youAvg != null && avgs.length) {
+    if (youAvg >= Math.max(...avgs))
+      out.push({ key: "reviews", text: `Best rated · ${youAvg.toFixed(1)}/5`, tone: "good" });
+    else if (youAvg <= Math.min(...avgs))
+      out.push({ key: "reviews", text: `Lowest rated · ${youAvg.toFixed(1)}/5`, tone: "bad" });
+    else
+      out.push({ key: "reviews", text: `Rated ${youAvg.toFixed(1)}/5 · mid-pack`, tone: "neutral" });
+  }
+
+  const youOpen = you.hiring?.totalOpen ?? null;
+  const opens = comps.map((c) => c.hiring?.totalOpen).filter((v): v is number => v != null);
+  if (youOpen != null && opens.length) {
+    out.push({
+      key: "hiring",
+      text: youOpen > Math.max(...opens) ? "Most active hiring" : `${youOpen} open roles`,
+      tone: "neutral",
+    });
+  }
+
+  return out;
+}
+
+const TONE_DOT: Record<Tone, string> = {
+  good: "bg-positive",
+  bad: "bg-destructive",
+  neutral: "bg-muted-foreground",
+};
+const TONE_TEXT: Record<Tone, string> = {
+  good: "text-positive",
+  bad: "text-destructive",
+  neutral: "",
+};
+
+function SummaryBand({ you, comps }: { you: CompareColumn; comps: CompareColumn[] }) {
+  const items = buildTakeaways(you, comps);
+  if (items.length === 0) return null;
+  return (
+    <div className="border-border bg-card flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-lg border px-3 py-2.5">
+      <span className="text-muted-foreground text-dense">
+        How <span className="text-foreground font-medium">{you.name}</span> stacks up
+      </span>
+      {items.map((t) => (
+        <span
+          key={t.key}
+          className="bg-background border-border inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-dense"
+        >
+          <span className={cn("size-1.5 shrink-0 rounded-full", TONE_DOT[t.tone])} aria-hidden />
+          <span className={TONE_TEXT[t.tone]}>{t.text}</span>
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -546,12 +650,16 @@ export function CompareView() {
     const theirs = cols.filter((c) => !youIds.has(c.id));
     return [...mine, ...theirs];
   }, [cols, youIds]);
-  const selectedEntities = useMemo(() => {
-    const byId = new Map((entities ?? []).map((e) => [e.id, e]));
-    return selected
-      .map((id) => byId.get(id))
-      .filter((e): e is PickEntity => Boolean(e));
-  }, [entities, selected]);
+  // Reference "you" column (the leftmost, pinned + frozen) and everyone it's
+  // measured against — drives the summary band.
+  const youCol = useMemo(
+    () => orderedCols.find((c) => youIds.has(c.id)) ?? null,
+    [orderedCols, youIds],
+  );
+  const compCols = useMemo(
+    () => orderedCols.filter((c) => !youIds.has(c.id)),
+    [orderedCols, youIds],
+  );
   const youGroup = useMemo(
     () => (entities ?? []).filter((e) => e.kind === "you"),
     [entities],
@@ -569,6 +677,11 @@ export function CompareView() {
     for (const r of rows) if (r.best) m.set(r.key, r.best(orderedCols));
     return m;
   }, [rows, orderedCols]);
+
+  // Only the leftmost "you" column is frozen (the primary reference); any extra
+  // "you" columns scroll like the rest.
+  const firstCol = orderedCols[0];
+  const stickyYouId = firstCol && youIds.has(firstCol.id) ? firstCol.id : null;
 
   const full = selected.length >= MAX;
   const hasCompetitors = (entities ?? []).some((e) => e.kind === "competitor");
@@ -612,7 +725,7 @@ export function CompareView() {
             <Columns3 size={18} className="text-muted-foreground" aria-hidden />
             Compare
           </h1>
-          <p className="text-muted-foreground mt-1 text-dense">
+          <p className="text-muted-foreground mt-1 text-sm">
             Put your product and competitors side by side on positioning, pricing,
             hiring, reviews and tech.
           </p>
@@ -623,7 +736,7 @@ export function CompareView() {
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="outline" size="sm">
-                <Columns3 size={14} />
+                <Rows3 size={14} />
                 Rows
               </Button>
             </PopoverTrigger>
@@ -717,44 +830,14 @@ export function CompareView() {
         </p>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
-          {selectedEntities.map((e) => (
-            <span
-              key={e.id}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-md border py-1 pl-2.5 pr-1.5 text-dense",
-                e.kind === "you"
-                  ? "border-primary/40 bg-primary/10 text-foreground"
-                  : "border-border bg-card text-foreground",
-              )}
-            >
-              {e.kind === "you" && <YouTag />}
-              <span className="max-w-[12rem] truncate">{e.name}</span>
-              <button
-                type="button"
-                onClick={() => toggle(e.id)}
-                aria-label={`Remove ${e.name}`}
-                className="text-muted-foreground hover:text-foreground -mr-0.5 rounded-sm p-0.5 transition-colors"
-              >
-                <X size={13} />
-              </button>
-            </span>
-          ))}
-
+          {/* The selected set lives in the table header (name + remove-X) — this
+              toolbar is just add + count, so names aren't listed twice. */}
           <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
             <PopoverTrigger asChild>
-              <button
-                type="button"
-                disabled={full}
-                aria-label="Add competitor"
-                className={cn(
-                  "inline-flex items-center justify-center rounded-md border border-dashed border-border px-2 py-1.5 transition-colors",
-                  full
-                    ? "cursor-not-allowed opacity-40"
-                    : "text-muted-foreground hover:text-foreground hover:border-border-strong",
-                )}
-              >
-                <Plus size={15} />
-              </button>
+              <Button variant="outline" size="sm" disabled={full}>
+                <Plus size={14} />
+                Add to compare
+              </Button>
             </PopoverTrigger>
             <PopoverContent align="start" className="w-64 p-0">
               <Command>
@@ -807,78 +890,144 @@ export function CompareView() {
           ) : matrix.length === 0 ? (
             <p className="text-muted-foreground text-sm">Nothing to compare.</p>
           ) : (
-            <div className="overflow-x-auto rounded-lg border border-border">
-              <table className="w-full border-separate border-spacing-0 text-sm">
-                <thead>
-                  <tr>
-                    <th className="bg-background sticky left-0 z-10 border-b border-r border-border px-3 py-2.5 text-left" />
-                    {orderedCols.map((c) => {
-                      const mine = youIds.has(c.id);
-                      return (
-                        <th
-                          key={c.id}
-                          className={cn(
-                            "min-w-[10rem] border-b border-border px-3 py-2.5 text-left font-semibold tracking-tight",
-                            mine && "bg-primary/5",
-                          )}
-                        >
-                          <span className="flex items-center gap-2">
-                            <span className="truncate">{c.name}</span>
-                            {mine && <YouTag />}
-                          </span>
-                        </th>
-                      );
-                    })}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => {
-                    const isOpen = expanded.has(r.key);
-                    const winners = winnersByRow.get(r.key);
-                    return (
-                      <tr key={r.key} className="last:[&>td]:border-b-0">
-                        <td className="bg-background sticky left-0 z-10 border-b border-r border-border px-3 py-2.5 align-top">
-                          {r.detail ? (
-                            <button
-                              type="button"
-                              onClick={() => toggleExpand(r.key)}
-                              aria-expanded={isOpen}
-                              className="text-muted-foreground hover:text-foreground -ml-1 flex w-full items-center gap-1 rounded-sm text-left text-dense font-medium transition-colors"
-                            >
-                              <ChevronRight
-                                size={13}
-                                className={cn("shrink-0 transition-transform", isOpen && "rotate-90")}
-                                aria-hidden
-                              />
-                              {r.label}
-                            </button>
-                          ) : (
-                            <span className="text-muted-foreground pl-[18px] text-dense font-medium">
-                              {r.label}
+            <div className="flex flex-col gap-3">
+              {youCol && compCols.length > 0 && <SummaryBand you={youCol} comps={compCols} />}
+              <div className="overflow-x-auto rounded-lg border border-border">
+                <table className="w-full border-separate border-spacing-0 text-sm">
+                  <thead>
+                    <tr>
+                      <th className="bg-background sticky left-0 z-20 w-36 border-b border-r border-border px-3 py-2.5 text-left" />
+                      {orderedCols.map((c) => {
+                        const mine = youIds.has(c.id);
+                        const stuck = c.id === stickyYouId;
+                        return (
+                          <th
+                            key={c.id}
+                            className={cn(
+                              "group/col min-w-[10rem] border-b border-border px-3 py-2.5 text-left font-semibold tracking-tight",
+                              mine && !stuck && "bg-primary/5",
+                              stuck && cn(YOU_STICKY_BG, "sticky left-36 z-10 border-r border-border"),
+                            )}
+                          >
+                            <span className="flex items-center gap-2">
+                              <span className="truncate">{c.name}</span>
+                              {mine && <YouTag />}
+                              <button
+                                type="button"
+                                onClick={() => toggle(c.id)}
+                                aria-label={`Remove ${c.name}`}
+                                className="text-muted-foreground hover:text-foreground ml-auto shrink-0 rounded-sm p-0.5 opacity-0 transition-opacity group-hover/col:opacity-100 focus-visible:opacity-100"
+                              >
+                                <X size={13} />
+                              </button>
                             </span>
-                          )}
-                        </td>
-                        {orderedCols.map((c) => {
-                          const won = !isOpen && winners?.has(c.id);
-                          return (
-                            <td
-                              key={c.id}
-                              className={cn(
-                                "border-b border-border px-3 py-2.5 align-top",
-                                youIds.has(c.id) && "bg-primary/[0.03]",
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(() => {
+                      let prevGroup = "";
+                      const out: ReactNode[] = [];
+                      // Columns to span on caption rows after the (frozen) label and
+                      // "you" cells — keeps the frozen you column continuous.
+                      const restCols = orderedCols.length - (stickyYouId ? 1 : 0);
+                      for (const r of rows) {
+                        const group = ROW_GROUP[r.key] ?? "";
+                        if (group && group !== prevGroup) {
+                          out.push(
+                            <tr key={`grp-${group}`}>
+                              <td className="bg-background sticky left-0 z-20 w-36 whitespace-nowrap border-b border-r border-border px-3 pb-1.5 pt-4">
+                                <span className="text-muted-foreground text-meta font-medium">
+                                  {group}
+                                </span>
+                              </td>
+                              {stickyYouId && (
+                                <td
+                                  className={cn(
+                                    YOU_STICKY_BG,
+                                    "sticky left-36 z-10 border-b border-r border-border",
+                                  )}
+                                />
                               )}
-                            >
-                              <div className={cn(won && "text-positive font-medium")}>
-                                {isOpen && r.detail ? r.detail(c) : r.compact(c)}
-                              </div>
-                            </td>
+                              {restCols > 0 && (
+                                <td
+                                  colSpan={restCols}
+                                  className="bg-background border-b border-border"
+                                />
+                              )}
+                            </tr>,
                           );
-                        })}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                        }
+                        prevGroup = group;
+                        const isOpen = expanded.has(r.key);
+                        const winners = winnersByRow.get(r.key);
+                        out.push(
+                          <tr key={r.key} className="last:[&>td]:border-b-0">
+                            <td className="bg-background sticky left-0 z-20 w-36 whitespace-nowrap border-b border-r border-border px-3 py-2.5 align-top">
+                              {r.detail ? (
+                                <button
+                                  type="button"
+                                  onClick={() => toggleExpand(r.key)}
+                                  aria-expanded={isOpen}
+                                  className="text-muted-foreground hover:text-foreground -ml-1 flex w-full items-center gap-1 rounded-sm text-left text-dense font-medium transition-colors"
+                                >
+                                  <ChevronRight
+                                    size={13}
+                                    className={cn(
+                                      "shrink-0 transition-transform",
+                                      isOpen && "rotate-90",
+                                    )}
+                                    aria-hidden
+                                  />
+                                  {r.label}
+                                </button>
+                              ) : (
+                                <span className="text-muted-foreground pl-[18px] text-dense font-medium">
+                                  {r.label}
+                                </span>
+                              )}
+                            </td>
+                            {orderedCols.map((c) => {
+                              const won = winners?.has(c.id);
+                              const mine = youIds.has(c.id);
+                              const stuck = c.id === stickyYouId;
+                              return (
+                                <td
+                                  key={c.id}
+                                  className={cn(
+                                    "border-b border-border px-3 py-2.5 align-top",
+                                    mine && !stuck && "bg-primary/[0.03]",
+                                    stuck &&
+                                      cn(YOU_STICKY_BG, "sticky left-36 z-10 border-r border-border"),
+                                  )}
+                                >
+                                  {isOpen && r.detail ? (
+                                    <div className="space-y-1.5">
+                                      {won && (
+                                        <span className="text-positive text-meta font-medium">
+                                          Best
+                                        </span>
+                                      )}
+                                      {r.detail(c)}
+                                    </div>
+                                  ) : (
+                                    <div className={cn(won && "text-positive font-medium")}>
+                                      {r.compact(c)}
+                                    </div>
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>,
+                        );
+                      }
+                      return out;
+                    })()}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </>

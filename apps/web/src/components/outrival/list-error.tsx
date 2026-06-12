@@ -15,7 +15,7 @@ export function ListError({ error, onRetry }: { error: unknown; onRetry?: () => 
       <div className="font-semibold text-base text-foreground mb-1.5 tracking-tight">
         {cfg.title}
       </div>
-      <div className="text-dense text-muted-foreground max-w-[380px] mx-auto mb-4">
+      <div className="text-sm text-muted-foreground max-w-[380px] mx-auto mb-4">
         {cfg.description}
       </div>
       {onRetry && <Button onClick={onRetry}>{cfg.action?.label ?? "Try again"}</Button>}

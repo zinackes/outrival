@@ -147,7 +147,7 @@ export default function BattleCardsPage() {
               <div className="font-semibold text-base text-foreground mb-1.5 tracking-tight">
                 {cards.length === 0 ? "No battle cards yet" : "No matching battle cards"}
               </div>
-              <div className="text-dense max-w-[400px] mx-auto">
+              <div className="text-sm max-w-[400px] mx-auto">
                 {cards.length === 0
                   ? "Generate one from a competitor's page to compare it against your product."
                   : "Adjust the filters to see results."}

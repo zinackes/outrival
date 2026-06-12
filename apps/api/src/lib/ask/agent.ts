@@ -75,7 +75,22 @@ export async function runAskAgent(
     await logAskRun(AI_CONFIG.insights.model, answer.ok ? "success" : "parse_failed");
 
     if (answer.ok) {
-      await emit({ type: "answer", answer: answer.value.answer, citations: answer.value.citations });
+      // Re-validate citations server-side: the synthesis is told to cite only ids
+      // it saw, but nothing forces it. Keep competitor ids that exist in the org
+      // roster and signal ids that appeared in the tool results — a hallucinated or
+      // foreign id is dropped rather than shipped to the UI as a dead/leaky link.
+      const competitorIds = new Set(roster.map((r) => r.id));
+      const signalIds = new Set<string>();
+      for (const { result } of results) {
+        const sigs = (result as { signals?: Array<{ id?: unknown }> }).signals;
+        if (Array.isArray(sigs)) {
+          for (const s of sigs) if (typeof s.id === "string") signalIds.add(s.id);
+        }
+      }
+      const citations = answer.value.citations.filter((c) =>
+        c.type === "competitor" ? competitorIds.has(c.id) : signalIds.has(c.id),
+      );
+      await emit({ type: "answer", answer: answer.value.answer, citations });
     } else {
       await emit({
         type: "answer",

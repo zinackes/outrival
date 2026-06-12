@@ -934,7 +934,7 @@ function FooterNav({
         </Button>
       </div>
       {hint && (
-        <p className="text-meta font-mono uppercase tracking-wider text-muted-foreground/70 mt-3 text-right">
+        <p className="text-meta font-medium uppercase tracking-wide text-muted-foreground mt-3 text-right">
           {hint}
         </p>
       )}
@@ -1500,7 +1500,7 @@ function CompetitorRow({
           <ExternalLink size={10} />
         </a>
         {competitor.snippet && (
-          <p className="text-xs text-muted-foreground/80 mt-1.5 line-clamp-2">
+          <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">
             {competitor.snippet}
           </p>
         )}

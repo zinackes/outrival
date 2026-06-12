@@ -88,7 +88,7 @@ export function detectTemporaryUrl(url: string): { temporary: boolean; reason?: 
   try {
     const u = new URL(url);
     if (TEMPORARY_HOSTS.some((h) => u.hostname.endsWith(h) || u.hostname === h)) {
-      return { temporary: true, reason: "Cette URL semble temporaire (preview ou local)" };
+      return { temporary: true, reason: "This URL looks temporary (a preview or local deploy)" };
     }
     return { temporary: false };
   } catch {

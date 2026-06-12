@@ -49,7 +49,7 @@
 
   /* Category scale — wayfinding hue per signal category (pricing/product/hiring/
      reviews/content/funding). A separate semantic system from severity AND from
-     brand amber: a desaturated cool→rose ramp, darkened here for ≥4.5:1 text on
+     brand cyan: a desaturated cool→rose ramp, darkened here for ≥4.5:1 text on
      light surfaces. Consumed as text-cat, bg-cat and border-cat on badges. */
   --cat-pricing: oklch(0.5 0.12 175);
   --cat-reviews: oklch(0.5 0.13 211);
@@ -126,7 +126,7 @@
   --accent-foreground: oklch(0.17 0.02 230);
   --link: oklch(0.8 0.12 200);
 
-  /* Severity scale (distinct from brand amber) */
+  /* Severity scale (distinct from brand cyan) */
   --critical: #ff4d4d;
   --high: #ff9f43;
   --medium: #ffc542;
@@ -169,7 +169,7 @@
   --color-popover: var(--surface-2);
   --color-popover-foreground: var(--foreground);
 
-  /* primary = brand amber (CTA buttons, progress, selection) */
+  /* primary = brand cyan (CTA buttons, progress, selection) */
   --color-primary: var(--accent);
   --color-primary-foreground: var(--accent-foreground);
   --color-accent-bright: var(--accent-bright);
@@ -178,7 +178,7 @@
   --color-secondary-foreground: var(--foreground);
 
   /* shadcn `muted`/`accent` are neutral surfaces (hover states, subtle bg) —
-     NOT the brand amber, which lives in :root --accent for inline use. */
+     NOT the brand cyan, which lives in :root --accent for inline use. */
   --color-muted: var(--surface-2);
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--surface-3);

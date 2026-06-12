@@ -418,8 +418,8 @@ function PickItem({
   );
 }
 
-// "You" marker — amber fill, ink text, sentence case. Same component in the chips
-// and the table header so it always reads aligned and identical. Amber is the
+// "You" marker — cyan fill, ink text, sentence case. Same component in the chips
+// and the table header so it always reads aligned and identical. Cyan is the
 // brand's selection/current accent, spent here on the one or two "your product"
 // columns the page frames everything against.
 function YouTag() {

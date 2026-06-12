@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 // Static class strings so Tailwind's JIT keeps them. Colours map to the severity
-// scale (design-system), distinct from the amber brand accent.
+// scale (design-system), distinct from the cyan brand accent.
 const CONFIG: Record<FreshnessLevel, { dot: string; label: string }> = {
   fresh: { dot: "bg-positive", label: "Up to date" },
   aging: { dot: "bg-medium", label: "Aging" },

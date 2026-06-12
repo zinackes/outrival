@@ -34,7 +34,7 @@ const SIGNALS = [
 export function Hero() {
   return (
     <section className="relative isolate overflow-hidden">
-      {/* Atmosphere: amber kept high and behind the product, so the headline
+      {/* Atmosphere: cyan kept high and behind the product, so the headline
           stays crisp on near-black. Static; no gradient text. */}
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
         <div

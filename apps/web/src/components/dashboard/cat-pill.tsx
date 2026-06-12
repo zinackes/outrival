@@ -2,7 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 /* The six signal categories carry a wayfinding hue (a system separate from
-   severity and from brand amber). Any other value — e.g. a competitor's
+   severity and from brand cyan). Any other value — e.g. a competitor's
    freeform industry category — falls back to the neutral chip. Class strings
    are spelled out in full so Tailwind keeps them in the build. */
 const CAT_CLASS: Record<string, string> = {

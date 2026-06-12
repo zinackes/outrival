@@ -2,7 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowUpRight, MoreHorizontal, ListTodo, MessageSquare } from "lucide-react";
+import {
+  ArrowUpRight,
+  MoreHorizontal,
+  ListTodo,
+  MessageSquare,
+  Sparkles,
+} from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { api, type Signal, type ActionStatus } from "@/lib/api";
@@ -312,12 +318,18 @@ export function SignalCard({
       </p>
 
       {/* Strategic narrative (patch-16): contextual explanation of a significant
-          structured homepage change. Visually distinct (amber, left rule, italic),
-          adds context below the title — never replaces it. Absent → unchanged. */}
+          structured homepage change. Visually distinct via a tonal inset + AI mark
+          (no side-stripe/italic), adds context below the title — never replaces it.
+          Absent → unchanged. */}
       {signal.narrative && (
-        <p className="mb-4 border-l-2 border-primary/40 pl-3 text-content italic leading-relaxed text-primary/90">
-          {signal.narrative}
-        </p>
+        <div className="mb-4 flex gap-2 rounded-md bg-surface-2 px-3 py-2.5 text-content leading-relaxed text-foreground/85">
+          <Sparkles
+            size={14}
+            className="mt-0.5 shrink-0 text-muted-foreground"
+            aria-hidden
+          />
+          <p>{signal.narrative}</p>
+        </div>
       )}
 
       {hasDetails && (

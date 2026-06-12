@@ -52,7 +52,7 @@ const SEV_ORDER: Record<Signal["severity"], number> = {
 };
 
 // The category wayfinding scale (globals.css --cat-*), shared with the feed pills
-// and the competitor charts. A system separate from severity and brand amber —
+// and the competitor charts. A system separate from severity and brand cyan —
 // the old map borrowed those hues, which mislabeled pricing as critical-red and
 // spent the brand accent on a category.
 const CATEGORY_COLORS: Record<string, string> = {

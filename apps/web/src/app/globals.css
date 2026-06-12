@@ -40,12 +40,16 @@
   --accent-foreground: oklch(0.17 0.02 230);
   --link: oklch(0.55 0.14 200);
 
-  /* Severity scale — darkened for contrast on light surfaces */
-  --critical: #dc2626;
-  --high: #ea580c;
-  --medium: #d97706;
-  --low: #71717a;
-  --positive: #059669;
+  /* Severity scale — Tailwind 700-level on light: each step clears ≥4.5:1 both as
+     text on the near-white canvas AND under white as a solid fill, with wide hue
+     gaps (red → orange → gold) so critical/high/medium read apart at a glance.
+     The old #dc2626/#ea580c/#d97706 sat in one dark-warm band and failed AA as
+     text. Dark mode is already bright/separated/AA, so it keeps its values. */
+  --critical: #b91c1c;
+  --high: #c2410c;
+  --medium: #a16207;
+  --low: #52525b;
+  --positive: #047857;
 
   /* Category scale — wayfinding hue per signal category (pricing/product/hiring/
      reviews/content/funding). A separate semantic system from severity AND from

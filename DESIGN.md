@@ -14,11 +14,11 @@ colors:
   border: "oklch(0.9 0.005 260)"
   ink: "oklch(0.22 0.01 260)"
   muted: "oklch(0.46 0.015 260)"
-  critical: "#dc2626"
-  high: "#ea580c"
-  medium: "#d97706"
-  low: "#71717a"
-  positive: "#059669"
+  critical: "#b91c1c"
+  high: "#c2410c"
+  medium: "#a16207"
+  low: "#52525b"
+  positive: "#047857"
 typography:
   display:
     fontFamily: "Bricolage Grotesque, ui-sans-serif, system-ui, sans-serif"
@@ -179,10 +179,12 @@ lightness predictably; the frontmatter carries the light values as canonical.
   strokes; `border-strong` for emphasis.
 
 ### Severity (the semantic scale; not decorative, never the brand accent)
-- **Critical** (`#dc2626` / `#ff4d4d`), **High** (`#ea580c` / `#ff9f43`),
-  **Medium** (`#d97706` / `#ffc542`), **Low** (`#71717a` / `#8a8a94`),
-  **Positive** (`#059669` / `#34d399`). Darkened on light surfaces for contrast,
-  brightened on dark.
+- **Critical** (`#b91c1c` / `#ff4d4d`), **High** (`#c2410c` / `#ff9f43`),
+  **Medium** (`#a16207` / `#ffc542`), **Low** (`#52525b` / `#8a8a94`),
+  **Positive** (`#047857` / `#34d399`). Light values are Tailwind 700-level: each
+  clears ≥4.5:1 as text on the near-white canvas and under white as a solid fill,
+  with wide hue gaps (red → orange → gold) so the warm steps read apart. Dark mode
+  stays bright (already separated and AA on the dark canvas).
 
 ### Category (wayfinding, a third system)
 - Six desaturated hues for the signal categories (pricing/product/hiring/reviews/

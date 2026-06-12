@@ -46,7 +46,7 @@ export function DeleteWorkspaceCard() {
   const confirmMatches = workspaceName !== null && confirm === workspaceName;
 
   return (
-    <Card className="border-critical/20 px-5 py-[18px]">
+    <Card className="border-critical/20 px-5 py-5">
       <div className="flex items-center gap-3">
         <div className="flex-1">
           <div className="font-semibold text-sm">Delete workspace</div>

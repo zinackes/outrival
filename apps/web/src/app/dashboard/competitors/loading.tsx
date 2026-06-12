@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 
 export default function CompetitorsLoading() {
   return (
-    <div className="space-y-[22px]" aria-busy="true" aria-live="polite">
+    <div className="space-y-6" aria-busy="true" aria-live="polite">
       <PageHeadSkeleton />
       <Card className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-border">
         {Array.from({ length: 3 }).map((_, i) => (

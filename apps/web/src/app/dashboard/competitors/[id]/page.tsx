@@ -735,7 +735,7 @@ export default function CompetitorDetailPage({ params }: Props) {
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="space-y-[22px] animate-in fade-in slide-in-from-bottom-2 duration-500">
+      <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
         <Header
           competitor={competitor}
           lastRunMs={lastRunMs}

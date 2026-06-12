@@ -984,7 +984,7 @@ export function CompareView() {
                                   {r.label}
                                 </button>
                               ) : (
-                                <span className="text-muted-foreground pl-[18px] text-dense font-medium">
+                                <span className="text-muted-foreground pl-5 text-dense font-medium">
                                   {r.label}
                                 </span>
                               )}

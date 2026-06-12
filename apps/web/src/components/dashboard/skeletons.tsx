@@ -96,7 +96,7 @@ export function ListRowsSkeleton({ rows = 5 }: { rows?: number } = {}) {
       {Array.from({ length: rows }).map((_, i) => (
         <div
           key={i}
-          className="p-[22px] border-b border-border last:border-b-0 flex flex-col gap-3"
+          className="p-6 border-b border-border last:border-b-0 flex flex-col gap-3"
         >
           <div className="flex items-center gap-3 flex-wrap">
             <Skeleton className="h-5 w-16 rounded" />
@@ -125,7 +125,7 @@ export function GridCardsSkeleton({
       style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${minWidth}px, 1fr))` }}
     >
       {Array.from({ length: cards }).map((_, i) => (
-        <Card key={i} className="p-[18px] flex flex-col gap-3" style={{ minHeight: cardHeight }}>
+        <Card key={i} className="p-5 flex flex-col gap-3" style={{ minHeight: cardHeight }}>
           <div className="flex items-center gap-2.5">
             <Skeleton className="h-7 w-7 rounded-full" />
             <div className="flex-1">

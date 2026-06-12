@@ -38,7 +38,7 @@ export function SeverityDot({ severity }: { severity: Severity }) {
   return (
     <span
       className={cn(
-        "w-[7px] h-[7px] rounded-full inline-block shrink-0",
+        "w-2 h-2 rounded-full inline-block shrink-0",
         SEV_DOT[severity],
       )}
       aria-hidden

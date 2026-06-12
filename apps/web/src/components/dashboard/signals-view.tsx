@@ -504,7 +504,7 @@ export function SignalsView() {
 
   if (err && signals === null) {
     return (
-      <div className="space-y-[22px]">
+      <div className="space-y-6">
         <PageHead title="Signals" sub="Classified by AI." />
         <ListError error={err} onRetry={load} />
       </div>
@@ -512,7 +512,7 @@ export function SignalsView() {
   }
 
   return (
-    <div className="space-y-[22px]">
+    <div className="space-y-6">
       <PageHead
         title="Signals"
         sub={
@@ -614,7 +614,7 @@ export function SignalsView() {
                 <span className="flex items-center gap-2">
                   <span
                     className={cn(
-                      "w-[7px] h-[7px] rounded-full inline-block",
+                      "w-2 h-2 rounded-full inline-block",
                       SEV_DOT[s],
                     )}
                   />
@@ -709,7 +709,7 @@ export function SignalsView() {
             <FilterChip key={`s-${s}`} onRemove={() => toggleInSet("severity", s)}>
               <span
                 className={cn(
-                  "w-[7px] h-[7px] rounded-full inline-block",
+                  "w-2 h-2 rounded-full inline-block",
                   SEV_DOT[s as Sev],
                 )}
               />
@@ -840,7 +840,7 @@ function BatchGroupCard({
         aria-label={`${first.competitorName}: ${item.signals.length} similar ${first.category} signals`}
         onClick={onToggleOpen}
         className={cn(
-          "flex w-full items-center gap-3 p-[18px] text-left outline-none transition-colors hover:bg-muted/30",
+          "flex w-full items-center gap-3 p-5 text-left outline-none transition-colors hover:bg-muted/30",
           focusedId === `batch:${item.batchId}` &&
             "ring-2 ring-inset ring-primary/70",
         )}

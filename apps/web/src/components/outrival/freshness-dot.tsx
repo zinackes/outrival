@@ -59,7 +59,7 @@ export function FreshnessDot({
   rescanning,
   size = "sm",
 }: FreshnessDotProps) {
-  const dotSize = size === "md" ? "h-2.5 w-2.5" : "h-[7px] w-[7px]";
+  const dotSize = size === "md" ? "h-2.5 w-2.5" : "h-2 w-2";
 
   // Legacy patch-14 path — unchanged behaviour for callers that don't opt in.
   if (!sourceType) {

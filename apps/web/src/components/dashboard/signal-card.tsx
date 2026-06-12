@@ -204,7 +204,7 @@ export function SignalCard({
       aria-label={`${signal.competitorName}: ${signal.severityOverride ?? signal.severity} ${signal.category} signal`}
       onClick={handleCardClick}
       className={cn(
-        "rounded-md border border-border bg-card p-[22px] outline-none transition-[box-shadow,background-color,opacity] duration-500",
+        "rounded-md border border-border bg-card p-6 outline-none transition-[box-shadow,background-color,opacity] duration-500",
         signal.isRead && "opacity-80",
         canRevert && "cursor-pointer hover:opacity-90",
         (highlight || focused) && "ring-2 ring-primary/70",

@@ -290,7 +290,7 @@ export default function CandidatesPage() {
   const belowThreshold = (items ?? []).filter((c) => (c.overlapScore ?? 0) < 70);
 
   return (
-    <div className="space-y-[22px]">
+    <div className="space-y-6">
       <PaywallDialog reason={paywall} onClose={() => setPaywall(null)} />
       <PageHead
         title="Discovery"
@@ -452,7 +452,7 @@ export default function CandidatesPage() {
             return (
               <motion.div key={c.id} {...feedItemMotion}>
               <Card>
-                <div className="p-[18px] flex flex-col flex-1">
+                <div className="p-5 flex flex-col flex-1">
                   <div className="flex items-center gap-2.5 mb-3.5">
                     <CompAvatar name={name} />
                     <div className="flex-1 min-w-0">

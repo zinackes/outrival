@@ -140,7 +140,7 @@ export function NotificationsBell({ compact = false }: { compact?: boolean } = {
                 <Bell size={14} />
                 {unreadCount > 0 && (
                   <span
-                    className="absolute top-1.5 right-1.5 w-[7px] h-[7px] rounded-full bg-primary border-2 border-background"
+                    className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-primary border-2 border-background"
                     aria-hidden
                   />
                 )}

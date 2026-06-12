@@ -75,7 +75,7 @@ export default function BattleCardsPage() {
 
   if (err && cards === null) {
     return (
-      <div className="space-y-[22px]">
+      <div className="space-y-6">
         <PageHead title="Battle cards" sub="Strategic one-pagers per competitor." />
         <ListError error={err} onRetry={load} />
       </div>
@@ -83,7 +83,7 @@ export default function BattleCardsPage() {
   }
 
   return (
-    <div className="space-y-[22px]">
+    <div className="space-y-6">
       <PageHead
         title="Battle cards"
         sub={

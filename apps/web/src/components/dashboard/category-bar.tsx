@@ -60,7 +60,7 @@ export function CategoryKey() {
       {Object.keys(CAT_COLOR).map((cat) => (
         <span key={cat} className="inline-flex items-center gap-1.5 capitalize">
           <span
-            className="w-[7px] h-[7px] rounded-full inline-block"
+            className="w-2 h-2 rounded-full inline-block"
             style={{ backgroundColor: CAT_COLOR[cat] }}
           />
           {cat}
@@ -80,7 +80,7 @@ export function CategoryLegend({ counts }: { counts: Record<string, number> }) {
       {entries.map(([cat, n]) => (
         <span key={cat} className="inline-flex items-center gap-1.5">
           <span
-            className="w-[7px] h-[7px] rounded-full inline-block"
+            className="w-2 h-2 rounded-full inline-block"
             style={{ backgroundColor: CAT_COLOR[cat] ?? FALLBACK }}
           />
           {cat}

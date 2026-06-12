@@ -136,7 +136,7 @@ export function DigestsView() {
   if (active) return <DigestReader d={active} onBack={() => setActive(null)} />;
 
   return (
-    <div className="space-y-[22px]">
+    <div className="space-y-6">
       <PageHead
         title="Weekly digests"
         sub="Sent every Monday at 09:00. Next: Monday June 1."
@@ -270,7 +270,7 @@ function DigestReader({ d, onBack }: { d: Digest; onBack: () => void }) {
   const fyi = sections.filter((s) => s.urgency === "fyi");
 
   return (
-    <div className="space-y-[22px]">
+    <div className="space-y-6">
       <Button
         variant="ghost"
         size="sm"
@@ -323,7 +323,7 @@ function DigestReader({ d, onBack }: { d: Digest; onBack: () => void }) {
       </div>
 
       {tldr.length > 0 && (
-        <Card className="px-5 py-[18px]">
+        <Card className="px-5 py-5">
           <div className="font-mono text-meta tracking-widest text-primary uppercase mb-3">
             TL;DR
           </div>
@@ -378,7 +378,7 @@ function DigestSection({
         {items.map((s, i) => (
           <div
             key={i}
-            className="p-[18px] border-b border-border last:border-b-0"
+            className="p-5 border-b border-border last:border-b-0"
           >
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <CatPill>{s.category}</CatPill>

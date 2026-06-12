@@ -216,7 +216,7 @@ export function CompetitorsList() {
 
   if (err && competitors === null) {
     return (
-      <div className="space-y-[22px]">
+      <div className="space-y-6">
         <PageHead title="Competitors" sub="Everyone you're tracking." />
         <ListError error={err} onRetry={refresh} />
       </div>
@@ -224,7 +224,7 @@ export function CompetitorsList() {
   }
 
   return (
-    <div className="space-y-[22px]">
+    <div className="space-y-6">
       <PaywallDialog reason={paywall} onClose={() => setPaywall(null)} />
       <PageHead
         title="Competitors"
@@ -584,7 +584,7 @@ export function CompetitorsList() {
               onClick={() => router.push(`/dashboard/competitors/${c.id}`)}
               className="cursor-pointer transition-colors hover:bg-accent/30"
             >
-              <div className="p-[18px]">
+              <div className="p-5">
                 <div className="flex items-center gap-2.5 mb-3.5">
                   <CompAvatar name={c.name} />
                   <div className="flex-1 min-w-0">

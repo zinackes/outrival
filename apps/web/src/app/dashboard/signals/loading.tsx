@@ -6,7 +6,7 @@ import {
 
 export default function SignalsLoading() {
   return (
-    <div className="space-y-[22px]" aria-busy="true" aria-live="polite">
+    <div className="space-y-6" aria-busy="true" aria-live="polite">
       <PageHeadSkeleton />
       <div className="flex items-center gap-2 flex-wrap">
         <Skeleton className="h-8 w-[260px]" />

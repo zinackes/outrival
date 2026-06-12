@@ -84,6 +84,8 @@ trendsRouter.get("/summary", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
   const { from, to } = resolveRange(c.req.query("from"), c.req.query("to"), c.req.query("window"));
+  const fromIso = from.toISOString();
+  const toIso = to.toISOString();
   const windowDays = Math.max(1, Math.round((to.getTime() - from.getTime()) / DAY_MS));
 
   const comps = await orgCompetitors(orgId);
@@ -106,7 +108,7 @@ trendsRouter.get("/summary", async (c) => {
              ) AS prev_price
       FROM pricing_history
       WHERE competitor_id IN (${idList})
-        AND recorded_at >= ${from} AND recorded_at <= ${to}
+        AND recorded_at >= ${fromIso}::timestamp AND recorded_at <= ${toIso}::timestamp
     )
     SELECT competitor_id AS "competitorId", plan_name AS "planName", price,
            prev_price AS "prevPrice", currency, billing_period AS "billingPeriod",
@@ -123,7 +125,7 @@ trendsRouter.get("/summary", async (c) => {
       SELECT competitor_id, recorded_at, sum(count)::int AS total
       FROM job_counts
       WHERE competitor_id IN (${idList})
-        AND recorded_at >= ${from} AND recorded_at <= ${to}
+        AND recorded_at >= ${fromIso}::timestamp AND recorded_at <= ${toIso}::timestamp
       GROUP BY competitor_id, recorded_at
     ),
     bounds AS (
@@ -146,7 +148,7 @@ trendsRouter.get("/summary", async (c) => {
            recorded_at AS "recordedAt"
     FROM review_scores
     WHERE competitor_id IN (${idList})
-      AND recorded_at >= ${from} AND recorded_at <= ${to}
+      AND recorded_at >= ${fromIso}::timestamp AND recorded_at <= ${toIso}::timestamp
     ORDER BY competitor_id, source, recorded_at DESC
     LIMIT 100
   `);
@@ -157,7 +159,7 @@ trendsRouter.get("/summary", async (c) => {
            recorded_at AS "recordedAt"
     FROM tech_stack_history
     WHERE competitor_id IN (${idList})
-      AND recorded_at >= ${from} AND recorded_at <= ${to}
+      AND recorded_at >= ${fromIso}::timestamp AND recorded_at <= ${toIso}::timestamp
     ORDER BY recorded_at DESC
     LIMIT 50
   `);
@@ -194,6 +196,8 @@ trendsRouter.get("/series", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
   const { from, to } = resolveRange(c.req.query("from"), c.req.query("to"), c.req.query("window"));
+  const fromIso = from.toISOString();
+  const toIso = to.toISOString();
   const competitorId = c.req.query("competitorId") ?? "";
   const metricParam = c.req.query("metric") ?? "";
   if (!competitorId || !(SERIES_METRICS as readonly string[]).includes(metricParam)) {
@@ -218,7 +222,7 @@ trendsRouter.get("/series", async (c) => {
       SELECT recorded_at AS "t", plan_name AS "key", price AS "value"
       FROM pricing_history
       WHERE competitor_id = ${competitorId}
-        AND recorded_at >= ${from} AND recorded_at <= ${to}
+        AND recorded_at >= ${fromIso}::timestamp AND recorded_at <= ${toIso}::timestamp
       ORDER BY recorded_at ASC
     `);
   } else if (metric === "hiring") {
@@ -226,7 +230,7 @@ trendsRouter.get("/series", async (c) => {
       SELECT recorded_at AS "t", department AS "key", count AS "value"
       FROM job_counts
       WHERE competitor_id = ${competitorId}
-        AND recorded_at >= ${from} AND recorded_at <= ${to}
+        AND recorded_at >= ${fromIso}::timestamp AND recorded_at <= ${toIso}::timestamp
       ORDER BY recorded_at ASC
     `);
   } else {
@@ -234,7 +238,7 @@ trendsRouter.get("/series", async (c) => {
       SELECT recorded_at AS "t", source AS "key", score AS "value"
       FROM review_scores
       WHERE competitor_id = ${competitorId}
-        AND recorded_at >= ${from} AND recorded_at <= ${to}
+        AND recorded_at >= ${fromIso}::timestamp AND recorded_at <= ${toIso}::timestamp
       ORDER BY recorded_at ASC
     `);
   }

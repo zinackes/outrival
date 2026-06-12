@@ -15,7 +15,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "db:generate": "drizzle-kit generate",
-    "db:baseline": "bun run src/baseline.ts"
+    "db:baseline": "bun run src/baseline.ts",
+    "db:backfill-news": "bun run src/backfill-news-monitors.ts"
   },
   "dependencies": {
     "@outrival/shared": "workspace:*",

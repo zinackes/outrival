@@ -69,6 +69,8 @@ const SOURCE_LABELS: Record<SourceType, string> = {
   status: "Status page",
   // patch-32: internal sitemap-diff anchor, never shown in plan source lists.
   sitemap: "Sitemap",
+  // Internal news/funding anchor, never shown in plan source lists.
+  news: "News",
 };
 
 function frequencyLabel(p: Plan): string {

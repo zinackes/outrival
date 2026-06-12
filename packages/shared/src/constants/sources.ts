@@ -24,6 +24,12 @@ export const SOURCE_TYPES = [
   // list so the generic diff surfaces brand-new pages. Kept in sync with the DB
   // source_type enum.
   "sitemap",
+  // News / funding (company-level events). Like sitemap, an INTERNAL source —
+  // never user-selectable (excluded from plan gating, the enable route, and the
+  // source tabs). Seeded weekly at creation; the scraper queries Google News RSS
+  // by brand and emits a sorted snapshot → the generic diff surfaces new events
+  // (classify tags funding/product/hiring). Kept in sync with the DB enum.
+  "news",
 ] as const;
 
 export type SourceType = typeof SOURCE_TYPES[number];

@@ -23,6 +23,11 @@ export const sourceTypeEnum = pgEnum("source_type", [
   // schedule-scraping and scraped via getScraper; the diff of its sorted URL-list
   // snapshot surfaces brand-new pages.
   "sitemap",
+  // News / funding (company-level events). Internal source (like sitemap) — never
+  // user-selectable. Seeded weekly at creation, isActive=true, enqueued by
+  // schedule-scraping and scraped via getScraper (Google News RSS by brand); the
+  // diff of its sorted snapshot surfaces new events, classified funding/product.
+  "news",
 ]);
 
 export const frequencyEnum = pgEnum("frequency", ["realtime", "daily", "weekly"]);

@@ -268,6 +268,9 @@ competitorsRouter.post("/", async (c) => {
       // patch-32: internal sitemap-diff anchor (weekly). Not user-facing; the diff
       // of its sorted URL-list snapshot surfaces brand-new competitor pages.
       { competitorId: competitor.id, sourceType: "sitemap", frequency: "weekly" },
+      // Internal news/funding anchor (weekly). Google News RSS by brand → diff
+      // surfaces company-level events (funding/M&A/leadership/press).
+      { competitorId: competitor.id, sourceType: "news", frequency: "weekly" },
     ])
     .returning();
 
@@ -301,9 +304,9 @@ competitorsRouter.post("/:id/monitors", async (c) => {
   if (!competitor || competitor.deletedAt) return c.json({ error: "Competitor not found" }, 404);
 
   const { sourceType } = parsed.data;
-  // tech_stack (patch-18) and sitemap (patch-32) are internal anchor sources, not
-  // user-enableable.
-  if (sourceType === "tech_stack" || sourceType === "sitemap") {
+  // tech_stack (patch-18), sitemap (patch-32) and news are internal anchor
+  // sources, not user-enableable.
+  if (sourceType === "tech_stack" || sourceType === "sitemap" || sourceType === "news") {
     return c.json({ error: "source_not_enableable", source: sourceType }, 400);
   }
   const plan = await getOrgPlan(orgId);
@@ -478,10 +481,12 @@ competitorsRouter.get("/:id", async (c) => {
     where: eq(monitors.competitorId, competitor.id),
   });
   // Hide internal anchor monitors — they're infra, not user-facing sources:
-  // tech_stack (patch-18, surfaced as its own read-only tab) and sitemap (patch-32,
-  // a discovery anchor whose URL-diff feeds signals, never a Sources row).
+  // tech_stack (patch-18, surfaced as its own read-only tab), sitemap (patch-32,
+  // a discovery anchor whose URL-diff feeds signals) and news (Google News RSS
+  // anchor whose diff feeds funding/company signals) — never a Sources row.
   const monitorList = allMonitors.filter(
-    (m) => m.sourceType !== "tech_stack" && m.sourceType !== "sitemap",
+    (m) =>
+      m.sourceType !== "tech_stack" && m.sourceType !== "sitemap" && m.sourceType !== "news",
   );
 
   const monitorIds = monitorList.map((m) => m.id);

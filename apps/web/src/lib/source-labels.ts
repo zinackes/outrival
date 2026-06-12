@@ -18,6 +18,8 @@ const SOURCE_LABELS: Record<string, string> = {
   twitter: "X / Twitter",
   // patch-18: signals from the independent tech-stack scraper.
   tech_stack: "Tech stack",
+  // Company-level events from the Google News RSS anchor (funding/M&A/press).
+  news: "News",
 };
 
 export function sourceLabel(sourceType: string | null | undefined): string {
@@ -48,6 +50,7 @@ export const SOURCE_SHORT_LABELS: Record<SourceType, string> = {
   tech_stack: "Tech stack",
   status: "Status page",
   sitemap: "Sitemap",
+  news: "News",
 };
 
 export function sourceShortLabel(sourceType: string | null | undefined): string {

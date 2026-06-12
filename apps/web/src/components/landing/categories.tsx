@@ -118,9 +118,9 @@ export function Categories() {
             <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
               <span className="font-semibold">Funding</span>
               <span className="text-sm text-text-muted">
-                Funding rounds detected via TechCrunch, press, Crunchbase.
-                Strategic context but rarely actionable short-term — hence the
-                default low severity.
+                Funding rounds, M&amp;A and leadership moves detected via Google
+                News &amp; press. Strategic context but rarely actionable
+                short-term — hence the default low severity.
               </span>
             </div>
           </div>

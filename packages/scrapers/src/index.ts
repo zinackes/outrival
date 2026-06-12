@@ -11,6 +11,7 @@ import * as reddit from "./reddit/reddit.scraper";
 import * as github from "./github/github.scraper";
 import * as status from "./status/status.scraper";
 import * as sitemap from "./sitemap/sitemap.scraper";
+import * as news from "./news/news.scraper";
 import type { SourceType } from "@outrival/shared";
 import type { ScrapeOptions, ScrapeOutcome } from "./types";
 
@@ -37,6 +38,7 @@ const scrapers: Partial<Record<SourceType, ScraperFn>> = {
   github_repo: github.scrape,
   status: status.scrape,
   sitemap: sitemap.scrape,
+  news: news.scrape,
 };
 
 export function getScraper(sourceType: SourceType): ScraperFn {

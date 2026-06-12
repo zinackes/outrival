@@ -249,6 +249,9 @@ candidatesRouter.post("/:id/add", async (c) => {
       { competitorId: competitor.id, sourceType: "homepage", frequency: "daily" },
       { competitorId: competitor.id, sourceType: "pricing", frequency: "daily" },
       { competitorId: competitor.id, sourceType: "blog", frequency: "weekly" },
+      // Internal news/funding anchor (weekly) — see competitors.ts POST. Google
+      // News RSS by brand → diff surfaces company-level events.
+      { competitorId: competitor.id, sourceType: "news", frequency: "weekly" },
     ])
     .returning();
 

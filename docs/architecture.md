@@ -229,7 +229,7 @@ source_type       homepage | pricing | blog | changelog | jobs |
                   (patch-32 — mention tracking : PAS une page produit notée, recherché par
                    marque via l'API JSON publique Reddit → sentiment + thèmes de plaintes par
                    extract-reviews ; pas de score étoilé → aucune ligne CH review_scores) |
-                  linkedin | twitter | github_repo | tech_stack | status | sitemap
+                  linkedin | twitter | github_repo | tech_stack | status | sitemap | news
                   (status = patch-31, page de statut concurrent Statuspage/Instatus
                    via le connecteur JSON pur ; enable on-demand starter+, lazy.
                    tech_stack = ancrage infra patch-18, monitor isActive=false,
@@ -239,7 +239,15 @@ source_type       homepage | pricing | blog | changelog | jobs |
                    sitemap = patch-32, ancre de découverte interne. Comme tech_stack,
                    jamais user-selectable (hors gating/enable/tabs) ; semée weekly à
                    la création, isActive=true, scrapée via getScraper. Le scraper émet
-                   la liste d'URLs triée → le diff générique surface les pages neuves.)
+                   la liste d'URLs triée → le diff générique surface les pages neuves.
+                   news = ancre événements société (funding/M&A/leadership/presse).
+                   Comme sitemap, interne/jamais user-selectable (hors gating/enable/
+                   tabs/activity), semée weekly à la création (POST competitors +
+                   candidates). Le scraper interroge Google News RSS par marque
+                   (`extractBrand(url)`, pur fetch AI-free, parser `feeds/rss`) → snapshot
+                   trié déterministe → le diff lexical surface les nouveaux événements,
+                   classés funding/product/hiring par classify-change. Rend réelle la
+                   promesse landing « Funding detected ».)
 frequency         realtime | daily | weekly
 signal_severity   low | medium | high | critical
 signal_category   pricing | product | hiring | reviews | content | funding
@@ -331,8 +339,10 @@ Codes d'erreur structurés sur les routes gating : `plan_limit_competitors`,
 Un competitor n'a pas automatiquement un monitor par source. Trois chemins de création :
 
 - **Création manuelle** (`POST /api/competitors`) et **ajout depuis candidate**
-  (`candidates.ts`) → sèment uniquement `homepage` (daily), `pricing` (daily),
-  `blog` (weekly). Sources figées, non gated (toutes incluses dès le plan free).
+  (`candidates.ts`) → sèment `homepage` (daily), `pricing` (daily), `blog` (weekly)
+  + l'ancre interne `news` (weekly) ; la création manuelle sème en plus `sitemap`
+  (weekly). Sources figées, non gated (toutes incluses dès le plan free) ; les ancres
+  internes (`sitemap`/`news`) ne sont jamais user-selectable.
 - **Onboarding** (`POST /api/onboarding/complete`) → sème les sources choisies par
   l'utilisateur, gated par plan (`isSourceAllowed` → `plan_locked_source`).
 - **Enable à la demande** (`POST /api/competitors/:id/monitors`) → ajoute une source

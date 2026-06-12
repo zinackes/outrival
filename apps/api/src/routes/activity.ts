@@ -13,8 +13,9 @@ export const activityRouter = new Hono<{ Variables: Variables }>();
 activityRouter.use("*", authMiddleware);
 
 // Internal monitoring anchors that carry no user-facing meaning — never surfaced
-// as activity (tech_stack: isActive=false anchor; sitemap: internal discovery).
-const HIDDEN_SOURCES = ["tech_stack", "sitemap"] as const;
+// as activity (tech_stack: isActive=false anchor; sitemap: internal discovery;
+// news: Google News RSS anchor feeding company/funding signals).
+const HIDDEN_SOURCES = ["tech_stack", "sitemap", "news"] as const;
 const HIDDEN_SET = new Set<string>(HIDDEN_SOURCES);
 
 // Excludes the self-competitor: the user's own product is monitored too, but it

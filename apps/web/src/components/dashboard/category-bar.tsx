@@ -1,10 +1,13 @@
+// The category wayfinding scale (globals.css --cat-*), the same system the
+// overview band and the feed pills use. NOT severity/brand hues — borrowing those
+// here mislabeled funding as critical-red and pricing as high-orange.
 const CAT_COLOR: Record<string, string> = {
-  pricing: "var(--high)",
-  product: "var(--foreground)",
-  hiring: "var(--positive)",
-  reviews: "var(--medium)",
-  content: "var(--muted)",
-  funding: "var(--critical)",
+  pricing: "var(--cat-pricing)",
+  product: "var(--cat-product)",
+  hiring: "var(--cat-hiring)",
+  reviews: "var(--cat-reviews)",
+  content: "var(--cat-content)",
+  funding: "var(--cat-funding)",
 };
 
 const FALLBACK = "var(--muted-2)";
@@ -16,38 +19,43 @@ export function CategoryBar({
   counts: Record<string, number>;
   w?: number;
 }) {
-  const entries = Object.entries(counts).filter(([, n]) => n > 0);
-  const total = entries.reduce((acc, [, n]) => acc + n, 0);
+  const sorted = Object.entries(counts)
+    .filter(([, n]) => n > 0)
+    .sort((a, b) => b[1] - a[1]);
+  const total = sorted.reduce((acc, [, n]) => acc + n, 0);
 
   if (total === 0) {
     return (
       <div
+        role="img"
+        aria-label="Signal mix — no signals"
         className="h-1.5 rounded bg-background border border-border"
         style={{ width: w }}
       />
     );
   }
 
+  // One breakdown string drives both the mouse tooltip (title) and the screen-
+  // reader label, so the mix isn't conveyed by colour alone.
+  const summary = sorted.map(([k, v]) => `${k}: ${v}`).join(" · ");
+
   return (
     <div
+      role="img"
+      aria-label={`Signal mix — ${summary}`}
       className="h-1.5 rounded overflow-hidden flex bg-background border border-border"
       style={{ width: w }}
-      title={entries
-        .sort((a, b) => b[1] - a[1])
-        .map(([k, v]) => `${k}: ${v}`)
-        .join(" · ")}
+      title={summary}
     >
-      {entries
-        .sort((a, b) => b[1] - a[1])
-        .map(([cat, n]) => (
-          <span
-            key={cat}
-            style={{
-              width: `${(n / total) * 100}%`,
-              backgroundColor: CAT_COLOR[cat] ?? FALLBACK,
-            }}
-          />
-        ))}
+      {sorted.map(([cat, n]) => (
+        <span
+          key={cat}
+          style={{
+            width: `${(n / total) * 100}%`,
+            backgroundColor: CAT_COLOR[cat] ?? FALLBACK,
+          }}
+        />
+      ))}
     </div>
   );
 }

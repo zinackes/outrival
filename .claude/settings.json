@@ -15,6 +15,13 @@
       "Bash(echo *)",
       "Bash(chmod +x *)"
     ],
+    "ask": [
+      "Bash(git push)",
+      "Bash(git push *)",
+      "Bash(pnpm db:push)",
+      "Bash(pnpm db:push *)",
+      "Bash(pnpm --filter @outrival/db db:push *)"
+    ],
     "deny": [
       "Bash(rm -rf *)",
       "Bash(curl * | bash)",

@@ -5,6 +5,7 @@ et génère des insights stratégiques IA via digests hebdomadaires et alertes.
 
 @docs/architecture.md — stack complète, infra, domaine métier, schéma DB
 @.claude/rules/karpathy.md — guidelines comportementaux obligatoires
+@.claude/rules/production.md — règles prod (deploy, branches, secrets, invariants)
 
 ## Commandes
 

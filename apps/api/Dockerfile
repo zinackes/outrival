@@ -23,7 +23,9 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm fetch
 COPY . .
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm install --offline --frozen-lockfile --filter @outrival/api...
-RUN pnpm --filter=@outrival/api --prod deploy /app
+# --legacy: pnpm v10 defaults `deploy` to injected workspace deps; we want the
+# classic self-contained copy (workspace:* resolved into node_modules).
+RUN pnpm --filter=@outrival/api --prod deploy --legacy /app
 
 # --- runtime: Bun serves Hono (Bun.serve binds 0.0.0.0 by default), non-root.
 #     bookworm-based slim image (glibc) so sharp's prebuilt binary loads.

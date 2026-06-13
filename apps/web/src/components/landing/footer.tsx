@@ -29,7 +29,7 @@ export function Footer() {
       <div className="mx-auto w-full max-w-6xl px-6 py-12">
         <div className="grid gap-10 md:grid-cols-[1.5fr_2fr]">
           <div>
-            <a href="#" className="text-lg font-semibold tracking-tight">
+            <a href="/" className="text-lg font-semibold tracking-tight">
               Out<span className="text-primary">rival</span>
             </a>
             <p className="mt-3 max-w-xs text-sm text-text-muted">

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 const SIGNALS = [
   {
     cat: "Pricing",
-    catColor: "text-critical",
+    catColor: "text-cat-pricing",
     company: "Linear",
     lead: "cuts the Business plan to",
     metric: "$14/seat",
@@ -13,7 +13,7 @@ const SIGNALS = [
   },
   {
     cat: "Hiring",
-    catColor: "text-high",
+    catColor: "text-cat-hiring",
     company: "Notion",
     lead: "opens 3 “AI Research” roles — its first team in the EU.",
     metric: null,
@@ -22,7 +22,7 @@ const SIGNALS = [
   },
   {
     cat: "Reviews",
-    catColor: "text-medium",
+    catColor: "text-cat-reviews",
     company: "Asana",
     lead: "slips to",
     metric: "4.2 on G2",

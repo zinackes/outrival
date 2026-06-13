@@ -66,6 +66,21 @@ function shouldFailover(err: unknown): boolean {
   return s === 429 || s === 401 || s === 403 || s === 404 || s >= 500;
 }
 
+// gpt-oss models on Groq are reasoning models: without `reasoning_effort` they
+// default to "medium", which roughly DOUBLES the completion tokens (hidden
+// reasoning) for no quality/agreement gain on our extraction & classification
+// prompts (validated: src/eval/model-eval.ts). Pin "low" for them; a provider may
+// override via AI_PROVIDER_N_REASONING_EFFORT. Non-reasoning models (Llama) get
+// NOTHING — the param is never sent, so their request is byte-identical to before.
+// Exported for unit testing this cost-critical branch.
+export function resolveReasoningEffort(
+  model: string,
+  override?: "low" | "medium" | "high",
+): "low" | "medium" | "high" | undefined {
+  if (!model.toLowerCase().includes("gpt-oss")) return undefined;
+  return override ?? "low";
+}
+
 /**
  * Run a completion against the provider pool (patch-22). Picks the best available
  * provider (free before paid, skipping exhausted/breakered ones), and on a transient
@@ -88,6 +103,7 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
     // provider's small 8B-class model when declared — ~10× cheaper than the 70B.
     // Falls back to the default model when the provider has no fast model.
     const model = fast && provider.fastModel ? provider.fastModel : provider.model;
+    const reasoningEffort = resolveReasoningEffort(model, provider.reasoningEffort);
     try {
       const res = await clientFor(provider).chat.completions.create({
         model,
@@ -101,6 +117,8 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
         ],
         max_tokens: options.maxTokens ?? 1024,
         ...(options.json && { response_format: { type: "json_object" as const } }),
+        // Only sent for reasoning models (gpt-oss) — never for Llama (undefined).
+        ...(reasoningEffort && { reasoning_effort: reasoningEffort }),
       });
       await trackUsage(provider.id, res.usage?.total_tokens ?? 0);
       // Accumulate per-task token usage for ai_runs cost attribution. Counted here

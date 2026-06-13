@@ -21,6 +21,10 @@ export interface Provider {
   tier: "free" | "paid";
   dailyTokenQuota: number;
   priority: number; // lower = tried first (free before paid)
+  // Optional override for reasoning models (gpt-oss). Unset → callLLM auto-picks
+  // "low" for gpt-oss (cheapest, validated equal quality) and sends nothing for
+  // non-reasoning models. Only set this to deviate (e.g. "medium").
+  reasoningEffort?: "low" | "medium" | "high";
 }
 
 /**
@@ -35,6 +39,7 @@ export function loadProviders(): Provider[] {
     const apiKey = process.env[`AI_PROVIDER_${i}_API_KEY`]?.trim();
     const baseUrl = process.env[`AI_PROVIDER_${i}_BASE_URL`]?.trim();
     if (!id || !apiKey || !baseUrl) continue;
+    const re = process.env[`AI_PROVIDER_${i}_REASONING_EFFORT`]?.trim();
     providers.push({
       id,
       baseUrl,
@@ -44,6 +49,7 @@ export function loadProviders(): Provider[] {
       tier: process.env[`AI_PROVIDER_${i}_TIER`] === "paid" ? "paid" : "free",
       dailyTokenQuota: Number(process.env[`AI_PROVIDER_${i}_DAILY_TOKEN_QUOTA`] ?? 500000),
       priority: Number(process.env[`AI_PROVIDER_${i}_PRIORITY`] ?? 99),
+      reasoningEffort: re === "low" || re === "medium" || re === "high" ? re : undefined,
     });
   }
 

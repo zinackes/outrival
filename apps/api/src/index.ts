@@ -54,7 +54,7 @@ app.use(
   cors({
     origin:
       env.NODE_ENV === "production"
-        ? ["https://outrival.io"]
+        ? [process.env.WEB_URL ?? "https://outrival.app"]
         : ["http://localhost:3000"],
     credentials: true,
   }),

@@ -1261,6 +1261,15 @@ export type AdminHostHealth = {
   uptimeSec: number;
 };
 
+// Product KPIs (admin-v2 Produit) — top-line numbers from Postgres; deep
+// analytics stays in PostHog (linked out).
+export type AdminProductKpis = {
+  newUsers7d: number;
+  signals7d: number;
+  orgs: { total: number; onboarded: number; adoptionRate: number };
+  onboarding30d: { started: number; completed: number; completionRate: number };
+};
+
 // Error-rate spike view (admin-v2 B4) — 1h next to 24h, from ai_runs / scrape_runs.
 export type AdminErrorRates = {
   ai: {

@@ -24,6 +24,7 @@ import {
   Sparkles,
   HeartPulse,
   TrendingUp,
+  LineChart,
   type LucideIcon,
 } from "lucide-react";
 
@@ -74,6 +75,7 @@ const SECTIONS: NavSection[] = [
       { href: "/admin/discovery", label: "Discovery", icon: Telescope },
       { href: "/admin/multi-product", label: "Products", icon: Boxes },
       { href: "/admin/business", label: "Business", icon: TrendingUp },
+      { href: "/admin/product", label: "Product KPIs", icon: LineChart },
     ],
   },
   {

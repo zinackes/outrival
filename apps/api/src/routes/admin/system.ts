@@ -1,9 +1,9 @@
 import os from "node:os";
 import { Hono } from "hono";
 import { runs, queues, schedules } from "@trigger.dev/sdk/v3";
-import { sql } from "drizzle-orm";
+import { gte, sql } from "drizzle-orm";
 import { Resend } from "resend";
-import { db } from "@outrival/db";
+import { db, users, organizations, signals, onboardingSessions } from "@outrival/db";
 import { logger, getRedis } from "@outrival/shared";
 import { checkGlobalBreaker } from "@outrival/ai";
 import { getStripe } from "../../lib/stripe";
@@ -351,6 +351,53 @@ systemRouter.get("/error-rates", async (c) => {
     scrape: {
       h1: scrapeWindow(num(scrapeRow?.total_1h), num(scrapeRow?.failed_1h)),
       h24: scrapeWindow(num(scrapeRow?.total_24h), num(scrapeRow?.failed_24h)),
+    },
+  });
+});
+
+// --- Product KPIs (admin-v2 Produit) ---
+// Anti-reinvention: PostHog keeps the deep product analytics (funnels, retention,
+// events). The cockpit surfaces 3-4 top-line numbers from data we already track
+// in Postgres + a link out to PostHog for the detail.
+systemRouter.get("/product-kpis", async (c) => {
+  const d7 = new Date(Date.now() - 7 * 86400_000);
+  const d30 = new Date(Date.now() - 30 * 86400_000);
+
+  const [newUsersRow, orgRow, signalsRow, onbRow] = await Promise.all([
+    db.select({ c: sql<number>`count(*)::int` }).from(users).where(gte(users.createdAt, d7)),
+    db
+      .select({
+        total: sql<number>`count(*)::int`,
+        onboarded: sql<number>`count(*) filter (where ${organizations.onboardingCompleted})::int`,
+      })
+      .from(organizations),
+    db.select({ c: sql<number>`count(*)::int` }).from(signals).where(gte(signals.createdAt, d7)),
+    db
+      .select({
+        started: sql<number>`count(*)::int`,
+        completed: sql<number>`count(*) filter (where ${onboardingSessions.completedAt} is not null)::int`,
+      })
+      .from(onboardingSessions)
+      .where(gte(onboardingSessions.startedAt, d30)),
+  ]);
+
+  const totalOrgs = orgRow[0]?.total ?? 0;
+  const onboardedOrgs = orgRow[0]?.onboarded ?? 0;
+  const started = onbRow[0]?.started ?? 0;
+  const completed = onbRow[0]?.completed ?? 0;
+
+  return c.json({
+    newUsers7d: newUsersRow[0]?.c ?? 0,
+    signals7d: signalsRow[0]?.c ?? 0,
+    orgs: {
+      total: totalOrgs,
+      onboarded: onboardedOrgs,
+      adoptionRate: rate(onboardedOrgs, totalOrgs),
+    },
+    onboarding30d: {
+      started,
+      completed,
+      completionRate: rate(completed, started),
     },
   });
 });

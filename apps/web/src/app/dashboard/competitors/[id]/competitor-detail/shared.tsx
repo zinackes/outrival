@@ -2,8 +2,15 @@
 
 import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { Loader2, Plus, Play, Sparkles, ChevronDown } from "lucide-react";
-import type { SourceType } from "@outrival/shared";
+import { Loader2, Plus, Play, Sparkles, ChevronDown, Lock } from "lucide-react";
+import {
+  PLAN_LABELS,
+  minPlanForFrequency,
+  planIncludesFrequency,
+  type SourceType,
+  type Plan,
+  type MonitorFrequency,
+} from "@outrival/shared";
 import type { Monitor } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -139,6 +146,42 @@ export function Empty({ text, hint }: { text: string; hint?: string }) {
       <p className="text-sm">{text}</p>
       {hint && <p className="text-xs mt-2 max-w-md mx-auto text-muted-foreground">{hint}</p>}
     </Card>
+  );
+}
+
+export function FrequencyButton({
+  freq,
+  plan,
+  selected,
+  disabled,
+  onSelect,
+  onLocked,
+}: {
+  freq: MonitorFrequency;
+  plan: Plan;
+  selected: boolean;
+  disabled?: boolean;
+  onSelect: () => void;
+  onLocked: () => void;
+}) {
+  const locked = !planIncludesFrequency(plan, freq);
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant={selected ? "default" : "outline"}
+      onClick={() => (locked ? onLocked() : onSelect())}
+      disabled={disabled}
+      className="h-7 gap-1.5 text-xs capitalize"
+    >
+      {locked && <Lock size={10} className="opacity-70" />}
+      {freq}
+      {locked && (
+        <span className="inline-flex items-center rounded bg-muted-foreground/15 px-1 py-0.5 text-meta font-medium uppercase leading-none tracking-wide text-muted-foreground">
+          {PLAN_LABELS[minPlanForFrequency(freq)]}
+        </span>
+      )}
+    </Button>
   );
 }
 

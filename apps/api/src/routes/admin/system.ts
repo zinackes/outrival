@@ -1,6 +1,11 @@
 import { Hono } from "hono";
 import { runs, queues, schedules } from "@trigger.dev/sdk/v3";
-import { logger } from "@outrival/shared";
+import { sql } from "drizzle-orm";
+import { Resend } from "resend";
+import { db } from "@outrival/db";
+import { logger, getRedis } from "@outrival/shared";
+import { checkGlobalBreaker } from "@outrival/ai";
+import { getStripe } from "../../lib/stripe";
 import type { AdminVariables } from "./shared";
 
 export const systemRouter = new Hono<{ Variables: AdminVariables }>();
@@ -171,4 +176,85 @@ systemRouter.get("/queue-health", async (c) => {
       rows: scheduleRows,
     },
   });
+});
+
+// --- B3: external dependency health ---
+type DepStatus = "ok" | "degraded" | "down" | "skipped";
+type DepResult = { name: string; status: DepStatus; latencyMs: number | null; detail: string | null };
+
+const DEP_TIMEOUT_MS = 3000;
+// Dependency probes hit Stripe/Neon/Upstash/R2/Resend on every load, so cache
+// the result briefly — admin refreshes shouldn't hammer external APIs (Stripe
+// rate limits) or slow the page on each open.
+const DEP_CACHE_MS = 30_000;
+let depCache: { at: number; payload: { checkedAt: string; dependencies: DepResult[] } } | null = null;
+
+// Runs a probe with a hard timeout; the probe's own rejection is caught inline
+// so a slow brick that errors after we've given up never becomes an unhandled
+// rejection. `configured: false` → "skipped" (env not set in this environment).
+async function timedCheck(
+  name: string,
+  configured: boolean,
+  run: () => Promise<unknown>,
+): Promise<DepResult> {
+  if (!configured) return { name, status: "skipped", latencyMs: null, detail: "not configured" };
+  const start = Date.now();
+  const status = await Promise.race<DepStatus>([
+    run().then(
+      () => "ok" as const,
+      () => "down" as const,
+    ),
+    new Promise<DepStatus>((res) => setTimeout(() => res("down"), DEP_TIMEOUT_MS)),
+  ]);
+  return { name, status, latencyMs: Date.now() - start, detail: null };
+}
+
+systemRouter.get("/dependencies", async (c) => {
+  if (depCache && Date.now() - depCache.at < DEP_CACHE_MS) {
+    return c.json({ ...depCache.payload, cached: true });
+  }
+
+  const redisClient = getRedis();
+  const r2Account = process.env.R2_ACCOUNT_ID;
+  const resendKey = process.env.RESEND_API_KEY;
+
+  // AI is degraded-aware (global circuit breaker, patch-22), not just up/down.
+  const aiCheck = (async (): Promise<DepResult> => {
+    const start = Date.now();
+    try {
+      const breaker = await checkGlobalBreaker();
+      return {
+        name: "ai",
+        status: breaker.open ? "degraded" : "ok",
+        latencyMs: Date.now() - start,
+        detail: breaker.open ? (breaker.reason ?? "circuit breaker open") : null,
+      };
+    } catch {
+      return { name: "ai", status: "down", latencyMs: Date.now() - start, detail: null };
+    }
+  })();
+
+  const dependencies = await Promise.all([
+    timedCheck("neon", !!process.env.DATABASE_URL, () => db.execute(sql`SELECT 1`)),
+    timedCheck("upstash", !!redisClient, () => redisClient!.ping()),
+    // The API has no R2/S3 client — probe endpoint reachability instead (any HTTP
+    // response, even 400/403, means TLS + endpoint are up; only a network error
+    // is "down"). Avoids pulling @aws-sdk into the API for a health check.
+    timedCheck("r2", !!r2Account, () =>
+      fetch(`https://${r2Account}.r2.cloudflarestorage.com`, {
+        method: "HEAD",
+        signal: AbortSignal.timeout(DEP_TIMEOUT_MS),
+      }),
+    ),
+    timedCheck("stripe", !!process.env.STRIPE_SECRET_KEY, () => getStripe().balance.retrieve()),
+    timedCheck("resend", !!resendKey, async () => {
+      const res = await new Resend(resendKey).domains.list();
+      if (res.error) throw new Error(res.error.message);
+    }),
+    aiCheck,
+  ]);
+
+  const payload = { checkedAt: new Date().toISOString(), dependencies };
+  depCache = { at: Date.now(), payload };
+  return c.json({ ...payload, cached: false });
 });

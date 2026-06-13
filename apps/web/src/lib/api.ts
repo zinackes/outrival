@@ -1240,6 +1240,19 @@ export type AdminQueueHealth = {
   };
 };
 
+// External dependency health (admin-v2 B3). Cached server-side ~30s.
+export type AdminDependency = {
+  name: string;
+  status: "ok" | "degraded" | "down" | "skipped";
+  latencyMs: number | null;
+  detail: string | null;
+};
+export type AdminDependencies = {
+  checkedAt: string;
+  cached: boolean;
+  dependencies: AdminDependency[];
+};
+
 // Detected tech stack on a competitor (patch-18).
 export type TechStackEntry = {
   techId: string;

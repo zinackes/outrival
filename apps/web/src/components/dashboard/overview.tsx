@@ -603,7 +603,13 @@ export function OverviewView() {
                     <CompAvatar name={c.name} />
                   </td>
                   <td className="px-3.5 py-3 align-middle">
-                    <div className="font-medium">{c.name}</div>
+                    <Link
+                      href={`/dashboard/competitors/${c.id}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="font-medium rounded-sm underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+                    >
+                      {c.name}
+                    </Link>
                     <a
                       href={c.url}
                       target="_blank"

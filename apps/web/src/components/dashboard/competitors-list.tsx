@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import {
@@ -482,7 +483,13 @@ export function CompetitorsList() {
                   </td>
                   <td className="px-3.5 py-3 align-middle">
                     <div className="flex items-center gap-1.5 font-medium">
-                      {c.name}
+                      <Link
+                        href={`/dashboard/competitors/${c.id}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="rounded-sm underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+                      >
+                        {c.name}
+                      </Link>
                       {c.freshness && (
                         <FreshnessDot
                           lastScrapedAt={c.freshness.lastScrapedAt}

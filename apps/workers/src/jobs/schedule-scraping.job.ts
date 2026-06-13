@@ -2,8 +2,9 @@ import { schedules, logger, tasks } from "@trigger.dev/sdk/v3";
 import { and, asc, eq, inArray, isNull, lte, ne, or } from "drizzle-orm";
 import { db, monitors, competitors, organizations } from "@outrival/db";
 import { PLAN_LIMITS, type Plan } from "@outrival/shared";
+import { SCRAPE_SLOW_QUEUE_NAME, SLOW_LANE_MIN_LEVEL } from "../lib/scrape-queues";
 
-type DueMonitor = { id: string; competitorId: string };
+type DueMonitor = { id: string; competitorId: string; requiresLevel: number | null };
 
 // Plan-aware competitor cap (tier-limits). A downgraded org keeps every competitor it
 // ever added, but we must not keep paying to scrape/classify the ones beyond its tier
@@ -70,7 +71,7 @@ export const scheduleScrapingJob = schedules.task({
         eq(monitors.isActive, true),
         or(isNull(monitors.nextRunAt), lte(monitors.nextRunAt, now)),
       ),
-      columns: { id: true, competitorId: true },
+      columns: { id: true, competitorId: true, requiresLevel: true },
     });
 
     logger.log("Monitors due", { count: due.length });
@@ -89,13 +90,27 @@ export const scheduleScrapingJob = schedules.task({
     }
 
     // One batch call instead of N sequential triggers. Actual execution is
-    // throttled by the scrape-monitor queue (concurrencyLimit).
+    // throttled by the scrape-monitor queue (concurrencyLimit). Learned-slow
+    // monitors (L3 residential / L4 Camoufox) are routed to the bounded slow lane
+    // so they can't fill the fast lane and starve other orgs (head-of-line block).
+    const slowCount = enqueueable.filter(
+      (m) => m.requiresLevel != null && m.requiresLevel >= SLOW_LANE_MIN_LEVEL,
+    ).length;
     await tasks.batchTrigger(
       "scrape-monitor",
-      enqueueable.map((monitor) => ({ payload: { monitorId: monitor.id } })),
+      enqueueable.map((monitor) => ({
+        payload: { monitorId: monitor.id },
+        ...(monitor.requiresLevel != null && monitor.requiresLevel >= SLOW_LANE_MIN_LEVEL
+          ? { options: { queue: SCRAPE_SLOW_QUEUE_NAME } }
+          : {}),
+      })),
     );
 
-    logger.log("Completed schedule-scraping", { enqueued: enqueueable.length, capped });
+    logger.log("Completed schedule-scraping", {
+      enqueued: enqueueable.length,
+      slowLane: slowCount,
+      capped,
+    });
     return { enqueued: enqueueable.length, total: due.length };
   },
 });

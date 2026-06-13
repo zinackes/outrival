@@ -1,4 +1,4 @@
-import { task, logger, tasks, queue, AbortTaskRunError } from "@trigger.dev/sdk/v3";
+import { task, logger, tasks, AbortTaskRunError } from "@trigger.dev/sdk/v3";
 import { z } from "zod";
 import { and, count, desc, eq, gte } from "drizzle-orm";
 import {
@@ -66,6 +66,7 @@ import {
   insertNumericClaims,
   getLastNumericClaims,
 } from "../lib/analytics";
+import { scrapeMonitorQueue } from "../lib/scrape-queues";
 
 const SCRAPER_REGION = process.env.SCRAPER_REGION ?? "FR";
 
@@ -300,19 +301,14 @@ const LEVEL_REPROBE_INTERVAL_MS = 14 * 24 * 60 * 60 * 1000;
 // source is marked unscrapable so the UI can show a clear "unavailable" state.
 const UNSCRAPABLE_FAILURE_THRESHOLD = 3;
 
-// Global throttle on concurrent scrapes. Each run is an isolated machine, so
-// this does not protect memory — it bounds proxy burst usage and Trigger
-// concurrency cost when schedule-scraping fans out many monitors at once.
-const scrapeMonitorQueue = queue({
-  name: "scrape-monitor",
-  concurrencyLimit: 5,
-});
-
 export const scrapeMonitorJob = task({
   id: "scrape-monitor",
   // Chromium (lazy-imported Patchright) OOMs on the default 0.5 GB machine for
   // heavy pages — surfaced as TASK_EXECUTION_ABORTED. 2 GB is safe.
   machine: "medium-1x",
+  // Fast lane (default). schedule-scraping reroutes learned-slow monitors (L3/L4)
+  // to the bounded slow lane — see lib/scrape-queues.ts. Each run is an isolated
+  // machine, so the lane caps bound proxy burst + Trigger cost, not memory.
   queue: scrapeMonitorQueue,
   maxDuration: 300,
   retry: { maxAttempts: 3, minTimeoutInMs: 1000, maxTimeoutInMs: 10000, factor: 2 },

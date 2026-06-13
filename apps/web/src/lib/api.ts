@@ -1194,6 +1194,52 @@ export type AdminJobDetail = AdminJobRun & {
   payload: unknown;
 };
 
+// System health — Trigger.dev queue + cron aggregate (admin-v2 B2). The real
+// scraping-capacity signal: scraping runs on Trigger.dev Cloud, not the VPS.
+export type AdminQueueHealth = {
+  configured: boolean;
+  queues: {
+    available: boolean;
+    totalQueued: number;
+    totalRunning: number;
+    pausedCount: number;
+    rows: {
+      name: string;
+      type: string;
+      queued: number;
+      running: number;
+      paused: boolean;
+      concurrencyLimit: number | null;
+    }[];
+  };
+  failures24h: {
+    available: boolean;
+    count: number;
+    capped: boolean;
+    rows: { id: string; taskIdentifier: string; status: string; createdAt: string }[];
+  };
+  throughput24h: {
+    available: boolean;
+    avgDurationMs: number | null;
+    sampled: number;
+  };
+  schedules: {
+    available: boolean;
+    activeCount: number;
+    overdueCount: number;
+    rows: {
+      id: string;
+      task: string;
+      cron: string;
+      description: string;
+      timezone: string;
+      nextRun: string | null;
+      active: boolean;
+      overdue: boolean;
+    }[];
+  };
+};
+
 // Detected tech stack on a competitor (patch-18).
 export type TechStackEntry = {
   techId: string;

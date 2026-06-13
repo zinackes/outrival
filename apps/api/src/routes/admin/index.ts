@@ -11,6 +11,7 @@ import { usersRouter } from "./users";
 import { feedbackRouter } from "./feedback";
 import { notificationsRouter } from "./notifications";
 import { productRouter } from "./product";
+import { systemRouter } from "./system";
 
 // Ops dashboard API, split by domain (one sub-router per /admin page area).
 // Every sub-router inherits the two gates below — auth FIRST (sets
@@ -29,3 +30,4 @@ adminRouter.route("/", usersRouter);
 adminRouter.route("/", feedbackRouter);
 adminRouter.route("/", notificationsRouter);
 adminRouter.route("/", productRouter);
+adminRouter.route("/", systemRouter);

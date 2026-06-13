@@ -22,10 +22,12 @@ import {
   Send,
   Telescope,
   Sparkles,
+  HeartPulse,
 } from "lucide-react";
 
 const ITEMS = [
   { href: "/admin", label: "Overview", icon: LayoutDashboard },
+  { href: "/admin/system", label: "System", icon: HeartPulse },
   { href: "/admin/scraping", label: "Scraping", icon: Activity },
   { href: "/admin/monitors-health", label: "Monitors health", icon: Gauge },
   { href: "/admin/scraping-edge-cases", label: "Edge cases", icon: Unplug },

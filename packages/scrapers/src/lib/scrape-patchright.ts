@@ -38,7 +38,15 @@ export interface PatchrightOptions {
   fullPage?: boolean;
   waitForSelector?: string;
   progressiveScroll?: boolean;
+  /** Capture a screenshot (homepage pHash only). Default off — see ScrapeOptions. */
+  screenshot?: boolean;
+  /** Abort media + font subresources to save proxy bandwidth. Default off. */
+  blockResources?: boolean;
 }
+
+// Never-parsed, heavy subresources that are safe to abort (no anti-bot signal,
+// unlike CSS/images). Cuts residential pay-per-GB bandwidth on data scrapes.
+const BLOCKED_RESOURCE_TYPES = new Set(["media", "font"]);
 
 // One browser per proxy tier: datacenter and residential launch with different
 // proxy configs, so they cannot share a single Chromium. Lazily launched, reused
@@ -75,6 +83,14 @@ export async function scrapeWithPatchright(
     viewport: { width: 1920, height: 1080 },
     extraHTTPHeaders: realisticHeaders(),
   });
+
+  if (options.blockResources) {
+    // Abort heavy never-parsed subresources before they hit the (paid) proxy.
+    await context.route("**/*", (route) => {
+      if (BLOCKED_RESOURCE_TYPES.has(route.request().resourceType())) return route.abort();
+      return route.continue();
+    });
+  }
 
   const page = await context.newPage();
   const scriptUrls: string[] = [];
@@ -135,9 +151,11 @@ export async function capturePage(
   if (text.length < 100 && statusCode === 200)
     return { ok: false, statusCode, failureReason: "soft_block", durationMs: Date.now() - startedAt };
 
-  const screenshotBuffer = Buffer.from(
-    await page.screenshot({ fullPage: options.fullPage ?? true, type: "png" }),
-  );
+  // Screenshot only when asked (homepage pHash). For every other source it would
+  // be rendered, buffered, uploaded to R2 and pHashed for nothing.
+  const screenshotBuffer = options.screenshot
+    ? Buffer.from(await page.screenshot({ fullPage: options.fullPage ?? true, type: "png" }))
+    : Buffer.alloc(0);
   const headers = response.headers();
   return {
     ok: true,

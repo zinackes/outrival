@@ -85,7 +85,8 @@ export async function scrape(
   const direct = CAREERS_KEYWORDS.some((k) => lowered.includes(k));
 
   const pageOpts = {
-    fullPage: true,
+    // Jobs parse HTML/JSON only — no screenshot needed; drop media/font bandwidth.
+    blockResources: true,
     knownLevel: options.knownLevel,
   };
   let result: ScrapeOutcome;

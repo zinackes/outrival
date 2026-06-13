@@ -13,12 +13,12 @@ export async function scrape(
 
   // URL already points at a pricing page → scrape it directly.
   if (PRICING_KEYWORDS.some((k) => url.toLowerCase().includes(k))) {
-    return scrapePage(url, { fullPage: true, knownLevel });
+    return scrapePage(url, { blockResources: true, knownLevel });
   }
 
   // Otherwise scrape the homepage and locate the real pricing page from it
   // (direct paths → nav → footer → embedded section).
-  const homepage = await scrapePage(url, { fullPage: true, knownLevel });
+  const homepage = await scrapePage(url, { blockResources: true, knownLevel });
   const candidate = await discoverPricingUrl(url, homepage.html);
 
   // Not found, or pricing is embedded in the homepage → analyse the homepage.
@@ -26,5 +26,5 @@ export async function scrape(
     return homepage;
   }
 
-  return scrapePage(candidate.url, { fullPage: true, knownLevel });
+  return scrapePage(candidate.url, { blockResources: true, knownLevel });
 }

@@ -16,7 +16,7 @@ function reviewScraper(source: string, minLevel: ScrapeLevel) {
   ): Promise<ScrapeOutcome> => {
     const knownLevel: ScrapeLevel =
       options.knownLevel && options.knownLevel > minLevel ? options.knownLevel : minLevel;
-    const result = await scrapePage(url, { fullPage: true, knownLevel });
+    const result = await scrapePage(url, { blockResources: true, knownLevel });
     return { ...result, metadata: { ...result.metadata, source } };
   };
 }

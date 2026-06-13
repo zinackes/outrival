@@ -70,6 +70,8 @@ export async function scrapePage(url: string, options: CascadeOptions = {}): Pro
     fullPage: options.fullPage,
     waitForSelector: options.waitForSelector,
     progressiveScroll: options.progressiveScroll,
+    screenshot: options.screenshot,
+    blockResources: options.blockResources,
   };
 
   const done = (r: ScrapeResult, level: ScrapeLevel): CascadeOutcome => ({

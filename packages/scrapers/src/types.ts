@@ -16,6 +16,20 @@ export interface ScraperResult {
 
 export interface ScrapeOptions {
   fullPage?: boolean;
+  /**
+   * Capture a screenshot during the browser scrape. Only the homepage needs it
+   * (the patch-17 perceptual-hash visual-redesign detector); every other source
+   * parses HTML/text, so leaving this off skips the PNG render + R2 upload + pHash
+   * — pure CPU/storage savings. Default off.
+   */
+  screenshot?: boolean;
+  /**
+   * Abort heavy, never-parsed subresources (video/audio media + fonts) during the
+   * browser scrape. Cuts residential proxy bandwidth (pay-per-GB) and load time.
+   * Conservative subset — images/CSS are kept (anti-bot canaries + needed for the
+   * homepage screenshot). Default off; enabled for data sources without a screenshot.
+   */
+  blockResources?: boolean;
   waitForSelector?: string;
   /**
    * Progressively scroll the page after networkidle to trigger lazy-loaded /

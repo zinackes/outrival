@@ -55,6 +55,8 @@ export async function scrapePage(
     fullPage: options.fullPage,
     waitForSelector: options.waitForSelector,
     progressiveScroll: options.progressiveScroll,
+    screenshot: options.screenshot,
+    blockResources: options.blockResources,
   });
 
   if (!outcome.ok || outcome.level === null || !outcome.html) {

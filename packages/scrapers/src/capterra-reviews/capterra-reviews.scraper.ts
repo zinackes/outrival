@@ -11,7 +11,7 @@ export async function scrape(
   options: ScrapeOptions = {},
 ): Promise<ScrapeOutcome> {
   const knownLevel = options.knownLevel && options.knownLevel > 2 ? options.knownLevel : 2;
-  const result = await scrapePage(url, { fullPage: true, knownLevel });
+  const result = await scrapePage(url, { blockResources: true, knownLevel });
   return {
     ...result,
     metadata: { ...result.metadata, source: "capterra" },

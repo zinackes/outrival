@@ -2,16 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip as ChartTooltip,
-  ResponsiveContainer,
-  CartesianGrid,
-  Legend,
-} from "recharts";
+import dynamic from "next/dynamic";
 import { DollarSign, Activity, ArrowUp, ArrowDown, Percent } from "lucide-react";
 import {
   api,
@@ -24,7 +15,8 @@ import { cn } from "@/lib/utils";
 import { Eyebrow, eyebrowClass } from "@/components/outrival/eyebrow";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
 import { CompetitorPricingCard } from "@/components/outrival/competitor-pricing-card";
-import { buildPricingSeries, lineColor } from "./charts";
+import { buildPricingSeries } from "./charts";
+import { Skeleton } from "@/components/ui/skeleton";
 import { formatTierPrice } from "./helpers";
 import {
   Empty,
@@ -33,6 +25,13 @@ import {
   isServerScraping,
   type MonitorSourceProps,
 } from "./shared";
+
+// recharts is heavy + client-only: lazy-load the chart so it stays off this
+// route's first-load bundle (F7).
+const MultiLineChart = dynamic(() => import("./chart-line"), {
+  ssr: false,
+  loading: () => <Skeleton className="h-[260px] w-full" />,
+});
 
 export function PricingTab({
   competitor,
@@ -201,32 +200,7 @@ export function PricingTab({
         // the narrow list halves the height vs stacking two full-width blocks.
         <div className="grid lg:grid-cols-2">
           <TabSection title="Price over time" icon={Activity}>
-            <ResponsiveContainer width="100%" height={260}>
-              <LineChart data={series.points}>
-                <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
-                <XAxis dataKey="date" stroke="var(--muted)" fontSize={11} />
-                <YAxis stroke="var(--muted)" fontSize={11} />
-                <ChartTooltip
-                  contentStyle={{
-                    background: "var(--bg)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 6,
-                    fontSize: 12,
-                  }}
-                />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                {plans.map((plan, i) => (
-                  <Line
-                    key={plan}
-                    type="monotone"
-                    dataKey={plan}
-                    stroke={lineColor(i)}
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
+            <MultiLineChart data={series.points} seriesKeys={plans} height={260} />
           </TabSection>
           {planList}
         </div>

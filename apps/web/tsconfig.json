@@ -3,6 +3,11 @@
   "compilerOptions": {
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "jsx": "preserve",
+    // The Next.js app is bundler-resolved (SWC), not Node — override the root's
+    // NodeNext so extensionless dynamic `import()` (e.g. next/dynamic, F7) type-
+    // checks like the static imports already do. Type-check only; no runtime effect.
+    "module": "esnext",
+    "moduleResolution": "bundler",
     "plugins": [{ "name": "next" }],
     "paths": {
       "@/*": ["./src/*"]

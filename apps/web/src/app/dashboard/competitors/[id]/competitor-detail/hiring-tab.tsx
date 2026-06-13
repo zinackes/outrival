@@ -1,21 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip as ChartTooltip,
-  ResponsiveContainer,
-  CartesianGrid,
-  Legend,
-} from "recharts";
+import dynamic from "next/dynamic";
 import { Briefcase, Activity, ArrowUp, ArrowDown, ExternalLink } from "lucide-react";
 import { api, type JobsByDepartment, type JobTrendPoint } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
-import { buildJobTrend, mergeTrendsByDate, lineColor } from "./charts";
+import { buildJobTrend, mergeTrendsByDate } from "./charts";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   SENIORITY_RANK,
   SENIOR_PLUS_THRESHOLD,
@@ -30,6 +22,13 @@ import {
   SourceSummary,
   type MonitorSourceProps,
 } from "./shared";
+
+// recharts is heavy + client-only: lazy-load the chart so it stays off this
+// route's first-load bundle (F7).
+const MultiLineChart = dynamic(() => import("./chart-line"), {
+  ssr: false,
+  loading: () => <Skeleton className="h-[240px] w-full" />,
+});
 
 export function HiringTab({
   competitorId,
@@ -180,32 +179,12 @@ export function HiringTab({
       {hasTrend ? (
         <div className="grid lg:grid-cols-2">
           <TabSection title="90-day trend" icon={Activity}>
-            <ResponsiveContainer width="100%" height={240}>
-              <LineChart data={mergeTrendsByDate(trends)}>
-                <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
-                <XAxis dataKey="date" stroke="var(--muted)" fontSize={11} />
-                <YAxis stroke="var(--muted)" fontSize={11} allowDecimals={false} />
-                <ChartTooltip
-                  contentStyle={{
-                    background: "var(--bg)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 6,
-                    fontSize: 12,
-                  }}
-                />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                {Object.keys(trendByDept).map((dept, i) => (
-                  <Line
-                    key={dept}
-                    type="monotone"
-                    dataKey={dept}
-                    stroke={lineColor(i)}
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
+            <MultiLineChart
+              data={mergeTrendsByDate(trends)}
+              seriesKeys={Object.keys(trendByDept)}
+              height={240}
+              yAllowDecimals={false}
+            />
           </TabSection>
           {deptTable}
         </div>

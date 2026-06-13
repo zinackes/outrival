@@ -1,14 +1,6 @@
 "use client";
 
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-} from "recharts";
+import dynamic from "next/dynamic";
 import {
   Table,
   TableBody,
@@ -24,6 +16,12 @@ import type { AdminAiHealth } from "@/lib/api";
 function fmtInt(n: number): string {
   return n.toLocaleString("en-US");
 }
+
+// recharts is heavy + client-only: lazy-load it off this route's first load (F7).
+const SignalsLineChart = dynamic(() => import("./signals-chart"), {
+  ssr: false,
+  loading: () => <div className="h-[240px] w-full animate-pulse rounded bg-muted/40" />,
+});
 
 export function AiView({ data }: { data: AdminAiHealth | null }) {
   const tasks = data?.tasks ?? [];
@@ -150,17 +148,7 @@ export function AiView({ data }: { data: AdminAiHealth | null }) {
         {signalsByDay.length === 0 ? (
           <Empty>No signals recorded in the window.</Empty>
         ) : (
-          <div className="h-[240px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={signalsByDay}>
-                <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
-                <XAxis dataKey="day" stroke="var(--muted)" fontSize={10} />
-                <YAxis stroke="var(--muted)" fontSize={11} allowDecimals={false} />
-                <Tooltip contentStyle={{ background: "var(--bg)", border: "1px solid var(--border)" }} />
-                <Line type="monotone" dataKey="count" stroke="var(--accent)" strokeWidth={2} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+          <SignalsLineChart data={signalsByDay} />
         )}
       </Section>
     </div>

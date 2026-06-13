@@ -1,16 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip as ChartTooltip,
-  ResponsiveContainer,
-  CartesianGrid,
-  Legend,
-} from "recharts";
+import dynamic from "next/dynamic";
 import { Lock, Plus, Loader2, Activity, Star, Settings2 } from "lucide-react";
 import {
   PLAN_LABELS,
@@ -42,7 +33,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
-import { buildReviewScoreSeries, lineColor } from "./charts";
+import { buildReviewScoreSeries } from "./charts";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Empty,
   TabLoading,
@@ -51,6 +43,13 @@ import {
   FrequencyButton,
   type MonitorSourceProps,
 } from "./shared";
+
+// recharts is heavy + client-only: lazy-load the chart so it stays off this
+// route's first-load bundle (F7).
+const MultiLineChart = dynamic(() => import("./chart-line"), {
+  ssr: false,
+  loading: () => <Skeleton className="h-[220px] w-full" />,
+});
 
 const REVIEW_SOURCE_OPTIONS: {
   value: ReviewSourceType;
@@ -298,32 +297,13 @@ export function ReviewsTab({
           <>
             {series && (
               <TabSection title="Score over time" icon={Activity}>
-                <ResponsiveContainer width="100%" height={220}>
-                  <LineChart data={series.points}>
-                    <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
-                    <XAxis dataKey="date" stroke="var(--muted)" fontSize={11} />
-                    <YAxis domain={[0, 5]} stroke="var(--muted)" fontSize={11} />
-                    <ChartTooltip
-                      contentStyle={{
-                        background: "var(--bg)",
-                        border: "1px solid var(--border)",
-                        borderRadius: 6,
-                        fontSize: 12,
-                      }}
-                    />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                    {series.sources.map((src, i) => (
-                      <Line
-                        key={src}
-                        type="monotone"
-                        dataKey={src}
-                        stroke={lineColor(i)}
-                        strokeWidth={2}
-                        dot
-                      />
-                    ))}
-                  </LineChart>
-                </ResponsiveContainer>
+                <MultiLineChart
+                  data={series.points}
+                  seriesKeys={series.sources}
+                  height={220}
+                  yDomain={[0, 5]}
+                  dot
+                />
               </TabSection>
             )}
 

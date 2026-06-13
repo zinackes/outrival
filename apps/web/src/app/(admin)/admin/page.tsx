@@ -2,7 +2,13 @@ import Link from "next/link";
 import { adminFetch } from "./_lib/server";
 import { PageHeader, Section, Stat, Empty, mono, pctFmt } from "./_components/shell";
 import { Badge } from "@/components/ui/badge";
-import type { AdminOverview, AdminScrapingHealth, AdminAiHealth } from "@/lib/api";
+import type {
+  AdminOverview,
+  AdminScrapingHealth,
+  AdminAiHealth,
+  AdminDependencies,
+  AdminQueueHealth,
+} from "@/lib/api";
 
 function HealthTile({
   href,
@@ -40,10 +46,12 @@ function HealthTile({
 }
 
 export default async function OverviewPage() {
-  const [overview, scraping, ai] = await Promise.all([
+  const [overview, scraping, ai, deps, queue] = await Promise.all([
     adminFetch<AdminOverview>("/api/admin/overview"),
     adminFetch<AdminScrapingHealth>("/api/admin/scraping-health"),
     adminFetch<AdminAiHealth>("/api/admin/ai-health"),
+    adminFetch<AdminDependencies>("/api/admin/dependencies"),
+    adminFetch<AdminQueueHealth>("/api/admin/queue-health"),
   ]);
 
   const st = (scraping?.sources ?? []).reduce(
@@ -57,6 +65,21 @@ export default async function OverviewPage() {
   );
   const aiParseRate = at.total ? at.pf / at.total : 0;
   const deadCount = scraping?.deadMonitors.length ?? 0;
+
+  const depList = deps?.dependencies ?? [];
+  const depsDown = depList.filter((d) => d.status === "down").length;
+  const depsDegraded = depList.filter((d) => d.status === "degraded").length;
+  const depsTone: "ok" | "warn" | "bad" | "neutral" =
+    depsDown > 0 ? "bad" : depsDegraded > 0 ? "warn" : deps ? "ok" : "neutral";
+  const depsValue = !deps
+    ? "—"
+    : depsDown > 0
+      ? `${depsDown} down`
+      : depsDegraded > 0
+        ? `${depsDegraded} degraded`
+        : "All OK";
+  const backlog = queue?.queues.totalQueued ?? null;
+  const overdueCrons = queue?.schedules.overdueCount ?? 0;
 
   return (
     <div className="flex flex-col gap-5">
@@ -91,6 +114,35 @@ export default async function OverviewPage() {
         ) : (
           <Empty>Overview unavailable.</Empty>
         )}
+      </Section>
+
+      <Section
+        title="System"
+        info="Infrastructure health rollup — external dependencies, Trigger.dev queue backlog and overdue crons. Click through for the full breakdown on the System page."
+      >
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+          <HealthTile
+            href="/admin/system"
+            label="Dependencies"
+            value={depsValue}
+            tone={depsTone}
+            hint={deps ? `${depList.length} checked` : "unavailable"}
+          />
+          <HealthTile
+            href="/admin/system"
+            label="Queue backlog"
+            value={backlog == null ? "—" : String(backlog)}
+            tone={backlog == null ? "neutral" : backlog > 50 ? "bad" : "ok"}
+            hint="runs queued"
+          />
+          <HealthTile
+            href="/admin/system"
+            label="Overdue crons"
+            value={queue ? String(overdueCrons) : "—"}
+            tone={overdueCrons > 0 ? "bad" : queue ? "ok" : "neutral"}
+            hint="schedules past due"
+          />
+        </div>
       </Section>
 
       <Section

@@ -1002,7 +1002,17 @@ export type AdminCost = {
     estUsd24h: number;
     estUsd30d: number;
   };
-  ai: { calls24h: number; calls30d: number; estUsd24h: number; estUsd30d: number };
+  ai: {
+    calls24h: number;
+    calls30d: number;
+    estUsd24h: number;
+    estUsd30d: number;
+    tokens24h: number;
+    tokens30d: number;
+    estUsdReal24h: number;
+    estUsdReal30d: number;
+  };
+  aiByTask: { task: string; calls30d: number; tokens30d: number; estUsd30d: number; estUsd24h: number }[];
   storage: {
     postgresBytes: number | null;
     r2Bytes: number | null;

@@ -15,7 +15,8 @@
   "scripts": {
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "eval:model": "bun run src/eval/model-eval.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

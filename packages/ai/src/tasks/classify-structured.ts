@@ -31,12 +31,13 @@ export interface StructuredClassification {
 }
 
 // The model returns the overall classification plus a significance per change,
-// in the SAME ORDER as the input list (zipped back by index below).
-const StructuredOutputSchema = ClassificationSchema.extend({
+// in the SAME ORDER as the input list (zipped back by index below). Exported so
+// the model-eval harness (src/eval) can validate candidate models against it.
+export const StructuredOutputSchema = ClassificationSchema.extend({
   assessments: z.array(z.enum(["major", "minor", "trivial"])),
 });
 
-interface ClassifyStructuredContext {
+export interface ClassifyStructuredContext {
   sourceType?: string;
   competitorName?: string;
 }
@@ -56,24 +57,19 @@ function renderForPrompt(changes: StructuredChangeInput[]): string {
 }
 
 /**
- * Classify a list of structural homepage changes (patch-16). Reasons over the
- * typed, located changes instead of a flat diff blob, returning an overall
- * severity/category plus a per-change significance. Uses the 70b "smart" model
- * (structure benefits from the stronger reasoning) and the patch-09 cache
- * (deterministic on its input).
+ * Pure prompt builder — exported so the model-eval harness (src/eval) can replay
+ * the exact prompt against candidate models without the cache/grounding layers.
  */
-export async function classifyStructuredChanges(
+export function buildStructuredClassifyPrompt(
   changes: StructuredChangeInput[],
   context: ClassifyStructuredContext = {},
-): Promise<WithQuality<StructuredClassification> | null> {
-  if (changes.length === 0) return null;
-
+): string {
   const where = [context.competitorName, context.sourceType === "homepage" ? "homepage" : context.sourceType]
     .filter(Boolean)
     .join(" — ");
   const contextBlock = where ? `\nThese changes were detected on: ${where}.\n` : "";
 
-  const prompt = `You are a competitive-intelligence analyst. Below is a list of STRUCTURAL changes detected on a competitor's homepage, already parsed by section and field (not a raw diff).
+  return `You are a competitive-intelligence analyst. Below is a list of STRUCTURAL changes detected on a competitor's homepage, already parsed by section and field (not a raw diff).
 ${contextBlock}
 <changes>
 ${renderForPrompt(changes).slice(0, 8000)}
@@ -119,6 +115,22 @@ SAME ORDER as the numbered list above.
   "assessments": ["major", "minor", ...]
 }
 </format>`;
+}
+
+/**
+ * Classify a list of structural homepage changes (patch-16). Reasons over the
+ * typed, located changes instead of a flat diff blob, returning an overall
+ * severity/category plus a per-change significance. Uses the 70b "smart" model
+ * (structure benefits from the stronger reasoning) and the patch-09 cache
+ * (deterministic on its input).
+ */
+export async function classifyStructuredChanges(
+  changes: StructuredChangeInput[],
+  context: ClassifyStructuredContext = {},
+): Promise<WithQuality<StructuredClassification> | null> {
+  if (changes.length === 0) return null;
+
+  const prompt = buildStructuredClassifyPrompt(changes, context);
 
   const cacheKey = [
     context.sourceType ?? "",

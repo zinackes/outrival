@@ -22,10 +22,11 @@ function clientIp(c: Context): string {
 }
 
 /**
- * Unified entry point for the /auth page. Sends a magic link whether or not the
- * account exists (Better Auth creates the account on verify), and ALWAYS returns
- * the same response — an attacker cannot tell from the HTTP response whether an
- * email is registered (anti-enumeration ABSOLUE).
+ * Unified entry point for the /auth page. Sends a 6-digit sign-in code (and a
+ * one-click link backed by the same code) whether or not the account exists —
+ * Better Auth's emailOTP creates the account on verify when the email is new —
+ * and ALWAYS returns the same response, so an attacker cannot tell from the HTTP
+ * response whether an email is registered (anti-enumeration ABSOLUE).
  *
  * The only non-generic responses are about the request itself (bad captcha,
  * malformed/disposable email) — never about account existence.
@@ -68,28 +69,59 @@ authRouter.post("/check-and-send-magic-link", authRateLimit, async (c) => {
     .catch(() => undefined);
 
   try {
-    await auth.api.signInMagicLink({
+    await auth.api.sendVerificationOTP({
       headers: c.req.raw.headers,
-      body: {
-        email,
-        callbackURL: `${process.env.WEB_URL ?? "http://localhost:3000"}/dashboard`,
-      },
+      body: { email, type: "sign-in" },
     });
   } catch (err) {
     // Swallow — still return the identical generic response so existence never leaks.
-    console.error("magic link send failed", { email, err });
+    console.error("sign-in code send failed", { email, err });
   }
 
   void captureServerEvent(
     existing?.id ?? email,
     existing ? "user_logged_in" : "user_signed_up",
-    { method: "magic_link" },
+    { method: "email_otp" },
   );
 
   return c.json({
     ok: true,
-    message: "If that email is valid, a sign-in link is on its way.",
+    message: "If that email is valid, a sign-in code is on its way.",
   });
+});
+
+/**
+ * One-click sign-in link target. The sign-in email embeds this URL carrying the
+ * same OTP as the code, so clicking it verifies the code server-side, sets the
+ * session cookie, and lands the user on the dashboard — no code typing on the
+ * device that opened the email. Invalid/expired/used codes fall back to /auth.
+ *
+ * The OTP is single-use and attempt-capped (Better Auth `allowedAttempts`), so
+ * exposing it in the link doesn't lower the floor an attacker already faces on
+ * the verify endpoint. Existence never leaks: any failure → the same redirect.
+ */
+authRouter.get("/otp-link", async (c) => {
+  const email = c.req.query("email") ?? "";
+  const code = c.req.query("code") ?? "";
+  const webUrl = process.env.WEB_URL ?? "http://localhost:3000";
+  if (!email || !code) {
+    return c.redirect(`${webUrl}/auth?error=link_invalid`, 302);
+  }
+
+  try {
+    const { headers } = await auth.api.signInEmailOTP({
+      headers: c.req.raw.headers,
+      body: { email, otp: code },
+      returnHeaders: true,
+    });
+    const redirect = c.redirect(`${webUrl}/dashboard`, 302);
+    for (const cookie of headers.getSetCookie()) {
+      redirect.headers.append("set-cookie", cookie);
+    }
+    return redirect;
+  } catch {
+    return c.redirect(`${webUrl}/auth?error=link_invalid`, 302);
+  }
 });
 
 /**

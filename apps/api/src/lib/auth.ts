@@ -1,12 +1,12 @@
 import { betterAuth } from "better-auth";
-import { magicLink } from "better-auth/plugins";
+import { emailOTP } from "better-auth/plugins";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { db } from "./db";
 import { users } from "@outrival/db";
 import * as schema from "@outrival/db";
-import { sendMagicLinkEmail } from "./magic-link-email";
+import { sendSignInCodeEmail } from "./sign-in-email";
 
-const MAGIC_LINK_TTL_SECONDS = 600; // 10 minutes
+const SIGN_IN_OTP_TTL_SECONDS = 600; // 10 minutes
 
 // Web origins allowed for OAuth/magic-link redirects (callbackURL validation).
 const trustedOrigins = [
@@ -39,13 +39,25 @@ export const auth = betterAuth({
   },
 
   plugins: [
-    magicLink({
-      expiresIn: MAGIC_LINK_TTL_SECONDS,
-      sendMagicLink: async ({ email, url }) => {
-        await sendMagicLinkEmail({
+    // Email OTP backs the unified /auth entry point. `disableSignUp` defaults to
+    // false → signIn.emailOtp creates the account when the email is new, signs in
+    // when it exists: login and signup are the SAME flow and the user never learns
+    // which one happened (transparent, anti-enumeration). One email carries both
+    // the 6-digit code and a one-click link (GET /api/auth/otp-link, same token).
+    emailOTP({
+      otpLength: 6,
+      expiresIn: SIGN_IN_OTP_TTL_SECONDS,
+      allowedAttempts: 3,
+      sendVerificationOTP: async ({ email, otp, type }) => {
+        if (type !== "sign-in") return; // only the sign-in OTP is used
+        const linkUrl = `${process.env.BETTER_AUTH_URL ?? ""}/api/auth/otp-link?email=${encodeURIComponent(
+          email,
+        )}&code=${otp}`;
+        await sendSignInCodeEmail({
           to: email,
-          url,
-          expiresInMinutes: Math.round(MAGIC_LINK_TTL_SECONDS / 60),
+          code: otp,
+          linkUrl,
+          expiresInMinutes: Math.round(SIGN_IN_OTP_TTL_SECONDS / 60),
         });
       },
     }),

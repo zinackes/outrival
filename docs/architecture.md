@@ -555,14 +555,22 @@ Page **unique `/auth`** (groupe `(auth)`, layout qui redirige déjà si session)
 de `/login` ni `/register` séparés → redirects 308 (`next.config.ts`). Trois méthodes,
 toutes via Better Auth :
 
-- **Magic link (primaire)** : la page POST `/api/auth/check-and-send-magic-link`
-  (router custom monté **avant** le wildcard `/api/auth/*`, sinon avalé). Le endpoint
-  vérifie Turnstile + rate-limit + email (zod strict + anti-disposable) puis appelle
-  `auth.api.signInMagicLink` (le compte est créé au **verify** s'il n'existe pas —
-  `disableSignUp` défaut false). **Anti-enumeration ABSOLUE** : réponse HTTP identique
-  que l'email existe ou non (les seuls 400 portent sur la requête : captcha/email
-  invalide, jamais sur l'existence). Email envoyé via Resend (`auth@outrival.io`, HTML
-  inline dark+amber), lien expirant en 10 min. Callback → `WEB_URL/dashboard`.
+- **Code email + lien (primaire)** : entrée unique « Continue with email » (pas
+  d'onglets login/signup). La page POST `/api/auth/check-and-send-magic-link` (router
+  custom monté **avant** le wildcard `/api/auth/*`, sinon avalé). Le endpoint vérifie
+  Turnstile + rate-limit + email (zod strict + anti-disposable) puis appelle
+  `auth.api.sendVerificationOTP({ type:"sign-in" })` (plugin Better Auth **emailOTP**,
+  remplace `magicLink`). UN seul email Resend (`auth@outrival.io`, HTML inline
+  dark+amber) porte **les deux** : un code 6 chiffres (saisi dans 6 cases sur `/auth`,
+  marche cross-device) **et** un bouton « Sign in » → `GET /api/auth/otp-link?email&code`
+  (vérifie le code server-side, pose le cookie, 302 `/dashboard` ; échec → 302
+  `/auth?error=link_invalid`). Le code/lien (TTL 10 min, single-use, `allowedAttempts:3`)
+  fait **login OU signup** indifféremment — le compte est créé au verify s'il n'existe
+  pas (`disableSignUp` défaut false), l'utilisateur ne sait jamais lequel a eu lieu.
+  La saisie du code vérifie via `POST /api/auth/sign-in/email-otp` (fetch direct,
+  `credentials:"include"`). **Anti-enumeration ABSOLUE** : réponse HTTP identique que
+  l'email existe ou non (les seuls 400 portent sur la requête : captcha/email invalide,
+  jamais sur l'existence).
 - **Google OAuth (secondaire)** : `authClient.signIn.social({ provider:"google" })`.
   Callback dérivé de `BETTER_AUTH_URL` → `/api/auth/callback/google`.
 - **Email + password (fallback)** : replié sous « Prefer a password? ». Login only

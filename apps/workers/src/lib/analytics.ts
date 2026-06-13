@@ -1,5 +1,5 @@
 import { logger } from "@trigger.dev/sdk/v3";
-import { getActiveProvider } from "@outrival/ai";
+import { getActiveProvider, consumeUsage } from "@outrival/ai";
 import {
   db,
   pricingHistory,
@@ -166,8 +166,20 @@ export async function logAiRun(
   // captured by complete() in the same async context (patch-22). Falls back to the
   // static provider from AI_CONFIG when the pool didn't run (e.g. Claude fallback).
   const actual = getActiveProvider() ?? provider;
+  // Read-and-clear the tokens accumulated by complete() since the last log point,
+  // so this row carries the full cost of the task (incl. any self-check pass).
+  const usage = consumeUsage();
   await bestEffort("ai_runs insert", () =>
-    db.insert(aiRuns).values({ task, provider: actual, model, status, recordedAt: new Date() }),
+    db.insert(aiRuns).values({
+      task,
+      provider: actual,
+      model,
+      status,
+      promptTokens: usage.promptTokens,
+      completionTokens: usage.completionTokens,
+      totalTokens: usage.totalTokens,
+      recordedAt: new Date(),
+    }),
   );
 }
 

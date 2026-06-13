@@ -125,6 +125,12 @@ export const aiRuns = pgTable(
     confidence: text("confidence").notNull().default(""), // low | medium | high | '' (patch-24)
     selfCheckPassed: integer("self_check_passed").notNull().default(-1), // -1 not run | 0 failed | 1 passed
     groundingScore: doublePrecision("grounding_score").notNull().default(-1), // ratio of valid citations, -1 = ungrounded
+    // Token usage per run for cost attribution (2026-06). 0 = uncaptured (degraded
+    // pool / provider returned no usage). Summed across a task's internal calls
+    // (e.g. classify + self-check) via consumeUsage(); see provider-context.ts.
+    promptTokens: integer("prompt_tokens").notNull().default(0),
+    completionTokens: integer("completion_tokens").notNull().default(0),
+    totalTokens: integer("total_tokens").notNull().default(0),
     recordedAt: timestamp("recorded_at").notNull().defaultNow(),
   },
   (t) => [index("ai_runs_recorded_idx").on(t.recordedAt)],

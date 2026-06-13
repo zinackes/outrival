@@ -16,7 +16,7 @@ import {
   tripGlobalBreaker,
   AIUnavailableError,
 } from "./provider/circuit-breaker";
-import { markProvider } from "./provider/provider-context";
+import { markProvider, markUsage } from "./provider/provider-context";
 
 // One OpenAI client per pool provider (Cerebras/Groq/Hyperbolic are all
 // OpenAI-compatible, routed by baseURL). maxRetries lets the SDK absorb a transient
@@ -103,6 +103,14 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
         ...(options.json && { response_format: { type: "json_object" as const } }),
       });
       await trackUsage(provider.id, res.usage?.total_tokens ?? 0);
+      // Accumulate per-task token usage for ai_runs cost attribution. Counted here
+      // (with trackUsage) even on the empty-content failover below: those tokens
+      // were spent, so the cost is real.
+      markUsage({
+        promptTokens: res.usage?.prompt_tokens ?? 0,
+        completionTokens: res.usage?.completion_tokens ?? 0,
+        totalTokens: res.usage?.total_tokens ?? 0,
+      });
       const content = res.choices[0]?.message?.content ?? "";
       // A 200 with empty content is a failed generation, never a valid answer (every
       // prompt asks for JSON or prose). It happens when a reasoning model's hidden
@@ -167,6 +175,13 @@ async function dispatch(
         ],
       }),
       messages: [{ role: "user", content: options.prompt }],
+    });
+    const inputTokens = res.usage?.input_tokens ?? 0;
+    const outputTokens = res.usage?.output_tokens ?? 0;
+    markUsage({
+      promptTokens: inputTokens,
+      completionTokens: outputTokens,
+      totalTokens: inputTokens + outputTokens,
     });
     const block = res.content[0];
     return block && block.type === "text" ? block.text : "";

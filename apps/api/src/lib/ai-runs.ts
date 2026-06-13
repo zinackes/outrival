@@ -1,5 +1,5 @@
 import { aiRuns } from "@outrival/db";
-import { getActiveProvider } from "@outrival/ai";
+import { getActiveProvider, consumeUsage } from "@outrival/ai";
 import { db } from "./db";
 
 export type AiRunStatus = "success" | "parse_failed" | "error";
@@ -13,7 +13,18 @@ export type AiRunStatus = "success" | "parse_failed" | "error";
 export async function logAskRun(model: string, status: AiRunStatus): Promise<void> {
   try {
     const provider = getActiveProvider() ?? "groq";
-    await db.insert(aiRuns).values({ task: "ask", provider, model, status });
+    // Each ask call (plan, then synthesis) logs its own row; read-and-clear gives
+    // each row just that call's tokens.
+    const usage = consumeUsage();
+    await db.insert(aiRuns).values({
+      task: "ask",
+      provider,
+      model,
+      status,
+      promptTokens: usage.promptTokens,
+      completionTokens: usage.completionTokens,
+      totalTokens: usage.totalTokens,
+    });
   } catch {
     // ai_runs is analytics, never load-bearing — swallow.
   }

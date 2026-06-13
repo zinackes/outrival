@@ -10,8 +10,10 @@ import {
   Copy,
   CornerDownLeft,
   DollarSign,
+  GitCompare,
   Loader2,
   MessageSquare,
+  Package,
   Sparkles,
   TriangleAlert,
   Users,
@@ -54,17 +56,31 @@ const PHASE_LABEL: Record<string, string> = {
   synthesizing: "Writing the answer",
 };
 
-// Each starter maps to a real tool/category so the leading glyph doubles as
-// wayfinding (the product's own category color system), not decoration.
-const EXAMPLES: { q: string; icon: LucideIcon; tint: string }[] = [
-  { q: "What changed across my competitors this month?", icon: Activity, tint: "var(--link)" },
-  { q: "Who is hiring the most right now?", icon: Users, tint: "var(--cat-hiring)" },
-  { q: "How has competitor pricing shifted this quarter?", icon: DollarSign, tint: "var(--cat-pricing)" },
-  {
-    q: "What are the most common complaints in competitor reviews?",
-    icon: MessageSquare,
-    tint: "var(--cat-reviews)",
-  },
+// Starter prompts come from GET /api/ask/suggestions — deterministic, AI-free, adapted
+// to the org's active competitors and rotated daily (server keeps the same set within a
+// day). The server sends only { q, kind }; the kind maps here to a leading glyph + tint
+// so it doubles as wayfinding (the product's own category color system), not decoration.
+type SuggestionKind = "activity" | "pricing" | "hiring" | "reviews" | "product" | "compare";
+interface Suggestion {
+  q: string;
+  kind: SuggestionKind;
+}
+
+const KIND_META: Record<SuggestionKind, { icon: LucideIcon; tint: string }> = {
+  activity: { icon: Activity, tint: "var(--link)" },
+  pricing: { icon: DollarSign, tint: "var(--cat-pricing)" },
+  hiring: { icon: Users, tint: "var(--cat-hiring)" },
+  reviews: { icon: MessageSquare, tint: "var(--cat-reviews)" },
+  product: { icon: Package, tint: "var(--cat-product)" },
+  compare: { icon: GitCompare, tint: "var(--link)" },
+};
+
+// Shown while the fetch is in flight and if it fails or returns nothing.
+const DEFAULT_SUGGESTIONS: Suggestion[] = [
+  { q: "What changed across my competitors this month?", kind: "activity" },
+  { q: "Who is hiring the most right now?", kind: "hiring" },
+  { q: "How has competitor pricing shifted this quarter?", kind: "pricing" },
+  { q: "What are the most common complaints in competitor reviews?", kind: "reviews" },
 ];
 
 function citationHref(c: Citation): string {
@@ -111,10 +127,53 @@ export function AskPanel() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [isMac, setIsMac] = useState(false);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>(DEFAULT_SUGGESTIONS);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     setIsMac(/mac/i.test(navigator.platform) || /mac/i.test(navigator.userAgent));
+  }, []);
+
+  useEffect(() => {
+    // Suggestions are stable within a day (server rotates by UTC epoch-day), so cache
+    // them per-day in sessionStorage and skip the round-trip on re-navigation. The key
+    // carries the day, so a stale entry auto-invalidates the next morning.
+    const today = Math.floor(Date.now() / 86_400_000);
+    const KEY = "ask:suggestions";
+
+    try {
+      const raw = sessionStorage.getItem(KEY);
+      if (raw) {
+        const cached = JSON.parse(raw) as { day?: number; suggestions?: Suggestion[] };
+        if (cached.day === today && cached.suggestions && cached.suggestions.length > 0) {
+          setSuggestions(cached.suggestions);
+          return; // fresh for today — no fetch
+        }
+      }
+    } catch {
+      /* unreadable cache — fall through to fetch */
+    }
+
+    const ctrl = new AbortController();
+    fetch(`${BASE}/api/ask/suggestions`, { credentials: "include", signal: ctrl.signal })
+      .then((r) => (r.ok ? (r.json() as Promise<{ suggestions?: Suggestion[] }>) : null))
+      .then((d) => {
+        const list = d?.suggestions?.filter(
+          (s) => s && typeof s.q === "string" && s.kind in KIND_META,
+        );
+        if (list && list.length > 0) {
+          setSuggestions(list);
+          try {
+            sessionStorage.setItem(KEY, JSON.stringify({ day: today, suggestions: list }));
+          } catch {
+            /* storage unavailable — non-fatal */
+          }
+        }
+      })
+      .catch(() => {
+        /* keep the static defaults */
+      });
+    return () => ctrl.abort();
   }, []);
 
   function handleEvent(ev: AskEvent) {
@@ -249,7 +308,9 @@ export function AskPanel() {
         <div className="mt-8 duration-300 motion-safe:animate-in motion-safe:fade-in">
           <p className="text-dense font-medium text-muted-foreground">Start with a question</p>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            {EXAMPLES.map(({ q, icon: Icon, tint }) => (
+            {suggestions.map(({ q, kind }) => {
+              const { icon: Icon, tint } = KIND_META[kind];
+              return (
               <button
                 key={q}
                 type="button"
@@ -266,7 +327,8 @@ export function AskPanel() {
                   aria-hidden
                 />
               </button>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

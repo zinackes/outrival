@@ -4,12 +4,22 @@ import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
 import { runAskAgent, type AskEvent } from "../lib/ask/agent";
+import { buildAskSuggestions } from "../lib/ask/suggestions";
 
 type Variables = { user: { id: string } };
 
 export const askRouter = new Hono<{ Variables: Variables }>();
 
 askRouter.use("*", authMiddleware);
+
+// Starter prompts for the empty Ask panel — deterministic, AI-free, org-adapted, and
+// rotated daily (see lib/ask/suggestions.ts). No rate limit: it's two cheap reads, no
+// model call. Falls back to a static set if the reads fail or the org has no data yet.
+askRouter.get("/suggestions", async (c) => {
+  const orgId = await ensureUserOrg(c.get("user").id);
+  const suggestions = await buildAskSuggestions(orgId).catch(() => []);
+  return c.json({ suggestions });
+});
 
 // Ask Outrival — conversational intelligence over the org's own data. A bounded
 // two-pass tool agent (plan → org-scoped tools → grounded synthesis), streamed over

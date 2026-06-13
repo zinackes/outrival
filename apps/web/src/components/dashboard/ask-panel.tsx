@@ -1,8 +1,22 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowUpRight, Loader2, Sparkles } from "lucide-react";
+import {
+  Activity,
+  ArrowUpRight,
+  Check,
+  ChevronRight,
+  Copy,
+  CornerDownLeft,
+  DollarSign,
+  Loader2,
+  MessageSquare,
+  Sparkles,
+  TriangleAlert,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -40,15 +54,52 @@ const PHASE_LABEL: Record<string, string> = {
   synthesizing: "Writing the answer",
 };
 
-const EXAMPLES = [
-  "What changed across my competitors this month?",
-  "Who is hiring the most right now?",
-  "Summarize the critical signals from the past week.",
-  "What are the most common complaints in competitor reviews?",
+// Each starter maps to a real tool/category so the leading glyph doubles as
+// wayfinding (the product's own category color system), not decoration.
+const EXAMPLES: { q: string; icon: LucideIcon; tint: string }[] = [
+  { q: "What changed across my competitors this month?", icon: Activity, tint: "var(--link)" },
+  { q: "Who is hiring the most right now?", icon: Users, tint: "var(--cat-hiring)" },
+  { q: "How has competitor pricing shifted this quarter?", icon: DollarSign, tint: "var(--cat-pricing)" },
+  {
+    q: "What are the most common complaints in competitor reviews?",
+    icon: MessageSquare,
+    tint: "var(--cat-reviews)",
+  },
 ];
 
 function citationHref(c: Citation): string {
   return c.type === "competitor" ? `/dashboard/competitors/${c.id}` : "/dashboard/signals";
+}
+
+/** Terminal-style stepper: a connected sequence of the agent's work. */
+function Steps({ steps, active }: { steps: string[]; active: boolean }) {
+  return (
+    <ol className="relative flex flex-col gap-2.5">
+      {steps.length > 1 && (
+        <span aria-hidden className="absolute top-2 bottom-2 left-[7px] w-px bg-border" />
+      )}
+      {steps.map((step, i) => {
+        const running = active && i === steps.length - 1;
+        return (
+          <li
+            key={i}
+            className="relative flex items-center gap-2.5 duration-200 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-left-1"
+          >
+            <span className="flex size-3.5 shrink-0 items-center justify-center">
+              {running ? (
+                <Loader2 className="size-3.5 animate-spin text-[var(--link)]" />
+              ) : (
+                <span className="size-1.5 rounded-full bg-[var(--link)] ring-2 ring-[var(--surface)]" />
+              )}
+            </span>
+            <span className={running ? "text-dense text-foreground" : "text-dense text-muted-foreground"}>
+              {step}
+            </span>
+          </li>
+        );
+      })}
+    </ol>
+  );
 }
 
 export function AskPanel() {
@@ -58,7 +109,13 @@ export function AskPanel() {
   const [answer, setAnswer] = useState<string | null>(null);
   const [citations, setCitations] = useState<Citation[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [isMac, setIsMac] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    setIsMac(/mac/i.test(navigator.platform) || /mac/i.test(navigator.userAgent));
+  }, []);
 
   function handleEvent(ev: AskEvent) {
     if (ev.type === "status") setTrace((t) => [...t, PHASE_LABEL[ev.phase] ?? ev.phase]);
@@ -81,6 +138,7 @@ export function AskPanel() {
     setAnswer(null);
     setCitations([]);
     setError(null);
+    setCopied(false);
 
     try {
       const res = await fetch(`${BASE}/api/ask`, {
@@ -131,6 +189,15 @@ export function AskPanel() {
     }
   }
 
+  function copyAnswer() {
+    if (!answer) return;
+    void navigator.clipboard?.writeText(answer);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1800);
+  }
+
+  const mod = isMac ? "⌘" : "Ctrl";
+
   return (
     <div className="mx-auto w-full max-w-3xl">
       <PageHead
@@ -145,43 +212,59 @@ export function AskPanel() {
           void ask(question);
         }}
       >
-        <Textarea
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-              e.preventDefault();
-              void ask(question);
-            }
-          }}
-          placeholder="e.g. What changed in Linear's pricing this quarter?"
-          rows={3}
-          className="resize-none"
-        />
-        <div className="mt-3 flex items-center justify-between gap-3">
-          <span className="text-meta text-muted-foreground">⌘/Ctrl + Enter to send</span>
-          <Button type="submit" disabled={loading || !question.trim()}>
-            {loading ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-            Ask
-          </Button>
+        <div className="rounded-lg border border-border bg-surface shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50">
+          <Textarea
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                void ask(question);
+              }
+            }}
+            placeholder="e.g. What changed in Linear's pricing this quarter?"
+            rows={3}
+            autoFocus
+            className="min-h-[5rem] resize-none border-0 bg-transparent px-4 pt-3.5 pb-0 shadow-none focus-visible:border-0 focus-visible:ring-0"
+          />
+          <div className="flex items-center justify-between gap-3 px-3 pt-2 pb-3">
+            <span className="flex items-center gap-1.5 text-meta text-muted-foreground">
+              <kbd className="pointer-events-none inline-flex h-5 select-none items-center rounded border border-border bg-surface-2 px-1.5 font-mono text-meta font-medium">
+                {mod}
+              </kbd>
+              <kbd className="pointer-events-none inline-flex h-5 select-none items-center rounded border border-border bg-surface-2 px-1.5 font-mono text-meta font-medium">
+                ↵
+              </kbd>
+              <span className="hidden sm:inline">to send</span>
+            </span>
+            <Button type="submit" disabled={loading || !question.trim()}>
+              {loading ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+              Ask
+            </Button>
+          </div>
         </div>
       </form>
 
       {!answer && !loading && !error && (
-        <div className="mt-8">
-          <p className="text-meta uppercase tracking-wide text-muted-foreground">Try asking</p>
-          <div className="mt-3 flex flex-col gap-2">
-            {EXAMPLES.map((ex) => (
+        <div className="mt-8 duration-300 motion-safe:animate-in motion-safe:fade-in">
+          <p className="text-dense font-medium text-muted-foreground">Start with a question</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {EXAMPLES.map(({ q, icon: Icon, tint }) => (
               <button
-                key={ex}
+                key={q}
                 type="button"
                 onClick={() => {
-                  setQuestion(ex);
-                  void ask(ex);
+                  setQuestion(q);
+                  void ask(q);
                 }}
-                className="rounded-lg border border-border bg-card px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-accent"
+                className="group flex items-center gap-2.5 rounded-md border border-border bg-surface px-3 py-2.5 text-left transition-colors hover:border-border-strong hover:bg-surface-3 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
               >
-                {ex}
+                <Icon className="size-4 shrink-0" style={{ color: tint }} aria-hidden />
+                <span className="flex-1 text-sm text-foreground">{q}</span>
+                <CornerDownLeft
+                  className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
+                  aria-hidden
+                />
               </button>
             ))}
           </div>
@@ -189,47 +272,87 @@ export function AskPanel() {
       )}
 
       {(loading || trace.length > 0) && !answer && (
-        <ul className="mt-6 flex flex-col gap-1.5">
-          {trace.map((step, i) => (
-            <li key={i} className="flex items-center gap-2 text-sm text-muted-foreground">
-              {loading && i === trace.length - 1 ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <span className="size-1.5 rounded-full bg-[var(--link)]" />
-              )}
-              {step}
-            </li>
-          ))}
-        </ul>
+        <div className="mt-6">
+          <Steps steps={trace} active={loading} />
+        </div>
       )}
 
       {error && (
-        <Card className="mt-6 border-destructive/40 p-4 text-sm text-foreground">{error}</Card>
+        <Card className="mt-6 flex items-start gap-3 border-destructive/40 p-4">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden />
+          <div className="flex-1">
+            <p className="text-sm text-foreground">{error}</p>
+            {question.trim() && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-3"
+                onClick={() => void ask(question)}
+                disabled={loading}
+              >
+                Try again
+              </Button>
+            )}
+          </div>
+        </Card>
       )}
 
       {answer && (
-        <Card className="mt-6 p-5">
-          <p className="whitespace-pre-wrap text-content leading-relaxed text-foreground">
-            {answer}
-          </p>
-          {citations.length > 0 && (
-            <div className="mt-4 border-t border-border pt-4">
-              <p className="text-meta uppercase tracking-wide text-muted-foreground">Sources</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {citations.map((c) => (
-                  <Link
-                    key={`${c.type}-${c.id}`}
-                    href={citationHref(c)}
-                    className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2.5 py-1 text-dense text-foreground transition-colors hover:bg-accent"
-                  >
-                    {c.label}
-                    <ArrowUpRight className="size-3 text-muted-foreground" />
-                  </Link>
-                ))}
+        <div className="duration-300 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2">
+          {trace.length > 0 && (
+            <details className="group mt-6">
+              <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 text-meta text-muted-foreground transition-colors hover:text-foreground">
+                <ChevronRight className="size-3 transition-transform group-open:rotate-90" aria-hidden />
+                <span className="font-mono">{trace.length}</span> steps to answer
+              </summary>
+              <div className="mt-3 pl-1">
+                <Steps steps={trace} active={false} />
               </div>
-            </div>
+            </details>
           )}
-        </Card>
+
+          <Card className="mt-3 p-5">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <span className="flex items-center gap-1.5 text-dense font-medium text-foreground">
+                <span className="size-1.5 rounded-full bg-[var(--link)]" aria-hidden />
+                Answer
+              </span>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={copyAnswer}
+                aria-label={copied ? "Copied" : "Copy answer"}
+                title={copied ? "Copied" : "Copy answer"}
+              >
+                {copied ? (
+                  <Check className="size-3.5 text-[var(--positive)]" />
+                ) : (
+                  <Copy className="size-3.5 text-muted-foreground" />
+                )}
+              </Button>
+            </div>
+
+            <p className="text-content leading-relaxed whitespace-pre-wrap text-foreground">{answer}</p>
+
+            {citations.length > 0 && (
+              <div className="mt-4 border-t border-border pt-4">
+                <p className="text-dense font-medium text-muted-foreground">Sources</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {citations.map((c) => (
+                    <Link
+                      key={`${c.type}-${c.id}`}
+                      href={citationHref(c)}
+                      className="inline-flex items-center gap-1 rounded-md border border-border bg-surface px-2.5 py-1 text-dense text-foreground transition-colors hover:border-border-strong hover:bg-surface-3"
+                    >
+                      {c.label}
+                      <ArrowUpRight className="size-3 text-muted-foreground" />
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+          </Card>
+        </div>
       )}
     </div>
   );

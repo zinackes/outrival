@@ -246,7 +246,23 @@ export function AuthForm() {
         </div>
 
         <p className="mt-6 text-center text-xs text-muted-foreground leading-relaxed">
-          By continuing, you agree to our terms of service and privacy policy.
+          By continuing, you agree to our{" "}
+          <Link
+            href="/terms"
+            target="_blank"
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            terms of service
+          </Link>{" "}
+          and{" "}
+          <Link
+            href="/privacy"
+            target="_blank"
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            privacy policy
+          </Link>
+          .
         </p>
       </div>
     </div>

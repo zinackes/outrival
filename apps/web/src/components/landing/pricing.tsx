@@ -144,7 +144,15 @@ export function Pricing() {
                 variant={p.featured ? "default" : "outline"}
                 className="mt-6 w-full"
               >
-                <a href="#cta">{p.cta}</a>
+                <a
+                  href={
+                    p.tag === "Business"
+                      ? "mailto:hello@outrival.io?subject=Outrival%20Business%20plan"
+                      : "#cta"
+                  }
+                >
+                  {p.cta}
+                </a>
               </Button>
             </div>
           ))}

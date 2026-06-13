@@ -203,17 +203,13 @@ forced_rescan_log      id, user_id, org_id, monitor_id, task_id, triggered_at,
 parser_extractors      id, domain (host www-stripped), source_type, spec (jsonb —
                        ExtractorSpec : sélecteurs CSS + transforms whitelistés),
                        version, heal_count, consecutive_failures, last_validated_at,
-                       last_heal_attempt_at — patch-30, cache de parser déterministe
-                       par (domain, source_type) ; généré par self-heal IA, rejoué
-                       sans IA. Clé domain (réutilisable cross-org). 📄 docs/staged-extraction.md
+                       last_heal_attempt_at — patch-30, cache parser déterministe par
+                       (domain, source_type), clé réutilisable cross-org. 📄 docs/staged-extraction.md
 
 competitors            + platform_profile (jsonb — patch-31, PlatformProfile :
                        framework/cms/ats/pricingWidget/statusPage/changelog/analytics[]
-                       + confidence + evidence par champ) + platform_detected_at
-                       (cadence re-détection, comme tech_stack_scraped_at). Détection
-                       pure AI-free (Wappalyzer-format maison + signatures métier ID-bearing) ;
-                       lu à chaque scrape pour router une source vers son connecteur
-                       structuré (jobs→API ATS direct). 📄 docs/platform-detection.md
+                       + confidence/evidence) + platform_detected_at (cadence re-détection).
+                       AI-free, route une source → son connecteur structuré. 📄 docs/platform-detection.md
 ```
 
 ### Enums Postgres
@@ -223,31 +219,15 @@ billing_period    monthly | yearly
 source_type       homepage | pricing | blog | changelog | jobs |
                   g2_reviews | capterra_reviews | appstore_reviews |
                   trustpilot_reviews | trustradius_reviews | gartner_reviews |
-                  playstore_reviews (patch-32 — plateformes review additionnelles,
-                   enable on-demand pro+, structured-first AggregateRating + verbatims IA,
-                   même chemin que g2/capterra ; Gartner best-effort/anti-bot) | reddit
-                  (patch-32 — mention tracking : PAS une page produit notée, recherché par
-                   marque via l'API JSON publique Reddit → sentiment + thèmes de plaintes par
-                   extract-reviews ; pas de score étoilé → aucune ligne CH review_scores) |
-                  linkedin | twitter | github_repo | tech_stack | status | sitemap | news
-                  (status = patch-31, page de statut concurrent Statuspage/Instatus
-                   via le connecteur JSON pur ; enable on-demand starter+, lazy.
-                   tech_stack = ancrage infra patch-18, monitor isActive=false,
-                   jamais exposé dans la liste Sources — voir pipeline. Le tech
-                   stack détecté est lui surfacé en lecture seule via un tab dédié
-                   sur la fiche competitor.
-                   sitemap = patch-32, ancre de découverte interne. Comme tech_stack,
-                   jamais user-selectable (hors gating/enable/tabs) ; semée weekly à
-                   la création, isActive=true, scrapée via getScraper. Le scraper émet
-                   la liste d'URLs triée → le diff générique surface les pages neuves.
-                   news = ancre événements société (funding/M&A/leadership/presse).
-                   Comme sitemap, interne/jamais user-selectable (hors gating/enable/
-                   tabs/activity), semée weekly à la création (POST competitors +
-                   candidates). Le scraper interroge Google News RSS par marque
-                   (`extractBrand(url)`, pur fetch AI-free, parser `feeds/rss`) → snapshot
-                   trié déterministe → le diff lexical surface les nouveaux événements,
-                   classés funding/product/hiring par classify-change. Rend réelle la
-                   promesse landing « Funding detected ».)
+                  playstore_reviews | reddit | linkedin | twitter | github_repo |
+                  tech_stack | status | sitemap | news
+                  — reviews+ (trustpilot/trustradius/gartner/playstore) : patch-32, enable
+                    on-demand pro+, même chemin que g2/capterra. reddit : patch-32,
+                    mention-tracking (pas de page notée → pas de ligne review_scores).
+                  — internes, jamais user-selectable : tech_stack (patch-18, infra, tab
+                    read-only), sitemap + news (patch-32, semés weekly, diff = pages/
+                    événements neufs). status : on-demand starter+ (patch-31).
+                    Comportement détaillé : cf. Pipeline + Décisions.
 frequency         realtime | daily | weekly
 signal_severity   low | medium | high | critical
 signal_category   pricing | product | hiring | reviews | content | funding
@@ -743,134 +723,62 @@ WEB_URL=                     # https://outrival.io (callbacks Stripe)
 
 ## Décisions architecturales clés
 
-- **Ask Outrival — intelligence conversationnelle (feature ad-hoc)** — passe de
-  « dashboards qu'on visite » à « intelligence qu'on interroge » : NL → réponse anglaise
-  groundée sur la donnée Postgres **déjà** trackée de l'org (pas de RAG vectoriel, pas de
-  nouvelle ingestion). **Agent à OUTILS** : la donnée étant relationnelle, on expose au
-  modèle un registry d'outils **org-scopés** (`getSignals`/`getPricingHistory`/
-  `getJobTrends`/`getReviewThemes`/`getTechStackChanges`/`compareCompetitors`/
-  `listCompetitors`, `apps/api/src/lib/ask/tools.ts`) — jamais de SQL généré par le LLM.
-  `complete()` étant single-shot (pas de tool-calling natif), l'agent est une **boucle 2
-  passes** : PLAN (modèle rapide → `AskPlanSchema`, le roster competitors est injecté pour
-  résoudre nom→id en une passe) → exécution des outils côté API (`orgId` de la session,
-  **jamais** du modèle) → SYNTHÈSE (70b → `AskAnswerSchema`, réponse + citations
-  deep-linkées). **Isolation tenant absolue** : les tables analytics n'ont pas d'`org_id`
-  → chaque outil competitor-scopé résout d'abord le competitor *dans* l'org
-  (`ownedCompetitor`), un id étranger/forgé rend vide ; un outil inconnu nommé par le
-  modèle est ignoré. `POST /api/ask` (auth + `aiIntensiveRateLimit` 10/h/user), **SSE
-  event-streaming** (status→tool→answer→done, `streamSSE`, lu client-side via fetch-stream
-  car EventSource ne POST pas). Réutilise le pool providers (patch-22) + `getActiveProvider`
-  pour `ai_runs` (`task='ask'`, 1er logger ai_runs **côté API** : `lib/ai-runs.ts`). UI
-  page `/dashboard/ask`. v1 stateless (pas d'historique), pas de cache (fraîcheur prime).
-  Pur api/ai/web + 0 migration. 📄 docs/ask-outrival.md
-- **Page Activity user-facing (feature ad-hoc)** — `/dashboard/activity` expose le
-  travail de scraping fait pour l'org (transparence/rétention), distinct du feed
-  Signals. Route `apps/api/src/routes/activity.ts` (`/api/activity`) : `/health`
-  (relationnel `monitors ⋈ competitors` org-scoped → dernier/prochain scan + statut
-  dérivé `ok|failing|paused|unscrapable`) et `/timeline` (`scrape_runs` filtré sur
-  les competitors de l'org via `analyticsQuery` best-effort, incl. no-change/échecs =
-  le travail invisible). Échecs adoucis côté user (pas de `blocked_403`/level brut),
-  sources internes (`tech_stack`/`sitemap`) exclues, tous tiers. 0 migration, 0 IA.
-- **Couverture des sources élargie (patch-32)** — étend la couverture par source
-  en s'appuyant sur la détection plateforme (patch-31) + le pipeline étagé (patch-30),
-  sans toucher la cascade de scraping. **HIRING** : 7 connecteurs ATS no-auth (ajout
-  de Personio via son feed XML public) + schéma d'offre **cross-ATS enrichi**
-  (séniorité canonique, datePost, salaire normalisé min/max/devise — `normalizeSalary`
-  pur+testé) ; l'enrichissement voyage dans le JSON island et se persiste sur
-  `job_postings` (5 colonnes, null sur le fallback LLM). **PRICING** : JSON-LD-first et
-  auto-découverte d'URL existaient déjà (patch-30) ; ajout d'un gate `plausible` de
-  **validation du ratio mensuel↔annuel** (un structured/cache mé-parsé retombe sur l'IA).
-  **SIGNALS vague 1** : (a) **changelog feed-first** — scraper dédié qui détecte un RSS/
-  Atom (link advertised → paths conventionnels), parse le feed et synthétise un snapshot
-  déterministe trié → le diff générique détecte les nouvelles entrées de release ; sinon
-  change-detection HTML (comportement actuel). (b) **sitemap-diff** — nouvelle source
-  interne `sitemap` (non user-selectable, comme tech_stack), semée weekly à la création ;
-  le scraper résout robots.txt/paths, walk index + `.gz`, émet la liste d'URLs triée → le
-  diff surface pages neuves/retirées, catégorisées par path. Découpage dep-rules : parsers
-  purs (RSS/Atom, sitemap, ratio) AI-free dans `scrapers` (subpaths `/feeds`, `/sitemap`,
-  `/pricing`), orchestration dans `workers`/scrapers, 1 enum DB + 5 colonnes `job_postings`
-  (migration stagée, `db:push` manuel). **REVIEWS** (approfondi, pas de nouvelle source) :
-  l'extraction IA renvoie en plus les **sous-notes** /5 (ease_of_use/support/features/value
-  → CH review_scores, colonnes Nullable additives + ALTER idempotent) et des **thèmes de
-  plaintes** clusterisés (IA-juge, même appel → zéro coût additionnel) surfacés dans le
-  résumé. **HOMEPAGE** : le triple-capture (texte + screenshot/pHash + meta/OG) et le diff
-  par régions (hero/CTA/sections) existaient déjà (patch-16/17) ; patch-32 ferme le seul gap
-  — `og:image`/`og:type` capturés mais non diffés → désormais `meta_changed` (rebrand/identité
-  visuelle). Reviews **multi-plateforme** : 4 nouvelles sources review (`trustpilot_reviews`,
-  `trustradius_reviews`, `gartner_reviews`, `playstore_reviews`) enable-on-demand pro+, URL
-  explicite brand-locked (`validateReviewUrl`, Play Store id-checké), scrapers minces (factory,
-  niveau cascade par posture anti-bot : Trustpilot/TrustRadius L2, Gartner L3 best-effort, Play
-  Store L1 render), routées via `isReviewSource` → extract-reviews (structured-first
-  AggregateRating + verbatims IA, même chemin que g2/capterra ; Play Store ≠ RSS Apple).
-  **Reddit** (source `reddit`, modèle de mentions ≠ page notée) : recherché par marque via l'API
-  JSON publique Reddit (pur fetch, pas de navigateur), snapshot déterministe des mentions → le diff
-  lexical surface les nouvelles mentions (buzz) ET extract-reviews juge sentiment + thèmes de
-  plaintes. Pas de score étoilé → le worker SKIP la ligne CH review_scores quand `average_score`
-  est null (pas de 0/5 fictif). Tests : 117 (ATS+Personio, salaire/séniorité, ratio pricing,
-  RSS/Atom, sitemap index/gz/catégorisation, island round-trip, reviews schema, og:image diff,
-  multi-platform review URL validation + SSRF, Reddit parse/déterminisme).
-- **Pipeline d'extraction étagé (patch-30)** — l'IA quitte le chemin chaud (chaque
-  scrape) pour le chemin froid (création + réparations rares d'un extracteur).
-  4 étages, du moins cher au plus cher, le dernier = comportement actuel (plancher,
-  jamais de régression ; kill-switch `STAGED_EXTRACTION_ENABLED`) : **(1) structured-first**
-  (schema.org JSON-LD/OpenGraph, 0 IA — `@outrival/scrapers/structured-data`) →
-  **(2) cache de parser** déterministe par `(domain, source_type)` (`parser_extractors`,
-  sélecteurs CSS + transforms whitelistés rejoués par `replayExtractor`, 0 IA) →
-  **(3) self-heal IA** (régénère le parser sur cache miss / validation cassée —
-  `generateExtractor`, le SEUL nouvel appel IA, tier smart, cooldown anti-thrash) →
-  **(4) extraction IA directe** (le plancher). Validation = le schéma Zod de la source
-  (`PricingSchema`/`JobsSchema`) + plausibilité, à chaque étage. Découpage dep-rules :
-  replay + structured-first dans `scrapers` (cheerio pur, AI-free), génération dans
-  `ai`, type `ExtractorSpec` dans `shared`, orchestration `stagedExtract` dans `workers`.
-  Plein gain sur **pricing + jobs** ; **reviews** = structured-first scores
-  (`AggregateRating`) mais le résumé qualitatif reste génératif. Métrique
-  `extraction_runs` (% par étage) = arbitre direct du coût IA, exposée dans
-  `/admin/scraping`. Pur worker/scrapers/ai + 1 table PG + 1 table CH ; aucun impact
-  sur la cascade de scraping. 📄 docs/staged-extraction.md (existe déjà).
-- **Détection auto de plateforme (patch-31)** — porte d'entrée du structured-first :
-  détecte la stack de chaque concurrent **et extrait l'identifiant** (token ATS,
-  host status-page, feed RSS), cache un `PlatformProfile` sur `competitors.platform_profile`,
-  et route chaque source vers son connecteur structuré. **Pur pattern-matching, 0 IA.**
-  Moteur compatible-**Wappalyzer** (le dataset `enthec/webappanalyzer` est GPL-3.0 →
-  NON vendorisé ; matcher maison `@outrival/scrapers/platform` + **dataset maison** au
-  même format) + signatures métier ID-bearing (ATS via `detectAtsBoard`, Stripe
-  pricing-table, Statuspage/Instatus, changelog Canny/Headway/Beamer/RSS) + 6 signaux
-  (headers/HTML/scripts/cookies/JS globals/**CNAME**). Pipeline cheap→expensive : step A
-  sans navigateur, step B (réutilise l'api-capture patch-23) seulement si A maigre +
-  SPA quasi-vide. Détection à l'ajout du competitor + périodique 30j (`detect-platform`
-  / `schedule-platform-detection`) + **self-heal sur drift connecteur** (profil promet
-  un ATS mais le scrape n'a pas servi via `ats-api` → re-détecte, cooldown). Routage :
-  `jobs` lit `profile.ats` → API ATS directe **sans render** ; `status` = nouvelle
-  source (Statuspage `/api/v2/summary.json`, starter+) ; changelog→RSS / pricing-widget
-  = différés (notés). Kill-switch `PLATFORM_DETECTION_ENABLED` → routage = exactement
-  aujourd'hui. Métrique CH `platform_detection_runs` (% step A vs B). Dep-rules :
-  détection pure dans `scrapers`, type `PlatformProfile` dans `shared`, orchestration
-  dans `workers`, 1 colonne jsonb + 1 colonne cadence PG + 1 table CH. 📄 docs/platform-detection.md
-- **Limites par tier centralisées (2026-06-04)** — `PLAN_LIMITS` (`@outrival/shared`)
-  est l'unique source de vérité de toute limite par tier (`Plan` *est* le tier ; pas de
-  table `TIER_LIMITS` parallèle). Ajout des dimensions chiffrées de la grille décidée
-  (competitors business **50**, forcedRescans business **100**, battleCardsPerDay,
-  discoveriesPerMonth, usersPerOrg, historyRetentionDays, scrapeFrequency, features
-  fullMode/crmIntegrations). Enforcement des caps période via `assertWithinLimit(orgId,
-  dimension)` + `tierLimitBody` (erreur structurée 429, jamais 500 → prompt d'upgrade
-  contextuel) : **battle cards/jour** (ouvertes aux 4 tiers, compteur `battle_cards`),
-  **discoveries/mois** (compteur sur `discovery_runs`, `/detect` on-demand seulement).
-  Competitors/products/forced-rescans gardent leur enforcement existant, désormais lus
-  depuis `PLAN_LIMITS`. Reste différé (valeur dans la source de vérité, gate TODO) :
-  purge `historyRetentionDays`, `usersPerOrg` (Phase 10), `daily_priority`,
-  `crmIntegrations`, fair-use anti-abus. 📄 docs/tier-limits.md (existe déjà).
-- **Sub-sidebar contextuelle Variante 1 (patch-29)** — sur `/dashboard/settings/*`, la
-  sidebar settings **remplace** la rail principale (pattern Vercel/Stripe) au lieu d'empiler
-  une 2e colonne nav. Implémenté dans `DashboardShell` (client) par un swap `usePathname`
-  `AppSidebar ↔ SettingsSidebar` (même `SidebarProvider`/topbar/cookie). Settings organisés
-  **Personal / Workspace / Danger** (prêt multi-user) ; Members caché par
-  `FEATURE_FLAGS.multiUser` (`@outrival/shared`, false). Rail principale rationalisée
-  (Overview/Signals/Competitors/Products/Discovery + Settings en footer divisé) ; renames de
-  route `my-product→products`, `candidates→discovery`, `settings/workspace→settings/general`
-  (301 via `next.config`). Alerts = tab `?view=alerts` du feed Signals ; la page `/alerts`
-  (config canaux) redirige vers Settings>Notifications. Battle cards hors rail : endpoint
-  liste org-wide `GET /api/battle-cards` → page `/dashboard/battle-cards` + section "Recent"
-  de l'overview. Pur frontend/nav (1 endpoint liste, aucun schéma DB).
+- **Ask Outrival — intelligence conversationnelle (feature ad-hoc)** — NL → réponse
+  anglaise groundée sur la donnée Postgres **déjà** trackée (pas de RAG, pas d'ingestion).
+  **Agent à OUTILS** org-scopés (`lib/ask/tools.ts`, jamais de SQL LLM) en **boucle 2
+  passes** : PLAN (résout nom→id via roster injecté) → exécution outils côté API (`orgId`
+  de la session, **jamais** du modèle) → SYNTHÈSE (citations deep-linkées). Isolation tenant
+  absolue : tout outil résout le competitor *dans* l'org → id forgé = vide. `POST /api/ask`
+  (auth + rate-limit 10/h/user), SSE streaming, réutilise le pool providers (patch-22), 1er
+  logger `ai_runs` côté API. v1 stateless, sans cache. 📄 docs/ask-outrival.md
+- **Page Activity user-facing (feature ad-hoc)** — `/dashboard/activity` expose le travail
+  de scraping de l'org (transparence, distinct du feed Signals). `routes/activity.ts` :
+  `/health` (monitors ⋈ competitors → statut `ok|failing|paused|unscrapable`) + `/timeline`
+  (`scrape_runs` org-scoped best-effort, incl. no-change/échecs). Échecs adoucis, sources
+  internes exclues, tous tiers. 0 migration, 0 IA.
+- **Couverture des sources élargie (patch-32)** — étend la couverture par source via la
+  détection plateforme (patch-31) + le pipeline étagé (patch-30), sans toucher la cascade.
+  **HIRING** : 7 connecteurs ATS no-auth (+ Personio feed XML) + schéma d'offre cross-ATS
+  enrichi (séniorité/datePost/salaire normalisé via `normalizeSalary`) → 5 colonnes
+  `job_postings` (null sur fallback LLM). **PRICING** : gate `plausible` ratio mensuel↔annuel
+  (sinon retombe sur l'IA). **SIGNALS** : changelog **feed-first** (RSS/Atom → snapshot trié)
+  + nouvelle source interne **sitemap** (diff = pages neuves/retirées). **REVIEWS** : sous-notes
+  /5 (ease_of_use/support/features/value → review_scores Nullable) + thèmes de plaintes
+  (IA-juge, même appel) ; **multi-plateforme** — 4 sources (trustpilot/trustradius/gartner/
+  playstore, enable on-demand pro+, URL brand-locked) + **reddit** (mention-tracking, pas de
+  score → skip review_scores). **HOMEPAGE** : `og:image`/`og:type` → `meta_changed` (rebrand).
+  Parsers purs AI-free dans `scrapers` (`/feeds`, `/sitemap`, `/pricing`). 117 tests.
+- **Pipeline d'extraction étagé (patch-30)** — l'IA quitte le chemin chaud (chaque scrape)
+  pour le froid (création/réparation rare d'un extracteur). 4 étages cheap→cher, le dernier =
+  comportement actuel (plancher, kill-switch `STAGED_EXTRACTION_ENABLED`) : (1) structured-first
+  (JSON-LD/OpenGraph, 0 IA) → (2) cache parser déterministe `parser_extractors` (0 IA) →
+  (3) self-heal IA (régénère le parser, SEUL nouvel appel IA, cooldown) → (4) extraction IA
+  directe (plancher). Validation = schéma Zod source + plausibilité à chaque étage. Plein gain
+  pricing+jobs ; reviews = scores structured, résumé reste génératif. Métrique `extraction_runs`
+  (% par étage) = arbitre du coût IA (`/admin/scraping`). 📄 docs/staged-extraction.md
+- **Détection auto de plateforme (patch-31)** — porte d'entrée du structured-first : détecte
+  la stack **et extrait l'identifiant** (token ATS, host status-page, feed RSS), cache un
+  `PlatformProfile` sur `competitors`, route chaque source vers son connecteur structuré.
+  **Pur pattern-matching, 0 IA** : moteur compatible-Wappalyzer (matcher + dataset maison, le
+  dataset GPL-3.0 NON vendorisé) + signatures métier ID-bearing + 6 signaux (headers/HTML/
+  scripts/cookies/JS globals/CNAME). Cheap→cher : step A sans navigateur, step B (api-capture
+  patch-23) si A maigre. Détection à l'ajout + 30j + self-heal sur drift connecteur. Routage :
+  `jobs`→API ATS sans render, `status`=nouvelle source (starter+) ; changelog/pricing-widget
+  différés. Kill-switch `PLATFORM_DETECTION_ENABLED`. 📄 docs/platform-detection.md
+- **Limites par tier centralisées (2026-06-04)** — `PLAN_LIMITS` (`@outrival/shared`) =
+  unique source de vérité de toute limite par tier (pas de table parallèle). Grille chiffrée
+  (competitors business 50, forcedRescans 100, battleCardsPerDay, discoveriesPerMonth,
+  usersPerOrg, historyRetentionDays, scrapeFrequency, features). Enforcement période via
+  `assertWithinLimit` + `tierLimitBody` (429 structurée → upgrade contextuel) : battle cards/
+  jour (4 tiers) + discoveries/mois (`discovery_runs`). Différé (gate TODO) : purge
+  `historyRetentionDays`, `usersPerOrg`, `crmIntegrations`, fair-use. 📄 docs/tier-limits.md
+- **Sub-sidebar contextuelle (patch-29)** — sur `/dashboard/settings/*` la sidebar settings
+  **remplace** la rail principale (pattern Vercel/Stripe), swap `usePathname` `AppSidebar ↔
+  SettingsSidebar` dans `DashboardShell`. Settings Personal/Workspace/Danger (Members gated
+  `FEATURE_FLAGS.multiUser`). Rail rationalisée (Overview/Signals/Competitors/Products/
+  Discovery) ; renames de route (`my-product→products`, `candidates→discovery`,
+  `settings/workspace→settings/general`, 301). Alerts = tab du feed Signals ; battle cards
+  hors rail (`GET /api/battle-cards` → page dédiée + "Recent" overview). Pur frontend/nav.
 - **Multi-SKU non-destructif (patch-28)** — une org gère 1+ `products`. Plutôt que
   de remplacer le self-competitor (`competitors.type="self"`, tissé dans ~11 jobs +
   clés analytics + R2), un `product` est un **wrapper fin** qui le référence
@@ -880,21 +788,14 @@ WEB_URL=                     # https://outrival.io (callbacks Stripe)
   (partagés/spécifiques). Signals taggés **déterministe** (`signals.product_ids`, pas
   IA) selon les associations. Battle cards par couple `(product, competitor)`. Limite
   de products par tier (`PRODUCT_LIMIT_*`). Mono-product = transparent (selector caché).
-- **Pool de providers IA légaux (patch-22)** — remplace le pool multi-comptes Groq
-  (qui violait les ToS Groq). `complete(config, options)` reste l'entrée unique de tous
-  les prompts ; pour `provider="groq"` elle route via `callLLM` vers un **pool de providers
-  OpenAI-compatibles** (Cerebras free prio1, Groq prio2, Hyperbolic payant prio3), essayés
-  free→payant. Sélection par `pickProvider` (skip épuisés/breaker, round-robin même priorité),
-  tracking quota **tokens/jour** + circuit breaker **par provider ET global**, tout en Redis
-  (Upstash) → partagé entre runs workers isolés ; failover EN-APPEL borné sur 429/5xx (les
-  callers synchrones restent résilients sans dépendre d'un retry Trigger). Sans Upstash/clés :
-  dégrade en « 1er provider, pas de tracking ». Le 8b (`classificationFast`) collapse dans le
-  model 70b de chaque provider. Claude reste le fallback `provider="claude"` (swap = 1 ligne
-  `config.ts`). `ai_runs.provider` = le vrai provider du pool (via AsyncLocalStorage).
-  Graceful degradation : breaker ouvert → banner `ai-status` (down + ETA), scrapes continuent,
-  digest reporté ~1h. Rate limiting INTELLIGENT (staleness : skip si rien n'a changé, friction
-  non bloquante) + rate limit DUR anti-abus (10 actions IA/h/user). Job `ai-capacity-check`
-  (cron */30) alerte ops Slack aux paliers 80/90% (pacé 1 ping/2h).
+- **Pool de providers IA légaux (patch-22)** — remplace le pool multi-comptes Groq (violait
+  les ToS). `complete()` reste l'entrée unique ; pour `provider="groq"` route via `callLLM`
+  vers un pool OpenAI-compatible (Cerebras free prio1, Groq prio2, Hyperbolic payant prio3),
+  essayés free→payant. `pickProvider` (skip épuisés/breaker, round-robin), quota tokens/jour
+  + circuit breaker par provider ET global en Redis (partagé entre runs) ; failover en-appel
+  sur 429/5xx. Sans Upstash : « 1er provider, pas de tracking ». Claude = fallback
+  `provider="claude"` (swap 1 ligne). Breaker ouvert → banner ai-status, scrapes continuent.
+  Rate limit intelligent (staleness) + dur (10/h/user). `ai-capacity-check` alerte ops 80/90%.
 - **Cascade scraping découplée (patch-20)** : fingerprint navigateur (Patchright/
   Camoufox) et réputation IP (datacenter/residential) escaladés séparément, du gratuit
   (L0 fetch, L1 Patchright sans proxy) au payant (L2 datacenter, L3 residential, L4

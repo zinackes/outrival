@@ -1,0 +1,16 @@
+# Keep the Docker build context small. node_modules is reinstalled inside the
+# image; .next / dist / .turbo are rebuilt; .git and local env never ship.
+node_modules
+**/node_modules
+.next
+**/.next
+dist
+**/dist
+.turbo
+**/.turbo
+.git
+.env
+.env.local
+**/.env.local
+apps/workers/.trigger
+*.log

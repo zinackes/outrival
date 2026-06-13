@@ -5,6 +5,7 @@ import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
 import { runAskAgent, type AskEvent } from "../lib/ask/agent";
 import { buildAskSuggestions } from "../lib/ask/suggestions";
+import { captureServerEvent } from "../lib/posthog";
 
 type Variables = { user: { id: string } };
 
@@ -34,6 +35,12 @@ askRouter.post("/", aiIntensiveRateLimit, async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { question?: unknown };
   const question = typeof body.question === "string" ? body.question.trim().slice(0, 1000) : "";
   if (!question) return c.json({ error: "question_required" }, 400);
+
+  void captureServerEvent(user.id, "ask_query_submitted", { orgId, questionLength: question.length });
+
+  // Disable reverse-proxy response buffering (nginx/Traefik) so streamed answer
+  // tokens reach the client immediately instead of arriving in one late burst.
+  c.header("X-Accel-Buffering", "no");
 
   return streamSSE(c, async (stream) => {
     const emit = (ev: AskEvent) => stream.writeSSE({ event: ev.type, data: JSON.stringify(ev) });

@@ -21,9 +21,23 @@ export interface TestHarness {
 
 const MIGRATIONS = resolve(import.meta.dir, "../../../packages/db/migrations");
 
+// Migrating the full schema (the 40KB 0000 baseline) costs a few seconds, and the
+// suite calls makeTestDb once per test file. Run the migration ONCE, snapshot the
+// migrated data dir, and hydrate every later instance from that snapshot — each
+// file still gets its own isolated (empty-but-migrated) PGlite, no cross-file id
+// collisions, but only the first pays the migration cost. Keeps the suite fast and
+// off the WSL2 thrash cliff as route coverage grows.
+let migratedTemplate: Blob | File | null = null;
+
 export async function makeTestDb(): Promise<TestHarness> {
-  const client = new PGlite();
+  let client: PGlite;
+  if (migratedTemplate) {
+    client = new PGlite({ loadDataDir: migratedTemplate });
+  } else {
+    client = new PGlite();
+    await migrate(drizzle(client), { migrationsFolder: MIGRATIONS });
+    migratedTemplate = await client.dumpDataDir();
+  }
   const db = drizzle(client, { schema });
-  await migrate(db, { migrationsFolder: MIGRATIONS });
   return { db, close: () => client.close() };
 }

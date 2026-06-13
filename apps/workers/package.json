@@ -6,6 +6,7 @@
     "dev": "trigger dev",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
+    "test": "bun test test/",
     "trigger:dev": "trigger dev"
   },
   "dependencies": {

@@ -9,6 +9,7 @@ import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
 import { getOrgPlan, assertWithinLimit, tierLimitBody } from "../lib/plan";
+import { captureServerEvent } from "../lib/posthog";
 
 type Variables = { user: { id: string } };
 
@@ -209,6 +210,13 @@ battleCardsRouter.post("/:id/battle-card/generate", aiIntensiveRateLimit, async 
     productId: product?.id,
   });
 
+  void captureServerEvent(user.id, "battle_card_generated", {
+    competitorId: competitor.id,
+    competitorName: competitor.name,
+    productId: product?.id ?? null,
+    orgId,
+  });
+
   return c.json({ status: "generating", runId: handle.id });
 });
 
@@ -257,6 +265,13 @@ battleCardsRouter.get("/:id/battle-card/pdf", async (c) => {
 
   const bytes = await getBytesFromR2(card.pdfR2Key);
   const filename = `battle-card-${competitor.name.replace(/[^\w-]+/g, "-").toLowerCase()}.pdf`;
+
+  void captureServerEvent(user.id, "battle_card_pdf_downloaded", {
+    competitorId: competitor.id,
+    competitorName: competitor.name,
+    productId: product?.id ?? null,
+    orgId,
+  });
 
   return new Response(bytes, {
     status: 200,

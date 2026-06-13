@@ -65,7 +65,7 @@ export function AiStatusBanner() {
       : "";
 
   return (
-    <div className="flex items-center gap-3 border-b border-critical/25 bg-critical/8 px-4 sm:px-6 py-2.5">
+    <div className="mb-4 flex items-center gap-3 rounded-lg border border-critical/25 bg-critical/8 px-4 py-3">
       <AlertTriangle size={16} className="text-critical shrink-0" />
       <p className="flex-1 text-sm text-foreground">
         {down

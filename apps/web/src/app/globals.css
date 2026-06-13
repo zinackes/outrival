@@ -320,6 +320,16 @@
   background-image: var(--gradient-card-strong);
 }
 
+/* Keeps an overflow container scrollable but hides the scrollbar. Used on the
+   sidebar nav: on Windows/Edge the classic scrollbar is a visible chunky gutter
+   (overlay-hidden on macOS), so an overflowing rail looked like a stray scroll. */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @layer base {
   * {
     box-sizing: border-box;

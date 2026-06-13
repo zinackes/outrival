@@ -151,6 +151,10 @@ notificationsRouter.get("/stream", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
 
+  // Disable reverse-proxy response buffering (nginx/Traefik) so SSE chunks reach
+  // the client immediately instead of being held until the connection closes.
+  c.header("X-Accel-Buffering", "no");
+
   return streamSSE(c, async (stream) => {
     let lastCheck = new Date();
     let aborted = false;

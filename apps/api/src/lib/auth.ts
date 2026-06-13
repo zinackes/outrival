@@ -14,11 +14,25 @@ const trustedOrigins = [
   ...(process.env.WEB_URL ? [process.env.WEB_URL] : []),
 ];
 
+// Cross-subdomain session cookie. In production the web (outrival.io) and the
+// API (api.outrival.io) are distinct origins on the SAME registrable site. The
+// dashboard's server components fetch /api/auth/get-session and forward the
+// INCOMING request's cookies — so the session cookie must be readable on the
+// parent domain, or getSession() runs cookie-less and every request bounces to
+// /auth. Host-only cookies only "work" in dev because localhost ignores the
+// port. Set AUTH_COOKIE_DOMAIN to the registrable domain (e.g. "outrival.io");
+// leave it unset in dev → host-only localhost cookie, behaviour unchanged.
+const cookieDomain = process.env.AUTH_COOKIE_DOMAIN;
+
 export const auth = betterAuth({
   database: drizzleAdapter(db, { provider: "pg", schema }),
   secret: process.env.BETTER_AUTH_SECRET!,
   baseURL: process.env.BETTER_AUTH_URL!,
   trustedOrigins,
+
+  ...(cookieDomain
+    ? { advanced: { crossSubDomainCookies: { enabled: true, domain: cookieDomain } } }
+    : {}),
 
   // Email + password kept as a fallback. Existing accounts (created before patch-19,
   // some with <12-char passwords) keep working: minPasswordLength is only enforced

@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { captureServerEvent } from "../lib/posthog";
 import {
   signals,
   competitors,
@@ -315,6 +316,15 @@ signalsRouter.patch("/:id/action", async (c) => {
       actionUpdatedAt: new Date(),
     })
     .where(eq(signals.id, id));
+
+  if (status) {
+    void captureServerEvent(user.id, "signal_action_updated", {
+      signalId: id,
+      actionStatus: status,
+      orgId,
+    });
+  }
+
   return c.json({ ok: true });
 });
 
@@ -377,6 +387,9 @@ signalsRouter.post("/:id/comments", async (c) => {
       body: signalComments.body,
       createdAt: signalComments.createdAt,
     });
+
+  void captureServerEvent(user.id, "signal_comment_posted", { signalId: id, orgId });
+
   return c.json({ comment: { ...row, mine: true } }, 201);
 });
 

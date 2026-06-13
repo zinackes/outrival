@@ -101,7 +101,7 @@ export function SettingsSidebar({ org }: { org: Org }) {
       <SidebarHeader>
         <WorkspaceSwitcher org={org} />
       </SidebarHeader>
-      <SidebarContent>
+      <SidebarContent className="no-scrollbar">
         <SidebarGroup className="py-1">
           <SidebarGroupContent>
             <SidebarMenu>

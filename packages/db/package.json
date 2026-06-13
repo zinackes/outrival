@@ -11,8 +11,10 @@
   "scripts": {
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
+    "test": "bun test --timeout 20000 test/",
     "db:push": "drizzle-kit push",
     "db:migrate": "drizzle-kit migrate",
+    "db:migrate:deploy": "bun run src/migrate.ts",
     "db:studio": "drizzle-kit studio",
     "db:generate": "drizzle-kit generate",
     "db:baseline": "bun run src/baseline.ts",
@@ -24,6 +26,7 @@
     "postgres": "^3.4.9"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.2",
     "@types/node": "^25.9.1",
     "dotenv": "^17.4.2",
     "drizzle-kit": "^0.31.10"

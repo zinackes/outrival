@@ -1,8 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useTransition } from "react";
-import { ChevronRight, RefreshCw } from "lucide-react";
+import { ChevronRight, RefreshCw, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
@@ -85,6 +86,17 @@ export function Topbar({ user }: { user: User }) {
       <GlobalSearch />
       <div className="flex-1" />
       <ProductSelector />
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/dashboard/ask">
+              <Sparkles className="size-3.5 text-[var(--link)]" />
+              Ask
+            </Link>
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Ask Outrival — answers from your data</TooltipContent>
+      </Tooltip>
       <Tooltip>
         <TooltipTrigger asChild>
           <Button

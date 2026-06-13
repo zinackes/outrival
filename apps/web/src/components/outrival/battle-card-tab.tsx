@@ -83,15 +83,21 @@ export function BattleCardTab({ competitorId }: Props) {
       const res = await api.getBattleCard(competitorId, productId);
       setCard(res.battleCard);
       setDraft(res.battleCard.content);
-      setStatus("ready");
+      // While polling, the poll loop owns the status (it keeps the "generating"
+      // spinner up until fresh content lands) — don't pre-empt it here.
+      if (!silent) setStatus("ready");
       return res.battleCard;
     } catch (e) {
       if (String(e).includes("404")) {
-        setStatus("absent");
+        // A 404 mid-generation just means the row isn't written yet — keep the
+        // spinner instead of flashing the empty "Generate" state.
+        if (!silent) setStatus("absent");
         return null;
       }
-      setError(String(e));
-      setStatus("error");
+      if (!silent) {
+        setError(String(e));
+        setStatus("error");
+      }
       return null;
     }
   }
@@ -106,16 +112,37 @@ export function BattleCardTab({ competitorId }: Props) {
     };
   }, [competitorId, productId]);
 
-  function startPolling() {
+  function stopPolling() {
     if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = null;
+  }
+
+  function startPolling() {
+    stopPolling();
+    // Snapshot the pre-generation state. The job writes the card content first
+    // (~10-20s of AI) and only then renders + uploads the PDF (slower). Reveal the
+    // card the moment new content lands — don't make the user stare at a spinner
+    // through the extra PDF step — and keep polling silently to enable Download.
+    const prevGeneratedAt = card?.generatedAt ?? null;
+    const prevR2 = card?.pdfR2Key ?? null;
+    let polls = 0;
+    let revealed = false;
     pollRef.current = setInterval(async () => {
-      const prevR2 = card?.pdfR2Key ?? null;
+      polls += 1;
       const fresh = await load(true);
-      if (fresh && fresh.pdfR2Key && fresh.pdfR2Key !== prevR2) {
-        if (pollRef.current) clearInterval(pollRef.current);
-        pollRef.current = null;
+      if (fresh && fresh.generatedAt !== prevGeneratedAt) {
         setStatus("ready");
+        revealed = true;
+      }
+      if (fresh && fresh.pdfR2Key && fresh.pdfR2Key !== prevR2) {
+        stopPolling();
         void refreshStaleness(); // regenerated → should now read "fresh"
+        return;
+      }
+      // Safety net: a failed/stuck job must not spin forever (~3 min cap).
+      if (polls >= 60) {
+        stopPolling();
+        if (!revealed) setStatus(card ? "ready" : "absent");
       }
     }, 3000);
   }

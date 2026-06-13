@@ -1,7 +1,18 @@
 import type { NextConfig } from "next";
+import { fileURLToPath } from "node:url";
 import { withSentryConfig } from "@sentry/nextjs";
 
+// Monorepo root (two levels up from apps/web). Standalone file-tracing must be
+// rooted here, not at apps/web, or the pnpm workspace deps (incl. the hoisted
+// node_modules and @outrival/shared) are missed and the runtime image breaks.
+const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
+
 const nextConfig: NextConfig = {
+  // Self-contained server build for Docker/Coolify: emits .next/standalone with
+  // only the traced runtime deps (incl. the transpiled @outrival/shared), so the
+  // image ships without the full monorepo node_modules. See docs/deployment.md.
+  output: "standalone",
+  outputFileTracingRoot: repoRoot,
   transpilePackages: ["@outrival/shared"],
   async redirects() {
     return [

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
+import { captureServerEvent } from "../lib/posthog";
 import { and, eq, count, inArray, isNull } from "drizzle-orm";
 import {
   organizations,
@@ -541,6 +542,8 @@ onboardingRouter.post("/skip", async (c) => {
     .set({ onboardingSkipped: true, onboardingCompleted: true, updatedAt: new Date() })
     .where(eq(organizations.id, orgId));
 
+  void captureServerEvent(user.id, "onboarding_skipped", { orgId });
+
   return c.json({ ok: true });
 });
 
@@ -755,6 +758,13 @@ onboardingRouter.post("/complete", async (c) => {
       });
     }
   }
+
+  void captureServerEvent(user.id, "onboarding_completed", {
+    competitorsCreated: created.length,
+    sources: monitoringPrefs.sources,
+    frequency: monitoringPrefs.frequency,
+    orgId,
+  });
 
   return c.json({
     competitorsCreated: created.length,

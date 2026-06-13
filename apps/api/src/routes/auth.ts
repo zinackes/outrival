@@ -6,7 +6,7 @@ import { db } from "../lib/db";
 import { users, account } from "@outrival/db";
 import { auth } from "../lib/auth";
 import { verifyTurnstileToken } from "../lib/turnstile";
-import { captureServerEvent } from "../lib/posthog";
+import { captureServerEvent, identifyUser } from "../lib/posthog";
 import { authRateLimit } from "../middleware/auth-rate-limit";
 import { authMiddleware } from "../middleware/auth";
 import { errorBody } from "../lib/errors";
@@ -83,6 +83,10 @@ authRouter.post("/check-and-send-magic-link", authRateLimit, async (c) => {
     existing ? "user_logged_in" : "user_signed_up",
     { method: "email_otp" },
   );
+
+  if (existing) {
+    identifyUser(existing.id, { email: existing.email, name: existing.name ?? undefined });
+  }
 
   return c.json({
     ok: true,

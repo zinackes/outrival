@@ -24,3 +24,12 @@ export async function captureServerEvent(
   ph.capture({ distinctId, event, properties });
   await ph.flush();
 }
+
+export function identifyUser(
+  distinctId: string,
+  properties: Record<string, unknown>,
+): void {
+  const ph = getPostHog();
+  if (!ph) return;
+  ph.identify({ distinctId, properties });
+}

@@ -9,6 +9,7 @@ import {
   AlertCircle,
   ArrowLeft,
   ArrowRight,
+  Bell,
   Check,
   ChevronDown,
   ExternalLink,
@@ -19,6 +20,7 @@ import {
   Loader2,
   Lock,
   LogOut,
+  Package,
   Plus,
   RotateCcw,
   Sparkles,
@@ -673,7 +675,16 @@ export function OnboardingForm({
   const currentStep = SCREEN_TO_STEP[screen];
 
   return (
-    <div className="min-h-screen flex flex-col bg-background-2">
+    <div className="relative min-h-screen flex flex-col bg-background">
+      {/* Ambient accent glow, matching the /auth surface — the welcome moment a
+          first-run flow is licensed to have. Rationed, aria-hidden, behind content. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-72 overflow-hidden"
+      >
+        <div className="absolute left-1/2 top-[-40%] size-[640px] -translate-x-1/2 rounded-full bg-primary/[0.07] blur-[140px]" />
+      </div>
+
       <Header
         onSignOut={handleSignOut}
         onRestart={restart}
@@ -681,7 +692,7 @@ export function OnboardingForm({
         showControls={screen !== "done"}
       />
 
-      <main className="flex-1 mx-auto w-full max-w-3xl px-4 sm:px-8 py-8 sm:py-12">
+      <main className="relative z-10 flex-1 mx-auto w-full max-w-3xl px-4 sm:px-8 py-8 sm:py-12">
         {screen !== "done" && <ProgressBar step={currentStep} />}
 
         {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
@@ -693,7 +704,10 @@ export function OnboardingForm({
           />
         )}
 
-        <div className="mt-8">
+        <div
+          key={screen}
+          className="mt-8 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-200 motion-safe:ease-out"
+        >
           {screen === "stage" && <StageChooser onChoose={chooseStage} current={stage} />}
 
           {screen === "input" && stage && (
@@ -798,10 +812,11 @@ function Header({
   showControls: boolean;
 }) {
   return (
-    <header className="sticky top-0 z-20 border-b border-border bg-background-2/85 backdrop-blur supports-[backdrop-filter]:bg-background-2/65">
+    <header className="sticky top-0 z-20 border-b border-border bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/65">
       <div className="mx-auto max-w-3xl px-4 sm:px-8 h-14 flex items-center justify-between">
         <Link href="/" className="text-base font-semibold font-[var(--font-display)] tracking-tight">
-          Out<span className="text-primary">rival</span>
+          <span className="text-foreground">out</span>
+          <span className="text-primary">rival</span>
         </Link>
         <div className="flex items-center gap-1">
           {showControls && (
@@ -827,11 +842,12 @@ function ProgressBar({ step }: { step: number }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
-        <span className="text-meta font-mono uppercase tracking-wider text-muted-foreground">
+        <span className="text-xs text-muted-foreground">
           Set up in under 3 minutes
         </span>
-        <span className="text-meta font-mono uppercase tracking-wider text-muted-foreground">
-          Step {step} of 5
+        <span className="text-xs text-muted-foreground">
+          Step <span className="font-mono text-foreground">{step}</span> of{" "}
+          <span className="font-mono">5</span>
         </span>
       </div>
       <div className="flex gap-1.5">
@@ -839,12 +855,8 @@ function ProgressBar({ step }: { step: number }) {
           <div
             key={n}
             className={cn(
-              "h-1 flex-1 rounded-full transition-colors",
-              n < step
-                ? "bg-primary"
-                : n === step
-                  ? "bg-primary/50 animate-pulse"
-                  : "bg-border-strong",
+              "h-1 flex-1 rounded-full transition-colors duration-300",
+              n <= step ? "bg-primary" : "bg-border-strong",
             )}
           />
         ))}
@@ -934,9 +946,7 @@ function FooterNav({
         </Button>
       </div>
       {hint && (
-        <p className="text-meta font-medium uppercase tracking-wide text-muted-foreground mt-3 text-right">
-          {hint}
-        </p>
+        <p className="text-xs text-muted-foreground mt-3 text-right">{hint}</p>
       )}
     </>
   );
@@ -953,7 +963,7 @@ function StageChooser({
 }) {
   return (
     <div>
-      <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight font-[var(--font-display)]">
+      <h1 className="text-title md:text-title-lg font-semibold">
         Where are you with your project?
       </h1>
       <p className="text-sm text-muted-foreground mt-3">
@@ -1047,11 +1057,11 @@ function ModeForm({
 
   return (
     <div>
-      <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight font-[var(--font-display)]">
+      <h1 className="text-title md:text-title-lg font-semibold">
         {STAGE_META[stage].title}
       </h1>
 
-      <Card className="mt-6 p-6 sm:p-8 flex flex-col gap-5">
+      <Card className="mt-6 p-5 sm:p-6 flex flex-col gap-5">
         {stage === "idea" && (
           <>
             <div className="flex flex-col gap-1.5">
@@ -1247,18 +1257,18 @@ function ProfileForm({
 }) {
   return (
     <div>
-      <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight font-[var(--font-display)]">
+      <h1 className="text-title md:text-title-lg font-semibold">
         Did we get your product right?
       </h1>
       <p className="text-sm text-muted-foreground mt-3">
         Fix anything that's off — it directly improves competitor relevance.
       </p>
 
-      <div className="flex items-center gap-2 mt-6 mb-3 text-meta font-mono uppercase tracking-wider text-muted-foreground">
-        <Sparkles size={12} /> Extracted by AI
+      <div className="flex items-center gap-1.5 mt-6 mb-3 text-xs text-muted-foreground">
+        <Sparkles size={13} className="text-primary" /> Extracted by AI
       </div>
 
-      <Card className="p-6 sm:p-8 flex flex-col gap-5">
+      <Card className="p-5 sm:p-6 flex flex-col gap-5">
         {PROFILE_FIELDS.map((f) => (
           <div key={f.key} className="flex flex-col gap-1.5">
             <Label htmlFor={`field-${f.key}`} className="text-sm">
@@ -1287,13 +1297,13 @@ function ProfileForm({
       </Card>
 
       {prefetchStatus === "running" && (
-        <p className="mt-4 flex items-center gap-1.5 text-meta font-mono uppercase tracking-wider text-muted-foreground">
-          <Loader2 size={11} className="animate-spin" /> Searching competitors…
+        <p className="mt-4 flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Loader2 size={12} className="animate-spin" /> Searching competitors…
         </p>
       )}
       {prefetchStatus === "completed" && (
-        <p className="mt-4 flex items-center gap-1.5 text-meta font-mono uppercase tracking-wider text-positive">
-          <Check size={11} /> Competitors found
+        <p className="mt-4 flex items-center gap-1.5 text-xs text-positive">
+          <Check size={12} /> Competitors found
         </p>
       )}
 
@@ -1359,7 +1369,7 @@ function DiscoverStep({
 
   return (
     <div>
-      <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight font-[var(--font-display)]">
+      <h1 className="text-title md:text-title-lg font-semibold">
         Your competitors
       </h1>
       <p className="text-sm text-muted-foreground mt-3">
@@ -1381,12 +1391,18 @@ function DiscoverStep({
       )}
 
       <div className="flex items-center justify-between mt-6 mb-3 gap-3 flex-wrap">
-        <p className="text-meta font-mono uppercase tracking-wider text-muted-foreground">
-          {busy ? "Searching…" : `${competitors.length} found · ${limitLabel} selected`}
+        <p className="text-xs text-muted-foreground">
+          {busy ? (
+            "Searching…"
+          ) : (
+            <>
+              <span className="font-mono text-foreground">{competitors.length}</span> found
+              {" · "}
+              <span className="font-mono text-foreground">{limitLabel}</span> selected
+            </>
+          )}
         </p>
-        <p className="text-meta font-mono uppercase tracking-wider text-muted-foreground">
-          {PLAN_LABELS[plan]} plan
-        </p>
+        <p className="text-xs text-muted-foreground">{PLAN_LABELS[plan]} plan</p>
       </div>
 
       <Card className="p-2 sm:p-3 max-h-[420px] overflow-auto">
@@ -1532,7 +1548,7 @@ function OverlapBadge({ score }: { score: number }) {
   return (
     <span
       className={cn(
-        "text-meta px-1.5 py-0.5 font-medium border rounded font-mono uppercase tracking-wider",
+        "text-meta px-1.5 py-0.5 font-medium border rounded font-mono",
         classes,
       )}
     >
@@ -1574,14 +1590,14 @@ function MonitoringStep({
 
   return (
     <div>
-      <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight font-[var(--font-display)]">
+      <h1 className="text-title md:text-title-lg font-semibold">
         Monitoring preferences
       </h1>
       <p className="text-sm text-muted-foreground mt-3">
         We've pre-selected sensible settings. Confirm or customize.
       </p>
 
-      <Card className="mt-6 p-6 sm:p-8 flex flex-col gap-4">
+      <Card className="mt-6 p-5 sm:p-6 flex flex-col gap-4">
         <ul className="text-sm text-foreground flex flex-col gap-1.5">
           <li>
             <span className="text-muted-foreground">Tracked competitors: </span>
@@ -1609,7 +1625,7 @@ function MonitoringStep({
         {advanced && (
           <div className="flex flex-col gap-6 pt-2 border-t border-border">
             <section>
-              <p className="text-meta font-mono uppercase tracking-wider text-muted-foreground mb-3">
+              <p className="text-xs font-medium text-muted-foreground mb-3">
                 Frequency · {PLAN_LABELS[plan]} plan
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1629,7 +1645,7 @@ function MonitoringStep({
               </div>
             </section>
             <section>
-              <p className="text-meta font-mono uppercase tracking-wider text-muted-foreground mb-3">
+              <p className="text-xs font-medium text-muted-foreground mb-3">
                 Sources to monitor
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1649,9 +1665,7 @@ function MonitoringStep({
         )}
       </Card>
 
-      {multiProduct && <MultiProductNote />}
-
-      <TimezoneNote />
+      <WhatHappensNote multiProduct={multiProduct} />
 
       <FooterNav
         onBack={onBack}
@@ -1664,33 +1678,12 @@ function MonitoringStep({
   );
 }
 
-// patch-28: in full mode, let multi-SKU users know they can track more than one
-// product — without adding a wizard step. Quick Start stays single-product. Adding
-// products (each with its own competitors + battle cards) happens in Settings →
-// Products, the "you can always add more later" pattern.
-function MultiProductNote() {
-  return (
-    <Card className="mt-4 p-5 sm:p-6 flex flex-col gap-1.5">
-      <p className="text-meta font-mono uppercase tracking-wider text-muted-foreground">
-        More than one product?
-      </p>
-      <p className="text-sm text-foreground">
-        We&apos;re setting up your main product now.
-      </p>
-      <p className="text-xs text-muted-foreground">
-        If you sell several products (separate SKUs, hubs, or tiers), you can add
-        them anytime in Settings → Products — each gets its own competitors and
-        battle cards.
-      </p>
-    </Card>
-  );
-}
-
-// Patch-26: reassure the user about notification timing right before they finish.
-// Defaults (quiet hours, weekend off, grouping) are applied automatically and the
-// detected timezone is synced once they reach the dashboard — this is just a heads-up,
-// fully skippable, with everything adjustable later in Settings → Notifications.
-function TimezoneNote() {
+// A single "what happens next" heads-up before finishing, replacing the two stacked
+// cards (card-soup) with one boxless block. Covers notification timing (patch-26 —
+// quiet hours, weekend off, grouping, applied automatically + detected timezone synced
+// on the dashboard) and, in full mode, multi-SKU (patch-28 — extra products live in
+// Settings → Products). Both are skippable heads-ups, everything adjustable later.
+function WhatHappensNote({ multiProduct }: { multiProduct: boolean }) {
   const [tz, setTz] = useState<string | null>(null);
   useEffect(() => {
     try {
@@ -1701,25 +1694,40 @@ function TimezoneNote() {
   }, []);
 
   return (
-    <Card className="mt-4 p-5 sm:p-6 flex flex-col gap-1.5">
-      <p className="text-meta font-mono uppercase tracking-wider text-muted-foreground">
-        When you'll be notified
-      </p>
-      <p className="text-sm text-foreground">
-        {tz ? (
-          <>
-            Detected timezone: <span className="font-medium">{tz}</span>.
-          </>
-        ) : (
-          <>We'll use your local timezone.</>
-        )}
-      </p>
-      <p className="text-xs text-muted-foreground">
-        By default we won't email you between 10pm and 8am or on weekends, and similar
-        updates are grouped. Critical alerts always come through. Fine-tune all of this
-        anytime in Settings → Notifications.
-      </p>
-    </Card>
+    <div className="mt-6 rounded-md border border-border bg-surface-2/40 px-5 py-4 flex flex-col gap-3">
+      <div className="flex items-start gap-2.5">
+        <Bell size={15} className="mt-0.5 text-muted-foreground shrink-0" />
+        <div>
+          <p className="text-sm text-foreground">
+            {tz ? (
+              <>
+                We&apos;ll notify you on your local time (
+                <span className="font-medium">{tz}</span>).
+              </>
+            ) : (
+              <>We&apos;ll notify you on your local time.</>
+            )}
+          </p>
+          <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+            No emails between 10pm and 8am or on weekends, and similar updates are
+            grouped. Critical alerts always come through. Adjust anytime in Settings →
+            Notifications.
+          </p>
+        </div>
+      </div>
+      {multiProduct && (
+        <div className="flex items-start gap-2.5 pt-3 border-t border-border">
+          <Package size={15} className="mt-0.5 text-muted-foreground shrink-0" />
+          <div>
+            <p className="text-sm text-foreground">Setting up your main product now.</p>
+            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+              Selling several products (separate SKUs, hubs, or tiers)? Add them anytime
+              in Settings → Products — each gets its own competitors and battle cards.
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1852,7 +1860,7 @@ function DoneStep({
       <div className="w-12 h-12 rounded-full bg-positive/15 border border-positive/30 flex items-center justify-center">
         <Check size={22} className="text-positive" />
       </div>
-      <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight mt-5 font-[var(--font-display)]">
+      <h1 className="text-title md:text-title-lg font-semibold mt-5">
         Setup complete
       </h1>
       <p className="text-sm text-muted-foreground mt-3 max-w-md">
@@ -1875,7 +1883,7 @@ function DoneStep({
       </p>
 
       <Card className="mt-8 w-full max-w-md p-5 text-left">
-        <p className="text-meta font-mono uppercase tracking-wider text-muted-foreground mb-3">
+        <p className="text-xs font-medium text-muted-foreground mb-3">
           Recommended next steps
         </p>
         <ul className="flex flex-col gap-2 text-sm text-foreground">

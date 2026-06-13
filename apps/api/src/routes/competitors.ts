@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { and, asc, desc, eq, gte, isNull, isNotNull, ne, inArray, sql } from "drizzle-orm";
+import { captureServerEvent } from "../lib/posthog";
 import { tasks } from "@trigger.dev/sdk/v3";
 import {
   competitors,
@@ -276,6 +277,12 @@ competitorsRouter.post("/", async (c) => {
     ])
     .returning();
 
+  void captureServerEvent(user.id, "competitor_added", {
+    competitorId: competitor.id,
+    competitorName: competitor.name,
+    orgId,
+  });
+
   return c.json({ competitor, monitors: createdMonitors }, 201);
 });
 
@@ -361,6 +368,13 @@ competitorsRouter.post("/:id/monitors", async (c) => {
     .values({ competitorId, sourceType, frequency, config })
     .returning();
   if (!monitor) return c.json({ error: "Failed to create monitor" }, 500);
+
+  void captureServerEvent(user.id, "monitor_enabled", {
+    competitorId,
+    sourceType,
+    frequency,
+    orgId,
+  });
 
   return c.json({ monitor, created: true }, 201);
 });
@@ -1055,6 +1069,14 @@ competitorsRouter.get("/:id/export", async (c) => {
   }
 
   const slug = competitor.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "competitor";
+
+  void captureServerEvent(user.id, "competitor_signals_exported", {
+    competitorId: id,
+    competitorName: competitor.name,
+    signalCount: rows.length,
+    orgId,
+  });
+
   return new Response(lines.join("\n"), {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
@@ -1072,5 +1094,12 @@ competitorsRouter.delete("/:id", async (c) => {
   if (!competitor) return c.json({ error: "Not found" }, 404);
 
   await db.update(competitors).set({ deletedAt: new Date() }).where(eq(competitors.id, id));
+
+  void captureServerEvent(user.id, "competitor_deleted", {
+    competitorId: id,
+    competitorName: competitor.name,
+    orgId,
+  });
+
   return c.json({ ok: true });
 });

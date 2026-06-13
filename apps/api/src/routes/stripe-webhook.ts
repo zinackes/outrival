@@ -81,12 +81,18 @@ async function applyPlanFromSubscription(orgId: string, sub: StripeSubscription)
     })
     .where(eq(organizations.id, orgId));
 
-  if (isActive) {
-    const userId = await findOrgOwnerUserId(orgId);
-    if (userId) {
+  const userId = await findOrgOwnerUserId(orgId);
+  if (userId) {
+    if (isActive) {
       await captureServerEvent(userId, "plan_upgraded", {
         plan,
         period: mapped.period,
+        orgId,
+      });
+    } else {
+      await captureServerEvent(userId, "subscription_cancelled", {
+        previousPlan: mapped.plan,
+        subscriptionStatus: sub.status,
         orgId,
       });
     }

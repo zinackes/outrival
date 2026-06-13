@@ -6,7 +6,7 @@
     "dev": "bun run --hot src/index.ts",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "bun test test/",
+    "test": "bun test --timeout 60000 test/",
     "start": "bun run src/index.ts"
   },
   "dependencies": {

@@ -8,6 +8,7 @@ import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
 import { countActiveCompetitors } from "../lib/plan";
 import { getPriceId, getStripe } from "../lib/stripe";
+import { captureServerEvent } from "../lib/posthog";
 
 type Variables = { user: { id: string } };
 
@@ -108,6 +109,13 @@ billingRouter.post("/checkout", async (c) => {
   });
 
   if (!session.url) return c.json({ error: "no_checkout_url" }, 500);
+
+  void captureServerEvent(userId, "checkout_initiated", {
+    plan: parsed.data.plan,
+    period: parsed.data.period,
+    orgId,
+  });
+
   return c.json({ url: session.url });
 });
 

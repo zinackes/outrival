@@ -2,6 +2,7 @@
 // else loads. Side-effect import — keep this at the top of the file.
 import { Sentry } from "./lib/sentry";
 import { Hono } from "hono";
+import { getPostHog } from "./lib/posthog";
 import { cors } from "hono/cors";
 import { logger as honoLogger } from "hono/logger";
 import { logger } from "@outrival/shared";
@@ -116,6 +117,7 @@ if (env.NODE_ENV === "development") {
 
 app.onError((err, c) => {
   Sentry.captureException(err);
+  getPostHog()?.captureException(err);
   logger.error(
     { err, path: c.req.path, method: c.req.method },
     "Unhandled error",

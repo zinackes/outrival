@@ -209,7 +209,7 @@ export function AppSidebar({ org }: { org: Org }) {
       <SidebarHeader>
         <WorkspaceSwitcher org={org} />
       </SidebarHeader>
-      <SidebarContent className="gap-0">
+      <SidebarContent className="gap-0 no-scrollbar">
         <SidebarGroup className="py-1">
           <SidebarGroupContent>
             <SidebarMenu>{renderItem(OVERVIEW)}</SidebarMenu>

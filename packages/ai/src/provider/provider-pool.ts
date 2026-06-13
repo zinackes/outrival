@@ -17,6 +17,7 @@ export interface Provider {
   baseUrl: string; // OpenAI-compatible endpoint
   apiKey: string;
   model: string; // model name at this provider
+  fastModel?: string; // optional cheap small (8B-class) model on the same endpoint
   tier: "free" | "paid";
   dailyTokenQuota: number;
   priority: number; // lower = tried first (free before paid)
@@ -39,6 +40,7 @@ export function loadProviders(): Provider[] {
       baseUrl,
       apiKey,
       model: process.env[`AI_PROVIDER_${i}_MODEL`]?.trim() || "llama-3.3-70b",
+      fastModel: process.env[`AI_PROVIDER_${i}_FAST_MODEL`]?.trim() || undefined,
       tier: process.env[`AI_PROVIDER_${i}_TIER`] === "paid" ? "paid" : "free",
       dailyTokenQuota: Number(process.env[`AI_PROVIDER_${i}_DAILY_TOKEN_QUOTA`] ?? 500000),
       priority: Number(process.env[`AI_PROVIDER_${i}_PRIORITY`] ?? 99),
@@ -53,6 +55,7 @@ export function loadProviders(): Provider[] {
         baseUrl: "https://api.groq.com/openai/v1",
         apiKey: groqKey,
         model: "llama-3.3-70b-versatile",
+        fastModel: "llama-3.1-8b-instant",
         tier: "free",
         dailyTokenQuota: 500000,
         priority: 1,

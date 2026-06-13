@@ -66,7 +66,7 @@ function shouldFailover(err: unknown): boolean {
  * retry. Records the actual provider for ai_runs via markProvider, tracks token usage,
  * and trips the global breaker when every provider is down.
  */
-async function callLLM(options: CompletionOptions): Promise<string> {
+async function callLLM(options: CompletionOptions, fast = false): Promise<string> {
   const breaker = await checkGlobalBreaker();
   if (breaker.open) throw new AIUnavailableError(breaker.reason ?? "ai_unavailable");
 
@@ -76,9 +76,13 @@ async function callLLM(options: CompletionOptions): Promise<string> {
     const provider = await pickProvider();
     if (!provider) break; // every provider exhausted or in breaker
     markProvider(provider.id);
+    // A "fast"-tier task (classify-change, overlap scoring) routes to the
+    // provider's small 8B-class model when declared — ~10× cheaper than the 70B.
+    // Falls back to the default model when the provider has no fast model.
+    const model = fast && provider.fastModel ? provider.fastModel : provider.model;
     try {
       const res = await clientFor(provider).chat.completions.create({
-        model: provider.model,
+        model,
         messages: [{ role: "user", content: options.prompt }],
         max_tokens: options.maxTokens ?? 1024,
         ...(options.json && { response_format: { type: "json_object" as const } }),
@@ -125,9 +129,10 @@ async function dispatch(
   options: CompletionOptions,
 ): Promise<string> {
   if (config.provider === "groq") {
-    // "groq" now means "the provider pool"; the served model is the provider's own
-    // (the per-task 8b/70b split collapses into each provider's single model).
-    return callLLM(options);
+    // "groq" now means "the provider pool". A "fast"-tier task routes to the
+    // provider's small model (AI_PROVIDER_N_FAST_MODEL) when declared, restoring
+    // the 8b/70b split the pool had collapsed; "smart" tasks keep the 70B.
+    return callLLM(options, config.tier === "fast");
   }
 
   if (config.provider === "claude") {

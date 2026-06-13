@@ -29,6 +29,9 @@ type SectoralCategory = (typeof SECTORAL_CATEGORIES)[number];
 sectoralRouter.get("/", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
+  // Sector feed regenerated on a slow cadence — a short private cache trims
+  // repeat reads + Neon cold-wakes without surfacing stale data (F11).
+  c.header("Cache-Control", "private, max-age=60");
   const limit = Math.min(Number(c.req.query("limit") ?? 50), 200);
   const offset = Math.max(Number(c.req.query("offset") ?? 0), 0);
   const dismissedOnly = c.req.query("dismissed") === "1";

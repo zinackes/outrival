@@ -103,6 +103,9 @@ interface CompareColumn {
 compareRouter.get("/", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
+  // Heavy per-competitor analytics aggregate refreshed by hourly+ scrapes — a
+  // short private cache trims repeat compute + Neon cold-wakes (F11).
+  c.header("Cache-Control", "private, max-age=60");
 
   const requested = (c.req.query("competitorIds") ?? "")
     .split(",")

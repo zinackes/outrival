@@ -83,6 +83,9 @@ interface RawTechMove {
 trendsRouter.get("/summary", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
+  // Competitive-intel analytics refreshed by hourly+ scrapes — a short private
+  // cache trims repeat compute + Neon cold-wakes without surfacing stale data (F11).
+  c.header("Cache-Control", "private, max-age=60");
   const { from, to } = resolveRange(c.req.query("from"), c.req.query("to"), c.req.query("window"));
   const fromIso = from.toISOString();
   const toIso = to.toISOString();
@@ -243,5 +246,6 @@ trendsRouter.get("/series", async (c) => {
     `);
   }
 
+  c.header("Cache-Control", "private, max-age=60"); // F11 — see /summary
   return c.json({ metric, competitorId, points });
 });

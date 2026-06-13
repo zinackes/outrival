@@ -14,7 +14,11 @@ ENV PNPM_HOME="/pnpm" PATH="/pnpm:$PATH"
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 PATCHRIGHT_SKIP_BROWSER_DOWNLOAD=1 PUPPETEER_SKIP_DOWNLOAD=1
 RUN corepack enable
 WORKDIR /repo
-COPY pnpm-lock.yaml ./
+# Copy package.json too (not just the lockfile) so corepack reads its
+# `packageManager` field and pins the SAME pnpm for fetch as for install —
+# a version drift fills the store in one format and reinstalls in another,
+# which triggers an interactive purge prompt that hangs the non-TTY build.
+COPY package.json pnpm-lock.yaml ./
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm fetch
 COPY . .
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \

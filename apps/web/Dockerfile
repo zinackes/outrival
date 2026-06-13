@@ -26,7 +26,10 @@ ARG NEXT_PUBLIC_ONBOARDING_DISCOVERY_DEBOUNCE_MS
 ARG SENTRY_AUTH_TOKEN
 ARG SENTRY_ORG
 ARG SENTRY_PROJECT_WEB
-COPY pnpm-lock.yaml ./
+# Copy package.json too (not just the lockfile) so corepack pins the SAME
+# pnpm for fetch as for install — a version drift triggers an interactive
+# store-purge prompt that hangs the non-TTY build.
+COPY package.json pnpm-lock.yaml ./
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm fetch
 COPY . .
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \

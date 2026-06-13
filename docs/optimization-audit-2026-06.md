@@ -303,9 +303,9 @@ logging never breaks a handler, N+1 fixed on overview, structured gating errors.
 | F1 | Re-enable fast-model routing | AI cost | 🟢 | ⚠️ | **implement** |
 | F4 | Block heavy resources (media/font) | Scrape cost | 🟢 | ⚠️ | **implement (subset)** |
 | F5 | Screenshot opt-in (homepage only) | Scrape cost | 🟡 | ✅ | **implement** |
-| F2 | Prompt-caching prefix discipline | AI cost | 🟡 | ✅ | incremental |
-| F7 | `next/dynamic` for recharts | Web perf | 🟡 | ✅ | quick win |
-| F11 | Cache-Control on read GETs | API cost | ⚪ | ✅ | quick win |
+| F2 | Prompt-caching prefix discipline | AI cost | 🟡 | ✅ | **implemented (started)** |
+| F7 | `next/dynamic` for recharts | Web perf | 🟡 | ✅ | **implemented** |
+| F11 | Cache-Control on read GETs | API cost | ⚪ | ✅ | **implemented** |
 | F6 | Drop `networkidle` | Scrape robustness | 🟡 | ⚠️ | validate per source |
 | F10 | `postgres-js` prepare on pooler | DB robustness | 🟡 | ⚠️ | investigate |
 | F8 | Next 16 PPR pilot | Web perf | 🟢 | 🛑 | pilot |
@@ -335,7 +335,25 @@ Verified: `@outrival/ai` + `@outrival/scrapers` + `@outrival/workers` typecheck;
   images kept) on the Patchright context; enabled for the non-screenshot data
   sources, cutting residential pay-per-GB bandwidth + load time.
 
-Recommended next (not auto-applied — see ratings above): F2 (prompt prefix
-discipline), F7 (`next/dynamic` recharts), F11 (Cache-Control), F6 (drop
-`networkidle`), F10 (`prepare:false` investigation), F8 (PPR pilot), F9
-(LISTEN/NOTIFY).
+Second pass (2026-06-13), verified: `@outrival/web` + `@outrival/api` +
+`@outrival/ai` + `@outrival/workers` typecheck; 44/44 ai + 260/260 scrapers tests.
+
+- **F7 — recharts lazy-loaded** (`apps/web`). Each chart subtree extracted to its
+  own client module, pulled in via `next/dynamic({ ssr:false, loading })` — recharts
+  leaves every chart route's first-load bundle into a deferred chunk (shared across
+  the pricing/reviews/hiring tabs). Web tsconfig switched off the root's NodeNext to
+  `bundler` so extensionless dynamic `import()` type-checks (type-check only).
+- **F11 — `Cache-Control` on heavy analytics read GETs** (`apps/api`). `private,
+  max-age=60` on trends (summary+series), compare, sector feed and usage — data
+  moves on the hourly+ scrape cadence, so a short cache trims repeat compute + Neon
+  cold-wakes. Error paths stay uncached; signals/competitors lists stay fresh.
+- **F2 — static prompt prefix cached (started)** (`packages/ai`). `CompletionOptions.
+  system` end-to-end: `callLLM` sends a leading system message (free Groq/Cerebras
+  prefix cache), the Claude fallback marks it `cache_control: ephemeral`,
+  `groundedAiCall` threads it. `classify-change` (highest volume) converted —
+  byte-identical instructions in `system`, only the diff in the user tail (content
+  unchanged). Remaining prompts convert incrementally.
+
+Recommended next (not auto-applied — see ratings above): F2 (convert the remaining
+prompts — score-overlap, extract-*, etc.), F6 (drop `networkidle`), F10
+(`prepare:false` investigation), F8 (PPR pilot), F9 (LISTEN/NOTIFY).

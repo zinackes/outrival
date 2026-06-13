@@ -81,6 +81,7 @@ export async function groundedAiCall<T>(
     const raw = await complete(params.config, {
       prompt: augmentedPrompt,
       json: true,
+      ...(params.system ? { system: params.system } : {}),
       ...(params.maxTokens ? { maxTokens: params.maxTokens } : {}),
     });
 

@@ -44,6 +44,13 @@ export interface GroundedCallParams<T> {
   config: AITaskConfig;
   /** The task's existing prompt; the source text is already embedded in it. */
   prompt: string;
+  /**
+   * Static instructions (role, rules, schema) sent as a separate `system` message
+   * so the variable payload stays at the tail of `prompt` and the static prefix is
+   * byte-identical across calls — auto-cached free by Groq/Cerebras (F2). Tasks
+   * opt in by splitting their prompt; omit to keep one combined user message.
+   */
+  system?: string;
   /** Reference text the citations are validated against (same source as the prompt). */
   sourceText: string;
   /** Zod schema of the OUTPUT — unchanged from the pre-grounding task. */

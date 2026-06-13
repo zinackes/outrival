@@ -46,6 +46,14 @@ export interface CompletionOptions {
   prompt: string;
   maxTokens?: number;
   json?: boolean;
+  /**
+   * Static, byte-identical-across-calls instructions (role, rules, schema). Sent
+   * as a separate `system` message so the variable payload stays in `prompt` at
+   * the tail — Groq/Cerebras auto-cache the shared prefix for free, and the Claude
+   * fallback marks it `cache_control: ephemeral` (F2). Omit to keep one user
+   * message (today's behavior).
+   */
+  system?: string;
 }
 
 // A 429/5xx is transient. A per-provider 401/403/404 (bad key or missing model at
@@ -83,7 +91,14 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
     try {
       const res = await clientFor(provider).chat.completions.create({
         model,
-        messages: [{ role: "user", content: options.prompt }],
+        // Static system prefix (when provided) before the variable user payload —
+        // a byte-identical prefix lets Groq/Cerebras auto-cache the prefill (F2).
+        messages: [
+          ...(options.system
+            ? [{ role: "system" as const, content: options.system }]
+            : []),
+          { role: "user", content: options.prompt },
+        ],
         max_tokens: options.maxTokens ?? 1024,
         ...(options.json && { response_format: { type: "json_object" as const } }),
       });
@@ -140,6 +155,17 @@ async function dispatch(
     const res = await getClaude().messages.create({
       model: config.model,
       max_tokens: options.maxTokens ?? 1024,
+      // Mark the static system block ephemeral so Anthropic caches the prefill
+      // (~90% off on a hit) when the same task fires repeatedly (F2).
+      ...(options.system && {
+        system: [
+          {
+            type: "text" as const,
+            text: options.system,
+            cache_control: { type: "ephemeral" as const },
+          },
+        ],
+      }),
       messages: [{ role: "user", content: options.prompt }],
     });
     const block = res.content[0];

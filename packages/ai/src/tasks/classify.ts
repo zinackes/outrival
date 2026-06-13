@@ -44,30 +44,14 @@ const SOURCE_LABELS: Record<string, string> = {
   twitter: "X / Twitter profile",
 };
 
-export async function classifyChange(
-  diffText: string,
-  context: ClassifyContext = {},
-): Promise<WithQuality<Classification> | null> {
-  const sourceLabel = context.sourceType
-    ? (SOURCE_LABELS[context.sourceType] ?? context.sourceType)
-    : null;
-  const where = [context.competitorName, sourceLabel].filter(Boolean).join(" — ");
-  const contextBlock = where
-    ? `
-<context>
-This change was detected on: ${where}.
-Use the page type to judge significance: rotating testimonials, social-proof counters, cosmetic copy/nav tweaks are usually NOT significant; pricing, plan, feature, hiring, or positioning changes are.
-</context>
-`
-    : "";
+// Static instructions, byte-identical across EVERY classify call → sent as the
+// `system` message so Groq/Cerebras auto-cache this long shared prefix for free
+// (F2). Content is unchanged from the prior single-prompt form: the only variable
+// parts (the page-type context + the diff) now live in the user message tail.
+const CLASSIFY_SYSTEM = `You are a competitive-intelligence analyst. Classify a change detected on a competitor.
 
-  const prompt = `You are a competitive-intelligence analyst. Classify this change detected on a competitor.
-${contextBlock}
-<change>
-${diffText.slice(0, 8000)}
-</change>
+Use the page type (provided with the change) to judge significance: rotating testimonials, social-proof counters, cosmetic copy/nav tweaks are usually NOT significant; pricing, plan, feature, hiring, or positioning changes are.
 
-<task>
 Reply ONLY with a valid JSON object, no markdown and no surrounding text.
 Write all text values in English.
 
@@ -76,7 +60,6 @@ Also identify the single MAIN change and describe it in plain language:
   - humanChangeAfter:  the value AFTER, phrased naturally (e.g. "Standard · $79/mo")
 Keep each side short (a few words). If you can't extract a clean before/after,
 return null for BOTH fields.
-</task>
 
 <format>
 {
@@ -89,12 +72,34 @@ return null for BOTH fields.
 }
 </format>`;
 
+export async function classifyChange(
+  diffText: string,
+  context: ClassifyContext = {},
+): Promise<WithQuality<Classification> | null> {
+  const sourceLabel = context.sourceType
+    ? (SOURCE_LABELS[context.sourceType] ?? context.sourceType)
+    : null;
+  const where = [context.competitorName, sourceLabel].filter(Boolean).join(" — ");
+  const contextBlock = where
+    ? `<context>
+This change was detected on: ${where}.
+</context>
+`
+    : "";
+
+  // Variable payload only (context + diff) — the static instructions ride in
+  // CLASSIFY_SYSTEM so the cacheable prefix stays byte-identical (F2).
+  const prompt = `${contextBlock}<change>
+${diffText.slice(0, 8000)}
+</change>`;
+
   // Key on the context too: the same diff on different page types / competitors
   // now yields a different prompt, so it must not share a cache entry.
   const cacheKey = [context.sourceType ?? "", context.competitorName ?? "", diffText].join("\n");
   const result = await groundedAiCall({
     taskName: "classify_change",
     config: AI_CONFIG.classificationFast,
+    system: CLASSIFY_SYSTEM,
     prompt,
     sourceText: diffText.slice(0, 8000),
     schema: ClassificationSchema,

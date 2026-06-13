@@ -2,13 +2,15 @@
 
 import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { Loader2, Plus, Play } from "lucide-react";
+import { Loader2, Plus, Play, Sparkles, ChevronDown } from "lucide-react";
 import type { SourceType } from "@outrival/shared";
 import type { Monitor } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChartSkeleton } from "@/components/dashboard/skeletons";
+import { TabSection } from "@/components/outrival/tab-shell";
 
 // A monitor scrape can run longer than this before we stop treating a stale
 // scrapeStartedAt as "in progress".
@@ -137,5 +139,45 @@ export function Empty({ text, hint }: { text: string; hint?: string }) {
       <p className="text-sm">{text}</p>
       {hint && <p className="text-xs mt-2 max-w-md mx-auto text-muted-foreground">{hint}</p>}
     </Card>
+  );
+}
+
+export function SourceSummary({
+  summary,
+  updatedAt,
+}: {
+  summary: string | null | undefined;
+  updatedAt: string | null | undefined;
+}) {
+  const [open, setOpen] = useState(false);
+  if (!summary) return null;
+  return (
+    <TabSection>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-2 text-left"
+      >
+        <Sparkles size={14} className="shrink-0 text-muted-foreground" />
+        <span className="text-content font-semibold tracking-tight leading-tight">
+          What we found
+        </span>
+        <ChevronDown
+          size={14}
+          className={cn(
+            "shrink-0 text-muted-foreground transition-transform",
+            open && "rotate-180",
+          )}
+        />
+        {updatedAt && (
+          <span className="ml-auto text-xs font-mono text-muted-foreground">
+            {formatDistanceToNow(new Date(updatedAt), { addSuffix: true })}
+          </span>
+        )}
+      </button>
+      {open && (
+        <p className="text-content leading-relaxed text-foreground/90">{summary}</p>
+      )}
+    </TabSection>
   );
 }

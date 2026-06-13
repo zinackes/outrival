@@ -23,6 +23,7 @@ import {
   Telescope,
   Sparkles,
   HeartPulse,
+  TrendingUp,
 } from "lucide-react";
 
 const ITEMS = [
@@ -39,6 +40,7 @@ const ITEMS = [
   { href: "/admin/onboarding", label: "Onboarding", icon: Rocket },
   { href: "/admin/multi-product", label: "Products", icon: Boxes },
   { href: "/admin/discovery", label: "Discovery", icon: Telescope },
+  { href: "/admin/business", label: "Business", icon: TrendingUp },
   { href: "/admin/feedback", label: "Feedback", icon: MessageSquare },
   { href: "/admin/feedback-quality", label: "AI quality", icon: ThumbsUp },
   { href: "/admin/notification-moderation", label: "Notifications", icon: BellRing },

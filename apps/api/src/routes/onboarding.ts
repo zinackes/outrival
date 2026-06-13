@@ -13,7 +13,7 @@ import {
   type SelfProfile,
   type SelfProfileField,
 } from "@outrival/db";
-import { normalizeHostname } from "@outrival/shared";
+import { normalizeHostname, validatePublicUrl } from "@outrival/shared";
 import {
   scoreOverlap,
   ProductProfileSchema,
@@ -235,7 +235,10 @@ onboardingRouter.get("/checklist", async (c) => {
 
 // ── Mode: live (existing flow, renamed from /analyze) ──────────────────────
 const AnalyzeUrlSchema = z.object({
-  productUrl: z.string().url(),
+  productUrl: z
+    .string()
+    .url()
+    .refine((u) => validatePublicUrl(u).ok, { message: "URL must be a public http(s) site" }),
 });
 
 onboardingRouter.post("/analyze-url", aiIntensiveRateLimit, async (c) => {
@@ -381,7 +384,11 @@ onboardingRouter.post("/analyze-repo", async (c) => {
 
 const DiscoverSchema = z.object({
   // Optional: idea / document / developing modes have no live product URL.
-  productUrl: z.string().url().nullish(),
+  productUrl: z
+    .string()
+    .url()
+    .refine((u) => validatePublicUrl(u).ok, { message: "URL must be a public http(s) site" })
+    .nullish(),
   profile: ProductProfileSchema,
 });
 

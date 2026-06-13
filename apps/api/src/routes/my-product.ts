@@ -11,7 +11,7 @@ import {
   type SelfProfile,
   type SelfProfileField,
 } from "@outrival/db";
-import { normalizeHostname } from "@outrival/shared";
+import { normalizeHostname, validatePublicUrl } from "@outrival/shared";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
@@ -265,7 +265,12 @@ myProductRouter.patch("/", async (c) => {
 // POST /api/my-product/site — go live: attach a product URL to the self-competitor
 // and seed its site monitors. Used when an idea/document/developing product ships and
 // starts having a real site to monitor. Idempotent: only creates missing source monitors.
-const SetSiteSchema = z.object({ url: z.string().url() });
+const SetSiteSchema = z.object({
+  url: z
+    .string()
+    .url()
+    .refine((u) => validatePublicUrl(u).ok, { message: "URL must be a public http(s) site" }),
+});
 
 myProductRouter.post("/site", async (c) => {
   const user = c.get("user");

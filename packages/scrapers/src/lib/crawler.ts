@@ -3,10 +3,24 @@
 // returning a ScrapeOutcome (or throwing on total failure) — while delegating the
 // actual fetch to the decoupled L0→L4 cascade in scrape-page.ts. Crawlee and
 // ScrapingBee are gone; the browser is Patchright (stealth Chromium).
+import { validatePublicUrl } from "@outrival/shared";
 import { scrapePage as cascadeScrape, type CascadeOutcome } from "./scrape-page";
 import { scrapeDirect } from "./scrape-direct";
 import type { ScrapeLevel } from "./scrape-patchright";
 import type { ScrapeOptions, ScrapeOutcome } from "../types";
+
+/**
+ * SSRF defense-in-depth: every source scraper funnels through scrapePage /
+ * scrapeStatic, so a single host check here guards every monitor target — even
+ * URLs that reached the DB without API-side validation (legacy rows, future
+ * call sites). Syntactic only (no DNS), matching validatePublicUrl's contract;
+ * a public domain whose A-record points at a private IP is still a residual gap
+ * mitigated at the network egress layer. Throws so the run is logged as failed.
+ */
+function assertScrapableUrl(url: string): void {
+  const safe = validatePublicUrl(url);
+  if (!safe.ok) throw new Error(`unsafe_scrape_url: ${safe.error}`);
+}
 
 /**
  * Error thrown when the whole cascade was blocked. Carries the raw cascade
@@ -50,6 +64,7 @@ export async function scrapePage(
   url: string,
   options: ScrapeOptions = {},
 ): Promise<ScrapeOutcome> {
+  assertScrapableUrl(url);
   const outcome = await cascadeScrape(url, {
     knownLevel: options.knownLevel,
     fullPage: options.fullPage,
@@ -81,6 +96,7 @@ export async function scrapePage(
  * that isn't behind anti-bot. Throws on failure (e.g. a SPA that needs render).
  */
 export async function scrapeStatic(url: string): Promise<ScrapeOutcome> {
+  assertScrapableUrl(url);
   const r = await scrapeDirect(url);
   if (!r.ok || !r.html) throw new Error(r.failureReason ?? "static_scraping_failed");
   return {

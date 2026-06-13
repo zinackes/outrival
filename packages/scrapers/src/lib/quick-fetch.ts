@@ -1,3 +1,4 @@
+import { validatePublicUrl } from "@outrival/shared";
 import { realisticHeaders, realisticUserAgent } from "./fingerprint";
 
 const MIN_USABLE_LENGTH = 100;
@@ -19,6 +20,11 @@ function stripHtml(html: string): string {
  * runs worker-side once monitors are seeded.
  */
 export async function quickFetchText(url: string): Promise<string> {
+  // SSRF guard: this fetch runs in-process in the API from a user-supplied URL.
+  // Syntactic host check (no DNS); `redirect: follow` below means a public host
+  // could still 3xx toward an internal IP — residual gap covered at egress.
+  const safe = validatePublicUrl(url);
+  if (!safe.ok) throw new Error(`quickFetchText: unsafe_url (${safe.error})`);
   const res = await fetch(url, {
     headers: { ...realisticHeaders(), "User-Agent": realisticUserAgent() },
     redirect: "follow",

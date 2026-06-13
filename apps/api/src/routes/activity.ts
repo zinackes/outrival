@@ -83,7 +83,25 @@ activityRouter.get("/health", async (c) => {
     // Most-recently-run first; never-run (null lastRunAt) sink to the bottom.
     .sort((a, b) => (b.lastRunAt?.getTime() ?? 0) - (a.lastRunAt?.getTime() ?? 0));
 
-  return c.json({ sources });
+  // "Next checks" — the soonest scheduled runs, soonest-first. Unlike `sources`
+  // this INCLUDES the internal anchors (sitemap/news) that carry a real nextRunAt:
+  // they run silently in the background, and showing when they run next closes the
+  // "is Outrival still watching?" gap. tech_stack drops out naturally — it's
+  // interval-driven (no nextRunAt) and shows its own next scan on the competitor
+  // page. Paused / unscrapable monitors are excluded (they won't run).
+  const upcoming = rows
+    .filter((r) => r.isActive && !r.markedUnscrapable && r.nextRunAt)
+    .map((r) => ({
+      monitorId: r.monitorId,
+      competitorId: r.competitorId,
+      competitorName: r.competitorName,
+      sourceType: r.sourceType,
+      nextRunAt: r.nextRunAt,
+    }))
+    .sort((a, b) => (a.nextRunAt!.getTime() ?? 0) - (b.nextRunAt!.getTime() ?? 0))
+    .slice(0, 12);
+
+  return c.json({ sources, upcoming });
 });
 
 // Recent scraping activity — the work done (incl. no-change runs and failures,

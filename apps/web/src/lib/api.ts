@@ -390,6 +390,17 @@ export interface ActivitySource {
   status: ActivitySourceStatus;
 }
 
+// A scheduled upcoming check (activity /health `upcoming`): when Outrival will
+// next look at a source. Includes the internal anchors (sitemap/news) so the user
+// can see the background work that never reaches the Signals feed.
+export interface ActivityUpcoming {
+  monitorId: string;
+  competitorId: string;
+  competitorName: string;
+  sourceType: string;
+  nextRunAt: string;
+}
+
 // One readable change in the expandable activity detail: a typed label + a
 // before/after. Shaped server-side from changes.structured_diff (homepage).
 export interface ActivityChange {
@@ -1206,6 +1217,9 @@ export type PlatformProfile = {
 export type TechStackData = {
   entries: TechStackEntry[];
   lastScrapedAt: string | null;
+  // When the next monthly tech-stack scan is due (last + interval). Null when
+  // never scanned — the UI shows an ETA ("within a day") instead of a date.
+  nextScanAt: string | null;
   platformProfile: PlatformProfile | null;
 };
 
@@ -1558,7 +1572,9 @@ export const api = {
   dismissSectoral: (id: string) =>
     request<{ ok: true }>(`/api/sectoral/${id}/dismiss`, { method: "POST" }),
   activityHealth: () =>
-    request<{ sources: ActivitySource[] }>("/api/activity/health"),
+    request<{ sources: ActivitySource[]; upcoming: ActivityUpcoming[] }>(
+      "/api/activity/health",
+    ),
   activityTimeline: (params?: {
     limit?: number;
     offset?: number;

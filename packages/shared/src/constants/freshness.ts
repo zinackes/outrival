@@ -10,6 +10,31 @@ export const FRESHNESS_THRESHOLDS = {
 
 export type FreshnessLevel = "fresh" | "aging" | "stale" | "failed";
 
+// Cadence of the independent, interval-driven scans that are NOT monitors and so
+// carry no monitors.nextRunAt (patch-18 tech stack, patch-31 platform): the daily
+// enqueue cron picks up a competitor once its last scan is older than this. Kept
+// here as the default so the worker (env override) and the API (which surfaces the
+// "next scan") read the same number instead of duplicating a magic 30.
+export const TECH_STACK_SCRAPE_INTERVAL_DAYS = 30;
+
+/**
+ * Next scan timestamp for an interval-driven (non-monitor) source: last scan +
+ * interval. Returns null when never scanned — the daily enqueue cron will pick it
+ * up within ~24h, which the UI words as an ETA rather than a date. Pure.
+ */
+export function computeNextScanAt(
+  lastScrapedAt: string | Date | null | undefined,
+  intervalDays: number,
+): string | null {
+  if (!lastScrapedAt) return null;
+  const ts =
+    lastScrapedAt instanceof Date
+      ? lastScrapedAt.getTime()
+      : new Date(lastScrapedAt).getTime();
+  if (Number.isNaN(ts)) return null;
+  return new Date(ts + intervalDays * 86_400_000).toISOString();
+}
+
 /**
  * Classify how recent a scraped source is. A failed last scan always wins (the
  * data on screen is whatever the previous success left, so we warn regardless of

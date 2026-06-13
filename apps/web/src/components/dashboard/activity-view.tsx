@@ -7,6 +7,7 @@ import { formatDistanceToNow } from "date-fns";
 import {
   api,
   type ActivitySource,
+  type ActivityUpcoming,
   type ActivityEvent,
   type ActivityChange,
   type ActivityStatusFilter,
@@ -232,6 +233,7 @@ function ChangeDetail({ event }: { event: ActivityEvent }) {
 // "change detected" run actually found. Filterable by competitor, source, status.
 export function ActivityView() {
   const [sources, setSources] = useState<ActivitySource[] | null>(null);
+  const [upcoming, setUpcoming] = useState<ActivityUpcoming[]>([]);
   const [events, setEvents] = useState<ActivityEvent[] | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -254,7 +256,11 @@ export function ActivityView() {
     let cancelled = false;
     api
       .activityHealth()
-      .then((r) => !cancelled && setSources(r.sources))
+      .then((r) => {
+        if (cancelled) return;
+        setSources(r.sources);
+        setUpcoming(r.upcoming ?? []);
+      })
       .catch(() => !cancelled && setSources([]));
     return () => {
       cancelled = true;
@@ -335,6 +341,45 @@ export function ActivityView() {
         </p>
       ) : (
         <div className="flex flex-col gap-3">
+          {upcoming.length > 0 && (
+            <div className="rounded-lg border border-border p-3">
+              <div className="mb-2 text-meta font-mono uppercase tracking-wider text-muted-foreground">
+                Next checks
+              </div>
+              <TooltipProvider delayDuration={150}>
+                <ul className="flex flex-col gap-1.5">
+                  {upcoming.slice(0, 6).map((u) => (
+                    <li
+                      key={u.monitorId}
+                      className="flex items-baseline justify-between gap-3 text-sm"
+                    >
+                      <span className="min-w-0 truncate">
+                        <Link
+                          href={`/dashboard/competitors/${u.competitorId}`}
+                          className="font-medium hover:underline"
+                        >
+                          {u.competitorName}
+                        </Link>
+                        <span className="text-muted-foreground">
+                          {" · "}
+                          {sourceLabel(u.sourceType)}
+                        </span>
+                      </span>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="shrink-0 cursor-default text-xs text-muted-foreground tabular-nums">
+                            {rel(u.nextRunAt)}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>{absDateTime(u.nextRunAt)}</TooltipContent>
+                      </Tooltip>
+                    </li>
+                  ))}
+                </ul>
+              </TooltipProvider>
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center gap-2">
             <Select value={competitor} onValueChange={setCompetitor}>
               <SelectTrigger size="sm" className="w-[180px]">

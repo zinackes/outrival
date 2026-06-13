@@ -1,6 +1,6 @@
 "use client";
 
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { Loader2 } from "lucide-react";
 import {
   computeFreshness,
@@ -34,6 +34,10 @@ const STATE_CONFIG: Record<FreshnessState, { dot: string; label: string }> = {
 interface FreshnessDotProps {
   lastScrapedAt: string | null;
   status: "success" | "failed" | null;
+  // When the next scheduled scan is due. Surfaced in the tooltip so the user knows
+  // not just how old the data is but when it refreshes next. Optional — callers
+  // without a schedule (e.g. an aggregate dot) just omit it.
+  nextRunAt?: string | null;
   className?: string;
   // patch-27 — opt-in actionable mode. When `sourceType` is provided the dot
   // uses the per-source-type thresholds and, on orange/red, can show an inline
@@ -52,6 +56,7 @@ interface FreshnessDotProps {
 export function FreshnessDot({
   lastScrapedAt,
   status,
+  nextRunAt,
   className,
   sourceType,
   canForceRescan,
@@ -60,6 +65,15 @@ export function FreshnessDot({
   size = "sm",
 }: FreshnessDotProps) {
   const dotSize = size === "md" ? "h-2.5 w-2.5" : "h-2 w-2";
+
+  // "Next scan in ~3 days" — only when a future schedule is known.
+  const nextTs = nextRunAt ? new Date(nextRunAt).getTime() : null;
+  const nextLine =
+    nextTs && !Number.isNaN(nextTs) && nextTs > Date.now() ? (
+      <span className="mt-1 block text-muted-foreground">
+        Next scan {formatDistanceToNow(new Date(nextTs), { addSuffix: true })}
+      </span>
+    ) : null;
 
   // Legacy patch-14 path — unchanged behaviour for callers that don't opt in.
   if (!sourceType) {
@@ -92,6 +106,7 @@ export function FreshnessDot({
               {format(new Date(lastScrapedAt), "MMM d, yyyy 'at' HH:mm")}
             </span>
           )}
+          {nextLine}
         </TooltipContent>
       </Tooltip>
     );
@@ -142,6 +157,7 @@ export function FreshnessDot({
             This data may no longer reflect the competitor. Re-scan to refresh now.
           </span>
         )}
+        {nextLine}
       </TooltipContent>
     </Tooltip>
   );

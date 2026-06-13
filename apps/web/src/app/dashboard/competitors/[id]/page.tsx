@@ -783,6 +783,7 @@ export default function CompetitorDetailPage({ params }: Props) {
                     <FreshnessDot
                       lastScrapedAt={fresh.lastScrapedAt}
                       status={fresh.status}
+                      nextRunAt={t.key === "techstack" ? techStack.nextScanAt : undefined}
                       className="ml-1.5"
                     />
                   )}

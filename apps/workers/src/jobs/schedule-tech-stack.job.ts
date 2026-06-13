@@ -1,6 +1,7 @@
 import { schedules, logger, tasks } from "@trigger.dev/sdk/v3";
 import { and, isNull, isNotNull, lte, ne, or } from "drizzle-orm";
 import { db, competitors } from "@outrival/db";
+import { TECH_STACK_SCRAPE_INTERVAL_DAYS } from "@outrival/shared";
 
 // Independent monthly tech-stack scheduler (patch-18). Runs daily but only
 // enqueues competitors whose tech stack is due (never scraped, or older than
@@ -13,7 +14,9 @@ export const scheduleTechStackJob = schedules.task({
   maxDuration: 120,
 
   async run() {
-    const intervalDays = Number(process.env.TECH_STACK_SCRAPE_INTERVAL_DAYS ?? 30);
+    const intervalDays = Number(
+      process.env.TECH_STACK_SCRAPE_INTERVAL_DAYS ?? TECH_STACK_SCRAPE_INTERVAL_DAYS,
+    );
     const cutoff = new Date(Date.now() - intervalDays * 24 * 60 * 60 * 1000);
     logger.log("Starting schedule-tech-stack", {
       intervalDays,

@@ -36,6 +36,8 @@ import {
   validateMonitorUrl,
   validatePublicUrl,
   aggregateFreshness,
+  computeNextScanAt,
+  TECH_STACK_SCRAPE_INTERVAL_DAYS,
   type SourceType,
   type MonitorFrequency,
 } from "@outrival/shared";
@@ -553,6 +555,16 @@ competitorsRouter.get("/:id", async (c) => {
       lastDetectedAt: t.lastDetectedAt,
     })),
     lastScrapedAt: competitor.techStackScrapedAt,
+    // When the next monthly tech-stack scan is due (patch-18). Derived, not stored:
+    // the scan is interval-driven on techStackScrapedAt, not a monitor with a
+    // nextRunAt. Null when never scanned (UI shows an ETA instead). Same interval
+    // (env override + shared default) the worker enqueues on, so they never drift.
+    nextScanAt: computeNextScanAt(
+      competitor.techStackScrapedAt,
+      Number(
+        process.env.TECH_STACK_SCRAPE_INTERVAL_DAYS ?? TECH_STACK_SCRAPE_INTERVAL_DAYS,
+      ),
+    ),
     // Auto-detected platform profile (patch-31): framework / CMS / ATS / status
     // page / changelog / pricing widget. Detected for routing, surfaced read-only
     // here next to the third-party tech. Null when never detected.

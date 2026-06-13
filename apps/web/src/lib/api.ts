@@ -1253,6 +1253,26 @@ export type AdminDependencies = {
   dependencies: AdminDependency[];
 };
 
+// Host resources for the web+API VPS (admin-v2 B1). NOT scraping — that runs on
+// Trigger.dev Cloud; capacity there is the queue backlog, not this RAM.
+export type AdminHostHealth = {
+  memory: { totalMb: number; usedMb: number; usedPct: number };
+  cpu: { load1: number; load5: number; load15: number; cores: number; loadPctOfCores: number };
+  uptimeSec: number;
+};
+
+// Error-rate spike view (admin-v2 B4) — 1h next to 24h, from ai_runs / scrape_runs.
+export type AdminErrorRates = {
+  ai: {
+    h1: { total: number; errors: number; parseFailed: number; failureRate: number };
+    h24: { total: number; errors: number; parseFailed: number; failureRate: number };
+  };
+  scrape: {
+    h1: { total: number; failed: number; failureRate: number };
+    h24: { total: number; failed: number; failureRate: number };
+  };
+};
+
 // Detected tech stack on a competitor (patch-18).
 export type TechStackEntry = {
   techId: string;

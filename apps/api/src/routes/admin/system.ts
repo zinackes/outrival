@@ -1,3 +1,4 @@
+import os from "node:os";
 import { Hono } from "hono";
 import { runs, queues, schedules } from "@trigger.dev/sdk/v3";
 import { sql } from "drizzle-orm";
@@ -6,7 +7,8 @@ import { db } from "@outrival/db";
 import { logger, getRedis } from "@outrival/shared";
 import { checkGlobalBreaker } from "@outrival/ai";
 import { getStripe } from "../../lib/stripe";
-import type { AdminVariables } from "./shared";
+import { analyticsQuery } from "../../lib/analytics-safe";
+import { num, rate, type AdminVariables } from "./shared";
 
 export const systemRouter = new Hono<{ Variables: AdminVariables }>();
 
@@ -257,4 +259,98 @@ systemRouter.get("/dependencies", async (c) => {
   const payload = { checkedAt: new Date().toISOString(), dependencies };
   depCache = { at: Date.now(), payload };
   return c.json({ ...payload, cached: false });
+});
+
+// --- B1: host (web + API) resources ---
+// This is the VPS that runs Next.js (web) + Hono (API) — NOT scraping. Scraping
+// browsers run on isolated Trigger.dev Cloud machines, so the scraping-capacity
+// signal is the queue backlog (see /queue-health), not RAM here. os.* reads the
+// host; on a cgroup-limited container totalmem may report the host, not the
+// container limit — fine for a single-tenant VPS.
+systemRouter.get("/host-health", (c) => {
+  const totalMem = os.totalmem();
+  const freeMem = os.freemem();
+  const usedMem = totalMem - freeMem;
+  const load = os.loadavg();
+  const cores = os.cpus().length || 1;
+  return c.json({
+    memory: {
+      totalMb: Math.round(totalMem / 1e6),
+      usedMb: Math.round(usedMem / 1e6),
+      usedPct: totalMem > 0 ? Math.round((usedMem / totalMem) * 100) : 0,
+    },
+    cpu: {
+      load1: Math.round((load[0] ?? 0) * 100) / 100,
+      load5: Math.round((load[1] ?? 0) * 100) / 100,
+      load15: Math.round((load[2] ?? 0) * 100) / 100,
+      cores,
+      loadPctOfCores: Math.round(((load[0] ?? 0) / cores) * 100),
+    },
+    uptimeSec: Math.round(os.uptime()),
+  });
+});
+
+// --- B4: error-rate spike view (1h vs 24h) ---
+// Doesn't re-do error monitoring (Sentry captures exceptions in prod) — surfaces
+// the in-house failure signals we already log: AI runs (error / parse_failed)
+// and scrapes (failed). The 1h window next to 24h is the spike signal the
+// /admin/ai (7d) and /admin/scraping (24h) detail pages don't give. Best-effort:
+// analyticsQuery returns [] if the analytics store is unreachable → all zeros.
+systemRouter.get("/error-rates", async (c) => {
+  const [aiRow] = await analyticsQuery<{
+    total_1h: string;
+    err_1h: string;
+    pf_1h: string;
+    total_24h: string;
+    err_24h: string;
+    pf_24h: string;
+  }>(sql`
+    SELECT
+      count(*) filter (where recorded_at >= now() - make_interval(hours => 1)) AS total_1h,
+      count(*) filter (where status = 'error' and recorded_at >= now() - make_interval(hours => 1)) AS err_1h,
+      count(*) filter (where status = 'parse_failed' and recorded_at >= now() - make_interval(hours => 1)) AS pf_1h,
+      count(*) AS total_24h,
+      count(*) filter (where status = 'error') AS err_24h,
+      count(*) filter (where status = 'parse_failed') AS pf_24h
+    FROM ai_runs
+    WHERE recorded_at >= now() - make_interval(hours => 24)
+  `);
+
+  const [scrapeRow] = await analyticsQuery<{
+    total_1h: string;
+    failed_1h: string;
+    total_24h: string;
+    failed_24h: string;
+  }>(sql`
+    SELECT
+      count(*) filter (where recorded_at >= now() - make_interval(hours => 1)) AS total_1h,
+      count(*) filter (where status = 'failed' and recorded_at >= now() - make_interval(hours => 1)) AS failed_1h,
+      count(*) AS total_24h,
+      count(*) filter (where status = 'failed') AS failed_24h
+    FROM scrape_runs
+    WHERE recorded_at >= now() - make_interval(hours => 24)
+  `);
+
+  const aiWindow = (total: number, errors: number, parseFailed: number) => ({
+    total,
+    errors,
+    parseFailed,
+    failureRate: rate(errors + parseFailed, total),
+  });
+  const scrapeWindow = (total: number, failed: number) => ({
+    total,
+    failed,
+    failureRate: rate(failed, total),
+  });
+
+  return c.json({
+    ai: {
+      h1: aiWindow(num(aiRow?.total_1h), num(aiRow?.err_1h), num(aiRow?.pf_1h)),
+      h24: aiWindow(num(aiRow?.total_24h), num(aiRow?.err_24h), num(aiRow?.pf_24h)),
+    },
+    scrape: {
+      h1: scrapeWindow(num(scrapeRow?.total_1h), num(scrapeRow?.failed_1h)),
+      h24: scrapeWindow(num(scrapeRow?.total_24h), num(scrapeRow?.failed_24h)),
+    },
+  });
 });

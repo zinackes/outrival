@@ -7,6 +7,7 @@ import {
   Empty,
   StatusPill,
   mono,
+  pctFmt,
   durationFmt,
   relativeFmt,
   dateFmt,
@@ -20,7 +21,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import type { AdminQueueHealth, AdminDependencies, AdminDependency } from "@/lib/api";
+import type {
+  AdminQueueHealth,
+  AdminDependencies,
+  AdminDependency,
+  AdminHostHealth,
+  AdminErrorRates,
+} from "@/lib/api";
 
 // Backlog over this many queued runs is worth flagging (scraping fans out, so a
 // little queueing is normal; a standing backlog means capacity is short).
@@ -55,6 +62,106 @@ function DependencyPill({ dep }: { dep: AdminDependency }) {
             : dep.status}
       </span>
     </div>
+  );
+}
+
+function gaugeColor(pct: number, warn: number, bad: number): string | undefined {
+  if (pct >= bad) return "var(--critical)";
+  if (pct >= warn) return "var(--accent)";
+  return undefined;
+}
+
+function uptimeFmt(sec: number): string {
+  const d = Math.floor(sec / 86400);
+  const h = Math.floor((sec % 86400) / 3600);
+  if (d > 0) return `${d}d ${h}h`;
+  const m = Math.floor((sec % 3600) / 60);
+  return `${h}h ${m}m`;
+}
+
+function HostSection({ host }: { host: AdminHostHealth }) {
+  return (
+    <Section
+      title="Host (web + API)"
+      note={host.memory.usedPct >= 85 ? "memory high" : undefined}
+      info="Resources of the VPS running Next.js (web) and Hono (API). This is NOT scraping — browsers run on Trigger.dev Cloud, so a high backlog is a queue concern, not host RAM. Load is the OS run-queue average; >100% of cores means tasks are waiting on CPU."
+    >
+      <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
+        <Stat
+          label="Memory"
+          value={
+            <span style={{ ...mono, color: gaugeColor(host.memory.usedPct, 70, 85) }}>
+              {host.memory.usedPct}%
+            </span>
+          }
+          hint={`${host.memory.usedMb} / ${host.memory.totalMb} MB`}
+        />
+        <Stat
+          label="CPU load"
+          value={
+            <span style={{ ...mono, color: gaugeColor(host.cpu.loadPctOfCores, 75, 100) }}>
+              {host.cpu.loadPctOfCores}%
+            </span>
+          }
+          hint={`${host.cpu.load1} load · ${host.cpu.cores} cores`}
+        />
+        <Stat label="Load 5/15m" value={`${host.cpu.load5} / ${host.cpu.load15}`} hint="run-queue avg" />
+        <Stat label="Uptime" value={uptimeFmt(host.uptimeSec)} hint="process host" />
+      </div>
+    </Section>
+  );
+}
+
+// A 1h failure rate well above the 24h baseline is a spike worth flagging.
+function spiking(h1Rate: number, h1Total: number, h24Rate: number): boolean {
+  return h1Total >= 5 && h1Rate > 0.25 && h1Rate > h24Rate * 1.5;
+}
+
+function ErrorsSection({ rates }: { rates: AdminErrorRates }) {
+  const aiSpike = spiking(rates.ai.h1.failureRate, rates.ai.h1.total, rates.ai.h24.failureRate);
+  const scrapeSpike = spiking(rates.scrape.h1.failureRate, rates.scrape.h1.total, rates.scrape.h24.failureRate);
+  const rateValue = (r: number, total: number, warn: boolean) => (
+    <span style={{ ...mono, color: warn ? "var(--critical)" : undefined }}>
+      {total > 0 ? pctFmt(r) : "—"}
+    </span>
+  );
+  return (
+    <Section
+      title="Errors"
+      note={aiSpike || scrapeSpike ? "spike" : undefined}
+      info="Failure rate over the last hour next to the 24h baseline — a 1h rate well above baseline is a spike. AI = error + parse_failed over ai_runs; scrape = failed runs. Exceptions themselves are captured in Sentry (prod); see the AI / Scraping pages for the per-task breakdown."
+      action={
+        <Link
+          href="/admin/ai"
+          className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+        >
+          AI detail →
+        </Link>
+      }
+    >
+      <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
+        <Stat
+          label="AI fail (1h)"
+          value={rateValue(rates.ai.h1.failureRate, rates.ai.h1.total, aiSpike)}
+          hint={`${rates.ai.h1.errors + rates.ai.h1.parseFailed} / ${rates.ai.h1.total} runs`}
+        />
+        <Stat
+          label="AI fail (24h)"
+          value={rateValue(rates.ai.h24.failureRate, rates.ai.h24.total, false)}
+          hint={`${rates.ai.h24.errors + rates.ai.h24.parseFailed} / ${rates.ai.h24.total} runs`}
+        />
+        <Stat
+          label="Scrape fail (1h)"
+          value={rateValue(rates.scrape.h1.failureRate, rates.scrape.h1.total, scrapeSpike)}
+          hint={`${rates.scrape.h1.failed} / ${rates.scrape.h1.total} runs`}
+        />
+        <Stat
+          label="Scrape fail (24h)"
+          value={rateValue(rates.scrape.h24.failureRate, rates.scrape.h24.total, false)}
+          hint={`${rates.scrape.h24.failed} / ${rates.scrape.h24.total} runs`}
+        />
+      </div>
+    </Section>
   );
 }
 
@@ -260,9 +367,11 @@ function TriggerSections({ health }: { health: AdminQueueHealth }) {
 }
 
 export default async function SystemPage() {
-  const [health, deps] = await Promise.all([
+  const [health, deps, host, rates] = await Promise.all([
     adminFetch<AdminQueueHealth>("/api/admin/queue-health"),
     adminFetch<AdminDependencies>("/api/admin/dependencies"),
+    adminFetch<AdminHostHealth>("/api/admin/host-health"),
+    adminFetch<AdminErrorRates>("/api/admin/error-rates"),
   ]);
 
   return (
@@ -287,6 +396,10 @@ export default async function SystemPage() {
           <Empty>Dependency health unavailable.</Empty>
         )}
       </Section>
+
+      {host ? <HostSection host={host} /> : null}
+
+      {rates ? <ErrorsSection rates={rates} /> : null}
 
       {!health ? (
         <Section title="Trigger.dev">

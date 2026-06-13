@@ -5,6 +5,7 @@
 import { chromium, type Browser, type Page, type Response } from "patchright"; // drop-in stealth Playwright
 import { patchrightLaunchOptions, type ProxyTier } from "./proxy";
 import { realisticHeaders, realisticUserAgent } from "./fingerprint";
+import { navWaitUntil, settleAfterNav } from "./nav-strategy";
 
 // Cascade level a scrape was served from (patch-20). 0/1 are free (no proxy),
 // 2/3/4 cost money. Stored per monitor as `requiresLevel` once learned.
@@ -99,7 +100,7 @@ export async function scrapeWithPatchright(
   });
 
   try {
-    const response = await page.goto(url, { waitUntil: "networkidle", timeout: 30000 });
+    const response = await page.goto(url, { waitUntil: navWaitUntil(), timeout: 30000 });
     if (!response) {
       return { ok: false, failureReason: "network_error", durationMs: Date.now() - startedAt };
     }
@@ -134,6 +135,10 @@ export async function capturePage(
     return { ok: false, statusCode, failureReason: "blocked_403", durationMs: Date.now() - startedAt };
   if (statusCode === 503)
     return { ok: false, statusCode, failureReason: "blocked_503", durationMs: Date.now() - startedAt };
+
+  // Bounded settle for late content (F6) — only now that we know the page isn't a
+  // hard block, so a 403/503 never pays the wait. No-op in legacy networkidle mode.
+  await settleAfterNav(page);
 
   if (options.waitForSelector) {
     await page.waitForSelector(options.waitForSelector, { timeout: 10000 }).catch(() => {});

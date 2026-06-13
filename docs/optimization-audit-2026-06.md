@@ -159,7 +159,7 @@ images). The `fullPage` option exists but the screenshot itself is unconditional
 off; homepage opts in). Pairs with F4: no screenshot ⇒ also safe to block
 images. **→ implemented below.**
 
-### F6 — `waitUntil: "networkidle"` is fragile and slow 🟡 / ⚠️
+### F6 — `waitUntil: "networkidle"` is fragile and slow 🟡 / ✅
 
 **Best practice.** `networkidle` is discouraged for scraping — it waits for 500ms
 of network silence, which never arrives on sites with analytics/polling/ads, so
@@ -176,6 +176,17 @@ analytics sites." Every such hang spends up to 30s of machine time before failin
 `waitForSelector`/`progressiveScroll` (homepage) for late content; keep a shorter
 explicit settle wait. Medium risk (could miss lazy content on some sources), so
 validate per source before flipping globally — not auto-applied here.
+
+**Implemented.** `packages/scrapers/src/lib/nav-strategy.ts` (`navWaitUntil` +
+bounded `settleAfterNav`), wired into `scrapeWithPatchright` (L1–L3) and
+`scrapeWithCamoufox` (L4) via the shared `capturePage`. Default is
+`domcontentloaded` + a bounded `networkidle` settle capped at `SCRAPE_SETTLE_MS`
+(2.5 s) — it captures late content when a page settles quickly but can never hang.
+The settle runs only after the 403/503 guards, so a hard block never pays the wait.
+Kill-switch `SCRAPE_WAIT_NETWORKIDLE=true` restores the legacy behavior exactly.
+**`api-capture.ts` (patch-23 SPA capture) deliberately keeps `networkidle`** — its
+whole job is to observe runtime XHR/fetch, so it needs to wait for network
+activity. Covered by `nav-strategy.test.ts`.
 
 ### Scrape — already good
 

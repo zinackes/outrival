@@ -1,6 +1,7 @@
 import { Camoufox } from "camoufox-js";
 import { getProxyConfig } from "./proxy";
 import { capturePage, type PatchrightOptions, type ScrapeResult } from "./scrape-patchright";
+import { navWaitUntil } from "./nav-strategy";
 
 // L4 — last resort. Camoufox is a Firefox fork patched at the C++ level, used
 // ONLY when Patchright + residential is still blocked, i.e. the Chromium
@@ -62,7 +63,7 @@ export async function scrapeWithCamoufox(
       if (resp.request?.().resourceType() === "script" && resp.url) scriptUrls.push(resp.url());
     });
 
-    const response = await page.goto(url, { waitUntil: "networkidle", timeout });
+    const response = await page.goto(url, { waitUntil: navWaitUntil(), timeout });
     if (!response) {
       return { ok: false, failureReason: "network_error", durationMs: Date.now() - startedAt };
     }

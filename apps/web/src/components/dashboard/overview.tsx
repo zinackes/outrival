@@ -13,7 +13,6 @@ import {
   api,
   type Signal,
   type Competitor,
-  type Monitor,
 } from "@/lib/api";
 import { toCsv, downloadCsv } from "@/lib/csv";
 import { prettyUrl } from "@/lib/utils";
@@ -105,7 +104,6 @@ export function OverviewView() {
   const router = useRouter();
   const [signals, setSignals] = useState<Signal[] | null>(null);
   const [competitors, setCompetitors] = useState<Competitor[] | null>(null);
-  const [monitors, setMonitors] = useState<Monitor[] | null>(null);
   const [err, setErr] = useState<unknown>(null);
   const [range, setRange] = useState<DateRange>(() => lastNDays(7));
   const rangeFrom = range.from.getTime();
@@ -148,23 +146,6 @@ export function OverviewView() {
     const date = new Date().toISOString().slice(0, 10);
     downloadCsv(`outrival-overview-${rangeDays}d-${date}.csv`, csv);
   }
-
-  // Fetch monitors for the top competitors to feed the "Active competitors"
-  // KPI meta (monitor count).
-  useEffect(() => {
-    if (!competitors || competitors.length === 0) {
-      setMonitors([]);
-      return;
-    }
-    Promise.all(
-      competitors.slice(0, 8).map((c) =>
-        api
-          .getCompetitor(c.id)
-          .then((r) => r.monitors)
-          .catch(() => [] as Monitor[]),
-      ),
-    ).then((groups) => setMonitors(groups.flat()));
-  }, [competitors]);
 
   const counts = useMemo<Counts>(() => {
     const inRange = (signals ?? []).filter(
@@ -340,9 +321,6 @@ export function OverviewView() {
               counts.activeCompetitors < counts.totalCompetitors
                 ? "some silent"
                 : "all active"
-            }
-            meta={
-              monitors ? `${monitors.length} monitors` : "monitors —"
             }
           />
         </div>

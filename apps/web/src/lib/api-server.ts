@@ -38,3 +38,22 @@ export async function getOverviewData(): Promise<{
     return null;
   }
 }
+
+/**
+ * Prefetch the signals feed. The page passes the URL's product/sort so the seed
+ * matches what SignalsView would fetch on mount (other filters are client-side).
+ * Best-effort: null → SignalsView falls back to its own client fetch.
+ */
+export async function getSignalsData(params: {
+  productId?: string;
+  sort?: "threat" | "recent";
+}): Promise<Signal[] | null> {
+  const q = new URLSearchParams({ limit: "200", sort: params.sort ?? "threat" });
+  if (params.productId) q.set("productId", params.productId);
+  try {
+    const r = await serverGet<{ signals: Signal[] }>(`/api/signals?${q.toString()}`);
+    return r.signals;
+  } catch {
+    return null;
+  }
+}

@@ -83,11 +83,13 @@ function serializeSet(set: Set<string>): string | null {
   return Array.from(set).join(",");
 }
 
-export function SignalsView() {
+export function SignalsView({
+  initialSignals = null,
+}: { initialSignals?: Signal[] | null } = {}) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const [signals, setSignals] = useState<Signal[] | null>(null);
+  const [signals, setSignals] = useState<Signal[] | null>(initialSignals);
   const [err, setErr] = useState<unknown>(null);
   const [highlightId, setHighlightId] = useState<string | null>(null);
   // Signals read automatically by dwell (vs. an explicit click / "Mark all read").
@@ -145,7 +147,14 @@ export function SignalsView() {
       .catch((e) => setErr(e));
   }, [productId, sort]);
 
+  // Server-seeded first paint covers the initial product/sort. Consume the seed
+  // once, then let load() refetch normally when product/sort change.
+  const seededRef = useRef(initialSignals !== null);
   useEffect(() => {
+    if (seededRef.current) {
+      seededRef.current = false;
+      return;
+    }
     load();
   }, [load]);
 

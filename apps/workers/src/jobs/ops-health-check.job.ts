@@ -40,7 +40,9 @@ function pct(part: number, total: number): string {
 
 export const opsHealthCheckJob = schedules.task({
   id: "ops-health-check",
-  cron: "0 */6 * * *",
+  // Schedule disabled to fit Trigger's free-plan 10-schedule cap (we have 15).
+  // Re-enable (uncomment) on a paid plan. Task still runs if triggered manually.
+  // cron: "0 */6 * * *",
   maxDuration: 120,
 
   async run() {

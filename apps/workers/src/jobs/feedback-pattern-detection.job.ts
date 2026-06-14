@@ -80,7 +80,9 @@ async function computeFeedbackPatterns(days: number): Promise<FeedbackPattern[]>
 
 export const feedbackPatternDetectionJob = schedules.task({
   id: "feedback-pattern-detection",
-  cron: "0 9 * * 1", // Mondays 09:00 UTC
+  // Schedule disabled to fit Trigger's free-plan 10-schedule cap (we have 15).
+  // Re-enable (uncomment) on a paid plan. Task still runs if triggered manually.
+  // cron: "0 9 * * 1", // Mondays 09:00 UTC
   maxDuration: 120,
 
   async run() {

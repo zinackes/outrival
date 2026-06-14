@@ -35,7 +35,9 @@ interface SilentMonitor {
 
 export const detectSilentMonitorsJob = schedules.task({
   id: "detect-silent-monitors",
-  cron: "0 8 * * *",
+  // Schedule disabled to fit Trigger's free-plan 10-schedule cap (we have 15).
+  // Re-enable (uncomment) on a paid plan. Task still runs if triggered manually.
+  // cron: "0 8 * * *",
   maxDuration: 300,
 
   async run() {

@@ -18,7 +18,9 @@ import { PLAN_LIMITS, deleteManyFromR2 } from "@outrival/shared";
 // regardless of age: it is the diff baseline for the next scrape.
 export const purgeRetentionJob = schedules.task({
   id: "purge-retention",
-  cron: "0 4 * * *",
+  // Schedule disabled to fit Trigger's free-plan 10-schedule cap (we have 15).
+  // Re-enable (uncomment) on a paid plan. Task still runs if triggered manually.
+  // cron: "0 4 * * *",
   maxDuration: 600,
   retry: { maxAttempts: 3, minTimeoutInMs: 5_000, maxTimeoutInMs: 60_000, factor: 2 },
 

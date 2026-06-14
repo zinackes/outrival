@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { BillingDashboard } from "@/components/outrival/billing-dashboard";
-import { BillingDashboardSkeleton } from "./loading";
+import { BillingDashboardSkeleton } from "./billing-skeleton";
 import { getBillingData } from "@/lib/api-server";
 
 export default async function BillingPage() {

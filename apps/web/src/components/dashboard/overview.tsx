@@ -41,7 +41,7 @@ import { SectoralSignalsSection } from "./sectoral-signals";
 import { OnboardingChecklistCard } from "./onboarding-checklist";
 import { ListError } from "@/components/outrival/list-error";
 import { OnboardingAnalysisPanel } from "@/components/onboarding/onboarding-analysis-panel";
-import DashboardLoading from "@/app/dashboard/loading";
+import DashboardLoading from "@/app/dashboard/dashboard-skeleton";
 
 const SEV_ORDER: Record<Signal["severity"], number> = {
   critical: 0,

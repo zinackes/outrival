@@ -1,37 +1,6 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card } from "@/components/ui/card";
 
-export function PageHeadSkeleton({ withActions = true }: { withActions?: boolean } = {}) {
-  return (
-    <div className="flex items-start md:items-center justify-between gap-4 md:gap-6 mb-6 md:mb-8 flex-wrap">
-      <div className="flex-1 min-w-0">
-        <Skeleton className="h-7 w-48 mb-2" />
-        <Skeleton className="h-3.5 w-72 max-w-full" />
-      </div>
-      {withActions && (
-        <div className="flex gap-2 items-center flex-wrap">
-          <Skeleton className="h-8 w-24" />
-          <Skeleton className="h-8 w-28" />
-        </div>
-      )}
-    </div>
-  );
-}
-
-export function KpiStripSkeleton({ count = 4 }: { count?: number } = {}) {
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-px bg-border border border-border rounded-md overflow-hidden">
-      {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="bg-surface px-5 py-4 flex flex-col gap-2">
-          <Skeleton className="h-3 w-24" />
-          <Skeleton className="h-7 w-16" />
-          <Skeleton className="h-3 w-[70%]" />
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export function CardBlockSkeleton({
   height = 200,
   withHeader = true,

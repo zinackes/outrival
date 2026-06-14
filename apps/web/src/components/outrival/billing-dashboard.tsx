@@ -31,7 +31,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { BillingDashboardSkeleton } from "@/app/dashboard/settings/billing/loading";
+import { BillingDashboardSkeleton } from "@/app/dashboard/settings/billing/billing-skeleton";
 
 type PaidPlan = Exclude<Plan, "free">;
 

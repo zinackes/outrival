@@ -100,7 +100,7 @@ import {
 import { cn } from "@/lib/utils";
 import { friendlyScrapeError } from "@/lib/scrape-errors";
 import { sourceShortLabel } from "@/lib/source-labels";
-import CompetitorDetailLoading from "./loading";
+import CompetitorDetailLoading from "./detail-skeleton";
 import {
   api,
   type Competitor,

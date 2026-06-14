@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Activity, ChevronRight } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
@@ -231,12 +231,30 @@ function ChangeDetail({ event }: { event: ActivityEvent }) {
 // User-facing activity: every scrape Outrival ran for the org — including the
 // no-change runs and failures the Signals feed never surfaces, and what each
 // "change detected" run actually found. Filterable by competitor, source, status.
-export function ActivityView() {
-  const [sources, setSources] = useState<ActivitySource[] | null>(null);
-  const [upcoming, setUpcoming] = useState<ActivityUpcoming[]>([]);
-  const [events, setEvents] = useState<ActivityEvent[] | null>(null);
-  const [hasMore, setHasMore] = useState(false);
+export function ActivityView({
+  initialData = null,
+}: {
+  initialData?: {
+    sources: ActivitySource[];
+    upcoming: ActivityUpcoming[];
+    events: ActivityEvent[];
+  } | null;
+} = {}) {
+  const [sources, setSources] = useState<ActivitySource[] | null>(
+    initialData?.sources ?? null,
+  );
+  const [upcoming, setUpcoming] = useState<ActivityUpcoming[]>(
+    initialData?.upcoming ?? [],
+  );
+  const [events, setEvents] = useState<ActivityEvent[] | null>(
+    initialData?.events ?? null,
+  );
+  const [hasMore, setHasMore] = useState(
+    initialData ? initialData.events.length === PAGE_SIZE : false,
+  );
   const [loadingMore, setLoadingMore] = useState(false);
+  // Seed covers health + the default (unfiltered) timeline page.
+  const seededTimelineRef = useRef(initialData !== null);
 
   const [competitor, setCompetitor] = useState("all");
   const [source, setSource] = useState("all");
@@ -253,6 +271,7 @@ export function ActivityView() {
 
   // Filter options come from the full set of monitored sources, not the paginated feed.
   useEffect(() => {
+    if (initialData) return; // server-seeded
     let cancelled = false;
     api
       .activityHealth()
@@ -294,6 +313,10 @@ export function ActivityView() {
 
   // Refetch the feed (server-side) whenever a filter changes.
   useEffect(() => {
+    if (seededTimelineRef.current) {
+      seededTimelineRef.current = false;
+      return;
+    }
     let cancelled = false;
     setEvents(null);
     setExpanded(new Set());

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { DollarSign, TrendingUp, Star, Boxes, LineChart as LineChartIcon } from "lucide-react";
 import {
@@ -155,14 +155,24 @@ function DrillChart({
   return <TrendsDrillChart keys={keys} data={data} />;
 }
 
-export function TrendsView() {
+export function TrendsView({
+  initialSummary = null,
+}: {
+  initialSummary?: TrendsSummary | null;
+} = {}) {
   const [range, setRange] = useState<DateRange>(() => lastNDays(90));
-  const [summary, setSummary] = useState<TrendsSummary | null>(null);
+  const [summary, setSummary] = useState<TrendsSummary | null>(initialSummary);
   const [failed, setFailed] = useState(false);
   const [metric, setMetric] = useState<TrendMetric>("pricing");
   const [competitorId, setCompetitorId] = useState<string>("");
+  // Seed covers the default 90d window → skip only the first fetch.
+  const seededRef = useRef(initialSummary !== null);
 
   useEffect(() => {
+    if (seededRef.current) {
+      seededRef.current = false;
+      return;
+    }
     let cancelled = false;
     setSummary(null);
     api

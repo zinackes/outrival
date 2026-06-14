@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
-import type { Signal, Competitor } from "./api";
+import { endOfDay, startOfDay, subDays } from "date-fns";
+import type { Signal, Competitor, TrendsSummary } from "./api";
 import type { CompetitorData } from "@/app/dashboard/competitors/[id]/competitor-detail-view";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
@@ -82,6 +83,22 @@ export async function getCompetitorDetailData(
 ): Promise<CompetitorData | null> {
   try {
     return await serverGet<CompetitorData>(`/api/competitors/${id}`);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Prefetch the trends summary for the default 90-day window (matching
+ * TrendsView's initial range = lastNDays(90)). Best-effort: null → TrendsView
+ * falls back to its own client fetch. Drill-down series stay client-side.
+ */
+export async function getTrendsData(): Promise<TrendsSummary | null> {
+  const from = startOfDay(subDays(new Date(), 90));
+  const to = endOfDay(new Date());
+  const q = `?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`;
+  try {
+    return await serverGet<TrendsSummary>(`/api/trends/summary${q}`);
   } catch {
     return null;
   }

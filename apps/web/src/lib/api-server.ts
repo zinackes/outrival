@@ -1,6 +1,15 @@
 import { cookies } from "next/headers";
 import { endOfDay, startOfDay, subDays } from "date-fns";
-import type { Signal, Competitor, TrendsSummary, Digest } from "./api";
+import type {
+  Signal,
+  Competitor,
+  TrendsSummary,
+  Digest,
+  SectoralSignal,
+  ActivitySource,
+  ActivityUpcoming,
+  ActivityEvent,
+} from "./api";
 import type { CompetitorData } from "@/app/dashboard/competitors/[id]/competitor-detail-view";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
@@ -112,6 +121,49 @@ export async function getDigestsData(): Promise<Digest[] | null> {
   try {
     const r = await serverGet<{ digests: Digest[] }>("/api/digests");
     return r.digests;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Prefetch the sectoral feed's default page (no category, active view) — must
+ * match SectoralFeed's initial fetch (limit 25). Best-effort: null → the feed
+ * falls back to its own client fetch. Pagination + filters stay client-side.
+ */
+export async function getSectoralData(): Promise<SectoralSignal[] | null> {
+  try {
+    const r = await serverGet<{ signals: SectoralSignal[] }>(
+      "/api/sectoral?limit=25",
+    );
+    return r.signals;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Prefetch the activity page's two mount fetches: health (sources + upcoming)
+ * and the default (unfiltered) timeline page (limit 25). Best-effort: null →
+ * ActivityView falls back to its own client fetches.
+ */
+export async function getActivityData(): Promise<{
+  sources: ActivitySource[];
+  upcoming: ActivityUpcoming[];
+  events: ActivityEvent[];
+} | null> {
+  try {
+    const [health, timeline] = await Promise.all([
+      serverGet<{ sources: ActivitySource[]; upcoming: ActivityUpcoming[] }>(
+        "/api/activity/health",
+      ),
+      serverGet<{ events: ActivityEvent[] }>("/api/activity/timeline?limit=25"),
+    ]);
+    return {
+      sources: health.sources,
+      upcoming: health.upcoming ?? [],
+      events: timeline.events,
+    };
   } catch {
     return null;
   }

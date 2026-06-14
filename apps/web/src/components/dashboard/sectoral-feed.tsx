@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Globe } from "lucide-react";
 import { api, type SectoralSignal, type SectoralCategory } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -18,13 +18,21 @@ type View = "active" | "dismissed";
 
 // Full sector-trends feed (consumption cockpit). Reuses the row + evidence modal
 // from the overview teaser; adds category filter, dismissed toggle and paging.
-export function SectoralFeed() {
-  const [signals, setSignals] = useState<SectoralSignal[] | null>(null);
+export function SectoralFeed({
+  initialSignals = null,
+}: {
+  initialSignals?: SectoralSignal[] | null;
+} = {}) {
+  const [signals, setSignals] = useState<SectoralSignal[] | null>(initialSignals);
   const [active, setActive] = useState<SectoralSignal | null>(null);
   const [category, setCategory] = useState<SectoralCategory | null>(null);
   const [view, setView] = useState<View>("active");
-  const [hasMore, setHasMore] = useState(false);
+  const [hasMore, setHasMore] = useState(
+    initialSignals ? initialSignals.length === PAGE_SIZE : false,
+  );
   const [loadingMore, setLoadingMore] = useState(false);
+  // Seed covers the default page (no category, active view) → skip first fetch.
+  const seededRef = useRef(initialSignals !== null);
 
   const fetchPage = useCallback(
     (offset: number) =>
@@ -41,6 +49,10 @@ export function SectoralFeed() {
 
   // (Re)load from the top whenever a filter changes.
   useEffect(() => {
+    if (seededRef.current) {
+      seededRef.current = false;
+      return;
+    }
     let cancelled = false;
     setSignals(null);
     fetchPage(0)

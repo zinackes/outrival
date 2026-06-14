@@ -17,7 +17,7 @@ import type { AdminScrapingHealth } from "@/lib/api";
 // recharts is heavy + client-only: lazy-load it off this route's first load (F7).
 const FailureBarChart = dynamic(() => import("./scraping-chart"), {
   ssr: false,
-  loading: () => <div className="h-[240px] w-full animate-pulse rounded bg-muted/40" />,
+  loading: () => <div className="skeleton h-[240px] w-full rounded" />,
 });
 
 export function ScrapingView({ data }: { data: AdminScrapingHealth | null }) {

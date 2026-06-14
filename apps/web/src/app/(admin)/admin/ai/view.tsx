@@ -20,7 +20,7 @@ function fmtInt(n: number): string {
 // recharts is heavy + client-only: lazy-load it off this route's first load (F7).
 const SignalsLineChart = dynamic(() => import("./signals-chart"), {
   ssr: false,
-  loading: () => <div className="h-[240px] w-full animate-pulse rounded bg-muted/40" />,
+  loading: () => <div className="skeleton h-[240px] w-full rounded" />,
 });
 
 export function AiView({ data }: { data: AdminAiHealth | null }) {

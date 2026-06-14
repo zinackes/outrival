@@ -14,13 +14,17 @@ import {
 } from "@/components/ui/table";
 import { PageHeader, Section, Empty, StatusPill, mono, dateFmt } from "../../_components/shell";
 import { forceScrape } from "../../_components/actions";
+import { ManageAccount } from "./manage-account";
 import type { AdminUserDetail } from "@/lib/api";
 
 export function UserDetailView({ detail }: { detail: AdminUserDetail }) {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-center justify-between">
-        <PageHeader title={detail.user.email} subtitle={detail.user.name ?? undefined} />
+        <div className="flex items-center gap-2">
+          <PageHeader title={detail.user.email} subtitle={detail.user.name ?? undefined} />
+          {detail.user.suspendedAt ? <Badge variant="destructive">Suspended</Badge> : null}
+        </div>
         <Button asChild variant="ghost" size="sm">
           <Link href="/admin/users">
             <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
@@ -28,6 +32,8 @@ export function UserDetailView({ detail }: { detail: AdminUserDetail }) {
           </Link>
         </Button>
       </div>
+
+      <ManageAccount detail={detail} />
 
       <Section
         title="Account"

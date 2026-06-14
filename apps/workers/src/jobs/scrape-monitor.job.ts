@@ -301,6 +301,19 @@ const LEVEL_REPROBE_INTERVAL_MS = 14 * 24 * 60 * 60 * 1000;
 // source is marked unscrapable so the UI can show a clear "unavailable" state.
 const UNSCRAPABLE_FAILURE_THRESHOLD = 3;
 
+// Failure backoff (hours) indexed by consecutive-failure count. onFailure runs
+// only after every in-run retry is exhausted, so a genuine failure must push
+// nextRunAt forward — otherwise schedule-scraping (which never excludes
+// markedUnscrapable, and where only the success path advanced nextRunAt) re-enqueues
+// the monitor on every hourly cron and a permanently-dead source floods scrape_runs
+// forever. The curve still re-probes (self-healing) at a widening cadence:
+// 6h, 12h, 1d, then 3d for any further/unscrapable failure.
+const FAILURE_BACKOFF_HOURS = [6, 12, 24, 72];
+function failureBackoffMs(consecutiveFailures: number): number {
+  const idx = Math.min(Math.max(consecutiveFailures, 1), FAILURE_BACKOFF_HOURS.length) - 1;
+  return (FAILURE_BACKOFF_HOURS[idx] ?? 72) * 60 * 60 * 1000;
+}
+
 export const scrapeMonitorJob = task({
   id: "scrape-monitor",
   // Chromium (lazy-imported Patchright) OOMs on the default 0.5 GB machine for
@@ -1148,10 +1161,16 @@ export const scrapeMonitorJob = task({
       monitor && atThreshold && monitor.lastFailureCategory === "spa_empty" && !monitor.apiCaptureEnabled
         ? await tryEnableApiCapture(monitor)
         : false;
+    // A recovered SPA runs again on the next cycle; any other failure backs off so
+    // the hourly cron stops re-enqueueing a failing/dead monitor every hour.
+    const nextRunAt = recoveredViaApi
+      ? new Date()
+      : new Date(Date.now() + failureBackoffMs(consecutiveFailures));
     await db
       .update(monitors)
       .set({
         scrapeStartedAt: null,
+        nextRunAt,
         lastFailedAt: new Date(),
         lastError: message.slice(0, 1000),
         consecutiveFailures: recoveredViaApi ? 0 : consecutiveFailures,

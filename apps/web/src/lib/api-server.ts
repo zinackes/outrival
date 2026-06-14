@@ -18,6 +18,9 @@ import type {
   WorkspaceSettings,
   NotificationSettings,
   UsageSnapshot,
+  BillingInfo,
+  NotificationPreferences,
+  RelevanceThresholdInfo,
 } from "./api";
 import type { CompetitorData } from "@/app/dashboard/competitors/[id]/competitor-detail-view";
 
@@ -323,6 +326,47 @@ export async function getProductsSettingsData(): Promise<{
 export async function getUsageData(): Promise<UsageSnapshot | null> {
   try {
     return await serverGet<UsageSnapshot>("/api/usage");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Prefetch the billing dashboard. Best-effort: null → BillingDashboard falls
+ * back to its own client fetch.
+ */
+export async function getBillingData(): Promise<BillingInfo | null> {
+  try {
+    return await serverGet<BillingInfo>("/api/billing");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Prefetch the Notifications page's two forms: moderation (preferences +
+ * relevance threshold) and digest (notification settings + plan). Best-effort:
+ * null → each form falls back to its own client fetch.
+ */
+export async function getNotificationsPageData(): Promise<{
+  moderation: { preferences: NotificationPreferences; threshold: RelevanceThresholdInfo };
+  digest: { settings: NotificationSettings; plan: Plan };
+} | null> {
+  try {
+    const [prefs, threshold, settings, billing] = await Promise.all([
+      serverGet<{ preferences: NotificationPreferences }>(
+        "/api/notification-preferences",
+      ),
+      serverGet<RelevanceThresholdInfo>(
+        "/api/notification-preferences/relevance-threshold",
+      ),
+      serverGet<NotificationSettings>("/api/settings/notifications"),
+      serverGet<{ plan: Plan }>("/api/billing"),
+    ]);
+    return {
+      moderation: { preferences: prefs.preferences, threshold },
+      digest: { settings, plan: billing.plan },
+    };
   } catch {
     return null;
   }

@@ -69,15 +69,30 @@ function isEqual(a: NotificationPreferences, b: NotificationPreferences): boolea
   );
 }
 
-export function NotificationModerationForm() {
-  const [prefs, setPrefs] = useState<NotificationPreferences | null>(null);
-  const [pristine, setPristine] = useState<NotificationPreferences | null>(null);
-  const [threshold, setThreshold] = useState<RelevanceThresholdInfo | null>(null);
+export function NotificationModerationForm({
+  initialData = null,
+}: {
+  initialData?: {
+    preferences: NotificationPreferences;
+    threshold: RelevanceThresholdInfo;
+  } | null;
+} = {}) {
+  const [prefs, setPrefs] = useState<NotificationPreferences | null>(
+    initialData?.preferences ?? null,
+  );
+  const [pristine, setPristine] = useState<NotificationPreferences | null>(
+    initialData?.preferences ?? null,
+  );
+  const [threshold, setThreshold] = useState<RelevanceThresholdInfo | null>(
+    initialData?.threshold ?? null,
+  );
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
   useEffect(() => {
+    // Server-seeded first paint → skip the redundant client fetches.
+    if (initialData) return;
     Promise.all([api.getNotificationPreferences(), api.getRelevanceThreshold()])
       .then(([p, t]) => {
         setPrefs(p.preferences);

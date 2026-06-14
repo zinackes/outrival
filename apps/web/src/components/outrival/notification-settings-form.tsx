@@ -32,16 +32,26 @@ function isEqual(a: NotificationSettings, b: NotificationSettings) {
   );
 }
 
-export function NotificationSettingsForm() {
-  const [settings, setSettings] = useState<NotificationSettings | null>(null);
-  const [pristine, setPristine] = useState<NotificationSettings | null>(null);
-  const [plan, setPlan] = useState<Plan | null>(null);
+export function NotificationSettingsForm({
+  initialData = null,
+}: {
+  initialData?: { settings: NotificationSettings; plan: Plan } | null;
+} = {}) {
+  const [settings, setSettings] = useState<NotificationSettings | null>(
+    initialData?.settings ?? null,
+  );
+  const [pristine, setPristine] = useState<NotificationSettings | null>(
+    initialData?.settings ?? null,
+  );
+  const [plan, setPlan] = useState<Plan | null>(initialData?.plan ?? null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [paywall, setPaywall] = useState<PaywallReason | null>(null);
 
   useEffect(() => {
+    // Server-seeded first paint → skip the redundant client fetches.
+    if (initialData) return;
     Promise.all([api.getNotificationSettings(), api.getBilling()])
       .then(([s, billing]) => {
         setSettings(s);

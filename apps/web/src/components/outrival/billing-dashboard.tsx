@@ -186,16 +186,22 @@ function renderCell(row: FeatureRow, plan: Plan) {
   );
 }
 
-export function BillingDashboard() {
+export function BillingDashboard({
+  initialBilling = null,
+}: {
+  initialBilling?: BillingInfo | null;
+} = {}) {
   const router = useRouter();
   const search = useSearchParams();
-  const [billing, setBilling] = useState<BillingInfo | null>(null);
+  const [billing, setBilling] = useState<BillingInfo | null>(initialBilling);
   const [period, setPeriod] = useState<BillingPeriod>("monthly");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
+    // Server-seeded first paint → skip the redundant client fetch.
+    if (initialBilling) return;
     api.getBilling().then(setBilling).catch((e) => setError(String(e)));
   }, []);
 

@@ -1,16 +1,18 @@
-"use client";
-
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { NotificationSettingsForm } from "@/components/outrival/notification-settings-form";
 import { NotificationModerationForm } from "@/components/outrival/notification-moderation-form";
+import { getNotificationsPageData } from "@/lib/api-server";
 
 // patch-29 — two distinct delivery modes in tabs: individual real-time alerts
 // (patch-26 moderation: channels by severity, quiet hours, cap, batching, threshold)
 // and the recurring digest (delivery channels + schedule). Channel setup also lives
 // in Integrations; here you pick how each mode reaches you.
-export default function NotificationSettingsPage() {
+export default async function NotificationSettingsPage() {
+  // Best-effort server prefetch of both forms; null falls back to the client
+  // fetches inside each form.
+  const initial = await getNotificationsPageData();
   return (
     <section className="flex flex-col gap-5">
       <header>
@@ -27,11 +29,11 @@ export default function NotificationSettingsPage() {
         </TabsList>
 
         <TabsContent value="alerts" className="mt-0">
-          <NotificationModerationForm />
+          <NotificationModerationForm initialData={initial?.moderation ?? null} />
         </TabsContent>
 
         <TabsContent value="digest" className="mt-0 flex flex-col gap-5" data-ph-mask>
-          <NotificationSettingsForm />
+          <NotificationSettingsForm initialData={initial?.digest ?? null} />
           <Link
             href="/dashboard/digests"
             className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"

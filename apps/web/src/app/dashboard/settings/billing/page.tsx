@@ -1,8 +1,12 @@
 import { Suspense } from "react";
 import { BillingDashboard } from "@/components/outrival/billing-dashboard";
 import { BillingDashboardSkeleton } from "./loading";
+import { getBillingData } from "@/lib/api-server";
 
-export default function BillingPage() {
+export default async function BillingPage() {
+  // Best-effort server prefetch; null falls back to the client fetch inside the
+  // dashboard.
+  const initialBilling = await getBillingData();
   return (
     <section className="flex flex-col gap-5" data-ph-mask>
       <header>
@@ -12,7 +16,7 @@ export default function BillingPage() {
         </p>
       </header>
       <Suspense fallback={<BillingDashboardSkeleton />}>
-        <BillingDashboard />
+        <BillingDashboard initialBilling={initialBilling} />
       </Suspense>
     </section>
   );

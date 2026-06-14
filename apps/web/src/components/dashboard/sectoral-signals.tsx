@@ -93,7 +93,7 @@ export function EvidenceModal({
                     {signal.evidence.dataPoints.map((dp, i) => (
                       <li
                         key={i}
-                        className="font-mono text-meta text-muted-foreground/90 leading-snug"
+                        className="font-mono text-meta text-muted-foreground leading-snug"
                       >
                         {renderDataPoint(dp)}
                       </li>

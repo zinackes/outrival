@@ -72,6 +72,31 @@ Needs `DATABASE_URL` in the app env (it is). The baseline already ran on Neon, s
 `migrate` is a no-op until new migrations land. (Local dev still uses
 `pnpm db:migrate` = drizzle-kit.)
 
+## Staging — rehearse migrations on a Neon branch (MVP)
+
+No staging app is deployed yet, but the highest-value risk to kill first is
+migrations hitting prod blind. The cheapest fix is a **throwaway Neon branch** to
+rehearse them. The runtime migrator reads only `DATABASE_URL`, so there is no
+code or env wiring to add — just point it at the branch.
+
+**One-time (Neon console):** create a branch `staging` off the production branch
+(instant, copy-on-write, ~free). Copy its **direct** (non-`-pooler`) connection
+string.
+
+**Per migration, before deploying to prod:**
+```
+# repo root — runs the EXACT runtime migrator Coolify runs, but against staging
+DATABASE_URL='postgres://…@…neon.tech/neondb?sslmode=require' \
+  bun run packages/db/src/migrate.ts
+```
+Inspect the result (`pnpm db:studio` with the same URL), then let the prod deploy
+apply the identical files. Reset the branch from prod whenever it drifts.
+
+> Use the **direct** endpoint for DDL (not `-pooler`); the app keeps the pooled
+> URL. When a full staging environment lands later (Coolify app on a `staging`
+> git branch + Trigger staging env + Stripe **test** keys + an
+> `outrival-snapshots-staging` R2 bucket), this same Neon branch becomes its DB.
+
 ## Environment matrix
 
 `NEXT_PUBLIC_*` are inlined at **build** time → pass them as Docker **build args**

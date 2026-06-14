@@ -9,13 +9,13 @@ const ROWS: Row[] = [
     label: "Continuous scraping, zero re-wiring",
     manual: { text: "no", tone: "no" },
     legacy: { text: "partial", tone: "partial" },
-    us: "yes · 8+ sources",
+    us: "yes · 15+ sources",
   },
   {
     label: "Strategic insight generated (so-what + action)",
     manual: { text: "write it yourself", tone: "no" },
     legacy: { text: "templates", tone: "partial" },
-    us: "Claude Sonnet 4.6",
+    us: "frontier LLM",
   },
   {
     label: "Noise filtered before analysis",
@@ -33,7 +33,7 @@ const ROWS: Row[] = [
     label: "Data hosted in EU",
     manual: { text: "depends on tools", tone: "partial" },
     legacy: { text: "mostly US", tone: "no" },
-    us: "Hetzner · Railway EU",
+    us: "OVH · Neon (EU)",
   },
   {
     label: "Setup",

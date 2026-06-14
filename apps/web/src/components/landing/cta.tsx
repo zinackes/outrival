@@ -26,7 +26,7 @@ export function CTA() {
               </Link>
             </Button>
             <Button asChild variant="outline">
-              <a href="mailto:hello@outrival.io">Request a demo</a>
+              <a href="mailto:hello@outrival.app">Request a demo</a>
             </Button>
             <div className="text-xs text-text-subtle">
               Your data stays in the EU · DPA available on request

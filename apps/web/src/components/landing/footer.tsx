@@ -58,7 +58,7 @@ export function Footer() {
                 { label: "FAQ", href: "#faq" },
                 { label: "Changelog", href: "/changelog" },
                 { label: "API docs", href: "/docs" },
-                { label: "Contact", href: "mailto:hello@outrival.io" },
+                { label: "Contact", href: "mailto:hello@outrival.app" },
               ]}
             />
             <FooterCol

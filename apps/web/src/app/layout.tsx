@@ -37,7 +37,7 @@ const geistMono = Fira_Sans({
   display: "swap",
 });
 
-const SITE_URL = "https://outrival.io";
+const SITE_URL = "https://outrival.app";
 
 export const viewport: Viewport = {
   themeColor: [

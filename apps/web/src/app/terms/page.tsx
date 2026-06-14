@@ -34,7 +34,7 @@ export default function TermsPage() {
       <h2>Contact</h2>
       <p>
         Questions about these terms? Email{" "}
-        <a href="mailto:hello@outrival.io">hello@outrival.io</a>.
+        <a href="mailto:hello@outrival.app">hello@outrival.app</a>.
       </p>
     </DocPage>
   );

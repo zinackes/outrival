@@ -85,7 +85,7 @@ export function Alerts() {
 
           <div className="overflow-hidden rounded-xl border border-border bg-surface">
             <div className="flex items-center gap-2 border-b border-border bg-background-2 px-4 py-2.5 font-mono text-xs text-text-muted">
-              <Mail size={14} /> alerts@outrival.io
+              <Mail size={14} /> alerts@outrival.app
             </div>
             <div>
               <div className="border-b border-border bg-background-2 px-4 py-3">

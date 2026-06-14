@@ -22,7 +22,7 @@ export default function DpaPage() {
       </p>
       <h2>Request a copy</h2>
       <p>
-        Email <a href="mailto:hello@outrival.io">hello@outrival.io</a> with your
+        Email <a href="mailto:hello@outrival.app">hello@outrival.app</a> with your
         company name and we&apos;ll send the current DPA for signature.
       </p>
     </DocPage>

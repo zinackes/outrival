@@ -21,7 +21,7 @@ export default function DocsPage() {
       <h2>Get early access</h2>
       <p>
         On the Business plan and want the API before the docs ship? Email{" "}
-        <a href="mailto:hello@outrival.io">hello@outrival.io</a> and we&apos;ll set
+        <a href="mailto:hello@outrival.app">hello@outrival.app</a> and we&apos;ll set
         you up with a key and the current reference.
       </p>
     </DocPage>

@@ -73,7 +73,7 @@ export function Hero() {
             <span className="absolute inline-flex size-full rounded-full bg-positive opacity-60 motion-safe:animate-ping" />
             <span className="relative inline-flex size-1.5 rounded-full bg-positive" />
           </span>
-          Monitoring 12 SaaS brands live right now
+          Always-on competitive monitoring
         </p>
 
         <h1 className="mx-auto mt-6 max-w-4xl text-[clamp(2.75rem,6vw,4.75rem)] font-semibold leading-[1.02] tracking-[-0.035em] text-balance">
@@ -82,9 +82,9 @@ export function Hero() {
         </h1>
 
         <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-text-muted text-balance">
-          Outrival watches 10 sources per competitor and filters out 99% of the
-          noise, so Claude only writes about what actually moves your market. One
-          email a week. Critical changes hit Slack in minutes.
+          Outrival watches every public surface a competitor has and filters out
+          99% of the noise, so the AI only writes about what actually moves your
+          market. One email a week. Critical changes hit Slack in minutes.
         </p>
 
         <div className="mt-9 flex flex-wrap items-center justify-center gap-x-5 gap-y-3">
@@ -97,7 +97,7 @@ export function Hero() {
             href="#digest"
             className="text-sm text-text-muted underline-offset-4 transition-colors hover:text-foreground hover:underline"
           >
-            See a real digest
+            See a sample digest
           </a>
         </div>
 

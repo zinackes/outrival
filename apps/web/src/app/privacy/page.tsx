@@ -29,7 +29,7 @@ export default function PrivacyPage() {
       <p>
         You can export or permanently delete your workspace and all associated
         data at any time from settings. To exercise any GDPR right, email{" "}
-        <a href="mailto:hello@outrival.io">hello@outrival.io</a>.
+        <a href="mailto:hello@outrival.app">hello@outrival.app</a>.
       </p>
     </DocPage>
   );

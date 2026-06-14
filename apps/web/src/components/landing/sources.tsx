@@ -1,53 +1,18 @@
 import {
+  Activity,
   ArrowRight,
   Briefcase,
+  Cpu,
   FileText,
+  GitBranch,
   Globe,
+  MessageCircle,
+  Newspaper,
   Rss,
   Star,
   Tag,
   type LucideIcon,
 } from "lucide-react";
-
-function LinkedinGlyph({ size = 14 }: { size?: number }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M4 4h4v4H4z" />
-      <path d="M4 10h4v10H4z" />
-      <path d="M10 10h4v2c.7-1.4 2-2.2 4-2.2 3 0 4 2 4 5V20h-4v-4.5c0-1.4-.5-2.5-2-2.5s-2 1.1-2 2.5V20h-4z" />
-    </svg>
-  );
-}
-
-function TwitterGlyph({ size = 14 }: { size?: number }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M4 4h4l5 7 4-7h4l-7 11 7 9h-4l-5-7-4 7H4l7-11z" />
-    </svg>
-  );
-}
 
 function Row({
   icon,
@@ -91,7 +56,7 @@ export function Sources() {
             Everything a competitor publishes.
           </h2>
           <p className="mt-4 max-w-2xl text-text-muted leading-relaxed">
-            Ten sources monitored by default, grouped into three families. Each
+            Every public surface a competitor has, grouped into families. Each
             one is scraped by a stealth browser that escalates through a
             datacenter-to-residential proxy cascade only when a site blocks us,
             the snapshot is stored on R2, and the content is diffed against the
@@ -103,7 +68,7 @@ export function Sources() {
           <div className={`${cardClass} lg:col-span-7`}>
             <CardHeader
               title="The public product"
-              desc="Everything your competitor shows their own prospects. The densest layer — typically 70% of all surfaced signals."
+              desc="Everything your competitor shows their own prospects. The densest layer — typically the bulk of all surfaced signals."
             />
             <div className="border-t border-border">
               <Row
@@ -122,23 +87,28 @@ export function Sources() {
                 label="Changelog"
                 meta="releases · product updates"
               />
+              <Row
+                icon={RowIcon(Activity)}
+                label="Status page"
+                meta="incidents · uptime"
+              />
             </div>
           </div>
 
           <div className={`${cardClass} lg:col-span-5`}>
             <CardHeader
               title="The users"
-              desc="What your competitor's actual customers say. Score, volume, sentiment — not just the star rating."
+              desc="What your competitor's actual customers say across review sites — score, volume, sentiment and sub-ratings, not just the star."
             />
             <div className="border-t border-border">
               <Row
                 icon={RowIcon(Star)}
-                label="G2"
+                label="G2 · Capterra"
                 meta="score · volume · sentiment"
               />
               <Row
                 icon={RowIcon(Star)}
-                label="Capterra"
+                label="Trustpilot · TrustRadius · Gartner"
                 meta="verified reviews"
               />
               <Row
@@ -146,13 +116,18 @@ export function Sources() {
                 label="App Store · Play Store"
                 meta="rating · changelog"
               />
+              <Row
+                icon={RowIcon(MessageCircle)}
+                label="Reddit"
+                meta="mentions · sentiment"
+              />
             </div>
           </div>
 
           <div className={`${cardClass} lg:col-span-5`}>
             <CardHeader
-              title="The humans behind it"
-              desc="Hires, official posts, announcements. The earliest indicator of strategic moves — often weeks before the product announcement."
+              title="Hiring & momentum"
+              desc="The earliest indicators of strategic moves — often weeks before the product announcement."
             />
             <div className="border-t border-border">
               <Row
@@ -161,14 +136,14 @@ export function Sources() {
                 meta="roles · departments · locations"
               />
               <Row
-                icon={<LinkedinGlyph size={14} />}
-                label="LinkedIn corporate"
-                meta="posts · headcount"
+                icon={RowIcon(Cpu)}
+                label="Tech stack"
+                meta="payments · analytics · CRM"
               />
               <Row
-                icon={<TwitterGlyph size={14} />}
-                label="Twitter / X"
-                meta="announcements · launches"
+                icon={RowIcon(Newspaper)}
+                label="News"
+                meta="funding · M&A · leadership"
               />
             </div>
           </div>
@@ -176,11 +151,23 @@ export function Sources() {
           <div className={`${cardClass} bg-background-2 lg:col-span-7`}>
             <div className="flex flex-col gap-3">
               <span className="inline-flex w-fit rounded-md border border-border px-2 py-0.5 font-mono text-meta text-text-subtle">
-                Business plan
+                Every plan
               </span>
               <CardHeader
-                title="Your own sources"
-                desc="Internal APIs, an intranet, a partner's shared Notion, custom Selenium scrapers. We accept anything that returns HTML or JSON. The classification pipeline stays the same."
+                title="Your own product, side by side"
+                desc="Point the same pipeline at your live site, your pricing, even a GitHub repo while you're still building. Your changes get classified too, so the digest reads your moves against theirs."
+              />
+            </div>
+            <div className="mt-2 border-t border-border">
+              <Row
+                icon={RowIcon(Globe)}
+                label="Your live site & pricing"
+                meta="profile · positioning"
+              />
+              <Row
+                icon={RowIcon(GitBranch)}
+                label="Your repo (pre-launch)"
+                meta="releases · commits"
               />
             </div>
             <div className="mt-auto border-t border-border pt-4">
@@ -188,7 +175,7 @@ export function Sources() {
                 href="#cta"
                 className="inline-flex items-center gap-1.5 font-mono text-dense text-primary transition-colors hover:text-accent-bright"
               >
-                Talk about a custom source <ArrowRight size={12} />
+                Add your product free <ArrowRight size={12} />
               </a>
             </div>
           </div>

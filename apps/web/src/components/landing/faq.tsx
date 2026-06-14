@@ -14,19 +14,19 @@ const FAQS: Faq[] = [
   },
   {
     q: "What qualifies a change as a signal?",
-    a: "A Llama 3.3 70B classifier on Groq runs on every diff and tags category, severity, and a 'significant' boolean. Only significant changes go to Claude for insight generation. On average we surface 1 signal for every 70 changes scanned.",
+    a: "A fast Llama 3.3 70B classifier runs on every diff and tags category, severity, and a 'significant' boolean. Only significant changes go on to a frontier LLM for insight generation. On average we surface 1 signal for every 70 changes scanned.",
   },
   {
     q: "Where is the data stored?",
-    a: "All in the EU. Application server on Hetzner (Germany), PostgreSQL on Neon (EU), HTML snapshots and screenshots on Cloudflare R2. Nothing transits outside the EU.",
+    a: "All in the EU. Application server on OVH (France), PostgreSQL on Neon (EU), HTML snapshots and screenshots on Cloudflare R2 — your stored data never leaves the EU.",
   },
   {
-    q: "Can I connect my own source?",
-    a: "Yes — on the Business plan. Internal APIs, an intranet, a shared Notion. The format goes through our custom-scraper interface and benefits from the same classification and insight pipeline.",
+    q: "Can I track my own product too?",
+    a: "Yes, on every plan. Point Outrival at your live site and pricing — or a GitHub repo while you're still building — and your own changes run through the same classification pipeline, so the digest reads your moves alongside your competitors'.",
   },
   {
     q: "How often is a competitor scanned?",
-    a: "Configurable per source. Defaults: homepage and pricing every 6h, blog and changelog every 12h, jobs daily, reviews weekly. The concurrency key is per hostname to avoid IP bans.",
+    a: "Defaults: homepage and pricing daily, blog and changelog weekly, jobs daily, reviews weekly. Your plan sets the floor — weekly on Free, daily on Starter, real-time on Pro and up — and stable monitors automatically slow down to save scrapes.",
   },
   {
     q: "How do I cancel?",
@@ -46,10 +46,10 @@ export function FAQ() {
             <p className="mt-4 text-text-muted leading-relaxed">
               For anything else, write to{" "}
               <a
-                href="mailto:hello@outrival.io"
+                href="mailto:hello@outrival.app"
                 className="text-primary hover:underline"
               >
-                hello@outrival.io
+                hello@outrival.app
               </a>
               .
             </p>

@@ -93,8 +93,12 @@ function fmtWeek(start: string, end: string) {
   }
 }
 
-export function DigestsView() {
-  const [digests, setDigests] = useState<Digest[] | null>(null);
+export function DigestsView({
+  initialDigests = null,
+}: {
+  initialDigests?: Digest[] | null;
+} = {}) {
+  const [digests, setDigests] = useState<Digest[] | null>(initialDigests);
   const [active, setActive] = useState<Digest | null>(null);
   const [err, setErr] = useState<unknown>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -102,6 +106,8 @@ export function DigestsView() {
   const [genRange, setGenRange] = useState<DateRange>(() => DIGEST_PRESETS[0]!.range());
 
   useEffect(() => {
+    // Server-seeded first paint → skip the redundant client fetch.
+    if (initialDigests) return;
     api
       .listDigests()
       .then((r) => setDigests(r.digests))

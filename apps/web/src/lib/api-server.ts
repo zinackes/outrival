@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { endOfDay, startOfDay, subDays } from "date-fns";
-import type { Signal, Competitor, TrendsSummary } from "./api";
+import type { Signal, Competitor, TrendsSummary, Digest } from "./api";
 import type { CompetitorData } from "@/app/dashboard/competitors/[id]/competitor-detail-view";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
@@ -99,6 +99,19 @@ export async function getTrendsData(): Promise<TrendsSummary | null> {
   const q = `?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`;
   try {
     return await serverGet<TrendsSummary>(`/api/trends/summary${q}`);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Prefetch the digests list. Best-effort: null → DigestsView falls back to its
+ * own client fetch.
+ */
+export async function getDigestsData(): Promise<Digest[] | null> {
+  try {
+    const r = await serverGet<{ digests: Digest[] }>("/api/digests");
+    return r.digests;
   } catch {
     return null;
   }

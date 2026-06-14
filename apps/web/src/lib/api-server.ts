@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import type { Signal, Competitor } from "./api";
+import type { CompetitorData } from "@/app/dashboard/competitors/[id]/competitor-detail-view";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -66,6 +67,21 @@ export async function getCompetitorsData(): Promise<Competitor[] | null> {
   try {
     const r = await serverGet<{ competitors: Competitor[] }>("/api/competitors");
     return r.competitors;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Prefetch a single competitor's detail (competitor + monitors + changes +
+ * signals + tech stack + overview + plan). Best-effort: null → the detail view
+ * falls back to its own client fetch.
+ */
+export async function getCompetitorDetailData(
+  id: string,
+): Promise<CompetitorData | null> {
+  try {
+    return await serverGet<CompetitorData>(`/api/competitors/${id}`);
   } catch {
     return null;
   }

@@ -68,11 +68,15 @@ authRouter.post("/check-and-send-magic-link", authRateLimit, async (c) => {
     .findFirst({ where: eq(users.email, email) })
     .catch(() => undefined);
 
+  // Suspended accounts (operator lock-out) never get a code. The HTTP response
+  // below stays identical either way, so suspension never leaks via this endpoint.
   try {
-    await auth.api.sendVerificationOTP({
-      headers: c.req.raw.headers,
-      body: { email, type: "sign-in" },
-    });
+    if (!existing?.suspendedAt) {
+      await auth.api.sendVerificationOTP({
+        headers: c.req.raw.headers,
+        body: { email, type: "sign-in" },
+      });
+    }
   } catch (err) {
     // Swallow — still return the identical generic response so existence never leaks.
     console.error("sign-in code send failed", { email, err });

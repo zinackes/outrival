@@ -1111,6 +1111,7 @@ export type AdminUserRow = {
   email: string;
   name: string | null;
   role: string;
+  suspendedAt: string | null;
   createdAt: string;
   orgId: string | null;
   orgName: string | null;
@@ -1132,13 +1133,21 @@ export type AdminMonitorRow = {
 };
 
 export type AdminUserDetail = {
-  user: { id: string; email: string; name: string | null; role: string; createdAt: string };
+  user: {
+    id: string;
+    email: string;
+    name: string | null;
+    role: string;
+    suspendedAt: string | null;
+    createdAt: string;
+  };
   org: {
     id: string;
     name: string;
     slug: string;
     plan: string;
     planPeriod: string | null;
+    hasActiveStripeSub: boolean;
   } | null;
   competitors: {
     id: string;
@@ -2043,6 +2052,22 @@ export const api = {
       `/api/admin/monitors/${monitorId}/force-scrape`,
       { method: "POST" },
     ),
+  adminUpdateUserPlan: (id: string, input: { plan: string; planPeriod: string | null }) =>
+    request<{ ok: true }>(`/api/admin/users/${id}/plan`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
+  adminSendLoginLink: (id: string) =>
+    request<{ ok: true }>(`/api/admin/users/${id}/send-login-link`, { method: "POST" }),
+  adminSuspendUser: (id: string) =>
+    request<{ ok: true }>(`/api/admin/users/${id}/suspend`, { method: "POST" }),
+  adminUnsuspendUser: (id: string) =>
+    request<{ ok: true }>(`/api/admin/users/${id}/unsuspend`, { method: "POST" }),
+  adminDeleteUser: (id: string, confirm: string) =>
+    request<{ ok: true }>(`/api/admin/users/${id}`, {
+      method: "DELETE",
+      body: JSON.stringify({ confirm }),
+    }),
   adminUpdateFeedback: (id: string, status: AdminFeedbackStatus) =>
     request<{ ok: boolean }>(`/api/admin/feedback/${id}`, {
       method: "PATCH",

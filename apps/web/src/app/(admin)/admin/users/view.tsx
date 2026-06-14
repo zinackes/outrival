@@ -78,9 +78,12 @@ export function UsersView({ initial }: { initial: AdminUserRow[] }) {
               {rows.map((u) => (
                 <TableRow key={u.userId} className="cursor-pointer">
                   <TableCell>
-                    <Link href={`/admin/users/${u.userId}`} className="hover:underline" style={mono}>
-                      {u.email}
-                    </Link>
+                    <span className="flex items-center gap-1.5">
+                      <Link href={`/admin/users/${u.userId}`} className="hover:underline" style={mono}>
+                        {u.email}
+                      </Link>
+                      {u.suspendedAt ? <Badge variant="destructive">Suspended</Badge> : null}
+                    </span>
                   </TableCell>
                   <TableCell>{u.orgName ?? "—"}</TableCell>
                   <TableCell>

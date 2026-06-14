@@ -13,6 +13,7 @@ import type {
   MyProduct,
   SelfProductChange,
   CompetitorCandidate,
+  BattleCardSummary,
 } from "./api";
 import type { CompetitorData } from "@/app/dashboard/competitors/[id]/competitor-detail-view";
 
@@ -239,6 +240,21 @@ export async function getDiscoveryData(): Promise<{
       counts: list.counts,
       discoveryFresh: !staleness.needsRediscovery,
     };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Prefetch the battle cards list. Best-effort: null → BattleCardsView falls back
+ * to its own client fetch.
+ */
+export async function getBattleCardsData(): Promise<BattleCardSummary[] | null> {
+  try {
+    const r = await serverGet<{ battleCards: BattleCardSummary[] }>(
+      "/api/battle-cards",
+    );
+    return r.battleCards;
   } catch {
     return null;
   }

@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { endOfDay, startOfDay, subDays } from "date-fns";
+import type { Plan } from "@outrival/shared";
 import type {
   Signal,
   Competitor,
@@ -14,6 +15,9 @@ import type {
   SelfProductChange,
   CompetitorCandidate,
   BattleCardSummary,
+  WorkspaceSettings,
+  NotificationSettings,
+  UsageSnapshot,
 } from "./api";
 import type { CompetitorData } from "@/app/dashboard/competitors/[id]/competitor-detail-view";
 
@@ -255,6 +259,70 @@ export async function getBattleCardsData(): Promise<BattleCardSummary[] | null> 
       "/api/battle-cards",
     );
     return r.battleCards;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Prefetch the General settings (workspace name, product URL, discovery profile).
+ * Best-effort: null → WorkspaceSettingsForm falls back to its own client fetch.
+ */
+export async function getWorkspaceSettingsData(): Promise<WorkspaceSettings | null> {
+  try {
+    return await serverGet<WorkspaceSettings>("/api/settings/workspace");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Prefetch the Integrations settings: notification settings + the plan (gates
+ * the webhook channel). Best-effort: null → IntegrationsSettings falls back to
+ * its own client fetches.
+ */
+export async function getIntegrationsData(): Promise<{
+  settings: NotificationSettings;
+  plan: Plan;
+} | null> {
+  try {
+    const [settings, billing] = await Promise.all([
+      serverGet<NotificationSettings>("/api/settings/notifications"),
+      serverGet<{ plan: Plan }>("/api/billing"),
+    ]);
+    return { settings, plan: billing.plan };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Prefetch the Products settings: the products list + plan + tier limit.
+ * Best-effort: null → ProductsSettings falls back to its own client fetch.
+ */
+export async function getProductsSettingsData(): Promise<{
+  products: ProductSummary[];
+  plan: string;
+  limit: number;
+} | null> {
+  try {
+    return await serverGet<{
+      products: ProductSummary[];
+      plan: string;
+      limit: number;
+    }>("/api/products");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Prefetch the Usage dashboard snapshot. Best-effort: null → UsageDashboard
+ * falls back to its own client fetch.
+ */
+export async function getUsageData(): Promise<UsageSnapshot | null> {
+  try {
+    return await serverGet<UsageSnapshot>("/api/usage");
   } catch {
     return null;
   }

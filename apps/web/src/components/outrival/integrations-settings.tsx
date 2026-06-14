@@ -19,9 +19,15 @@ function truncate(s: string, max: number) {
   return s.length <= max ? s : s.slice(0, max - 1) + "…";
 }
 
-export function IntegrationsSettings() {
-  const [settings, setSettings] = useState<NotificationSettings | null>(null);
-  const [plan, setPlan] = useState<Plan | null>(null);
+export function IntegrationsSettings({
+  initialData = null,
+}: {
+  initialData?: { settings: NotificationSettings; plan: Plan } | null;
+} = {}) {
+  const [settings, setSettings] = useState<NotificationSettings | null>(
+    initialData?.settings ?? null,
+  );
+  const [plan, setPlan] = useState<Plan | null>(initialData?.plan ?? null);
   const [err, setErr] = useState<unknown>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [channel, setChannel] = useState<AlertChannel>("slack");
@@ -31,6 +37,8 @@ export function IntegrationsSettings() {
   }
 
   useEffect(() => {
+    // Server-seeded first paint → skip the redundant client fetches.
+    if (initialData) return;
     refresh();
     api
       .getBilling()

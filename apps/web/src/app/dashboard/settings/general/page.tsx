@@ -1,6 +1,10 @@
 import { WorkspaceSettingsForm } from "@/components/outrival/workspace-settings-form";
+import { getWorkspaceSettingsData } from "@/lib/api-server";
 
-export default function GeneralSettingsPage() {
+export default async function GeneralSettingsPage() {
+  // Best-effort server prefetch; null falls back to the client fetch inside the
+  // form.
+  const initialSettings = await getWorkspaceSettingsData();
   return (
     <section className="flex flex-col gap-5">
       <header>
@@ -11,7 +15,7 @@ export default function GeneralSettingsPage() {
         </p>
       </header>
       <div data-ph-mask>
-        <WorkspaceSettingsForm />
+        <WorkspaceSettingsForm initialSettings={initialSettings} />
       </div>
     </section>
   );

@@ -22,10 +22,16 @@ import { PLAN_LABELS, type Plan } from "@outrival/shared";
 // patch-28 — manage the org's products (SKUs): add (within the per-tier limit),
 // promote a primary, archive. Per-competitor sharing/reclassification is managed
 // from each competitor; this page owns the product lifecycle.
-export function ProductsSettings() {
-  const [products, setProducts] = useState<ProductSummary[] | null>(null);
-  const [plan, setPlan] = useState<Plan>("free");
-  const [limit, setLimit] = useState(1);
+export function ProductsSettings({
+  initialData = null,
+}: {
+  initialData?: { products: ProductSummary[]; plan: string; limit: number } | null;
+} = {}) {
+  const [products, setProducts] = useState<ProductSummary[] | null>(
+    initialData?.products ?? null,
+  );
+  const [plan, setPlan] = useState<Plan>((initialData?.plan as Plan) ?? "free");
+  const [limit, setLimit] = useState(initialData?.limit ?? 1);
   const [err, setErr] = useState<unknown>(null);
 
   const [addOpen, setAddOpen] = useState(false);
@@ -46,7 +52,8 @@ export function ProductsSettings() {
   }, []);
 
   useEffect(() => {
-    load();
+    // Server-seeded first paint → skip the redundant client fetch.
+    if (!initialData) load();
   }, [load]);
 
   const active = (products ?? []).filter((p) => p.status !== "archived");

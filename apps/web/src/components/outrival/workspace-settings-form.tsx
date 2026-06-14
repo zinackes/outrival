@@ -49,11 +49,21 @@ function isEqual(a: Draft, b: Draft) {
   );
 }
 
-export function WorkspaceSettingsForm() {
-  const [draft, setDraft] = useState<Draft | null>(null);
-  const [pristine, setPristine] = useState<Draft | null>(null);
-  const [slug, setSlug] = useState("");
-  const [stage, setStage] = useState<ProjectStage | null>(null);
+export function WorkspaceSettingsForm({
+  initialSettings = null,
+}: {
+  initialSettings?: WorkspaceSettings | null;
+} = {}) {
+  const [draft, setDraft] = useState<Draft | null>(() =>
+    initialSettings ? toDraft(initialSettings) : null,
+  );
+  const [pristine, setPristine] = useState<Draft | null>(() =>
+    initialSettings ? toDraft(initialSettings) : null,
+  );
+  const [slug, setSlug] = useState(initialSettings?.slug ?? "");
+  const [stage, setStage] = useState<ProjectStage | null>(
+    initialSettings?.projectStage ?? null,
+  );
   const [saving, setSaving] = useState(false);
   const [changeUrlOpen, setChangeUrlOpen] = useState(false);
   const [updateOpen, setUpdateOpen] = useState(false);
@@ -74,7 +84,8 @@ export function WorkspaceSettingsForm() {
   }, []);
 
   useEffect(() => {
-    load();
+    // Server-seeded first paint → skip the redundant client fetch.
+    if (!initialSettings) load();
   }, [load]);
 
   function set<K extends keyof Draft>(key: K, value: Draft[K]) {

@@ -80,11 +80,17 @@ function Entitlement({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function UsageDashboard() {
-  const [data, setData] = useState<UsageSnapshot | null>(null);
+export function UsageDashboard({
+  initialData = null,
+}: {
+  initialData?: UsageSnapshot | null;
+} = {}) {
+  const [data, setData] = useState<UsageSnapshot | null>(initialData);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
+    // Server-seeded first paint → skip the redundant client fetch.
+    if (initialData) return;
     api
       .getUsage()
       .then(setData)

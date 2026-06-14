@@ -9,6 +9,7 @@ import type {
   ActivitySource,
   ActivityUpcoming,
   ActivityEvent,
+  ProductSummary,
 } from "./api";
 import type { CompetitorData } from "@/app/dashboard/competitors/[id]/competitor-detail-view";
 
@@ -164,6 +165,27 @@ export async function getActivityData(): Promise<{
       upcoming: health.upcoming ?? [],
       events: timeline.events,
     };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Prefetch the compare picker's raw inputs (products + competitors). The view
+ * derives the entity list + default selection from these. Best-effort: null →
+ * CompareView falls back to its own client fetch. The matrix stays client-side
+ * (it tracks the user's live selection).
+ */
+export async function getCompareData(): Promise<{
+  products: ProductSummary[];
+  competitors: Competitor[];
+} | null> {
+  try {
+    const [p, c] = await Promise.all([
+      serverGet<{ products: ProductSummary[] }>("/api/products"),
+      serverGet<{ competitors: Competitor[] }>("/api/competitors"),
+    ]);
+    return { products: p.products, competitors: c.competitors };
   } catch {
     return null;
   }

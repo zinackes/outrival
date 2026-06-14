@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Columns3,
   Rows3,
@@ -519,9 +519,38 @@ function SummaryBand({ you, comps }: { you: CompareColumn; comps: CompareColumn[
 const ROWS_STORAGE = "compare:rows";
 const EXPORT_STORAGE = "compare:export";
 
-export function CompareView() {
-  const [entities, setEntities] = useState<PickEntity[] | null>(null);
-  const [selected, setSelected] = useState<string[]>([]);
+// Derive the entity pick-list + the default "you vs them" selection from the
+// raw products/competitors. Shared by the server-seeded initial state and the
+// client fetch so both produce the exact same list.
+function buildPickList(
+  products: ProductSummary[],
+  competitors: Competitor[],
+): { entities: PickEntity[]; selected: string[] } {
+  const you: PickEntity[] = products
+    .filter((pr) => pr.status !== "archived")
+    .map((pr): PickEntity => ({ id: pr.selfCompetitorId, name: pr.name, kind: "you" }));
+  const comps: PickEntity[] = competitors.map(
+    (co): PickEntity => ({ id: co.id, name: co.name, kind: "competitor" }),
+  );
+  const seed = you.length
+    ? [...you.slice(0, 1), ...comps.slice(0, 2)]
+    : comps.slice(0, 3);
+  return { entities: [...you, ...comps], selected: seed.map((e) => e.id) };
+}
+
+export function CompareView({
+  initialRaw = null,
+}: {
+  initialRaw?: { products: ProductSummary[]; competitors: Competitor[] } | null;
+} = {}) {
+  const [entities, setEntities] = useState<PickEntity[] | null>(() =>
+    initialRaw ? buildPickList(initialRaw.products, initialRaw.competitors).entities : null,
+  );
+  const [selected, setSelected] = useState<string[]>(() =>
+    initialRaw ? buildPickList(initialRaw.products, initialRaw.competitors).selected : [],
+  );
+  // Seed covers the picker inputs → skip the entities fetch; matrix still loads.
+  const seededRef = useRef(initialRaw !== null);
   const [matrix, setMatrix] = useState<CompareColumn[] | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -576,23 +605,17 @@ export function CompareView() {
   }, [exportFormat, exportVisibleOnly, exportIncludeYou]);
 
   useEffect(() => {
+    if (seededRef.current) {
+      seededRef.current = false;
+      return;
+    }
     Promise.all([
       api.listProducts().catch(() => ({ products: [] as ProductSummary[] })),
       api.listCompetitors().catch(() => ({ competitors: [] as Competitor[] })),
     ]).then(([p, c]) => {
-      const products: PickEntity[] = p.products
-        .filter((pr) => pr.status !== "archived")
-        .map((pr): PickEntity => ({ id: pr.selfCompetitorId, name: pr.name, kind: "you" }));
-      const comps: PickEntity[] = c.competitors.map(
-        (co): PickEntity => ({ id: co.id, name: co.name, kind: "competitor" }),
-      );
-      setEntities([...products, ...comps]);
-      // Seed with your product (if any) plus the first couple of competitors — the
-      // "you vs them" framing the page is for.
-      const seed = products.length
-        ? [...products.slice(0, 1), ...comps.slice(0, 2)]
-        : comps.slice(0, 3);
-      setSelected(seed.map((e) => e.id));
+      const { entities, selected } = buildPickList(p.products, c.competitors);
+      setEntities(entities);
+      setSelected(selected);
     });
   }, []);
 

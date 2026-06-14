@@ -4,7 +4,9 @@ import {
   PLAN_LIMITS,
   clampFrequencyToPlan,
   forcedRescansPerDay,
+  isGatedSource,
   isWithinLimit,
+  planAllowsMonitorSource,
   productLimit,
   type Plan,
 } from "./plans";
@@ -129,6 +131,47 @@ describe("clampFrequencyToPlan — downgrade throttling", () => {
     for (const plan of PLANS) {
       for (const freq of PLAN_LIMITS[plan].allowedFrequencies) {
         expect(clampFrequencyToPlan(plan, freq)).toBe(freq);
+      }
+    }
+  });
+});
+
+describe("isGatedSource — only sources in some plan are gated", () => {
+  test("internal anchors are never gated", () => {
+    for (const s of ["tech_stack", "sitemap", "news"] as const) {
+      expect(isGatedSource(s)).toBe(false);
+    }
+  });
+  test("not-yet-tiered sources are never gated", () => {
+    for (const s of ["changelog", "linkedin", "twitter", "github_repo"] as const) {
+      expect(isGatedSource(s)).toBe(false);
+    }
+  });
+  test("free + premium sources are gated", () => {
+    for (const s of ["homepage", "pricing", "blog", "jobs", "status", "g2_reviews", "appstore_reviews"] as const) {
+      expect(isGatedSource(s)).toBe(true);
+    }
+  });
+});
+
+describe("planAllowsMonitorSource — downgrade source freeze", () => {
+  test("free keeps its base sources, freezes premium ones", () => {
+    for (const s of ["homepage", "pricing", "blog"] as const) {
+      expect(planAllowsMonitorSource("free", s)).toBe(true);
+    }
+    for (const s of ["jobs", "status", "g2_reviews", "appstore_reviews"] as const) {
+      expect(planAllowsMonitorSource("free", s)).toBe(false);
+    }
+  });
+  test("pro keeps jobs + g2, freezes appstore (business-only)", () => {
+    expect(planAllowsMonitorSource("pro", "jobs")).toBe(true);
+    expect(planAllowsMonitorSource("pro", "g2_reviews")).toBe(true);
+    expect(planAllowsMonitorSource("pro", "appstore_reviews")).toBe(false);
+  });
+  test("internal anchors run on every plan", () => {
+    for (const plan of PLANS) {
+      for (const s of ["news", "sitemap", "tech_stack"] as const) {
+        expect(planAllowsMonitorSource(plan, s)).toBe(true);
       }
     }
   });

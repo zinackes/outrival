@@ -138,6 +138,26 @@ export function minPlanForSource(source: SourceType): Plan {
   return PLANS.find((p) => PLAN_LIMITS[p].allowedSources.includes(source)) ?? "business";
 }
 
+/**
+ * Whether `source` is governed by plan gating at all — i.e. it appears in some
+ * plan's allowedSources. Internal anchors (tech_stack/sitemap/news) and not-yet-
+ * tiered sources (changelog/linkedin/twitter/github_repo) appear in no plan, so
+ * they are never gated and a downgrade never freezes them.
+ */
+export function isGatedSource(source: SourceType): boolean {
+  return PLANS.some((p) => PLAN_LIMITS[p].allowedSources.includes(source));
+}
+
+/**
+ * Whether a monitor on `source` may run under `plan`. Ungated sources always run;
+ * gated sources only while the plan still includes them. This is what freezes a
+ * downgraded org's premium sources (jobs/reviews/status) without mutating monitor
+ * rows — re-upgrading restores them on the next scrape cycle.
+ */
+export function planAllowsMonitorSource(plan: Plan, source: SourceType): boolean {
+  return !isGatedSource(source) || planIncludesSource(plan, source);
+}
+
 /** Whether `plan` may scrape at `freq`. Mirrors the API frequency gate. */
 export function planIncludesFrequency(plan: Plan, freq: MonitorFrequency): boolean {
   return PLAN_LIMITS[plan].allowedFrequencies.includes(freq);

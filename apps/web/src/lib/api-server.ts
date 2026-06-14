@@ -12,6 +12,7 @@ import type {
   ProductSummary,
   MyProduct,
   SelfProductChange,
+  CompetitorCandidate,
 } from "./api";
 import type { CompetitorData } from "@/app/dashboard/competitors/[id]/competitor-detail-view";
 
@@ -210,6 +211,34 @@ export async function getMyProductData(): Promise<{
       ),
     ]);
     return { product: p.product, changes: c.changes };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Prefetch the discovery page: the "new" candidates queue (+ tab counts) and the
+ * staleness flag that gates the re-run button. Best-effort: null → the view
+ * falls back to its own client fetches. Tab switches stay client-side.
+ */
+export async function getDiscoveryData(): Promise<{
+  candidates: CompetitorCandidate[];
+  counts: { new: number; dismissed: number };
+  discoveryFresh: boolean;
+} | null> {
+  try {
+    const [list, staleness] = await Promise.all([
+      serverGet<{
+        candidates: CompetitorCandidate[];
+        counts: { new: number; dismissed: number };
+      }>("/api/candidates?status=new"),
+      serverGet<{ needsRediscovery: boolean }>("/api/candidates/staleness"),
+    ]);
+    return {
+      candidates: list.candidates,
+      counts: list.counts,
+      discoveryFresh: !staleness.needsRediscovery,
+    };
   } catch {
     return null;
   }

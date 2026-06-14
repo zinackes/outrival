@@ -10,6 +10,8 @@ import type {
   ActivityUpcoming,
   ActivityEvent,
   ProductSummary,
+  MyProduct,
+  SelfProductChange,
 } from "./api";
 import type { CompetitorData } from "@/app/dashboard/competitors/[id]/competitor-detail-view";
 
@@ -186,6 +188,28 @@ export async function getCompareData(): Promise<{
       serverGet<{ competitors: Competitor[] }>("/api/competitors"),
     ]);
     return { products: p.products, competitors: c.competitors };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Prefetch the "My product" page: the product itself + its pending changes.
+ * Best-effort: null → MyProductView falls back to its own client fetch (which
+ * also drives the scan polling).
+ */
+export async function getMyProductData(): Promise<{
+  product: MyProduct | null;
+  changes: SelfProductChange[];
+} | null> {
+  try {
+    const [p, c] = await Promise.all([
+      serverGet<{ product: MyProduct | null }>("/api/my-product"),
+      serverGet<{ changes: SelfProductChange[] }>(
+        "/api/my-product/changes?status=pending",
+      ),
+    ]);
+    return { product: p.product, changes: c.changes };
   } catch {
     return null;
   }

@@ -17,9 +17,11 @@ export function Trust() {
             <dd className="mt-1.5 text-xs text-text-muted">noise to signal</dd>
           </div>
           <div>
-            <dt className="font-mono text-2xl font-medium tracking-tight">10</dt>
+            <dt className="font-mono text-2xl font-medium tracking-tight">
+              15<span className="text-base text-text-subtle">+</span>
+            </dt>
             <dd className="mt-1.5 text-xs text-text-muted">
-              sources / competitor
+              source types tracked
             </dd>
           </div>
           <div>
@@ -35,7 +37,7 @@ export function Trust() {
               100<span className="text-base text-text-subtle">%</span>
             </dt>
             <dd className="mt-1.5 text-xs text-text-muted">
-              EU-hosted · Hetzner · Railway · R2
+              EU-hosted · OVH · Neon · R2
             </dd>
           </div>
         </dl>

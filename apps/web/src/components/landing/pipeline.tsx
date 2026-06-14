@@ -96,7 +96,7 @@ export function Pipeline() {
                 <span className="rounded bg-surface-3 px-1.5 py-0.5 text-text-subtle">
                   step 2
                 </span>
-                <span className="text-text-muted">claude sonnet 4.6</span>
+                <span className="text-text-muted">frontier llm · insight</span>
               </div>
               <div className="mt-3 text-sm leading-relaxed text-text-muted">
                 <b className="text-foreground">
@@ -135,8 +135,8 @@ export function Pipeline() {
         </div>
 
         <p className="mt-6 text-center font-mono text-dense text-text-subtle">
-          ~70 changes scanned produce 1 signal · you don&apos;t pay Claude to
-          read noise.
+          ~70 changes scanned produce 1 signal · you don&apos;t pay to run AI
+          on noise.
         </p>
       </div>
     </section>

@@ -42,8 +42,8 @@ export function DigestFeature() {
               That&apos;s it.
             </h2>
             <p className="mt-5 text-lg leading-relaxed text-text-muted">
-              Every signal of the week, aggregated and prioritized by Claude.
-              You open a single email and you know what happened.
+              Every signal of the week, aggregated and prioritized by AI. You
+              open a single email and you know what happened.
             </p>
             <div className="mt-8 space-y-5">
               <FeatureItem

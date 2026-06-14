@@ -39,7 +39,7 @@ const PLANS: Plan[] = [
     features: [
       "5 competitors",
       "Daily scans · Slack & email digests",
-      "Adds the jobs source",
+      "Adds jobs + status page",
       "1 user",
     ],
   },
@@ -56,7 +56,7 @@ const PLANS: Plan[] = [
       "All categories + severities",
       "Real-time Slack/email alerts",
       "AI-generated battle cards",
-      "G2 & Capterra reviews",
+      "G2, Capterra, Trustpilot & Reddit reviews",
     ],
   },
   {
@@ -64,15 +64,15 @@ const PLANS: Plan[] = [
     name: "Business",
     price: "199",
     suffix: "€ / month",
-    desc: "Unlimited competitors, App Store reviews, multi-user, API access.",
+    desc: "50 competitors, every review source, multi-user, and API access.",
     cta: "Talk to the team",
     featured: false,
     features: [
-      "Unlimited competitors",
-      "Multi-user · API access",
+      "50 competitors",
+      "Every review source (+ Gartner, TrustRadius)",
       "App Store + Play Store reviews",
-      "Custom sources (intranet, internal APIs)",
-      "SSO SAML · audit logs · DPA",
+      "Multi-user · API access",
+      "Priority cadence · audit logs · DPA",
     ],
   },
 ];
@@ -91,8 +91,8 @@ export function Pricing() {
             AI cost included.
           </h2>
           <p className="text-text-muted leading-relaxed">
-            You pay by user and by number of competitors. Claude + Groq API
-            calls are baked into the price — no usage-based billing.
+            You pay by user and by number of competitors. Every AI cost is baked
+            into the price — no usage-based billing.
           </p>
         </div>
 
@@ -147,7 +147,7 @@ export function Pricing() {
                 <a
                   href={
                     p.tag === "Business"
-                      ? "mailto:hello@outrival.io?subject=Outrival%20Business%20plan"
+                      ? "mailto:hello@outrival.app?subject=Outrival%20Business%20plan"
                       : "#cta"
                   }
                 >

@@ -100,10 +100,18 @@ function trendLabels(days = 10): string[] {
   return labels;
 }
 
-export function OverviewView() {
+export function OverviewView({
+  initialSignals = null,
+  initialCompetitors = null,
+}: {
+  initialSignals?: Signal[] | null;
+  initialCompetitors?: Competitor[] | null;
+} = {}) {
   const router = useRouter();
-  const [signals, setSignals] = useState<Signal[] | null>(null);
-  const [competitors, setCompetitors] = useState<Competitor[] | null>(null);
+  const [signals, setSignals] = useState<Signal[] | null>(initialSignals);
+  const [competitors, setCompetitors] = useState<Competitor[] | null>(
+    initialCompetitors,
+  );
   const [err, setErr] = useState<unknown>(null);
   const [range, setRange] = useState<DateRange>(() => lastNDays(7));
   const rangeFrom = range.from.getTime();
@@ -124,9 +132,12 @@ export function OverviewView() {
       .catch((e) => setErr(e));
   }, []);
 
+  const hasData = signals !== null && competitors !== null;
   useEffect(() => {
-    load();
-  }, [load]);
+    // Server-seeded first paint → skip the redundant client round-trip. Only
+    // fetch when we mounted without data (seed missing or server prefetch failed).
+    if (!hasData) load();
+  }, [load, hasData]);
 
   function exportCsv() {
     if (!signals) return;

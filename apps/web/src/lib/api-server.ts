@@ -57,3 +57,16 @@ export async function getSignalsData(params: {
     return null;
   }
 }
+
+/**
+ * Prefetch the competitors list (with per-competitor stats). Best-effort: null →
+ * CompetitorsList falls back to its own client fetch + keeps its 30s polling.
+ */
+export async function getCompetitorsData(): Promise<Competitor[] | null> {
+  try {
+    const r = await serverGet<{ competitors: Competitor[] }>("/api/competitors");
+    return r.competitors;
+  } catch {
+    return null;
+  }
+}

@@ -69,9 +69,15 @@ type SortDir = "asc" | "desc";
 const TH_BASE =
   "text-left px-3.5 py-2.5 font-mono text-meta uppercase tracking-wide text-muted-foreground font-medium border-b border-border whitespace-nowrap";
 
-export function CompetitorsList() {
+export function CompetitorsList({
+  initialCompetitors = null,
+}: {
+  initialCompetitors?: Competitor[] | null;
+} = {}) {
   const router = useRouter();
-  const [competitors, setCompetitors] = useState<Competitor[] | null>(null);
+  const [competitors, setCompetitors] = useState<Competitor[] | null>(
+    initialCompetitors,
+  );
   const [err, setErr] = useState<unknown>(null);
   const [view, setView] = useState<"table" | "cards">("table");
   const [sortBy, setSortBy] = useState<SortBy>("signals");
@@ -94,7 +100,8 @@ export function CompetitorsList() {
   }
 
   useEffect(() => {
-    refresh();
+    // Server-seeded first paint → skip the redundant initial fetch; keep polling.
+    if (!initialCompetitors) refresh();
     const interval = setInterval(() => {
       refresh();
     }, 30_000);

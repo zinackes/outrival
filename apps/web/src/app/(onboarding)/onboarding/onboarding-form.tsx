@@ -154,6 +154,16 @@ function fallbackFromError(err: unknown): boolean {
   );
 }
 
+// A scanned / image-only document (no text layer) yields no extractable text — a
+// dead end retrying won't fix. Surface that precisely so the user picks another
+// path instead of re-uploading the same file; null → generic fallback message.
+function unreadableDocumentMessage(err: unknown): string | null {
+  if (err instanceof ApiError && (err.data as { reason?: unknown }).reason === "unreadable_document") {
+    return "We couldn't find any selectable text in that file — it looks scanned or image-based. Paste a short description instead, or upload a PDF with selectable text, a .docx, .md, or .txt.";
+  }
+  return null;
+}
+
 // Patch-25 hybrid parallelization: prefetch discovery in the background while
 // the user reviews/edits the profile. Default on; debounce avoids re-billing Exa
 // on every keystroke.
@@ -343,7 +353,7 @@ export function OnboardingForm({
 
   function handleAnalyzeError(e: unknown, prefill: string) {
     if (fallbackFromError(e)) {
-      toast.error("Automatic analysis didn't work out.");
+      toast.error(unreadableDocumentMessage(e) ?? "Automatic analysis didn't work out.");
       setFallbackOffer({ prefill });
       return;
     }

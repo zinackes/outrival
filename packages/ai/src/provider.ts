@@ -113,9 +113,18 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
   // "all_providers_failed / no_providers_available" message implies.
   let sawConfigError = false;
   let sawTransientError = false;
+  // In-memory record of providers already tried THIS call. The per-provider breaker
+  // (tripBreaker) only advances pickProvider to the next provider when it persists —
+  // which needs Redis. Without Upstash that breaker is a no-op, so pickProvider would
+  // keep returning the same top-priority provider every iteration and a broken
+  // priority-1 provider would wedge the whole pool (the loop hits it N times, never
+  // reaching a healthy lower-priority one). This local set makes failover progress
+  // regardless of Redis: each picked provider is excluded from the next pick.
+  const tried = new Set<string>();
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const provider = await pickProvider();
-    if (!provider) break; // every provider exhausted or in breaker
+    const provider = await pickProvider(tried);
+    if (!provider) break; // every provider exhausted, in breaker, or already tried
+    tried.add(provider.id);
     markProvider(provider.id);
     // A "fast"-tier task (classify-change, overlap scoring) routes to the
     // provider's small 8B-class model when declared — ~10× cheaper than the 70B.

@@ -27,6 +27,26 @@ export interface Provider {
   reasoningEffort?: "low" | "medium" | "high";
 }
 
+// Log the loaded pool ONCE per process (ids + base URLs + models, never keys). A
+// misconfigured pool (a base URL missing /v1, a wrong model id, or only one provider
+// where three are expected) is the #1 cause of "all providers 404" outages, and is
+// otherwise invisible — this single line in the worker/API boot logs makes it obvious.
+let poolLogged = false;
+function logPoolOnce(providers: Provider[]): void {
+  if (poolLogged) return;
+  poolLogged = true;
+  if (providers.length === 0) {
+    console.warn(
+      "[ai] provider pool is EMPTY — no AI_PROVIDER_* and no GROQ_API_KEY. Every AI task will fail.",
+    );
+    return;
+  }
+  const summary = providers
+    .map((p) => `${p.id}[${p.tier},p${p.priority}] ${p.baseUrl} model=${p.model}`)
+    .join(" | ");
+  console.log(`[ai] provider pool loaded (${providers.length}): ${summary}`);
+}
+
 /**
  * Load providers from AI_PROVIDER_1..N_* env (contiguous, stops at first gap).
  * Back-compat: if none are configured but GROQ_API_KEY exists, synthesize a single
@@ -69,7 +89,9 @@ export function loadProviders(): Provider[] {
     }
   }
 
-  return providers.sort((a, b) => a.priority - b.priority); // free / low priority first
+  const sorted = providers.sort((a, b) => a.priority - b.priority); // free / low priority first
+  logPoolOnce(sorted);
+  return sorted;
 }
 
 function todayKey(): string {

@@ -332,8 +332,16 @@ onboardingRouter.post(
     const bytes = new Uint8Array(await file.arrayBuffer());
     const extracted = await extractDocumentText(bytes, file.name, file.type);
     if (!extracted.ok) {
+      // `empty`/`extract_failed` = the file parsed but carried no text layer (a
+      // scanned or image-only deck) — a distinct, non-retryable cause from an AI
+      // hiccup. Tag it so the client tells the user precisely instead of the
+      // generic "automatic analysis didn't work out".
       return c.json(
-        { error: `Could not read document (${extracted.error})`, fallback: "description" },
+        {
+          error: `Could not read document (${extracted.error})`,
+          reason: "unreadable_document",
+          fallback: "description",
+        },
         422,
       );
     }

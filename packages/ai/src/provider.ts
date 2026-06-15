@@ -66,6 +66,19 @@ function shouldFailover(err: unknown): boolean {
   return s === 429 || s === 401 || s === 403 || s === 404 || s >= 500;
 }
 
+// 401/403/404 = bad key, wrong model id, or wrong base URL at THIS provider — an env
+// mistake that won't self-heal by backing off (vs 429/5xx = transient infra distress).
+// "404 status code (no body)" specifically is an OpenAI-SDK POST to a base URL whose
+// /chat/completions route doesn't exist → almost always a base URL missing /v1. We still
+// fail over (a 404 on provider A may work on B), but tag the exhaustion so the surfaced
+// error and the breaker reason say "fix AI_PROVIDER_* env", not a generic outage.
+// Exported for unit testing this diagnostic branch.
+export function isConfigError(err: unknown): boolean {
+  if (!(err instanceof OpenAI.APIError)) return false;
+  const s = err.status ?? 0;
+  return s === 401 || s === 403 || s === 404;
+}
+
 // gpt-oss models on Groq are reasoning models: without `reasoning_effort` they
 // default to "medium", which roughly DOUBLES the completion tokens (hidden
 // reasoning) for no quality/agreement gain on our extraction & classification
@@ -95,6 +108,11 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
 
   const maxAttempts = Math.max(1, loadProviders().length);
   let lastErr: unknown;
+  // Track WHY the pool was exhausted: a config-only wipe (every provider 401/403/404)
+  // is an env mistake to surface loudly, not the transient infra distress the generic
+  // "all_providers_failed / no_providers_available" message implies.
+  let sawConfigError = false;
+  let sawTransientError = false;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const provider = await pickProvider();
     if (!provider) break; // every provider exhausted or in breaker
@@ -150,6 +168,8 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
     } catch (err) {
       if (shouldFailover(err)) {
         const rateLimited = err instanceof OpenAI.APIError && err.status === 429;
+        if (isConfigError(err)) sawConfigError = true;
+        else sawTransientError = true;
         await tripBreaker(provider.id, rateLimited ? "rate_limited" : "provider_error");
         await recordFailure(provider.id);
         lastErr = err;
@@ -159,7 +179,18 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
     }
   }
 
-  await tripGlobalBreaker("no_providers_available");
+  // Config-only exhaustion (every provider rejected with 401/403/404, no transient
+  // fault): the pool is misconfigured, not down. Make the error and the ops ping
+  // actionable so it reads as "fix the env" instead of a generic provider outage.
+  const misconfigured = sawConfigError && !sawTransientError;
+  await tripGlobalBreaker(misconfigured ? "ai_provider_misconfigured" : "no_providers_available");
+  if (misconfigured) {
+    const detail = lastErr instanceof Error ? lastErr.message : String(lastErr);
+    throw new AIUnavailableError(
+      `ai_provider_misconfigured: every provider rejected the request (last: ${detail}). ` +
+        `Check AI_PROVIDER_*_BASE_URL (needs a trailing /v1) and AI_PROVIDER_*_MODEL.`,
+    );
+  }
   throw new AIUnavailableError(
     lastErr instanceof Error ? `all_providers_failed: ${lastErr.message}` : "no_providers_available",
   );

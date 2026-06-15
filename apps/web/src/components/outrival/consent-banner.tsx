@@ -30,7 +30,7 @@ export function ConsentBanner() {
     <div
       role="dialog"
       aria-label="Analytics consent"
-      className="fixed inset-x-4 bottom-4 z-50 mx-auto max-w-2xl rounded-md border border-[var(--border-strong)] bg-[var(--surface)] p-4 text-sm shadow-lg sm:inset-x-auto sm:right-4 sm:left-auto"
+      className="dark fixed inset-x-4 bottom-4 z-50 mx-auto max-w-2xl rounded-md border border-[var(--border-strong)] bg-[var(--surface)] p-4 text-sm text-[var(--foreground)] shadow-lg sm:inset-x-auto sm:right-4 sm:left-auto"
     >
       <p className="text-[var(--foreground)]">
         We use analytics to improve Outrival. You can accept or decline.

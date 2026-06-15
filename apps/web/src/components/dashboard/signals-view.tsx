@@ -687,6 +687,7 @@ export function SignalsView({
           />
           <Input
             id="signals-search"
+            aria-label="Search signals"
             placeholder="Search…"
             value={query}
             onChange={(e) => setParam({ q: e.target.value || null })}

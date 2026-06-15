@@ -18,6 +18,72 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    date: "2026-06-14",
+    title: "A faster dashboard",
+    changes: [
+      {
+        kind: "improved",
+        text: "Pages now load with your data already in place. Overview, signals, competitors and more are fetched on the server, so you see far fewer loading spinners.",
+      },
+    ],
+  },
+  {
+    date: "2026-06-13",
+    title: "Ask Outrival & a new sign-in",
+    changes: [
+      {
+        kind: "new",
+        text: "Ask Outrival — ask a question in plain English and get an answer grounded in the data we already track for you, with links straight to the source.",
+      },
+      {
+        kind: "new",
+        text: "Daily starter prompts on the Ask screen, tailored to what's happening in your workspace.",
+      },
+      {
+        kind: "improved",
+        text: "Sign in with a 6-digit code or a one-tap link sent to your email. Google and password sign-in are still available.",
+      },
+    ],
+  },
+  {
+    date: "2026-06-07",
+    title: "Multiple products & broader monitoring",
+    changes: [
+      {
+        kind: "new",
+        text: "Products — track several products or SKUs from one workspace. Signals are tagged to the products they affect, and you can switch products from the top bar.",
+      },
+      {
+        kind: "new",
+        text: "More review sources — Trustpilot, TrustRadius, Gartner and the Play Store join G2 and Capterra, plus Reddit mention tracking.",
+      },
+      {
+        kind: "new",
+        text: "More hiring coverage — job tracking now reads more applicant-tracking systems, with seniority and salary captured when available.",
+      },
+      {
+        kind: "new",
+        text: "Status pages and release changelogs can now be monitored as their own sources.",
+      },
+      {
+        kind: "new",
+        text: "Re-scan any source on demand straight from its page, without waiting for the next scheduled run.",
+      },
+      {
+        kind: "new",
+        text: "Activity — a page that shows the scraping work happening behind the scenes for your workspace.",
+      },
+      {
+        kind: "improved",
+        text: "Notification controls — quiet hours, weekend mute, a daily email cap, and similar-signal batching so you only get alerted on what matters.",
+      },
+      {
+        kind: "improved",
+        text: "Navigation refresh — Settings now has its own sidebar and the main rail is streamlined.",
+      },
+    ],
+  },
+  {
     date: "2026-06-06",
     title: "Consumption cockpit",
     changes: [

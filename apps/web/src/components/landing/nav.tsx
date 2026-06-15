@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useSession } from "@/lib/auth-client";
 
 const LINKS = [
   { href: "#sources", label: "Sources" },
@@ -15,6 +16,10 @@ const LINKS = [
 
 export function Nav() {
   const [open, setOpen] = useState(false);
+  const { data: session } = useSession();
+  // While the session is still resolving, keep the signed-out CTAs (matches SSR)
+  // so the bar doesn't flash; swap to "Go to dashboard" once we know there's a user.
+  const isAuthed = !!session?.user;
 
   // Close the mobile menu on Escape, and lock body scroll while it's open.
   useEffect(() => {
@@ -48,12 +53,20 @@ export function Nav() {
           ))}
         </div>
         <div className="flex items-center gap-2">
-          <Button asChild variant="outline" size="sm" className="max-sm:hidden">
-            <Link href="/auth">Sign in</Link>
-          </Button>
-          <Button asChild size="sm">
-            <a href="#cta">Start free</a>
-          </Button>
+          {isAuthed ? (
+            <Button asChild size="sm">
+              <Link href="/dashboard">Go to dashboard</Link>
+            </Button>
+          ) : (
+            <>
+              <Button asChild variant="outline" size="sm" className="max-sm:hidden">
+                <Link href="/auth">Sign in</Link>
+              </Button>
+              <Button asChild size="sm">
+                <a href="#cta">Start free</a>
+              </Button>
+            </>
+          )}
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
@@ -94,11 +107,19 @@ export function Nav() {
                 </a>
               ))}
               <div className="mt-3 border-t border-border pt-3">
-                <Button asChild variant="outline" className="w-full">
-                  <Link href="/auth" onClick={() => setOpen(false)}>
-                    Sign in
-                  </Link>
-                </Button>
+                {isAuthed ? (
+                  <Button asChild className="w-full">
+                    <Link href="/dashboard" onClick={() => setOpen(false)}>
+                      Go to dashboard
+                    </Link>
+                  </Button>
+                ) : (
+                  <Button asChild variant="outline" className="w-full">
+                    <Link href="/auth" onClick={() => setOpen(false)}>
+                      Sign in
+                    </Link>
+                  </Button>
+                )}
               </div>
             </div>
           </div>

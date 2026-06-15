@@ -18,10 +18,10 @@ import {
 const EMPTY: SearchResults = { competitors: [], signals: [], digests: [] };
 
 const SEVERITY_DOT: Record<string, string> = {
-  low: "bg-muted-foreground/50",
-  medium: "bg-amber-500",
-  high: "bg-orange-500",
-  critical: "bg-red-500",
+  low: "bg-low",
+  medium: "bg-medium",
+  high: "bg-high",
+  critical: "bg-critical",
 };
 
 export function GlobalSearch() {

@@ -100,17 +100,19 @@ function todayKey(): string {
 
 /**
  * Pick the next available provider by priority (free before paid). Skips providers
- * exhausted today (>= 95% of their token quota) or in circuit breaker. Round-robins
- * only between providers sharing the best available priority. Returns null when none
- * are usable (→ caller trips the global breaker).
+ * exhausted today (>= 95% of their token quota), in circuit breaker, or in `exclude`
+ * (providers the current callLLM loop has already tried — Redis-independent failover,
+ * see callLLM). Round-robins only between providers sharing the best available
+ * priority. Returns null when none are usable (→ caller trips the global breaker).
  */
-export async function pickProvider(): Promise<Provider | null> {
+export async function pickProvider(exclude?: ReadonlySet<string>): Promise<Provider | null> {
   const providers = loadProviders();
   if (providers.length === 0) return null;
   const today = todayKey();
 
   const available: Provider[] = [];
   for (const p of providers) {
+    if (exclude?.has(p.id)) continue;
     const [breaker, used] = await redis.mget(`ai:breaker:${p.id}`, `ai:usage:${p.id}:${today}`);
     if (breaker) continue;
     if (Number(used ?? 0) >= p.dailyTokenQuota * 0.95) continue;

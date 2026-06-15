@@ -67,6 +67,8 @@ function LogoChip({ logo }: { logo: { name: string | null; src: string | null } 
       <img
         src={src}
         alt={name || "Customer logo"}
+        width={96}
+        height={16}
         loading="lazy"
         onError={() => setFailed(true)}
         className="h-4 max-w-[96px] object-contain"

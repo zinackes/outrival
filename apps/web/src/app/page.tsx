@@ -28,7 +28,7 @@ export default function HomePage() {
     <div className="dark min-h-screen bg-background font-sans text-foreground antialiased">
       <JsonLd />
       <Nav />
-      <main>
+      <main id="main-content" tabIndex={-1}>
         <Hero />
         <Trust />
         <Monitors />

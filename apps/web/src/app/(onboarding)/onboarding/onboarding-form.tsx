@@ -11,7 +11,6 @@ import {
   ArrowRight,
   Bell,
   Check,
-  ChevronDown,
   ExternalLink,
   FileText,
   GitBranch,
@@ -20,7 +19,6 @@ import {
   Loader2,
   Lock,
   LogOut,
-  Package,
   Plus,
   RotateCcw,
   Sparkles,
@@ -59,7 +57,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
-type Screen = "stage" | "input" | "profile" | "discover" | "monitoring" | "done";
+type Screen = "stage" | "input" | "profile" | "discover" | "done";
 type SourceType = "homepage" | "pricing" | "blog";
 type Frequency = "daily" | "weekly";
 
@@ -72,8 +70,7 @@ const SCREEN_TO_STEP: Record<Screen, number> = {
   input: 1,
   profile: 2,
   discover: 3,
-  monitoring: 4,
-  done: 5,
+  done: 3,
 };
 
 const STAGE_META: Record<
@@ -120,12 +117,6 @@ const CATEGORY_SUGGESTIONS = [
   "Healthcare",
   "Education",
 ];
-
-const SOURCE_DEF: Record<SourceType, { label: string; description: string }> = {
-  homepage: { label: "Homepage", description: "Repositioning and messaging changes." },
-  pricing: { label: "Pricing", description: "Prices, new plans or modified tiers." },
-  blog: { label: "Blog", description: "Product announcements and strategic content." },
-};
 
 function isValidUrl(s: string): boolean {
   try {
@@ -247,10 +238,11 @@ export function OnboardingForm({
   // "dismissed" candidates on complete — a remembered rejection.
   const [removed, setRemoved] = useState<Selection[]>([]);
   const [manualUrl, setManualUrl] = useState("");
-  const [frequency, setFrequency] = useState<Frequency>(
-    allowedFrequencies.includes("daily") ? "daily" : "weekly",
-  );
-  const [sources, setSources] = useState<SourceType[]>(["homepage", "pricing", "blog"]);
+  // The dedicated monitoring step was removed: onboarding finishes on the
+  // competitor screen with these fixed defaults (free plan → weekly, the three
+  // free sources). Everything is adjustable later in Settings.
+  const frequency: Frequency = allowedFrequencies.includes("daily") ? "daily" : "weekly";
+  const sources: SourceType[] = ["homepage", "pricing", "blog"];
 
   // Background discovery prefetch (patch-25): status drives the discreet profile
   // indicator; refs hold the in-flight controller and the last completed result.
@@ -258,8 +250,8 @@ export function OnboardingForm({
   const prefetchRef = useRef<{ key: string; competitors: DiscoveredCompetitor[] } | null>(null);
   const prefetchAbort = useRef<AbortController | null>(null);
 
-  // Onboarding mode (patch-25): quick_start (default) keeps to the essentials;
-  // "Customize more" switches to full and opens the advanced monitoring controls.
+  // Onboarding mode (patch-25): always quick_start now that the advanced monitoring
+  // step is gone; still adopted from a resumed session and reported in the funnel.
   const [mode, setMode] = useState<OnboardingMode>("quick_start");
   const modeAdopted = useRef(false);
   useEffect(() => {
@@ -268,12 +260,6 @@ export function OnboardingForm({
       setMode(session.mode);
     }
   }, [session?.mode]);
-
-  function enableFullMode() {
-    if (mode === "full") return;
-    setMode("full");
-    void updateSession({ mode: "full" });
-  }
 
   // Fire onboarding_started once the session id is known (so every funnel event
   // shares it). The session loads async; this waits for it.
@@ -291,6 +277,9 @@ export function OnboardingForm({
   const goTo = useCallback(
     (next: Screen) => {
       setError(null);
+      // The fallback offer is rendered globally (above the screen switch), so it
+      // would otherwise leak onto later screens once an analysis finally succeeds.
+      setFallbackOffer(null);
       setScreen(next);
       void api.patchOnboardingProgress(next as OnboardingStep).catch(() => {});
       // The wizard's first screen ("stage", project-stage pick) is the session's
@@ -618,19 +607,7 @@ export function OnboardingForm({
       setError("Select at least one competitor.");
       return;
     }
-    goTo("monitoring");
-  }
-
-  function toggleSource(s: SourceType) {
-    setSources((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
-  }
-
-  function selectFrequency(f: Frequency) {
-    if (!allowedFrequencies.includes(f)) {
-      setPaywall({ code: "plan_locked_frequency", plan, frequency: f });
-      return;
-    }
-    setFrequency(f);
+    void handleComplete();
   }
 
   async function handleComplete() {
@@ -751,7 +728,6 @@ export function OnboardingForm({
               busy={busy === "discover"}
               prefetchStatus={discoveryStatus}
               mode={mode}
-              onCustomize={enableFullMode}
             />
           )}
 
@@ -759,6 +735,7 @@ export function OnboardingForm({
             <DiscoverStep
               competitors={competitors}
               busy={busy === "discover"}
+              completing={busy === "complete"}
               selectedCount={selectedCount}
               maxCompetitors={maxCompetitors}
               plan={plan}
@@ -770,23 +747,6 @@ export function OnboardingForm({
               onConfirm={handleCompetitorsConfirm}
               onBack={() => goTo("profile")}
               onRefine={() => goTo("profile")}
-            />
-          )}
-
-          {screen === "monitoring" && (
-            <MonitoringStep
-              frequency={frequency}
-              setFrequency={selectFrequency}
-              allowedFrequencies={allowedFrequencies}
-              plan={plan}
-              sources={sources}
-              toggleSource={toggleSource}
-              selectedCount={selectedCount}
-              busy={busy === "complete"}
-              onConfirm={handleComplete}
-              onBack={() => goTo("discover")}
-              defaultAdvanced={mode === "full"}
-              multiProduct={mode === "full"}
             />
           )}
 
@@ -857,11 +817,11 @@ function ProgressBar({ step }: { step: number }) {
         </span>
         <span className="text-xs text-muted-foreground">
           Step <span className="font-mono text-foreground">{step}</span> of{" "}
-          <span className="font-mono">5</span>
+          <span className="font-mono">3</span>
         </span>
       </div>
       <div className="flex gap-1.5">
-        {[1, 2, 3, 4, 5].map((n) => (
+        {[1, 2, 3].map((n) => (
           <div
             key={n}
             className={cn(
@@ -1254,7 +1214,6 @@ function ProfileForm({
   busy,
   prefetchStatus,
   mode,
-  onCustomize,
 }: {
   profile: ProductProfile;
   setProfile: (p: ProductProfile) => void;
@@ -1263,7 +1222,6 @@ function ProfileForm({
   busy: boolean;
   prefetchStatus: "idle" | "running" | "completed";
   mode: OnboardingMode;
-  onCustomize: () => void;
 }) {
   return (
     <div>
@@ -1317,16 +1275,6 @@ function ProfileForm({
         </p>
       )}
 
-      {mode === "quick_start" && (
-        <button
-          type="button"
-          onClick={onCustomize}
-          className="mt-4 inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ChevronDown size={13} /> Customize more
-        </button>
-      )}
-
       <FooterNav
         onBack={onBack}
         onSubmit={onConfirm}
@@ -1344,6 +1292,7 @@ function ProfileForm({
 function DiscoverStep({
   competitors,
   busy,
+  completing,
   selectedCount,
   maxCompetitors,
   plan,
@@ -1358,6 +1307,7 @@ function DiscoverStep({
 }: {
   competitors: Selection[];
   busy: boolean;
+  completing: boolean;
   selectedCount: number;
   maxCompetitors: number;
   plan: Plan;
@@ -1475,7 +1425,9 @@ function DiscoverStep({
       <FooterNav
         onBack={onBack}
         onSubmit={onConfirm}
-        primaryLabel="Continue"
+        busy={completing}
+        busyLabel="Setting up…"
+        primaryLabel="Start monitoring"
         primaryDisabled={selectedCount === 0}
       />
     </div>
@@ -1567,133 +1519,10 @@ function OverlapBadge({ score }: { score: number }) {
   );
 }
 
-// ── Screen: monitoring (step 4) ──────────────────────────────────────────
-
-function MonitoringStep({
-  frequency,
-  setFrequency,
-  allowedFrequencies,
-  plan,
-  sources,
-  toggleSource,
-  selectedCount,
-  busy,
-  onConfirm,
-  onBack,
-  defaultAdvanced,
-  multiProduct,
-}: {
-  frequency: Frequency;
-  setFrequency: (f: Frequency) => void;
-  allowedFrequencies: ReadonlyArray<string>;
-  plan: Plan;
-  sources: SourceType[];
-  toggleSource: (s: SourceType) => void;
-  selectedCount: number;
-  busy: boolean;
-  onConfirm: () => void | Promise<void>;
-  onBack: () => void;
-  defaultAdvanced: boolean;
-  multiProduct: boolean;
-}) {
-  const [advanced, setAdvanced] = useState(defaultAdvanced);
-
-  return (
-    <div>
-      <h1 className="text-title md:text-title-lg font-semibold">
-        Monitoring preferences
-      </h1>
-      <p className="text-sm text-muted-foreground mt-3">
-        We've pre-selected sensible settings. Confirm or customize.
-      </p>
-
-      <Card className="mt-6 p-5 sm:p-6 flex flex-col gap-4">
-        <ul className="text-sm text-foreground flex flex-col gap-1.5">
-          <li>
-            <span className="text-muted-foreground">Tracked competitors: </span>
-            {selectedCount}
-          </li>
-          <li>
-            <span className="text-muted-foreground">Frequency: </span>
-            {frequency === "daily" ? "Daily" : "Weekly"}
-          </li>
-          <li>
-            <span className="text-muted-foreground">Sources: </span>
-            {sources.length > 0 ? sources.map((s) => SOURCE_DEF[s].label).join(" · ") : "—"}
-          </li>
-        </ul>
-
-        <button
-          type="button"
-          onClick={() => setAdvanced((v) => !v)}
-          className="self-start inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ChevronDown size={13} className={cn("transition-transform", advanced && "rotate-180")} />
-          Customize advanced preferences
-        </button>
-
-        {advanced && (
-          <div className="flex flex-col gap-6 pt-2 border-t border-border">
-            <section>
-              <p className="text-xs font-medium text-muted-foreground mb-3">
-                Frequency · {PLAN_LABELS[plan]} plan
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {(["daily", "weekly"] as const).map((f) => (
-                  <SegmentChoice
-                    key={f}
-                    active={frequency === f}
-                    locked={!allowedFrequencies.includes(f)}
-                    onClick={() => setFrequency(f)}
-                    title={f === "daily" ? "Daily" : "Weekly"}
-                    description={
-                      f === "daily" ? "Scrapes once a day. Recommended." : "Once a week."
-                    }
-                    variant="radio"
-                  />
-                ))}
-              </div>
-            </section>
-            <section>
-              <p className="text-xs font-medium text-muted-foreground mb-3">
-                Sources to monitor
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {(["homepage", "pricing", "blog"] as const).map((s) => (
-                  <SegmentChoice
-                    key={s}
-                    active={sources.includes(s)}
-                    onClick={() => toggleSource(s)}
-                    title={SOURCE_DEF[s].label}
-                    description={SOURCE_DEF[s].description}
-                    variant="check"
-                  />
-                ))}
-              </div>
-            </section>
-          </div>
-        )}
-      </Card>
-
-      <WhatHappensNote multiProduct={multiProduct} />
-
-      <FooterNav
-        onBack={onBack}
-        onSubmit={onConfirm}
-        busy={busy}
-        busyLabel="Setting up…"
-        primaryLabel="Start monitoring"
-      />
-    </div>
-  );
-}
-
-// A single "what happens next" heads-up before finishing, replacing the two stacked
-// cards (card-soup) with one boxless block. Covers notification timing (patch-26 —
-// quiet hours, weekend off, grouping, applied automatically + detected timezone synced
-// on the dashboard) and, in full mode, multi-SKU (patch-28 — extra products live in
-// Settings → Products). Both are skippable heads-ups, everything adjustable later.
-function WhatHappensNote({ multiProduct }: { multiProduct: boolean }) {
+// Notification-timing heads-up, shown on the success screen. Covers quiet hours,
+// weekend off, grouping (patch-26) and the detected timezone — everything is
+// applied automatically and adjustable later in Settings → Notifications.
+function NotificationsNote() {
   const [tz, setTz] = useState<string | null>(null);
   useEffect(() => {
     try {
@@ -1704,102 +1533,30 @@ function WhatHappensNote({ multiProduct }: { multiProduct: boolean }) {
   }, []);
 
   return (
-    <div className="mt-6 rounded-md border border-border bg-surface-2/40 px-5 py-4 flex flex-col gap-3">
-      <div className="flex items-start gap-2.5">
-        <Bell size={15} className="mt-0.5 text-muted-foreground shrink-0" />
-        <div>
-          <p className="text-sm text-foreground">
-            {tz ? (
-              <>
-                We&apos;ll notify you on your local time (
-                <span className="font-medium">{tz}</span>).
-              </>
-            ) : (
-              <>We&apos;ll notify you on your local time.</>
-            )}
-          </p>
-          <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-            No emails between 10pm and 8am or on weekends, and similar updates are
-            grouped. Critical alerts always come through. Adjust anytime in Settings →
-            Notifications.
-          </p>
-        </div>
+    <div className="mt-6 w-full max-w-md rounded-md border border-border bg-surface-2/40 px-5 py-4 flex items-start gap-2.5 text-left">
+      <Bell size={15} className="mt-0.5 text-muted-foreground shrink-0" />
+      <div>
+        <p className="text-sm text-foreground">
+          {tz ? (
+            <>
+              We&apos;ll notify you on your local time (
+              <span className="font-medium">{tz}</span>).
+            </>
+          ) : (
+            <>We&apos;ll notify you on your local time.</>
+          )}
+        </p>
+        <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+          No emails between 10pm and 8am or on weekends, and similar updates are
+          grouped. Critical alerts always come through. Adjust anytime in Settings →
+          Notifications.
+        </p>
       </div>
-      {multiProduct && (
-        <div className="flex items-start gap-2.5 pt-3 border-t border-border">
-          <Package size={15} className="mt-0.5 text-muted-foreground shrink-0" />
-          <div>
-            <p className="text-sm text-foreground">Setting up your main product now.</p>
-            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-              Selling several products (separate SKUs, hubs, or tiers)? Add them anytime
-              in Settings → Products — each gets its own competitors and battle cards.
-            </p>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
-function SegmentChoice({
-  active,
-  locked,
-  onClick,
-  title,
-  description,
-  variant,
-}: {
-  active: boolean;
-  locked?: boolean;
-  onClick: () => void;
-  title: string;
-  description: string;
-  variant: "radio" | "check";
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      title={locked ? "Higher plan required" : undefined}
-      className={cn(
-        "text-left p-4 rounded-md border transition-all",
-        active
-          ? "border-primary bg-primary/10 ring-1 ring-primary/40"
-          : "border-border hover:border-border-strong hover:bg-surface-2",
-        locked && "opacity-50",
-      )}
-    >
-      <div className="flex items-center gap-2">
-        {variant === "radio" ? (
-          <span
-            className={cn(
-              "w-4 h-4 rounded-full border flex items-center justify-center transition-colors",
-              active ? "bg-primary border-primary" : "bg-transparent border-border-strong",
-            )}
-          >
-            {active && <span className="w-1.5 h-1.5 rounded-full bg-primary-foreground" />}
-          </span>
-        ) : (
-          <span
-            className={cn(
-              "w-4 h-4 rounded-sm border flex items-center justify-center transition-colors",
-              active
-                ? "bg-primary border-primary text-primary-foreground"
-                : "bg-transparent border-border-strong text-transparent",
-            )}
-          >
-            <Check size={10} strokeWidth={3} />
-          </span>
-        )}
-        <span className="text-sm font-medium">{title}</span>
-      </div>
-      <p className="text-sm text-muted-foreground mt-2 leading-relaxed">{description}</p>
-    </button>
-  );
-}
-
-// ── Screen: done (step 5, first session) ─────────────────────────────────
+// ── Screen: done (step 4, first session) ─────────────────────────────────
 
 function DoneStep({
   totalCompetitors,
@@ -1887,6 +1644,8 @@ function DoneStep({
             : `Analyzing ${analyzed}/${totalCompetitors} competitors…`}
         </span>
       </div>
+
+      <NotificationsNote />
 
       <p className="text-xs text-muted-foreground mt-6">
         Your first weekly digest will be sent next Monday.

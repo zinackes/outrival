@@ -1,18 +1,29 @@
 import { Button } from "@/components/ui/button";
 
-// Static activity spectrum — an abstract "continuous monitoring" signature, read
-// as a signal envelope, not a UI screenshot. Hand-tuned heights (px); a few bars
-// run hot (the moments that became signals). Decorative, so aria-hidden.
+// The signature is an activity timeline: each bar is a week of monitoring, its
+// height the volume of changes scanned. A handful ran hot — they became signals,
+// surfaced on hover. Real product behaviour, not decoration.
 const SPECTRUM = [
   20, 34, 28, 46, 30, 58, 40, 70, 52, 90, 64, 110, 78, 140, 96, 170, 120, 150,
   88, 130, 72, 108, 60, 84, 150, 200, 160, 120, 180, 130, 96, 150, 108, 76, 120,
   64, 100, 52, 84, 44, 70, 36, 58, 30, 46, 26, 38, 22, 30, 18,
 ];
-const HOT = new Set([13, 15, 25, 26, 28]);
+// Hot weeks → the detection shown on hover. Kept to the central bars so the
+// tooltip never collides with the section's edges.
+const SIGNALS: Record<
+  number,
+  { competitor: string; category: string; detail: string }
+> = {
+  13: { competitor: "Notion", category: "hiring", detail: "opens 3 AI Research roles — first EU team" },
+  15: { competitor: "Linear", category: "pricing", detail: "Business plan $16 → $14/seat" },
+  24: { competitor: "Asana", category: "reviews", detail: "G2 score slips 4.4 → 4.2" },
+  28: { competitor: "Stripe", category: "product", detail: "launches usage-based billing" },
+  31: { competitor: "Coda", category: "funding", detail: "raises Series E, $200M" },
+};
 
 export function Hero() {
   return (
-    <section className="relative isolate overflow-hidden">
+    <section className="relative isolate flex min-h-[112vh] flex-col overflow-hidden">
       {/* One restrained glow behind the statement; no dot grid, no gradient text. */}
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
         <div
@@ -24,7 +35,8 @@ export function Hero() {
         />
       </div>
 
-      <div className="mx-auto max-w-3xl px-6 pt-16 text-center sm:pt-24">
+      {/* Statement — vertically centred in the space above the timeline. */}
+      <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center px-6 pb-10 pt-24 text-center">
         <h1 className="text-[clamp(3rem,6vw,5rem)] font-semibold leading-[1.02] tracking-[-0.02em] text-balance">
           Competitive intelligence,
           <br className="hidden sm:block" /> written by AI.
@@ -49,26 +61,36 @@ export function Hero() {
         </p>
       </div>
 
-      {/* The signature: a continuous activity spectrum dissolving at both edges. */}
-      <div
-        aria-hidden
-        className="mt-28 flex h-56 items-end justify-center gap-[5px] px-6 sm:mt-32"
-        style={{
-          maskImage:
-            "linear-gradient(to right, transparent, #000 14%, #000 86%, transparent)",
-          WebkitMaskImage:
-            "linear-gradient(to right, transparent, #000 14%, #000 86%, transparent)",
-        }}
-      >
-        {SPECTRUM.map((h, i) => (
-          <span
-            key={i}
-            className={`w-[5px] shrink-0 rounded-[3px] ${
-              HOT.has(i) ? "bg-primary opacity-90" : "bg-text-muted opacity-30"
-            }`}
-            style={{ height: `${h}px` }}
-          />
-        ))}
+      {/* The timeline, anchored to the bottom of the (taller-than-viewport) hero. */}
+      <div className="px-6 pb-1">
+        <p className="mb-5 text-center font-mono text-xs text-text-subtle">
+          A year of monitoring · each bar a week · the bright ones became signals
+        </p>
+        <div aria-hidden className="flex h-64 items-end justify-center gap-[5px]">
+          {SPECTRUM.map((h, i) => {
+            const sig = SIGNALS[i];
+            return (
+              <div
+                key={i}
+                style={{ height: `${h}px` }}
+                className={`group relative w-[5px] shrink-0 rounded-[3px] transition-opacity duration-150 ${
+                  sig
+                    ? "cursor-default bg-primary opacity-90 hover:opacity-100"
+                    : "bg-text-muted opacity-25 hover:opacity-60"
+                }`}
+              >
+                {sig && (
+                  <span className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-3 -translate-x-1/2 whitespace-nowrap rounded-md border border-border bg-surface px-3 py-1.5 text-xs opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100">
+                    <span className="text-text-subtle">{sig.category}</span>
+                    {" · "}
+                    <span className="font-semibold">{sig.competitor}</span>{" "}
+                    <span className="text-text-muted">{sig.detail}</span>
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </section>
   );

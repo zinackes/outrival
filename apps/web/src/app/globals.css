@@ -418,3 +418,24 @@
     }
   }
 }
+
+/* Landing (brand register) runs a deeper canvas + slightly darker surfaces than
+   the dashboard, so the alternating bands and the cards read as distinct planes
+   without the cards looking light/poppy against the deep canvas. Scoped to the
+   landing wrapper in page.tsx via .landing-canvas — the product keeps the
+   standard tokens. The compound selector (.dark.landing-canvas) wins over .dark
+   regardless of source order. */
+.dark.landing-canvas {
+  --background: oklch(0.135 0.008 260);
+  --background-2: oklch(0.17 0.009 260);
+  --surface: oklch(0.18 0.01 260);
+  /* Softer hairline than the dashboard's --border (0.31): on the landing's deep
+     canvas a 0.31 edge reads as a drawn box. 0.255 sits close to the card so the
+     edge is felt, not shouted (the Linear/Vercel low-contrast border). */
+  --border: oklch(0.255 0.012 260);
+  /* Landing headings run on Zodiak (a modern editorial serif) instead of the
+     dashboard's Bricolage — a serif+sans contrast that reads "intelligence
+     briefing", not the default AI dev-tool grotesque. h1–h5 pick this up via
+     the base rule's var(--font-display). */
+  --font-display: var(--font-zodiak), ui-serif, Georgia, serif;
+}

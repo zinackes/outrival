@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
 import { Bricolage_Grotesque, Geist, Fira_Sans } from "next/font/google";
+import localFont from "next/font/local";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
@@ -34,6 +35,18 @@ const geistMono = Fira_Sans({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
   variable: "--font-geist-mono",
+  display: "swap",
+});
+
+// Landing display (brand register) — Zodiak, a modern editorial serif. Self-hosted
+// (Fontshare ITF Free Font License). Scoped to the landing via --font-display in
+// globals.css (.landing-canvas); the product keeps Bricolage for headings.
+const zodiak = localFont({
+  src: [
+    { path: "./fonts/zodiak-400.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/zodiak-700.woff2", weight: "700", style: "normal" },
+  ],
+  variable: "--font-zodiak",
   display: "swap",
 });
 
@@ -115,7 +128,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${bricolage.variable} ${geistSans.variable} ${geistMono.variable}`}
+      className={`${bricolage.variable} ${geistSans.variable} ${geistMono.variable} ${zodiak.variable}`}
       suppressHydrationWarning
     >
       <body>

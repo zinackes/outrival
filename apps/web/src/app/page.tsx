@@ -25,7 +25,7 @@ export const metadata: Metadata = {
 
 export default function HomePage() {
   return (
-    <div className="dark min-h-screen bg-background font-sans text-foreground antialiased">
+    <div className="dark landing-canvas min-h-screen bg-background font-sans text-foreground antialiased">
       <JsonLd />
       <Nav />
       <main id="main-content" tabIndex={-1}>

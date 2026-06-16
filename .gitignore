@@ -17,3 +17,4 @@ storage/
 .claude/agents/impeccable-manual-edit-applier.md
 # Impeccable-generated design "registers" doc (regenerated; not committed here)
 PRODUCT.md
+.design-review/

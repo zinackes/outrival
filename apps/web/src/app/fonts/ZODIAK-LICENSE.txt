@@ -1,0 +1,7 @@
+Zodiak — Indian Type Foundry (Fontshare)
+
+Self-hosted woff2 subset (weights 400, 700) used for landing-page headings only
+(brand register); the product UI keeps Bricolage Grotesque.
+
+License: ITF Free Font License (free for personal and commercial use).
+Source:  https://www.fontshare.com/fonts/zodiak

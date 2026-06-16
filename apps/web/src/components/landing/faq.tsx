@@ -57,22 +57,18 @@ export function FAQ() {
           <Accordion
             type="single"
             collapsible
-            className="rounded-md border border-border bg-card text-card-foreground"
+            className="border-t border-border-strong"
           >
-          {FAQS.map((f, i) => (
-            <AccordionItem
-              key={i}
-              value={`item-${i}`}
-              className="px-5 last:border-b-0"
-            >
-              <AccordionTrigger className="text-base hover:no-underline">
-                {f.q}
-              </AccordionTrigger>
-              <AccordionContent className="text-muted-foreground leading-relaxed">
-                {f.a}
-              </AccordionContent>
-            </AccordionItem>
-          ))}
+            {FAQS.map((f, i) => (
+              <AccordionItem key={i} value={`item-${i}`}>
+                <AccordionTrigger className="text-base hover:no-underline">
+                  {f.q}
+                </AccordionTrigger>
+                <AccordionContent className="leading-relaxed text-text-muted">
+                  {f.a}
+                </AccordionContent>
+              </AccordionItem>
+            ))}
           </Accordion>
         </div>
       </div>

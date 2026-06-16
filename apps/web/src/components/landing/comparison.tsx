@@ -74,15 +74,15 @@ export function Comparison() {
           </p>
         </div>
 
-        <div className="mt-10 overflow-x-auto">
-          <div className="min-w-[640px] overflow-hidden rounded-xl border border-border">
+        <div className="mt-12 overflow-x-auto">
+          <div className="min-w-[640px] border-t border-border-strong">
             <div
-              className={`${ROW} border-b border-border bg-background-2 font-mono text-xs uppercase tracking-wider text-text-subtle`}
+              className={`${ROW} border-b border-border font-mono text-xs uppercase tracking-wider text-text-subtle`}
             >
               <div className="px-4 py-3" />
               <div className="px-4 py-3">Manual</div>
               <div className="px-4 py-3">Legacy CI</div>
-              <div className="bg-primary/5 px-4 py-3 text-primary">
+              <div className="bg-primary/[0.04] px-4 py-3 text-primary">
                 Outrival
               </div>
             </div>
@@ -98,7 +98,7 @@ export function Comparison() {
                 <div className={`px-4 py-3 ${TONE[r.legacy.tone]}`}>
                   {r.legacy.text}
                 </div>
-                <div className="bg-primary/5 px-4 py-3 text-positive">
+                <div className="bg-primary/[0.04] px-4 py-3 text-positive">
                   {r.us}
                 </div>
               </div>

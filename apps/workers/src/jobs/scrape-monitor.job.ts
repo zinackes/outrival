@@ -381,6 +381,17 @@ export const scrapeMonitorJob = task({
       orderBy: desc(snapshots.scrapedAt),
     });
 
+    // Self-heal the content summary: a homepage already captured but still missing
+    // an aiSummary means a prior refresh-competitor-summary failed (AI outage,
+    // transient) — and nothing else ever retries it, so the competitor sits in the
+    // onboarding "analyzing" state forever (aiSummary is the readiness proxy).
+    // Re-trigger here, before the dedup early-returns below, so an unchanged
+    // homepage (304 / same hash) still gets a retry on each scheduled scrape.
+    // Fire-and-forget; the job overwrites in place, so it's safe to repeat.
+    if (monitor.sourceType === "homepage" && lastSnapshot && !competitor.aiSummary) {
+      await tasks.trigger("refresh-competitor-summary", { competitorId: competitor.id });
+    }
+
     // Conditional pre-flight: for server-rendered sources, a cheap GET with the
     // stored validators returns 304 when nothing changed — skip the full scrape
     // (and never load crawlee/Chromium). Only trusted when the last snapshot

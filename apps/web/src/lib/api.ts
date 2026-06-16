@@ -2011,10 +2011,13 @@ export const api = {
       body: JSON.stringify(patch),
     }),
   rescanMyProduct: (categories?: MyProductRescanCategory[]) =>
-    request<{ ok: true; monitors: number }>("/api/my-product/rescan", {
-      method: "POST",
-      body: categories?.length ? JSON.stringify({ categories }) : undefined,
-    }),
+    request<{ ok: true; monitors: number; limitReached?: boolean; dailyLimit?: number }>(
+      "/api/my-product/rescan",
+      {
+        method: "POST",
+        body: categories?.length ? JSON.stringify({ categories }) : undefined,
+      },
+    ),
   setMyProductSite: (url: string) =>
     request<{ ok: true }>("/api/my-product/site", {
       method: "POST",

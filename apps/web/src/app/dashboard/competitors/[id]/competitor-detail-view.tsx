@@ -82,7 +82,7 @@ import { CompetitorTechStack } from "@/components/outrival/competitor-tech-stack
 import { Eyebrow } from "@/components/outrival/eyebrow";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
 import { ListError } from "@/components/outrival/list-error";
-import { toastApiError } from "@/lib/error-helpers";
+import { toastApiError, toastRescanLimit } from "@/lib/error-helpers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -400,8 +400,11 @@ export function CompetitorDetailView({
     if (idle.length === 0) return;
     setRunningAll(true);
     try {
+      // Each re-scan counts against the daily cap; stop at the first limit hit so
+      // we don't fire one 429 toast per remaining source.
       for (const m of idle) {
-        await runMonitor(m.id);
+        const result = await runMonitor(m.id);
+        if (result === "limit") break;
       }
     } finally {
       setRunningAll(false);
@@ -623,11 +626,14 @@ export function CompetitorDetailView({
     }
   }
 
-  async function runMonitor(monitorId: string, list?: Monitor[]) {
+  async function runMonitor(
+    monitorId: string,
+    list?: Monitor[],
+  ): Promise<"ok" | "limit" | "error"> {
     const available = list ?? data?.monitors;
-    if (!available) return;
+    if (!available) return "error";
     const monitor = available.find((m) => m.id === monitorId);
-    if (!monitor) return;
+    if (!monitor) return "error";
     scrapingStartRef.current.set(monitorId, {
       startedAt: Date.now(),
       lastRunAt: monitor.lastRunAt,
@@ -641,6 +647,7 @@ export function CompetitorDetailView({
       toast.info(`Scrape started · ${monitor.sourceType}`, {
         description: "Polling for completion…",
       });
+      return "ok";
     } catch (e) {
       scrapingStartRef.current.delete(monitorId);
       setScrapingIds((prev) => {
@@ -648,7 +655,10 @@ export function CompetitorDetailView({
         next.delete(monitorId);
         return next;
       });
+      // A re-scan past the daily cap (patch-27) → friendly limit toast + upgrade nudge.
+      if (toastRescanLimit(e)) return "limit";
       toastApiError(e, { title: "Couldn't start the scrape" });
+      return "error";
     }
   }
 

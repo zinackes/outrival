@@ -16,7 +16,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
-import { toastApiError } from "@/lib/error-helpers";
+import { toastApiError, toastRescanLimit } from "@/lib/error-helpers";
 import { formatDistanceToNow } from "date-fns";
 import {
   api,
@@ -671,11 +671,25 @@ export function MyProductView({
   async function rescan(categories?: MyProductRescanCategory[]) {
     setRescanning(true);
     try {
-      await api.rescanMyProduct(categories);
-      toast.success("Re-scan started", { description: "Scanning your sources now…" });
+      const res = await api.rescanMyProduct(categories);
+      if (res.limitReached) {
+        // Some sources ran, then the daily re-scan cap (patch-27) was hit.
+        toast.warning("Re-scan partially started — daily re-scan limit reached.", {
+          description: `Scanning ${res.monitors} source${res.monitors === 1 ? "" : "s"}; the rest resume on the next automatic check. The limit resets tomorrow.`,
+          action: {
+            label: "View plans",
+            onClick: () => {
+              window.location.href = "/dashboard/settings/billing";
+            },
+          },
+        });
+      } else {
+        toast.success("Re-scan started", { description: "Scanning your sources now…" });
+      }
       await load(); // pick up scanning=true so the progress poll kicks in
     } catch (e) {
-      toastApiError(e, { title: "Re-scan failed" });
+      // The cap was already fully spent → friendly limit toast + upgrade nudge.
+      if (!toastRescanLimit(e)) toastApiError(e, { title: "Re-scan failed" });
     } finally {
       setRescanning(false);
     }

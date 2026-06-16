@@ -15,6 +15,7 @@ let testDb: TestDb;
 let closeDb: () => Promise<void>;
 let A: { orgId: string; userId: string; email: string };
 let B: { orgId: string; userId: string; email: string };
+let C: { orgId: string; userId: string; email: string };
 
 afterAll(() => closeDb());
 
@@ -30,15 +31,21 @@ beforeAll(async () => {
 
   A = await seedOrg(testDb, { plan: "free" });
   B = await seedOrg(testDb, { plan: "free" });
+  // Pro org (cap 20) so the /run metering tests don't collide with A/B's spent free cap.
+  C = await seedOrg(testDb, { plan: "pro" });
   await testDb.insert(competitors).values([
     { id: "c-a", orgId: A.orgId, name: "Rival A" },
     { id: "c-b", orgId: B.orgId, name: "Rival B" },
     { id: "c-del", orgId: A.orgId, name: "Gone", deletedAt: new Date() },
+    { id: "c-c", orgId: C.orgId, name: "Rival C" },
   ]);
   await testDb.insert(monitors).values([
     { id: "m-a", competitorId: "c-a", sourceType: "homepage" },
     { id: "m-b", competitorId: "c-b", sourceType: "homepage" },
     { id: "m-del", competitorId: "c-del", sourceType: "homepage" },
+    // m-c-new was never scraped (first scrape, unmetered); m-c-ran already ran (re-scan, metered).
+    { id: "m-c-new", competitorId: "c-c", sourceType: "homepage" },
+    { id: "m-c-ran", competitorId: "c-c", sourceType: "pricing", lastRunAt: new Date(Date.now() - 60_000) },
   ]);
 });
 
@@ -47,6 +54,9 @@ const rescan = (u: { userId: string; email: string }, monitorId: string) =>
     `/api/monitors/${monitorId}/force-rescan`,
     asUser(u.userId, u.email, { method: "POST" }),
   );
+
+const run = (u: { userId: string; email: string }, monitorId: string) =>
+  app.request(`/api/monitors/${monitorId}/run`, asUser(u.userId, u.email, { method: "POST" }));
 
 describe("force-rescan ownership gate (short-circuits before trigger)", () => {
   test("unknown monitor id → 404", async () => {
@@ -96,5 +106,31 @@ describe("force-rescan per-tier daily cap", () => {
     const res = await rescan(B, "m-b");
     expect(res.status).toBe(429);
     expect((await res.json()).error.code).toBe("rescan_limit_reached");
+  });
+});
+
+// patch-27 — POST /:id/run now meters genuine re-scans through the same cap + log as
+// /force-rescan, but exempts a monitor's first scrape (just enabled, never run).
+describe("run metering (counts re-scans, exempts first scrape)", () => {
+  test("first scrape (never run) → 200, no forced_rescan_log row", async () => {
+    const res = await run(C, "m-c-new");
+    expect(res.status).toBe(200);
+    const logs = await testDb
+      .select()
+      .from(forcedRescanLog)
+      .where(eq(forcedRescanLog.monitorId, "m-c-new"));
+    expect(logs).toHaveLength(0);
+  });
+
+  test("re-scan (already run) → 200, logs the run with its task id", async () => {
+    const res = await run(C, "m-c-ran");
+    expect(res.status).toBe(200);
+    const logs = await testDb
+      .select()
+      .from(forcedRescanLog)
+      .where(eq(forcedRescanLog.monitorId, "m-c-ran"));
+    expect(logs).toHaveLength(1);
+    expect(logs[0]?.userId).toBe(C.userId);
+    expect(logs[0]?.taskId).toBe("run_test");
   });
 });

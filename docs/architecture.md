@@ -199,7 +199,11 @@ changes                + relevance_score (real, nullable — max des changes sig
 forced_rescan_log      id, user_id, org_id, monitor_id, task_id, triggered_at,
                        result_captured_at, had_new_signal — patch-27, audit/analytics des
                        re-scans forcés user. Limite/jour/tier comptée ici (par user) ;
-                       had_new_signal stampé par le worker (change trouvé ou non)
+                       had_new_signal stampé par le worker (change trouvé ou non).
+                       Alimenté par TOUT re-scrape manuel (helpers communs
+                       lib/plan.ts) : /monitors/:id/force-rescan, /monitors/:id/run
+                       (re-scans seulement — le 1er scrape d'une source juste
+                       activée est exempté) et /my-product/rescan
 parser_extractors      id, domain (host www-stripped), source_type, spec (jsonb —
                        ExtractorSpec : sélecteurs CSS + transforms whitelistés),
                        version, heal_count, consecutive_failures, last_validated_at,

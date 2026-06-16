@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { and, count, eq, gte, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { monitors, competitors, changes, signals, alerts, forcedRescanLog } from "@outrival/db";
 import { tasks } from "@trigger.dev/sdk/v3";
 import {
@@ -14,7 +14,12 @@ import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
-import { getOrgPlan, isFrequencyAllowed } from "../lib/plan";
+import {
+  getOrgPlan,
+  isFrequencyAllowed,
+  countUserForcedRescansToday,
+  rescanLimitBody,
+} from "../lib/plan";
 
 type Variables = { user: { id: string } };
 
@@ -184,10 +189,37 @@ monitorsRouter.post("/:id/run", aiIntensiveRateLimit, async (c) => {
   });
   if (!competitor) return c.json({ error: "Forbidden" }, 403);
 
+  // patch-27 — a genuine re-scan (the source has already run at least once) draws
+  // from the per-tier forced-rescan daily cap, exactly like /force-rescan, and is
+  // logged so it shows up in usage. A monitor's FIRST scrape (just enabled/switched,
+  // never run) is the initial fetch, not a re-scan, so it stays unmetered — otherwise
+  // adding a source on a low tier would be blocked by the cap on the spot.
+  const isRescan = monitor.lastRunAt !== null;
+  let logId: string | undefined;
+  if (isRescan) {
+    const plan = await getOrgPlan(orgId);
+    const limit = forcedRescansPerDay(plan);
+    const usageToday = await countUserForcedRescansToday(user.id);
+    if (usageToday >= limit) return c.json(rescanLimitBody(plan, limit), 429);
+    const [log] = await db
+      .insert(forcedRescanLog)
+      .values({ userId: user.id, orgId, monitorId: monitor.id })
+      .returning({ id: forcedRescanLog.id });
+    logId = log!.id;
+  }
+
   const handle = await tasks.trigger("scrape-monitor", {
     monitorId: monitor.id,
     force: true,
+    // When metered, pass the log id so the worker stamps the outcome (useful/wasted ratio).
+    ...(logId
+      ? { triggeredBy: "user_forced_rescan" as const, userId: user.id, forcedRescanLogId: logId }
+      : {}),
   });
+
+  if (logId) {
+    await db.update(forcedRescanLog).set({ taskId: handle.id }).where(eq(forcedRescanLog.id, logId));
+  }
 
   // Mark the monitor as scraping so the in-progress state survives a page
   // refresh (UI derives "running" from scrapeStartedAt > lastRunAt). Clear any
@@ -200,11 +232,11 @@ monitorsRouter.post("/:id/run", aiIntensiveRateLimit, async (c) => {
   return c.json({ runId: handle.id, monitorId: monitor.id });
 });
 
-// Patch-27 — user-forced re-scan from the stale-data "Re-scan" affordance.
-// Distinct from /:id/run: it enforces a per-tier daily limit (counted per user)
-// and records a forced_rescan_log row so the worker can stamp the outcome and the
-// admin dashboard can measure the useful/wasted ratio. The scrape itself reuses
-// `force: true`, which already bypasses the idempotence window and the hash dedup.
+// Patch-27 — user-forced re-scan from the stale-data "Re-scan" affordance. Like
+// /:id/run it enforces the per-tier daily cap and logs a forced_rescan_log row
+// (counted per user); unlike /run it ALWAYS meters (it's never a first scrape) and
+// returns the log id so the client can poll the outcome for its contextual toast.
+// The scrape reuses `force: true`, which bypasses the idempotence window + hash dedup.
 monitorsRouter.post("/:id/force-rescan", async (c) => {
   const id = c.req.param("id");
   const user = c.get("user");
@@ -224,26 +256,9 @@ monitorsRouter.post("/:id/force-rescan", async (c) => {
 
   const plan = await getOrgPlan(orgId);
   const limit = forcedRescansPerDay(plan);
-  const dayStart = new Date();
-  dayStart.setUTCHours(0, 0, 0, 0);
-  const [usage] = await db
-    .select({ value: count() })
-    .from(forcedRescanLog)
-    .where(
-      and(eq(forcedRescanLog.userId, user.id), gte(forcedRescanLog.triggeredAt, dayStart)),
-    );
-  const usageToday = usage?.value ?? 0;
+  const usageToday = await countUserForcedRescansToday(user.id);
   if (usageToday >= limit) {
-    return c.json(
-      {
-        error: {
-          code: "rescan_limit_reached",
-          message: `You've reached your limit of ${limit} forced re-scan${limit > 1 ? "s" : ""} today (${plan} plan). It resets tomorrow.`,
-          upgradeHint: plan !== "business",
-        },
-      },
-      429,
-    );
+    return c.json(rescanLimitBody(plan, limit), 429);
   }
 
   // Log first so the worker can stamp resultCapturedAt/hadNewSignal via the id.

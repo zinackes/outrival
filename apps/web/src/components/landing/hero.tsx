@@ -23,7 +23,7 @@ const SIGNALS: Record<
 
 export function Hero() {
   return (
-    <section className="relative isolate flex min-h-[112vh] flex-col overflow-hidden">
+    <section className="relative isolate flex min-h-screen flex-col overflow-hidden">
       {/* One restrained glow behind the statement; no dot grid, no gradient text. */}
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
         <div
@@ -66,7 +66,7 @@ export function Hero() {
         <p className="mb-5 text-center font-mono text-xs text-text-subtle">
           A year of monitoring · each bar a week · the bright ones became signals
         </p>
-        <div aria-hidden className="flex h-64 items-end justify-center gap-[5px]">
+        <div aria-hidden className="flex h-56 items-end justify-center gap-[5px]">
           {SPECTRUM.map((h, i) => {
             const sig = SIGNALS[i];
             return (
@@ -75,17 +75,22 @@ export function Hero() {
                 style={{ height: `${h}px` }}
                 className={`group relative w-[5px] shrink-0 rounded-[3px] transition-opacity duration-150 ${
                   sig
-                    ? "cursor-default bg-primary opacity-90 hover:opacity-100"
+                    ? "z-20 bg-primary opacity-90 hover:opacity-100"
                     : "bg-text-muted opacity-25 hover:opacity-60"
                 }`}
               >
                 {sig && (
-                  <span className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-3 -translate-x-1/2 whitespace-nowrap rounded-md border border-border bg-surface px-3 py-1.5 text-xs opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100">
-                    <span className="text-text-subtle">{sig.category}</span>
-                    {" · "}
-                    <span className="font-semibold">{sig.competitor}</span>{" "}
-                    <span className="text-text-muted">{sig.detail}</span>
-                  </span>
+                  <>
+                    {/* Hit area wider than the 5px bar so the signal is easy to
+                        hover without enlarging the visual. */}
+                    <span className="absolute inset-y-0 -left-2.5 -right-2.5 cursor-default" />
+                    <span className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-3 -translate-x-1/2 whitespace-nowrap rounded-md border border-border bg-surface px-3 py-1.5 text-xs opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100">
+                      <span className="text-text-subtle">{sig.category}</span>
+                      {" · "}
+                      <span className="font-semibold">{sig.competitor}</span>{" "}
+                      <span className="text-text-muted">{sig.detail}</span>
+                    </span>
+                  </>
                 )}
               </div>
             );

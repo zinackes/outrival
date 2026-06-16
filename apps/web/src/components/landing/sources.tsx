@@ -4,7 +4,6 @@ import {
   Briefcase,
   Cpu,
   FileText,
-  GitBranch,
   Globe,
   MessageCircle,
   Newspaper,
@@ -13,41 +12,52 @@ import {
   Tag,
   type LucideIcon,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
-function Row({
-  icon,
-  label,
-  meta,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  meta: string;
-}) {
-  return (
-    <div className="flex items-center gap-3 border-b border-border py-2.5 text-sm last:border-b-0">
-      <span className="text-text-subtle">{icon}</span>
-      <span className="font-medium">{label}</span>
-      <span className="ml-auto text-right font-mono text-xs text-text-subtle">
-        {meta}
-      </span>
-    </div>
-  );
-}
+type Source = { icon: LucideIcon; label: string; meta: string };
 
-function CardHeader({ title, desc }: { title: string; desc: string }) {
-  return (
-    <div>
-      <h3 className="text-lg font-semibold">{title}</h3>
-      <p className="mt-2 text-sm leading-relaxed text-text-muted">{desc}</p>
-    </div>
-  );
-}
-
-const cardClass =
-  "flex flex-col gap-5 rounded-xl border border-border bg-surface p-6";
+const FAMILIES: {
+  title: string;
+  stat: string;
+  desc: string;
+  sources: Source[];
+}[] = [
+  {
+    title: "The public product",
+    stat: "≈60% of signals",
+    desc: "Everything they show their own prospects — the densest layer.",
+    sources: [
+      { icon: Globe, label: "Homepage", meta: "positioning" },
+      { icon: Tag, label: "Pricing page", meta: "plans · prices" },
+      { icon: Rss, label: "Blog", meta: "editorial" },
+      { icon: FileText, label: "Changelog", meta: "releases" },
+      { icon: Activity, label: "Status page", meta: "uptime" },
+    ],
+  },
+  {
+    title: "The users",
+    stat: "4 platforms",
+    desc: "What their actual customers say — score, volume, sentiment, sub-ratings.",
+    sources: [
+      { icon: Star, label: "G2 · Capterra", meta: "sentiment" },
+      { icon: Star, label: "Trustpilot · Gartner", meta: "verified" },
+      { icon: Star, label: "App Store · Play", meta: "rating" },
+      { icon: MessageCircle, label: "Reddit", meta: "mentions" },
+    ],
+  },
+  {
+    title: "Hiring & momentum",
+    stat: "weeks of lead",
+    desc: "The earliest indicators of strategic moves — often before the announcement.",
+    sources: [
+      { icon: Briefcase, label: "Job postings", meta: "roles" },
+      { icon: Cpu, label: "Tech stack", meta: "payments · CRM" },
+      { icon: Newspaper, label: "News", meta: "funding · M&A" },
+    ],
+  },
+];
 
 export function Sources() {
-  const RowIcon = (Icon: LucideIcon) => <Icon size={14} />;
   return (
     <section className="py-20 sm:py-28" id="sources">
       <div className="mx-auto w-full max-w-6xl px-6">
@@ -55,130 +65,69 @@ export function Sources() {
           <h2 className="text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">
             Everything a competitor publishes.
           </h2>
-          <p className="mt-4 max-w-2xl text-text-muted leading-relaxed">
-            Every public surface a competitor has, grouped into families. Each
-            one is scraped by a stealth browser that escalates through a
+          <p className="mt-5 max-w-2xl leading-relaxed text-text-muted">
+            Every public surface a competitor has, grouped into families. Each is
+            scraped by a stealth browser that escalates through a
             datacenter-to-residential proxy cascade only when a site blocks us,
-            the snapshot is stored on R2, and the content is diffed against the
-            previous state.
+            stored on R2, and diffed against its previous state.
           </p>
         </div>
 
-        <div className="mt-12 grid grid-cols-1 gap-4 lg:grid-cols-12">
-          <div className={`${cardClass} lg:col-span-7`}>
-            <CardHeader
-              title="The public product"
-              desc="Everything your competitor shows their own prospects. The densest layer — typically the bulk of all surfaced signals."
-            />
-            <div className="border-t border-border">
-              <Row
-                icon={RowIcon(Globe)}
-                label="Homepage"
-                meta="headline · positioning · CTA"
-              />
-              <Row
-                icon={RowIcon(Tag)}
-                label="Pricing page"
-                meta="plans · prices · billing"
-              />
-              <Row icon={RowIcon(Rss)} label="Blog" meta="editorial posts" />
-              <Row
-                icon={RowIcon(FileText)}
-                label="Changelog"
-                meta="releases · product updates"
-              />
-              <Row
-                icon={RowIcon(Activity)}
-                label="Status page"
-                meta="incidents · uptime"
-              />
+        <div className="mt-14 grid grid-cols-1 gap-x-12 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
+          {FAMILIES.map((fam) => (
+            <div key={fam.title}>
+              <div className="flex items-baseline justify-between gap-3 border-t border-border-strong pt-4">
+                <h3 className="text-xl font-semibold tracking-tight">
+                  {fam.title}
+                </h3>
+                <span className="shrink-0 text-xs font-medium text-primary">
+                  {fam.stat}
+                </span>
+              </div>
+              <p className="mt-2.5 text-sm leading-relaxed text-text-muted">
+                {fam.desc}
+              </p>
+              <ul className="mt-4">
+                {fam.sources.map((s) => (
+                  <li
+                    key={s.label}
+                    className="group -mx-2 flex items-center gap-3 rounded-md px-2 py-2 transition-colors hover:bg-surface"
+                  >
+                    <s.icon
+                      size={15}
+                      className="shrink-0 text-text-subtle transition-colors group-hover:text-primary"
+                    />
+                    <span className="text-sm font-medium">{s.label}</span>
+                    <span className="ml-auto text-xs text-text-subtle">
+                      {s.meta}
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </div>
-          </div>
+          ))}
+        </div>
 
-          <div className={`${cardClass} lg:col-span-5`}>
-            <CardHeader
-              title="The users"
-              desc="What your competitor's actual customers say across review sites — score, volume, sentiment and sub-ratings, not just the star."
-            />
-            <div className="border-t border-border">
-              <Row
-                icon={RowIcon(Star)}
-                label="G2 · Capterra"
-                meta="score · volume · sentiment"
-              />
-              <Row
-                icon={RowIcon(Star)}
-                label="Trustpilot · TrustRadius · Gartner"
-                meta="verified reviews"
-              />
-              <Row
-                icon={RowIcon(Star)}
-                label="App Store · Play Store"
-                meta="rating · changelog"
-              />
-              <Row
-                icon={RowIcon(MessageCircle)}
-                label="Reddit"
-                meta="mentions · sentiment"
-              />
-            </div>
+        {/* Your own product — the closing moment. */}
+        <div className="mt-12 flex flex-wrap items-center justify-between gap-6 border-t border-primary/70 pt-6">
+          <div className="max-w-2xl">
+            <span className="font-mono text-meta uppercase tracking-wider text-primary">
+              Every plan
+            </span>
+            <h3 className="mt-2 text-xl font-semibold tracking-tight">
+              Your own product, side by side
+            </h3>
+            <p className="mt-2 text-sm leading-relaxed text-text-muted">
+              Point the same pipeline at your live site, your pricing, even a
+              GitHub repo while you&apos;re still building. Your changes get
+              classified too, so the digest reads your moves against theirs.
+            </p>
           </div>
-
-          <div className={`${cardClass} lg:col-span-5`}>
-            <CardHeader
-              title="Hiring & momentum"
-              desc="The earliest indicators of strategic moves — often weeks before the product announcement."
-            />
-            <div className="border-t border-border">
-              <Row
-                icon={RowIcon(Briefcase)}
-                label="Job postings"
-                meta="roles · departments · locations"
-              />
-              <Row
-                icon={RowIcon(Cpu)}
-                label="Tech stack"
-                meta="payments · analytics · CRM"
-              />
-              <Row
-                icon={RowIcon(Newspaper)}
-                label="News"
-                meta="funding · M&A · leadership"
-              />
-            </div>
-          </div>
-
-          <div className={`${cardClass} bg-background-2 lg:col-span-7`}>
-            <div className="flex flex-col gap-3">
-              <span className="inline-flex w-fit rounded-md border border-border px-2 py-0.5 font-mono text-meta text-text-subtle">
-                Every plan
-              </span>
-              <CardHeader
-                title="Your own product, side by side"
-                desc="Point the same pipeline at your live site, your pricing, even a GitHub repo while you're still building. Your changes get classified too, so the digest reads your moves against theirs."
-              />
-            </div>
-            <div className="mt-2 border-t border-border">
-              <Row
-                icon={RowIcon(Globe)}
-                label="Your live site & pricing"
-                meta="profile · positioning"
-              />
-              <Row
-                icon={RowIcon(GitBranch)}
-                label="Your repo (pre-launch)"
-                meta="releases · commits"
-              />
-            </div>
-            <div className="mt-auto border-t border-border pt-4">
-              <a
-                href="#cta"
-                className="inline-flex items-center gap-1.5 font-mono text-dense text-primary transition-colors hover:text-accent-bright"
-              >
-                Add your product free <ArrowRight size={12} />
-              </a>
-            </div>
-          </div>
+          <Button asChild size="lg">
+            <a href="#cta">
+              Add your product free <ArrowRight size={15} />
+            </a>
+          </Button>
         </div>
       </div>
     </section>

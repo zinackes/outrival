@@ -1,47 +1,44 @@
-function SevPill({
-  sev,
-  label,
-}: {
-  sev: "critical" | "high" | "medium" | "low";
-  label: string;
-}) {
-  const dot = {
-    critical: "bg-critical",
-    high: "bg-high",
-    medium: "bg-medium",
-    low: "bg-low",
-  }[sev];
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 font-mono text-meta text-text-muted">
-      <span className={`size-1.5 rounded-full ${dot}`} /> {label}
-    </span>
-  );
-}
+type Sev = "critical" | "high" | "medium" | "low";
 
-function CatMini({
-  cat,
-  sev,
-  sevLabel,
-  title,
-  eg,
-}: {
-  cat: string;
-  sev: "critical" | "high" | "medium" | "low";
-  sevLabel: string;
-  title: string;
-  eg: string;
-}) {
-  return (
-    <div className="flex flex-col rounded-xl border border-border bg-surface p-5">
-      <div className="flex items-center justify-between">
-        <span className="font-mono text-xs text-text-subtle">{cat}</span>
-        <SevPill sev={sev} label={sevLabel} />
-      </div>
-      <div className="mt-3 font-semibold">{title}</div>
-      <div className="mt-1 text-sm leading-relaxed text-text-muted">{eg}</div>
-    </div>
-  );
-}
+const SEV_DOT: Record<Sev, string> = {
+  critical: "bg-critical",
+  high: "bg-high",
+  medium: "bg-medium",
+  low: "bg-low",
+};
+
+const CATEGORIES: { name: string; sev: Sev; desc: string }[] = [
+  {
+    name: "Pricing",
+    sev: "critical",
+    desc: "Plan added or removed, price change, billing model shift, new period, feature gating.",
+  },
+  {
+    name: "Product",
+    sev: "high",
+    desc: "Major releases, UX overhauls, strategic feature launches.",
+  },
+  {
+    name: "Hiring",
+    sev: "high",
+    desc: "First roles in a brand-new department, geographic expansion.",
+  },
+  {
+    name: "Reviews",
+    sev: "medium",
+    desc: "Drop in G2 / Capterra score, negative sentiment at scale.",
+  },
+  {
+    name: "Content",
+    sev: "medium",
+    desc: "Editorial post signalling repositioning, a public manifesto.",
+  },
+  {
+    name: "Funding",
+    sev: "low",
+    desc: "Funding rounds, M&A and leadership moves, via news & press.",
+  },
+];
 
 export function Categories() {
   return (
@@ -53,77 +50,40 @@ export function Categories() {
             <br />
             Four severities.
           </h2>
-          <p className="text-text-muted leading-relaxed">
+          <p className="leading-relaxed text-text-muted">
             Every signal carries a category and a severity. You filter on what
             matters for your role — pricing for the CFO, hiring for talent,
             reviews for product.
           </p>
         </div>
 
-        <div className="mt-12 grid grid-cols-1 gap-4 lg:grid-cols-12">
-          <div className="flex flex-col rounded-xl border border-border bg-surface p-6 lg:col-span-5">
-            <div className="inline-flex items-center gap-2 font-mono text-xs text-text-muted">
-              <span className="size-1.5 rounded-full bg-critical" /> Critical
-              example
+        <div className="mt-14 grid grid-cols-1 gap-x-12 gap-y-10 sm:grid-cols-2 lg:grid-cols-3">
+          {CATEGORIES.map((c) => (
+            <div key={c.name} className="border-t border-border-strong pt-4">
+              <div className="flex items-baseline justify-between gap-3">
+                <h3 className="flex items-center gap-2.5 text-xl font-semibold tracking-tight">
+                  <span className={`size-2 rounded-full ${SEV_DOT[c.sev]}`} />
+                  {c.name}
+                </h3>
+                <span className="text-xs text-text-subtle">{c.sev}</span>
+              </div>
+              <p className="mt-2.5 text-sm leading-relaxed text-text-muted">
+                {c.desc}
+              </p>
             </div>
-            <h3 className="mt-3 text-xl font-semibold">Pricing</h3>
-            <p className="mt-2 text-sm leading-relaxed text-text-muted">
-              Plan added or removed · price change · billing model shift (per
-              seat → flat) · new billing period · feature gating.
-            </p>
-            <div className="mt-4 rounded-md bg-background-2 p-4 text-sm leading-relaxed text-text-muted">
-              <span className="font-medium text-foreground">Read:</span> Linear
-              drops Business from $16 → $14/seat and removes the 250 member cap.
-              Business gets repositioned as the entry tier — your Pro plan loses
-              $2 of competitive headroom.
-            </div>
-          </div>
+          ))}
+        </div>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:col-span-7">
-            <CatMini
-              cat="product"
-              sev="high"
-              sevLabel="high"
-              title="Product"
-              eg="Major releases, UX overhauls, strategic feature launches."
-            />
-            <CatMini
-              cat="hiring"
-              sev="high"
-              sevLabel="high"
-              title="Hiring"
-              eg="First roles in a brand-new department, geographic expansion."
-            />
-            <CatMini
-              cat="reviews"
-              sev="medium"
-              sevLabel="medium"
-              title="Reviews"
-              eg="Drop in G2/Capterra score, negative sentiment at scale."
-            />
-            <CatMini
-              cat="content"
-              sev="medium"
-              sevLabel="medium"
-              title="Content"
-              eg="Editorial post signalling repositioning, public manifesto."
-            />
-          </div>
-
-          <div className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-5 sm:flex-row sm:items-center sm:gap-6 lg:col-span-12">
-            <div className="flex flex-col items-start gap-1.5">
-              <span className="font-mono text-xs text-text-subtle">funding</span>
-              <SevPill sev="low" label="low" />
-            </div>
-            <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-              <span className="font-semibold">Funding</span>
-              <span className="text-sm text-text-muted">
-                Funding rounds, M&amp;A and leadership moves detected via Google
-                News &amp; press. Strategic context but rarely actionable
-                short-term — hence the default low severity.
-              </span>
-            </div>
-          </div>
+        {/* What one signal actually reads like — the closing moment. */}
+        <div className="mt-12 border-t border-primary/70 pt-6">
+          <span className="font-mono text-meta uppercase tracking-wider text-primary">
+            A signal reads
+          </span>
+          <p className="mt-3 max-w-3xl text-content leading-relaxed">
+            <span className="font-semibold">Linear</span> drops Business from $16
+            → $14/seat and removes the 250-member cap. Business gets repositioned
+            as the entry tier — your Pro plan loses $2 of competitive headroom.
+          </p>
         </div>
       </div>
     </section>

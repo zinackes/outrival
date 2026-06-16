@@ -100,7 +100,7 @@ export function Pricing() {
           {PLANS.map((p) => (
             <div
               key={p.name}
-              className={`relative flex flex-col rounded-xl border bg-surface-2 p-6 ${
+              className={`relative flex flex-col rounded-xl border bg-surface p-6 ${
                 p.featured
                   ? "border-primary/60 ring-1 ring-primary/30"
                   : "border-border"

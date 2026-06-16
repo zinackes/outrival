@@ -59,7 +59,7 @@ const FAMILIES: {
 
 export function Sources() {
   return (
-    <section className="py-20 sm:py-28" id="sources">
+    <section className="py-16 sm:py-24" id="sources">
       <div className="mx-auto w-full max-w-6xl px-6">
         <div className="max-w-3xl">
           <h2 className="text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">

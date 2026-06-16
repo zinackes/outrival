@@ -80,7 +80,7 @@ const PLANS: Plan[] = [
 export function Pricing() {
   return (
     <section
-      className="border-y border-border bg-background-2 py-20 sm:py-28"
+      className="border-y border-border bg-background-2 py-16 sm:py-24"
       id="pricing"
     >
       <div className="mx-auto w-full max-w-6xl px-6">
@@ -100,7 +100,7 @@ export function Pricing() {
           {PLANS.map((p) => (
             <div
               key={p.name}
-              className={`relative flex flex-col rounded-xl border bg-surface p-6 ${
+              className={`relative flex flex-col rounded-xl border bg-surface-2 p-6 ${
                 p.featured
                   ? "border-primary/60 ring-1 ring-primary/30"
                   : "border-border"

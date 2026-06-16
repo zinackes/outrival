@@ -23,7 +23,7 @@ const SIGNALS: Record<
 
 export function Hero() {
   return (
-    <section className="relative isolate flex min-h-screen flex-col overflow-hidden">
+    <section className="relative isolate overflow-hidden pb-12">
       {/* One restrained glow behind the statement; no dot grid, no gradient text. */}
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
         <div
@@ -35,8 +35,9 @@ export function Hero() {
         />
       </div>
 
-      {/* Statement — vertically centred in the space above the timeline. */}
-      <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center px-6 pb-10 pt-24 text-center">
+      {/* Statement, then the timeline right below it — one composition, sized to
+          the content so the signature stays in view instead of half off-screen. */}
+      <div className="mx-auto w-full max-w-3xl px-6 pt-24 text-center sm:pt-28">
         <h1 className="text-[clamp(3rem,6vw,5rem)] font-semibold leading-[1.02] tracking-[-0.02em] text-balance">
           Competitive intelligence,
           <br className="hidden sm:block" /> written by AI.
@@ -61,8 +62,8 @@ export function Hero() {
         </p>
       </div>
 
-      {/* The timeline, anchored to the bottom of the (taller-than-viewport) hero. */}
-      <div className="px-6 pb-1">
+      {/* The timeline, sitting just below the statement. */}
+      <div className="mt-16 px-6">
         <p className="mb-5 text-center font-mono text-xs text-text-subtle">
           A year of monitoring · each bar a week · the bright ones became signals
         </p>

@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
-import { Bricolage_Grotesque, Geist, Fira_Sans } from "next/font/google";
+import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
 import localFont from "next/font/local";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -28,12 +28,11 @@ const geistSans = Geist({
   display: "swap",
 });
 
-// Data voice (numbers, IDs, timestamps, metrics) — testing Fira Sans behind the
-// existing --font-geist-mono variable. tabular-nums + slashed-zero stay enforced
-// in globals.css.
-const geistMono = Fira_Sans({
+// Data voice (numbers, IDs, timestamps, metrics) — Geist Mono, true monospace so
+// the machine-truth layer reads as data, not prose. tabular-nums + slashed-zero
+// stay enforced in globals.css.
+const geistMono = Geist_Mono({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
   variable: "--font-geist-mono",
   display: "swap",
 });

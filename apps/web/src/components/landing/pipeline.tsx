@@ -25,7 +25,7 @@ function DiffLine({
 export function Pipeline() {
   return (
     <section
-      className="border-y border-border bg-background-2 py-20 sm:py-28"
+      className="border-y border-border bg-background-2 py-16 sm:py-24"
       id="pipeline"
     >
       <div className="mx-auto w-full max-w-6xl px-6">

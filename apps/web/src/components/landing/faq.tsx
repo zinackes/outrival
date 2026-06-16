@@ -36,7 +36,7 @@ const FAQS: Faq[] = [
 
 export function FAQ() {
   return (
-    <section className="py-20 sm:py-28" id="faq">
+    <section className="py-16 sm:py-24" id="faq">
       <div className="mx-auto w-full max-w-6xl px-6">
         <div className="grid gap-x-12 gap-y-8 lg:grid-cols-[1fr_1.6fr]">
           <div>

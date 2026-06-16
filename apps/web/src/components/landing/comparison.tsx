@@ -59,7 +59,7 @@ const ROW = "grid grid-cols-[1.6fr_1fr_1fr_1fr]";
 
 export function Comparison() {
   return (
-    <section className="py-20 sm:py-28" id="compare">
+    <section className="py-16 sm:py-24" id="compare">
       <div className="mx-auto w-full max-w-6xl px-6">
         <div className="grid gap-x-10 gap-y-4 lg:grid-cols-2 lg:items-end">
           <h2 className="text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">

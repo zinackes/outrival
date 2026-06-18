@@ -268,3 +268,30 @@ export async function getUsageSnapshot(orgId: string): Promise<UsageSnapshot> {
 
   return { plan, items };
 }
+
+// ---- Forced re-scan daily cap (patch-27) — shared by every user-initiated re-scrape
+// Authoritative count = forced_rescan_log rows for the user since UTC midnight.
+// Used by /monitors/:id/force-rescan, /monitors/:id/run (genuine re-scans only — a
+// monitor's first scrape after enable/switch is the initial fetch, not a re-scan, so
+// it stays unmetered) and /my-product/rescan, so every manual re-scrape draws from the
+// same per-tier budget surfaced on the usage page. See docs/tier-limits.md.
+
+/** Count of one user's forced re-scans since UTC midnight (the cap window). */
+export async function countUserForcedRescansToday(userId: string): Promise<number> {
+  const [row] = await db
+    .select({ value: count() })
+    .from(forcedRescanLog)
+    .where(and(eq(forcedRescanLog.userId, userId), gte(forcedRescanLog.triggeredAt, utcDayStart())));
+  return row?.value ?? 0;
+}
+
+/** Structured 429 body for a hit forced-rescan cap — the web shows an upgrade nudge. */
+export function rescanLimitBody(plan: Plan, limit: number) {
+  return {
+    error: {
+      code: "rescan_limit_reached",
+      message: `You've reached your limit of ${limit} forced re-scan${limit > 1 ? "s" : ""} today (${plan} plan). It resets tomorrow.`,
+      upgradeHint: plan !== "business",
+    },
+  };
+}

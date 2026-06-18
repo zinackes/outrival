@@ -8,14 +8,16 @@ import {
   organizations,
   jobPostings,
   selfProductChanges,
+  forcedRescanLog,
   type SelfProfile,
   type SelfProfileField,
 } from "@outrival/db";
-import { normalizeHostname, validatePublicUrl } from "@outrival/shared";
+import { normalizeHostname, validatePublicUrl, forcedRescansPerDay } from "@outrival/shared";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
+import { getOrgPlan, countUserForcedRescansToday, rescanLimitBody } from "../lib/plan";
 import { ensurePrimaryProductForSelf } from "../lib/products";
 import { analyticsQuery, sql } from "../lib/analytics-safe";
 
@@ -418,6 +420,12 @@ const RescanSchema = z.object({
     .optional(),
 });
 
+// Re-scanning your own product fans out across its sources (homepage, pricing, jobs…),
+// so the free cap of 1 forced re-scan/day is too tight to refresh a multi-source product
+// in one go. Give the My Product re-scan a slightly higher daily ceiling on FREE only —
+// paid tiers (5/20/100) already have ample room and keep their normal forcedRescansPerDay.
+const FREE_MY_PRODUCT_RESCAN_LIMIT = 3;
+
 // POST /api/my-product/rescan — force a fresh scrape now. No body (or no categories) →
 // every self monitor. With categories → only the monitors feeding the picked cards.
 myProductRouter.post("/rescan", aiIntensiveRateLimit, async (c) => {
@@ -445,15 +453,58 @@ myProductRouter.post("/rescan", aiIntensiveRateLimit, async (c) => {
     ? selfMonitors.filter((m) => wantedSources.has(m.sourceType))
     : selfMonitors;
 
+  // patch-27 — re-scanning your own product is a manual re-scrape, so each already-run
+  // source draws from the per-tier forced-rescan daily cap (logged → shows up in usage).
+  // A source's first scrape (never run) is the initial fetch, not a re-scan, so it stays
+  // unmetered. We meter up to the remaining budget and skip the rest rather than failing
+  // the whole action — a partial refresh + nudge beats a hard wall.
+  const plan = await getOrgPlan(orgId);
+  const limit =
+    plan === "free"
+      ? Math.max(forcedRescansPerDay(plan), FREE_MY_PRODUCT_RESCAN_LIMIT)
+      : forcedRescansPerDay(plan);
+  let usageToday = await countUserForcedRescansToday(user.id);
+
+  const scrapedIds: string[] = [];
+  let limitReached = false;
   for (const m of toScrape) {
+    const isRescan = m.lastRunAt !== null;
+    let logId: string | undefined;
+    if (isRescan) {
+      if (usageToday >= limit) {
+        limitReached = true;
+        break;
+      }
+      const [log] = await db
+        .insert(forcedRescanLog)
+        .values({ userId: user.id, orgId, monitorId: m.id })
+        .returning({ id: forcedRescanLog.id });
+      logId = log!.id;
+      usageToday++;
+    }
     try {
-      await tasks.trigger("scrape-monitor", { monitorId: m.id, force: true });
+      const handle = await tasks.trigger("scrape-monitor", {
+        monitorId: m.id,
+        force: true,
+        ...(logId
+          ? { triggeredBy: "user_forced_rescan" as const, userId: user.id, forcedRescanLogId: logId }
+          : {}),
+      });
+      if (logId) {
+        await db.update(forcedRescanLog).set({ taskId: handle.id }).where(eq(forcedRescanLog.id, logId));
+      }
+      scrapedIds.push(m.id);
     } catch (e) {
       console.error("Failed to trigger self rescan", { monitorId: m.id, error: String(e) });
     }
   }
-  await markScanning(toScrape.map((m) => m.id));
-  return c.json({ ok: true, monitors: toScrape.length });
+  await markScanning(scrapedIds);
+
+  // Nothing ran because the cap was already spent → surface the same 429 as elsewhere.
+  if (limitReached && scrapedIds.length === 0) {
+    return c.json(rescanLimitBody(plan, limit), 429);
+  }
+  return c.json({ ok: true, monitors: scrapedIds.length, limitReached, dailyLimit: limit });
 });
 
 // GET /api/my-product/changes?status=pending — detected changes awaiting review.

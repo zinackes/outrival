@@ -73,6 +73,33 @@ export function errorConfig(err: unknown): ErrorConfig {
 // raw error. Callers may override the title to keep their context (e.g. "Couldn't
 // enable that source") while the clean description + retry action come from the
 // known error code.
+// patch-27 — the forced-rescan daily cap returns a 429 whose body is a NESTED error
+// object ({ error: { code, message, upgradeHint } }), so ApiError.code (set only for
+// string codes) is empty. Every re-scan entry point (force-rescan, per-source Run,
+// My Product re-scan) surfaces it the same way: a warning toast + an upgrade nudge.
+// Returns true when it handled the error so callers can skip the generic toast.
+export function toastRescanLimit(err: unknown, toastId?: string | number): boolean {
+  if (!(err instanceof ApiError) || err.status !== 429) return false;
+  const detail = (err.data.error ?? {}) as {
+    code?: string;
+    message?: string;
+    upgradeHint?: boolean;
+  };
+  if (detail.code !== "rescan_limit_reached") return false;
+  toast.warning(detail.message ?? "Daily re-scan limit reached. It resets tomorrow.", {
+    id: toastId,
+    action: detail.upgradeHint
+      ? {
+          label: "View plans",
+          onClick: () => {
+            window.location.href = "/dashboard/settings/billing";
+          },
+        }
+      : undefined,
+  });
+  return true;
+}
+
 export function toastApiError(
   err: unknown,
   opts?: { title?: string; onRetry?: () => void },

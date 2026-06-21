@@ -1,11 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
-import {
-  Bricolage_Grotesque,
-  Geist,
-  Geist_Mono,
-  Space_Grotesk,
-} from "next/font/google";
+import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
 import localFont from "next/font/local";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -17,10 +12,17 @@ import "./globals.css";
 
 // Space Grotesk — product display/headings (h1–h3) and large numerals. The
 // "Precision Instrument" display voice: a technical grotesque, distinct from a
-// neutral UI sans. Self-hosted by next/font (zero CLS). Wired to --font-display /
-// --font-syne in globals.css; the landing keeps its own register (Zodiak).
-const spaceGrotesk = Space_Grotesk({
-  subsets: ["latin"],
+// neutral UI sans. Self-hosted from committed woff2 (OFL) rather than
+// next/font/google so the production Docker build needs no build-time font
+// fetch (zero CLS either way). Wired to --font-display / --font-syne in
+// globals.css; the landing keeps its own register (Zodiak).
+const spaceGrotesk = localFont({
+  src: [
+    { path: "./fonts/space-grotesk-400.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/space-grotesk-500.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/space-grotesk-600.woff2", weight: "600", style: "normal" },
+    { path: "./fonts/space-grotesk-700.woff2", weight: "700", style: "normal" },
+  ],
   variable: "--font-space-grotesk",
   display: "swap",
 });

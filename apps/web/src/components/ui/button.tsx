@@ -69,8 +69,9 @@ function Button({
   }) {
   const Comp = asChild ? Slot.Root : "button"
 
-  // Slot forwards to a single child, so the spinner only renders for real
-  // buttons; asChild callers stay responsible for their own loading state.
+  // Slot (asChild) calls React.Children.only — it must receive a SINGLE child,
+  // so the spinner only renders for real buttons. asChild callers stay
+  // responsible for their own loading state.
   return (
     <Comp
       data-slot="button"
@@ -81,10 +82,16 @@ function Button({
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
     >
-      {!asChild && loading ? (
-        <Loader2 className="size-4 animate-spin" aria-hidden />
-      ) : null}
-      {children}
+      {asChild ? (
+        children
+      ) : (
+        <>
+          {loading ? (
+            <Loader2 className="size-4 animate-spin" aria-hidden />
+          ) : null}
+          {children}
+        </>
+      )}
     </Comp>
   )
 }

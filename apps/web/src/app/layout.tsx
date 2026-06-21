@@ -1,6 +1,11 @@
 import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
-import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
+import {
+  Bricolage_Grotesque,
+  Geist,
+  Geist_Mono,
+  Space_Grotesk,
+} from "next/font/google";
 import localFont from "next/font/local";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -10,8 +15,19 @@ import { PostHogPageView } from "@/lib/posthog/pageview";
 import { ConsentBanner } from "@/components/outrival/consent-banner";
 import "./globals.css";
 
-// Bricolage Grotesque (display/headings). Load the optical-size + width axes so
-// font-optical-sizing:auto and condensed titles work (globals.css uses both).
+// Space Grotesk — product display/headings (h1–h3) and large numerals. The
+// "Precision Instrument" display voice: a technical grotesque, distinct from a
+// neutral UI sans. Self-hosted by next/font (zero CLS). Wired to --font-display /
+// --font-syne in globals.css; the landing keeps its own register (Zodiak).
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  variable: "--font-space-grotesk",
+  display: "swap",
+});
+
+// Bricolage Grotesque — legacy display alias kept for the few call sites still
+// referencing it directly (and the landing register). The product display token
+// now points at Space Grotesk.
 const bricolage = Bricolage_Grotesque({
   subsets: ["latin"],
   variable: "--font-bricolage",
@@ -127,7 +143,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${bricolage.variable} ${geistSans.variable} ${geistMono.variable} ${zodiak.variable}`}
+      className={`${spaceGrotesk.variable} ${bricolage.variable} ${geistSans.variable} ${geistMono.variable} ${zodiak.variable}`}
       suppressHydrationWarning
     >
       <body>

@@ -123,8 +123,8 @@
      the card surface. Faint diagonal elevation, no decorative wash. */
   --gradient-card: linear-gradient(135deg, #14181f 0%, var(--surface) 100%);
   --gradient-card-strong: linear-gradient(315deg, #171b22 0%, var(--surface) 100%);
-  --border: rgba(255, 255, 255, 0.08); /* hairline 1px */
-  --border-strong: rgba(255, 255, 255, 0.14); /* reinforced edge */
+  --border: rgba(255, 255, 255, 0.12); /* hairline 1px — lifted from .08 so card/table edges read on near-black */
+  --border-strong: rgba(255, 255, 255, 0.18); /* reinforced edge (cards, secondary buttons, sidebar rail) */
 
   /* Skeleton loaders — base lifts a clear step above the card so blocks read at
      rest; the sheen brightens without a harsh flash on the dark canvas. */
@@ -173,12 +173,13 @@
   --chart-5: oklch(0.76 0.15 319);
   --chart-6: oklch(0.8 0.15 355);
 
-  /* Sidebar — a step above the near-black page. */
-  --sidebar: #0c0e13;
+  /* Sidebar — lifted to the card surface so the rail reads as a distinct plane
+     above the near-black canvas, with a reinforced right edge. */
+  --sidebar: #101319;
   --sidebar-foreground: var(--foreground);
-  --sidebar-accent: #171b22; /* hover/active row */
+  --sidebar-accent: #1e232b; /* hover/active row — a step above the rail */
   --sidebar-accent-foreground: var(--foreground);
-  --sidebar-border: var(--border);
+  --sidebar-border: var(--border-strong);
   --sidebar-ring: var(--accent);
 }
 

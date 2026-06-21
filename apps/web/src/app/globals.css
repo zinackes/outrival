@@ -25,6 +25,10 @@
   --border: oklch(0.9 0.005 260);
   --border-strong: oklch(0.85 0.007 260);
 
+  /* Field (inputs) — matches the page in light (was bg-transparent), so light
+     inputs are unchanged; dark overrides to a deeper #0C0E13 (design-system §4). */
+  --field: var(--background);
+
   /* Skeleton loaders — a neutral resting base + a slightly lighter sheen that
      sweeps across it. Base sits a clear step below the canvas so blocks read
      even at rest (the old animate-pulse faded them toward the page). */
@@ -91,62 +95,67 @@
 
   /* Motion durations (design-system §7) — for inline styles / Motion configs.
      Easings live in @theme so the ease-* utilities adopt the system curves. */
-  --duration-fast: 160ms;
+  --duration-fast: 150ms;
   --duration-standard: 220ms;
   --duration-overlay: 320ms;
 
-  /* Display/heading font (grotesque), referenced inline via font-[var(--font-display)]
-     and by the h1–h5 base rule below. Body type runs on Inter (--font-sans). */
-  --font-display: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
-  --font-syne: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
+  /* Display/heading font — Space Grotesk (Precision Instrument display voice),
+     referenced inline via font-[var(--font-display)] and by the h1–h5 base rule
+     below. Body type runs on Geist (--font-sans). The landing overrides this to
+     Zodiak in .landing-canvas. */
+  --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
+  --font-syne: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
 }
 
 .dark {
   color-scheme: dark;
 
-  /* Base surfaces — near-black tinted (hue 260, never pure #000). Depth by
-     lightness steps + hairline borders, not shadows (design-system §dark). */
-  --bg: oklch(0.16 0.008 260);
-  --background: oklch(0.16 0.008 260);
-  --background-2: oklch(0.19 0.01 260);
-  --surface: oklch(0.2 0.011 260);
-  --surface-2: oklch(0.24 0.013 260);
-  --surface-3: oklch(0.28 0.015 260); /* elevated hover surface — must differ from popover (surface-2) */
-  /* Stat-card gradient — top-left lifts ~0.03L above the surface, bottom-right
-     settles back to it. Faint diagonal elevation on the near-black canvas. */
-  --gradient-card: linear-gradient(135deg, oklch(0.23 0.012 260) 0%, var(--surface) 100%);
-  /* Stronger variant — product content cards lift the top-left ~0.06L for a
-     clearly readable diagonal on the larger surface. */
-  --gradient-card-strong: linear-gradient(315deg, oklch(0.245 0.013 260) 0%, var(--surface) 100%);
-  --border: oklch(0.31 0.014 260);       /* hairline — lighter than the card AND the page */
-  --border-strong: oklch(0.37 0.016 260);
+  /* Precision Instrument — dark-first. Near-black tinted base; depth comes from
+     hairline borders + lightened surfaces, never #000 and never heavy shadows.
+     Exact tokens from the validated design system (Notion source of truth). */
+  --bg: #08090c;
+  --background: #08090c; /* E0 — near-black canvas */
+  --background-2: #0c0e13; /* raised page band / field base, between bg and surface */
+  --surface: #101319; /* E1 — cards, panels */
+  --surface-2: #171b22; /* E2 — raised surface */
+  --surface-3: #1e232b; /* highest surface — hover / popover-elevated */
+  /* Stat-card gradient — top-left lifts toward surface-2, bottom-right settles to
+     the card surface. Faint diagonal elevation, no decorative wash. */
+  --gradient-card: linear-gradient(135deg, #14181f 0%, var(--surface) 100%);
+  --gradient-card-strong: linear-gradient(315deg, #171b22 0%, var(--surface) 100%);
+  --border: rgba(255, 255, 255, 0.08); /* hairline 1px */
+  --border-strong: rgba(255, 255, 255, 0.14); /* reinforced edge */
 
-  /* Skeleton loaders — base lifts a clear step above the card/canvas so blocks
-     read at rest; the sheen brightens without a harsh flash on the dark canvas. */
-  --skeleton-base: oklch(0.27 0.013 260);
-  --skeleton-sheen: oklch(0.34 0.015 260);
+  /* Skeleton loaders — base lifts a clear step above the card so blocks read at
+     rest; the sheen brightens without a harsh flash on the dark canvas. */
+  --skeleton-base: #1e232b;
+  --skeleton-sheen: #2a313b;
 
   /* Text — off-white (never pure #fff; avoids halation on near-black) */
-  --foreground: oklch(0.96 0.004 260);
-  --muted: oklch(0.72 0.018 260);
-  --muted-2: oklch(0.6 0.016 260);
-  --muted-3: oklch(0.54 0.015 260);
-  --muted-foreground: oklch(0.72 0.018 260);
+  --foreground: #f2f5f8; /* primary text */
+  --muted: #9aa2ad; /* secondary text */
+  --muted-2: #7c828c;
+  --muted-3: #5a626e; /* faint — tertiary text / labels */
+  --muted-foreground: #9aa2ad;
 
-  /* Brand accent — cyan re-lightened ~10% vs light to hold perceived weight on
-     the dark canvas (design-system §dark accents). */
-  --accent: oklch(0.74 0.15 200);
-  --accent-dim: oklch(0.68 0.16 200);
-  --accent-bright: oklch(0.82 0.13 200);
-  --accent-foreground: oklch(0.17 0.02 230);
-  --link: oklch(0.8 0.12 200);
+  /* Accent — Iris Indigo. Rationed to CTA / links / focus / selection / signal
+     dot. Never a flat background fill, never a decorative gradient. */
+  --accent: #6d5eff;
+  --accent-dim: #5f51e6; /* active state (pairs with translateY 1px) */
+  --accent-bright: #7d6fff; /* hover */
+  --accent-foreground: #f2f5f8; /* label on an Iris fill (reads white) */
+  --link: #9a8cff; /* links / accent text on dark surfaces */
 
-  /* Severity scale (distinct from brand cyan) */
-  --critical: #ff4d4d;
-  --high: #ff9f43;
-  --medium: #ffc542;
-  --low: #8a8a94;
+  /* Severity — the only semantic color scale. Drives severity badges + signal
+     markers; never used as a "good/bad" judgement on data values. */
+  --critical: #ff5c72;
+  --high: #ff8a5b;
+  --medium: #ffc247;
+  --low: #5b9cff;
   --positive: #34d399;
+
+  /* Field (inputs) — a touch darker than the cards (design-system §4 Champs). */
+  --field: #0c0e13;
 
   /* Category scale — brightened for contrast on the dark canvas (light parity). */
   --cat-pricing: oklch(0.76 0.1 175);
@@ -164,10 +173,10 @@
   --chart-5: oklch(0.76 0.15 319);
   --chart-6: oklch(0.8 0.15 355);
 
-  /* Sidebar */
-  --sidebar: oklch(0.18 0.01 260); /* raised vs the page (0.16) */
+  /* Sidebar — a step above the near-black page. */
+  --sidebar: #0c0e13;
   --sidebar-foreground: var(--foreground);
-  --sidebar-accent: oklch(0.24 0.013 260);
+  --sidebar-accent: #171b22; /* hover/active row */
   --sidebar-accent-foreground: var(--foreground);
   --sidebar-border: var(--border);
   --sidebar-ring: var(--accent);
@@ -184,10 +193,16 @@
   --color-popover: var(--surface-2);
   --color-popover-foreground: var(--foreground);
 
-  /* primary = brand cyan (CTA buttons, progress, selection) */
+  /* primary = the rationed accent (CTA buttons, progress, selection) — Iris in
+     dark, cyan in light. Hover/active steps + link token exposed as utilities. */
   --color-primary: var(--accent);
   --color-primary-foreground: var(--accent-foreground);
   --color-accent-bright: var(--accent-bright);
+  --color-accent-dim: var(--accent-dim);
+  --color-link: var(--link);
+
+  /* Input surface — bg-field (deeper than cards in dark). */
+  --color-field: var(--field);
 
   --color-secondary: var(--surface-2);
   --color-secondary-foreground: var(--foreground);
@@ -263,21 +278,29 @@
   --radius-lg: 0.75rem;  /* 12px — cards */
   --radius-xl: 1rem;     /* 16px — modals, dialogs */
 
-  /* Type scale — Major Third (1.25) on a 16px base. xs/sm/base/lg/xl keep the
-     Tailwind defaults (12/14/16/18/20 = caption/label/body/lead/h3). Display
-     sizes are overridden so negative tracking + tight leading ride the scale. */
-  --text-2xl: 1.5625rem; /* 25px — h2 */
-  --text-2xl--line-height: 1.15;
-  --text-2xl--letter-spacing: -0.015em;
-  --text-3xl: 1.9375rem; /* 31px — h1 */
+  /* Elevations (design-system §3) — depth from soft directional shadows + an Iris
+     halo on modals, never heavy ambient shadows. E1 is the hairline border alone.
+     Exposed as shadow-e2 / shadow-e3 utilities. */
+  --shadow-e2: 0 8px 24px -14px rgba(0, 0, 0, 0.7);
+  --shadow-e3: 0 22px 55px -20px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(109, 94, 255, 0.12);
+
+  /* Type scale — Precision Instrument (design-system §2). Space Grotesk display
+     roles ride negative tracking + tight leading: H2 26 / H1 34 / Display 52.
+     xs/sm/base/lg/xl keep the Tailwind defaults (12/14/16/18/20); H3 (19) lives
+     on text-lg/text-xl at call sites — not overridden, to avoid cramping the
+     widely-used text-xl line-height. */
+  --text-2xl: 1.625rem; /* 26px — H2 */
+  --text-2xl--line-height: 1.18;
+  --text-2xl--letter-spacing: -0.01em;
+  --text-3xl: 2.125rem; /* 34px — H1 */
   --text-3xl--line-height: 1.1;
-  --text-3xl--letter-spacing: -0.02em;
-  --text-4xl: 2.4375rem; /* 39px — display sm */
+  --text-3xl--letter-spacing: -0.015em;
+  --text-4xl: 2.4375rem; /* 39px — display sm (landing intermediate) */
   --text-4xl--line-height: 1.05;
   --text-4xl--letter-spacing: -0.02em;
-  --text-5xl: 3.0625rem; /* 49px */
-  --text-5xl--line-height: 1.02;
-  --text-5xl--letter-spacing: -0.021em;
+  --text-5xl: 3.25rem; /* 52px — Display */
+  --text-5xl--line-height: 1.06;
+  --text-5xl--letter-spacing: -0.02em;
   --text-6xl: 3.8125rem; /* 61px */
   --text-6xl--line-height: 1;
   --text-6xl--letter-spacing: -0.022em;
@@ -304,21 +327,25 @@
   --text-content--line-height: 1.5;
   --text-lead: 1.0625rem;     /* 17px — signal insight lead */
   --text-lead--line-height: 1.35;
-  --text-title: 1.375rem;     /* 22px — page title (mobile) */
-  --text-title--line-height: 1.15;
-  --text-title--letter-spacing: -0.02em;
-  --text-title-lg: 1.625rem;  /* 26px — page title (≥ md) */
+  --text-title: 1.625rem;     /* 26px — page title (mobile) = H2 */
+  --text-title--line-height: 1.18;
+  --text-title--letter-spacing: -0.01em;
+  --text-title-lg: 2.125rem;  /* 34px — page title (≥ md) = H1 */
   --text-title-lg--line-height: 1.1;
-  --text-title-lg--letter-spacing: -0.02em;
-  --text-stat: 2rem;          /* 32px — KPI numerals (mono) */
+  --text-title-lg--letter-spacing: -0.015em;
+  --text-display: 3.25rem;    /* 52px — Display (hero metric / marquee numerals) */
+  --text-display--line-height: 1.06;
+  --text-display--letter-spacing: -0.02em;
+  --text-stat: 2.75rem;       /* 44px — Metric / KPI numerals (mono, tabular) */
   --text-stat--line-height: 1;
-  --text-stat--letter-spacing: -0.02em;
+  --text-stat--letter-spacing: -0.015em;
 
-  /* Motion — entrances ease-out, exits ease-in (design-system §7). Overrides the
+  /* Motion (design-system §3) — single system curve, ease-out
+     cubic-bezier(.2,.7,.3,1). Exits reuse a sharper ease-in. Overrides the
      built-in ease-* utilities so they adopt the system curves. */
-  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-out: cubic-bezier(0.2, 0.7, 0.3, 1);
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
-  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-in-out: cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 
 /* Elevated stat-card surface — gradient swaps with the theme via --gradient-card. */
@@ -356,17 +383,18 @@
     -webkit-font-smoothing: antialiased;
   }
 
-  /* Real headings keep the grotesque; everything else runs on the body sans.
-     Inline display usages (font-[var(--font-display)]) still work as before.
-     Weight is capped < 700 — hierarchy comes from size, not heavy strokes. */
+  /* Real headings run on the display grotesque (Space Grotesk); everything else
+     on the body sans. Inline display usages (font-[var(--font-display)]) still
+     work. Default weight 600 (H2/H3); Display/H1 sites add font-bold. Per-role
+     line-height + tracking ride the text-* tokens applied at the call site. */
   h1,
   h2,
   h3,
   h4,
   h5 {
     font-family: var(--font-display);
-    font-optical-sizing: auto; /* exploits Bricolage's opsz axis */
-    font-weight: 560;
+    font-optical-sizing: auto;
+    font-weight: 600;
     letter-spacing: -0.015em;
     line-height: 1.15;
   }
@@ -379,6 +407,20 @@
   samp,
   pre {
     font-variant-numeric: tabular-nums slashed-zero;
+  }
+
+  /* Honor reduced-motion globally (design-system §3): cut animations and
+     transitions to a hair so the system curves never play for vestibular users.
+     Component-level rules (e.g. .skeleton) still opt out individually too. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 

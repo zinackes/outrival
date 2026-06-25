@@ -29,6 +29,8 @@ import {
   Settings2,
   Lock,
   LayoutGrid,
+  ChevronLeft,
+  ChevronRight,
   Cpu,
   Pencil,
   Pause,
@@ -111,6 +113,7 @@ import {
   type CompetitorOverview,
 } from "@/lib/api";
 import { emitCompetitorsChanged } from "@/lib/competitor-events";
+import { useSetAskContext } from "@/components/dashboard/ask-context";
 import {
   POLL_TIMEOUT_MS,
   isServerScraping,
@@ -244,6 +247,57 @@ export function CompetitorDetailView({
     >
   >(new Map());
   const seededRef = useRef(false);
+
+  // Prev/next pager across the competitor roster (Linear "n/total" + chevrons):
+  // fetch the ordered roster once; the pager walks it so an analyst flips through
+  // competitors without bouncing back to the list. Order = the list's default.
+  const [roster, setRoster] = useState<{ id: string; name: string }[] | null>(null);
+  useEffect(() => {
+    let active = true;
+    api
+      .listCompetitors()
+      .then((r) => active && setRoster(r.competitors.map((c) => ({ id: c.id, name: c.name }))))
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+  const rosterIdx = roster ? roster.findIndex((c) => c.id === id) : -1;
+  const prevId = rosterIdx > 0 ? roster?.[rosterIdx - 1]?.id ?? null : null;
+  const nextId =
+    roster && rosterIdx >= 0 && rosterIdx < roster.length - 1
+      ? roster[rosterIdx + 1]?.id ?? null
+      : null;
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
+      const t = e.target as HTMLElement | null;
+      if (
+        t &&
+        (t.tagName === "INPUT" ||
+          t.tagName === "TEXTAREA" ||
+          t.tagName === "SELECT" ||
+          t.isContentEditable)
+      )
+        return;
+      // Let an open dialog / popover keep the keyboard.
+      if (
+        document.querySelector(
+          '[role="dialog"][data-state="open"], [data-radix-popper-content-wrapper]',
+        )
+      )
+        return;
+      if (e.key === "[" && prevId) {
+        e.preventDefault();
+        router.push(`/dashboard/competitors/${prevId}`);
+      } else if (e.key === "]" && nextId) {
+        e.preventDefault();
+        router.push(`/dashboard/competitors/${nextId}`);
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [prevId, nextId, router]);
 
   async function refresh() {
     try {
@@ -698,6 +752,9 @@ export function CompetitorDetailView({
     void runMonitor(monitorId);
   }
 
+  // Scope the Ask dock to this competitor while its page is open.
+  useSetAskContext(data ? { kind: "competitor", id, name: data.competitor.name } : null);
+
   if (error && !data) {
     return (
       <div className="mt-10">
@@ -718,6 +775,10 @@ export function CompetitorDetailView({
         <Header
           competitor={competitor}
           lastRunMs={lastRunMs}
+          index={rosterIdx}
+          total={roster?.length ?? 0}
+          onPrev={prevId ? () => router.push(`/dashboard/competitors/${prevId}`) : undefined}
+          onNext={nextId ? () => router.push(`/dashboard/competitors/${nextId}`) : undefined}
           onDelete={() => setShowDelete(true)}
           onEditSave={saveCompetitorDetails}
           onToggleMonitoring={toggleMonitoringPaused}
@@ -942,6 +1003,10 @@ export function CompetitorDetailView({
 function Header({
   competitor,
   lastRunMs,
+  index,
+  total,
+  onPrev,
+  onNext,
   onDelete,
   onEditSave,
   onToggleMonitoring,
@@ -953,6 +1018,10 @@ function Header({
 }: {
   competitor: Competitor;
   lastRunMs: number;
+  index: number;
+  total: number;
+  onPrev?: () => void;
+  onNext?: () => void;
   onDelete: () => void;
   onEditSave: (patch: {
     name?: string;
@@ -1063,6 +1132,53 @@ function Header({
         </div>
       </div>
       <div className="flex items-center gap-2 shrink-0">
+        {total > 1 && index >= 0 && (
+          <div className="flex items-center gap-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-9 w-9 p-0"
+                  disabled={!onPrev}
+                  onClick={onPrev}
+                  aria-label="Previous competitor"
+                >
+                  <ChevronLeft size={14} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="flex items-center gap-1.5">
+                Previous
+                <kbd className="rounded-sm border border-border/60 px-1 font-mono text-meta">
+                  [
+                </kbd>
+              </TooltipContent>
+            </Tooltip>
+            <span className="select-none px-0.5 font-mono text-meta tabular-nums text-muted-foreground">
+              {index + 1}/{total}
+            </span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-9 w-9 p-0"
+                  disabled={!onNext}
+                  onClick={onNext}
+                  aria-label="Next competitor"
+                >
+                  <ChevronRight size={14} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="flex items-center gap-1.5">
+                Next
+                <kbd className="rounded-sm border border-border/60 px-1 font-mono text-meta">
+                  ]
+                </kbd>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button

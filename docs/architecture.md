@@ -710,6 +710,10 @@ PLATFORM_DNS_ENABLED=true              # résolution CNAME (signal 6, node:dns) 
 PLATFORM_STEP_B_ENABLED=true           # autorise le fallback navigateur (api-capture) si step A maigre
 PLATFORM_REDETECT_DRIFT_COOLDOWN_HOURS=24  # min heures entre re-détections sur drift connecteur (self-heal)
 
+# Visual diff (Phase 8) — before/after homepage screenshots sur un signal (proxy
+# R2 org-scopé, no-IA). 📄 docs/visual-diff.md
+VISUAL_DIFF_ENABLED=true               # false → endpoints screenshot 404, section diff masquée
+
 # Billing
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=

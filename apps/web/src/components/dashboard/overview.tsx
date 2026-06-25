@@ -217,6 +217,13 @@ export function OverviewView({
       .slice(0, 8);
   }, [competitors]);
 
+  // Scale for the in-row magnitude bar behind the "Signals 7d" value (Plausible
+  // pattern): a tinted fill ∝ value, so the column reads as a chart at a glance.
+  const maxSignals7d = useMemo(
+    () => competitorRows.reduce((m, c) => Math.max(m, c.signals7d), 0),
+    [competitorRows],
+  );
+
   const categoryBreakdown = useMemo(() => {
     if (!signals) return [];
     const inRange = signals.filter(
@@ -369,13 +376,34 @@ export function OverviewView({
         <TooltipProvider delayDuration={80}>
           <div className="mt-3 max-h-[440px] overflow-y-auto rounded-md border border-border">
             {recentSignals.length === 0 ? (
-              <div className="px-4 py-12 text-center text-muted-foreground">
+              <div className="px-4 py-12 text-center">
                 <div className="font-semibold text-base text-foreground mb-1.5 tracking-tight">
-                  No signals yet
+                  {competitors.length === 0 ? "No competitors yet" : "No signals yet"}
                 </div>
-                <div className="text-sm max-w-[380px] mx-auto">
-                  Scans run continuously. The first signals will appear here as
-                  soon as a change is detected.
+                <div className="text-sm text-muted-foreground max-w-[400px] mx-auto">
+                  {competitors.length === 0
+                    ? "Add a competitor and Outrival starts watching it for pricing, hiring, product and content moves."
+                    : "Scans run continuously. The first signals will appear here as soon as a change is detected."}
+                </div>
+                <div className="mt-4 flex justify-center">
+                  <Button
+                    asChild
+                    size="sm"
+                    variant={competitors.length === 0 ? "default" : "outline"}
+                  >
+                    <Link
+                      href={
+                        competitors.length === 0
+                          ? "/dashboard/competitors"
+                          : "/dashboard/discovery"
+                      }
+                    >
+                      {competitors.length === 0
+                        ? "Add a competitor"
+                        : "Find competitors to track"}
+                      <ArrowRight size={11} />
+                    </Link>
+                  </Button>
                 </div>
               </div>
             ) : (
@@ -637,8 +665,17 @@ export function OverviewView({
                       <span className="text-muted-foreground">—</span>
                     )}
                   </td>
-                  <td className="px-3.5 py-3 align-middle text-right tabular-nums font-mono font-semibold">
-                    {c.signals7d}
+                  <td className="relative px-3.5 py-3 align-middle text-right tabular-nums font-mono font-semibold">
+                    {maxSignals7d > 0 && c.signals7d > 0 && (
+                      <span
+                        aria-hidden
+                        className="pointer-events-none absolute inset-y-1.5 left-1 rounded-sm bg-muted-foreground/10"
+                        style={{
+                          width: `calc(${(c.signals7d / maxSignals7d) * 100}% - 8px)`,
+                        }}
+                      />
+                    )}
+                    <span className="relative">{c.signals7d}</span>
                   </td>
                   <td className="px-3.5 py-3 align-middle text-right">
                     <DeltaPill delta={c.delta} />

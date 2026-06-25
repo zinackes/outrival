@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Copy,
   CornerDownLeft,
+  Crosshair,
   DollarSign,
   GitCompare,
   Loader2,
@@ -22,6 +23,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import { PageHead } from "./page-head";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
@@ -118,8 +120,19 @@ function Steps({ steps, active }: { steps: string[]; active: boolean }) {
   );
 }
 
-export function AskPanel() {
+export function AskPanel({
+  embedded = false,
+  context = null,
+}: {
+  /** Embedded in the dock sheet — drop the PageHead and the page max-width. */
+  embedded?: boolean;
+  /** Current page entity; when set, questions can be scoped to it. */
+  context?: { id: string; name: string } | null;
+} = {}) {
   const [question, setQuestion] = useState("");
+  // When a page context is present, default to scoping questions to it; the user
+  // can toggle off to ask across all competitors.
+  const [scoped, setScoped] = useState(true);
   const [loading, setLoading] = useState(false);
   const [trace, setTrace] = useState<string[]>([]);
   const [answer, setAnswer] = useState<string | null>(null);
@@ -188,6 +201,13 @@ export function AskPanel() {
   async function ask(q: string) {
     const trimmed = q.trim();
     if (!trimmed || loading) return;
+    // Context scoping: frame the question with the entity name so the agent's
+    // name→id resolution targets it. Skip if the user already named it (e.g. a
+    // context suggestion already embeds the name) to avoid doubling it.
+    const finalQ =
+      context && scoped && !trimmed.toLowerCase().includes(context.name.toLowerCase())
+        ? `Regarding ${context.name}: ${trimmed}`
+        : trimmed;
     abortRef.current?.abort();
     const ctrl = new AbortController();
     abortRef.current = ctrl;
@@ -204,7 +224,7 @@ export function AskPanel() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: trimmed }),
+        body: JSON.stringify({ question: finalQ }),
         signal: ctrl.signal,
       });
       if (!res.ok || !res.body) {
@@ -257,13 +277,49 @@ export function AskPanel() {
 
   const mod = isMac ? "⌘" : "Ctrl";
 
+  // Context-aware starter prompts: when scoped to a page entity, the suggestions
+  // embed its name so a click already targets it.
+  const contextSuggestions: Suggestion[] = context
+    ? [
+        { q: `What has ${context.name} changed recently?`, kind: "activity" },
+        { q: `How has ${context.name}'s pricing shifted?`, kind: "pricing" },
+        { q: `Is ${context.name} hiring, and in what areas?`, kind: "hiring" },
+        { q: `What do ${context.name}'s reviews complain about?`, kind: "reviews" },
+      ]
+    : [];
+  const shownSuggestions = context && scoped ? contextSuggestions : suggestions;
+
   return (
-    <div className="mx-auto w-full max-w-3xl">
-      <PageHead
-        title="Ask"
-        icon={<Sparkles className="size-5 text-[var(--link)]" />}
-        sub="Ask anything about your tracked competitors — answered from your own data."
-      />
+    <div className={embedded ? "w-full" : "mx-auto w-full max-w-3xl"}>
+      {!embedded && (
+        <PageHead
+          title="Ask"
+          icon={<Sparkles className="size-5 text-[var(--link)]" />}
+          sub="Ask anything about your tracked competitors — answered from your own data."
+        />
+      )}
+
+      {context && (
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <span className="text-meta text-muted-foreground">Context</span>
+          <button
+            type="button"
+            onClick={() => setScoped((s) => !s)}
+            aria-pressed={scoped}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-sm border px-2 py-0.5 text-meta font-medium transition-colors",
+              scoped
+                ? "border-[var(--link)]/40 bg-[var(--link)]/10 text-foreground"
+                : "border-border text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <Crosshair className="size-3" /> {context.name}
+          </button>
+          <span className="text-meta text-muted-foreground">
+            {scoped ? "questions scoped here" : "asking across all competitors"}
+          </span>
+        </div>
+      )}
 
       <form
         onSubmit={(e) => {
@@ -308,7 +364,7 @@ export function AskPanel() {
         <div className="mt-8 duration-300 motion-safe:animate-in motion-safe:fade-in">
           <p className="text-dense font-medium text-muted-foreground">Start with a question</p>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            {suggestions.map(({ q, kind }) => {
+            {shownSuggestions.map(({ q, kind }) => {
               const { icon: Icon, tint } = KIND_META[kind];
               return (
               <button

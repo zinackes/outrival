@@ -13,7 +13,8 @@ import {
   signalBatches,
   users,
 } from "@outrival/db";
-import { computeThreatScore } from "@outrival/shared";
+import { computeThreatScore, getBytesFromR2 } from "@outrival/shared";
+import { alias } from "drizzle-orm/pg-core";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
@@ -182,6 +183,9 @@ signalsRouter.get("/:id/detail", async (c) => {
   const orgId = await ensureUserOrg(user.id);
   const id = c.req.param("id");
 
+  // Second snapshots join for the BEFORE screenshot (the existing join is AFTER).
+  const beforeSnap = alias(snapshots, "before_snap");
+
   const [row] = await db
     .select({
       id: signals.id,
@@ -206,12 +210,17 @@ signalsRouter.get("/:id/detail", async (c) => {
       sourceUrl: sql<
         string | null
       >`COALESCE(${snapshots.resolvedUrl}, ${monitors.config}->>'url', ${competitors.url})`,
+      // Visual diff (Phase 8): a non-null screenshot pHash means a PNG was captured
+      // for that snapshot — the cheap, reliable availability proxy (no R2 HEAD).
+      afterPhash: snapshots.screenshotPhash,
+      beforePhash: beforeSnap.screenshotPhash,
     })
     .from(signals)
     .innerJoin(competitors, eq(competitors.id, signals.competitorId))
     .leftJoin(changes, eq(changes.id, signals.changeId))
     .leftJoin(monitors, eq(monitors.id, changes.monitorId))
     .leftJoin(snapshots, eq(snapshots.id, changes.snapshotAfterId))
+    .leftJoin(beforeSnap, eq(beforeSnap.id, changes.snapshotBeforeId))
     .where(and(eq(signals.id, id), eq(signals.orgId, orgId)))
     .limit(1);
 
@@ -248,6 +257,8 @@ signalsRouter.get("/:id/detail", async (c) => {
     return typeof s === "number" && (max === null || s > max) ? s : max;
   }, null);
 
+  const visualDiffEnabled = process.env.VISUAL_DIFF_ENABLED !== "false";
+
   return c.json({
     signal: {
       id: row.id,
@@ -263,9 +274,60 @@ signalsRouter.get("/:id/detail", async (c) => {
       relevanceScore,
       sourceType: row.sourceType,
       sourceUrl: row.sourceUrl,
+      // Whether a before/after homepage screenshot is available to render (visual diff).
+      screenshots: {
+        before: visualDiffEnabled && row.sourceType === "homepage" && !!row.beforePhash,
+        after: visualDiffEnabled && row.sourceType === "homepage" && !!row.afterPhash,
+      },
       competitor: { id: row.competitorId, name: row.competitorName },
     },
   });
+});
+
+// Visual diff (Phase 8): stream the before/after homepage screenshot for a signal's
+// change. Org-scoped (the signal must belong to the caller's org) — the R2 key never
+// leaves the server (proxy, like the admin feedback-screenshot route). Homepage-only;
+// 404 when the side/snapshot/PNG is absent (before is nullable; pre-patch snapshots
+// have no screenshot).
+signalsRouter.get("/:id/screenshot/:side", async (c) => {
+  if (process.env.VISUAL_DIFF_ENABLED === "false") return c.json(notFound("screenshot"), 404);
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const id = c.req.param("id");
+  const side = c.req.param("side");
+  if (side !== "before" && side !== "after") return c.json(notFound("screenshot"), 404);
+
+  const [row] = await db
+    .select({
+      r2Key: snapshots.r2Key,
+      sourceType: monitors.sourceType,
+      phash: snapshots.screenshotPhash,
+    })
+    .from(signals)
+    .innerJoin(changes, eq(changes.id, signals.changeId))
+    .innerJoin(monitors, eq(monitors.id, changes.monitorId))
+    .innerJoin(
+      snapshots,
+      eq(snapshots.id, side === "before" ? changes.snapshotBeforeId : changes.snapshotAfterId),
+    )
+    .where(and(eq(signals.id, id), eq(signals.orgId, orgId)))
+    .limit(1);
+
+  if (!row || row.sourceType !== "homepage" || !row.phash) {
+    return c.json(notFound("screenshot"), 404);
+  }
+
+  try {
+    const bytes = await getBytesFromR2(`${row.r2Key}.png`);
+    return new Response(new Uint8Array(bytes), {
+      headers: {
+        "Content-Type": "image/png",
+        "Cache-Control": "private, max-age=86400",
+      },
+    });
+  } catch {
+    return c.json(notFound("screenshot"), 404);
+  }
 });
 
 signalsRouter.patch("/:id/read", async (c) => {

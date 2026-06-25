@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { VisualDiff } from "@/components/outrival/visual-diff";
 
 interface WhyInsightPanelProps {
   signalId: string;
@@ -157,6 +158,18 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
                 </p>
               )}
             </section>
+
+            {/* Visual change (Phase 8): before/after homepage screenshots, only
+                when both are available (homepage source, captured). */}
+            {detail.screenshots?.before && detail.screenshots?.after && (
+              <>
+                <Separator />
+                <section className="space-y-2.5">
+                  <SectionLabel>Visual change</SectionLabel>
+                  <VisualDiff signalId={signalId} />
+                </section>
+              </>
+            )}
 
             {/* Per-change breakdown (patch-16): the typed structured changes with
                 their significance. Empty for lexical / pre-patch signals. */}

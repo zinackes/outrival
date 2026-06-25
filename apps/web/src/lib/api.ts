@@ -344,6 +344,8 @@ export interface SignalDetail {
   relevanceScore: number | null;
   sourceType: string | null;
   sourceUrl: string | null;
+  // Whether before/after homepage screenshots are available for the visual diff.
+  screenshots?: { before: boolean; after: boolean };
   competitor: { id: string; name: string };
 }
 

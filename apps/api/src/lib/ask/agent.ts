@@ -79,7 +79,7 @@ export async function runAskAgent(
       // it saw, but nothing forces it. Keep competitor ids that exist in the org
       // roster and signal ids that appeared in the tool results — a hallucinated or
       // foreign id is dropped rather than shipped to the UI as a dead/leaky link.
-      const competitorIds = new Set(roster.map((r) => r.id));
+      const competitorNames = new Map(roster.map((r) => [r.id, r.name]));
       const signalIds = new Set<string>();
       for (const { result } of results) {
         const sigs = (result as { signals?: Array<{ id?: unknown }> }).signals;
@@ -87,9 +87,16 @@ export async function runAskAgent(
           for (const s of sigs) if (typeof s.id === "string") signalIds.add(s.id);
         }
       }
-      const citations = answer.value.citations.filter((c) =>
-        c.type === "competitor" ? competitorIds.has(c.id) : signalIds.has(c.id),
-      );
+      const citations = answer.value.citations
+        .filter((c) =>
+          c.type === "competitor" ? competitorNames.has(c.id) : signalIds.has(c.id),
+        )
+        // Trust the model for the id (validated above) but not the label: the synthesis
+        // prompt's example uses "Linear" as a placeholder and the model copies it
+        // verbatim. Derive the competitor label from the roster instead.
+        .map((c) =>
+          c.type === "competitor" ? { ...c, label: competitorNames.get(c.id)! } : c,
+        );
       await emit({ type: "answer", answer: answer.value.answer, citations });
     } else {
       await emit({

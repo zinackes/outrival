@@ -99,37 +99,38 @@
   --duration-standard: 220ms;
   --duration-overlay: 320ms;
 
-  /* Display/heading font — Space Grotesk (Precision Instrument display voice),
-     referenced inline via font-[var(--font-display)] and by the h1–h5 base rule
-     below. Body type runs on Geist (--font-sans). The landing overrides this to
-     Zodiak in .landing-canvas. */
-  --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
-  --font-syne: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
+  /* Display/heading font — Geist (same neutral grotesque as the body). Headings
+     differ by weight + tracking, not by a characterful display face. Referenced
+     inline via font-[var(--font-display)] / font-[var(--font-syne)] and by the
+     h1–h5 base rule below. The landing overrides --font-display to Zodiak in
+     .landing-canvas. */
+  --font-display: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-syne: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
 }
 
 .dark {
   color-scheme: dark;
 
-  /* Precision Instrument — dark-first. Near-black tinted base; depth comes from
-     hairline borders + lightened surfaces, never #000 and never heavy shadows.
-     Exact tokens from the validated design system (Notion source of truth). */
-  --bg: #08090c;
-  --background: #08090c; /* E0 — near-black canvas */
-  --background-2: #0c0e13; /* raised page band / field base, between bg and surface */
-  --surface: #101319; /* E1 — cards, panels */
-  --surface-2: #171b22; /* E2 — raised surface */
-  --surface-3: #1e232b; /* highest surface — hover / popover-elevated */
+  /* Precision Instrument — dark-first. Neutral graphite base (no hue cast — the
+     old navy #101319 surfaces are gone, R≈G≈B); depth comes from hairline
+     borders + lightened surfaces, never #000 and never heavy shadows. */
+  --bg: #0a0a0a;
+  --background: #0a0a0a; /* E0 — neutral near-black canvas */
+  --background-2: #0f0f10; /* raised page band / field base, between bg and surface */
+  --surface: #161616; /* E1 — cards, panels */
+  --surface-2: #1d1d1d; /* E2 — raised surface */
+  --surface-3: #242424; /* highest surface — hover / popover-elevated */
   /* Stat-card gradient — top-left lifts toward surface-2, bottom-right settles to
      the card surface. Faint diagonal elevation, no decorative wash. */
-  --gradient-card: linear-gradient(135deg, #14181f 0%, var(--surface) 100%);
-  --gradient-card-strong: linear-gradient(315deg, #171b22 0%, var(--surface) 100%);
-  --border: rgba(255, 255, 255, 0.12); /* hairline 1px — lifted from .08 so card/table edges read on near-black */
-  --border-strong: rgba(255, 255, 255, 0.18); /* reinforced edge (cards, secondary buttons, sidebar rail) */
+  --gradient-card: linear-gradient(135deg, #1b1b1b 0%, var(--surface) 100%);
+  --gradient-card-strong: linear-gradient(315deg, #1d1d1d 0%, var(--surface) 100%);
+  --border: rgba(255, 255, 255, 0.1); /* hairline 1px — neutral white alpha, no hue */
+  --border-strong: rgba(255, 255, 255, 0.16); /* reinforced edge (cards, secondary buttons, sidebar rail) */
 
   /* Skeleton loaders — base lifts a clear step above the card so blocks read at
      rest; the sheen brightens without a harsh flash on the dark canvas. */
-  --skeleton-base: #1e232b;
-  --skeleton-sheen: #2a313b;
+  --skeleton-base: #242424;
+  --skeleton-sheen: #2e2e2e;
 
   /* Text — off-white (never pure #fff; avoids halation on near-black) */
   --foreground: #f2f5f8; /* primary text */
@@ -155,7 +156,7 @@
   --positive: #34d399;
 
   /* Field (inputs) — a touch darker than the cards (design-system §4 Champs). */
-  --field: #0c0e13;
+  --field: #0f0f10;
 
   /* Category scale — brightened for contrast on the dark canvas (light parity). */
   --cat-pricing: oklch(0.76 0.1 175);
@@ -175,9 +176,9 @@
 
   /* Sidebar — lifted to the card surface so the rail reads as a distinct plane
      above the near-black canvas, with a reinforced right edge. */
-  --sidebar: #101319;
+  --sidebar: #161616;
   --sidebar-foreground: var(--foreground);
-  --sidebar-accent: #1e232b; /* hover/active row — a step above the rail */
+  --sidebar-accent: #242424; /* hover/active row — a step above the rail */
   --sidebar-accent-foreground: var(--foreground);
   --sidebar-border: var(--border-strong);
   --sidebar-ring: var(--accent);
@@ -268,7 +269,7 @@
   --color-chart-6: var(--chart-6);
 
   /* Fonts → font-sans / font-mono classes + var(--font-sans|mono).
-     Display (Bricolage) is exposed via --font-display in :root. */
+     Display (Geist, same family as sans) is exposed via --font-display in :root. */
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
 
@@ -469,16 +470,19 @@
    standard tokens. The compound selector (.dark.landing-canvas) wins over .dark
    regardless of source order. */
 .dark.landing-canvas {
-  --background: oklch(0.135 0.008 260);
-  --background-2: oklch(0.17 0.009 260);
-  --surface: oklch(0.18 0.01 260);
-  /* Softer hairline than the dashboard's --border (0.31): on the landing's deep
-     canvas a 0.31 edge reads as a drawn box. 0.255 sits close to the card so the
+  /* Same neutral-graphite shift as the dashboard — chroma stripped so the deep
+     landing canvas no longer reads navy; lightness kept so the band rhythm and
+     card separation are unchanged. */
+  --background: oklch(0.135 0 0);
+  --background-2: oklch(0.17 0 0);
+  --surface: oklch(0.18 0 0);
+  /* Softer hairline than the dashboard's --border: on the landing's deep canvas
+     a stronger edge reads as a drawn box. 0.255 sits close to the card so the
      edge is felt, not shouted (the Linear/Vercel low-contrast border). */
-  --border: oklch(0.255 0.012 260);
+  --border: oklch(0.255 0 0);
   /* Landing headings run on Zodiak (a modern editorial serif) instead of the
-     dashboard's Bricolage — a serif+sans contrast that reads "intelligence
-     briefing", not the default AI dev-tool grotesque. h1–h5 pick this up via
-     the base rule's var(--font-display). */
+     dashboard's neutral Geist — a serif+sans contrast that reads "intelligence
+     briefing", not a default dev-tool grotesque. h1–h5 pick this up via the
+     base rule's var(--font-display). */
   --font-display: var(--font-zodiak), ui-serif, Georgia, serif;
 }

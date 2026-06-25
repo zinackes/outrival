@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
-import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 import localFont from "next/font/local";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -10,36 +10,11 @@ import { PostHogPageView } from "@/lib/posthog/pageview";
 import { ConsentBanner } from "@/components/outrival/consent-banner";
 import "./globals.css";
 
-// Space Grotesk — product display/headings (h1–h3) and large numerals. The
-// "Precision Instrument" display voice: a technical grotesque, distinct from a
-// neutral UI sans. Self-hosted from committed woff2 (OFL) rather than
-// next/font/google so the production Docker build needs no build-time font
-// fetch (zero CLS either way). Wired to --font-display / --font-syne in
-// globals.css; the landing keeps its own register (Zodiak).
-const spaceGrotesk = localFont({
-  src: [
-    { path: "./fonts/space-grotesk-400.woff2", weight: "400", style: "normal" },
-    { path: "./fonts/space-grotesk-500.woff2", weight: "500", style: "normal" },
-    { path: "./fonts/space-grotesk-600.woff2", weight: "600", style: "normal" },
-    { path: "./fonts/space-grotesk-700.woff2", weight: "700", style: "normal" },
-  ],
-  variable: "--font-space-grotesk",
-  display: "swap",
-});
-
-// Bricolage Grotesque — legacy display alias kept for the few call sites still
-// referencing it directly (and the landing register). The product display token
-// now points at Space Grotesk.
-const bricolage = Bricolage_Grotesque({
-  subsets: ["latin"],
-  variable: "--font-bricolage",
-  axes: ["opsz", "wdth"],
-  display: "swap",
-});
-
-// Body runs on Geist Sans (neutral, high x-height — built for the screen); the
-// grotesque (Bricolage) is reserved for display/headings. Decoupling the two is
-// what separates a product UI from a "generated template" look.
+// Geist Sans carries the whole product voice — body, UI AND headings. One
+// neutral grotesque, the way Vercel/Resend ship: hierarchy comes from weight,
+// size and tracking, not a characterful display face (the old Space Grotesk
+// read "designed"). Wired to --font-sans, --font-display and --font-syne in
+// globals.css; the landing keeps its own brand register (Zodiak serif).
 const geistSans = Geist({
   subsets: ["latin"],
   variable: "--font-geist-sans",
@@ -57,7 +32,7 @@ const geistMono = Geist_Mono({
 
 // Landing display (brand register) — Zodiak, a modern editorial serif. Self-hosted
 // (Fontshare ITF Free Font License). Scoped to the landing via --font-display in
-// globals.css (.landing-canvas); the product keeps Bricolage for headings.
+// globals.css (.landing-canvas); the product keeps Geist for headings.
 const zodiak = localFont({
   src: [
     { path: "./fonts/zodiak-400.woff2", weight: "400", style: "normal" },
@@ -72,7 +47,7 @@ const SITE_URL = "https://outrival.app";
 export const viewport: Viewport = {
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#f8f8fa" },
-    { media: "(prefers-color-scheme: dark)", color: "#141518" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
   ],
   width: "device-width",
   initialScale: 1,
@@ -145,7 +120,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${spaceGrotesk.variable} ${bricolage.variable} ${geistSans.variable} ${geistMono.variable} ${zodiak.variable}`}
+      className={`${geistSans.variable} ${geistMono.variable} ${zodiak.variable}`}
       suppressHydrationWarning
     >
       <body>

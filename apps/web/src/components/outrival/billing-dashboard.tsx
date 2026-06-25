@@ -1,8 +1,8 @@
 "use client";
 
-import { Fragment, useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Check, Minus, Loader2 } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
 import {
   PLAN_LABELS,
   PLAN_LIMITS,
@@ -10,26 +10,12 @@ import {
   PLANS,
   type BillingPeriod,
   type Plan,
-  type SourceType,
 } from "@outrival/shared";
 import { api, type BillingInfo } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { BillingDashboardSkeleton } from "@/app/dashboard/settings/billing/billing-skeleton";
 
@@ -45,32 +31,57 @@ const PLAN_RANK: Record<Plan, number> = {
 const EYEBROW =
   "font-mono text-meta uppercase tracking-[0.14em] text-[var(--muted-2)]";
 
-const SOURCE_LABELS: Record<SourceType, string> = {
-  homepage: "Homepage",
-  pricing: "Pricing page",
-  blog: "Blog",
-  changelog: "Changelog",
-  jobs: "Job postings",
-  g2_reviews: "G2 reviews",
-  capterra_reviews: "Capterra reviews",
-  appstore_reviews: "App Store reviews",
-  // patch-32: additional review platforms (pro+).
-  trustpilot_reviews: "Trustpilot reviews",
-  trustradius_reviews: "TrustRadius reviews",
-  gartner_reviews: "Gartner reviews",
-  playstore_reviews: "Play Store reviews",
-  reddit: "Reddit mentions",
-  linkedin: "LinkedIn",
-  twitter: "Twitter / X",
-  github_repo: "GitHub repo",
-  // patch-18: internal anchor source, never shown in plan source lists.
-  tech_stack: "Tech stack",
-  // patch-31: competitor status page (Statuspage/Instatus incidents).
-  status: "Status page",
-  // patch-32: internal sitemap-diff anchor, never shown in plan source lists.
-  sitemap: "Sitemap",
-  // Internal news/funding anchor, never shown in plan source lists.
-  news: "News",
+/** Curated plan blurbs + feature bullets, mirrored from the landing pricing section. */
+const PLAN_CARDS: Record<
+  Plan,
+  { tag: string; featured: boolean; desc: string; features: string[] }
+> = {
+  free: {
+    tag: "Free",
+    featured: false,
+    desc: "Validate the tool on 2 competitors before bringing in your team.",
+    features: [
+      "2 competitors",
+      "Weekly email digest",
+      "Homepage · pricing · blog",
+      "1 user",
+    ],
+  },
+  starter: {
+    tag: "Starter",
+    featured: false,
+    desc: "For solo operators who need daily scans and Slack delivery.",
+    features: [
+      "5 competitors",
+      "Daily scans · Slack & email digests",
+      "Adds jobs + status page",
+      "1 user",
+    ],
+  },
+  pro: {
+    tag: "Pro",
+    featured: true,
+    desc: "For product, growth, or strategy teams that need the full signal stream.",
+    features: [
+      "15 competitors",
+      "All categories + severities",
+      "Real-time Slack/email alerts",
+      "AI-generated battle cards",
+      "G2, Capterra, Trustpilot & Reddit reviews",
+    ],
+  },
+  business: {
+    tag: "Business",
+    featured: false,
+    desc: "50 competitors, every review source, multi-user, and API access.",
+    features: [
+      "50 competitors",
+      "Every review source (+ Gartner, TrustRadius)",
+      "App Store + Play Store reviews",
+      "Multi-user · API access",
+      "Priority cadence · audit logs · DPA",
+    ],
+  },
 };
 
 function frequencyLabel(p: Plan): string {
@@ -84,106 +95,6 @@ function channelsLabel(p: Plan): string {
   return PLAN_LIMITS[p].allowedChannels
     .map((c) => c[0]!.toUpperCase() + c.slice(1))
     .join(", ");
-}
-
-function retentionLabel(p: Plan): string {
-  const days = PLAN_LIMITS[p].historyRetentionDays;
-  if (days >= 365) {
-    const years = Math.round(days / 365);
-    return `${years} year${years > 1 ? "s" : ""}`;
-  }
-  return `${days} days`;
-}
-
-type FeatureRow = {
-  label: string;
-  read: (p: Plan) => string | boolean;
-  mono?: boolean;
-  tooltip?: (p: Plan) => ReactNode;
-};
-
-const FEATURE_GROUPS: Array<{ title: string; rows: FeatureRow[] }> = [
-  {
-    title: "Monitoring",
-    rows: [
-      {
-        label: "Tracked competitors",
-        mono: true,
-        read: (p) => `${PLAN_LIMITS[p].maxCompetitors}`,
-      },
-      { label: "Update frequency", read: frequencyLabel },
-      {
-        label: "Monitored sources",
-        read: (p) => `${PLAN_LIMITS[p].allowedSources.length} sources`,
-        tooltip: (p) => (
-          <ul className="space-y-0.5">
-            {PLAN_LIMITS[p].allowedSources.map((s) => (
-              <li key={s}>{SOURCE_LABELS[s]}</li>
-            ))}
-          </ul>
-        ),
-      },
-      { label: "History retention", read: retentionLabel },
-    ],
-  },
-  {
-    title: "Alerts & AI",
-    rows: [
-      { label: "Alert channels", read: channelsLabel },
-      { label: "Real-time alerts", read: (p) => PLAN_LIMITS[p].features.realtimeAlerts },
-      {
-        label: "AI battle cards",
-        mono: true,
-        read: (p) => `${PLAN_LIMITS[p].battleCardsPerDay} / day`,
-      },
-      {
-        label: "Competitor discovery",
-        mono: true,
-        read: (p) => `${PLAN_LIMITS[p].discoveriesPerMonth} / mo`,
-      },
-    ],
-  },
-  {
-    title: "Platform",
-    rows: [
-      { label: "API access", read: (p) => PLAN_LIMITS[p].features.api },
-      { label: "Multiple seats", read: (p) => PLAN_LIMITS[p].features.multiUser },
-    ],
-  },
-];
-
-function renderCell(row: FeatureRow, plan: Plan) {
-  const v = row.read(plan);
-  if (v === true)
-    return <Check size={14} className="inline-block text-foreground" />;
-  if (v === false)
-    return <Minus size={14} className="inline-block text-muted-foreground/40" />;
-  if (row.tooltip)
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="cursor-help text-foreground underline decoration-dotted decoration-muted-foreground/40 underline-offset-[3px]">
-            {v}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent
-          side="top"
-          className="max-w-[220px] text-meta leading-relaxed normal-case"
-        >
-          {row.tooltip(plan)}
-        </TooltipContent>
-      </Tooltip>
-    );
-  return (
-    <span
-      className={cn(
-        "text-foreground",
-        row.mono && "font-mono tabular-nums text-xs",
-      )}
-    >
-      {v}
-    </span>
-  );
 }
 
 export function BillingDashboard({
@@ -370,14 +281,14 @@ export function BillingDashboard({
       </Card>
 
       {/* ── Plan selector ──────────────────────────────────────────────── */}
-      <section className="flex flex-col gap-4">
+      <section className="flex flex-col gap-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h3 className="font-semibold text-base tracking-tight">
               Compare plans
             </h3>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Yearly billing saves 17%.
+              AI cost included — no usage-based billing. Yearly billing saves 17%.
             </p>
           </div>
           <ToggleGroup
@@ -394,144 +305,116 @@ export function BillingDashboard({
           </ToggleGroup>
         </div>
 
-        <Card className="overflow-hidden p-0">
-          <Table className="min-w-[680px] text-dense">
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="sticky left-0 z-[1] w-[190px] bg-surface align-bottom" />
-                  {PLANS.map((plan) => {
-                    const isCurrent = plan === billing.plan;
-                    const isPaid = plan !== "free";
-                    const pricing = isPaid
-                      ? PLAN_PRICING[plan as PaidPlan][period]
-                      : 0;
-                    const perMonth =
-                      period === "yearly" && isPaid
-                        ? Math.round(pricing / 12)
-                        : pricing;
-                    const isUpgrade = PLAN_RANK[plan] > currentRank;
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {PLANS.map((plan) => {
+            const card = PLAN_CARDS[plan];
+            const isCurrent = plan === billing.plan;
+            const isPaid = plan !== "free";
+            const pricing = isPaid ? PLAN_PRICING[plan as PaidPlan][period] : 0;
+            const perMonth =
+              period === "yearly" && isPaid ? Math.round(pricing / 12) : pricing;
+            const isUpgrade = PLAN_RANK[plan] > currentRank;
+            const highlight = isCurrent || card.featured;
 
-                    return (
-                      <TableHead
-                        key={plan}
-                        className={cn(
-                          "relative border-l border-border px-3 py-4 align-top",
-                          isCurrent && "bg-primary/[0.04]",
-                        )}
-                      >
-                        {isCurrent && (
-                          <span className="absolute inset-x-0 top-0 h-[2px] bg-primary" />
-                        )}
-                        <div className="flex flex-col gap-2.5">
-                          <div className="flex items-center gap-2">
-                            <span className={EYEBROW}>{PLAN_LABELS[plan]}</span>
-                            {isCurrent && (
-                              <span className="rounded bg-primary px-1.5 py-0.5 font-mono text-meta tracking-wider text-primary-foreground">
-                                CURRENT
-                              </span>
-                            )}
-                          </div>
+            return (
+              <div
+                key={plan}
+                className={cn(
+                  "relative flex flex-col rounded-xl border bg-surface p-6",
+                  highlight
+                    ? "border-primary/60 ring-1 ring-primary/30"
+                    : "border-border",
+                )}
+              >
+                {(isCurrent || card.featured) && (
+                  <span className="absolute -top-2.5 left-6 rounded-full bg-primary px-2.5 py-0.5 font-mono text-meta font-semibold uppercase tracking-wider text-primary-foreground">
+                    {isCurrent ? "Current plan" : "Most popular"}
+                  </span>
+                )}
 
-                          <div
-                            key={period}
-                            className="flex flex-col gap-0.5 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-200"
-                          >
-                            <div className="flex items-baseline gap-1">
-                              <span className="font-mono text-xl font-medium tabular-nums tracking-tight text-foreground">
-                                €{perMonth}
-                              </span>
-                              {isPaid && (
-                                <span className="text-meta text-muted-foreground">
-                                  /mo
-                                </span>
-                              )}
-                            </div>
-                            <span className="h-3 font-mono text-meta tabular-nums text-[var(--muted-2)]">
-                              {period === "yearly" && isPaid
-                                ? `€${pricing} billed yearly`
-                                : ""}
-                            </span>
-                          </div>
+                <div>
+                  <div
+                    className={cn(
+                      "font-mono text-xs uppercase tracking-wider",
+                      highlight ? "text-primary" : "text-text-subtle",
+                    )}
+                  >
+                    {card.tag}
+                  </div>
+                  <div className="mt-1.5 text-lg font-semibold">
+                    {PLAN_LABELS[plan]}
+                  </div>
+                </div>
 
-                          {isCurrent ? (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              disabled
-                              className="w-full font-normal"
-                            >
-                              Current plan
-                            </Button>
-                          ) : isPaid ? (
-                            <Button
-                              variant={isUpgrade ? "default" : "outline"}
-                              size="sm"
-                              onClick={() => handleCheckout(plan as PaidPlan)}
-                              disabled={Boolean(busy)}
-                              className="w-full"
-                            >
-                              {busy === plan && (
-                                <Loader2 size={12} className="animate-spin" />
-                              )}
-                              {busy === plan
-                                ? "Redirecting…"
-                                : isUpgrade
-                                  ? "Upgrade"
-                                  : "Switch plan"}
-                            </Button>
-                          ) : (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              disabled
-                              className="w-full font-normal"
-                            >
-                              Free
-                            </Button>
-                          )}
-                        </div>
-                      </TableHead>
-                    );
-                  })}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {FEATURE_GROUPS.map((group) => (
-                  <Fragment key={group.title}>
-                    <TableRow className="border-0 hover:bg-transparent">
-                      <TableCell
-                        colSpan={PLANS.length + 1}
-                        className="sticky left-0 bg-surface px-4 pt-5 pb-1.5"
-                      >
-                        <span className={EYEBROW}>{group.title}</span>
-                      </TableCell>
-                    </TableRow>
-                    {group.rows.map((row) => (
-                      <TableRow key={row.label} className="hover:bg-transparent">
-                        <TableCell className="sticky left-0 z-[1] whitespace-normal bg-surface px-4 py-2.5 font-normal text-muted-foreground">
-                          {row.label}
-                        </TableCell>
-                        {PLANS.map((plan) => {
-                          const isCurrent = plan === billing.plan;
-                          return (
-                            <TableCell
-                              key={plan}
-                              className={cn(
-                                "border-l border-border px-3 py-2.5 text-center whitespace-normal",
-                                isCurrent && "bg-primary/[0.04]",
-                              )}
-                            >
-                              {renderCell(row, plan)}
-                            </TableCell>
-                          );
-                        })}
-                      </TableRow>
-                    ))}
-                  </Fragment>
-                ))}
-              </TableBody>
-            </Table>
-        </Card>
+                <div
+                  key={period}
+                  className="mt-4 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-200"
+                >
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-4xl font-semibold tabular-nums">
+                      €{perMonth}
+                    </span>
+                    <span className="text-sm text-text-subtle">/ month</span>
+                  </div>
+                  <span className="mt-1 block h-4 font-mono text-meta tabular-nums text-text-subtle">
+                    {period === "yearly" && isPaid
+                      ? `€${pricing} billed yearly`
+                      : isPaid
+                        ? "billed monthly"
+                        : "No card required"}
+                  </span>
+                </div>
+
+                <p className="mt-3 text-sm leading-relaxed text-text-muted">
+                  {card.desc}
+                </p>
+
+                <ul className="mt-5 flex-1 space-y-2.5 text-sm">
+                  {card.features.map((f, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <Check size={14} className="mt-0.5 shrink-0 text-primary" />
+                      <span>{f}</span>
+                    </li>
+                  ))}
+                </ul>
+
+                {isCurrent ? (
+                  <Button
+                    variant="outline"
+                    disabled
+                    className="mt-6 w-full font-normal"
+                  >
+                    Current plan
+                  </Button>
+                ) : isPaid ? (
+                  <Button
+                    variant={isUpgrade ? "default" : "outline"}
+                    onClick={() => handleCheckout(plan as PaidPlan)}
+                    disabled={Boolean(busy)}
+                    className="mt-6 w-full"
+                  >
+                    {busy === plan && (
+                      <Loader2 size={12} className="animate-spin" />
+                    )}
+                    {busy === plan
+                      ? "Redirecting…"
+                      : isUpgrade
+                        ? "Upgrade"
+                        : "Switch plan"}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    disabled
+                    className="mt-6 w-full font-normal"
+                  >
+                    Free
+                  </Button>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </section>
 
       {error && <p className="text-sm text-destructive">{error}</p>}

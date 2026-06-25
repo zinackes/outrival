@@ -1,7 +1,0 @@
-Space Grotesk by Florian Karsten.
-Licensed under the SIL Open Font License, Version 1.1 (OFL-1.1).
-https://fonts.google.com/specimen/Space+Grotesk
-woff2 subsets (latin) via Fontsource (https://fontsource.org).
-
-Self-hosted to keep the production Docker build offline-safe (no build-time
-Google Fonts fetch) and CLS-free. Weights: 400 / 500 / 600 / 700.

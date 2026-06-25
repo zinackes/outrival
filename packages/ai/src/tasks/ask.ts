@@ -109,5 +109,5 @@ ${JSON.stringify(results, null, 2).slice(0, 12000)}
 </rules>
 
 Reply ONLY with a JSON object, no markdown, no surrounding text:
-{ "answer": "...", "citations": [ { "type": "competitor", "id": "...", "label": "Linear" } ] }`;
+{ "answer": "...", "citations": [ { "type": "competitor", "id": "...", "label": "the competitor name" } ] }`;
 }

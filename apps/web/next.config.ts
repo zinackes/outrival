@@ -14,6 +14,36 @@ const nextConfig: NextConfig = {
   output: "standalone",
   outputFileTracingRoot: repoRoot,
   transpilePackages: ["@outrival/shared"],
+  // Baseline security headers on every response. Deliberately NO full
+  // Content-Security-Policy (default-src/script-src): the app loads Turnstile,
+  // Stripe, PostHog and Sentry from third-party origins plus Next's own inline
+  // bootstrap — a hand-rolled CSP would break them and needs its own audit. We
+  // ship only zero-risk hardening here; `frame-ancestors 'none'` doubles the
+  // anti-clickjacking guard for modern browsers without affecting page loads.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          {
+            key: "Strict-Transport-Security",
+            value: "max-age=63072000; includeSubDomains",
+          },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          {
+            key: "Referrer-Policy",
+            value: "strict-origin-when-cross-origin",
+          },
+          {
+            key: "Permissions-Policy",
+            value: "camera=(), microphone=(), geolocation=()",
+          },
+          { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+        ],
+      },
+    ];
+  },
   async redirects() {
     return [
       // patch-19: /login and /register were consolidated into the single /auth page.

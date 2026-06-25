@@ -37,7 +37,7 @@ Reply ONLY with a valid JSON object, no markdown and no surrounding text.
 <format>
 {
   "jobs": [
-    { "title": "Senior Backend Engineer", "department": "Engineering", "location": "Paris" }
+    { "title": "e.g. Senior Backend Engineer", "department": "Engineering", "location": "e.g. Paris" }
   ]
 }
 </format>`;

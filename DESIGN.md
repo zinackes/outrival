@@ -21,13 +21,13 @@ colors:
   positive: "#047857"
 typography:
   display:
-    fontFamily: "Bricolage Grotesque, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "Geist Sans, ui-sans-serif, system-ui, sans-serif"
     fontSize: "1.625rem"
     fontWeight: 560
     lineHeight: 1.1
     letterSpacing: "-0.02em"
   headline:
-    fontFamily: "Bricolage Grotesque, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "Geist Sans, ui-sans-serif, system-ui, sans-serif"
     fontSize: "0.9375rem"
     fontWeight: 600
     lineHeight: 1.15
@@ -144,17 +144,19 @@ red numbers with no hierarchy.
 **Key Characteristics:**
 - One accent (cyan), spent only on action, selection, focus, and live signal.
 - Flat surfaces; depth by tonal layering, never decorative shadow.
-- Bricolage Grotesque (headings) + Geist Sans (body/UI) + Geist Mono (data voice).
+- Geist Sans (headings AND body/UI — one neutral grotesque) + Geist Mono (data voice).
 - Tight radii (6px on controls/cards), a fixed token type scale, high density.
 - Severity is a semantic color system, kept separate from the brand accent.
 - Calm by default; color and motion are spent only when severity earns them.
 
 ## 2. Colors
 
-A near-monochrome neutral field (hue 260, tinted, never pure black/white) carrying
-one cyan accent and a five-step severity scale. Maintained at light/dark parity
-(`:root` is light, `.dark` overrides). All values are OKLCH so contrast tracks
-lightness predictably; the frontmatter carries the light values as canonical.
+A near-monochrome neutral field (light keeps a faint hue-260 tint; dark surfaces are
+neutral graphite — no hue cast, R≈G≈B, the old navy `#101319` is gone) carrying one
+rationed accent (cyan in light, Iris indigo in dark) and a five-step severity scale.
+Maintained at light/dark parity (`:root` is light, `.dark` overrides). All values are
+OKLCH/hex so contrast tracks lightness predictably; the frontmatter carries the light
+values as canonical.
 
 ### Primary
 - **Signal Cyan** (`oklch(0.7 0.16 200)`): the only brand accent — a "signal/radar"
@@ -206,14 +208,16 @@ are always reinforced with label and icon, never hue alone.
 
 ## 3. Typography
 
-**Heading Font:** Bricolage Grotesque (`--font-display`; `ui-sans-serif, system-ui`)
-— headings only (`h1`–`h5`, weight 560, optical sizing on).
+**Heading Font:** Geist Sans (`--font-display`; same family as the body) — headings
+(`h1`–`h5`) differ by weight (600) + negative tracking, not by a characterful face.
 **Body / UI Font:** Geist Sans (`--font-sans`) — body, labels, buttons, nav, data prose.
 **Mono Font:** Geist Mono (`--font-mono`; tabular-nums + slashed-zero) — the data voice.
+**Landing only:** Zodiak serif (`--font-display` under `.landing-canvas`) — brand register.
 
-**Character:** A grotesque does the headings, a neutral sans does the voice, a mono
-does the machine-truth work. The contrast that matters most is sans-vs-mono (voice
-vs. data), which keeps the product dense and consistent rather than editorial.
+**Character:** One neutral grotesque carries voice AND headings (the Vercel/Geist
+pattern); a mono does the machine-truth work. The contrast that matters is sans-vs-mono
+(voice vs. data), which keeps the product dense and consistent rather than editorial.
+The old characterful display face (Space Grotesk) was dropped — it read "designed".
 
 ### Scale (token-only — never `text-[Npx]`)
 

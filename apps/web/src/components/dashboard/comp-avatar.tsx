@@ -46,8 +46,10 @@ export function CompAvatar({
         overflow: "hidden",
       }}
     >
-      {/* The initial sits underneath; once the favicon loads it covers the letter
-          (the icon carries its own opaque background). Missing URL or a load error
+      {/* The initial sits underneath; once the favicon loads it covers the letter.
+          The icon renders on a constant light chip (--logo-chip) so a transparent
+          favicon with a dark/black glyph stays legible on the dark canvas — on the
+          old --surface-2 a black logo was invisible. Missing URL or a load error
           leaves the letter visible — the avatar never renders empty. */}
       {letter}
       {showIcon && (
@@ -65,7 +67,10 @@ export function CompAvatar({
             height: "100%",
             objectFit: "contain",
             padding: Math.max(2, Math.round(size * 0.15)),
-            background: "var(--surface-2)",
+            background: "var(--logo-chip)",
+            // Hairline edge so the light chip reads as a tile against a light card
+            // (light theme) without a hard white-on-white seam.
+            boxShadow: "inset 0 0 0 1px var(--border)",
             borderRadius: 4,
           }}
         />

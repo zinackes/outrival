@@ -11,6 +11,15 @@ import {
 } from "@outrival/ai";
 import { ASK_TOOL_SPECS, getAskTool } from "./tools";
 import { logAskRun } from "../ai-runs";
+import { persistAskHistory } from "./history";
+
+// The page the user asked from, used to scope the answer. `label` is human-readable
+// (shown in the UI chip too); `competitorId` is set when the page is about a specific
+// competitor so the planner can resolve an ambiguous question to it.
+export interface AskPageContext {
+  label: string;
+  competitorId?: string;
+}
 
 // The Ask Outrival agent: a bounded two-pass loop. (1) a FAST model plans which
 // org-scoped tools to call (name→id resolved against the roster we inject), (2) the
@@ -36,9 +45,17 @@ export type AskEmit = (ev: AskEvent) => Promise<void> | void;
 
 export async function runAskAgent(
   orgId: string,
+  userId: string,
   question: string,
+  context: AskPageContext | null,
   emit: AskEmit,
 ): Promise<void> {
+  // Flatten the page context into one line injected into both prompts.
+  const contextStr = context
+    ? `The user is currently viewing: ${context.label}.${
+        context.competitorId ? ` (competitor id: ${context.competitorId})` : ""
+      }`
+    : undefined;
   try {
     await emit({ type: "status", phase: "planning" });
 
@@ -49,7 +66,7 @@ export async function runAskAgent(
     const roster = list.competitors ?? [];
 
     const planRaw = await complete(AI_CONFIG.classificationFast, {
-      prompt: buildAskPlanPrompt(question, ASK_TOOL_SPECS, roster),
+      prompt: buildAskPlanPrompt(question, ASK_TOOL_SPECS, roster, contextStr),
       json: true,
     });
     const plan = safeParseJson(planRaw, AskPlanSchema);
@@ -67,7 +84,7 @@ export async function runAskAgent(
 
     await emit({ type: "status", phase: "synthesizing" });
     const synthRaw = await complete(AI_CONFIG.insights, {
-      prompt: buildAskSynthesisPrompt(question, results),
+      prompt: buildAskSynthesisPrompt(question, results, contextStr),
       json: true,
       maxTokens: 1024,
     });
@@ -98,6 +115,15 @@ export async function runAskAgent(
           c.type === "competitor" ? { ...c, label: competitorNames.get(c.id)! } : c,
         );
       await emit({ type: "answer", answer: answer.value.answer, citations });
+      // Persist only real answers (best-effort) — the fallback below isn't worth logging.
+      void persistAskHistory({
+        orgId,
+        userId,
+        question,
+        answer: answer.value.answer,
+        citations,
+        context,
+      });
     } else {
       await emit({
         type: "answer",

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, Check, CheckCheck } from "lucide-react";
+import { Bell, Check, CheckCheck, Trash2, X } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -124,6 +124,34 @@ export function NotificationsBell({ compact = false }: { compact?: boolean } = {
     }
   }
 
+  async function deleteOne(id: string, wasUnread: boolean) {
+    // Optimistic: drop it now, the row stays gone (the SSE poll only re-sends
+    // rows newer than lastCheck, and a deleted row no longer exists to match).
+    setItems((prev) => prev.filter((n) => n.id !== id));
+    if (wasUnread) setUnreadCount((c) => Math.max(0, c - 1));
+    try {
+      await fetch(`${BASE}/api/notifications/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function clearAll() {
+    setItems([]);
+    setUnreadCount(0);
+    try {
+      await fetch(`${BASE}/api/notifications`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+    } catch {
+      /* ignore */
+    }
+  }
+
   return (
     <>
       <div ref={dropdownRef} className="relative">
@@ -173,16 +201,28 @@ export function NotificationsBell({ compact = false }: { compact?: boolean } = {
               <span className="text-xs uppercase tracking-wide text-muted-foreground">
                 Notifications
               </span>
-              {unreadCount > 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={markAllRead}
-                  className="h-7 px-2 text-xs text-primary hover:text-primary"
-                >
-                  <Check size={11} /> Mark all read
-                </Button>
-              )}
+              <div className="flex items-center gap-1">
+                {unreadCount > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={markAllRead}
+                    className="h-7 px-2 text-xs text-primary hover:text-primary"
+                  >
+                    <Check size={11} /> Mark all read
+                  </Button>
+                )}
+                {items.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={clearAll}
+                    className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    <Trash2 size={11} /> Clear all
+                  </Button>
+                )}
+              </div>
             </div>
             <ul className="overflow-y-auto flex-1 min-h-0">
               {items.length === 0 ? (
@@ -199,14 +239,14 @@ export function NotificationsBell({ compact = false }: { compact?: boolean } = {
                 </li>
               ) : (
                 items.map((n) => (
-                  <li key={n.id} className="border-b border-border last:border-0 hover:bg-white/[0.02]">
+                  <li key={n.id} className="group relative border-b border-border last:border-0 hover:bg-white/[0.02]">
                     <a
                       href={n.linkUrl ?? "#"}
                       onClick={() => {
                         if (!n.isRead) markRead(n.id);
                         if (n.linkUrl) setOpen(false);
                       }}
-                      className="flex flex-col gap-1 p-3"
+                      className="flex flex-col gap-1 p-3 pr-9"
                     >
                       <div className="flex items-start gap-2">
                         {!n.isRead && (
@@ -225,6 +265,16 @@ export function NotificationsBell({ compact = false }: { compact?: boolean } = {
                         </div>
                       </div>
                     </a>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      onClick={() => deleteOne(n.id, !n.isRead)}
+                      aria-label="Delete notification"
+                      className="absolute right-1.5 top-2 opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
+                    >
+                      <X />
+                    </Button>
                   </li>
                 ))
               )}

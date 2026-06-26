@@ -63,6 +63,27 @@ notificationsRouter.post("/read-all", async (c) => {
   return c.json({ ok: true });
 });
 
+notificationsRouter.delete("/:id", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  await db
+    .delete(notifications)
+    .where(and(eq(notifications.id, id), eq(notifications.orgId, orgId)));
+
+  return c.json({ ok: true });
+});
+
+notificationsRouter.delete("/", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  await db.delete(notifications).where(eq(notifications.orgId, orgId));
+
+  return c.json({ ok: true });
+});
+
 type ChannelResult = "sent" | "not_configured" | "error";
 
 // Connectivity check: deliver a fixed test message straight to whichever

@@ -169,6 +169,31 @@ export function minPlanForFrequency(freq: MonitorFrequency): Plan {
 }
 
 /**
+ * Cross-competitor "Sector trends" compare patterns across an org's competitors,
+ * so they only turn on once enough competitors are monitored. Single source of
+ * truth for that floor — the worker job (analyze-sectoral) defaults its env to
+ * this, the API reports it for the empty state, the web gates the nav on it.
+ */
+export const SECTORAL_MIN_COMPETITORS = 4;
+
+/**
+ * Whether `plan` can ever reach the sector-trends competitor floor. A plan whose
+ * maxCompetitors is below SECTORAL_MIN_COMPETITORS (free: 2) can never populate
+ * the Sector page, so we hide it / show an upsell rather than a dead empty state.
+ */
+export function planCanReachSectoral(plan: Plan): boolean {
+  return PLAN_LIMITS[plan].maxCompetitors >= SECTORAL_MIN_COMPETITORS;
+}
+
+/** Cheapest plan that can reach the sector-trends floor — drives upsell copy. */
+export function minPlanForSectoral(): Plan {
+  return (
+    PLANS.find((p) => PLAN_LIMITS[p].maxCompetitors >= SECTORAL_MIN_COMPETITORS) ??
+    "business"
+  );
+}
+
+/**
  * Clamp a monitor's requested frequency to what `plan` allows. Returned unchanged when
  * the plan already permits it, otherwise dropped to the plan's most-frequent allowed
  * cadence — `allowedFrequencies` is ordered most→least frequent, so `[0]` is the cap.

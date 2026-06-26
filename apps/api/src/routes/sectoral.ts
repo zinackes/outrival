@@ -1,6 +1,7 @@
 import { Hono } from "hono";
-import { and, desc, eq, isNotNull, isNull } from "drizzle-orm";
-import { sectoralSignals } from "@outrival/db";
+import { and, count, desc, eq, isNotNull, isNull, ne } from "drizzle-orm";
+import { competitors, organizations, sectoralSignals } from "@outrival/db";
+import { SECTORAL_MIN_COMPETITORS, planCanReachSectoral, type Plan } from "@outrival/shared";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
@@ -68,7 +69,40 @@ sectoralRouter.get("/", async (c) => {
     .limit(limit)
     .offset(offset);
 
-  return c.json({ signals: rows });
+  // Eligibility meta (first page only — drives the empty state + nav gating on
+  // the web). Sector trends compare patterns across >= SECTORAL_MIN_COMPETITORS
+  // competitors; a plan that can't reach that floor (free, max 2) sees an upsell
+  // instead of a dead empty feed, and starter+ below it sees an "add N" nudge.
+  let eligibility: {
+    competitorCount: number;
+    minCompetitors: number;
+    planCanReach: boolean;
+  } | null = null;
+  if (offset === 0) {
+    const [org] = await db
+      .select({ plan: organizations.plan })
+      .from(organizations)
+      .where(eq(organizations.id, orgId))
+      .limit(1);
+    const [counted] = await db
+      .select({ value: count() })
+      .from(competitors)
+      .where(
+        and(
+          eq(competitors.orgId, orgId),
+          isNull(competitors.deletedAt),
+          ne(competitors.type, "self"),
+        ),
+      );
+    const plan = (org?.plan ?? "free") as Plan;
+    eligibility = {
+      competitorCount: Number(counted?.value ?? 0),
+      minCompetitors: SECTORAL_MIN_COMPETITORS,
+      planCanReach: planCanReachSectoral(plan),
+    };
+  }
+
+  return c.json({ signals: rows, eligibility });
 });
 
 sectoralRouter.post("/:id/read", async (c) => {

@@ -382,6 +382,15 @@ export interface SectoralSignal {
   createdAt: string;
 }
 
+// Returned on the sectoral feed's first page only — lets the empty state explain
+// *why* it's empty (plan can't reach the competitor floor → upsell; below it →
+// "add N more"; at/above it → patterns still building).
+export interface SectoralEligibility {
+  competitorCount: number;
+  minCompetitors: number;
+  planCanReach: boolean;
+}
+
 // Activity — user-facing view of the scraping work done for the org.
 export type ActivitySourceStatus = "ok" | "failing" | "paused" | "unscrapable";
 
@@ -1684,7 +1693,9 @@ export const api = {
     if (params?.category) q.set("category", params.category);
     if (params?.dismissed) q.set("dismissed", "1");
     const qs = q.toString();
-    return request<{ signals: SectoralSignal[] }>(`/api/sectoral${qs ? `?${qs}` : ""}`);
+    return request<{ signals: SectoralSignal[]; eligibility: SectoralEligibility | null }>(
+      `/api/sectoral${qs ? `?${qs}` : ""}`,
+    );
   },
   markSectoralRead: (id: string) =>
     request<{ ok: true }>(`/api/sectoral/${id}/read`, { method: "POST" }),

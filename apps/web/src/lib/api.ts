@@ -2139,6 +2139,10 @@ export const api = {
     }),
   rejectAlternative: (id: string) =>
     request<{ ok: true }>(`/api/monitor-alternatives/${id}/reject`, { method: "POST" }),
+  resumeMonitor: (monitorId: string) =>
+    request<{ ok: true; runId: string }>(`/api/monitor-alternatives/${monitorId}/resume`, {
+      method: "POST",
+    }),
   submitManualSnapshot: (
     monitorId: string,
     input: { data: Record<string, unknown>; evidenceUrl?: string },

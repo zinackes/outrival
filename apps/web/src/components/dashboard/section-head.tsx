@@ -35,7 +35,7 @@ export function SectionHead({
             {title}
           </h2>
           {sub && (
-            <div className="text-muted-foreground text-dense font-mono mt-0.5 truncate">
+            <div className="text-muted-foreground text-dense mt-0.5 truncate">
               {sub}
             </div>
           )}

@@ -256,7 +256,7 @@ export function UpdateProfileDialog({
           <div className="flex flex-col gap-5">
             {/* Stage */}
             <div className="flex flex-col gap-2">
-              <Label className="text-meta font-mono uppercase tracking-wider text-muted-foreground">
+              <Label className="text-xs font-medium text-muted-foreground">
                 Stage
               </Label>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
@@ -286,7 +286,7 @@ export function UpdateProfileDialog({
 
             {/* Source + re-analyze */}
             <div className="flex flex-col gap-2">
-              <Label className="text-meta font-mono uppercase tracking-wider text-muted-foreground">
+              <Label className="text-xs font-medium text-muted-foreground">
                 Source
               </Label>
               {stage === "live" && (
@@ -354,7 +354,7 @@ export function UpdateProfileDialog({
             {/* Diff rows (only after a re-analysis, only for changed fields) */}
             {reanalysis && diffRows.length > 0 && (
               <div className="flex flex-col gap-2 rounded-md border border-primary/30 bg-primary/[0.04] px-3 py-3">
-                <div className="flex items-center gap-1.5 text-meta font-mono uppercase tracking-wider text-primary">
+                <div className="flex items-center gap-1.5 text-meta font-medium text-primary">
                   <Sparkles size={12} /> Re-analysis · review {diffRows.length} change
                   {diffRows.length > 1 ? "s" : ""}
                 </div>
@@ -365,7 +365,7 @@ export function UpdateProfileDialog({
                   const cur = (working[key] ?? "").trim();
                   return (
                     <div key={key} className="flex flex-col gap-1 border-t border-border/50 pt-2 first:border-t-0 first:pt-0">
-                      <span className="text-meta font-mono uppercase tracking-wider text-muted-foreground">
+                      <span className="text-meta font-medium text-muted-foreground">
                         {label}
                       </span>
                       <div className="text-xs leading-relaxed">

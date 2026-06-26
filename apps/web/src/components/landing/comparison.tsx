@@ -77,7 +77,7 @@ export function Comparison() {
         <div className="mt-12 overflow-x-auto">
           <div className="min-w-[640px] border-t border-border-strong">
             <div
-              className={`${ROW} border-b border-border font-mono text-xs uppercase tracking-wider text-text-subtle`}
+              className={`${ROW} border-b border-border text-xs font-medium text-text-subtle`}
             >
               <div className="px-4 py-3" />
               <div className="px-4 py-3">Manual</div>

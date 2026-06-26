@@ -148,7 +148,7 @@ export function DigestMockup({ animate = true }: { animate?: boolean }) {
           { label: "Sources", value: "36" },
         ].map((s) => (
           <div key={s.label} className="bg-surface px-3 py-2.5">
-            <div className="font-mono text-meta uppercase tracking-wider text-text-subtle">
+            <div className="text-meta font-medium text-text-subtle">
               {s.label}
             </div>
             <div className="mt-0.5 flex items-baseline gap-1 text-lg font-semibold">
@@ -168,7 +168,7 @@ export function DigestMockup({ animate = true }: { animate?: boolean }) {
             className="flex items-center gap-2.5 px-4 py-2.5 text-xs"
           >
             <span className={`size-2 shrink-0 rounded-full ${SEV_DOT[s.sev]}`} />
-            <span className="w-14 shrink-0 font-mono text-meta uppercase text-text-subtle">
+            <span className="w-14 shrink-0 text-meta uppercase text-text-subtle">
               {s.cat}
             </span>
             <span className="flex-1 text-text-muted [&_b]:text-foreground">

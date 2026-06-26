@@ -518,7 +518,7 @@ export function DiscoveryView({
 
                   {c.reason && (
                     <p className="text-sm leading-snug m-0 mb-3.5 text-muted-foreground">
-                      <span className="text-primary font-mono text-meta tracking-widest uppercase mr-1.5">
+                      <span className="text-primary text-meta font-medium capitalize mr-1.5">
                         reason
                       </span>
                       {c.reason}

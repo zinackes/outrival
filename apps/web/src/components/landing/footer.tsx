@@ -7,7 +7,7 @@ function FooterCol({
 }) {
   return (
     <div className="flex flex-col gap-2.5 text-sm">
-      <div className="mb-1 font-mono text-xs uppercase tracking-wider text-text-subtle">
+      <div className="mb-1 text-xs font-medium text-text-subtle">
         {head}
       </div>
       {links.map((l) => (

@@ -67,7 +67,7 @@ type SortBy = "name" | "overlap" | "signals" | "delta" | "lastSignal";
 type SortDir = "asc" | "desc";
 
 const TH_BASE =
-  "text-left px-3.5 py-2.5 font-mono text-meta uppercase tracking-wide text-muted-foreground font-medium border-b border-border whitespace-nowrap";
+  "text-left px-3.5 py-2.5 text-xs text-muted-foreground font-medium border-b border-border whitespace-nowrap";
 
 export function CompetitorsList({
   initialCompetitors = null,
@@ -300,7 +300,7 @@ export function CompetitorsList({
       <div className="flex items-center gap-2 flex-wrap">
         {cats.length > 0 && (
           <>
-            <span className="font-mono text-meta tracking-widest text-muted-foreground uppercase mr-1">
+            <span className="text-xs font-medium text-muted-foreground mr-1">
               Category
             </span>
             <ToggleGroup
@@ -654,8 +654,8 @@ export function CompetitorsList({
                     <div className="text-title font-bold tracking-tight leading-none">
                       {c.signals7d}
                     </div>
-                    <div className="text-meta text-muted-foreground font-mono uppercase tracking-widest mt-1">
-                      signals 7d
+                    <div className="text-meta text-muted-foreground mt-1">
+                      Signals 7d
                     </div>
                   </div>
                   <DeltaPill delta={c.delta} />
@@ -752,7 +752,7 @@ function KpiCell({
         onClick && "transition-colors hover:bg-accent/30",
       )}
     >
-      <div className="font-mono text-meta tracking-widest text-muted-foreground uppercase flex items-center justify-between gap-2">
+      <div className="text-meta font-medium text-muted-foreground flex items-center justify-between gap-2">
         <span>{label}</span>
         {delta && (
           <span

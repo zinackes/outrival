@@ -122,7 +122,7 @@ export function AlertChannelsSheet({
               <span className="block font-medium">
                 Send high/critical alerts as they happen
               </span>
-              <span className="block text-meta font-mono text-muted-foreground mt-0.5">
+              <span className="block text-meta text-muted-foreground mt-0.5">
                 Master switch for every channel. Medium/low always go in the
                 weekly digest.
               </span>
@@ -187,7 +187,7 @@ export function AlertChannelsSheet({
                   }
                   placeholder="https://hooks.slack.com/services/..."
                 />
-                <p className="text-meta font-mono text-muted-foreground">
+                <p className="text-meta text-muted-foreground">
                   Create an incoming webhook in Slack → paste the URL here.
                 </p>
               </div>
@@ -207,7 +207,7 @@ export function AlertChannelsSheet({
                   }
                   placeholder="you@company.com"
                 />
-                <p className="text-meta font-mono text-muted-foreground">
+                <p className="text-meta text-muted-foreground">
                   Same address as the weekly digest.
                 </p>
               </div>
@@ -235,7 +235,7 @@ export function AlertChannelsSheet({
                   }
                   placeholder="https://your-endpoint.com/hooks/outrival"
                 />
-                <p className="text-meta font-mono text-muted-foreground">
+                <p className="text-meta text-muted-foreground">
                   We POST a JSON payload on each critical/high signal. Pro plan or
                   higher.
                 </p>

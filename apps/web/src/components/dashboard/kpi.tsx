@@ -63,7 +63,7 @@ export function Kpi({
   }`;
   const body = (
     <>
-      <div className="font-mono text-dense text-muted-foreground flex items-center justify-between gap-2">
+      <div className="text-dense text-muted-foreground flex items-center justify-between gap-2">
         <span className="inline-flex items-center gap-1">
           {label}
           {href && (

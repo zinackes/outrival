@@ -55,10 +55,10 @@ export function VisualDiff({ signalId }: { signalId: string }) {
           className="pointer-events-none absolute inset-y-0 w-px bg-[var(--link)]"
           style={{ left: `${pos}%` }}
         />
-        <span className="absolute left-2 top-2 rounded-sm bg-background/80 px-1.5 py-0.5 font-mono text-meta text-muted-foreground">
+        <span className="absolute left-2 top-2 rounded-sm bg-background/80 px-1.5 py-0.5 text-meta text-muted-foreground">
           Before
         </span>
-        <span className="absolute right-2 top-2 rounded-sm bg-background/80 px-1.5 py-0.5 font-mono text-meta text-foreground">
+        <span className="absolute right-2 top-2 rounded-sm bg-background/80 px-1.5 py-0.5 text-meta text-foreground">
           After
         </span>
       </div>
@@ -83,7 +83,7 @@ export function VisualDiff({ signalId }: { signalId: string }) {
           <DialogTitle className="text-base">Visual change</DialogTitle>
           <div className="grid grid-cols-2 gap-4">
             <figure className="space-y-1.5">
-              <figcaption className="font-mono text-meta text-muted-foreground">
+              <figcaption className="text-meta text-muted-foreground">
                 Before
               </figcaption>
               <div className="max-h-[72vh] overflow-auto rounded-md border border-border">
@@ -96,7 +96,7 @@ export function VisualDiff({ signalId }: { signalId: string }) {
               </div>
             </figure>
             <figure className="space-y-1.5">
-              <figcaption className="font-mono text-meta text-foreground">After</figcaption>
+              <figcaption className="text-meta text-foreground">After</figcaption>
               <div className="max-h-[72vh] overflow-auto rounded-md border border-border">
                 <img
                   src={afterUrl}

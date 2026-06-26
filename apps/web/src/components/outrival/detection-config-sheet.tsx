@@ -124,7 +124,7 @@ export function DetectionConfigSheet({
                     Strict
                   </ToggleGroupItem>
                 </ToggleGroup>
-                <p className="text-meta font-mono text-muted-foreground">
+                <p className="text-meta text-muted-foreground">
                   Minimum overlap to surface a candidate (
                   {config.minOverlap}/100). Stricter = fewer, closer matches.
                 </p>
@@ -140,7 +140,7 @@ export function DetectionConfigSheet({
                 />
                 <span>
                   <span className="block font-medium">Auto-detection</span>
-                  <span className="block text-meta font-mono text-muted-foreground mt-0.5">
+                  <span className="block text-meta text-muted-foreground mt-0.5">
                     Run on a schedule. Manual Refresh always works.
                   </span>
                 </span>
@@ -175,7 +175,7 @@ export function DetectionConfigSheet({
                   placeholder="e.g. enterprise, EU, open source"
                   maxLength={200}
                 />
-                <p className="text-meta font-mono text-muted-foreground">
+                <p className="text-meta text-muted-foreground">
                   Extra terms added to the auto query. Leave empty for default.
                 </p>
               </div>
@@ -190,7 +190,7 @@ export function DetectionConfigSheet({
                   rows={4}
                   className="font-mono text-xs"
                 />
-                <p className="text-meta font-mono text-muted-foreground">
+                <p className="text-meta text-muted-foreground">
                   One domain per line. Never surfaced (parent co, partners…).
                 </p>
               </div>

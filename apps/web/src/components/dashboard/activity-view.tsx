@@ -366,7 +366,7 @@ export function ActivityView({
         <div className="flex flex-col gap-3">
           {upcoming.length > 0 && (
             <div className="rounded-lg border border-border p-3">
-              <div className="mb-2 text-meta font-mono uppercase tracking-wider text-muted-foreground">
+              <div className="mb-2 text-xs font-medium text-muted-foreground">
                 Next checks
               </div>
               <TooltipProvider delayDuration={150}>

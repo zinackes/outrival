@@ -372,7 +372,7 @@ export function BattleCardTab({ competitorId }: Props) {
       </section>
 
       <div className="flex items-center justify-between gap-3 px-5 py-3.5">
-        <p className="font-mono text-xs text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           Generated{" "}
           {new Date(card.generatedAt).toLocaleDateString("en-US", {
             day: "2-digit",

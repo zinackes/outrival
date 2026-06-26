@@ -142,7 +142,7 @@ export function CompetitorTechStack({ techStack }: { techStack: TechStackData })
           <div className="space-y-3">
             {orderedCategories.map((cat) => (
               <div key={cat}>
-                <div className="text-meta font-mono uppercase tracking-wider text-muted-foreground mb-1.5">
+                <div className="text-xs font-medium capitalize text-muted-foreground mb-1.5">
                   {CATEGORY_LABELS[cat] ?? cat}
                 </div>
                 <ul className="flex flex-wrap gap-1.5">

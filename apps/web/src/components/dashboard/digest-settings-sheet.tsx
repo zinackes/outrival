@@ -101,7 +101,7 @@ export function DigestSettingsSheet({
                   }
                   placeholder="you@company.com"
                 />
-                <p className="text-meta font-mono text-muted-foreground">
+                <p className="text-meta text-muted-foreground">
                   Address that will receive the weekly digest.
                 </p>
               </div>
@@ -118,14 +118,14 @@ export function DigestSettingsSheet({
                   <span className="block font-medium">
                     Enable weekly digest
                   </span>
-                  <span className="block text-meta font-mono text-muted-foreground mt-0.5">
+                  <span className="block text-meta text-muted-foreground mt-0.5">
                     Disabling stops sending but keeps history.
                   </span>
                 </span>
               </label>
 
               <div className="rounded-md border border-border bg-card px-3.5 py-3">
-                <div className="text-meta font-mono uppercase tracking-widest text-muted-foreground mb-1">
+                <div className="text-xs font-medium text-muted-foreground mb-1">
                   Coming soon
                 </div>
                 <ul className="text-xs text-muted-foreground space-y-0.5 list-disc list-inside marker:text-muted-foreground/40">

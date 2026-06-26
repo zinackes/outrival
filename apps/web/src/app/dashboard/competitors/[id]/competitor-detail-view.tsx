@@ -895,6 +895,7 @@ export function CompetitorDetailView({
             </TabsContent>
             <TabsContent value="activity" className={TAB_PANEL_CLASS}>
               <ActivityTab
+                competitorId={competitor.id}
                 signals={recentSignals}
                 changes={recentChanges}
                 onRefresh={refresh}

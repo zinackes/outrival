@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Eyebrow } from "@/components/outrival/eyebrow";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
 import { SignalSourceLine } from "@/components/outrival/signal-source-line";
+import { useLastVisit } from "@/hooks/use-last-visit";
 import { ChangeCard } from "./changes";
 
 const SEVERITY_CLASS: Record<string, string> = {
@@ -19,16 +20,25 @@ const SEVERITY_CLASS: Record<string, string> = {
 };
 
 export function ActivityTab({
+  competitorId,
   signals,
   changes,
   onRefresh,
   competitorUrl,
 }: {
+  competitorId: string;
   signals: CompetitorSignal[];
   changes: ChangeRow[];
   onRefresh?: () => void;
   competitorUrl: string;
 }) {
+  // Highlight what landed since the user last opened this competitor (no server
+  // state — purely client). `null` on a first visit → nothing flagged.
+  const lastVisit = useLastVisit(`competitor:${competitorId}`);
+  const isNew = (createdAt: string) =>
+    lastVisit !== null && new Date(createdAt).getTime() > lastVisit;
+  const newCount = signals.filter((s) => isNew(s.createdAt)).length;
+
   if (signals.length === 0 && changes.length === 0) {
     return (
       <Card className="px-6 py-10 text-center border-dashed flex flex-col items-center gap-2.5">
@@ -46,11 +56,27 @@ export function ActivityTab({
     <TabCard>
       {signals.length > 0 && (
         <TabSection title="Recent activity" icon={Activity}>
+        {newCount > 0 && (
+          <div className="mb-1 flex items-center gap-2 text-dense text-muted-foreground">
+            <span className="size-1.5 rounded-full bg-primary" aria-hidden />
+            <span>
+              <span className="font-medium text-foreground">{newCount}</span> new
+              since your last visit
+            </span>
+          </div>
+        )}
         <ul className="flex flex-col divide-y divide-border">
           {signals.map((s) => {
             const pageUrl = s.monitorUrl ?? competitorUrl;
+            const fresh = isNew(s.createdAt);
             return (
-              <li key={s.id} className="flex flex-col py-3.5 first:pt-0 last:pb-0">
+              <li
+                key={s.id}
+                className={cn(
+                  "flex flex-col py-3.5 first:pt-0 last:pb-0",
+                  fresh && "border-l-2 border-primary pl-3.5",
+                )}
+              >
                 <div className="flex items-center gap-2 mb-1.5 text-xs flex-wrap">
                   <Badge
                     className={cn(
@@ -60,6 +86,11 @@ export function ActivityTab({
                   >
                     {s.severity}
                   </Badge>
+                  {fresh && (
+                    <span className="rounded-sm bg-primary/15 px-1.5 py-0 font-mono text-meta font-medium uppercase tracking-wide text-primary">
+                      New
+                    </span>
+                  )}
                   <Eyebrow size="micro">{s.category}</Eyebrow>
                   <span className="text-muted-foreground font-mono text-meta">
                     · {formatDistanceToNow(new Date(s.createdAt), { addSuffix: true })}

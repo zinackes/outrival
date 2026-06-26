@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, Check } from "lucide-react";
+import { Bell, Check, CheckCheck } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -186,8 +186,16 @@ export function NotificationsBell({ compact = false }: { compact?: boolean } = {
             </div>
             <ul className="overflow-y-auto flex-1 min-h-0">
               {items.length === 0 ? (
-                <li className="p-6 text-center text-xs text-muted-foreground">
-                  No notifications
+                <li className="flex flex-col items-center gap-2 p-8 text-center">
+                  <span className="inline-flex size-9 items-center justify-center rounded-md border border-positive/25 bg-positive/10 text-positive">
+                    <CheckCheck size={17} aria-hidden />
+                  </span>
+                  <span className="text-sm font-medium text-foreground">
+                    You&apos;re all caught up
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    New competitor moves will show up here.
+                  </span>
                 </li>
               ) : (
                 items.map((n) => (

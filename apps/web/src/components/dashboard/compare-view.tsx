@@ -557,6 +557,9 @@ export function CompareView({
   // View state.
   const [visibleRows, setVisibleRows] = useState<string[]>(ALL_ROW_KEYS);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  // "Differences only" (NN/g comparison-table pattern): hide rows where every
+  // column matches, so the rows that actually distinguish competitors stand out.
+  const [diffOnly, setDiffOnly] = useState(false);
   const [exportFormat, setExportFormat] = useState<ExportFormat>("csv");
   const [exportVisibleOnly, setExportVisibleOnly] = useState(true);
   const [exportIncludeYou, setExportIncludeYou] = useState(true);
@@ -694,6 +697,14 @@ export function CompareView({
 
   const visibleRowSet = useMemo(() => new Set(visibleRows), [visibleRows]);
   const rows = useMemo(() => ROWS.filter((r) => visibleRowSet.has(r.key)), [visibleRowSet]);
+  // Rows actually rendered: when "Differences only" is on, drop rows whose
+  // canonical value (csv) is identical across every column.
+  const displayRows = useMemo(() => {
+    if (!diffOnly) return rows;
+    return rows.filter(
+      (r) => new Set(orderedCols.map((c) => r.csv(c))).size > 1,
+    );
+  }, [rows, diffOnly, orderedCols]);
   // Winning column ids per row (only rows that define `best`).
   const winnersByRow = useMemo(() => {
     const m = new Map<string, Set<string>>();
@@ -899,6 +910,19 @@ export function CompareView({
           <span className="text-muted-foreground ml-1 font-mono text-meta tabular-nums">
             {selected.length}/{MAX}
           </span>
+
+          {selected.length > 1 && (
+            <Button
+              variant={diffOnly ? "default" : "outline"}
+              size="sm"
+              onClick={() => setDiffOnly((v) => !v)}
+              className="ml-auto"
+              aria-pressed={diffOnly}
+            >
+              <Rows3 size={14} />
+              Differences only
+            </Button>
+          )}
         </div>
       )}
 
@@ -956,7 +980,20 @@ export function CompareView({
                       // Columns to span on caption rows after the (frozen) label and
                       // "you" cells — keeps the frozen you column continuous.
                       const restCols = orderedCols.length - (stickyYouId ? 1 : 0);
-                      for (const r of rows) {
+                      if (diffOnly && displayRows.length === 0) {
+                        out.push(
+                          <tr key="no-diff">
+                            <td
+                              colSpan={orderedCols.length + 1}
+                              className="bg-background px-3 py-6 text-center text-sm text-muted-foreground"
+                            >
+                              No differences across the tracked fields — these
+                              competitors match on everything compared.
+                            </td>
+                          </tr>,
+                        );
+                      }
+                      for (const r of displayRows) {
                         const group = ROW_GROUP[r.key] ?? "";
                         if (group && group !== prevGroup) {
                           out.push(

@@ -117,12 +117,23 @@ authRouter.get("/otp-link", async (c) => {
   }
 
   try {
-    const { headers } = await auth.api.signInEmailOTP({
+    const { headers, response } = await auth.api.signInEmailOTP({
       headers: c.req.raw.headers,
       body: { email, otp: code },
       returnHeaders: true,
     });
-    const redirect = c.redirect(`${webUrl}/dashboard`, 302);
+    // 2FA-enabled accounts: the auth hook swapped the freshly created session
+    // for a short-lived `two_factor` challenge cookie (carried in `headers`).
+    // Land on the /auth TOTP step instead of the dashboard, where the user
+    // enters their code to finish signing in.
+    const twoFactorPending =
+      !!response &&
+      typeof response === "object" &&
+      "twoFactorRedirect" in response;
+    const dest = twoFactorPending
+      ? `${webUrl}/auth?twofactor=1`
+      : `${webUrl}/dashboard`;
+    const redirect = c.redirect(dest, 302);
     for (const cookie of headers.getSetCookie()) {
       redirect.headers.append("set-cookie", cookie);
     }
@@ -191,4 +202,40 @@ authRouter.post("/set-password", authMiddleware, async (c) => {
   }
 
   return c.json({ ok: true, changed: Boolean(credential?.password) });
+});
+
+/**
+ * Disconnect a linked OAuth provider (e.g. Google) from Settings > Security.
+ * Better Auth's own /account/unlink-account requires a session fresher than
+ * freshAge (24h) — unusable with our 30-day sessions — so we delete the linked
+ * account row directly. No lockout risk: email-OTP sign-in needs no account row,
+ * so it always remains as a way in. Never touches the "credential" account
+ * (that's the password, managed by /set-password).
+ */
+authRouter.post("/disconnect-oauth", authMiddleware, async (c) => {
+  const user = c.get("user");
+  const body = (await c.req.json().catch(() => ({}))) as { providerId?: unknown };
+  const providerId = typeof body.providerId === "string" ? body.providerId : "";
+  if (!providerId || providerId === "credential") {
+    return c.json(
+      errorBody("invalid_provider", "That account can't be disconnected here."),
+      400,
+    );
+  }
+
+  const rows = await db
+    .select({ id: account.id })
+    .from(account)
+    .where(and(eq(account.userId, user.id), eq(account.providerId, providerId)));
+  if (rows.length === 0) {
+    return c.json(
+      errorBody("account_not_found", "That account isn't connected."),
+      404,
+    );
+  }
+
+  await db
+    .delete(account)
+    .where(and(eq(account.userId, user.id), eq(account.providerId, providerId)));
+  return c.json({ ok: true });
 });

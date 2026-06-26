@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, integer } from "drizzle-orm/pg-core";
 import { roleEnum } from "./users";
 
 export const user = pgTable("user", {
@@ -9,12 +9,48 @@ export const user = pgTable("user", {
   image: text("image"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  // Better Auth `twoFactor` plugin (patch — settings security P0). Flipped to
+  // true only once the user confirms a TOTP code (verify-first), never on enable.
+  twoFactorEnabled: boolean("two_factor_enabled").notNull().default(false),
   // Legacy: org membership & role live on the `users` (plural) app table,
   // mirrored via the Better Auth create hook. These columns linger on the
   // Better Auth `user` table from an earlier design and are unused by app
   // code — declared here only so drizzle-kit push doesn't drop them.
   orgId: text("org_id"),
   role: roleEnum("role").notNull().default("member"),
+});
+
+// Better Auth `twoFactor` plugin storage. One row per user with 2FA set up.
+// Field names (secret/backupCodes/userId/verified) MUST match the plugin's
+// model fields — the Drizzle adapter resolves them by JS property key. The
+// secret + backupCodes are stored encrypted by Better Auth.
+export const twoFactor = pgTable("two_factor", {
+  id: text("id").primaryKey(),
+  secret: text("secret").notNull(),
+  backupCodes: text("backup_codes").notNull(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  verified: boolean("verified").default(true),
+});
+
+// Better Auth `@better-auth/passkey` plugin storage (WebAuthn). Property keys must
+// match the plugin's field names (the Drizzle adapter resolves by JS key); DB
+// column names are free. One row per registered passkey.
+export const passkey = pgTable("passkey", {
+  id: text("id").primaryKey(),
+  name: text("name"),
+  publicKey: text("public_key").notNull(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  credentialID: text("credential_id").notNull(),
+  counter: integer("counter").notNull(),
+  deviceType: text("device_type").notNull(),
+  backedUp: boolean("backed_up").notNull(),
+  transports: text("transports"),
+  createdAt: timestamp("created_at").defaultNow(),
+  aaguid: text("aaguid"),
 });
 
 export const session = pgTable("session", {

@@ -20,6 +20,18 @@ import { cn } from "@/lib/utils";
 import { BillingDashboardSkeleton } from "@/app/dashboard/settings/billing/billing-skeleton";
 
 type PaidPlan = Exclude<Plan, "free">;
+type Invoice = Awaited<ReturnType<typeof api.getInvoices>>["invoices"][number];
+
+function formatInvoiceAmount(cents: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: currency.toUpperCase(),
+    }).format(cents / 100);
+  } catch {
+    return `${(cents / 100).toFixed(2)} ${currency.toUpperCase()}`;
+  }
+}
 
 const PLAN_RANK: Record<Plan, number> = {
   free: 0,
@@ -109,12 +121,21 @@ export function BillingDashboard({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
 
   useEffect(() => {
     // Server-seeded first paint → skip the redundant client fetch.
     if (initialBilling) return;
     api.getBilling().then(setBilling).catch((e) => setError(String(e)));
   }, []);
+
+  useEffect(() => {
+    if (!billing?.hasSubscription) return;
+    api
+      .getInvoices()
+      .then((r) => setInvoices(r.invoices))
+      .catch(() => setInvoices([]));
+  }, [billing?.hasSubscription]);
 
   useEffect(() => {
     const status = search.get("status");
@@ -279,6 +300,44 @@ export function BillingDashboard({
           </div>
         </div>
       </Card>
+
+      {/* ── Billing history ────────────────────────────────────────────── */}
+      {invoices.length > 0 && (
+        <section className="flex flex-col gap-4">
+          <h3 className="font-semibold text-base tracking-tight">Billing history</h3>
+          <Card className="divide-y divide-border overflow-hidden p-0">
+            {invoices.map((inv) => (
+              <div key={inv.id ?? inv.date} className="flex items-center gap-3 px-5 py-3">
+                <div className="min-w-0 flex-1">
+                  <div className="text-dense text-foreground">
+                    {new Date(inv.date).toLocaleDateString("en-US", {
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </div>
+                  {inv.status && inv.status !== "paid" && (
+                    <div className="text-meta text-muted-foreground capitalize">{inv.status}</div>
+                  )}
+                </div>
+                <span className="font-mono text-dense tabular-nums text-foreground">
+                  {formatInvoiceAmount(inv.amountPaid, inv.currency)}
+                </span>
+                {inv.hostedUrl || inv.pdfUrl ? (
+                  <a
+                    href={(inv.hostedUrl ?? inv.pdfUrl)!}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-dense text-link underline underline-offset-2"
+                  >
+                    Receipt
+                  </a>
+                ) : null}
+              </div>
+            ))}
+          </Card>
+        </section>
+      )}
 
       {/* ── Plan selector ──────────────────────────────────────────────── */}
       <section className="flex flex-col gap-6">

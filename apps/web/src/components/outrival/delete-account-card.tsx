@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
+import { useSession } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,45 +18,41 @@ import {
 import { api } from "@/lib/api";
 import { ReauthCodeField } from "@/components/outrival/reauth-code-field";
 
-export function DeleteWorkspaceCard() {
+// Permanent account erasure (GDPR). Distinct from "delete workspace": this also
+// removes your login, so you're signed out for good rather than dropped into a
+// fresh empty workspace.
+export function DeleteAccountCard() {
+  const { data: session } = useSession();
+  const email = session?.user?.email ?? "";
   const [open, setOpen] = useState(false);
-  const [workspaceName, setWorkspaceName] = useState<string | null>(null);
   const [confirm, setConfirm] = useState("");
   const [code, setCode] = useState("");
   const [deleting, setDeleting] = useState(false);
 
-  useEffect(() => {
-    api
-      .getWorkspaceSettings()
-      .then((w) => setWorkspaceName(w.name))
-      .catch(() => setWorkspaceName(null));
-  }, []);
-
   async function handleDelete() {
     setDeleting(true);
     try {
-      await api.deleteWorkspace(confirm, code);
-      // The org is gone; the next dashboard request creates a fresh empty one
-      // and the layout routes through onboarding. Hard navigation so no stale
-      // client cache survives the deletion.
-      window.location.assign("/dashboard");
+      await api.deleteAccount(confirm, code);
+      // The Better Auth identity (and its session) is gone — hard-navigate to the
+      // landing page; the dead cookie resolves to a logged-out state.
+      window.location.assign("/");
     } catch (err) {
       setDeleting(false);
       toast.error(err instanceof Error ? err.message : "Deletion failed — try again.");
     }
   }
 
-  const confirmMatches = workspaceName !== null && confirm === workspaceName;
+  const confirmMatches = email !== "" && confirm.trim().toLowerCase() === email.toLowerCase();
   const canDelete = confirmMatches && code.length === 6;
 
   return (
     <Card className="border-critical/20 px-5 py-5">
       <div className="flex items-center gap-3">
         <div className="flex-1">
-          <div className="font-semibold text-sm">Delete workspace</div>
+          <div className="font-semibold text-sm">Delete account</div>
           <div className="text-muted-foreground text-dense mt-1">
-            Permanently erases all signals, digests and battle cards. This
-            action cannot be undone.
+            Erases your workspace and removes your login entirely. You'll be signed
+            out and can't sign back in. This cannot be undone.
           </div>
         </div>
         <Button
@@ -64,7 +61,7 @@ export function DeleteWorkspaceCard() {
           className="text-destructive border-destructive/25"
           onClick={() => setOpen(true)}
         >
-          Delete
+          Delete account
         </Button>
       </div>
 
@@ -81,27 +78,28 @@ export function DeleteWorkspaceCard() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete this workspace?</DialogTitle>
+            <DialogTitle>Delete your account?</DialogTitle>
             <DialogDescription>
-              All competitors, signals, digests, battle cards and snapshots will
-              be permanently erased, and any active subscription cancelled. This
-              cannot be undone.
+              Your workspace and all of its data are permanently erased, any active
+              subscription is cancelled, and your login is removed. This cannot be
+              undone.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="confirm-workspace-name" className="text-dense">
-              Type{" "}
-              <span className="font-semibold text-foreground">
-                {workspaceName ?? "your workspace name"}
+            <Label htmlFor="confirm-account-email" className="text-dense">
+              Type your email{" "}
+              <span className="font-semibold text-foreground" data-ph-mask>
+                {email || "address"}
               </span>{" "}
               to confirm
             </Label>
             <Input
-              id="confirm-workspace-name"
+              id="confirm-account-email"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
-              placeholder={workspaceName ?? ""}
+              placeholder={email}
               autoComplete="off"
+              data-ph-mask
             />
           </div>
           <ReauthCodeField code={code} onCode={setCode} />
@@ -115,7 +113,7 @@ export function DeleteWorkspaceCard() {
               disabled={!canDelete || deleting}
               onClick={handleDelete}
             >
-              {deleting ? "Deleting…" : "Delete workspace"}
+              {deleting ? "Deleting…" : "Delete account"}
             </Button>
           </DialogFooter>
         </DialogContent>

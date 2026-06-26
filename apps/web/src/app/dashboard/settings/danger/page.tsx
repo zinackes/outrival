@@ -1,4 +1,5 @@
 import { DeleteWorkspaceCard } from "@/components/outrival/delete-workspace-card";
+import { DeleteAccountCard } from "@/components/outrival/delete-account-card";
 
 export default function DangerZonePage() {
   return (
@@ -8,11 +9,12 @@ export default function DangerZonePage() {
           Danger zone
         </h2>
         <p className="text-muted-foreground text-sm mt-1">
-          Irreversible actions on this workspace.
+          Irreversible actions on your workspace and account.
         </p>
       </header>
 
       <DeleteWorkspaceCard />
+      <DeleteAccountCard />
     </section>
   );
 }

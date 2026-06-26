@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
-import { ArrowLeft, ArrowRight, CornerDownRight, Loader2, Mail } from "lucide-react";
+import { ArrowLeft, ArrowRight, CornerDownRight, Eye, EyeOff, Fingerprint, Loader2, Mail, ShieldCheck } from "lucide-react";
 import { emailSchema } from "@outrival/shared";
 import { signIn } from "@/lib/auth-client";
 import { track, identifyUser } from "@/lib/posthog/events";
@@ -16,8 +16,9 @@ const RESEND_COOLDOWN_SECONDS = 30;
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+const PASSKEYS_ENABLED = process.env.NEXT_PUBLIC_PASSKEYS_ENABLED === "true";
 
-type Step = "email" | "code";
+type Step = "email" | "code" | "totp";
 type Status = "idle" | "loading" | "error";
 
 function validateEmailInline(email: string): string | null {
@@ -35,6 +36,7 @@ export function AuthForm() {
   const [password, setPassword] = useState("");
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [usePassword, setUsePassword] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState("");
   const [cooldown, setCooldown] = useState(0);
@@ -47,7 +49,15 @@ export function AuthForm() {
   //  - any other ?error= → Better Auth's Google OAuth callback failed.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const reason = new URLSearchParams(window.location.search).get("error");
+    const params = new URLSearchParams(window.location.search);
+    // A one-click link or Google sign-in for a 2FA-enabled account lands here
+    // with a pending `two_factor` challenge cookie — go straight to the code step.
+    if (params.get("twofactor") === "1") {
+      setStep("totp");
+      window.history.replaceState(null, "", window.location.pathname);
+      return;
+    }
+    const reason = params.get("error");
     if (!reason) return;
     setStatus("error");
     setError(
@@ -125,18 +135,45 @@ export function AuthForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, otp }),
       });
-      const data = (await res.json().catch(() => ({}))) as { user?: { id?: string } };
+      const data = (await res.json().catch(() => ({}))) as {
+        user?: { id?: string };
+        twoFactorRedirect?: boolean;
+      };
       if (!res.ok) {
         setStatus("error");
         setError("That code is invalid or expired. Check your email or request a new one.");
         return;
       }
       track("auth_code_verified");
+      // 2FA-enabled account: the email code was right, but a session is withheld
+      // until the authenticator code is entered.
+      if (data?.twoFactorRedirect) {
+        setStatus("idle");
+        setStep("totp");
+        return;
+      }
       if (data?.user?.id) identifyUser(data.user.id);
       router.push("/dashboard");
     } catch {
       setStatus("error");
       setError("Couldn't reach the server. Check your connection and try again.");
+    }
+  }
+
+  async function handlePasskey() {
+    setStatus("loading");
+    setError("");
+    try {
+      const res = await signIn.passkey();
+      if (res?.error) {
+        setStatus("error");
+        setError("Passkey sign-in didn't complete. Try again, or use your email.");
+        return;
+      }
+      router.push("/dashboard");
+    } catch {
+      setStatus("error");
+      setError("Passkey sign-in didn't complete. Try again, or use your email.");
     }
   }
 
@@ -166,6 +203,13 @@ export function AuthForm() {
       setError("Incorrect email or password. Check your details and try again.");
       return;
     }
+    // 2FA-enabled account: Better Auth withholds the session and signals a
+    // second step (this path is handled natively by the twoFactor plugin).
+    if ((result.data as { twoFactorRedirect?: boolean } | null)?.twoFactorRedirect) {
+      setStatus("idle");
+      setStep("totp");
+      return;
+    }
     if (result.data?.user?.id) identifyUser(result.data.user.id);
     router.push("/dashboard");
   }
@@ -175,6 +219,36 @@ export function AuthForm() {
     setStatus("idle");
     if (!usePassword) track("auth_password_option_clicked");
     setUsePassword((v) => !v);
+  }
+
+  // Complete a 2FA-gated sign-in: the primary factor already passed, this turns
+  // the pending `two_factor` challenge cookie into a real session.
+  async function handleTwoFactorVerify(otp: string, useBackup: boolean, trustDevice: boolean) {
+    if (!otp) return;
+    setStatus("loading");
+    setError("");
+    try {
+      const endpoint = useBackup ? "verify-backup-code" : "verify-totp";
+      const res = await fetch(`${API_URL}/api/auth/two-factor/${endpoint}`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: otp, trustDevice }),
+      });
+      if (!res.ok) {
+        setStatus("error");
+        setError(
+          useBackup
+            ? "That backup code didn't work. Each code can only be used once."
+            : "That code didn't match. Open your authenticator app and use the current code.",
+        );
+        return;
+      }
+      router.push("/dashboard");
+    } catch {
+      setStatus("error");
+      setError("Couldn't reach the server. Check your connection and try again.");
+    }
   }
 
   function resetToEmail() {
@@ -204,7 +278,16 @@ export function AuthForm() {
 
         {/* Card */}
         <div className="mt-8 rounded-2xl border border-border bg-surface p-8 shadow-xl shadow-black/5">
-          {step === "code" ? (
+          {step === "totp" ? (
+            <TotpStep
+              status={status}
+              error={error}
+              onVerify={(otp, useBackup, trustDevice) =>
+                void handleTwoFactorVerify(otp, useBackup, trustDevice)
+              }
+              onBack={resetToEmail}
+            />
+          ) : step === "code" ? (
             <CodeStep
               email={email}
               code={code}
@@ -241,6 +324,18 @@ export function AuthForm() {
                 Continue with Google
               </Button>
 
+              {PASSKEYS_ENABLED && (
+                <Button
+                  variant="outline"
+                  className="mt-3 w-full"
+                  onClick={handlePasskey}
+                  disabled={status === "loading"}
+                >
+                  <Fingerprint size={16} />
+                  Sign in with a passkey
+                </Button>
+              )}
+
               {/* Divider */}
               <div className="my-6 flex items-center gap-3 text-xs text-muted-foreground">
                 <div className="h-px flex-1 bg-border" />
@@ -273,14 +368,25 @@ export function AuthForm() {
 
                 {usePassword ? (
                   <>
-                    <Input
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Your password"
-                      autoComplete="current-password"
-                      aria-label="Password"
-                    />
+                    <div className="relative">
+                      <Input
+                        type={showPassword ? "text" : "password"}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Your password"
+                        autoComplete="current-password"
+                        aria-label="Password"
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((v) => !v)}
+                        aria-label={showPassword ? "Hide password" : "Show password"}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
                     <Button
                       onClick={handlePasswordLogin}
                       disabled={!email || !password || status === "loading"}
@@ -288,6 +394,21 @@ export function AuthForm() {
                       {status === "loading" && <Loader2 size={14} className="animate-spin" />}
                       Sign in
                     </Button>
+                    {/* OTP-first recovery: a forgotten password isn't a dead end —
+                        signing in with an email code always works, then a new
+                        password can be set in Settings → Security. */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUsePassword(false);
+                        setPassword("");
+                        setError("");
+                        setStatus("idle");
+                      }}
+                      className="text-center text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Forgot your password? Sign in with an email code instead
+                    </button>
                   </>
                 ) : (
                   <Button onClick={handleSendCode} disabled={!email || status === "loading"}>
@@ -438,6 +559,115 @@ function CodeStep({
           className="text-sm text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 disabled:hover:text-muted-foreground"
         >
           {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend code"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Shown after the primary factor (email code / Google / password) for accounts
+// with 2FA on. Posts the authenticator code — or a one-time backup code — to
+// Better Auth's verify endpoints, which consume the pending challenge cookie and
+// issue the real session.
+function TotpStep({
+  status,
+  error,
+  onVerify,
+  onBack,
+}: {
+  status: Status;
+  error: string;
+  onVerify: (code: string, useBackup: boolean, trustDevice: boolean) => void;
+  onBack: () => void;
+}) {
+  const [code, setCode] = useState("");
+  const [useBackup, setUseBackup] = useState(false);
+  const [trust, setTrust] = useState(false);
+  const invalid = status === "error" && Boolean(error);
+  return (
+    <div className="text-center">
+      <div className="mx-auto flex size-11 items-center justify-center rounded-full bg-primary/10 text-primary">
+        <ShieldCheck size={18} />
+      </div>
+      <h2 className="mt-5 text-base font-medium text-foreground">
+        Two-factor authentication
+      </h2>
+      <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
+        {useBackup
+          ? "Enter one of your saved backup codes."
+          : "Enter the 6-digit code from your authenticator app."}
+      </p>
+
+      {useBackup ? (
+        <Input
+          autoFocus
+          value={code}
+          onChange={(e) => setCode(e.target.value.trim())}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") onVerify(code, true, trust);
+          }}
+          placeholder="Backup code"
+          aria-label="Backup code"
+          className="mt-6 text-center font-mono"
+        />
+      ) : (
+        <OtpInput
+          value={code}
+          onChange={setCode}
+          onComplete={(otp) => onVerify(otp, false, trust)}
+          disabled={status === "loading"}
+          invalid={invalid}
+        />
+      )}
+
+      <label className="mt-4 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+        <input
+          type="checkbox"
+          checked={trust}
+          onChange={(e) => setTrust(e.target.checked)}
+          className="size-3.5 accent-primary"
+        />
+        Trust this device for 30 days
+      </label>
+
+      <Button
+        className="mt-4 w-full"
+        onClick={() => onVerify(code, useBackup, trust)}
+        disabled={
+          status === "loading" || (useBackup ? code.length === 0 : code.length < 6)
+        }
+      >
+        {status === "loading" && <Loader2 size={14} className="animate-spin" />}
+        Verify and continue
+      </Button>
+
+      {invalid && (
+        <p className="mt-4 text-xs text-destructive" role="alert">
+          {error}
+        </p>
+      )}
+
+      <div className="mt-6 flex items-center justify-center gap-4">
+        <button
+          type="button"
+          onClick={onBack}
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ArrowLeft size={14} />
+          Back to sign in
+        </button>
+        <span className="text-border" aria-hidden>
+          |
+        </span>
+        <button
+          type="button"
+          onClick={() => {
+            setUseBackup((v) => !v);
+            setCode("");
+          }}
+          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {useBackup ? "Use authenticator app" : "Use a backup code"}
         </button>
       </div>
     </div>

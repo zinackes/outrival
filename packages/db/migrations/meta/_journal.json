@@ -50,6 +50,20 @@
       "when": 1782474116156,
       "tag": "0006_unusual_prism",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1782501612261,
+      "tag": "0007_greedy_triton",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1782505987276,
+      "tag": "0008_windy_blackheart",
+      "breakpoints": true
     }
   ]
 }

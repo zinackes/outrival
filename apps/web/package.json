@@ -10,6 +10,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@better-auth/passkey": "^1.6.22",
     "@marsidev/react-turnstile": "^1.5.2",
     "@outrival/shared": "workspace:*",
     "@radix-ui/react-dialog": "^1.1.15",
@@ -19,7 +20,7 @@
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-visually-hidden": "^1.2.4",
     "@sentry/nextjs": "^10.54.0",
-    "better-auth": "^1.6.11",
+    "better-auth": "^1.6.22",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
@@ -30,6 +31,7 @@
     "next": "^16.2.6",
     "next-themes": "^0.4.6",
     "posthog-js": "^1.376.3",
+    "qrcode.react": "^4.2.0",
     "radix-ui": "^1.4.3",
     "react": "^19.2.6",
     "react-day-picker": "^10.0.1",

@@ -132,10 +132,10 @@ export function NotificationsBell({ compact = false }: { compact?: boolean } = {
             {compact ? (
               <Button
                 variant="ghost"
-                size="icon"
+                size="icon-sm"
                 onClick={() => setOpen((o) => !o)}
                 aria-label="Notifications"
-                className="relative w-8 h-8 hover:bg-accent hover:text-foreground"
+                className="relative"
               >
                 <Bell size={14} />
                 {unreadCount > 0 && (

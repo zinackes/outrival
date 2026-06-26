@@ -38,7 +38,7 @@ export function ThemeToggle() {
       <Tooltip>
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Toggle theme">
+            <Button variant="ghost" size="icon-sm" aria-label="Toggle theme">
               {mounted && resolvedTheme === "dark" ? (
                 <Moon size={14} />
               ) : (

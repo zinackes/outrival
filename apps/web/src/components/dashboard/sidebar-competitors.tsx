@@ -128,7 +128,7 @@ export function SidebarCompetitors() {
                   className={COMP_ROW}
                 >
                   <Link href={`/dashboard/competitors/${c.id}`}>
-                    <CompAvatar name={c.name} size={18} />
+                    <CompAvatar name={c.name} url={c.url} size={18} />
                     <span className="truncate">{c.name}</span>
                     {n > 0 && (
                       <span className="ml-auto shrink-0 font-mono text-meta tabular-nums text-muted-foreground transition-colors duration-150 group-hover/comp:text-foreground group-data-[active=true]/comp:text-foreground motion-reduce:transition-none">

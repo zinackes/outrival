@@ -18,7 +18,10 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-50 bg-black/70 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      // No backdrop-blur: the opaque bg-black/70 scrim already separates the dialog,
+      // and blurring the page behind forces a costly per-frame re-composite (the
+      // whole modal felt "in slow motion" over gradient-heavy pages like My Product).
+      "fixed inset-0 z-50 bg-black/70 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className,
     )}
     {...props}

@@ -613,7 +613,7 @@ export function SignalsView({
                 onSelect={(e) => e.preventDefault()}
                 onCheckedChange={() => toggleInSet("severity", s)}
               >
-                <span className="flex items-center gap-2">
+                <span className="flex items-center gap-2 capitalize">
                   <span
                     className={cn(
                       "w-2 h-2 rounded-full inline-block",
@@ -636,7 +636,7 @@ export function SignalsView({
                     onSelect={(e) => e.preventDefault()}
                     onCheckedChange={() => toggleInSet("category", c)}
                   >
-                    {c}
+                    <span className="capitalize">{c}</span>
                   </DropdownMenuCheckboxItem>
                 ))}
               </>
@@ -716,12 +716,12 @@ export function SignalsView({
                   SEV_DOT[s as Sev],
                 )}
               />
-              {s}
+              <span className="capitalize">{s}</span>
             </FilterChip>
           ))}
           {Array.from(cat).map((c) => (
             <FilterChip key={`c-${c}`} onRemove={() => toggleInSet("category", c)}>
-              {c}
+              <span className="capitalize">{c}</span>
             </FilterChip>
           ))}
           {Array.from(comp).map((c) => {
@@ -839,7 +839,7 @@ export function SignalsView({
                   // (before/after, visual diff, change breakdown) and the
                   // competitor's other signals. Stacks on mobile.
                   <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(300px,340px)] lg:items-start lg:gap-6">
-                    <div className="min-w-0 lg:max-w-[760px]">
+                    <div className="min-w-0">
                       <SignalCard
                         signal={selectedItem.signal}
                         interactive={!sample}

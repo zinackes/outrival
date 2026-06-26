@@ -34,10 +34,9 @@ export function AskDock() {
   }, []);
 
   const onAskPage = pathname === "/dashboard/ask";
-  const context =
-    entity && entity.kind === "competitor"
-      ? { id: entity.id, name: entity.name }
-      : null;
+  const context = entity
+    ? { label: entity.label, competitorId: entity.competitorId, kind: entity.kind }
+    : null;
 
   return (
     <>
@@ -50,7 +49,7 @@ export function AskDock() {
         >
           <Sparkles className="size-4 text-[var(--link)]" aria-hidden />
           Ask
-          <kbd className="ml-0.5 hidden select-none rounded border border-border bg-background px-1.5 font-mono text-meta font-medium text-muted-foreground sm:inline">
+          <kbd className="ml-0.5 hidden h-5 select-none items-center rounded border border-border bg-background px-1.5 font-mono text-meta font-medium leading-none text-muted-foreground sm:inline-flex">
             ⌘J
           </kbd>
         </button>

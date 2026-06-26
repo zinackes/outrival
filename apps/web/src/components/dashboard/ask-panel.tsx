@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { formatDistanceToNow } from "date-fns";
 import {
   Activity,
   ArrowUpRight,
@@ -15,6 +16,7 @@ import {
   Loader2,
   MessageSquare,
   Package,
+  Plus,
   Sparkles,
   TriangleAlert,
   Users,
@@ -32,6 +34,17 @@ interface Citation {
   type: "competitor" | "signal";
   id: string;
   label: string;
+}
+
+// A past exchange from GET /api/ask/history (per user). Clicking one re-displays the
+// stored answer without spending another model call.
+interface HistoryItem {
+  id: string;
+  question: string;
+  answer: string;
+  citations: Citation[];
+  context: { label: string; competitorId?: string } | null;
+  createdAt: string;
 }
 
 // SSE event shapes mirror apps/api/src/lib/ask/agent.ts AskEvent.
@@ -126,8 +139,13 @@ export function AskPanel({
 }: {
   /** Embedded in the dock sheet — drop the PageHead and the page max-width. */
   embedded?: boolean;
-  /** Current page entity; when set, questions can be scoped to it. */
-  context?: { id: string; name: string } | null;
+  /** Current page context; when set, questions can be scoped to it. `kind` drives the
+   *  context-aware starter prompts (only entity-like contexts get templated ones). */
+  context?: {
+    label: string;
+    competitorId?: string;
+    kind?: "competitor" | "product" | "signal" | "view";
+  } | null;
 } = {}) {
   const [question, setQuestion] = useState("");
   // When a page context is present, default to scoping questions to it; the user
@@ -141,11 +159,51 @@ export function AskPanel({
   const [copied, setCopied] = useState(false);
   const [isMac, setIsMac] = useState(false);
   const [suggestions, setSuggestions] = useState<Suggestion[]>(DEFAULT_SUGGESTIONS);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     setIsMac(/mac/i.test(navigator.platform) || /mac/i.test(navigator.userAgent));
   }, []);
+
+  // Load the user's past questions once. New answers are prepended optimistically (see
+  // ask()), so this is just the initial hydrate — best-effort, empty on failure.
+  useEffect(() => {
+    const ctrl = new AbortController();
+    fetch(`${BASE}/api/ask/history`, { credentials: "include", signal: ctrl.signal })
+      .then((r) => (r.ok ? (r.json() as Promise<{ history?: HistoryItem[] }>) : null))
+      .then((d) => {
+        if (d?.history) setHistory(d.history);
+      })
+      .catch(() => {
+        /* no history surface on failure */
+      });
+    return () => ctrl.abort();
+  }, []);
+
+  // Re-display a stored exchange (no network) — the textarea is filled so the user can
+  // re-ask via the form if they want a fresh answer.
+  function openHistory(item: HistoryItem) {
+    abortRef.current?.abort();
+    setLoading(false);
+    setQuestion(item.question);
+    setTrace([]);
+    setAnswer(item.answer);
+    setCitations(item.citations ?? []);
+    setError(null);
+    setCopied(false);
+  }
+
+  // Back to the empty state (suggestions + recent questions).
+  function resetPanel() {
+    abortRef.current?.abort();
+    setLoading(false);
+    setQuestion("");
+    setTrace([]);
+    setAnswer(null);
+    setCitations([]);
+    setError(null);
+  }
 
   useEffect(() => {
     // Suggestions are stable within a day (server rotates by UTC epoch-day), so cache
@@ -201,13 +259,11 @@ export function AskPanel({
   async function ask(q: string) {
     const trimmed = q.trim();
     if (!trimmed || loading) return;
-    // Context scoping: frame the question with the entity name so the agent's
-    // name→id resolution targets it. Skip if the user already named it (e.g. a
-    // context suggestion already embeds the name) to avoid doubling it.
-    const finalQ =
-      context && scoped && !trimmed.toLowerCase().includes(context.name.toLowerCase())
-        ? `Regarding ${context.name}: ${trimmed}`
-        : trimmed;
+    // Context scoping: when a page context is present and active, send it as a
+    // structured field so the agent can resolve an ambiguous question to it (the
+    // backend injects it into both prompts).
+    const scopedContext =
+      context && scoped ? { label: context.label, competitorId: context.competitorId } : null;
     abortRef.current?.abort();
     const ctrl = new AbortController();
     abortRef.current = ctrl;
@@ -224,7 +280,7 @@ export function AskPanel({
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: finalQ }),
+        body: JSON.stringify({ question: trimmed, context: scopedContext ?? undefined }),
         signal: ctrl.signal,
       });
       if (!res.ok || !res.body) {
@@ -243,6 +299,7 @@ export function AskPanel({
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buf = "";
+      let finalAnswer: { answer: string; citations: Citation[] } | null = null;
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -253,11 +310,27 @@ export function AskPanel({
           const dataLine = frame.split("\n").find((l) => l.startsWith("data:"));
           if (!dataLine) continue;
           try {
-            handleEvent(JSON.parse(dataLine.slice(5).trim()) as AskEvent);
+            const ev = JSON.parse(dataLine.slice(5).trim()) as AskEvent;
+            handleEvent(ev);
+            if (ev.type === "answer")
+              finalAnswer = { answer: ev.answer, citations: ev.citations ?? [] };
           } catch {
             /* ignore malformed frame */
           }
         }
+      }
+      // Optimistically prepend the new exchange — the server persists it best-effort,
+      // so reflect it locally rather than re-fetching (which could race the insert).
+      if (finalAnswer) {
+        const item: HistoryItem = {
+          id: crypto.randomUUID(),
+          question: trimmed,
+          answer: finalAnswer.answer,
+          citations: finalAnswer.citations,
+          context: scopedContext,
+          createdAt: new Date().toISOString(),
+        };
+        setHistory((h) => [item, ...h].slice(0, 50));
       }
     } catch (e) {
       if (!(e instanceof DOMException && e.name === "AbortError")) {
@@ -277,17 +350,21 @@ export function AskPanel({
 
   const mod = isMac ? "⌘" : "Ctrl";
 
-  // Context-aware starter prompts: when scoped to a page entity, the suggestions
-  // embed its name so a click already targets it.
-  const contextSuggestions: Suggestion[] = context
-    ? [
-        { q: `What has ${context.name} changed recently?`, kind: "activity" },
-        { q: `How has ${context.name}'s pricing shifted?`, kind: "pricing" },
-        { q: `Is ${context.name} hiring, and in what areas?`, kind: "hiring" },
-        { q: `What do ${context.name}'s reviews complain about?`, kind: "reviews" },
-      ]
-    : [];
-  const shownSuggestions = context && scoped ? contextSuggestions : suggestions;
+  // Context-aware starter prompts: only a competitor context (whose label IS the
+  // tracked competitor's name) gets templated suggestions. View/product contexts keep
+  // the generic org suggestions — "What has Signals feed changed?" makes no sense, and
+  // Ask's tools cover competitors, not the user's own product.
+  const contextSuggestions: Suggestion[] =
+    context && context.kind === "competitor"
+      ? [
+          { q: `What has ${context.label} changed recently?`, kind: "activity" },
+          { q: `How has ${context.label}'s pricing shifted?`, kind: "pricing" },
+          { q: `Is ${context.label} hiring, and in what areas?`, kind: "hiring" },
+          { q: `What do ${context.label}'s reviews complain about?`, kind: "reviews" },
+        ]
+      : [];
+  const shownSuggestions =
+    scoped && contextSuggestions.length > 0 ? contextSuggestions : suggestions;
 
   return (
     <div className={embedded ? "w-full" : "mx-auto w-full max-w-3xl"}>
@@ -313,7 +390,7 @@ export function AskPanel({
                 : "border-border text-muted-foreground hover:text-foreground",
             )}
           >
-            <Crosshair className="size-3" /> {context.name}
+            <Crosshair className="size-3" /> {context.label}
           </button>
           <span className="text-meta text-muted-foreground">
             {scoped ? "questions scoped here" : "asking across all competitors"}
@@ -386,6 +463,36 @@ export function AskPanel({
               );
             })}
           </div>
+
+          {history.length > 0 && (
+            <div className="mt-7">
+              <p className="text-dense font-medium text-muted-foreground">Recent questions</p>
+              <div className="mt-3 overflow-hidden rounded-md border border-border">
+                {history.slice(0, 8).map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => openHistory(item)}
+                    className="flex w-full items-center gap-3 border-b border-border px-3 py-2.5 text-left transition-colors last:border-b-0 hover:bg-surface-3 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                  >
+                    <MessageSquare className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                    <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+                      {item.question}
+                    </span>
+                    {item.context && (
+                      <span className="hidden max-w-[8rem] shrink-0 items-center gap-1 text-meta text-muted-foreground sm:inline-flex">
+                        <Crosshair className="size-3 shrink-0" aria-hidden />
+                        <span className="truncate">{item.context.label}</span>
+                      </span>
+                    )}
+                    <span className="shrink-0 font-mono text-meta text-muted-foreground">
+                      {formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -470,6 +577,15 @@ export function AskPanel({
               </div>
             )}
           </Card>
+
+          <button
+            type="button"
+            onClick={resetPanel}
+            className="mt-3 inline-flex items-center gap-1.5 rounded-sm text-meta text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+          >
+            <Plus className="size-3" aria-hidden />
+            Ask something else
+          </button>
         </div>
       )}
     </div>

@@ -60,6 +60,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { PageHead } from "@/components/dashboard/page-head";
+import { useSetAskContext } from "@/components/dashboard/ask-context";
 import { ChangeProductUrlDialog } from "@/components/outrival/change-product-url-dialog";
 import { UpdateProfileDialog } from "@/components/outrival/update-profile-dialog";
 
@@ -600,6 +601,9 @@ export function MyProductView({
     if (!initialData) load();
   }, []);
 
+  // Scope Ask to the current product while its page is open.
+  useSetAskContext(product ? { kind: "product", label: `My product: ${product.name}` } : null);
+
   // While a scan is in progress, poll until it settles, then refresh + toast the
   // outcome — so a re-scan visibly finishes instead of leaving the user guessing.
   const wasScanning = useRef(false);
@@ -846,11 +850,11 @@ export function MyProductView({
       <SelfChangesPanel changes={changes} actingId={actingId} onResolve={resolve} />
 
       {!p.url && (
-        <Card className="p-4 mb-6 border-dashed">
+        <Card className="p-3.5 mb-4 border-dashed">
           <h2 className="text-sm font-semibold mb-1">Not live yet</h2>
-          <p className="text-sm text-muted-foreground mb-3 max-w-prose">
-            Your product profile below is editable by hand. Add a public site URL to monitor
-            pricing, features and changes — or track its GitHub repo while you build.
+          <p className="text-sm text-muted-foreground mb-2.5 max-w-prose">
+            Add a public site URL to monitor pricing, features and changes — or track its GitHub
+            repo while you build. The profile below stays editable by hand.
           </p>
           <form
             className="flex flex-col gap-2 sm:flex-row sm:items-center"
@@ -872,7 +876,7 @@ export function MyProductView({
             </Button>
           </form>
 
-          <div className="mt-3 pt-3 border-t border-border">
+          <div className="mt-2.5 pt-2.5 border-t border-border">
             {p.repoUrl ? (
               <p className="text-dense text-muted-foreground">
                 Tracking repo:{" "}

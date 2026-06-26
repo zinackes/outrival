@@ -25,6 +25,7 @@ import { toCsv, downloadCsv } from "@/lib/csv";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SavedViewsMenu } from "./saved-views-menu";
+import { useSetAskContext, type AskEntity } from "./ask-context";
 import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
@@ -403,6 +404,23 @@ export function SignalsView({
       ) ?? null
     );
   }, [selectedId, feedItems]);
+
+  // Scope Ask to the open signal, else to the single filtered competitor, else the feed.
+  const askContext = useMemo<AskEntity | null>(() => {
+    if (selectedItem?.kind === "single") {
+      const s = selectedItem.signal;
+      return { kind: "signal", label: s.insight.slice(0, 60), competitorId: s.competitorId };
+    }
+    if (comp.size === 1) {
+      return {
+        kind: "view",
+        label: "Signals feed, filtered to one competitor",
+        competitorId: Array.from(comp)[0],
+      };
+    }
+    return { kind: "view", label: "Signals feed" };
+  }, [selectedItem, comp]);
+  useSetAskContext(askContext);
 
   const quickCounts = useMemo(() => {
     if (!signals) return { all: 0, alerts: 0, unread: 0, week: 0, critical: 0, actions: 0 };

@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { Activity, ChevronRight } from "lucide-react";
+import { Activity, ChevronRight, ExternalLink } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import {
   api,
@@ -14,7 +14,12 @@ import {
 } from "@/lib/api";
 import { sourceLabel } from "@/lib/source-labels";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { DataTablePagination } from "@/components/ui/data-table-pagination";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Tooltip,
   TooltipContent,
@@ -22,6 +27,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { PageHead } from "./page-head";
+import { useSetAskContext } from "./ask-context";
 import {
   Select,
   SelectContent,
@@ -238,8 +244,10 @@ export function ActivityView({
     sources: ActivitySource[];
     upcoming: ActivityUpcoming[];
     events: ActivityEvent[];
+    total: number;
   } | null;
 } = {}) {
+  useSetAskContext({ kind: "view", label: "Activity timeline" });
   const [sources, setSources] = useState<ActivitySource[] | null>(
     initialData?.sources ?? null,
   );
@@ -249,16 +257,26 @@ export function ActivityView({
   const [events, setEvents] = useState<ActivityEvent[] | null>(
     initialData?.events ?? null,
   );
-  const [hasMore, setHasMore] = useState(
-    initialData ? initialData.events.length === PAGE_SIZE : false,
+  const [total, setTotal] = useState<number>(
+    initialData?.total ?? initialData?.events.length ?? 0,
   );
-  const [loadingMore, setLoadingMore] = useState(false);
-  // Seed covers health + the default (unfiltered) timeline page.
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(false);
+  // Seed covers health + the default (unfiltered) first timeline page.
   const seededTimelineRef = useRef(initialData !== null);
 
   const [competitor, setCompetitor] = useState("all");
   const [source, setSource] = useState("all");
   const [status, setStatus] = useState("all");
+
+  // Any filter change resets to page 1 in the same handler as the value change,
+  // so the fetch effect (keyed on filters + page) fires exactly once.
+  function onFilter(setter: (v: string) => void) {
+    return (v: string) => {
+      setter(v);
+      setPage(1);
+    };
+  }
 
   // Rows expanded to reveal their precise change breakdown, keyed by row id.
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -311,43 +329,47 @@ export function ActivityView({
 
   const isFiltered = competitor !== "all" || source !== "all" || status !== "all";
 
-  // Refetch the feed (server-side) whenever a filter changes.
+  // Soonest scheduled run (upcoming is already sorted soonest-first); the rest sit
+  // behind a "+N more" popover so the section is a single line, not a tall card.
+  const nextCheck = upcoming[0] ?? null;
+
+  // Fetch one page server-side whenever the filters or the page change. Page-based
+  // (not append): the DOM only ever holds PAGE_SIZE rows, so the table stays light
+  // no matter how deep the history. Previous rows stay visible (dimmed) during a
+  // fetch to avoid a flash; only the very first load shows the "Loading…" state.
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
   useEffect(() => {
     if (seededTimelineRef.current) {
       seededTimelineRef.current = false;
       return;
     }
     let cancelled = false;
-    setEvents(null);
+    setLoading(true);
     setExpanded(new Set());
     api
-      .activityTimeline({ limit: PAGE_SIZE, ...filterParams })
+      .activityTimeline({
+        limit: PAGE_SIZE,
+        offset: (page - 1) * PAGE_SIZE,
+        ...filterParams,
+      })
       .then((r) => {
         if (cancelled) return;
         setEvents(r.events);
-        setHasMore(r.events.length === PAGE_SIZE);
+        setTotal(r.total);
       })
-      .catch(() => !cancelled && setEvents([]));
+      .catch(() => {
+        if (cancelled) return;
+        setEvents([]);
+        setTotal(0);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
     return () => {
       cancelled = true;
     };
-  }, [filterParams]);
-
-  async function loadMore() {
-    if (!events) return;
-    setLoadingMore(true);
-    try {
-      const r = await api.activityTimeline({
-        limit: PAGE_SIZE,
-        offset: events.length,
-        ...filterParams,
-      });
-      setEvents((prev) => (prev ? [...prev, ...r.events] : r.events));
-      setHasMore(r.events.length === PAGE_SIZE);
-    } finally {
-      setLoadingMore(false);
-    }
-  }
+  }, [filterParams, page]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -364,47 +386,94 @@ export function ActivityView({
         </p>
       ) : (
         <div className="flex flex-col gap-3">
-          {upcoming.length > 0 && (
-            <div className="rounded-lg border border-border p-3">
-              <div className="mb-2 text-xs font-medium text-muted-foreground">
-                Next checks
-              </div>
-              <TooltipProvider delayDuration={150}>
-                <ul className="flex flex-col gap-1.5">
-                  {upcoming.slice(0, 6).map((u) => (
-                    <li
-                      key={u.monitorId}
-                      className="flex items-baseline justify-between gap-3 text-sm"
+          {nextCheck && (
+            <TooltipProvider delayDuration={150}>
+              <div className="flex items-baseline justify-between gap-3 text-sm">
+                <span className="flex min-w-0 items-baseline gap-1.5">
+                  <span className="shrink-0 font-medium text-muted-foreground">
+                    Next check
+                  </span>
+                  <span aria-hidden className="text-muted-foreground">
+                    ·
+                  </span>
+                  <span className="min-w-0 truncate">
+                    <Link
+                      href={`/dashboard/competitors/${nextCheck.competitorId}`}
+                      className="font-medium hover:underline"
                     >
-                      <span className="min-w-0 truncate">
-                        <Link
-                          href={`/dashboard/competitors/${u.competitorId}`}
-                          className="font-medium hover:underline"
-                        >
-                          {u.competitorName}
-                        </Link>
-                        <span className="text-muted-foreground">
-                          {" · "}
-                          {sourceLabel(u.sourceType)}
-                        </span>
-                      </span>
+                      {nextCheck.competitorName}
+                    </Link>
+                    <span className="text-muted-foreground">
+                      {" · "}
+                      {sourceLabel(nextCheck.sourceType)}{" "}
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <span className="shrink-0 cursor-default text-xs text-muted-foreground tabular-nums">
-                            {rel(u.nextRunAt)}
+                          <span className="cursor-default tabular-nums">
+                            {rel(nextCheck.nextRunAt)}
                           </span>
                         </TooltipTrigger>
-                        <TooltipContent>{absDateTime(u.nextRunAt)}</TooltipContent>
+                        <TooltipContent>
+                          {absDateTime(nextCheck.nextRunAt)}
+                        </TooltipContent>
                       </Tooltip>
-                    </li>
-                  ))}
-                </ul>
-              </TooltipProvider>
-            </div>
+                    </span>
+                  </span>
+                </span>
+
+                {upcoming.length > 1 && (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
+                      >
+                        +{upcoming.length - 1} more
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent align="end" className="w-72 p-2">
+                      <div className="mb-1.5 px-1 text-xs font-medium text-muted-foreground">
+                        Next checks
+                      </div>
+                      <ul className="flex flex-col">
+                        {upcoming.map((u) => (
+                          <li
+                            key={u.monitorId}
+                            className="flex items-baseline justify-between gap-3 rounded px-1 py-1 text-sm"
+                          >
+                            <span className="min-w-0 truncate">
+                              <Link
+                                href={`/dashboard/competitors/${u.competitorId}`}
+                                className="font-medium hover:underline"
+                              >
+                                {u.competitorName}
+                              </Link>
+                              <span className="text-muted-foreground">
+                                {" · "}
+                                {sourceLabel(u.sourceType)}
+                              </span>
+                            </span>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="shrink-0 cursor-default text-xs text-muted-foreground tabular-nums">
+                                  {rel(u.nextRunAt)}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {absDateTime(u.nextRunAt)}
+                              </TooltipContent>
+                            </Tooltip>
+                          </li>
+                        ))}
+                      </ul>
+                    </PopoverContent>
+                  </Popover>
+                )}
+              </div>
+            </TooltipProvider>
           )}
 
           <div className="flex flex-wrap items-center gap-2">
-            <Select value={competitor} onValueChange={setCompetitor}>
+            <Select value={competitor} onValueChange={onFilter(setCompetitor)}>
               <SelectTrigger size="sm" className="w-[180px]">
                 <SelectValue />
               </SelectTrigger>
@@ -418,7 +487,7 @@ export function ActivityView({
               </SelectContent>
             </Select>
 
-            <Select value={source} onValueChange={setSource}>
+            <Select value={source} onValueChange={onFilter(setSource)}>
               <SelectTrigger size="sm" className="w-[150px]">
                 <SelectValue />
               </SelectTrigger>
@@ -432,7 +501,7 @@ export function ActivityView({
               </SelectContent>
             </Select>
 
-            <Select value={status} onValueChange={setStatus}>
+            <Select value={status} onValueChange={onFilter(setStatus)}>
               <SelectTrigger size="sm" className="w-[160px]">
                 <SelectValue />
               </SelectTrigger>
@@ -460,7 +529,13 @@ export function ActivityView({
             </p>
           ) : (
             <>
-              <div className="overflow-hidden rounded-lg border border-border">
+              <div
+                className={cn(
+                  "overflow-hidden rounded-lg border border-border transition-opacity",
+                  loading && "opacity-60",
+                )}
+                aria-busy={loading}
+              >
                 <TooltipProvider delayDuration={150}>
                 <Table>
                   <TableHeader>
@@ -573,13 +648,14 @@ export function ActivityView({
                 </Table>
                 </TooltipProvider>
               </div>
-              {hasMore && (
-                <div>
-                  <Button variant="outline" size="sm" onClick={loadMore} disabled={loadingMore}>
-                    {loadingMore ? "Loading…" : "Load more"}
-                  </Button>
-                </div>
-              )}
+              <DataTablePagination
+                page={page}
+                pageCount={pageCount}
+                onPageChange={setPage}
+                total={total}
+                pageSize={PAGE_SIZE}
+                disabled={loading}
+              />
             </>
           )}
         </div>

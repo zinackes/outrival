@@ -62,6 +62,67 @@ function renderSignInEmail(
 </html>`;
 }
 
+function renderEmailChangeEmail(code: string, expiresInMinutes: number): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<body style="margin:0;background:#0b0b0d;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+  <div style="max-width:440px;margin:0 auto;padding:48px 24px;">
+    <div style="font-size:22px;font-weight:700;letter-spacing:-0.02em;margin-bottom:40px;">
+      <span style="color:#fafafa;">out</span><span style="color:#f59e0b;">rival</span>
+    </div>
+
+    <h1 style="color:#fafafa;font-size:20px;font-weight:600;margin:0 0 12px;">Confirm your new email</h1>
+
+    <p style="color:rgba(255,255,255,0.6);font-size:14px;line-height:1.6;margin:0 0 28px;">
+      Enter this code in Outrival to set this address as your new sign-in email.
+      It expires in ${expiresInMinutes} minutes and can only be used once.
+    </p>
+
+    <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:20px;text-align:center;margin:0 0 28px;">
+      <div style="color:#fafafa;font-size:34px;font-weight:700;letter-spacing:0.35em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">
+        ${code}
+      </div>
+    </div>
+
+    <p style="color:rgba(255,255,255,0.4);font-size:12px;line-height:1.6;margin:0;">
+      If you didn't request this change, you can ignore this email — your account
+      email stays the same.
+    </p>
+  </div>
+</body>
+</html>`;
+}
+
+// Sent to the NEW address when a signed-in user changes their email (Better Auth
+// emailOTP changeEmail, type "change-email"). Mirrors the sign-in email pattern.
+export async function sendEmailChangeCodeEmail({
+  to,
+  code,
+  expiresInMinutes = 10,
+}: {
+  to: string;
+  code: string;
+  expiresInMinutes?: number;
+}): Promise<void> {
+  if (process.env.NODE_ENV !== "production") {
+    console.log(`✉️  Email-change code for ${to}: ${code}`);
+  }
+  const resend = getResend();
+  if (!resend) {
+    console.warn("RESEND_API_KEY not set — skipping email-change email (dev only)");
+    return;
+  }
+  const { error } = await resend.emails.send({
+    from: AUTH_FROM,
+    to,
+    subject: "Confirm your new Outrival email",
+    html: renderEmailChangeEmail(code, expiresInMinutes),
+  });
+  if (error) {
+    console.error("Resend email-change email send failed", { to, error });
+  }
+}
+
 export async function sendSignInCodeEmail({
   to,
   code,

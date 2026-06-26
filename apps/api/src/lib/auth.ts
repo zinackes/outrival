@@ -6,7 +6,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { db } from "./db";
 import { users } from "@outrival/db";
 import * as schema from "@outrival/db";
-import { sendSignInCodeEmail } from "./sign-in-email";
+import { sendSignInCodeEmail, sendEmailChangeCodeEmail } from "./sign-in-email";
 
 const SIGN_IN_OTP_TTL_SECONDS = 600; // 10 minutes
 
@@ -66,8 +66,20 @@ export const auth = betterAuth({
       otpLength: 6,
       expiresIn: SIGN_IN_OTP_TTL_SECONDS,
       allowedAttempts: 3,
+      // Lets a signed-in user move their account to a new email — an OTP is sent
+      // to the NEW address and the email only changes once they confirm it.
+      changeEmail: { enabled: true },
       sendVerificationOTP: async ({ email, otp, type }) => {
-        if (type !== "sign-in") return; // only the sign-in OTP is used
+        if (type === "change-email") {
+          // Goes to the new address the user is moving to.
+          await sendEmailChangeCodeEmail({
+            to: email,
+            code: otp,
+            expiresInMinutes: Math.round(SIGN_IN_OTP_TTL_SECONDS / 60),
+          });
+          return;
+        }
+        if (type !== "sign-in") return; // email-verification / forget-password unused
         const linkUrl = `${process.env.BETTER_AUTH_URL ?? ""}/api/auth/otp-link?email=${encodeURIComponent(
           email,
         )}&code=${otp}`;

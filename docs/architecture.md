@@ -596,6 +596,14 @@ toutes via Better Auth :
   en supprimant la ligne `account` directement — l'`unlink-account` natif exige une
   session < `freshAge` (24h), inutilisable avec nos sessions 30j ; pas de lockout
   car le login email-OTP ne dépend d'aucune ligne `account`.
+- **Settings P2 (polish)** : recherche dans la rail settings (label + keywords) ·
+  **re-auth step-up** sur les actions destructives (delete workspace/account) —
+  `POST /api/settings/reauth/send` émet un code 6 chiffres single-use, attempt-capped,
+  stocké dans la table `verification` (`reauth-<userId>`), exigé en plus du
+  type-to-confirm (une session volée seule ne peut plus effacer) · factures Stripe
+  in-app (`GET /api/billing/invoices`, best-effort) · fenêtre de rétention du plan +
+  liens privacy/terms dans Data. Différé : journal d'activité sécurité (nécessite la
+  persistance des events de login ; les sessions actives montrent déjà l'heure de connexion).
 
 Sécurité transverse : Turnstile managed invisible (`lib/turnstile.ts`, bypass dev si pas
 de secret) ; rate-limit Upstash par **email ET IP** (`middleware/auth-rate-limit.ts`,

@@ -134,7 +134,7 @@ export function Pipeline() {
           </div>
         </div>
 
-        <p className="mt-6 text-center font-mono text-dense text-text-subtle">
+        <p className="mt-6 text-center text-dense text-text-subtle">
           ~70 changes scanned produce 1 signal · you don&apos;t pay to run AI
           on noise.
         </p>

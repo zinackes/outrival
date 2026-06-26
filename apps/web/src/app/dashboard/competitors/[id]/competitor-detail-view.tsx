@@ -1093,7 +1093,7 @@ function Header({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button type="button" aria-label="About overlap" className="cursor-help">
-                    <Badge variant="outline" className="gap-1.5 py-1 font-mono text-meta tracking-widest">
+                    <Badge variant="outline" className="gap-1.5 py-1 text-meta tracking-widest">
                       <span className="h-2 w-16 overflow-hidden rounded border border-border bg-background">
                         <span
                           className="block h-full rounded bg-primary"
@@ -1129,7 +1129,7 @@ function Header({
             <ExternalLink size={12} />
           </a>
           {lastRunMs > 0 && (
-            <div className="text-xs text-muted-foreground font-mono mt-1">
+            <div className="text-xs text-muted-foreground mt-1">
               last activity {formatDistanceToNow(new Date(lastRunMs), { addSuffix: true })}
             </div>
           )}
@@ -1158,7 +1158,7 @@ function Header({
                 </kbd>
               </TooltipContent>
             </Tooltip>
-            <span className="select-none px-0.5 font-mono text-meta tabular-nums text-muted-foreground">
+            <span className="select-none px-0.5 text-meta tabular-nums text-muted-foreground">
               {index + 1}/{total}
             </span>
             <Tooltip>
@@ -1628,7 +1628,7 @@ function MonitorSources({
                 </Eyebrow>
                 <span
                   className={cn(
-                    "text-xs font-mono",
+                    "text-xs",
                     status === "failed" ? "text-critical/80" : "text-muted-foreground",
                   )}
                 >
@@ -1704,7 +1704,7 @@ function MonitorSources({
               <Eyebrow size="micro" className="w-12">
                 weekly
               </Eyebrow>
-              <span className="text-xs font-mono text-muted-foreground">
+              <span className="text-xs text-muted-foreground">
                 {techScraping
                   ? "scanning…"
                   : techLastScrapedAt
@@ -1812,7 +1812,7 @@ function SourceChip({
           {ageLabel && (
             <span
               className={cn(
-                "font-mono text-meta",
+                "text-meta",
                 failed ? "text-critical/70" : "text-muted-foreground",
               )}
             >
@@ -1828,7 +1828,7 @@ function SourceChip({
         </DropdownMenuLabel>
         <p
           className={cn(
-            "px-2 pb-1 text-xs font-mono",
+            "px-2 pb-1 text-xs",
             failed ? "text-critical/80" : "text-muted-foreground",
           )}
         >
@@ -2037,7 +2037,7 @@ function AiSummary({
       </div>
       <p className="text-content leading-relaxed text-foreground/90">{competitor.aiSummary}</p>
       {competitor.aiSummaryUpdatedAt && (
-        <p className="text-xs font-mono text-muted-foreground mt-2">
+        <p className="text-xs text-muted-foreground mt-2">
           updated {formatDistanceToNow(new Date(competitor.aiSummaryUpdatedAt), { addSuffix: true })}
         </p>
       )}

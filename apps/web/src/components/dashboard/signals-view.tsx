@@ -790,7 +790,7 @@ export function SignalsView({
           <div
             role="listbox"
             aria-label="Signals"
-            className="divide-y divide-border overflow-hidden rounded-lg border border-border lg:max-h-[calc(100vh-220px)] lg:overflow-y-auto"
+            className="flex flex-col gap-0.5 rounded-xl border border-border p-1 lg:max-h-[calc(100vh-220px)] lg:overflow-y-auto"
           >
             {feedItems.map((item) =>
               item.kind === "single" ? (
@@ -833,38 +833,32 @@ export function SignalsView({
                   <ArrowLeft size={14} /> Back to signals
                 </button>
                 {selectedItem.kind === "single" ? (
-                  // Two-column detail: the card (bounded to a readable width) on
-                  // the left, a context column on the right that consumes the
-                  // remaining width with real content — the evidence dossier
-                  // (before/after, visual diff, change breakdown) and the
-                  // competitor's other signals. Stacks on mobile.
-                  <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(300px,340px)] lg:items-start lg:gap-6">
-                    <div className="min-w-0">
-                      <SignalCard
-                        signal={selectedItem.signal}
-                        interactive={!sample}
-                        onMarkRead={!sample ? markRead : undefined}
-                        onMarkUnread={!sample ? markUnread : undefined}
-                        onActionChange={onActionChange}
+                  // Single-column detail: the card, then its evidence dossier and
+                  // the competitor's other signals stacked below — bounded to a
+                  // readable width. No nested side column, so the detail never
+                  // crowds into three columns or pins "More from" to the edge.
+                  <div className="w-full max-w-[820px] space-y-4">
+                    <SignalCard
+                      signal={selectedItem.signal}
+                      interactive={!sample}
+                      onMarkRead={!sample ? markRead : undefined}
+                      onMarkUnread={!sample ? markUnread : undefined}
+                      onActionChange={onActionChange}
+                    />
+                    {/* Evidence dossier — best-effort; renders nothing without
+                        structured evidence, and is skipped in sample mode (no
+                        backend to fetch from). */}
+                    {!sample && (
+                      <SignalEvidence
+                        key={selectedItem.signal.id}
+                        signalId={selectedItem.signal.id}
                       />
-                    </div>
-                    <aside className="mt-3 space-y-3 lg:mt-0">
-                      {/* Evidence dossier — best-effort; renders nothing without
-                          structured evidence, and is skipped in sample mode (no
-                          backend to fetch from). The visual diff was built for a
-                          narrow panel, so this column is its natural home. */}
-                      {!sample && (
-                        <SignalEvidence
-                          key={selectedItem.signal.id}
-                          signalId={selectedItem.signal.id}
-                        />
-                      )}
-                      <MoreFromCompetitor
-                        signal={selectedItem.signal}
-                        all={signals ?? []}
-                        onSelect={selectRow}
-                      />
-                    </aside>
+                    )}
+                    <MoreFromCompetitor
+                      signal={selectedItem.signal}
+                      all={signals ?? []}
+                      onSelect={selectRow}
+                    />
                   </div>
                 ) : (
                   <div className="space-y-3 lg:max-w-[760px]">

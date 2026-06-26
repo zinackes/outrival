@@ -36,7 +36,7 @@ export function Footer() {
               Competitive intelligence isn&apos;t a weekly calendar slot
               anymore. It&apos;s a Monday morning brief.
             </p>
-            <div className="mt-4 inline-flex items-center gap-2 font-mono text-xs text-text-subtle">
+            <div className="mt-4 inline-flex items-center gap-2 text-xs text-text-subtle">
               <span className="size-1.5 rounded-full bg-positive" /> Made in
               Paris · hosted in EU
             </div>

@@ -39,7 +39,7 @@ export function DocPage({
           {title}
         </h1>
         {updated && (
-          <p className="mt-3 font-mono text-xs text-text-subtle">
+          <p className="mt-3 text-xs text-text-subtle">
             Last updated {updated}
           </p>
         )}

@@ -17,7 +17,7 @@ export function Monitors() {
   return (
     <section className="border-y border-border bg-background-2 py-10">
       <div className="mx-auto w-full max-w-6xl px-6">
-        <p className="text-center font-mono text-xs text-text-subtle">
+        <p className="text-center text-xs text-text-subtle">
           Point Outrival at any public SaaS — like these · set up in minutes
         </p>
         <div

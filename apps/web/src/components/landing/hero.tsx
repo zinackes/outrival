@@ -57,14 +57,14 @@ export function Hero() {
           </Button>
         </div>
 
-        <p className="mt-6 font-mono text-xs text-text-subtle">
+        <p className="mt-6 text-xs text-text-subtle">
           No card · 2 competitors free · Cancel anytime · Hosted in the EU
         </p>
       </div>
 
       {/* The timeline, sitting just below the statement. */}
       <div className="mt-16 px-6">
-        <p className="mb-5 text-center font-mono text-xs text-text-subtle">
+        <p className="mb-5 text-center text-xs text-text-subtle">
           A year of monitoring · each bar a week · the bright ones became signals
         </p>
         <div aria-hidden className="flex h-56 items-end justify-center gap-[5px]">

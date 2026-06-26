@@ -7,6 +7,8 @@ import {
   Download,
   ArrowRight,
   ExternalLink,
+  Radar,
+  FlaskConical,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -39,6 +41,10 @@ import { CategoryBar, CategoryKey } from "./category-bar";
 import { DeltaPill, computeDelta } from "./delta-pill";
 import { SectoralSignalsSection } from "./sectoral-signals";
 import { OnboardingChecklistCard } from "./onboarding-checklist";
+import { EmptyState } from "./empty-state";
+import { SampleBanner } from "./sample-banner";
+import { useSampleMode } from "@/hooks/use-sample-mode";
+import { getSampleData } from "@/lib/sample-data";
 import { ListError } from "@/components/outrival/list-error";
 import { OnboardingAnalysisPanel } from "@/components/onboarding/onboarding-analysis-panel";
 import DashboardLoading from "@/app/dashboard/dashboard-skeleton";
@@ -122,6 +128,15 @@ export function OverviewView({
     return t >= rangeFrom && t <= rangeTo;
   };
 
+  // Sample / demo mode (Step 0 cold-start): when on, every computation below
+  // reads a fixed fictional dataset instead of the org's data, so a brand-new
+  // user can explore a populated interface without writing anything. The raw
+  // fetch states stay untouched so exiting sample restores the real view.
+  const [sample, setSample] = useSampleMode();
+  const sampleData = useMemo(() => getSampleData(), []);
+  const dsSignals = sample ? sampleData.signals : signals;
+  const dsCompetitors = sample ? sampleData.competitors : competitors;
+
   const load = useCallback(() => {
     setErr(null);
     Promise.all([api.listSignals({ limit: 200 }), api.listCompetitors()])
@@ -140,8 +155,8 @@ export function OverviewView({
   }, [load, hasData]);
 
   function exportCsv() {
-    if (!signals) return;
-    const rows = signals.filter(
+    if (!dsSignals) return;
+    const rows = dsSignals.filter(
       (s) => inWindow(s.createdAt),
     );
     if (!rows.length) return;
@@ -159,7 +174,7 @@ export function OverviewView({
   }
 
   const counts = useMemo<Counts>(() => {
-    const inRange = (signals ?? []).filter(
+    const inRange = (dsSignals ?? []).filter(
       (s) => inWindow(s.createdAt),
     );
     const critical = inRange.filter(
@@ -170,13 +185,13 @@ export function OverviewView({
       signals: inRange.length,
       critical,
       activeCompetitors: activeIds.size,
-      totalCompetitors: competitors?.length ?? 0,
+      totalCompetitors: dsCompetitors?.length ?? 0,
     };
-  }, [signals, competitors, range]);
+  }, [dsSignals, dsCompetitors, range]);
 
   const recentSignals = useMemo(() => {
-    if (!signals) return [];
-    return [...signals]
+    if (!dsSignals) return [];
+    return [...dsSignals]
       .sort((a, b) => {
         const s = SEV_ORDER[a.severity] - SEV_ORDER[b.severity];
         if (s !== 0) return s;
@@ -186,14 +201,14 @@ export function OverviewView({
         );
       })
       .slice(0, 5);
-  }, [signals]);
+  }, [dsSignals]);
 
   // Top-8 competitor roster. Reads the same server-computed stats the dedicated
   // Competitors page uses (signals7d / signalsPrev / categoryCounts / lastSignalAt)
   // so the two tables show identical numbers — a fixed 7d window, not the range.
   const competitorRows = useMemo(() => {
-    if (!competitors) return [];
-    return [...competitors]
+    if (!dsCompetitors) return [];
+    return [...dsCompetitors]
       .map((c) => {
         const stats = c.stats ?? {
           signals7d: 0,
@@ -215,7 +230,7 @@ export function OverviewView({
       })
       .sort((a, b) => b.signals7d - a.signals7d)
       .slice(0, 8);
-  }, [competitors]);
+  }, [dsCompetitors]);
 
   // Scale for the in-row magnitude bar behind the "Signals 7d" value (Plausible
   // pattern): a tinted fill ∝ value, so the column reads as a chart at a glance.
@@ -225,8 +240,8 @@ export function OverviewView({
   );
 
   const categoryBreakdown = useMemo(() => {
-    if (!signals) return [];
-    const inRange = signals.filter(
+    if (!dsSignals) return [];
+    const inRange = dsSignals.filter(
       (s) => inWindow(s.createdAt),
     );
     const map: Record<string, number> = {};
@@ -240,18 +255,20 @@ export function OverviewView({
         count,
         color: CATEGORY_COLORS[name] ?? "var(--muted-3)",
       }));
-  }, [signals, range]);
+  }, [dsSignals, range]);
 
   const totalCats = categoryBreakdown.reduce((a, b) => a + b.count, 0) || 1;
   const [hoveredCat, setHoveredCat] = useState<string | null>(null);
 
   const trend7Sparkline = useMemo(
-    () => (signals ? trendBuckets(signals, 10) : []),
-    [signals],
+    () => (dsSignals ? trendBuckets(dsSignals, 10) : []),
+    [dsSignals],
   );
   const trend7Labels = useMemo(() => trendLabels(10), []);
 
-  if (err && signals === null) {
+  // Loading / error gates apply to the live fetch only — sample data is always
+  // ready, so demo mode renders immediately even before the real fetch settles.
+  if (!sample && err && signals === null) {
     return (
       <div className="mt-10">
         <ListError error={err} onRetry={load} />
@@ -259,26 +276,74 @@ export function OverviewView({
     );
   }
 
-  if (signals === null || competitors === null) {
+  if (!sample && (signals === null || competitors === null)) {
     return <DashboardLoading />;
   }
 
+  // Past the gates the effective data is non-null (real fetch resolved, or sample).
+  const comps = dsCompetitors ?? [];
+  const sigs = dsSignals ?? [];
+  const hasCompetitors = comps.length > 0;
+  const everHadSignals = sigs.length > 0;
+  // Cold-start regimes (NN/g — first-use vs no-results vs populated):
+  //  • no competitors      → a setup hero, nothing else (every cell would be empty);
+  //  • competitors, no signal yet (`watching`) → a confident wait state instead of
+  //    a strip of bare "0" KPIs that reads as broken;
+  //  • populated           → the full dashboard.
+  const watching = hasCompetitors && !everHadSignals;
   const rangeLabel = `last ${rangeDays} days`;
+
+  // First use — lead with one setup prompt + safe exploration, skip the empty grid.
+  if (!sample && !hasCompetitors) {
+    return (
+      <div className="space-y-9">
+        <OnboardingChecklistCard />
+        <PageHead
+          title="Overview"
+          sub="Track every competitor move — pricing, hiring, product, content — as it happens."
+        />
+        <EmptyState
+          icon={Radar}
+          title="Start tracking your first competitor"
+          description="Outrival watches competitor pricing, hiring, product and content, then turns each change into a signal with the context to act on it. Add a competitor to begin — or explore the interface with sample data first."
+          actions={
+            <>
+              <Button asChild size="sm">
+                <Link href="/dashboard/competitors">
+                  Add a competitor <ArrowRight size={11} />
+                </Link>
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                <Link href="/dashboard/discovery">Find competitors</Link>
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setSample(true)}>
+                <FlaskConical size={13} /> Explore with sample data
+              </Button>
+            </>
+          }
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-9">
       {/* Progressive streaming right after onboarding (patch-25) — refreshes this
           view each poll so signals/competitors fill in live. Self-hides otherwise. */}
-      <OnboardingAnalysisPanel onTick={load} />
+      {!sample && <OnboardingAnalysisPanel onTick={load} />}
 
-      <OnboardingChecklistCard />
+      {!sample && <OnboardingChecklistCard />}
+
+      <SampleBanner />
 
       <PageHead
         title="Overview"
         sub={
-          counts.signals > 0
-            ? `${counts.activeCompetitors} competitor${counts.activeCompetitors > 1 ? "s" : ""} moved in this period · ${counts.critical} critical signal${counts.critical > 1 ? "s" : ""} pending.`
-            : `No signals in the last ${rangeDays} days.`
+          watching
+            ? `Watching ${comps.length} competitor${comps.length > 1 ? "s" : ""} — first signals appear here as scans complete.`
+            : counts.signals > 0
+              ? `${counts.activeCompetitors} competitor${counts.activeCompetitors > 1 ? "s" : ""} moved in this period · ${counts.critical} critical signal${counts.critical > 1 ? "s" : ""} pending.`
+              : `No signals in the last ${rangeDays} days.`
         }
         actions={
           <>
@@ -287,13 +352,29 @@ export function OverviewView({
               variant="outline"
               size="sm"
               onClick={exportCsv}
-              disabled={!signals || counts.signals === 0}
+              disabled={counts.signals === 0}
             >
               <Download size={13} /> Export
             </Button>
           </>
         }
       />
+
+      {watching ? (
+        <EmptyState
+          icon={Radar}
+          title={`Outrival is watching ${comps.length} competitor${comps.length > 1 ? "s" : ""}`}
+          description="Scans run continuously. Your first signals — pricing, hiring, product and content moves — land here the moment something changes. Nothing to handle yet."
+          actions={
+            <Button asChild size="sm" variant="outline">
+              <Link href="/dashboard/competitors">
+                Review competitors <ArrowRight size={11} />
+              </Link>
+            </Button>
+          }
+        />
+      ) : (
+        <>
 
       {/* KPI strip — banded surface cells, hairline dividers between them, closed
           by a light rounded border like the controls. */}
@@ -315,6 +396,9 @@ export function OverviewView({
           <Kpi
             label="Critical pending"
             value={counts.critical}
+            href={
+              counts.critical > 0 ? "/dashboard/signals?view=critical" : undefined
+            }
             deltaKind={counts.critical > 0 ? "neg" : "neutral"}
             delta={counts.critical > 0 ? "action required" : "nothing to handle"}
             meta={
@@ -376,35 +460,10 @@ export function OverviewView({
         <TooltipProvider delayDuration={80}>
           <div className="mt-3 max-h-[440px] overflow-y-auto rounded-md border border-border">
             {recentSignals.length === 0 ? (
-              <div className="px-4 py-12 text-center">
-                <div className="font-semibold text-base text-foreground mb-1.5 tracking-tight">
-                  {competitors.length === 0 ? "No competitors yet" : "No signals yet"}
-                </div>
-                <div className="text-sm text-muted-foreground max-w-[400px] mx-auto">
-                  {competitors.length === 0
-                    ? "Add a competitor and Outrival starts watching it for pricing, hiring, product and content moves."
-                    : "Scans run continuously. The first signals will appear here as soon as a change is detected."}
-                </div>
-                <div className="mt-4 flex justify-center">
-                  <Button
-                    asChild
-                    size="sm"
-                    variant={competitors.length === 0 ? "default" : "outline"}
-                  >
-                    <Link
-                      href={
-                        competitors.length === 0
-                          ? "/dashboard/competitors"
-                          : "/dashboard/discovery"
-                      }
-                    >
-                      {competitors.length === 0
-                        ? "Add a competitor"
-                        : "Find competitors to track"}
-                      <ArrowRight size={11} />
-                    </Link>
-                  </Button>
-                </div>
+              // Reached only in the populated view if the top-5 is momentarily
+              // empty — first-use / watching are handled upstream.
+              <div className="px-4 py-10 text-sm text-muted-foreground">
+                No signals in the {rangeLabel}. Widen the range to see history.
               </div>
             ) : (
               recentSignals.map((s) => (
@@ -529,8 +588,11 @@ export function OverviewView({
         </div>
       )}
 
-      {/* Sector trends — meso-level, distinct from the micro signals above */}
-      <SectoralSignalsSection />
+      {/* Sector trends — meso-level, distinct from the micro signals above.
+          Self-fetches real org data, so it's hidden while exploring sample data. */}
+      {!sample && <SectoralSignalsSection />}
+        </>
+      )}
 
       {/* Top-8 competitor roster — a condensed mirror of the Competitors page
           table: same server stats, same columns, same look. */}
@@ -704,7 +766,7 @@ export function OverviewView({
         </TooltipProvider>
       </section>
 
-      <RecentBattleCards />
+      {!sample && <RecentBattleCards />}
     </div>
   );
 }

@@ -216,6 +216,38 @@ export function TrendsView({
     summary.reviews.length === 0 &&
     summary.tech.length === 0;
 
+  // Assertive headlines (Tufte): each section's sub states the direction the data
+  // shows, not a generic label. Falls back to the descriptive copy when flat.
+  const moves = useMemo(() => {
+    if (!summary) return null;
+    const pricingUp = summary.pricing.filter(
+      (m) => m.prevPrice !== null && m.price > m.prevPrice,
+    ).length;
+    const pricingDown = summary.pricing.filter(
+      (m) => m.prevPrice !== null && m.price < m.prevPrice,
+    ).length;
+    const hiringUp = summary.hiring.filter((m) => m.net > 0).length;
+    const hiringDown = summary.hiring.filter((m) => m.net < 0).length;
+    const techAdded = summary.tech.filter((m) => m.event === "appeared").length;
+    const techDropped = summary.tech.filter(
+      (m) => m.event === "disappeared",
+    ).length;
+    return {
+      pricing:
+        pricingUp || pricingDown
+          ? `${pricingUp} raised · ${pricingDown} cut`
+          : "recent price changes across competitors",
+      hiring:
+        hiringUp || hiringDown
+          ? `${hiringUp} scaling up · ${hiringDown} slowing`
+          : "net open roles added in the window",
+      tech:
+        techAdded || techDropped
+          ? `${techAdded} added · ${techDropped} dropped`
+          : "recently added or dropped tech",
+    };
+  }, [summary]);
+
   return (
     <div className="flex flex-col gap-5">
       <PageHead
@@ -264,7 +296,7 @@ export function TrendsView({
             <Card
               title="Pricing moves"
               icon={<DollarSign size={14} />}
-              sub="recent price changes across competitors"
+              sub={moves?.pricing ?? "recent price changes across competitors"}
               empty={summary.pricing.length === 0}
             >
               {summary.pricing.map((m: PricingMove, i) => (
@@ -294,7 +326,7 @@ export function TrendsView({
             <Card
               title="Hiring velocity"
               icon={<TrendingUp size={14} />}
-              sub="net open roles added in the window"
+              sub={moves?.hiring ?? "net open roles added in the window"}
               empty={summary.hiring.length === 0}
             >
               {summary.hiring.map((m: HiringMove) => (
@@ -338,7 +370,7 @@ export function TrendsView({
             <Card
               title="Tech changes"
               icon={<Boxes size={14} />}
-              sub="recently added or dropped tech"
+              sub={moves?.tech ?? "recently added or dropped tech"}
               empty={summary.tech.length === 0}
             >
               {summary.tech.map((m: TechMove, i) => (

@@ -1,4 +1,5 @@
-import { ArrowDown, ArrowUp, Info, Minus, type LucideIcon } from "lucide-react";
+import Link from "next/link";
+import { ArrowDown, ArrowUp, ArrowRight, Info, Minus, type LucideIcon } from "lucide-react";
 import { Sparkline } from "./sparkline";
 import {
   Tooltip,
@@ -19,6 +20,8 @@ interface KpiProps {
   /** Optional explainer shown via an info icon next to the label. Needs a
    *  TooltipProvider ancestor. */
   hint?: string;
+  /** Makes the whole cell a link (e.g. "Critical pending" → filtered Signals). */
+  href?: string;
   spark?: number[];
   sparkColor?: string;
   sparkLabels?: string[];
@@ -46,17 +49,30 @@ export function Kpi({
   deltaKind = "pos",
   meta,
   hint,
+  href,
   spark,
   sparkColor,
   sparkLabels,
   sparkValueLabel,
 }: KpiProps) {
   const DeltaIcon = DELTA_ICON[deltaKind];
-  return (
-    <div className="px-5 py-4 flex flex-col gap-2 relative min-w-0">
+  const className = `group/kpi px-5 py-4 flex flex-col gap-2 relative min-w-0${
+    href
+      ? " outline-none transition-colors hover:bg-accent/40 focus-visible:bg-accent/40"
+      : ""
+  }`;
+  const body = (
+    <>
       <div className="font-mono text-dense text-muted-foreground flex items-center justify-between gap-2">
         <span className="inline-flex items-center gap-1">
           {label}
+          {href && (
+            <ArrowRight
+              size={11}
+              className="opacity-0 transition-opacity group-hover/kpi:opacity-100"
+              aria-hidden
+            />
+          )}
           {hint && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -110,6 +126,13 @@ export function Kpi({
           />
         </div>
       )}
-    </div>
+    </>
+  );
+  return href ? (
+    <Link href={href} className={className}>
+      {body}
+    </Link>
+  ) : (
+    <div className={className}>{body}</div>
   );
 }

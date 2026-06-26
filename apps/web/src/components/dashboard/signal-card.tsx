@@ -45,6 +45,9 @@ interface SignalCardProps {
   highlight?: boolean;
   /** Keyboard-nav focus (j/k). Reuses the deep-link highlight ring. */
   focused?: boolean;
+  /** When false, hides the mutating footer (track/feedback/discuss/severity) so
+   *  the card can render as a read-only detail (e.g. sample mode). */
+  interactive?: boolean;
 }
 
 // How long (ms) a card must stay substantially in view before it auto-reads.
@@ -90,6 +93,7 @@ export function SignalCard({
   onActionChange,
   highlight,
   focused,
+  interactive = true,
 }: SignalCardProps) {
   const [flagged, setFlagged] = useState(signal.aiFlagged ?? false);
   const [severityAdjusted, setSeverityAdjusted] = useState(false);
@@ -360,6 +364,7 @@ export function SignalCard({
       {/* One quiet footer (patch-29): evidence on the left, feedback + the rare
           AI-severity correction (tucked in the menu) on the right. The former
           stack of action / source / feedback rows collapses into this line. */}
+      {interactive && (
       <div className="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-border pt-3.5">
         <div className="flex min-w-0 items-center gap-2">
           <SignalSourceLine
@@ -468,8 +473,9 @@ export function SignalCard({
           </DropdownMenu>
         </div>
       </div>
+      )}
 
-      {showComments && (
+      {interactive && showComments && (
         <div data-comments>
           <SignalComments signalId={signal.id} onCountChange={setCommentCount} />
         </div>

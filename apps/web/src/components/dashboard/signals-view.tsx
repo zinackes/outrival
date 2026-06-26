@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AnimatePresence, motion } from "motion/react";
 import {
   Download,
   Check,
@@ -12,13 +12,16 @@ import {
   ChevronDown,
   ArrowUpDown,
   Keyboard,
+  Inbox,
+  FlaskConical,
+  ArrowLeft,
+  Radar,
 } from "lucide-react";
 import { startOfWeek, endOfWeek } from "date-fns";
 import { toast } from "sonner";
 import { api, type Signal, type ActionStatus, type SavedViewFilters } from "@/lib/api";
 import { toCsv, downloadCsv } from "@/lib/csv";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SavedViewsMenu } from "./saved-views-menu";
 import { Input } from "@/components/ui/input";
@@ -33,13 +36,18 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { feedItemMotion } from "@/lib/motion";
 import { PageHead } from "./page-head";
 import { SignalCard } from "./signal-card";
+import { SignalRow, BatchRow } from "./signal-row";
+import { SeverityBadge } from "./severity-pill";
+import { EmptyState } from "./empty-state";
+import { SampleBanner } from "./sample-banner";
 import { ShortcutsHelp } from "./shortcuts-help";
 import { ListRowsSkeleton } from "./skeletons";
 import { ListError } from "@/components/outrival/list-error";
 import { useListKeyboardNav } from "@/hooks/use-list-keyboard-nav";
+import { useSampleMode } from "@/hooks/use-sample-mode";
+import { getSampleData } from "@/lib/sample-data";
 
 type Sev = Signal["severity"];
 type QuickView = "all" | "alerts" | "unread" | "week" | "critical" | "actions";
@@ -88,27 +96,16 @@ export function SignalsView({
 }: { initialSignals?: Signal[] | null } = {}) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  // Sample / demo mode shared with the Overview (Step 0). When on, the feed reads
+  // the fixed fictional dataset and the detail renders read-only — no API writes.
+  const [sample, setSample] = useSampleMode();
 
   const [signals, setSignals] = useState<Signal[] | null>(initialSignals);
   const [err, setErr] = useState<unknown>(null);
-  const [highlightId, setHighlightId] = useState<string | null>(null);
-  // Signals read automatically by dwell (vs. an explicit click / "Mark all read").
-  // Only these can be reverted to unread by clicking the card.
-  const [autoReadIds, setAutoReadIds] = useState<Set<string>>(new Set());
-  // Batch open/close lifted here (was BatchGroupCard-local) so keyboard nav knows
-  // which member cards are visible and can traverse into an expanded group.
-  const [openBatches, setOpenBatches] = useState<Set<string>>(new Set());
   const [helpOpen, setHelpOpen] = useState(false);
+  // Tracks whether the desktop default-selection has run, so deselecting (Esc)
+  // doesn't keep snapping back to the first row.
   const focusedRef = useRef<string | null>(null);
-
-  function toggleBatch(batchId: string) {
-    setOpenBatches((prev) => {
-      const next = new Set(prev);
-      if (next.has(batchId)) next.delete(batchId);
-      else next.add(batchId);
-      return next;
-    });
-  }
 
   const focusId = searchParams.get("focus");
   const quickView = (searchParams.get("view") as QuickView) || "all";
@@ -141,89 +138,41 @@ export function SignalsView({
 
   const load = useCallback(() => {
     setErr(null);
+    if (sample) {
+      setSignals(getSampleData().signals);
+      return;
+    }
     api
       .listSignals({ limit: 200, productId: productId ?? undefined, sort })
       .then((r) => setSignals(r.signals))
       .catch((e) => setErr(e));
-  }, [productId, sort]);
+  }, [productId, sort, sample]);
 
   // Server-seeded first paint covers the initial product/sort. Consume the seed
-  // once, then let load() refetch normally when product/sort change.
+  // once (unless in sample mode), then let load() refetch when product/sort/sample
+  // change.
   const seededRef = useRef(initialSignals !== null);
   useEffect(() => {
-    if (seededRef.current) {
+    if (seededRef.current && !sample) {
       seededRef.current = false;
       return;
     }
     load();
-  }, [load]);
-
-  // patch-29 — arriving from a "Recent signals" link (?focus=<id>): scroll the
-  // matching card into view and flash it, then drop the param so it doesn't re-fire.
-  useEffect(() => {
-    if (!focusId || !signals) return;
-    if (focusedRef.current === focusId) return;
-    const el = document.getElementById(`signal-${focusId}`);
-    if (!el) return;
-    focusedRef.current = focusId;
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
-    setHighlightId(focusId);
-    const t = setTimeout(() => {
-      setHighlightId(null);
-      setParam({ focus: null });
-    }, 1900);
-    return () => clearTimeout(t);
-  }, [focusId, signals, setParam]);
+  }, [load, sample]);
 
   async function markRead(id: string) {
-    // Explicit read: drop any auto-read flag so the card stops offering "mark unread".
-    setAutoReadIds((prev) => {
-      if (!prev.has(id)) return prev;
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
     setSignals((prev) =>
       prev ? prev.map((s) => (s.id === id ? { ...s, isRead: true } : s)) : prev,
     );
+    if (sample) return;
     await api.markSignalRead(id);
   }
 
-  // Dwell auto-read (patch): the card scrolled into view and the user lingered on it.
-  // Tracked separately so a click can undo it; an explicit read can't be undone this way.
-  async function autoRead(id: string) {
-    setAutoReadIds((prev) => {
-      const next = new Set(prev);
-      next.add(id);
-      return next;
-    });
-    setSignals((prev) =>
-      prev ? prev.map((s) => (s.id === id ? { ...s, isRead: true } : s)) : prev,
-    );
-    try {
-      await api.markSignalRead(id);
-    } catch {
-      // Roll back the optimistic read so the dwell observer can retry.
-      setAutoReadIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-      setSignals((prev) =>
-        prev ? prev.map((s) => (s.id === id ? { ...s, isRead: false } : s)) : prev,
-      );
-    }
-  }
-
   async function markUnread(id: string) {
-    setAutoReadIds((prev) => {
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
     setSignals((prev) =>
       prev ? prev.map((s) => (s.id === id ? { ...s, isRead: false } : s)) : prev,
     );
+    if (sample) return;
     try {
       await api.markSignalRead(id, false);
     } catch {
@@ -252,6 +201,7 @@ export function SignalsView({
                   )
                 : prev,
             );
+            if (sample) return;
             Promise.all(
               unreadIds.map((id) => api.markSignalRead(id, false)),
             ).catch(() => toast.error("Couldn't undo. Some signals stay read."));
@@ -259,6 +209,7 @@ export function SignalsView({
         },
       },
     );
+    if (sample) return;
     try {
       await Promise.all(unreadIds.map((id) => api.markSignalRead(id)));
     } catch {
@@ -343,37 +294,20 @@ export function SignalsView({
     );
   }, [filtered]);
 
-  // Deep-linking to a batched member (?focus=) opens its group so the scroll-into-
-  // view target exists (mirrors the old BatchGroupCard-local auto-open).
-  useEffect(() => {
-    if (!focusId) return;
-    const batch = feedItems.find(
-      (it) => it.kind === "batch" && it.signals.some((s) => s.id === focusId),
-    );
-    if (batch && batch.kind === "batch")
-      setOpenBatches((prev) =>
-        prev.has(batch.batchId) ? prev : new Set(prev).add(batch.batchId),
-      );
-  }, [focusId, feedItems]);
-
-  // Keyboard nav (j/k) traverses single cards plus the members of any open batch,
-  // in feed order. A collapsed batch is one focusable header (Enter expands it).
-  const navIds = useMemo(() => {
-    const out: string[] = [];
-    for (const it of feedItems) {
-      if (it.kind === "single") out.push(it.signal.id);
-      else {
-        out.push(`batch:${it.batchId}`);
-        if (openBatches.has(it.batchId))
-          for (const s of it.signals) out.push(s.id);
-      }
-    }
-    return out;
-  }, [feedItems, openBatches]);
+  // Master-detail nav: one id per feed item — a batch is a single selectable row
+  // whose members render together in the detail pane. Selection (j/k or click)
+  // drives the right pane; no inline expansion to traverse.
+  const navIds = useMemo(
+    () =>
+      feedItems.map((it) =>
+        it.kind === "single" ? it.signal.id : `batch:${it.batchId}`,
+      ),
+    [feedItems],
+  );
 
   const elementId = useCallback(
     (id: string) =>
-      id.startsWith("batch:") ? `signal-batch-${id.slice(6)}` : `signal-${id}`,
+      id.startsWith("batch:") ? `row-batch-${id.slice(6)}` : `row-${id}`,
     [],
   );
 
@@ -393,14 +327,7 @@ export function SignalsView({
       if (v) setParam({ view: v.value === "all" ? null : v.value });
       return true;
     }
-    if (!fid) return false;
-    if (fid.startsWith("batch:")) {
-      if (key === "Enter" || key === "o") {
-        toggleBatch(fid.slice(6));
-        return true;
-      }
-      return false;
-    }
+    if (!fid || fid.startsWith("batch:")) return false;
     const sig = (signals ?? []).find((s) => s.id === fid);
     if (!sig) return false;
     switch (key) {
@@ -412,23 +339,68 @@ export function SignalsView({
         if (sig.isRead) markUnread(fid);
         else markRead(fid);
         return true;
-      case "t":
-      case "c":
-        // The card owns these (open its Track dropdown / toggle comments) via
-        // real React state. Dispatch a CustomEvent on its root; the card listens.
-        document
-          .getElementById(`signal-${fid}`)
-          ?.dispatchEvent(
-            new CustomEvent("signal-kbd", {
-              detail: key === "t" ? "track" : "discuss",
-            }),
-          );
-        return true;
     }
     return false;
   }
 
-  const { focusedId } = useListKeyboardNav({ ids: navIds, elementId, onKey });
+  const { focusedId, setFocusedId } = useListKeyboardNav({
+    ids: navIds,
+    elementId,
+    onKey,
+  });
+  const selectedId = focusedId;
+
+  // Select a row: drive the detail pane + mark the signal read (selecting is
+  // reading, the Linear/Superhuman model). Click and keyboard share this path.
+  const selectRow = useCallback(
+    (id: string) => {
+      setFocusedId(id);
+      if (!id.startsWith("batch:")) {
+        const s = (signals ?? []).find((x) => x.id === id);
+        if (s && !s.isRead) markRead(id);
+      }
+    },
+    // markRead is recreated each render but closes over current state; safe.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [signals, setFocusedId],
+  );
+
+  // Bootstrap selection: consume ?focus= once (deep-link from Overview's "Recent
+  // signals" / "Critical pending"), else default to the first row on desktop so
+  // the detail pane is never empty. Mobile starts unselected (list-first).
+  useEffect(() => {
+    if (focusedId || !navIds.length) return;
+    const wanted = focusId && navIds.includes(focusId) ? focusId : null;
+    if (wanted) {
+      selectRow(wanted);
+      setParam({ focus: null });
+      return;
+    }
+    if (focusedRef.current === "init") return;
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia("(min-width: 1024px)").matches
+    ) {
+      focusedRef.current = "init";
+      selectRow(navIds[0]!);
+    }
+  }, [focusedId, navIds, focusId, selectRow, setParam]);
+
+  // The feed item backing the detail pane (a single signal or a batch group).
+  const selectedItem = useMemo<FeedItem | null>(() => {
+    if (!selectedId) return null;
+    if (selectedId.startsWith("batch:")) {
+      const bid = selectedId.slice(6);
+      return (
+        feedItems.find((it) => it.kind === "batch" && it.batchId === bid) ?? null
+      );
+    }
+    return (
+      feedItems.find(
+        (it) => it.kind === "single" && it.signal.id === selectedId,
+      ) ?? null
+    );
+  }, [selectedId, feedItems]);
 
   const quickCounts = useMemo(() => {
     if (!signals) return { all: 0, alerts: 0, unread: 0, week: 0, critical: 0, actions: 0 };
@@ -522,6 +494,7 @@ export function SignalsView({
 
   return (
     <div className="space-y-6">
+      <SampleBanner />
       <PageHead
         title="Signals"
         sub={
@@ -752,153 +725,154 @@ export function SignalsView({
       )}
 
       {signals === null ? (
-        <ListRowsSkeleton rows={5} />
-      ) : filtered.length === 0 ? (
-        <Card className="px-6 py-12 text-center text-muted-foreground">
-          <div className="font-semibold text-base text-foreground mb-1.5 tracking-tight">
-            No matching signals
-          </div>
-          <div className="text-sm max-w-[380px] mx-auto">
-            {signals.length === 0
-              ? "No signals detected yet. The first ones will appear here after the next scan."
-              : "Current filters exclude every signal. Remove one to see results."}
-          </div>
-        </Card>
+        <ListRowsSkeleton rows={6} />
+      ) : signals.length === 0 ? (
+        // Cold start — no signals exist yet for this workspace.
+        <EmptyState
+          icon={Radar}
+          title="No signals yet"
+          description="Outrival turns every competitor move into a signal — what changed, why it matters, and what to do. Add a competitor to start, or explore with sample data first."
+          actions={
+            <>
+              <Button asChild size="sm">
+                <Link href="/dashboard/competitors">Add a competitor</Link>
+              </Button>
+              {!sample && (
+                <Button size="sm" variant="ghost" onClick={() => setSample(true)}>
+                  <FlaskConical size={13} /> Explore with sample data
+                </Button>
+              )}
+            </>
+          }
+        />
+      ) : feedItems.length === 0 ? (
+        // No-results — filters/search exclude every signal (distinct from cold start).
+        <EmptyState
+          icon={Inbox}
+          title="No matching signals"
+          description="Your current filters exclude every signal. Reset them to see the full feed."
+          actions={
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                clearFilters();
+                setParam({ view: null, q: null });
+              }}
+            >
+              Reset filters
+            </Button>
+          }
+        />
       ) : (
-        <div className="flex flex-col gap-2.5">
-          <AnimatePresence initial={false} mode="popLayout">
+        <div className="lg:grid lg:grid-cols-[minmax(340px,400px)_1fr] lg:items-start lg:gap-6">
+          {/* Master list — compact, scannable rows; the detail lives on the right. */}
+          <div
+            role="listbox"
+            aria-label="Signals"
+            className="divide-y divide-border overflow-hidden rounded-lg border border-border lg:max-h-[calc(100vh-220px)] lg:overflow-y-auto"
+          >
             {feedItems.map((item) =>
               item.kind === "single" ? (
-                <motion.div key={item.signal.id} {...feedItemMotion}>
-                  <SignalCard
-                    signal={item.signal}
-                    onMarkRead={markRead}
-                    onAutoRead={autoRead}
-                    onMarkUnread={markUnread}
-                    wasAutoRead={autoReadIds.has(item.signal.id)}
-                    onActionChange={onActionChange}
-                    highlight={item.signal.id === highlightId}
-                    focused={focusedId === item.signal.id}
-                  />
-                </motion.div>
+                <SignalRow
+                  key={item.signal.id}
+                  signal={item.signal}
+                  selected={selectedId === item.signal.id}
+                  onSelect={() => selectRow(item.signal.id)}
+                />
               ) : (
-                <motion.div key={item.batchId} {...feedItemMotion}>
-                  <BatchGroupCard
-                    item={item}
-                    open={openBatches.has(item.batchId)}
-                    onToggleOpen={() => toggleBatch(item.batchId)}
-                    focusedId={focusedId}
-                    autoReadIds={autoReadIds}
-                    highlightId={highlightId}
-                    onMarkRead={markRead}
-                    onAutoRead={autoRead}
-                    onMarkUnread={markUnread}
-                    onActionChange={onActionChange}
-                  />
-                </motion.div>
+                <BatchRow
+                  key={item.batchId}
+                  batchId={item.batchId}
+                  signals={item.signals}
+                  summary={item.summary}
+                  selected={selectedId === `batch:${item.batchId}`}
+                  onSelect={() => selectRow(`batch:${item.batchId}`)}
+                />
               ),
             )}
-          </AnimatePresence>
+          </div>
+
+          {/* Detail pane — sticky right column on desktop; a full-screen sheet on
+              mobile when a row is selected. Rendered once (no duplicate ids). */}
+          <div
+            className={cn(
+              "lg:sticky lg:top-4",
+              selectedItem
+                ? "fixed inset-0 z-50 overflow-y-auto bg-background p-4 lg:static lg:inset-auto lg:z-auto lg:overflow-visible lg:bg-transparent lg:p-0"
+                : "hidden lg:block",
+            )}
+          >
+            {selectedItem ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setFocusedId(null)}
+                  className="mb-3 inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground lg:hidden"
+                >
+                  <ArrowLeft size={14} /> Back to signals
+                </button>
+                {selectedItem.kind === "single" ? (
+                  <SignalCard
+                    signal={selectedItem.signal}
+                    interactive={!sample}
+                    onMarkRead={!sample ? markRead : undefined}
+                    onMarkUnread={!sample ? markUnread : undefined}
+                    onActionChange={onActionChange}
+                  />
+                ) : (
+                  <div className="space-y-3">
+                    <div className="rounded-lg border border-border bg-card px-5 py-4">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <SeverityBadge
+                          severity={selectedItem.signals.reduce<Sev>(
+                            (m, s) =>
+                              SEV_RANK[s.severity] > SEV_RANK[m]
+                                ? s.severity
+                                : m,
+                            "low",
+                          )}
+                        />
+                        <span className="text-base font-semibold">
+                          {selectedItem.signals[0]!.competitorName}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {selectedItem.signals.length} similar{" "}
+                          {selectedItem.signals[0]!.category} signals
+                        </span>
+                      </div>
+                      {selectedItem.summary && (
+                        <p className="mt-2 text-content leading-relaxed text-foreground/85">
+                          {selectedItem.summary}
+                        </p>
+                      )}
+                    </div>
+                    {selectedItem.signals.map((s) => (
+                      <SignalCard
+                        key={s.id}
+                        signal={s}
+                        interactive={!sample}
+                        onMarkRead={!sample ? markRead : undefined}
+                        onMarkUnread={!sample ? markUnread : undefined}
+                        onActionChange={onActionChange}
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="hidden min-h-[320px] items-center justify-center rounded-lg border border-dashed border-border lg:flex">
+                <p className="text-sm text-muted-foreground">
+                  Select a signal to see the full detail.
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
       <ShortcutsHelp open={helpOpen} onOpenChange={setHelpOpen} />
     </div>
-  );
-}
-
-// Collapsed batch of similar signals (patch-26): one summary card that expands to
-// the member signals. Replaces N near-duplicate cards in the feed.
-function BatchGroupCard({
-  item,
-  open,
-  onToggleOpen,
-  focusedId,
-  autoReadIds,
-  highlightId,
-  onMarkRead,
-  onAutoRead,
-  onMarkUnread,
-  onActionChange,
-}: {
-  item: Extract<FeedItem, { kind: "batch" }>;
-  // Open/close is controlled by the parent so keyboard nav can traverse members.
-  open: boolean;
-  onToggleOpen: () => void;
-  focusedId: string | null;
-  autoReadIds: Set<string>;
-  highlightId: string | null;
-  onMarkRead: (id: string) => void;
-  onAutoRead: (id: string) => void;
-  onMarkUnread: (id: string) => void;
-  onActionChange: (id: string, status: ActionStatus | null) => void;
-}) {
-  const first = item.signals[0]!;
-  const maxSev = item.signals.reduce<Sev>(
-    (m, s) => (SEV_RANK[s.severity] > SEV_RANK[m] ? s.severity : m),
-    "low",
-  );
-  const unreadCount = item.signals.filter((s) => !s.isRead).length;
-
-  return (
-    <Card className="overflow-hidden">
-      <button
-        type="button"
-        id={`signal-batch-${item.batchId}`}
-        tabIndex={-1}
-        aria-expanded={open}
-        aria-label={`${first.competitorName}: ${item.signals.length} similar ${first.category} signals`}
-        onClick={onToggleOpen}
-        className={cn(
-          "flex w-full items-center gap-3 p-5 text-left outline-none transition-colors hover:bg-muted/30",
-          focusedId === `batch:${item.batchId}` &&
-            "ring-2 ring-inset ring-primary/70",
-        )}
-      >
-        <span className={cn("size-2 shrink-0 rounded-full", SEV_DOT[maxSev])} />
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="text-base font-semibold">{first.competitorName}</span>
-            <span className="text-xs text-muted-foreground">
-              {/* Reflect what's actually grouped here (filters/hidden/limit can trim
-                  the batch), not the stored batch count which may diverge. */}
-              {item.signals.length} similar {first.category} signals
-            </span>
-            {unreadCount > 0 && <span className="size-1.5 rounded-full bg-primary" />}
-          </div>
-          {item.summary && (
-            <p className="mt-1 text-sm leading-snug text-foreground/85">{item.summary}</p>
-          )}
-        </div>
-        <span className="shrink-0 text-xs text-muted-foreground">
-          {open ? "Hide" : "Show"}
-        </span>
-        <ChevronDown
-          size={16}
-          className={cn(
-            "shrink-0 text-muted-foreground transition-transform",
-            open && "rotate-180",
-          )}
-        />
-      </button>
-      {open && (
-        <div className="flex flex-col gap-2.5 border-t border-border bg-muted/20 p-2.5">
-          {item.signals.map((s) => (
-            <SignalCard
-              key={s.id}
-              signal={s}
-              onMarkRead={onMarkRead}
-              onAutoRead={onAutoRead}
-              onMarkUnread={onMarkUnread}
-              wasAutoRead={autoReadIds.has(s.id)}
-              onActionChange={onActionChange}
-              highlight={s.id === highlightId}
-              focused={focusedId === s.id}
-            />
-          ))}
-        </div>
-      )}
-    </Card>
   );
 }
 

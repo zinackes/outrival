@@ -17,7 +17,7 @@ import {
   ArrowLeft,
   Radar,
 } from "lucide-react";
-import { startOfWeek, endOfWeek } from "date-fns";
+import { startOfWeek, endOfWeek, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { api, type Signal, type ActionStatus, type SavedViewFilters } from "@/lib/api";
 import { toCsv, downloadCsv } from "@/lib/csv";
@@ -38,6 +38,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils";
 import { PageHead } from "./page-head";
 import { SignalCard } from "./signal-card";
+import { SignalEvidence } from "@/components/outrival/signal-evidence";
 import { SignalRow, BatchRow } from "./signal-row";
 import { SeverityBadge } from "./severity-pill";
 import { EmptyState } from "./empty-state";
@@ -765,7 +766,7 @@ export function SignalsView({
           }
         />
       ) : (
-        <div className="lg:grid lg:grid-cols-[minmax(340px,400px)_1fr] lg:items-start lg:gap-6">
+        <div className="lg:grid lg:grid-cols-[minmax(320px,380px)_minmax(0,760px)] lg:items-start lg:gap-6">
           {/* Master list — compact, scannable rows; the detail lives on the right. */}
           <div
             role="listbox"
@@ -813,13 +814,30 @@ export function SignalsView({
                   <ArrowLeft size={14} /> Back to signals
                 </button>
                 {selectedItem.kind === "single" ? (
-                  <SignalCard
-                    signal={selectedItem.signal}
-                    interactive={!sample}
-                    onMarkRead={!sample ? markRead : undefined}
-                    onMarkUnread={!sample ? markUnread : undefined}
-                    onActionChange={onActionChange}
-                  />
+                  <div className="space-y-3">
+                    <SignalCard
+                      signal={selectedItem.signal}
+                      interactive={!sample}
+                      onMarkRead={!sample ? markRead : undefined}
+                      onMarkUnread={!sample ? markUnread : undefined}
+                      onActionChange={onActionChange}
+                    />
+                    {/* The evidence dossier (before/after, visual diff, change
+                        breakdown) — what makes the right pane worth its width.
+                        Best-effort; renders nothing without structured evidence.
+                        Skipped in sample mode (no backend to fetch from). */}
+                    {!sample && (
+                      <SignalEvidence
+                        key={selectedItem.signal.id}
+                        signalId={selectedItem.signal.id}
+                      />
+                    )}
+                    <MoreFromCompetitor
+                      signal={selectedItem.signal}
+                      all={signals ?? []}
+                      onSelect={selectRow}
+                    />
+                  </div>
                 ) : (
                   <div className="space-y-3">
                     <div className="rounded-lg border border-border bg-card px-5 py-4">
@@ -872,6 +890,55 @@ export function SignalsView({
       )}
 
       <ShortcutsHelp open={helpOpen} onOpenChange={setHelpOpen} />
+    </div>
+  );
+}
+
+// Cross-links to the selected competitor's other signals, from the already-loaded
+// feed (no extra fetch). Turns the detail pane into a small competitor hub and
+// gives the master-detail a reason to exist beyond a single card.
+function MoreFromCompetitor({
+  signal,
+  all,
+  onSelect,
+}: {
+  signal: Signal;
+  all: Signal[];
+  onSelect: (id: string) => void;
+}) {
+  const related = all
+    .filter((s) => s.competitorId === signal.competitorId && s.id !== signal.id)
+    .slice(0, 6);
+  if (related.length === 0) return null;
+  return (
+    <div className="rounded-md border border-border bg-card p-5">
+      <div className="mb-3 text-dense font-medium text-muted-foreground">
+        More from {signal.competitorName}
+      </div>
+      <ul className="-mx-2">
+        {related.map((s) => (
+          <li key={s.id}>
+            <button
+              type="button"
+              onClick={() => onSelect(s.id)}
+              className="group flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent/40"
+            >
+              <span
+                className={cn(
+                  "size-1.5 shrink-0 rounded-full",
+                  SEV_DOT[s.severityOverride ?? s.severity],
+                )}
+              />
+              <span className="min-w-0 flex-1 truncate text-dense text-foreground/90 group-hover:text-foreground">
+                {s.insight}
+              </span>
+              <time className="shrink-0 font-mono text-meta text-muted-foreground tabular-nums">
+                {formatDistanceToNow(new Date(s.createdAt), { addSuffix: false })}
+              </time>
+            </button>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

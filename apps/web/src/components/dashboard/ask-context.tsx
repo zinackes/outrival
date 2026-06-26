@@ -2,13 +2,16 @@
 
 import * as React from "react";
 
-// The entity the current page is "about", so the Ask dock can scope questions to
-// it (Linear's inline-agent pattern). Pages declare it with useSetAskContext;
-// the dock reads it with useAskContext. Kept tiny on purpose — one entity at a time.
+// What the current page is "about", so the Ask dock can scope questions to it (Linear's
+// inline-agent pattern). Pages declare it with useSetAskContext; the dock reads it with
+// useAskContext. Either a concrete entity (competitor/product/signal) or the list view
+// itself + its active filters ("view"). `label` is shown in the dock chip and sent to
+// the backend as the page context; `competitorId` is set when the page is about one
+// competitor so the assistant resolves ambiguous questions to it.
 export interface AskEntity {
-  kind: "competitor" | "signal";
-  id: string;
-  name: string;
+  kind: "competitor" | "product" | "signal" | "view";
+  label: string;
+  competitorId?: string;
 }
 
 const AskContext = React.createContext<{
@@ -33,12 +36,12 @@ export function useAskContext(): AskEntity | null {
 export function useSetAskContext(entity: AskEntity | null) {
   const { setEntity } = React.useContext(AskContext);
   // Depend on the primitive fields (not the object, which the caller recreates
-  // each render → would loop) so the effect only fires when the entity changes.
+  // each render → would loop) so the effect only fires when the context changes.
   const kind = entity?.kind ?? null;
-  const id = entity?.id ?? null;
-  const name = entity?.name ?? null;
+  const label = entity?.label ?? null;
+  const competitorId = entity?.competitorId ?? null;
   React.useEffect(() => {
-    setEntity(kind && id && name ? { kind, id, name } : null);
+    setEntity(kind && label ? { kind, label, competitorId: competitorId ?? undefined } : null);
     return () => setEntity(null);
-  }, [kind, id, name, setEntity]);
+  }, [kind, label, competitorId, setEntity]);
 }

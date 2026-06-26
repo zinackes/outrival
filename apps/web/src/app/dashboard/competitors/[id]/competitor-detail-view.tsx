@@ -753,7 +753,9 @@ export function CompetitorDetailView({
   }
 
   // Scope the Ask dock to this competitor while its page is open.
-  useSetAskContext(data ? { kind: "competitor", id, name: data.competitor.name } : null);
+  useSetAskContext(
+    data ? { kind: "competitor", label: data.competitor.name, competitorId: id } : null,
+  );
 
   if (error && !data) {
     return (

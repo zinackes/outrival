@@ -31,6 +31,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { PageHead } from "./page-head";
+import { useSetAskContext } from "./ask-context";
 import { SectionHead } from "./section-head";
 import { RecentBattleCards } from "./recent-battle-cards";
 import { Kpi } from "./kpi";
@@ -114,6 +115,7 @@ export function OverviewView({
   initialCompetitors?: Competitor[] | null;
 } = {}) {
   const router = useRouter();
+  useSetAskContext({ kind: "view", label: "Overview dashboard" });
   const [signals, setSignals] = useState<Signal[] | null>(initialSignals);
   const [competitors, setCompetitors] = useState<Competitor[] | null>(
     initialCompetitors,
@@ -679,7 +681,7 @@ export function OverviewView({
                   className="border-b border-border last:border-b-0 cursor-pointer transition-colors hover:bg-accent/50"
                 >
                   <td className="px-3.5 py-3 align-middle">
-                    <CompAvatar name={c.name} />
+                    <CompAvatar name={c.name} url={c.url} />
                   </td>
                   <td className="px-3.5 py-3 align-middle">
                     <div className="font-medium">

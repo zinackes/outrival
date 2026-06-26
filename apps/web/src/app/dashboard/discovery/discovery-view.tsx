@@ -36,6 +36,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { DetectionConfigSheet } from "@/components/outrival/detection-config-sheet";
 import { PageHead } from "@/components/dashboard/page-head";
+import { useSetAskContext } from "@/components/dashboard/ask-context";
 import { CompAvatar } from "@/components/dashboard/comp-avatar";
 import { StatusPill } from "@/components/dashboard/status-pill";
 import { GridCardsSkeleton } from "@/components/dashboard/skeletons";
@@ -53,6 +54,7 @@ export function DiscoveryView({
     discoveryFresh: boolean;
   } | null;
 } = {}) {
+  useSetAskContext({ kind: "view", label: "Competitor discovery" });
   const [items, setItems] = useState<CompetitorCandidate[] | null>(
     initialData?.candidates ?? null,
   );
@@ -474,7 +476,7 @@ export function DiscoveryView({
               <Card>
                 <div className="p-5 flex flex-col flex-1">
                   <div className="flex items-center gap-2.5 mb-3.5">
-                    <CompAvatar name={name} />
+                    <CompAvatar name={name} url={c.url} />
                     <div className="flex-1 min-w-0">
                       <div className="font-semibold text-content">{name}</div>
                       <a

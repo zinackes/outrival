@@ -53,6 +53,7 @@ export function buildAskPlanPrompt(
   question: string,
   tools: AskToolSpec[],
   roster: AskRosterEntry[],
+  context?: string,
 ): string {
   const toolList = tools.map((t) => `- ${t.name}(${t.args}) — ${t.description}`).join("\n");
   const rosterList =
@@ -72,7 +73,17 @@ Resolve any competitor mentioned by name to its id using this list. If the quest
 names a competitor that is NOT in this list, omit that call.
 ${rosterList}
 </competitors>
-
+${
+  context
+    ? `
+<context>
+${context}
+When the question is ambiguous about which competitor it concerns, prefer the one in
+this context. The user's explicit wording always wins over this context.
+</context>
+`
+    : ""
+}
 <question>
 ${question}
 </question>
@@ -87,7 +98,11 @@ Reply ONLY with a JSON object, no markdown, no surrounding text:
 { "calls": [ { "tool": "getSignals", "args": { "window": 30 } } ] }`;
 }
 
-export function buildAskSynthesisPrompt(question: string, results: unknown): string {
+export function buildAskSynthesisPrompt(
+  question: string,
+  results: unknown,
+  context?: string,
+): string {
   return `You are "Ask Outrival", a competitive-intelligence analyst. Answer the user's
 question using ONLY the tool results below — data already gathered from the user's own
 tracked competitors. Write a concise, direct answer in English.
@@ -95,7 +110,7 @@ tracked competitors. Write a concise, direct answer in English.
 <question>
 ${question}
 </question>
-
+${context ? `\n<context>\n${context}\n</context>\n` : ""}
 <tool_results>
 ${JSON.stringify(results, null, 2).slice(0, 12000)}
 </tool_results>

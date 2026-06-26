@@ -36,4 +36,5 @@ export * from "./parser-extractors";
 export * from "./saved-views";
 export * from "./crm-destinations";
 export * from "./signal-comments";
+export * from "./ask-history";
 export * from "./analytics";

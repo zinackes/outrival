@@ -43,8 +43,10 @@ question + results ──────────▶ [SYNTHESIS · 70b · json] 
 | `apps/api/src/lib/ask/tools.ts` | Org-scoped tool registry (`run(orgId, args)`), thin wrappers over the same reads as `trends.ts`/`compare.ts`/`signals.ts`. |
 | `apps/api/src/lib/ask/agent.ts` | `runAskAgent(orgId, question, emit)` — plan → execute → synthesise, streams progress, logs `ai_runs`. |
 | `apps/api/src/lib/ai-runs.ts` | `logAskRun` — best-effort `ai_runs` insert (the API had no AI-run logger; the workers' `loggedAi` is job-side only). |
-| `apps/api/src/routes/ask.ts` | `POST /api/ask` — `authMiddleware` + `aiIntensiveRateLimit`, SSE stream. |
-| `apps/web/src/components/dashboard/ask-panel.tsx` | `/dashboard/ask` page — input, SSE-over-POST trace, answer + clickable citation chips. |
+| `apps/api/src/lib/ask/history.ts` | `persistAskHistory` — best-effort insert into `ask_history` after the answer is emitted (modelled on `logAskRun`; never breaks the stream). |
+| `apps/api/src/routes/ask.ts` | `POST /api/ask` (SSE, accepts `{ question, context? }`) + `GET /api/ask/history` (consultable past questions, per user, no AI rate-limit) + `GET /api/ask/suggestions`. |
+| `apps/web/src/components/dashboard/ask-panel.tsx` | Ask page **and** dock body — input, SSE-over-POST trace, answer + citation chips, page-context chip, and a "Recent questions" history list (click re-displays a stored answer with no model call). |
+| `apps/web/src/components/dashboard/ask-context.tsx` | `useSetAskContext` — each dashboard page declares what it's "about" (`competitor`/`product`/`signal`/`view` + label + optional `competitorId`); the dock reads it and sends it as `POST` `context`. |
 
 ## Tools
 
@@ -80,9 +82,26 @@ SSE **event-streaming** (not token-streaming): the stream emits `status` → `to
 shared provider layer. `POST` + SSE is read client-side via a `fetch` stream reader
 (EventSource can't POST).
 
+## History & page context
+
+- **History** (`ask_history`, per `org_id` + `user_id`): one row = one complete exchange
+  (`question`, `answer`, `citations`, `context`). Written best-effort at the answer-emit
+  point (`agent.ts`) — only real answers, never the parse-failed fallback. `GET
+  /api/ask/history` returns the user's recent exchanges; the panel shows them as a
+  consultable "Recent questions" list and re-displays a stored answer on click without
+  spending a model call (the live panel also prepends new answers optimistically). A
+  multi-turn conversation model (an `ask_conversations` parent + threading the prior
+  turns into the prompts) stays deferred — the assistant is single-turn.
+- **Page context**: every dashboard page declares what it's "about" via
+  `useSetAskContext` (`competitor`/`product`/`signal` entity, or a `view` + its active
+  filters). The dock sends it as a structured `context: { label, competitorId? }` on
+  `POST /api/ask`; the agent flattens it into a `<context>` block in both the plan and
+  synthesis prompts (replacing the old "Regarding X:" question prefix). `competitorId`
+  is only a hint — every tool still re-resolves it within the org.
+
 ## Deferred
 
-- Conversation history (`ask_conversations`/`ask_messages`) — v1 is stateless.
+- Multi-turn conversation (`ask_conversations` parent + prior-turn prompting).
 - Token-streaming the synthesis (would add a `completeStream` to the provider).
 - command-K surface (page-first in v1).
 - Slack 2-way slash-command (separate card).

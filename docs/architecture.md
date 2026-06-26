@@ -81,7 +81,8 @@ Groq — $0.59/M tokens input, $0.79/M tokens output (llama-3.3-70b)
 
 ### Auth (Better Auth gère ses propres tables)
 ```
-user, session, account, verification
+user (+ two_factor_enabled), session, account, verification,
+two_factor (secret, backup_codes, user_id, verified — plugin TOTP, settings P0)
 ```
 
 ### Domaine
@@ -566,6 +567,25 @@ toutes via Better Auth :
 - **Email + password (fallback)** : replié sous « Prefer a password? ». Login only
   (les nouveaux comptes ne settent jamais de password via cette UI). `minPasswordLength`
   12 (appliqué seulement au **set**, pas au sign-in → rétrocompat des anciens comptes).
+
+### 2FA (TOTP) + changement d'email — settings security P0
+
+- **Two-factor (authenticator app)** : plugin Better Auth `twoFactor`
+  (`allowPasswordless`, issuer "Outrival"). Le plugin n'intercepte nativement que
+  `/sign-in/email` + `/sign-in/username` — un hook `hooks.after` dans `lib/auth.ts`
+  **étend** sa sign-in partielle aux chemins **email-OTP** et **callback OAuth
+  (Google)** : pour un user `twoFactorEnabled`, la session fraîche est détruite et
+  remplacée par le cookie de challenge `two_factor` que `/two-factor/verify-totp`
+  consomme. **Safe-by-default** : le hook early-return si 2FA non activé → zéro
+  impact tant que personne n'opte. Activation **verify-first** (le flag ne passe à
+  true qu'après confirmation d'un code → pas de lockout) ; **backup codes** au
+  setup, utilisables une fois au sign-in (`/two-factor/verify-backup-code`).
+  UI : `settings/security` (enable → QR + clé + backup codes → confirm ; disable),
+  étape TOTP sur `/auth` (inline pour email-OTP, `?twofactor=1` pour lien/Google).
+  Migration `0007` (`user.two_factor_enabled` + table `two_factor`).
+- **Changement d'email self-serve** : `emailOTP({ changeEmail })`. Un code part vers
+  le **nouvel** email (`type "change-email"`, anti-enumeration : silence si déjà
+  pris), l'email ne bascule qu'après confirmation. UI 2 étapes dans `settings/profile`.
 
 Sécurité transverse : Turnstile managed invisible (`lib/turnstile.ts`, bypass dev si pas
 de secret) ; rate-limit Upstash par **email ET IP** (`middleware/auth-rate-limit.ts`,

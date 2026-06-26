@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { and, eq, isNull, inArray, desc } from "drizzle-orm";
 import { competitors, signals, techStackEntries } from "@outrival/db";
-import type { PlatformProfile } from "@outrival/shared";
+import { type PlatformProfile, platformLabel } from "@outrival/shared";
 import { db } from "../lib/db";
 import { analyticsQuery, sql } from "../lib/analytics-safe";
 import { authMiddleware } from "../middleware/auth";
@@ -23,15 +23,18 @@ const MAX_COLUMNS = 12;
 const IMPORTANCE_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 };
 
 // Surface the routed platforms (framework/cms/ats/hosting) for the "Stack" row.
-// The ats field is "<provider>:<token>" (jobs routing key) — show the provider
-// only. Returns null when nothing useful was detected.
+// Values are stored as routable slugs ("next", "vercel") — label them with the
+// proper brand name so they match the "Notable tech" catalog names. The ats field
+// is "<provider>:<token>" (jobs routing key) — show the provider only. Returns null
+// when nothing useful was detected.
 function platformOf(p: PlatformProfile | null): PlatformDetail | null {
   if (!p) return null;
+  const atsProvider = p.ats?.value ? p.ats.value.split(":")[0] : null;
   const detail: PlatformDetail = {
-    framework: p.framework?.value ?? null,
-    cms: p.cms?.value ?? null,
-    ats: p.ats?.value ? (p.ats.value.split(":")[0] ?? null) : null,
-    hosting: p.hosting?.value ?? null,
+    framework: p.framework?.value ? platformLabel(p.framework.value) : null,
+    cms: p.cms?.value ? platformLabel(p.cms.value) : null,
+    ats: atsProvider ? platformLabel(atsProvider) : null,
+    hosting: p.hosting?.value ? platformLabel(p.hosting.value) : null,
   };
   return detail.framework || detail.cms || detail.ats || detail.hosting ? detail : null;
 }
@@ -275,6 +278,15 @@ compareRouter.get("/", async (c) => {
     .map((id) => {
       const o = byId.get(id)!;
       const sig = signalById.get(id);
+      const platform = platformOf(o.platformProfile);
+      // Drop from "Notable tech" anything already shown in the "Stack" row (the two
+      // detectors overlap on framework/hosting) so a tech never appears twice.
+      const stackNames = new Set(
+        [platform?.framework, platform?.cms, platform?.hosting, platform?.ats]
+          .filter((v): v is string => Boolean(v))
+          .map((v) => v.toLowerCase()),
+      );
+      const tech = (techById.get(id) ?? []).filter((t) => !stackNames.has(t.toLowerCase()));
       return {
         id: o.id,
         name: o.name,
@@ -283,8 +295,8 @@ compareRouter.get("/", async (c) => {
         pricing: pricingById.get(id) ?? null,
         hiring: hiringById.get(id) ?? null,
         reviews: reviewsById.get(id) ?? [],
-        tech: techById.get(id) ?? [],
-        platform: platformOf(o.platformProfile),
+        tech,
+        platform,
         latestSignal: sig
           ? { severity: sig.severity, createdAt: sig.createdAt as unknown as string }
           : null,

@@ -55,6 +55,26 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  // PostHog reverse proxy: browser analytics ingest goes through our own origin
+  // (outrival.app/ingest/*) instead of eu.i.posthog.com directly. Ad-blockers
+  // (EasyPrivacy/uBlock/Brave) blacklist the PostHog ingest domain by hostname,
+  // which made every capture fail with ERR_BLOCKED_BY_CLIENT and retry forever
+  // (console spam). A first-party path defeats hostname-based blocking. Region is
+  // EU, matching the hardcoded ui_host in lib/posthog/provider.tsx. Static assets
+  // (recorder, surveys bundles) come from a separate assets host — keep its rule
+  // first so the catch-all doesn't swallow it.
+  async rewrites() {
+    return [
+      {
+        source: "/ingest/static/:path*",
+        destination: "https://eu-assets.i.posthog.com/static/:path*",
+      },
+      {
+        source: "/ingest/:path*",
+        destination: "https://eu.i.posthog.com/:path*",
+      },
+    ];
+  },
   async redirects() {
     return [
       // patch-19: /login and /register were consolidated into the single /auth page.

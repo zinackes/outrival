@@ -1177,6 +1177,8 @@ export const scrapeMonitorJob = task({
     const nextRunAt = recoveredViaApi
       ? new Date()
       : new Date(Date.now() + failureBackoffMs(consecutiveFailures));
+    const becomingUnscrapable =
+      !recoveredViaApi && consecutiveFailures >= UNSCRAPABLE_FAILURE_THRESHOLD;
     await db
       .update(monitors)
       .set({
@@ -1186,6 +1188,9 @@ export const scrapeMonitorJob = task({
         lastError: message.slice(0, 1000),
         consecutiveFailures: recoveredViaApi ? 0 : consecutiveFailures,
         markedUnscrapable: recoveredViaApi ? false : consecutiveFailures >= UNSCRAPABLE_FAILURE_THRESHOLD,
+        // Auto-pause an unreachable source so the scheduler stops re-enqueueing it.
+        // The user re-enables it explicitly ("Resume anyway") or switches to manual entry.
+        ...(becomingUnscrapable ? { isActive: false } : {}),
       })
       .where(eq(monitors.id, parsed.data.monitorId));
     // On the transition to unscrapable (and not recovered via API), propose

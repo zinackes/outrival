@@ -7,6 +7,7 @@ import type {
   TrendsSummary,
   Digest,
   SectoralSignal,
+  SectoralEligibility,
   ActivitySource,
   ActivityUpcoming,
   ActivityEvent,
@@ -143,12 +144,15 @@ export async function getDigestsData(): Promise<Digest[] | null> {
  * match SectoralFeed's initial fetch (limit 25). Best-effort: null → the feed
  * falls back to its own client fetch. Pagination + filters stay client-side.
  */
-export async function getSectoralData(): Promise<SectoralSignal[] | null> {
+export async function getSectoralData(): Promise<{
+  signals: SectoralSignal[];
+  eligibility: SectoralEligibility | null;
+} | null> {
   try {
-    const r = await serverGet<{ signals: SectoralSignal[] }>(
-      "/api/sectoral?limit=25",
-    );
-    return r.signals;
+    return await serverGet<{
+      signals: SectoralSignal[];
+      eligibility: SectoralEligibility | null;
+    }>("/api/sectoral?limit=25");
   } catch {
     return null;
   }

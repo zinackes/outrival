@@ -42,6 +42,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SidebarCompetitors } from "@/components/dashboard/sidebar-competitors";
+import { PLAN_LIMITS, planCanReachSectoral, type Plan } from "@outrival/shared";
 
 export interface Org {
   name: string;
@@ -181,6 +182,13 @@ export function WorkspaceSwitcher({ org }: { org: Org }) {
 export function AppSidebar({ org }: { org: Org }) {
   const pathname = usePathname();
 
+  // Sector trends need a competitor floor (>= 4); a plan that can't reach it
+  // (free, max 2) never populates the page, so drop it from the nav — the route
+  // itself shows an upsell on direct access. Unknown plan → fail open (show it).
+  const planKey = (org.plan ?? "").toLowerCase();
+  const showSector =
+    !(planKey in PLAN_LIMITS) || planCanReachSectoral(planKey as Plan);
+
   function isActive(href: string, exact?: boolean) {
     if (exact) return pathname === href;
     return pathname === href || pathname.startsWith(href + "/");
@@ -215,16 +223,21 @@ export function AppSidebar({ org }: { org: Org }) {
             <SidebarMenu>{renderItem(OVERVIEW)}</SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-        {GROUPS.map((group) => (
-          <SidebarGroup key={group.label} className="py-1">
-            <SidebarGroupLabel className="font-normal uppercase tracking-wide">
-              {group.label}
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>{group.items.map(renderItem)}</SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        ))}
+        {GROUPS.map((group) => {
+          const items = showSector
+            ? group.items
+            : group.items.filter((it) => it.href !== "/dashboard/sector");
+          return (
+            <SidebarGroup key={group.label} className="py-1">
+              <SidebarGroupLabel className="font-normal uppercase tracking-wide">
+                {group.label}
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>{items.map(renderItem)}</SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          );
+        })}
         <SidebarSeparator className="my-1" />
         <SidebarGroup className="py-1">
           <SidebarGroupContent>

@@ -107,6 +107,46 @@ monitorAlternativesRouter.post("/:id/accept", async (c) => {
   return c.json({ ok: true, runId });
 });
 
+// Resume an auto-paused source ("Resume anyway"): clear the failure state, re-enable
+// the monitor so the scheduler picks it up again, resolve any proposed alternatives so
+// the panel disappears, and kick off a fresh scrape. The cascade will re-learn whether
+// it's reachable; if it fails again it auto-pauses once more.
+monitorAlternativesRouter.post("/:monitorId/resume", async (c) => {
+  const monitorId = c.req.param("monitorId");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const owned = await resolveOwnedMonitor(monitorId, orgId);
+  if (!owned) return c.json({ error: "Forbidden" }, 403);
+  const { monitor } = owned;
+
+  await db
+    .update(monitors)
+    .set({
+      isActive: true,
+      markedUnscrapable: false,
+      consecutiveFailures: 0,
+      scrapeStartedAt: new Date(),
+      lastFailedAt: null,
+      lastError: null,
+      nextRunAt: computeNextRun(monitor.frequency, monitor.lastChangedAt, monitor.createdAt),
+    })
+    .where(eq(monitors.id, monitor.id));
+
+  await db
+    .update(monitorAlternatives)
+    .set({ status: "accepted", resolvedAt: new Date() })
+    .where(
+      and(
+        eq(monitorAlternatives.monitorId, monitor.id),
+        eq(monitorAlternatives.status, "proposed"),
+      ),
+    );
+
+  const handle = await tasks.trigger("scrape-monitor", { monitorId: monitor.id, force: true });
+  return c.json({ ok: true, runId: handle.id });
+});
+
 monitorAlternativesRouter.post("/:id/reject", async (c) => {
   const id = c.req.param("id");
   const user = c.get("user");

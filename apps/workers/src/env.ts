@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SECTORAL_MIN_COMPETITORS } from "@outrival/shared";
 
 // Required for the whole worker pipeline. Missing any of these is a deployment
 // misconfiguration we want to surface loudly at boot (via the `init` hook in
@@ -39,7 +40,7 @@ const EnvSchema = z.object({
 
   // Sectoral analysis (patch-13). Runtime knobs with sane defaults so a missing
   // env never breaks the weekly job. The cron itself is static (Mon 07:00 UTC).
-  SECTORAL_MIN_COMPETITORS: z.coerce.number().int().min(2).default(4),
+  SECTORAL_MIN_COMPETITORS: z.coerce.number().int().min(2).default(SECTORAL_MIN_COMPETITORS),
   SECTORAL_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.6),
 });
 

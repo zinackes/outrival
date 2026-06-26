@@ -3,9 +3,10 @@ import { realisticHeaders, realisticUserAgent } from "../lib/fingerprint";
 
 /**
  * Generate user-facing alternatives for a monitor that became unscrapable
- * (patch-23). Instead of a flat "unavailable", we always offer two safe options
- * (enter the data manually, pause the source) and, depending on the failure
- * diagnosis, one or more concrete URL alternatives or a replace-competitor hint.
+ * (patch-23). The source is auto-paused when it reaches this state, so there is
+ * no "pause this source" option to offer — we always offer manual data entry and,
+ * depending on the failure diagnosis, one or more concrete URL alternatives or a
+ * replace-competitor hint. "Resume anyway" lives on the panel itself, not here.
  *
  * fetch-only (no Patchright) so the `@outrival/scrapers/alternatives` subpath
  * stays light enough to import from the worker without pulling Chromium.
@@ -32,16 +33,13 @@ export async function generateAlternatives(
 ): Promise<AlternativeProposal[]> {
   const proposals: AlternativeProposal[] = [];
 
-  // Always available, regardless of the failure.
+  // Always available, regardless of the failure. The source is already paused at
+  // this point, so manual entry is the only always-on recovery option here
+  // (resuming is offered separately on the panel).
   proposals.push({
     type: "manual_data_entry",
     description: "Enter the key information manually",
     rationale: "You stay in control of what's tracked for this competitor.",
-  });
-  proposals.push({
-    type: "pause_source",
-    description: "Pause this source",
-    rationale: "We'll stop trying to scrape it. You can re-enable it any time.",
   });
 
   switch (category) {

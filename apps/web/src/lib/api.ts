@@ -1847,6 +1847,17 @@ export const api = {
       method: "DELETE",
       body: JSON.stringify({ confirm }),
     }),
+  exportData: () => request<Record<string, unknown>>("/api/settings/export"),
+  deleteAccount: (confirm: string) =>
+    request<{ ok: true }>("/api/settings/account", {
+      method: "DELETE",
+      body: JSON.stringify({ confirm }),
+    }),
+  disconnectOAuth: (providerId: string) =>
+    request<{ ok: true }>("/api/auth/disconnect-oauth", {
+      method: "POST",
+      body: JSON.stringify({ providerId }),
+    }),
   onboardingStatus: () => request<OnboardingStatus>("/api/onboarding/status"),
   analyzeUrl: (productUrl: string) =>
     request<{ profile: ProductProfile }>("/api/onboarding/analyze-url", {

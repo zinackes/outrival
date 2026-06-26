@@ -1,7 +1,21 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
-import { organizations, users } from "@outrival/db";
+import { eq, inArray } from "drizzle-orm";
+import {
+  organizations,
+  users,
+  user as authUser,
+  competitors,
+  monitors,
+  signals,
+  digests,
+  notifications,
+  products,
+  competitorCandidates,
+  battleCards,
+  jobPostings,
+  reviews,
+} from "@outrival/db";
 import { ProductProfileSchema } from "@outrival/ai";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
@@ -102,6 +116,84 @@ settingsRouter.delete("/workspace", async (c) => {
 
   // detachUsers: keep the account alive — ensureUserOrg gives it a fresh org next request.
   await eraseOrg(orgId, { detachUsers: true });
+
+  return c.json({ ok: true });
+});
+
+// GDPR data portability (Article 20). Assembles the org's meaningful relational
+// data server-side, strictly org-scoped, into one JSON document. Excludes binary
+// snapshots (R2), scrape internals and append-only analytics — not user content.
+settingsRouter.get("/export", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, orgId),
+  });
+  if (!org) return c.json({ error: "Not found" }, 404);
+
+  const comps = await db.select().from(competitors).where(eq(competitors.orgId, orgId));
+  const compIds = comps.map((c2) => c2.id);
+
+  const [sigs, digs, notifs, prods, cands, cards, mons, jobs, revs] = await Promise.all([
+    db.select().from(signals).where(eq(signals.orgId, orgId)),
+    db.select().from(digests).where(eq(digests.orgId, orgId)),
+    db.select().from(notifications).where(eq(notifications.orgId, orgId)),
+    db.select().from(products).where(eq(products.orgId, orgId)),
+    db.select().from(competitorCandidates).where(eq(competitorCandidates.orgId, orgId)),
+    db.select().from(battleCards).where(eq(battleCards.orgId, orgId)),
+    compIds.length ? db.select().from(monitors).where(inArray(monitors.competitorId, compIds)) : Promise.resolve([]),
+    compIds.length ? db.select().from(jobPostings).where(inArray(jobPostings.competitorId, compIds)) : Promise.resolve([]),
+    compIds.length ? db.select().from(reviews).where(inArray(reviews.competitorId, compIds)) : Promise.resolve([]),
+  ]);
+
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    workspace: {
+      name: org.name,
+      slug: org.slug,
+      plan: org.plan,
+      productUrl: org.productUrl,
+      productProfile: org.productProfile,
+      createdAt: org.createdAt,
+    },
+    competitors: comps,
+    monitors: mons,
+    signals: sigs,
+    digests: digs,
+    notifications: notifs,
+    products: prods,
+    candidates: cands,
+    battleCards: cards,
+    jobPostings: jobs,
+    reviews: revs,
+  };
+
+  return c.json(payload);
+});
+
+// Delete the user's account (GDPR erasure). Erases the org and its data WITHOUT
+// detaching users (so the app `users` row cascades away), then removes the Better
+// Auth identity — deleting the `user` row cascades sessions, accounts and 2FA, so
+// the session cookie dies and the client lands logged-out.
+settingsRouter.delete("/account", async (c) => {
+  const user = c.get("user");
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = z.object({ confirm: z.string() }).safeParse(body);
+  if (!parsed.success) return c.json({ error: "Invalid body" }, 400);
+
+  const dbUser = await db.query.users.findFirst({ where: eq(users.id, user.id) });
+  if (!dbUser) return c.json({ error: "Not found" }, 404);
+  if (parsed.data.confirm.trim().toLowerCase() !== dbUser.email.toLowerCase()) {
+    return c.json({ error: "confirm_mismatch" }, 400);
+  }
+
+  const orgId = await ensureUserOrg(user.id);
+  // detachUsers:false → the org delete cascades the app `users` row too.
+  await eraseOrg(orgId, { detachUsers: false });
+  // Remove the Better Auth identity (cascades session/account/two_factor).
+  await db.delete(authUser).where(eq(authUser.id, user.id));
 
   return c.json({ ok: true });
 });

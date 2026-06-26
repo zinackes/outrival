@@ -7,26 +7,17 @@ import { api } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
-// patch-29 — client-side export: assembles the org's data from the existing list
-// endpoints into a single JSON download. No new backend; reuses what the dashboard
-// already reads.
+// Server-side export (GDPR portability): one org-scoped endpoint assembles the
+// full dataset — competitors, monitors, signals, digests, products, candidates,
+// battle cards, jobs, reviews — instead of stitching a partial set from list
+// endpoints client-side.
 export function DataSettings() {
   const [busy, setBusy] = useState(false);
 
   async function exportData() {
     setBusy(true);
     try {
-      const [competitors, signals, workspace] = await Promise.all([
-        api.listCompetitors(),
-        api.listSignals({ limit: 1000 }),
-        api.getWorkspaceSettings(),
-      ]);
-      const payload = {
-        exportedAt: new Date().toISOString(),
-        workspace,
-        competitors: competitors.competitors,
-        signals: signals.signals,
-      };
+      const payload = await api.exportData();
       const blob = new Blob([JSON.stringify(payload, null, 2)], {
         type: "application/json",
       });
@@ -57,7 +48,8 @@ export function DataSettings() {
         <div className="flex-1">
           <div className="text-dense font-medium">Export</div>
           <div className="text-dense text-muted-foreground mt-1">
-            Download your competitors, signals and product profile as JSON.
+            Download everything in your workspace — competitors, signals, digests,
+            products, battle cards and more — as JSON.
           </div>
         </div>
         <Button variant="outline" size="sm" onClick={exportData} disabled={busy}>

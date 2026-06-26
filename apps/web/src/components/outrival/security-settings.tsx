@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { KeyRound, Loader2, Monitor, ShieldCheck } from "lucide-react";
+import { KeyRound, Link2, Loader2, Monitor, ShieldCheck } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -347,6 +347,82 @@ function TwoFactorCard({ initialEnabled }: { initialEnabled: boolean }) {
   );
 }
 
+const PROVIDER_LABELS: Record<string, string> = {
+  google: "Google",
+  credential: "Email & password",
+};
+
+// Lists linked OAuth providers and lets the user disconnect them. Email-code
+// sign-in always works, so disconnecting a provider never locks anyone out.
+function ConnectedAccountsCard() {
+  const [accounts, setAccounts] = useState<{ providerId: string }[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    authClient
+      .listAccounts()
+      .then((res) => setAccounts((res.data ?? []).map((a) => ({ providerId: a.providerId }))))
+      .catch(() => setAccounts([]));
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function disconnect(providerId: string) {
+    setBusy(providerId);
+    try {
+      await api.disconnectOAuth(providerId);
+      toast.success(`${PROVIDER_LABELS[providerId] ?? providerId} disconnected`);
+      load();
+    } catch (e) {
+      toast.error(
+        e instanceof ApiError && typeof e.data.message === "string"
+          ? e.data.message
+          : "Couldn't disconnect that account.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const social = (accounts ?? []).filter((a) => a.providerId !== "credential");
+
+  if (accounts === null) return <FormSkeleton />;
+
+  if (social.length === 0) {
+    return (
+      <Card className="px-5 py-6 text-dense text-muted-foreground">
+        No third-party sign-ins connected. You can always sign in with an email code.
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="divide-y divide-border overflow-hidden">
+      {social.map((a) => (
+        <div key={a.providerId} className="flex items-center gap-3 px-5 py-3.5">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground">
+            <Link2 size={14} />
+          </span>
+          <div className="min-w-0 flex-1 text-dense font-medium">
+            {PROVIDER_LABELS[a.providerId] ?? a.providerId}
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => disconnect(a.providerId)}
+            disabled={busy === a.providerId}
+          >
+            {busy === a.providerId && <Loader2 size={13} className="animate-spin" />}
+            Disconnect
+          </Button>
+        </div>
+      ))}
+    </Card>
+  );
+}
+
 function deviceLabel(userAgent: string | null): string {
   if (!userAgent) return "Unknown device";
   const ua = userAgent;
@@ -448,6 +524,16 @@ export function SecuritySettings() {
           key={String(twoFactorEnabled)}
           initialEnabled={twoFactorEnabled}
         />
+      </section>
+
+      <section className="flex flex-col gap-5">
+        <header>
+          <h2 className="font-semibold text-base tracking-tight">Connected accounts</h2>
+          <p className="text-muted-foreground text-sm mt-1">
+            Third-party logins linked to your account.
+          </p>
+        </header>
+        <ConnectedAccountsCard />
       </section>
 
       <section className="flex flex-col gap-5">

@@ -39,8 +39,9 @@ const SectionLabel = ({ children }: { children: React.ReactNode }) => (
 );
 
 // Readable label per structured change kind (patch-16). Falls back to the raw
-// kind if a new kind ships before this map is updated.
-const KIND_LABELS: Record<string, string> = {
+// kind if a new kind ships before this map is updated. Exported so the inline
+// detail-pane evidence (signal-evidence.tsx) renders the same labels.
+export const KIND_LABELS: Record<string, string> = {
   hero_headline_changed: "Hero headline",
   hero_subheadline_changed: "Hero subheadline",
   hero_cta_changed: "Hero CTA",
@@ -62,7 +63,7 @@ const KIND_LABELS: Record<string, string> = {
 };
 
 // patch-17: a signed percentage badge for a numeric-claim change ("+233%").
-function variationLabel(metadata: Record<string, unknown> | null): string | null {
+export function variationLabel(metadata: Record<string, unknown> | null): string | null {
   const v = metadata?.variation;
   if (typeof v !== "number" || !Number.isFinite(v)) return null;
   const pct = Math.round(v * 100);

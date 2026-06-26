@@ -14,6 +14,17 @@ const nextConfig: NextConfig = {
   output: "standalone",
   outputFileTracingRoot: repoRoot,
   transpilePackages: ["@outrival/shared"],
+  // Build memory: the prod build runs on an 8 GB shared VPS (web + api + Coolify
+  // + the build container). Next's default parallel static-page generation
+  // (cores-1 workers, 8 pages in flight each) OOM-killed the build mid-prerender
+  // ("Generating static pages using 3 workers" → kernel SIGKILL at 46/62). Force
+  // a single worker and lower per-worker concurrency so the prerender phase fits
+  // in RAM — a slower build that completes. See docs/deployment.md.
+  experimental: {
+    cpus: 1,
+    staticGenerationMinPagesPerWorker: 1000,
+    staticGenerationMaxConcurrency: 4,
+  },
   // Baseline security headers on every response. Deliberately NO full
   // Content-Security-Policy (default-src/script-src): the app loads Turnstile,
   // Stripe, PostHog and Sentry from third-party origins plus Next's own inline

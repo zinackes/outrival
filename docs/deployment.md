@@ -52,6 +52,7 @@ browsers are missing:
 | Cross-subdomain cookie (env-gated) | `apps/api/src/lib/auth.ts` | RSC `get-session` forwards the incoming request's cookies; without a parent-domain cookie the dashboard bounces to `/auth`. Works in dev only because localhost ignores the port. |
 | `X-Accel-Buffering: no` on SSE | `routes/notifications.ts`, `routes/ask.ts` | Stop reverse-proxy buffering so SSE/streaming chunks arrive live. |
 | `output: standalone` + `outputFileTracingRoot` | `apps/web/next.config.ts` | Minimal Docker image; trace pnpm-workspace deps from the repo root. |
+| Single-worker static generation (`experimental.cpus: 1` + `staticGenerationMinPagesPerWorker` + `staticGenerationMaxConcurrency`) | `apps/web/next.config.ts` | The web build OOM-killed mid-prerender on the 8 GB VPS — Next's default parallel static generation (cores-1 workers) exhausted RAM shared with web+api+Coolify. Forced to 1 worker so the prerender fits; slower build, but it completes. If the box is later upsized, these can be relaxed. |
 | Runtime migrator | `packages/db/src/migrate.ts` (`db:migrate:deploy`) | `db:migrate` is drizzle-kit (a devDependency, absent from the slim prod image). Uses drizzle-orm's runtime migrator (a prod dep). |
 | Dockerfiles + `.dockerignore` | `apps/{api,web}/Dockerfile` | Nixpacks is unreliable for Bun + this pnpm monorepo; build explicitly. |
 

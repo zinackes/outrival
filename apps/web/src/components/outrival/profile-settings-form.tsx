@@ -86,19 +86,6 @@ export function ProfileSettingsForm() {
         </p>
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        <Label>Password</Label>
-        <p className="text-dense text-muted-foreground">
-          You sign in with a magic link or Google. Setting a password is optional and
-          coming soon.
-        </p>
-        <div>
-          <Button variant="outline" size="sm" disabled>
-            Set a password
-          </Button>
-        </div>
-      </div>
-
       <div>
         <Button size="sm" onClick={save} disabled={!dirty || saving}>
           {saving && <Loader2 size={13} className="animate-spin" />}

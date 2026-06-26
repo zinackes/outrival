@@ -1,5 +1,7 @@
 import { betterAuth } from "better-auth";
-import { emailOTP } from "better-auth/plugins";
+import { emailOTP, twoFactor } from "better-auth/plugins";
+import { createAuthMiddleware } from "better-auth/api";
+import { deleteSessionCookie } from "better-auth/cookies";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { db } from "./db";
 import { users } from "@outrival/db";
@@ -28,6 +30,8 @@ export const auth = betterAuth({
   database: drizzleAdapter(db, { provider: "pg", schema }),
   secret: process.env.BETTER_AUTH_SECRET!,
   baseURL: process.env.BETTER_AUTH_URL!,
+  // Issuer shown in authenticator apps when a user scans the TOTP QR code.
+  appName: "Outrival",
   trustedOrigins,
 
   ...(cookieDomain
@@ -75,7 +79,62 @@ export const auth = betterAuth({
         });
       },
     }),
+
+    // Authenticator-app 2FA (TOTP + backup codes). allowPasswordless lets our
+    // magic-link / Google users (no credential account) enable and disable it
+    // without a password. Verify-first: enabling returns a secret + backup codes
+    // but only flips user.twoFactorEnabled once the user confirms a TOTP code,
+    // so a user can never lock themselves out by abandoning setup.
+    twoFactor({ issuer: "Outrival", allowPasswordless: true }),
   ],
+
+  // The twoFactor plugin only intercepts /sign-in/email + /sign-in/username, so
+  // out of the box TOTP would never be enforced on Outrival's PRIMARY logins
+  // (email OTP, Google). This hook extends the plugin's own partial-sign-in to
+  // those paths: when a 2FA-enabled user authenticates, we tear down the session
+  // Better Auth just created and hand back the short-lived `two_factor` challenge
+  // cookie instead, which the existing /two-factor/verify-totp endpoint consumes.
+  // Safe-by-default: it early-returns for everyone without 2FA enabled, so it has
+  // zero effect until a user opts in.
+  hooks: {
+    after: createAuthMiddleware(async (ctx) => {
+      const isEmailOtp = ctx.path === "/sign-in/email-otp";
+      const isSocialCallback = ctx.path.startsWith("/callback/");
+      if (!isEmailOtp && !isSocialCallback) return;
+
+      const data = ctx.context.newSession;
+      if (!data || !data.user.twoFactorEnabled) return;
+
+      // Replace the full session with a 2FA challenge — mirrors the plugin's hook
+      // for password sign-in (better-auth/plugins/two-factor, v1.6.11).
+      deleteSessionCookie(ctx, true);
+      await ctx.context.internalAdapter.deleteSession(data.session.token);
+
+      const maxAge = 600; // seconds — matches the plugin's twoFactorCookieMaxAge default
+      const twoFactorCookie = ctx.context.createAuthCookie("two_factor", { maxAge });
+      const identifier = `2fa-${crypto.randomUUID().replace(/-/g, "")}`;
+      await ctx.context.internalAdapter.createVerificationValue({
+        value: data.user.id,
+        identifier,
+        expiresAt: new Date(Date.now() + maxAge * 1000),
+      });
+      await ctx.setSignedCookie(
+        twoFactorCookie.name,
+        identifier,
+        ctx.context.secret,
+        twoFactorCookie.attributes,
+      );
+
+      if (isEmailOtp) {
+        // Inline /auth fetch reads this and swaps to the TOTP step.
+        return ctx.json({ twoFactorRedirect: true, twoFactorMethods: ["totp"] });
+      }
+      // OAuth callback is a redirect — bounce to the /auth TOTP interstitial
+      // instead of the dashboard. The challenge cookie rides along on the 302.
+      const webUrl = process.env.WEB_URL ?? "http://localhost:3000";
+      throw ctx.redirect(`${webUrl}/auth?twofactor=1`);
+    }),
+  },
 
   session: {
     expiresIn: 60 * 60 * 24 * 30, // 30 days

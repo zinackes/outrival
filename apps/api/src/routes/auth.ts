@@ -117,12 +117,23 @@ authRouter.get("/otp-link", async (c) => {
   }
 
   try {
-    const { headers } = await auth.api.signInEmailOTP({
+    const { headers, response } = await auth.api.signInEmailOTP({
       headers: c.req.raw.headers,
       body: { email, otp: code },
       returnHeaders: true,
     });
-    const redirect = c.redirect(`${webUrl}/dashboard`, 302);
+    // 2FA-enabled accounts: the auth hook swapped the freshly created session
+    // for a short-lived `two_factor` challenge cookie (carried in `headers`).
+    // Land on the /auth TOTP step instead of the dashboard, where the user
+    // enters their code to finish signing in.
+    const twoFactorPending =
+      !!response &&
+      typeof response === "object" &&
+      "twoFactorRedirect" in response;
+    const dest = twoFactorPending
+      ? `${webUrl}/auth?twofactor=1`
+      : `${webUrl}/dashboard`;
+    const redirect = c.redirect(dest, 302);
     for (const cookie of headers.getSetCookie()) {
       redirect.headers.append("set-cookie", cookie);
     }

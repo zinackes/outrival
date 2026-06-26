@@ -42,7 +42,7 @@ export function OnboardingAnalysisPanel({ onTick }: { onTick?: () => void }) {
               <Loader2 size={12} className="shrink-0 animate-spin text-muted-foreground" />
             )}
             <span className="truncate">{c.name}</span>
-            <span className="ml-auto font-mono text-meta uppercase tracking-widest text-muted-foreground">
+            <span className="ml-auto text-meta capitalize text-muted-foreground">
               {c.ready ? "ready" : "analyzing…"}
             </span>
           </li>

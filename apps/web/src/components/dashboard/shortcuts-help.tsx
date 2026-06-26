@@ -65,7 +65,7 @@ export function ShortcutsHelp({
         <div className="flex flex-col gap-5">
           {GROUPS.map((group) => (
             <div key={group.label}>
-              <div className="mb-2 font-mono text-meta uppercase tracking-wide text-muted-foreground">
+              <div className="mb-2 text-xs font-medium text-muted-foreground">
                 {group.label}
               </div>
               <div className="flex flex-col gap-1.5">

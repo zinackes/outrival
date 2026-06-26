@@ -29,7 +29,7 @@ const PLAN_RANK: Record<Plan, number> = {
 };
 
 const EYEBROW =
-  "font-mono text-meta uppercase tracking-[0.14em] text-[var(--muted-2)]";
+  "text-xs font-medium text-[var(--muted-2)]";
 
 /** Curated plan blurbs + feature bullets, mirrored from the landing pricing section. */
 const PLAN_CARDS: Record<
@@ -205,7 +205,7 @@ export function BillingDashboard({
                 {PLAN_LABELS[billing.plan]}
               </span>
               {billing.planPeriod && (
-                <span className="rounded border border-border px-1.5 py-0.5 font-mono text-meta uppercase tracking-wider text-muted-foreground">
+                <span className="rounded border border-border px-1.5 py-0.5 text-meta uppercase tracking-wider text-muted-foreground">
                   {billing.planPeriod}
                 </span>
               )}
@@ -327,7 +327,7 @@ export function BillingDashboard({
                 )}
               >
                 {(isCurrent || card.featured) && (
-                  <span className="absolute -top-2.5 left-6 rounded-full bg-primary px-2.5 py-0.5 font-mono text-meta font-semibold uppercase tracking-wider text-primary-foreground">
+                  <span className="absolute -top-2.5 left-6 rounded-full bg-primary px-2.5 py-0.5 text-meta font-semibold uppercase tracking-wider text-primary-foreground">
                     {isCurrent ? "Current plan" : "Most popular"}
                   </span>
                 )}
@@ -335,7 +335,7 @@ export function BillingDashboard({
                 <div>
                   <div
                     className={cn(
-                      "font-mono text-xs uppercase tracking-wider",
+                      "text-xs uppercase tracking-wider",
                       highlight ? "text-primary" : "text-text-subtle",
                     )}
                   >

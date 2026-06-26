@@ -87,7 +87,7 @@ export function ActivityTab({
                     {s.severity}
                   </Badge>
                   {fresh && (
-                    <span className="rounded-sm bg-primary/15 px-1.5 py-0 font-mono text-meta font-medium uppercase tracking-wide text-primary">
+                    <span className="rounded-sm bg-primary/15 px-1.5 py-0 text-meta font-medium uppercase tracking-wide text-primary">
                       New
                     </span>
                   )}

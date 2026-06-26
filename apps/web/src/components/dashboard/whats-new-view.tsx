@@ -79,7 +79,7 @@ export function WhatsNewView() {
               className="bg-primary ring-background absolute top-[5px] left-0 h-2 w-2 rounded-full ring-4"
               aria-hidden
             />
-            <time className="text-muted-foreground font-mono text-meta tracking-wide uppercase">
+            <time className="text-muted-foreground font-mono text-meta tracking-wide">
               {formatDate(release.date)}
             </time>
             <h2 className="mt-1 text-lead font-semibold tracking-tight">

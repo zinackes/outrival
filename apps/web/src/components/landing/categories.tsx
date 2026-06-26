@@ -76,7 +76,7 @@ export function Categories() {
 
         {/* What one signal actually reads like — the closing moment. */}
         <div className="mt-12 border-t border-primary/70 pt-6">
-          <span className="font-mono text-meta uppercase tracking-wider text-primary">
+          <span className="text-meta font-medium text-primary">
             A signal reads
           </span>
           <p className="mt-3 max-w-3xl text-content leading-relaxed">

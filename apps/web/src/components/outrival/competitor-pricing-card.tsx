@@ -154,7 +154,7 @@ export function CompetitorPricingCard({
         <div className="flex flex-col gap-1 border-t border-border pt-2">
           <p className="text-content leading-relaxed text-foreground/90">{summary}</p>
           {summaryUpdatedAt && (
-            <p className="text-xs font-mono text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               updated {formatDistanceToNow(new Date(summaryUpdatedAt), { addSuffix: true })}
             </p>
           )}

@@ -111,7 +111,7 @@ export function Sources() {
         {/* Your own product — the closing moment. */}
         <div className="mt-12 flex flex-wrap items-center justify-between gap-6 border-t border-primary/70 pt-6">
           <div className="max-w-2xl">
-            <span className="font-mono text-meta uppercase tracking-wider text-primary">
+            <span className="text-meta font-medium text-primary">
               Every plan
             </span>
             <h3 className="mt-2 text-xl font-semibold tracking-tight">

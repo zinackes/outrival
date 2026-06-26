@@ -72,7 +72,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 // Header cell style, shared verbatim with the Competitors page table so the two
 // rosters read as one system.
 const TH =
-  "text-left px-3.5 py-2.5 font-mono text-meta uppercase tracking-wide text-muted-foreground font-medium border-b border-border whitespace-nowrap";
+  "text-left px-3.5 py-2.5 text-xs text-muted-foreground font-medium border-b border-border whitespace-nowrap";
 
 interface Counts {
   signals: number;
@@ -494,7 +494,7 @@ export function OverviewView({
                       </div>
                     )}
                   </div>
-                  <span className="font-mono text-meta text-muted-foreground mt-[3px]">
+                  <span className="text-meta text-muted-foreground mt-[3px]">
                     {formatDistanceToNow(new Date(s.createdAt), {
                       addSuffix: true,
                     })}

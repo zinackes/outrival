@@ -69,7 +69,7 @@ export function EvidenceModal({
               <p className="text-muted-foreground leading-snug">{signal.insight}</p>
 
               <div>
-                <div className="font-mono text-meta text-muted-foreground mb-1.5">
+                <div className="text-meta text-muted-foreground mb-1.5">
                   Competitors ({signal.evidence.competitors.length})
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -86,14 +86,14 @@ export function EvidenceModal({
 
               {signal.evidence.dataPoints.length > 0 && (
                 <div>
-                  <div className="font-mono text-meta text-muted-foreground mb-1.5">
+                  <div className="text-meta text-muted-foreground mb-1.5">
                     Data points
                   </div>
                   <ul className="space-y-1">
                     {signal.evidence.dataPoints.map((dp, i) => (
                       <li
                         key={i}
-                        className="font-mono text-meta text-muted-foreground leading-snug"
+                        className="text-meta text-muted-foreground leading-snug"
                       >
                         {renderDataPoint(dp)}
                       </li>
@@ -102,7 +102,7 @@ export function EvidenceModal({
                 </div>
               )}
 
-              <div className="flex items-center gap-3 border-t border-border pt-3 font-mono text-meta text-muted-foreground">
+              <div className="flex items-center gap-3 border-t border-border pt-3 text-meta text-muted-foreground">
                 <span>Confidence {confidencePct(signal.confidence)}%</span>
                 <span className="text-muted-foreground/40">·</span>
                 <span>{signal.evidence.metric}</span>
@@ -138,7 +138,7 @@ export function SectoralRow({
         />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="font-mono text-meta text-muted-foreground">
+            <span className="text-meta text-muted-foreground">
               {meta.label}
             </span>
             {unread && (
@@ -158,11 +158,11 @@ export function SectoralRow({
             <Button variant="outline" size="sm" onClick={onOpen}>
               View detail <ArrowRight size={11} />
             </Button>
-            <span className="font-mono text-meta text-muted-foreground">
+            <span className="text-meta text-muted-foreground">
               Confidence {confidencePct(signal.confidence)}%
             </span>
             <span className="text-muted-foreground/40">·</span>
-            <span className="font-mono text-meta text-muted-foreground">
+            <span className="text-meta text-muted-foreground">
               {formatDistanceToNow(new Date(signal.createdAt), { addSuffix: true })}
             </span>
           </div>

@@ -205,7 +205,7 @@ export function DigestsView({
                   (h) => (
                     <th
                       key={h}
-                      className="text-left px-3.5 py-2.5 font-mono text-meta uppercase tracking-wide text-muted-foreground font-medium border-b border-border whitespace-nowrap"
+                      className="text-left px-3.5 py-2.5 text-xs text-muted-foreground font-medium border-b border-border whitespace-nowrap"
                     >
                       {h}
                     </th>
@@ -330,7 +330,7 @@ function DigestReader({ d, onBack }: { d: Digest; onBack: () => void }) {
 
       {tldr.length > 0 && (
         <Card className="px-5 py-5">
-          <div className="font-mono text-meta tracking-widest text-primary uppercase mb-3">
+          <div className="text-xs font-semibold text-primary mb-3">
             TL;DR
           </div>
           <ul className="m-0 pl-5 text-content leading-relaxed">

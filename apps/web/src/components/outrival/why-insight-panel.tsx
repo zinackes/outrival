@@ -33,7 +33,7 @@ function hostOf(url: string | null): string | null {
 }
 
 const SectionLabel = ({ children }: { children: React.ReactNode }) => (
-  <div className="font-mono text-meta tracking-widest uppercase text-muted-foreground">
+  <div className="text-xs font-medium text-muted-foreground">
     {children}
   </div>
 );
@@ -184,7 +184,7 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
                       <li key={i} className="grid grid-cols-[56px_1fr] gap-x-3 items-baseline">
                         <span
                           className={cn(
-                            "font-mono text-meta uppercase tracking-wide",
+                            "text-meta capitalize",
                             ch.significance === "major" ? "text-primary" : "text-muted-foreground",
                           )}
                         >

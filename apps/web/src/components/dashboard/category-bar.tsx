@@ -84,7 +84,7 @@ export function CategoryLegend({ counts }: { counts: Record<string, number> }) {
     .sort((a, b) => b[1] - a[1]);
   if (entries.length === 0) return null;
   return (
-    <div className="flex flex-wrap gap-x-3 gap-y-1 text-meta font-mono uppercase tracking-wider text-muted-foreground">
+    <div className="flex flex-wrap gap-x-3 gap-y-1 text-meta capitalize text-muted-foreground">
       {entries.map(([cat, n]) => (
         <span key={cat} className="inline-flex items-center gap-1.5">
           <span

@@ -23,19 +23,19 @@ const badgeVariants = cva(
         link: "text-link underline-offset-4 [a&]:hover:underline",
 
         // Severity — pill + mono caps, tinted on the severity hue.
-        low: "rounded-full border-low/25 bg-low/12 px-2 text-meta font-mono uppercase tracking-[0.08em] text-low",
+        low: "rounded-full border-low/25 bg-low/12 px-2 text-meta uppercase tracking-[0.08em] text-low",
         medium:
-          "rounded-full border-medium/25 bg-medium/12 px-2 text-meta font-mono uppercase tracking-[0.08em] text-medium",
-        high: "rounded-full border-high/25 bg-high/12 px-2 text-meta font-mono uppercase tracking-[0.08em] text-high",
+          "rounded-full border-medium/25 bg-medium/12 px-2 text-meta uppercase tracking-[0.08em] text-medium",
+        high: "rounded-full border-high/25 bg-high/12 px-2 text-meta uppercase tracking-[0.08em] text-high",
         critical:
-          "rounded-full border-critical/25 bg-critical/12 px-2 text-meta font-mono uppercase tracking-[0.08em] text-critical",
+          "rounded-full border-critical/25 bg-critical/12 px-2 text-meta uppercase tracking-[0.08em] text-critical",
 
         // Status — Tracked (Iris) · Paused (muted) · New (filled Iris).
         tracked:
-          "rounded-full border-primary/30 bg-primary/12 px-2 text-meta font-mono uppercase tracking-[0.08em] text-link",
+          "rounded-full border-primary/30 bg-primary/12 px-2 text-meta uppercase tracking-[0.08em] text-link",
         paused:
-          "rounded-full border-border-strong bg-surface-2 px-2 text-meta font-mono uppercase tracking-[0.08em] text-muted-foreground",
-        new: "rounded-full border-transparent bg-primary px-2 text-meta font-mono uppercase tracking-[0.08em] text-primary-foreground",
+          "rounded-full border-border-strong bg-surface-2 px-2 text-meta uppercase tracking-[0.08em] text-muted-foreground",
+        new: "rounded-full border-transparent bg-primary px-2 text-meta uppercase tracking-[0.08em] text-primary-foreground",
       },
     },
     defaultVariants: {

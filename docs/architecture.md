@@ -596,6 +596,18 @@ toutes via Better Auth :
   en supprimant la ligne `account` directement — l'`unlink-account` natif exige une
   session < `freshAge` (24h), inutilisable avec nos sessions 30j ; pas de lockout
   car le login email-OTP ne dépend d'aucune ligne `account`.
+- **Auth/login P0+P1 (audit connexion)** : toggle show-password sur le fallback
+  password · récup mot de passe oublié = lien « sign in with an email code instead »
+  (modèle OTP-first, pas de reset-token) · `rateLimit.customRules` Better Auth sur
+  `/sign-in/email`, `/sign-in/email-otp` et les verify 2FA (par IP, single-instance) ·
+  2FA « trust this device » (checkbox → `trustDevice` ; le hook custom honore le cookie
+  trust-device signé sur les chemins email-OTP/Google, pas que password).
+  **Différé** : **passkeys/WebAuthn** — `better-auth/plugins/passkey` non exporté dans
+  ce build + `@simplewebauthn/*` non installés + config cross-origin rpID/origin
+  (web↔api) non testable hors device réel → effort dédié, pas un add net. Idle-timeout
+  (longueur de session = décision produit, 30j OK pour la veille), email « nouvel
+  appareil » (besoin d'un signal login-complété fiable + persistance device — à bâtir
+  avec le journal d'activité), SSO Apple/Microsoft (enregistrement OAuth externe).
 - **Settings P2 (polish)** : recherche dans la rail settings (label + keywords) ·
   **re-auth step-up** sur les actions destructives (delete workspace/account) —
   `POST /api/settings/reauth/send` émet un code 6 chiffres single-use, attempt-capped,

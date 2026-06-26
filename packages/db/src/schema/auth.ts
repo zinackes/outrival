@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, integer } from "drizzle-orm/pg-core";
 import { roleEnum } from "./users";
 
 export const user = pgTable("user", {
@@ -32,6 +32,25 @@ export const twoFactor = pgTable("two_factor", {
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
   verified: boolean("verified").default(true),
+});
+
+// Better Auth `@better-auth/passkey` plugin storage (WebAuthn). Property keys must
+// match the plugin's field names (the Drizzle adapter resolves by JS key); DB
+// column names are free. One row per registered passkey.
+export const passkey = pgTable("passkey", {
+  id: text("id").primaryKey(),
+  name: text("name"),
+  publicKey: text("public_key").notNull(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  credentialID: text("credential_id").notNull(),
+  counter: integer("counter").notNull(),
+  deviceType: text("device_type").notNull(),
+  backedUp: boolean("backed_up").notNull(),
+  transports: text("transports"),
+  createdAt: timestamp("created_at").defaultNow(),
+  aaguid: text("aaguid"),
 });
 
 export const session = pgTable("session", {

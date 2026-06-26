@@ -10,6 +10,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@better-auth/passkey": "^1.6.22",
     "@marsidev/react-turnstile": "^1.5.2",
     "@outrival/shared": "workspace:*",
     "@radix-ui/react-dialog": "^1.1.15",

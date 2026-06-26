@@ -1,5 +1,6 @@
 import { betterAuth } from "better-auth";
 import { emailOTP, twoFactor } from "better-auth/plugins";
+import { passkey } from "@better-auth/passkey";
 import { createAuthMiddleware } from "better-auth/api";
 import { deleteSessionCookie } from "better-auth/cookies";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
@@ -9,6 +10,18 @@ import * as schema from "@outrival/db";
 import { sendSignInCodeEmail, sendEmailChangeCodeEmail } from "./sign-in-email";
 
 const SIGN_IN_OTP_TTL_SECONDS = 600; // 10 minutes
+
+// WebAuthn relying party is bound to the WEB origin (where navigator.credentials
+// runs), NOT the API origin. rpID is the registrable host of WEB_URL
+// (outrival.io / localhost); origin is the full WEB_URL.
+const WEB_ORIGIN = process.env.WEB_URL ?? "http://localhost:3000";
+function passkeyRpId(): string {
+  try {
+    return new URL(WEB_ORIGIN).hostname;
+  } catch {
+    return "localhost";
+  }
+}
 
 // Web origins allowed for OAuth/magic-link redirects (callbackURL validation).
 const trustedOrigins = [
@@ -98,6 +111,10 @@ export const auth = betterAuth({
     // but only flips user.twoFactorEnabled once the user confirms a TOTP code,
     // so a user can never lock themselves out by abandoning setup.
     twoFactor({ issuer: "Outrival", allowPasswordless: true }),
+
+    // Passkeys (WebAuthn) — phishing-resistant sign-in alongside the email code.
+    // rpID/origin are bound to the web origin (see WEB_ORIGIN above).
+    passkey({ rpName: "Outrival", rpID: passkeyRpId(), origin: WEB_ORIGIN }),
   ],
 
   // The twoFactor plugin only intercepts /sign-in/email + /sign-in/username, so

@@ -82,7 +82,9 @@ Groq — $0.59/M tokens input, $0.79/M tokens output (llama-3.3-70b)
 ### Auth (Better Auth gère ses propres tables)
 ```
 user (+ two_factor_enabled), session, account, verification,
-two_factor (secret, backup_codes, user_id, verified — plugin TOTP, settings P0)
+two_factor (secret, backup_codes, user_id, verified — plugin TOTP, settings P0),
+passkey (public_key, credential_id, counter, device_type, backed_up, transports,
+         aaguid, user_id — @better-auth/passkey WebAuthn, migration 0008)
 ```
 
 ### Domaine
@@ -602,9 +604,13 @@ toutes via Better Auth :
   `/sign-in/email`, `/sign-in/email-otp` et les verify 2FA (par IP, single-instance) ·
   2FA « trust this device » (checkbox → `trustDevice` ; le hook custom honore le cookie
   trust-device signé sur les chemins email-OTP/Google, pas que password).
-  **Différé** : **passkeys/WebAuthn** — `better-auth/plugins/passkey` non exporté dans
-  ce build + `@simplewebauthn/*` non installés + config cross-origin rpID/origin
-  (web↔api) non testable hors device réel → effort dédié, pas un add net. Idle-timeout
+- **Passkeys / WebAuthn** : plugin `@better-auth/passkey` (package séparé → bump
+  `better-auth` 1.6.11→1.6.22 prérequis). Table `passkey` (migration `0008`), rpID/origin
+  dérivés de **WEB_URL** (origine page, pas l'API). UI gated `NEXT_PUBLIC_PASSKEYS_ENABLED`
+  (dark par défaut) : « Add a passkey » (Settings → Security, list/add via
+  `authClient.passkey.*`, delete via route) + « Sign in with a passkey » sur `/auth`
+  (`signIn.passkey()`). Safe-by-default ; **à valider sur staging avec un device réel**
+  avant d'activer le flag. **Différé** : idle-timeout
   (longueur de session = décision produit, 30j OK pour la veille), email « nouvel
   appareil » (besoin d'un signal login-complété fiable + persistance device — à bâtir
   avec le journal d'activité), SSO Apple/Microsoft (enregistrement OAuth externe).

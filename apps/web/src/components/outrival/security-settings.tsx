@@ -347,6 +347,116 @@ function TwoFactorCard({ initialEnabled }: { initialEnabled: boolean }) {
   );
 }
 
+const PASSKEYS_ENABLED = process.env.NEXT_PUBLIC_PASSKEYS_ENABLED === "true";
+
+interface PasskeyRow {
+  id: string;
+  name?: string | null;
+  createdAt?: string | null;
+}
+
+// Passkeys (WebAuthn) — register/list/remove device-bound credentials. Adding a
+// passkey runs a browser ceremony (authClient.passkey.addPasskey); listing and
+// removal hit the plugin routes directly. Gated behind NEXT_PUBLIC_PASSKEYS_ENABLED
+// until verified on staging with a real device.
+function PasskeysCard() {
+  const [passkeys, setPasskeys] = useState<PasskeyRow[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    fetch(`${API_URL}/api/auth/passkey/list-user-passkeys`, { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows) => setPasskeys(Array.isArray(rows) ? rows : []))
+      .catch(() => setPasskeys([]));
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function add() {
+    setBusy("add");
+    try {
+      const res = await authClient.passkey.addPasskey();
+      if (res?.error) {
+        // A user-cancelled ceremony surfaces as an error too — keep it quiet-ish.
+        toast.error(res.error.message || "Couldn't add that passkey.");
+      } else {
+        toast.success("Passkey added.");
+        load();
+      }
+    } catch {
+      toast.error("Couldn't add that passkey.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function remove(id: string) {
+    setBusy(id);
+    try {
+      const r = await fetch(`${API_URL}/api/auth/passkey/delete-passkey`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (!r.ok) throw new Error();
+      toast.success("Passkey removed.");
+      load();
+    } catch {
+      toast.error("Couldn't remove that passkey.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {passkeys === null ? (
+        <FormSkeleton />
+      ) : passkeys.length === 0 ? (
+        <Card className="px-5 py-6 text-dense text-muted-foreground">
+          No passkeys yet. Add one to sign in with Face ID, Touch ID, or a security key.
+        </Card>
+      ) : (
+        <Card className="divide-y divide-border overflow-hidden">
+          {passkeys.map((p) => (
+            <div key={p.id} className="flex items-center gap-3 px-5 py-3.5">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground">
+                <KeyRound size={14} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="text-dense font-medium">{p.name || "Passkey"}</div>
+                {p.createdAt && (
+                  <div className="text-meta text-muted-foreground font-mono">
+                    Added {formatDistanceToNow(new Date(p.createdAt), { addSuffix: true })}
+                  </div>
+                )}
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => remove(p.id)}
+                disabled={busy === p.id}
+              >
+                {busy === p.id && <Loader2 size={13} className="animate-spin" />}
+                Remove
+              </Button>
+            </div>
+          ))}
+        </Card>
+      )}
+      <div>
+        <Button variant="outline" size="sm" onClick={add} disabled={busy === "add"}>
+          {busy === "add" && <Loader2 size={13} className="animate-spin" />}
+          Add a passkey
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 const PROVIDER_LABELS: Record<string, string> = {
   google: "Google",
   credential: "Email & password",
@@ -525,6 +635,19 @@ export function SecuritySettings() {
           initialEnabled={twoFactorEnabled}
         />
       </section>
+
+      {PASSKEYS_ENABLED && (
+        <section className="flex flex-col gap-5">
+          <header>
+            <h2 className="font-semibold text-base tracking-tight">Passkeys</h2>
+            <p className="text-muted-foreground text-sm mt-1">
+              Sign in with Face ID, Touch ID, or a security key — phishing-resistant,
+              no code to type.
+            </p>
+          </header>
+          <PasskeysCard />
+        </section>
+      )}
 
       <section className="flex flex-col gap-5">
         <header>

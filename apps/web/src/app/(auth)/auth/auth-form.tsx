@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
-import { ArrowLeft, ArrowRight, CornerDownRight, Eye, EyeOff, Loader2, Mail, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, CornerDownRight, Eye, EyeOff, Fingerprint, Loader2, Mail, ShieldCheck } from "lucide-react";
 import { emailSchema } from "@outrival/shared";
 import { signIn } from "@/lib/auth-client";
 import { track, identifyUser } from "@/lib/posthog/events";
@@ -16,6 +16,7 @@ const RESEND_COOLDOWN_SECONDS = 30;
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+const PASSKEYS_ENABLED = process.env.NEXT_PUBLIC_PASSKEYS_ENABLED === "true";
 
 type Step = "email" | "code" | "totp";
 type Status = "idle" | "loading" | "error";
@@ -156,6 +157,23 @@ export function AuthForm() {
     } catch {
       setStatus("error");
       setError("Couldn't reach the server. Check your connection and try again.");
+    }
+  }
+
+  async function handlePasskey() {
+    setStatus("loading");
+    setError("");
+    try {
+      const res = await signIn.passkey();
+      if (res?.error) {
+        setStatus("error");
+        setError("Passkey sign-in didn't complete. Try again, or use your email.");
+        return;
+      }
+      router.push("/dashboard");
+    } catch {
+      setStatus("error");
+      setError("Passkey sign-in didn't complete. Try again, or use your email.");
     }
   }
 
@@ -305,6 +323,18 @@ export function AuthForm() {
                 <GoogleIcon />
                 Continue with Google
               </Button>
+
+              {PASSKEYS_ENABLED && (
+                <Button
+                  variant="outline"
+                  className="mt-3 w-full"
+                  onClick={handlePasskey}
+                  disabled={status === "loading"}
+                >
+                  <Fingerprint size={16} />
+                  Sign in with a passkey
+                </Button>
+              )}
 
               {/* Divider */}
               <div className="my-6 flex items-center gap-3 text-xs text-muted-foreground">

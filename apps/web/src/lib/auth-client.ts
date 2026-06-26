@@ -1,12 +1,10 @@
 import { createAuthClient } from "better-auth/react";
+import { passkeyClient } from "@better-auth/passkey/client";
 
-// Explicit return type avoids TS2742 "inferred type cannot be named" from
-// better-auth's deeply-nested generics.
-export const authClient: ReturnType<typeof createAuthClient> = createAuthClient(
-  {
-    baseURL: process.env.NEXT_PUBLIC_API_URL!,
-  },
-);
+export const authClient = createAuthClient({
+  baseURL: process.env.NEXT_PUBLIC_API_URL!,
+  plugins: [passkeyClient()],
+});
 
 type AuthClient = typeof authClient;
 export const useSession: AuthClient["useSession"] = authClient.useSession;

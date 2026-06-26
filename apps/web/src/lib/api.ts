@@ -2180,6 +2180,13 @@ export const api = {
     request<{ ok: true; runId: string }>(`/api/monitor-alternatives/${monitorId}/resume`, {
       method: "POST",
     }),
+  setMonitorUrl: (monitorId: string, url: string) =>
+    request<{ ok: true; runId: string }>(`/api/monitor-alternatives/${monitorId}/set-url`, {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    }),
+  dismissMonitorAlternatives: (monitorId: string) =>
+    request<{ ok: true }>(`/api/monitor-alternatives/${monitorId}/dismiss`, { method: "POST" }),
   submitManualSnapshot: (
     monitorId: string,
     input: { data: Record<string, unknown>; evidenceUrl?: string },

@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Activity, ChevronRight, ExternalLink } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -144,16 +145,22 @@ function sectionName(field: string): string | null {
   return m ? m[1]!.replace(/[_-]+/g, " ") : null;
 }
 
-function hasDetail(e: ActivityEvent): boolean {
-  return (
-    eventOutcome(e) === "change" &&
-    Boolean(
+// A row can be expanded when there's something worth showing. "change" rows need
+// real change detail; "first_capture" and "no_change" rows always expand — they
+// carry an explanation + a link to the live page so a quiet run is never a dead
+// end. "failed" stays collapsed (its status already says it couldn't be reached).
+function isExpandable(e: ActivityEvent): boolean {
+  const outcome = eventOutcome(e);
+  if (outcome === "first_capture" || outcome === "no_change") return true;
+  if (outcome === "change") {
+    return Boolean(
       (e.structuredChanges && e.structuredChanges.length > 0) ||
         e.humanChangeBefore ||
         e.humanChangeAfter ||
         e.changeSummary,
-    )
-  );
+    );
+  }
+  return false;
 }
 
 // One labeled before→after line. Renders the arrow only when both sides exist;
@@ -234,6 +241,59 @@ function ChangeDetail({ event }: { event: ActivityEvent }) {
   );
 }
 
+// "View live page" — opens the exact page this run inspected (snapshot resolved
+// URL, else the competitor site). Hidden when no URL is known (rare).
+function LivePageLink({ url }: { url: string | null | undefined }) {
+  if (!url) return null;
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={(e) => e.stopPropagation()}
+      className="inline-flex w-fit items-center gap-1.5 text-sm text-link hover:underline"
+    >
+      <ExternalLink className="size-3.5" aria-hidden />
+      View live page
+    </a>
+  );
+}
+
+// Detail for a quiet run (no change to show): explain what happened so the row
+// isn't a dead end, plus a link out to the page we actually checked.
+function QuietRunDetail({
+  outcome,
+  event,
+}: {
+  outcome: ActivityStatusFilter;
+  event: ActivityEvent;
+}) {
+  return (
+    <div className="flex flex-col gap-2 text-sm">
+      <p className="text-muted-foreground">
+        {outcome === "first_capture"
+          ? "First time we captured this page. We saved it as the baseline — every future check is compared against it, and anything that changes shows up here."
+          : "We checked this page and it matches our last capture — nothing changed."}
+      </p>
+      {outcome === "no_change" && event.lastChangedAt && (
+        <p className="text-muted-foreground">
+          Last actual change{" "}
+          <span className="tabular-nums">{rel(event.lastChangedAt)}</span>.
+        </p>
+      )}
+      <LivePageLink url={event.url} />
+    </div>
+  );
+}
+
+// Routes an expanded row to the right detail: real change breakdown, or a quiet
+// run explanation (first capture / no change).
+function RunDetail({ event }: { event: ActivityEvent }) {
+  const outcome = eventOutcome(event);
+  if (outcome === "change") return <ChangeDetail event={event} />;
+  return <QuietRunDetail outcome={outcome} event={event} />;
+}
+
 // User-facing activity: every scrape Outrival ran for the org — including the
 // no-change runs and failures the Signals feed never surfaces, and what each
 // "change detected" run actually found. Filterable by competitor, source, status.
@@ -248,26 +308,44 @@ export function ActivityView({
   } | null;
 } = {}) {
   useSetAskContext({ kind: "view", label: "Activity timeline" });
+
+  // Deep-link support: the competitor page links here pre-filtered
+  // (?competitorId=…). Seed the filters from the URL once on mount; the user can
+  // change them freely afterward (we don't push back to the URL).
+  const searchParams = useSearchParams();
+  const urlCompetitor = searchParams.get("competitorId") ?? "all";
+  const urlSource = searchParams.get("source") ?? "all";
+  const urlStatusRaw = searchParams.get("status") ?? "all";
+  const urlStatus = OUTCOME_ORDER.includes(urlStatusRaw as ActivityStatusFilter)
+    ? urlStatusRaw
+    : "all";
+  const hasUrlFilter =
+    urlCompetitor !== "all" || urlSource !== "all" || urlStatus !== "all";
+
   const [sources, setSources] = useState<ActivitySource[] | null>(
     initialData?.sources ?? null,
   );
   const [upcoming, setUpcoming] = useState<ActivityUpcoming[]>(
     initialData?.upcoming ?? [],
   );
+  // The seeded timeline is the UNfiltered first page. Arriving with a URL filter,
+  // it doesn't match — start empty (shows "Loading…") and let the fetch effect
+  // pull the filtered page instead of flashing unfiltered rows.
   const [events, setEvents] = useState<ActivityEvent[] | null>(
-    initialData?.events ?? null,
+    hasUrlFilter ? null : (initialData?.events ?? null),
   );
   const [total, setTotal] = useState<number>(
-    initialData?.total ?? initialData?.events.length ?? 0,
+    hasUrlFilter ? 0 : (initialData?.total ?? initialData?.events.length ?? 0),
   );
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
-  // Seed covers health + the default (unfiltered) first timeline page.
-  const seededTimelineRef = useRef(initialData !== null);
+  // Seed covers health + the default first timeline page — but only when the URL
+  // carries no filter (otherwise the effect must fetch the filtered page).
+  const seededTimelineRef = useRef(initialData !== null && !hasUrlFilter);
 
-  const [competitor, setCompetitor] = useState("all");
-  const [source, setSource] = useState("all");
-  const [status, setStatus] = useState("all");
+  const [competitor, setCompetitor] = useState(urlCompetitor);
+  const [source, setSource] = useState(urlSource);
+  const [status, setStatus] = useState(urlStatus);
 
   // Any filter change resets to page 1 in the same handler as the value change,
   // so the fetch effect (keyed on filters + page) fires exactly once.
@@ -556,7 +634,7 @@ export function ActivityView({
                       const outcome = eventOutcome(e);
                       const meta = OUTCOME_META[outcome];
                       const key = `${e.competitorId}-${e.recordedAt}-${i}`;
-                      const expandable = hasDetail(e);
+                      const expandable = isExpandable(e);
                       const isOpen = expanded.has(key);
                       const relText = rel(e.recordedAt);
                       return (
@@ -637,7 +715,7 @@ export function ActivityView({
                           {isOpen && (
                             <TableRow className="hover:bg-transparent">
                               <TableCell colSpan={7} className="bg-muted/40 py-3 pl-10 pr-4">
-                                <ChangeDetail event={e} />
+                                <RunDetail event={e} />
                               </TableCell>
                             </TableRow>
                           )}

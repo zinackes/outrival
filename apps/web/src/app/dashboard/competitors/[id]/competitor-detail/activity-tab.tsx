@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import { Activity, ExternalLink, ArrowRight } from "lucide-react";
 import type { CompetitorSignal, ChangeRow } from "@/lib/api";
@@ -25,13 +26,21 @@ export function ActivityTab({
   changes,
   onRefresh,
   competitorUrl,
+  lastRunMs,
 }: {
   competitorId: string;
   signals: CompetitorSignal[];
   changes: ChangeRow[];
   onRefresh?: () => void;
   competitorUrl: string;
+  // Newest run across this competitor's sources (0 = never scraped). Lets the
+  // empty state say "monitored, nothing changed yet" instead of "nothing here".
+  lastRunMs: number;
 }) {
+  // Every scrape Outrival ran for this competitor — incl. the no-change / baseline
+  // runs this tab (signals + changes only) never shows. Lives on the dedicated
+  // Activity page, pre-filtered to this competitor.
+  const activityHref = `/dashboard/activity?competitorId=${competitorId}`;
   // Highlight what landed since the user last opened this competitor (no server
   // state — purely client). `null` on a first visit → nothing flagged.
   const lastVisit = useLastVisit(`competitor:${competitorId}`);
@@ -40,13 +49,29 @@ export function ActivityTab({
   const newCount = signals.filter((s) => isNew(s.createdAt)).length;
 
   if (signals.length === 0 && changes.length === 0) {
+    // No signal/change ≠ nothing happened: the sources may have been checked many
+    // times with no change. Saying "no activity" reads as broken/idle, so once
+    // we've actually scraped we acknowledge the monitoring and point to the runs.
+    const hasScraped = lastRunMs > 0;
     return (
       <Card className="px-6 py-10 text-center border-dashed flex flex-col items-center gap-2.5">
-        <p className="text-sm font-semibold text-foreground">No activity yet</p>
-        <p className="text-sm text-muted-foreground max-w-md">
-          Activity will appear once a monitor detects a change. Scrape from the
-          Monitors section above to start tracking.
+        <p className="text-sm font-semibold text-foreground">
+          {hasScraped ? "No changes yet" : "No activity yet"}
         </p>
+        <p className="text-sm text-muted-foreground max-w-md">
+          {hasScraped
+            ? "Monitoring is active — we've been checking this competitor's sources and nothing has changed yet. Changes show up here the moment they happen."
+            : "Activity will appear once a monitor detects a change. Scrape from the Sources section above to start tracking."}
+        </p>
+        {hasScraped && (
+          <Link
+            href={activityHref}
+            className="inline-flex items-center gap-1.5 text-sm text-link hover:underline"
+          >
+            <Activity size={14} aria-hidden />
+            View monitoring activity
+          </Link>
+        )}
       </Card>
     );
   }
@@ -141,6 +166,19 @@ export function ActivityTab({
           </ul>
         </TabSection>
       )}
+
+      {/* This tab shows only signals + classified changes. The full run history —
+          including every no-change and baseline check — lives on the Activity
+          page, filtered to this competitor. */}
+      <div className="px-5 py-3">
+        <Link
+          href={activityHref}
+          className="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          View all monitoring activity
+          <ArrowRight size={14} aria-hidden />
+        </Link>
+      </div>
     </TabCard>
   );
 }

@@ -209,7 +209,6 @@ export function SignalCard({
       onClick={handleCardClick}
       className={cn(
         "rounded-md border border-border bg-card p-6 outline-none transition-[box-shadow,background-color,opacity] duration-500",
-        signal.isRead && "opacity-80",
         canRevert && "cursor-pointer hover:opacity-90",
         (highlight || focused) && "ring-2 ring-primary/70",
         highlight && "bg-primary/[0.05]",

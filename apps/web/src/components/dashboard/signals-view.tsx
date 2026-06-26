@@ -833,32 +833,38 @@ export function SignalsView({
                   <ArrowLeft size={14} /> Back to signals
                 </button>
                 {selectedItem.kind === "single" ? (
-                  // Single-column detail: the card, then its evidence dossier and
-                  // the competitor's other signals stacked below — bounded to a
-                  // readable width. No nested side column, so the detail never
-                  // crowds into three columns or pins "More from" to the edge.
-                  <div className="w-full max-w-[820px] space-y-4">
-                    <SignalCard
-                      signal={selectedItem.signal}
-                      interactive={!sample}
-                      onMarkRead={!sample ? markRead : undefined}
-                      onMarkUnread={!sample ? markUnread : undefined}
-                      onActionChange={onActionChange}
-                    />
-                    {/* Evidence dossier — best-effort; renders nothing without
-                        structured evidence, and is skipped in sample mode (no
-                        backend to fetch from). */}
-                    {!sample && (
-                      <SignalEvidence
-                        key={selectedItem.signal.id}
-                        signalId={selectedItem.signal.id}
+                  // Single-signal detail. Container-query driven: when the detail
+                  // pane itself is wide enough (not the viewport — the pane width
+                  // varies with the master list), "More from" moves into a side
+                  // rail next to the card+evidence column instead of stacking
+                  // below. Narrow pane → single readable column, capped at 820.
+                  // The whole thing caps so it never pins to the far edge.
+                  <div className="@container/detail w-full">
+                    <div className="grid max-w-[820px] grid-cols-1 gap-4 @4xl/detail:max-w-[1148px] @4xl/detail:grid-cols-[minmax(0,820px)_300px] @4xl/detail:gap-6">
+                      <div className="min-w-0 space-y-4">
+                        <SignalCard
+                          signal={selectedItem.signal}
+                          interactive={!sample}
+                          onMarkRead={!sample ? markRead : undefined}
+                          onMarkUnread={!sample ? markUnread : undefined}
+                          onActionChange={onActionChange}
+                        />
+                        {/* Evidence dossier — best-effort; renders nothing without
+                            structured evidence, and is skipped in sample mode (no
+                            backend to fetch from). */}
+                        {!sample && (
+                          <SignalEvidence
+                            key={selectedItem.signal.id}
+                            signalId={selectedItem.signal.id}
+                          />
+                        )}
+                      </div>
+                      <MoreFromCompetitor
+                        signal={selectedItem.signal}
+                        all={signals ?? []}
+                        onSelect={selectRow}
                       />
-                    )}
-                    <MoreFromCompetitor
-                      signal={selectedItem.signal}
-                      all={signals ?? []}
-                      onSelect={selectRow}
-                    />
+                    </div>
                   </div>
                 ) : (
                   <div className="space-y-3 lg:max-w-[760px]">

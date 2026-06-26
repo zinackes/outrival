@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
+import { ReauthCodeField } from "@/components/outrival/reauth-code-field";
 
 // Permanent account erasure (GDPR). Distinct from "delete workspace": this also
 // removes your login, so you're signed out for good rather than dropped into a
@@ -25,12 +26,13 @@ export function DeleteAccountCard() {
   const email = session?.user?.email ?? "";
   const [open, setOpen] = useState(false);
   const [confirm, setConfirm] = useState("");
+  const [code, setCode] = useState("");
   const [deleting, setDeleting] = useState(false);
 
   async function handleDelete() {
     setDeleting(true);
     try {
-      await api.deleteAccount(confirm);
+      await api.deleteAccount(confirm, code);
       // The Better Auth identity (and its session) is gone — hard-navigate to the
       // landing page; the dead cookie resolves to a logged-out state.
       window.location.assign("/");
@@ -41,6 +43,7 @@ export function DeleteAccountCard() {
   }
 
   const confirmMatches = email !== "" && confirm.trim().toLowerCase() === email.toLowerCase();
+  const canDelete = confirmMatches && code.length === 6;
 
   return (
     <Card className="border-critical/20 px-5 py-5">
@@ -62,7 +65,17 @@ export function DeleteAccountCard() {
         </Button>
       </div>
 
-      <Dialog open={open} onOpenChange={(o) => !deleting && setOpen(o)}>
+      <Dialog
+        open={open}
+        onOpenChange={(o) => {
+          if (deleting) return;
+          setOpen(o);
+          if (!o) {
+            setConfirm("");
+            setCode("");
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete your account?</DialogTitle>
@@ -89,6 +102,7 @@ export function DeleteAccountCard() {
               data-ph-mask
             />
           </div>
+          <ReauthCodeField code={code} onCode={setCode} />
           <DialogFooter>
             <Button variant="ghost" size="sm" disabled={deleting} onClick={() => setOpen(false)}>
               Cancel
@@ -96,7 +110,7 @@ export function DeleteAccountCard() {
             <Button
               variant="destructive"
               size="sm"
-              disabled={!confirmMatches || deleting}
+              disabled={!canDelete || deleting}
               onClick={handleDelete}
             >
               {deleting ? "Deleting…" : "Delete account"}

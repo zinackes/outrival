@@ -23,6 +23,7 @@ import { ensureUserOrg } from "../lib/org";
 import { getOrgPlan, isChannelAllowed } from "../lib/plan";
 import { isSafeWebhookUrl } from "../lib/crm-webhook";
 import { eraseOrg } from "../lib/erase-org";
+import { sendReauthCode, verifyReauthCode } from "../lib/reauth";
 
 type Variables = { user: { id: string } };
 
@@ -95,12 +96,20 @@ settingsRouter.patch("/workspace", async (c) => {
 // first, deepest-first. Users are DETACHED before the org goes: users.org_id
 // cascades on delete, and the account itself must survive workspace deletion
 // (ensureUserOrg gives the user a fresh empty org on their next request).
+// Step-up re-auth: email a confirmation code before a destructive action.
+settingsRouter.post("/reauth/send", async (c) => {
+  const user = c.get("user");
+  await sendReauthCode(user.id);
+  // Identical response regardless — the email either arrives or it doesn't.
+  return c.json({ ok: true });
+});
+
 settingsRouter.delete("/workspace", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
 
   const body = await c.req.json().catch(() => null);
-  const parsed = z.object({ confirm: z.string() }).safeParse(body);
+  const parsed = z.object({ confirm: z.string(), code: z.string() }).safeParse(body);
   if (!parsed.success) return c.json({ error: "Invalid body" }, 400);
 
   const dbUser = await db.query.users.findFirst({ where: eq(users.id, user.id) });
@@ -112,6 +121,9 @@ settingsRouter.delete("/workspace", async (c) => {
   if (!org) return c.json({ error: "Not found" }, 404);
   if (parsed.data.confirm !== org.name) {
     return c.json({ error: "confirm_mismatch" }, 400);
+  }
+  if (!(await verifyReauthCode(user.id, parsed.data.code))) {
+    return c.json({ error: "reauth_failed" }, 400);
   }
 
   // detachUsers: keep the account alive — ensureUserOrg gives it a fresh org next request.
@@ -180,13 +192,16 @@ settingsRouter.delete("/account", async (c) => {
   const user = c.get("user");
 
   const body = await c.req.json().catch(() => null);
-  const parsed = z.object({ confirm: z.string() }).safeParse(body);
+  const parsed = z.object({ confirm: z.string(), code: z.string() }).safeParse(body);
   if (!parsed.success) return c.json({ error: "Invalid body" }, 400);
 
   const dbUser = await db.query.users.findFirst({ where: eq(users.id, user.id) });
   if (!dbUser) return c.json({ error: "Not found" }, 404);
   if (parsed.data.confirm.trim().toLowerCase() !== dbUser.email.toLowerCase()) {
     return c.json({ error: "confirm_mismatch" }, 400);
+  }
+  if (!(await verifyReauthCode(user.id, parsed.data.code))) {
+    return c.json({ error: "reauth_failed" }, 400);
   }
 
   const orgId = await ensureUserOrg(user.id);

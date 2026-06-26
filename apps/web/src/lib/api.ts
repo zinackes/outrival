@@ -1842,16 +1842,18 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
-  deleteWorkspace: (confirm: string) =>
+  sendReauthCode: () =>
+    request<{ ok: true }>("/api/settings/reauth/send", { method: "POST" }),
+  deleteWorkspace: (confirm: string, code: string) =>
     request<{ ok: true }>("/api/settings/workspace", {
       method: "DELETE",
-      body: JSON.stringify({ confirm }),
+      body: JSON.stringify({ confirm, code }),
     }),
   exportData: () => request<Record<string, unknown>>("/api/settings/export"),
-  deleteAccount: (confirm: string) =>
+  deleteAccount: (confirm: string, code: string) =>
     request<{ ok: true }>("/api/settings/account", {
       method: "DELETE",
-      body: JSON.stringify({ confirm }),
+      body: JSON.stringify({ confirm, code }),
     }),
   disconnectOAuth: (providerId: string) =>
     request<{ ok: true }>("/api/auth/disconnect-oauth", {
@@ -2026,6 +2028,19 @@ export const api = {
     }),
   openPortal: () =>
     request<{ url: string }>("/api/billing/portal", { method: "POST" }),
+  getInvoices: () =>
+    request<{
+      invoices: Array<{
+        id: string | null;
+        number: string | null;
+        date: number;
+        amountPaid: number;
+        currency: string;
+        status: string | null;
+        hostedUrl: string | null;
+        pdfUrl: string | null;
+      }>;
+    }>("/api/billing/invoices"),
   submitFeedback: (body: {
     type: "bug" | "idea" | "other";
     message: string;

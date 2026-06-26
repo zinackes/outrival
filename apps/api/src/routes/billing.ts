@@ -54,6 +54,40 @@ billingRouter.get("/", async (c) => {
   });
 });
 
+// Recent invoices for in-app billing visibility (receipts without bouncing to the
+// Stripe portal). Best-effort: a Stripe hiccup returns an empty list, never errors.
+billingRouter.get("/invoices", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, orgId),
+  });
+  if (!org) return c.json({ error: "Not found" }, 404);
+  if (!org.stripeCustomerId) return c.json({ invoices: [] });
+
+  try {
+    const list = await getStripe().invoices.list({
+      customer: org.stripeCustomerId,
+      limit: 6,
+    });
+    return c.json({
+      invoices: list.data.map((inv) => ({
+        id: inv.id,
+        number: inv.number,
+        date: inv.created * 1000,
+        amountPaid: inv.amount_paid,
+        currency: inv.currency,
+        status: inv.status,
+        hostedUrl: inv.hosted_invoice_url,
+        pdfUrl: inv.invoice_pdf,
+      })),
+    });
+  } catch {
+    return c.json({ invoices: [] });
+  }
+});
+
 billingRouter.post("/checkout", async (c) => {
   const body = await c.req.json().catch(() => null);
   const parsed = CheckoutSchema.safeParse(body);

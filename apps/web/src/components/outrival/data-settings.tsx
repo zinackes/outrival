@@ -1,11 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { PLAN_LIMITS, type Plan } from "@outrival/shared";
 import { api } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+
+function retentionLabel(days: number): string {
+  if (days >= 365) {
+    const years = Math.round(days / 365);
+    return years === 1 ? "1 year" : `${years} years`;
+  }
+  return `${days} days`;
+}
 
 // Server-side export (GDPR portability): one org-scoped endpoint assembles the
 // full dataset — competitors, monitors, signals, digests, products, candidates,
@@ -13,6 +23,14 @@ import { Button } from "@/components/ui/button";
 // endpoints client-side.
 export function DataSettings() {
   const [busy, setBusy] = useState(false);
+  const [plan, setPlan] = useState<Plan | null>(null);
+
+  useEffect(() => {
+    api
+      .getBilling()
+      .then((b) => setPlan(b.plan))
+      .catch(() => setPlan(null));
+  }, []);
 
   async function exportData() {
     setBusy(true);
@@ -68,6 +86,28 @@ export function DataSettings() {
         <Button variant="outline" size="sm" disabled>
           Coming soon
         </Button>
+      </Card>
+
+      <Card className="flex flex-col gap-2 px-5 py-4">
+        <div className="text-dense font-medium">Retention &amp; privacy</div>
+        <p className="text-dense text-muted-foreground">
+          {plan
+            ? `On the ${plan} plan, competitor history and signals are kept for ${retentionLabel(
+                PLAN_LIMITS[plan].historyRetentionDays,
+              )}; older records are purged automatically.`
+            : "Competitor history and signals are retained for a window that depends on your plan; older records are purged automatically."}
+        </p>
+        <p className="text-dense text-muted-foreground">
+          See how we handle your data in our{" "}
+          <Link href="/privacy" target="_blank" className="text-link underline underline-offset-2">
+            privacy policy
+          </Link>{" "}
+          and{" "}
+          <Link href="/terms" target="_blank" className="text-link underline underline-offset-2">
+            terms
+          </Link>
+          .
+        </p>
       </Card>
     </section>
   );

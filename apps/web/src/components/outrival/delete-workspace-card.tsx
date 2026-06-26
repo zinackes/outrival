@@ -15,11 +15,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
+import { ReauthCodeField } from "@/components/outrival/reauth-code-field";
 
 export function DeleteWorkspaceCard() {
   const [open, setOpen] = useState(false);
   const [workspaceName, setWorkspaceName] = useState<string | null>(null);
   const [confirm, setConfirm] = useState("");
+  const [code, setCode] = useState("");
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
@@ -32,7 +34,7 @@ export function DeleteWorkspaceCard() {
   async function handleDelete() {
     setDeleting(true);
     try {
-      await api.deleteWorkspace(confirm);
+      await api.deleteWorkspace(confirm, code);
       // The org is gone; the next dashboard request creates a fresh empty one
       // and the layout routes through onboarding. Hard navigation so no stale
       // client cache survives the deletion.
@@ -44,6 +46,7 @@ export function DeleteWorkspaceCard() {
   }
 
   const confirmMatches = workspaceName !== null && confirm === workspaceName;
+  const canDelete = confirmMatches && code.length === 6;
 
   return (
     <Card className="border-critical/20 px-5 py-5">
@@ -65,7 +68,17 @@ export function DeleteWorkspaceCard() {
         </Button>
       </div>
 
-      <Dialog open={open} onOpenChange={(o) => !deleting && setOpen(o)}>
+      <Dialog
+        open={open}
+        onOpenChange={(o) => {
+          if (deleting) return;
+          setOpen(o);
+          if (!o) {
+            setConfirm("");
+            setCode("");
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete this workspace?</DialogTitle>
@@ -91,6 +104,7 @@ export function DeleteWorkspaceCard() {
               autoComplete="off"
             />
           </div>
+          <ReauthCodeField code={code} onCode={setCode} />
           <DialogFooter>
             <Button variant="ghost" size="sm" disabled={deleting} onClick={() => setOpen(false)}>
               Cancel
@@ -98,7 +112,7 @@ export function DeleteWorkspaceCard() {
             <Button
               variant="destructive"
               size="sm"
-              disabled={!confirmMatches || deleting}
+              disabled={!canDelete || deleting}
               onClick={handleDelete}
             >
               {deleting ? "Deleting…" : "Delete workspace"}

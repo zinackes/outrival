@@ -70,9 +70,13 @@ export const extractPricingJob = task({
       html,
       url: snapshot.resolvedUrl,
       schema: PricingSchema,
-      // Reject empty results, and a monthly↔yearly ratio that betrays a mis-parse,
-      // so a broken structured/cached result falls through to the AI floor (patch-32).
-      plausible: (d) => d.plans.length > 0 && pricingRatiosPlausible(d.plans),
+      // Reject results with no real (positive) price — a lone schema.org Offer with
+      // price 0 is a "free to try" marker, not the pricing table — and a monthly↔yearly
+      // ratio that betrays a mis-parse, so a weak structured/cached result falls
+      // through to the AI floor (patch-32). `.some` also covers the empty case.
+      plausible: (d) =>
+        d.plans.some((p) => p.price != null && p.price > 0) &&
+        pricingRatiosPlausible(d.plans),
       structuredFn: (h) => pricingFromStructured(h),
       aiFallback: (t) => extractPricing(t),
       aiFallbackTask: "extract_pricing",

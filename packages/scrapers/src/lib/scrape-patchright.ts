@@ -179,8 +179,10 @@ export async function capturePage(
 
 // Drive the page down in fixed steps to fire lazy-load / scroll-reveal handlers
 // (IntersectionObserver, infinite-scroll hydration) that networkidle alone
-// misses, then back to top. Each pass waits HOMEPAGE_LAZY_WAIT_MS to settle.
-// Patch-16, homepage-only — gated by the caller (progressiveScroll).
+// misses. Each pass waits HOMEPAGE_LAZY_WAIT_MS to settle, and ENDS at the bottom:
+// resetting to the top before capture drops sections that mount on scroll and
+// unmount on exit (Framer `whileInView` & co — e.g. an on-homepage pricing table).
+// Gated by the caller (progressiveScroll); used by homepage + pricing.
 async function scrollThroughPage(page: Page): Promise<void> {
   const passes = Number(process.env.HOMEPAGE_SCROLL_PASSES ?? 2);
   const waitMs = Number(process.env.HOMEPAGE_LAZY_WAIT_MS ?? 2000);
@@ -188,22 +190,35 @@ async function scrollThroughPage(page: Page): Promise<void> {
   for (let pass = 0; pass < passes; pass++) {
     await page.evaluate(async () => {
       await new Promise<void>((resolve) => {
-        let totalHeight = 0;
-        const distance = 300;
+        const distance = 400;
+        let last = -1;
+        let stable = 0;
+        let ticks = 0;
         const timer = setInterval(() => {
-          const scrollHeight = document.body.scrollHeight;
           window.scrollBy(0, distance);
-          totalHeight += distance;
-          if (totalHeight >= scrollHeight) {
+          // Stop once scrollY stops advancing — the TRUE bottom, tolerant of lazy
+          // content that keeps extending the height as we descend. (The old
+          // accumulator-vs-scrollHeight exit fired early on pages whose height
+          // grows mid-scroll, stranding the viewport above the lazy section.) The
+          // tick cap bounds infinite-scroll pages.
+          if (window.scrollY <= last) stable++;
+          else stable = 0;
+          last = window.scrollY;
+          if (stable >= 3 || ++ticks > 150) {
             clearInterval(timer);
             resolve();
           }
-        }, 100);
+        }, 150);
       });
     });
     await page.waitForTimeout(waitMs);
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await page.waitForTimeout(500);
+    // Reset to the top only BETWEEN passes (to re-trigger top-anchored reveals on
+    // the next pass) — never after the last, so the capture happens at the bottom
+    // with scroll-revealed sections still mounted.
+    if (pass < passes - 1) {
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.waitForTimeout(500);
+    }
   }
 }
 

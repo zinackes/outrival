@@ -243,15 +243,19 @@ candidatesRouter.post("/:id/add", async (c) => {
     });
   }
 
+  // Stamp scrapeStartedAt on seed so the detail page shows the first scrape as
+  // in-progress (isServerScraping derives "running" from scrapeStartedAt > lastRunAt).
+  // Without it a freshly-added competitor looks idle while its first scrape runs.
+  const scrapeStartedAt = new Date();
   const monitorRows = await db
     .insert(monitors)
     .values([
-      { competitorId: competitor.id, sourceType: "homepage", frequency: "daily" },
-      { competitorId: competitor.id, sourceType: "pricing", frequency: "daily" },
-      { competitorId: competitor.id, sourceType: "blog", frequency: "weekly" },
+      { competitorId: competitor.id, sourceType: "homepage", frequency: "daily", scrapeStartedAt },
+      { competitorId: competitor.id, sourceType: "pricing", frequency: "daily", scrapeStartedAt },
+      { competitorId: competitor.id, sourceType: "blog", frequency: "weekly", scrapeStartedAt },
       // Internal news/funding anchor (weekly) — see competitors.ts POST. Google
       // News RSS by brand → diff surfaces company-level events.
-      { competitorId: competitor.id, sourceType: "news", frequency: "weekly" },
+      { competitorId: competitor.id, sourceType: "news", frequency: "weekly", scrapeStartedAt },
     ])
     .returning();
 

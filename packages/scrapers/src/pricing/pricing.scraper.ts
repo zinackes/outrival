@@ -10,15 +10,19 @@ export async function scrape(
   options: ScrapeOptions = {},
 ): Promise<ScrapeOutcome> {
   const knownLevel = options.knownLevel;
+  // Pricing tables are commonly lazy-mounted / scroll-revealed (Framer `whileInView`
+  // & co), so always scroll to reveal them before capture — on the dedicated page,
+  // the homepage probe, and an embedded homepage section alike.
+  const opts = { blockResources: true, knownLevel, progressiveScroll: true };
 
   // URL already points at a pricing page → scrape it directly.
   if (PRICING_KEYWORDS.some((k) => url.toLowerCase().includes(k))) {
-    return scrapePage(url, { blockResources: true, knownLevel });
+    return scrapePage(url, opts);
   }
 
   // Otherwise scrape the homepage and locate the real pricing page from it
   // (direct paths → nav → footer → embedded section).
-  const homepage = await scrapePage(url, { blockResources: true, knownLevel });
+  const homepage = await scrapePage(url, opts);
   const candidate = await discoverPricingUrl(url, homepage.html);
 
   // Not found, or pricing is embedded in the homepage → analyse the homepage.
@@ -26,5 +30,5 @@ export async function scrape(
     return homepage;
   }
 
-  return scrapePage(candidate.url, { blockResources: true, knownLevel });
+  return scrapePage(candidate.url, opts);
 }

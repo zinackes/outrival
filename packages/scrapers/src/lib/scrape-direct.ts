@@ -31,10 +31,15 @@ export async function scrapeDirect(url: string): Promise<ScrapeResult> {
       };
 
     // "Enough content" heuristic: otherwise it's probably a SPA shell → escalate
-    // to L1 (browser) rather than to a proxy.
+    // to L1 (browser) rather than to a proxy. Strip <script>/<style>/comment
+    // CONTENT first: a client-rendered shell (Vite/CRA/Framer) embeds inline GTM
+    // + JSON-LD that, counted as "text", tips a visually-empty page past the
+    // threshold — so L0 is wrongly accepted and the page is never rendered.
     const textLen = html
+      .replace(/<(script|style|noscript|template|svg)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
+      .replace(/<!--[\s\S]*?-->/g, " ")
       .replace(/<[^>]+>/g, " ")
-      .replace(/[ \t\n]+/g, " ")
+      .replace(/\s+/g, " ")
       .trim().length;
     if (textLen < 500)
       return { ok: false, statusCode: res.status, failureReason: "needs_render", durationMs: Date.now() - startedAt };

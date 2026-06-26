@@ -1615,7 +1615,7 @@ function MonitorSources({
               status === "running"
                 ? "scraping…"
                 : status === "failed" && m.lastFailedAt
-                  ? `failed ${formatDistanceToNow(new Date(m.lastFailedAt), { addSuffix: true })}`
+                  ? `Failed ${formatDistanceToNow(new Date(m.lastFailedAt), { addSuffix: true })}`
                   : status === "ok" && m.lastRunAt
                     ? formatDistanceToNow(new Date(m.lastRunAt), { addSuffix: true })
                     : "never scraped";
@@ -1791,7 +1791,7 @@ function SourceChip({
     status === "running"
       ? "scraping…"
       : failed && m.lastFailedAt
-        ? `failed ${formatDistanceToNow(new Date(m.lastFailedAt), { addSuffix: true })}`
+        ? `Failed ${formatDistanceToNow(new Date(m.lastFailedAt), { addSuffix: true })}`
         : status === "ok" && m.lastRunAt
           ? formatDistanceToNow(new Date(m.lastRunAt), { addSuffix: true })
           : "never scraped";
@@ -1828,14 +1828,14 @@ function SourceChip({
         </DropdownMenuLabel>
         <p
           className={cn(
-            "px-2 pb-1 text-xs",
-            failed ? "text-critical/80" : "text-muted-foreground",
+            "px-2 pb-1 text-sm",
+            failed ? "font-medium text-critical" : "text-muted-foreground",
           )}
         >
           {ageText}
         </p>
         {failed && m.lastError && (
-          <p className="px-2 pb-1.5 text-sm leading-relaxed text-critical/80 break-words">
+          <p className="px-2 pb-1.5 text-sm leading-relaxed text-muted-foreground break-words">
             {friendlyScrapeError(m.lastError, m.sourceType)}
           </p>
         )}

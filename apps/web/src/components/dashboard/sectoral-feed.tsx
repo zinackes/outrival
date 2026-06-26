@@ -226,7 +226,7 @@ export function SectoralFeed({
             </Button>
           ) : belowFloor ? (
             <Button asChild size="sm" className="mt-4">
-              <Link href="/dashboard/competitors">Add competitors</Link>
+              <Link href="/dashboard/discovery">Add competitors</Link>
             </Button>
           ) : null}
         </Card>

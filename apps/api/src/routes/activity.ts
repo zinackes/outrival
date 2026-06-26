@@ -230,15 +230,21 @@ activityRouter.get("/timeline", async (c) => {
   const where = sql.join(conds, sql` AND `);
 
   const rows = await analyticsQuery<RawRun>(sql`
+    -- recorded_at / last_changed_at are naive timestamp columns holding UTC
+    -- wall-clock (Drizzle writes them via toISOString, reads them back as +0000).
+    -- This raw query bypasses Drizzle's column parser, so postgres.js would hand
+    -- back a Date parsed in the server's LOCAL tz — a skew equal to the server
+    -- offset (a just-now run shows "2h ago" on a CEST box). AT TIME ZONE 'UTC'
+    -- makes the instant explicit (timestamptz), so it serializes as correct UTC.
     SELECT r.competitor_id AS "competitorId", r.source_type AS "sourceType", r.status,
-           r.duration_ms AS "durationMs", r.recorded_at AS "recordedAt",
+           r.duration_ms AS "durationMs", (r.recorded_at AT TIME ZONE 'UTC') AS "recordedAt",
            ch.id AS "changeId",
            COALESCE(ch.summary, LEFT(ch.diff_text, 400)) AS "changeSummary",
            ch.structured_diff AS "structuredDiff",
            sig.human_change_before AS "humanChangeBefore",
            sig.human_change_after AS "humanChangeAfter",
            (r.status = 'success' AND ch.id IS NULL AND NOT ${earlierSnapshot}) AS "isFirstCapture",
-           m.last_changed_at AS "lastChangedAt",
+           (m.last_changed_at AT TIME ZONE 'UTC') AS "lastChangedAt",
            snap.resolved_url AS "resolvedUrl"
     FROM scrape_runs r
     LEFT JOIN LATERAL (

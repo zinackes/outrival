@@ -648,6 +648,9 @@ onboardingRouter.post("/complete", async (c) => {
       .returning();
     if (!competitor) continue;
 
+    // Stamp scrapeStartedAt so the competitor page shows the first scrape as
+    // in-progress on landing (isServerScraping derives "running" from it).
+    const scrapeStartedAt = new Date();
     const monitorRows = await db
       .insert(monitors)
       .values(
@@ -655,6 +658,7 @@ onboardingRouter.post("/complete", async (c) => {
           competitorId: competitor.id,
           sourceType,
           frequency: monitoringPrefs.frequency,
+          scrapeStartedAt,
         })),
       )
       .returning();

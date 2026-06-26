@@ -586,6 +586,16 @@ toutes via Better Auth :
 - **Changement d'email self-serve** : `emailOTP({ changeEmail })`. Un code part vers
   le **nouvel** email (`type "change-email"`, anti-enumeration : silence si déjà
   pris), l'email ne bascule qu'après confirmation. UI 2 étapes dans `settings/profile`.
+- **Export RGPD + suppression de compte + déconnexion OAuth (P1)** :
+  `GET /api/settings/export` assemble côté serveur, **org-scoped**, toute la donnée
+  relationnelle (competitors/monitors/signals/digests/products/candidates/battle
+  cards/jobs/reviews ; hors snapshots R2 + analytics). `DELETE /api/settings/account`
+  = `eraseOrg(detachUsers:false)` (cascade le `users` app) **puis** delete du `user`
+  Better Auth (cascade session/account/two_factor) → distinct de "delete workspace"
+  (qui garde le login). `POST /api/auth/disconnect-oauth` délie un provider (Google)
+  en supprimant la ligne `account` directement — l'`unlink-account` natif exige une
+  session < `freshAge` (24h), inutilisable avec nos sessions 30j ; pas de lockout
+  car le login email-OTP ne dépend d'aucune ligne `account`.
 
 Sécurité transverse : Turnstile managed invisible (`lib/turnstile.ts`, bypass dev si pas
 de secret) ; rate-limit Upstash par **email ET IP** (`middleware/auth-rate-limit.ts`,

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { and, asc, desc, eq, gte, isNull, isNotNull, ne, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, isNotNull, ne, inArray, notInArray, sql } from "drizzle-orm";
 import { captureServerEvent } from "../lib/posthog";
 import { tasks } from "@trigger.dev/sdk/v3";
 import {
@@ -430,6 +430,14 @@ competitorsRouter.get("/", async (c) => {
   // only as fresh as its STALEST active source, and a failed last scan wins. We
   // ship the (lastScrapedAt, status) pair the FreshnessDot expects and let the
   // shared computeFreshness derive the level client-side.
+  // Two sources are kept OUT of the aggregate, matching the detail view's Sources
+  // filter so the dot reflects exactly what the user sees scrape:
+  //   - markedUnscrapable monitors — a dead/abandoned source keeps its old
+  //     lastFailedAt forever, which otherwise pins the whole competitor to
+  //     "Last scan failed" and drags the shown date back to its last success
+  //     (the bug: a blog stuck since Jun 5 made an otherwise-fresh competitor
+  //     read "last scan failed · Jun 5"). It has its own "unavailable" state.
+  //   - internal anchors (tech_stack/sitemap/news) — infra, not user-facing.
   const monitorRows = await db
     .select({
       competitorId: monitors.competitorId,
@@ -444,6 +452,8 @@ competitorsRouter.get("/", async (c) => {
           list.map((c) => c.id),
         ),
         eq(monitors.isActive, true),
+        eq(monitors.markedUnscrapable, false),
+        notInArray(monitors.sourceType, ["tech_stack", "sitemap", "news"]),
       ),
     );
 

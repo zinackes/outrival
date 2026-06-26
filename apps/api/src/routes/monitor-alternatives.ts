@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { z } from "zod";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { tasks } from "@trigger.dev/sdk/v3";
 import { monitorAlternatives, monitors, competitors } from "@outrival/db";
@@ -145,6 +146,82 @@ monitorAlternativesRouter.post("/:monitorId/resume", async (c) => {
 
   const handle = await tasks.trigger("scrape-monitor", { monitorId: monitor.id, force: true });
   return c.json({ ok: true, runId: handle.id });
+});
+
+// Manually point a paused source at the right URL. Unlike accepting a
+// `different_url` alternative (a URL Outrival guessed), the user types the URL
+// they know works — for sources where the page exists but the scraper reached the
+// wrong place. Same effect as a repoint: validate (host-locked), clear the failure
+// state, resume, resolve the panel, and kick off a fresh scrape.
+const SetUrlSchema = z.object({ url: z.string().trim().url().max(2048) });
+
+monitorAlternativesRouter.post("/:monitorId/set-url", async (c) => {
+  const monitorId = c.req.param("monitorId");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = SetUrlSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
+
+  const owned = await resolveOwnedMonitor(monitorId, orgId);
+  if (!owned) return c.json({ error: "Forbidden" }, 403);
+  const { monitor, competitor } = owned;
+
+  const valid = validateMonitorUrl(monitor.sourceType, parsed.data.url, competitor.url);
+  if (!valid.ok) return c.json({ error: "invalid_monitor_url", reason: valid.error }, 400);
+
+  await db
+    .update(monitors)
+    .set({
+      config: { url: valid.url },
+      isActive: true,
+      markedUnscrapable: false,
+      consecutiveFailures: 0,
+      apiCaptureEnabled: false,
+      apiCaptureEndpoints: null,
+      nextRunAt: computeNextRun(monitor.frequency, monitor.lastChangedAt, monitor.createdAt),
+      scrapeStartedAt: new Date(),
+      lastFailedAt: null,
+      lastError: null,
+    })
+    .where(eq(monitors.id, monitor.id));
+
+  await db
+    .update(monitorAlternatives)
+    .set({ status: "accepted", resolvedAt: new Date() })
+    .where(
+      and(
+        eq(monitorAlternatives.monitorId, monitor.id),
+        eq(monitorAlternatives.status, "proposed"),
+      ),
+    );
+
+  const handle = await tasks.trigger("scrape-monitor", { monitorId: monitor.id, force: true });
+  return c.json({ ok: true, runId: handle.id });
+});
+
+// Dismiss the paused panel without acting on it: reject every proposed
+// alternative so the suggestion card stops showing. The source stays paused
+// (markedUnscrapable) — the user simply doesn't want to be nagged about it.
+monitorAlternativesRouter.post("/:monitorId/dismiss", async (c) => {
+  const monitorId = c.req.param("monitorId");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const owned = await resolveOwnedMonitor(monitorId, orgId);
+  if (!owned) return c.json({ error: "Forbidden" }, 403);
+
+  await db
+    .update(monitorAlternatives)
+    .set({ status: "rejected", resolvedAt: new Date() })
+    .where(
+      and(
+        eq(monitorAlternatives.monitorId, owned.monitor.id),
+        eq(monitorAlternatives.status, "proposed"),
+      ),
+    );
+  return c.json({ ok: true });
 });
 
 monitorAlternativesRouter.post("/:id/reject", async (c) => {

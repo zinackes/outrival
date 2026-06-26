@@ -15,6 +15,7 @@ import {
   Inbox,
   FlaskConical,
   ArrowLeft,
+  ArrowUpRight,
   Radar,
 } from "lucide-react";
 import { startOfWeek, endOfWeek, formatDistanceToNow } from "date-fns";
@@ -766,7 +767,7 @@ export function SignalsView({
           }
         />
       ) : (
-        <div className="lg:grid lg:grid-cols-[minmax(320px,380px)_minmax(0,760px)] lg:items-start lg:gap-6">
+        <div className="lg:grid lg:grid-cols-[minmax(300px,340px)_minmax(0,1fr)] lg:items-start lg:gap-6">
           {/* Master list — compact, scannable rows; the detail lives on the right. */}
           <div
             role="listbox"
@@ -814,32 +815,41 @@ export function SignalsView({
                   <ArrowLeft size={14} /> Back to signals
                 </button>
                 {selectedItem.kind === "single" ? (
-                  <div className="space-y-3">
-                    <SignalCard
-                      signal={selectedItem.signal}
-                      interactive={!sample}
-                      onMarkRead={!sample ? markRead : undefined}
-                      onMarkUnread={!sample ? markUnread : undefined}
-                      onActionChange={onActionChange}
-                    />
-                    {/* The evidence dossier (before/after, visual diff, change
-                        breakdown) — what makes the right pane worth its width.
-                        Best-effort; renders nothing without structured evidence.
-                        Skipped in sample mode (no backend to fetch from). */}
-                    {!sample && (
-                      <SignalEvidence
-                        key={selectedItem.signal.id}
-                        signalId={selectedItem.signal.id}
+                  // Two-column detail: the card (bounded to a readable width) on
+                  // the left, a context column on the right that consumes the
+                  // remaining width with real content — the evidence dossier
+                  // (before/after, visual diff, change breakdown) and the
+                  // competitor's other signals. Stacks on mobile.
+                  <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(300px,340px)] lg:items-start lg:gap-6">
+                    <div className="min-w-0 lg:max-w-[760px]">
+                      <SignalCard
+                        signal={selectedItem.signal}
+                        interactive={!sample}
+                        onMarkRead={!sample ? markRead : undefined}
+                        onMarkUnread={!sample ? markUnread : undefined}
+                        onActionChange={onActionChange}
                       />
-                    )}
-                    <MoreFromCompetitor
-                      signal={selectedItem.signal}
-                      all={signals ?? []}
-                      onSelect={selectRow}
-                    />
+                    </div>
+                    <aside className="mt-3 space-y-3 lg:mt-0">
+                      {/* Evidence dossier — best-effort; renders nothing without
+                          structured evidence, and is skipped in sample mode (no
+                          backend to fetch from). The visual diff was built for a
+                          narrow panel, so this column is its natural home. */}
+                      {!sample && (
+                        <SignalEvidence
+                          key={selectedItem.signal.id}
+                          signalId={selectedItem.signal.id}
+                        />
+                      )}
+                      <MoreFromCompetitor
+                        signal={selectedItem.signal}
+                        all={signals ?? []}
+                        onSelect={selectRow}
+                      />
+                    </aside>
                   </div>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-3 lg:max-w-[760px]">
                     <div className="rounded-lg border border-border bg-card px-5 py-4">
                       <div className="flex flex-wrap items-center gap-2">
                         <SeverityBadge
@@ -909,36 +919,48 @@ function MoreFromCompetitor({
   const related = all
     .filter((s) => s.competitorId === signal.competitorId && s.id !== signal.id)
     .slice(0, 6);
-  if (related.length === 0) return null;
   return (
     <div className="rounded-md border border-border bg-card p-5">
       <div className="mb-3 text-dense font-medium text-muted-foreground">
         More from {signal.competitorName}
       </div>
-      <ul className="-mx-2">
-        {related.map((s) => (
-          <li key={s.id}>
-            <button
-              type="button"
-              onClick={() => onSelect(s.id)}
-              className="group flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent/40"
-            >
-              <span
-                className={cn(
-                  "size-1.5 shrink-0 rounded-full",
-                  SEV_DOT[s.severityOverride ?? s.severity],
-                )}
-              />
-              <span className="min-w-0 flex-1 truncate text-dense text-foreground/90 group-hover:text-foreground">
-                {s.insight}
-              </span>
-              <time className="shrink-0 font-mono text-meta text-muted-foreground tabular-nums">
-                {formatDistanceToNow(new Date(s.createdAt), { addSuffix: false })}
-              </time>
-            </button>
-          </li>
-        ))}
-      </ul>
+      {related.length > 0 ? (
+        <ul className="-mx-2">
+          {related.map((s) => (
+            <li key={s.id}>
+              <button
+                type="button"
+                onClick={() => onSelect(s.id)}
+                className="group flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent/40"
+              >
+                <span
+                  className={cn(
+                    "size-1.5 shrink-0 rounded-full",
+                    SEV_DOT[s.severityOverride ?? s.severity],
+                  )}
+                />
+                <span className="min-w-0 flex-1 truncate text-dense text-foreground/90 group-hover:text-foreground">
+                  {s.insight}
+                </span>
+                <time className="shrink-0 font-mono text-meta text-muted-foreground tabular-nums">
+                  {formatDistanceToNow(new Date(s.createdAt), { addSuffix: false })}
+                </time>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-dense text-muted-foreground">
+          No other signals from this competitor yet.
+        </p>
+      )}
+      <Link
+        href={`/dashboard/competitors/${signal.competitorId}`}
+        className="mt-3 inline-flex items-center gap-1 text-dense text-muted-foreground transition-colors hover:text-foreground"
+      >
+        View {signal.competitorName} profile
+        <ArrowUpRight size={13} />
+      </Link>
     </div>
   );
 }

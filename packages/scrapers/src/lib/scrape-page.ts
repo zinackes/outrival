@@ -65,7 +65,17 @@ function levelEnabled(envFlag: string, requiresResidential = false, requiresData
 export async function scrapePage(url: string, options: CascadeOptions = {}): Promise<CascadeOutcome> {
   const startedAt = Date.now();
   const attempts: CascadeAttempt[] = [];
-  const start = options.knownLevel ?? 0;
+  // A screenshot can only come from a rendered page — L0 (direct fetch) never
+  // produces one. When the caller asks for a screenshot (homepage, for the pHash
+  // visual-redesign detector AND the before/after visual diff), floor the cascade
+  // at L1 so a homepage that would otherwise win at L0 still gets a browser-
+  // rendered capture. The conditional-GET pre-flight upstream still short-circuits
+  // unchanged pages, so the browser cost is only paid on a real (or validator-
+  // less) change.
+  const start = Math.max(
+    options.knownLevel ?? 0,
+    options.screenshot ? 1 : 0,
+  ) as ScrapeLevel;
   const browserOpts: PatchrightOptions = {
     fullPage: options.fullPage,
     waitForSelector: options.waitForSelector,

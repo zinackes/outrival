@@ -47,7 +47,7 @@ export function SignalEvidence({ signalId }: { signalId: string }) {
 
   if (state === "loading") {
     return (
-      <div className="space-y-2.5 rounded-md border border-border bg-card p-6">
+      <div className="space-y-2.5 rounded-md border border-border bg-card p-5">
         <Skeleton className="h-3 w-24" />
         <Skeleton className="h-4 w-full" />
         <Skeleton className="h-4 w-2/3" />
@@ -66,7 +66,7 @@ export function SignalEvidence({ signalId }: { signalId: string }) {
   if (!hasChange && !hasVisual && !hasChanges) return null;
 
   return (
-    <div className="space-y-6 rounded-md border border-border bg-card p-6">
+    <div className="space-y-6 rounded-md border border-border bg-card p-5">
       {hasChange && (
         <section className="space-y-2.5">
           <Label>Detected change</Label>

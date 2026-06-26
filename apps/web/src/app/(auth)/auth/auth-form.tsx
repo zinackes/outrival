@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
-import { ArrowLeft, ArrowRight, CornerDownRight, Loader2, Mail, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, CornerDownRight, Eye, EyeOff, Loader2, Mail, ShieldCheck } from "lucide-react";
 import { emailSchema } from "@outrival/shared";
 import { signIn } from "@/lib/auth-client";
 import { track, identifyUser } from "@/lib/posthog/events";
@@ -35,6 +35,7 @@ export function AuthForm() {
   const [password, setPassword] = useState("");
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [usePassword, setUsePassword] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState("");
   const [cooldown, setCooldown] = useState(0);
@@ -204,7 +205,7 @@ export function AuthForm() {
 
   // Complete a 2FA-gated sign-in: the primary factor already passed, this turns
   // the pending `two_factor` challenge cookie into a real session.
-  async function handleTwoFactorVerify(otp: string, useBackup: boolean) {
+  async function handleTwoFactorVerify(otp: string, useBackup: boolean, trustDevice: boolean) {
     if (!otp) return;
     setStatus("loading");
     setError("");
@@ -214,7 +215,7 @@ export function AuthForm() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: otp }),
+        body: JSON.stringify({ code: otp, trustDevice }),
       });
       if (!res.ok) {
         setStatus("error");
@@ -263,7 +264,9 @@ export function AuthForm() {
             <TotpStep
               status={status}
               error={error}
-              onVerify={(otp, useBackup) => void handleTwoFactorVerify(otp, useBackup)}
+              onVerify={(otp, useBackup, trustDevice) =>
+                void handleTwoFactorVerify(otp, useBackup, trustDevice)
+              }
               onBack={resetToEmail}
             />
           ) : step === "code" ? (
@@ -335,14 +338,25 @@ export function AuthForm() {
 
                 {usePassword ? (
                   <>
-                    <Input
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Your password"
-                      autoComplete="current-password"
-                      aria-label="Password"
-                    />
+                    <div className="relative">
+                      <Input
+                        type={showPassword ? "text" : "password"}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Your password"
+                        autoComplete="current-password"
+                        aria-label="Password"
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((v) => !v)}
+                        aria-label={showPassword ? "Hide password" : "Show password"}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
                     <Button
                       onClick={handlePasswordLogin}
                       disabled={!email || !password || status === "loading"}
@@ -350,6 +364,21 @@ export function AuthForm() {
                       {status === "loading" && <Loader2 size={14} className="animate-spin" />}
                       Sign in
                     </Button>
+                    {/* OTP-first recovery: a forgotten password isn't a dead end —
+                        signing in with an email code always works, then a new
+                        password can be set in Settings → Security. */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUsePassword(false);
+                        setPassword("");
+                        setError("");
+                        setStatus("idle");
+                      }}
+                      className="text-center text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Forgot your password? Sign in with an email code instead
+                    </button>
                   </>
                 ) : (
                   <Button onClick={handleSendCode} disabled={!email || status === "loading"}>
@@ -518,11 +547,12 @@ function TotpStep({
 }: {
   status: Status;
   error: string;
-  onVerify: (code: string, useBackup: boolean) => void;
+  onVerify: (code: string, useBackup: boolean, trustDevice: boolean) => void;
   onBack: () => void;
 }) {
   const [code, setCode] = useState("");
   const [useBackup, setUseBackup] = useState(false);
+  const [trust, setTrust] = useState(false);
   const invalid = status === "error" && Boolean(error);
   return (
     <div className="text-center">
@@ -544,7 +574,7 @@ function TotpStep({
           value={code}
           onChange={(e) => setCode(e.target.value.trim())}
           onKeyDown={(e) => {
-            if (e.key === "Enter") onVerify(code, true);
+            if (e.key === "Enter") onVerify(code, true, trust);
           }}
           placeholder="Backup code"
           aria-label="Backup code"
@@ -554,15 +584,25 @@ function TotpStep({
         <OtpInput
           value={code}
           onChange={setCode}
-          onComplete={(otp) => onVerify(otp, false)}
+          onComplete={(otp) => onVerify(otp, false, trust)}
           disabled={status === "loading"}
           invalid={invalid}
         />
       )}
 
+      <label className="mt-4 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+        <input
+          type="checkbox"
+          checked={trust}
+          onChange={(e) => setTrust(e.target.checked)}
+          className="size-3.5 accent-primary"
+        />
+        Trust this device for 30 days
+      </label>
+
       <Button
         className="mt-4 w-full"
-        onClick={() => onVerify(code, useBackup)}
+        onClick={() => onVerify(code, useBackup, trust)}
         disabled={
           status === "loading" || (useBackup ? code.length === 0 : code.length < 6)
         }

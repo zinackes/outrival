@@ -117,6 +117,22 @@ export const auth = betterAuth({
       const data = ctx.context.newSession;
       if (!data || !data.user.twoFactorEnabled) return;
 
+      // Honor a "trust this device" cookie set by /two-factor/verify-totp:
+      // getSignedCookie verifies the cookie signature (so it can't be forged), and
+      // the verification record ties the trust identifier to this user with an
+      // expiry. If both hold, skip the 2FA challenge and let the session stand —
+      // same effect the plugin's own hook gives the password path.
+      const trustCookie = ctx.context.createAuthCookie("trust_device");
+      const trustValue = await ctx.getSignedCookie(trustCookie.name, ctx.context.secret);
+      const trustIdentifier =
+        typeof trustValue === "string" ? trustValue.split("!")[1] : undefined;
+      if (trustIdentifier) {
+        const rec = await ctx.context.internalAdapter.findVerificationValue(trustIdentifier);
+        if (rec && rec.value === data.user.id && rec.expiresAt > new Date()) {
+          return;
+        }
+      }
+
       // Replace the full session with a 2FA challenge — mirrors the plugin's hook
       // for password sign-in (better-auth/plugins/two-factor, v1.6.11).
       deleteSessionCookie(ctx, true);
@@ -151,6 +167,20 @@ export const auth = betterAuth({
   session: {
     expiresIn: 60 * 60 * 24 * 30, // 30 days
     updateAge: 60 * 60 * 24, // refresh the token daily
+  },
+
+  // Throttle the brute-forceable auth endpoints (per IP). Effective on our
+  // single API instance; normal users never hit these. Layers on top of the
+  // Upstash email&IP limit on the OTP-send route and emailOTP's allowedAttempts.
+  // Deeper hardening (per-account lockout, OWASP) is noted for the password path.
+  rateLimit: {
+    enabled: true,
+    customRules: {
+      "/sign-in/email": { window: 60, max: 10 },
+      "/sign-in/email-otp": { window: 60, max: 10 },
+      "/two-factor/verify-totp": { window: 60, max: 10 },
+      "/two-factor/verify-backup-code": { window: 60, max: 10 },
+    },
   },
 
   databaseHooks: {

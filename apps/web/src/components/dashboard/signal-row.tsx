@@ -11,13 +11,14 @@ import {
 import { formatDistanceToNow } from "date-fns";
 import type { Signal } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { SeverityBadge } from "./severity-pill";
 import { CatPill } from "./cat-pill";
 
 type Sev = Signal["severity"];
 
-// Severity icon — the redundant non-color encoding (brief: icon + label + color,
-// never color alone). Paired with the colored left rail and the SeverityBadge.
+// Severity icon — the non-color encoding (shape differs per level), so severity
+// reads without relying on color alone. It is now the row's only severity cue:
+// the former filled SEVERITY badge + colored left rail are dropped to keep the
+// list quiet (they stacked four colored elements per row, reading as "AI slop").
 const SEV_ICON: Record<Sev, LucideIcon> = {
   critical: OctagonAlert,
   high: TriangleAlert,
@@ -30,19 +31,13 @@ const SEV_TEXT: Record<Sev, string> = {
   medium: "text-medium",
   low: "text-muted-foreground",
 };
-const SEV_RAIL: Record<Sev, string> = {
-  critical: "border-l-critical",
-  high: "border-l-high",
-  medium: "border-l-medium",
-  low: "border-l-muted-foreground/40",
-};
 const SEV_RANK: Record<Sev, number> = { critical: 4, high: 3, medium: 2, low: 1 };
 
 /**
  * One compact row in the Signals master list (Linear/Sentry inbox register). The
- * detail lives in the right pane; this stays scannable — a colored severity rail,
- * the severity icon + badge, who moved, the one-line finding, and the age. Read
- * rows dim; unread carry a dot. Selection drives the detail pane.
+ * detail lives in the right pane; this stays scannable — a severity icon, who
+ * moved, the category, the one-line finding, and the age. Read rows dim; unread
+ * carry a dot. Selection (a neutral left bar + tint) drives the detail pane.
  */
 export function SignalRow({
   signal,
@@ -67,9 +62,8 @@ export function SignalRow({
       onClick={onSelect}
       className={cn(
         "group grid w-full grid-cols-[auto_1fr_auto] items-start gap-x-2.5 border-l-2 px-3 py-2.5 text-left outline-none transition-colors",
-        SEV_RAIL[sev],
         selected
-          ? "bg-accent"
+          ? "border-l-foreground/55 bg-accent"
           : "border-l-transparent hover:bg-accent/40 focus-visible:bg-accent/40",
       )}
     >
@@ -81,7 +75,6 @@ export function SignalRow({
 
       <span className="min-w-0">
         <span className="flex items-center gap-1.5">
-          <SeverityBadge severity={sev} />
           <span
             className={cn(
               "truncate text-dense font-semibold",
@@ -152,9 +145,8 @@ export function BatchRow({
       onClick={onSelect}
       className={cn(
         "group grid w-full grid-cols-[auto_1fr_auto] items-start gap-x-2.5 border-l-2 px-3 py-2.5 text-left outline-none transition-colors",
-        SEV_RAIL[maxSev],
         selected
-          ? "bg-accent"
+          ? "border-l-foreground/55 bg-accent"
           : "border-l-transparent hover:bg-accent/40 focus-visible:bg-accent/40",
       )}
     >
@@ -165,7 +157,6 @@ export function BatchRow({
       />
       <span className="min-w-0">
         <span className="flex items-center gap-1.5">
-          <SeverityBadge severity={maxSev} />
           <span
             className={cn(
               "truncate text-dense font-semibold",

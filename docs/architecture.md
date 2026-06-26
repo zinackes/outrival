@@ -633,6 +633,7 @@ ONBOARDING_RESUME_TTL_DAYS=7                      # days an unfinished session s
 HOMEPAGE_SCROLL_PASSES=2              # patch-16 — progressive scroll passes (homepage only)
 HOMEPAGE_LAZY_WAIT_MS=2000            # patch-16 — wait after each scroll pass
 HOMEPAGE_NARRATIVE_MIN_SEVERITY=medium  # patch-16 — min severity to spend an AI narrative
+HOMEPAGE_SCREENSHOT_ENABLED=true     # capture a homepage screenshot (floors the cascade at L1 = browser render per homepage scrape) → pHash visual-redesign + before/after visual diff. false = cheap L0 fetch, no screenshot
 ENRICHMENTS_PHASH_THRESHOLD=15          # patch-17 — Hamming distance → visual redesign
 ENRICHMENTS_VOLATILE_THRESHOLD=5        # patch-17 — consecutive diffs → line is volatile
 ENRICHMENTS_VOLATILE_RESET=10           # patch-17 — stable scrapes → analysable again

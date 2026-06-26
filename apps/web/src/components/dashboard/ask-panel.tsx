@@ -485,7 +485,7 @@ export function AskPanel({
                         <span className="truncate">{item.context.label}</span>
                       </span>
                     )}
-                    <span className="shrink-0 font-mono text-meta text-muted-foreground">
+                    <span className="shrink-0 text-meta text-muted-foreground tabular-nums">
                       {formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}
                     </span>
                   </button>

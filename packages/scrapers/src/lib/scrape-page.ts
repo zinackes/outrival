@@ -69,9 +69,10 @@ export async function scrapePage(url: string, options: CascadeOptions = {}): Pro
   // produces one. When the caller asks for a screenshot (homepage, for the pHash
   // visual-redesign detector AND the before/after visual diff), floor the cascade
   // at L1 so a homepage that would otherwise win at L0 still gets a browser-
-  // rendered capture. The conditional-GET pre-flight upstream still short-circuits
-  // unchanged pages, so the browser cost is only paid on a real (or validator-
-  // less) change.
+  // rendered capture. Homepage is not conditional-GET'd (it's a SPA, excluded from
+  // CONDITIONAL_FETCH_SOURCES), so this browser render is paid on every homepage
+  // scrape — which is exactly why it sits behind the HOMEPAGE_SCREENSHOT_ENABLED
+  // kill-switch.
   const start = Math.max(
     options.knownLevel ?? 0,
     options.screenshot ? 1 : 0,

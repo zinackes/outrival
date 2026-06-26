@@ -61,10 +61,13 @@ export function SignalRow({
       aria-selected={selected}
       onClick={onSelect}
       className={cn(
-        "group grid w-full grid-cols-[auto_1fr_auto] items-start gap-x-2.5 border-l-2 px-3 py-2.5 text-left outline-none transition-colors",
+        "group relative grid w-full grid-cols-[auto_1fr_auto] items-start gap-x-2.5 rounded-md px-3 py-2.5 text-left outline-none transition-colors",
+        // Selection bar as an inset pill (before:) so it floats inside the row and
+        // never collides with the list's rounded corners on the first/last item.
+        "before:absolute before:inset-y-2 before:left-1 before:w-0.5 before:rounded-full before:transition-colors before:content-['']",
         selected
-          ? "border-l-foreground/55 bg-accent"
-          : "border-l-transparent hover:bg-accent/40 focus-visible:bg-accent/40",
+          ? "bg-accent before:bg-foreground/55"
+          : "hover:bg-accent/50 focus-visible:bg-accent/50 before:bg-transparent",
       )}
     >
       <Icon
@@ -144,10 +147,13 @@ export function BatchRow({
       aria-selected={selected}
       onClick={onSelect}
       className={cn(
-        "group grid w-full grid-cols-[auto_1fr_auto] items-start gap-x-2.5 border-l-2 px-3 py-2.5 text-left outline-none transition-colors",
+        "group relative grid w-full grid-cols-[auto_1fr_auto] items-start gap-x-2.5 rounded-md px-3 py-2.5 text-left outline-none transition-colors",
+        // Selection bar as an inset pill (before:) so it floats inside the row and
+        // never collides with the list's rounded corners on the first/last item.
+        "before:absolute before:inset-y-2 before:left-1 before:w-0.5 before:rounded-full before:transition-colors before:content-['']",
         selected
-          ? "border-l-foreground/55 bg-accent"
-          : "border-l-transparent hover:bg-accent/40 focus-visible:bg-accent/40",
+          ? "bg-accent before:bg-foreground/55"
+          : "hover:bg-accent/50 focus-visible:bg-accent/50 before:bg-transparent",
       )}
     >
       <Layers

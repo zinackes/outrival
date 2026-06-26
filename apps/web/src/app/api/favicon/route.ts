@@ -88,5 +88,11 @@ export async function GET(req: NextRequest): Promise<Response> {
     }
   }
 
-  return new Response(null, { status: 404 });
+  // Negative-cache the miss so an iconless competitor doesn't re-hit Google +
+  // DuckDuckGo on every avatar render. Shorter TTL than a hit — the icon may
+  // appear upstream later.
+  return new Response(null, {
+    status: 404,
+    headers: { "Cache-Control": "public, max-age=86400" },
+  });
 }

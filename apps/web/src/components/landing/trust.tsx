@@ -11,13 +11,13 @@ export function Trust() {
         </div>
         <dl className="grid grid-cols-2 gap-x-10 gap-y-7">
           <div>
-            <dt className="font-mono text-2xl font-medium tracking-tight">
+            <dt className="text-2xl font-medium tracking-tight tabular-nums">
               70:1
             </dt>
             <dd className="mt-1.5 text-xs text-text-muted">noise to signal</dd>
           </div>
           <div>
-            <dt className="font-mono text-2xl font-medium tracking-tight">
+            <dt className="text-2xl font-medium tracking-tight tabular-nums">
               15<span className="text-base text-text-subtle">+</span>
             </dt>
             <dd className="mt-1.5 text-xs text-text-muted">
@@ -25,7 +25,7 @@ export function Trust() {
             </dd>
           </div>
           <div>
-            <dt className="font-mono text-2xl font-medium tracking-tight">
+            <dt className="text-2xl font-medium tracking-tight tabular-nums">
               ≤5<span className="text-base text-text-subtle">min</span>
             </dt>
             <dd className="mt-1.5 text-xs text-text-muted">
@@ -33,7 +33,7 @@ export function Trust() {
             </dd>
           </div>
           <div>
-            <dt className="font-mono text-2xl font-medium tracking-tight">
+            <dt className="text-2xl font-medium tracking-tight tabular-nums">
               100<span className="text-base text-text-subtle">%</span>
             </dt>
             <dd className="mt-1.5 text-xs text-text-muted">

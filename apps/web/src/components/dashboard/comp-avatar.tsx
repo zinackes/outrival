@@ -17,7 +17,7 @@ function domainFromUrl(url?: string | null): string | null {
 export function CompAvatar({
   name,
   url,
-  size = 28,
+  size = 32,
 }: {
   name: string;
   url?: string | null;
@@ -36,7 +36,6 @@ export function CompAvatar({
         height: size,
         borderRadius: 4,
         background: "var(--surface-2)",
-        border: "1px solid var(--border)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",

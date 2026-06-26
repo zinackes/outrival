@@ -18,6 +18,32 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    date: "2026-06-26",
+    title: "Clearer signals & faster navigation",
+    changes: [
+      {
+        kind: "improved",
+        text: "Signals is now a master-detail view — scan the list on the left and read the full signal, with its insight, evidence and recommended action, on the right without losing your place.",
+      },
+      {
+        kind: "new",
+        text: "See what actually changed — many signals now show their evidence inline, including before/after homepage screenshots, right in the detail pane.",
+      },
+      {
+        kind: "new",
+        text: "Command palette — press ⌘K to jump to any competitor, page or setting from anywhere.",
+      },
+      {
+        kind: "improved",
+        text: "Ask Outrival, everywhere — open it with ⌘J from any page. It now remembers your recent questions and is aware of the page you're on, so answers stay scoped to what you're looking at.",
+      },
+      {
+        kind: "improved",
+        text: "Competitors and products now show their real logos across the app.",
+      },
+    ],
+  },
+  {
     date: "2026-06-14",
     title: "A faster dashboard",
     changes: [

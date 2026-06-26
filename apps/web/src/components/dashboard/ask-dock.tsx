@@ -14,7 +14,7 @@ import {
 import { AskPanel } from "./ask-panel";
 import { useAskContext } from "./ask-context";
 
-// Ambient "Ask Outrival" launcher: a floating pill + ⌘J open the assistant as a
+// Ambient "Ask Outrival" launcher: a floating Iris button + ⌘J open the assistant as a
 // right-side sheet from anywhere, pre-scoped to the page's entity (Linear's
 // inline-agent pattern). Hidden on the dedicated /dashboard/ask page (redundant).
 export function AskDock() {
@@ -45,13 +45,10 @@ export function AskDock() {
           type="button"
           onClick={() => setOpen(true)}
           aria-label="Ask Outrival"
-          className="fixed bottom-5 right-5 z-40 inline-flex h-10 items-center gap-2 rounded-full border border-border bg-surface px-3.5 text-sm font-medium text-foreground shadow-lg transition-colors hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          title="Ask Outrival  (⌘J)"
+          className="fixed bottom-5 right-5 z-40 inline-flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-e3 transition-colors duration-150 ease-out hover:bg-accent-bright focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 active:translate-y-px active:bg-accent-dim"
         >
-          <Sparkles className="size-4 text-[var(--link)]" aria-hidden />
-          Ask
-          <kbd className="ml-0.5 hidden h-5 select-none items-center rounded border border-border bg-background px-1.5 font-mono text-meta font-medium leading-none text-muted-foreground sm:inline-flex">
-            ⌘J
-          </kbd>
+          <Sparkles className="size-5" aria-hidden />
         </button>
       )}
 

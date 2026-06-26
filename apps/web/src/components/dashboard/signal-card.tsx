@@ -228,7 +228,7 @@ export function SignalCard({
           <CompAvatar
             name={signal.competitorName}
             url={signal.competitorUrl}
-            size={24}
+            size={28}
           />
           <span className="font-semibold text-base group-hover:underline underline-offset-2">
             {signal.competitorName}

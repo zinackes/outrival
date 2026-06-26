@@ -214,6 +214,12 @@ competitors            + platform_profile (jsonb — patch-31, PlatformProfile :
                        framework/cms/ats/pricingWidget/statusPage/changelog/analytics[]
                        + confidence/evidence) + platform_detected_at (cadence re-détection).
                        AI-free, route une source → son connecteur structuré. 📄 docs/platform-detection.md
+
+ask_history            id, org_id, user_id, question, answer, citations (jsonb),
+                       context (jsonb : { label, competitorId? } — page d'où la question
+                       a été posée, nullable), created_at — historique Ask Outrival
+                       mono-tour, 1 ligne/échange, scopé (org, user), écrit best-effort.
+                       Multi-tour (ask_conversations parent) différé. 📄 docs/ask-outrival.md
 ```
 
 ### Enums Postgres
@@ -739,7 +745,12 @@ WEB_URL=                     # https://outrival.io (callbacks Stripe)
   de la session, **jamais** du modèle) → SYNTHÈSE (citations deep-linkées). Isolation tenant
   absolue : tout outil résout le competitor *dans* l'org → id forgé = vide. `POST /api/ask`
   (auth + rate-limit 10/h/user), SSE streaming, réutilise le pool providers (patch-22), 1er
-  logger `ai_runs` côté API. v1 stateless, sans cache. 📄 docs/ask-outrival.md
+  logger `ai_runs` côté API. Sans cache (la réponse doit refléter la donnée courante).
+  **Historique** persisté (`ask_history`, par org+user, best-effort) → `GET /api/ask/history`
+  + liste « Recent questions » dans le panel. **Contexte de page** : chaque page déclare
+  son entité/vue (`useSetAskContext`) → envoyée en `context` structuré, injectée dans les
+  prompts (remplace le préfixe « Regarding X: »). Mono-tour ; multi-tour différé.
+  📄 docs/ask-outrival.md
 - **Page Activity user-facing (feature ad-hoc)** — `/dashboard/activity` expose le travail
   de scraping de l'org (transparence, distinct du feed Signals). `routes/activity.ts` :
   `/health` (monitors ⋈ competitors → statut `ok|failing|paused|unscrapable`) + `/timeline`

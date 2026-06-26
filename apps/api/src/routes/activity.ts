@@ -22,7 +22,7 @@ const HIDDEN_SET = new Set<string>(HIDDEN_SOURCES);
 // belongs on the "My product" page, not in this competitor-facing activity feed.
 async function orgCompetitors(orgId: string) {
   return db
-    .select({ id: competitors.id, name: competitors.name })
+    .select({ id: competitors.id, name: competitors.name, url: competitors.url })
     .from(competitors)
     .where(
       and(
@@ -125,6 +125,11 @@ interface RawRun {
   // snapshot but produced no change row, with no earlier snapshot to diff against.
   // Lets the UI label it "First capture" instead of the misleading "Change detected".
   isFirstCapture: boolean;
+  // The page this run actually inspected (snapshot's resolved URL) and when the
+  // monitor last truly changed — context for a no-change / first-capture row so it
+  // isn't a dead end: link out to the live page, say "unchanged since …".
+  resolvedUrl: string | null;
+  lastChangedAt: string | null;
 }
 
 // One readable change for the expandable detail: a typed label + a before/after,
@@ -182,8 +187,9 @@ activityRouter.get("/timeline", async (c) => {
 
   const comps = await orgCompetitors(orgId);
   const nameById = new Map(comps.map((x) => [x.id, x.name]));
+  const urlById = new Map(comps.map((x) => [x.id, x.url]));
   const ids = comps.map((x) => x.id);
-  if (ids.length === 0) return c.json({ events: [] });
+  if (ids.length === 0) return c.json({ events: [], total: 0 });
 
   const idList = sql.join(
     ids.map((id) => sql`${id}`),
@@ -231,7 +237,9 @@ activityRouter.get("/timeline", async (c) => {
            ch.structured_diff AS "structuredDiff",
            sig.human_change_before AS "humanChangeBefore",
            sig.human_change_after AS "humanChangeAfter",
-           (r.status = 'success' AND ch.id IS NULL AND NOT ${earlierSnapshot}) AS "isFirstCapture"
+           (r.status = 'success' AND ch.id IS NULL AND NOT ${earlierSnapshot}) AS "isFirstCapture",
+           m.last_changed_at AS "lastChangedAt",
+           snap.resolved_url AS "resolvedUrl"
     FROM scrape_runs r
     LEFT JOIN LATERAL (
       SELECT c.id, c.summary, c.diff_text, c.structured_diff
@@ -243,6 +251,19 @@ activityRouter.get("/timeline", async (c) => {
       LIMIT 1
     ) ch ON r.status = 'success'
     LEFT JOIN signals sig ON sig.change_id = ch.id
+    LEFT JOIN monitors m ON m.id = r.monitor_id
+    -- The page this run inspected, by its resolved URL. A no-change run writes no
+    -- new snapshot (content-hash dedup), so we take the monitor's latest snapshot
+    -- as of the run — the actual monitored page (e.g. the pricing URL), not just
+    -- the run's own write. Bounded to <= run time so old rows stay accurate.
+    LEFT JOIN LATERAL (
+      SELECT s.resolved_url
+      FROM snapshots s
+      WHERE s.monitor_id = r.monitor_id
+        AND s.scraped_at <= r.recorded_at + interval '5 minutes'
+      ORDER BY s.scraped_at DESC
+      LIMIT 1
+    ) snap ON true
     WHERE ${where}
     ORDER BY r.recorded_at DESC
     LIMIT ${limit} OFFSET ${offset}
@@ -261,7 +282,43 @@ activityRouter.get("/timeline", async (c) => {
     humanChangeBefore: r.humanChangeBefore,
     humanChangeAfter: r.humanChangeAfter,
     isFirstCapture: r.isFirstCapture === true,
+    // Live page to link out to: the resolved URL of the captured snapshot, else
+    // the competitor's site as a fallback (old/failed runs have no snapshot).
+    url: r.resolvedUrl ?? urlById.get(r.competitorId) ?? null,
+    lastChangedAt: r.lastChangedAt,
   }));
 
-  return c.json({ events });
+  // Total matching rows, for numbered pagination. Expressed without the LATERAL
+  // change/signal joins of the page query — the outcome buckets only need to know
+  // whether a matching change row EXISTS, so this stays a single indexed scan over
+  // scrape_runs. changeExists mirrors the LATERAL's ±5-min match window.
+  const changeExists = sql`EXISTS (
+    SELECT 1 FROM changes c
+    WHERE c.monitor_id = r.monitor_id
+      AND c.detected_at BETWEEN r.recorded_at - interval '5 minutes'
+                            AND r.recorded_at + interval '5 minutes'
+  )`;
+  const countConds = [
+    sql`r.competitor_id IN (${idList})`,
+    sql`r.source_type NOT IN (${hiddenList})`,
+  ];
+  if (competitorId) countConds.push(sql`r.competitor_id = ${competitorId}`);
+  if (sourceType) countConds.push(sql`r.source_type = ${sourceType}`);
+  if (status === "change") countConds.push(sql`r.status = 'success' AND ${changeExists}`);
+  else if (status === "first_capture")
+    countConds.push(sql`r.status = 'success' AND NOT ${changeExists} AND NOT ${earlierSnapshot}`);
+  else if (status === "no_change")
+    countConds.push(
+      sql`(r.status = 'no_change' OR (r.status = 'success' AND NOT ${changeExists} AND ${earlierSnapshot}))`,
+    );
+  else if (status === "failed") countConds.push(sql`r.status = 'failed'`);
+  const countWhere = sql.join(countConds, sql` AND `);
+
+  const countRows = await analyticsQuery<{ total: number }>(sql`
+    SELECT count(*)::int AS total FROM scrape_runs r WHERE ${countWhere}
+  `);
+  // Best-effort (analyticsQuery returns [] on error) — fall back to what we can see.
+  const total = countRows[0]?.total ?? offset + events.length;
+
+  return c.json({ events, total });
 });

@@ -163,18 +163,22 @@ export async function getActivityData(): Promise<{
   sources: ActivitySource[];
   upcoming: ActivityUpcoming[];
   events: ActivityEvent[];
+  total: number;
 } | null> {
   try {
     const [health, timeline] = await Promise.all([
       serverGet<{ sources: ActivitySource[]; upcoming: ActivityUpcoming[] }>(
         "/api/activity/health",
       ),
-      serverGet<{ events: ActivityEvent[] }>("/api/activity/timeline?limit=25"),
+      serverGet<{ events: ActivityEvent[]; total: number }>(
+        "/api/activity/timeline?limit=25",
+      ),
     ]);
     return {
       sources: health.sources,
       upcoming: health.upcoming ?? [],
       events: timeline.events,
+      total: timeline.total,
     };
   } catch {
     return null;

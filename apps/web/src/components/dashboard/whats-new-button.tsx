@@ -34,7 +34,7 @@ export function WhatsNewButton() {
         <Button
           asChild
           variant="ghost"
-          size="icon"
+          size="icon-sm"
           aria-label="What's new"
           onClick={markSeen}
           className="relative"

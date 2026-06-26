@@ -225,7 +225,11 @@ export function SignalCard({
           href={`/dashboard/competitors/${signal.competitorId}`}
           className="group inline-flex items-center gap-2 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
         >
-          <CompAvatar name={signal.competitorName} size={24} />
+          <CompAvatar
+            name={signal.competitorName}
+            url={signal.competitorUrl}
+            size={24}
+          />
           <span className="font-semibold text-base group-hover:underline underline-offset-2">
             {signal.competitorName}
           </span>

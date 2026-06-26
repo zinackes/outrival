@@ -97,9 +97,12 @@ export function UpdateProfileDialog({
   const [working, setWorking] = useState<ProductProfile>(EMPTY);
   const [baseline, setBaseline] = useState<ProductProfile>(EMPTY);
 
-  // Source inputs per stage.
+  // Source inputs per stage + the originally-loaded source values (dirty / change
+  // detection — a new live URL or repo must be persisted, not just the profile text).
   const [productUrl, setProductUrl] = useState("");
   const [repoUrl, setRepoUrl] = useState("");
+  const [baseProductUrl, setBaseProductUrl] = useState("");
+  const [baseRepoUrl, setBaseRepoUrl] = useState("");
   const [description, setDescription] = useState("");
   const [ideaCategory, setIdeaCategory] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -132,6 +135,8 @@ export function UpdateProfileDialog({
         setBaseStage(status.projectStage);
         setProductUrl(status.productUrl ?? "");
         setRepoUrl(my.product?.repoUrl ?? "");
+        setBaseProductUrl(status.productUrl ?? "");
+        setBaseRepoUrl(my.product?.repoUrl ?? "");
         setDescription("");
         setIdeaCategory(profile.category ?? "");
       })
@@ -191,10 +196,12 @@ export function UpdateProfileDialog({
           category: insp.trim() || undefined,
         });
       }
+      // Keep the current values in the form; the diff rows below let the user adopt
+      // each new value one by one (a visible field update) rather than silently
+      // overwriting everything — so "Use new" actually shows the change happening.
       setReanalysis({ before: { ...working }, after: res.profile });
-      setWorking(res.profile);
       setManual(new Set());
-      toast.success("Re-analyzed — review the changes below");
+      toast.success("Re-analyzed — review the proposed changes below");
     } catch (e) {
       toastApiError(e, { title: "Re-analysis failed" });
     } finally {
@@ -203,9 +210,17 @@ export function UpdateProfileDialog({
   }
 
   const emptyField = PROFILE_FIELDS.some((f) => !(working[f.key] ?? "").trim());
+  // A new live URL / repo is a real change even when the stage and profile text are
+  // unchanged — it must enable Save and be persisted (wires up monitoring).
+  const liveSourceChanged =
+    stage === "live" && isValidUrl(productUrl) && productUrl.trim() !== baseProductUrl.trim();
+  const repoSourceChanged =
+    stage === "developing" && isGitHubRepoUrl(repoUrl) && repoUrl.trim() !== baseRepoUrl.trim();
   const dirty =
     reanalysis !== null ||
     stage !== baseStage ||
+    liveSourceChanged ||
+    repoSourceChanged ||
     PROFILE_FIELDS.some((f) => (working[f.key] ?? "").trim() !== (baseline[f.key] ?? "").trim());
 
   async function save() {
@@ -217,7 +232,28 @@ export function UpdateProfileDialog({
     try {
       const manualShared = [...manual].filter(isShared);
       await api.patchProductProfile(working, manualShared);
-      toast.success(mode === "setup" ? "Profile saved" : "Profile updated");
+
+      // patchProductProfile only saves the profile text. A source change (going live,
+      // or attaching a repo) must also be persisted — this is what actually sets the
+      // product URL, seeds the site monitors and kicks off the first scrape. Skipped
+      // during first-time setup (the self-product is created later, at /complete).
+      let wentLive = false;
+      if (mode !== "setup") {
+        if (liveSourceChanged) {
+          await api.setMyProductSite(productUrl.trim());
+          wentLive = true;
+        } else if (repoSourceChanged) {
+          await api.setMyProductRepo(repoUrl.trim());
+        }
+      }
+
+      toast.success(
+        wentLive
+          ? "Saved — scanning your site now…"
+          : mode === "setup"
+            ? "Profile saved"
+            : "Profile updated",
+      );
       onSaved?.();
       onOpenChange(false);
       if (mode === "setup") {
@@ -354,9 +390,18 @@ export function UpdateProfileDialog({
             {/* Diff rows (only after a re-analysis, only for changed fields) */}
             {reanalysis && diffRows.length > 0 && (
               <div className="flex flex-col gap-2 rounded-md border border-primary/30 bg-primary/[0.04] px-3 py-3">
-                <div className="flex items-center gap-1.5 text-meta font-medium text-primary">
-                  <Sparkles size={12} /> Re-analysis · review {diffRows.length} change
-                  {diffRows.length > 1 ? "s" : ""}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-meta font-medium text-primary">
+                    <Sparkles size={12} /> Re-analysis · review {diffRows.length} change
+                    {diffRows.length > 1 ? "s" : ""}
+                  </div>
+                  <button
+                    type="button"
+                    className="text-meta font-medium text-primary underline-offset-2 hover:underline"
+                    onClick={() => diffRows.forEach((key) => pickDiff(key, "new"))}
+                  >
+                    Use all new
+                  </button>
                 </div>
                 {diffRows.map((key) => {
                   const label = PROFILE_FIELDS.find((f) => f.key === key)?.label ?? key;

@@ -56,7 +56,7 @@ export function Kpi({
   sparkValueLabel,
 }: KpiProps) {
   const DeltaIcon = DELTA_ICON[deltaKind];
-  const className = `group/kpi px-5 py-4 flex flex-col gap-2 relative min-w-0${
+  const className = `group/kpi h-full px-5 py-4 flex flex-col gap-2 relative min-w-0${
     href
       ? " outline-none transition-colors hover:bg-accent/40 focus-visible:bg-accent/40"
       : ""

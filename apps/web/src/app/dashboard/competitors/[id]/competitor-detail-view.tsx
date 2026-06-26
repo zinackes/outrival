@@ -902,6 +902,7 @@ export function CompetitorDetailView({
                 changes={recentChanges}
                 onRefresh={refresh}
                 competitorUrl={competitor.url}
+                lastRunMs={lastRunMs}
               />
             </TabsContent>
             <TabsContent value="pricing" className={TAB_PANEL_CLASS}>

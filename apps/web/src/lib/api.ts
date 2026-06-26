@@ -287,6 +287,9 @@ export interface Signal {
   createdAt: string;
   competitorId: string;
   competitorName: string;
+  // The competitor's site, used to render its favicon in the card avatar
+  // (null/absent → the avatar falls back to the initial letter).
+  competitorUrl?: string | null;
   changeId: string;
   sourceType: string | null;
   // The current user's quality verdict on this signal (patch-21), preloaded so
@@ -432,6 +435,13 @@ export interface ActivityEvent {
   // True only for a monitor's baseline capture (first snapshot, no diff possible).
   // Distinguishes the first scrape from an actual "change detected" in the feed.
   isFirstCapture?: boolean;
+  // The live page this run inspected (snapshot's resolved URL, else the
+  // competitor site). Lets a no-change / first-capture row link out to what was
+  // checked, instead of being a dead end.
+  url?: string | null;
+  // When the monitor last truly detected a change — context for a no-change row
+  // ("unchanged since …"). Null if it has never changed.
+  lastChangedAt?: string | null;
 }
 
 // The user-facing outcome buckets used to filter the activity feed — derived from
@@ -1698,7 +1708,7 @@ export const api = {
     if (params?.sourceType) q.set("sourceType", params.sourceType);
     if (params?.status) q.set("status", params.status);
     const qs = q.toString();
-    return request<{ events: ActivityEvent[] }>(
+    return request<{ events: ActivityEvent[]; total: number }>(
       `/api/activity/timeline${qs ? `?${qs}` : ""}`,
     );
   },

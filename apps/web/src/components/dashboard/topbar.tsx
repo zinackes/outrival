@@ -64,7 +64,7 @@ export function Topbar({ user }: { user: User }) {
 
   return (
     <header className="h-[52px] border-b border-border px-4 lg:px-6 flex items-center gap-2 lg:gap-3 sticky top-0 z-20 bg-background/85 backdrop-blur-md">
-      <SidebarTrigger className="-ml-1" />
+      <SidebarTrigger className="-ml-1 size-8" />
       <Separator
         orientation="vertical"
         className="mr-2 data-[orientation=vertical]:h-4"
@@ -101,7 +101,7 @@ export function Topbar({ user }: { user: User }) {
         <TooltipTrigger asChild>
           <Button
             variant="ghost"
-            size="icon"
+            size="icon-sm"
             aria-label="Refresh"
             onClick={refresh}
             disabled={isPending}

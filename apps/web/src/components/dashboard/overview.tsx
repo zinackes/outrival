@@ -82,24 +82,32 @@ interface Counts {
   totalCompetitors: number;
 }
 
-function trendBuckets(signals: Signal[], days = 10): number[] {
-  const now = Date.now();
-  const day = 24 * 3600 * 1000;
-  const buckets = new Array(days).fill(0);
+// Buckets signals across the selected [from, to] window into `buckets` equal
+// slices, so the sparkline spans the picked range rather than a fixed 10-day tail.
+function trendBuckets(
+  signals: Signal[],
+  fromMs: number,
+  toMs: number,
+  buckets: number,
+): number[] {
+  const span = Math.max(1, toMs - fromMs);
+  const slice = span / buckets;
+  const out = new Array(buckets).fill(0);
   for (const s of signals) {
     const t = new Date(s.createdAt).getTime();
-    const bucket = days - 1 - Math.floor((now - t) / day);
-    if (bucket >= 0 && bucket < days) buckets[bucket]++;
+    if (t < fromMs || t > toMs) continue;
+    const i = Math.min(buckets - 1, Math.floor((t - fromMs) / slice));
+    out[i]++;
   }
-  return buckets;
+  return out;
 }
 
-function trendLabels(days = 10): string[] {
-  const now = Date.now();
-  const day = 24 * 3600 * 1000;
+function trendLabels(fromMs: number, toMs: number, buckets: number): string[] {
+  const span = Math.max(1, toMs - fromMs);
+  const slice = span / buckets;
   const labels: string[] = [];
-  for (let i = 0; i < days; i++) {
-    const date = new Date(now - (days - 1 - i) * day);
+  for (let i = 0; i < buckets; i++) {
+    const date = new Date(fromMs + i * slice);
     labels.push(
       date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
     );
@@ -193,7 +201,8 @@ export function OverviewView({
 
   const recentSignals = useMemo(() => {
     if (!dsSignals) return [];
-    return [...dsSignals]
+    return dsSignals
+      .filter((s) => inWindow(s.createdAt))
       .sort((a, b) => {
         const s = SEV_ORDER[a.severity] - SEV_ORDER[b.severity];
         if (s !== 0) return s;
@@ -203,41 +212,62 @@ export function OverviewView({
         );
       })
       .slice(0, 5);
-  }, [dsSignals]);
+  }, [dsSignals, range]);
 
-  // Top-8 competitor roster. Reads the same server-computed stats the dedicated
-  // Competitors page uses (signals7d / signalsPrev / categoryCounts / lastSignalAt)
-  // so the two tables show identical numbers — a fixed 7d window, not the range.
+  // Top-8 competitor roster, windowed to the selected range so the whole page
+  // follows the date picker. Per-competitor counts / delta / category mix are
+  // recomputed from the loaded signal set (same ≤200-signal cap as the KPIs, so
+  // the two stay internally consistent — may differ slightly from the dedicated
+  // Competitors page, which uses uncapped server-side 7d stats). "Last signal"
+  // is recency, range-independent: latest loaded signal, falling back to the
+  // server stat when a competitor's last move predates the loaded tail.
   const competitorRows = useMemo(() => {
     if (!dsCompetitors) return [];
+    const sigs = dsSignals ?? [];
+    const span = Math.max(1, rangeTo - rangeFrom);
+    const prevFrom = rangeFrom - span;
+    const curByComp: Record<string, Signal[]> = {};
+    const prevByComp: Record<string, number> = {};
+    const lastByComp: Record<string, number> = {};
+    for (const s of sigs) {
+      const t = new Date(s.createdAt).getTime();
+      if (t > (lastByComp[s.competitorId] ?? 0)) lastByComp[s.competitorId] = t;
+      if (t >= rangeFrom && t <= rangeTo) {
+        (curByComp[s.competitorId] ??= []).push(s);
+      } else if (t >= prevFrom && t < rangeFrom) {
+        prevByComp[s.competitorId] = (prevByComp[s.competitorId] ?? 0) + 1;
+      }
+    }
     return [...dsCompetitors]
       .map((c) => {
-        const stats = c.stats ?? {
-          signals7d: 0,
-          signalsPrev: 0,
-          lastSignalAt: null,
-          categoryCounts: {},
-        };
+        const inRange = curByComp[c.id] ?? [];
+        const categoryCounts: Record<string, number> = {};
+        for (const s of inRange) {
+          categoryCounts[s.category] = (categoryCounts[s.category] ?? 0) + 1;
+        }
+        const last = lastByComp[c.id];
         return {
           id: c.id,
           name: c.name,
           url: c.url,
           category: c.category ?? "—",
           overlap: c.overlapScore != null ? Math.round(c.overlapScore) : null,
-          signals7d: stats.signals7d,
-          delta: computeDelta(stats.signals7d, stats.signalsPrev),
-          categoryCounts: stats.categoryCounts,
-          lastSignal: stats.lastSignalAt,
+          signals: inRange.length,
+          delta: computeDelta(inRange.length, prevByComp[c.id] ?? 0),
+          categoryCounts,
+          lastSignal: last
+            ? new Date(last).toISOString()
+            : (c.stats?.lastSignalAt ?? null),
         };
       })
-      .sort((a, b) => b.signals7d - a.signals7d)
+      .sort((a, b) => b.signals - a.signals)
       .slice(0, 8);
-  }, [dsCompetitors]);
+  }, [dsCompetitors, dsSignals, range]);
 
-  // Scale for the in-row magnitude bar behind the "Signals 7d" value (Plausible
+  // Scale for the in-row magnitude bar behind the signals value (Plausible
   // pattern): a tinted fill ∝ value, so the column reads as a chart at a glance.
-  const maxSignals7d = useMemo(
-    () => competitorRows.reduce((m, c) => Math.max(m, c.signals7d), 0),
+  const maxSignals = useMemo(
+    () => competitorRows.reduce((m, c) => Math.max(m, c.signals), 0),
     [competitorRows],
   );
 
@@ -262,11 +292,20 @@ export function OverviewView({
   const totalCats = categoryBreakdown.reduce((a, b) => a + b.count, 0) || 1;
   const [hoveredCat, setHoveredCat] = useState<string | null>(null);
 
-  const trend7Sparkline = useMemo(
-    () => (dsSignals ? trendBuckets(dsSignals, 10) : []),
-    [dsSignals],
+  // One daily bucket per day in the range (≥2 points so a sparkline still reads,
+  // capped at 60 so long ranges don't produce sub-pixel bars).
+  const sparkBuckets = Math.min(60, Math.max(2, rangeDays));
+  const trendSpark = useMemo(
+    () =>
+      dsSignals
+        ? trendBuckets(dsSignals, rangeFrom, rangeTo, sparkBuckets)
+        : [],
+    [dsSignals, rangeFrom, rangeTo, sparkBuckets],
   );
-  const trend7Labels = useMemo(() => trendLabels(10), []);
+  const trendSparkLabels = useMemo(
+    () => trendLabels(rangeFrom, rangeTo, sparkBuckets),
+    [rangeFrom, rangeTo, sparkBuckets],
+  );
 
   // Loading / error gates apply to the live fetch only — sample data is always
   // ready, so demo mode renders immediately even before the real fetch settles.
@@ -388,9 +427,9 @@ export function OverviewView({
             value={counts.signals}
             delta={counts.signals > 0 ? rangeLabel : "—"}
             deltaKind="pos"
-            spark={trend7Sparkline}
+            spark={trendSpark}
             sparkColor="var(--accent)"
-            sparkLabels={trend7Labels}
+            sparkLabels={trendSparkLabels}
             sparkValueLabel="signals"
           />
         </div>
@@ -601,7 +640,7 @@ export function OverviewView({
       <section>
         <SectionHead
           title="Your competitors"
-          sub="sorted by activity · last 7 days"
+          sub={`sorted by activity · ${rangeLabel}`}
           divider={false}
           action={
             <Button asChild variant="outline" size="sm">
@@ -632,16 +671,17 @@ export function OverviewView({
                     </TooltipContent>
                   </Tooltip>
                 </th>
-                <th className={`${TH} text-right`}>Signals 7d</th>
+                <th className={`${TH} text-right`}>Signals {rangeDays}d</th>
                 <th className={`${TH} text-right`}>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <span className="inline-flex items-center gap-1 cursor-help">
-                        7d trend
+                        {rangeDays}d trend
                       </span>
                     </TooltipTrigger>
                     <TooltipContent>
-                      Signals in the last 7 days vs the previous 7 days
+                      Signals in the last {rangeDays} days vs the previous{" "}
+                      {rangeDays} days
                     </TooltipContent>
                   </Tooltip>
                 </th>
@@ -649,12 +689,13 @@ export function OverviewView({
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <span className="inline-flex items-center gap-1 cursor-help">
-                        Signal mix (7d)
+                        Signal mix ({rangeDays}d)
                       </span>
                     </TooltipTrigger>
                     <TooltipContent>
                       <p className="mb-1.5 font-medium normal-case tracking-normal">
-                        Share of the last 7 days&apos; signals by category
+                        Share of the last {rangeDays} days&apos; signals by
+                        category
                       </p>
                       <CategoryKey />
                     </TooltipContent>
@@ -730,16 +771,16 @@ export function OverviewView({
                     )}
                   </td>
                   <td className="relative px-3.5 py-3 align-middle text-right tabular-nums font-mono font-semibold">
-                    {maxSignals7d > 0 && c.signals7d > 0 && (
+                    {maxSignals > 0 && c.signals > 0 && (
                       <span
                         aria-hidden
                         className="pointer-events-none absolute inset-y-1.5 left-1 rounded-sm bg-muted-foreground/10"
                         style={{
-                          width: `calc(${(c.signals7d / maxSignals7d) * 100}% - 8px)`,
+                          width: `calc(${(c.signals / maxSignals) * 100}% - 8px)`,
                         }}
                       />
                     )}
-                    <span className="relative">{c.signals7d}</span>
+                    <span className="relative">{c.signals}</span>
                   </td>
                   <td className="px-3.5 py-3 align-middle text-right">
                     <DeltaPill delta={c.delta} />

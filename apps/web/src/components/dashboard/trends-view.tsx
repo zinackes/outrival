@@ -27,9 +27,15 @@ import { SectionHead } from "./section-head";
 import { PageHead } from "./page-head";
 import {
   DateRangePicker,
+  DEFAULT_PRESETS,
+  ALL_TIME_PRESET,
   lastNDays,
   type DateRange,
 } from "@/components/ui/date-range-picker";
+
+// Trends reads straight from the time-series tables, so it can offer "All time"
+// on top of the rolling windows (unlike the overview's "last N days" labels).
+const TRENDS_PRESETS = [...DEFAULT_PRESETS, ALL_TIME_PRESET];
 const METRICS: { value: TrendMetric; label: string }[] = [
   { value: "pricing", label: "Pricing" },
   { value: "hiring", label: "Hiring" },
@@ -255,7 +261,13 @@ export function TrendsView({
         icon={<LineChartIcon size={18} className="text-muted-foreground" aria-hidden />}
         title="Trends"
         sub="How your competitors moved on pricing, hiring, reviews and tech."
-        actions={<DateRangePicker value={range} onChange={setRange} />}
+        actions={
+          <DateRangePicker
+            value={range}
+            onChange={setRange}
+            presets={TRENDS_PRESETS}
+          />
+        }
       />
 
       {summary === null ? (

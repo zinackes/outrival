@@ -1,5 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
-import { api } from "./api";
+import { api, type ActivityStatusFilter } from "./api";
 
 /**
  * Shared query definitions — one source of truth for `queryKey` + `queryFn`,
@@ -77,5 +77,35 @@ export function productsSettingsQuery() {
   return queryOptions({
     queryKey: ["products", "settings"] as const,
     queryFn: () => api.listProducts(),
+  });
+}
+
+// Activity timeline page size — shared so the server seed (limit=25) and the
+// client's page-1 key compute the same offset and hit the same cache entry.
+export const ACTIVITY_PAGE_SIZE = 25;
+
+// Activity health = the monitored-source roster + upcoming runs (filter options).
+export function activityHealthQuery() {
+  return queryOptions({
+    queryKey: ["activity", "health"] as const,
+    queryFn: () => api.activityHealth(),
+  });
+}
+
+// One page of the activity timeline. Key embeds page + filters; the RSC seeds
+// page 1 unfiltered. A URL filter yields a different key → a client fetch, exactly
+// like the old hasUrlFilter path.
+export function activityTimelineQuery(
+  page: number,
+  filters: { competitorId?: string; sourceType?: string; status?: ActivityStatusFilter },
+) {
+  return queryOptions({
+    queryKey: ["activity", "timeline", page, filters] as const,
+    queryFn: () =>
+      api.activityTimeline({
+        limit: ACTIVITY_PAGE_SIZE,
+        offset: (page - 1) * ACTIVITY_PAGE_SIZE,
+        ...filters,
+      }),
   });
 }

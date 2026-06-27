@@ -1,18 +1,23 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Activity, ChevronRight, ExternalLink } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import {
-  api,
   type ActivitySource,
   type ActivityUpcoming,
   type ActivityEvent,
   type ActivityChange,
   type ActivityStatusFilter,
 } from "@/lib/api";
+import {
+  activityHealthQuery,
+  activityTimelineQuery,
+  ACTIVITY_PAGE_SIZE,
+} from "@/lib/queries";
 import { sourceLabel } from "@/lib/source-labels";
 import { cn } from "@/lib/utils";
 import { DataTablePagination } from "@/components/ui/data-table-pagination";
@@ -45,7 +50,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-const PAGE_SIZE = 25;
+const PAGE_SIZE = ACTIVITY_PAGE_SIZE;
 
 // The four user-facing outcomes, derived from the raw run status below. The raw
 // scrape_runs.status="success" covers three different things — a real change, a
@@ -297,16 +302,7 @@ function RunDetail({ event }: { event: ActivityEvent }) {
 // User-facing activity: every scrape Outrival ran for the org — including the
 // no-change runs and failures the Signals feed never surfaces, and what each
 // "change detected" run actually found. Filterable by competitor, source, status.
-export function ActivityView({
-  initialData = null,
-}: {
-  initialData?: {
-    sources: ActivitySource[];
-    upcoming: ActivityUpcoming[];
-    events: ActivityEvent[];
-    total: number;
-  } | null;
-} = {}) {
+export function ActivityView() {
   useSetAskContext({ kind: "view", label: "Activity timeline" });
 
   // Deep-link support: the competitor page links here pre-filtered
@@ -319,30 +315,15 @@ export function ActivityView({
   const urlStatus = OUTCOME_ORDER.includes(urlStatusRaw as ActivityStatusFilter)
     ? urlStatusRaw
     : "all";
-  const hasUrlFilter =
-    urlCompetitor !== "all" || urlSource !== "all" || urlStatus !== "all";
 
-  const [sources, setSources] = useState<ActivitySource[] | null>(
-    initialData?.sources ?? null,
-  );
-  const [upcoming, setUpcoming] = useState<ActivityUpcoming[]>(
-    initialData?.upcoming ?? [],
-  );
-  // The seeded timeline is the UNfiltered first page. Arriving with a URL filter,
-  // it doesn't match — start empty (shows "Loading…") and let the fetch effect
-  // pull the filtered page instead of flashing unfiltered rows.
-  const [events, setEvents] = useState<ActivityEvent[] | null>(
-    hasUrlFilter ? null : (initialData?.events ?? null),
-  );
-  const [total, setTotal] = useState<number>(
-    hasUrlFilter ? 0 : (initialData?.total ?? initialData?.events.length ?? 0),
-  );
+  // Server-seeded on first paint (activity/page.tsx): health (filter options) +
+  // the page-1 unfiltered timeline. A URL filter produces a different timeline key,
+  // so useQuery fetches that filtered page instead of the seeded unfiltered one.
+  const healthQ = useQuery(activityHealthQuery());
+  const sources = healthQ.data?.sources ?? null;
+  const upcoming = healthQ.data?.upcoming ?? [];
+
   const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(false);
-  // Seed covers health + the default first timeline page — but only when the URL
-  // carries no filter (otherwise the effect must fetch the filtered page).
-  const seededTimelineRef = useRef(initialData !== null && !hasUrlFilter);
-
   const [competitor, setCompetitor] = useState(urlCompetitor);
   const [source, setSource] = useState(urlSource);
   const [status, setStatus] = useState(urlStatus);
@@ -364,23 +345,6 @@ export function ActivityView({
       next.has(key) ? next.delete(key) : next.add(key);
       return next;
     });
-
-  // Filter options come from the full set of monitored sources, not the paginated feed.
-  useEffect(() => {
-    if (initialData) return; // server-seeded
-    let cancelled = false;
-    api
-      .activityHealth()
-      .then((r) => {
-        if (cancelled) return;
-        setSources(r.sources);
-        setUpcoming(r.upcoming ?? []);
-      })
-      .catch(() => !cancelled && setSources([]));
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const competitorOptions = useMemo(() => {
     if (!sources) return [];
@@ -405,48 +369,30 @@ export function ActivityView({
     [competitor, source, status],
   );
 
+  // One page server-side; key on page + filters. keepPreviousData keeps the prior
+  // rows visible (dimmed) during a fetch instead of flashing — only the very first
+  // load shows the empty/Loading state.
+  const timelineQ = useQuery({
+    ...activityTimelineQuery(page, filterParams),
+    placeholderData: keepPreviousData,
+  });
+  const events = timelineQ.data?.events ?? null;
+  const total = timelineQ.data?.total ?? 0;
+  const loading = timelineQ.isFetching;
+
   const isFiltered = competitor !== "all" || source !== "all" || status !== "all";
 
   // Soonest scheduled run (upcoming is already sorted soonest-first); the rest sit
   // behind a "+N more" popover so the section is a single line, not a tall card.
   const nextCheck = upcoming[0] ?? null;
 
-  // Fetch one page server-side whenever the filters or the page change. Page-based
-  // (not append): the DOM only ever holds PAGE_SIZE rows, so the table stays light
-  // no matter how deep the history. Previous rows stay visible (dimmed) during a
-  // fetch to avoid a flash; only the very first load shows the "Loading…" state.
+  // The DOM only ever holds PAGE_SIZE rows, so the table stays light no matter how
+  // deep the history.
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
+  // Collapse any expanded detail rows when the page or filters change.
   useEffect(() => {
-    if (seededTimelineRef.current) {
-      seededTimelineRef.current = false;
-      return;
-    }
-    let cancelled = false;
-    setLoading(true);
     setExpanded(new Set());
-    api
-      .activityTimeline({
-        limit: PAGE_SIZE,
-        offset: (page - 1) * PAGE_SIZE,
-        ...filterParams,
-      })
-      .then((r) => {
-        if (cancelled) return;
-        setEvents(r.events);
-        setTotal(r.total);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setEvents([]);
-        setTotal(0);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
   }, [filterParams, page]);
 
   return (

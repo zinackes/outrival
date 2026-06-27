@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
+import { toast } from "sonner";
 import {
   Activity,
   ChevronRight,
@@ -13,8 +14,9 @@ import {
   Star,
   Loader2,
   Play,
+  Languages,
 } from "lucide-react";
-import type { CompetitorOverview, Monitor } from "@/lib/api";
+import { api, type CompetitorOverview, type Monitor } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -85,13 +87,23 @@ function LogoChip({ logo }: { logo: { name: string | null; src: string | null } 
 // positioning, value props, customers, claims, all surfaced from the latest
 // homepage capture, plus a compact pricing/hiring/reviews summary. AI summary,
 // tech stack and KPIs already live above the tabs, so they're not repeated here.
+// English translation of the foreign-language homepage facts, fetched on demand.
+type TranslatedFacts = {
+  headline: string | null;
+  subheadline: string | null;
+  valueProps: string[];
+  testimonials: Array<{ quote: string; author: string | null }>;
+};
+
 export function OverviewTab({
+  competitorId,
   overview,
   monitors,
   scrapingIds,
   onRun,
   onOpenTab,
 }: {
+  competitorId: string;
   overview: CompetitorOverview;
   monitors: Monitor[];
   scrapingIds: Set<string>;
@@ -99,6 +111,36 @@ export function OverviewTab({
   onOpenTab: (tab: TabKey) => void;
 }) {
   const { homepage, numericClaims, pricingNow, reviews, hiring, capturedAt } = overview;
+
+  // The fact sheet is scraped verbatim, so a foreign competitor's copy shows in its
+  // own language. Offer a one-click English translation (Azure MT, on demand) and
+  // let the user flip back to the original.
+  const language = homepage?.language ?? null;
+  const isForeign = !!language && language !== "en";
+  const [translated, setTranslated] = useState<TranslatedFacts | null>(null);
+  const [translating, setTranslating] = useState(false);
+  const [showOriginal, setShowOriginal] = useState(false);
+
+  async function handleTranslate() {
+    if (translating) return;
+    setTranslating(true);
+    try {
+      const res = await api.translateCompetitorOverview(competitorId);
+      setTranslated(res.translated);
+      setShowOriginal(false);
+    } catch {
+      toast.error("Couldn't translate right now. Showing the original.");
+    } finally {
+      setTranslating(false);
+    }
+  }
+
+  // What to render: translated copy unless the user flipped back to the original.
+  const showTranslated = !!translated && !showOriginal;
+  const dHeadline = showTranslated ? translated.headline : homepage?.headline ?? null;
+  const dSubheadline = showTranslated ? translated.subheadline : homepage?.subheadline ?? null;
+  const dValueProps = showTranslated ? translated.valueProps : homepage?.valueProps ?? [];
+  const dTestimonials = showTranslated ? translated.testimonials : homepage?.testimonials ?? [];
   const hasFacts =
     !!homepage &&
     !!(
@@ -145,25 +187,59 @@ export function OverviewTab({
 
   return (
     <TabCard>
-      {homepage && (homepage.headline || homepage.subheadline) && (
+      {isForeign && (
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="uppercase">
+            {language}
+          </Badge>
+          {!translated ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 gap-1.5"
+              onClick={handleTranslate}
+              disabled={translating}
+            >
+              {translating ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <Languages size={12} />
+              )}
+              Translate to English
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 gap-1.5"
+              onClick={() => setShowOriginal((o) => !o)}
+            >
+              <Languages size={12} />
+              {showOriginal ? "Show English" : "Show original"}
+            </Button>
+          )}
+        </div>
+      )}
+
+      {homepage && (dHeadline || dSubheadline) && (
         <TabSection>
-          {homepage.headline && (
+          {dHeadline && (
             <p className="text-lead font-semibold leading-snug tracking-tight text-balance">
-              {homepage.headline}
+              {dHeadline}
             </p>
           )}
-          {homepage.subheadline && (
+          {dSubheadline && (
             <p className="text-content text-muted-foreground leading-relaxed max-w-2xl">
-              {homepage.subheadline}
+              {dSubheadline}
             </p>
           )}
         </TabSection>
       )}
 
-      {homepage && homepage.valueProps.length > 0 && (
+      {homepage && dValueProps.length > 0 && (
         <TabSection title="What they highlight" icon={FileText}>
           <ul className="flex flex-col gap-2">
-            {homepage.valueProps.map((v, i) => (
+            {dValueProps.map((v, i) => (
               <li key={i} className="text-content leading-relaxed flex gap-2.5">
                 <span className="text-primary shrink-0 mt-px">•</span>
                 <span>{v}</span>
@@ -173,7 +249,7 @@ export function OverviewTab({
         </TabSection>
       )}
 
-      {homepage && (homepage.customerLogos.length > 0 || homepage.testimonials.length > 0) && (
+      {homepage && (homepage.customerLogos.length > 0 || dTestimonials.length > 0) && (
         <TabSection title="Customers & proof" icon={Users}>
           {homepage.customerLogos.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5">
@@ -182,9 +258,9 @@ export function OverviewTab({
               ))}
             </div>
           )}
-          {homepage.testimonials.length > 0 && (
+          {dTestimonials.length > 0 && (
             <ul className="flex flex-col gap-3 mt-1">
-              {homepage.testimonials.map((t, i) => (
+              {dTestimonials.map((t, i) => (
                 <li key={i} className="border-l border-border pl-3.5">
                   <p className="text-content italic leading-relaxed">“{t.quote}”</p>
                   {t.author && (

@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { ExternalLink, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, type NotificationSettings } from "@/lib/api";
+import { notificationSettingsQuery } from "@/lib/queries";
 import {
   Sheet,
   SheetContent,
@@ -25,18 +27,22 @@ export function DigestSettingsSheet({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  // Fetch-on-open via useQuery (shares the ["notificationSettings"] cache with
+  // Integrations / Notifications); `settings` stays a local editable draft.
+  const settingsQ = useQuery({ ...notificationSettingsQuery(), enabled: open });
   const [settings, setSettings] = useState<NotificationSettings | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!open) return;
-    setError(null);
-    api
-      .getNotificationSettings()
-      .then(setSettings)
-      .catch((e) => setError(String(e)));
-  }, [open]);
+    if (!open) {
+      setSettings(null);
+      setError(null);
+      return;
+    }
+    if (settingsQ.data) setSettings(settingsQ.data);
+    if (settingsQ.error) setError(String(settingsQ.error));
+  }, [open, settingsQ.data, settingsQ.error]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

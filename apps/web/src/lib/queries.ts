@@ -60,3 +60,19 @@ export function usageQuery() {
     queryFn: () => api.getUsage(),
   });
 }
+
+// Billing / subscription info.
+export function billingQuery() {
+  return queryOptions({
+    queryKey: ["billing"] as const,
+    queryFn: () => api.getBilling(),
+  });
+}
+
+// Stripe invoices (only meaningful once subscribed — gate with `enabled`).
+export function invoicesQuery() {
+  return queryOptions({
+    queryKey: ["billing", "invoices"] as const,
+    queryFn: () => api.getInvoices().then((r) => r.invoices),
+  });
+}

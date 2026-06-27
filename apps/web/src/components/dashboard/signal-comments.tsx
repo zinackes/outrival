@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Trash2, Send } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
@@ -15,19 +16,24 @@ export function SignalComments({
   signalId: string;
   onCountChange?: (n: number) => void;
 }) {
-  const [comments, setComments] = useState<SignalComment[] | null>(null);
+  const queryClient = useQueryClient();
+  const commentsQ = useQuery({
+    queryKey: ["signalComments", signalId],
+    queryFn: () => api.listSignalComments(signalId).then((r) => r.comments),
+  });
+  const comments = commentsQ.data ?? null;
+  function setComments(updater: (prev: SignalComment[] | null) => SignalComment[] | null) {
+    queryClient.setQueryData<SignalComment[]>(["signalComments", signalId], (prev) =>
+      updater(prev ?? null) ?? [],
+    );
+  }
   const [text, setText] = useState("");
   const [posting, setPosting] = useState(false);
 
+  // Keep the parent's comment count in sync with the cached list.
   useEffect(() => {
-    api
-      .listSignalComments(signalId)
-      .then((r) => {
-        setComments(r.comments);
-        onCountChange?.(r.comments.length);
-      })
-      .catch(() => setComments([]));
-  }, [signalId, onCountChange]);
+    if (commentsQ.data) onCountChange?.(commentsQ.data.length);
+  }, [commentsQ.data, onCountChange]);
 
   async function add() {
     const body = text.trim();
@@ -35,11 +41,7 @@ export function SignalComments({
     setPosting(true);
     try {
       const r = await api.addSignalComment(signalId, body);
-      setComments((p) => {
-        const next = p ? [...p, r.comment] : [r.comment];
-        onCountChange?.(next.length);
-        return next;
-      });
+      setComments((p) => (p ? [...p, r.comment] : [r.comment]));
       setText("");
     } catch {
       // Keep the draft so the user can retry, but surface the failure (silent was wrong).
@@ -50,11 +52,7 @@ export function SignalComments({
   }
 
   async function remove(id: string) {
-    setComments((p) => {
-      const next = p ? p.filter((c) => c.id !== id) : p;
-      if (next) onCountChange?.(next.length);
-      return next;
-    });
+    setComments((p) => (p ? p.filter((c) => c.id !== id) : p));
     await api.deleteSignalComment(signalId, id).catch(() => {});
   }
 

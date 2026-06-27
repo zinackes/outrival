@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import { DollarSign, TrendingUp, Star, Boxes, LineChart as LineChartIcon } from "lucide-react";
 import {
   api,
-  type TrendsSummary,
   type TrendMetric,
   type TrendSeriesPoint,
   type PricingMove,
@@ -13,6 +13,7 @@ import {
   type ReviewMove,
   type TechMove,
 } from "@/lib/api";
+import { trendsSummaryQuery } from "@/lib/queries";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -136,19 +137,19 @@ function DrillChart({
   metric: TrendMetric;
   range: DateRange;
 }) {
-  const [points, setPoints] = useState<TrendSeriesPoint[] | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setPoints(null);
-    api
-      .getTrendsSeries(competitorId, metric, range)
-      .then((r) => !cancelled && setPoints(r.points))
-      .catch(() => !cancelled && setPoints([]));
-    return () => {
-      cancelled = true;
-    };
-  }, [competitorId, metric, range]);
+  const seriesQ = useQuery({
+    queryKey: [
+      "trends",
+      "series",
+      competitorId,
+      metric,
+      range.from.toISOString(),
+      range.to.toISOString(),
+    ],
+    queryFn: () => api.getTrendsSeries(competitorId, metric, range).then((r) => r.points),
+  });
+  // Treat a fetch error as "no data" (matches the prior catch → []).
+  const points = seriesQ.isError ? [] : (seriesQ.data ?? null);
 
   if (points === null) return <Skeleton className="h-64 w-full" />;
   if (points.length === 0) {
@@ -163,34 +164,14 @@ function DrillChart({
   return <TrendsDrillChart keys={keys} data={data} />;
 }
 
-export function TrendsView({
-  initialSummary = null,
-}: {
-  initialSummary?: TrendsSummary | null;
-} = {}) {
+export function TrendsView() {
   const [range, setRange] = useState<DateRange>(() => lastNDays(90));
-  const [summary, setSummary] = useState<TrendsSummary | null>(initialSummary);
-  const [failed, setFailed] = useState(false);
   const [metric, setMetric] = useState<TrendMetric>("pricing");
   const [competitorId, setCompetitorId] = useState<string>("");
-  // Seed covers the default 90d window → skip only the first fetch.
-  const seededRef = useRef(initialSummary !== null);
-
-  useEffect(() => {
-    if (seededRef.current) {
-      seededRef.current = false;
-      return;
-    }
-    let cancelled = false;
-    setSummary(null);
-    api
-      .getTrendsSummary(range)
-      .then((r) => !cancelled && setSummary(r))
-      .catch(() => !cancelled && setFailed(true));
-    return () => {
-      cancelled = true;
-    };
-  }, [range]);
+  // Server-seeded for the default 90d window (trends/page.tsx); the queryKey embeds
+  // from/to, so changing the range refetches automatically.
+  const summaryQ = useQuery(trendsSummaryQuery(range));
+  const summary = summaryQ.data ?? null;
 
   // Drill competitor options = the competitors that have series-eligible data.
   const competitorOptions = useMemo(() => {
@@ -213,7 +194,7 @@ export function TrendsView({
     }
   }, [competitorOptions, competitorId]);
 
-  if (failed) {
+  if (summaryQ.isError) {
     return <p className="text-muted-foreground text-sm">Couldn&apos;t load trends right now.</p>;
   }
 

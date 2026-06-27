@@ -60,3 +60,13 @@ export function usageQuery() {
     queryFn: () => api.getUsage(),
   });
 }
+
+// Trends summary for a date window. The key embeds the ISO bounds so the server
+// seed (default 90d) and the client's lastNDays(90) — both rounded to the day —
+// hit the same cache entry.
+export function trendsSummaryQuery(range: { from: Date; to: Date }) {
+  return queryOptions({
+    queryKey: ["trends", "summary", range.from.toISOString(), range.to.toISOString()] as const,
+    queryFn: () => api.getTrendsSummary(range),
+  });
+}

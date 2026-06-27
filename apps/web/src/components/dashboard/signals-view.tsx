@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+import { signalsQuery } from "@/lib/queries";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -94,17 +96,13 @@ function serializeSet(set: Set<string>): string | null {
   return Array.from(set).join(",");
 }
 
-export function SignalsView({
-  initialSignals = null,
-}: { initialSignals?: Signal[] | null } = {}) {
+export function SignalsView() {
   const router = useRouter();
   const searchParams = useSearchParams();
   // Sample / demo mode shared with the Overview (Step 0). When on, the feed reads
   // the fixed fictional dataset and the detail renders read-only — no API writes.
   const [sample, setSample] = useSampleMode();
 
-  const [signals, setSignals] = useState<Signal[] | null>(initialSignals);
-  const [err, setErr] = useState<unknown>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   // Tracks whether the desktop default-selection has run, so deselecting (Esc)
   // doesn't keep snapping back to the first row.
@@ -139,42 +137,32 @@ export function SignalsView({
   // it re-fetches.
   const sort = searchParams.get("sort") === "recent" ? "recent" : "threat";
 
-  const load = useCallback(() => {
-    setErr(null);
-    if (sample) {
-      setSignals(getSampleData().signals);
-      return;
-    }
-    api
-      .listSignals({ limit: 200, productId: productId ?? undefined, sort })
-      .then((r) => setSignals(r.signals))
-      .catch((e) => setErr(e));
-  }, [productId, sort, sample]);
+  // Server-seeded on first paint (signals/page.tsx); the queryKey embeds product +
+  // sort, so changing either refetches automatically (keepPreviousData avoids a
+  // skeleton flash). Disabled in sample mode, where the feed reads fixtures.
+  const queryClient = useQueryClient();
+  const sampleData = useMemo(() => getSampleData(), []);
+  const sigOpts = signalsQuery({ limit: 200, productId: productId ?? undefined, sort });
+  const signalsQ = useQuery({ ...sigOpts, enabled: !sample, placeholderData: keepPreviousData });
+  const signals = sample ? sampleData.signals : (signalsQ.data ?? null);
+  const err = signalsQ.error;
 
-  // Server-seeded first paint covers the initial product/sort. Consume the seed
-  // once (unless in sample mode), then let load() refetch when product/sort/sample
-  // change.
-  const seededRef = useRef(initialSignals !== null);
-  useEffect(() => {
-    if (seededRef.current && !sample) {
-      seededRef.current = false;
-      return;
-    }
-    load();
-  }, [load, sample]);
+  // Optimistic write-through to the active signals query (mark-read, mark-all-read
+  // + its undo, action-status changes). Mutations only run when !sample.
+  function mutateSignals(updater: (prev: Signal[]) => Signal[]) {
+    queryClient.setQueryData<Signal[]>(sigOpts.queryKey, (prev) =>
+      prev ? updater(prev) : prev,
+    );
+  }
 
   async function markRead(id: string) {
-    setSignals((prev) =>
-      prev ? prev.map((s) => (s.id === id ? { ...s, isRead: true } : s)) : prev,
-    );
+    mutateSignals((prev) => prev.map((s) => (s.id === id ? { ...s, isRead: true } : s)));
     if (sample) return;
     await api.markSignalRead(id);
   }
 
   async function markUnread(id: string) {
-    setSignals((prev) =>
-      prev ? prev.map((s) => (s.id === id ? { ...s, isRead: false } : s)) : prev,
-    );
+    mutateSignals((prev) => prev.map((s) => (s.id === id ? { ...s, isRead: false } : s)));
     if (sample) return;
     try {
       await api.markSignalRead(id, false);
@@ -188,21 +176,15 @@ export function SignalsView({
     if (unreadIds.length === 0) return;
     const idSet = new Set(unreadIds);
     // Optimistic: flip them all read locally, then reconcile with the server.
-    setSignals((prev) =>
-      prev ? prev.map((s) => (idSet.has(s.id) ? { ...s, isRead: true } : s)) : prev,
-    );
+    mutateSignals((prev) => prev.map((s) => (idSet.has(s.id) ? { ...s, isRead: true } : s)));
     toast.success(
       `${unreadIds.length} signal${unreadIds.length > 1 ? "s" : ""} marked read`,
       {
         action: {
           label: "Undo",
           onClick: () => {
-            setSignals((prev) =>
-              prev
-                ? prev.map((s) =>
-                    idSet.has(s.id) ? { ...s, isRead: false } : s,
-                  )
-                : prev,
+            mutateSignals((prev) =>
+              prev.map((s) => (idSet.has(s.id) ? { ...s, isRead: false } : s)),
             );
             if (sample) return;
             Promise.all(
@@ -223,9 +205,7 @@ export function SignalsView({
   // Intel → action loop (Phase B): SignalCard persists the status; keep the local
   // array in sync so the "Actions" tab and its count update immediately.
   function onActionChange(id: string, status: ActionStatus | null) {
-    setSignals((prev) =>
-      prev ? prev.map((s) => (s.id === id ? { ...s, actionStatus: status } : s)) : prev,
-    );
+    mutateSignals((prev) => prev.map((s) => (s.id === id ? { ...s, actionStatus: status } : s)));
   }
 
   const filtered = useMemo(() => {
@@ -507,7 +487,7 @@ export function SignalsView({
     return (
       <div className="space-y-6">
         <PageHead title="Signals" sub="Classified by AI." />
-        <ListError error={err} onRetry={load} />
+        <ListError error={err} onRetry={() => signalsQ.refetch()} />
       </div>
     );
   }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { DETECTION_OVERLAP_PRESETS } from "@outrival/shared";
@@ -29,22 +30,29 @@ export function DetectionConfigSheet({
   onOpenChange: (open: boolean) => void;
   onSaved?: () => void;
 }) {
+  // Fetch-on-open via useQuery; `config` stays a local editable draft.
+  const configQ = useQuery({
+    queryKey: ["detectionConfig"],
+    queryFn: () => api.getDetectionConfig().then((r) => r.config),
+    enabled: open,
+  });
   const [config, setConfig] = useState<DetectionConfig | null>(null);
   const [excludedText, setExcludedText] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!open) return;
-    setError(null);
-    api
-      .getDetectionConfig()
-      .then(({ config }) => {
-        setConfig(config);
-        setExcludedText(config.excludedDomains.join("\n"));
-      })
-      .catch((e) => setError(String(e)));
-  }, [open]);
+    if (!open) {
+      setConfig(null);
+      setError(null);
+      return;
+    }
+    if (configQ.data) {
+      setConfig(configQ.data);
+      setExcludedText(configQ.data.excludedDomains.join("\n"));
+    }
+    if (configQ.error) setError(String(configQ.error));
+  }, [open, configQ.data, configQ.error]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

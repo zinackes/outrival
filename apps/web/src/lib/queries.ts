@@ -84,6 +84,23 @@ export function productsSettingsQuery() {
 // client's page-1 key compute the same offset and hit the same cache entry.
 export const ACTIVITY_PAGE_SIZE = 25;
 
+// Competitor-discovery candidates for a tab ("new" | "dismissed"). Returns the
+// list + the tab badge counts together.
+export function candidatesQuery(status: "new" | "dismissed") {
+  return queryOptions({
+    queryKey: ["candidates", status] as const,
+    queryFn: () => api.listCandidates(status),
+  });
+}
+
+// Discovery staleness (tab-independent) → drives the "already up to date" nudge.
+export function discoveryStalenessQuery() {
+  return queryOptions({
+    queryKey: ["discovery", "staleness"] as const,
+    queryFn: () => api.getDiscoveryStaleness(),
+  });
+}
+
 // Activity health = the monitored-source roster + upcoming runs (filter options).
 export function activityHealthQuery() {
   return queryOptions({

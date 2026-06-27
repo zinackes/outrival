@@ -110,6 +110,11 @@ export function PricingTab({
   }
 
   const plans = Object.keys(series.byPlan);
+  // Plans that have at least one numeric price — the only ones worth a chart line.
+  // Quote-based "Custom" tiers stay in the list but never get a (flat/empty) series.
+  const numericPlans = plans.filter((pl) =>
+    (series.byPlan[pl] ?? []).some((p) => p.price != null),
+  );
   const sorted = [...history].sort(
     (a, b) => new Date(a.recorded_at).getTime() - new Date(b.recorded_at).getTime(),
   );
@@ -133,8 +138,11 @@ export function PricingTab({
         {plans.map((plan) => {
           const latest = latestByPlan.get(plan)!;
           const first = firstByPlan.get(plan)!;
-          const delta = latest.price - first.price;
-          const pct = first.price > 0 ? (delta / first.price) * 100 : 0;
+          const lp = latest.price;
+          const fp = first.price;
+          // A delta needs a numeric price at both ends; quote-based tiers have none.
+          const delta = lp != null && fp != null ? lp - fp : 0;
+          const pct = lp != null && fp != null && fp > 0 ? (delta / fp) * 100 : 0;
           return (
             <li
               key={plan}
@@ -144,13 +152,17 @@ export function PricingTab({
                 <Eyebrow size="micro" className="shrink-0">
                   {plan}
                 </Eyebrow>
-                <span className="text-sm font-semibold tabular-nums">
-                  {latest.price} {latest.currency}
-                  <span className="text-xs text-muted-foreground font-mono font-normal">
-                    {" "}
-                    / {latest.billing_period}
+                {lp != null ? (
+                  <span className="text-sm font-semibold tabular-nums">
+                    {lp} {latest.currency}
+                    <span className="text-xs text-muted-foreground font-mono font-normal">
+                      {" "}
+                      / {latest.billing_period}
+                    </span>
                   </span>
-                </span>
+                ) : (
+                  <span className="text-sm font-medium text-muted-foreground">Custom</span>
+                )}
               </div>
               {delta !== 0 && (
                 <span
@@ -202,7 +214,7 @@ export function PricingTab({
         // the narrow list halves the height vs stacking two full-width blocks.
         <div className="grid lg:grid-cols-2">
           <TabSection title="Price over time" icon={Activity}>
-            <MultiLineChart data={series.points} seriesKeys={plans} height={260} />
+            <MultiLineChart data={series.points} seriesKeys={numericPlans} height={260} />
           </TabSection>
           {planList}
         </div>
@@ -270,7 +282,16 @@ function convertCurrency(
   return (amount * rt) / rf;
 }
 
-type TierLite = { price: number; currency: string; billing_period: string };
+type TierLite = { price: number | null; currency: string; billing_period: string };
+
+// Sort tiers by ascending price, pushing quote-based tiers (price null) last so
+// the entry/top ranking reads off the numeric ones.
+function byPriceAsc(a: { price: number | null }, b: { price: number | null }): number {
+  if (a.price == null && b.price == null) return 0;
+  if (a.price == null) return 1;
+  if (b.price == null) return -1;
+  return a.price - b.price;
+}
 
 // Outcome of comparing our tier to theirs: either a % (positive = we're pricier),
 // flagged when it required a currency conversion, or null with a human reason the
@@ -282,6 +303,10 @@ function compareTiers(
   theirs: TierLite,
   rates: Record<string, number> | null,
 ): TierCmp {
+  // A quote-based tier on either side has no number to compute a % against.
+  if (mine.price == null || theirs.price == null) {
+    return { pct: null, reason: "Quote-based tier — no public price to compare" };
+  }
   if (mine.billing_period !== theirs.billing_period) {
     return {
       pct: null,
@@ -357,8 +382,8 @@ function PricingComparison({
 }) {
   // Called before the early return so the hook order stays stable (rules of hooks).
   const fx = useFx();
-  const oursSorted = [...ours].sort((a, b) => a.price - b.price);
-  const theirsSorted = [...theirs].sort((a, b) => a.price - b.price);
+  const oursSorted = [...ours].sort(byPriceAsc);
+  const theirsSorted = [...theirs].sort(byPriceAsc);
 
   if (oursSorted.length === 0) {
     return (
@@ -404,9 +429,9 @@ function PricingComparison({
       } theirs (${formatTierPrice(theirEntry)})${entryCmp.converted ? ", currency-adjusted" : ""}.`,
     );
   }
-  if (theirEntry.price === 0 && ourEntry.price > 0) {
+  if (theirEntry.price === 0 && ourEntry.price != null && ourEntry.price > 0) {
     lines.push(`${competitorName} offers a free tier — you don't.`);
-  } else if (ourEntry.price === 0 && theirEntry.price > 0) {
+  } else if (ourEntry.price === 0 && theirEntry.price != null && theirEntry.price > 0) {
     lines.push(`You offer a free tier — ${competitorName} doesn't.`);
   }
   if (
@@ -487,7 +512,7 @@ function PricingComparison({
 function TierCell({
   tier,
 }: {
-  tier: { plan_name: string; price: number; currency: string; billing_period: string };
+  tier: { plan_name: string; price: number | null; currency: string; billing_period: string };
 }) {
   return (
     <div className="flex items-baseline gap-1.5 min-w-0">

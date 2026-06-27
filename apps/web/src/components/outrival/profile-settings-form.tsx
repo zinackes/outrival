@@ -204,9 +204,6 @@ export function ProfileSettingsForm() {
     <div className="flex flex-col gap-6">
       <div className="flex items-center gap-3">
         <UserAvatar seed={email || currentName || "user"} size={48} />
-        <p className="text-dense text-muted-foreground">
-          Your avatar is generated automatically from your account.
-        </p>
       </div>
 
       <div className="flex flex-col gap-1.5">

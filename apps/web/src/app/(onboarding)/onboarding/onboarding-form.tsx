@@ -26,7 +26,14 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { PLAN_LABELS, PLAN_LIMITS, detectTemporaryUrl, type Plan } from "@outrival/shared";
+import {
+  PLAN_LABELS,
+  PLAN_LIMITS,
+  detectTemporaryUrl,
+  DISCOVERY_REGIONS,
+  inferRegionFromUrl,
+  type Plan,
+} from "@outrival/shared";
 import {
   ApiError,
   api,
@@ -55,6 +62,13 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 type Screen = "stage" | "input" | "profile" | "discover" | "done";
@@ -164,8 +178,8 @@ const DISCOVERY_DEBOUNCE_MS =
 
 // Identity of a discovery input — a prefetch is reusable only for the exact same
 // profile + URL, so editing any field invalidates it (and re-bills, debounced).
-function profileKey(p: ProductProfile, url: string | null): string {
-  return JSON.stringify([p.category, p.audience, p.valueProp, p.pricingModel, url]);
+function profileKey(p: ProductProfile, url: string | null, region: string | null): string {
+  return JSON.stringify([p.category, p.audience, p.valueProp, p.pricingModel, url, region]);
 }
 
 function extractMessage(err: unknown): string {
@@ -233,6 +247,11 @@ export function OnboardingForm({
   // Downstream state
   const [profile, setProfile] = useState<ProductProfile | null>(initialProfile);
   const [committedUrl, setCommittedUrl] = useState<string | null>(null);
+  // Primary market for discovery geo-biasing. Defaults from the product URL's
+  // ccTLD (editable on the discover step); `regionTouched` freezes the auto-default
+  // once the user picks explicitly. null = global (no bias).
+  const [region, setRegion] = useState<string | null>(null);
+  const regionTouched = useRef(false);
   const [competitors, setCompetitors] = useState<Selection[]>([]);
   // Trashed rows are kept aside (not dropped) so they can be saved as
   // "dismissed" candidates on complete — a remembered rejection.
@@ -429,7 +448,7 @@ export function OnboardingForm({
   );
 
   const runDiscovery = useCallback(
-    async (p: ProductProfile, url: string | null) => {
+    async (p: ProductProfile, url: string | null, regionArg: string | null) => {
       if (discoveryDisabled) {
         setError(
           "Discovery is temporarily disabled. Add competitors manually after onboarding.",
@@ -442,7 +461,7 @@ export function OnboardingForm({
         timings: { [milestoneKey(ONBOARDING_EVENTS.DISCOVERY_STARTED)]: Date.now() },
       });
       try {
-        const res = await api.discoverCompetitors(p, url);
+        const res = await api.discoverCompetitors(p, url, regionArg);
         applyDiscovered(res.competitors);
       } catch (e) {
         setError(extractMessage(e));
@@ -453,12 +472,20 @@ export function OnboardingForm({
     [discoveryDisabled, sessionId, updateSession, applyDiscovered],
   );
 
+  // Default the market from the committed product URL's ccTLD until the user
+  // overrides it on the discover step. Re-runs on each new URL, never after a
+  // manual pick.
+  useEffect(() => {
+    if (regionTouched.current) return;
+    setRegion(inferRegionFromUrl(committedUrl));
+  }, [committedUrl]);
+
   // Prefetch discovery in the background while the user reviews the profile, so
   // confirming is often instant. Debounced + abortable: each profile edit cancels
   // the in-flight request and reschedules; a result is cached by profile identity.
   useEffect(() => {
     if (!PARALLEL_DISCOVERY || screen !== "profile" || !profile || discoveryDisabled) return;
-    const key = profileKey(profile, committedUrl);
+    const key = profileKey(profile, committedUrl, region);
     if (prefetchRef.current?.key === key) {
       setDiscoveryStatus("completed");
       return;
@@ -470,7 +497,7 @@ export function OnboardingForm({
       setDiscoveryStatus("running");
       trackOnboarding(ONBOARDING_EVENTS.DISCOVERY_STARTED, sessionId, { trigger: "background" });
       api
-        .discoverCompetitors(profile, committedUrl, controller.signal)
+        .discoverCompetitors(profile, committedUrl, region, controller.signal)
         .then((res) => {
           if (prefetchAbort.current !== controller) return;
           prefetchRef.current = { key, competitors: res.competitors };
@@ -486,7 +513,7 @@ export function OnboardingForm({
       prefetchAbort.current?.abort();
       prefetchAbort.current = null;
     };
-  }, [screen, profile, committedUrl, discoveryDisabled, sessionId]);
+  }, [screen, profile, committedUrl, region, discoveryDisabled, sessionId]);
 
   async function handleProfileConfirm() {
     if (!profile) return;
@@ -508,14 +535,14 @@ export function OnboardingForm({
     void updateSession({
       timings: { [milestoneKey(ONBOARDING_EVENTS.PRODUCT_PROFILE_CONFIRMED)]: Date.now() },
     });
-    const key = profileKey(profile, committedUrl);
+    const key = profileKey(profile, committedUrl, region);
     goTo("discover");
     // If the background prefetch already resolved for this exact profile, use it
     // (instant); otherwise fall back to a synchronous discovery on the next screen.
     if (prefetchRef.current?.key === key) {
       applyDiscovered(prefetchRef.current.competitors);
     } else {
-      await runDiscovery(profile, committedUrl);
+      await runDiscovery(profile, committedUrl, region);
     }
   }
 
@@ -534,9 +561,16 @@ export function OnboardingForm({
       !discoveryDisabled
     ) {
       discoverRan.current = true;
-      void runDiscovery(profile, committedUrl);
+      void runDiscovery(profile, committedUrl, region);
     }
-  }, [screen, competitors.length, profile, busy, discoveryDisabled, committedUrl, runDiscovery]);
+  }, [screen, competitors.length, profile, busy, discoveryDisabled, committedUrl, region, runDiscovery]);
+
+  // Change the market from the discover step → freeze the auto-default and re-run.
+  function changeRegion(next: string | null) {
+    regionTouched.current = true;
+    setRegion(next);
+    if (profile) void runDiscovery(profile, committedUrl, next);
+  }
 
   // ── Step 3 helpers ─────────────────────────────────────────────────────
   const selectedCount = competitors.filter((c) => c.selected).length;
@@ -641,6 +675,7 @@ export function OnboardingForm({
         savedCandidates: competitors.filter((c) => !c.selected).map(toCandidate),
         dismissedCandidates: removed.map(toCandidate),
         monitoringPrefs: { frequency, sources },
+        discoveryRegion: region,
         onboardingSessionId: sessionId ?? undefined,
       });
       trackOnboarding(ONBOARDING_EVENTS.COMPETITORS_FINALIZED, sessionId, {
@@ -739,6 +774,8 @@ export function OnboardingForm({
               selectedCount={selectedCount}
               maxCompetitors={maxCompetitors}
               plan={plan}
+              region={region}
+              onRegionChange={changeRegion}
               toggleCompetitor={toggleCompetitor}
               removeCompetitor={removeCompetitor}
               manualUrl={manualUrl}
@@ -1296,6 +1333,8 @@ function DiscoverStep({
   selectedCount,
   maxCompetitors,
   plan,
+  region,
+  onRegionChange,
   toggleCompetitor,
   removeCompetitor,
   manualUrl,
@@ -1311,6 +1350,8 @@ function DiscoverStep({
   selectedCount: number;
   maxCompetitors: number;
   plan: Plan;
+  region: string | null;
+  onRegionChange: (region: string | null) => void;
   toggleCompetitor: (url: string) => void;
   removeCompetitor: (url: string) => void;
   manualUrl: string;
@@ -1335,6 +1376,32 @@ function DiscoverStep({
       <p className="text-sm text-muted-foreground mt-3">
         Check the ones that really matter — you can add or remove more later.
       </p>
+
+      <div className="mt-5 flex flex-wrap items-center gap-2">
+        <Label htmlFor="discover-market" className="text-sm text-muted-foreground">
+          Find competitors in
+        </Label>
+        <Select
+          value={region ?? "global"}
+          onValueChange={(v) => onRegionChange(v === "global" ? null : v)}
+          disabled={busy}
+        >
+          <SelectTrigger id="discover-market" className="h-8 w-auto min-w-48">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="global">Global (no preference)</SelectItem>
+            {DISCOVERY_REGIONS.map((r) => (
+              <SelectItem key={r.code} value={r.code}>
+                {r.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <span className="text-meta text-muted-foreground w-full sm:w-auto">
+          Biases results toward a market — global players still show up.
+        </span>
+      </div>
 
       {noStrongMatch && (
         <div className="mt-6 flex items-start gap-3 rounded-md border border-border-strong bg-surface-2/60 px-4 py-3">

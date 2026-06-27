@@ -106,6 +106,10 @@
     "./sitemap": {
       "types": "./src/sitemap/index.ts",
       "default": "./src/sitemap/index.ts"
+    },
+    "./block-detection": {
+      "types": "./src/lib/block-detection.ts",
+      "default": "./src/lib/block-detection.ts"
     }
   },
   "scripts": {

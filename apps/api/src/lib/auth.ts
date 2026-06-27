@@ -1,13 +1,14 @@
 import { betterAuth } from "better-auth";
 import { emailOTP, twoFactor } from "better-auth/plugins";
 import { passkey } from "@better-auth/passkey";
-import { createAuthMiddleware } from "better-auth/api";
+import { createAuthMiddleware, APIError } from "better-auth/api";
 import { deleteSessionCookie } from "better-auth/cookies";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { db } from "./db";
 import { users } from "@outrival/db";
 import * as schema from "@outrival/db";
 import { sendSignInCodeEmail, sendEmailChangeCodeEmail } from "./sign-in-email";
+import { isDisposableEmail } from "./disposable-email";
 
 const SIGN_IN_OTP_TTL_SECONDS = 600; // 10 minutes
 
@@ -98,6 +99,17 @@ export const auth = betterAuth({
       // to the NEW address and the email only changes once they confirm it.
       changeEmail: { enabled: true },
       sendVerificationOTP: async ({ email, otp, type }) => {
+        // Universal OTP-send backstop: covers our /check-and-send-magic-link, Better
+        // Auth's direct /email-otp/send-verification-otp, AND change-email. Throwing
+        // here means a disposable address never even costs us a Resend email. The
+        // custom endpoint swallows this (anti-enumeration generic response); the
+        // direct path surfaces the 400.
+        if (isDisposableEmail(email)) {
+          throw new APIError("BAD_REQUEST", {
+            code: "DISPOSABLE_EMAIL",
+            message: "Temporary email addresses aren't accepted",
+          });
+        }
         if (type === "change-email") {
           // Goes to the new address the user is moving to.
           await sendEmailChangeCodeEmail({
@@ -223,6 +235,15 @@ export const auth = betterAuth({
         // Better Auth `user` table (read by the session/header) and the mirrored
         // `users` table below (the `after` hook copies the now-derived name).
         before: async (user) => {
+          // Final net under EVERY sign-up method (email-OTP verify, /sign-up/email
+          // password sign-up, etc.). No account is ever created on a throwaway
+          // domain, even if a path skips the send-time checks above.
+          if (isDisposableEmail(user.email)) {
+            throw new APIError("BAD_REQUEST", {
+              code: "DISPOSABLE_EMAIL",
+              message: "Temporary email addresses aren't accepted",
+            });
+          }
           if (user.name && user.name.trim()) return;
           return { data: { ...user, name: nameFromEmail(user.email) } };
         },

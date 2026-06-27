@@ -27,7 +27,10 @@ export const pricingHistory = pgTable(
     id: uuid(),
     competitorId: text("competitor_id").notNull(),
     planName: text("plan_name").notNull(),
-    price: doublePrecision("price").notNull(),
+    // Nullable: quote-based tiers ("Enterprise", "Contact sales", "Custom") carry
+    // no public number. They're still real plans worth tracking, so we keep the
+    // row (price = null) instead of dropping it — numeric readers filter null.
+    price: doublePrecision("price"),
     currency: text("currency").notNull(),
     billingPeriod: text("billing_period").notNull(),
     status: text("status").notNull().default("unknown"),

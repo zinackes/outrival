@@ -1,8 +1,9 @@
 import { z } from "zod";
 
-// Hardcoded set of the most common disposable email domains. Enriched by
-// observation over time (see findings.md). For an exhaustive list, the
-// `disposable-email-domains` npm package could back this later.
+// Tiny curated set of the most common disposable domains — kept here only for
+// instant client-side feedback (this schema ships in the web bundle, so it must
+// stay small). The AUTHORITATIVE, comprehensive block runs server-side against
+// the full `disposable-email-domains` list — see apps/api/src/lib/disposable-email.ts.
 const DISPOSABLE_DOMAINS = new Set<string>([
   "mailinator.com",
   "10minutemail.com",

@@ -6,6 +6,7 @@ import { chromium, type Browser, type Page, type Response } from "patchright"; /
 import { patchrightLaunchOptions, type ProxyTier } from "./proxy";
 import { realisticHeaders, realisticUserAgent } from "./fingerprint";
 import { navWaitUntil, settleAfterNav } from "./nav-strategy";
+import { isCloudflareChallenge } from "./block-detection";
 
 // Cascade level a scrape was served from (patch-20). 0/1 are free (no proxy),
 // 2/3/4 cost money. Stored per monitor as `requiresLevel` once learned.
@@ -220,14 +221,4 @@ async function scrollThroughPage(page: Page): Promise<void> {
       await page.waitForTimeout(500);
     }
   }
-}
-
-export function isCloudflareChallenge(html: string): boolean {
-  return (
-    html.includes("cf-challenge-running") ||
-    html.includes("cf-browser-verification") ||
-    html.includes("Just a moment...") ||
-    html.includes("checking your browser") ||
-    /<title>[^<]*cloudflare/i.test(html)
-  );
 }

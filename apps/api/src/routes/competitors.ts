@@ -188,7 +188,7 @@ async function buildOverview(competitorId: string) {
   // Current tier set = the most recent recorded_at batch for this competitor.
   const pricingNow = await analyticsQuery<{
     plan_name: string;
-    price: number;
+    price: number | null;
     currency: string;
     billing_period: string;
   }>(sql`
@@ -807,7 +807,7 @@ competitorsRouter.get("/:id/pricing-history", async (c) => {
 
   const rows = await analyticsQuery<{
     plan_name: string;
-    price: number;
+    price: number | null;
     currency: string;
     billing_period: string;
     recorded_at: string;

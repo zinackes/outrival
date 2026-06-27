@@ -378,7 +378,7 @@ function PricingCard({
                 <Input
                   type="number"
                   min={0}
-                  value={Number.isFinite(t.price) ? t.price : 0}
+                  value={t.price ?? 0}
                   onChange={(e) =>
                     setTier(i, { price: e.target.value === "" ? 0 : Number(e.target.value) })
                   }
@@ -471,8 +471,14 @@ function PricingCard({
             <div key={`${t.plan_name}-${i}`} className="flex items-center justify-between text-sm">
               <span>{t.plan_name}</span>
               <span style={mono} className="text-foreground">
-                {t.price === 0 ? "Free" : `${t.price} ${t.currency}`}
-                <span className="text-[var(--muted-2)]">/{t.billing_period}</span>
+                {t.price === null ? (
+                  "Custom"
+                ) : (
+                  <>
+                    {t.price === 0 ? "Free" : `${t.price} ${t.currency}`}
+                    <span className="text-[var(--muted-2)]">/{t.billing_period}</span>
+                  </>
+                )}
               </span>
             </div>
           ))}
@@ -502,11 +508,12 @@ const RESCAN_CATEGORIES: { key: MyProductRescanCategory; label: string }[] = [
   { key: "pricing", label: "Pricing" },
   { key: "features", label: "Features" },
   { key: "techStack", label: "Tech stack" },
+  { key: "jobs", label: "Hiring" },
 ];
 
 /** Re-scan control with selective targets. Picking cards re-scans only their sources
  * (Features + Tech stack share one homepage scrape server-side); "Everything" re-scans
- * all the cards shown here (homepage + pricing) — not hidden self monitors like jobs.
+ * every card shown here (homepage, pricing, jobs).
  * Shown for live products; repo/idea stages use a plain button. */
 function RescanMenu({
   busy,
@@ -579,7 +586,7 @@ function JobsCard({ jobs }: { jobs: { total: number; items: MyProductJob[] } }) 
       {jobs.items.length === 0 ? (
         <p className="text-sm text-muted-foreground">No open roles detected on your site yet.</p>
       ) : (
-        <ul className="divide-y divide-border">
+        <ul className="divide-y divide-border max-h-80 overflow-y-auto">
           {jobs.items.map((job) => (
             <li key={job.id} className="flex items-center gap-3 py-2 first:pt-0 last:pb-0">
               <div className="min-w-0 flex-1">

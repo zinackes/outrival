@@ -20,12 +20,15 @@ export function buildPricingSeries(history: PricingHistoryPoint[]): {
   points: Array<Record<string, number | string>>;
   byPlan: Record<string, PricingHistoryPoint[]>;
 } {
+  // byPlan keeps every plan (incl. quote-based "Custom" tiers) for the tier list;
+  // the chart points carry numeric prices only — a null-priced tier has no point.
   const byPlan: Record<string, PricingHistoryPoint[]> = {};
   for (const p of history) {
     (byPlan[p.plan_name] ??= []).push(p);
   }
   const byDate = new Map<string, Record<string, number | string>>();
   for (const p of history) {
+    if (p.price == null) continue;
     const date = shortDate(p.recorded_at);
     const row = byDate.get(date) ?? { date };
     row[p.plan_name] = p.price;

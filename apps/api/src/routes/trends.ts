@@ -225,6 +225,7 @@ trendsRouter.get("/series", async (c) => {
       SELECT recorded_at AS "t", plan_name AS "key", price AS "value"
       FROM pricing_history
       WHERE competitor_id = ${competitorId}
+        AND price IS NOT NULL
         AND recorded_at >= ${fromIso}::timestamp AND recorded_at <= ${toIso}::timestamp
       ORDER BY recorded_at ASC
     `);

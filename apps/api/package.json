@@ -18,6 +18,7 @@
     "@sentry/node": "^10.54.0",
     "@trigger.dev/sdk": "^4.4.6",
     "better-auth": "^1.6.22",
+    "disposable-email-domains-js": "^1.25.0",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.12.22",
     "mammoth": "^1.12.0",

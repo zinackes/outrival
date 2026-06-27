@@ -169,7 +169,7 @@ myProductRouter.get("/", async (c) => {
   // Latest pricing batch from analytics (best-effort: [] on error).
   const pricingRows = await analyticsQuery<{
     plan_name: string;
-    price: number;
+    price: number | null;
     currency: string;
     billing_period: string;
     recorded_at: string;
@@ -411,11 +411,12 @@ const RESCAN_CATEGORY_SOURCES = {
   pricing: ["pricing"],
   features: ["homepage"],
   techStack: ["homepage"],
+  jobs: ["jobs"],
 } as const satisfies Record<string, readonly string[]>;
 
 const RescanSchema = z.object({
   categories: z
-    .array(z.enum(["profile", "pricing", "features", "techStack"]))
+    .array(z.enum(["profile", "pricing", "features", "techStack", "jobs"]))
     .min(1)
     .optional(),
 });

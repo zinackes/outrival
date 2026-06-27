@@ -368,7 +368,7 @@ export function OverviewView() {
         title="Overview"
         sub={
           watching
-            ? `Watching ${comps.length} competitor${comps.length > 1 ? "s" : ""} — first signals appear here as scans complete.`
+            ? `Watching ${comps.length} competitor${comps.length > 1 ? "s" : ""}.`
             : counts.signals > 0
               ? `${counts.activeCompetitors} competitor${counts.activeCompetitors > 1 ? "s" : ""} moved in this period · ${counts.critical} critical signal${counts.critical > 1 ? "s" : ""} pending.`
               : `No signals in the last ${rangeDays} days.`
@@ -392,7 +392,7 @@ export function OverviewView() {
         <EmptyState
           icon={Radar}
           title={`Outrival is watching ${comps.length} competitor${comps.length > 1 ? "s" : ""}`}
-          description="Scans run continuously. Your first signals — pricing, hiring, product and content moves — land here the moment something changes. Nothing to handle yet."
+          description="Scans run continuously. Your first signals — pricing, hiring, product and content moves — land here the moment something changes."
           actions={
             <Button asChild size="sm" variant="outline">
               <Link href="/dashboard/competitors">

@@ -168,7 +168,8 @@ export interface JobTrendPoint {
 
 export interface PricingHistoryPoint {
   plan_name: string;
-  price: number;
+  // null for quote-based tiers (Enterprise / "Contact sales" / Custom).
+  price: number | null;
   currency: string;
   billing_period: string;
   recorded_at: string;
@@ -542,11 +543,12 @@ export interface CompareColumn {
   url: string | null;
   positioning: { category: string | null; summary: string | null };
   pricing: {
-    entry: number;
-    top: number;
+    // null when only quote-based tiers were captured (no public number).
+    entry: number | null;
+    top: number | null;
     currency: string | null;
     billingPeriod: string | null;
-    plans: Array<{ name: string; price: number; billingPeriod: string | null }>;
+    plans: Array<{ name: string; price: number | null; billingPeriod: string | null }>;
   } | null;
   hiring: {
     totalOpen: number;
@@ -869,7 +871,8 @@ export interface SelfProfile {
 
 export interface MyProductPricingTier {
   plan_name: string;
-  price: number;
+  // null for quote-based tiers (Enterprise / Custom).
+  price: number | null;
   currency: string;
   billing_period: string;
 }
@@ -928,7 +931,7 @@ export interface SelfProductChange {
 
 // Selective re-scan targets, one per My Product card. profile/features/techStack
 // all map to the homepage scrape server-side (deduped); pricing to the pricing monitor.
-export type MyProductRescanCategory = "profile" | "pricing" | "features" | "techStack";
+export type MyProductRescanCategory = "profile" | "pricing" | "features" | "techStack" | "jobs";
 
 export interface MyProductPatch {
   category?: string;
@@ -1377,7 +1380,7 @@ export type CompetitorOverview = {
   }>;
   pricingNow: Array<{
     plan_name: string;
-    price: number;
+    price: number | null;
     currency: string;
     billing_period: string;
   }>;
@@ -1874,6 +1877,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ providerId }),
     }),
+  regenerateBackupCodes: (body: { code: string }) =>
+    request<{ backupCodes: string[] }>("/api/auth/regenerate-backup-codes", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   onboardingStatus: () => request<OnboardingStatus>("/api/onboarding/status"),
   analyzeUrl: (productUrl: string) =>
     request<{ profile: ProductProfile }>("/api/onboarding/analyze-url", {
@@ -1909,11 +1917,13 @@ export const api = {
   discoverCompetitors: (
     profile: ProductProfile,
     productUrl?: string | null,
+    // Primary market to bias discovery toward (ISO alpha-2). null/undefined = global.
+    region?: string | null,
     signal?: AbortSignal,
   ) =>
     request<{ competitors: DiscoveredCompetitor[] }>("/api/onboarding/discover", {
       method: "POST",
-      body: JSON.stringify({ profile, productUrl: productUrl ?? null }),
+      body: JSON.stringify({ profile, productUrl: productUrl ?? null, region: region ?? null }),
       // When provided, the caller's abort signal replaces the default request
       // timeout — used by the onboarding background prefetch to cancel in-flight
       // discovery when the profile changes (patch-25).
@@ -1954,6 +1964,9 @@ export const api = {
     savedCandidates?: Array<{ url: string; title?: string; overlapScore?: number; reason?: string }>;
     dismissedCandidates?: Array<{ url: string; title?: string; overlapScore?: number; reason?: string }>;
     monitoringPrefs: { frequency: "daily" | "weekly"; sources: Array<"homepage" | "pricing" | "blog"> };
+    // Primary market chosen at discovery (ISO alpha-2) — persisted into the org's
+    // detectionConfig so the weekly cron + on-demand detect inherit it. null = global.
+    discoveryRegion?: string | null;
     // Links the run to its resumable session so /complete can flip it to
     // analysis_in_progress (patch-25 — drives the dashboard streaming panel).
     onboardingSessionId?: string;

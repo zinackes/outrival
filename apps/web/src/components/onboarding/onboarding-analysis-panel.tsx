@@ -48,10 +48,6 @@ export function OnboardingAnalysisPanel({ onTick }: { onTick?: () => void }) {
           </li>
         ))}
       </ul>
-
-      <p className="mt-3 text-meta text-muted-foreground">
-        First signals appear here as soon as a change is detected — no need to wait.
-      </p>
     </Card>
   );
 }

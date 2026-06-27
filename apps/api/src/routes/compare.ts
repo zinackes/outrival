@@ -44,7 +44,8 @@ function platformOf(p: PlatformProfile | null): PlatformDetail | null {
 interface RawPricingPlan {
   competitorId: string;
   planName: string;
-  price: number;
+  // null for quote-based tiers (Enterprise / Custom).
+  price: number | null;
   currency: string | null;
   billingPeriod: string | null;
 }
@@ -66,11 +67,12 @@ interface RawReview {
 }
 
 interface PricingDetail {
-  entry: number;
-  top: number;
+  // null when the competitor exposes only quote-based tiers (no public number).
+  entry: number | null;
+  top: number | null;
   currency: string | null;
   billingPeriod: string | null;
-  plans: Array<{ name: string; price: number; billingPeriod: string | null }>;
+  plans: Array<{ name: string; price: number | null; billingPeriod: string | null }>;
 }
 interface HiringDetail {
   totalOpen: number;
@@ -214,8 +216,12 @@ compareRouter.get("/", async (c) => {
         plans: [{ name: p.planName, price: p.price, billingPeriod: p.billingPeriod }],
       });
     } else {
-      cur.entry = Math.min(cur.entry, p.price);
-      cur.top = Math.max(cur.top, p.price);
+      // The entry/top band is numeric-only; quote-based tiers (price null) join
+      // the plan list but never the band.
+      if (p.price != null) {
+        cur.entry = cur.entry == null ? p.price : Math.min(cur.entry, p.price);
+        cur.top = cur.top == null ? p.price : Math.max(cur.top, p.price);
+      }
       cur.plans.push({ name: p.planName, price: p.price, billingPeriod: p.billingPeriod });
     }
   }

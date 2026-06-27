@@ -281,8 +281,7 @@ export function TrendsView() {
             No trends yet
           </div>
           <div className="mx-auto max-w-[400px] text-sm">
-            Pricing, hiring, review and tech history build up over the next few scrapes — check back
-            once your competitors have been monitored for a while.
+            Pricing, hiring, review and tech history build up over the next few scrapes.
           </div>
         </div>
       ) : (

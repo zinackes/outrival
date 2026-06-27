@@ -394,8 +394,7 @@ export function DiscoveryView() {
                 No new competitors to review
               </div>
               <div className="text-sm max-w-[380px] mx-auto">
-                Detection runs every Sunday evening. The next candidates will
-                appear here as soon as they cross the configured overlap threshold.
+                Detection runs every Sunday evening.
               </div>
             </>
           )}

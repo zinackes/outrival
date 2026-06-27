@@ -11,6 +11,7 @@ import { authRateLimit } from "../middleware/auth-rate-limit";
 import { authMiddleware } from "../middleware/auth";
 import { errorBody } from "../lib/errors";
 import { verifyReauthCode } from "../lib/reauth";
+import { isDisposableEmail } from "../lib/disposable-email";
 
 export const authRouter = new Hono<{ Variables: { user: { id: string } } }>();
 
@@ -63,6 +64,20 @@ authRouter.post("/check-and-send-magic-link", authRateLimit, async (c) => {
     );
   }
   const email = parsed.data;
+
+  // Block throwaway inboxes here for a clean, immediate error (the comprehensive
+  // blocklist lives server-side; emailSchema only carries a tiny curated set for
+  // client feedback). Same generic shape as the format failure above — it leaks
+  // nothing about the account, only that the domain is unusable. lib/auth.ts
+  // backstops every other creation path (direct OTP send, /sign-up/email).
+  if (isDisposableEmail(email)) {
+    return c.json(
+      errorBody("invalid_email", "That email address can't be used. Try another one.", {
+        userAction: "retry",
+      }),
+      400,
+    );
+  }
 
   // Best-effort analytics only — never branches the HTTP response below.
   const existing = await db.query.users
@@ -258,4 +273,42 @@ authRouter.post("/disconnect-oauth", authMiddleware, async (c) => {
     .delete(account)
     .where(and(eq(account.userId, user.id), eq(account.providerId, providerId)));
   return c.json({ ok: true });
+});
+
+/**
+ * Regenerate the 2FA recovery (backup) codes from Settings > Security. Generating
+ * a fresh set invalidates the previous one (Better Auth), so this is a credential
+ * change — gated by the same emailed step-up code as /set-password and the danger
+ * zone, not just an open session. Only reachable with 2FA already on; the codes
+ * are returned once and shown to the user, never stored client-side.
+ */
+authRouter.post("/regenerate-backup-codes", authMiddleware, async (c) => {
+  const user = c.get("user");
+  const body = (await c.req.json().catch(() => ({}))) as { code?: unknown };
+  const code = typeof body.code === "string" ? body.code : "";
+
+  if (!(await verifyReauthCode(user.id, code))) {
+    return c.json(
+      errorBody("reauth_failed", "That confirmation code is invalid or expired.", {
+        userAction: "retry",
+      }),
+      400,
+    );
+  }
+
+  try {
+    const res = await auth.api.generateBackupCodes({
+      headers: c.req.raw.headers,
+      body: {},
+    });
+    const backupCodes = (res as { backupCodes?: string[] }).backupCodes ?? [];
+    return c.json({ backupCodes });
+  } catch {
+    return c.json(
+      errorBody("backup_codes_failed", "Couldn't regenerate the recovery codes. Try again.", {
+        userAction: "retry",
+      }),
+      400,
+    );
+  }
 });

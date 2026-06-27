@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { Briefcase, Activity, ArrowUp, ArrowDown, ExternalLink } from "lucide-react";
-import { api, type JobsByDepartment, type JobTrendPoint } from "@/lib/api";
+import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
 import { buildJobTrend, mergeTrendsByDate } from "./charts";
@@ -38,27 +38,26 @@ export function HiringTab({
   onEnable,
   refreshTick,
 }: { competitorId: string; refreshTick?: number } & MonitorSourceProps) {
-  const [jobs, setJobs] = useState<JobsByDepartment | null>(null);
-  const [trends, setTrends] = useState<JobTrendPoint[] | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  // refreshTick is part of the key so a forced re-scan invalidates the cache;
+  // keepPreviousData keeps the last result on screen during that refetch (and the
+  // shared QueryClient serves the cache instantly on tab re-switch) → no skeleton
+  // flash except on the genuine first load.
+  const jobsQuery = useQuery({
+    queryKey: ["competitor", competitorId, "jobs", refreshTick],
+    queryFn: () => api.getCompetitorJobs(competitorId),
+    placeholderData: keepPreviousData,
+  });
+  const trendsQuery = useQuery({
+    queryKey: ["competitor", competitorId, "jobTrends", refreshTick],
+    queryFn: () => api.getCompetitorJobTrends(competitorId).then((t) => t.trends),
+    placeholderData: keepPreviousData,
+  });
 
-  useEffect(() => {
-    let cancelled = false;
-    setErr(null);
-    api
-      .getCompetitorJobs(competitorId)
-      .then((j) => !cancelled && setJobs(j))
-      .catch((e) => !cancelled && setErr(String(e)));
-    api
-      .getCompetitorJobTrends(competitorId)
-      .then((t) => !cancelled && setTrends(t.trends))
-      .catch((e) => !cancelled && setErr(String(e)));
-    return () => {
-      cancelled = true;
-    };
-  }, [competitorId, refreshTick]);
+  const jobs = jobsQuery.data ?? null;
+  const trends = trendsQuery.data ?? null;
 
-  if (err) return <Empty text="Couldn't load this data right now — try again in a moment." />;
+  if (jobsQuery.isError || trendsQuery.isError)
+    return <Empty text="Couldn't load this data right now — try again in a moment." />;
   if (!jobs || !trends) return <TabLoading />;
   if (jobs.total === 0) {
     return (

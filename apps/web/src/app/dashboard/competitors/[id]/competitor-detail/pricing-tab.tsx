@@ -3,12 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { DollarSign, Activity, ArrowUp, ArrowDown, Percent } from "lucide-react";
 import {
   api,
   type Competitor,
   type PricingHistoryPoint,
-  type MyProduct,
   type MyProductPricingTier,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -48,22 +48,26 @@ export function PricingTab({
   refreshTick?: number;
   onRefresh: () => void;
 } & MonitorSourceProps) {
-  const [history, setHistory] = useState<PricingHistoryPoint[] | null>(null);
+  // refreshTick is part of the key so a forced re-scan invalidates the cache;
+  // keepPreviousData keeps the last result on screen during that refetch (and the
+  // shared QueryClient serves the cache instantly on tab re-switch) → no skeleton
+  // flash except on the genuine first load.
+  const historyQuery = useQuery({
+    queryKey: ["competitor", competitorId, "pricingHistory", refreshTick],
+    queryFn: () => api.getCompetitorPricingHistory(competitorId).then((r) => r.history),
+    placeholderData: keepPreviousData,
+  });
   // Our own product, for the You-vs-them pricing comparison (best-effort — its
   // absence just hides the comparison, it never blocks the competitor's pricing).
-  const [myProduct, setMyProduct] = useState<MyProduct | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const myProductQuery = useQuery({
+    queryKey: ["myProduct"],
+    queryFn: () => api.getMyProduct().then((r) => r.product),
+    placeholderData: keepPreviousData,
+    retry: false,
+  });
 
-  useEffect(() => {
-    api
-      .getCompetitorPricingHistory(competitorId)
-      .then((r) => setHistory(r.history))
-      .catch((e) => setErr(String(e)));
-    api
-      .getMyProduct()
-      .then((r) => setMyProduct(r.product))
-      .catch(() => {});
-  }, [competitorId, refreshTick]);
+  const history = historyQuery.data ?? null;
+  const myProduct = myProductQuery.data ?? null;
 
   const series = useMemo(
     () => (history ? buildPricingSeries(history) : null),
@@ -78,7 +82,8 @@ export function PricingTab({
     : false;
   const hasCapturedTiers = (history?.length ?? 0) > 0;
 
-  if (err) return <Empty text="Couldn't load this data right now — try again in a moment." />;
+  if (historyQuery.isError)
+    return <Empty text="Couldn't load this data right now — try again in a moment." />;
   if (history === null) return <TabLoading />;
   if (history.length === 0 || !series) {
     return (

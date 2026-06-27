@@ -6,7 +6,7 @@ Stack : Next.js 15, Tailwind v4, shadcn/ui new-york, Better Auth client
 - App Router uniquement — pas de pages/ directory
 - Server Components par défaut — Client Component uniquement si interactivité requise
 - "use client" en haut du fichier, jamais dans un Server Component
-- Fetching : fetch dans les Server Components, TanStack Query dans les Client Components
+- Fetching : fetch dans les Server Components, TanStack Query dans les Client Components — pattern, prefetch SSR + hydration, conventions queryKey : `docs/tanstack-query.md`
 - Formulaires : react-hook-form + zod + shadcn/ui Form
 - Auth : useSession() de Better Auth pour l'état client
 

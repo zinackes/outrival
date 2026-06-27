@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { Lock, Plus, Loader2, Activity, Star, Settings2 } from "lucide-react";
 import {
   PLAN_LABELS,
@@ -14,12 +15,7 @@ import {
   type ReviewSourceType,
   type MonitorFrequency,
 } from "@outrival/shared";
-import {
-  api,
-  type Monitor,
-  type ReviewsData,
-  type ReviewScorePoint,
-} from "@/lib/api";
+import { api, type Monitor } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -231,28 +227,28 @@ export function ReviewsTab({
   onEdit: (id: string, patch: { url?: string; frequency?: MonitorFrequency }) => Promise<void>;
   onSwitch: (oldMonitorId: string, source: SourceType, url: string) => Promise<void>;
 } & MonitorSourceProps) {
-  const [reviews, setReviews] = useState<ReviewsData | null>(null);
-  const [scores, setScores] = useState<ReviewScorePoint[] | null>(null);
-  const [err, setErr] = useState<string | null>(null);
   const [managing, setManaging] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    setErr(null);
-    api
-      .getCompetitorReviews(competitorId)
-      .then((r) => !cancelled && setReviews(r))
-      .catch((e) => !cancelled && setErr(String(e)));
-    api
-      .getCompetitorReviewScores(competitorId)
-      .then((s) => !cancelled && setScores(s.scores))
-      .catch((e) => !cancelled && setErr(String(e)));
-    return () => {
-      cancelled = true;
-    };
-  }, [competitorId, refreshTick]);
+  // refreshTick is part of the key so a forced re-scan invalidates the cache;
+  // keepPreviousData keeps the last result on screen during that refetch (and the
+  // shared QueryClient serves the cache instantly on tab re-switch) → no skeleton
+  // flash except on the genuine first load.
+  const reviewsQuery = useQuery({
+    queryKey: ["competitor", competitorId, "reviews", refreshTick],
+    queryFn: () => api.getCompetitorReviews(competitorId),
+    placeholderData: keepPreviousData,
+  });
+  const scoresQuery = useQuery({
+    queryKey: ["competitor", competitorId, "reviewScores", refreshTick],
+    queryFn: () => api.getCompetitorReviewScores(competitorId).then((s) => s.scores),
+    placeholderData: keepPreviousData,
+  });
 
-  if (err) return <Empty text="Couldn't load this data right now — try again in a moment." />;
+  const reviews = reviewsQuery.data ?? null;
+  const scores = scoresQuery.data ?? null;
+
+  if (reviewsQuery.isError || scoresQuery.isError)
+    return <Empty text="Couldn't load this data right now — try again in a moment." />;
   if (!reviews || !scores) return <TabLoading />;
 
   const reviewMonitor = monitors.find(

@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { Geist, Geist_Mono } from "next/font/google";
 import localFont from "next/font/local";
 import { ThemeProvider } from "@/components/theme-provider";
+import { QueryProvider } from "@/components/query-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import { PostHogProvider } from "@/lib/posthog/provider";
@@ -136,13 +137,15 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <PostHogProvider>
-            <TooltipProvider delayDuration={200}>{children}</TooltipProvider>
-            <Suspense fallback={null}>
-              <PostHogPageView />
-            </Suspense>
-            <ConsentBanner />
-          </PostHogProvider>
+          <QueryProvider>
+            <PostHogProvider>
+              <TooltipProvider delayDuration={200}>{children}</TooltipProvider>
+              <Suspense fallback={null}>
+                <PostHogPageView />
+              </Suspense>
+              <ConsentBanner />
+            </PostHogProvider>
+          </QueryProvider>
           <Toaster />
         </ThemeProvider>
       </body>

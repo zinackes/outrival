@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { api, type Digest, type DigestSection } from "@/lib/api";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { type Digest, type DigestSection } from "@/lib/api";
+import { digestsQuery } from "@/lib/queries";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,19 +25,14 @@ const TONE_TEXT = {
 } as const;
 
 export function DigestsList() {
-  const [digests, setDigests] = useState<Digest[] | null>(null);
+  const digestsQ = useQuery(digestsQuery());
+  const digests = digestsQ.data ?? null;
   const [active, setActive] = useState<Digest | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    api
-      .listDigests()
-      .then((r) => setDigests(r.digests))
-      .catch((e) => setError(String(e)));
-  }, []);
-
-  if (error)
-    return <p className="text-sm text-muted-foreground">Error: {error}</p>;
+  if (digestsQ.error)
+    return (
+      <p className="text-sm text-muted-foreground">Error: {String(digestsQ.error)}</p>
+    );
   if (digests === null)
     return (
       <ul className="flex flex-col gap-3" aria-busy="true">

@@ -236,7 +236,6 @@ export function CompetitorDetailView({ id }: { id: string }) {
   const [tab, setTab] = useState<TabKey>("overview");
   const [showDelete, setShowDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [refreshTick, setRefreshTick] = useState(0);
   const [paywall, setPaywall] = useState<PaywallReason | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scrapingStartRef = useRef<
@@ -403,7 +402,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
         if (unchangedLabels.length > 0) {
           toast.info("Scrape complete · no change", { description: unchangedLabels.join(", ") });
         }
-        setRefreshTick((t) => t + 1);
+        void queryClient.invalidateQueries({ queryKey: ["competitor", id] });
       }
       if (failed.length > 0) {
         for (const mid of failed) {
@@ -412,7 +411,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
             description: friendlyScrapeError(m?.lastError, m?.sourceType),
           });
         }
-        setRefreshTick((t) => t + 1);
+        void queryClient.invalidateQueries({ queryKey: ["competitor", id] });
       }
       if (timedOut.length > 0) {
         const labels = timedOut
@@ -898,9 +897,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
                 scrapingIds={scrapingIds}
                 onRun={requestRunMonitor}
                 onEnable={enableMonitor}
-                onRefresh={refresh}
-                refreshTick={refreshTick}
-              />
+                onRefresh={refresh}              />
             </TabsContent>
             <TabsContent value="hiring" className={TAB_PANEL_CLASS}>
               <HiringTab
@@ -908,9 +905,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
                 monitors={monitors}
                 scrapingIds={scrapingIds}
                 onRun={requestRunMonitor}
-                onEnable={enableMonitor}
-                refreshTick={refreshTick}
-              />
+                onEnable={enableMonitor}              />
             </TabsContent>
             <TabsContent value="reviews" className={TAB_PANEL_CLASS}>
               <ReviewsTab
@@ -920,9 +915,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
                 onRun={requestRunMonitor}
                 onEnable={enableMonitor}
                 onEdit={editMonitor}
-                onSwitch={switchReviewSource}
-                refreshTick={refreshTick}
-                plan={plan}
+                onSwitch={switchReviewSource}                plan={plan}
                 onLockedSource={(source) =>
                   setPaywall({ code: "plan_locked_source", source, plan })
                 }

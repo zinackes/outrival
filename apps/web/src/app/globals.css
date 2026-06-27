@@ -16,14 +16,14 @@
   --surface: oklch(0.998 0.001 260);
   --surface-2: oklch(0.96 0.004 260);
   --surface-3: oklch(0.93 0.006 260); /* elevated hover surface — must differ from popover (surface-2) */
-  /* Logo chip — favicon avatars sit on a constant tile in BOTH themes (NOT
-     overridden in .dark). <CompAvatar> measures each favicon's luminance and picks
-     the chip that contrasts with it: a dark/transparent-dark glyph gets the light
-     chip (a black glyph on --surface-2 was invisible); a light glyph (pale green,
-     white, yellow…) gets the dark chip so it doesn't vanish on the off-white card.
-     Off-white / near-black, never pure #fff / #000. */
-  --logo-chip: #fafafa;
-  --logo-chip-dark: #1d1d1d;
+  /* Logo legibility halo — favicon glyphs sit bare on the avatar tile (no filled chip).
+     <CompAvatar> only intervenes when a transparent glyph's luminance is too close to
+     the current surface to read, drawing a 1px drop-shadow outline instead of a
+     discordant opposite-tone square. Dark halo outlines a pale glyph on the light
+     surface; light halo outlines a dark glyph on the dark surface. Not theme-overridden
+     — the component picks the direction from the favicon + the active theme. */
+  --logo-halo-dark: rgba(0, 0, 0, 0.85);
+  --logo-halo-light: rgba(255, 255, 255, 0.92);
   /* Stat-card gradient — surface is already near-white, so the lighter corner
      (top-left) stays at surface and the bottom-right settles a touch darker. */
   --gradient-card: linear-gradient(135deg, var(--surface) 0%, oklch(0.972 0.003 260) 100%);

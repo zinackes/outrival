@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTheme } from "next-themes";
 
 function domainFromUrl(url?: string | null): string | null {
   if (!url) return null;
@@ -14,41 +15,62 @@ function domainFromUrl(url?: string | null): string | null {
   }
 }
 
-// Tile tone is a function of the favicon, not the theme, so a domain's tone is
-// stable across every avatar on the page (and across renders). Cache it once.
-type Tone = "light" | "dark";
-const toneCache = new Map<string, Tone>();
+// A favicon's shape (how much of the square it fills) and its glyph luminance are
+// intrinsic to the image, not the theme — measure once per domain and cache. The render
+// *mode* is derived from this plus the active surface, so it stays theme-aware.
+type Measure = { coverage: number; lum: number };
+const measureCache = new Map<string, Measure>();
 
-// Read the proxied favicon's pixels (same-origin → canvas is not tainted) and pick
-// the chip that contrasts with it. Luminance is alpha-weighted: for a transparent
-// favicon only the opaque glyph counts; for an opaque one it's the whole square's
-// average. Light content → dark chip, dark content → light chip ("least worst" for
-// the rare opaque-but-low-contrast favicons — we still show the logo, never a blank).
-function measureTone(img: HTMLImageElement): Tone {
+// Read the proxied favicon's pixels (same-origin → canvas is not tainted). `coverage` is
+// the fraction of meaningfully-opaque pixels (an opaque branded square ≈ 1, a bare glyph
+// ≪ 1). `lum` is the alpha-weighted luminance of the opaque pixels — the glyph's own
+// tone — from 0 (black) to 1 (white).
+function measureFavicon(img: HTMLImageElement): Measure {
   const S = 32;
   const canvas = document.createElement("canvas");
   canvas.width = S;
   canvas.height = S;
   const ctx = canvas.getContext("2d");
-  if (!ctx) return "light";
+  if (!ctx) return { coverage: 0, lum: 1 };
   ctx.drawImage(img, 0, 0, S, S);
   const { data } = ctx.getImageData(0, 0, S, S);
   let lumSum = 0;
   let alphaSum = 0;
+  let opaque = 0;
   for (let i = 0; i < data.length; i += 4) {
     const a = data[i + 3] ?? 0;
+    if (a >= 128) opaque++;
     if (a === 0) continue;
     const r = data[i] ?? 0;
     const g = data[i + 1] ?? 0;
     const b = data[i + 2] ?? 0;
-    const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-    lumSum += lum * a;
+    lumSum += ((0.2126 * r + 0.7152 * g + 0.0722 * b) / 255) * a;
     alphaSum += a;
   }
-  if (alphaSum === 0) return "light";
-  // Bias toward the light chip (current behaviour) — only flip to the dark chip for
-  // genuinely light favicons, so mid-tone coloured logos keep the lighter tile.
-  return lumSum / alphaSum >= 0.55 ? "dark" : "light";
+  return {
+    coverage: opaque / (S * S),
+    lum: alphaSum === 0 ? 1 : lumSum / alphaSum,
+  };
+}
+
+type Mode =
+  | { kind: "fill" } // opaque branded square → full-bleed, carries its own background
+  | { kind: "bare" } // transparent glyph that already contrasts → no plate
+  | { kind: "halo"; color: string }; // glyph too close to the surface → 1px outline
+
+// Tier the treatment. An opaque favicon fills the tile (it brings its own background). A
+// transparent glyph sits bare on the tile unless its luminance is too close to the
+// current surface to read — then it gets a thin outline in the opposite direction (a dark
+// outline for a pale glyph on the light surface, a light outline for a dark glyph on the
+// dark surface). Never a filled chip: that opposite-tone square is what we're avoiding.
+function deriveMode(m: Measure, isDark: boolean): Mode {
+  if (m.coverage >= 0.85) return { kind: "fill" };
+  if (isDark) {
+    if (m.lum <= 0.4) return { kind: "halo", color: "var(--logo-halo-light)" };
+  } else if (m.lum >= 0.6) {
+    return { kind: "halo", color: "var(--logo-halo-dark)" };
+  }
+  return { kind: "bare" };
 }
 
 export function CompAvatar({
@@ -62,11 +84,26 @@ export function CompAvatar({
 }) {
   const letter = name ? name[0]!.toUpperCase() : "?";
   const domain = domainFromUrl(url);
+  const { resolvedTheme } = useTheme();
   const [failed, setFailed] = useState(false);
-  const [tone, setTone] = useState<Tone>(() =>
-    domain ? (toneCache.get(domain) ?? "light") : "light",
+  const [measure, setMeasure] = useState<Measure | null>(() =>
+    domain ? (measureCache.get(domain) ?? null) : null,
   );
   const showIcon = domain !== null && !failed;
+
+  // Prefer next-themes (re-renders on toggle); fall back to the html class for the first
+  // client paint before the hook resolves, so a dark-mode tile doesn't flash. The
+  // theme-dependent branch only matters once `measure` is set (post-hydration), so this
+  // never causes a hydration mismatch.
+  const isDark =
+    (resolvedTheme ??
+      (typeof document !== "undefined" &&
+      document.documentElement.classList.contains("dark")
+        ? "dark"
+        : "light")) === "dark";
+
+  const mode = measure ? deriveMode(measure, isDark) : null;
+  const pad = mode?.kind === "fill" ? 0 : Math.max(2, Math.round(size * 0.15));
 
   return (
     <div
@@ -86,45 +123,55 @@ export function CompAvatar({
         overflow: "hidden",
       }}
     >
-      {/* The initial sits underneath; once the favicon loads it covers the letter.
-          The icon renders on an adaptive chip (light or dark, chosen from the
-          favicon's own luminance) so it stays legible whatever its colour. Missing
-          URL or a load error leaves the letter visible — the avatar never renders
-          empty. */}
+      {/* The initial sits underneath; once the favicon loads it covers the letter. A
+          missing URL or a load error leaves the letter visible — never an empty box. */}
       {letter}
       {showIcon && (
-        // eslint-disable-next-line @next/next/no-img-element -- dynamic proxied icon, not a static asset
-        <img
-          src={`/api/favicon?domain=${encodeURIComponent(domain)}`}
-          alt=""
-          aria-hidden
-          loading="lazy"
-          onLoad={(e) => {
-            if (toneCache.has(domain)) return;
-            try {
-              const t = measureTone(e.currentTarget);
-              toneCache.set(domain, t);
-              setTone(t);
-            } catch {
-              // Cross-origin/decoding edge — keep the default light chip.
-            }
-          }}
-          onError={() => setFailed(true)}
-          style={{
-            position: "absolute",
-            inset: 0,
-            width: "100%",
-            height: "100%",
-            objectFit: "contain",
-            padding: Math.max(2, Math.round(size * 0.15)),
-            background:
-              tone === "dark" ? "var(--logo-chip-dark)" : "var(--logo-chip)",
-            // Hairline edge so the chip reads as a tile against the card without a
-            // hard same-colour seam (white-on-white in light, the dark chip in dark).
-            boxShadow: "inset 0 0 0 1px var(--border)",
-            borderRadius: 4,
-          }}
-        />
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element -- dynamic proxied icon, not a static asset */}
+          <img
+            src={`/api/favicon?domain=${encodeURIComponent(domain)}`}
+            alt=""
+            aria-hidden
+            loading="lazy"
+            onLoad={(e) => {
+              if (measureCache.has(domain)) return;
+              try {
+                const m = measureFavicon(e.currentTarget);
+                measureCache.set(domain, m);
+                setMeasure(m);
+              } catch {
+                // Cross-origin/decoding edge — keep the bare treatment.
+              }
+            }}
+            onError={() => setFailed(true)}
+            style={{
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+              objectFit: "contain",
+              padding: pad,
+              filter:
+                mode?.kind === "halo"
+                  ? `drop-shadow(0 0 1px ${mode.color}) drop-shadow(0 0 1px ${mode.color})`
+                  : undefined,
+            }}
+          />
+          {/* Hairline tile edge — above the icon so it reads on an opaque full-bleed
+              favicon too, and kept off the <img> so the halo filter outlines only the
+              glyph, not the tile's own border. */}
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              inset: 0,
+              borderRadius: 4,
+              boxShadow: "inset 0 0 0 1px var(--border)",
+              pointerEvents: "none",
+            }}
+          />
+        </>
       )}
     </div>
   );

@@ -408,3 +408,20 @@ candidatesRouter.post("/restore", async (c) => {
 
   return c.json({ restored: rows.length });
 });
+
+// Permanent delete (discovery → Dismissed tab): destroy the candidate row outright.
+// Org-scoped and irreversible, unlike dismiss (a status flip). A later detection run
+// may re-surface the same URL — that's intended ("remove from my list now"), not a ban.
+candidatesRouter.delete("/:id", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const rows = await db
+    .delete(competitorCandidates)
+    .where(and(eq(competitorCandidates.id, id), eq(competitorCandidates.orgId, orgId)))
+    .returning({ id: competitorCandidates.id });
+
+  if (rows.length === 0) return c.json({ error: "Not found" }, 404);
+  return c.json({ ok: true });
+});

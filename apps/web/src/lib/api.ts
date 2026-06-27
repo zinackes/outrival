@@ -2020,6 +2020,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ ids }),
     }),
+  deleteCandidate: (id: string) =>
+    request<{ ok: true }>(`/api/candidates/${id}`, { method: "DELETE" }),
   getBilling: () => request<BillingInfo>("/api/billing"),
   createCheckout: (plan: Exclude<Plan, "free">, period: BillingPeriod) =>
     request<{ url: string }>("/api/billing/checkout", {

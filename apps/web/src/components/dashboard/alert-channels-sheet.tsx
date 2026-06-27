@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import {
   ExternalLink,
@@ -14,6 +15,7 @@ import {
 import { toast } from "sonner";
 import { PLAN_LIMITS, type Plan } from "@outrival/shared";
 import { api, ApiError, type NotificationSettings } from "@/lib/api";
+import { notificationSettingsQuery, planQuery } from "@/lib/queries";
 import {
   Sheet,
   SheetContent,
@@ -42,7 +44,11 @@ export function AlertChannelsSheet({
   onSaved?: () => void;
 }) {
   const [active, setActive] = useState<AlertChannel>(channel);
-  const [plan, setPlan] = useState<Plan | null>(null);
+  // Fetch-on-open via useQuery (shares the notificationSettings + plan caches with
+  // Integrations / Notifications); `settings` stays a local editable draft.
+  const settingsQ = useQuery({ ...notificationSettingsQuery(), enabled: open });
+  const planQ = useQuery({ ...planQuery(), enabled: open });
+  const plan: Plan | null = planQ.data ?? (planQ.isError ? "free" : null);
   const [settings, setSettings] = useState<NotificationSettings | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,17 +58,14 @@ export function AlertChannelsSheet({
   }, [open, channel]);
 
   useEffect(() => {
-    if (!open) return;
-    setError(null);
-    api
-      .getNotificationSettings()
-      .then(setSettings)
-      .catch((e) => setError(String(e)));
-    api
-      .getBilling()
-      .then((b) => setPlan(b.plan))
-      .catch(() => setPlan("free"));
-  }, [open]);
+    if (!open) {
+      setSettings(null);
+      setError(null);
+      return;
+    }
+    if (settingsQ.data) setSettings(settingsQ.data);
+    if (settingsQ.error) setError(String(settingsQ.error));
+  }, [open, settingsQ.data, settingsQ.error]);
 
   const channelAllowed = (ch: AlertChannel) =>
     plan ? PLAN_LIMITS[plan].allowedChannels.includes(ch) : false;

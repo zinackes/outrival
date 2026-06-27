@@ -21,9 +21,12 @@ export const user = pgTable("user", {
 });
 
 // Better Auth `twoFactor` plugin storage. One row per user with 2FA set up.
-// Field names (secret/backupCodes/userId/verified) MUST match the plugin's
-// model fields — the Drizzle adapter resolves them by JS property key. The
-// secret + backupCodes are stored encrypted by Better Auth.
+// Field names (secret/backupCodes/userId/verified/failedVerificationCount/
+// lockedUntil) MUST match the plugin's model fields — the Drizzle adapter
+// resolves them by JS property key. The secret + backupCodes are stored
+// encrypted by Better Auth. failedVerificationCount + lockedUntil were added
+// to the plugin model in better-auth 1.6.x (TOTP lockout) — omitting them makes
+// the adapter throw "field does not exist" on /two-factor/* before any DB hit.
 export const twoFactor = pgTable("two_factor", {
   id: text("id").primaryKey(),
   secret: text("secret").notNull(),
@@ -32,6 +35,8 @@ export const twoFactor = pgTable("two_factor", {
     .notNull()
     .references(() => user.id, { onDelete: "cascade" }),
   verified: boolean("verified").default(true),
+  failedVerificationCount: integer("failed_verification_count").notNull().default(0),
+  lockedUntil: timestamp("locked_until"),
 });
 
 // Better Auth `@better-auth/passkey` plugin storage (WebAuthn). Property keys must

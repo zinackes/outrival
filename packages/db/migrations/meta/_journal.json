@@ -64,6 +64,13 @@
       "when": 1782505987276,
       "tag": "0008_windy_blackheart",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1782563619580,
+      "tag": "0009_steady_terror",
+      "breakpoints": true
     }
   ]
 }

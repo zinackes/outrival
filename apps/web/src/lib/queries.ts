@@ -44,3 +44,11 @@ export function digestsQuery() {
     queryFn: () => api.listDigests().then((r) => r.digests),
   });
 }
+
+// Battle cards list (org-wide, across products).
+export function battleCardsQuery() {
+  return queryOptions({
+    queryKey: ["battleCards"] as const,
+    queryFn: () => api.listBattleCards().then((r) => r.battleCards),
+  });
+}

@@ -1,8 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Check, Loader2, RefreshCw, Pencil } from "lucide-react";
 import { api, type ProjectStage, type WorkspaceSettings } from "@/lib/api";
+import { workspaceSettingsQuery } from "@/lib/queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -49,44 +51,51 @@ function isEqual(a: Draft, b: Draft) {
   );
 }
 
-export function WorkspaceSettingsForm({
-  initialSettings = null,
-}: {
-  initialSettings?: WorkspaceSettings | null;
-} = {}) {
+export function WorkspaceSettingsForm() {
+  // Server-seeded on first paint (settings/general/page.tsx). draft/pristine/slug/
+  // stage lazy-init from the hydrated cache; a sync effect fills them in when the
+  // seed was missing and the query resolves client-side.
+  const settingsQ = useQuery(workspaceSettingsQuery());
   const [draft, setDraft] = useState<Draft | null>(() =>
-    initialSettings ? toDraft(initialSettings) : null,
+    settingsQ.data ? toDraft(settingsQ.data) : null,
   );
   const [pristine, setPristine] = useState<Draft | null>(() =>
-    initialSettings ? toDraft(initialSettings) : null,
+    settingsQ.data ? toDraft(settingsQ.data) : null,
   );
-  const [slug, setSlug] = useState(initialSettings?.slug ?? "");
+  const [slug, setSlug] = useState(settingsQ.data?.slug ?? "");
   const [stage, setStage] = useState<ProjectStage | null>(
-    initialSettings?.projectStage ?? null,
+    settingsQ.data?.projectStage ?? null,
   );
+  const initializedRef = useRef(settingsQ.data != null);
   const [saving, setSaving] = useState(false);
   const [changeUrlOpen, setChangeUrlOpen] = useState(false);
   const [updateOpen, setUpdateOpen] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(() => {
-    api
-      .getWorkspaceSettings()
-      .then((s) => {
-        const d = toDraft(s);
-        setDraft(d);
-        setPristine(d);
-        setSlug(s.slug);
-        setStage(s.projectStage);
-      })
-      .catch((e) => setError(String(e)));
-  }, []);
-
+  // Build the form once the settings are available (covers the non-seeded path);
+  // guarded so a later refetch can't clobber the user's in-progress edits.
   useEffect(() => {
-    // Server-seeded first paint → skip the redundant client fetch.
-    if (!initialSettings) load();
-  }, [load]);
+    if (initializedRef.current || !settingsQ.data) return;
+    initializedRef.current = true;
+    const d = toDraft(settingsQ.data);
+    setDraft(d);
+    setPristine(d);
+    setSlug(settingsQ.data.slug);
+    setStage(settingsQ.data.projectStage);
+  }, [settingsQ.data]);
+
+  // Re-sync the form from the server (the profile dialog calls this after saving).
+  async function load() {
+    const { data } = await settingsQ.refetch();
+    if (data) {
+      const d = toDraft(data);
+      setDraft(d);
+      setPristine(d);
+      setSlug(data.slug);
+      setStage(data.projectStage);
+    }
+  }
 
   function set<K extends keyof Draft>(key: K, value: Draft[K]) {
     setDraft((d) => (d ? { ...d, [key]: value } : d));
@@ -142,8 +151,12 @@ export function WorkspaceSettingsForm({
     setError(null);
   }
 
-  if (error && !draft)
-    return <p className="text-sm text-muted-foreground">Error: {error}</p>;
+  if ((error || settingsQ.error) && !draft)
+    return (
+      <p className="text-sm text-muted-foreground">
+        Error: {error ?? String(settingsQ.error)}
+      </p>
+    );
   if (!draft || !pristine) return <FormSkeleton fields={3} />;
 
   const dirty = !isEqual(draft, pristine);

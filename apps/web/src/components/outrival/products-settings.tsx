@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, Boxes, Loader2, Plus, Star } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -16,45 +17,32 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { api, ApiError, type ProductSummary } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
+import { productsSettingsQuery } from "@/lib/queries";
 import { PLAN_LABELS, type Plan } from "@outrival/shared";
 
 // patch-28 — manage the org's products (SKUs): add (within the per-tier limit),
 // promote a primary, archive. Per-competitor sharing/reclassification is managed
 // from each competitor; this page owns the product lifecycle.
-export function ProductsSettings({
-  initialData = null,
-}: {
-  initialData?: { products: ProductSummary[]; plan: string; limit: number } | null;
-} = {}) {
-  const [products, setProducts] = useState<ProductSummary[] | null>(
-    initialData?.products ?? null,
-  );
-  const [plan, setPlan] = useState<Plan>((initialData?.plan as Plan) ?? "free");
-  const [limit, setLimit] = useState(initialData?.limit ?? 1);
-  const [err, setErr] = useState<unknown>(null);
+export function ProductsSettings() {
+  // Server-seeded on first paint (settings/products/page.tsx); listProducts returns
+  // products + plan + limit together, so one query backs the page. Mutations call
+  // load() to invalidate and refetch.
+  const queryClient = useQueryClient();
+  const productsQ = useQuery(productsSettingsQuery());
+  const products = productsQ.data?.products ?? null;
+  const plan = (productsQ.data?.plan as Plan) ?? "free";
+  const limit = productsQ.data?.limit ?? 1;
+  const err = productsQ.error;
 
   const [addOpen, setAddOpen] = useState(false);
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const load = useCallback(() => {
-    setErr(null);
-    api
-      .listProducts()
-      .then((r) => {
-        setProducts(r.products);
-        setPlan(r.plan as Plan);
-        setLimit(r.limit);
-      })
-      .catch((e) => setErr(e));
-  }, []);
-
-  useEffect(() => {
-    // Server-seeded first paint → skip the redundant client fetch.
-    if (!initialData) load();
-  }, [load]);
+  function load() {
+    return queryClient.invalidateQueries({ queryKey: productsSettingsQuery().queryKey });
+  }
 
   const active = (products ?? []).filter((p) => p.status !== "archived");
   const atLimit = active.length >= limit;

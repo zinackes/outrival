@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import {
   X,
@@ -15,6 +16,7 @@ import {
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { ApiError, api, type CompetitorCandidate } from "@/lib/api";
+import { candidatesQuery, discoveryStalenessQuery } from "@/lib/queries";
 import { emitCompetitorsChanged } from "@/lib/competitor-events";
 import { toastApiError } from "@/lib/error-helpers";
 import { ListError } from "@/components/outrival/list-error";
@@ -45,64 +47,52 @@ import { feedItemMotion } from "@/lib/motion";
 type SortMode = "overlap" | "recent";
 type Tab = "new" | "dismissed";
 
-export function DiscoveryView({
-  initialData = null,
-}: {
-  initialData?: {
-    candidates: CompetitorCandidate[];
-    counts: { new: number; dismissed: number };
-    discoveryFresh: boolean;
-  } | null;
-} = {}) {
+export function DiscoveryView() {
   useSetAskContext({ kind: "view", label: "Competitor discovery" });
-  const [items, setItems] = useState<CompetitorCandidate[] | null>(
-    initialData?.candidates ?? null,
-  );
-  const [error, setError] = useState<unknown>(null);
+  const queryClient = useQueryClient();
   const [actingId, setActingId] = useState<string | null>(null);
   const [paywall, setPaywall] = useState<PaywallReason | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
   const [sort, setSort] = useState<SortMode>("overlap");
   const [minOverlap, setMinOverlap] = useState(0);
-  const [discoveryFresh, setDiscoveryFresh] = useState(
-    initialData?.discoveryFresh ?? false,
-  );
   const [tab, setTab] = useState<Tab>("new");
-  const [counts, setCounts] = useState<{ new: number; dismissed: number } | null>(
-    initialData?.counts ?? null,
-  );
-  // Seed covers the "new" tab + staleness → skip both mount fetches once.
-  const seededRef = useRef(initialData !== null);
   // Read the live tab inside async callbacks (a toast's Undo can fire after a switch).
   const tabRef = useRef<Tab>("new");
 
-  const load = useCallback(async (which: Tab) => {
-    setError(null);
-    setItems(null);
-    try {
-      const { candidates, counts } = await api.listCandidates(which);
-      setItems(candidates);
-      setCounts(counts);
-    } catch (e) {
-      setError(e);
-    }
-  }, []);
+  // Server-seeded on first paint (discovery/page.tsx): the "new" tab list + counts,
+  // plus staleness. Switching tab refetches via the queryKey.
+  const candidatesQ = useQuery(candidatesQuery(tab));
+  const items = candidatesQ.data?.candidates ?? null;
+  const counts = candidatesQ.data?.counts ?? null;
+  const error = candidatesQ.error;
+  const stalenessQ = useQuery(discoveryStalenessQuery());
+  const discoveryFresh = stalenessQ.data ? !stalenessQ.data.needsRediscovery : false;
 
-  // Keep the tab badges in sync with optimistic list mutations (a server reload only
+  // Rewrite the active tab's cached candidates / counts so the optimistic mutations
+  // (and their rollbacks) below keep working unchanged after the move to useQuery.
+  function setItems(
+    updater: (prev: CompetitorCandidate[] | null) => CompetitorCandidate[] | null,
+  ) {
+    queryClient.setQueryData(candidatesQuery(tabRef.current).queryKey, (d) =>
+      d ? { ...d, candidates: updater(d.candidates) ?? [] } : d,
+    );
+  }
+  // Keep the tab badges in sync with optimistic mutations (a server reload only
   // happens on tab switch / refresh). Clamps at 0 so a race can't show a negative.
-  const bumpCounts = useCallback(
-    (delta: { new?: number; dismissed?: number }) =>
-      setCounts((c) =>
-        c
-          ? {
-              new: Math.max(0, c.new + (delta.new ?? 0)),
-              dismissed: Math.max(0, c.dismissed + (delta.dismissed ?? 0)),
-            }
-          : c,
-      ),
-    [],
-  );
+  function bumpCounts(delta: { new?: number; dismissed?: number }) {
+    queryClient.setQueryData(candidatesQuery(tabRef.current).queryKey, (d) =>
+      d
+        ? {
+            ...d,
+            counts: {
+              new: Math.max(0, d.counts.new + (delta.new ?? 0)),
+              dismissed: Math.max(0, d.counts.dismissed + (delta.dismissed ?? 0)),
+            },
+          }
+        : d,
+    );
+  }
 
   // Intelligent rate limiting (patch-22): re-running discovery when nothing changed
   // is friction, not blocked. If the last run is recent and the profile is unchanged,
@@ -123,9 +113,10 @@ export function DiscoveryView({
     setRefreshing(true);
     try {
       const { detected } = await api.detectCandidates();
+      void queryClient.invalidateQueries({ queryKey: discoveryStalenessQuery().queryKey });
       // New candidates land in the "new" queue — make sure that's what's shown.
       if (tabRef.current === "new") {
-        await load("new");
+        await queryClient.invalidateQueries({ queryKey: candidatesQuery("new").queryKey });
       } else {
         setTab("new");
       }
@@ -170,24 +161,11 @@ export function DiscoveryView({
     }
   }
 
-  // Staleness is tab-independent — fetch once on mount.
-  useEffect(() => {
-    if (initialData) return; // server-seeded
-    api
-      .getDiscoveryStaleness()
-      .then((s) => setDiscoveryFresh(!s.needsRediscovery))
-      .catch(() => setDiscoveryFresh(false)); // best-effort — fall back to always-enabled
-  }, []);
-
+  // Keep the live-tab ref in sync for async callbacks (the tab list itself
+  // refetches via useQuery's key; staleness is its own query).
   useEffect(() => {
     tabRef.current = tab;
-    // Server-seeded first paint for the "new" tab → skip the redundant fetch.
-    if (seededRef.current) {
-      seededRef.current = false;
-      return;
-    }
-    void load(tab);
-  }, [tab, load]);
+  }, [tab]);
 
   // Quality feedback (patch-21): tracking a suggestion is an implicit "useful"
   // verdict, dismissing it a "not useful" one. Best-effort — never block the
@@ -211,7 +189,7 @@ export function DiscoveryView({
       if (reason) {
         setPaywall(reason);
       } else {
-        setError(e);
+        toastApiError(e, { title: "Couldn't add the competitor" });
       }
     } finally {
       setActingId(null);

@@ -888,6 +888,7 @@ export function CompetitorDetailView({
           <div className="mt-6 min-h-[280px]">
             <TabsContent value="overview" className={TAB_PANEL_CLASS}>
               <OverviewTab
+                competitorId={competitor.id}
                 overview={overview}
                 monitors={monitors}
                 scrapingIds={scrapingIds}

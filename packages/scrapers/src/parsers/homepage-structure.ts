@@ -49,6 +49,9 @@ export interface HomepageSection {
 export interface HomepageStructure {
   // Global metadata
   title: string;
+  /** Primary language subtag from <html lang> ("fr", "de", "en"), lowercased.
+   *  Null when the page declares none. Lets the UI flag/translate foreign copy. */
+  language: string | null;
   metaDescription: string | null;
   canonical: string | null;
   openGraph: {
@@ -117,6 +120,21 @@ interface DomNode {
   children?: DomNode[];
 }
 
+// Tags that force a visual break in the browser: text on either side reads as
+// two words. `<br>` and block-level elements get whitespace inserted around them
+// so adjacent runs don't glue ("Gérer<br>une" → "Gérer une"). Inline elements
+// are intentionally absent: a styled substring ("Out<span>rival</span>") must
+// stay one word, so we never separate across an inline boundary.
+const BREAKING_TAGS = new Set([
+  "br", "p", "div", "section", "article", "header", "footer", "main", "aside",
+  "li", "ul", "ol", "h1", "h2", "h3", "h4", "h5", "h6", "table", "tr", "td",
+  "th", "thead", "tbody", "blockquote", "figure", "figcaption", "pre", "hr",
+  "dl", "dt", "dd", "nav", "form", "fieldset", "address",
+]);
+
+// Browser-like text extraction: concatenate text nodes verbatim (preserving the
+// source's own whitespace), inserting a space only at break boundaries. Cheerio's
+// native .text() omits these breaks → "Gérer<br>une" collapses to "Gérerune".
 function nodeText(node: DomNode): string {
   const out: string[] = [];
   const collect = (n: DomNode): void => {
@@ -125,15 +143,25 @@ function nodeText(node: DomNode): string {
       return;
     }
     if (n.type !== "tag") return;
-    if ((n.name ?? "").toLowerCase() === "img") {
+    const name = (n.name ?? "").toLowerCase();
+    if (name === "img") {
       const alt = n.attribs?.alt?.trim();
       if (alt) out.push(` ${alt} `);
       return;
     }
+    const breaks = BREAKING_TAGS.has(name);
+    if (breaks) out.push(" ");
     for (const c of n.children ?? []) collect(c);
+    if (breaks) out.push(" ");
   };
   collect(node);
-  return norm(out.join(" "));
+  return norm(out.join(""));
+}
+
+// Text of a cheerio selection's first element via the break-aware walk above
+// (cheerio's own .text() glues across <br>/blocks). Empty string when absent.
+function elText(el: DomNode | undefined): string {
+  return el ? nodeText(el) : "";
 }
 
 interface RawSection {
@@ -240,13 +268,15 @@ function extractHero(
   baseUrl: string,
 ): HomepageStructure["hero"] {
   const h1 = $("h1").first();
-  const headline = norm(h1.text()) || null;
+  const headline = elText(h1[0] as unknown as DomNode | undefined) || null;
 
   // Subheadline: the first paragraph or H2 that follows the H1 in its vicinity.
   let subheadline: string | null = null;
   if (h1.length) {
     const next = h1.nextAll("p, h2").first();
-    const candidate = next.length ? norm(next.text()) : norm(h1.parent().find("p").first().text());
+    const candidate = next.length
+      ? elText(next[0] as unknown as DomNode | undefined)
+      : elText(h1.parent().find("p").first()[0] as unknown as DomNode | undefined);
     subheadline = candidate || null;
   }
 
@@ -361,10 +391,16 @@ function extractSocialProof(
   $('blockquote, [class*="testimonial" i], [class*="quote" i]').each((_, el) => {
     if (testimonials.length >= MAX_TESTIMONIALS) return;
     const $el = $(el);
-    const quote = norm($el.find("p").first().text()) || norm($el.text());
+    const quote =
+      elText($el.find("p").first()[0] as unknown as DomNode | undefined) ||
+      elText(el as unknown as DomNode);
     if (quote.length < 30 || quote.length > 1000) return;
     const author =
-      norm($el.find('cite, [class*="author" i], [class*="name" i]').first().text()) || null;
+      elText(
+        $el.find('cite, [class*="author" i], [class*="name" i]').first()[0] as unknown as
+          | DomNode
+          | undefined,
+      ) || null;
     const hash = hashTestimonial(quote);
     if (seenQuotes.has(hash)) return;
     seenQuotes.add(hash);
@@ -379,6 +415,10 @@ export function parseHomepageStructure(html: string, baseUrl: string): HomepageS
 
   // 1. Metadata first — read before we strip <head>.
   const title = norm($("title").first().text());
+  // <html lang="fr-FR"> → "fr". The lang attribute lives on the root element, so
+  // it survives the <head> strip below, but read it here with the rest of the meta.
+  const langAttr = ($("html").attr("lang") || "").trim().split(/[-_]/)[0]?.toLowerCase();
+  const language = langAttr ? langAttr : null;
   const metaDescription = $('meta[name="description"]').attr("content")?.trim() || null;
   const canonical = $('link[rel="canonical"]').attr("href")?.trim() || null;
   const openGraph = {
@@ -436,6 +476,7 @@ export function parseHomepageStructure(html: string, baseUrl: string): HomepageS
 
   return {
     title,
+    language,
     metaDescription,
     canonical,
     openGraph,

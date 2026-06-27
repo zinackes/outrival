@@ -23,6 +23,7 @@ import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
 import { associateCompetitorWithPrimaryProduct } from "../lib/products";
 import { analyticsQuery } from "../lib/analytics-safe";
+import { translateToEnglish } from "../lib/translate";
 import {
   checkCompetitorQuota,
   getOrgPlan,
@@ -65,6 +66,7 @@ async function assertOwnedCompetitor(competitorId: string, orgId: string) {
 // The API can't import the scrapers package (monorepo boundary), so the shape the
 // parser produces (patch-16/17) is restated here for the fields the fact sheet needs.
 type StoredHomepage = {
+  language?: string | null;
   hero?: { headline?: string | null; subheadline?: string | null };
   sections?: Array<{ heading?: string; type?: string }>;
   socialProof?: {
@@ -89,64 +91,81 @@ function toLogo(entry: string | { name?: string | null; src?: string | null }): 
   return { name: entry.name?.trim() || null, src: entry.src?.trim() || null };
 }
 
+// The homepage "fact sheet" fields surfaced on the Overview tab, derived from the
+// latest homepage snapshot's parsed structure (patch-16/17). Shared by the overview
+// builder and the on-demand translate route, which reads the same source strings.
+type HomepageFacts = {
+  language: string | null;
+  headline: string | null;
+  subheadline: string | null;
+  valueProps: string[];
+  customerLogos: FactSheetLogo[];
+  testimonials: Array<{ quote: string; author: string | null }>;
+};
+
+// Latest parsed homepage structure for a competitor → fact-sheet shape. Self-
+// contained (resolves the homepage monitor + newest successful snapshot itself)
+// so both buildOverview and the translate route can reuse it. Null when nothing
+// captured / pre-patch snapshot.
+async function buildHomepageFacts(
+  competitorId: string,
+): Promise<{ capturedAt: Date | null; homepage: HomepageFacts | null }> {
+  const [homepageMonitor] = await db
+    .select({ id: monitors.id })
+    .from(monitors)
+    .where(and(eq(monitors.competitorId, competitorId), eq(monitors.sourceType, "homepage")))
+    .limit(1);
+  if (!homepageMonitor) return { capturedAt: null, homepage: null };
+
+  const [snap] = await db
+    .select({ structure: snapshots.homepageStructure, scrapedAt: snapshots.scrapedAt })
+    .from(snapshots)
+    .where(
+      and(
+        eq(snapshots.monitorId, homepageMonitor.id),
+        eq(snapshots.status, "success"),
+        isNotNull(snapshots.homepageStructure),
+      ),
+    )
+    .orderBy(desc(snapshots.scrapedAt))
+    .limit(1);
+  if (!snap?.structure) return { capturedAt: null, homepage: null };
+
+  const s = snap.structure as StoredHomepage;
+  return {
+    capturedAt: snap.scrapedAt,
+    homepage: {
+      language: s.language ?? null,
+      headline: s.hero?.headline ?? null,
+      subheadline: s.hero?.subheadline ?? null,
+      // Section headings carrying the value proposition (feature blocks and
+      // integration showcases), in document order, capped for the glance.
+      valueProps: (s.sections ?? [])
+        .filter((sec) => sec.type === "features" || sec.type === "integrations")
+        .map((sec) => sec.heading?.trim() ?? "")
+        .filter((h) => h.length > 0)
+        .slice(0, 8),
+      customerLogos: (s.socialProof?.customerLogos ?? [])
+        .map(toLogo)
+        .filter((l) => l.name || l.src)
+        .slice(0, 24),
+      testimonials: (s.socialProof?.testimonials ?? [])
+        .map((t) => ({ quote: t.quote?.trim() ?? "", author: t.author ?? null }))
+        .filter((t) => t.quote.length > 0)
+        .slice(0, 3),
+    },
+  };
+}
+
 // "Fact sheet" / state view of a competitor (Overview tab): the current homepage
 // facts we capture but never surfaced — positioning, value props, customers,
 // numeric claims — plus a compact snapshot of pricing/hiring/reviews. Pure
 // surfacing of existing data: no AI call, no scrape. Analytics reads are
 // best-effort (return [] on error), so the fact sheet degrades gracefully.
-async function buildOverview(
-  competitorId: string,
-  monitorList: Array<{ id: string; sourceType: string }>,
-) {
+async function buildOverview(competitorId: string) {
   // Positioning + value props + social proof from the latest homepage snapshot's
   // parsed structure (only homepage snapshots carry it; null pre-patch).
-  let capturedAt: Date | null = null;
-  let homepage: {
-    headline: string | null;
-    subheadline: string | null;
-    valueProps: string[];
-    customerLogos: FactSheetLogo[];
-    testimonials: Array<{ quote: string; author: string | null }>;
-  } | null = null;
-
-  const homepageMonitor = monitorList.find((m) => m.sourceType === "homepage");
-  if (homepageMonitor) {
-    const [snap] = await db
-      .select({ structure: snapshots.homepageStructure, scrapedAt: snapshots.scrapedAt })
-      .from(snapshots)
-      .where(
-        and(
-          eq(snapshots.monitorId, homepageMonitor.id),
-          eq(snapshots.status, "success"),
-          isNotNull(snapshots.homepageStructure),
-        ),
-      )
-      .orderBy(desc(snapshots.scrapedAt))
-      .limit(1);
-    if (snap?.structure) {
-      const s = snap.structure as StoredHomepage;
-      capturedAt = snap.scrapedAt;
-      homepage = {
-        headline: s.hero?.headline ?? null,
-        subheadline: s.hero?.subheadline ?? null,
-        // Section headings carrying the value proposition (feature blocks and
-        // integration showcases), in document order, capped for the glance.
-        valueProps: (s.sections ?? [])
-          .filter((sec) => sec.type === "features" || sec.type === "integrations")
-          .map((sec) => sec.heading?.trim() ?? "")
-          .filter((h) => h.length > 0)
-          .slice(0, 8),
-        customerLogos: (s.socialProof?.customerLogos ?? [])
-          .map(toLogo)
-          .filter((l) => l.name || l.src)
-          .slice(0, 24),
-        testimonials: (s.socialProof?.testimonials ?? [])
-          .map((t) => ({ quote: t.quote?.trim() ?? "", author: t.author ?? null }))
-          .filter((t) => t.quote.length > 0)
-          .slice(0, 3),
-      };
-    }
-  }
+  const { capturedAt, homepage } = await buildHomepageFacts(competitorId);
 
   const numericClaims = await analyticsQuery<{
     pattern: string;
@@ -595,7 +614,7 @@ competitorsRouter.get("/:id", async (c) => {
     platformProfile: competitor.platformProfile,
   };
 
-  const overview = await buildOverview(competitor.id, monitorList);
+  const overview = await buildOverview(competitor.id);
 
   return c.json({
     competitor,
@@ -868,6 +887,50 @@ competitorsRouter.post("/:id/refresh-summary", aiIntensiveRateLimit, async (c) =
     competitorId: id,
   });
   return c.json({ runId: handle.id });
+});
+
+// On-demand English translation of the homepage fact sheet (headline, subheadline,
+// value props, testimonials) for a foreign-language competitor. Reads OUR stored
+// facts server-side (no client-supplied text → not abusable as a free MT proxy),
+// translates in one batched Azure call, returns the English copy. Rate-limited like
+// other AI-intensive actions; the UI keeps the original until the user opts in.
+competitorsRouter.post("/:id/translate", aiIntensiveRateLimit, async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor || competitor.deletedAt) return c.json({ error: "Not found" }, 404);
+
+  const { homepage } = await buildHomepageFacts(id);
+  if (!homepage) return c.json({ error: "nothing_to_translate" }, 404);
+
+  const valueProps = homepage.valueProps;
+  const quotes = homepage.testimonials.map((t) => t.quote);
+  // One ordered batch: [headline, subheadline, ...valueProps, ...testimonialQuotes].
+  const batch = [homepage.headline ?? "", homepage.subheadline ?? "", ...valueProps, ...quotes];
+
+  const res = await translateToEnglish(batch);
+  if (!res.ok) return c.json({ error: res.error }, 503);
+
+  let i = 0;
+  const headline = res.translations[i++] || null;
+  const subheadline = res.translations[i++] || null;
+  const translatedValueProps = valueProps.map(() => res.translations[i++] ?? "");
+  const translatedTestimonials = quotes.map((_, idx) => ({
+    quote: res.translations[i++] ?? "",
+    author: homepage.testimonials[idx]?.author ?? null,
+  }));
+
+  return c.json({
+    translated: {
+      headline: homepage.headline ? headline : null,
+      subheadline: homepage.subheadline ? subheadline : null,
+      valueProps: translatedValueProps,
+      testimonials: translatedTestimonials,
+    },
+    sourceLanguage: res.detectedLanguage ?? homepage.language ?? null,
+  });
 });
 
 // Edit the competitor's display fields (kebab → Edit details). Name/url/category/

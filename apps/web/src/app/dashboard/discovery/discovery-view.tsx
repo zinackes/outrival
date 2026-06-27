@@ -300,6 +300,24 @@ export function DiscoveryView({
     });
   }
 
+  // Permanent delete from the Dismissed tab: the candidate row is destroyed (no undo,
+  // unlike dismiss). Optimistic removal with rollback on failure.
+  async function remove(item: CompetitorCandidate) {
+    setActingId(item.id);
+    setItems((prev) => prev?.filter((c) => c.id !== item.id) ?? null);
+    bumpCounts({ dismissed: -1 });
+    try {
+      await api.deleteCandidate(item.id);
+      toast("Suggestion deleted");
+    } catch (e) {
+      setItems((prev) => [...(prev ?? []), item]); // rollback
+      bumpCounts({ dismissed: 1 });
+      toastApiError(e, { title: "Delete failed" });
+    } finally {
+      setActingId(null);
+    }
+  }
+
   if (error && items === null) return <ListError error={error} />;
 
   const view = (items ?? [])
@@ -535,15 +553,32 @@ export function DiscoveryView({
                   </div>
 
                   {tab === "dismissed" ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full"
-                      onClick={() => void restore(c)}
-                    >
-                      <RotateCcw size={11} />
-                      Restore
-                    </Button>
+                    <div className="flex gap-1.5">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        disabled={actingId === c.id}
+                        onClick={() => void restore(c)}
+                      >
+                        <RotateCcw size={11} />
+                        Restore
+                      </Button>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={actingId === c.id}
+                            onClick={() => void remove(c)}
+                            aria-label="Delete permanently"
+                          >
+                            <Trash2 size={11} />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Delete permanently</TooltipContent>
+                      </Tooltip>
+                    </div>
                   ) : (
                     <div className="flex gap-1.5">
                       <Button

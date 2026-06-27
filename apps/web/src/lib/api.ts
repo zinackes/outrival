@@ -1360,6 +1360,9 @@ export type CompetitorOverview = {
   // when no homepage snapshot carries a parsed structure yet.
   capturedAt: string | null;
   homepage: {
+    // Primary language of the scraped homepage ("fr", "de", "en"…), from <html lang>.
+    // null when undeclared; drives the foreign-language badge + Translate action.
+    language: string | null;
     headline: string | null;
     subheadline: string | null;
     valueProps: string[];
@@ -1584,6 +1587,17 @@ export const api = {
     request<{ runId: string }>(`/api/competitors/${id}/refresh-summary`, {
       method: "POST",
     }),
+  // On-demand English translation of a foreign-language competitor's homepage facts.
+  translateCompetitorOverview: (id: string) =>
+    request<{
+      translated: {
+        headline: string | null;
+        subheadline: string | null;
+        valueProps: string[];
+        testimonials: Array<{ quote: string; author: string | null }>;
+      };
+      sourceLanguage: string | null;
+    }>(`/api/competitors/${id}/translate`, { method: "POST" }),
   runMonitor: (id: string) =>
     request<{ runId: string; monitorId: string }>(`/api/monitors/${id}/run`, { method: "POST" }),
   // patch-27 — user-forced re-scan (per-tier daily limit; 429 → rescan_limit_reached).
@@ -2020,6 +2034,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ ids }),
     }),
+  deleteCandidate: (id: string) =>
+    request<{ ok: true }>(`/api/candidates/${id}`, { method: "DELETE" }),
   getBilling: () => request<BillingInfo>("/api/billing"),
   createCheckout: (plan: Exclude<Plan, "free">, period: BillingPeriod) =>
     request<{ url: string }>("/api/billing/checkout", {

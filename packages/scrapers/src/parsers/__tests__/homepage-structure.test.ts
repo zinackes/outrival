@@ -79,6 +79,15 @@ describe("parseHomepageStructure — metadata", () => {
     expect(s.openGraph.image).toBe("https://acme.com/og.png");
     expect(s.openGraph.type).toBe("website");
   });
+  it("reads the primary language subtag from <html lang>", () => {
+    expect(parseHomepageStructure(`<html lang="fr-FR"><title>x</title></html>`, BASE).language).toBe(
+      "fr",
+    );
+    expect(parseHomepageStructure(`<html lang="en"><title>x</title></html>`, BASE).language).toBe(
+      "en",
+    );
+    expect(parseHomepageStructure(`<html><title>x</title></html>`, BASE).language).toBeNull();
+  });
 });
 
 describe("parseHomepageStructure — hero", () => {
@@ -90,6 +99,38 @@ describe("parseHomepageStructure — hero", () => {
   it("extracts primary and secondary CTAs with resolved hrefs", () => {
     expect(s.hero.primaryCta).toEqual({ text: "Get started", href: "https://acme.com/signup" });
     expect(s.hero.secondaryCta?.text).toBe("Book a demo");
+  });
+});
+
+// Browser-rendered text: <br> and inline-styled fragments must not glue into
+// one word ("Gérer<br>une" → "Gérer une", not "Gérerune"), while a styled
+// substring of a single word ("Out<span>rival</span>") must stay glued.
+describe("parseHomepageStructure — break-aware text extraction", () => {
+  const html = (hero: string) =>
+    `<!doctype html><html><head><title>T</title></head><body><section class="hero">${hero}</section>
+     <section><h2>What our customers say</h2>
+       <blockquote><p>Gérer<br>une ESN sur Excel a ses limites, vraiment beaucoup de limites.</p></blockquote>
+     </section></body></html>`;
+
+  it("inserts a space across <br> in the headline", () => {
+    const s = parseHomepageStructure(html("<h1>Gérer<br>une ESN sur Excel</h1>"), BASE);
+    expect(s.hero.headline).toBe("Gérer une ESN sur Excel");
+  });
+  it("inserts a space across a block-level child in the headline", () => {
+    const s = parseHomepageStructure(
+      html('<h1><div class="a">Gérer</div><div class="b">une ESN</div></h1>'),
+      BASE,
+    );
+    expect(s.hero.headline).toBe("Gérer une ESN");
+  });
+  it("keeps an inline-styled fragment of a single word glued", () => {
+    const s = parseHomepageStructure(html('<h1>Out<span class="x">rival</span></h1>'), BASE);
+    expect(s.hero.headline).toBe("Outrival");
+  });
+  it("inserts a space across <br> in testimonial quotes", () => {
+    const s = parseHomepageStructure(html("<h1>Hi</h1>"), BASE);
+    expect(s.socialProof.testimonials[0]?.quote).toContain("Gérer une ESN sur Excel");
+    expect(s.socialProof.testimonials[0]?.quote).not.toContain("Gérerune");
   });
 });
 

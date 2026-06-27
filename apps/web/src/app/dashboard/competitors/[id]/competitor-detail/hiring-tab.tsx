@@ -36,19 +36,17 @@ export function HiringTab({
   scrapingIds,
   onRun,
   onEnable,
-  refreshTick,
-}: { competitorId: string; refreshTick?: number } & MonitorSourceProps) {
-  // refreshTick is part of the key so a forced re-scan invalidates the cache;
-  // keepPreviousData keeps the last result on screen during that refetch (and the
-  // shared QueryClient serves the cache instantly on tab re-switch) → no skeleton
-  // flash except on the genuine first load.
+}: { competitorId: string } & MonitorSourceProps) {
+  // The shared QueryClient serves the cache instantly on tab re-switch (no skeleton
+  // flash); keepPreviousData keeps the last result during a refetch. A forced
+  // re-scan invalidates ["competitor", id] from the detail view.
   const jobsQuery = useQuery({
-    queryKey: ["competitor", competitorId, "jobs", refreshTick],
+    queryKey: ["competitor", competitorId, "jobs"],
     queryFn: () => api.getCompetitorJobs(competitorId),
     placeholderData: keepPreviousData,
   });
   const trendsQuery = useQuery({
-    queryKey: ["competitor", competitorId, "jobTrends", refreshTick],
+    queryKey: ["competitor", competitorId, "jobTrends"],
     queryFn: () => api.getCompetitorJobTrends(competitorId).then((t) => t.trends),
     placeholderData: keepPreviousData,
   });

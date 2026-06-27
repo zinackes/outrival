@@ -41,19 +41,16 @@ export function PricingTab({
   onRun,
   onEnable,
   onRefresh,
-  refreshTick,
 }: {
   competitor: Competitor;
   competitorId: string;
-  refreshTick?: number;
   onRefresh: () => void;
 } & MonitorSourceProps) {
-  // refreshTick is part of the key so a forced re-scan invalidates the cache;
-  // keepPreviousData keeps the last result on screen during that refetch (and the
-  // shared QueryClient serves the cache instantly on tab re-switch) → no skeleton
-  // flash except on the genuine first load.
+  // The shared QueryClient serves the cache instantly on tab re-switch (no skeleton
+  // flash); keepPreviousData keeps the last result during a refetch. A forced
+  // re-scan invalidates ["competitor", id] from the detail view.
   const historyQuery = useQuery({
-    queryKey: ["competitor", competitorId, "pricingHistory", refreshTick],
+    queryKey: ["competitor", competitorId, "pricingHistory"],
     queryFn: () => api.getCompetitorPricingHistory(competitorId).then((r) => r.history),
     placeholderData: keepPreviousData,
   });

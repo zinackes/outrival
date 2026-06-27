@@ -1,14 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Users, ChevronRight, MoreHorizontal } from "lucide-react";
 
 import { type Competitor } from "@/lib/api";
 import { competitorsQuery } from "@/lib/queries";
-import { onCompetitorsChanged } from "@/lib/competitor-events";
 import { cn } from "@/lib/utils";
 import {
   SidebarMenuAction,
@@ -42,19 +41,12 @@ function lastSignalMs(c: Competitor) {
 
 export function SidebarCompetitors() {
   const pathname = usePathname();
-  const queryClient = useQueryClient();
   // Shares the ["competitors"] cache with the Overview + Competitors pages; polls in
-  // the background and refreshes when any view signals a roster change.
+  // the background. Mutations elsewhere invalidate ["competitors"] → this refreshes
+  // automatically via the shared cache (no manual event subscription needed).
   const compsQ = useQuery({ ...competitorsQuery(), refetchInterval: POLL_MS });
   const comps = compsQ.data ?? null;
   const [open, setOpen] = React.useState(true);
-
-  React.useEffect(() => {
-    const unsubscribe = onCompetitorsChanged(() =>
-      queryClient.invalidateQueries({ queryKey: competitorsQuery().queryKey }),
-    );
-    return unsubscribe;
-  }, [queryClient]);
 
   const activeId = React.useMemo(() => {
     const m = pathname.match(/^\/dashboard\/competitors\/([^/]+)/);

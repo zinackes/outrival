@@ -16,8 +16,7 @@ import {
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { ApiError, api, type CompetitorCandidate } from "@/lib/api";
-import { candidatesQuery, discoveryStalenessQuery } from "@/lib/queries";
-import { emitCompetitorsChanged } from "@/lib/competitor-events";
+import { candidatesQuery, discoveryStalenessQuery, competitorsQuery } from "@/lib/queries";
 import { toastApiError } from "@/lib/error-helpers";
 import { ListError } from "@/components/outrival/list-error";
 import {
@@ -181,7 +180,7 @@ export function DiscoveryView() {
     try {
       await api.addCandidate(id);
       recordDiscoveryFeedback(id, "useful");
-      emitCompetitorsChanged();
+      void queryClient.invalidateQueries({ queryKey: competitorsQuery().queryKey });
       setItems((prev) => prev?.filter((c) => c.id !== id) ?? null);
       bumpCounts({ new: -1 });
     } catch (e) {

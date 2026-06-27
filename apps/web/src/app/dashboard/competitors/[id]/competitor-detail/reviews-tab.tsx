@@ -214,13 +214,11 @@ export function ReviewsTab({
   onEnable,
   onEdit,
   onSwitch,
-  refreshTick,
   plan,
   onLockedSource,
   onLockedFrequency,
 }: {
   competitorId: string;
-  refreshTick?: number;
   plan: Plan;
   onLockedSource?: (source: ReviewSourceType) => void;
   onLockedFrequency: (freq: MonitorFrequency) => void;
@@ -229,17 +227,16 @@ export function ReviewsTab({
 } & MonitorSourceProps) {
   const [managing, setManaging] = useState(false);
 
-  // refreshTick is part of the key so a forced re-scan invalidates the cache;
-  // keepPreviousData keeps the last result on screen during that refetch (and the
-  // shared QueryClient serves the cache instantly on tab re-switch) → no skeleton
-  // flash except on the genuine first load.
+  // The shared QueryClient serves the cache instantly on tab re-switch (no skeleton
+  // flash); keepPreviousData keeps the last result during a refetch. A forced
+  // re-scan invalidates ["competitor", id] from the detail view.
   const reviewsQuery = useQuery({
-    queryKey: ["competitor", competitorId, "reviews", refreshTick],
+    queryKey: ["competitor", competitorId, "reviews"],
     queryFn: () => api.getCompetitorReviews(competitorId),
     placeholderData: keepPreviousData,
   });
   const scoresQuery = useQuery({
-    queryKey: ["competitor", competitorId, "reviewScores", refreshTick],
+    queryKey: ["competitor", competitorId, "reviewScores"],
     queryFn: () => api.getCompetitorReviewScores(competitorId).then((s) => s.scores),
     placeholderData: keepPreviousData,
   });

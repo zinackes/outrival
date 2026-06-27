@@ -114,7 +114,6 @@ import {
   type CompetitorOverview,
 } from "@/lib/api";
 import { competitorDetailQuery, competitorsQuery } from "@/lib/queries";
-import { emitCompetitorsChanged } from "@/lib/competitor-events";
 import { useSetAskContext } from "@/components/dashboard/ask-context";
 import {
   POLL_TIMEOUT_MS,
@@ -237,7 +236,6 @@ export function CompetitorDetailView({ id }: { id: string }) {
   const [tab, setTab] = useState<TabKey>("overview");
   const [showDelete, setShowDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [refreshTick, setRefreshTick] = useState(0);
   const [paywall, setPaywall] = useState<PaywallReason | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scrapingStartRef = useRef<
@@ -404,7 +402,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
         if (unchangedLabels.length > 0) {
           toast.info("Scrape complete · no change", { description: unchangedLabels.join(", ") });
         }
-        setRefreshTick((t) => t + 1);
+        void queryClient.invalidateQueries({ queryKey: ["competitor", id] });
       }
       if (failed.length > 0) {
         for (const mid of failed) {
@@ -413,7 +411,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
             description: friendlyScrapeError(m?.lastError, m?.sourceType),
           });
         }
-        setRefreshTick((t) => t + 1);
+        void queryClient.invalidateQueries({ queryKey: ["competitor", id] });
       }
       if (timedOut.length > 0) {
         const labels = timedOut
@@ -475,7 +473,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
     try {
       await api.deleteCompetitor(id);
       toast.success("Competitor deleted");
-      emitCompetitorsChanged();
+      void queryClient.invalidateQueries({ queryKey: competitorsQuery().queryKey });
       router.push("/dashboard/competitors");
     } catch (e) {
       toastApiError(e, { title: "Couldn't delete the competitor" });
@@ -493,7 +491,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
   }) {
     const { competitor } = await api.updateCompetitor(id, patch);
     setData((d) => (d ? { ...d, competitor } : d));
-    emitCompetitorsChanged();
+    void queryClient.invalidateQueries({ queryKey: competitorsQuery().queryKey });
     toast.success("Competitor updated");
   }
 
@@ -540,7 +538,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
     try {
       const { overlapScore } = await api.recomputeCompetitorOverlap(id);
       setData((d) => (d ? { ...d, competitor: { ...d.competitor, overlapScore } } : d));
-      emitCompetitorsChanged();
+      void queryClient.invalidateQueries({ queryKey: competitorsQuery().queryKey });
       toast.success("Overlap recomputed", {
         id: toastId,
         description:
@@ -899,9 +897,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
                 scrapingIds={scrapingIds}
                 onRun={requestRunMonitor}
                 onEnable={enableMonitor}
-                onRefresh={refresh}
-                refreshTick={refreshTick}
-              />
+                onRefresh={refresh}              />
             </TabsContent>
             <TabsContent value="hiring" className={TAB_PANEL_CLASS}>
               <HiringTab
@@ -909,9 +905,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
                 monitors={monitors}
                 scrapingIds={scrapingIds}
                 onRun={requestRunMonitor}
-                onEnable={enableMonitor}
-                refreshTick={refreshTick}
-              />
+                onEnable={enableMonitor}              />
             </TabsContent>
             <TabsContent value="reviews" className={TAB_PANEL_CLASS}>
               <ReviewsTab
@@ -921,9 +915,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
                 onRun={requestRunMonitor}
                 onEnable={enableMonitor}
                 onEdit={editMonitor}
-                onSwitch={switchReviewSource}
-                refreshTick={refreshTick}
-                plan={plan}
+                onSwitch={switchReviewSource}                plan={plan}
                 onLockedSource={(source) =>
                   setPaywall({ code: "plan_locked_source", source, plan })
                 }

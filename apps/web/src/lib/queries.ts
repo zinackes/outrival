@@ -70,3 +70,12 @@ export function trendsSummaryQuery(range: { from: Date; to: Date }) {
     queryFn: () => api.getTrendsSummary(range),
   });
 }
+
+// Products settings (the org's SKUs + the plan's product limit). listProducts
+// returns { products, plan, limit } together, so one query backs the whole page.
+export function productsSettingsQuery() {
+  return queryOptions({
+    queryKey: ["products", "settings"] as const,
+    queryFn: () => api.listProducts(),
+  });
+}

@@ -97,10 +97,12 @@ function Card({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-lg border border-border p-4">
+    <section className="flex flex-col rounded-lg border border-border p-4">
       <SectionHead title={title} icon={icon} sub={sub} />
       {empty ? (
-        <p className="text-muted-foreground py-2 text-sm">No data in this window yet.</p>
+        <p className="text-muted-foreground flex flex-1 items-center justify-center py-6 text-center text-sm">
+          No data in this window yet.
+        </p>
       ) : (
         <div className="mt-1">{children}</div>
       )}

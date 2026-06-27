@@ -61,6 +61,34 @@ const listCompetitors: AskTool = {
   },
 };
 
+const getCompetitorProfile: AskTool = {
+  name: "getCompetitorProfile",
+  description:
+    'What a competitor IS and does — category, description, AI-written summary, and overlap with your product. Use for "what is X / who is X / what does X do", and as the qualitative base of any comparison (this data exists even when a competitor has no signals or pricing/hiring/reviews yet).',
+  args: "competitorId (required)",
+  async run(orgId, args) {
+    const id = asString(args.competitorId);
+    if (!id) return { profile: null };
+    const row = await db.query.competitors.findFirst({
+      where: and(
+        eq(competitors.id, id),
+        eq(competitors.orgId, orgId),
+        isNull(competitors.deletedAt),
+      ),
+      columns: {
+        id: true,
+        name: true,
+        url: true,
+        category: true,
+        description: true,
+        aiSummary: true,
+        overlapScore: true,
+      },
+    });
+    return { profile: row ?? null };
+  },
+};
+
 const getSignals: AskTool = {
   name: "getSignals",
   description: "Recent strategic signals — detected competitor changes with AI insight.",
@@ -277,7 +305,8 @@ const COMPARE_DIMENSIONS = ["pricing", "hiring", "reviews", "tech"] as const;
 
 const compareCompetitors: AskTool = {
   name: "compareCompetitors",
-  description: "Side-by-side snapshot (pricing, hiring, reviews, tech) for 2+ competitors.",
+  description:
+    'Side-by-side comparison of 2+ competitors. Always returns each one\'s profile (category, description, AI summary, overlap) plus pricing, hiring, reviews, and tech. Use for any "how does X compare to Y" question — the profile grounds the answer even when the analytics dimensions are empty.',
   args: "ids (required array of competitorIds), dimension (optional: pricing|hiring|reviews|tech)",
   async run(orgId, args) {
     const raw = Array.isArray(args.ids) ? args.ids : [];
@@ -285,7 +314,14 @@ const compareCompetitors: AskTool = {
     if (requested.length === 0) return { competitors: [] };
 
     const owned = await db
-      .select({ id: competitors.id, name: competitors.name })
+      .select({
+        id: competitors.id,
+        name: competitors.name,
+        category: competitors.category,
+        description: competitors.description,
+        aiSummary: competitors.aiSummary,
+        overlapScore: competitors.overlapScore,
+      })
       .from(competitors)
       .where(
         and(
@@ -303,7 +339,18 @@ const compareCompetitors: AskTool = {
 
     const cols = await Promise.all(
       owned.map(async (o) => {
-        const col: Record<string, unknown> = { id: o.id, name: o.name };
+        // The qualitative substrate is always present so a comparison never comes back
+        // empty just because two competitors haven't been scraped/changed yet.
+        const col: Record<string, unknown> = {
+          id: o.id,
+          name: o.name,
+          profile: {
+            category: o.category,
+            description: o.description,
+            aiSummary: o.aiSummary,
+            overlapScore: o.overlapScore,
+          },
+        };
         if (dims.includes("pricing")) col.pricing = await getPricingHistory.run(orgId, { competitorId: o.id });
         if (dims.includes("hiring")) col.hiring = await getJobTrends.run(orgId, { competitorId: o.id });
         if (dims.includes("reviews")) col.reviews = await getReviewThemes.run(orgId, { competitorId: o.id });
@@ -317,6 +364,7 @@ const compareCompetitors: AskTool = {
 
 export const ASK_TOOLS: AskTool[] = [
   listCompetitors,
+  getCompetitorProfile,
   getSignals,
   getPricingHistory,
   getJobTrends,

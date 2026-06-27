@@ -117,6 +117,10 @@ ${JSON.stringify(results, null, 2).slice(0, 12000)}
 
 <rules>
 - Ground EVERY statement in the tool results. Do NOT invent numbers, dates, or facts.
+- A competitor profile (category, description, AI summary, overlap) is enough to
+  describe or compare competitors qualitatively. Use it even when there are no
+  pricing, hiring, reviews, or signal metrics — only say "no data" when the results
+  carry nothing at all about the competitors in question.
 - If the results are empty or do not cover the question, say so plainly — never guess.
 - Be specific: cite competitor names, figures, and dates that appear in the results.
 - "citations": the competitor/signal ids you relied on (each MUST appear in the results).

@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Download,
   ArrowRight,
@@ -11,11 +12,8 @@ import {
   FlaskConical,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
-import {
-  api,
-  type Signal,
-  type Competitor,
-} from "@/lib/api";
+import { type Signal } from "@/lib/api";
+import { signalsQuery, competitorsQuery } from "@/lib/queries";
 import { toCsv, downloadCsv } from "@/lib/csv";
 import { prettyUrl } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -115,20 +113,18 @@ function trendLabels(fromMs: number, toMs: number, buckets: number): string[] {
   return labels;
 }
 
-export function OverviewView({
-  initialSignals = null,
-  initialCompetitors = null,
-}: {
-  initialSignals?: Signal[] | null;
-  initialCompetitors?: Competitor[] | null;
-} = {}) {
+export function OverviewView() {
   const router = useRouter();
   useSetAskContext({ kind: "view", label: "Overview dashboard" });
-  const [signals, setSignals] = useState<Signal[] | null>(initialSignals);
-  const [competitors, setCompetitors] = useState<Competitor[] | null>(
-    initialCompetitors,
-  );
-  const [err, setErr] = useState<unknown>(null);
+  const queryClient = useQueryClient();
+  // Server-seeded on first paint (see app/dashboard/page.tsx) → useQuery reads the
+  // hydrated cache instead of fetching; falls back to a client fetch when the seed
+  // was missing or the server prefetch failed.
+  const signalsQ = useQuery(signalsQuery({ limit: 200 }));
+  const competitorsQ = useQuery(competitorsQuery());
+  const signals = signalsQ.data ?? null;
+  const competitors = competitorsQ.data ?? null;
+  const err = signalsQ.error ?? competitorsQ.error;
   const [range, setRange] = useState<DateRange>(() => lastNDays(7));
   const rangeFrom = range.from.getTime();
   const rangeTo = range.to.getTime();
@@ -147,22 +143,13 @@ export function OverviewView({
   const dsSignals = sample ? sampleData.signals : signals;
   const dsCompetitors = sample ? sampleData.competitors : competitors;
 
+  // Refresh both feeds — used by the error retry and the onboarding analysis
+  // panel's poll. Refetch the exact keys so the cache stays the single source of
+  // truth (no parallel useState to keep in sync).
   const load = useCallback(() => {
-    setErr(null);
-    Promise.all([api.listSignals({ limit: 200 }), api.listCompetitors()])
-      .then(([s, c]) => {
-        setSignals(s.signals);
-        setCompetitors(c.competitors);
-      })
-      .catch((e) => setErr(e));
-  }, []);
-
-  const hasData = signals !== null && competitors !== null;
-  useEffect(() => {
-    // Server-seeded first paint → skip the redundant client round-trip. Only
-    // fetch when we mounted without data (seed missing or server prefetch failed).
-    if (!hasData) load();
-  }, [load, hasData]);
+    void queryClient.refetchQueries({ queryKey: signalsQuery({ limit: 200 }).queryKey });
+    void queryClient.refetchQueries({ queryKey: competitorsQuery().queryKey });
+  }, [queryClient]);
 
   function exportCsv() {
     if (!dsSignals) return;

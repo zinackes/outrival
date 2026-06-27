@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Download,
@@ -18,6 +19,7 @@ import { toast } from "sonner";
 import { toastApiError } from "@/lib/error-helpers";
 import { ListError } from "@/components/outrival/list-error";
 import { api, type Digest } from "@/lib/api";
+import { digestsQuery } from "@/lib/queries";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -93,26 +95,17 @@ function fmtWeek(start: string, end: string) {
   }
 }
 
-export function DigestsView({
-  initialDigests = null,
-}: {
-  initialDigests?: Digest[] | null;
-} = {}) {
-  const [digests, setDigests] = useState<Digest[] | null>(initialDigests);
+export function DigestsView() {
+  // Server-seeded on first paint (digests/page.tsx) → useQuery reads the hydrated
+  // cache; falls back to a client fetch when the seed is missing.
+  const queryClient = useQueryClient();
+  const digestsQ = useQuery(digestsQuery());
+  const digests = digestsQ.data ?? null;
+  const err = digestsQ.error;
   const [active, setActive] = useState<Digest | null>(null);
-  const [err, setErr] = useState<unknown>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [genRange, setGenRange] = useState<DateRange>(() => DIGEST_PRESETS[0]!.range());
-
-  useEffect(() => {
-    // Server-seeded first paint → skip the redundant client fetch.
-    if (initialDigests) return;
-    api
-      .listDigests()
-      .then((r) => setDigests(r.digests))
-      .catch((e) => setErr(e));
-  }, []);
 
   async function handleGenerate(range: DateRange) {
     setGenerating(true);
@@ -126,8 +119,7 @@ export function DigestsView({
         );
         return;
       }
-      const list = await api.listDigests();
-      setDigests(list.digests);
+      await queryClient.invalidateQueries({ queryKey: digestsQuery().queryKey });
       setActive(digest);
       toast.success("Digest generated.");
     } catch (e) {

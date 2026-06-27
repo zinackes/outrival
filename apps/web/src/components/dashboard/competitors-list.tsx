@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import {
   Plus,
@@ -20,6 +21,7 @@ import {
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { api, type Competitor } from "@/lib/api";
+import { competitorsQuery } from "@/lib/queries";
 import { emitCompetitorsChanged } from "@/lib/competitor-events";
 import { track } from "@/lib/posthog/events";
 import {
@@ -70,17 +72,15 @@ type SortDir = "asc" | "desc";
 const TH_BASE =
   "text-left px-3.5 py-2.5 text-xs text-muted-foreground font-medium border-b border-border whitespace-nowrap";
 
-export function CompetitorsList({
-  initialCompetitors = null,
-}: {
-  initialCompetitors?: Competitor[] | null;
-} = {}) {
+export function CompetitorsList() {
   const router = useRouter();
   useSetAskContext({ kind: "view", label: "Competitors list" });
-  const [competitors, setCompetitors] = useState<Competitor[] | null>(
-    initialCompetitors,
-  );
-  const [err, setErr] = useState<unknown>(null);
+  // Server-seeded on first paint (competitors/page.tsx); shares the ["competitors"]
+  // cache with the Overview roster. Polls every 30s via refetchInterval.
+  const queryClient = useQueryClient();
+  const competitorsQ = useQuery({ ...competitorsQuery(), refetchInterval: 30_000 });
+  const competitors = competitorsQ.data ?? null;
+  const err = competitorsQ.error;
   const [view, setView] = useState<"table" | "cards">("table");
   const [sortBy, setSortBy] = useState<SortBy>("signals");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -91,24 +91,9 @@ export function CompetitorsList({
   const [deleteTarget, setDeleteTarget] = useState<Competitor | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  async function refresh() {
-    try {
-      const c = await api.listCompetitors();
-      setCompetitors(c.competitors);
-      setErr(null);
-    } catch (e) {
-      setErr(e);
-    }
+  function refresh() {
+    return queryClient.invalidateQueries({ queryKey: competitorsQuery().queryKey });
   }
-
-  useEffect(() => {
-    // Server-seeded first paint → skip the redundant initial fetch; keep polling.
-    if (!initialCompetitors) refresh();
-    const interval = setInterval(() => {
-      refresh();
-    }, 30_000);
-    return () => clearInterval(interval);
-  }, []);
 
   async function confirmDelete() {
     if (!deleteTarget) return;

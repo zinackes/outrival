@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import { ChevronDown, Download, Swords } from "lucide-react";
 import { api, type BattleCardSummary } from "@/lib/api";
+import { battleCardsQuery } from "@/lib/queries";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,28 +24,14 @@ function cardTitle(c: BattleCardSummary): string {
   return c.productName ? `${c.productName} vs ${c.competitorName}` : c.competitorName;
 }
 
-export function BattleCardsView({
-  initialCards = null,
-}: {
-  initialCards?: BattleCardSummary[] | null;
-} = {}) {
-  const [cards, setCards] = useState<BattleCardSummary[] | null>(initialCards);
-  const [err, setErr] = useState<unknown>(null);
+export function BattleCardsView() {
+  // Server-seeded on first paint (battle-cards/page.tsx) → useQuery reads the
+  // hydrated cache; falls back to a client fetch when the seed is missing.
+  const battleCardsQ = useQuery(battleCardsQuery());
+  const cards = battleCardsQ.data ?? null;
+  const err = battleCardsQ.error;
   const [product, setProduct] = useState<string>("all");
   const [competitor, setCompetitor] = useState<string>("all");
-
-  const load = useCallback(() => {
-    setErr(null);
-    api
-      .listBattleCards()
-      .then((r) => setCards(r.battleCards))
-      .catch((e) => setErr(e));
-  }, []);
-
-  useEffect(() => {
-    // Server-seeded first paint → skip the redundant client fetch.
-    if (!initialCards) load();
-  }, [load]);
 
   const products = useMemo(() => {
     const m = new Map<string, string>();
@@ -82,7 +70,7 @@ export function BattleCardsView({
     return (
       <div className="space-y-6">
         <PageHead title="Battle cards" sub="Strategic one-pagers per competitor." />
-        <ListError error={err} onRetry={load} />
+        <ListError error={err} onRetry={() => battleCardsQ.refetch()} />
       </div>
     );
   }

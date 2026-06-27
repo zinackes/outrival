@@ -1,15 +1,22 @@
+import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { OverviewView } from "@/components/dashboard/overview";
 import { getOverviewData } from "@/lib/api-server";
+import { makeServerQueryClient } from "@/lib/server-query";
+import { signalsQuery, competitorsQuery } from "@/lib/queries";
 
 export default async function DashboardHomePage() {
-  // Prefetch on the server (best-effort) so data is in the first paint instead
-  // of after JS hydration + a browser round-trip; null falls back to the
-  // client fetch inside OverviewView.
+  // Seed the query cache on the server (best-effort, one aggregated cookie-forwarded
+  // fetch) so data lands in the first paint. On failure the cache stays empty and
+  // OverviewView's useQuery fetches client-side — never slower than before.
+  const queryClient = makeServerQueryClient();
   const initial = await getOverviewData();
+  if (initial) {
+    queryClient.setQueryData(signalsQuery({ limit: 200 }).queryKey, initial.signals);
+    queryClient.setQueryData(competitorsQuery().queryKey, initial.competitors);
+  }
   return (
-    <OverviewView
-      initialSignals={initial?.signals ?? null}
-      initialCompetitors={initial?.competitors ?? null}
-    />
+    <HydrationBoundary state={dehydrate(queryClient)}>
+      <OverviewView />
+    </HydrationBoundary>
   );
 }

@@ -42,7 +42,10 @@ function normalizeDomain(input: string): string | null {
 function sources(domain: string): string[] {
   const d = encodeURIComponent(domain);
   return [
-    `https://www.google.com/s2/favicons?domain=${d}&sz=64`,
+    // sz=128 (not 64): Google serves a transparent PNG at 128 but an opaque
+    // white-background JPEG at 64. The transparent source lets <CompAvatar> render the
+    // bare glyph with clean anti-aliased edges instead of keying a white plate out.
+    `https://www.google.com/s2/favicons?domain=${d}&sz=128`,
     `https://icons.duckduckgo.com/ip3/${d}.ico`,
   ];
 }

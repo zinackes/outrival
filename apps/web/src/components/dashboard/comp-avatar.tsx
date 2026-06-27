@@ -37,6 +37,12 @@ function isPlatePixel(r: number, g: number, b: number, a: number): boolean {
   return a > 240 && Math.min(r, g, b) > 225 && Math.max(r, g, b) - Math.min(r, g, b) < 18;
 }
 
+// When de-plating, fade pixels by their distance from white rather than hard-cutting at a
+// threshold — a binary key leaves jagged edges on low-quality (JPEG) favicons. Pure white →
+// fully transparent, clearly coloured/dark → kept, with a feathered ramp between.
+const PLATE_FEATHER_LO = 50; // distance-from-white below which a pixel is fully plate
+const PLATE_FEATHER_HI = 160; // distance-from-white above which a pixel is fully glyph
+
 function analyzeFavicon(img: HTMLImageElement): Analysis {
   const S = 32;
   const canvas = document.createElement("canvas");
@@ -82,9 +88,16 @@ function analyzeFavicon(img: HTMLImageElement): Analysis {
   if (plateFrac >= 0.45 && glyphFrac > 0.03) {
     for (let i = 0; i < data.length; i += 4) {
       const a = data[i + 3] ?? 0;
-      if (a !== 0 && isPlatePixel(data[i]!, data[i + 1]!, data[i + 2]!, a)) {
-        data[i + 3] = 0;
-      }
+      if (a === 0) continue;
+      const dr = 255 - data[i]!;
+      const dg = 255 - data[i + 1]!;
+      const db = 255 - data[i + 2]!;
+      const dist = Math.sqrt(dr * dr + dg * dg + db * db);
+      const keep = Math.min(
+        1,
+        Math.max(0, (dist - PLATE_FEATHER_LO) / (PLATE_FEATHER_HI - PLATE_FEATHER_LO)),
+      );
+      data[i + 3] = Math.round(a * keep);
     }
     ctx.putImageData(image, 0, 0);
     return {

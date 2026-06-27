@@ -90,6 +90,14 @@ export function productsListQuery() {
   });
 }
 
+// Workspace (general) settings.
+export function workspaceSettingsQuery() {
+  return queryOptions({
+    queryKey: ["workspaceSettings"] as const,
+    queryFn: () => api.getWorkspaceSettings(),
+  });
+}
+
 // Activity timeline page size — shared so the server seed (limit=25) and the
 // client's page-1 key compute the same offset and hit the same cache entry.
 export const ACTIVITY_PAGE_SIZE = 25;

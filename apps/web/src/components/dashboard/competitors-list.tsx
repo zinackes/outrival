@@ -22,7 +22,6 @@ import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { api, type Competitor } from "@/lib/api";
 import { competitorsQuery } from "@/lib/queries";
-import { emitCompetitorsChanged } from "@/lib/competitor-events";
 import { track } from "@/lib/posthog/events";
 import {
   PaywallDialog,
@@ -103,7 +102,7 @@ export function CompetitorsList() {
       toast.success(`${deleteTarget.name} deleted`);
       setDeleteTarget(null);
       await refresh();
-      emitCompetitorsChanged();
+      void queryClient.invalidateQueries({ queryKey: competitorsQuery().queryKey });
     } catch (e) {
       toastApiError(e);
     } finally {
@@ -861,7 +860,6 @@ function AddCompetitorDialog({
       await api.createCompetitor({ name, url });
       track("competitor_added", { source: "manual" });
       await onAdded();
-      emitCompetitorsChanged();
       onOpenChange(false);
     } catch (e) {
       const reason = paywallFromError(e);

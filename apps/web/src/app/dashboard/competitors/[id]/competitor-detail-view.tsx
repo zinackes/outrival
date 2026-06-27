@@ -114,7 +114,6 @@ import {
   type CompetitorOverview,
 } from "@/lib/api";
 import { competitorDetailQuery, competitorsQuery } from "@/lib/queries";
-import { emitCompetitorsChanged } from "@/lib/competitor-events";
 import { useSetAskContext } from "@/components/dashboard/ask-context";
 import {
   POLL_TIMEOUT_MS,
@@ -475,7 +474,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
     try {
       await api.deleteCompetitor(id);
       toast.success("Competitor deleted");
-      emitCompetitorsChanged();
+      void queryClient.invalidateQueries({ queryKey: competitorsQuery().queryKey });
       router.push("/dashboard/competitors");
     } catch (e) {
       toastApiError(e, { title: "Couldn't delete the competitor" });
@@ -493,7 +492,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
   }) {
     const { competitor } = await api.updateCompetitor(id, patch);
     setData((d) => (d ? { ...d, competitor } : d));
-    emitCompetitorsChanged();
+    void queryClient.invalidateQueries({ queryKey: competitorsQuery().queryKey });
     toast.success("Competitor updated");
   }
 
@@ -540,7 +539,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
     try {
       const { overlapScore } = await api.recomputeCompetitorOverlap(id);
       setData((d) => (d ? { ...d, competitor: { ...d.competitor, overlapScore } } : d));
-      emitCompetitorsChanged();
+      void queryClient.invalidateQueries({ queryKey: competitorsQuery().queryKey });
       toast.success("Overlap recomputed", {
         id: toastId,
         description:

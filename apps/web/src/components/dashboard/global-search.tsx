@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import {
@@ -80,8 +81,14 @@ export function GlobalSearch() {
   const { setTheme } = useTheme();
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
-  const [results, setResults] = React.useState<SearchResults>(EMPTY);
-  const [loading, setLoading] = React.useState(false);
+  const [debounced, setDebounced] = React.useState("");
+  const searchQ = useQuery({
+    queryKey: ["globalSearch", debounced],
+    queryFn: () => api.search(debounced),
+    enabled: debounced.length >= 2,
+  });
+  const results: SearchResults = debounced.length >= 2 ? (searchQ.data ?? EMPTY) : EMPTY;
+  const loading = debounced.length >= 2 && searchQ.isFetching;
 
   // ⌘K / Ctrl+K toggles the palette.
   React.useEffect(() => {
@@ -95,34 +102,16 @@ export function GlobalSearch() {
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
-  // Debounced server-side entity search; stale responses are dropped via `active`.
+  // Debounce the query → the search runs via useQuery (results cached per query).
   React.useEffect(() => {
-    const q = query.trim();
-    if (q.length < 2) {
-      setResults(EMPTY);
-      setLoading(false);
-      return;
-    }
-    let active = true;
-    setLoading(true);
-    const t = setTimeout(() => {
-      api
-        .search(q)
-        .then((r) => active && setResults(r))
-        .catch(() => active && setResults(EMPTY))
-        .finally(() => active && setLoading(false));
-    }, 200);
-    return () => {
-      active = false;
-      clearTimeout(t);
-    };
+    const t = setTimeout(() => setDebounced(query.trim()), 200);
+    return () => clearTimeout(t);
   }, [query]);
 
   function onOpenChange(next: boolean) {
     setOpen(next);
     if (!next) {
       setQuery("");
-      setResults(EMPTY);
     }
   }
 

@@ -11,6 +11,21 @@ import { sendSignInCodeEmail, sendEmailChangeCodeEmail } from "./sign-in-email";
 
 const SIGN_IN_OTP_TTL_SECONDS = 600; // 10 minutes
 
+// Email-OTP sign-ups arrive with no name (no profile to read, and the unified
+// anti-enumeration /auth flow can't ask for one) → the header would show the raw
+// email. Derive a display name from the email local part so new accounts read as
+// a person. Editable later in /dashboard/settings/profile.
+function nameFromEmail(email: string): string {
+  const local = email.split("@")[0]?.split("+")[0] ?? "";
+  const derived = local
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ")
+    .trim();
+  return derived || local || email;
+}
+
 // WebAuthn relying party is bound to the WEB origin (where navigator.credentials
 // runs), NOT the API origin. rpID is the registrable host of WEB_URL
 // (outrival.io / localhost); origin is the full WEB_URL.
@@ -203,6 +218,14 @@ export const auth = betterAuth({
   databaseHooks: {
     user: {
       create: {
+        // Google sign-ups already carry a real name → left untouched. Email-OTP
+        // sign-ups have none → derive one before insert so it lands in BOTH the
+        // Better Auth `user` table (read by the session/header) and the mirrored
+        // `users` table below (the `after` hook copies the now-derived name).
+        before: async (user) => {
+          if (user.name && user.name.trim()) return;
+          return { data: { ...user, name: nameFromEmail(user.email) } };
+        },
         after: async (user) => {
           await db
             .insert(users)

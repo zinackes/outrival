@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Bell, ChevronDown, LogOut, Settings, User } from "lucide-react";
 import { signOut } from "@/lib/auth-client";
 import { resetUser } from "@/lib/posthog/events";
+import { UserAvatar } from "@/components/dashboard/user-avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,7 +38,7 @@ export function UserMenu({ user }: { user: User }) {
           aria-label="Account"
           className="flex h-8 items-center gap-1.5 rounded-md px-2 transition-colors hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 data-[state=open]:bg-accent data-[state=open]:text-accent-foreground dark:data-[state=open]:bg-accent/50"
         >
-          <User className="size-4 shrink-0 text-muted-foreground sm:hidden" aria-hidden />
+          <UserAvatar seed={user.email ?? user.name ?? "user"} size={24} />
           <span
             className="hidden max-w-[160px] truncate text-sm font-medium text-foreground sm:block"
             data-ph-mask

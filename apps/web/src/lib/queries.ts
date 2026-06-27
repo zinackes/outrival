@@ -61,6 +61,22 @@ export function usageQuery() {
   });
 }
 
+// Billing / subscription info.
+export function billingQuery() {
+  return queryOptions({
+    queryKey: ["billing"] as const,
+    queryFn: () => api.getBilling(),
+  });
+}
+
+// Stripe invoices (only meaningful once subscribed — gate with `enabled`).
+export function invoicesQuery() {
+  return queryOptions({
+    queryKey: ["billing", "invoices"] as const,
+    queryFn: () => api.getInvoices().then((r) => r.invoices),
+  });
+}
+
 // Trends summary for a date window. The key embeds the ISO bounds so the server
 // seed (default 90d) and the client's lastNDays(90) — both rounded to the day —
 // hit the same cache entry.

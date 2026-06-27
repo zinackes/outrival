@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Check, Loader2 } from "lucide-react";
 import {
@@ -11,7 +12,8 @@ import {
   type BillingPeriod,
   type Plan,
 } from "@outrival/shared";
-import { api, type BillingInfo } from "@/lib/api";
+import { api } from "@/lib/api";
+import { billingQuery, invoicesQuery } from "@/lib/queries";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -109,33 +111,21 @@ function channelsLabel(p: Plan): string {
     .join(", ");
 }
 
-export function BillingDashboard({
-  initialBilling = null,
-}: {
-  initialBilling?: BillingInfo | null;
-} = {}) {
+export function BillingDashboard() {
   const router = useRouter();
   const search = useSearchParams();
-  const [billing, setBilling] = useState<BillingInfo | null>(initialBilling);
+  // Server-seeded on first paint (settings/billing/page.tsx) → useQuery reads the
+  // hydrated cache; falls back to a client fetch when the seed is missing.
+  const queryClient = useQueryClient();
+  const billingQ = useQuery(billingQuery());
+  const billing = billingQ.data ?? null;
   const [period, setPeriod] = useState<BillingPeriod>("monthly");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-
-  useEffect(() => {
-    // Server-seeded first paint → skip the redundant client fetch.
-    if (initialBilling) return;
-    api.getBilling().then(setBilling).catch((e) => setError(String(e)));
-  }, []);
-
-  useEffect(() => {
-    if (!billing?.hasSubscription) return;
-    api
-      .getInvoices()
-      .then((r) => setInvoices(r.invoices))
-      .catch(() => setInvoices([]));
-  }, [billing?.hasSubscription]);
+  // Invoices only matter once subscribed; gated so it doesn't fetch otherwise.
+  const invoicesQ = useQuery({ ...invoicesQuery(), enabled: !!billing?.hasSubscription });
+  const invoices: Invoice[] = invoicesQ.data ?? [];
 
   useEffect(() => {
     const status = search.get("status");
@@ -143,8 +133,9 @@ export function BillingDashboard({
       setToast(
         "Subscription activated. The new plan will be available in a few seconds.",
       );
+      // Stripe needs a beat to propagate the new plan; refetch billing after a delay.
       const t = setTimeout(
-        () => api.getBilling().then(setBilling).catch(() => {}),
+        () => queryClient.invalidateQueries({ queryKey: billingQuery().queryKey }),
         2000,
       );
       router.replace("/dashboard/settings/billing");
@@ -154,7 +145,7 @@ export function BillingDashboard({
       setToast("Checkout cancelled. No changes made.");
       router.replace("/dashboard/settings/billing");
     }
-  }, [search, router]);
+  }, [search, router, queryClient]);
 
   async function handleCheckout(plan: PaidPlan) {
     setBusy(plan);
@@ -180,8 +171,12 @@ export function BillingDashboard({
     }
   }
 
-  if (error && !billing)
-    return <p className="text-sm text-muted-foreground">Error: {error}</p>;
+  if ((error || billingQ.error) && !billing)
+    return (
+      <p className="text-sm text-muted-foreground">
+        Error: {error ?? String(billingQ.error)}
+      </p>
+    );
   if (!billing) return <BillingDashboardSkeleton />;
 
   const currentRank = PLAN_RANK[billing.plan];

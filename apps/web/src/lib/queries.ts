@@ -52,3 +52,11 @@ export function battleCardsQuery() {
     queryFn: () => api.listBattleCards().then((r) => r.battleCards),
   });
 }
+
+// Plan usage snapshot (limits vs current consumption).
+export function usageQuery() {
+  return queryOptions({
+    queryKey: ["usage"] as const,
+    queryFn: () => api.getUsage(),
+  });
+}

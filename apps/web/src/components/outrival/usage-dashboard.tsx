@@ -1,15 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { Gauge, ArrowUpRight } from "lucide-react";
 import { PLAN_LABELS, PLAN_LIMITS } from "@outrival/shared";
 import {
-  api,
-  type UsageSnapshot,
   type UsageItem,
   type UsageDimension,
 } from "@/lib/api";
+import { usageQuery } from "@/lib/queries";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -80,24 +79,13 @@ function Entitlement({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function UsageDashboard({
-  initialData = null,
-}: {
-  initialData?: UsageSnapshot | null;
-} = {}) {
-  const [data, setData] = useState<UsageSnapshot | null>(initialData);
-  const [failed, setFailed] = useState(false);
+export function UsageDashboard() {
+  // Server-seeded on first paint (settings/usage/page.tsx) → useQuery reads the
+  // hydrated cache; falls back to a client fetch when the seed is missing.
+  const usageQ = useQuery(usageQuery());
+  const data = usageQ.data ?? null;
 
-  useEffect(() => {
-    // Server-seeded first paint → skip the redundant client fetch.
-    if (initialData) return;
-    api
-      .getUsage()
-      .then(setData)
-      .catch(() => setFailed(true));
-  }, []);
-
-  if (failed) {
+  if (usageQ.isError) {
     return (
       <p className="text-sm text-muted-foreground">Couldn&apos;t load usage right now.</p>
     );

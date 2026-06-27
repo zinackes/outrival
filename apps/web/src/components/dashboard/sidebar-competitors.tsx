@@ -1,11 +1,13 @@
 "use client";
 
 import * as React from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Users, ChevronRight, MoreHorizontal } from "lucide-react";
 
-import { api, type Competitor } from "@/lib/api";
+import { type Competitor } from "@/lib/api";
+import { competitorsQuery } from "@/lib/queries";
 import { onCompetitorsChanged } from "@/lib/competitor-events";
 import { cn } from "@/lib/utils";
 import {
@@ -40,28 +42,19 @@ function lastSignalMs(c: Competitor) {
 
 export function SidebarCompetitors() {
   const pathname = usePathname();
-  const [comps, setComps] = React.useState<Competitor[] | null>(null);
+  const queryClient = useQueryClient();
+  // Shares the ["competitors"] cache with the Overview + Competitors pages; polls in
+  // the background and refreshes when any view signals a roster change.
+  const compsQ = useQuery({ ...competitorsQuery(), refetchInterval: POLL_MS });
+  const comps = compsQ.data ?? null;
   const [open, setOpen] = React.useState(true);
 
   React.useEffect(() => {
-    let alive = true;
-    async function load() {
-      try {
-        const r = await api.listCompetitors();
-        if (alive) setComps(r.competitors);
-      } catch {
-        // keep last known list on transient errors
-      }
-    }
-    load();
-    const id = setInterval(load, POLL_MS);
-    const unsubscribe = onCompetitorsChanged(load);
-    return () => {
-      alive = false;
-      clearInterval(id);
-      unsubscribe();
-    };
-  }, []);
+    const unsubscribe = onCompetitorsChanged(() =>
+      queryClient.invalidateQueries({ queryKey: competitorsQuery().queryKey }),
+    );
+    return unsubscribe;
+  }, [queryClient]);
 
   const activeId = React.useMemo(() => {
     const m = pathname.match(/^\/dashboard\/competitors\/([^/]+)/);

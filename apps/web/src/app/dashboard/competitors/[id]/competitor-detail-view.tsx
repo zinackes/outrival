@@ -113,7 +113,7 @@ import {
   type TechStackData,
   type CompetitorOverview,
 } from "@/lib/api";
-import { competitorDetailQuery } from "@/lib/queries";
+import { competitorDetailQuery, competitorsQuery } from "@/lib/queries";
 import { emitCompetitorsChanged } from "@/lib/competitor-events";
 import { useSetAskContext } from "@/components/dashboard/ask-context";
 import {
@@ -256,17 +256,12 @@ export function CompetitorDetailView({ id }: { id: string }) {
   // Prev/next pager across the competitor roster (Linear "n/total" + chevrons):
   // fetch the ordered roster once; the pager walks it so an analyst flips through
   // competitors without bouncing back to the list. Order = the list's default.
-  const [roster, setRoster] = useState<{ id: string; name: string }[] | null>(null);
-  useEffect(() => {
-    let active = true;
-    api
-      .listCompetitors()
-      .then((r) => active && setRoster(r.competitors.map((c) => ({ id: c.id, name: c.name }))))
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, []);
+  // Shares the ["competitors"] roster cache with the list / overview / sidebar.
+  const rosterQ = useQuery(competitorsQuery());
+  const roster = useMemo(
+    () => rosterQ.data?.map((c) => ({ id: c.id, name: c.name })) ?? null,
+    [rosterQ.data],
+  );
   const rosterIdx = roster ? roster.findIndex((c) => c.id === id) : -1;
   const prevId = rosterIdx > 0 ? roster?.[rosterIdx - 1]?.id ?? null : null;
   const nextId =

@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import { ArrowRight, Swords } from "lucide-react";
-import { api, type BattleCardSummary } from "@/lib/api";
+import { type BattleCardSummary } from "@/lib/api";
+import { battleCardsQuery } from "@/lib/queries";
 import { SectionHead } from "./section-head";
 
 function cardTitle(c: BattleCardSummary): string {
@@ -15,14 +16,9 @@ function cardTitle(c: BattleCardSummary): string {
 // no longer live in the sidebar; this links to the dedicated /dashboard/battle-cards
 // page. Renders nothing when the org has no cards yet (keeps the overview clean).
 export function RecentBattleCards() {
-  const [cards, setCards] = useState<BattleCardSummary[] | null>(null);
-
-  useEffect(() => {
-    api
-      .listBattleCards()
-      .then((r) => setCards(r.battleCards))
-      .catch(() => setCards([]));
-  }, []);
+  // Shares the ["battleCards"] cache with the dedicated Battle Cards page.
+  const cardsQ = useQuery(battleCardsQuery());
+  const cards = cardsQ.data ?? null;
 
   if (!cards || cards.length === 0) return null;
   const recent = cards.slice(0, 3);

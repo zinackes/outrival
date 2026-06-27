@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { Code, Lock, MessageSquare } from "lucide-react";
 import { PLANS, PLAN_LABELS, PLAN_LIMITS, type Plan } from "@outrival/shared";
-import { api, type NotificationSettings } from "@/lib/api";
+import { notificationSettingsQuery, planQuery } from "@/lib/queries";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ListError } from "@/components/outrival/list-error";
@@ -19,32 +20,22 @@ function truncate(s: string, max: number) {
   return s.length <= max ? s : s.slice(0, max - 1) + "…";
 }
 
-export function IntegrationsSettings({
-  initialData = null,
-}: {
-  initialData?: { settings: NotificationSettings; plan: Plan } | null;
-} = {}) {
-  const [settings, setSettings] = useState<NotificationSettings | null>(
-    initialData?.settings ?? null,
-  );
-  const [plan, setPlan] = useState<Plan | null>(initialData?.plan ?? null);
-  const [err, setErr] = useState<unknown>(null);
+export function IntegrationsSettings() {
+  // Server-seeded on first paint (settings/integrations/page.tsx): the notification
+  // settings + the plan (for channel gating). Both fall back to client fetches.
+  const queryClient = useQueryClient();
+  const settingsQ = useQuery(notificationSettingsQuery());
+  const settings = settingsQ.data ?? null;
+  const planQ = useQuery(planQuery());
+  // Match the old behavior: fall back to "free" if the plan fetch fails.
+  const plan: Plan | null = planQ.data ?? (planQ.isError ? "free" : null);
+  const err = settingsQ.error;
   const [sheetOpen, setSheetOpen] = useState(false);
   const [channel, setChannel] = useState<AlertChannel>("slack");
 
   function refresh() {
-    api.getNotificationSettings().then(setSettings).catch((e) => setErr(e));
+    return queryClient.invalidateQueries({ queryKey: notificationSettingsQuery().queryKey });
   }
-
-  useEffect(() => {
-    // Server-seeded first paint → skip the redundant client fetches.
-    if (initialData) return;
-    refresh();
-    api
-      .getBilling()
-      .then((b) => setPlan(b.plan))
-      .catch(() => setPlan("free"));
-  }, []);
 
   function openSheet(ch: AlertChannel) {
     setChannel(ch);

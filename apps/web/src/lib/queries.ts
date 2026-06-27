@@ -135,6 +135,23 @@ export function discoveryStalenessQuery() {
   });
 }
 
+// Notification settings (alert channels: Slack / webhook URLs).
+export function notificationSettingsQuery() {
+  return queryOptions({
+    queryKey: ["notificationSettings"] as const,
+    queryFn: () => api.getNotificationSettings(),
+  });
+}
+
+// The org's plan alone (for plan-gating UI). Pulled from billing; a distinct key
+// so a {plan}-only server seed doesn't need the full BillingInfo shape.
+export function planQuery() {
+  return queryOptions({
+    queryKey: ["plan"] as const,
+    queryFn: () => api.getBilling().then((b) => b.plan),
+  });
+}
+
 // Activity health = the monitored-source roster + upcoming runs (filter options).
 export function activityHealthQuery() {
   return queryOptions({

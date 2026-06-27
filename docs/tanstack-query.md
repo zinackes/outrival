@@ -211,3 +211,30 @@ Per zone:
 
 Provider refactor to a shared `getQueryClient()` factory is only required if/when
 we adopt streaming — track it then, not now.
+
+---
+
+## 8. Intentionally NOT on useQuery
+
+useQuery is a tool, not a mandate — a handful of components keep `useState`/`useEffect`
+because the pattern doesn't fit or adds no value:
+
+- **`ask-panel`** — the answer is an **SSE stream**, not a cacheable GET. (Its chat
+  history could be a `useQuery`, but it's a thin one-shot read; left as-is.)
+- **`sectoral-feed`** (`/dashboard/sector`) — an **infinite-scroll list** (`loadMore`
+  appends pages). The right tool is `useInfiniteQuery`, a separate refactor; for a
+  secondary page the rolling `useState` list is fine. (It *also* has a seed-props
+  path — a Phase-A item — so if it's ever converged, do it as `useInfiniteQuery` +
+  hydration of page 1.)
+- **`update-profile-dialog`** — a fetch-on-open that seeds **~10 editable draft
+  fields** from two endpoints. One-shot form init, no cache to share, no re-render on
+  data → a plain effect is clearer than `useQuery` + a seed effect.
+- **`battle-card-tab`** — **generate-polling** with 404-as-pending: the custom state
+  machine (loading/absent/generating/ready) is clearer than bending `useQuery`
+  retry/refetchInterval around it.
+- **`nps-prompt`** (one-shot eligibility gate) and **`feedback-widget`** (no GET) —
+  nothing to cache.
+
+Rule of thumb: migrate when useQuery buys a shared cache, dedupe, hydration, or
+declarative refetch. Skip when it's a stream, an infinite list (use `useInfiniteQuery`),
+a one-shot form-init, or a bespoke poll loop.

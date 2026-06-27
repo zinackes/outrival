@@ -1,9 +1,11 @@
-import { task, logger, wait } from "@trigger.dev/sdk/v3";
+import { task, logger, tasks, wait } from "@trigger.dev/sdk/v3";
 import { z } from "zod";
-import { and, count, desc, eq, inArray, isNull, isNotNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, isNotNull } from "drizzle-orm";
 import {
   db,
   competitors,
+  monitors,
+  snapshots,
   notifications,
   organizations,
   onboardingSessions,
@@ -33,14 +35,50 @@ export const notifyOnboardingAnalysisJob = task({
     logger.log("Starting notify-onboarding-analysis", { orgId, total });
 
     const deadline = Date.now() + MAX_WAIT_MS;
+    // Competitors already nudged this run — each stuck summary is re-triggered at
+    // most once, so a permanently-failing one isn't hammered on every tick.
+    const nudged = new Set<string>();
     let analyzed = 0;
+    let tick = 0;
     while (true) {
-      const [row] = await db
-        .select({ value: count() })
+      const ready = await db
+        .select({ id: competitors.id })
         .from(competitors)
         .where(and(inArray(competitors.id, competitorIds), isNotNull(competitors.aiSummary)));
-      analyzed = row?.value ?? 0;
+      analyzed = ready.length;
       if (analyzed >= total || Date.now() >= deadline) break;
+
+      // Self-heal the onboarding burst gap: even with the bounded summary queue, a
+      // competitor's post-scrape refresh-competitor-summary can still fail (AI
+      // outage, transient). Nothing else retries it until the NEXT scheduled scrape
+      // — hours/days away — so the competitor sits "analyzing" the whole time. Once
+      // it has a homepage snapshot (scrape succeeded) but still no summary,
+      // re-trigger it here. Skipped on the first tick to let the scrape's own
+      // post-capture trigger land first; bounded to one nudge per competitor.
+      if (tick >= 1) {
+        const readyIds = new Set(ready.map((r) => r.id));
+        const missing = competitorIds.filter((id) => !readyIds.has(id) && !nudged.has(id));
+        if (missing.length > 0) {
+          const captured = await db
+            .selectDistinct({ competitorId: monitors.competitorId })
+            .from(monitors)
+            .innerJoin(snapshots, eq(snapshots.monitorId, monitors.id))
+            .where(
+              and(inArray(monitors.competitorId, missing), eq(monitors.sourceType, "homepage")),
+            );
+          for (const { competitorId } of captured) {
+            nudged.add(competitorId);
+            await tasks.trigger("refresh-competitor-summary", { competitorId });
+          }
+          if (captured.length > 0) {
+            logger.log("Re-triggered stuck competitor summaries", {
+              orgId,
+              count: captured.length,
+            });
+          }
+        }
+      }
+      tick += 1;
       await wait.for({ seconds: POLL_INTERVAL_SECONDS });
     }
 

@@ -1,4 +1,4 @@
-import { task, logger, AbortTaskRunError } from "@trigger.dev/sdk/v3";
+import { task, logger, queue, AbortTaskRunError } from "@trigger.dev/sdk/v3";
 import { z } from "zod";
 import { and, desc, eq } from "drizzle-orm";
 import { db, competitors, signals, reviews, monitors, snapshots } from "@outrival/db";
@@ -11,8 +11,20 @@ const InputSchema = z.object({
   competitorId: z.string(),
 });
 
+// Onboarding /complete fires every competitor's homepage scrape at once, so this
+// job fans out N-wide a few seconds apart. Hitting the shared AI provider pool
+// all at once throttled it — one summary then stalled ~56s or hit MAX_DURATION and
+// never landed, leaving its competitor stuck "analyzing" until the next scheduled
+// scrape self-healed (hours/days later). A bounded queue serialises the burst so
+// each call keeps the provider to itself (~3s). Env-tunable for paid AI tiers.
+const summaryQueue = queue({
+  name: "competitor-summary",
+  concurrencyLimit: Number(process.env.SUMMARY_CONCURRENCY ?? 3),
+});
+
 export const refreshCompetitorSummaryJob = task({
   id: "refresh-competitor-summary",
+  queue: summaryQueue,
   maxDuration: 120,
   retry: { maxAttempts: 3, minTimeoutInMs: 1000, maxTimeoutInMs: 10000, factor: 2 },
 

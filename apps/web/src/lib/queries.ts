@@ -152,6 +152,22 @@ export function planQuery() {
   });
 }
 
+// Notification moderation preferences (channels by severity, quiet hours, cap…).
+export function notificationPreferencesQuery() {
+  return queryOptions({
+    queryKey: ["notificationPreferences"] as const,
+    queryFn: () => api.getNotificationPreferences().then((r) => r.preferences),
+  });
+}
+
+// Auto-tuned relevance threshold (read-only display on the moderation form).
+export function relevanceThresholdQuery() {
+  return queryOptions({
+    queryKey: ["relevanceThreshold"] as const,
+    queryFn: () => api.getRelevanceThreshold(),
+  });
+}
+
 // Activity health = the monitored-source roster + upcoming runs (filter options).
 export function activityHealthQuery() {
   return queryOptions({

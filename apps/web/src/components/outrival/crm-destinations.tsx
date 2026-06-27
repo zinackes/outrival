@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Webhook, Trash2, Send, Plus, Loader2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError, type CrmDestination } from "@/lib/api";
@@ -9,7 +10,22 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 export function CrmDestinations() {
-  const [list, setList] = useState<CrmDestination[] | null>(null);
+  const queryClient = useQueryClient();
+  const listQ = useQuery({
+    queryKey: ["crmDestinations"],
+    queryFn: () => api.listCrmDestinations().then((r) => r.destinations),
+  });
+  const list = listQ.data ?? null;
+  // Write-through to the cached list for the optimistic add/test/edit/delete updates.
+  function setList(
+    value:
+      | CrmDestination[]
+      | ((prev: CrmDestination[] | null) => CrmDestination[] | null),
+  ) {
+    queryClient.setQueryData<CrmDestination[]>(["crmDestinations"], (prev) =>
+      (typeof value === "function" ? value(prev ?? null) : value) ?? [],
+    );
+  }
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
   const [secret, setSecret] = useState("");
@@ -23,14 +39,8 @@ export function CrmDestinations() {
   const [saving, setSaving] = useState(false);
 
   function refresh() {
-    api
-      .listCrmDestinations()
-      .then((r) => setList(r.destinations))
-      .catch(() => setList([]));
+    return queryClient.invalidateQueries({ queryKey: ["crmDestinations"] });
   }
-  useEffect(() => {
-    refresh();
-  }, []);
 
   async function add() {
     if (!name.trim() || !url.trim()) return;

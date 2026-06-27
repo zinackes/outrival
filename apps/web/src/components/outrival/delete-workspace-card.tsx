@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -15,21 +16,17 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
+import { workspaceSettingsQuery } from "@/lib/queries";
 import { ReauthCodeField } from "@/components/outrival/reauth-code-field";
 
 export function DeleteWorkspaceCard() {
   const [open, setOpen] = useState(false);
-  const [workspaceName, setWorkspaceName] = useState<string | null>(null);
+  // Shares the ["workspaceSettings"] cache with the General settings form.
+  const settingsQ = useQuery(workspaceSettingsQuery());
+  const workspaceName = settingsQ.data?.name ?? null;
   const [confirm, setConfirm] = useState("");
   const [code, setCode] = useState("");
   const [deleting, setDeleting] = useState(false);
-
-  useEffect(() => {
-    api
-      .getWorkspaceSettings()
-      .then((w) => setWorkspaceName(w.name))
-      .catch(() => setWorkspaceName(null));
-  }, []);
 
   async function handleDelete() {
     setDeleting(true);

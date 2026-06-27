@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ArrowRight, Link2, PauseCircle, PencilLine, Play, RefreshCcw, X } from "lucide-react";
 import { isReviewSource, type SourceType } from "@outrival/shared";
@@ -47,7 +48,24 @@ interface Props {
 }
 
 export function MonitorAlternatives({ monitorId, sourceType, failureCategory, onResolved }: Props) {
-  const [alternatives, setAlternatives] = useState<MonitorAlternative[] | null>(null);
+  const queryClient = useQueryClient();
+  const alternativesQ = useQuery({
+    queryKey: ["monitorAlternatives", monitorId],
+    queryFn: () => api.getMonitorAlternatives(monitorId).then((r) => r.alternatives),
+  });
+  const alternatives = alternativesQ.data ?? null;
+  // Write-through to the cached list (value or updater), so the resume/dismiss/
+  // manual-entry call-sites stay unchanged.
+  function setAlternatives(
+    value:
+      | MonitorAlternative[]
+      | ((prev: MonitorAlternative[] | null) => MonitorAlternative[] | null),
+  ) {
+    queryClient.setQueryData<MonitorAlternative[]>(
+      ["monitorAlternatives", monitorId],
+      (prev) => (typeof value === "function" ? value(prev ?? null) : value) ?? [],
+    );
+  }
   const [busyId, setBusyId] = useState<string | null>(null);
   const [resuming, setResuming] = useState(false);
   const [dismissing, setDismissing] = useState(false);
@@ -55,17 +73,6 @@ export function MonitorAlternatives({ monitorId, sourceType, failureCategory, on
   const [urlOpen, setUrlOpen] = useState(false);
   const [urlValue, setUrlValue] = useState("");
   const [savingUrl, setSavingUrl] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    api
-      .getMonitorAlternatives(monitorId)
-      .then((r) => active && setAlternatives(r.alternatives))
-      .catch(() => active && setAlternatives([]));
-    return () => {
-      active = false;
-    };
-  }, [monitorId]);
 
   if (!alternatives || alternatives.length === 0) return null;
 

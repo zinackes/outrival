@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, X } from "lucide-react";
 import { api } from "@/lib/api";
 
@@ -15,35 +16,21 @@ const DISMISS_KEY = "outrival.ai-status-dismissed";
  * localStorage, so dismissing hides this streak but a fresh failure re-shows it.
  */
 export function AiStatusBanner() {
-  const [since, setSince] = useState<string | null>(null);
-  const [down, setDown] = useState(false);
-  const [recovery, setRecovery] = useState<string | null>(null);
+  // Polled via useQuery; an auth blip / API error just leaves data undefined → the
+  // banner stays hidden (since is null).
+  const statusQ = useQuery({
+    queryKey: ["aiStatus"],
+    queryFn: () => api.getAiStatus(),
+    refetchInterval: POLL_MS,
+  });
+  const data = statusQ.data;
+  const since = data?.degraded ? data.since : null;
+  const down = data?.status === "down";
+  const recovery = data?.estimatedRecovery ?? null;
   const [dismissed, setDismissed] = useState<string | null>(null);
-  const mounted = useRef(true);
 
   useEffect(() => {
-    mounted.current = true;
     setDismissed(localStorage.getItem(DISMISS_KEY));
-
-    const poll = async () => {
-      try {
-        const res = await api.getAiStatus();
-        if (!mounted.current) return;
-        setSince(res.degraded ? res.since : null);
-        setDown(res.status === "down");
-        setRecovery(res.estimatedRecovery);
-      } catch {
-        // Auth blips / API down — just don't show the banner.
-        if (mounted.current) setSince(null);
-      }
-    };
-
-    poll();
-    const timer = setInterval(poll, POLL_MS);
-    return () => {
-      mounted.current = false;
-      clearInterval(timer);
-    };
   }, []);
 
   const dismiss = useCallback(() => {

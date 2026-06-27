@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { PLAN_LIMITS, type Plan } from "@outrival/shared";
+import { PLAN_LIMITS } from "@outrival/shared";
 import { api } from "@/lib/api";
+import { planQuery } from "@/lib/queries";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
@@ -23,14 +25,9 @@ function retentionLabel(days: number): string {
 // endpoints client-side.
 export function DataSettings() {
   const [busy, setBusy] = useState(false);
-  const [plan, setPlan] = useState<Plan | null>(null);
-
-  useEffect(() => {
-    api
-      .getBilling()
-      .then((b) => setPlan(b.plan))
-      .catch(() => setPlan(null));
-  }, []);
+  // Shares the ["plan"] cache with Integrations / Notifications / Billing.
+  const planQ = useQuery(planQuery());
+  const plan = planQ.data ?? null;
 
   async function exportData() {
     setBusy(true);

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { toast } from "sonner";
 import { AlertCircle } from "lucide-react";
@@ -17,19 +18,21 @@ const TYPE_LABEL: Record<string, string> = {
 // Proactive banner for structural changes awaiting a decision (patch-23). The
 // user must resolve each one explicitly — we never auto-resolve.
 export function StructuralChangeBanner() {
-  const [changes, setChanges] = useState<StructuralChangeRow[]>([]);
+  const queryClient = useQueryClient();
+  const changesQ = useQuery({
+    queryKey: ["structuralChanges", "detected"],
+    queryFn: () => api.getStructuralChanges("detected").then((r) => r.changes),
+  });
+  const changes = changesQ.data ?? [];
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  useEffect(() => {
-    let active = true;
-    api
-      .getStructuralChanges("detected")
-      .then((r) => active && setChanges(r.changes))
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, []);
+  // Optimistic write-through for the resolve mutation below.
+  function setChanges(updater: (prev: StructuralChangeRow[]) => StructuralChangeRow[]) {
+    queryClient.setQueryData<StructuralChangeRow[]>(
+      ["structuralChanges", "detected"],
+      (prev) => updater(prev ?? []),
+    );
+  }
 
   if (changes.length === 0) return null;
 

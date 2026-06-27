@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, ExternalLink } from "lucide-react";
 import { format } from "date-fns";
 import { api, type SignalDetail } from "@/lib/api";
@@ -75,28 +75,18 @@ export function variationLabel(metadata: Record<string, unknown> | null): string
 // classification — that lives in admin tooling. Falls back gracefully when the
 // before/after couldn't be extracted (pre-patch signals or a failed extraction).
 export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPanelProps) {
-  const [detail, setDetail] = useState<SignalDetail | null>(null);
-  const [state, setState] = useState<"idle" | "loading" | "error">("idle");
-
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    setState("loading");
-    api
-      .getSignalDetail(signalId)
-      .then((res) => {
-        if (cancelled) return;
-        setDetail(res.signal);
-        setState("idle");
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setState("error");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, signalId]);
+  // Fetch-on-open via useQuery.
+  const detailQ = useQuery({
+    queryKey: ["signalDetail", signalId],
+    queryFn: () => api.getSignalDetail(signalId).then((r) => r.signal),
+    enabled: open,
+  });
+  const detail = detailQ.data ?? null;
+  const state: "idle" | "loading" | "error" = detailQ.isError
+    ? "error"
+    : detailQ.isFetching
+      ? "loading"
+      : "idle";
 
   const hasChange = Boolean(detail?.humanChangeBefore || detail?.humanChangeAfter);
   const host = hostOf(detail?.sourceUrl ?? null);

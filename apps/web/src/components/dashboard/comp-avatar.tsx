@@ -27,11 +27,12 @@ type Analysis =
 
 const cache = new Map<string, Analysis>();
 
-// Google's favicon service (our first proxy source) bakes a solid WHITE square behind
-// transparent favicons. Left alone that white plate fills the tile and glares on the dark
-// theme. We detect that near-white uniform plate from the corners and key it out, so the
-// real glyph reads bare — exactly as it does in the browser tab. A coloured/gradient plate
-// (a genuine brand tile) has non-white corners and is kept as "fill".
+// The favicon proxies (Google, then DuckDuckGo) bake a solid WHITE square behind
+// transparent favicons — often as an opaque JPEG with no alpha at all. Left alone that
+// white plate fills the tile and glares on the dark theme. We detect it by AREA (the
+// near-white pixels dominate the image) and key them out, so the real glyph reads bare —
+// exactly as it does in the browser tab. A coloured/gradient brand tile has few near-white
+// pixels and is kept as "fill".
 function isPlatePixel(r: number, g: number, b: number, a: number): boolean {
   return a > 240 && Math.min(r, g, b) > 225 && Math.max(r, g, b) - Math.min(r, g, b) < 18;
 }
@@ -46,21 +47,9 @@ function analyzeFavicon(img: HTMLImageElement): Analysis {
   ctx.drawImage(img, 0, 0, S, S);
   const image = ctx.getImageData(0, 0, S, S);
   const { data } = image;
-  const at = (x: number, y: number) => (y * S + x) * 4;
-
-  // A near-white plate shows up as near-white opaque pixels in all four (inset) corners.
-  // Inset by 2px so a rounded plate's clipped corner doesn't read as transparent.
-  const plate = [
-    [2, 2],
-    [S - 3, 2],
-    [2, S - 3],
-    [S - 3, S - 3],
-  ].every(([x, y]) => {
-    const i = at(x!, y!);
-    return isPlatePixel(data[i]!, data[i + 1]!, data[i + 2]!, data[i + 3]!);
-  });
 
   let opaque = 0;
+  let plateCount = 0;
   let allLumSum = 0;
   let allAlpha = 0;
   let glyphLumSum = 0;
@@ -75,17 +64,22 @@ function analyzeFavicon(img: HTMLImageElement): Analysis {
     const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
     allLumSum += lum * a;
     allAlpha += a;
-    if (!(plate && isPlatePixel(r, g, b, a))) {
+    if (isPlatePixel(r, g, b, a)) {
+      plateCount++;
+    } else {
       glyphLumSum += lum * a;
       glyphAlpha += a;
     }
   }
 
   const coverage = opaque / (S * S);
+  // The baked white plate dominates the tile by area; the real glyph is the coloured
+  // remainder (which can run into a corner, so corner sampling would miss it). Key the
+  // plate out only when a real glyph is left — never erase a near-blank white favicon.
+  const plateFrac = opaque ? plateCount / opaque : 0;
+  const glyphFrac = (opaque - plateCount) / (S * S);
 
-  // De-plate only when there's a real glyph left after keying (guards a near-blank
-  // white-on-white favicon from being erased to nothing — keep it as fill instead).
-  if (plate && allAlpha > 0 && glyphAlpha / allAlpha > 0.02) {
+  if (plateFrac >= 0.45 && glyphFrac > 0.03) {
     for (let i = 0; i < data.length; i += 4) {
       const a = data[i + 3] ?? 0;
       if (a !== 0 && isPlatePixel(data[i]!, data[i + 1]!, data[i + 2]!, a)) {

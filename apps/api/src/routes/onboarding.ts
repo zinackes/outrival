@@ -14,7 +14,7 @@ import {
   type SelfProfile,
   type SelfProfileField,
 } from "@outrival/db";
-import { normalizeHostname, validatePublicUrl } from "@outrival/shared";
+import { normalizeHostname, validatePublicUrl, resolveDetectionConfig } from "@outrival/shared";
 import {
   scoreOverlap,
   ProductProfileSchema,
@@ -399,6 +399,8 @@ const DiscoverSchema = z.object({
     .refine((u) => validatePublicUrl(u).ok, { message: "URL must be a public http(s) site" })
     .nullish(),
   profile: ProductProfileSchema,
+  // Primary market to bias discovery toward (ISO alpha-2). Omitted/null = global.
+  region: z.string().length(2).nullable().optional(),
 });
 
 onboardingRouter.post("/discover", async (c) => {
@@ -414,6 +416,8 @@ onboardingRouter.post("/discover", async (c) => {
       parsed.data.productUrl ?? null,
       buildDiscoveryQuery(parsed.data.profile),
       15,
+      [],
+      parsed.data.region ?? null,
     );
   } catch (e) {
     return c.json({ error: `Discovery failed: ${String(e)}` }, 502);
@@ -585,6 +589,10 @@ const CompleteSchema = z.object({
     frequency: FrequencySchema,
     sources: z.array(SourceTypeSchema).min(1),
   }),
+  // Primary market chosen at the discover step (ISO alpha-2). Persisted into the
+  // org's detectionConfig so the weekly cron + on-demand detect inherit it. null =
+  // global; undefined = leave the existing config untouched.
+  discoveryRegion: z.string().length(2).nullable().optional(),
   // Patch-25: the resumable session for this run, flipped to analysis_in_progress
   // so the dashboard streaming panel knows the first pass is underway.
   onboardingSessionId: z.string().optional(),
@@ -604,6 +612,7 @@ onboardingRouter.post("/complete", async (c) => {
     savedCandidates,
     dismissedCandidates,
     monitoringPrefs,
+    discoveryRegion,
     onboardingSessionId,
   } = parsed.data;
 
@@ -733,9 +742,30 @@ onboardingRouter.post("/complete", async (c) => {
     await db.insert(competitorCandidates).values(candidateRows);
   }
 
+  // Persist the chosen market into detectionConfig (merged over the resolved
+  // current config) so later cron / on-demand discovery biases the same way.
+  let detectionConfigUpdate: Record<string, unknown> | undefined;
+  if (discoveryRegion !== undefined) {
+    const orgRow = await db.query.organizations.findFirst({
+      where: eq(organizations.id, orgId),
+      columns: { detectionConfig: true },
+    });
+    detectionConfigUpdate = {
+      detectionConfig: {
+        ...resolveDetectionConfig(orgRow?.detectionConfig),
+        region: discoveryRegion,
+      },
+    };
+  }
+
   await db
     .update(organizations)
-    .set({ onboardingCompleted: true, onboardingStep: "done", updatedAt: new Date() })
+    .set({
+      onboardingCompleted: true,
+      onboardingStep: "done",
+      ...detectionConfigUpdate,
+      updatedAt: new Date(),
+    })
     .where(eq(organizations.id, orgId));
 
   // Flip the resumable session to analysis_in_progress (drives the dashboard

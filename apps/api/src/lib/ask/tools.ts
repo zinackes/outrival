@@ -139,7 +139,8 @@ const getSignals: AskTool = {
 
 interface RawPricingPlan {
   planName: string;
-  price: number;
+  // null for quote-based tiers (Enterprise / Custom).
+  price: number | null;
   currency: string | null;
   billingPeriod: string | null;
 }

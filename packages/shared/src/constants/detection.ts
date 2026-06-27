@@ -20,6 +20,15 @@ export const DetectionConfigSchema = z.object({
   excludedDomains: z.array(z.string()),
   /** Extra terms appended to the auto-derived Exa discovery query. */
   keywords: z.string(),
+  /**
+   * Primary market to bias discovery toward (ISO 3166-1 alpha-2, e.g. "fr") —
+   * fed to Exa's `userLocation`. `null` = global (default). Biases, never filters.
+   */
+  region: z
+    .string()
+    .length(2)
+    .nullable()
+    .transform((v) => (v ? v.toLowerCase() : v)),
 });
 
 export type DetectionConfig = z.infer<typeof DetectionConfigSchema>;
@@ -30,6 +39,7 @@ export const DEFAULT_DETECTION_CONFIG: DetectionConfig = {
   cadence: "weekly",
   excludedDomains: [],
   keywords: "",
+  region: null,
 };
 
 /** Merge a (possibly partial / legacy) stored config over the defaults. */

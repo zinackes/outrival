@@ -4,6 +4,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { db, competitors, signals, reviews, monitors, snapshots } from "@outrival/db";
 import { generateCompetitorSummary, AI_CONFIG } from "@outrival/ai";
 import { getFromR2 } from "@outrival/shared";
+import { isCloudflareChallenge } from "@outrival/scrapers/block-detection";
 import { htmlToText } from "../lib/html-to-text";
 import { loggedAi } from "../lib/analytics";
 
@@ -66,7 +67,18 @@ export const refreshCompetitorSummaryJob = task({
       if (latestSnapshot) {
         try {
           const html = await getFromR2(`${latestSnapshot.r2Key}.html`);
-          homepageContent = htmlToText(html).slice(0, 8000);
+          // Defence-in-depth: a stored snapshot can be an anti-bot challenge shell
+          // that slipped past the cascade's detection. Feeding it to the model
+          // yields a summary that describes the security check ("the site is
+          // showing a security check…") instead of the product. Drop it so the
+          // summary falls back to signals/profile rather than parroting junk.
+          if (isCloudflareChallenge(html)) {
+            logger.warn("Homepage snapshot is an anti-bot challenge — skipping as summary input", {
+              competitorId: competitor.id,
+            });
+          } else {
+            homepageContent = htmlToText(html).slice(0, 8000);
+          }
         } catch (err) {
           logger.warn("Failed to load homepage snapshot for summary", { err: String(err) });
         }

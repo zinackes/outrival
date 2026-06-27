@@ -60,8 +60,8 @@ export function ActivityTab({
         </p>
         <p className="text-sm text-muted-foreground max-w-md">
           {hasScraped
-            ? "Monitoring is active — we've been checking this competitor's sources and nothing has changed yet. Changes show up here the moment they happen."
-            : "Activity will appear once a monitor detects a change. Scrape from the Sources section above to start tracking."}
+            ? "Monitoring is active — we've been checking this competitor's sources and nothing has changed yet."
+            : "Scrape from the Sources section above to start tracking."}
         </p>
         {hasScraped && (
           <Link

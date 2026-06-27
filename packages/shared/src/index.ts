@@ -2,6 +2,7 @@ export * from "./types/result";
 export * from "./constants/sources";
 export * from "./constants/plans";
 export * from "./constants/detection";
+export * from "./constants/regions";
 export * from "./constants/freshness";
 export * from "./staleness";
 export * from "./r2/client";

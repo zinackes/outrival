@@ -1,0 +1,1 @@
+ALTER TABLE "pricing_history" ALTER COLUMN "price" DROP NOT NULL;

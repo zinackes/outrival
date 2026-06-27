@@ -9,6 +9,7 @@ import { NpsPrompt } from "@/components/outrival/nps-prompt";
 import { OnboardingBanner } from "@/components/outrival/onboarding-banner";
 import { OnboardingResumeBanner } from "@/components/onboarding/resume-banner";
 import { AiStatusBanner } from "@/components/outrival/ai-status-banner";
+import { TwoFactorNudgeBanner } from "@/components/outrival/two-factor-nudge-banner";
 import { StructuralChangeBanner } from "@/components/outrival/structural-change-banner";
 import type { OnboardingSession } from "@/lib/api";
 
@@ -125,6 +126,7 @@ export default async function DashboardLayout({
       {resumeSession && <OnboardingResumeBanner session={resumeSession} />}
       {showOnboardingBanner && <OnboardingBanner />}
       <AiStatusBanner />
+      <TwoFactorNudgeBanner />
       <div className="px-4 pt-4 sm:px-6 empty:hidden">
         <StructuralChangeBanner />
       </div>

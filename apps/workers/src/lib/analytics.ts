@@ -262,7 +262,8 @@ export async function getRecentSignalCount(hours: number): Promise<number | null
 export interface PricingHistoryRow {
   competitor_id: string;
   plan_name: string;
-  price: number;
+  // null for quote-based tiers (Enterprise / "Contact sales" / Custom).
+  price: number | null;
   currency: string;
   billing_period: string;
   // patch-11 taxonomy columns.
@@ -503,7 +504,9 @@ export async function getPricingHistorySince(
       .select({
         competitor_id: pricingHistory.competitorId,
         plan_name: pricingHistory.planName,
-        price: pricingHistory.price,
+        // The WHERE clause filters price > 0, so this is always non-null here —
+        // assert it so the sectoral chain stays numeric (the column is nullable).
+        price: sql<number>`${pricingHistory.price}`,
         recorded_at: sql<string>`${pricingHistory.recordedAt}::text`,
       })
       .from(pricingHistory)

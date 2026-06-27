@@ -84,6 +84,10 @@ export async function findSimilarCompanies(
   query: string,
   count = 15,
   excludeDomains: string[] = [],
+  // Primary market (ISO 3166-1 alpha-2, e.g. "fr") → Exa `userLocation`, which
+  // biases results toward that region. null = global (no bias). It only reorders
+  // toward the market — strong off-region competitors still surface.
+  region: string | null = null,
 ): Promise<DiscoveredCompany[]> {
   const hostname = productUrl ? new URL(productUrl).hostname : null;
   const ownBrand = productUrl ? extractBrand(productUrl) : null;
@@ -97,6 +101,7 @@ export async function findSimilarCompanies(
     excludeDomains: [...(hostname ? [hostname] : []), ...excludeDomains],
     category: "company",
     contents: { text: { maxCharacters: 500 } },
+    ...(region ? { userLocation: region } : {}),
   });
 
   const mapped = results.results.map((r) => ({

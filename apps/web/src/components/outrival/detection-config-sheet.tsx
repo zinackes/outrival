@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { DETECTION_OVERLAP_PRESETS } from "@outrival/shared";
+import { DETECTION_OVERLAP_PRESETS, DISCOVERY_REGIONS } from "@outrival/shared";
 import { api, type DetectionConfig } from "@/lib/api";
 import {
   Sheet,
@@ -20,6 +20,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export function DetectionConfigSheet({
   open,
@@ -170,6 +177,32 @@ export function DetectionConfigSheet({
                   <ToggleGroupItem value="weekly">Weekly</ToggleGroupItem>
                   <ToggleGroupItem value="monthly">Monthly</ToggleGroupItem>
                 </ToggleGroup>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label>Primary market</Label>
+                <Select
+                  value={config.region ?? "global"}
+                  onValueChange={(v) =>
+                    setConfig({ ...config, region: v === "global" ? null : v })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="global">Global (no preference)</SelectItem>
+                    {DISCOVERY_REGIONS.map((r) => (
+                      <SelectItem key={r.code} value={r.code}>
+                        {r.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-meta text-muted-foreground">
+                  Bias discovery toward a country. Strong global competitors still
+                  surface.
+                </p>
               </div>
 
               <div className="flex flex-col gap-1.5">

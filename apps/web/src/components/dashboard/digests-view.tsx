@@ -182,8 +182,7 @@ export function DigestsView() {
             No digest yet
           </div>
           <div className="text-sm max-w-[380px] mx-auto">
-            The next digest is generated automatically every Monday morning
-            once the week&apos;s signals have been consolidated.
+            The next digest is generated automatically every Monday morning.
           </div>
         </Card>
       )}

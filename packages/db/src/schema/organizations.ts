@@ -33,6 +33,9 @@ export const organizations = pgTable("organizations", {
       cadence: "weekly" | "monthly";
       excludedDomains: string[];
       keywords: string;
+      // Primary market for discovery geo-biasing (ISO alpha-2, null = global).
+      // Optional: legacy rows predate it; resolveDetectionConfig fills the default.
+      region?: string | null;
     }>()
     .notNull()
     .default({

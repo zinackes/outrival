@@ -62,6 +62,7 @@ export async function detectCandidatesForOrg(orgId: string): Promise<DetectResul
     buildDiscoveryQuery(org.productProfile, cfg.keywords),
     CANDIDATES_PER_ORG,
     cfg.excludedDomains,
+    cfg.region,
   );
   const fresh = discovered.filter((d) => {
     if (seenUrls.has(d.url)) return false;

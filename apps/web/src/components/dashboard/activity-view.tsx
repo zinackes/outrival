@@ -549,7 +549,7 @@ export function ActivityView() {
             <p className="text-sm text-muted-foreground">
               {isFiltered
                 ? "No activity matches these filters."
-                : "No activity yet. Checks appear here as they run."}
+                : "No activity yet."}
             </p>
           ) : (
             <>

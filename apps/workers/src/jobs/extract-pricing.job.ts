@@ -101,26 +101,22 @@ export const extractPricingJob = task({
     const previous = await getPreviousPricing(input.competitorId);
 
     const recordedAt = new Date();
-    // Quote-based tiers (price null) carry no point for the numeric price
-    // history — keep them in the extraction/summary but skip the pricing_history row.
+    // Keep every plan, including quote-based tiers (price null — "Enterprise",
+    // "Contact sales", "Custom"): they're real plans the user wants to see. The
+    // pricing_history.price column is nullable; numeric readers (charts, trends,
+    // bands) filter null, but the tier list and comparison surface "Custom".
     await insertPricingHistory(
-      extracted.plans.flatMap((p) =>
-        p.price === null
-          ? []
-          : [
-              {
-                competitor_id: input.competitorId,
-                plan_name: p.plan_name,
-                price: p.price,
-                currency: p.currency,
-                billing_period: p.billing_period,
-                status: input.status,
-                promotional: input.promotional ? 1 : 0,
-                observed_region: input.observedRegion,
-                recorded_at: recordedAt,
-              },
-            ],
-      ),
+      extracted.plans.map((p) => ({
+        competitor_id: input.competitorId,
+        plan_name: p.plan_name,
+        price: p.price,
+        currency: p.currency,
+        billing_period: p.billing_period,
+        status: input.status,
+        promotional: input.promotional ? 1 : 0,
+        observed_region: input.observedRegion,
+        recorded_at: recordedAt,
+      })),
     );
 
     const summary = await loggedAi("source_summary", AI_CONFIG.classification, () =>

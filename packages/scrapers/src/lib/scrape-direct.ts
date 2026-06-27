@@ -1,5 +1,6 @@
 import { realisticHeaders, realisticUserAgent } from "./fingerprint";
-import { isCloudflareChallenge, type ScrapeResult } from "./scrape-patchright";
+import { type ScrapeResult } from "./scrape-patchright";
+import { isCloudflareChallenge } from "./block-detection";
 
 // L0 — plain HTTP request, no browser, no proxy. The cheapest path. Works on
 // SSR/static HTML that isn't IP-blocked. Escalates on:

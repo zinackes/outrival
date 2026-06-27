@@ -37,10 +37,12 @@ export function stripHtml(input: string): string {
 }
 
 export function formatTierPrice(p: {
-  price: number;
+  price: number | null;
   currency: string;
   billing_period: string;
 }): string {
+  // Quote-based tier (Enterprise / "Contact sales") — no public number.
+  if (p.price === null) return "Custom";
   if (p.price === 0) return "Free";
   const sym =
     p.currency === "USD" ? "$" : p.currency === "EUR" ? "€" : p.currency === "GBP" ? "£" : "";

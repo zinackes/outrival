@@ -71,6 +71,13 @@
       "when": 1782563619580,
       "tag": "0009_steady_terror",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1782577267015,
+      "tag": "0010_third_valkyrie",
+      "breakpoints": true
     }
   ]
 }

@@ -131,6 +131,8 @@ function prettyHost(url: string): string {
 function pricingText(c: CompareColumn): string {
   if (!c.pricing) return "—";
   const { entry, top, currency, billingPeriod } = c.pricing;
+  // entry/top are null only when every captured tier is quote-based.
+  if (entry == null || top == null) return "Custom";
   const band = entry === top ? money(entry, currency) : `${money(entry, currency)}–${money(top, currency)}`;
   return billingPeriod ? `${band} / ${billingPeriod}` : band;
 }
@@ -214,9 +216,15 @@ const ROWS: Row[] = [
             <div key={`${p.name}-${i}`} className="flex items-baseline justify-between gap-3">
               <span className={cn(detailKey, "truncate")}>{p.name || "—"}</span>
               <span className={dataCell}>
-                {money(p.price, c.pricing!.currency)}
-                {p.billingPeriod && (
-                  <span className="text-muted-foreground">/{p.billingPeriod}</span>
+                {p.price == null ? (
+                  "Custom"
+                ) : (
+                  <>
+                    {money(p.price, c.pricing!.currency)}
+                    {p.billingPeriod && (
+                      <span className="text-muted-foreground">/{p.billingPeriod}</span>
+                    )}
+                  </>
                 )}
               </span>
             </div>

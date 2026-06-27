@@ -114,6 +114,22 @@ export function workspaceSettingsQuery() {
   });
 }
 
+// The org's own product ("My product"). null when no product site is set yet.
+export function myProductQuery() {
+  return queryOptions({
+    queryKey: ["myProduct"] as const,
+    queryFn: () => api.getMyProduct().then((r) => r.product),
+  });
+}
+
+// Pending self-product changes (profile-divergence proposals to review).
+export function myProductChangesQuery() {
+  return queryOptions({
+    queryKey: ["myProduct", "changes"] as const,
+    queryFn: () => api.listMyProductChanges("pending").then((r) => r.changes),
+  });
+}
+
 // Activity timeline page size — shared so the server seed (limit=25) and the
 // client's page-1 key compute the same offset and hit the same cache entry.
 export const ACTIVITY_PAGE_SIZE = 25;
@@ -132,6 +148,39 @@ export function discoveryStalenessQuery() {
   return queryOptions({
     queryKey: ["discovery", "staleness"] as const,
     queryFn: () => api.getDiscoveryStaleness(),
+  });
+}
+
+// Notification settings (alert channels: Slack / webhook URLs).
+export function notificationSettingsQuery() {
+  return queryOptions({
+    queryKey: ["notificationSettings"] as const,
+    queryFn: () => api.getNotificationSettings(),
+  });
+}
+
+// The org's plan alone (for plan-gating UI). Pulled from billing; a distinct key
+// so a {plan}-only server seed doesn't need the full BillingInfo shape.
+export function planQuery() {
+  return queryOptions({
+    queryKey: ["plan"] as const,
+    queryFn: () => api.getBilling().then((b) => b.plan),
+  });
+}
+
+// Notification moderation preferences (channels by severity, quiet hours, cap…).
+export function notificationPreferencesQuery() {
+  return queryOptions({
+    queryKey: ["notificationPreferences"] as const,
+    queryFn: () => api.getNotificationPreferences().then((r) => r.preferences),
+  });
+}
+
+// Auto-tuned relevance threshold (read-only display on the moderation form).
+export function relevanceThresholdQuery() {
+  return queryOptions({
+    queryKey: ["relevanceThreshold"] as const,
+    queryFn: () => api.getRelevanceThreshold(),
   });
 }
 

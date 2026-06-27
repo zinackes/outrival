@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Check, Loader2 } from "lucide-react";
 import {
   api,
@@ -8,6 +9,10 @@ import {
   type NotificationPreferences,
   type RelevanceThresholdInfo,
 } from "@/lib/api";
+import {
+  notificationPreferencesQuery,
+  relevanceThresholdQuery,
+} from "@/lib/queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -69,38 +74,30 @@ function isEqual(a: NotificationPreferences, b: NotificationPreferences): boolea
   );
 }
 
-export function NotificationModerationForm({
-  initialData = null,
-}: {
-  initialData?: {
-    preferences: NotificationPreferences;
-    threshold: RelevanceThresholdInfo;
-  } | null;
-} = {}) {
+export function NotificationModerationForm() {
+  // Server-seeded on first paint (settings/notifications/page.tsx). prefs/pristine
+  // lazy-init from the hydrated cache; a sync effect fills them in for the
+  // non-seeded path. threshold is read-only display.
+  const prefsQ = useQuery(notificationPreferencesQuery());
+  const thresholdQ = useQuery(relevanceThresholdQuery());
   const [prefs, setPrefs] = useState<NotificationPreferences | null>(
-    initialData?.preferences ?? null,
+    () => prefsQ.data ?? null,
   );
   const [pristine, setPristine] = useState<NotificationPreferences | null>(
-    initialData?.preferences ?? null,
+    () => prefsQ.data ?? null,
   );
-  const [threshold, setThreshold] = useState<RelevanceThresholdInfo | null>(
-    initialData?.threshold ?? null,
-  );
+  const initializedRef = useRef(prefsQ.data != null);
+  const threshold = thresholdQ.data ?? null;
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<unknown>(null);
+  const error = prefsQ.error;
 
   useEffect(() => {
-    // Server-seeded first paint → skip the redundant client fetches.
-    if (initialData) return;
-    Promise.all([api.getNotificationPreferences(), api.getRelevanceThreshold()])
-      .then(([p, t]) => {
-        setPrefs(p.preferences);
-        setPristine(p.preferences);
-        setThreshold(t);
-      })
-      .catch((e) => setError(e));
-  }, []);
+    if (initializedRef.current || !prefsQ.data) return;
+    initializedRef.current = true;
+    setPrefs(prefsQ.data);
+    setPristine(prefsQ.data);
+  }, [prefsQ.data]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

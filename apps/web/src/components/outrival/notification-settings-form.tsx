@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Check, Loader2, Lock } from "lucide-react";
 import { PLANS, PLAN_LABELS, PLAN_LIMITS, type Plan } from "@outrival/shared";
 import { api, type NotificationSettings } from "@/lib/api";
+import { notificationSettingsQuery, planQuery } from "@/lib/queries";
 import {
   PaywallDialog,
   paywallFromError,
@@ -32,41 +34,37 @@ function isEqual(a: NotificationSettings, b: NotificationSettings) {
   );
 }
 
-export function NotificationSettingsForm({
-  initialData = null,
-}: {
-  initialData?: { settings: NotificationSettings; plan: Plan } | null;
-} = {}) {
+export function NotificationSettingsForm() {
+  // Server-seeded on first paint (settings/notifications/page.tsx); shares the
+  // notificationSettings + plan cache with the Integrations page. settings/pristine
+  // lazy-init from the hydrated cache; a sync effect covers the non-seeded path.
+  const settingsQ = useQuery(notificationSettingsQuery());
+  const planQ = useQuery(planQuery());
   const [settings, setSettings] = useState<NotificationSettings | null>(
-    initialData?.settings ?? null,
+    () => settingsQ.data ?? null,
   );
   const [pristine, setPristine] = useState<NotificationSettings | null>(
-    initialData?.settings ?? null,
+    () => settingsQ.data ?? null,
   );
-  const [plan, setPlan] = useState<Plan | null>(initialData?.plan ?? null);
+  const initializedRef = useRef(settingsQ.data != null);
+  const plan = planQ.data ?? null;
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<unknown>(null);
+  const error = settingsQ.error;
   const [paywall, setPaywall] = useState<PaywallReason | null>(null);
 
   useEffect(() => {
-    // Server-seeded first paint → skip the redundant client fetches.
-    if (initialData) return;
-    Promise.all([api.getNotificationSettings(), api.getBilling()])
-      .then(([s, billing]) => {
-        setSettings(s);
-        setPristine(s);
-        setPlan(billing.plan);
-      })
-      .catch((e) => setError(e));
-  }, []);
+    if (initializedRef.current || !settingsQ.data) return;
+    initializedRef.current = true;
+    setSettings(settingsQ.data);
+    setPristine(settingsQ.data);
+  }, [settingsQ.data]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!settings) return;
     setSaving(true);
     setSaved(false);
-    setError(null);
     try {
       await api.updateNotificationSettings({
         slackWebhookUrl: settings.slackWebhookUrl || null,
@@ -92,7 +90,6 @@ export function NotificationSettingsForm({
 
   function handleCancel() {
     if (pristine) setSettings(pristine);
-    setError(null);
   }
 
   if (error && !settings) return <ListError error={error} />;

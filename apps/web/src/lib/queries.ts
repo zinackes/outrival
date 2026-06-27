@@ -37,6 +37,16 @@ export function competitorsQuery() {
   });
 }
 
+// Full competitor detail (the [id] page: competitor + monitors + recent changes/
+// signals + tech stack + overview + plan). Distinct ["competitor", id, "detail"]
+// key from the per-tab queries (["competitor", id, "jobs"|"pricingHistory"|…]).
+export function competitorDetailQuery(id: string) {
+  return queryOptions({
+    queryKey: ["competitor", id, "detail"] as const,
+    queryFn: () => api.getCompetitor(id),
+  });
+}
+
 // Weekly digests list.
 export function digestsQuery() {
   return queryOptions({

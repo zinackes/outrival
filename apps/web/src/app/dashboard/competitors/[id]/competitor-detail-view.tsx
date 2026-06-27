@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
@@ -112,6 +113,7 @@ import {
   type TechStackData,
   type CompetitorOverview,
 } from "@/lib/api";
+import { competitorDetailQuery } from "@/lib/queries";
 import { emitCompetitorsChanged } from "@/lib/competitor-events";
 import { useSetAskContext } from "@/components/dashboard/ask-context";
 import {
@@ -214,18 +216,21 @@ export type CompetitorData = {
   plan: Plan;
 };
 
-export function CompetitorDetailView({
-  id,
-  initialData = null,
-}: {
-  id: string;
-  initialData?: CompetitorData | null;
-}) {
+export function CompetitorDetailView({ id }: { id: string }) {
   const router = useRouter();
-  const [data, setData] = useState<CompetitorData | null>(initialData);
-  // Which id the server seed belongs to, so client-side nav still refetches.
-  const seededIdRef = useRef(initialData ? id : null);
-  const [error, setError] = useState<unknown>(null);
+  const queryClient = useQueryClient();
+  // Server-seeded on first paint (page.tsx). Keyed on id, so prev/next navigation
+  // refetches automatically.
+  const competitorQ = useQuery(competitorDetailQuery(id));
+  const data = competitorQ.data ?? null;
+  const error = competitorQ.error;
+  // Optimistic write-through to the competitor cache (the kebab mutations call this);
+  // the setData(updater) call-sites stay unchanged.
+  function setData(updater: (prev: CompetitorData | null) => CompetitorData | null) {
+    queryClient.setQueryData<CompetitorData>(competitorDetailQuery(id).queryKey, (prev) =>
+      updater(prev ?? null) ?? undefined,
+    );
+  }
   const [scrapingIds, setScrapingIds] = useState<Set<string>>(new Set());
   const [runningAll, setRunningAll] = useState(false);
   const [techScraping, setTechScraping] = useState(false);
@@ -299,27 +304,12 @@ export function CompetitorDetailView({
     return () => document.removeEventListener("keydown", onKey);
   }, [prevId, nextId, router]);
 
+  // Refetch the competitor detail and return the fresh data (the scrape poller and
+  // several mutations await it). useQuery (keyed on id) handles the initial load.
   async function refresh() {
-    try {
-      const fresh = await api.getCompetitor(id);
-      setData(fresh);
-      setError(null);
-      return fresh;
-    } catch (e) {
-      setError(e);
-      return null;
-    }
+    const r = await competitorQ.refetch();
+    return r.data ?? null;
   }
-
-  useEffect(() => {
-    // Server-seeded first paint for this id → skip the redundant client fetch.
-    // Consume the seed once; any later id change refetches.
-    if (seededIdRef.current === id) {
-      seededIdRef.current = null;
-      return;
-    }
-    refresh();
-  }, [id]);
 
   // Restore the active tab from the URL (?tab=) so a refresh stays on the same
   // tab. Runs once on mount, before the Tabs render (data is still loading).

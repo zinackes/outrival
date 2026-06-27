@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Columns3,
   Rows3,
@@ -19,6 +20,7 @@ import {
   type CompareColumn,
   type ProductSummary,
 } from "@/lib/api";
+import { productsListQuery, competitorsQuery } from "@/lib/queries";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -538,19 +540,25 @@ function buildPickList(
   return { entities: [...you, ...comps], selected: seed.map((e) => e.id) };
 }
 
-export function CompareView({
-  initialRaw = null,
-}: {
-  initialRaw?: { products: ProductSummary[]; competitors: Competitor[] } | null;
-} = {}) {
+export function CompareView() {
+  // Server-seeded on first paint (compare/page.tsx): the picker inputs (products +
+  // competitors). useState lazy-inits from the hydrated cache; a sync effect fills
+  // them in when the seed was missing and the queries resolve client-side.
+  const productsQ = useQuery(productsListQuery());
+  const competitorsQ = useQuery(competitorsQuery());
   const [entities, setEntities] = useState<PickEntity[] | null>(() =>
-    initialRaw ? buildPickList(initialRaw.products, initialRaw.competitors).entities : null,
+    productsQ.data && competitorsQ.data
+      ? buildPickList(productsQ.data, competitorsQ.data).entities
+      : null,
   );
   const [selected, setSelected] = useState<string[]>(() =>
-    initialRaw ? buildPickList(initialRaw.products, initialRaw.competitors).selected : [],
+    productsQ.data && competitorsQ.data
+      ? buildPickList(productsQ.data, competitorsQ.data).selected
+      : [],
   );
-  // Seed covers the picker inputs → skip the entities fetch; matrix still loads.
-  const seededRef = useRef(initialRaw !== null);
+  // True once the picker has been built, so a later refetch can't clobber the
+  // user's live selection. Seeded → already built on the first render.
+  const initializedRef = useRef(productsQ.data != null && competitorsQ.data != null);
   const [matrix, setMatrix] = useState<CompareColumn[] | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -607,20 +615,15 @@ export function CompareView({
     }
   }, [exportFormat, exportVisibleOnly, exportIncludeYou]);
 
+  // Build the picker once the inputs are available (covers the non-seeded path);
+  // guarded so a later refetch can't clobber the user's live selection.
   useEffect(() => {
-    if (seededRef.current) {
-      seededRef.current = false;
-      return;
-    }
-    Promise.all([
-      api.listProducts().catch(() => ({ products: [] as ProductSummary[] })),
-      api.listCompetitors().catch(() => ({ competitors: [] as Competitor[] })),
-    ]).then(([p, c]) => {
-      const { entities, selected } = buildPickList(p.products, c.competitors);
-      setEntities(entities);
-      setSelected(selected);
-    });
-  }, []);
+    if (initializedRef.current || !productsQ.data || !competitorsQ.data) return;
+    initializedRef.current = true;
+    const { entities, selected } = buildPickList(productsQ.data, competitorsQ.data);
+    setEntities(entities);
+    setSelected(selected);
+  }, [productsQ.data, competitorsQ.data]);
 
   useEffect(() => {
     if (selected.length === 0) {

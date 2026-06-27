@@ -80,6 +80,16 @@ export function productsSettingsQuery() {
   });
 }
 
+// Products as a plain list (the compare picker). Distinct key from
+// productsSettingsQuery because getCompareData seeds only the products array, not
+// the plan/limit that settings carries.
+export function productsListQuery() {
+  return queryOptions({
+    queryKey: ["products", "list"] as const,
+    queryFn: () => api.listProducts().then((r) => r.products),
+  });
+}
+
 // Activity timeline page size — shared so the server seed (limit=25) and the
 // client's page-1 key compute the same offset and hit the same cache entry.
 export const ACTIVITY_PAGE_SIZE = 25;

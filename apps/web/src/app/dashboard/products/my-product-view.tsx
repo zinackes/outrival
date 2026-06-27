@@ -18,6 +18,7 @@ import {
   ChevronDown,
   Briefcase,
 } from "lucide-react";
+import { EmptyState } from "@/components/dashboard/empty-state";
 import { toast } from "sonner";
 import { toastApiError, toastRescanLimit } from "@/lib/error-helpers";
 import { formatDistanceToNow } from "date-fns";
@@ -799,16 +800,18 @@ export function MyProductView() {
     return (
       <div>
         <PageHead title="My product" />
-        <Card className="p-8 flex flex-col items-center text-center gap-3 max-w-lg mx-auto">
-          <Store className="size-8 text-[var(--muted-2)]" />
-          <div className="text-content font-semibold">No product site to monitor yet</div>
-          <p className="text-sm text-muted-foreground max-w-sm">
-            {error
+        <EmptyState
+          icon={Store}
+          title="No product site to monitor yet"
+          description={
+            error
               ? "We couldn't load your product."
-              : "Add a product URL to track your own site like a competitor — pricing, features and changes."}
-          </p>
-          <Button onClick={() => setChangeUrlOpen(true)}>Set a product URL</Button>
-        </Card>
+              : "Add a product URL to track your own site like a competitor — pricing, features and changes."
+          }
+          actions={
+            <Button onClick={() => setChangeUrlOpen(true)}>Set a product URL</Button>
+          }
+        />
 
         <ChangeProductUrlDialog
           open={changeUrlOpen}

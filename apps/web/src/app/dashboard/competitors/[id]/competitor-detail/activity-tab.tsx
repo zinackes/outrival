@@ -6,7 +6,7 @@ import { Activity, ExternalLink, ArrowRight } from "lucide-react";
 import type { CompetitorSignal, ChangeRow } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/dashboard/empty-state";
 import { Eyebrow } from "@/components/outrival/eyebrow";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
 import { SignalSourceLine } from "@/components/outrival/signal-source-line";
@@ -54,25 +54,26 @@ export function ActivityTab({
     // we've actually scraped we acknowledge the monitoring and point to the runs.
     const hasScraped = lastRunMs > 0;
     return (
-      <Card className="px-6 py-10 text-center border-dashed flex flex-col items-center gap-2.5">
-        <p className="text-sm font-semibold text-foreground">
-          {hasScraped ? "No changes yet" : "No activity yet"}
-        </p>
-        <p className="text-sm text-muted-foreground max-w-md">
-          {hasScraped
+      <EmptyState
+        icon={Activity}
+        title={hasScraped ? "No changes yet" : "No activity yet"}
+        description={
+          hasScraped
             ? "Monitoring is active — we've been checking this competitor's sources and nothing has changed yet."
-            : "Scrape from the Sources section above to start tracking."}
-        </p>
-        {hasScraped && (
-          <Link
-            href={activityHref}
-            className="inline-flex items-center gap-1.5 text-sm text-link hover:underline"
-          >
-            <Activity size={14} aria-hidden />
-            View monitoring activity
-          </Link>
-        )}
-      </Card>
+            : "Scrape from the Sources section above to start tracking."
+        }
+        actions={
+          hasScraped && (
+            <Link
+              href={activityHref}
+              className="inline-flex items-center gap-1.5 text-sm text-link hover:underline"
+            >
+              <Activity size={14} aria-hidden />
+              View monitoring activity
+            </Link>
+          )
+        }
+      />
     );
   }
   const signalChangeIds = new Set(signals.map((s) => s.changeId).filter(Boolean));

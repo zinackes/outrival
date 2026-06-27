@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import { ChevronDown, Download, Swords } from "lucide-react";
+import { EmptyState } from "@/components/dashboard/empty-state";
 import { api, type BattleCardSummary } from "@/lib/api";
 import { battleCardsQuery } from "@/lib/queries";
 import { Card } from "@/components/ui/card";
@@ -130,24 +131,19 @@ export function BattleCardsView() {
 
       {cards === null ? (
         <ListRowsSkeleton rows={4} />
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          icon={Swords}
+          title={cards.length === 0 ? "No battle cards yet" : "No matching battle cards"}
+          description={
+            cards.length === 0
+              ? "Generate one from a competitor's page to compare it against your product."
+              : "Adjust the filters to see results."
+          }
+        />
       ) : (
         <Card className="overflow-hidden">
-          {filtered.length === 0 ? (
-            <div className="px-6 py-14 text-center text-muted-foreground">
-              <div className="w-10 h-10 mx-auto mb-3 rounded-full bg-background border border-border flex items-center justify-center">
-                <Swords size={16} className="text-muted-foreground" />
-              </div>
-              <div className="font-semibold text-base text-foreground mb-1.5 tracking-tight">
-                {cards.length === 0 ? "No battle cards yet" : "No matching battle cards"}
-              </div>
-              <div className="text-sm max-w-[400px] mx-auto">
-                {cards.length === 0
-                  ? "Generate one from a competitor's page to compare it against your product."
-                  : "Adjust the filters to see results."}
-              </div>
-            </div>
-          ) : (
-            <div className="divide-y divide-border">
+          <div className="divide-y divide-border">
               {filtered.map((c) => (
                 <div
                   key={c.id}
@@ -180,7 +176,6 @@ export function BattleCardsView() {
                 </div>
               ))}
             </div>
-          )}
         </Card>
       )}
     </div>

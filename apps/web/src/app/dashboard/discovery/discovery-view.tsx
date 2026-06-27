@@ -12,7 +12,10 @@ import {
   SlidersHorizontal,
   Trash2,
   RotateCcw,
+  Archive,
+  Telescope,
 } from "lucide-react";
+import { EmptyState } from "@/components/dashboard/empty-state";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { ApiError, api, type CompetitorCandidate } from "@/lib/api";
@@ -378,27 +381,15 @@ export function DiscoveryView() {
       )}
 
       {items && items.length === 0 && (
-        <Card className="px-6 py-12 text-center text-muted-foreground border-dashed">
-          {tab === "dismissed" ? (
-            <>
-              <div className="font-semibold text-base text-foreground mb-1.5 tracking-tight">
-                Nothing dismissed
-              </div>
-              <div className="text-sm max-w-[380px] mx-auto">
-                Suggestions you dismiss land here so you can restore them later.
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="font-semibold text-base text-foreground mb-1.5 tracking-tight">
-                No new competitors to review
-              </div>
-              <div className="text-sm max-w-[380px] mx-auto">
-                Detection runs every Sunday evening.
-              </div>
-            </>
-          )}
-        </Card>
+        <EmptyState
+          icon={tab === "dismissed" ? Archive : Telescope}
+          title={tab === "dismissed" ? "Nothing dismissed" : "No new competitors to review"}
+          description={
+            tab === "dismissed"
+              ? "Suggestions you dismiss land here so you can restore them later."
+              : "Detection runs every Sunday evening."
+          }
+        />
       )}
 
       {items && items.length > 0 && (

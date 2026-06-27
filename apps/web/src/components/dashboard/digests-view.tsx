@@ -14,6 +14,7 @@ import {
   Activity,
   Minus,
 } from "lucide-react";
+import { EmptyState } from "./empty-state";
 import { endOfDay, format, startOfWeek } from "date-fns";
 import { toast } from "sonner";
 import { toastApiError } from "@/lib/error-helpers";
@@ -177,14 +178,11 @@ export function DigestsView() {
       {digests === null && <TableSkeleton rows={5} columns={5} />}
 
       {digests && digests.length === 0 && (
-        <Card className="px-6 py-12 text-center text-muted-foreground border-dashed">
-          <div className="font-semibold text-base text-foreground mb-1.5 tracking-tight">
-            No digest yet
-          </div>
-          <div className="text-sm max-w-[380px] mx-auto">
-            The next digest is generated automatically every Monday morning.
-          </div>
-        </Card>
+        <EmptyState
+          icon={Mail}
+          title="No digest yet"
+          description="The next digest is generated automatically every Monday morning."
+        />
       )}
 
       {digests && digests.length > 0 && (

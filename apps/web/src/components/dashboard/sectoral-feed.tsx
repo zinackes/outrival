@@ -11,12 +11,12 @@ import {
   type SectoralEligibility,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ListRowsSkeleton } from "@/components/dashboard/skeletons";
 import { CATEGORY_META, EvidenceModal, SectoralRow } from "./sectoral-signals";
 import { PageHead } from "./page-head";
+import { EmptyState } from "./empty-state";
 
 const PAGE_SIZE = 25;
 const CATEGORIES = Object.keys(CATEGORY_META) as SectoralCategory[];
@@ -124,22 +124,22 @@ export function SectoralFeed({
           title="Sector trends"
           sub="Patterns across your competitors — not single-competitor signals."
         />
-        <Card className="px-6 py-14 text-center text-muted-foreground border-dashed">
-          <div className="w-10 h-10 mx-auto mb-3 rounded-full bg-background border border-border flex items-center justify-center">
-            <Lock size={16} className="text-muted-foreground" aria-hidden />
-          </div>
-          <div className="font-semibold text-base text-foreground mb-1.5 tracking-tight">
-            Sector trends are a {planLabel} feature
-          </div>
-          <div className="text-sm max-w-[420px] mx-auto">
-            They compare patterns across at least {eligibility.minCompetitors}{" "}
-            competitors — more than your current plan can monitor. Upgrade to{" "}
-            {planLabel} to track a wider set and unlock cross-competitor trends.
-          </div>
-          <Button asChild size="sm" className="mt-4">
-            <Link href="/dashboard/settings/billing">Upgrade to {planLabel}</Link>
-          </Button>
-        </Card>
+        <EmptyState
+          icon={Lock}
+          title={`Sector trends are a ${planLabel} feature`}
+          description={
+            <>
+              They compare patterns across at least {eligibility.minCompetitors}{" "}
+              competitors — more than your current plan can monitor. Upgrade to{" "}
+              {planLabel} to track a wider set and unlock cross-competitor trends.
+            </>
+          }
+          actions={
+            <Button asChild size="sm">
+              <Link href="/dashboard/settings/billing">Upgrade to {planLabel}</Link>
+            </Button>
+          }
+        />
       </div>
     );
   }
@@ -193,43 +193,38 @@ export function SectoralFeed({
       {signals === null ? (
         <ListRowsSkeleton rows={5} />
       ) : signals.length === 0 ? (
-        <Card className="px-6 py-14 text-center text-muted-foreground border-dashed">
-          <div className="w-10 h-10 mx-auto mb-3 rounded-full bg-background border border-border flex items-center justify-center">
-            <Globe size={16} className="text-muted-foreground" aria-hidden />
-          </div>
-          <div className="font-semibold text-base text-foreground mb-1.5 tracking-tight">
-            {view === "dismissed"
+        <EmptyState
+          icon={Globe}
+          title={
+            view === "dismissed"
               ? "Nothing dismissed"
               : category !== null
                 ? "No trends in this category"
                 : belowFloor
                   ? `Add ${remainingCompetitors} more competitor${remainingCompetitors > 1 ? "s" : ""}`
-                  : "No sector trends yet"}
-          </div>
-          <div className="text-sm max-w-[420px] mx-auto">
-            {view === "dismissed"
+                  : "No sector trends yet"
+          }
+          description={
+            view === "dismissed"
               ? "Trends you dismiss land here so you can revisit them later."
               : category !== null
                 ? "Try another category or clear the filter to see all trends."
                 : belowFloor
                   ? `Sector trends compare patterns across your competitors — they turn on at ${floorTarget}. You're tracking ${trackedCount}.`
-                  : "Sector trends surface as patterns build across your competitors. Add more competitors to spot them sooner."}
-          </div>
-          {category !== null ? (
-            <Button
-              variant="outline"
-              size="sm"
-              className="mt-4"
-              onClick={() => setCategory(null)}
-            >
-              Clear filter
-            </Button>
-          ) : belowFloor ? (
-            <Button asChild size="sm" className="mt-4">
-              <Link href="/dashboard/discovery">Add competitors</Link>
-            </Button>
-          ) : null}
-        </Card>
+                  : "Sector trends surface as patterns build across your competitors. Add more competitors to spot them sooner."
+          }
+          actions={
+            category !== null ? (
+              <Button variant="outline" size="sm" onClick={() => setCategory(null)}>
+                Clear filter
+              </Button>
+            ) : belowFloor ? (
+              <Button asChild size="sm">
+                <Link href="/dashboard/discovery">Add competitors</Link>
+              </Button>
+            ) : null
+          }
+        />
       ) : (
         <>
           <div>

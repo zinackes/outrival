@@ -2,6 +2,12 @@
 
 import { useState } from "react";
 import { useTheme } from "next-themes";
+import {
+  competitorColorVars,
+  COMP_ACCENT,
+  COMP_FILL,
+  COMP_ON_FILL,
+} from "@/lib/competitor-color";
 
 function domainFromUrl(url?: string | null): string | null {
   if (!url) return null;
@@ -114,14 +120,18 @@ function analyzeFavicon(img: HTMLImageElement): Analysis {
 export function CompAvatar({
   name,
   url,
+  color,
   size = 32,
 }: {
   name: string;
   url?: string | null;
+  // User-assigned color (palette token or "#rrggbb"). Null/absent → neutral tile.
+  color?: string | null;
   size?: number;
 }) {
   const letter = name ? name[0]!.toUpperCase() : "?";
   const domain = domainFromUrl(url);
+  const colorVars = competitorColorVars(color);
   const { resolvedTheme } = useTheme();
   const [failed, setFailed] = useState(false);
   const [analysis, setAnalysis] = useState<Analysis | null>(() =>
@@ -156,11 +166,15 @@ export function CompAvatar({
   return (
     <div
       style={{
+        ...colorVars,
         position: "relative",
         width: size,
         height: size,
         borderRadius: 4,
-        background: "var(--surface-2)",
+        // Tinted tile + letter when the user assigned a color (a favicon, once
+        // loaded, covers the fill); neutral surface otherwise.
+        background: colorVars ? COMP_FILL : "var(--surface-2)",
+        color: colorVars ? COMP_ON_FILL : undefined,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -216,7 +230,8 @@ export function CompAvatar({
               position: "absolute",
               inset: 0,
               borderRadius: 4,
-              boxShadow: "inset 0 0 0 1px var(--border)",
+              // Colored ring carries the identity on a favicon tile; neutral hairline otherwise.
+              boxShadow: `inset 0 0 0 1px ${colorVars ? COMP_ACCENT : "var(--border)"}`,
               pointerEvents: "none",
             }}
           />

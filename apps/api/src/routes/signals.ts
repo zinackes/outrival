@@ -92,6 +92,9 @@ signalsRouter.get("/", async (c) => {
       // The competitor's site, used to render its favicon in the feed avatar
       // (falls back to the initial letter when null or the icon fails to load).
       competitorUrl: competitors.url,
+      // User-assigned color identity (palette token / hex), so the feed avatar +
+      // card accent can be tinted. Null = neutral.
+      competitorColor: competitors.color,
       // P0 threat inputs: how much this competitor overlaps with us (0-100, nullable)
       // and the change's composite relevance (0-1, nullable). Surfaced so the client
       // can show the threat indicator without recomputing.

@@ -40,6 +40,7 @@ import {
   aggregateFreshness,
   computeNextScanAt,
   TECH_STACK_SCRAPE_INTERVAL_DAYS,
+  isValidCompetitorColor,
   type SourceType,
   type MonitorFrequency,
 } from "@outrival/shared";
@@ -942,6 +943,12 @@ const UpdateCompetitorSchema = z
     url: z.string().url().max(2048).optional(),
     category: z.string().max(100).nullable().optional(),
     description: z.string().max(2000).nullable().optional(),
+    // Palette token or "#rrggbb". null clears it (back to neutral).
+    color: z
+      .string()
+      .refine(isValidCompetitorColor, { message: "Invalid color" })
+      .nullable()
+      .optional(),
   })
   .refine((b) => Object.keys(b).length > 0, { message: "No fields to update" });
 
@@ -965,7 +972,7 @@ competitorsRouter.patch("/:id", async (c) => {
   }
 
   const patch: Record<string, unknown> = { updatedAt: new Date() };
-  for (const k of ["name", "url", "category", "description"] as const) {
+  for (const k of ["name", "url", "category", "description", "color"] as const) {
     if (parsed.data[k] !== undefined) patch[k] = parsed.data[k];
   }
 

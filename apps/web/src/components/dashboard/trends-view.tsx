@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import { DollarSign, TrendingUp, Star, Boxes, LineChart as LineChartIcon } from "lucide-react";
+import { EmptyState } from "./empty-state";
 import {
   api,
   type TrendMetric,
@@ -273,17 +274,11 @@ export function TrendsView() {
           </div>
         </div>
       ) : allEmpty ? (
-        <div className="rounded-lg border border-dashed border-border px-6 py-14 text-center text-muted-foreground">
-          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full border border-border bg-background">
-            <LineChartIcon size={16} className="text-muted-foreground" aria-hidden />
-          </div>
-          <div className="mb-1.5 text-base font-semibold tracking-tight text-foreground">
-            No trends yet
-          </div>
-          <div className="mx-auto max-w-[400px] text-sm">
-            Pricing, hiring, review and tech history build up over the next few scrapes.
-          </div>
-        </div>
+        <EmptyState
+          icon={LineChartIcon}
+          title="No trends yet"
+          description="Pricing, hiring, review and tech history build up over the next few scrapes."
+        />
       ) : (
         <>
           <div className="grid gap-4 md:grid-cols-2">

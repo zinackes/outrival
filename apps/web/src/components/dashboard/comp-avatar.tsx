@@ -15,62 +15,93 @@ function domainFromUrl(url?: string | null): string | null {
   }
 }
 
-// A favicon's shape (how much of the square it fills) and its glyph luminance are
-// intrinsic to the image, not the theme — measure once per domain and cache. The render
-// *mode* is derived from this plus the active surface, so it stays theme-aware.
-type Measure = { coverage: number; lum: number };
-const measureCache = new Map<string, Measure>();
+// What to draw for a domain, decided once from the favicon's pixels and cached.
+//  - "fill": an opaque branded square (solid colour, gradient, photo) — show it edge to
+//    edge, it carries its own background.
+//  - "glyph": a transparent glyph (or one we de-plated, see below). It sits bare on the
+//    tile; `lum` is its luminance so the render can add a halo only when it would vanish
+//    into the current surface. `src` overrides the favicon URL when we keyed out a plate.
+type Analysis =
+  | { kind: "fill" }
+  | { kind: "glyph"; lum: number; src: string | null };
 
-// Read the proxied favicon's pixels (same-origin → canvas is not tainted). `coverage` is
-// the fraction of meaningfully-opaque pixels (an opaque branded square ≈ 1, a bare glyph
-// ≪ 1). `lum` is the alpha-weighted luminance of the opaque pixels — the glyph's own
-// tone — from 0 (black) to 1 (white).
-function measureFavicon(img: HTMLImageElement): Measure {
+const cache = new Map<string, Analysis>();
+
+// Google's favicon service (our first proxy source) bakes a solid WHITE square behind
+// transparent favicons. Left alone that white plate fills the tile and glares on the dark
+// theme. We detect that near-white uniform plate from the corners and key it out, so the
+// real glyph reads bare — exactly as it does in the browser tab. A coloured/gradient plate
+// (a genuine brand tile) has non-white corners and is kept as "fill".
+function isPlatePixel(r: number, g: number, b: number, a: number): boolean {
+  return a > 240 && Math.min(r, g, b) > 225 && Math.max(r, g, b) - Math.min(r, g, b) < 18;
+}
+
+function analyzeFavicon(img: HTMLImageElement): Analysis {
   const S = 32;
   const canvas = document.createElement("canvas");
   canvas.width = S;
   canvas.height = S;
   const ctx = canvas.getContext("2d");
-  if (!ctx) return { coverage: 0, lum: 1 };
+  if (!ctx) return { kind: "glyph", lum: 1, src: null };
   ctx.drawImage(img, 0, 0, S, S);
-  const { data } = ctx.getImageData(0, 0, S, S);
-  let lumSum = 0;
-  let alphaSum = 0;
+  const image = ctx.getImageData(0, 0, S, S);
+  const { data } = image;
+  const at = (x: number, y: number) => (y * S + x) * 4;
+
+  // A near-white plate shows up as near-white opaque pixels in all four (inset) corners.
+  // Inset by 2px so a rounded plate's clipped corner doesn't read as transparent.
+  const plate = [
+    [2, 2],
+    [S - 3, 2],
+    [2, S - 3],
+    [S - 3, S - 3],
+  ].every(([x, y]) => {
+    const i = at(x!, y!);
+    return isPlatePixel(data[i]!, data[i + 1]!, data[i + 2]!, data[i + 3]!);
+  });
+
   let opaque = 0;
+  let allLumSum = 0;
+  let allAlpha = 0;
+  let glyphLumSum = 0;
+  let glyphAlpha = 0;
   for (let i = 0; i < data.length; i += 4) {
     const a = data[i + 3] ?? 0;
     if (a >= 128) opaque++;
     if (a === 0) continue;
-    const r = data[i] ?? 0;
-    const g = data[i + 1] ?? 0;
-    const b = data[i + 2] ?? 0;
-    lumSum += ((0.2126 * r + 0.7152 * g + 0.0722 * b) / 255) * a;
-    alphaSum += a;
+    const r = data[i]!;
+    const g = data[i + 1]!;
+    const b = data[i + 2]!;
+    const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+    allLumSum += lum * a;
+    allAlpha += a;
+    if (!(plate && isPlatePixel(r, g, b, a))) {
+      glyphLumSum += lum * a;
+      glyphAlpha += a;
+    }
   }
-  return {
-    coverage: opaque / (S * S),
-    lum: alphaSum === 0 ? 1 : lumSum / alphaSum,
-  };
-}
 
-type Mode =
-  | { kind: "fill" } // opaque branded square → full-bleed, carries its own background
-  | { kind: "bare" } // transparent glyph that already contrasts → no plate
-  | { kind: "halo"; color: string }; // glyph too close to the surface → 1px outline
+  const coverage = opaque / (S * S);
 
-// Tier the treatment. An opaque favicon fills the tile (it brings its own background). A
-// transparent glyph sits bare on the tile unless its luminance is too close to the
-// current surface to read — then it gets a thin outline in the opposite direction (a dark
-// outline for a pale glyph on the light surface, a light outline for a dark glyph on the
-// dark surface). Never a filled chip: that opposite-tone square is what we're avoiding.
-function deriveMode(m: Measure, isDark: boolean): Mode {
-  if (m.coverage >= 0.85) return { kind: "fill" };
-  if (isDark) {
-    if (m.lum <= 0.4) return { kind: "halo", color: "var(--logo-halo-light)" };
-  } else if (m.lum >= 0.6) {
-    return { kind: "halo", color: "var(--logo-halo-dark)" };
+  // De-plate only when there's a real glyph left after keying (guards a near-blank
+  // white-on-white favicon from being erased to nothing — keep it as fill instead).
+  if (plate && allAlpha > 0 && glyphAlpha / allAlpha > 0.02) {
+    for (let i = 0; i < data.length; i += 4) {
+      const a = data[i + 3] ?? 0;
+      if (a !== 0 && isPlatePixel(data[i]!, data[i + 1]!, data[i + 2]!, a)) {
+        data[i + 3] = 0;
+      }
+    }
+    ctx.putImageData(image, 0, 0);
+    return {
+      kind: "glyph",
+      lum: glyphAlpha ? glyphLumSum / glyphAlpha : 1,
+      src: canvas.toDataURL("image/png"),
+    };
   }
-  return { kind: "bare" };
+
+  if (coverage >= 0.85) return { kind: "fill" };
+  return { kind: "glyph", lum: allAlpha ? allLumSum / allAlpha : 1, src: null };
 }
 
 export function CompAvatar({
@@ -86,14 +117,17 @@ export function CompAvatar({
   const domain = domainFromUrl(url);
   const { resolvedTheme } = useTheme();
   const [failed, setFailed] = useState(false);
-  const [measure, setMeasure] = useState<Measure | null>(() =>
-    domain ? (measureCache.get(domain) ?? null) : null,
+  const [analysis, setAnalysis] = useState<Analysis | null>(() =>
+    domain ? (cache.get(domain) ?? null) : null,
   );
   const showIcon = domain !== null && !failed;
+  const faviconSrc = domain
+    ? `/api/favicon?domain=${encodeURIComponent(domain)}`
+    : "";
 
   // Prefer next-themes (re-renders on toggle); fall back to the html class for the first
   // client paint before the hook resolves, so a dark-mode tile doesn't flash. The
-  // theme-dependent branch only matters once `measure` is set (post-hydration), so this
+  // theme-dependent branch only matters once `analysis` is set (post-hydration), so this
   // never causes a hydration mismatch.
   const isDark =
     (resolvedTheme ??
@@ -102,8 +136,15 @@ export function CompAvatar({
         ? "dark"
         : "light")) === "dark";
 
-  const mode = measure ? deriveMode(measure, isDark) : null;
-  const pad = mode?.kind === "fill" ? 0 : Math.max(2, Math.round(size * 0.15));
+  const fill = analysis?.kind === "fill";
+  // A glyph vanishes when its luminance sits on the same side as the surface: pale on the
+  // light surface, dark on the dark surface. Only then draw a 1px outline (never a square).
+  const lum = analysis?.kind === "glyph" ? analysis.lum : null;
+  const halo = lum !== null && (isDark ? lum <= 0.4 : lum >= 0.6);
+  const haloColor = isDark ? "var(--logo-halo-light)" : "var(--logo-halo-dark)";
+  const src =
+    analysis?.kind === "glyph" && analysis.src ? analysis.src : faviconSrc;
+  const pad = fill ? 0 : Math.max(2, Math.round(size * 0.15));
 
   return (
     <div
@@ -130,16 +171,18 @@ export function CompAvatar({
         <>
           {/* eslint-disable-next-line @next/next/no-img-element -- dynamic proxied icon, not a static asset */}
           <img
-            src={`/api/favicon?domain=${encodeURIComponent(domain)}`}
+            src={src}
             alt=""
             aria-hidden
             loading="lazy"
             onLoad={(e) => {
-              if (measureCache.has(domain)) return;
+              // The keyed-glyph case re-fires onLoad with the data: URL — the cache guard
+              // stops a second analysis (and any loop).
+              if (cache.has(domain)) return;
               try {
-                const m = measureFavicon(e.currentTarget);
-                measureCache.set(domain, m);
-                setMeasure(m);
+                const a = analyzeFavicon(e.currentTarget);
+                cache.set(domain, a);
+                setAnalysis(a);
               } catch {
                 // Cross-origin/decoding edge — keep the bare treatment.
               }
@@ -152,10 +195,9 @@ export function CompAvatar({
               height: "100%",
               objectFit: "contain",
               padding: pad,
-              filter:
-                mode?.kind === "halo"
-                  ? `drop-shadow(0 0 1px ${mode.color}) drop-shadow(0 0 1px ${mode.color})`
-                  : undefined,
+              filter: halo
+                ? `drop-shadow(0 0 1px ${haloColor}) drop-shadow(0 0 1px ${haloColor})`
+                : undefined,
             }}
           />
           {/* Hairline tile edge — above the icon so it reads on an opaque full-bleed

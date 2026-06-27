@@ -19,7 +19,7 @@ import {
 import { api, type CompetitorOverview, type Monitor } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/dashboard/empty-state";
 import { Eyebrow } from "@/components/outrival/eyebrow";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
 import { formatTierPrice, logoLabel, isRenderableLogoSrc } from "./helpers";
@@ -161,27 +161,26 @@ export function OverviewTab({
     const homepageMonitor = monitors.find((m) => m.sourceType === "homepage");
     const running = homepageMonitor ? scrapingIds.has(homepageMonitor.id) : false;
     return (
-      <Card className="px-6 py-10 text-center border-dashed flex flex-col items-center gap-3">
-        <p className="text-sm font-semibold text-foreground">Nothing captured yet</p>
-        <p className="text-sm text-muted-foreground max-w-md">
-          Once the homepage is scraped, this is where you&apos;ll see what this
-          competitor says about itself — positioning, value props, customers and
-          pricing — at a glance.
-        </p>
-        {homepageMonitor && (
-          <Button size="sm" disabled={running} onClick={() => onRun(homepageMonitor.id)}>
-            {running ? (
-              <>
-                <Loader2 size={12} className="animate-spin" /> Scraping…
-              </>
-            ) : (
-              <>
-                <Play size={12} /> Scrape homepage now
-              </>
-            )}
-          </Button>
-        )}
-      </Card>
+      <EmptyState
+        icon={LayoutGrid}
+        title="Nothing captured yet"
+        description="Once the homepage is scraped, this is where you'll see what this competitor says about itself — positioning, value props, customers and pricing — at a glance."
+        actions={
+          homepageMonitor && (
+            <Button size="sm" disabled={running} onClick={() => onRun(homepageMonitor.id)}>
+              {running ? (
+                <>
+                  <Loader2 size={12} className="animate-spin" /> Scraping…
+                </>
+              ) : (
+                <>
+                  <Play size={12} /> Scrape homepage now
+                </>
+              )}
+            </Button>
+          )
+        }
+      />
     );
   }
 

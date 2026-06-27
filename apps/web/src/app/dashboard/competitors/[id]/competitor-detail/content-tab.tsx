@@ -4,7 +4,7 @@ import { formatDistanceToNow } from "date-fns";
 import { FileText, Loader2, Play } from "lucide-react";
 import type { ChangeRow, CompetitorSignal } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/dashboard/empty-state";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
 import { ChangeCard } from "./changes";
 import { Empty, type MonitorSourceProps } from "./shared";
@@ -49,30 +49,33 @@ export function ContentTab({
       contentMonitors[0]!;
     const running = scrapingIds.has(preferred.id);
     return (
-      <Card className="px-6 py-10 text-center border-dashed flex flex-col items-center gap-3">
-        <p className="text-sm font-semibold text-foreground">No content changes yet</p>
-        <p className="text-sm text-muted-foreground max-w-md">
-          {preferred.lastRunAt
+      <EmptyState
+        icon={FileText}
+        title="No content changes yet"
+        description={
+          preferred.lastRunAt
             ? `The ${preferred.sourceType} monitor was scraped ${formatDistanceToNow(new Date(preferred.lastRunAt), { addSuffix: true })} — no change since.`
-            : `The ${preferred.sourceType} monitor has never been scraped. Run it now.`}
-        </p>
-        <Button
-          size="sm"
-          variant={running ? "secondary" : "default"}
-          onClick={() => onRun(preferred.id)}
-          disabled={running}
-        >
-          {running ? (
-            <>
-              <Loader2 size={12} className="animate-spin" /> Scraping…
-            </>
-          ) : (
-            <>
-              <Play size={12} /> Scrape {preferred.sourceType}
-            </>
-          )}
-        </Button>
-      </Card>
+            : `The ${preferred.sourceType} monitor has never been scraped. Run it now.`
+        }
+        actions={
+          <Button
+            size="sm"
+            variant={running ? "secondary" : "default"}
+            onClick={() => onRun(preferred.id)}
+            disabled={running}
+          >
+            {running ? (
+              <>
+                <Loader2 size={12} className="animate-spin" /> Scraping…
+              </>
+            ) : (
+              <>
+                <Play size={12} /> Scrape {preferred.sourceType}
+              </>
+            )}
+          </Button>
+        }
+      />
     );
   }
 

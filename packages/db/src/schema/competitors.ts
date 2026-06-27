@@ -61,6 +61,10 @@ export const competitors = pgTable("competitors", {
   overlapScore: real("overlap_score"),
   category: text("category"),
   metadata: jsonb("metadata"),
+  // User-assigned color identity (patch-33). A palette token (COMPETITOR_COLORS)
+  // or a custom "#rrggbb" hex; the UI derives the dark/light appearance in CSS.
+  // Null = neutral (no color), the default look.
+  color: text("color"),
   // "competitor" (default) | "self" — the user's own product, monitored like a
   // competitor but excluded from the competitor list, quotas, and discovery.
   type: text("type").notNull().default("competitor"),

@@ -17,7 +17,9 @@ import {
   Trash2,
   ExternalLink,
   Telescope,
+  Building2,
 } from "lucide-react";
+import { EmptyState } from "./empty-state";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { api, type Competitor } from "@/lib/api";
@@ -52,6 +54,7 @@ import { PageHead } from "./page-head";
 import { useSetAskContext } from "./ask-context";
 import { DeltaPill, computeDelta } from "./delta-pill";
 import { CompAvatar } from "./comp-avatar";
+import { competitorLeftBorder } from "@/lib/competitor-color";
 import { FreshnessDot } from "@/components/outrival/freshness-dot";
 import { ListError } from "@/components/outrival/list-error";
 import { toastApiError } from "@/lib/error-helpers";
@@ -350,25 +353,24 @@ export function CompetitorsList() {
       )}
 
       {competitors && competitors.length === 0 && (
-        <Card className="px-6 py-12 text-center text-muted-foreground border-dashed">
-          <div className="font-semibold text-base text-foreground mb-1.5 tracking-tight">
-            No competitors
-          </div>
-          <div className="text-sm mb-4">
-            Add one yourself, or let Discovery suggest competitors for you.
-          </div>
-          <div className="flex items-center justify-center gap-2">
-            <Button onClick={() => setShowDialog(true)}>
-              <Plus size={13} /> Add competitor
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => router.push("/dashboard/discovery")}
-            >
-              <Telescope size={13} /> Explore Discovery
-            </Button>
-          </div>
-        </Card>
+        <EmptyState
+          icon={Building2}
+          title="No competitors"
+          description="Add one yourself, or let Discovery suggest competitors for you."
+          actions={
+            <>
+              <Button onClick={() => setShowDialog(true)}>
+                <Plus size={13} /> Add competitor
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => router.push("/dashboard/discovery")}
+              >
+                <Telescope size={13} /> Explore Discovery
+              </Button>
+            </>
+          }
+        />
       )}
 
       {competitors && competitors.length > 0 && sorted.length === 0 && (
@@ -472,7 +474,7 @@ export function CompetitorsList() {
                   className="border-b border-border last:border-b-0 cursor-pointer transition-colors hover:bg-accent/50"
                 >
                   <td className="px-3.5 py-3 align-middle">
-                    <CompAvatar name={c.name} url={c.url} />
+                    <CompAvatar name={c.name} url={c.url} color={c.color} />
                   </td>
                   <td className="px-3.5 py-3 align-middle">
                     <div className="flex items-center gap-1.5 font-medium">
@@ -582,11 +584,12 @@ export function CompetitorsList() {
             <motion.div key={c.id} {...feedItemMotion}>
             <Card
               onClick={() => router.push(`/dashboard/competitors/${c.id}`)}
+              style={competitorLeftBorder(c.color)}
               className="cursor-pointer transition-colors hover:bg-accent/30"
             >
               <div className="p-5">
                 <div className="flex items-center gap-2.5 mb-3.5">
-                  <CompAvatar name={c.name} url={c.url} />
+                  <CompAvatar name={c.name} url={c.url} color={c.color} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 font-semibold text-content">
                       {c.name}

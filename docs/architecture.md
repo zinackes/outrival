@@ -95,7 +95,10 @@ organizations          id, name, slug, plan, stripe_customer_id, stripe_subscrip
                        onboarding_completed, created_at, updated_at
 
 competitors            id, org_id, name, url, description, overlap_score, category,
-                       metadata (jsonb), ai_summary, ai_summary_updated_at,
+                       metadata (jsonb), color (patch-33 — user-assigned identity:
+                       palette token COMPETITOR_COLORS or "#rrggbb" hex; null =
+                       neutral. UI stores hue+chroma, derives dark/light lightness
+                       in CSS), ai_summary, ai_summary_updated_at,
                        created_at, updated_at, deleted_at
 
 monitors               id, competitor_id, source_type, frequency, config (jsonb),

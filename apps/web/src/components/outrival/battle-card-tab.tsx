@@ -18,6 +18,7 @@ import {
   Target,
   X,
 } from "lucide-react";
+import { EmptyState } from "@/components/dashboard/empty-state";
 import { api, type BattleCard, type BattleCardContent } from "@/lib/api";
 import { track } from "@/lib/posthog/events";
 import {
@@ -193,16 +194,16 @@ export function BattleCardTab({ competitorId }: Props) {
   if (status === "absent") {
     return (
       <>
-        <Card className="p-6 text-center flex flex-col items-center gap-3 border-dashed">
-          <Sparkles size={20} className="text-primary" />
-          <p className="text-dense text-muted-foreground">
-            No battle card for this competitor yet. Generate one with AI in a
-            few seconds.
-          </p>
-          <Button onClick={onGenerate}>
-            <Sparkles size={14} /> Generate battle card
-          </Button>
-        </Card>
+        <EmptyState
+          icon={Sparkles}
+          title="No battle card for this competitor yet"
+          description="Generate one with AI in a few seconds."
+          actions={
+            <Button onClick={onGenerate}>
+              <Sparkles size={14} /> Generate battle card
+            </Button>
+          }
+        />
         {paywallNode}
       </>
     );

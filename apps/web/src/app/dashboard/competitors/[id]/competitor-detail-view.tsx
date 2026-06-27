@@ -83,6 +83,8 @@ import { MonitorFreshnessAction } from "@/components/outrival/monitor-freshness"
 import { MonitorAlternatives } from "@/components/outrival/monitor-alternatives";
 import { CompetitorTechStack } from "@/components/outrival/competitor-tech-stack";
 import { Eyebrow } from "@/components/outrival/eyebrow";
+import { CompetitorColorPicker } from "@/components/dashboard/competitor-color-picker";
+import { competitorColorVars, COMP_ACCENT } from "@/lib/competitor-color";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
 import { ListError } from "@/components/outrival/list-error";
 import { toastApiError, toastRescanLimit } from "@/lib/error-helpers";
@@ -494,6 +496,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
     url?: string;
     category?: string | null;
     description?: string | null;
+    color?: string | null;
   }) {
     const { competitor } = await api.updateCompetitor(id, patch);
     setData((d) => (d ? { ...d, competitor } : d));
@@ -1016,6 +1019,7 @@ function Header({
     url?: string;
     category?: string | null;
     description?: string | null;
+    color?: string | null;
   }) => Promise<void>;
   onToggleMonitoring: () => void;
   onToggleMute: () => void;
@@ -1026,6 +1030,8 @@ function Header({
 }) {
   const [editOpen, setEditOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
+  // Colored accent bar carrying the competitor's identity color (null = neutral).
+  const headerColorVars = competitorColorVars(competitor.color);
 
   async function copyLink() {
     try {
@@ -1047,6 +1053,13 @@ function Header({
         >
           <ArrowLeft size={16} />
         </Link>
+        {headerColorVars && (
+          <span
+            aria-hidden
+            className="mt-1 w-1 self-stretch shrink-0 rounded-full"
+            style={{ ...headerColorVars, background: COMP_ACCENT, minHeight: 28 }}
+          />
+        )}
         <div className="min-w-0">
           <div className="flex items-center gap-3 flex-wrap mb-1">
             <h1 className="font-bold text-title-lg md:text-stat tracking-tight leading-[1.05] m-0">
@@ -1265,12 +1278,14 @@ function EditDetailsDialog({
     url?: string;
     category?: string | null;
     description?: string | null;
+    color?: string | null;
   }) => Promise<void>;
 }) {
   const [name, setName] = useState(competitor.name);
   const [url, setUrl] = useState(competitor.url ?? "");
   const [category, setCategory] = useState(competitor.category ?? "");
   const [description, setDescription] = useState(competitor.description ?? "");
+  const [color, setColor] = useState<string | null>(competitor.color);
   const [saving, setSaving] = useState(false);
 
   // Re-seed the form from the live competitor each time the dialog opens.
@@ -1280,6 +1295,7 @@ function EditDetailsDialog({
     setUrl(competitor.url ?? "");
     setCategory(competitor.category ?? "");
     setDescription(competitor.description ?? "");
+    setColor(competitor.color);
   }, [open, competitor]);
 
   async function submit() {
@@ -1288,6 +1304,7 @@ function EditDetailsDialog({
       url?: string;
       category?: string | null;
       description?: string | null;
+      color?: string | null;
     } = {};
     const trimmedName = name.trim();
     if (trimmedName && trimmedName !== competitor.name) patch.name = trimmedName;
@@ -1297,6 +1314,7 @@ function EditDetailsDialog({
     if (trimmedCat !== (competitor.category ?? "")) patch.category = trimmedCat || null;
     const trimmedDesc = description.trim();
     if (trimmedDesc !== (competitor.description ?? "")) patch.description = trimmedDesc || null;
+    if (color !== competitor.color) patch.color = color;
 
     if (Object.keys(patch).length === 0) {
       onOpenChange(false);
@@ -1353,6 +1371,10 @@ function EditDetailsDialog({
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
             />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Color</Label>
+            <CompetitorColorPicker value={color} onChange={setColor} />
           </div>
         </div>
         <DialogFooter>

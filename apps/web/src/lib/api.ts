@@ -111,6 +111,8 @@ export interface Competitor {
   url: string;
   description: string | null;
   category: string | null;
+  // User-assigned color identity (palette token or "#rrggbb"); null = neutral.
+  color: string | null;
   overlapScore: number | null;
   aiSummary: string | null;
   aiSummaryUpdatedAt: string | null;
@@ -291,6 +293,8 @@ export interface Signal {
   // The competitor's site, used to render its favicon in the card avatar
   // (null/absent → the avatar falls back to the initial letter).
   competitorUrl?: string | null;
+  // User-assigned color identity (palette token / hex); null = neutral.
+  competitorColor?: string | null;
   changeId: string;
   sourceType: string | null;
   // The current user's quality verdict on this signal (patch-21), preloaded so
@@ -1569,10 +1573,16 @@ export const api = {
     }),
   deleteCompetitor: (id: string) =>
     request<{ ok: true }>(`/api/competitors/${id}`, { method: "DELETE" }),
-  // Kebab → Edit details. Any subset of name/url/category/description.
+  // Kebab → Edit details. Any subset of name/url/category/description/color.
   updateCompetitor: (
     id: string,
-    body: { name?: string; url?: string; category?: string | null; description?: string | null },
+    body: {
+      name?: string;
+      url?: string;
+      category?: string | null;
+      description?: string | null;
+      color?: string | null;
+    },
   ) =>
     request<{ competitor: Competitor }>(`/api/competitors/${id}`, {
       method: "PATCH",

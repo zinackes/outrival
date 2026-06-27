@@ -9,6 +9,13 @@ import type { Signal, Competitor } from "@/lib/api";
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 
+// Demo color identities — so the sample feed avatars match the colored competitors.
+const SAMPLE_COMPETITOR_COLORS: Record<string, string> = {
+  "sample-northwind": "indigo",
+  "sample-beacon": "emerald",
+  "sample-lumen": "amber",
+};
+
 function signal(s: Partial<Signal> & Pick<Signal, "id" | "severity" | "category" | "insight" | "competitorId" | "competitorName">): Signal {
   return {
     severityOverride: null,
@@ -32,6 +39,7 @@ function signal(s: Partial<Signal> & Pick<Signal, "id" | "severity" | "category"
     batchSummary: null,
     batchCount: null,
     filteredReason: null,
+    competitorColor: SAMPLE_COMPETITOR_COLORS[s.competitorId] ?? null,
     ...s,
   };
 }
@@ -40,6 +48,7 @@ function competitor(c: Partial<Competitor> & Pick<Competitor, "id" | "name" | "u
   const now = new Date().toISOString();
   return {
     description: null,
+    color: null,
     overlapScore: null,
     aiSummary: null,
     aiSummaryUpdatedAt: null,
@@ -185,6 +194,7 @@ export function getSampleData(): { signals: Signal[]; competitors: Competitor[] 
       name: "Northwind Analytics",
       url: "https://northwind.example.com",
       category: "Analytics",
+      color: "indigo",
       overlapScore: 82,
       stats: {
         signals7d: 3,
@@ -199,6 +209,7 @@ export function getSampleData(): { signals: Signal[]; competitors: Competitor[] 
       name: "Beacon CRM",
       url: "https://beacon.example.com",
       category: "CRM",
+      color: "emerald",
       overlapScore: 67,
       stats: {
         signals7d: 2,
@@ -213,6 +224,7 @@ export function getSampleData(): { signals: Signal[]; competitors: Competitor[] 
       name: "Lumen Billing",
       url: "https://lumen.example.com",
       category: "Billing",
+      color: "amber",
       overlapScore: 54,
       stats: {
         signals7d: 2,

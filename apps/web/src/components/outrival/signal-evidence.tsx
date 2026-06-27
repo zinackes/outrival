@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ArrowRight } from "lucide-react";
 import { api, type SignalDetail } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -23,27 +23,17 @@ const Label = ({ children }: { children: React.ReactNode }) => (
  * structured evidence (lexical / jobs / pricing signals) — the card stands alone.
  */
 export function SignalEvidence({ signalId }: { signalId: string }) {
-  const [detail, setDetail] = useState<SignalDetail | null>(null);
-  const [state, setState] = useState<"loading" | "error" | "idle">("loading");
-
-  useEffect(() => {
-    let cancelled = false;
-    setState("loading");
-    setDetail(null);
-    api
-      .getSignalDetail(signalId)
-      .then((res) => {
-        if (cancelled) return;
-        setDetail(res.signal);
-        setState("idle");
-      })
-      .catch(() => {
-        if (!cancelled) setState("error");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [signalId]);
+  // Shares the ["signalDetail", id] cache with the "Why this insight?" panel.
+  const detailQ = useQuery({
+    queryKey: ["signalDetail", signalId],
+    queryFn: () => api.getSignalDetail(signalId).then((r) => r.signal),
+  });
+  const detail = detailQ.data ?? null;
+  const state: "loading" | "error" | "idle" = detailQ.isError
+    ? "error"
+    : detailQ.isFetching
+      ? "loading"
+      : "idle";
 
   if (state === "loading") {
     return (

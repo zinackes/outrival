@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bookmark, Pencil, Trash2, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { api, type SavedView, type SavedViewFilters } from "@/lib/api";
@@ -33,7 +34,15 @@ export function SavedViewsMenu({
   current: SavedViewFilters;
   onApply: (filters: SavedViewFilters) => void;
 }) {
-  const [views, setViews] = useState<SavedView[]>([]);
+  const queryClient = useQueryClient();
+  const viewsQ = useQuery({
+    queryKey: ["savedViews"],
+    queryFn: () => api.listSavedViews().then((r) => r.views),
+  });
+  const views = viewsQ.data ?? [];
+  function setViews(updater: (prev: SavedView[]) => SavedView[]) {
+    queryClient.setQueryData<SavedView[]>(["savedViews"], (prev) => updater(prev ?? []));
+  }
   const [saveOpen, setSaveOpen] = useState(false);
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
@@ -45,14 +54,8 @@ export function SavedViewsMenu({
   const [deleting, setDeleting] = useState(false);
 
   function refresh() {
-    api
-      .listSavedViews()
-      .then((r) => setViews(r.views))
-      .catch(() => {});
+    return queryClient.invalidateQueries({ queryKey: ["savedViews"] });
   }
-  useEffect(() => {
-    refresh();
-  }, []);
 
   const hasCurrent = Boolean(
     current.competitorIds?.length ||

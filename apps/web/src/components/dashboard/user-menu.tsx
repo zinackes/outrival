@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bell, LogOut, Settings, User } from "lucide-react";
+import { Bell, ChevronDown, LogOut, Settings, User } from "lucide-react";
 import { signOut } from "@/lib/auth-client";
 import { resetUser } from "@/lib/posthog/events";
 import {
@@ -17,12 +17,6 @@ import {
 interface User {
   name: string | null;
   email: string | null;
-}
-
-function initials(name?: string | null, fallback = "?") {
-  if (!name) return fallback;
-  const parts = name.trim().split(/\s+/).slice(0, 2);
-  return parts.map((p) => p[0]?.toUpperCase() ?? "").join("") || fallback;
 }
 
 export function UserMenu({ user }: { user: User }) {
@@ -41,17 +35,16 @@ export function UserMenu({ user }: { user: User }) {
         <button
           type="button"
           aria-label="Account"
-          className="flex items-center gap-2 rounded-md p-0.5 sm:pr-2.5 transition-colors hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 data-[state=open]:bg-accent data-[state=open]:text-accent-foreground dark:data-[state=open]:bg-accent/50"
+          className="flex h-8 items-center gap-1.5 rounded-md px-2 transition-colors hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 data-[state=open]:bg-accent data-[state=open]:text-accent-foreground dark:data-[state=open]:bg-accent/50"
         >
-          <span className="flex aspect-square size-7 items-center justify-center rounded-full border border-border bg-surface text-meta font-semibold text-foreground">
-            {initials(user.name, "?")}
-          </span>
+          <User className="size-4 shrink-0 text-muted-foreground sm:hidden" aria-hidden />
           <span
-            className="hidden max-w-[140px] truncate text-sm font-medium text-foreground sm:block"
+            className="hidden max-w-[160px] truncate text-sm font-medium text-foreground sm:block"
             data-ph-mask
           >
             {user.name ?? user.email ?? "Account"}
           </span>
+          <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" sideOffset={8} className="w-56">

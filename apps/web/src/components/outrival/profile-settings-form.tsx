@@ -26,12 +26,6 @@ async function authPost(path: string, body: Record<string, unknown>): Promise<vo
   }
 }
 
-function initials(name?: string | null, fallback = "?") {
-  if (!name) return fallback;
-  const parts = name.trim().split(/\s+/).slice(0, 2);
-  return parts.map((p) => p[0]?.toUpperCase() ?? "").join("") || fallback;
-}
-
 // Self-serve email change via Better Auth emailOTP: a code goes to the new
 // address (anti-enumeration: the server stays silent if it's already taken), and
 // the email only switches once the user confirms that code.
@@ -207,15 +201,6 @@ export function ProfileSettingsForm() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center gap-3">
-        <span className="flex aspect-square size-12 items-center justify-center rounded-full border border-border bg-surface text-sm font-semibold text-foreground">
-          {initials(currentName, "?")}
-        </span>
-        <p className="text-dense text-muted-foreground">
-          Your avatar is generated from your name.
-        </p>
-      </div>
-
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="profile-name">Name</Label>
         <Input

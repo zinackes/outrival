@@ -268,7 +268,13 @@ export function CompetitorDetailView({ id }: { id: string }) {
       : null;
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
+      if (e.defaultPrevented) return;
+      // AZERTY/QWERTZ keyboards emit "[" and "]" via AltGr, which Windows/Linux
+      // report as ctrlKey+altKey — so don't blanket-filter those, or the shortcut
+      // never fires. Detect AltGraph explicitly; still block genuine Cmd/Ctrl combos.
+      const altGraph =
+        typeof e.getModifierState === "function" && e.getModifierState("AltGraph");
+      if (e.metaKey || ((e.ctrlKey || e.altKey) && !altGraph)) return;
       const t = e.target as HTMLElement | null;
       if (
         t &&
@@ -1121,12 +1127,12 @@ function Header({
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-9 w-9 p-0"
+                  className="h-7 w-7 p-0"
                   disabled={!onPrev}
                   onClick={onPrev}
                   aria-label="Previous competitor"
                 >
-                  <ChevronLeft size={14} />
+                  <ChevronLeft size={16} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent className="flex items-center gap-1.5">
@@ -1144,12 +1150,12 @@ function Header({
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-9 w-9 p-0"
+                  className="h-7 w-7 p-0"
                   disabled={!onNext}
                   onClick={onNext}
                   aria-label="Next competitor"
                 >
-                  <ChevronRight size={14} />
+                  <ChevronRight size={16} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent className="flex items-center gap-1.5">
@@ -1166,10 +1172,10 @@ function Header({
             <Button
               size="sm"
               variant="outline"
-              className="h-9 w-9 p-0"
+              className="h-7 w-7 p-0"
               aria-label="More actions"
             >
-              <MoreHorizontal size={14} />
+              <MoreHorizontal size={16} />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-60">

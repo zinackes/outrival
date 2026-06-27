@@ -11,6 +11,7 @@ import {
   type ActivityUpcoming,
   type ActivityEvent,
   type ActivityChange,
+  type ActivityCaptured,
   type ActivityStatusFilter,
 } from "@/lib/api";
 import {
@@ -26,6 +27,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import {
   Tooltip,
   TooltipContent,
@@ -291,8 +299,160 @@ function QuietRunDetail({
   );
 }
 
+// ── Captured data (jobs / pricing / reviews) ──────────────────────────────────
+// What a data source actually held on a run — the value a baseline or no-change
+// row otherwise hides. Shown as a one-line summary in the "Captured" column, with
+// a breakdown in the expanded panel.
+
+const CURRENCY_SYMBOL: Record<string, string> = { USD: "$", EUR: "€", GBP: "£" };
+const PERIOD_SHORT: Record<string, string> = { monthly: "mo", yearly: "yr" };
+
+function fmtPrice(value: number | null, currency: string | null): string {
+  if (value == null) return "";
+  const n = Number.isInteger(value) ? String(value) : value.toFixed(2);
+  const sym = currency ? CURRENCY_SYMBOL[currency] : undefined;
+  return sym ? `${sym}${n}` : currency ? `${n} ${currency}` : n;
+}
+
+// The single line for the "Captured" column. null → render "Nothing found"
+// (and no "View more": a null summary means there's no payload to break down).
+function capturedSummary(c: ActivityCaptured): string | null {
+  if (c.kind === "jobs") {
+    if (c.total === 0) return null;
+    const roles = `${c.total} open role${c.total > 1 ? "s" : ""}`;
+    return c.teams > 1 ? `${roles} · ${c.teams} teams` : roles;
+  }
+  if (c.kind === "pricing") {
+    if (c.planCount === 0) return null;
+    const plans = `${c.planCount} plan${c.planCount > 1 ? "s" : ""}`;
+    if (c.minPrice == null) return plans; // all quote-based tiers
+    const range =
+      c.maxPrice != null && c.maxPrice !== c.minPrice
+        ? `${fmtPrice(c.minPrice, c.currency)}–${fmtPrice(c.maxPrice, c.currency)}`
+        : fmtPrice(c.minPrice, c.currency);
+    return `${plans} · ${range}`;
+  }
+  if (c.score == null) return null;
+  const stars = `${c.score.toFixed(1)}★`;
+  return c.reviewCount > 0 ? `${stars} · ${c.reviewCount.toLocaleString()} reviews` : stars;
+}
+
+// "Captured" cell content: a dash for non-data sources, "Nothing found" for a
+// data source whose extraction came back empty, else the summary line plus a
+// "View more" that opens the breakdown modal. A non-null summary always implies a
+// real payload, so the link is shown whenever there's a summary.
+function CapturedCell({
+  captured,
+  onView,
+}: {
+  captured: ActivityCaptured | null | undefined;
+  onView: () => void;
+}) {
+  if (!captured) return <span className="text-muted-foreground">—</span>;
+  const summary = capturedSummary(captured);
+  if (!summary) return <span className="text-muted-foreground">Nothing found</span>;
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span className="tabular-nums text-foreground">{summary}</span>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onView();
+        }}
+        className="shrink-0 text-xs text-link hover:underline"
+      >
+        View more
+      </button>
+    </span>
+  );
+}
+
+const REVIEW_SUBS: Array<{ key: keyof NonNullable<Extract<ActivityCaptured, { kind: "reviews" }>["subScores"]>; label: string }> = [
+  { key: "easeOfUse", label: "Ease of use" },
+  { key: "support", label: "Support" },
+  { key: "features", label: "Features" },
+  { key: "value", label: "Value" },
+];
+
+// The expanded breakdown of a run's captured data: departments, plans, or scores.
+function CapturedDetail({ captured }: { captured: ActivityCaptured }) {
+  if (captured.kind === "jobs") {
+    return (
+      <div className="flex flex-col gap-2 text-sm">
+        <p className="text-muted-foreground">
+          {captured.total} open role{captured.total > 1 ? "s" : ""} across {captured.teams} team
+          {captured.teams > 1 ? "s" : ""}.
+        </p>
+        <ul className="flex flex-wrap gap-x-4 gap-y-1">
+          {captured.byDept.map((d) => (
+            <li key={d.department} className="text-muted-foreground">
+              <span className="text-foreground">{d.department}</span>{" "}
+              <span className="tabular-nums">{d.count}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+
+  if (captured.kind === "pricing") {
+    return (
+      <div className="flex flex-col gap-2 text-sm">
+        <p className="text-muted-foreground">
+          {captured.planCount} pricing plan{captured.planCount > 1 ? "s" : ""} captured.
+        </p>
+        <ul className="flex flex-col gap-0.5">
+          {captured.plans.map((p, i) => (
+            <li
+              key={`${p.planName}-${i}`}
+              className="flex items-baseline justify-between gap-4"
+            >
+              <span className="min-w-0 truncate text-foreground">{p.planName}</span>
+              <span className="shrink-0 tabular-nums text-muted-foreground">
+                {p.price != null
+                  ? `${fmtPrice(p.price, p.currency)}/${PERIOD_SHORT[p.billingPeriod] ?? p.billingPeriod}`
+                  : "Custom"}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2 text-sm">
+      <p className="text-muted-foreground">
+        <span className="text-foreground tabular-nums">{captured.score?.toFixed(1)}★</span>
+        {captured.reviewCount > 0 && (
+          <>
+            {" "}
+            from <span className="tabular-nums">{captured.reviewCount.toLocaleString()}</span>{" "}
+            reviews
+          </>
+        )}
+      </p>
+      {captured.subScores && (
+        <ul className="flex flex-wrap gap-x-4 gap-y-1">
+          {REVIEW_SUBS.map(({ key, label }) => {
+            const v = captured.subScores![key];
+            if (v == null) return null;
+            return (
+              <li key={key} className="text-muted-foreground">
+                {label} <span className="text-foreground tabular-nums">{v.toFixed(1)}</span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 // Routes an expanded row to the right detail: real change breakdown, or a quiet
-// run explanation (first capture / no change).
+// run explanation (first capture / no change). The captured-data breakdown lives
+// in its own modal (opened from the "Captured" column), not here.
 function RunDetail({ event }: { event: ActivityEvent }) {
   const outcome = eventOutcome(event);
   if (outcome === "change") return <ChangeDetail event={event} />;
@@ -336,6 +496,9 @@ export function ActivityView() {
       setPage(1);
     };
   }
+
+  // The run whose captured-data breakdown is open in the modal (null = closed).
+  const [detailEvent, setDetailEvent] = useState<ActivityEvent | null>(null);
 
   // Rows expanded to reveal their precise change breakdown, keyed by row id.
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -569,6 +732,7 @@ export function ActivityView() {
                       <TableHead className="text-xs text-muted-foreground">Source</TableHead>
                       <TableHead className="text-xs text-muted-foreground">Status</TableHead>
                       <TableHead className="text-xs text-muted-foreground">What changed</TableHead>
+                      <TableHead className="text-xs text-muted-foreground">Captured</TableHead>
                       <TableHead className="text-right text-xs text-muted-foreground">
                         Duration
                       </TableHead>
@@ -644,6 +808,12 @@ export function ActivityView() {
                                   ? "Baseline snapshot saved"
                                   : "—"}
                             </TableCell>
+                            <TableCell className="text-muted-foreground">
+                              <CapturedCell
+                                captured={e.captured}
+                                onView={() => setDetailEvent(e)}
+                              />
+                            </TableCell>
                             <TableCell className="text-right text-xs text-muted-foreground tabular-nums">
                               {duration(e.durationMs)}
                             </TableCell>
@@ -660,7 +830,7 @@ export function ActivityView() {
                           </TableRow>
                           {isOpen && (
                             <TableRow className="hover:bg-transparent">
-                              <TableCell colSpan={7} className="bg-muted/40 py-3 pl-10 pr-4">
+                              <TableCell colSpan={8} className="bg-muted/40 py-3 pl-10 pr-4">
                                 <RunDetail event={e} />
                               </TableCell>
                             </TableRow>
@@ -684,6 +854,30 @@ export function ActivityView() {
           )}
         </div>
       )}
+
+      <Dialog
+        open={!!detailEvent}
+        onOpenChange={(open) => !open && setDetailEvent(null)}
+      >
+        <DialogContent className="sm:max-w-md">
+          {detailEvent && (
+            <>
+              <DialogHeader>
+                <DialogTitle>
+                  {detailEvent.competitorName} · {sourceLabel(detailEvent.sourceType)}
+                </DialogTitle>
+                <DialogDescription>
+                  Captured {absDateTime(detailEvent.recordedAt)}
+                </DialogDescription>
+              </DialogHeader>
+              {detailEvent.captured && (
+                <CapturedDetail captured={detailEvent.captured} />
+              )}
+              <LivePageLink url={detailEvent.url} />
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

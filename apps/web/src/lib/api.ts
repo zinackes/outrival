@@ -425,6 +425,42 @@ export interface ActivityChange {
   after: string | null;
 }
 
+// What a data source actually captured on a run (jobs / pricing / reviews),
+// matched server-side to the analytics batch nearest the run — the payload that
+// carries value even on a baseline capture or a no-change run. `null` for sources
+// with no structured payload (homepage/blog/changelog) and for failed runs.
+export type ActivityCaptured =
+  | {
+      kind: "jobs";
+      total: number;
+      teams: number;
+      byDept: { department: string; count: number }[];
+    }
+  | {
+      kind: "pricing";
+      planCount: number;
+      minPrice: number | null;
+      maxPrice: number | null;
+      currency: string | null;
+      plans: {
+        planName: string;
+        price: number | null;
+        currency: string;
+        billingPeriod: string;
+      }[];
+    }
+  | {
+      kind: "reviews";
+      score: number | null;
+      reviewCount: number;
+      subScores: {
+        easeOfUse: number | null;
+        support: number | null;
+        features: number | null;
+        value: number | null;
+      } | null;
+    };
+
 export interface ActivityEvent {
   competitorId: string;
   competitorName: string;
@@ -452,6 +488,10 @@ export interface ActivityEvent {
   // When the monitor last truly detected a change — context for a no-change row
   // ("unchanged since …"). Null if it has never changed.
   lastChangedAt?: string | null;
+  // What this run captured for a data source (jobs/pricing/reviews) — populated
+  // for every data-source run, not just the first capture. Null for sources with
+  // no structured payload and for failed runs.
+  captured?: ActivityCaptured | null;
 }
 
 // The user-facing outcome buckets used to filter the activity feed — derived from

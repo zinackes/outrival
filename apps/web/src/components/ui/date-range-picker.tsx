@@ -31,6 +31,16 @@ export const DEFAULT_PRESETS: DatePreset[] = [
   { label: "Last 90 days", range: () => lastNDays(90) },
 ];
 
+// "All time" — a fixed early start so the window spans the org's full history
+// (product data never predates this). Only for pages that pass {from,to} straight
+// through to a query; pages that render "last N days" labels should NOT use it.
+export const ALL_TIME_START = new Date(2000, 0, 1);
+
+export const ALL_TIME_PRESET: DatePreset = {
+  label: "All time",
+  range: () => ({ from: ALL_TIME_START, to: endOfDay(new Date()) }),
+};
+
 function rangesMatch(a: DateRange, b: DateRange): boolean {
   return isSameDay(a.from, b.from) && isSameDay(a.to, b.to);
 }

@@ -52,6 +52,50 @@ import { cn } from "@/lib/utils";
 
 const MAX = 6;
 
+// Deferred-removal window: a removed column stays mounted this long so its exit
+// animation can play before the row actually drops it from `selected`. The enter
+// window matches its animation so a freshly-added column stops being "entering"
+// right as the animation ends (kept in sync with the durations in colAnimClass).
+const COLUMN_EXIT_MS = 200;
+const COLUMN_ENTER_MS = 300;
+
+// Reduced-motion users skip the deferred-removal delay (the exit animation is
+// gated by motion-safe, so without the delay the column just vanishes instantly).
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
+// A rendered column. Derived from `selected` (not the fetched matrix) so add/
+// remove is instant; `data` is the loaded column when available, else the column
+// is `pending` (shimmer cells) until the refetch returns. `entering`/`exiting`
+// drive the per-cell enter/exit animation on a list change.
+interface DisplayCol {
+  id: string;
+  name: string;
+  mine: boolean;
+  data: CompareColumn | null;
+  pending: boolean;
+  entering: boolean;
+  exiting: boolean;
+}
+
+// Per-column enter/exit animation classes, applied to every <th>/<td> of the
+// column so the whole column animates together (a column isn't a single element,
+// so AnimatePresence can't own it — plain CSS keyed on the column flags does).
+// motion-safe so reduced-motion users get neither. Durations mirror
+// COLUMN_ENTER_MS / COLUMN_EXIT_MS.
+function colAnimClass(col: { entering: boolean; exiting: boolean }): string {
+  if (col.exiting)
+    return "motion-safe:animate-out motion-safe:fade-out-0 motion-safe:slide-out-to-right-2 motion-safe:fill-mode-forwards motion-safe:duration-200";
+  if (col.entering)
+    return "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-2 motion-safe:duration-300";
+  return "";
+}
+
 const SEV_VARIANT: Record<string, "destructive" | "default" | "secondary" | "outline"> = {
   critical: "destructive",
   high: "default",
@@ -560,6 +604,18 @@ export function CompareView() {
   // user's live selection. Seeded → already built on the first render.
   const initializedRef = useRef(productsQ.data != null && competitorsQ.data != null);
   const [matrix, setMatrix] = useState<CompareColumn[] | null>(null);
+  // A refetch keeps the prior matrix on screen (no full-table blank); this just
+  // drives per-column shimmer for ids not yet present in `matrix`. Seeded true
+  // when a selection exists at mount so the first paint shows the shimmer table,
+  // not a "Nothing to compare" flash before the fetch effect runs.
+  const [isFetching, setIsFetching] = useState(() => selected.length > 0);
+  // Columns mid-removal: still in `selected` (so they stay mounted) but rendered
+  // with the exit animation; dropped from `selected` once it finishes.
+  const [exitingIds, setExitingIds] = useState<Set<string>>(() => new Set());
+  // Columns just added by the user: rendered with the enter animation until it
+  // finishes. Only ever populated by addColumn — the seeded/initial set never is,
+  // so the first paint has no enter animation (animation = list change only).
+  const [enteringIds, setEnteringIds] = useState<Set<string>>(() => new Set());
   const [pickerOpen, setPickerOpen] = useState(false);
 
   // View state.
@@ -628,25 +684,67 @@ export function CompareView() {
   useEffect(() => {
     if (selected.length === 0) {
       setMatrix([]);
+      setIsFetching(false);
       return;
     }
     let cancelled = false;
-    setMatrix(null);
+    // Keep the prior matrix rendered while refetching — columns already loaded
+    // stay put; only newly-added ids shimmer (driven by isFetching) until they
+    // arrive. This is what replaces the old full-table skeleton on every change.
+    setIsFetching(true);
     api
       .compareCompetitors(selected)
-      .then((r) => !cancelled && setMatrix(r.competitors))
-      .catch(() => !cancelled && setMatrix([]));
+      .then((r) => {
+        if (cancelled) return;
+        setMatrix(r.competitors);
+        setIsFetching(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setMatrix([]);
+        setIsFetching(false);
+      });
     return () => {
       cancelled = true;
     };
   }, [selected]);
 
+  function addColumn(id: string) {
+    if (selected.includes(id) || selected.length >= MAX) return;
+    setSelected((prev) =>
+      prev.includes(id) || prev.length >= MAX ? prev : [...prev, id],
+    );
+    if (prefersReducedMotion()) return;
+    setEnteringIds((prev) => new Set(prev).add(id));
+    window.setTimeout(() => {
+      setEnteringIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }, COLUMN_ENTER_MS);
+  }
+
+  // Deferred so the exit animation can play before the column unmounts.
+  function removeColumn(id: string) {
+    if (prefersReducedMotion()) {
+      setSelected((prev) => prev.filter((x) => x !== id));
+      return;
+    }
+    setExitingIds((prev) => new Set(prev).add(id));
+    window.setTimeout(() => {
+      setSelected((prev) => prev.filter((x) => x !== id));
+      setExitingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }, COLUMN_EXIT_MS);
+  }
+
   function toggle(id: string) {
-    setSelected((prev) => {
-      if (prev.includes(id)) return prev.filter((x) => x !== id);
-      if (prev.length >= MAX) return prev;
-      return [...prev, id];
-    });
+    if (selected.includes(id)) removeColumn(id);
+    else addColumn(id);
   }
 
   function toggleRow(key: string) {
@@ -698,6 +796,37 @@ export function CompareView() {
     [entities],
   );
 
+  // The columns actually rendered (incl. pending/exiting), derived from `selected`
+  // so add/remove reflects instantly. `orderedCols` above stays the loaded-data
+  // source for the summary band / winners / diff / export.
+  const matrixById = useMemo(
+    () => new Map((matrix ?? []).map((c) => [c.id, c])),
+    [matrix],
+  );
+  const nameById = useMemo(
+    () => new Map((entities ?? []).map((e) => [e.id, e.name])),
+    [entities],
+  );
+  const displayCols = useMemo<DisplayCol[]>(() => {
+    // Same you-first ordering as orderedCols, but over `selected` (instant).
+    const order = [
+      ...selected.filter((id) => youIds.has(id)),
+      ...selected.filter((id) => !youIds.has(id)),
+    ];
+    return order.map((id) => {
+      const data = matrixById.get(id) ?? null;
+      return {
+        id,
+        name: data?.name ?? nameById.get(id) ?? "—",
+        mine: youIds.has(id),
+        data,
+        pending: !data && isFetching,
+        entering: enteringIds.has(id),
+        exiting: exitingIds.has(id),
+      };
+    });
+  }, [selected, youIds, matrixById, nameById, isFetching, enteringIds, exitingIds]);
+
   const visibleRowSet = useMemo(() => new Set(visibleRows), [visibleRows]);
   const rows = useMemo(() => ROWS.filter((r) => visibleRowSet.has(r.key)), [visibleRowSet]);
   // Rows actually rendered: when "Differences only" is on, drop rows whose
@@ -716,9 +845,10 @@ export function CompareView() {
   }, [rows, orderedCols]);
 
   // Only the leftmost "you" column is frozen (the primary reference); any extra
-  // "you" columns scroll like the rest.
-  const firstCol = orderedCols[0];
-  const stickyYouId = firstCol && youIds.has(firstCol.id) ? firstCol.id : null;
+  // "you" columns scroll like the rest. Based on the rendered columns so the
+  // freeze tracks the live (optimistic) leftmost column.
+  const firstCol = displayCols[0];
+  const stickyYouId = firstCol && firstCol.mine ? firstCol.id : null;
 
   const full = selected.length >= MAX;
   const hasCompetitors = (entities ?? []).some((e) => e.kind === "competitor");
@@ -935,9 +1065,9 @@ export function CompareView() {
             <p className="text-muted-foreground text-sm">
               Pick competitors above to compare.
             </p>
-          ) : matrix === null ? (
-            <Skeleton className="h-72 w-full" />
-          ) : matrix.length === 0 ? (
+          ) : !isFetching && (matrix?.length ?? 0) === 0 ? (
+            // Fetch settled with nothing (e.g. all ids dropped server-side); while
+            // it's still loading we render the table with pending shimmer columns.
             <p className="text-muted-foreground text-sm">Nothing to compare.</p>
           ) : (
             <div className="flex flex-col gap-3">
@@ -947,25 +1077,25 @@ export function CompareView() {
                   <thead>
                     <tr>
                       <th className="bg-background sticky left-0 z-20 w-36 border-b border-r border-border px-3 py-2.5 text-left" />
-                      {orderedCols.map((c) => {
-                        const mine = youIds.has(c.id);
-                        const stuck = c.id === stickyYouId;
+                      {displayCols.map((d) => {
+                        const stuck = d.id === stickyYouId;
                         return (
                           <th
-                            key={c.id}
+                            key={d.id}
                             className={cn(
                               "group/col min-w-[10rem] border-b border-border px-3 py-2.5 text-left font-semibold tracking-tight",
-                              mine && !stuck && "bg-primary/5",
+                              d.mine && !stuck && "bg-primary/5",
                               stuck && cn(YOU_STICKY_BG, "sticky left-36 z-10 border-r border-border"),
+                              colAnimClass(d),
                             )}
                           >
                             <span className="flex items-center gap-2">
-                              <span className="truncate">{c.name}</span>
-                              {mine && <YouTag />}
+                              <span className="truncate">{d.name}</span>
+                              {d.mine && <YouTag />}
                               <button
                                 type="button"
-                                onClick={() => toggle(c.id)}
-                                aria-label={`Remove ${c.name}`}
+                                onClick={() => toggle(d.id)}
+                                aria-label={`Remove ${d.name}`}
                                 className="text-muted-foreground hover:text-foreground ml-auto shrink-0 rounded-sm p-0.5 opacity-0 transition-opacity group-hover/col:opacity-100 focus-visible:opacity-100"
                               >
                                 <X size={13} />
@@ -982,12 +1112,12 @@ export function CompareView() {
                       const out: ReactNode[] = [];
                       // Columns to span on caption rows after the (frozen) label and
                       // "you" cells — keeps the frozen you column continuous.
-                      const restCols = orderedCols.length - (stickyYouId ? 1 : 0);
+                      const restCols = displayCols.length - (stickyYouId ? 1 : 0);
                       if (diffOnly && displayRows.length === 0) {
                         out.push(
                           <tr key="no-diff">
                             <td
-                              colSpan={orderedCols.length + 1}
+                              colSpan={displayCols.length + 1}
                               className="bg-background px-3 py-6 text-center text-sm text-muted-foreground"
                             >
                               No differences across the tracked fields — these
@@ -1000,24 +1130,23 @@ export function CompareView() {
                         const group = ROW_GROUP[r.key] ?? "";
                         if (group && group !== prevGroup) {
                           out.push(
+                            // Section band: a continuous raised strip across every
+                            // column — no per-cell vertical dividers (border-r) and a
+                            // uniform bg-background-2 fill, so it reads as a header band
+                            // breaking the column grid, not as a data row with empty cells.
                             <tr key={`grp-${group}`}>
-                              <td className="bg-background sticky left-0 z-20 w-36 whitespace-nowrap border-b border-r border-border px-3 pb-1.5 pt-4">
-                                <span className="text-muted-foreground text-meta font-medium">
+                              <td className="bg-background-2 sticky left-0 z-20 w-36 whitespace-nowrap border-b border-border px-3 pb-1.5 pt-4">
+                                <span className="text-muted-foreground text-meta font-semibold">
                                   {group}
                                 </span>
                               </td>
                               {stickyYouId && (
-                                <td
-                                  className={cn(
-                                    YOU_STICKY_BG,
-                                    "sticky left-36 z-10 border-b border-r border-border",
-                                  )}
-                                />
+                                <td className="bg-background-2 sticky left-36 z-10 border-b border-border" />
                               )}
                               {restCols > 0 && (
                                 <td
                                   colSpan={restCols}
-                                  className="bg-background border-b border-border"
+                                  className="bg-background-2 border-b border-border"
                                 />
                               )}
                             </tr>,
@@ -1052,32 +1181,36 @@ export function CompareView() {
                                 </span>
                               )}
                             </td>
-                            {orderedCols.map((c) => {
-                              const won = winners?.has(c.id);
-                              const mine = youIds.has(c.id);
-                              const stuck = c.id === stickyYouId;
+                            {displayCols.map((d) => {
+                              const won = d.data ? winners?.has(d.id) : false;
+                              const stuck = d.id === stickyYouId;
                               return (
                                 <td
-                                  key={c.id}
+                                  key={d.id}
                                   className={cn(
                                     "border-b border-border px-3 py-2.5 align-top",
-                                    mine && !stuck && "bg-primary/[0.03]",
+                                    d.mine && !stuck && "bg-primary/[0.03]",
                                     stuck &&
                                       cn(YOU_STICKY_BG, "sticky left-36 z-10 border-r border-border"),
+                                    colAnimClass(d),
                                   )}
                                 >
-                                  {isOpen && r.detail ? (
+                                  {d.pending ? (
+                                    <Skeleton className="h-4 w-2/3" />
+                                  ) : !d.data ? (
+                                    dash
+                                  ) : isOpen && r.detail ? (
                                     <div className="space-y-1.5">
                                       {won && (
                                         <span className="text-positive text-meta font-medium">
                                           Best
                                         </span>
                                       )}
-                                      {r.detail(c)}
+                                      {r.detail(d.data)}
                                     </div>
                                   ) : (
                                     <div className={cn(won && "text-positive font-medium")}>
-                                      {r.compact(c)}
+                                      {r.compact(d.data)}
                                     </div>
                                   )}
                                 </td>

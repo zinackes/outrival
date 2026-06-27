@@ -10,6 +10,7 @@ import { captureServerEvent, identifyUser } from "../lib/posthog";
 import { authRateLimit } from "../middleware/auth-rate-limit";
 import { authMiddleware } from "../middleware/auth";
 import { errorBody } from "../lib/errors";
+import { verifyReauthCode } from "../lib/reauth";
 
 export const authRouter = new Hono<{ Variables: { user: { id: string } } }>();
 
@@ -149,16 +150,23 @@ authRouter.get("/otp-link", async (c) => {
  * /auth page was unreachable for them until now. Length rules + HIBP breach
  * check (fail-open) before Better Auth persists anything; with an existing
  * password the current one is required and other sessions are revoked.
+ *
+ * Step-up re-auth: setting a password from an open session would otherwise let a
+ * hijacked session plant a permanent credential without proving identity (OWASP:
+ * re-authenticate before any credential change). We require the same emailed code
+ * as the danger-zone deletes, so the attacker would also need the inbox.
  */
 authRouter.post("/set-password", authMiddleware, async (c) => {
   const user = c.get("user");
   const body = (await c.req.json().catch(() => ({}))) as {
     newPassword?: unknown;
     currentPassword?: unknown;
+    code?: unknown;
   };
   const newPassword = typeof body.newPassword === "string" ? body.newPassword : "";
   const currentPassword =
     typeof body.currentPassword === "string" ? body.currentPassword : "";
+  const code = typeof body.code === "string" ? body.code : "";
 
   const check = await validatePasswordWithHibp(newPassword);
   if (!check.valid) {
@@ -170,16 +178,28 @@ authRouter.post("/set-password", authMiddleware, async (c) => {
     columns: { id: true, password: true },
   });
 
+  // Checked before burning the single-use code so a missing current password
+  // doesn't cost the user their confirmation code.
+  if (credential?.password && !currentPassword) {
+    return c.json(
+      errorBody("current_password_required", "Enter your current password.", {
+        userAction: "retry",
+      }),
+      400,
+    );
+  }
+
+  if (!(await verifyReauthCode(user.id, code))) {
+    return c.json(
+      errorBody("reauth_failed", "That confirmation code is invalid or expired.", {
+        userAction: "retry",
+      }),
+      400,
+    );
+  }
+
   try {
     if (credential?.password) {
-      if (!currentPassword) {
-        return c.json(
-          errorBody("current_password_required", "Enter your current password.", {
-            userAction: "retry",
-          }),
-          400,
-        );
-      }
       await auth.api.changePassword({
         headers: c.req.raw.headers,
         body: { newPassword, currentPassword, revokeOtherSessions: true },

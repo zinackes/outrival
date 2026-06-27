@@ -1,11 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useTransition } from "react";
-import { ChevronRight, RefreshCw, Sparkles } from "lucide-react";
+import { RefreshCw, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { NotificationsBell } from "@/components/outrival/notifications-bell";
@@ -20,41 +19,9 @@ interface User {
   email: string | null;
 }
 
-const ROUTE_TITLES: Record<string, string> = {
-  "/dashboard": "Overview",
-  "/dashboard/signals": "Signals",
-  "/dashboard/competitors": "Competitors",
-  "/dashboard/products": "Products",
-  "/dashboard/discovery": "Discovery",
-  "/dashboard/battle-cards": "Battle cards",
-  "/dashboard/settings/general": "Settings",
-  "/dashboard/settings/notifications": "Settings",
-  "/dashboard/digests": "Digests",
-  "/dashboard/whats-new": "What's new",
-  "/dashboard/settings": "Settings",
-  "/dashboard/settings/billing": "Subscription",
-};
-
-function titleFor(path: string): { primary: string; sub?: string } {
-  const direct = ROUTE_TITLES[path];
-  if (direct) return { primary: direct };
-
-  if (path.startsWith("/dashboard/competitors/")) {
-    return { primary: "Competitors", sub: "Detail" };
-  }
-  if (path.startsWith("/dashboard/settings/")) {
-    return { primary: "Settings", sub: "Detail" };
-  }
-  const seg = path.split("/").filter(Boolean).pop();
-  if (!seg) return { primary: "Dashboard" };
-  return { primary: seg.charAt(0).toUpperCase() + seg.slice(1).replace(/-/g, " ") };
-}
-
 export function Topbar({ user }: { user: User }) {
-  const pathname = usePathname();
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const { primary, sub } = titleFor(pathname);
 
   function refresh() {
     startTransition(() => {
@@ -65,23 +32,6 @@ export function Topbar({ user }: { user: User }) {
   return (
     <header className="h-[52px] border-b border-border px-4 lg:px-6 flex items-center gap-2 lg:gap-3 sticky top-0 z-20 bg-background/85 backdrop-blur-md">
       <SidebarTrigger className="-ml-1 size-8" />
-      <Separator
-        orientation="vertical"
-        className="mr-2 data-[orientation=vertical]:h-4"
-      />
-      <div className="flex items-center gap-2">
-        <span className="text-foreground font-sans font-medium text-dense">
-          {primary}
-        </span>
-        {sub && (
-          <>
-            <ChevronRight size={12} className="text-muted-foreground" />
-            <span className="text-muted-foreground font-sans font-medium text-dense">
-              {sub}
-            </span>
-          </>
-        )}
-      </div>
       <div className="flex-1" />
       <GlobalSearch />
       <div className="flex-1" />

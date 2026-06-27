@@ -14,6 +14,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FormSkeleton } from "@/components/dashboard/skeletons";
+import { ReauthCodeField } from "@/components/outrival/reauth-code-field";
 
 interface SessionRow {
   id: string;
@@ -39,6 +40,7 @@ function PasswordCard({ onPasswordChanged }: { onPasswordChanged: () => void }) 
       : null;
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [code, setCode] = useState("");
   const [saving, setSaving] = useState(false);
 
   async function submit() {
@@ -46,10 +48,12 @@ function PasswordCard({ onPasswordChanged }: { onPasswordChanged: () => void }) 
     try {
       const r = await api.setPassword({
         newPassword,
+        code,
         ...(hasPassword ? { currentPassword } : {}),
       });
       setCurrentPassword("");
       setNewPassword("");
+      setCode("");
       void queryClient.invalidateQueries({ queryKey: ["authAccounts"] });
       toast.success(
         r.changed ? "Password changed — other sessions signed out." : "Password set.",
@@ -73,7 +77,8 @@ function PasswordCard({ onPasswordChanged }: { onPasswordChanged: () => void }) 
         <p className="text-muted-foreground text-sm mt-1">
           {hasPassword
             ? "Change the password used as a sign-in fallback."
-            : "Set a password to sign in without a magic link."}
+            : "Set a password to sign in without a magic link."}{" "}
+          For your security, we email a confirmation code first.
         </p>
       </header>
       <Card className="flex flex-col gap-4 px-5 py-4">
@@ -117,6 +122,7 @@ function PasswordCard({ onPasswordChanged }: { onPasswordChanged: () => void }) 
               onChange={(e) => setNewPassword(e.target.value)}
             />
           </div>
+          <ReauthCodeField code={code} onCode={setCode} />
           <div>
             <Button
               size="sm"
@@ -125,6 +131,7 @@ function PasswordCard({ onPasswordChanged }: { onPasswordChanged: () => void }) 
                 saving ||
                 hasPassword === null ||
                 newPassword.length < 12 ||
+                code.length !== 6 ||
                 (hasPassword === true && !currentPassword)
               }
             >

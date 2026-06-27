@@ -36,3 +36,11 @@ export function competitorsQuery() {
     queryFn: () => api.listCompetitors().then((r) => r.competitors),
   });
 }
+
+// Weekly digests list.
+export function digestsQuery() {
+  return queryOptions({
+    queryKey: ["digests"] as const,
+    queryFn: () => api.listDigests().then((r) => r.digests),
+  });
+}

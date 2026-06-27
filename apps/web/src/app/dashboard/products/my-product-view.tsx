@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { myProductQuery, myProductChangesQuery } from "@/lib/queries";
 import {
   RefreshCw,
   Loader2,
@@ -607,18 +609,15 @@ function JobsCard({ jobs }: { jobs: { total: number; items: MyProductJob[] } }) 
   );
 }
 
-export function MyProductView({
-  initialData = null,
-}: {
-  initialData?: { product: MyProduct | null; changes: SelfProductChange[] } | null;
-} = {}) {
-  const [product, setProduct] = useState<MyProduct | null | undefined>(
-    initialData ? initialData.product : undefined,
-  );
-  const [changes, setChanges] = useState<SelfProductChange[]>(
-    initialData?.changes ?? [],
-  );
-  const [error, setError] = useState<string | null>(null);
+export function MyProductView() {
+  // Server-seeded on first paint (products/my-product/page.tsx). product is
+  // undefined while loading, null when no product site is set yet (or on error).
+  const queryClient = useQueryClient();
+  const productQ = useQuery(myProductQuery());
+  const changesQ = useQuery(myProductChangesQuery());
+  const product = productQ.isError ? null : productQ.data;
+  const changes = changesQ.data ?? [];
+  const error = productQ.error;
   const [rescanning, setRescanning] = useState(false);
   const [actingId, setActingId] = useState<string | null>(null);
   const [rediscover, setRediscover] = useState<{ reason: string } | null>(null);
@@ -630,24 +629,18 @@ export function MyProductView({
   const [changeUrlOpen, setChangeUrlOpen] = useState(false);
   const [updateOpen, setUpdateOpen] = useState(false);
 
+  // Refresh both queries (called by the scan poller and after every mutation).
   async function load() {
-    try {
-      const [{ product }, { changes }] = await Promise.all([
-        api.getMyProduct(),
-        api.listMyProductChanges("pending"),
-      ]);
-      setProduct(product);
-      setChanges(changes);
-    } catch (e) {
-      setError(String(e));
-      setProduct(null);
-    }
+    await Promise.all([productQ.refetch(), changesQ.refetch()]);
   }
 
-  useEffect(() => {
-    // Server-seeded first paint → skip the redundant client fetch.
-    if (!initialData) load();
-  }, []);
+  // Optimistic write-through for the pending-changes list (accept / ignore a change).
+  function setChanges(updater: (prev: SelfProductChange[]) => SelfProductChange[]) {
+    queryClient.setQueryData(
+      myProductChangesQuery().queryKey,
+      (prev: SelfProductChange[] | undefined) => updater(prev ?? []),
+    );
+  }
 
   // Scope Ask to the current product while its page is open.
   useSetAskContext(product ? { kind: "product", label: `My product: ${product.name}` } : null);

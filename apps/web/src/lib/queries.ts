@@ -114,6 +114,22 @@ export function workspaceSettingsQuery() {
   });
 }
 
+// The org's own product ("My product"). null when no product site is set yet.
+export function myProductQuery() {
+  return queryOptions({
+    queryKey: ["myProduct"] as const,
+    queryFn: () => api.getMyProduct().then((r) => r.product),
+  });
+}
+
+// Pending self-product changes (profile-divergence proposals to review).
+export function myProductChangesQuery() {
+  return queryOptions({
+    queryKey: ["myProduct", "changes"] as const,
+    queryFn: () => api.listMyProductChanges("pending").then((r) => r.changes),
+  });
+}
+
 // Activity timeline page size — shared so the server seed (limit=25) and the
 // client's page-1 key compute the same offset and hit the same cache entry.
 export const ACTIVITY_PAGE_SIZE = 25;

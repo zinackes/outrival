@@ -140,6 +140,22 @@ export function myProductChangesQuery() {
   });
 }
 
+// Sector-trends teaser (top 3) for the Overview section.
+export function sectoralTeaserQuery() {
+  return queryOptions({
+    queryKey: ["sectoral", "teaser"] as const,
+    queryFn: () => api.listSectoral({ limit: 3 }).then((r) => r.signals),
+  });
+}
+
+// Onboarding checklist (Overview card; null/complete hides it).
+export function onboardingChecklistQuery() {
+  return queryOptions({
+    queryKey: ["onboardingChecklist"] as const,
+    queryFn: () => api.getOnboardingChecklist(),
+  });
+}
+
 // Activity timeline page size — shared so the server seed (limit=25) and the
 // client's page-1 key compute the same offset and hit the same cache entry.
 export const ACTIVITY_PAGE_SIZE = 25;

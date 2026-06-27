@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -15,6 +16,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { api, type SectoralSignal, type SectoralCategory } from "@/lib/api";
+import { sectoralTeaserQuery } from "@/lib/queries";
 import { Button } from "@/components/ui/button";
 import { SectionHead } from "./section-head";
 import {
@@ -182,16 +184,18 @@ export function SectoralRow({
 }
 
 export function SectoralSignalsSection() {
-  const [signals, setSignals] = useState<SectoralSignal[] | null>(null);
+  // Overview teaser — the top few; the full feed lives on /dashboard/sector.
+  const queryClient = useQueryClient();
+  const sectoralQ = useQuery(sectoralTeaserQuery());
+  const signals = sectoralQ.data ?? null;
   const [active, setActive] = useState<SectoralSignal | null>(null);
 
-  useEffect(() => {
-    // Overview teaser — the top few; the full feed lives on /dashboard/sector.
-    api
-      .listSectoral({ limit: 3 })
-      .then((r) => setSignals(r.signals))
-      .catch(() => setSignals([]));
-  }, []);
+  // Optimistic write-through for the read / dismiss mutations below.
+  function setSignals(updater: (prev: SectoralSignal[] | null) => SectoralSignal[] | null) {
+    queryClient.setQueryData<SectoralSignal[]>(sectoralTeaserQuery().queryKey, (prev) =>
+      updater(prev ?? null) ?? undefined,
+    );
+  }
 
   // Hide the whole section while loading or when there is nothing to show — no
   // empty placeholder, the section simply does not exist for the user.

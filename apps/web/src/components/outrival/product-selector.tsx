@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Boxes } from "lucide-react";
 import {
@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { api, type ProductSummary } from "@/lib/api";
+import { productsListQuery } from "@/lib/queries";
 
 // patch-28 — multi-SKU product switcher. Persists the active product in the URL
 // (?product=…) so views (signals feed, battle cards) scope to it; "All products"
@@ -22,22 +22,9 @@ export function ProductSelector() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [products, setProducts] = useState<ProductSummary[] | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    api
-      .listProducts()
-      .then((r) => {
-        if (!cancelled) setProducts(r.products);
-      })
-      .catch(() => {
-        if (!cancelled) setProducts([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Shares the ["products","list"] cache with the Compare picker.
+  const productsQ = useQuery(productsListQuery());
+  const products = productsQ.data ?? null;
 
   const selectable = (products ?? []).filter((p) => p.status !== "archived");
   // Transparent for mono-product orgs: nothing to switch between.

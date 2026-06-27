@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { Check, Circle, X, Rocket } from "lucide-react";
-import { api, type OnboardingChecklist, type ChecklistStepKey } from "@/lib/api";
+import { type ChecklistStepKey } from "@/lib/api";
+import { onboardingChecklistQuery } from "@/lib/queries";
 
 const DISMISS_KEY = "onboardingChecklistDismissed";
 
@@ -16,7 +18,8 @@ const STEP_META: Record<ChecklistStepKey, { label: string; href: string }> = {
 };
 
 export function OnboardingChecklistCard() {
-  const [data, setData] = useState<OnboardingChecklist | null>(null);
+  const checklistQ = useQuery(onboardingChecklistQuery());
+  const data = checklistQ.data ?? null;
   // Assume dismissed until the marker is checked — avoids a flash before the effect.
   const [dismissed, setDismissed] = useState(true);
 
@@ -26,10 +29,6 @@ export function OnboardingChecklistCard() {
     } catch {
       setDismissed(false);
     }
-    api
-      .getOnboardingChecklist()
-      .then(setData)
-      .catch(() => setData(null));
   }, []);
 
   if (dismissed || !data || data.complete) return null;

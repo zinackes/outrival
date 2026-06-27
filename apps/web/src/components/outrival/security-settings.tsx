@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { KeyRound, Link2, Loader2, Monitor, ShieldCheck } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
@@ -26,19 +27,19 @@ interface SessionRow {
 // password (no current one to ask for). Accounts that already have one CHANGE
 // it — current password required, other sessions revoked server-side.
 function PasswordCard({ onPasswordChanged }: { onPasswordChanged: () => void }) {
-  const [hasPassword, setHasPassword] = useState<boolean | null>(null);
+  const queryClient = useQueryClient();
+  const accountsQ = useQuery({
+    queryKey: ["authAccounts"],
+    queryFn: () => authClient.listAccounts().then((res) => res.data ?? []),
+  });
+  const hasPassword = accountsQ.isError
+    ? false
+    : accountsQ.data
+      ? accountsQ.data.some((a) => a.providerId === "credential")
+      : null;
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    authClient
-      .listAccounts()
-      .then((res) =>
-        setHasPassword((res.data ?? []).some((a) => a.providerId === "credential")),
-      )
-      .catch(() => setHasPassword(false));
-  }, []);
 
   async function submit() {
     setSaving(true);
@@ -49,7 +50,7 @@ function PasswordCard({ onPasswordChanged }: { onPasswordChanged: () => void }) 
       });
       setCurrentPassword("");
       setNewPassword("");
-      setHasPassword(true);
+      void queryClient.invalidateQueries({ queryKey: ["authAccounts"] });
       toast.success(
         r.changed ? "Password changed — other sessions signed out." : "Password set.",
       );
@@ -360,19 +361,20 @@ interface PasskeyRow {
 // removal hit the plugin routes directly. Gated behind NEXT_PUBLIC_PASSKEYS_ENABLED
 // until verified on staging with a real device.
 function PasskeysCard() {
-  const [passkeys, setPasskeys] = useState<PasskeyRow[] | null>(null);
+  const queryClient = useQueryClient();
+  const passkeysQ = useQuery({
+    queryKey: ["passkeys"],
+    queryFn: () =>
+      fetch(`${API_URL}/api/auth/passkey/list-user-passkeys`, { credentials: "include" })
+        .then((r) => (r.ok ? r.json() : []))
+        .then((rows) => (Array.isArray(rows) ? (rows as PasskeyRow[]) : [])),
+  });
+  const passkeys: PasskeyRow[] | null = passkeysQ.data ?? null;
   const [busy, setBusy] = useState<string | null>(null);
 
-  const load = useCallback(() => {
-    fetch(`${API_URL}/api/auth/passkey/list-user-passkeys`, { credentials: "include" })
-      .then((r) => (r.ok ? r.json() : []))
-      .then((rows) => setPasskeys(Array.isArray(rows) ? rows : []))
-      .catch(() => setPasskeys([]));
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  function load() {
+    return queryClient.invalidateQueries({ queryKey: ["passkeys"] });
+  }
 
   async function add() {
     setBusy("add");

@@ -5,16 +5,21 @@ import { getTrendsData } from "@/lib/api-server";
 import { makeServerQueryClient } from "@/lib/server-query";
 import { trendsSummaryQuery } from "@/lib/queries";
 
-export default async function TrendsPage() {
+export default async function TrendsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ product?: string }>;
+}) {
   // Same default window as getTrendsData and the client's lastNDays(90), rounded to
   // the day → the seed key matches what TrendsView requests on first paint. Best-effort:
-  // null → TrendsView's useQuery fetches client-side.
+  // null → TrendsView's useQuery fetches client-side. patch-28 — honour ?product=.
+  const { product } = await searchParams;
   const queryClient = makeServerQueryClient();
   const from = startOfDay(subDays(new Date(), 90));
   const to = endOfDay(new Date());
-  const initial = await getTrendsData();
+  const initial = await getTrendsData(product);
   if (initial) {
-    queryClient.setQueryData(trendsSummaryQuery({ from, to }).queryKey, initial);
+    queryClient.setQueryData(trendsSummaryQuery({ from, to }, product).queryKey, initial);
   }
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>

@@ -617,12 +617,24 @@ function JobsCard({ jobs }: { jobs: { total: number; items: MyProductJob[] } }) 
   );
 }
 
-export function MyProductView() {
-  // Server-seeded on first paint (products/my-product/page.tsx). product is
+export function MyProductView({
+  productId,
+  title = "My product",
+  isPrimary = productId === undefined,
+}: {
+  // patch-28 — scope the view to a given product's self-competitor. Omitted → the
+  // primary self (legacy "My product"). The /dashboard/products/[id] page passes both.
+  productId?: string;
+  title?: string;
+  // The org-coupled "Update profile" dialog (onboarding profile + project stage) only
+  // makes sense for the primary product; secondary products edit inline / re-scan.
+  isPrimary?: boolean;
+} = {}) {
+  // Server-seeded on first paint (products/[id]/page.tsx). product is
   // undefined while loading, null when no product site is set yet (or on error).
   const queryClient = useQueryClient();
-  const productQ = useQuery(myProductQuery());
-  const changesQ = useQuery(myProductChangesQuery());
+  const productQ = useQuery(myProductQuery(productId));
+  const changesQ = useQuery(myProductChangesQuery(productId));
   const product = productQ.isError ? null : productQ.data;
   const changes = changesQ.data ?? [];
   const error = productQ.error;
@@ -645,13 +657,20 @@ export function MyProductView() {
   // Optimistic write-through for the pending-changes list (accept / ignore a change).
   function setChanges(updater: (prev: SelfProductChange[]) => SelfProductChange[]) {
     queryClient.setQueryData(
-      myProductChangesQuery().queryKey,
+      myProductChangesQuery(productId).queryKey,
       (prev: SelfProductChange[] | undefined) => updater(prev ?? []),
     );
   }
 
   // Scope Ask to the current product while its page is open.
-  useSetAskContext(product ? { kind: "product", label: `My product: ${product.name}` } : null);
+  useSetAskContext(
+    product
+      ? {
+          kind: "product",
+          label: `${isPrimary ? "My product" : "Product"}: ${product.name}`,
+        }
+      : null,
+  );
 
   // While a scan is in progress, poll until it settles, then refresh + toast the
   // outcome — so a re-scan visibly finishes instead of leaving the user guessing.
@@ -684,7 +703,7 @@ export function MyProductView() {
   }, [product?.scanning, product?.scanError]);
 
   async function patch(body: MyProductPatch) {
-    await api.updateMyProduct(body);
+    await api.updateMyProduct(body, productId);
     await load();
     toast.success("Profile updated");
   }
@@ -694,7 +713,7 @@ export function MyProductView() {
     if (!url) return;
     setEnabling(true);
     try {
-      await api.setMyProductSite(url);
+      await api.setMyProductSite(url, productId);
       toast.success("Monitoring enabled", { description: "Your site will be scanned shortly." });
       setSiteUrl("");
       await load();
@@ -710,7 +729,7 @@ export function MyProductView() {
     if (!url) return;
     setTrackingRepo(true);
     try {
-      await api.setMyProductRepo(url);
+      await api.setMyProductRepo(url, productId);
       toast.success("Repo tracked", { description: "Its activity will be scanned shortly." });
       setRepoUrl("");
       await load();
@@ -724,7 +743,7 @@ export function MyProductView() {
   async function rescan(categories?: MyProductRescanCategory[]) {
     setRescanning(true);
     try {
-      const res = await api.rescanMyProduct(categories);
+      const res = await api.rescanMyProduct(categories, productId);
       if (res.limitReached) {
         // Some sources ran, then the daily re-scan cap (patch-27) was hit.
         toast.warning("Re-scan partially started — daily re-scan limit reached.", {
@@ -799,14 +818,16 @@ export function MyProductView() {
   if (product === null) {
     return (
       <div>
-        <PageHead title="My product" />
+        <PageHead title={title} />
         <EmptyState
           icon={Store}
           title="No product site to monitor yet"
           description={
             error
               ? "We couldn't load your product."
-              : "Add a product URL to track your own site like a competitor — pricing, features and changes."
+              : isPrimary
+                ? "Add a product URL to track your own site like a competitor — pricing, features and changes."
+                : "Add a product URL to track this product's site — pricing, features and changes."
           }
           actions={
             <Button onClick={() => setChangeUrlOpen(true)}>Set a product URL</Button>
@@ -817,6 +838,7 @@ export function MyProductView() {
           open={changeUrlOpen}
           onOpenChange={setChangeUrlOpen}
           currentUrl={null}
+          productId={productId}
           onSaved={load}
         />
       </div>
@@ -829,7 +851,7 @@ export function MyProductView() {
   return (
     <div className="xl:px-6 2xl:px-12">
       <PageHead
-        title="My product"
+        title={title}
         sub={
           <span className="inline-flex items-center gap-2">
             {p.url || p.repoUrl ? (
@@ -867,11 +889,14 @@ export function MyProductView() {
         actions={
           <div className="flex items-center gap-2">
             {/* Stage / source / profile update — works at every stage, including
-                idea/document with no live URL yet. */}
-            <Button onClick={() => setUpdateOpen(true)} variant="outline" size="sm">
-              <RefreshCw className="size-3.5" />
-              Update profile
-            </Button>
+                idea/document with no live URL yet. Org-coupled (onboarding profile +
+                project stage), so it's the primary product's tool only. */}
+            {isPrimary && (
+              <Button onClick={() => setUpdateOpen(true)} variant="outline" size="sm">
+                <RefreshCw className="size-3.5" />
+                Update profile
+              </Button>
+            )}
             {p.url ? (
               // Live product: site + pricing monitors exist, so offer selective re-scan.
               <RescanMenu
@@ -1025,6 +1050,7 @@ export function MyProductView() {
         open={changeUrlOpen}
         onOpenChange={setChangeUrlOpen}
         currentUrl={p.url}
+        productId={productId}
         onSaved={load}
       />
 

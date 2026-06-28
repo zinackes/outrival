@@ -4,15 +4,20 @@ import { getCompareData } from "@/lib/api-server";
 import { makeServerQueryClient } from "@/lib/server-query";
 import { productsListQuery, competitorsQuery } from "@/lib/queries";
 
-export default async function ComparePage() {
+export default async function ComparePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ product?: string }>;
+}) {
   // Seed the picker inputs (products + competitors). Best-effort: null → the client
   // useQueries fetch on mount. The comparison matrix stays client-side (it tracks
-  // the user's live selection).
+  // the user's live selection). patch-28 — scope the competitor picker to ?product=.
+  const { product } = await searchParams;
   const queryClient = makeServerQueryClient();
-  const initial = await getCompareData();
+  const initial = await getCompareData(product);
   if (initial) {
     queryClient.setQueryData(productsListQuery().queryKey, initial.products);
-    queryClient.setQueryData(competitorsQuery().queryKey, initial.competitors);
+    queryClient.setQueryData(competitorsQuery(product).queryKey, initial.competitors);
   }
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>

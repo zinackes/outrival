@@ -1518,10 +1518,39 @@ export interface ProductSummary {
   competitorCount: number;
 }
 
+// A competitor linked to a product (junction product_competitors).
+export interface ProductLinkedCompetitor {
+  competitorId: string;
+  isSpecific: boolean;
+  relevanceScore: number | null;
+  name: string;
+  url: string | null;
+}
+
+// GET /api/products/:id — the product row + its linked competitors. The rich self
+// detail (profile/pricing/jobs) comes from getMyProduct(productId) separately.
+export interface ProductDetail {
+  product: {
+    id: string;
+    orgId: string;
+    name: string;
+    selfCompetitorId: string;
+    isPrimary: boolean;
+    status: "active" | "paused" | "archived";
+    position: number;
+    createdAt: string;
+    updatedAt: string;
+  };
+  competitors: ProductLinkedCompetitor[];
+}
+
 export const api = {
   search: (q: string) =>
     request<SearchResults>(`/api/search?q=${encodeURIComponent(q)}`),
-  listCompetitors: () => request<{ competitors: Competitor[] }>("/api/competitors"),
+  listCompetitors: (productId?: string) =>
+    request<{ competitors: Competitor[] }>(
+      `/api/competitors${productId ? `?productId=${encodeURIComponent(productId)}` : ""}`,
+    ),
   getCompetitor: (id: string) =>
     request<{
       competitor: Competitor;
@@ -1748,6 +1777,8 @@ export const api = {
     }),
   archiveProduct: (id: string) =>
     request<{ ok: true }>(`/api/products/${id}`, { method: "DELETE" }),
+  getProduct: (id: string) =>
+    request<ProductDetail>(`/api/products/${encodeURIComponent(id)}`),
   listSectoral: (params?: {
     limit?: number;
     offset?: number;
@@ -1768,9 +1799,9 @@ export const api = {
     request<{ ok: true }>(`/api/sectoral/${id}/read`, { method: "POST" }),
   dismissSectoral: (id: string) =>
     request<{ ok: true }>(`/api/sectoral/${id}/dismiss`, { method: "POST" }),
-  activityHealth: () =>
+  activityHealth: (productId?: string) =>
     request<{ sources: ActivitySource[]; upcoming: ActivityUpcoming[] }>(
-      "/api/activity/health",
+      `/api/activity/health${productId ? `?productId=${encodeURIComponent(productId)}` : ""}`,
     ),
   activityTimeline: (params?: {
     limit?: number;
@@ -1778,6 +1809,7 @@ export const api = {
     competitorId?: string;
     sourceType?: string;
     status?: ActivityStatusFilter;
+    productId?: string;
   }) => {
     const q = new URLSearchParams();
     if (params?.limit) q.set("limit", String(params.limit));
@@ -1785,17 +1817,22 @@ export const api = {
     if (params?.competitorId) q.set("competitorId", params.competitorId);
     if (params?.sourceType) q.set("sourceType", params.sourceType);
     if (params?.status) q.set("status", params.status);
+    if (params?.productId) q.set("productId", params.productId);
     const qs = q.toString();
     return request<{ events: ActivityEvent[]; total: number }>(
       `/api/activity/timeline${qs ? `?${qs}` : ""}`,
     );
   },
   getUsage: () => request<UsageSnapshot>("/api/usage"),
-  getTrendsSummary: (range?: { from: Date; to: Date }) => {
-    const qs = range
-      ? `?from=${encodeURIComponent(range.from.toISOString())}&to=${encodeURIComponent(range.to.toISOString())}`
-      : "";
-    return request<TrendsSummary>(`/api/trends/summary${qs}`);
+  getTrendsSummary: (range?: { from: Date; to: Date }, productId?: string) => {
+    const q = new URLSearchParams();
+    if (range) {
+      q.set("from", range.from.toISOString());
+      q.set("to", range.to.toISOString());
+    }
+    if (productId) q.set("productId", productId);
+    const qs = q.toString();
+    return request<TrendsSummary>(`/api/trends/summary${qs ? `?${qs}` : ""}`);
   },
   getTrendsSeries: (
     competitorId: string,
@@ -2132,34 +2169,53 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  getMyProduct: () => request<{ product: MyProduct | null }>("/api/my-product"),
-  updateMyProduct: (patch: MyProductPatch) =>
-    request<{ ok: true; profile: SelfProfile }>("/api/my-product", {
-      method: "PATCH",
-      body: JSON.stringify(patch),
-    }),
-  rescanMyProduct: (categories?: MyProductRescanCategory[]) =>
+  // patch-28 — an optional productId scopes these to a given product's self-competitor
+  // (the detail page passes it). Omitted → the primary self, identical to before.
+  getMyProduct: (productId?: string) =>
+    request<{ product: MyProduct | null }>(
+      `/api/my-product${productId ? `?productId=${encodeURIComponent(productId)}` : ""}`,
+    ),
+  updateMyProduct: (patch: MyProductPatch, productId?: string) =>
+    request<{ ok: true; profile: SelfProfile }>(
+      `/api/my-product${productId ? `?productId=${encodeURIComponent(productId)}` : ""}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+      },
+    ),
+  rescanMyProduct: (categories?: MyProductRescanCategory[], productId?: string) =>
     request<{ ok: true; monitors: number; limitReached?: boolean; dailyLimit?: number }>(
-      "/api/my-product/rescan",
+      `/api/my-product/rescan${productId ? `?productId=${encodeURIComponent(productId)}` : ""}`,
       {
         method: "POST",
         body: categories?.length ? JSON.stringify({ categories }) : undefined,
       },
     ),
-  setMyProductSite: (url: string) =>
-    request<{ ok: true }>("/api/my-product/site", {
-      method: "POST",
-      body: JSON.stringify({ url }),
-    }),
-  setMyProductRepo: (url: string) =>
-    request<{ ok: true }>("/api/my-product/repo", {
-      method: "POST",
-      body: JSON.stringify({ url }),
-    }),
-  listMyProductChanges: (status?: SelfChangeStatus) =>
-    request<{ changes: SelfProductChange[] }>(
-      `/api/my-product/changes${status ? `?status=${status}` : ""}`,
+  setMyProductSite: (url: string, productId?: string) =>
+    request<{ ok: true }>(
+      `/api/my-product/site${productId ? `?productId=${encodeURIComponent(productId)}` : ""}`,
+      {
+        method: "POST",
+        body: JSON.stringify({ url }),
+      },
     ),
+  setMyProductRepo: (url: string, productId?: string) =>
+    request<{ ok: true }>(
+      `/api/my-product/repo${productId ? `?productId=${encodeURIComponent(productId)}` : ""}`,
+      {
+        method: "POST",
+        body: JSON.stringify({ url }),
+      },
+    ),
+  listMyProductChanges: (status?: SelfChangeStatus, productId?: string) => {
+    const q = new URLSearchParams();
+    if (status) q.set("status", status);
+    if (productId) q.set("productId", productId);
+    const qs = q.toString();
+    return request<{ changes: SelfProductChange[] }>(
+      `/api/my-product/changes${qs ? `?${qs}` : ""}`,
+    );
+  },
   // value = the curated result from the review sheet (granular pick / inline edit).
   // Omitted → accept the detected value as-is (and keep tracking the live site).
   acceptMyProductChange: (id: string, value?: string | string[]) =>

@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Download,
@@ -117,11 +117,13 @@ export function OverviewView() {
   const router = useRouter();
   useSetAskContext({ kind: "view", label: "Overview dashboard" });
   const queryClient = useQueryClient();
+  // patch-28 — the active product scope (?product=, set from the top-left switcher).
+  const productId = useSearchParams().get("product") ?? undefined;
   // Server-seeded on first paint (see app/dashboard/page.tsx) → useQuery reads the
   // hydrated cache instead of fetching; falls back to a client fetch when the seed
   // was missing or the server prefetch failed.
-  const signalsQ = useQuery(signalsQuery({ limit: 200 }));
-  const competitorsQ = useQuery(competitorsQuery());
+  const signalsQ = useQuery(signalsQuery({ limit: 200, productId }));
+  const competitorsQ = useQuery(competitorsQuery(productId));
   const signals = signalsQ.data ?? null;
   const competitors = competitorsQ.data ?? null;
   const err = signalsQ.error ?? competitorsQ.error;
@@ -147,9 +149,11 @@ export function OverviewView() {
   // panel's poll. Refetch the exact keys so the cache stays the single source of
   // truth (no parallel useState to keep in sync).
   const load = useCallback(() => {
-    void queryClient.refetchQueries({ queryKey: signalsQuery({ limit: 200 }).queryKey });
-    void queryClient.refetchQueries({ queryKey: competitorsQuery().queryKey });
-  }, [queryClient]);
+    void queryClient.refetchQueries({
+      queryKey: signalsQuery({ limit: 200, productId }).queryKey,
+    });
+    void queryClient.refetchQueries({ queryKey: competitorsQuery(productId).queryKey });
+  }, [queryClient, productId]);
 
   function exportCsv() {
     if (!dsSignals) return;

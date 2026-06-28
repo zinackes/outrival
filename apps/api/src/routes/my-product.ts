@@ -7,6 +7,7 @@ import {
   monitors,
   organizations,
   jobPostings,
+  products,
   selfProductChanges,
   forcedRescanLog,
   type SelfProfile,
@@ -35,6 +36,26 @@ async function getSelf(orgId: string) {
   return db.query.competitors.findFirst({
     where: and(eq(competitors.orgId, orgId), eq(competitors.type, "self")),
     orderBy: (t, { asc }) => asc(t.createdAt),
+  });
+}
+
+/** The self-competitor backing a given product, or the primary self when no
+ * productId is given (mono-product / legacy behaviour — same as getSelf). Org-scoped:
+ * a forged or foreign productId resolves to null, so a caller can't reach another
+ * org's product. Mirrors resolveProduct in battle-cards.ts. */
+async function resolveSelf(orgId: string, productId?: string | null) {
+  if (!productId) return getSelf(orgId);
+  const p = await db.query.products.findFirst({
+    where: and(eq(products.id, productId), eq(products.orgId, orgId)),
+    columns: { selfCompetitorId: true },
+  });
+  if (!p) return null;
+  return db.query.competitors.findFirst({
+    where: and(
+      eq(competitors.id, p.selfCompetitorId),
+      eq(competitors.orgId, orgId),
+      eq(competitors.type, "self"),
+    ),
   });
 }
 
@@ -141,7 +162,7 @@ myProductRouter.get("/", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
 
-  const self = await getSelf(orgId);
+  const self = await resolveSelf(orgId, c.req.query("productId"));
   if (!self) return c.json({ product: null });
 
   const selfMonitors = await db.query.monitors.findMany({
@@ -234,7 +255,7 @@ myProductRouter.patch("/", async (c) => {
     return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
   }
 
-  const self = await getSelf(orgId);
+  const self = await resolveSelf(orgId, c.req.query("productId"));
   if (!self) return c.json({ error: "no_self_product" }, 404);
 
   const profile: SelfProfile = { ...((self.selfProfile ?? {}) as SelfProfile) };
@@ -284,8 +305,23 @@ myProductRouter.post("/site", async (c) => {
     return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
   }
 
-  const self = await ensureSelf(orgId);
-  if (!self) return c.json({ error: "no_self_product" }, 500);
+  // A given product's self always exists (the product wraps it); only the implicit
+  // primary may need lazy creation for pre-patch-15 orgs.
+  const siteProductId = c.req.query("productId");
+  const self = siteProductId
+    ? await resolveSelf(orgId, siteProductId)
+    : await ensureSelf(orgId);
+  if (!self) return c.json({ error: "no_self_product" }, siteProductId ? 404 : 500);
+  // org.productUrl mirrors the PRIMARY product only (it feeds competitor discovery),
+  // so a secondary product's site must not clobber it.
+  let isPrimaryProduct = !siteProductId;
+  if (siteProductId) {
+    const prod = await db.query.products.findFirst({
+      where: and(eq(products.id, siteProductId), eq(products.orgId, orgId)),
+      columns: { isPrimary: true },
+    });
+    isPrimaryProduct = prod?.isPrimary ?? false;
+  }
 
   const url = parsed.data.url;
   const urlChanged = self.url !== url;
@@ -297,10 +333,12 @@ myProductRouter.post("/site", async (c) => {
   };
   if (!self.url) competitorUpdate.name = normalizeHostname(url) ?? self.name;
   await db.update(competitors).set(competitorUpdate).where(eq(competitors.id, self.id));
-  await db
-    .update(organizations)
-    .set({ productUrl: url, updatedAt: new Date() })
-    .where(eq(organizations.id, orgId));
+  if (isPrimaryProduct) {
+    await db
+      .update(organizations)
+      .set({ productUrl: url, updatedAt: new Date() })
+      .where(eq(organizations.id, orgId));
+  }
 
   // Seed the site monitors that don't exist yet.
   const existing = await db.query.monitors.findMany({
@@ -359,14 +397,26 @@ myProductRouter.post("/repo", async (c) => {
     return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
   }
 
-  const self = await getSelf(orgId);
+  const repoProductId = c.req.query("productId");
+  const self = await resolveSelf(orgId, repoProductId);
   if (!self) return c.json({ error: "no_self_product" }, 404);
 
   const url = parsed.data.url;
-  await db
-    .update(organizations)
-    .set({ productRepoUrl: url, updatedAt: new Date() })
-    .where(eq(organizations.id, orgId));
+  // org.productRepoUrl mirrors the PRIMARY product only — don't let a secondary clobber it.
+  let isPrimaryProduct = !repoProductId;
+  if (repoProductId) {
+    const prod = await db.query.products.findFirst({
+      where: and(eq(products.id, repoProductId), eq(products.orgId, orgId)),
+      columns: { isPrimary: true },
+    });
+    isPrimaryProduct = prod?.isPrimary ?? false;
+  }
+  if (isPrimaryProduct) {
+    await db
+      .update(organizations)
+      .set({ productRepoUrl: url, updatedAt: new Date() })
+      .where(eq(organizations.id, orgId));
+  }
 
   const existing = await db.query.monitors.findMany({
     where: eq(monitors.competitorId, self.id),
@@ -439,7 +489,7 @@ myProductRouter.post("/rescan", aiIntensiveRateLimit, async (c) => {
     return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
   }
 
-  const self = await getSelf(orgId);
+  const self = await resolveSelf(orgId, c.req.query("productId"));
   if (!self) return c.json({ error: "no_self_product" }, 404);
 
   const selfMonitors = await db.query.monitors.findMany({
@@ -522,12 +572,19 @@ myProductRouter.get("/changes", async (c) => {
       ? statusParam
       : null;
 
-  const where = validStatus
-    ? and(eq(selfProductChanges.orgId, orgId), eq(selfProductChanges.status, validStatus))
-    : eq(selfProductChanges.orgId, orgId);
+  // With a productId, scope to that product's self-competitor; without one, keep the
+  // legacy org-wide behaviour (the primary detail page passes its productId).
+  const changesProductId = c.req.query("productId");
+  const conds = [eq(selfProductChanges.orgId, orgId)];
+  if (changesProductId) {
+    const self = await resolveSelf(orgId, changesProductId);
+    if (!self) return c.json({ changes: [] });
+    conds.push(eq(selfProductChanges.selfCompetitorId, self.id));
+  }
+  if (validStatus) conds.push(eq(selfProductChanges.status, validStatus));
 
   const rows = await db.query.selfProductChanges.findMany({
-    where,
+    where: and(...conds),
     orderBy: desc(selfProductChanges.detectedAt),
     limit: 100,
   });
@@ -599,7 +656,11 @@ myProductRouter.post("/changes/:id/accept", async (c) => {
     const isCurated =
       override !== undefined &&
       canonProfileValue(override) !== canonProfileValue(change.newValue);
-    const self = await getSelf(orgId);
+    // Apply to the self-competitor the change belongs to (multi-product safe), not
+    // blindly the primary one.
+    const self = await db.query.competitors.findFirst({
+      where: and(eq(competitors.id, change.selfCompetitorId), eq(competitors.orgId, orgId)),
+    });
     if (self) {
       const profile = (self.selfProfile ?? {}) as SelfProfile;
       const nextProfile = {

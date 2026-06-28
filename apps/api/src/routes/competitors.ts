@@ -21,7 +21,7 @@ import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
-import { associateCompetitorWithPrimaryProduct } from "../lib/products";
+import { associateCompetitorWithPrimaryProduct, productCompetitorIds } from "../lib/products";
 import { analyticsQuery } from "../lib/analytics-safe";
 import { translateToEnglish } from "../lib/translate";
 import {
@@ -468,12 +468,23 @@ competitorsRouter.get("/", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
 
+  // patch-28 — optional product scope: restrict to the competitors linked to a given
+  // product (product_competitors). Absent → all org competitors (unchanged). The join
+  // on products.orgId keeps it tenant-safe (a forged productId yields no rows).
+  const productIdFilter = c.req.query("productId");
+  let restrictIds: string[] | null = null;
+  if (productIdFilter) {
+    restrictIds = await productCompetitorIds(orgId, productIdFilter);
+    if (restrictIds.length === 0) return c.json({ competitors: [] });
+  }
+
   const list = await db.query.competitors.findMany({
     // Exclude the self-competitor (the user's own product) — it has its own page.
     where: and(
       eq(competitors.orgId, orgId),
       isNull(competitors.deletedAt),
       ne(competitors.type, "self"),
+      restrictIds ? inArray(competitors.id, restrictIds) : undefined,
     ),
     orderBy: desc(competitors.createdAt),
   });
@@ -505,6 +516,9 @@ competitorsRouter.get("/", async (c) => {
       and(
         eq(signals.orgId, orgId),
         gte(signals.createdAt, fourteenDaysAgo),
+        // When scoped to a product, only aggregate that product's competitors
+        // instead of scanning the whole org's 14-day signals.
+        restrictIds ? inArray(signals.competitorId, restrictIds) : undefined,
       ),
     )
     .groupBy(signals.competitorId);

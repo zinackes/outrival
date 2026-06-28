@@ -4,12 +4,17 @@ import { getCompetitorsData } from "@/lib/api-server";
 import { makeServerQueryClient } from "@/lib/server-query";
 import { competitorsQuery } from "@/lib/queries";
 
-export default async function CompetitorsPage() {
+export default async function CompetitorsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ product?: string }>;
+}) {
   // Best-effort server seed; null → CompetitorsList's useQuery fetches client-side
-  // (it also keeps polling every 30s regardless).
+  // (it also keeps polling every 30s regardless). patch-28 — honour the product scope.
+  const { product } = await searchParams;
   const queryClient = makeServerQueryClient();
-  const initial = await getCompetitorsData();
-  if (initial) queryClient.setQueryData(competitorsQuery().queryKey, initial);
+  const initial = await getCompetitorsData(product);
+  if (initial) queryClient.setQueryData(competitorsQuery(product).queryKey, initial);
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>
       <CompetitorsList />

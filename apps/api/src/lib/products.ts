@@ -3,6 +3,20 @@ import { products, productCompetitors, competitors } from "@outrival/db";
 import { db } from "./db";
 
 /**
+ * patch-28 — the competitor IDs linked to a product (product_competitors), org-scoped
+ * through the products join so a forged or foreign productId yields []. Used to scope
+ * the org-wide feeds (competitors list, trends, activity) to a single product.
+ */
+export async function productCompetitorIds(orgId: string, productId: string): Promise<string[]> {
+  const rows = await db
+    .select({ competitorId: productCompetitors.competitorId })
+    .from(productCompetitors)
+    .innerJoin(products, eq(products.id, productCompetitors.productId))
+    .where(and(eq(productCompetitors.productId, productId), eq(products.orgId, orgId)));
+  return rows.map((r) => r.competitorId);
+}
+
+/**
  * patch-28 — ensure the org's self-competitor is wrapped by a `products` row. Called
  * wherever a self-competitor is created (onboarding, My Product) so new orgs get a
  * product the same way the migration backfilled existing ones. The first product of

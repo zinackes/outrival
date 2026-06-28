@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import {
@@ -80,7 +80,9 @@ export function CompetitorsList() {
   // Server-seeded on first paint (competitors/page.tsx); shares the ["competitors"]
   // cache with the Overview roster. Polls every 30s via refetchInterval.
   const queryClient = useQueryClient();
-  const competitorsQ = useQuery({ ...competitorsQuery(), refetchInterval: 30_000 });
+  // patch-28 — active product scope (?product=, from the top-left switcher).
+  const productId = useSearchParams().get("product") ?? undefined;
+  const competitorsQ = useQuery({ ...competitorsQuery(productId), refetchInterval: 30_000 });
   const competitors = competitorsQ.data ?? null;
   const err = competitorsQ.error;
   const [view, setView] = useState<"table" | "cards">("table");
@@ -94,7 +96,7 @@ export function CompetitorsList() {
   const [deleting, setDeleting] = useState(false);
 
   function refresh() {
-    return queryClient.invalidateQueries({ queryKey: competitorsQuery().queryKey });
+    return queryClient.invalidateQueries({ queryKey: competitorsQuery(productId).queryKey });
   }
 
   async function confirmDelete() {
@@ -105,7 +107,7 @@ export function CompetitorsList() {
       toast.success(`${deleteTarget.name} deleted`);
       setDeleteTarget(null);
       await refresh();
-      void queryClient.invalidateQueries({ queryKey: competitorsQuery().queryKey });
+      void queryClient.invalidateQueries({ queryKey: competitorsQuery(productId).queryKey });
     } catch (e) {
       toastApiError(e);
     } finally {

@@ -29,11 +29,14 @@ export function signalsQuery(params: SignalsParams = {}) {
   });
 }
 
-// Org competitor roster (with per-competitor stats).
-export function competitorsQuery() {
+// Org competitor roster (with per-competitor stats). patch-28 — an optional productId
+// scopes to a product's linked competitors; omitted keeps the exact ["competitors"]
+// key (zero regression for the existing callers).
+export function competitorsQuery(productId?: string) {
+  const key = productId ? (["competitors", productId] as const) : (["competitors"] as const);
   return queryOptions({
-    queryKey: ["competitors"] as const,
-    queryFn: () => api.listCompetitors().then((r) => r.competitors),
+    queryKey: key,
+    queryFn: () => api.listCompetitors(productId).then((r) => r.competitors),
   });
 }
 
@@ -90,10 +93,15 @@ export function invoicesQuery() {
 // Trends summary for a date window. The key embeds the ISO bounds so the server
 // seed (default 90d) and the client's lastNDays(90) — both rounded to the day —
 // hit the same cache entry.
-export function trendsSummaryQuery(range: { from: Date; to: Date }) {
+export function trendsSummaryQuery(range: { from: Date; to: Date }, productId?: string) {
+  const from = range.from.toISOString();
+  const to = range.to.toISOString();
+  const key = productId
+    ? (["trends", "summary", from, to, productId] as const)
+    : (["trends", "summary", from, to] as const);
   return queryOptions({
-    queryKey: ["trends", "summary", range.from.toISOString(), range.to.toISOString()] as const,
-    queryFn: () => api.getTrendsSummary(range),
+    queryKey: key,
+    queryFn: () => api.getTrendsSummary(range, productId),
   });
 }
 
@@ -125,18 +133,33 @@ export function workspaceSettingsQuery() {
 }
 
 // The org's own product ("My product"). null when no product site is set yet.
-export function myProductQuery() {
+// patch-28 — an optional productId scopes to a given product (the detail page passes
+// it). Omitted → the primary self, with the exact same cache key as before (zero
+// regression for the existing callers that key on ["myProduct"]).
+export function myProductQuery(productId?: string) {
+  const key = productId ? (["myProduct", productId] as const) : (["myProduct"] as const);
   return queryOptions({
-    queryKey: ["myProduct"] as const,
-    queryFn: () => api.getMyProduct().then((r) => r.product),
+    queryKey: key,
+    queryFn: () => api.getMyProduct(productId).then((r) => r.product),
   });
 }
 
 // Pending self-product changes (profile-divergence proposals to review).
-export function myProductChangesQuery() {
+export function myProductChangesQuery(productId?: string) {
+  const key = productId
+    ? (["myProduct", productId, "changes"] as const)
+    : (["myProduct", "changes"] as const);
   return queryOptions({
-    queryKey: ["myProduct", "changes"] as const,
-    queryFn: () => api.listMyProductChanges("pending").then((r) => r.changes),
+    queryKey: key,
+    queryFn: () => api.listMyProductChanges("pending", productId).then((r) => r.changes),
+  });
+}
+
+// GET /api/products/:id — a product's row + its linked competitors (detail page).
+export function productDetailQuery(id: string) {
+  return queryOptions({
+    queryKey: ["products", "detail", id] as const,
+    queryFn: () => api.getProduct(id),
   });
 }
 
@@ -211,10 +234,15 @@ export function relevanceThresholdQuery() {
 }
 
 // Activity health = the monitored-source roster + upcoming runs (filter options).
-export function activityHealthQuery() {
+// patch-28 — an optional productId scopes to a product's competitors; omitted keeps
+// the ["activity","health"] key (zero regression).
+export function activityHealthQuery(productId?: string) {
+  const key = productId
+    ? (["activity", "health", productId] as const)
+    : (["activity", "health"] as const);
   return queryOptions({
-    queryKey: ["activity", "health"] as const,
-    queryFn: () => api.activityHealth(),
+    queryKey: key,
+    queryFn: () => api.activityHealth(productId),
   });
 }
 
@@ -224,14 +252,19 @@ export function activityHealthQuery() {
 export function activityTimelineQuery(
   page: number,
   filters: { competitorId?: string; sourceType?: string; status?: ActivityStatusFilter },
+  productId?: string,
 ) {
+  const key = productId
+    ? (["activity", "timeline", page, filters, productId] as const)
+    : (["activity", "timeline", page, filters] as const);
   return queryOptions({
-    queryKey: ["activity", "timeline", page, filters] as const,
+    queryKey: key,
     queryFn: () =>
       api.activityTimeline({
         limit: ACTIVITY_PAGE_SIZE,
         offset: (page - 1) * ACTIVITY_PAGE_SIZE,
         ...filters,
+        productId,
       }),
   });
 }

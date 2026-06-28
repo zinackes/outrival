@@ -12,6 +12,7 @@ import type {
   ActivityUpcoming,
   ActivityEvent,
   ProductSummary,
+  ProductDetail,
   MyProduct,
   SelfProductChange,
   CompetitorCandidate,
@@ -48,14 +49,17 @@ async function serverGet<T>(path: string): Promise<T> {
  * blocked) returns null and OverviewView falls back to its own client fetch.
  * The page is therefore never slower than before — only faster when this hits.
  */
-export async function getOverviewData(): Promise<{
+export async function getOverviewData(productId?: string): Promise<{
   signals: Signal[];
   competitors: Competitor[];
 } | null> {
+  // patch-28 — an optional product scope filters both feeds; absent → org-wide.
+  const scope = productId ? `&productId=${encodeURIComponent(productId)}` : "";
+  const compScope = productId ? `?productId=${encodeURIComponent(productId)}` : "";
   try {
     const [s, c] = await Promise.all([
-      serverGet<{ signals: Signal[] }>("/api/signals?limit=200"),
-      serverGet<{ competitors: Competitor[] }>("/api/competitors"),
+      serverGet<{ signals: Signal[] }>(`/api/signals?limit=200${scope}`),
+      serverGet<{ competitors: Competitor[] }>(`/api/competitors${compScope}`),
     ]);
     return { signals: s.signals, competitors: c.competitors };
   } catch {
@@ -86,9 +90,10 @@ export async function getSignalsData(params: {
  * Prefetch the competitors list (with per-competitor stats). Best-effort: null →
  * CompetitorsList falls back to its own client fetch + keeps its 30s polling.
  */
-export async function getCompetitorsData(): Promise<Competitor[] | null> {
+export async function getCompetitorsData(productId?: string): Promise<Competitor[] | null> {
+  const scope = productId ? `?productId=${encodeURIComponent(productId)}` : "";
   try {
-    const r = await serverGet<{ competitors: Competitor[] }>("/api/competitors");
+    const r = await serverGet<{ competitors: Competitor[] }>(`/api/competitors${scope}`);
     return r.competitors;
   } catch {
     return null;
@@ -115,12 +120,13 @@ export async function getCompetitorDetailData(
  * TrendsView's initial range = lastNDays(90)). Best-effort: null → TrendsView
  * falls back to its own client fetch. Drill-down series stay client-side.
  */
-export async function getTrendsData(): Promise<TrendsSummary | null> {
+export async function getTrendsData(productId?: string): Promise<TrendsSummary | null> {
   const from = startOfDay(subDays(new Date(), 90));
   const to = endOfDay(new Date());
-  const q = `?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`;
+  const q = new URLSearchParams({ from: from.toISOString(), to: to.toISOString() });
+  if (productId) q.set("productId", productId);
   try {
-    return await serverGet<TrendsSummary>(`/api/trends/summary${q}`);
+    return await serverGet<TrendsSummary>(`/api/trends/summary?${q.toString()}`);
   } catch {
     return null;
   }
@@ -163,19 +169,21 @@ export async function getSectoralData(): Promise<{
  * and the default (unfiltered) timeline page (limit 25). Best-effort: null →
  * ActivityView falls back to its own client fetches.
  */
-export async function getActivityData(): Promise<{
+export async function getActivityData(productId?: string): Promise<{
   sources: ActivitySource[];
   upcoming: ActivityUpcoming[];
   events: ActivityEvent[];
   total: number;
 } | null> {
+  const healthScope = productId ? `?productId=${encodeURIComponent(productId)}` : "";
+  const tlScope = productId ? `&productId=${encodeURIComponent(productId)}` : "";
   try {
     const [health, timeline] = await Promise.all([
       serverGet<{ sources: ActivitySource[]; upcoming: ActivityUpcoming[] }>(
-        "/api/activity/health",
+        `/api/activity/health${healthScope}`,
       ),
       serverGet<{ events: ActivityEvent[]; total: number }>(
-        "/api/activity/timeline?limit=25",
+        `/api/activity/timeline?limit=25${tlScope}`,
       ),
     ]);
     return {
@@ -195,14 +203,15 @@ export async function getActivityData(): Promise<{
  * CompareView falls back to its own client fetch. The matrix stays client-side
  * (it tracks the user's live selection).
  */
-export async function getCompareData(): Promise<{
+export async function getCompareData(productId?: string): Promise<{
   products: ProductSummary[];
   competitors: Competitor[];
 } | null> {
+  const scope = productId ? `?productId=${encodeURIComponent(productId)}` : "";
   try {
     const [p, c] = await Promise.all([
       serverGet<{ products: ProductSummary[] }>("/api/products"),
-      serverGet<{ competitors: Competitor[] }>("/api/competitors"),
+      serverGet<{ competitors: Competitor[] }>(`/api/competitors${scope}`),
     ]);
     return { products: p.products, competitors: c.competitors };
   } catch {
@@ -215,15 +224,46 @@ export async function getCompareData(): Promise<{
  * Best-effort: null → MyProductView falls back to its own client fetch (which
  * also drives the scan polling).
  */
-export async function getMyProductData(): Promise<{
+/** The org's products (SKUs) + plan/limit. Best-effort: null on failure. Used by
+ * /dashboard/products to redirect to the primary product's detail page. */
+export async function getProductsList(): Promise<{
+  products: ProductSummary[];
+  plan: string;
+  limit: number;
+} | null> {
+  try {
+    return await serverGet<{ products: ProductSummary[]; plan: string; limit: number }>(
+      "/api/products",
+    );
+  } catch {
+    return null;
+  }
+}
+
+/** A single product's row + linked competitors (the [id] detail page). */
+export async function getProductDetailData(id: string): Promise<ProductDetail | null> {
+  try {
+    return await serverGet<ProductDetail>(`/api/products/${encodeURIComponent(id)}`);
+  } catch {
+    return null;
+  }
+}
+
+export async function getMyProductData(productId?: string): Promise<{
   product: MyProduct | null;
   changes: SelfProductChange[];
 } | null> {
+  // patch-28 — an optional productId scopes the seed to a given product's self
+  // (the [id] detail page passes it). Omitted → the primary, identical to before.
+  const suffix = productId ? `&productId=${encodeURIComponent(productId)}` : "";
+  const productPath = productId
+    ? `/api/my-product?productId=${encodeURIComponent(productId)}`
+    : "/api/my-product";
   try {
     const [p, c] = await Promise.all([
-      serverGet<{ product: MyProduct | null }>("/api/my-product"),
+      serverGet<{ product: MyProduct | null }>(productPath),
       serverGet<{ changes: SelfProductChange[] }>(
-        "/api/my-product/changes?status=pending",
+        `/api/my-product/changes?status=pending${suffix}`,
       ),
     ]);
     return { product: p.product, changes: c.changes };

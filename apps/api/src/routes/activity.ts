@@ -1,10 +1,11 @@
 import { Hono } from "hono";
-import { and, eq, isNull, ne } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import { competitors, monitors } from "@outrival/db";
 import { db } from "../lib/db";
 import { analyticsQuery, sql } from "../lib/analytics-safe";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
+import { productCompetitorIds } from "../lib/products";
 
 type Variables = { user: { id: string } };
 
@@ -40,6 +41,15 @@ activityRouter.get("/health", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
 
+  // patch-28 — optional product scope: restrict the source roster to the product's
+  // linked competitors. Absent → all org competitors (unchanged).
+  const productId = c.req.query("productId");
+  const restrictIds = productId ? await productCompetitorIds(orgId, productId) : null;
+  // A product with no linked competitors → nothing to show (avoids inArray([])).
+  if (restrictIds && restrictIds.length === 0) {
+    return c.json({ sources: [], upcoming: [] });
+  }
+
   const rows = await db
     .select({
       monitorId: monitors.id,
@@ -60,6 +70,7 @@ activityRouter.get("/health", async (c) => {
         isNull(competitors.deletedAt),
         // Self-product monitoring lives on "My product", not in this feed.
         ne(competitors.type, "self"),
+        restrictIds ? inArray(competitors.id, restrictIds) : undefined,
       ),
     );
 
@@ -284,7 +295,13 @@ activityRouter.get("/timeline", async (c) => {
     ? (statusRaw as (typeof STATUS_FILTERS)[number])
     : undefined;
 
-  const comps = await orgCompetitors(orgId);
+  // patch-28 — optional product scope (same as /health).
+  const productId = c.req.query("productId");
+  let comps = await orgCompetitors(orgId);
+  if (productId) {
+    const allowed = new Set(await productCompetitorIds(orgId, productId));
+    comps = comps.filter((x) => allowed.has(x.id));
+  }
   const nameById = new Map(comps.map((x) => [x.id, x.name]));
   const urlById = new Map(comps.map((x) => [x.id, x.url]));
   const ids = comps.map((x) => x.id);

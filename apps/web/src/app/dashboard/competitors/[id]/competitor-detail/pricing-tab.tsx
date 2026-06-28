@@ -65,6 +65,11 @@ export function PricingTab({
 
   const history = historyQuery.data ?? null;
   const myProduct = myProductQuery.data ?? null;
+  // When our own product has no captured pricing tiers, the "you vs them"
+  // comparison can't list the competitor's prices (it falls back to an
+  // "add your plans" nudge), so the competitor's own plan list must stay
+  // visible — see the no-trend branch below.
+  const ourHasTiers = (myProduct?.pricing.tiers.length ?? 0) > 0;
 
   const series = useMemo(
     () => (history ? buildPricingSeries(history) : null),
@@ -220,8 +225,9 @@ export function PricingTab({
         </div>
       ) : (
         // First capture, no trend yet: skip the one-dot chart. Show the bare tier
-        // list only when no comparison already lists those prices above.
-        !myProduct && planList
+        // list unless the comparison above already lists those prices — which it
+        // only does when we have our own tiers to compare against.
+        (!myProduct || !ourHasTiers) && planList
       )}
     </TabCard>
   );

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "next/navigation";
 import {
   Columns3,
   Rows3,
@@ -596,8 +597,11 @@ export function CompareView() {
   // Server-seeded on first paint (compare/page.tsx): the picker inputs (products +
   // competitors). useState lazy-inits from the hydrated cache; a sync effect fills
   // them in when the seed was missing and the queries resolve client-side.
+  // patch-28 — active product scope (?product=): the picker offers only that
+  // product's competitors; absent → all org competitors (unchanged).
+  const productId = useSearchParams().get("product") ?? undefined;
   const productsQ = useQuery(productsListQuery());
-  const competitorsQ = useQuery(competitorsQuery());
+  const competitorsQ = useQuery(competitorsQuery(productId));
   const [entities, setEntities] = useState<PickEntity[] | null>(() =>
     productsQ.data && competitorsQ.data
       ? buildPickList(productsQ.data, competitorsQ.data).entities
@@ -1009,7 +1013,9 @@ export function CompareView() {
               toolbar is just add + count, so names aren't listed twice. */}
           <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
             <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" disabled={full}>
+              {/* Stays enabled at MAX so the picker can still be opened to
+                  deselect — only adding a new item is blocked (per-item below). */}
+              <Button variant="outline" size="sm">
                 <Plus size={14} />
                 Add to compare
               </Button>

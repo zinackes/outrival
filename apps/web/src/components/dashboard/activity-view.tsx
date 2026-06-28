@@ -476,10 +476,13 @@ export function ActivityView() {
     ? urlStatusRaw
     : "all";
 
+  // patch-28 — active product scope (?product=, from the top-left switcher).
+  const productId = searchParams.get("product") ?? undefined;
+
   // Server-seeded on first paint (activity/page.tsx): health (filter options) +
   // the page-1 unfiltered timeline. A URL filter produces a different timeline key,
   // so useQuery fetches that filtered page instead of the seeded unfiltered one.
-  const healthQ = useQuery(activityHealthQuery());
+  const healthQ = useQuery(activityHealthQuery(productId));
   const sources = healthQ.data?.sources ?? null;
   const upcoming = healthQ.data?.upcoming ?? [];
 
@@ -536,7 +539,7 @@ export function ActivityView() {
   // rows visible (dimmed) during a fetch instead of flashing — only the very first
   // load shows the empty/Loading state.
   const timelineQ = useQuery({
-    ...activityTimelineQuery(page, filterParams),
+    ...activityTimelineQuery(page, filterParams, productId),
     placeholderData: keepPreviousData,
   });
   const events = timelineQ.data?.events ?? null;

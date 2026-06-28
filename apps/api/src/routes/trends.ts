@@ -5,6 +5,7 @@ import { db } from "../lib/db";
 import { analyticsQuery, analyticsQueryResult, sql } from "../lib/analytics-safe";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
+import { productCompetitorIds } from "../lib/products";
 
 type Variables = { user: { id: string } };
 
@@ -91,7 +92,14 @@ trendsRouter.get("/summary", async (c) => {
   const toIso = to.toISOString();
   const windowDays = Math.max(1, Math.round((to.getTime() - from.getTime()) / DAY_MS));
 
-  const comps = await orgCompetitors(orgId);
+  // patch-28 — optional product scope: restrict the cross-competitor leaderboards to
+  // the product's linked competitors. Absent → all org competitors (unchanged).
+  const productId = c.req.query("productId");
+  let comps = await orgCompetitors(orgId);
+  if (productId) {
+    const allowed = new Set(await productCompetitorIds(orgId, productId));
+    comps = comps.filter((x) => allowed.has(x.id));
+  }
   const nameById = new Map(comps.map((x) => [x.id, x.name]));
   const ids = comps.map((x) => x.id);
   if (ids.length === 0) {

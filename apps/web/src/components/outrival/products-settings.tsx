@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, Boxes, Loader2, Plus, Star } from "lucide-react";
+import { Archive, Boxes, ChevronRight, Loader2, Plus, Star } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -131,22 +132,28 @@ export function ProductsSettings() {
 
       <div className="flex flex-col gap-2">
         {active.map((p) => (
-          <Card key={p.id} className="p-4 flex items-center justify-between gap-4">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <Boxes size={14} className="text-muted-foreground shrink-0" />
-                <span className="font-medium truncate">{p.name}</span>
-                {p.isPrimary && (
-                  <Badge variant="secondary" className="text-meta">
-                    Primary
-                  </Badge>
-                )}
+          <Card key={p.id} className="p-4 flex flex-row items-center justify-between gap-4">
+            <Link
+              href={`/dashboard/products/${p.id}`}
+              className="group min-w-0 flex-1 flex items-center gap-2"
+            >
+              <Boxes size={14} className="text-muted-foreground shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium truncate group-hover:underline">{p.name}</span>
+                  {p.isPrimary && (
+                    <Badge variant="secondary" className="text-meta">
+                      Primary
+                    </Badge>
+                  )}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1 truncate">
+                  {p.url ?? "No site yet"} · {p.competitorCount} competitor
+                  {p.competitorCount === 1 ? "" : "s"}
+                </div>
               </div>
-              <div className="text-xs text-muted-foreground mt-1 truncate">
-                {p.url ?? "No site yet"} · {p.competitorCount} competitor
-                {p.competitorCount === 1 ? "" : "s"}
-              </div>
-            </div>
+              <ChevronRight className="size-4 text-muted-foreground/60 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
+            </Link>
             {!p.isPrimary && (
               <div className="flex items-center gap-1 shrink-0">
                 <Button

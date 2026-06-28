@@ -28,11 +28,14 @@ export function ChangeProductUrlDialog({
   open,
   onOpenChange,
   currentUrl,
+  productId,
   onSaved,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   currentUrl?: string | null;
+  // patch-28 — scope to a given product's self-competitor; omitted → the primary.
+  productId?: string;
   onSaved?: (url: string) => void | Promise<void>;
 }) {
   const [url, setUrl] = useState(currentUrl ?? "");
@@ -48,7 +51,7 @@ export function ChangeProductUrlDialog({
     if (!next || next === (currentUrl ?? "")) return;
     setSaving(true);
     try {
-      await api.setMyProductSite(next);
+      await api.setMyProductSite(next, productId);
       toast.success("Product URL updated", {
         description: "Your site will be re-scanned and the profile refreshed shortly.",
       });

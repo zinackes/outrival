@@ -715,7 +715,7 @@ export function OverviewView() {
                   className="border-b border-border last:border-b-0 cursor-pointer transition-colors hover:bg-accent/50"
                 >
                   <td className="px-3.5 py-3 align-middle">
-                    <CompAvatar name={c.name} url={c.url} color={c.color} />
+                    <CompAvatar name={c.name} url={c.url} />
                   </td>
                   <td className="px-3.5 py-3 align-middle">
                     <div className="font-medium">

@@ -180,6 +180,7 @@ myProductRouter.get("/", async (c) => {
     .filter((m) => (m.lastFailedAt?.getTime() ?? 0) > (m.lastRunAt?.getTime() ?? 0))
     .sort((a, b) => (b.lastFailedAt?.getTime() ?? 0) - (a.lastFailedAt?.getTime() ?? 0))[0];
   const scanError = scanning ? null : (failed?.lastError ?? null);
+  const scanErrorSource = scanning ? null : (failed?.sourceType ?? null);
 
   const repoMonitor = selfMonitors.find((m) => m.sourceType === "github_repo");
   const repoUrl =
@@ -225,6 +226,7 @@ myProductRouter.get("/", async (c) => {
       lastScanAt: lastScanAt > 0 ? new Date(lastScanAt).toISOString() : null,
       scanning,
       scanError,
+      scanErrorSource,
       aiSummary: self.aiSummary,
       profile,
       pricing: {

@@ -939,9 +939,11 @@ export interface MyProduct {
   repoUrl: string | null;
   lastScanAt: string | null;
   // True while at least one self monitor is mid-scrape; scanError carries the
-  // last failure message once scanning settles.
+  // last failure message once scanning settles, scanErrorSource the source that
+  // failed (so the UI can render a precise, human-readable reason).
   scanning: boolean;
   scanError: string | null;
+  scanErrorSource: string | null;
   aiSummary: string | null;
   profile: SelfProfile;
   pricing: {
@@ -1410,8 +1412,11 @@ export type CompetitorOverview = {
   // when no homepage snapshot carries a parsed structure yet.
   capturedAt: string | null;
   homepage: {
-    // Primary language of the scraped homepage ("fr", "de", "en"…), from <html lang>.
-    // null when undeclared; drives the foreign-language badge + Translate action.
+    // Language of the scraped homepage copy ("fr", "de", "en"…), detected from the
+    // actual text (headline + subheadline + value props), not just <html lang> —
+    // so an English headline over a French description still reads as foreign.
+    // Falls back to <html lang> when there's too little copy to be confident; null
+    // when neither is known. Drives the foreign-language badge + Translate action.
     language: string | null;
     headline: string | null;
     subheadline: string | null;

@@ -1,11 +1,11 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, ExternalLink } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { format } from "date-fns";
 import { api, type SignalDetail } from "@/lib/api";
 import { sourceLabel } from "@/lib/source-labels";
-import { cn } from "@/lib/utils";
+import { ChangeBreakdown } from "@/components/outrival/change-breakdown";
 import {
   Dialog,
   DialogContent,
@@ -37,38 +37,6 @@ const SectionLabel = ({ children }: { children: React.ReactNode }) => (
     {children}
   </div>
 );
-
-// Readable label per structured change kind (patch-16). Falls back to the raw
-// kind if a new kind ships before this map is updated. Exported so the inline
-// detail-pane evidence (signal-evidence.tsx) renders the same labels.
-export const KIND_LABELS: Record<string, string> = {
-  hero_headline_changed: "Hero headline",
-  hero_subheadline_changed: "Hero subheadline",
-  hero_cta_changed: "Hero CTA",
-  section_added: "New section",
-  section_removed: "Removed section",
-  section_renamed: "Renamed section",
-  section_body_changed: "Section content",
-  section_reordered: "Reordered sections",
-  navigation_changed: "Navigation",
-  meta_changed: "Page metadata",
-  social_proof_changed: "Social proof",
-  // patch-17 enrichments
-  visual_redesign: "Visual redesign",
-  numeric_claim_changed: "Business claim",
-  customer_logo_added: "New customer logo",
-  customer_logo_removed: "Removed customer logo",
-  testimonial_added: "New testimonial",
-  testimonial_removed: "Removed testimonial",
-};
-
-// patch-17: a signed percentage badge for a numeric-claim change ("+233%").
-export function variationLabel(metadata: Record<string, unknown> | null): string | null {
-  const v = metadata?.variation;
-  if (typeof v !== "number" || !Number.isFinite(v)) return null;
-  const pct = Math.round(v * 100);
-  return `${pct > 0 ? "+" : ""}${pct}%`;
-}
 
 // Progressive disclosure level 2 (patch-14): the user gets, in five seconds,
 // WHAT changed, WHERE it was seen, and WHEN. No raw HTML, no diff, no AI
@@ -126,19 +94,19 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
             )}
 
             <section className="space-y-2.5">
-              <SectionLabel>Detected change</SectionLabel>
+              <SectionLabel>Key change</SectionLabel>
               {hasChange ? (
                 <div className="grid grid-cols-[64px_1fr] gap-x-4 gap-y-2 items-baseline">
                   <span className="text-meta text-muted-foreground uppercase tracking-wide">
                     Before
                   </span>
-                  <span className="font-mono text-dense text-foreground/90">
+                  <span className="text-sm text-muted-foreground">
                     {detail.humanChangeBefore ?? "—"}
                   </span>
                   <span className="text-meta text-muted-foreground uppercase tracking-wide">
                     After
                   </span>
-                  <span className="font-mono text-dense text-foreground">
+                  <span className="text-sm text-foreground">
                     {detail.humanChangeAfter ?? "—"}
                   </span>
                 </div>
@@ -168,39 +136,8 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
               <>
                 <Separator />
                 <section className="space-y-3">
-                  <SectionLabel>Changes detected</SectionLabel>
-                  <ul className="space-y-3">
-                    {detail.changes.map((ch, i) => (
-                      <li key={i} className="grid grid-cols-[56px_1fr] gap-x-3 items-baseline">
-                        <span
-                          className={cn(
-                            "text-meta capitalize",
-                            ch.significance === "major" ? "text-primary" : "text-muted-foreground",
-                          )}
-                        >
-                          {ch.significance ?? "—"}
-                        </span>
-                        <div className="space-y-0.5">
-                          <div className="text-sm text-foreground/90">
-                            {KIND_LABELS[ch.kind] ?? ch.kind}
-                            {ch.kind === "numeric_claim_changed" &&
-                              variationLabel(ch.metadata) && (
-                                <span className="ml-2 font-mono text-meta text-primary">
-                                  {variationLabel(ch.metadata)}
-                                </span>
-                              )}
-                          </div>
-                          {(ch.before || ch.after) && (
-                            <div className="font-mono text-xs text-muted-foreground">
-                              {ch.before ?? "∅"}{" "}
-                              <ArrowRight className="inline size-3 text-muted-foreground" />{" "}
-                              <span className="text-foreground/80">{ch.after ?? "∅"}</span>
-                            </div>
-                          )}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
+                  <SectionLabel>All changes</SectionLabel>
+                  <ChangeBreakdown changes={detail.changes} />
                 </section>
               </>
             )}

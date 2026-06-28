@@ -1,12 +1,10 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight } from "lucide-react";
 import { api, type SignalDetail } from "@/lib/api";
-import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VisualDiff } from "@/components/outrival/visual-diff";
-import { KIND_LABELS, variationLabel } from "@/components/outrival/why-insight-panel";
+import { ChangeBreakdown } from "@/components/outrival/change-breakdown";
 
 const Label = ({ children }: { children: React.ReactNode }) => (
   <div className="text-dense font-medium text-muted-foreground">{children}</div>
@@ -59,18 +57,18 @@ export function SignalEvidence({ signalId }: { signalId: string }) {
     <div className="space-y-6 rounded-md border border-border bg-card p-5">
       {hasChange && (
         <section className="space-y-2.5">
-          <Label>Detected change</Label>
+          <Label>Key change</Label>
           <div className="grid grid-cols-[56px_1fr] items-baseline gap-x-4 gap-y-2">
             <span className="text-meta uppercase tracking-wide text-muted-foreground">
               Before
             </span>
-            <span className="font-mono text-dense text-foreground/80">
+            <span className="text-sm text-muted-foreground">
               {detail.humanChangeBefore ?? "—"}
             </span>
             <span className="text-meta uppercase tracking-wide text-muted-foreground">
               After
             </span>
-            <span className="font-mono text-dense text-foreground">
+            <span className="text-sm text-foreground">
               {detail.humanChangeAfter ?? "—"}
             </span>
           </div>
@@ -86,44 +84,8 @@ export function SignalEvidence({ signalId }: { signalId: string }) {
 
       {hasChanges && (
         <section className="space-y-3">
-          <Label>Changes detected</Label>
-          <ul className="space-y-3">
-            {detail.changes.map((ch, i) => (
-              <li
-                key={i}
-                className="grid grid-cols-[56px_1fr] items-baseline gap-x-3"
-              >
-                <span
-                  className={cn(
-                    "text-meta uppercase tracking-wide",
-                    ch.significance === "major"
-                      ? "text-foreground"
-                      : "text-muted-foreground",
-                  )}
-                >
-                  {ch.significance ?? "—"}
-                </span>
-                <div className="space-y-0.5">
-                  <div className="text-sm text-foreground/90">
-                    {KIND_LABELS[ch.kind] ?? ch.kind}
-                    {ch.kind === "numeric_claim_changed" &&
-                      variationLabel(ch.metadata) && (
-                        <span className="ml-2 font-mono text-meta text-foreground">
-                          {variationLabel(ch.metadata)}
-                        </span>
-                      )}
-                  </div>
-                  {(ch.before || ch.after) && (
-                    <div className="font-mono text-xs text-muted-foreground">
-                      {ch.before ?? "∅"}{" "}
-                      <ArrowRight className="inline size-3" />{" "}
-                      <span className="text-foreground/80">{ch.after ?? "∅"}</span>
-                    </div>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
+          <Label>All changes</Label>
+          <ChangeBreakdown changes={detail.changes} />
         </section>
       )}
     </div>

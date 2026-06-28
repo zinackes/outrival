@@ -348,15 +348,28 @@ export function SignalsView() {
     [signals, setFocusedId],
   );
 
-  // Bootstrap selection: consume ?focus= once (deep-link from Overview's "Recent
-  // signals" / "Critical pending"), else default to the first row on desktop so
-  // the detail pane is never empty. Mobile starts unselected (list-first).
+  // Persist the open signal in the URL (?focus=) so a refresh — or navigating away
+  // and back — reopens the same signal. Mirrors every selection path (click, j/k,
+  // and Esc/back which clears it). The ref guard leaves a deep-linked ?focus=
+  // untouched until the bootstrap below consumes it, and never writes on mobile's
+  // list-first (unselected) state.
+  const focusSyncedRef = useRef(false);
+  useEffect(() => {
+    if (!focusedId && !focusSyncedRef.current) return;
+    focusSyncedRef.current = true;
+    if (focusId === focusedId) return;
+    setParam({ focus: focusedId });
+  }, [focusedId, focusId, setParam]);
+
+  // Bootstrap selection: open the signal named by ?focus= (deep-link from the
+  // Overview, or a reload — the sync effect above keeps it in the URL), else
+  // default to the first row on desktop so the detail pane is never empty. Mobile
+  // starts unselected (list-first).
   useEffect(() => {
     if (focusedId || !navIds.length) return;
     const wanted = focusId && navIds.includes(focusId) ? focusId : null;
     if (wanted) {
       selectRow(wanted);
-      setParam({ focus: null });
       return;
     }
     if (focusedRef.current === "init") return;
@@ -367,7 +380,7 @@ export function SignalsView() {
       focusedRef.current = "init";
       selectRow(navIds[0]!);
     }
-  }, [focusedId, navIds, focusId, selectRow, setParam]);
+  }, [focusedId, navIds, focusId, selectRow]);
 
   // The feed item backing the detail pane (a single signal or a batch group).
   const selectedItem = useMemo<FeedItem | null>(() => {

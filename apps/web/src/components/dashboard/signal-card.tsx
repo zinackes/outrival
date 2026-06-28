@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { competitorLeftBorder, competitorNameColor } from "@/lib/competitor-color";
+import { competitorNameColor } from "@/lib/competitor-color";
 import { SeverityBadge } from "./severity-pill";
 import { CatPill } from "./cat-pill";
 import { CompAvatar } from "./comp-avatar";
@@ -208,7 +208,6 @@ export function SignalCard({
       role="article"
       aria-label={`${signal.competitorName}: ${signal.severityOverride ?? signal.severity} ${signal.category} signal`}
       onClick={handleCardClick}
-      style={competitorLeftBorder(signal.competitorColor)}
       className={cn(
         "rounded-md border border-border bg-card p-6 outline-none transition-[box-shadow,background-color,opacity] duration-500",
         canRevert && "cursor-pointer hover:opacity-90",

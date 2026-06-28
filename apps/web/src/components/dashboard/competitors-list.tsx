@@ -61,7 +61,6 @@ import { DeltaPill, computeDelta } from "./delta-pill";
 import { CompAvatar } from "./comp-avatar";
 import { CompetitorColorPicker } from "./competitor-color-picker";
 import {
-  competitorLeftBorder,
   competitorNameColor,
   competitorColorVars,
   COMP_ACCENT,
@@ -676,7 +675,6 @@ export function CompetitorsList() {
             <motion.div key={c.id} {...feedItemMotion}>
             <Card
               onClick={() => router.push(`/dashboard/competitors/${c.id}`)}
-              style={competitorLeftBorder(c.color)}
               className="cursor-pointer transition-colors hover:bg-accent/30"
             >
               <div className="p-5">

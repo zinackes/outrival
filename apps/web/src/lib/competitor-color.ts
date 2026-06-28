@@ -36,19 +36,6 @@ export function competitorColorVars(
 }
 
 /**
- * Style for a colored 3px left-edge accent on a card/row, or undefined when the
- * competitor has no color (the element keeps its default border). Drop directly on
- * an element that already has a 1px border.
- */
-export function competitorLeftBorder(
-  color: string | null | undefined,
-): CompetitorColorVars | undefined {
-  const vars = competitorColorVars(color);
-  if (!vars) return undefined;
-  return { ...vars, borderLeftWidth: 3, borderLeftColor: COMP_ACCENT };
-}
-
-/**
  * Style that tints a competitor's NAME text with its color, or undefined when the
  * competitor has no color (the name keeps its inherited foreground). Drop directly
  * on the element that renders the name.

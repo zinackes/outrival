@@ -59,27 +59,32 @@ function LogoChip({ logo }: { logo: { name: string | null; src: string | null } 
   const showImage = !!src && isRenderableLogoSrc(src) && !failed;
   if (!showImage && !name) return null;
 
-  // Logos are scraped artwork only — we don't know each customer's real URL, so
-  // the chip is non-interactive (no tooltip, no link) to avoid surfacing wrong info.
-  return showImage ? (
-    // Fixed white plate: customer logos are dark artwork made for light site
-    // backgrounds and would vanish on the (dark) dashboard surface otherwise.
-    <span className="inline-flex h-7 items-center rounded-md border border-border bg-white px-2.5">
-      {/* eslint-disable-next-line @next/next/no-img-element -- arbitrary external logo URL, next/image can't whitelist competitor domains */}
-      <img
-        src={src}
-        alt={name || "Customer logo"}
-        width={96}
-        height={16}
-        loading="lazy"
-        onError={() => setFailed(true)}
-        className="h-4 max-w-[96px] object-contain"
-      />
-    </span>
-  ) : (
-    <Badge variant="outline" className="text-xs font-normal">
-      {name}
-    </Badge>
+  // Scraped customer logos arrive in every color, polarity and format. Slapping each
+  // on a white plate makes light-on-light logos vanish and the grid read as mismatched
+  // stickers. Instead normalise the whole set to a single ink-tone silhouette matched
+  // to the theme — the standard "trusted by" wall treatment: coherent regardless of the
+  // source artwork, polarity-correct in both light (dark ink) and dark (light ink) mode.
+  return (
+    <div className="flex h-12 items-center justify-center bg-card px-3">
+      {showImage ? (
+        // eslint-disable-next-line @next/next/no-img-element -- arbitrary external logo URL, next/image can't whitelist competitor domains
+        <img
+          src={src}
+          alt={name || "Customer logo"}
+          loading="lazy"
+          onError={() => setFailed(true)}
+          onLoad={(e) => {
+            // Tracking pixels / lazy-load placeholders resolve to a near-empty image —
+            // drop them so they don't render as blank tiles.
+            const img = e.currentTarget;
+            if (img.naturalWidth < 8 || img.naturalHeight < 4) setFailed(true);
+          }}
+          className="max-h-5 max-w-full object-contain opacity-50 transition-opacity duration-150 [filter:brightness(0)] hover:opacity-80 dark:[filter:brightness(0)_invert(1)]"
+        />
+      ) : (
+        <span className="truncate text-meta font-medium text-muted-foreground">{name}</span>
+      )}
+    </div>
   );
 }
 
@@ -141,6 +146,19 @@ export function OverviewTab({
   const dSubheadline = showTranslated ? translated.subheadline : homepage?.subheadline ?? null;
   const dValueProps = showTranslated ? translated.valueProps : homepage?.valueProps ?? [];
   const dTestimonials = showTranslated ? translated.testimonials : homepage?.testimonials ?? [];
+  // Scraped logo sets routinely repeat the same brand (header, footer, "trusted by"
+  // strip) — dedupe by image src / name so each customer shows once on the wall.
+  const customerLogos = (() => {
+    const seen = new Set<string>();
+    const out: { name: string | null; src: string | null }[] = [];
+    for (const l of homepage?.customerLogos ?? []) {
+      const key = (l.src?.trim() || l.name?.trim() || "").toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(l);
+    }
+    return out;
+  })();
   const hasFacts =
     !!homepage &&
     !!(
@@ -248,11 +266,11 @@ export function OverviewTab({
         </TabSection>
       )}
 
-      {homepage && (homepage.customerLogos.length > 0 || dTestimonials.length > 0) && (
+      {homepage && (customerLogos.length > 0 || dTestimonials.length > 0) && (
         <TabSection title="Customers & proof" icon={Users}>
-          {homepage.customerLogos.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              {homepage.customerLogos.map((l, i) => (
+          {customerLogos.length > 0 && (
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(104px,1fr))] gap-px overflow-hidden rounded-lg border border-border bg-border">
+              {customerLogos.map((l, i) => (
                 <LogoChip key={i} logo={l} />
               ))}
             </div>

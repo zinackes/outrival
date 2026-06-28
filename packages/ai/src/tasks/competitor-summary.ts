@@ -68,7 +68,9 @@ Write an executive summary of this competitor in 2-3 factual sentences, and clas
 - summary: what they do, where they sit, recent momentum. No superlatives, no speculation.
 - category: the market segment this competitor operates in — 1-3 words, Title Case, in English
   (e.g. "CRM", "Project management", "Email marketing", "Observability", "Customer support").
-  Use the homepage content first. If it genuinely cannot be determined, return "".
+  Derive it from the homepage content first, then the description and signals. ALWAYS commit to
+  your best-guess segment even from sparse content — only return "" if there is genuinely no
+  usable content at all (e.g. an empty page or a blocked/anti-bot shell).
 - If page content (homepage_content) is provided, rely on it first to describe their offering, positioning and target
 - Otherwise, if there are no recent signals, just state the product profile
 

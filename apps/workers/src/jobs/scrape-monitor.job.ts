@@ -385,10 +385,19 @@ export const scrapeMonitorJob = task({
     // an aiSummary means a prior refresh-competitor-summary failed (AI outage,
     // transient) — and nothing else ever retries it, so the competitor sits in the
     // onboarding "analyzing" state forever (aiSummary is the readiness proxy).
+    // Also re-trigger when the category is still empty: it's an AI-derived output of
+    // the same job, but every retry path used to key off aiSummary only — so a first
+    // pass that produced a summary with an empty category froze category=null forever
+    // (the model often declines the label on a thin/blocked first scrape). Re-running
+    // as the homepage content accumulates fills it in; the hardened prompt stops the loop.
     // Re-trigger here, before the dedup early-returns below, so an unchanged
     // homepage (304 / same hash) still gets a retry on each scheduled scrape.
     // Fire-and-forget; the job overwrites in place, so it's safe to repeat.
-    if (monitor.sourceType === "homepage" && lastSnapshot && !competitor.aiSummary) {
+    if (
+      monitor.sourceType === "homepage" &&
+      lastSnapshot &&
+      (!competitor.aiSummary || !competitor.category)
+    ) {
       await tasks.trigger("refresh-competitor-summary", { competitorId: competitor.id });
     }
 

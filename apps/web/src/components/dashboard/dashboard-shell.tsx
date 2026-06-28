@@ -44,7 +44,11 @@ export function DashboardShell({
     <MotionConfig reducedMotion="user">
       <AskContextProvider>
         <SidebarProvider defaultOpen={defaultOpen}>
-          {inSettings ? <SettingsSidebar org={org} /> : <AppSidebar org={org} />}
+          {inSettings ? (
+            <SettingsSidebar org={org} user={user} />
+          ) : (
+            <AppSidebar org={org} user={user} />
+          )}
           <SidebarInset>
             <div className="flex min-h-full w-full flex-col text-sm min-w-0">
               <Topbar user={user} />

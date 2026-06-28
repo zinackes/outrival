@@ -1,4 +1,5 @@
 import * as cheerio from "cheerio";
+import { classifyLogoName, isBlankSvgDataUri, isStoreBadgeSrc } from "@outrival/shared";
 import { hashTestimonial, type TestimonialItem, type CustomerLogo } from "./social-proof";
 import { extractJsonLd, findByType, asText } from "../structured-data/json-ld";
 
@@ -375,9 +376,11 @@ function extractSocialProof(
       // and menu glyphs, not customer proof — customer "trusted by" strips live
       // in the page body. Likewise an img wrapped in a link back to the homepage
       // root is the own logo. Both otherwise flood the wall with the site itself.
+      // Testimonial / review / rating cards hold author avatars and review-site
+      // badges (Capterra/G2 stars), not customer brands — exclude their context.
       if (
         $el.closest(
-          'header, nav, footer, [class*="header" i], [class*="navbar" i], [class*="footer" i]',
+          'header, nav, footer, blockquote, [class*="header" i], [class*="navbar" i], [class*="footer" i], [class*="testimonial" i], [class*="quote" i], [class*="review" i], [class*="rating" i], [class*="avatar" i]',
         ).length
       )
         return;
@@ -405,10 +408,19 @@ function extractSocialProof(
           ? lazy
           : eager || srcset.split(",")[0]?.trim().split(/\s+/)[0] || lazy;
       const src = resolveHref(rawSrc, baseUrl);
-      const key = (name ?? src ?? "").toLowerCase();
+      // Brand-name classifier: drop confident non-brands (frames, colour codes,
+      // review/compliance badges, person names, descriptive phrases), recover the
+      // clean brand name, or null an uninformative placeholder and lean on the
+      // image. Drop blank-SVG spacers and store-download badges on the src side.
+      const verdict = classifyLogoName(name);
+      if (verdict.kind === "junk") return;
+      const brandName = verdict.kind === "brand" ? verdict.name : null;
+      const cleanSrc = src && !isBlankSvgDataUri(src) && !isStoreBadgeSrc(src) ? src : null;
+      if (!brandName && !cleanSrc) return;
+      const key = (brandName ?? cleanSrc ?? "").toLowerCase();
       if (!key || seen.has(key)) return;
       seen.add(key);
-      logos.push({ name, src });
+      logos.push({ name: brandName, src: cleanSrc });
     });
 
   const testimonialCount =

@@ -55,9 +55,19 @@ test("detects Webflow as the CMS via marker + generator", () => {
   expect(p.cms?.value).toBe("webflow");
 });
 
-test("detects WordPress via wp-content path", () => {
-  const p = detectPlatform(ev({ html: `<link href="/wp-content/themes/x/style.css">` }));
+test("detects WordPress via the REST API discovery link", () => {
+  const p = detectPlatform(
+    ev({ html: `<link rel="https://api.w.org/" href="https://blog.example.com/wp-json/">` }),
+  );
   expect(p.cms?.value).toBe("wordpress");
+  expect(p.cms?.confidence).toBe("high");
+});
+
+test("does not flag WordPress on a page that merely hotlinks a wp-content asset", () => {
+  const p = detectPlatform(
+    ev({ html: `<img src="https://cdn.example.com/wp-content/uploads/2026/logo.png">` }),
+  );
+  expect(p.cms).toBeUndefined();
 });
 
 test("detects Next.js framework + Vercel hosting from headers + html", () => {

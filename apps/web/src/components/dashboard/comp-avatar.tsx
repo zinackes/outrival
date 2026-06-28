@@ -26,7 +26,8 @@ function domainFromUrl(url?: string | null): string | null {
 //    edge, it carries its own background.
 //  - "glyph": a transparent glyph (or one we de-plated, see below). It sits bare on the
 //    tile; `lum` is its luminance so the render can add a halo only when it would vanish
-//    into the current surface. `src` overrides the favicon URL when we keyed out a plate.
+//    into the current surface. `src` is the trimmed, recentred glyph rendered in place of
+//    the raw favicon (null only when the tile is blank).
 type Analysis =
   | { kind: "fill" }
   | { kind: "glyph"; lum: number; src: string | null };
@@ -45,12 +46,70 @@ function isPlatePixel(r: number, g: number, b: number, a: number): boolean {
 
 // When de-plating, fade pixels by their distance from white rather than hard-cutting at a
 // threshold — a binary key leaves jagged edges on low-quality (JPEG) favicons. Pure white →
-// fully transparent, clearly coloured/dark → kept, with a feathered ramp between.
+// fully transparent, clearly coloured/dark → kept, with a feathered ramp between. Anything
+// left fainter than ALPHA_FLOOR is snapped to zero so the feather doesn't leave a pale grey
+// ghost ("résidu") of the plate around the glyph.
 const PLATE_FEATHER_LO = 50; // distance-from-white below which a pixel is fully plate
 const PLATE_FEATHER_HI = 160; // distance-from-white above which a pixel is fully glyph
 
+// The favicon proxies center the real glyph inside a square of incidental — and usually
+// lopsided — transparent margin. objectFit:contain centers the whole canvas, margin and all,
+// so the glyph renders off-center. We trim to the glyph's tight bounds and recenter it, so
+// every icon sits dead-center in its tile. A larger analysis canvas keeps the recentred PNG
+// crisp on the bigger avatars.
+const ANALYSIS_SIZE = 48;
+const BBOX_ALPHA = 24; // min alpha for a pixel to count toward the glyph's visual bounds
+const ALPHA_FLOOR = 20; // remaining alpha below this is snapped to 0 (kills faint fringe)
+
+// Tight bounding box of the meaningfully-opaque pixels, or null when the tile is blank.
+function glyphBounds(data: Uint8ClampedArray, S: number) {
+  let minX = S;
+  let minY = S;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      if ((data[(y * S + x) * 4 + 3] ?? 0) >= BBOX_ALPHA) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  return maxX < 0 ? null : { minX, minY, maxX, maxY };
+}
+
+// Crop the glyph to its bounds and recenter it in a square (aspect ratio preserved), dropping
+// the lopsided margin. Returns a PNG data URL the <img> renders in place of the raw favicon.
+function recenteredGlyph(
+  canvas: HTMLCanvasElement,
+  b: { minX: number; minY: number; maxX: number; maxY: number },
+): string {
+  const w = b.maxX - b.minX + 1;
+  const h = b.maxY - b.minY + 1;
+  const side = Math.max(w, h);
+  const out = document.createElement("canvas");
+  out.width = side;
+  out.height = side;
+  const octx = out.getContext("2d");
+  if (!octx) return canvas.toDataURL("image/png");
+  octx.drawImage(
+    canvas,
+    b.minX,
+    b.minY,
+    w,
+    h,
+    Math.round((side - w) / 2),
+    Math.round((side - h) / 2),
+    w,
+    h,
+  );
+  return out.toDataURL("image/png");
+}
+
 function analyzeFavicon(img: HTMLImageElement): Analysis {
-  const S = 32;
+  const S = ANALYSIS_SIZE;
   const canvas = document.createElement("canvas");
   canvas.width = S;
   canvas.height = S;
@@ -90,8 +149,13 @@ function analyzeFavicon(img: HTMLImageElement): Analysis {
   // plate out only when a real glyph is left — never erase a near-blank white favicon.
   const plateFrac = opaque ? plateCount / opaque : 0;
   const glyphFrac = (opaque - plateCount) / (S * S);
+  const deplate = plateFrac >= 0.45 && glyphFrac > 0.03;
 
-  if (plateFrac >= 0.45 && glyphFrac > 0.03) {
+  // An opaque branded square (no plate to key out) carries its own background — show it
+  // edge to edge as-is, no trim.
+  if (!deplate && coverage >= 0.85) return { kind: "fill" };
+
+  if (deplate) {
     for (let i = 0; i < data.length; i += 4) {
       const a = data[i + 3] ?? 0;
       if (a === 0) continue;
@@ -103,18 +167,31 @@ function analyzeFavicon(img: HTMLImageElement): Analysis {
         1,
         Math.max(0, (dist - PLATE_FEATHER_LO) / (PLATE_FEATHER_HI - PLATE_FEATHER_LO)),
       );
-      data[i + 3] = Math.round(a * keep);
+      const next = Math.round(a * keep);
+      data[i + 3] = next < ALPHA_FLOOR ? 0 : next;
     }
-    ctx.putImageData(image, 0, 0);
-    return {
-      kind: "glyph",
-      lum: glyphAlpha ? glyphLumSum / glyphAlpha : 1,
-      src: canvas.toDataURL("image/png"),
-    };
+  } else {
+    // Bare transparent glyph: drop only the near-invisible anti-aliasing fringe that would
+    // otherwise read as a pale halo on the dark tile.
+    for (let i = 0; i < data.length; i += 4) {
+      if ((data[i + 3] ?? 0) < ALPHA_FLOOR) data[i + 3] = 0;
+    }
   }
+  ctx.putImageData(image, 0, 0);
 
-  if (coverage >= 0.85) return { kind: "fill" };
-  return { kind: "glyph", lum: allAlpha ? allLumSum / allAlpha : 1, src: null };
+  const bounds = glyphBounds(data, S);
+  const lum = deplate
+    ? glyphAlpha
+      ? glyphLumSum / glyphAlpha
+      : 1
+    : allAlpha
+      ? allLumSum / allAlpha
+      : 1;
+  return {
+    kind: "glyph",
+    lum,
+    src: bounds ? recenteredGlyph(canvas, bounds) : null,
+  };
 }
 
 export function CompAvatar({

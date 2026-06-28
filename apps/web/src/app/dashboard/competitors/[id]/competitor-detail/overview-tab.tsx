@@ -19,6 +19,12 @@ import {
 import { api, type CompetitorOverview, type Monitor } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { Eyebrow } from "@/components/outrival/eyebrow";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
@@ -52,11 +58,15 @@ function OverviewStat({
 
 function LogoChip({ logo }: { logo: { name: string | null; src: string | null } }) {
   const [failed, setFailed] = useState(false);
+  // A square/blocky source image silhouettes into a featureless block. We only learn the
+  // shape once the image loads, and pixels can't be read (cross-origin <img>) — aspect
+  // ratio is the one signal we get. When it's blocky and we have a name, fall back to text.
+  const [blocky, setBlocky] = useState(false);
   const src = logo.src?.trim() || "";
   // Name to label/alt the logo: the brand name when captured, else derived from
   // the image filename so a path-only logo still reads as something.
   const name = logo.name?.trim() || (src ? logoLabel(src) : "");
-  const showImage = !!src && isRenderableLogoSrc(src) && !failed;
+  const showImage = !!src && isRenderableLogoSrc(src) && !failed && !blocky;
   if (!showImage && !name) return null;
 
   // Scraped customer logos arrive in every color, polarity and format. Slapping each
@@ -64,7 +74,7 @@ function LogoChip({ logo }: { logo: { name: string | null; src: string | null } 
   // stickers. Instead normalise the whole set to a single ink-tone silhouette matched
   // to the theme — the standard "trusted by" wall treatment: coherent regardless of the
   // source artwork, polarity-correct in both light (dark ink) and dark (light ink) mode.
-  return (
+  const tile = (
     <div className="flex h-12 items-center justify-center bg-card px-3">
       {showImage ? (
         // eslint-disable-next-line @next/next/no-img-element -- arbitrary external logo URL, next/image can't whitelist competitor domains
@@ -74,10 +84,17 @@ function LogoChip({ logo }: { logo: { name: string | null; src: string | null } 
           loading="lazy"
           onError={() => setFailed(true)}
           onLoad={(e) => {
+            const img = e.currentTarget;
             // Tracking pixels / lazy-load placeholders resolve to a near-empty image —
             // drop them so they don't render as blank tiles.
-            const img = e.currentTarget;
-            if (img.naturalWidth < 8 || img.naturalHeight < 4) setFailed(true);
+            if (img.naturalWidth < 8 || img.naturalHeight < 4) {
+              setFailed(true);
+              return;
+            }
+            // Square-ish artwork (opaque brand square, favicon-style mark) collapses into a
+            // meaningless block under the silhouette filter — prefer the name when we have
+            // one. Wide wordmark logos (the ones that read well) are kept as images.
+            if (name && img.naturalWidth / img.naturalHeight <= 1.4) setBlocky(true);
           }}
           className="max-h-5 max-w-full object-contain opacity-50 transition-opacity duration-150 [filter:brightness(0)] hover:opacity-80 dark:[filter:brightness(0)_invert(1)]"
         />
@@ -85,6 +102,15 @@ function LogoChip({ logo }: { logo: { name: string | null; src: string | null } 
         <span className="truncate text-meta font-medium text-muted-foreground">{name}</span>
       )}
     </div>
+  );
+
+  // No name to surface → a tooltip would add nothing.
+  if (!name) return tile;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{tile}</TooltipTrigger>
+      <TooltipContent>{name}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -205,7 +231,7 @@ export function OverviewTab({
   return (
     <TabCard>
       {isForeign && (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 p-5">
           <Badge variant="outline" className="uppercase">
             {language}
           </Badge>
@@ -213,7 +239,7 @@ export function OverviewTab({
             <Button
               size="sm"
               variant="ghost"
-              className="h-7 gap-1.5"
+              className="h-7 gap-1.5 text-dense"
               onClick={handleTranslate}
               disabled={translating}
             >
@@ -228,7 +254,7 @@ export function OverviewTab({
             <Button
               size="sm"
               variant="ghost"
-              className="h-7 gap-1.5"
+              className="h-7 gap-1.5 text-dense"
               onClick={() => setShowOriginal((o) => !o)}
             >
               <Languages size={12} />
@@ -269,11 +295,13 @@ export function OverviewTab({
       {homepage && (customerLogos.length > 0 || dTestimonials.length > 0) && (
         <TabSection title="Customers & proof" icon={Users}>
           {customerLogos.length > 0 && (
-            <div className="grid grid-cols-[repeat(auto-fit,minmax(104px,1fr))] gap-px overflow-hidden rounded-lg border border-border bg-border">
-              {customerLogos.map((l, i) => (
-                <LogoChip key={i} logo={l} />
-              ))}
-            </div>
+            <TooltipProvider delayDuration={150}>
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(104px,1fr))] gap-px overflow-hidden rounded-lg border border-border bg-border">
+                {customerLogos.map((l, i) => (
+                  <LogoChip key={i} logo={l} />
+                ))}
+              </div>
+            </TooltipProvider>
           )}
           {dTestimonials.length > 0 && (
             <ul className="flex flex-col gap-3 mt-1">

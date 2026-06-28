@@ -414,6 +414,15 @@ const ROW_GROUP: Record<string, string> = {
 // ── Export ────────────────────────────────────────────────────────────────
 type ExportFormat = "csv" | "markdown" | "tsv";
 
+// Primary button label per format, so it reads as the action that will happen
+// (download a file vs copy to clipboard, and in which shape) rather than a
+// generic "Export".
+const EXPORT_BUTTON_LABEL: Record<ExportFormat, string> = {
+  csv: "Export CSV",
+  markdown: "Copy Markdown",
+  tsv: "Copy table",
+};
+
 function buildMatrix(rows: Row[], cols: CompareColumn[]): { header: string[]; body: string[][] } {
   return {
     header: ["", ...cols.map((c) => c.name)],
@@ -958,7 +967,11 @@ export function CompareView() {
               ) : (
                 <Download size={12} />
               )}
-              {exportDone ? (exportIsCopy ? "Copied" : "Saved") : "Export"}
+              {exportDone
+                ? exportIsCopy
+                  ? "Copied"
+                  : "Saved"
+                : EXPORT_BUTTON_LABEL[exportFormat]}
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

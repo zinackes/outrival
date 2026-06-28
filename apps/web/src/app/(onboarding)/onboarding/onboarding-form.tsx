@@ -27,7 +27,6 @@ import {
   X,
 } from "lucide-react";
 import {
-  PLAN_LABELS,
   PLAN_LIMITS,
   detectTemporaryUrl,
   DISCOVERY_REGIONS,
@@ -773,7 +772,6 @@ export function OnboardingForm({
               completing={busy === "complete"}
               selectedCount={selectedCount}
               maxCompetitors={maxCompetitors}
-              plan={plan}
               region={region}
               onRegionChange={changeRegion}
               toggleCompetitor={toggleCompetitor}
@@ -1332,7 +1330,6 @@ function DiscoverStep({
   completing,
   selectedCount,
   maxCompetitors,
-  plan,
   region,
   onRegionChange,
   toggleCompetitor,
@@ -1349,7 +1346,6 @@ function DiscoverStep({
   completing: boolean;
   selectedCount: number;
   maxCompetitors: number;
-  plan: Plan;
   region: string | null;
   onRegionChange: (region: string | null) => void;
   toggleCompetitor: (url: string) => void;
@@ -1429,7 +1425,6 @@ function DiscoverStep({
             </>
           )}
         </p>
-        <p className="text-xs text-muted-foreground">{PLAN_LABELS[plan]} plan</p>
       </div>
 
       <Card className="p-2 sm:p-3 max-h-[420px] overflow-auto">
@@ -1587,38 +1582,17 @@ function OverlapBadge({ score }: { score: number }) {
 }
 
 // Notification-timing heads-up, shown on the success screen. Covers quiet hours,
-// weekend off, grouping (patch-26) and the detected timezone — everything is
-// applied automatically and adjustable later in Settings → Notifications.
+// weekend off and grouping (patch-26) — everything is applied automatically and
+// adjustable later in Settings → Notifications.
 function NotificationsNote() {
-  const [tz, setTz] = useState<string | null>(null);
-  useEffect(() => {
-    try {
-      setTz(Intl.DateTimeFormat().resolvedOptions().timeZone || null);
-    } catch {
-      // Keep the generic copy.
-    }
-  }, []);
-
   return (
     <div className="mt-6 w-full max-w-md rounded-md border border-border bg-surface-2/40 px-5 py-4 flex items-start gap-2.5 text-left">
       <Bell size={15} className="mt-0.5 text-muted-foreground shrink-0" />
-      <div>
-        <p className="text-sm text-foreground">
-          {tz ? (
-            <>
-              We&apos;ll notify you on your local time (
-              <span className="font-medium">{tz}</span>).
-            </>
-          ) : (
-            <>We&apos;ll notify you on your local time.</>
-          )}
-        </p>
-        <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-          No emails between 10pm and 8am or on weekends, and similar updates are
-          grouped. Critical alerts always come through. Adjust anytime in Settings →
-          Notifications.
-        </p>
-      </div>
+      <p className="text-xs text-muted-foreground leading-relaxed">
+        No emails between 10pm and 8am or on weekends, and similar updates are
+        grouped. Critical alerts always come through. Adjust anytime in Settings →
+        Notifications.
+      </p>
     </div>
   );
 }
@@ -1655,7 +1629,7 @@ function DoneStep({
   }
   nextSteps.push("Review your weekly digest settings");
   if (nextSteps.length < 2) {
-    nextSteps.push("Browse your signal feed as it fills up");
+    nextSteps.push("Explore your competitor profiles");
   }
 
   useEffect(() => {

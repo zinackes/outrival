@@ -16,6 +16,7 @@ import {
 import { generateBattleCard, AI_CONFIG } from "@outrival/ai";
 import { uploadToR2 } from "@outrival/shared";
 import { logAiRun } from "../lib/analytics";
+import { refreshCompetitorSummaryJob } from "./refresh-competitor-summary.job";
 
 const InputSchema = z.object({
   competitorId: z.string(),
@@ -102,6 +103,24 @@ export const generateBattleCardJob = task({
       limit: 8,
     });
 
+    // Battle cards are grounded against the competitor's evidence (summary + reviews
+    // + signals). A freshly added competitor has none of it, so the grounded model
+    // drops every assertion and the card comes back all-empty. Generate the AI summary
+    // first (built from the homepage snapshot) so the card has real material to ground
+    // on — matching what already happens once a summary exists.
+    let competitorSummary = competitor.aiSummary ?? competitor.description ?? null;
+    if (!competitor.aiSummary) {
+      logger.log("No AI summary yet — generating it before the battle card", {
+        competitorId: competitor.id,
+      });
+      const summaryRun = await refreshCompetitorSummaryJob.triggerAndWait({
+        competitorId: competitor.id,
+      });
+      if (summaryRun.ok && summaryRun.output.ok && summaryRun.output.summary) {
+        competitorSummary = summaryRun.output.summary;
+      }
+    }
+
     // Ops quality logging (patch-02): success / parse_failed (null) / error.
     const { provider, model } = AI_CONFIG.insights;
     let content;
@@ -109,7 +128,7 @@ export const generateBattleCardJob = task({
       content = await generateBattleCard({
         myProduct: { name: product?.name, category: myCategory, valueProp: myValueProp },
         competitorName: competitor.name,
-        competitorSummary: competitor.aiSummary ?? competitor.description ?? null,
+        competitorSummary,
         reviewPraises: praisesRows.map((r) => r.content ?? "").filter(Boolean),
         reviewComplaints: complaintsRows.map((r) => r.content ?? "").filter(Boolean),
         recentSignals: recentSignals.map((s) => ({
@@ -127,6 +146,22 @@ export const generateBattleCardJob = task({
 
     if (!content) {
       throw new AbortTaskRunError("Battle card generation returned null");
+    }
+
+    // Safety net: a grounded card with no evidence comes back with every section
+    // empty (the schema permits empty arrays). Never persist a blank document — abort
+    // with a clear reason so the UI surfaces a failure instead of a card full of "—".
+    const isEmpty =
+      content.their_strengths.length === 0 &&
+      content.our_strengths.length === 0 &&
+      content.their_weaknesses.length === 0 &&
+      content.common_objections.length === 0 &&
+      content.when_we_win.length === 0 &&
+      content.when_we_lose.length === 0;
+    if (isEmpty) {
+      throw new AbortTaskRunError(
+        "Battle card came back empty — no competitor summary, reviews or signals to ground on yet",
+      );
     }
 
     const generatedAt = new Date();

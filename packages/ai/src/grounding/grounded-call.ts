@@ -44,6 +44,12 @@ const DEFAULT_GROUNDING_POLICY = { grounding: true, confidence: true } as const;
 const GROUNDING_POLICY: Record<string, { grounding: boolean; confidence: boolean }> = {
   classify_change: { grounding: false, confidence: false },
   generate_signal: { grounding: false, confidence: true },
+  // The competitor summary is an internal 2-3 sentence blurb (never surfaces
+  // citations to the user). With grounding ON, the model must emit a verbatim
+  // sourceQuote per assertion — that envelope overran the task's maxTokens (512),
+  // truncating the JSON → parse miss → null → the competitor stuck "analyzing".
+  // Drop grounding so the output is just { summary, category } and fits.
+  summarize_competitor: { grounding: false, confidence: false },
 };
 
 /**

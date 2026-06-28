@@ -13,14 +13,16 @@ const InputSchema = z.object({
 });
 
 // Onboarding /complete fires every competitor's homepage scrape at once, so this
-// job fans out N-wide a few seconds apart. Hitting the shared AI provider pool
-// all at once throttled it — one summary then stalled ~56s or hit MAX_DURATION and
-// never landed, leaving its competitor stuck "analyzing" until the next scheduled
-// scrape self-healed (hours/days later). A bounded queue serialises the burst so
-// each call keeps the provider to itself (~3s). Env-tunable for paid AI tiers.
+// job fans out N-wide within seconds. Hitting the free AI provider tier all at
+// once throttles it (429) → slow failover to the PAID tier: those runs take ~1-2min
+// (near maxDuration) and cost ~40× the ~3s/$0.0001 happy path. Serialising the
+// burst (limit 1) keeps each call alone on the fast free tier. This is a cost/
+// latency mitigation — NOT the "1/N stuck" fix (that was parse_failed → null →
+// no-retry, handled below + grounding dropped for summarize_competitor).
+// Env-tunable up for paid AI tiers.
 const summaryQueue = queue({
   name: "competitor-summary",
-  concurrencyLimit: Number(process.env.SUMMARY_CONCURRENCY ?? 3),
+  concurrencyLimit: Number(process.env.SUMMARY_CONCURRENCY ?? 1),
 });
 
 export const refreshCompetitorSummaryJob = task({
@@ -106,8 +108,14 @@ export const refreshCompetitorSummaryJob = task({
     );
 
     if (!result) {
-      logger.warn("Competitor summary generation returned null");
-      return { ok: false };
+      // null = the model returned non-empty but UNPARSEABLE output (logged as
+      // ai_runs=parse_failed) — not an empty/throttled completion, which throws
+      // upstream. Returning ok:false here swallowed the miss → no Trigger retry →
+      // the competitor stayed stuck "analyzing" (aiSummary is the onboarding
+      // readiness proxy) until the next scheduled scrape self-healed hours later
+      // (the "1/N ready" bug). Throw so Trigger re-rolls (maxAttempts 3): a fresh
+      // generation / provider failover almost always parses.
+      throw new Error(`Competitor summary unparseable for ${competitor.id} — retrying`);
     }
 
     // category is AI-derived (no manual edit path); refresh it whenever the model

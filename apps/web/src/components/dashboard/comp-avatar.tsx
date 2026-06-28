@@ -274,9 +274,16 @@ export function CompAvatar({
             aria-hidden
             loading="lazy"
             onLoad={(e) => {
-              // The keyed-glyph case re-fires onLoad with the data: URL — the cache guard
-              // stops a second analysis (and any loop).
-              if (cache.has(domain)) return;
+              // Analyse a domain once, then reuse it for every avatar of that domain. When a
+              // sibling already cached the result (or this <img> re-fired onLoad after `src`
+              // swapped to the recentred data URL), adopt the cached analysis instead of
+              // re-running it — without this, the avatar that loses the race keeps
+              // `analysis` null and renders the raw, off-center favicon.
+              const cached = cache.get(domain);
+              if (cached) {
+                setAnalysis(cached);
+                return;
+              }
               try {
                 const a = analyzeFavicon(e.currentTarget);
                 cache.set(domain, a);

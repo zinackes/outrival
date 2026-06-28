@@ -1140,12 +1140,12 @@ function Header({
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-7 w-7 p-0"
+                  className="h-9 w-9 p-0"
                   disabled={!onPrev}
                   onClick={onPrev}
                   aria-label="Previous competitor"
                 >
-                  <ChevronLeft size={16} />
+                  <ChevronLeft size={14} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent className="flex items-center gap-1.5">
@@ -1163,12 +1163,12 @@ function Header({
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-7 w-7 p-0"
+                  className="h-9 w-9 p-0"
                   disabled={!onNext}
                   onClick={onNext}
                   aria-label="Next competitor"
                 >
-                  <ChevronRight size={16} />
+                  <ChevronRight size={14} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent className="flex items-center gap-1.5">
@@ -1185,10 +1185,10 @@ function Header({
             <Button
               size="sm"
               variant="outline"
-              className="h-7 w-7 p-0"
+              className="h-9 w-9 p-0"
               aria-label="More actions"
             >
-              <MoreHorizontal size={16} />
+              <MoreHorizontal size={14} />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-60">

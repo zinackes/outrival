@@ -11,6 +11,11 @@ export const COMP_FILL =
   "oklch(var(--comp-l-fill) calc(var(--comp-c) * var(--comp-fill-chroma-mult)) var(--comp-h))";
 export const COMP_ON_FILL =
   "oklch(var(--comp-l-on-fill) var(--comp-c) var(--comp-h))";
+// The competitor name tinted inline. Uses the AA-tuned text lightness (see
+// --comp-l-text in globals.css) — a darker accent than COMP_ACCENT so the name
+// clears 4.5:1 as body text, not just 3:1 as a graphical edge.
+export const COMP_TEXT =
+  "oklch(var(--comp-l-text) var(--comp-c) var(--comp-h))";
 
 export type CompetitorColorVars = CSSProperties & {
   "--comp-h"?: number;
@@ -41,4 +46,17 @@ export function competitorLeftBorder(
   const vars = competitorColorVars(color);
   if (!vars) return undefined;
   return { ...vars, borderLeftWidth: 3, borderLeftColor: COMP_ACCENT };
+}
+
+/**
+ * Style that tints a competitor's NAME text with its color, or undefined when the
+ * competitor has no color (the name keeps its inherited foreground). Drop directly
+ * on the element that renders the name.
+ */
+export function competitorNameColor(
+  color: string | null | undefined,
+): CompetitorColorVars | undefined {
+  const vars = competitorColorVars(color);
+  if (!vars) return undefined;
+  return { ...vars, color: COMP_TEXT };
 }

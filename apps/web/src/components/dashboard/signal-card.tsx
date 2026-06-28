@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { competitorLeftBorder } from "@/lib/competitor-color";
+import { competitorLeftBorder, competitorNameColor } from "@/lib/competitor-color";
 import { SeverityBadge } from "./severity-pill";
 import { CatPill } from "./cat-pill";
 import { CompAvatar } from "./comp-avatar";
@@ -232,7 +232,10 @@ export function SignalCard({
             color={signal.competitorColor}
             size={28}
           />
-          <span className="font-semibold text-base group-hover:underline underline-offset-2">
+          <span
+            className="font-semibold text-base group-hover:underline underline-offset-2"
+            style={competitorNameColor(signal.competitorColor)}
+          >
             {signal.competitorName}
           </span>
           <ArrowUpRight

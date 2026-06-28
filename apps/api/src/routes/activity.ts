@@ -23,7 +23,12 @@ const HIDDEN_SET = new Set<string>(HIDDEN_SOURCES);
 // belongs on the "My product" page, not in this competitor-facing activity feed.
 async function orgCompetitors(orgId: string) {
   return db
-    .select({ id: competitors.id, name: competitors.name, url: competitors.url })
+    .select({
+      id: competitors.id,
+      name: competitors.name,
+      url: competitors.url,
+      color: competitors.color,
+    })
     .from(competitors)
     .where(
       and(
@@ -55,6 +60,7 @@ activityRouter.get("/health", async (c) => {
       monitorId: monitors.id,
       competitorId: competitors.id,
       competitorName: competitors.name,
+      competitorColor: competitors.color,
       sourceType: monitors.sourceType,
       isActive: monitors.isActive,
       lastRunAt: monitors.lastRunAt,
@@ -80,6 +86,7 @@ activityRouter.get("/health", async (c) => {
       monitorId: r.monitorId,
       competitorId: r.competitorId,
       competitorName: r.competitorName,
+      competitorColor: r.competitorColor,
       sourceType: r.sourceType,
       lastRunAt: r.lastRunAt,
       nextRunAt: r.nextRunAt,
@@ -106,6 +113,7 @@ activityRouter.get("/health", async (c) => {
       monitorId: r.monitorId,
       competitorId: r.competitorId,
       competitorName: r.competitorName,
+      competitorColor: r.competitorColor,
       sourceType: r.sourceType,
       nextRunAt: r.nextRunAt,
     }))
@@ -304,6 +312,7 @@ activityRouter.get("/timeline", async (c) => {
   }
   const nameById = new Map(comps.map((x) => [x.id, x.name]));
   const urlById = new Map(comps.map((x) => [x.id, x.url]));
+  const colorById = new Map(comps.map((x) => [x.id, x.color]));
   const ids = comps.map((x) => x.id);
   if (ids.length === 0) return c.json({ events: [], total: 0 });
 
@@ -449,6 +458,7 @@ activityRouter.get("/timeline", async (c) => {
   const events = rows.map((r) => ({
     competitorId: r.competitorId,
     competitorName: nameById.get(r.competitorId) ?? "Unknown",
+    competitorColor: colorById.get(r.competitorId) ?? null,
     sourceType: r.sourceType,
     status: r.status, // success | no_change | failed
     durationMs: r.durationMs,

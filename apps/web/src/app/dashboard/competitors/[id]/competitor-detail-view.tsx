@@ -84,7 +84,7 @@ import { MonitorAlternatives } from "@/components/outrival/monitor-alternatives"
 import { CompetitorTechStack } from "@/components/outrival/competitor-tech-stack";
 import { Eyebrow } from "@/components/outrival/eyebrow";
 import { CompetitorColorPicker } from "@/components/dashboard/competitor-color-picker";
-import { competitorColorVars, COMP_ACCENT } from "@/lib/competitor-color";
+import { competitorColorVars, COMP_ACCENT, competitorNameColor } from "@/lib/competitor-color";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
 import { ListError } from "@/components/outrival/list-error";
 import { toastApiError, toastRescanLimit } from "@/lib/error-helpers";
@@ -1156,7 +1156,10 @@ function Header({
         )}
         <div className="min-w-0">
           <div className="flex items-center gap-3 flex-wrap mb-1">
-            <h1 className="font-bold text-title-lg md:text-stat tracking-tight leading-[1.05] m-0">
+            <h1
+              className="font-bold text-title-lg md:text-stat tracking-tight leading-[1.05] m-0"
+              style={competitorNameColor(competitor.color)}
+            >
               {competitor.name}
             </h1>
             {competitor.category && (

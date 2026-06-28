@@ -20,6 +20,7 @@ import {
   ACTIVITY_PAGE_SIZE,
 } from "@/lib/queries";
 import { sourceLabel } from "@/lib/source-labels";
+import { competitorNameColor } from "@/lib/competitor-color";
 import { cn } from "@/lib/utils";
 import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import {
@@ -590,6 +591,7 @@ export function ActivityView() {
                     <Link
                       href={`/dashboard/competitors/${nextCheck.competitorId}`}
                       className="font-medium hover:underline"
+                      style={competitorNameColor(nextCheck.competitorColor)}
                     >
                       {nextCheck.competitorName}
                     </Link>
@@ -634,6 +636,7 @@ export function ActivityView() {
                               <Link
                                 href={`/dashboard/competitors/${u.competitorId}`}
                                 className="font-medium hover:underline"
+                                style={competitorNameColor(u.competitorColor)}
                               >
                                 {u.competitorName}
                               </Link>
@@ -787,6 +790,7 @@ export function ActivityView() {
                               <Link
                                 href={`/dashboard/competitors/${e.competitorId}`}
                                 className="font-medium hover:underline"
+                                style={competitorNameColor(e.competitorColor)}
                                 onClick={(ev) => ev.stopPropagation()}
                               >
                                 {e.competitorName}
@@ -867,7 +871,10 @@ export function ActivityView() {
             <>
               <DialogHeader>
                 <DialogTitle>
-                  {detailEvent.competitorName} · {sourceLabel(detailEvent.sourceType)}
+                  <span style={competitorNameColor(detailEvent.competitorColor)}>
+                    {detailEvent.competitorName}
+                  </span>{" "}
+                  · {sourceLabel(detailEvent.sourceType)}
                 </DialogTitle>
                 <DialogDescription>
                   Captured {absDateTime(detailEvent.recordedAt)}

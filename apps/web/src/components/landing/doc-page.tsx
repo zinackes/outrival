@@ -19,7 +19,7 @@ export function DocPage({
   children: ReactNode;
 }) {
   return (
-    <div className="dark min-h-screen bg-background font-sans text-foreground antialiased">
+    <div className="dark min-h-dvh bg-background font-sans text-foreground antialiased">
       <header className="border-b border-border/60">
         <div className="mx-auto flex h-16 w-full max-w-3xl items-center justify-between px-6">
           <Link href="/" className="text-lg font-semibold tracking-tight">

@@ -827,10 +827,10 @@ function Header({
           {showControls && (
             <>
               <Button variant="ghost" size="sm" onClick={onRestart}>
-                <RotateCcw size={14} /> Restart
+                <RotateCcw size={14} /> <span className="hidden sm:inline">Restart</span>
               </Button>
               <Button variant="ghost" size="sm" onClick={() => void onSkip()}>
-                <LogOut size={14} /> Leave for now
+                <LogOut size={14} /> <span className="hidden sm:inline">Leave for now</span>
               </Button>
             </>
           )}
@@ -1534,10 +1534,10 @@ function CompetitorRow({
           target="_blank"
           rel="noreferrer"
           onClick={(e) => e.stopPropagation()}
-          className="text-meta font-mono text-muted-foreground hover:text-foreground inline-flex items-center gap-1 mt-0.5 transition-colors"
+          className="text-meta font-mono text-muted-foreground hover:text-foreground inline-flex items-center gap-1 mt-0.5 max-w-full transition-colors"
         >
-          {competitor.url.replace(/^https?:\/\//, "")}
-          <ExternalLink size={10} />
+          <span className="truncate">{competitor.url.replace(/^https?:\/\//, "")}</span>
+          <ExternalLink size={10} className="shrink-0" />
         </a>
         {competitor.snippet && (
           <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">

@@ -93,7 +93,7 @@ export default async function MultiProductMetricsPage() {
         title="Battle cards"
         info="Battle cards generated, the number of unique product↔competitor couples they cover, and the average per product."
       >
-        <div className="grid grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
           <Stat label="Total" value={m.battleCards.total} />
           <Stat label="Unique couples" value={m.battleCards.couples} />
           <Stat

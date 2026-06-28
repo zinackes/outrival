@@ -74,7 +74,7 @@ export function Footer() {
         </div>
         <div className="mt-10 flex flex-col gap-3 border-t border-border pt-6 text-xs text-text-subtle sm:flex-row sm:items-center sm:justify-between">
           <div>© 2026 Outrival SAS · 8 rue de la Paix, 75002 Paris</div>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
             <span>RCS Paris 932 481 297</span>
             <span>v0.7.0</span>
             <a

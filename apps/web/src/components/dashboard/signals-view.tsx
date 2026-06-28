@@ -783,7 +783,7 @@ export function SignalsView() {
           <div
             role="listbox"
             aria-label="Signals"
-            className="flex flex-col gap-0.5 rounded-xl border border-border p-1 lg:max-h-[calc(100vh-220px)] lg:overflow-y-auto"
+            className="flex flex-col gap-0.5 rounded-xl border border-border p-1 lg:max-h-[calc(100dvh-220px)] lg:overflow-y-auto"
           >
             {feedItems.map((item) =>
               item.kind === "single" ? (

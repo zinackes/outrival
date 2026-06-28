@@ -54,7 +54,7 @@ export function Pipeline() {
             </span>
           </div>
 
-          <div className="max-h-[200px] overflow-y-auto bg-[#0a0a0c] py-3 font-mono text-xs leading-relaxed">
+          <div className="max-h-[200px] overflow-auto bg-[#0a0a0c] py-3 font-mono text-xs leading-relaxed">
             <DiffLine>{'<div class="plan plan-business">'}</DiffLine>
             <DiffLine>{"  <h3>Business</h3>"}</DiffLine>
             <DiffLine kind="del">

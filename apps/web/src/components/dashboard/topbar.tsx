@@ -39,28 +39,30 @@ export function Topbar({ user }: { user: User }) {
           <Button asChild variant="outline" size="sm">
             <Link href="/dashboard/ask">
               <Sparkles className="size-3.5 text-[var(--link)]" />
-              Ask
+              <span className="hidden sm:inline">Ask</span>
             </Link>
           </Button>
         </TooltipTrigger>
         <TooltipContent>Ask Outrival — answers from your data</TooltipContent>
       </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Refresh"
-            onClick={refresh}
-            disabled={isPending}
-          >
-            <RefreshCw size={14} className={isPending ? "animate-spin" : ""} />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>Refresh</TooltipContent>
-      </Tooltip>
-      <ThemeToggle />
-      <WhatsNewButton />
+      <div className="hidden items-center gap-2 sm:flex lg:gap-3">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Refresh"
+              onClick={refresh}
+              disabled={isPending}
+            >
+              <RefreshCw size={14} className={isPending ? "animate-spin" : ""} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Refresh</TooltipContent>
+        </Tooltip>
+        <ThemeToggle />
+        <WhatsNewButton />
+      </div>
       <NotificationsBell compact />
       <UserMenu user={user} />
     </header>

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { requireAdmin } from "./_lib/server";
 import { AdminNav } from "./_components/admin-nav";
+import { AdminMobileNav } from "./_components/admin-mobile-nav";
 
 export const metadata: Metadata = {
   title: "Admin ops",
@@ -13,7 +14,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   await requireAdmin();
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-dvh bg-background text-foreground">
       <div className="mx-auto flex max-w-7xl gap-6 p-6">
         <aside className="sticky top-6 hidden h-fit w-52 shrink-0 md:block">
           <Link href="/admin" className="mb-4 flex items-center gap-2 px-3">
@@ -24,7 +25,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           </Link>
           <AdminNav />
         </aside>
-        <main className="min-w-0 flex-1">{children}</main>
+        <main className="min-w-0 flex-1">
+          <AdminMobileNav />
+          {children}
+        </main>
       </div>
     </div>
   );

@@ -259,7 +259,7 @@ export function AuthForm() {
   }
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-6 py-10">
+    <div className="relative flex min-h-dvh items-center justify-center overflow-hidden px-6 py-10">
       {/* Ambient amber glow behind the card */}
       <div
         aria-hidden
@@ -277,7 +277,7 @@ export function AuthForm() {
         </Link>
 
         {/* Card */}
-        <div className="mt-8 rounded-2xl border border-border bg-surface p-8 shadow-xl shadow-black/5">
+        <div className="mt-8 rounded-2xl border border-border bg-surface p-6 sm:p-8 shadow-xl shadow-black/5">
           {step === "totp" ? (
             <TotpStep
               status={status}
@@ -625,7 +625,7 @@ function TotpStep({
           type="checkbox"
           checked={trust}
           onChange={(e) => setTrust(e.target.checked)}
-          className="size-3.5 accent-primary"
+          className="size-4 accent-primary"
         />
         Trust this device for 30 days
       </label>
@@ -734,7 +734,7 @@ function OtpInput({
   }
 
   return (
-    <div className="mt-6 flex justify-center gap-2" onPaste={handlePaste}>
+    <div className="mt-6 flex justify-center gap-1.5 sm:gap-2" onPaste={handlePaste}>
       {Array.from({ length: 6 }).map((_, i) => (
         <input
           key={i}
@@ -752,7 +752,7 @@ function OtpInput({
           autoFocus={i === 0}
           aria-label={`Digit ${i + 1}`}
           className={cn(
-            "size-12 rounded-lg border bg-background text-center text-xl font-mono tabular-nums slashed-zero text-foreground outline-none transition-colors",
+            "size-10 sm:size-12 rounded-lg border bg-background text-center text-xl font-mono tabular-nums slashed-zero text-foreground outline-none transition-colors",
             "focus:border-ring focus:ring-2 focus:ring-ring/30",
             invalid ? "border-destructive" : "border-border",
             disabled && "opacity-50",

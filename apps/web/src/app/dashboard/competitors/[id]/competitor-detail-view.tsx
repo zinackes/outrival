@@ -196,6 +196,14 @@ const TAB_PANEL_CLASS = "animate-in fade-in slide-in-from-bottom-1 duration-300"
 
 const POLL_INTERVAL_MS = 3000;
 
+// AI-summary generation is a fire-and-trigger job (refresh-competitor-summary) that
+// can take well beyond a single tick — queued behind other summaries (concurrency 1),
+// slow AI failover, retries. We persist the in-progress marker per competitor so the
+// "Generating…" state + completion poll survive navigating away and back / a reload,
+// instead of dying with the component (the old fixed 6s refetch gave up far too early).
+const summaryGenKey = (competitorId: string) => `outrival:summary-gen:${competitorId}`;
+type SummaryGenMeta = { startedAt: number; baseline: string | null };
+
 type MonitorStatus = "running" | "failed" | "ok" | "idle";
 
 function monitorStatus(m: Monitor, running: boolean): MonitorStatus {
@@ -252,6 +260,10 @@ export function CompetitorDetailView({ id }: { id: string }) {
     >
   >(new Map());
   const seededRef = useRef(false);
+  // AI-summary generation poll (persisted across navigation, see summaryGenKey).
+  const [summaryGenerating, setSummaryGenerating] = useState(false);
+  const summaryStartRef = useRef<SummaryGenMeta | null>(null);
+  const summarySeededIdRef = useRef<string | null>(null);
 
   // Prev/next pager across the competitor roster (Linear "n/total" + chevrons):
   // fetch the ordered roster once; the pager walks it so an analyst flips through
@@ -566,16 +578,94 @@ export function CompetitorDetailView({ id }: { id: string }) {
     }
   }
 
-  // Kebab → Refresh AI summary (same job as the Summary card's Refresh button).
-  async function refreshSummaryFromMenu() {
+  // Trigger the AI-summary job and poll until it lands. Shared by the Summary card's
+  // button and the kebab "Refresh AI summary". The in-progress marker is persisted
+  // (summaryGenKey) so the spinner + poll resume if you leave and come back or reload —
+  // the job runs server-side regardless; we just keep watching for its result instead
+  // of giving up after one fixed delay.
+  async function startSummaryGeneration() {
+    if (summaryGenerating) return;
+    const baseline = data?.competitor.aiSummaryUpdatedAt ?? null;
     try {
       await api.refreshCompetitorSummary(id);
-      toast.info("Summary refresh started", { description: "Regenerating the AI summary…" });
-      setTimeout(() => refresh(), 6000);
     } catch (e) {
       toastApiError(e, { title: "Couldn't refresh the summary" });
+      return;
     }
+    const meta: SummaryGenMeta = { startedAt: Date.now(), baseline };
+    summaryStartRef.current = meta;
+    try {
+      window.localStorage.setItem(summaryGenKey(id), JSON.stringify(meta));
+    } catch {}
+    setSummaryGenerating(true);
+    toast.info("Generating AI summary…", { description: "It updates here when it's ready." });
   }
+
+  // Resume (or clear) the in-progress marker on mount / when switching competitor.
+  // Runs once per id: re-arm the poll if a generation was in flight and hasn't completed
+  // or expired; otherwise drop a stale/finished marker.
+  useEffect(() => {
+    if (!data) return;
+    if (summarySeededIdRef.current === id) return;
+    summarySeededIdRef.current = id;
+    summaryStartRef.current = null;
+    let stored: SummaryGenMeta | null = null;
+    try {
+      const raw = window.localStorage.getItem(summaryGenKey(id));
+      if (raw) stored = JSON.parse(raw) as SummaryGenMeta;
+    } catch {}
+    let resume = false;
+    if (stored) {
+      const updatedAt = data.competitor.aiSummaryUpdatedAt ?? null;
+      const done = Boolean(updatedAt && updatedAt !== stored.baseline);
+      const expired = Date.now() - stored.startedAt > POLL_TIMEOUT_MS;
+      if (done || expired) {
+        try {
+          window.localStorage.removeItem(summaryGenKey(id));
+        } catch {}
+      } else {
+        summaryStartRef.current = stored;
+        resume = true;
+      }
+    }
+    setSummaryGenerating(resume);
+  }, [data, id]);
+
+  // While generating, poll the detail until aiSummaryUpdatedAt advances past the baseline
+  // (success) or POLL_TIMEOUT_MS elapses (give up — it may still finish server-side). The
+  // effect lifecycle clears the interval on stop / id change / unmount.
+  useEffect(() => {
+    if (!summaryGenerating) return;
+    const interval = setInterval(async () => {
+      const meta = summaryStartRef.current;
+      if (!meta) {
+        setSummaryGenerating(false);
+        return;
+      }
+      if (Date.now() - meta.startedAt > POLL_TIMEOUT_MS) {
+        summaryStartRef.current = null;
+        try {
+          window.localStorage.removeItem(summaryGenKey(id));
+        } catch {}
+        setSummaryGenerating(false);
+        toast.error("Summary is taking longer than usual", {
+          description: "It may still finish in the background — check back in a moment.",
+        });
+        return;
+      }
+      const fresh = await refresh();
+      const updatedAt = fresh?.competitor.aiSummaryUpdatedAt ?? null;
+      if (updatedAt && updatedAt !== meta.baseline) {
+        summaryStartRef.current = null;
+        try {
+          window.localStorage.removeItem(summaryGenKey(id));
+        } catch {}
+        setSummaryGenerating(false);
+        toast.success("AI summary updated");
+      }
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [summaryGenerating, id]);
 
   // Kebab → Re-detect pricing. Hands pricing back to auto-detection + re-scrapes.
   async function redetectPricingFromMenu() {
@@ -778,7 +868,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
           onToggleMonitoring={toggleMonitoringPaused}
           onToggleMute={toggleAlertsMuted}
           onRecomputeOverlap={recomputeOverlap}
-          onRefreshSummary={refreshSummaryFromMenu}
+          onRefreshSummary={startSummaryGeneration}
           onRedetectPricing={redetectPricingFromMenu}
           onExport={exportSignals}
         />
@@ -819,7 +909,11 @@ export function CompetitorDetailView({ id }: { id: string }) {
             />
           ))}
 
-        <AiSummary competitor={competitor} onRefresh={refresh} />
+        <AiSummary
+          competitor={competitor}
+          generating={summaryGenerating}
+          onGenerate={startSummaryGeneration}
+        />
 
         <Tabs
           value={tab}
@@ -1982,40 +2076,23 @@ function MonitorEditDialog({
 
 function AiSummary({
   competitor,
-  onRefresh,
+  generating,
+  onGenerate,
 }: {
   competitor: Competitor;
-  onRefresh: () => void;
+  generating: boolean;
+  onGenerate: () => void;
 }) {
-  const [refreshing, setRefreshing] = useState(false);
-
-  async function refresh() {
-    setRefreshing(true);
-    try {
-      await api.refreshCompetitorSummary(competitor.id);
-      toast.info("Refreshing AI summary…", {
-        description: "It will update in a few seconds.",
-      });
-      setTimeout(() => {
-        onRefresh();
-        setRefreshing(false);
-      }, 6000);
-    } catch (e) {
-      toastApiError(e, { title: "Couldn't refresh the summary" });
-      setRefreshing(false);
-    }
-  }
-
   if (!competitor.aiSummary) {
     return (
       <Card className="px-4 py-3 border-dashed flex items-start gap-2 justify-between">
         <div className="flex items-start gap-2 text-muted-foreground text-sm">
           <Sparkles size={13} className="mt-0.5 shrink-0" />
-          <span>AI summary not generated yet.</span>
+          <span>{generating ? "Generating AI summary…" : "AI summary not generated yet."}</span>
         </div>
-        <Button size="sm" variant="secondary" onClick={refresh} disabled={refreshing} className="h-7 text-xs">
-          {refreshing ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
-          {refreshing ? "Generating…" : "Generate now"}
+        <Button size="sm" variant="secondary" onClick={onGenerate} disabled={generating} className="h-7 text-xs">
+          {generating ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
+          {generating ? "Generating…" : "Generate now"}
         </Button>
       </Card>
     );
@@ -2029,16 +2106,16 @@ function AiSummary({
         <Button
           size="sm"
           variant="ghost"
-          onClick={refresh}
-          disabled={refreshing}
+          onClick={onGenerate}
+          disabled={generating}
           className="h-7 text-xs text-muted-foreground"
         >
-          {refreshing ? (
+          {generating ? (
             <Loader2 size={12} className="animate-spin" />
           ) : (
             <RefreshCw size={12} />
           )}
-          {refreshing ? "Refreshing" : "Refresh"}
+          {generating ? "Refreshing" : "Refresh"}
         </Button>
       </div>
       <p className="text-content leading-relaxed text-foreground/90">{competitor.aiSummary}</p>

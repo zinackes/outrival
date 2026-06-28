@@ -403,6 +403,7 @@ export interface ActivitySource {
   monitorId: string;
   competitorId: string;
   competitorName: string;
+  competitorColor?: string | null;
   sourceType: string;
   lastRunAt: string | null;
   nextRunAt: string | null;
@@ -416,6 +417,7 @@ export interface ActivityUpcoming {
   monitorId: string;
   competitorId: string;
   competitorName: string;
+  competitorColor?: string | null;
   sourceType: string;
   nextRunAt: string;
 }
@@ -468,6 +470,7 @@ export type ActivityCaptured =
 export interface ActivityEvent {
   competitorId: string;
   competitorName: string;
+  competitorColor?: string | null;
   sourceType: string;
   status: "success" | "no_change" | "failed";
   durationMs: number;

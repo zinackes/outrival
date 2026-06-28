@@ -36,6 +36,7 @@ import { Kpi } from "./kpi";
 import { SeverityBadge } from "./severity-pill";
 import { CatPill } from "./cat-pill";
 import { CompAvatar } from "./comp-avatar";
+import { competitorNameColor } from "@/lib/competitor-color";
 import { CategoryBar, CategoryKey } from "./category-bar";
 import { DeltaPill, computeDelta } from "./delta-pill";
 import { SectoralSignalsSection } from "./sectoral-signals";
@@ -722,6 +723,7 @@ export function OverviewView() {
                         href={`/dashboard/competitors/${c.id}`}
                         onClick={(e) => e.stopPropagation()}
                         className="rounded-sm underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+                        style={competitorNameColor(c.color)}
                       >
                         {c.name}
                       </Link>

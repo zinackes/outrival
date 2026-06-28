@@ -96,10 +96,14 @@
      palette token / hex); these lightness roles render that color correctly on the
      current surface, exactly like the --cat-* split. accent = dot/ring/left bar/
      header; fill = avatar tile background (no favicon); on-fill = the initial letter
-     on that tinted tile. Unset hue/chroma → a component stays neutral (no color). */
+     on that tinted tile; text = the competitor NAME tinted inline (a darker accent
+     than --comp-l-accent: that one is tuned for 3:1 graphical edges, this one clears
+     4.5:1 as body text for every palette hue at its chroma — verified). Unset
+     hue/chroma → a component stays neutral (no color). */
   --comp-l-accent: 0.55;
   --comp-l-fill: 0.95;
   --comp-l-on-fill: 0.42;
+  --comp-l-text: 0.46;
   --comp-fill-chroma-mult: 0.45;
 
   /* Sidebar — consumed both inline (var(--sidebar-*)) and via bg-sidebar-* classes */
@@ -198,6 +202,7 @@
   --comp-l-accent: 0.74;
   --comp-l-fill: 0.30;
   --comp-l-on-fill: 0.86;
+  --comp-l-text: 0.80;
   --comp-fill-chroma-mult: 0.5;
 
   /* Sidebar — lifted to the card surface so the rail reads as a distinct plane

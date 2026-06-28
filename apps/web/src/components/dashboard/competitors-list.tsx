@@ -44,6 +44,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -54,7 +59,12 @@ import { PageHead } from "./page-head";
 import { useSetAskContext } from "./ask-context";
 import { DeltaPill, computeDelta } from "./delta-pill";
 import { CompAvatar } from "./comp-avatar";
-import { competitorLeftBorder } from "@/lib/competitor-color";
+import { CompetitorColorPicker } from "./competitor-color-picker";
+import {
+  competitorNameColor,
+  competitorColorVars,
+  COMP_ACCENT,
+} from "@/lib/competitor-color";
 import { FreshnessDot } from "@/components/outrival/freshness-dot";
 import { ListError } from "@/components/outrival/list-error";
 import { toastApiError } from "@/lib/error-helpers";
@@ -73,6 +83,60 @@ type SortDir = "asc" | "desc";
 
 const TH_BASE =
   "text-left px-3.5 py-2.5 text-xs text-muted-foreground font-medium border-b border-border whitespace-nowrap";
+
+// Current-color chip on the quick-set trigger: a filled swatch at the accent
+// lightness when set, a neutral outlined square when the competitor has no color.
+function ColorSwatchButton({ color }: { color: string | null | undefined }) {
+  const vars = competitorColorVars(color);
+  return (
+    <span
+      aria-hidden
+      className="block h-4 w-4 rounded-[5px] border border-border"
+      style={vars ? { ...vars, background: COMP_ACCENT, borderColor: "transparent" } : undefined}
+    />
+  );
+}
+
+// Per-row color picker popover — assign a competitor's identity color without
+// opening its detail page, so the whole roster's palette is editable in one view.
+function ColorQuickSet({
+  competitor,
+  onChange,
+}: {
+  competitor: { id: string; name: string; color: string | null };
+  onChange: (value: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+          aria-label={`Set color for ${competitor.name}`}
+          title="Set color"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <ColorSwatchButton color={competitor.color} />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        className="w-auto max-w-[16rem] p-2.5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <CompetitorColorPicker
+          value={competitor.color}
+          onChange={(v) => {
+            onChange(v);
+            setOpen(false);
+          }}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 export function CompetitorsList() {
   const router = useRouter();
@@ -97,6 +161,24 @@ export function CompetitorsList() {
 
   function refresh() {
     return queryClient.invalidateQueries({ queryKey: competitorsQuery(productId).queryKey });
+  }
+
+  // Quick-set a competitor's color from the list (the dedicated "manage colors"
+  // surface, alongside the per-competitor edit dialog). Optimistic write-through so
+  // the tint flips instantly, rolled back on failure.
+  async function setColor(id: string, value: string | null) {
+    const key = competitorsQuery(productId).queryKey;
+    const prev = queryClient.getQueryData<Competitor[]>(key);
+    queryClient.setQueryData<Competitor[]>(key, (old) =>
+      old?.map((c) => (c.id === id ? { ...c, color: value } : c)),
+    );
+    try {
+      await api.updateCompetitor(id, { color: value });
+      void queryClient.invalidateQueries({ queryKey: key });
+    } catch (e) {
+      queryClient.setQueryData(key, prev);
+      toastApiError(e);
+    }
   }
 
   async function confirmDelete() {
@@ -484,6 +566,7 @@ export function CompetitorsList() {
                         href={`/dashboard/competitors/${c.id}`}
                         onClick={(e) => e.stopPropagation()}
                         className="rounded-sm underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+                        style={competitorNameColor(c.color)}
                       >
                         {c.name}
                       </Link>
@@ -544,7 +627,12 @@ export function CompetitorsList() {
                       ? formatDistanceToNow(new Date(c.lastSignal), { addSuffix: true })
                       : "—"}
                   </td>
-                  <td className="w-8 text-right px-3.5 py-3 align-middle" onClick={(e) => e.stopPropagation()}>
+                  <td className="text-right px-3.5 py-3 align-middle whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                    <div className="inline-flex items-center gap-0.5">
+                    <ColorQuickSet
+                      competitor={c}
+                      onChange={(v) => void setColor(c.id, v)}
+                    />
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button
@@ -570,6 +658,7 @@ export function CompetitorsList() {
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
+                    </div>
                   </td>
                 </motion.tr>
               ))}
@@ -586,7 +675,6 @@ export function CompetitorsList() {
             <motion.div key={c.id} {...feedItemMotion}>
             <Card
               onClick={() => router.push(`/dashboard/competitors/${c.id}`)}
-              style={competitorLeftBorder(c.color)}
               className="cursor-pointer transition-colors hover:bg-accent/30"
             >
               <div className="p-5">
@@ -594,7 +682,7 @@ export function CompetitorsList() {
                   <CompAvatar name={c.name} url={c.url} color={c.color} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 font-semibold text-content">
-                      {c.name}
+                      <span style={competitorNameColor(c.color)}>{c.name}</span>
                       {c.freshness && (
                         <FreshnessDot
                           lastScrapedAt={c.freshness.lastScrapedAt}
@@ -618,6 +706,10 @@ export function CompetitorsList() {
                       />
                     </a>
                   </div>
+                  <ColorQuickSet
+                    competitor={c}
+                    onChange={(v) => void setColor(c.id, v)}
+                  />
                 </div>
                 {c.category && (
                   <div className="flex gap-1.5 mb-3 flex-wrap">

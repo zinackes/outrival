@@ -42,6 +42,7 @@ import {
   Link2,
   Boxes,
   Crosshair,
+  Palette,
 } from "lucide-react";
 import {
   Dialog,
@@ -57,6 +58,9 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { BattleCardTab } from "@/components/outrival/battle-card-tab";
@@ -1161,6 +1165,7 @@ function Header({
 }) {
   const [editOpen, setEditOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   async function copyLink() {
     try {
@@ -1305,7 +1310,7 @@ function Header({
             </Tooltip>
           </div>
         )}
-        <DropdownMenu>
+        <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
           <DropdownMenuTrigger asChild>
             <Button
               size="sm"
@@ -1331,6 +1336,20 @@ function Header({
             <DropdownMenuItem onClick={() => setEditOpen(true)}>
               <Pencil size={13} /> Edit details
             </DropdownMenuItem>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger className="gap-2">
+                <Palette size={13} /> Color
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="p-2.5">
+                <CompetitorColorPicker
+                  value={competitor.color}
+                  onChange={(v) => {
+                    void onEditSave({ color: v });
+                    setMenuOpen(false);
+                  }}
+                />
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
             <DropdownMenuItem onClick={() => setAssignOpen(true)}>
               <Boxes size={13} /> Assign to products
             </DropdownMenuItem>

@@ -47,7 +47,16 @@ export const HOUSE_TECHNOLOGIES: TechCatalog = {
   // ── CMS / site builders (cat 1) ──────────────────────────────────────────
   WordPress: {
     cats: [1],
-    html: ["/wp-content/", "/wp-includes/"],
+    // WP-core self-emitted signals only — these appear on a page WordPress itself
+    // renders, NOT when another site merely hotlinks a /wp-content/ asset (a blog
+    // image, a press visual). The bare /wp-content/ path was matched against the
+    // whole HTML and scored "high" on a single hit, so any embed flagged the site
+    // WordPress even when it runs on Webflow/Next/Framer.
+    html: [
+      "rel=[\"']https://api\\.w\\.org/", // <link rel="https://api.w.org/"> REST discovery
+      "/wp-json/", // REST API root
+    ],
+    headers: { "x-pingback": "xmlrpc" }, // X-Pingback: …/xmlrpc.php
     meta: { generator: "WordPress(?:\\s([\\d.]+))?\\;version:\\1" },
     website: "https://wordpress.org",
   },

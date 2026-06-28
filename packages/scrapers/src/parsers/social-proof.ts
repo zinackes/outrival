@@ -6,6 +6,8 @@
  * `@outrival/scrapers/social-proof` subpath.
  */
 
+import { classifyLogoName } from "@outrival/shared";
+
 export interface TestimonialItem {
   /** Stable hash of the normalized quote, for matching across scrapes. */
   hash: string;
@@ -40,11 +42,15 @@ function looksLikeAsset(s: string): boolean {
   return /^https?:\/\//i.test(s) || /\.(png|jpe?g|svg|webp|gif)(\?|$)/i.test(s) || s.includes("/");
 }
 
-/** Brand name normalized for matching, or null if it's an asset path / too short. */
+/** Brand name normalized for matching, or null if it's an asset path / not a
+ *  real brand (frame/colour/review/cert/person/phrase). Reuses the shared
+ *  classifier so a junk "logo" never fires an add/remove signal and decorative
+ *  wrappers ("ramp client logo" vs "ramp logo") match. */
 export function normalizeLogo(raw: string): string | null {
   const t = norm(raw);
   if (!t || t.length < 2 || t.length > 60 || looksLikeAsset(t)) return null;
-  return t.toLowerCase();
+  const verdict = classifyLogoName(t);
+  return verdict.kind === "brand" ? verdict.name.toLowerCase() : null;
 }
 
 /**

@@ -45,6 +45,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SidebarCompetitors } from "@/components/dashboard/sidebar-competitors";
+import { UserAvatar } from "@/components/dashboard/user-avatar";
 import { productsListQuery } from "@/lib/queries";
 import {
   ALL_PRODUCTS,
@@ -59,6 +60,11 @@ export interface Org {
   plan?: string;
   seatsUsed?: number;
   seatsLimit?: number;
+}
+
+export interface SwitcherUser {
+  name: string | null;
+  email: string | null;
 }
 
 interface NavItem {
@@ -124,13 +130,13 @@ const SCOPED_PATHS = [
   "/dashboard/competitors",
 ];
 
-function initials(name?: string | null, fallback = "?") {
-  if (!name) return fallback;
-  const parts = name.trim().split(/\s+/).slice(0, 2);
-  return parts.map((p) => p[0]?.toUpperCase() ?? "").join("") || fallback;
-}
-
-export function WorkspaceSwitcher({ org }: { org: Org }) {
+export function WorkspaceSwitcher({
+  org,
+  user,
+}: {
+  org: Org;
+  user: SwitcherUser;
+}) {
   const { isMobile } = useSidebar();
   const router = useRouter();
   const pathname = usePathname();
@@ -193,16 +199,10 @@ export function WorkspaceSwitcher({ org }: { org: Org }) {
               tooltip={org.name}
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
-              <div
-                className="flex aspect-square size-8 items-center justify-center rounded-md bg-foreground text-background"
-                style={{
-                  fontFamily: "var(--font-display)",
-                  fontWeight: 700,
-                  fontSize: 12,
-                }}
-              >
-                {initials(org.name, "O")}
-              </div>
+              <UserAvatar
+                seed={user.email ?? user.name ?? "user"}
+                size={32}
+              />
               {multiProduct ? (
                 // Product is the primary context; org/plan drops to the muted sub-line.
                 <div className="grid flex-1 text-left leading-tight">
@@ -296,7 +296,7 @@ export function WorkspaceSwitcher({ org }: { org: Org }) {
   );
 }
 
-export function AppSidebar({ org }: { org: Org }) {
+export function AppSidebar({ org, user }: { org: Org; user: SwitcherUser }) {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -357,7 +357,7 @@ export function AppSidebar({ org }: { org: Org }) {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
-        <WorkspaceSwitcher org={org} />
+        <WorkspaceSwitcher org={org} user={user} />
       </SidebarHeader>
       <SidebarContent className="gap-0 no-scrollbar">
         <SidebarGroup className="py-1">

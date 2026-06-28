@@ -233,7 +233,7 @@ export function OverviewTab({
   return (
     <TabCard>
       {isForeign && (
-        <div className="flex items-center gap-2 p-5">
+        <div className="flex items-center gap-2 px-5 py-1.5">
           <Badge variant="outline" className="uppercase">
             {language}
           </Badge>
@@ -298,7 +298,7 @@ export function OverviewTab({
         <TabSection title="Customers & proof" icon={Users}>
           {customerLogos.length > 0 && (
             <TooltipProvider delayDuration={150}>
-              <div className="grid grid-cols-[repeat(auto-fit,minmax(104px,1fr))] gap-px overflow-hidden rounded-lg border border-border bg-border">
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(104px,1fr))] gap-px overflow-hidden rounded-lg border border-border bg-card">
                 {customerLogos.map((l, i) => (
                   <LogoChip key={i} logo={l} />
                 ))}

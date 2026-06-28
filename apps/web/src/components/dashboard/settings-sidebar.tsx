@@ -35,7 +35,11 @@ import {
   SidebarRail,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
-import { WorkspaceSwitcher, type Org } from "@/components/dashboard/sidebar";
+import {
+  WorkspaceSwitcher,
+  type Org,
+  type SwitcherUser,
+} from "@/components/dashboard/sidebar";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -75,7 +79,13 @@ const DANGER: NavItem[] = [
   { href: "/dashboard/settings/danger", label: "Delete workspace", icon: Trash2, danger: true, keywords: "delete erase danger gdpr remove account close" },
 ];
 
-export function SettingsSidebar({ org }: { org: Org }) {
+export function SettingsSidebar({
+  org,
+  user,
+}: {
+  org: Org;
+  user: SwitcherUser;
+}) {
   const pathname = usePathname();
   const [query, setQuery] = useState("");
 
@@ -116,7 +126,7 @@ export function SettingsSidebar({ org }: { org: Org }) {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
-        <WorkspaceSwitcher org={org} />
+        <WorkspaceSwitcher org={org} user={user} />
       </SidebarHeader>
       <SidebarContent className="no-scrollbar">
         <SidebarGroup className="py-1">

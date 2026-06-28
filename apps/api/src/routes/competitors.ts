@@ -42,6 +42,9 @@ import {
   computeNextScanAt,
   TECH_STACK_SCRAPE_INTERVAL_DAYS,
   isValidCompetitorColor,
+  classifyLogoName,
+  isBlankSvgDataUri,
+  isStoreBadgeSrc,
   type SourceType,
   type MonitorFrequency,
 } from "@outrival/shared";
@@ -143,6 +146,31 @@ function isOwnOrJunkLogo(
   return false;
 }
 
+// Map a stored logo entry to a clean fact-sheet logo, or null to drop it. Runs
+// the shared brand-name classifier (frames, colour codes, review/compliance
+// badges, person names, descriptive phrases are NOT customers), recovers the
+// clean brand name ("ramp client logo" → "ramp"), drops blank-SVG spacers and
+// store-download badges, and finally the competitor's own/junk marks. Read-time
+// so already-captured snapshots clean up without a re-scrape.
+function refineLogo(
+  raw: string | { name?: string | null; src?: string | null },
+  brandTokens: string[],
+  competitorHost: string | null,
+): FactSheetLogo | null {
+  const logo = toLogo(raw);
+  const verdict = classifyLogoName(logo.name);
+  if (verdict.kind === "junk") return null;
+  const name = verdict.kind === "brand" ? verdict.name : null;
+
+  let src = logo.src;
+  if (src && (isBlankSvgDataUri(src) || isStoreBadgeSrc(src))) src = null;
+
+  const cleaned: FactSheetLogo = { name, src };
+  if (!cleaned.name && !cleaned.src) return null;
+  if (isOwnOrJunkLogo(cleaned, brandTokens, competitorHost)) return null;
+  return cleaned;
+}
+
 // The homepage "fact sheet" fields surfaced on the Overview tab, derived from the
 // latest homepage snapshot's parsed structure (patch-16/17). Shared by the overview
 // builder and the on-demand translate route, which reads the same source strings.
@@ -233,6 +261,21 @@ async function buildHomepageFacts(
     .filter((t) => t.quote.length > 0)
     .slice(0, 3);
 
+  // Real customer brands only: classify each captured logo, dedupe by clean name
+  // (so "ramp client logo" and "ramp logo" collapse to one) / image, cap for the
+  // glance.
+  const seenLogo = new Set<string>();
+  const customerLogos: FactSheetLogo[] = [];
+  for (const entry of s.socialProof?.customerLogos ?? []) {
+    const l = refineLogo(entry, brandTokens, competitorHost);
+    if (!l) continue;
+    const key = (l.name ?? l.src ?? "").toLowerCase();
+    if (!key || seenLogo.has(key)) continue;
+    seenLogo.add(key);
+    customerLogos.push(l);
+    if (customerLogos.length >= 24) break;
+  }
+
   // Drive the foreign-language badge + Translate action off the actual scraped
   // copy, not just <html lang>: pages routinely declare lang="en" (or nothing)
   // while the body — or only the subheadline under an English headline — is in
@@ -252,11 +295,7 @@ async function buildHomepageFacts(
       headline,
       subheadline,
       valueProps,
-      customerLogos: (s.socialProof?.customerLogos ?? [])
-        .map(toLogo)
-        .filter((l) => l.name || l.src)
-        .filter((l) => !isOwnOrJunkLogo(l, brandTokens, competitorHost))
-        .slice(0, 24),
+      customerLogos,
       testimonials,
     },
   };

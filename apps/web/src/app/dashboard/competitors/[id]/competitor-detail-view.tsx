@@ -1777,7 +1777,7 @@ function MonitorSources({
                       ? formatDistanceToNow(new Date(m.lastRunAt), { addSuffix: true })
                       : "never scraped";
             return (
-              <div key={m.id} className="flex items-center gap-3 px-4 py-2.5">
+              <div key={m.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5">
                 <SourceStatusIcon status={status} />
                 <span className="font-medium text-sm w-[104px] truncate">{sourceShortLabel(m.sourceType)}</span>
                 <Eyebrow size="micro" className="w-12">

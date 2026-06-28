@@ -450,7 +450,7 @@ export function DiscoveryView() {
       )}
 
       {view.length > 0 && (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3.5">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(320px,100%),1fr))] gap-3.5">
           <AnimatePresence initial={false} mode="popLayout">
           {view.map((c) => {
             const name = c.title ?? c.url.replace(/^https?:\/\//, "");

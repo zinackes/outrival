@@ -73,7 +73,7 @@ export function Nav() {
             aria-label={open ? "Close menu" : "Open menu"}
             aria-expanded={open}
             aria-controls="mobile-nav"
-            className="-mr-1.5 inline-flex size-9 items-center justify-center rounded-md text-text-muted transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 md:hidden"
+            className="-mr-1.5 inline-flex size-11 items-center justify-center rounded-md text-text-muted transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 md:hidden"
           >
             {open ? <X size={18} /> : <Menu size={18} />}
           </button>

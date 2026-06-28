@@ -127,7 +127,7 @@ function EditableText({
   }
 
   return (
-    <div className="grid grid-cols-[140px_1fr] gap-3 items-start py-2">
+    <div className="grid grid-cols-1 sm:grid-cols-[140px_1fr] gap-3 items-start py-2">
       <div className="text-dense text-muted-foreground pt-1">{label}</div>
       <div className="min-w-0">
         {editing ? (
@@ -425,7 +425,7 @@ function PricingCard({
             </Button>
           </div>
 
-          <div className="grid grid-cols-[140px_1fr] gap-3 items-center">
+          <div className="grid grid-cols-1 sm:grid-cols-[140px_1fr] gap-3 items-center">
             <div className="text-dense text-muted-foreground">Pricing model</div>
             <Select value={status} onValueChange={setStatus}>
               <SelectTrigger className="sm:max-w-xs">

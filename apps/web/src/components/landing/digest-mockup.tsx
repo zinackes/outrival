@@ -140,7 +140,7 @@ export function DigestMockup({ animate = true }: { animate?: boolean }) {
         </Button>
       </div>
 
-      <div className="grid grid-cols-4 gap-px border-y border-border bg-border">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-px border-y border-border bg-border">
         {[
           { label: "Signals", value: "12", delta: "+4" },
           { label: "Critical", value: "2" },

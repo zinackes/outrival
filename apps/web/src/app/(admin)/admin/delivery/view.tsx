@@ -116,7 +116,7 @@ export function DeliveryView({ data }: { data: AdminDelivery | null }) {
           <Empty>No digests in the window.</Empty>
         ) : (
           <div className="flex flex-col gap-5">
-            <div className="grid grid-cols-3 gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
               <Stat label="Generated" value={dig.generated} />
               <Stat label="Sent" value={dig.sent} hint={pctFmt(dig.sent / dig.generated)} />
               <Stat

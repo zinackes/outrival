@@ -67,14 +67,14 @@ export function Hero() {
         <p className="mb-5 text-center text-xs text-text-subtle">
           A year of monitoring · each bar a week · the bright ones became signals
         </p>
-        <div aria-hidden className="flex h-56 items-end justify-center gap-[5px]">
+        <div aria-hidden className="flex h-56 items-end justify-center gap-[3px] sm:gap-[5px]">
           {SPECTRUM.map((h, i) => {
             const sig = SIGNALS[i];
             return (
               <div
                 key={i}
                 style={{ height: `${h}px` }}
-                className={`group relative w-[5px] shrink-0 rounded-[3px] transition-opacity duration-150 ${
+                className={`group relative w-[3px] sm:w-[5px] shrink-0 rounded-[3px] transition-opacity duration-150 ${
                   sig
                     ? "z-20 bg-primary opacity-90 hover:opacity-100"
                     : "bg-text-muted opacity-25 hover:opacity-60"

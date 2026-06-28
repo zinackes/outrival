@@ -52,7 +52,7 @@ export default async function EnrichmentCompletenessPage() {
         {m.reviews.withScores === 0 ? (
           <Empty>No review scores recorded yet.</Empty>
         ) : (
-          <div className="grid grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
             <Stat label="With scores" value={m.reviews.withScores} />
             <Stat
               label="With sub-scores"

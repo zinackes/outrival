@@ -8,6 +8,7 @@ import { Users, ChevronRight, MoreHorizontal } from "lucide-react";
 
 import { type Competitor } from "@/lib/api";
 import { competitorsQuery } from "@/lib/queries";
+import { useActiveProduct } from "@/hooks/use-active-product";
 import { cn } from "@/lib/utils";
 import {
   SidebarMenuAction,
@@ -41,11 +42,17 @@ function lastSignalMs(c: Competitor) {
 
 export function SidebarCompetitors() {
   const pathname = usePathname();
-  // Shares the ["competitors"] cache with the Overview + Competitors pages; polls in
-  // the background. Mutations elsewhere invalidate ["competitors"] → this refreshes
-  // automatically via the shared cache (no manual event subscription needed).
-  const compsQ = useQuery({ ...competitorsQuery(), refetchInterval: POLL_MS });
+  // patch-28 — scope the roster to the active product (the top-left switcher); absent
+  // → all competitors. Shares the ["competitors", productId?] cache with the
+  // Competitors list page; polls in the background. Mutations elsewhere invalidate the
+  // matching key → this refreshes via the shared cache (no manual event subscription).
+  const productId = useActiveProduct() ?? undefined;
+  const compsQ = useQuery({ ...competitorsQuery(productId), refetchInterval: POLL_MS });
   const comps = compsQ.data ?? null;
+  // Carry the scope onto the list links so the Competitors page opens scoped too.
+  const listHref = productId
+    ? `/dashboard/competitors?product=${encodeURIComponent(productId)}`
+    : "/dashboard/competitors";
   const [open, setOpen] = React.useState(true);
 
   const activeId = React.useMemo(() => {
@@ -84,7 +91,7 @@ export function SidebarCompetitors() {
   return (
     <SidebarMenuItem>
       <SidebarMenuButton asChild isActive={parentActive} tooltip="Competitors">
-        <Link href="/dashboard/competitors">
+        <Link href={listHref}>
           <Users />
           <span>Competitors</span>
         </Link>
@@ -113,7 +120,7 @@ export function SidebarCompetitors() {
                   className={COMP_ROW}
                 >
                   <Link href={`/dashboard/competitors/${c.id}`}>
-                    <CompAvatar name={c.name} url={c.url} color={c.color} size={22} />
+                    <CompAvatar name={c.name} url={c.url} size={22} />
                     <span className="truncate">{c.name}</span>
                     {n > 0 && (
                       <span className="ml-auto shrink-0 font-mono text-meta tabular-nums text-muted-foreground transition-colors duration-150 group-hover/comp:text-foreground group-data-[active=true]/comp:text-foreground motion-reduce:transition-none">
@@ -131,7 +138,7 @@ export function SidebarCompetitors() {
                 asChild
                 className="w-full text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground motion-reduce:transition-none"
               >
-                <Link href="/dashboard/competitors">
+                <Link href={listHref}>
                   <MoreHorizontal />
                   <span>View all ({sorted.length})</span>
                 </Link>

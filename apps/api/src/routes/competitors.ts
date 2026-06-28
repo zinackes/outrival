@@ -24,6 +24,7 @@ import { ensureUserOrg } from "../lib/org";
 import { associateCompetitorWithPrimaryProduct, productCompetitorIds } from "../lib/products";
 import { analyticsQuery } from "../lib/analytics-safe";
 import { translateToEnglish } from "../lib/translate";
+import { detectContentLanguage } from "../lib/detect-language";
 import {
   checkCompetitorQuota,
   getOrgPlan,
@@ -197,28 +198,66 @@ async function buildHomepageFacts(
   }
 
   const s = snap.structure as StoredHomepage;
+
+  const headline = s.hero?.headline ?? null;
+  const subheadline = s.hero?.subheadline ?? null;
+  // Section headings carrying the value proposition (feature blocks and
+  // integration showcases), in document order, capped for the glance.
+  // Scroll-driven "stepped" layouts repeat a mockup label (e.g. an H3
+  // "Product Brief") across every panel, and it classifies as a feature
+  // heading — so dedupe case-insensitively and drop any heading recurring
+  // 3+ times (a template/UI label, never a distinct highlight).
+  const valueProps = (() => {
+    const headings = (s.sections ?? [])
+      .filter((sec) => sec.type === "features" || sec.type === "integrations")
+      .map((sec) => sec.heading?.trim() ?? "")
+      .filter((h) => h.length > 0);
+    const counts = new Map<string, number>();
+    for (const h of headings) {
+      const k = h.toLowerCase();
+      counts.set(k, (counts.get(k) ?? 0) + 1);
+    }
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const h of headings) {
+      const k = h.toLowerCase();
+      if ((counts.get(k) ?? 0) >= 3) continue; // template/UI label, not a highlight
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(h);
+    }
+    return out.slice(0, 8);
+  })();
+  const testimonials = (s.socialProof?.testimonials ?? [])
+    .map((t) => ({ quote: t.quote?.trim() ?? "", author: t.author ?? null }))
+    .filter((t) => t.quote.length > 0)
+    .slice(0, 3);
+
+  // Drive the foreign-language badge + Translate action off the actual scraped
+  // copy, not just <html lang>: pages routinely declare lang="en" (or nothing)
+  // while the body — or only the subheadline under an English headline — is in
+  // another language, which left the Translate button hidden. Detect on the
+  // aggregated text; fall back to <html lang> when there's too little copy for a
+  // confident guess.
+  const detectedLanguage = detectContentLanguage(
+    [headline, subheadline, ...valueProps, ...testimonials.map((t) => t.quote)]
+      .filter((t): t is string => !!t)
+      .join(". "),
+  );
+
   return {
     capturedAt: snap.scrapedAt,
     homepage: {
-      language: s.language ?? null,
-      headline: s.hero?.headline ?? null,
-      subheadline: s.hero?.subheadline ?? null,
-      // Section headings carrying the value proposition (feature blocks and
-      // integration showcases), in document order, capped for the glance.
-      valueProps: (s.sections ?? [])
-        .filter((sec) => sec.type === "features" || sec.type === "integrations")
-        .map((sec) => sec.heading?.trim() ?? "")
-        .filter((h) => h.length > 0)
-        .slice(0, 8),
+      language: detectedLanguage ?? s.language ?? null,
+      headline,
+      subheadline,
+      valueProps,
       customerLogos: (s.socialProof?.customerLogos ?? [])
         .map(toLogo)
         .filter((l) => l.name || l.src)
         .filter((l) => !isOwnOrJunkLogo(l, brandTokens, competitorHost))
         .slice(0, 24),
-      testimonials: (s.socialProof?.testimonials ?? [])
-        .map((t) => ({ quote: t.quote?.trim() ?? "", author: t.author ?? null }))
-        .filter((t) => t.quote.length > 0)
-        .slice(0, 3),
+      testimonials,
     },
   };
 }

@@ -21,6 +21,7 @@ import {
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { toast } from "sonner";
 import { toastApiError, toastRescanLimit } from "@/lib/error-helpers";
+import { friendlyScrapeError } from "@/lib/scrape-errors";
 import { formatDistanceToNow } from "date-fns";
 import {
   api,
@@ -587,7 +588,7 @@ function JobsCard({ jobs }: { jobs: { total: number; items: MyProductJob[] } }) 
       {jobs.items.length === 0 ? (
         <p className="text-sm text-muted-foreground">No open roles detected on your site yet.</p>
       ) : (
-        <ul className="divide-y divide-border max-h-80 overflow-y-auto">
+        <ul className="divide-y divide-border max-h-80 overflow-y-auto pr-2">
           {jobs.items.map((job) => (
             <li key={job.id} className="flex items-center gap-3 py-2 first:pt-0 last:pb-0">
               <div className="min-w-0 flex-1">
@@ -685,7 +686,9 @@ export function MyProductView({
     if (wasScanning.current) {
       wasScanning.current = false;
       if (product?.scanError) {
-        toast.error("Scan failed", { description: product.scanError });
+        toast.error("Scan failed", {
+          description: friendlyScrapeError(product.scanError, product.scanErrorSource ?? undefined),
+        });
       } else {
         toast.success("Scan complete", { description: "Your profile is up to date." });
         // Profile-divergence proposals + features/tech stack are written by
@@ -924,6 +927,43 @@ export function MyProductView({
       />
 
       <SelfChangesPanel changes={changes} actingId={actingId} onResolve={resolve} />
+
+      {/* Surface the last scan failure inline (not just a transient toast) so the
+          user can see *why* their own product couldn't be read and act on it —
+          retry, or fall back to the hand-editable fields below. */}
+      {p.scanError && !p.scanning && (
+        <Card className="p-3.5 mb-4 border-destructive/40 bg-destructive/5">
+          <div className="flex items-start gap-2.5">
+            <AlertTriangle className="size-4 shrink-0 text-destructive mt-0.5" />
+            <div className="min-w-0 flex-1">
+              <h2 className="text-sm font-semibold mb-1">Last scan failed</h2>
+              <p className="text-sm text-muted-foreground max-w-prose">
+                {friendlyScrapeError(p.scanError, p.scanErrorSource ?? undefined)}
+              </p>
+              <p className="text-dense text-muted-foreground mt-1.5 max-w-prose">
+                It&apos;s your own product — you can fill in the details below by hand (your edits
+                stick and won&apos;t be overwritten), or try the scan again.
+              </p>
+              {(p.url || p.repoUrl) && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-2.5"
+                  onClick={() => void rescan()}
+                  disabled={rescanning || p.scanning}
+                >
+                  {rescanning ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="size-3.5" />
+                  )}
+                  Try again
+                </Button>
+              )}
+            </div>
+          </div>
+        </Card>
+      )}
 
       {!p.url && (
         <Card className="p-3.5 mb-4 border-dashed">

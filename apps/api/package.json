@@ -20,6 +20,7 @@
     "better-auth": "^1.6.22",
     "disposable-email-domains-js": "^1.25.0",
     "drizzle-orm": "^0.45.2",
+    "franc-min": "^6.2.0",
     "hono": "^4.12.22",
     "mammoth": "^1.12.0",
     "posthog-node": "^5.35.5",

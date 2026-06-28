@@ -144,8 +144,10 @@ export function OverviewTab({
   const { homepage, numericClaims, pricingNow, reviews, hiring, capturedAt } = overview;
 
   // The fact sheet is scraped verbatim, so a foreign competitor's copy shows in its
-  // own language. Offer a one-click English translation (Azure MT, on demand) and
-  // let the user flip back to the original.
+  // own language. `language` is detected from the actual copy server-side (not just
+  // <html lang>), so a page with an English headline but a French description still
+  // flags as foreign. Offer a one-click English translation (on demand) and let the
+  // user flip back to the original.
   const language = homepage?.language ?? null;
   const isForeign = !!language && language !== "en";
   const [translated, setTranslated] = useState<TranslatedFacts | null>(null);

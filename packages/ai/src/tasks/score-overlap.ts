@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { normalizeDomain } from "@outrival/shared";
 import { AI_CONFIG } from "../config";
 import { groundedAiCall } from "../grounding/grounded-call";
 import { attachQuality, emptyQuality, type WithQuality } from "../grounding/types";
@@ -80,13 +81,27 @@ Write the "reason" in English.
     );
   }
 
-  const byUrl = new Map<string, { overlapScore: number; reason: string }>();
+  // Match on normalized domain, not exact string: the LLM routinely rewrites the
+  // URL it echoes back (drops the trailing slash, adds/strips www, http→https,
+  // lowercases), which made `byUrl.get(c.url)` miss and silently score a real hit
+  // as 0 ("not scored"). normalizeDomain ignores scheme/path/www on both sides.
+  const byDomain = new Map<string, { overlapScore: number; reason: string }>();
   for (const s of result.output.scores) {
-    byUrl.set(s.url, { overlapScore: s.overlap_score, reason: s.reason });
+    const key = normalizeDomain(s.url);
+    if (key) byDomain.set(key, { overlapScore: s.overlap_score, reason: s.reason });
   }
 
-  const scored = candidates.map((c) => {
-    const hit = byUrl.get(c.url);
+  const scored = candidates.map((c, i) => {
+    const hit =
+      byDomain.get(normalizeDomain(c.url) ?? "") ??
+      // Positional fallback: same count in/out (e.g. the single-candidate recompute
+      // path) → trust the LLM kept order even if the URL is unparseable.
+      (result.output.scores.length === candidates.length
+        ? (() => {
+            const s = result.output.scores[i];
+            return s ? { overlapScore: s.overlap_score, reason: s.reason } : undefined;
+          })()
+        : undefined);
     return hit
       ? { url: c.url, overlapScore: hit.overlapScore, reason: hit.reason }
       : { url: c.url, overlapScore: 0, reason: "not scored" };

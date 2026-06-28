@@ -228,7 +228,6 @@ export function SignalCard({
           <CompAvatar
             name={signal.competitorName}
             url={signal.competitorUrl}
-            color={signal.competitorColor}
             size={28}
           />
           <span

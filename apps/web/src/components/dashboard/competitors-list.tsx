@@ -558,7 +558,7 @@ export function CompetitorsList() {
                   className="border-b border-border last:border-b-0 cursor-pointer transition-colors hover:bg-accent/50"
                 >
                   <td className="px-3.5 py-3 align-middle">
-                    <CompAvatar name={c.name} url={c.url} color={c.color} />
+                    <CompAvatar name={c.name} url={c.url} />
                   </td>
                   <td className="px-3.5 py-3 align-middle">
                     <div className="flex items-center gap-1.5 font-medium">
@@ -679,7 +679,7 @@ export function CompetitorsList() {
             >
               <div className="p-5">
                 <div className="flex items-center gap-2.5 mb-3.5">
-                  <CompAvatar name={c.name} url={c.url} color={c.color} />
+                  <CompAvatar name={c.name} url={c.url} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 font-semibold text-content">
                       <span style={competitorNameColor(c.color)}>{c.name}</span>

@@ -35,6 +35,7 @@ import {
   Cpu,
   Pencil,
   Pause,
+  PowerOff,
   Bell,
   BellOff,
   Download,
@@ -84,7 +85,7 @@ import { MonitorAlternatives } from "@/components/outrival/monitor-alternatives"
 import { CompetitorTechStack } from "@/components/outrival/competitor-tech-stack";
 import { Eyebrow } from "@/components/outrival/eyebrow";
 import { CompetitorColorPicker } from "@/components/dashboard/competitor-color-picker";
-import { competitorColorVars, COMP_ACCENT, competitorNameColor } from "@/lib/competitor-color";
+import { competitorNameColor } from "@/lib/competitor-color";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
 import { ListError } from "@/components/outrival/list-error";
 import { toastApiError, toastRescanLimit } from "@/lib/error-helpers";
@@ -204,10 +205,14 @@ const POLL_INTERVAL_MS = 3000;
 const summaryGenKey = (competitorId: string) => `outrival:summary-gen:${competitorId}`;
 type SummaryGenMeta = { startedAt: number; baseline: string | null };
 
-type MonitorStatus = "running" | "failed" | "ok" | "idle";
+type MonitorStatus = "running" | "failed" | "disabled" | "ok" | "idle";
 
 function monitorStatus(m: Monitor, running: boolean): MonitorStatus {
   if (running) return "running";
+  // Auto-paused after repeated failures (markedUnscrapable + isActive=false). A
+  // distinct, muted state — not the loud "failed" hue — so the strip shows the
+  // source is intentionally off and won't retry on its own, not mid-retry.
+  if (m.markedUnscrapable) return "disabled";
   const lastRun = m.lastRunAt ? new Date(m.lastRunAt).getTime() : 0;
   const lastFailed = m.lastFailedAt ? new Date(m.lastFailedAt).getTime() : 0;
   if (lastFailed > 0 && lastFailed > lastRun) return "failed";
@@ -798,6 +803,37 @@ export function CompetitorDetailView({ id }: { id: string }) {
     }
   }
 
+  // Re-activate an auto-paused source (markedUnscrapable): the resume endpoint
+  // clears the failure state, re-enables scheduling, and kicks a fresh scrape.
+  // Mirrors runMonitor's optimistic tracking so the chip flips to the spinner and
+  // the existing poll reports completion.
+  async function resumeMonitor(monitorId: string) {
+    const monitor = data?.monitors.find((m) => m.id === monitorId);
+    if (!monitor) return;
+    scrapingStartRef.current.set(monitorId, {
+      startedAt: Date.now(),
+      lastRunAt: monitor.lastRunAt,
+      lastFailedAt: monitor.lastFailedAt,
+      lastChangedAt: monitor.lastChangedAt,
+    });
+    setScrapingIds((prev) => new Set(prev).add(monitorId));
+    try {
+      await api.resumeMonitor(monitorId);
+      toast.success(`${sourceShortLabel(monitor.sourceType)} resumed`, {
+        description: "A fresh scrape is on its way.",
+      });
+      await refresh();
+    } catch (e) {
+      scrapingStartRef.current.delete(monitorId);
+      setScrapingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(monitorId);
+        return next;
+      });
+      toastApiError(e, { title: "Couldn't resume this source" });
+    }
+  }
+
   // Intelligent rate limiting (patch-22): a manual re-scrape of a source that was
   // checked recently with no change is friction, not blocked. Mirrors the server
   // GET /monitors/:id/staleness thresholds, computed client-side from data we already
@@ -877,6 +913,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
           monitors={monitors}
           scrapingIds={scrapingIds}
           onRun={requestRunMonitor}
+          onResume={resumeMonitor}
           onForceRescanStarted={(mid) =>
             setScrapingIds((prev) => new Set(prev).add(mid))
           }
@@ -1124,8 +1161,6 @@ function Header({
 }) {
   const [editOpen, setEditOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
-  // Colored accent bar carrying the competitor's identity color (null = neutral).
-  const headerColorVars = competitorColorVars(competitor.color);
 
   async function copyLink() {
     try {
@@ -1147,13 +1182,6 @@ function Header({
         >
           <ArrowLeft size={16} />
         </Link>
-        {headerColorVars && (
-          <span
-            aria-hidden
-            className="mt-1 w-1 self-stretch shrink-0 rounded-full"
-            style={{ ...headerColorVars, background: COMP_ACCENT, minHeight: 28 }}
-          />
-        )}
         <div className="min-w-0">
           <div className="flex items-center gap-3 flex-wrap mb-1">
             <h1
@@ -1614,6 +1642,8 @@ function SourceStatusIcon({ status }: { status: MonitorStatus }) {
   if (status === "running")
     return <Loader2 size={13} className="animate-spin text-muted-foreground shrink-0" />;
   if (status === "failed") return <AlertCircle size={13} className="text-critical shrink-0" />;
+  if (status === "disabled")
+    return <PowerOff size={13} className="text-muted-foreground shrink-0" />;
   return (
     <span
       className={cn(
@@ -1628,6 +1658,7 @@ function MonitorSources({
   monitors,
   scrapingIds,
   onRun,
+  onResume,
   onForceRescanStarted,
   onRunAll,
   onEdit,
@@ -1643,6 +1674,7 @@ function MonitorSources({
   monitors: Monitor[];
   scrapingIds: Set<string>;
   onRun: (id: string) => void;
+  onResume: (id: string) => void;
   onForceRescanStarted?: (id: string) => void;
   onRunAll: () => void;
   onEdit: (id: string, patch: { url?: string; frequency?: MonitorFrequency }) => Promise<void>;
@@ -1692,6 +1724,7 @@ function MonitorSources({
               running={running}
               status={monitorStatus(m, running)}
               onRun={onRun}
+              onResume={onResume}
               onConfigure={() => setEditing(m)}
             />
           );
@@ -1717,11 +1750,13 @@ function MonitorSources({
             const ageText =
               status === "running"
                 ? "scraping…"
-                : status === "failed" && m.lastFailedAt
-                  ? `Failed ${formatDistanceToNow(new Date(m.lastFailedAt), { addSuffix: true })}`
-                  : status === "ok" && m.lastRunAt
-                    ? formatDistanceToNow(new Date(m.lastRunAt), { addSuffix: true })
-                    : "never scraped";
+                : status === "disabled"
+                  ? "Paused after repeated failures"
+                  : status === "failed" && m.lastFailedAt
+                    ? `Failed ${formatDistanceToNow(new Date(m.lastFailedAt), { addSuffix: true })}`
+                    : status === "ok" && m.lastRunAt
+                      ? formatDistanceToNow(new Date(m.lastRunAt), { addSuffix: true })
+                      : "never scraped";
             return (
               <div key={m.id} className="flex items-center gap-3 px-4 py-2.5">
                 <SourceStatusIcon status={status} />
@@ -1773,23 +1808,43 @@ function MonitorSources({
                   >
                     <Settings2 size={13} />
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => onRun(m.id)}
-                    disabled={running}
-                    className="h-7 text-xs min-w-[84px]"
-                  >
-                    {running ? (
-                      <>
-                        <Loader2 size={11} className="animate-spin" /> Scraping…
-                      </>
-                    ) : (
-                      <>
-                        <Play size={11} /> Run
-                      </>
-                    )}
-                  </Button>
+                  {status === "disabled" ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => onResume(m.id)}
+                      disabled={running}
+                      className="h-7 text-xs min-w-[84px]"
+                    >
+                      {running ? (
+                        <>
+                          <Loader2 size={11} className="animate-spin" /> Resuming…
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw size={11} /> Resume
+                        </>
+                      )}
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => onRun(m.id)}
+                      disabled={running}
+                      className="h-7 text-xs min-w-[84px]"
+                    >
+                      {running ? (
+                        <>
+                          <Loader2 size={11} className="animate-spin" /> Scraping…
+                        </>
+                      ) : (
+                        <>
+                          <Play size={11} /> Run
+                        </>
+                      )}
+                    </Button>
+                  )}
                 </div>
               </div>
             );
@@ -1873,31 +1928,38 @@ function SourceChip({
   running,
   status,
   onRun,
+  onResume,
   onConfigure,
 }: {
   monitor: Monitor;
   running: boolean;
   status: MonitorStatus;
   onRun: (id: string) => void;
+  onResume: (id: string) => void;
   onConfigure: () => void;
 }) {
   const failed = status === "failed";
+  const isDisabled = status === "disabled";
   const ageLabel =
     status === "running"
       ? "…"
       : failed
         ? null
-        : status === "ok" && m.lastRunAt
-          ? shortAge(new Date(m.lastRunAt))
-          : "never";
+        : isDisabled
+          ? "off"
+          : status === "ok" && m.lastRunAt
+            ? shortAge(new Date(m.lastRunAt))
+            : "never";
   const ageText =
     status === "running"
       ? "scraping…"
-      : failed && m.lastFailedAt
-        ? `Failed ${formatDistanceToNow(new Date(m.lastFailedAt), { addSuffix: true })}`
-        : status === "ok" && m.lastRunAt
-          ? formatDistanceToNow(new Date(m.lastRunAt), { addSuffix: true })
-          : "never scraped";
+      : isDisabled
+        ? "Paused after repeated failures"
+        : failed && m.lastFailedAt
+          ? `Failed ${formatDistanceToNow(new Date(m.lastFailedAt), { addSuffix: true })}`
+          : status === "ok" && m.lastRunAt
+            ? formatDistanceToNow(new Date(m.lastRunAt), { addSuffix: true })
+            : "never scraped";
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -1907,7 +1969,9 @@ function SourceChip({
             "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-dense transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             failed
               ? "border-critical/40 text-critical hover:bg-critical/10"
-              : "border-border text-foreground hover:bg-accent",
+              : isDisabled
+                ? "border-border text-muted-foreground hover:bg-accent"
+                : "border-border text-foreground hover:bg-accent",
           )}
         >
           <SourceStatusIcon status={status} />
@@ -1942,11 +2006,23 @@ function SourceChip({
             {friendlyScrapeError(m.lastError, m.sourceType)}
           </p>
         )}
+        {isDisabled && (
+          <p className="px-2 pb-1.5 text-sm leading-relaxed text-muted-foreground break-words">
+            We stopped scraping this source after repeated failures. Resume to try again.
+          </p>
+        )}
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => onRun(m.id)} disabled={running}>
-          {running ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
-          {running ? "Scraping…" : "Run now"}
-        </DropdownMenuItem>
+        {isDisabled ? (
+          <DropdownMenuItem onClick={() => onResume(m.id)} disabled={running}>
+            {running ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+            {running ? "Resuming…" : "Resume monitoring"}
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem onClick={() => onRun(m.id)} disabled={running}>
+            {running ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
+            {running ? "Scraping…" : "Run now"}
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem onClick={onConfigure}>
           <Settings2 size={13} /> Configure
         </DropdownMenuItem>

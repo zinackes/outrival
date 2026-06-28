@@ -182,6 +182,27 @@ describe("parseHomepageStructure — navigation, footer, social proof", () => {
   });
 });
 
+// The broad social-proof selector also matches the site's own header/footer brand
+// mark and tracking pixels — they must never flood the customer wall.
+describe("parseHomepageStructure — own logo and pixels excluded from the wall", () => {
+  const HTML = `<!doctype html><html><head><title>Acme</title></head><body>
+    <header><a href="/" class="navbar-brand"><img src="/logo.svg" alt="Acme"></a></header>
+    <main>
+      <section><h2>Trusted by</h2><div class="logos">
+        <img src="/customers/globex.svg" alt="Globex">
+        <img src="/customers/initech.svg" alt="Initech">
+        <img src="https://px.example.com/p.gif" alt="" width="1" height="1">
+      </div></section>
+    </main>
+    <footer class="footer"><img src="/logo-white.svg" alt="Acme"></footer>
+  </body></html>`;
+  const s = parseHomepageStructure(HTML, "https://acme.com/");
+  it("keeps only the two real customer logos", () => {
+    const names = s.socialProof.customerLogos.map((l) => l.name);
+    expect(names).toEqual(["Globex", "Initech"]);
+  });
+});
+
 // A rotating carousel changes which testimonial is in the DOM, but the count
 // stays put — the structure must be identical so the diff (step 4) emits nothing.
 describe("parseHomepageStructure — carousel rotation is invisible", () => {

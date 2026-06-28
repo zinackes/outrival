@@ -109,6 +109,20 @@ function resolveHref(raw: string | undefined, baseUrl: string): string | null {
   }
 }
 
+// True when `href` points at the site's own homepage root (same host, "/" path) —
+// the canonical "logo links home" pattern, used to skip the own brand logo.
+function isHomepageRoot(href: string, baseUrl: string): boolean {
+  const resolved = resolveHref(href, baseUrl);
+  if (!resolved) return false;
+  try {
+    const u = new URL(resolved);
+    const b = new URL(baseUrl);
+    return u.host === b.host && (u.pathname === "/" || u.pathname === "");
+  } catch {
+    return false;
+  }
+}
+
 // --- DOM walk types (domhandler nodes, cheerio's parse output). Local minimal
 //     shape avoids pulling domhandler's types in as a direct dep (mirrors
 //     extract-content.ts). ---
@@ -357,6 +371,23 @@ function extractSocialProof(
     .each((_, el) => {
       if (logos.length >= MAX_LOGOS) return;
       const $el = $(el);
+      // Site chrome (header/nav/footer) carries the competitor's OWN brand mark
+      // and menu glyphs, not customer proof — customer "trusted by" strips live
+      // in the page body. Likewise an img wrapped in a link back to the homepage
+      // root is the own logo. Both otherwise flood the wall with the site itself.
+      if (
+        $el.closest(
+          'header, nav, footer, [class*="header" i], [class*="navbar" i], [class*="footer" i]',
+        ).length
+      )
+        return;
+      const linkHref = $el.closest("a").attr("href");
+      if (linkHref && isHomepageRoot(linkHref, baseUrl)) return;
+      // Tracking pixels / spacer gifs declared with tiny dimensions render as
+      // blank tiles — skip them.
+      const w = parseInt($el.attr("width") || "", 10);
+      const h = parseInt($el.attr("height") || "", 10);
+      if ((w && w <= 16) || (h && h <= 16)) return;
       const name = norm($el.attr("alt") || "") || null;
       // Real asset, preferring a lazy attribute when the eager src is a
       // placeholder (logo carousels ship a 1x1 data: URI in src, the asset in

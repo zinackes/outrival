@@ -92,6 +92,56 @@ function toLogo(entry: string | { name?: string | null; src?: string | null }): 
   return { name: entry.name?.trim() || null, src: entry.src?.trim() || null };
 }
 
+// Brand tokens that identify the competitor itself (its name + the second-level
+// host label), normalized to lowercase alphanumerics. Used to strip the
+// competitor's OWN logo from its "customers" wall.
+function brandTokensFor(name: string | null, url: string | null): string[] {
+  const tokens = new Set<string>();
+  const add = (s: string) => {
+    const t = s.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (t.length >= 4) tokens.add(t); // >= 4 avoids a short token (e.g. "box") matching real customers
+  };
+  if (name) add(name);
+  if (url) {
+    try {
+      add(new URL(url).host.replace(/^www\./, "").split(".")[0] ?? "");
+    } catch {
+      /* malformed url — name token alone */
+    }
+  }
+  return [...tokens];
+}
+
+// The broad social-proof selector also matches header/footer brand marks and
+// tracking pixels, so a competitor's own logo (and blank placeholders) otherwise
+// show up repeated on its "customers" wall. Drop them at read time so already-
+// captured snapshots clean up without a re-scrape.
+function isOwnOrJunkLogo(
+  logo: FactSheetLogo,
+  brandTokens: string[],
+  competitorHost: string | null,
+): boolean {
+  const nameStem = (logo.name ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (nameStem && brandTokens.some((t) => nameStem.includes(t))) return true;
+  const src = logo.src ?? "";
+  // data: gif/png tracking pixels render as blank tiles, never a real logo.
+  if (/^data:image\/(gif|png);base64,/i.test(src) && src.length < 512) return true;
+  if (!src) return false;
+  try {
+    const u = new URL(src);
+    if (competitorHost && u.host.replace(/^www\./, "") === competitorHost) {
+      const file = (u.pathname.split("/").pop() ?? "").toLowerCase();
+      const stem = file.replace(/\.(png|jpe?g|svg|webp|gif|avif|ico)$/i, "");
+      // Own-hosted asset whose filename is literally "logo*" or carries the brand
+      // (customer logos under /customers/ are filed by the CUSTOMER's name).
+      if (/^logo\b/.test(stem) || brandTokens.some((t) => stem.includes(t))) return true;
+    }
+  } catch {
+    /* relative/garbage src — the renderer drops unrenderable ones */
+  }
+  return false;
+}
+
 // The homepage "fact sheet" fields surfaced on the Overview tab, derived from the
 // latest homepage snapshot's parsed structure (patch-16/17). Shared by the overview
 // builder and the on-demand translate route, which reads the same source strings.
@@ -132,6 +182,20 @@ async function buildHomepageFacts(
     .limit(1);
   if (!snap?.structure) return { capturedAt: null, homepage: null };
 
+  // Own-logo / placeholder filtering needs the competitor's own brand + host.
+  const [comp] = await db
+    .select({ name: competitors.name, url: competitors.url })
+    .from(competitors)
+    .where(eq(competitors.id, competitorId))
+    .limit(1);
+  const brandTokens = brandTokensFor(comp?.name ?? null, comp?.url ?? null);
+  let competitorHost: string | null = null;
+  try {
+    if (comp?.url) competitorHost = new URL(comp.url).host.replace(/^www\./, "");
+  } catch {
+    /* malformed competitor url */
+  }
+
   const s = snap.structure as StoredHomepage;
   return {
     capturedAt: snap.scrapedAt,
@@ -149,6 +213,7 @@ async function buildHomepageFacts(
       customerLogos: (s.socialProof?.customerLogos ?? [])
         .map(toLogo)
         .filter((l) => l.name || l.src)
+        .filter((l) => !isOwnOrJunkLogo(l, brandTokens, competitorHost))
         .slice(0, 24),
       testimonials: (s.socialProof?.testimonials ?? [])
         .map((t) => ({ quote: t.quote?.trim() ?? "", author: t.author ?? null }))

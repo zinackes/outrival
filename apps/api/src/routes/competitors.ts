@@ -1056,7 +1056,7 @@ competitorsRouter.get("/:id/pricing-history", async (c) => {
            (has_trial = 1) AS has_trial,
            trial_days,
            (trial_requires_card = 1) AS trial_requires_card,
-           (recorded_at AT TIME ZONE 'UTC') AS recorded_at
+           recorded_at::text AS recorded_at
     FROM pricing_history
     WHERE competitor_id = ${competitor.id}
     ORDER BY recorded_at ASC

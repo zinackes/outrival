@@ -17,6 +17,9 @@ import {
   Settings,
   ChevronsUpDown,
   CreditCard,
+  Sparkles,
+  Globe,
+  Columns3,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -49,6 +52,7 @@ import {
   useProductScope,
   useSetProductScope,
 } from "@/components/dashboard/product-scope-provider";
+import { PLAN_LIMITS, planCanReachSectoral, type Plan } from "@outrival/shared";
 
 export interface Org {
   name: string;
@@ -94,7 +98,10 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
     // rail slot. Trends stays; AI Visibility will land here next.
     label: "Analyze",
     items: [
+      { href: "/dashboard/ask", label: "Ask", icon: Sparkles },
+      { href: "/dashboard/sector", label: "Sector", icon: Globe },
       { href: "/dashboard/trends", label: "Trends", icon: LineChart },
+      { href: "/dashboard/compare", label: "Compare", icon: Columns3 },
     ],
   },
   {
@@ -290,6 +297,13 @@ export function AppSidebar({ org, user }: { org: Org; user: SwitcherUser }) {
   const pathname = usePathname();
   // The active product scope rides the cookie (read server-side) — plain hrefs keep it
   // across navigation, so the sidebar no longer threads ?product= or reconciles the URL.
+
+  // Sector trends need a competitor floor (>= 4); a plan that can't reach it
+  // (free, max 2) never populates the page, so drop it from the nav — the route
+  // itself shows an upsell on direct access. Unknown plan → fail open (show it).
+  const planKey = (org.plan ?? "").toLowerCase();
+  const showSector =
+    !(planKey in PLAN_LIMITS) || planCanReachSectoral(planKey as Plan);
 
   function isActive(href: string, exact?: boolean) {
     if (exact) return pathname === href;

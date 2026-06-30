@@ -41,6 +41,17 @@ interface AskCitation {
   label: string;
 }
 
+// The synthesis is told to keep ids out of the prose, but a 70b model still slips
+// bracketed citation markers (e.g. "[e070419f-...]") into the answer academic-style.
+// Strip them defensively so the user never sees raw UUIDs — the ids it relied on are
+// already surfaced as "Sources" chips from the citations array.
+const INLINE_ID_MARKER =
+  /\s*\[\s*[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\s*,\s*[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})*\s*\]/gi;
+
+function stripInlineIds(text: string): string {
+  return text.replace(INLINE_ID_MARKER, "").trimEnd();
+}
+
 export type AskEmit = (ev: AskEvent) => Promise<void> | void;
 
 export async function runAskAgent(
@@ -114,13 +125,14 @@ export async function runAskAgent(
         .map((c) =>
           c.type === "competitor" ? { ...c, label: competitorNames.get(c.id)! } : c,
         );
-      await emit({ type: "answer", answer: answer.value.answer, citations });
+      const cleanAnswer = stripInlineIds(answer.value.answer);
+      await emit({ type: "answer", answer: cleanAnswer, citations });
       // Persist only real answers (best-effort) — the fallback below isn't worth logging.
       void persistAskHistory({
         orgId,
         userId,
         question,
-        answer: answer.value.answer,
+        answer: cleanAnswer,
         citations,
         context,
       });

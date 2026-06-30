@@ -833,7 +833,7 @@ export function SignalsView() {
                   // below. Narrow pane → single readable column, capped at 820.
                   // The whole thing caps so it never pins to the far edge.
                   <div className="@container/detail w-full">
-                    <div className="grid max-w-[820px] grid-cols-1 gap-4 @4xl/detail:max-w-[1148px] @4xl/detail:grid-cols-[minmax(0,820px)_300px] @4xl/detail:gap-6">
+                    <div className="grid max-w-[820px] grid-cols-1 items-start gap-4 @4xl/detail:max-w-[1148px] @4xl/detail:grid-cols-[minmax(0,820px)_300px] @4xl/detail:gap-6">
                       <div className="min-w-0 space-y-4">
                         <SignalCard
                           signal={selectedItem.signal}

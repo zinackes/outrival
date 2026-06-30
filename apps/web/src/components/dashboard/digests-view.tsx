@@ -213,7 +213,16 @@ export function DigestsView() {
                   <tr
                     key={d.id}
                     onClick={() => setActive(d)}
-                    className="border-b border-border last:border-b-0 cursor-pointer transition-colors hover:bg-accent/50"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setActive(d);
+                      }
+                    }}
+                    tabIndex={0}
+                    role="button"
+                    aria-label={`Open digest for ${fmtWeek(d.weekStart, d.weekEnd)}`}
+                    className="border-b border-border last:border-b-0 cursor-pointer transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-inset"
                   >
                     <td className="px-3.5 py-3 align-middle font-medium">
                       {fmtWeek(d.weekStart, d.weekEnd)}

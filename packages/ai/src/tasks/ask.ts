@@ -123,6 +123,9 @@ ${JSON.stringify(results, null, 2).slice(0, 12000)}
   carry nothing at all about the competitors in question.
 - If the results are empty or do not cover the question, say so plainly — never guess.
 - Be specific: cite competitor names, figures, and dates that appear in the results.
+- The "answer" is clean prose for a person to read: do NOT embed ids, UUIDs, or bracketed
+  citation markers (e.g. "[<id>]") in it. Refer to competitors and signals by name only.
+  Ids belong ONLY in the "citations" array.
 - "citations": the competitor/signal ids you relied on (each MUST appear in the results).
 - Write all text in English.
 </rules>

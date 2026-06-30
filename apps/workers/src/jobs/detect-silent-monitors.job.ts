@@ -11,6 +11,7 @@ import {
 } from "@outrival/db";
 import { sendSlackMessage } from "@outrival/shared";
 import { decideDispatch } from "../lib/notification-dispatcher";
+import { darkEmailShell } from "../lib/email-shell";
 import { getResend, ALERT_FROM } from "../lib/resend";
 
 // Patch-27 — daily sweep for monitors that have produced nothing for a long time.
@@ -205,10 +206,9 @@ async function notifyOrg(orgId: string, list: SilentMonitor[]): Promise<void> {
 }
 
 function silentEmailHtml(title: string, body: string, href: string): string {
-  return `<!doctype html><html lang="en"><body style="margin:0;background:#0a0a0a;color:#e5e5e5;font-family:Inter,system-ui,sans-serif;padding:32px">
-  <div style="max-width:520px;margin:0 auto">
-    <h1 style="font-size:18px;color:#fff;margin:0 0 12px">${title}</h1>
-    <p style="font-size:14px;line-height:1.6;color:#a3a3a3;margin:0 0 24px">${body}</p>
-    <a href="${href}" style="display:inline-block;background:#f59e0b;color:#0a0a0a;font-weight:600;font-size:14px;text-decoration:none;padding:10px 18px;border-radius:8px">Review the source</a>
-  </div></body></html>`;
+  return darkEmailShell(
+    `<h1 style="font-size:18px;color:#fff;margin:0 0 12px">${title}</h1>
+      <p style="font-size:14px;line-height:1.6;color:#a3a3a3;margin:0 0 24px">${body}</p>
+      <a href="${href}" style="display:inline-block;background-color:#f59e0b;color:#0a0a0a;font-weight:600;font-size:14px;text-decoration:none;padding:10px 18px;border-radius:8px">Review the source</a>`,
+  );
 }

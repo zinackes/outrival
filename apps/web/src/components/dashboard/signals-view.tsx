@@ -5,6 +5,7 @@ import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-quer
 import { signalsQuery } from "@/lib/queries";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import {
   Download,
   Check,
@@ -128,9 +129,9 @@ export function SignalsView() {
     [router, searchParams],
   );
 
-  // patch-28 — scope the feed to the active product (selector sets ?product=);
-  // absent = aggregate "All products".
-  const productId = searchParams.get("product");
+  // patch-28 — scope the feed to the active product (cookie-backed switcher, URL
+  // ?product= overrides); absent = aggregate "All products".
+  const productId = useProductScope();
 
   // P0 — feed ordering. Default "threat" (server ranks by severity × overlap ×
   // relevance); "recent" restores the chronological feed. Server-side, so changing
@@ -833,7 +834,7 @@ export function SignalsView() {
                   // below. Narrow pane → single readable column, capped at 820.
                   // The whole thing caps so it never pins to the far edge.
                   <div className="@container/detail w-full">
-                    <div className="grid max-w-[820px] grid-cols-1 gap-4 @4xl/detail:max-w-[1148px] @4xl/detail:grid-cols-[minmax(0,820px)_300px] @4xl/detail:gap-6">
+                    <div className="grid max-w-[820px] grid-cols-1 items-start gap-4 @4xl/detail:max-w-[1148px] @4xl/detail:grid-cols-[minmax(0,820px)_300px] @4xl/detail:gap-6">
                       <div className="min-w-0 space-y-4">
                         <SignalCard
                           signal={selectedItem.signal}

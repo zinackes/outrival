@@ -49,10 +49,9 @@ import { UserAvatar } from "@/components/dashboard/user-avatar";
 import { productsListQuery } from "@/lib/queries";
 import {
   ALL_PRODUCTS,
-  persistActiveProduct,
-  useActiveProduct,
-  useStoredProduct,
-} from "@/hooks/use-active-product";
+  useProductScope,
+  useSetProductScope,
+} from "@/components/dashboard/product-scope-provider";
 import { PLAN_LIMITS, planCanReachSectoral, type Plan } from "@outrival/shared";
 
 export interface Org {
@@ -72,27 +71,25 @@ interface NavItem {
   label: string;
   icon: LucideIcon;
   exact?: boolean;
-  // Scope-aware routes read ?product= — carry the active product so the scope
-  // survives navigation. Non-scoped routes (Discovery, Products, Settings…) stay clean.
-  scoped?: boolean;
 }
 
 // Overview stays ungrouped at the top (the landing); the rest split into three
-// job-to-be-done groups, mirroring the grouped settings-sidebar.
+// job-to-be-done groups, mirroring the grouped settings-sidebar. Scope-aware routes
+// read the active product from the cookie (server) / context (client), so plain hrefs
+// keep the scope across navigation — no ?product= threading needed.
 const OVERVIEW: NavItem = {
   href: "/dashboard",
   label: "Overview",
   icon: LayoutDashboard,
   exact: true,
-  scoped: true,
 };
 
 const GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: "Monitor",
     items: [
-      { href: "/dashboard/signals", label: "Signals", icon: Radio, scoped: true },
-      { href: "/dashboard/activity", label: "Activity", icon: Activity, scoped: true },
+      { href: "/dashboard/signals", label: "Signals", icon: Radio },
+      { href: "/dashboard/activity", label: "Activity", icon: Activity },
     ],
   },
   {
@@ -100,8 +97,8 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
     items: [
       { href: "/dashboard/ask", label: "Ask", icon: Sparkles },
       { href: "/dashboard/sector", label: "Sector", icon: Globe },
-      { href: "/dashboard/trends", label: "Trends", icon: LineChart, scoped: true },
-      { href: "/dashboard/compare", label: "Compare", icon: Columns3, scoped: true },
+      { href: "/dashboard/trends", label: "Trends", icon: LineChart },
+      { href: "/dashboard/compare", label: "Compare", icon: Columns3 },
     ],
   },
   {
@@ -116,18 +113,6 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
 
 const BOTTOM_NAV: NavItem[] = [
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
-];
-
-// Routes whose content reads ?product=. Matched exactly so a bare visit (e.g. the
-// post-login landing on /dashboard) restores the remembered scope, while param-less
-// leaf pages (a competitor detail under /dashboard/competitors/:id) are left alone.
-const SCOPED_PATHS = [
-  "/dashboard",
-  "/dashboard/signals",
-  "/dashboard/activity",
-  "/dashboard/trends",
-  "/dashboard/compare",
-  "/dashboard/competitors",
 ];
 
 export function WorkspaceSwitcher({
@@ -149,35 +134,40 @@ export function WorkspaceSwitcher({
   const multiProduct = selectable.length > 1;
 
   // On a product detail page (/dashboard/products/:id) the URL [id] is the source of
-  // truth, not ?product= — so the switcher navigates between detail pages there.
-  // Everywhere else it sets the global scope (?product=, persisted via the hook).
+  // truth — so the switcher navigates between detail pages there. Everywhere else it
+  // sets the global cookie-backed scope.
   const detailProductId = pathname.match(/^\/dashboard\/products\/([^/]+)$/)?.[1] ?? null;
-  // Effective scope from the URL param, falling back to the persisted value (so the
-  // switcher stays correct on param-less routes like a competitor detail page).
-  const effective = useActiveProduct();
+  // Effective scope: the URL override (?product=) wins, else the persisted cookie scope.
+  const effective = useProductScope();
+  const setScope = useSetProductScope();
   const current = detailProductId ?? effective ?? ALL_PRODUCTS;
   const activeProduct = selectable.find((p) => p.id === current) ?? null;
 
   // Viewing a product's detail page makes it the active scope, so leaving the page
-  // (via the sidebar nav) keeps that product selected instead of reverting.
+  // (via the sidebar nav) keeps that product selected instead of reverting. setScope
+  // only writes the cookie + context (no navigation), so this can't loop.
   React.useEffect(() => {
-    if (detailProductId) persistActiveProduct(detailProductId);
-  }, [detailProductId]);
+    if (detailProductId) setScope(detailProductId);
+  }, [detailProductId, setScope]);
 
   function selectProduct(value: string) {
-    persistActiveProduct(value === ALL_PRODUCTS ? null : value);
+    const next = value === ALL_PRODUCTS ? null : value;
+    setScope(next); // persist to cookie + update context (readers react immediately)
     // Detail page → navigate to the chosen product's page (All → overview).
     if (detailProductId) {
-      router.push(value === ALL_PRODUCTS ? "/dashboard" : `/dashboard/products/${value}`);
+      router.push(next ? `/dashboard/products/${next}` : "/dashboard");
       return;
     }
-    // Otherwise set / clear the global product scope on the current route — same
-    // semantics as the former top-bar selector, just relocated to the context root.
-    const params = new URLSearchParams(Array.from(searchParams.entries()));
-    if (value === ALL_PRODUCTS) params.delete("product");
-    else params.set("product", value);
-    const qs = params.toString();
-    router.push(`${pathname}${qs ? `?${qs}` : ""}`);
+    // Collapse any inbound ?product= override so a stale deep-link param can't fight
+    // the new pick; both paths re-run server components, re-seeding with the cookie.
+    if (searchParams.has("product")) {
+      const params = new URLSearchParams(Array.from(searchParams.entries()));
+      params.delete("product");
+      const qs = params.toString();
+      router.replace(`${pathname}${qs ? `?${qs}` : ""}`);
+    } else {
+      router.refresh();
+    }
   }
 
   const meta = [
@@ -298,25 +288,8 @@ export function WorkspaceSwitcher({
 
 export function AppSidebar({ org, user }: { org: Org; user: SwitcherUser }) {
   const pathname = usePathname();
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  // Active product scope — threaded onto scope-aware nav links so switching pages
-  // keeps the selected product (a plain href would drop ?product=).
-  const productId = useActiveProduct();
-  const stored = useStoredProduct();
-
-  // Restore the remembered scope onto a bare scope-aware route (e.g. the post-login
-  // landing on /dashboard, or a reload of a page reached via a non-threaded link) so
-  // the page content matches the switcher. Only when storage holds a scope and the URL
-  // doesn't already carry one — never writes storage, so it can't fight a "clear".
-  React.useEffect(() => {
-    if (!stored) return;
-    if (searchParams.get("product")) return;
-    if (!SCOPED_PATHS.includes(pathname)) return;
-    const params = new URLSearchParams(Array.from(searchParams.entries()));
-    params.set("product", stored);
-    router.replace(`${pathname}?${params.toString()}`);
-  }, [pathname, searchParams, stored, router]);
+  // The active product scope rides the cookie (read server-side) — plain hrefs keep it
+  // across navigation, so the sidebar no longer threads ?product= or reconciles the URL.
 
   // Sector trends need a competitor floor (>= 4); a plan that can't reach it
   // (free, max 2) never populates the page, so drop it from the nav — the route
@@ -330,12 +303,6 @@ export function AppSidebar({ org, user }: { org: Org; user: SwitcherUser }) {
     return pathname === href || pathname.startsWith(href + "/");
   }
 
-  function hrefFor(it: NavItem) {
-    return it.scoped && productId
-      ? `${it.href}?product=${encodeURIComponent(productId)}`
-      : it.href;
-  }
-
   function renderItem(it: NavItem) {
     if (it.href === "/dashboard/competitors") {
       return <SidebarCompetitors key={it.href} />;
@@ -345,7 +312,7 @@ export function AppSidebar({ org, user }: { org: Org; user: SwitcherUser }) {
     return (
       <SidebarMenuItem key={it.href}>
         <SidebarMenuButton asChild isActive={active} tooltip={it.label}>
-          <Link href={hrefFor(it)}>
+          <Link href={it.href}>
             <Ic />
             <span>{it.label}</span>
           </Link>

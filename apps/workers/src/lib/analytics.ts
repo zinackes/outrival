@@ -270,6 +270,10 @@ export interface PricingHistoryRow {
   status: string;
   promotional: number;
   observed_region: string;
+  // patch-33 — page-level free-trial facts, identical across a batch's plan rows.
+  has_trial?: number | null;
+  trial_days?: number | null;
+  trial_requires_card?: number | null;
   recorded_at: Date;
 }
 
@@ -286,10 +290,48 @@ export async function insertPricingHistory(rows: PricingHistoryRow[]): Promise<v
         status: r.status,
         promotional: r.promotional,
         observedRegion: r.observed_region,
+        hasTrial: r.has_trial ?? null,
+        trialDays: r.trial_days ?? null,
+        trialRequiresCard: r.trial_requires_card ?? null,
         recordedAt: r.recorded_at,
       })),
     ),
   );
+}
+
+export interface LatestTrial {
+  has_trial: boolean;
+  days: number | null;
+  requires_credit_card: boolean | null;
+}
+
+// Latest detected free-trial state for a competitor (from the most recent pricing
+// scrape). Used to feed the battle card. Best-effort: null on miss/error or when
+// the latest batch never recorded a trial assessment (legacy rows).
+export async function getLatestTrial(competitorId: string): Promise<LatestTrial | null> {
+  const rows = await bestEffortRead<{
+    has_trial: number | null;
+    trial_days: number | null;
+    trial_requires_card: number | null;
+  }>("getLatestTrial", () =>
+    db
+      .select({
+        has_trial: pricingHistory.hasTrial,
+        trial_days: pricingHistory.trialDays,
+        trial_requires_card: pricingHistory.trialRequiresCard,
+      })
+      .from(pricingHistory)
+      .where(eq(pricingHistory.competitorId, competitorId))
+      .orderBy(desc(pricingHistory.recordedAt))
+      .limit(1),
+  );
+  const r = rows?.[0];
+  if (!r || r.has_trial == null) return null;
+  return {
+    has_trial: r.has_trial === 1,
+    days: r.trial_days,
+    requires_credit_card: r.trial_requires_card == null ? null : r.trial_requires_card === 1,
+  };
 }
 
 export interface JobCountRow {

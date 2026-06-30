@@ -268,7 +268,10 @@ product_status    active | paused | archived   (patch-28 — SKU ; archivage sof
 > (best-effort logging), index sur `(competitor_id, recorded_at)` / `(recorded_at)`.
 
 ```sql
-pricing_history     competitor_id, plan_name, price, currency, billing_period, recorded_at
+pricing_history     competitor_id, plan_name, price, currency, billing_period,
+                    has_trial, trial_days, trial_requires_card (patch-33 — free-trial
+                    facts, AI-free regex on the page text, stamped page-level per row,
+                    Nullable = pre-detection), recorded_at
 job_counts          competitor_id, department, count, recorded_at
 review_scores       competitor_id, source, score, review_count, sentiment_score,
                     sub_ease_of_use, sub_support, sub_features, sub_value (Nullable —
@@ -414,7 +417,11 @@ carte (état live uniquement).
        étage logué dans extraction_runs ; STAGED_EXTRACTION_ENABLED=false → plancher seul) :
        pricing → extract-pricing → Postgres pricing_history   (pipeline complet)
                   (patch-32 : gate plausible = ratio mensuel↔annuel ; un JSON-LD mé-parsé
-                   retombe sur l'IA. URL pricing auto-découverte depuis la home nav/footer)
+                   retombe sur l'IA. URL pricing auto-découverte depuis la home nav/footer.
+                   patch-33 : `detectTrial` AI-free sur le texte de la page → free-trial
+                   (présence / durée / CB requise) stampé sur les rows pricing_history,
+                   indépendant de l'étage d'extraction ; alimente le badge pricing tab +
+                   le contexte battle-card)
        jobs    → extract-jobs    → diff actives + Postgres job_counts
                   (structured-first = ATS API JSON island puis JobPosting JSON-LD ; pipeline complet.
                    patch-32 : 7 ATS — Greenhouse/Lever/Ashby/SmartRecruiters/Recruitee/Workable +

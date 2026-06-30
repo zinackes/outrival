@@ -8,6 +8,7 @@ import {
 } from "@outrival/db";
 import { getResend, ALERT_FROM } from "./resend";
 import { escapeHtml } from "./escape-html";
+import { darkEmailShell } from "./email-shell";
 
 const WEB_URL = process.env.WEB_URL ?? "https://outrival.io";
 const EMAIL_THROTTLE_MS = 30 * 24 * 60 * 60 * 1000; // at most one email / competitor / month
@@ -78,13 +79,13 @@ export async function notifyStructuralChange(structuralChangeId: string): Promis
   });
   if (!org?.digestEmail) return;
 
-  const html = `<div style="font-family: Inter, sans-serif; background: #0a0a0a; color: #fafafa; padding: 24px; border-radius: 6px;">
-  <p style="font-size: 12px; color: #a3a3a3; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 8px;">Structural change detected</p>
-  <h2 style="margin: 0 0 12px; font-family: Syne, sans-serif;">${escapeHtml(competitor.name)}</h2>
+  const html = darkEmailShell(
+    `<p style="font-size: 12px; color: #a3a3a3; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 8px;">Structural change detected</p>
+  <h2 style="margin: 0 0 12px; font-family: Syne, sans-serif; color: #fafafa;">${escapeHtml(competitor.name)}</h2>
   <p style="margin: 0 0 12px;">${label}</p>
   ${summary ? `<p style="color: #d4d4d4; margin: 0 0 16px;">${escapeHtml(summary)}</p>` : ""}
-  <a href="${linkUrl}" style="color: #f59e0b;">Open your dashboard to decide what to do →</a>
-</div>`;
+  <a href="${linkUrl}" style="color: #f59e0b;">Open your dashboard to decide what to do →</a>`,
+  );
 
   try {
     await getResend().emails.send({

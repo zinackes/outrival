@@ -9,6 +9,7 @@ import { SettingsSidebar } from "@/components/dashboard/settings-sidebar";
 import { Topbar } from "@/components/dashboard/topbar";
 import { AskContextProvider } from "@/components/dashboard/ask-context";
 import { AskDock } from "@/components/dashboard/ask-dock";
+import { ProductScopeProvider } from "@/components/dashboard/product-scope-provider";
 
 interface User {
   name: string | null;
@@ -27,11 +28,13 @@ export function DashboardShell({
   org,
   children,
   defaultOpen = true,
+  productScope = null,
 }: {
   user: User;
   org: Org;
   children: React.ReactNode;
   defaultOpen?: boolean;
+  productScope?: string | null;
 }) {
   // patch-29 — Variante 1: the contextual settings sidebar replaces the main rail
   // on /dashboard/settings/* instead of stacking a second nav next to the content.
@@ -42,28 +45,30 @@ export function DashboardShell({
     // reducedMotion="user" — every motion component in the dashboard (filtered
     // feeds, etc.) drops transforms and keeps opacity for users who ask for it.
     <MotionConfig reducedMotion="user">
-      <AskContextProvider>
-        <SidebarProvider defaultOpen={defaultOpen}>
-          {inSettings ? (
-            <SettingsSidebar org={org} user={user} />
-          ) : (
-            <AppSidebar org={org} user={user} />
-          )}
-          <SidebarInset>
-            <div className="flex min-h-full w-full flex-col text-sm min-w-0">
-              <Topbar user={user} />
-              <div
-                id="main-content"
-                tabIndex={-1}
-                className="flex-1 min-w-0 w-full px-4 pt-5 pb-12 outline-none md:px-5 md:pt-6 lg:px-8 lg:pt-7 lg:pb-16"
-              >
-                {children}
+      <ProductScopeProvider initial={productScope}>
+        <AskContextProvider>
+          <SidebarProvider defaultOpen={defaultOpen}>
+            {inSettings ? (
+              <SettingsSidebar org={org} user={user} />
+            ) : (
+              <AppSidebar org={org} user={user} />
+            )}
+            <SidebarInset>
+              <div className="flex min-h-full w-full flex-col text-sm min-w-0">
+                <Topbar user={user} />
+                <div
+                  id="main-content"
+                  tabIndex={-1}
+                  className="flex-1 min-w-0 w-full px-4 pt-5 pb-12 outline-none md:px-5 md:pt-6 lg:px-8 lg:pt-7 lg:pb-16"
+                >
+                  {children}
+                </div>
               </div>
-            </div>
-            <AskDock />
-          </SidebarInset>
-        </SidebarProvider>
-      </AskContextProvider>
+              <AskDock />
+            </SidebarInset>
+          </SidebarProvider>
+        </AskContextProvider>
+      </ProductScopeProvider>
     </MotionConfig>
   );
 }

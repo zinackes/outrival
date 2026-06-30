@@ -113,6 +113,10 @@ export interface Competitor {
   category: string | null;
   // User-assigned color identity (palette token or "#rrggbb"); null = neutral.
   color: string | null;
+  // patch-28 — products this competitor is *specific* to (product_competitors.isSpecific).
+  // Present on the list endpoint only (omitted on the detail payload); the web shows a
+  // product chip for these in all-products scope. Empty/absent = shared (no chip).
+  specificProductIds?: string[];
   overlapScore: number | null;
   aiSummary: string | null;
   aiSummaryUpdatedAt: string | null;
@@ -174,6 +178,11 @@ export interface PricingHistoryPoint {
   price: number | null;
   currency: string;
   billing_period: string;
+  // patch-33 — page-level free-trial facts (identical across a batch's rows). null
+  // when the scrape predates trial detection (legacy rows).
+  has_trial?: boolean | null;
+  trial_days?: number | null;
+  trial_requires_card?: boolean | null;
   recorded_at: string;
 }
 
@@ -1954,8 +1963,11 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
-  sendReauthCode: () =>
-    request<{ ok: true }>("/api/settings/reauth/send", { method: "POST" }),
+  sendReauthCode: (purpose?: "password") =>
+    request<{ ok: true }>("/api/settings/reauth/send", {
+      method: "POST",
+      ...(purpose ? { body: JSON.stringify({ purpose }) } : {}),
+    }),
   deleteWorkspace: (confirm: string, code: string) =>
     request<{ ok: true }>("/api/settings/workspace", {
       method: "DELETE",

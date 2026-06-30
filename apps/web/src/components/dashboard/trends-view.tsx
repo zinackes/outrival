@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useSearchParams } from "next/navigation";
+import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import dynamic from "next/dynamic";
 import { DollarSign, TrendingUp, Star, Boxes, LineChart as LineChartIcon } from "lucide-react";
 import { EmptyState } from "./empty-state";
@@ -170,8 +170,8 @@ export function TrendsView() {
   const [range, setRange] = useState<DateRange>(() => lastNDays(90));
   const [metric, setMetric] = useState<TrendMetric>("pricing");
   const [competitorId, setCompetitorId] = useState<string>("");
-  // patch-28 — active product scope (?product=, from the top-left switcher).
-  const productId = useSearchParams().get("product") ?? undefined;
+  // patch-28 — active product scope (cookie-backed switcher, URL ?product= overrides).
+  const productId = useProductScope() ?? undefined;
   // Server-seeded for the default 90d window (trends/page.tsx); the queryKey embeds
   // from/to (+ product), so changing the range or product refetches automatically.
   const summaryQ = useQuery(trendsSummaryQuery(range, productId));

@@ -24,6 +24,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { competitorNameColor } from "@/lib/competitor-color";
+import { CompetitorProductChips } from "./product-chip";
 import { SeverityBadge } from "./severity-pill";
 import { CatPill } from "./cat-pill";
 import { CompAvatar } from "./comp-avatar";
@@ -241,6 +242,10 @@ export function SignalCard({
             className="-translate-x-1 text-muted-foreground opacity-0 transition group-hover:translate-x-0 group-hover:opacity-100"
           />
         </Link>
+        {/* Product attribution (patch-28): which product(s) this competitor is
+            specific to. Renders nothing unless in all-products scope with a specific
+            link — see CompetitorProductChips. */}
+        <CompetitorProductChips competitorId={signal.competitorId} />
         {/* AI confidence (patch-24): renders nothing when confidence is high. */}
         <ConfidenceDot confidence={signal.aiConfidence ?? "high"} />
         {/* Threat level (gap-F): why this signal ranks where it does in the feed. */}

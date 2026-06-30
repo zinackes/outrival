@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { DollarSign, Activity, ArrowUp, ArrowDown, Percent } from "lucide-react";
+import { DollarSign, Activity, ArrowUp, ArrowDown, Percent, Clock } from "lucide-react";
 import {
   api,
   type Competitor,
@@ -128,6 +128,19 @@ export function PricingTab({
   for (const p of sorted) latestByPlan.set(p.plan_name, p);
   for (const p of sorted) if (!firstByPlan.has(p.plan_name)) firstByPlan.set(p.plan_name, p);
 
+  // Free trial (patch-33) is a page-level fact stamped identically onto the latest
+  // batch's rows — read it off the most recent row. null has_trial = pre-detection
+  // scrape, so we show nothing rather than a misleading "No free trial".
+  const latestRow = sorted[sorted.length - 1];
+  const latestTrial =
+    latestRow && latestRow.has_trial != null
+      ? {
+          hasTrial: latestRow.has_trial,
+          days: latestRow.trial_days ?? null,
+          requiresCard: latestRow.trial_requires_card ?? null,
+        }
+      : null;
+
   // A single capture is a one-dot line — not worth a 260px chart. The per-plan
   // list also has no deltas yet on first capture, so it just restates current
   // prices; we keep it full-width then (it's the only structured tier view),
@@ -202,6 +215,11 @@ export function PricingTab({
           summary={pricingMonitor?.aiSummary}
           summaryUpdatedAt={pricingMonitor?.aiSummaryUpdatedAt}
         />
+        {latestTrial && (
+          <div className="mt-3">
+            <TrialBadge trial={latestTrial} />
+          </div>
+        )}
       </TabSection>
       {myProduct && (
         <TabSection>
@@ -230,6 +248,38 @@ export function PricingTab({
         (!myProduct || !ourHasTiers) && planList
       )}
     </TabCard>
+  );
+}
+
+// Free-trial pill (patch-33). A confident "No free trial" is itself useful
+// comparative intel ("they don't offer one, we do"), so we render both states —
+// the absent case is only filtered upstream when the scrape predates detection.
+function TrialBadge({
+  trial,
+}: {
+  trial: { hasTrial: boolean; days: number | null; requiresCard: boolean | null };
+}) {
+  if (!trial.hasTrial) {
+    return (
+      <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-border bg-muted/40 px-2.5 py-1 text-meta font-medium text-muted-foreground">
+        <Clock className="size-3.5" />
+        No free trial
+      </span>
+    );
+  }
+  const parts = [
+    trial.days != null ? `${trial.days}-day` : null,
+    trial.requiresCard === false
+      ? "no credit card"
+      : trial.requiresCard === true
+        ? "card required"
+        : null,
+  ].filter(Boolean);
+  return (
+    <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-positive/30 bg-positive/10 px-2.5 py-1 text-meta font-medium text-positive">
+      <Clock className="size-3.5" />
+      Free trial{parts.length > 0 ? ` · ${parts.join(" · ")}` : ""}
+    </span>
   );
 }
 

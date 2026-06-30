@@ -11,3 +11,5 @@ export { discoverPricingUrl } from "./discover-url";
 export type { PricingPageCandidate } from "./discover-url";
 export { pricingRatiosPlausible } from "./validate-ratios";
 export type { PricingRatioPlan } from "./validate-ratios";
+export { detectTrial, NO_TRIAL } from "./detect-trial";
+export type { TrialInfo } from "./detect-trial";

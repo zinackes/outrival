@@ -70,6 +70,34 @@ test("pricingFromStructured maps Product offers to plans", () => {
   ]);
 });
 
+test("pricingFromStructured names a nameless $0 tier Free, not the product name", () => {
+  const html = ldScript({
+    "@type": "Product",
+    name: "RoadmapHero",
+    offers: [
+      { "@type": "Offer", price: "0", priceCurrency: "USD" },
+      { "@type": "Offer", name: "Business", price: "49", priceCurrency: "USD", priceSpecification: { billingDuration: "P1M" } },
+    ],
+  });
+  const result = pricingFromStructured(html);
+  expect(result?.plans).toEqual([
+    { plan_name: "Free", price: 0, currency: "USD", billing_period: "monthly" },
+    { plan_name: "Business", price: 49, currency: "USD", billing_period: "monthly" },
+  ]);
+});
+
+test("pricingFromStructured uses the product name for a single nameless tier", () => {
+  const html = ldScript({
+    "@type": "Product",
+    name: "Acme Pro",
+    offers: { "@type": "Offer", price: "29", priceCurrency: "USD", priceSpecification: { billingDuration: "P1M" } },
+  });
+  const result = pricingFromStructured(html);
+  expect(result?.plans).toEqual([
+    { plan_name: "Acme Pro", price: 29, currency: "USD", billing_period: "monthly" },
+  ]);
+});
+
 test("pricingFromStructured unwraps AggregateOffer and dedupes", () => {
   const html = ldScript({
     "@type": "SoftwareApplication",

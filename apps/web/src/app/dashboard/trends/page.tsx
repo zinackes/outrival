@@ -3,6 +3,7 @@ import { startOfDay, endOfDay, subDays } from "date-fns";
 import { TrendsView } from "@/components/dashboard/trends-view";
 import { getTrendsData } from "@/lib/api-server";
 import { makeServerQueryClient } from "@/lib/server-query";
+import { resolveServerScope } from "@/lib/product-scope-server";
 import { trendsSummaryQuery } from "@/lib/queries";
 
 export default async function TrendsPage({
@@ -12,8 +13,10 @@ export default async function TrendsPage({
 }) {
   // Same default window as getTrendsData and the client's lastNDays(90), rounded to
   // the day → the seed key matches what TrendsView requests on first paint. Best-effort:
-  // null → TrendsView's useQuery fetches client-side. patch-28 — honour ?product=.
-  const { product } = await searchParams;
+  // null → TrendsView's useQuery fetches client-side. patch-28 — URL ?product= override
+  // wins, else the persisted cookie scope.
+  const { product: urlProduct } = await searchParams;
+  const product = await resolveServerScope(urlProduct);
   const queryClient = makeServerQueryClient();
   const from = startOfDay(subDays(new Date(), 90));
   const to = endOfDay(new Date());

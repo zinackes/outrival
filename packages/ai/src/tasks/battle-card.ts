@@ -25,6 +25,13 @@ export interface BattleCardInput {
   myProduct: { name?: string; category: string; valueProp: string };
   competitorName: string;
   competitorSummary: string | null;
+  // patch-33 — the competitor's detected free-trial offer (acquisition lever to
+  // compare against). null when unknown / no pricing captured yet.
+  competitorTrial?: {
+    hasTrial: boolean;
+    days: number | null;
+    requiresCreditCard: boolean | null;
+  } | null;
   reviewComplaints: string[];
   reviewPraises: string[];
   recentSignals: Array<{ category: string; severity: string; insight: string }>;
@@ -51,6 +58,22 @@ export async function generateBattleCard(
     ? input.reviewComplaints.slice(0, 8).map((p) => `- ${p}`).join("\n")
     : "n/a";
 
+  // Free-trial line: a concrete acquisition comparison the rep can lean on.
+  const trialBlock = (() => {
+    const t = input.competitorTrial;
+    if (!t) return "Free trial: unknown.";
+    if (!t.hasTrial) return "Free trial: none offered.";
+    const bits = [
+      t.days != null ? `${t.days}-day` : "duration unstated",
+      t.requiresCreditCard === false
+        ? "no credit card required"
+        : t.requiresCreditCard === true
+          ? "credit card required up front"
+          : null,
+    ].filter(Boolean);
+    return `Free trial: yes (${bits.join(", ")}).`;
+  })();
+
   // Multi-SKU focus guard: keep the card about THIS product, not the org's others.
   const focusNote =
     input.otherProductNames && input.otherProductNames.length > 0
@@ -69,6 +92,7 @@ Value proposition: ${input.myProduct.valueProp}${focusNote}
 <competitor>
 Name: ${input.competitorName}
 Summary: ${input.competitorSummary ?? "unknown"}
+${trialBlock}
 </competitor>
 
 <reviews>
@@ -112,6 +136,7 @@ Reply ONLY with a valid JSON object, no markdown and no surrounding text.
   // so cited "their strength / weakness" claims must trace back to evidence.
   const sourceText = [
     input.competitorSummary ?? "",
+    trialBlock,
     `What their customers love:\n${praisesBlock}`,
     `What their customers complain about:\n${complaintsBlock}`,
     `Recent signals:\n${signalsBlock}`,

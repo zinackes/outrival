@@ -92,6 +92,23 @@ test("drops lowercase descriptive phrases", () => {
   expect(isJunkLogoName("search and filter")).toBe(true);
 });
 
+// ─── junk: language-switcher labels ──────────────────────────────────────────
+test("drops bare language names (switcher flags, any casing/accent)", () => {
+  for (const n of [
+    "Français", "français", "Anglais", "Italien", "Español", "Deutsch", "English",
+    "Nederlands", "Português", "中文", "日本語",
+  ]) {
+    expect(isJunkLogoName(n)).toBe(true);
+  }
+});
+
+test("keeps brands that merely contain/extend a language word (whole-string match)", () => {
+  // "deutsche" ≠ "deutsch", "polished" ≠ "polish", two-word name isn't the bare word.
+  for (const n of ["Deutsche Bank", "Polished", "French Connection"]) {
+    expect(classifyLogoName(n).kind).toBe("brand");
+  }
+});
+
 // ─── uninformative: bare placeholders ────────────────────────────────────────
 test("placeholders are uninformative (lean on the image)", () => {
   for (const n of ["Logo", "brand logo", "Customer logo", "", "  "]) {

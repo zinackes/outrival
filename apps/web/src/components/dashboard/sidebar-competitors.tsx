@@ -8,7 +8,7 @@ import { Users, ChevronRight, MoreHorizontal } from "lucide-react";
 
 import { type Competitor } from "@/lib/api";
 import { competitorsQuery } from "@/lib/queries";
-import { useActiveProduct } from "@/hooks/use-active-product";
+import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { cn } from "@/lib/utils";
 import {
   SidebarMenuAction,
@@ -19,6 +19,7 @@ import {
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
 import { CompAvatar } from "./comp-avatar";
+import { ProductChips } from "./product-chip";
 
 const CAP = 8;
 const POLL_MS = 60_000;
@@ -46,13 +47,13 @@ export function SidebarCompetitors() {
   // → all competitors. Shares the ["competitors", productId?] cache with the
   // Competitors list page; polls in the background. Mutations elsewhere invalidate the
   // matching key → this refreshes via the shared cache (no manual event subscription).
-  const productId = useActiveProduct() ?? undefined;
+  const productId = useProductScope() ?? undefined;
+  // Product dot only in all-products scope (redundant once scoped to one product).
+  const allProducts = !productId;
   const compsQ = useQuery({ ...competitorsQuery(productId), refetchInterval: POLL_MS });
   const comps = compsQ.data ?? null;
-  // Carry the scope onto the list links so the Competitors page opens scoped too.
-  const listHref = productId
-    ? `/dashboard/competitors?product=${encodeURIComponent(productId)}`
-    : "/dashboard/competitors";
+  // The cookie carries the scope across navigation, so plain links open scoped too.
+  const listHref = "/dashboard/competitors";
   const [open, setOpen] = React.useState(true);
 
   const activeId = React.useMemo(() => {
@@ -122,6 +123,13 @@ export function SidebarCompetitors() {
                   <Link href={`/dashboard/competitors/${c.id}`}>
                     <CompAvatar name={c.name} url={c.url} size={22} />
                     <span className="truncate">{c.name}</span>
+                    {allProducts && (
+                      <ProductChips
+                        productIds={c.specificProductIds}
+                        dense
+                        className="shrink-0"
+                      />
+                    )}
                     {n > 0 && (
                       <span className="ml-auto shrink-0 font-mono text-meta tabular-nums text-muted-foreground transition-colors duration-150 group-hover/comp:text-foreground group-data-[active=true]/comp:text-foreground motion-reduce:transition-none">
                         {n}

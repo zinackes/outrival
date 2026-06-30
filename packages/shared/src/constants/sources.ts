@@ -30,6 +30,12 @@ export const SOURCE_TYPES = [
   // by brand and emits a sorted snapshot → the generic diff surfaces new events
   // (classify tags funding/product/hiring). Kept in sync with the DB enum.
   "news",
+  // AI Visibility / "Share of Model" (docs/ai-visibility.md). Like tech_stack, an
+  // INTERNAL anchor source — never user-selectable (excluded from plan gating, the
+  // enable route, and the source tabs). It only anchors the synthetic visibility
+  // signal's snapshot→change chain; the capability is gated by features.aiVisibility,
+  // and the data lives in ai_visibility_prompts/_results. Kept in sync with the DB enum.
+  "ai_visibility",
 ] as const;
 
 export type SourceType = typeof SOURCE_TYPES[number];

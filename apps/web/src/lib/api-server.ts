@@ -23,6 +23,7 @@ import type {
   BillingInfo,
   NotificationPreferences,
   RelevanceThresholdInfo,
+  AiVisibilityData,
 } from "./api";
 import type { CompetitorData } from "@/app/dashboard/competitors/[id]/competitor-detail-view";
 
@@ -120,6 +121,17 @@ export async function getCompetitorDetailData(
  * TrendsView's initial range = lastNDays(90)). Best-effort: null → TrendsView
  * falls back to its own client fetch. Drill-down series stay client-side.
  */
+// AI Visibility seed. Org-level (no product scope). Best-effort: null on any failure
+// (incl. the 403 plan_locked_feature for free/starter) → the client query re-fetches
+// and the view renders the locked/empty state from the error.
+export async function getAiVisibilityData(): Promise<AiVisibilityData | null> {
+  try {
+    return await serverGet<AiVisibilityData>("/api/ai-visibility");
+  } catch {
+    return null;
+  }
+}
+
 export async function getTrendsData(productId?: string): Promise<TrendsSummary | null> {
   const from = startOfDay(subDays(new Date(), 90));
   const to = endOfDay(new Date());

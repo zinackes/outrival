@@ -12,8 +12,9 @@ import {
   numericClaims,
   techStackHistory,
   platformDetectionRuns,
+  aiVisibilityResults,
 } from "@outrival/db";
-import { and, desc, eq, gt, gte, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, ne, sql } from "drizzle-orm";
 
 // Time-series / analytics access for the workers. These tables used to live in
 // ClickHouse; they are now plain Postgres tables in the same Neon database.
@@ -387,6 +388,90 @@ export async function insertReviewScore(row: ReviewScoreRow): Promise<void> {
       recordedAt: row.recorded_at,
     }),
   );
+}
+
+export interface AiVisibilityResultRow {
+  org_id: string;
+  prompt_id: string;
+  competitor_id: string;
+  engine: string;
+  mentioned: boolean;
+  rank?: number | null;
+  cited?: boolean | null;
+  sentiment_score?: number | null;
+  answer_excerpt?: string | null;
+  run_id: string;
+  recorded_at: Date;
+}
+
+// AI Visibility / "Share of Model" results (docs/ai-visibility.md). One row per
+// (prompt × engine × subject) sweep. Booleans map to the 0/1 int convention of this
+// table; cited is nullable (n/a when not mentioned). Best-effort like the rest.
+export async function insertAiVisibilityResults(rows: AiVisibilityResultRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  await bestEffort("ai_visibility_results insert", () =>
+    db.insert(aiVisibilityResults).values(
+      rows.map((r) => ({
+        orgId: r.org_id,
+        promptId: r.prompt_id,
+        competitorId: r.competitor_id,
+        engine: r.engine,
+        mentioned: r.mentioned ? 1 : 0,
+        rank: r.rank ?? null,
+        cited: r.cited == null ? null : r.cited ? 1 : 0,
+        sentimentScore: r.sentiment_score ?? null,
+        answerExcerpt: r.answer_excerpt ?? null,
+        runId: r.run_id,
+        recordedAt: r.recorded_at,
+      })),
+    ),
+  );
+}
+
+export interface AiVisibilityRunRow {
+  competitorId: string;
+  engine: string;
+  promptId: string;
+  mentioned: boolean;
+  rank: number | null;
+}
+
+// The previous run's rows for an org (the most recent run_id that isn't the current
+// one), for the phase-3 diff. Best-effort: null on error → caller treats it as "no
+// baseline" and emits no signals.
+export async function getPreviousAiVisibilityRun(
+  orgId: string,
+  currentRunId: string,
+): Promise<AiVisibilityRunRow[] | null> {
+  return bestEffortRead("getPreviousAiVisibilityRun", async () => {
+    const latest = await db
+      .select({ runId: aiVisibilityResults.runId })
+      .from(aiVisibilityResults)
+      .where(
+        and(eq(aiVisibilityResults.orgId, orgId), ne(aiVisibilityResults.runId, currentRunId)),
+      )
+      .orderBy(desc(aiVisibilityResults.recordedAt))
+      .limit(1);
+    const prevRunId = latest[0]?.runId;
+    if (!prevRunId) return [];
+    const rows = await db
+      .select({
+        competitorId: aiVisibilityResults.competitorId,
+        engine: aiVisibilityResults.engine,
+        promptId: aiVisibilityResults.promptId,
+        mentioned: aiVisibilityResults.mentioned,
+        rank: aiVisibilityResults.rank,
+      })
+      .from(aiVisibilityResults)
+      .where(eq(aiVisibilityResults.runId, prevRunId));
+    return rows.map((r) => ({
+      competitorId: r.competitorId,
+      engine: r.engine,
+      promptId: r.promptId,
+      mentioned: r.mentioned !== 0,
+      rank: r.rank,
+    }));
+  });
 }
 
 // Previous-state reads for the per-source summary. Called BEFORE inserting the

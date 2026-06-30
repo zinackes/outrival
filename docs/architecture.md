@@ -787,6 +787,15 @@ PLATFORM_REDETECT_DRIFT_COOLDOWN_HOURS=24  # min heures entre re-détections sur
 # R2 org-scopé, no-IA). 📄 docs/visual-diff.md
 VISUAL_DIFF_ENABLED=true               # false → endpoints screenshot 404, section diff masquée
 
+# AI Visibility / "Share of Model" — présence self + concurrents dans les réponses des
+# moteurs IA (Perplexity d'abord). Feature premium (features.aiVisibility, pro+).
+# 📄 docs/ai-visibility.md
+AI_VISIBILITY_ENABLED=true             # false → scheduler + job no-op (kill-switch)
+AI_VISIBILITY_INTERVAL_DAYS=7          # cadence par org (jours entre 2 runs)
+AI_VISIBILITY_MAX_PROMPTS=10           # cap prompts/org/run (garde-fou coût)
+PERPLEXITY_API_KEY=                    # moteur Perplexity Sonar ; vide → moteur skip (0 coût)
+AI_VISIBILITY_PERPLEXITY_MODEL=sonar   # modèle Perplexity (sonar = search fee le moins cher)
+
 # Billing
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=

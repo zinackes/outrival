@@ -74,6 +74,7 @@ const FEATURE_LABEL: Record<string, string> = {
   realtimeAlerts: "Real-time alerts",
   api: "API access",
   multiUser: "Multi-user",
+  aiVisibility: "AI Visibility",
 };
 
 const SOURCE_LABEL: Record<string, string> = {

@@ -71,10 +71,15 @@ ai_visibility_prompts
 
 Enum / constant touches (the resync rule from CLAUDE.md applies):
 - Add `ai_visibility` to `sourceTypeEnum` (`packages/db/src/schema/monitors.ts`)
-  **and** `SOURCE_TYPES` (`packages/shared/src/constants/sources.ts`). It is a
-  **premium on-demand source** (not an internal anchor): add to `allowedSources` for
-  `pro` + `business` in `packages/shared/src/constants/plans.ts`.
-- `engine` is a new pg enum local to these tables.
+  **and** `SOURCE_TYPES` (`packages/shared/src/constants/sources.ts`) as an
+  **internal anchor source** (like `tech_stack`): never user-selectable, **not** in any
+  `allowedSources`, so it stays ungated *as a source*. It exists only to anchor the
+  snapshot→change→signal chain. The **capability** is gated by a new org-level
+  **`features.aiVisibility`** flag in `PLAN_LIMITS` (pro + business), mirroring
+  `battleCards`/`realtimeAlerts` — AI Visibility is org-level, not per-competitor, so a
+  per-competitor source gate would be the wrong shape. *(Implemented this way in
+  migration `0015`.)*
+- `engine` is plain `text` (schema-light, like every analytics column), not an enum.
 - **Decision (open):** signal category — add `visibility` to the signal-category enum,
   or reuse `content`. Leaning `visibility` (it's a distinct decision surface), but that
   touches the category enum + every category filter/legend. See Risks.
@@ -124,8 +129,9 @@ the feed, the weekly digest, and (if critical-ish) an alert.
 
 ## Plan gating, cost, env
 
-- **pro + business** (premium on-demand source, like reviews/status). free/starter see
-  the locked state → `plan_locked_source` paywall (existing mechanism).
+- **pro + business** via the `features.aiVisibility` plan flag (org-level capability,
+  like `realtimeAlerts`). free/starter see the locked state → `plan_locked_feature`
+  paywall (existing mechanism), not a source paywall.
 - **Cost is bounded and small:** `prompts × engines × weekly`. 10 prompts × 3 engines ×
   weekly ≈ 120 external queries/org/month + ~120 cheap internal parse calls. The
   external engine APIs (Perplexity Sonar, OpenAI web, a SERP provider for AIO) are

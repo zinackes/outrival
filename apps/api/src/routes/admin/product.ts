@@ -315,7 +315,7 @@ productRouter.get("/discovery", async (c) => {
     db
       .select({
         detectThisMonth: sql<number>`coalesce(sum(case when ${discoveryRuns.detectCountMonth} = ${monthKey} then ${discoveryRuns.detectCount} else 0 end),0)::int`,
-        activeOrgs: sql<number>`count(*) filter (where ${discoveryRuns.detectCountMonth} = ${monthKey} and ${discoveryRuns.detectCount} > 0)::int`,
+        activeOrgs: sql<number>`count(distinct ${discoveryRuns.orgId}) filter (where ${discoveryRuns.detectCountMonth} = ${monthKey} and ${discoveryRuns.detectCount} > 0)::int`,
       })
       .from(discoveryRuns),
     db

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, Boxes, ChevronRight, Loader2, Plus, Star } from "lucide-react";
+import { Boxes, ChevronRight, Loader2, Plus, Star, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { Card } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -40,6 +41,10 @@ export function ProductsSettings() {
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
+  // Soft-archive on the backend, but presented as a delete: confirm before
+  // removing a product from the workspace.
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   function load() {
     return queryClient.invalidateQueries({ queryKey: productsSettingsQuery().queryKey });
@@ -85,13 +90,18 @@ export function ProductsSettings() {
     }
   }
 
-  async function onArchive(id: string) {
+  async function onConfirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
-      await api.archiveProduct(id);
-      toast.success("Product archived.");
+      await api.archiveProduct(deleteTarget.id);
+      toast.success(`Product "${deleteTarget.name}" deleted.`);
+      setDeleteTarget(null);
       load();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to archive product.");
+      toast.error(e instanceof Error ? e.message : "Failed to delete product.");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -166,12 +176,13 @@ export function ProductsSettings() {
                   Set primary
                 </Button>
                 <Button
-                  variant="ghost"
+                  variant="danger"
                   size="sm"
-                  onClick={() => onArchive(p.id)}
-                  aria-label="Archive product"
+                  onClick={() => setDeleteTarget({ id: p.id, name: p.name })}
+                  aria-label="Delete product"
                 >
-                  <Archive size={14} />
+                  <Trash2 size={14} className="mr-1" />
+                  Delete
                 </Button>
               </div>
             )}
@@ -215,6 +226,36 @@ export function ProductsSettings() {
             <Button onClick={onAdd} disabled={busy || !name.trim()}>
               {busy && <Loader2 size={14} className="mr-1 animate-spin" />}
               Add product
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={deleteTarget != null}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setDeleteTarget(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete {deleteTarget?.name ?? "product"}?</DialogTitle>
+            <DialogDescription>
+              This removes the product from your workspace and can&apos;t be undone from
+              here. Its competitors stay tracked at the workspace level.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setDeleteTarget(null)}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={onConfirmDelete} disabled={deleting}>
+              {deleting && <Loader2 size={14} className="mr-1 animate-spin" />}
+              Delete
             </Button>
           </DialogFooter>
         </DialogContent>

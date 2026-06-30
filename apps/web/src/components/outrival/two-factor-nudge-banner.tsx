@@ -7,13 +7,19 @@ import { useSession } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 
 const DISMISS_KEY = "outrival.2fa-nudge-dismissed";
+const FIRST_SEEN_KEY = "outrival.2fa-nudge-first-seen";
+// Hold the 2FA nudge back from the crowded first arrival — the onboarding analysis
+// panel and the setup checklist own that moment. It surfaces ~a day later, in an
+// uncontested slot, so security never competes with the first-run experience.
+const DEFER_MS = 24 * 60 * 60 * 1000;
 
 /**
  * One-time nudge inviting users to turn on two-factor auth. It's a suggestion,
  * never a gate — onboarding stays untouched so activation isn't taxed. Shown only
  * when 2FA is off (read from the session, same field SecuritySettings uses);
  * dismissing persists forever in localStorage so we never nag again, and enabling
- * 2FA removes it on the next session read.
+ * 2FA removes it on the next session read. Deferred past the first dashboard visit
+ * (see DEFER_MS) so it doesn't stack onto the first-run analysis + checklist.
  */
 export function TwoFactorNudgeBanner() {
   const { data: session, isPending } = useSession();
@@ -22,12 +28,27 @@ export function TwoFactorNudgeBanner() {
   );
   // Start hidden so an already-dismissed (or 2FA-enabled) user never sees a flash.
   const [dismissed, setDismissed] = useState(true);
+  // Start deferred too — the nudge only appears once the grace window has elapsed.
+  const [deferred, setDeferred] = useState(true);
 
   useEffect(() => {
-    setDismissed(localStorage.getItem(DISMISS_KEY) === "1");
+    if (localStorage.getItem(DISMISS_KEY) === "1") {
+      setDismissed(true);
+      return;
+    }
+    setDismissed(false);
+    const raw = localStorage.getItem(FIRST_SEEN_KEY);
+    if (!raw) {
+      // First dashboard arrival — stamp it and stay deferred this session.
+      localStorage.setItem(FIRST_SEEN_KEY, String(Date.now()));
+      setDeferred(true);
+      return;
+    }
+    const firstSeen = Number(raw);
+    setDeferred(!Number.isFinite(firstSeen) || Date.now() - firstSeen < DEFER_MS);
   }, []);
 
-  if (isPending || !session || enabled || dismissed) return null;
+  if (isPending || !session || enabled || dismissed || deferred) return null;
 
   return (
     <div className="mb-4 flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3">

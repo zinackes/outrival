@@ -2,6 +2,7 @@ import { complete } from "../provider";
 import { AI_CONFIG } from "../config";
 import { safeParseJson } from "../lib/parse";
 import { ProductProfileSchema, type ProductProfile } from "../tasks/analyze-product";
+import { buildProfilePrompt } from "./profile-prompt";
 
 export interface FromDescriptionInput {
   description: string;
@@ -24,28 +25,15 @@ export async function fromDescription(
     .filter(Boolean)
     .slice(0, 3);
 
-  const prompt = `<description>
+  const sourceBlock = `<description>
 ${input.description.slice(0, 4000)}
-</description>
-${category ? `\n<category>${category}</category>` : ""}
-${inspirations.length ? `\n<inspirations>${inspirations.join(", ")}</inspirations>` : ""}
-
-<task>
-From this product/SaaS idea, infer its product profile.
-If a category is given, respect it. If inspirations are cited,
-anchor the tone and positioning in the same competitive space without copying them.
-Reply ONLY with a valid JSON object, no markdown and no surrounding text.
-Write all text values in English.
-</task>
-
-<format>
-{
-  "category": "e.g. B2B SaaS / Productivity",
-  "audience": "e.g. Startups of 1-50 people",
-  "valueProp": "e.g. Automating X, in one sentence",
-  "pricingModel": "e.g. Freemium + subscription"
-}
-</format>`;
+</description>${category ? `\n<category_hint>${category}</category_hint>` : ""}${
+    inspirations.length ? `\n<inspirations>${inspirations.join(", ")}</inspirations>` : ""
+  }`;
+  const prompt = buildProfilePrompt(
+    sourceBlock,
+    "Profile the product behind this idea. Describe THIS product specifically. If a category hint is given, use it only to disambiguate — still name the precise functional category, not the hint verbatim. If inspirations are cited, place the product in the same competitive space without copying them.",
+  );
 
   const raw = await complete(AI_CONFIG.classification, { prompt, json: true });
   const result = safeParseJson(raw, ProductProfileSchema);

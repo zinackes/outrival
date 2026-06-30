@@ -42,8 +42,13 @@ export { generateRepositioningInsight } from "./tasks/pricing-repositioning";
 export type { RepositioningInput } from "./tasks/pricing-repositioning";
 export { generateDigest, DigestSchema } from "./tasks/digest";
 export type { Digest, DigestInputSignal } from "./tasks/digest";
-export { analyzeProduct, ProductProfileSchema, buildDiscoveryQuery } from "./tasks/analyze-product";
-export type { ProductProfile } from "./tasks/analyze-product";
+export {
+  analyzeProduct,
+  ProductProfileSchema,
+  buildDiscoveryQuery,
+  selfProfileToDiscoveryProfile,
+} from "./tasks/analyze-product";
+export type { ProductProfile, SelfProfileLike } from "./tasks/analyze-product";
 export { fromDescription, fromDocument, fromRepo, fromUrl } from "./profile";
 export type { FromDescriptionInput, RepoArtifacts } from "./profile";
 export { scoreOverlap } from "./tasks/score-overlap";

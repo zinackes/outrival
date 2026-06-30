@@ -206,9 +206,17 @@ export const generateSignalJob = task({
         // Null for non-homepage / lexical changes → layer 1 simply skips them.
         relevanceScore: change.relevanceScore,
       })
+      .onConflictDoNothing({ target: signals.changeId })
       .returning();
 
-    if (!newSignal) throw new Error("Failed to insert signal");
+    // A concurrent run can pass the dedupe check above and reach the insert at the
+    // same time; the unique index (signals_change_id_uq) lets exactly one win and
+    // onConflictDoNothing makes the loser a no-op. Treat the empty return as the
+    // same "already exists" skip, not a failure.
+    if (!newSignal) {
+      logger.log("Signal already created concurrently, skipping", { changeId: input.changeId });
+      return { skipped: true };
+    }
 
     // Anti-hallucination (patch-24): persist the grounding + self-check envelope for
     // this signal so the UI can surface a ConfidenceDot / flagged warning and the ops

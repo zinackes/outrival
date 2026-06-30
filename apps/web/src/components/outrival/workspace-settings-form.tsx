@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Check, Loader2, RefreshCw, Pencil } from "lucide-react";
-import { api, type ProjectStage, type WorkspaceSettings } from "@/lib/api";
+import { api, type ProductProfile, type ProjectStage, type WorkspaceSettings } from "@/lib/api";
 import { workspaceSettingsQuery } from "@/lib/queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -112,15 +112,9 @@ export function WorkspaceSettingsForm() {
     setSaved(false);
     setError(null);
     try {
-      const body: {
-        name: string;
-        productProfile?: {
-          category: string;
-          audience: string;
-          valueProp: string;
-          pricingModel: string;
-        };
-      } = { name: draft.name.trim() };
+      const body: { name: string; productProfile?: ProductProfile } = {
+        name: draft.name.trim(),
+      };
       const anyProfile = [
         draft.category,
         draft.audience,
@@ -128,7 +122,11 @@ export function WorkspaceSettingsForm() {
         draft.pricingModel,
       ].some((v) => v.trim());
       if (anyProfile) {
+        // Spread the loaded profile first so the fields this quick-edit form
+        // doesn't expose (whatItDoes, keywords) survive the save instead of being
+        // wiped — they're edited in the full UpdateProfileDialog.
         body.productProfile = {
+          ...(settingsQ.data?.productProfile ?? {}),
           category: draft.category.trim(),
           audience: draft.audience.trim(),
           valueProp: draft.valueProp.trim(),
@@ -162,7 +160,7 @@ export function WorkspaceSettingsForm() {
   const dirty = !isEqual(draft, pristine);
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-6 max-w-xl">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-6">
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="ws-name">Workspace name</Label>
         <Input

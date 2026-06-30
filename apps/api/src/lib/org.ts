@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { getContext } from "hono/context-storage";
 import { db } from "./db";
 import { users, organizations } from "@outrival/db";
 
@@ -8,6 +9,17 @@ import { users, organizations } from "@outrival/db";
  * causing a unique-constraint failure on concurrent or retried requests.
  */
 export async function ensureUserOrg(userId: string): Promise<string> {
+  // Fast path: the auth middleware already loaded this request's orgId onto the
+  // Hono context (same users row as the suspended check), so we avoid a second
+  // users round-trip on every authenticated request. getContext throws when called
+  // outside a request scope — fall through to the direct read in that case.
+  try {
+    const cached = getContext<{ Variables: { orgId?: string | null } }>().get("orgId");
+    if (cached) return cached;
+  } catch {
+    // no request context (e.g. a worker/script call) — read from the DB below
+  }
+
   const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
   if (!user) throw new Error(`User ${userId} not found`);
   if (user.orgId) return user.orgId;

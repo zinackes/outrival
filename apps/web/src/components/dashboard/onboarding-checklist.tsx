@@ -9,6 +9,17 @@ import { onboardingChecklistQuery } from "@/lib/queries";
 
 const DISMISS_KEY = "onboardingChecklistDismissed";
 
+// The "signal" step is passive — the first signal arrives on its own, it isn't a
+// user action. So it never keeps the card alive on its own: once every actionable
+// step is done, the checklist hides even while "first signal" is still pending
+// (a completed onboarding otherwise leaves a near-useless 4/5 card on arrival).
+const ACTIONABLE_STEPS: ReadonlySet<ChecklistStepKey> = new Set([
+  "product",
+  "competitor",
+  "monitoring",
+  "notifications",
+]);
+
 const STEP_META: Record<ChecklistStepKey, { label: string; href: string }> = {
   product: { label: "Set up your product profile", href: "/dashboard/products" },
   competitor: { label: "Add your first competitor", href: "/dashboard/competitors" },
@@ -32,6 +43,11 @@ export function OnboardingChecklistCard() {
   }, []);
 
   if (dismissed || !data || data.complete) return null;
+  // Suppress when the only thing left is passive — no actionable step remains.
+  const hasActionableTodo = data.steps.some(
+    (s) => !s.done && ACTIONABLE_STEPS.has(s.key),
+  );
+  if (!hasActionableTodo) return null;
 
   const doneCount = data.steps.filter((s) => s.done).length;
 

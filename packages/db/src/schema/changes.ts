@@ -26,4 +26,7 @@ export const changes = pgTable("changes", {
 }, (t) => [
   // Changes feed + monitor teardown both walk changes by monitor, newest first.
   index("changes_monitor_detected_idx").on(t.monitorId, t.detectedAt),
+  // FK to snapshots: lets a snapshot delete find referencing changes by index
+  // instead of scanning, and backs the before/after join on the diff view.
+  index("changes_snapshot_after_idx").on(t.snapshotAfterId),
 ]);

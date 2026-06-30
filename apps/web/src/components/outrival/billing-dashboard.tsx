@@ -14,10 +14,19 @@ import {
 } from "@outrival/shared";
 import { api } from "@/lib/api";
 import { billingQuery, invoicesQuery } from "@/lib/queries";
+import { formatDate } from "@/lib/format-date";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { BillingDashboardSkeleton } from "@/app/dashboard/settings/billing/billing-skeleton";
 
@@ -98,19 +107,6 @@ const PLAN_CARDS: Record<
   },
 };
 
-function frequencyLabel(p: Plan): string {
-  const freqs = PLAN_LIMITS[p].allowedFrequencies;
-  if (freqs.includes("realtime")) return "Hourly";
-  if (freqs.includes("daily")) return "Daily";
-  return "Weekly";
-}
-
-function channelsLabel(p: Plan): string {
-  return PLAN_LIMITS[p].allowedChannels
-    .map((c) => c[0]!.toUpperCase() + c.slice(1))
-    .join(", ");
-}
-
 export function BillingDashboard() {
   const router = useRouter();
   const search = useSearchParams();
@@ -123,6 +119,9 @@ export function BillingDashboard() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // Target plan awaiting confirmation (downgrade to Free, or any switch that would
+  // leave the org over the new tier's competitor cap). null = no dialog open.
+  const [confirm, setConfirm] = useState<Plan | null>(null);
   // Invoices only matter once subscribed; gated so it doesn't fetch otherwise.
   const invoicesQ = useQuery({ ...invoicesQuery(), enabled: !!billing?.hasSubscription });
   const invoices: Invoice[] = invoicesQ.data ?? [];
@@ -147,16 +146,65 @@ export function BillingDashboard() {
     }
   }, [search, router, queryClient]);
 
-  async function handleCheckout(plan: PaidPlan) {
+  // Apply a plan change. Free → schedule cancel-at-period-end; paid → Checkout
+  // redirect (no sub) or an in-place prorated switch (existing sub). On the redirect
+  // path we keep `busy` set so the button stays in its loading state until unload.
+  async function applyChange(plan: Plan) {
     setBusy(plan);
     setError(null);
     try {
-      const { url } = await api.createCheckout(plan, period);
-      window.location.href = url;
+      if (plan === "free") {
+        await api.downgradeToFree();
+        setToast(
+          "Your plan switches to Free at the end of the billing cycle — you keep full access until then.",
+        );
+      } else {
+        const res = await api.changePlan(plan as PaidPlan, period);
+        if (res.url) {
+          window.location.href = res.url;
+          return;
+        }
+        setToast("Plan updated. The change will reflect in a few seconds.");
+      }
+      setConfirm(null);
+      setTimeout(
+        () => queryClient.invalidateQueries({ queryKey: billingQuery().queryKey }),
+        1500,
+      );
+      setBusy(null);
     } catch (e) {
       setError(String(e));
       setBusy(null);
     }
+  }
+
+  // Card click. Confirm first when dropping to Free, or when the target tier's
+  // competitor cap is below current usage (the user should know what gets paused).
+  function selectPlan(plan: Plan) {
+    if (!billing || plan === billing.plan) return;
+    const targetLimit = PLAN_LIMITS[plan].maxCompetitors;
+    const wouldExceed = Number.isFinite(targetLimit) && used > targetLimit;
+    if (plan === "free" || wouldExceed) {
+      setConfirm(plan);
+      return;
+    }
+    void applyChange(plan);
+  }
+
+  async function handleResume() {
+    setBusy("resume");
+    setError(null);
+    try {
+      await api.resumeSubscription();
+      setToast("Cancellation reverted — your plan stays active.");
+      setTimeout(
+        () => queryClient.invalidateQueries({ queryKey: billingQuery().queryKey }),
+        1500,
+      );
+    } catch (e) {
+      setError(String(e));
+    }
+    setBusy(null);
   }
 
   async function handlePortal() {
@@ -188,19 +236,23 @@ export function BillingDashboard() {
       ? Math.min(100, Math.round((used / limit) * 100))
       : 0;
   const remaining = limit !== null ? Math.max(0, limit - used) : null;
+  // Over the current tier's cap (e.g. after a downgrade). The excess competitors are
+  // frozen non-destructively by the scheduler, not deleted — surfaced as a banner.
+  const overLimit = limit !== null && used > limit;
+  const overBy = overLimit ? used - (limit as number) : 0;
+
+  // Competitors that the confirmed target plan would pause (over-cap), for the
+  // pre-confirmation warning. 0 when the target's cap still covers current usage.
+  const confirmLimit = confirm ? PLAN_LIMITS[confirm].maxCompetitors : 0;
+  const confirmPaused =
+    confirm && Number.isFinite(confirmLimit) ? Math.max(0, used - confirmLimit) : 0;
 
   const effPeriod: BillingPeriod = billing.planPeriod ?? "monthly";
   const currentPrice =
     billing.plan === "free" ? 0 : PLAN_PRICING[billing.plan as PaidPlan][effPeriod];
 
-  const planFacts = [
-    { label: "Update frequency", value: frequencyLabel(billing.plan) },
-    { label: "Sources", value: `${PLAN_LIMITS[billing.plan].allowedSources.length} sources` },
-    { label: "Alert channels", value: channelsLabel(billing.plan) },
-  ];
-
   return (
-    <div className="flex flex-col gap-10">
+    <div className="flex flex-col gap-8">
       {toast && (
         <div
           role="status"
@@ -211,9 +263,33 @@ export function BillingDashboard() {
         </div>
       )}
 
+      {/* ── Over-limit notice ──────────────────────────────────────────── */}
+      {overLimit && (
+        <div
+          role="status"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-high/40 bg-high/[0.06] px-4 py-3 text-sm"
+        >
+          <span className="text-foreground">
+            {overBy} competitor{overBy > 1 ? "s" : ""} over your{" "}
+            {PLAN_LABELS[billing.plan]} limit{" "}
+            {overBy > 1 ? "are" : "is"} paused. Nothing was deleted — upgrade to
+            resume monitoring{overBy > 1 ? " them" : " it"}.
+          </span>
+          <Button
+            size="sm"
+            onClick={() => {
+              const target = document.getElementById("plan-selector");
+              target?.scrollIntoView({ behavior: "smooth" });
+            }}
+          >
+            Upgrade
+          </Button>
+        </div>
+      )}
+
       {/* ── Current plan ───────────────────────────────────────────────── */}
       <Card className="overflow-hidden p-0">
-        <div className="flex flex-wrap items-start justify-between gap-4 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4 p-4">
           <div className="flex flex-col gap-2">
             <span className={EYEBROW}>Current plan</span>
             <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
@@ -254,7 +330,32 @@ export function BillingDashboard() {
           )}
         </div>
 
-        <div className="flex flex-col gap-5 border-t border-border p-5">
+        {billing.cancelAtPeriodEnd && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-high/30 bg-high/[0.05] px-4 py-3 text-sm">
+            <span className="text-foreground">
+              Your {PLAN_LABELS[billing.plan]} plan ends
+              {billing.cancelAt
+                ? ` on ${formatDate(billing.cancelAt, {
+                    year: "numeric",
+                    month: "short",
+                    day: "numeric",
+                  })}`
+                : ""}
+              , then switches to Free. You keep full access until then.
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleResume}
+              disabled={busy === "resume"}
+            >
+              {busy === "resume" && <Loader2 size={12} className="animate-spin" />}
+              {busy === "resume" ? "Resuming…" : "Resume plan"}
+            </Button>
+          </div>
+        )}
+
+        <div className="border-t border-border p-4">
           {/* Usage meter */}
           <div className="flex flex-col gap-2">
             <div className="flex items-baseline justify-between gap-3">
@@ -283,16 +384,6 @@ export function BillingDashboard() {
               </>
             )}
           </div>
-
-          {/* Plan facts strip */}
-          <div className="grid grid-cols-1 overflow-hidden rounded-md border border-border bg-border sm:grid-cols-3 [&>*]:bg-surface gap-px">
-            {planFacts.map((f) => (
-              <div key={f.label} className="flex flex-col gap-1 px-3.5 py-3">
-                <span className={EYEBROW}>{f.label}</span>
-                <span className="text-dense text-foreground">{f.value}</span>
-              </div>
-            ))}
-          </div>
         </div>
       </Card>
 
@@ -305,7 +396,7 @@ export function BillingDashboard() {
               <div key={inv.id ?? inv.date} className="flex items-center gap-3 px-5 py-3">
                 <div className="min-w-0 flex-1">
                   <div className="text-dense text-foreground">
-                    {new Date(inv.date).toLocaleDateString("en-US", {
+                    {formatDate(inv.date, {
                       year: "numeric",
                       month: "short",
                       day: "numeric",
@@ -335,7 +426,7 @@ export function BillingDashboard() {
       )}
 
       {/* ── Plan selector ──────────────────────────────────────────────── */}
-      <section className="flex flex-col gap-6">
+      <section id="plan-selector" className="flex flex-col gap-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h3 className="font-semibold text-base tracking-tight">
@@ -368,20 +459,30 @@ export function BillingDashboard() {
             const perMonth =
               period === "yearly" && isPaid ? Math.round(pricing / 12) : pricing;
             const isUpgrade = PLAN_RANK[plan] > currentRank;
-            const highlight = isCurrent || card.featured;
+            // The primary accent (border + ring + filled badge) is rationed to the
+            // upsell. The current plan is a *state*, not a CTA → neutral, solid
+            // treatment so the two are never visually confused.
+            const isPopular = card.featured && !isCurrent;
 
             return (
               <div
                 key={plan}
                 className={cn(
                   "relative flex flex-col rounded-xl border bg-surface p-6",
-                  highlight
-                    ? "border-primary/60 ring-1 ring-primary/30"
-                    : "border-border",
+                  isPopular && "border-primary/60 ring-1 ring-primary/30",
+                  isCurrent && "border-foreground/25 bg-muted/20",
+                  !isPopular && !isCurrent && "border-border",
                 )}
               >
-                {(isCurrent || card.featured) && (
-                  <span className="absolute -top-2.5 left-6 rounded-full bg-primary px-2.5 py-0.5 text-meta font-semibold uppercase tracking-wider text-primary-foreground">
+                {(isCurrent || isPopular) && (
+                  <span
+                    className={cn(
+                      "absolute -top-2.5 left-6 rounded-full px-2.5 py-0.5 text-meta font-semibold uppercase tracking-wider",
+                      isCurrent
+                        ? "border border-border bg-muted text-foreground"
+                        : "bg-primary text-primary-foreground",
+                    )}
+                  >
                     {isCurrent ? "Current plan" : "Most popular"}
                   </span>
                 )}
@@ -390,7 +491,7 @@ export function BillingDashboard() {
                   <div
                     className={cn(
                       "text-xs uppercase tracking-wider",
-                      highlight ? "text-primary" : "text-text-subtle",
+                      isPopular ? "text-primary" : "text-text-subtle",
                     )}
                   >
                     {card.tag}
@@ -443,7 +544,7 @@ export function BillingDashboard() {
                 ) : isPaid ? (
                   <Button
                     variant={isUpgrade ? "default" : "outline"}
-                    onClick={() => handleCheckout(plan as PaidPlan)}
+                    onClick={() => selectPlan(plan)}
                     disabled={Boolean(busy)}
                     className="mt-6 w-full"
                   >
@@ -451,18 +552,31 @@ export function BillingDashboard() {
                       <Loader2 size={12} className="animate-spin" />
                     )}
                     {busy === plan
-                      ? "Redirecting…"
+                      ? "Working…"
                       : isUpgrade
                         ? "Upgrade"
                         : "Switch plan"}
                   </Button>
-                ) : (
+                ) : billing.cancelAtPeriodEnd ? (
                   <Button
                     variant="outline"
                     disabled
                     className="mt-6 w-full font-normal"
                   >
-                    Free
+                    Scheduled
+                  </Button>
+                ) : (
+                  // Free card while on a paid plan → the downgrade entry point.
+                  <Button
+                    variant="outline"
+                    onClick={() => selectPlan("free")}
+                    disabled={Boolean(busy)}
+                    className="mt-6 w-full"
+                  >
+                    {busy === "free" && (
+                      <Loader2 size={12} className="animate-spin" />
+                    )}
+                    {busy === "free" ? "Working…" : "Downgrade to Free"}
                   </Button>
                 )}
               </div>
@@ -472,6 +586,57 @@ export function BillingDashboard() {
       </section>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
+
+      {/* ── Downgrade / over-cap switch confirmation ───────────────────── */}
+      <Dialog
+        open={confirm !== null}
+        onOpenChange={(open) => {
+          if (!open && !busy) setConfirm(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {confirm === "free"
+                ? "Downgrade to Free?"
+                : `Switch to ${confirm ? PLAN_LABELS[confirm] : ""}?`}
+            </DialogTitle>
+            <DialogDescription>
+              {confirm === "free"
+                ? "Your subscription cancels at the end of the current billing cycle. You keep full access until then, then the workspace moves to the Free plan."
+                : "Your plan switches now, prorated against your current billing cycle."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {confirmPaused > 0 && (
+            <p className="rounded-md border border-high/40 bg-high/[0.06] px-3 py-2.5 text-sm text-foreground">
+              {confirmPaused} of your {used} competitors will be paused to fit the{" "}
+              {confirm ? PLAN_LABELS[confirm] : ""} limit of {confirmLimit}. Nothing
+              is deleted — they’re restored automatically if you upgrade again.
+            </p>
+          )}
+
+          {error && <p className="text-sm text-destructive">{error}</p>}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setConfirm(null)}
+              disabled={Boolean(busy)}
+            >
+              Keep current plan
+            </Button>
+            <Button
+              variant={confirm === "free" ? "destructive" : "default"}
+              onClick={() => confirm && applyChange(confirm)}
+              disabled={Boolean(busy)}
+            >
+              {busy === confirm && <Loader2 size={12} className="animate-spin" />}
+              {confirm === "free" ? "Downgrade to Free" : "Confirm switch"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

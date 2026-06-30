@@ -183,20 +183,21 @@ export function onboardingChecklistQuery() {
 // client's page-1 key compute the same offset and hit the same cache entry.
 export const ACTIVITY_PAGE_SIZE = 25;
 
-// Competitor-discovery candidates for a tab ("new" | "dismissed"). Returns the
-// list + the tab badge counts together.
-export function candidatesQuery(status: "new" | "dismissed") {
+// Competitor-discovery candidates for a tab ("new" | "dismissed"), scoped to the
+// active product (patch-28). Returns the list + the tab badge counts together.
+export function candidatesQuery(status: "new" | "dismissed", productId?: string) {
   return queryOptions({
-    queryKey: ["candidates", status] as const,
-    queryFn: () => api.listCandidates(status),
+    queryKey: ["candidates", status, productId ?? null] as const,
+    queryFn: () => api.listCandidates(status, productId),
   });
 }
 
-// Discovery staleness (tab-independent) → drives the "already up to date" nudge.
-export function discoveryStalenessQuery() {
+// Discovery staleness (tab-independent, per-product) → drives the "already up to
+// date" nudge.
+export function discoveryStalenessQuery(productId?: string) {
   return queryOptions({
-    queryKey: ["discovery", "staleness"] as const,
-    queryFn: () => api.getDiscoveryStaleness(),
+    queryKey: ["discovery", "staleness", productId ?? null] as const,
+    queryFn: () => api.getDiscoveryStaleness(productId),
   });
 }
 

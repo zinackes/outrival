@@ -3,6 +3,7 @@ import type {
   PricingHistoryPoint,
   ReviewScorePoint,
 } from "@/lib/api";
+import { formatDate } from "@/lib/format-date";
 
 export function lineColor(i: number): string {
   // Theme-aware data-viz palette (globals.css --chart-1..6); one series color
@@ -13,7 +14,7 @@ export function lineColor(i: number): string {
 export function shortDate(iso: string): string {
   const d = new Date(iso.replace(" ", "T"));
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-US", { day: "2-digit", month: "short" });
+  return formatDate(d, { day: "2-digit", month: "short" });
 }
 
 export function buildPricingSeries(history: PricingHistoryPoint[]): {

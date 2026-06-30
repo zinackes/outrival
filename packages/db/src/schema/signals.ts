@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, real, jsonb, pgEnum, index } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, real, jsonb, pgEnum, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { changes } from "./changes";
 import { organizations } from "./organizations";
@@ -77,4 +77,8 @@ export const signals = pgTable("signals", {
   index("signals_org_created_idx").on(t.orgId, t.createdAt),
   // Competitor detail page: signals of one competitor, newest first.
   index("signals_competitor_created_idx").on(t.competitorId, t.createdAt),
+  // Idempotency + race guard: generate-signal / classify-change dedupe by changeId.
+  // UNIQUE so two concurrent runs can't create two signals for the same change, and
+  // the dedupe check + the changes-FK teardown become index lookups, not seq scans.
+  uniqueIndex("signals_change_id_uq").on(t.changeId),
 ]);

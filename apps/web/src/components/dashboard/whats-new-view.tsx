@@ -11,13 +11,10 @@ import {
   WHATS_NEW_SEEN_KEY,
   type WhatsNewKind,
 } from "@/lib/whats-new";
+import { formatDate as formatDateIntl } from "@/lib/format-date";
 
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
+  return formatDateIntl(iso, { month: "long", day: "numeric", year: "numeric" });
 }
 
 const KIND_LABEL: Record<WhatsNewKind, string> = {

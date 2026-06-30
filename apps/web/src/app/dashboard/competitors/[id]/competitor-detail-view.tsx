@@ -79,11 +79,14 @@ import {
   minPlanForFrequency,
   planIncludesFrequency,
   aggregateFreshness,
+  deriveAnalysisStatus,
   type Plan,
   type SourceType,
   type MonitorFrequency,
+  type AnalysisStatus,
 } from "@outrival/shared";
 import { FreshnessDot } from "@/components/outrival/freshness-dot";
+import { AnalysisNotice } from "@/components/outrival/analysis-status";
 import { MonitorFreshnessAction } from "@/components/outrival/monitor-freshness";
 import { MonitorAlternatives } from "@/components/outrival/monitor-alternatives";
 import { CompetitorTechStack } from "@/components/outrival/competitor-tech-stack";
@@ -95,6 +98,7 @@ import { ListError } from "@/components/outrival/list-error";
 import { toastApiError, toastRescanLimit } from "@/lib/error-helpers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -129,7 +133,6 @@ import {
   Empty,
   TabLoading,
   SourceSummary,
-  FrequencyButton,
   type MonitorSourceProps,
 } from "./competitor-detail/shared";
 import { PricingTab } from "./competitor-detail/pricing-tab";
@@ -273,6 +276,28 @@ export function CompetitorDetailView({ id }: { id: string }) {
   const [summaryGenerating, setSummaryGenerating] = useState(false);
   const summaryStartRef = useRef<SummaryGenMeta | null>(null);
   const summarySeededIdRef = useRef<string | null>(null);
+
+  // Where the first AI analysis is at (queued → scraping → summarizing → ready),
+  // derived from the homepage monitor's scrape state + whether a summary exists.
+  // Recomputes on every data refresh (the pollers below keep it moving).
+  const analysis: AnalysisStatus | null = useMemo(() => {
+    if (!data) return null;
+    const homepage = data.monitors.find((m) => m.sourceType === "homepage") ?? null;
+    return deriveAnalysisStatus(
+      {
+        hasSummary: Boolean(data.competitor.aiSummary),
+        anchor: homepage
+          ? {
+              lastRunAt: homepage.lastRunAt,
+              lastFailedAt: homepage.lastFailedAt,
+              scrapeStartedAt: homepage.scrapeStartedAt,
+              markedUnscrapable: homepage.markedUnscrapable ?? false,
+            }
+          : null,
+      },
+      Date.now(),
+    );
+  }, [data]);
 
   // Prev/next pager across the competitor roster (Linear "n/total" + chevrons):
   // fetch the ordered roster once; the pager walks it so an analyst flips through
@@ -676,6 +701,22 @@ export function CompetitorDetailView({ id }: { id: string }) {
     return () => clearInterval(interval);
   }, [summaryGenerating, id]);
 
+  // Auto-advance the summary card while the FIRST analysis is summarizing — i.e.
+  // the homepage scrape finished but the AI summary hasn't landed yet. The scrape
+  // poller above only runs while a scrape is in flight (scrapeStartedAt), so this
+  // covers the post-scrape gap so the card flips to the real summary on its own,
+  // no manual refresh. No toast — the stage label is the feedback. Skipped while
+  // the user-triggered summaryGenerating poll already owns the refresh loop.
+  useEffect(() => {
+    if (summaryGenerating) return;
+    if (analysis?.stage !== "summarizing") return;
+    const interval = setInterval(() => {
+      void refresh();
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [summaryGenerating, analysis?.stage, id]);
+
   // Kebab → Re-detect pricing. Hands pricing back to auto-detection + re-scrapes.
   async function redetectPricingFromMenu() {
     try {
@@ -952,6 +993,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
 
         <AiSummary
           competitor={competitor}
+          analysis={analysis}
           generating={summaryGenerating}
           onGenerate={startSummaryGeneration}
         />
@@ -1019,6 +1061,8 @@ export function CompetitorDetailView({ id }: { id: string }) {
                 overview={overview}
                 monitors={monitors}
                 scrapingIds={scrapingIds}
+                pricingStatus={competitor.pricingStatus}
+                pricingNote={competitor.pricingNote}
                 onRun={requestRunMonitor}
                 onOpenTab={selectTab}
               />
@@ -2117,46 +2161,78 @@ function MonitorEditDialog({
 
   return (
     <Dialog open={!!monitor} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Configure {sourceShortLabel(monitor.sourceType)}</DialogTitle>
           <DialogDescription>
             Pin the exact page to watch and how often it is checked.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
+        <div className="space-y-5">
           <div className="space-y-1.5">
-            <p className="text-xs font-medium text-muted-foreground">
-              Frequency
+            <p className="text-xs font-medium text-foreground">Check frequency</p>
+            <ToggleGroup
+              type="single"
+              value={frequency}
+              onValueChange={(v) => {
+                if (!v) return;
+                const next = v as MonitorFrequency;
+                if (!planIncludesFrequency(plan, next)) {
+                  onClose();
+                  onLockedFrequency(next);
+                  return;
+                }
+                setFrequency(next);
+              }}
+              variant="outline"
+              size="sm"
+              className="w-full"
+            >
+              {EDITABLE_FREQUENCIES.map((f) => {
+                const locked = !planIncludesFrequency(plan, f);
+                return (
+                  <ToggleGroupItem
+                    key={f}
+                    value={f}
+                    className="grow basis-0 gap-1.5 capitalize"
+                    title={
+                      locked
+                        ? `Requires ${PLAN_LABELS[minPlanForFrequency(f)]}`
+                        : undefined
+                    }
+                  >
+                    {locked && <Lock size={11} className="opacity-70" />}
+                    {f}
+                  </ToggleGroupItem>
+                );
+              })}
+            </ToggleGroup>
+            <p className="text-xs text-muted-foreground">
+              An upper bound — stable sources are checked less often automatically.
             </p>
-            <div className="flex gap-1.5">
-              {EDITABLE_FREQUENCIES.map((f) => (
-                <FrequencyButton
-                  key={f}
-                  freq={f}
-                  plan={plan}
-                  selected={frequency === f}
-                  onSelect={() => setFrequency(f)}
-                  onLocked={() => {
-                    onClose();
-                    onLockedFrequency(f);
-                  }}
-                />
-              ))}
-            </div>
           </div>
           <div className="space-y-1.5">
-            <p className="text-xs font-medium text-muted-foreground">
-              Page URL (optional)
-            </p>
-            <Input
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="Leave empty to auto-detect"
-            />
-            {trimmed !== "" && !urlValid && (
-              <p className="text-xs text-critical/80">
+            <p className="text-xs font-medium text-foreground">Page URL</p>
+            <div className="relative">
+              <Link2
+                size={14}
+                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="Leave empty to auto-detect"
+                className="pl-8"
+                aria-invalid={trimmed !== "" && !urlValid}
+              />
+            </div>
+            {trimmed !== "" && !urlValid ? (
+              <p className="text-xs text-critical">
                 This URL isn&apos;t allowed for this source.
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Override the page we picked, or leave blank to auto-detect.
               </p>
             )}
           </div>
@@ -2176,23 +2252,57 @@ function MonitorEditDialog({
 
 function AiSummary({
   competitor,
+  analysis,
   generating,
   onGenerate,
 }: {
   competitor: Competitor;
+  analysis: AnalysisStatus | null;
   generating: boolean;
   onGenerate: () => void;
 }) {
   if (!competitor.aiSummary) {
+    // A user-triggered generation is in flight — keep the explicit "Generating…" UX.
+    if (generating) {
+      return (
+        <Card className="px-4 py-3 border-dashed flex items-start gap-2 justify-between">
+          <div className="flex items-start gap-2 text-muted-foreground text-sm">
+            <Loader2 size={13} className="mt-0.5 shrink-0 animate-spin" />
+            <span>Generating AI summary…</span>
+          </div>
+          <Button size="sm" variant="secondary" disabled className="h-7 text-xs">
+            <Loader2 size={11} className="animate-spin" />
+            Generating…
+          </Button>
+        </Card>
+      );
+    }
+    // The first analysis is still running on its own (queued → scraping →
+    // summarizing). Show the live stage and no button — it lands without a click
+    // (the detail view polls while summarizing). This replaces the old static
+    // "not generated yet", which read as idle while the pipeline was actually busy.
+    if (analysis?.pending) {
+      return (
+        <Card className="px-4 py-3 border-dashed">
+          <AnalysisNotice analysis={analysis} />
+        </Card>
+      );
+    }
+    // Nothing in flight — the summary stalled (needs_attention) or was never
+    // attempted (idle, e.g. an idea/document self). Offer a manual generate.
     return (
       <Card className="px-4 py-3 border-dashed flex items-start gap-2 justify-between">
-        <div className="flex items-start gap-2 text-muted-foreground text-sm">
-          <Sparkles size={13} className="mt-0.5 shrink-0" />
-          <span>{generating ? "Generating AI summary…" : "AI summary not generated yet."}</span>
-        </div>
-        <Button size="sm" variant="secondary" onClick={onGenerate} disabled={generating} className="h-7 text-xs">
-          {generating ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
-          {generating ? "Generating…" : "Generate now"}
+        {analysis?.stage === "needs_attention" ? (
+          <AnalysisNotice analysis={analysis} className="mt-0.5" />
+        ) : (
+          <div className="flex items-start gap-2 text-muted-foreground text-sm">
+            <Sparkles size={13} className="mt-0.5 shrink-0" />
+            <span>AI summary not generated yet.</span>
+          </div>
+        )}
+        <Button size="sm" variant="secondary" onClick={onGenerate} className="h-7 text-xs">
+          <Sparkles size={11} />
+          Generate now
         </Button>
       </Card>
     );

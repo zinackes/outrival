@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { api, type BattleCard, type BattleCardContent } from "@/lib/api";
+import { formatDate } from "@/lib/format-date";
 import { track } from "@/lib/posthog/events";
 import {
   PaywallDialog,
@@ -300,7 +301,7 @@ export function BattleCardTab({ competitorId }: Props) {
           <p className="text-sm text-muted-foreground">
             This battle card is already up to date
             {staleness?.lastGeneratedAt &&
-              ` (generated ${new Date(staleness.lastGeneratedAt).toLocaleDateString("en-US", {
+              ` (generated ${formatDate(staleness.lastGeneratedAt, {
                 day: "2-digit",
                 month: "long",
                 year: "numeric",
@@ -375,7 +376,7 @@ export function BattleCardTab({ competitorId }: Props) {
       <div className="flex items-center justify-between gap-3 px-5 py-3.5">
         <p className="text-xs text-muted-foreground">
           Generated{" "}
-          {new Date(card.generatedAt).toLocaleDateString("en-US", {
+          {formatDate(card.generatedAt, {
             day: "2-digit",
             month: "long",
             year: "numeric",

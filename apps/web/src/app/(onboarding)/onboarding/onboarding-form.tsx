@@ -124,16 +124,19 @@ const LOADING_MESSAGE: Record<ProjectStage, string> = {
   live: "Analyzing your site…",
 };
 
+// Functional categories (what a product does), not business-model labels. The old
+// list ("B2B SaaS", "DevTools"…) nudged every idea toward the same generic bucket,
+// which then made competitor discovery imprecise.
 const CATEGORY_SUGGESTIONS = [
-  "B2B SaaS",
-  "DevTools",
-  "Marketplace",
-  "Consumer",
-  "Fintech",
-  "Productivity",
-  "AI/ML",
-  "Healthcare",
-  "Education",
+  "Appointment scheduling",
+  "Competitive intelligence",
+  "Email marketing",
+  "Project management",
+  "API monitoring",
+  "Freelance marketplace",
+  "Headless CMS",
+  "Meal-kit delivery",
+  "Expense management",
 ];
 
 function isValidUrl(s: string): boolean {
@@ -183,7 +186,16 @@ const DISCOVERY_DEBOUNCE_MS =
 // Identity of a discovery input — a prefetch is reusable only for the exact same
 // profile + URL, so editing any field invalidates it (and re-bills, debounced).
 function profileKey(p: ProductProfile, url: string | null, region: string | null): string {
-  return JSON.stringify([p.category, p.audience, p.valueProp, p.pricingModel, url, region]);
+  return JSON.stringify([
+    p.category,
+    p.audience,
+    p.valueProp,
+    p.pricingModel,
+    p.whatItDoes ?? "",
+    (p.keywords ?? []).join("|"),
+    url,
+    region,
+  ]);
 }
 
 function extractMessage(err: unknown): string {
@@ -1230,17 +1242,23 @@ function ModeForm({
 // ── Screen: profile (step 2) ─────────────────────────────────────────────
 
 const PROFILE_FIELDS: Array<{
-  key: keyof ProductProfile;
+  key: "category" | "audience" | "whatItDoes" | "valueProp" | "pricingModel";
   label: string;
   placeholder: string;
   multiline?: boolean;
 }> = [
-  { key: "category", label: "Category", placeholder: "e.g. B2B SaaS CRM" },
-  { key: "audience", label: "Target audience", placeholder: "e.g. Sales teams of 10–200 people" },
+  { key: "category", label: "Category", placeholder: "e.g. Appointment-scheduling software" },
+  { key: "audience", label: "Target audience", placeholder: "e.g. Independent clinics of 5–50 staff" },
+  {
+    key: "whatItDoes",
+    label: "What it does",
+    placeholder: "Concretely, what the product does — its real capabilities",
+    multiline: true,
+  },
   {
     key: "valueProp",
     label: "Value proposition",
-    placeholder: "What makes your product unique",
+    placeholder: "The concrete job it does and the outcome — no filler",
     multiline: true,
   },
   { key: "pricingModel", label: "Pricing model", placeholder: "e.g. Freemium + Pro at $20/mo" },
@@ -1285,7 +1303,7 @@ function ProfileForm({
             {f.multiline ? (
               <Textarea
                 id={`field-${f.key}`}
-                value={profile[f.key]}
+                value={profile[f.key] ?? ""}
                 onChange={(e) => setProfile({ ...profile, [f.key]: e.target.value })}
                 placeholder={f.placeholder}
                 disabled={busy}
@@ -1294,7 +1312,7 @@ function ProfileForm({
             ) : (
               <Input
                 id={`field-${f.key}`}
-                value={profile[f.key]}
+                value={profile[f.key] ?? ""}
                 onChange={(e) => setProfile({ ...profile, [f.key]: e.target.value })}
                 placeholder={f.placeholder}
                 disabled={busy}
@@ -1302,6 +1320,25 @@ function ProfileForm({
             )}
           </div>
         ))}
+
+        {(profile.keywords?.length ?? 0) > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-sm">Search keywords</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {profile.keywords!.map((k) => (
+                <span
+                  key={k}
+                  className="rounded-full border border-border bg-surface-2/60 px-2 py-0.5 text-xs text-muted-foreground"
+                >
+                  {k}
+                </span>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              We use these to find competitors that do the same thing.
+            </p>
+          </div>
+        )}
       </Card>
 
       {prefetchStatus === "running" && (

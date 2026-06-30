@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { myProductQuery, myProductChangesQuery } from "@/lib/queries";
 import {
   RefreshCw,
+  SquarePen,
   Loader2,
   Pencil,
   Check,
@@ -34,6 +35,7 @@ import {
   type SelfProductChange,
 } from "@/lib/api";
 import { SelfChangesPanel } from "@/components/outrival/self-change-review";
+import { AnalysisNotice } from "@/components/outrival/analysis-status";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -896,7 +898,7 @@ export function MyProductView({
                 project stage), so it's the primary product's tool only. */}
             {isPrimary && (
               <Button onClick={() => setUpdateOpen(true)} variant="outline" size="sm">
-                <RefreshCw className="size-3.5" />
+                <SquarePen className="size-3.5" />
                 Update profile
               </Button>
             )}
@@ -1076,6 +1078,11 @@ export function MyProductView({
           onSave={(v) => patch({ techStack: v })}
         />
 
+        {(p.analysis.pending || p.analysis.stage === "needs_attention") && (
+          <Card className="px-4 py-3 border-dashed">
+            <AnalysisNotice analysis={p.analysis} />
+          </Card>
+        )}
         {p.aiSummary && (
           <Card className="bg-gradient-card-strong p-4">
             <h3 className="text-dense font-semibold uppercase tracking-wide text-muted-foreground mb-2">

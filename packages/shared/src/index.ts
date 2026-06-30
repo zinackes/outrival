@@ -5,6 +5,7 @@ export * from "./constants/detection";
 export * from "./constants/competitor-colors";
 export * from "./constants/regions";
 export * from "./constants/freshness";
+export * from "./analysis-status";
 export * from "./staleness";
 export * from "./r2/client";
 export * from "./diff";

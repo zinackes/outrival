@@ -1,5 +1,10 @@
 import * as cheerio from "cheerio";
-import { classifyLogoName, isBlankSvgDataUri, isStoreBadgeSrc } from "@outrival/shared";
+import {
+  classifyLogoName,
+  isBlankSvgDataUri,
+  isStoreBadgeSrc,
+  isLanguageFlagSrc,
+} from "@outrival/shared";
 import { hashTestimonial, type TestimonialItem, type CustomerLogo } from "./social-proof";
 import { extractJsonLd, findByType, asText } from "../structured-data/json-ld";
 
@@ -415,7 +420,10 @@ function extractSocialProof(
       const verdict = classifyLogoName(name);
       if (verdict.kind === "junk") return;
       const brandName = verdict.kind === "brand" ? verdict.name : null;
-      const cleanSrc = src && !isBlankSvgDataUri(src) && !isStoreBadgeSrc(src) ? src : null;
+      const cleanSrc =
+        src && !isBlankSvgDataUri(src) && !isStoreBadgeSrc(src) && !isLanguageFlagSrc(src)
+          ? src
+          : null;
       if (!brandName && !cleanSrc) return;
       const key = (brandName ?? cleanSrc ?? "").toLowerCase();
       if (!key || seen.has(key)) return;

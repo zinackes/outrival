@@ -2,13 +2,20 @@
 
 import { Check, Loader2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { useOnboardingStreaming } from "@/hooks/use-onboarding-streaming";
+import type { OnboardingStreamingState } from "@/hooks/use-onboarding-streaming";
 
 // Patch-25: progressive streaming after onboarding. Renders a per-competitor
 // skeleton that fills in as the first analysis pass completes, instead of a
 // single "it's ready" notification. Self-hides when there's no active analysis.
-export function OnboardingAnalysisPanel({ onTick }: { onTick?: () => void }) {
-  const { active, total, analyzed, competitors } = useOnboardingStreaming(onTick);
+// State is lifted to the host (Overview) so it can coordinate first-run surfaces:
+// while analysis is active this panel owns the screen and the setup checklist
+// underneath it stays suppressed (one prompt at a time, not three at once).
+export function OnboardingAnalysisPanel({
+  state,
+}: {
+  state: OnboardingStreamingState;
+}) {
+  const { active, total, analyzed, competitors } = state;
   if (!active || total === 0) return null;
   const done = analyzed >= total;
 

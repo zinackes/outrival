@@ -35,6 +35,7 @@ import { ensureUserOrg } from "../lib/org";
 import {
   ensurePrimaryProductForSelf,
   associateCompetitorWithPrimaryProduct,
+  primaryProductId,
 } from "../lib/products";
 import { fetchRepoArtifacts } from "../lib/github";
 import { extractDocumentText } from "../lib/extract-document";
@@ -718,6 +719,9 @@ onboardingRouter.post("/complete", async (c) => {
     if (h) knownHosts.add(h);
   }
 
+  // patch-28 — tag onboarding candidates onto the primary product (just created by
+  // createSelfCompetitor) so they surface in its product-scoped discovery queue.
+  const onboardingProductId = await primaryProductId(orgId);
   const candidateRows: Array<typeof competitorCandidates.$inferInsert> = [];
   const collectCandidate = (
     item: { url: string; title?: string; overlapScore?: number; reason?: string },
@@ -728,6 +732,7 @@ onboardingRouter.post("/complete", async (c) => {
     knownHosts.add(host);
     candidateRows.push({
       orgId,
+      productId: onboardingProductId,
       url: item.url,
       title: item.title ?? null,
       overlapScore: item.overlapScore ?? null,

@@ -5,6 +5,7 @@ import {
   jsonb,
   pgEnum,
   numeric,
+  index,
 } from "drizzle-orm/pg-core";
 import type { InferSelectModel, InferInsertModel } from "drizzle-orm";
 import { organizations } from "./organizations";
@@ -48,7 +49,10 @@ export const sectoralSignals = pgTable("sectoral_signals", {
   dismissedAt: timestamp("dismissed_at"),
 
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  // Sectoral feed is org-scoped; also covers eraseOrg cascade.
+  index("sectoral_signals_org_idx").on(t.orgId),
+]);
 
 export type SectoralSignal = InferSelectModel<typeof sectoralSignals>;
 export type NewSectoralSignal = InferInsertModel<typeof sectoralSignals>;

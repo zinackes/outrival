@@ -12,7 +12,7 @@ import {
   type MyProductPricingTier,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { Eyebrow, eyebrowClass } from "@/components/outrival/eyebrow";
+import { eyebrowClass } from "@/components/outrival/eyebrow";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
 import { CompetitorPricingCard } from "@/components/outrival/competitor-pricing-card";
 import { buildPricingSeries } from "./charts";
@@ -167,19 +167,24 @@ export function PricingTab({
               className="flex items-baseline justify-between gap-3 py-2.5 first:pt-0 last:pb-0"
             >
               <div className="flex items-baseline gap-2 min-w-0">
-                <Eyebrow size="micro" className="shrink-0">
+                {/* The plan name is the competitor's real product/brand name (often
+                    non-English) — render it as content in its original case, not as an
+                    uppercased eyebrow, so a name reads as a name, not scaffolding. */}
+                <span className="min-w-0 truncate text-sm font-medium text-foreground">
                   {plan}
-                </Eyebrow>
+                </span>
                 {lp != null ? (
-                  <span className="text-sm font-semibold tabular-nums">
+                  <span className="shrink-0 text-sm font-semibold tabular-nums">
                     {lp} {latest.currency}
-                    <span className="text-xs text-muted-foreground font-mono font-normal">
+                    <span className="text-xs font-normal text-muted-foreground">
                       {" "}
-                      / {latest.billing_period}
+                      / {latest.billing_period.replace(/_/g, "-")}
                     </span>
                   </span>
                 ) : (
-                  <span className="text-sm font-medium text-muted-foreground">Custom</span>
+                  <span className="shrink-0 text-sm font-medium text-muted-foreground">
+                    Custom
+                  </span>
                 )}
               </div>
               {delta !== 0 && (

@@ -42,6 +42,7 @@ import { DetectionConfigSheet } from "@/components/outrival/detection-config-she
 import { PageHead } from "@/components/dashboard/page-head";
 import { useSetAskContext } from "@/components/dashboard/ask-context";
 import { CompAvatar } from "@/components/dashboard/comp-avatar";
+import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { StatusPill } from "@/components/dashboard/status-pill";
 import { GridCardsSkeleton } from "@/components/dashboard/skeletons";
 import { feedItemMotion } from "@/lib/motion";
@@ -52,6 +53,10 @@ type Tab = "new" | "dismissed";
 export function DiscoveryView() {
   useSetAskContext({ kind: "view", label: "Competitor discovery" });
   const queryClient = useQueryClient();
+  // patch-28 — discovery is product-scoped: the active product (cookie / URL override)
+  // drives which SKU's review queue and staleness are shown. undefined = the API's
+  // default (the org's primary product).
+  const productId = useProductScope() ?? undefined;
   const [actingId, setActingId] = useState<string | null>(null);
   const [paywall, setPaywall] = useState<PaywallReason | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -64,11 +69,11 @@ export function DiscoveryView() {
 
   // Server-seeded on first paint (discovery/page.tsx): the "new" tab list + counts,
   // plus staleness. Switching tab refetches via the queryKey.
-  const candidatesQ = useQuery(candidatesQuery(tab));
+  const candidatesQ = useQuery(candidatesQuery(tab, productId));
   const items = candidatesQ.data?.candidates ?? null;
   const counts = candidatesQ.data?.counts ?? null;
   const error = candidatesQ.error;
-  const stalenessQ = useQuery(discoveryStalenessQuery());
+  const stalenessQ = useQuery(discoveryStalenessQuery(productId));
   const discoveryFresh = stalenessQ.data ? !stalenessQ.data.needsRediscovery : false;
 
   // Rewrite the active tab's cached candidates / counts so the optimistic mutations
@@ -76,14 +81,14 @@ export function DiscoveryView() {
   function setItems(
     updater: (prev: CompetitorCandidate[] | null) => CompetitorCandidate[] | null,
   ) {
-    queryClient.setQueryData(candidatesQuery(tabRef.current).queryKey, (d) =>
+    queryClient.setQueryData(candidatesQuery(tabRef.current, productId).queryKey, (d) =>
       d ? { ...d, candidates: updater(d.candidates) ?? [] } : d,
     );
   }
   // Keep the tab badges in sync with optimistic mutations (a server reload only
   // happens on tab switch / refresh). Clamps at 0 so a race can't show a negative.
   function bumpCounts(delta: { new?: number; dismissed?: number }) {
-    queryClient.setQueryData(candidatesQuery(tabRef.current).queryKey, (d) =>
+    queryClient.setQueryData(candidatesQuery(tabRef.current, productId).queryKey, (d) =>
       d
         ? {
             ...d,
@@ -114,11 +119,15 @@ export function DiscoveryView() {
   async function runDetection() {
     setRefreshing(true);
     try {
-      const { detected } = await api.detectCandidates();
-      void queryClient.invalidateQueries({ queryKey: discoveryStalenessQuery().queryKey });
+      const { detected } = await api.detectCandidates(productId);
+      void queryClient.invalidateQueries({
+        queryKey: discoveryStalenessQuery(productId).queryKey,
+      });
       // New candidates land in the "new" queue — make sure that's what's shown.
       if (tabRef.current === "new") {
-        await queryClient.invalidateQueries({ queryKey: candidatesQuery("new").queryKey });
+        await queryClient.invalidateQueries({
+          queryKey: candidatesQuery("new", productId).queryKey,
+        });
       } else {
         setTab("new");
       }

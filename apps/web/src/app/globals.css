@@ -52,12 +52,18 @@
   --muted-3: oklch(0.535 0.014 260);
   --muted-foreground: oklch(0.46 0.015 260);
 
-  /* Brand accent — cyan "signal/radar" (hue 200), the single rationed accent
-     (CTA fill + focus ring; links/icons use --link). Non-violet by design. */
-  --accent: oklch(0.7 0.16 200);
-  --accent-dim: oklch(0.64 0.17 200);
-  --accent-bright: oklch(0.78 0.14 200);
-  --accent-foreground: oklch(0.17 0.02 230);
+  /* Brand accent — deep cyan "signal/radar" (hue 200), the single rationed accent
+     (CTA fill + focus ring; links/icons use --link). Non-violet by design.
+     Deepened from the old bright L0.7 so the fill carries WHITE label text
+     (--accent-foreground) like the dark-mode Iris fill — near-black on vivid cyan
+     read 8:1 on paper but "vibrated" and was tiring at low screen brightness.
+     Interaction DARKENS here (light-mode convention), the inverse of dark mode:
+     -bright = hover, -dim = active, both a step below the base. White on all three
+     clears AA (base 4.6 / hover 5.3 / active 6.3). */
+  --accent: oklch(0.53 0.14 200);
+  --accent-dim: oklch(0.45 0.15 200);
+  --accent-bright: oklch(0.49 0.15 200);
+  --accent-foreground: oklch(1 0 0);
   --link: oklch(0.55 0.14 200);
 
   /* Severity scale — Tailwind 700-level on light: each step clears ≥4.5:1 both as

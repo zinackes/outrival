@@ -277,18 +277,22 @@ export async function getMyProductData(productId?: string): Promise<{
  * staleness flag that gates the re-run button. Best-effort: null → the view
  * falls back to its own client fetches. Tab switches stay client-side.
  */
-export async function getDiscoveryData(): Promise<{
+export async function getDiscoveryData(productId?: string): Promise<{
   candidates: CompetitorCandidate[];
   counts: { new: number; dismissed: number };
   discoveryFresh: boolean;
 } | null> {
   try {
+    const scope = productId ? `&productId=${productId}` : "";
+    const staleScope = productId ? `?productId=${productId}` : "";
     const [list, staleness] = await Promise.all([
       serverGet<{
         candidates: CompetitorCandidate[];
         counts: { new: number; dismissed: number };
-      }>("/api/candidates?status=new"),
-      serverGet<{ needsRediscovery: boolean }>("/api/candidates/staleness"),
+      }>(`/api/candidates?status=new${scope}`),
+      serverGet<{ needsRediscovery: boolean }>(
+        `/api/candidates/staleness${staleScope}`,
+      ),
     ]);
     return {
       candidates: list.candidates,

@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
+import { formatDate } from "@/lib/format-date";
 
 interface Options {
   /** Fired right after the re-scan is accepted (before the result is known) so
@@ -18,7 +19,7 @@ const POLL_TIMEOUT_MS = 150_000;
 
 function formatDay(iso: string | null): string {
   if (!iso) return "soon";
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return formatDate(iso, { month: "short", day: "numeric" });
 }
 
 // Patch-27 — drives the stale-data "Re-scan" affordance. Forces a scrape (bypassing

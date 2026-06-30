@@ -56,10 +56,6 @@ export function Hero() {
             <a href="#digest">See a sample digest</a>
           </Button>
         </div>
-
-        <p className="mt-6 text-xs text-text-subtle">
-          No card · 2 competitors free · Cancel anytime · Hosted in the EU
-        </p>
       </div>
 
       {/* The timeline, sitting just below the statement. */}

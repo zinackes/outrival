@@ -104,6 +104,8 @@ const ProfileSchema = z.object({
   audience: z.string(),
   valueProp: z.string(),
   pricingModel: z.string(),
+  whatItDoes: z.string().optional(),
+  keywords: z.array(z.string()).optional(),
 });
 
 const PatchSchema = z.object({

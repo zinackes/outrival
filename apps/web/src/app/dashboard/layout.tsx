@@ -9,6 +9,7 @@ import { NpsPrompt } from "@/components/outrival/nps-prompt";
 import { OnboardingBanner } from "@/components/outrival/onboarding-banner";
 import { OnboardingResumeBanner } from "@/components/onboarding/resume-banner";
 import { AiStatusBanner } from "@/components/outrival/ai-status-banner";
+import { normalizeScope, PRODUCT_COOKIE } from "@/lib/product-scope";
 import { TwoFactorNudgeBanner } from "@/components/outrival/two-factor-nudge-banner";
 import { StructuralChangeBanner } from "@/components/outrival/structural-change-banner";
 import type { OnboardingSession } from "@/lib/api";
@@ -117,10 +118,19 @@ export default async function DashboardLayout({
   const sidebarCookie = cookieStore.get("sidebar_state")?.value;
   const defaultOpen = sidebarCookie == null ? true : sidebarCookie === "true";
 
+  // Active product scope read server-side from the cookie → seeds the client provider
+  // so the first paint already knows the scope (no flash, no reconciliation effect).
+  const productScope = normalizeScope(cookieStore.get(PRODUCT_COOKIE)?.value);
+
   const userId = session?.user?.id as string | undefined;
 
   return (
-    <DashboardShell user={user} org={org} defaultOpen={defaultOpen}>
+    <DashboardShell
+      user={user}
+      org={org}
+      defaultOpen={defaultOpen}
+      productScope={productScope}
+    >
       {userId && <PostHogIdentitySync userId={userId} plan={org.plan} />}
       {userId && <TimezoneSync />}
       {resumeSession && <OnboardingResumeBanner session={resumeSession} />}

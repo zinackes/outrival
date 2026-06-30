@@ -1,4 +1,5 @@
 import type { Digest } from "@outrival/ai";
+import { darkEmailShell } from "./email-shell";
 import { escapeHtml } from "./escape-html";
 
 const URGENCY_META: Record<
@@ -65,12 +66,9 @@ export function renderDigestEmail(
     .join("")}
 </div>`;
 
-  return `<!doctype html>
-<html>
-  <body style="margin:0;padding:24px;background:#0a0a0a;color:#fafafa;font-family:Inter,sans-serif;">
-    <div style="max-width:640px;margin:0 auto;">
-      <div style="margin-bottom:24px;">
-        <span style="font-family:Syne,sans-serif;font-size:24px;font-weight:bold;">Out<span style="color:#f59e0b;">rival</span></span>
+  return darkEmailShell(
+    `<div style="margin-bottom:24px;">
+        <span style="font-family:Syne,sans-serif;font-size:24px;font-weight:bold;color:#fafafa;">Out<span style="color:#f59e0b;">rival</span></span>
         <div style="font-size:12px;color:#a3a3a3;margin-top:4px;">Digest from ${weekStart} to ${weekEnd}</div>
       </div>
       <div style="background:#171717;border:1px solid #262626;border-radius:6px;padding:20px;margin-bottom:24px;">
@@ -92,8 +90,7 @@ export function renderDigestEmail(
         unsubscribeUrl
           ? ` · <a href="${unsubscribeUrl}" style="color:#525252;text-decoration:underline;">Unsubscribe</a>`
           : ""
-      }</div>
-    </div>
-  </body>
-</html>`;
+      }</div>`,
+    640,
+  );
 }

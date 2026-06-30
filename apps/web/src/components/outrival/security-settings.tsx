@@ -856,39 +856,73 @@ function SignInMethods({ twoFactorEnabled }: { twoFactorEnabled: boolean }) {
   );
 }
 
-// Magic-link / Google accounts have no credential account: they SET a first
-// password (no current one to ask for). Accounts that already have one CHANGE
-// it — current password required, other sessions revoked server-side. Demoted
-// to a quiet, collapsed card: sign-in is email-code-first, so a password is only
-// a fallback. The form is revealed on demand, and its first security action is
-// the emailed confirmation code — so the step-up is legible, not buried.
-function PasswordSection() {
+// Password as a sign-in method (alongside email codes, Google, passkeys).
+// Magic-link / Google accounts have no credential account, so they SET a first
+// password (no current one to ask for); accounts that already have one CHANGE it
+// — current password required, other sessions revoked server-side. The flow runs
+// in a two-step dialog (mirroring 2FA): choose the password, then confirm with an
+// emailed code — a step-up so a hijacked session alone can't plant a credential.
+function PasswordDialog({
+  open,
+  onOpenChange,
+  hasPassword,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  hasPassword: boolean;
+}) {
   const queryClient = useQueryClient();
-  const accountsQ = useQuery({
-    queryKey: ["authAccounts"],
-    queryFn: () => authClient.listAccounts().then((res) => res.data ?? []),
-  });
-  const hasPassword = accountsQ.isError
-    ? false
-    : accountsQ.data
-      ? accountsQ.data.some((a) => a.providerId === "credential")
-      : null;
-
-  const [open, setOpen] = useState(false);
+  const [step, setStep] = useState<"choose" | "confirm">("choose");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [code, setCode] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
-  function close() {
-    setOpen(false);
+  const reset = useCallback(() => {
+    setStep("choose");
     setCurrentPassword("");
     setNewPassword("");
     setCode("");
+    setBusy(false);
+    setError("");
+  }, []);
+
+  // Clear all state when the dialog closes so the next open starts fresh.
+  useEffect(() => {
+    if (!open) reset();
+  }, [open, reset]);
+
+  // Step 1 → email a confirmation code, then reveal the code field.
+  async function sendCode() {
+    setBusy(true);
+    setError("");
+    try {
+      await api.sendReauthCode("password");
+      setStep("confirm");
+    } catch {
+      setError("Couldn't email the confirmation code. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resend() {
+    setBusy(true);
+    setError("");
+    try {
+      await api.sendReauthCode("password");
+      toast.success("New code sent.");
+    } catch {
+      setError("Couldn't resend the code. Try again.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function submit() {
-    setSaving(true);
+    setBusy(true);
+    setError("");
     try {
       const r = await api.setPassword({
         newPassword,
@@ -901,24 +935,163 @@ function PasswordSection() {
       toast.success(
         r.changed ? "Password changed — other sessions signed out." : "Password set.",
       );
-      close();
+      onOpenChange(false);
     } catch (e) {
-      const msg =
+      setError(
         e instanceof ApiError && typeof e.data.message === "string"
           ? e.data.message
-          : "Couldn't update the password.";
-      toast.error(msg);
+          : "Couldn't update the password.",
+      );
     } finally {
-      setSaving(false);
+      setBusy(false);
     }
   }
+
+  const canContinue =
+    newPassword.length >= 12 && (!hasPassword || currentPassword.length > 0);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogDescription className="text-meta uppercase tracking-wide">
+            Step {step === "choose" ? 1 : 2} of 2
+          </DialogDescription>
+          <DialogTitle>
+            {step === "choose"
+              ? hasPassword
+                ? "Change your password"
+                : "Set a password"
+              : "Confirm it's you"}
+          </DialogTitle>
+          <DialogDescription>
+            {step === "choose"
+              ? "We'll email a 6-digit code to confirm before it's saved."
+              : "Enter the code we just emailed you to finish."}
+          </DialogDescription>
+        </DialogHeader>
+
+        {step === "choose" ? (
+          <>
+            <div className="flex flex-col gap-3 sm:max-w-sm">
+              {hasPassword && (
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="current-password" className="text-dense">
+                    Current password
+                  </Label>
+                  <Input
+                    id="current-password"
+                    type="password"
+                    autoComplete="current-password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                  />
+                </div>
+              )}
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="new-password" className="text-dense">
+                  New password
+                </Label>
+                <Input
+                  id="new-password"
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder="At least 12 characters"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                />
+              </div>
+            </div>
+            {error && (
+              <p className="text-dense text-destructive" role="alert">
+                {error}
+              </p>
+            )}
+            <DialogFooter>
+              <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)} disabled={busy}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={sendCode} disabled={busy || !canContinue}>
+                {busy && <Loader2 size={13} className="animate-spin" />}
+                Continue
+              </Button>
+            </DialogFooter>
+          </>
+        ) : (
+          <>
+            <div className="flex flex-col gap-1.5 sm:max-w-xs">
+              <Label htmlFor="pw-code" className="text-dense">
+                Confirmation code
+              </Label>
+              <Input
+                id="pw-code"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                autoFocus
+                maxLength={6}
+                placeholder="123456"
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                className="font-mono tracking-[0.3em]"
+              />
+              <button
+                type="button"
+                onClick={resend}
+                disabled={busy}
+                className="w-fit text-meta text-muted-foreground transition-colors hover:text-foreground"
+              >
+                Resend code
+              </button>
+            </div>
+            {error && (
+              <p className="text-dense text-destructive" role="alert">
+                {error}
+              </p>
+            )}
+            <DialogFooter>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setStep("choose");
+                  setCode("");
+                  setError("");
+                }}
+                disabled={busy}
+              >
+                Back
+              </Button>
+              <Button size="sm" onClick={submit} disabled={busy || code.length !== 6}>
+                {busy && <Loader2 size={13} className="animate-spin" />}
+                {hasPassword ? "Change password" : "Set password"}
+              </Button>
+            </DialogFooter>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function PasswordSection() {
+  const accountsQ = useQuery({
+    queryKey: ["authAccounts"],
+    queryFn: () => authClient.listAccounts().then((res) => res.data ?? []),
+  });
+  const hasPassword = accountsQ.isError
+    ? false
+    : accountsQ.data
+      ? accountsQ.data.some((a) => a.providerId === "credential")
+      : null;
+
+  const [open, setOpen] = useState(false);
 
   return (
     <section className="flex flex-col gap-5">
       <header>
         <h2 className="font-semibold text-base tracking-tight">Password</h2>
         <p className="text-muted-foreground text-sm mt-1">
-          Optional. You sign in with an email code by default — a password is only a fallback.
+          Another way to sign in, alongside email codes and Google.
         </p>
       </header>
       <Card className="px-5 py-4">
@@ -932,77 +1105,23 @@ function PasswordSection() {
             </div>
             <div className="text-dense text-muted-foreground">
               {hasPassword
-                ? "Used as a sign-in fallback."
+                ? "You can sign in with your password."
                 : "Set one to sign in without an email code."}
             </div>
           </div>
-          {!open && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setOpen(true)}
-              disabled={hasPassword === null}
-            >
-              {hasPassword ? "Change" : "Set password"}
-            </Button>
-          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setOpen(true)}
+            disabled={hasPassword === null}
+          >
+            {hasPassword ? "Change" : "Set password"}
+          </Button>
         </div>
-
-        {open && (
-          <div className="mt-4 flex flex-col gap-3 border-t border-border pt-4 sm:max-w-sm">
-            {hasPassword && (
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="current-password" className="text-dense">
-                  Current password
-                </Label>
-                <Input
-                  id="current-password"
-                  type="password"
-                  autoComplete="current-password"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                />
-              </div>
-            )}
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="new-password" className="text-dense">
-                New password
-              </Label>
-              <Input
-                id="new-password"
-                type="password"
-                autoComplete="new-password"
-                placeholder="At least 12 characters"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-              />
-            </div>
-            <p className="text-dense text-muted-foreground">
-              For your security, we email a confirmation code before saving.
-            </p>
-            <ReauthCodeField code={code} onCode={setCode} />
-            <div className="flex items-center gap-2">
-              <Button variant="ghost" size="sm" onClick={close} disabled={saving}>
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                onClick={submit}
-                disabled={
-                  saving ||
-                  hasPassword === null ||
-                  newPassword.length < 12 ||
-                  code.length !== 6 ||
-                  (hasPassword === true && !currentPassword)
-                }
-              >
-                {saving && <Loader2 size={13} className="animate-spin" />}
-                {hasPassword ? "Change password" : "Set password"}
-              </Button>
-            </div>
-          </div>
-        )}
       </Card>
+      {hasPassword !== null && (
+        <PasswordDialog open={open} onOpenChange={setOpen} hasPassword={hasPassword} />
+      )}
     </section>
   );
 }

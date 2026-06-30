@@ -4,6 +4,7 @@ import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { Activity, ChevronRight, ExternalLink } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -477,8 +478,8 @@ export function ActivityView() {
     ? urlStatusRaw
     : "all";
 
-  // patch-28 — active product scope (?product=, from the top-left switcher).
-  const productId = searchParams.get("product") ?? undefined;
+  // patch-28 — active product scope (cookie-backed switcher, URL ?product= overrides).
+  const productId = useProductScope() ?? undefined;
 
   // Server-seeded on first paint (activity/page.tsx): health (filter options) +
   // the page-1 unfiltered timeline. A URL filter produces a different timeline key,

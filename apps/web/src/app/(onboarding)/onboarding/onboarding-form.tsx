@@ -9,8 +9,8 @@ import {
   AlertCircle,
   ArrowLeft,
   ArrowRight,
-  Bell,
   Check,
+  ChevronDown,
   ExternalLink,
   FileText,
   GitBranch,
@@ -68,6 +68,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
 type Screen = "stage" | "input" | "profile" | "discover" | "done";
@@ -1581,22 +1586,6 @@ function OverlapBadge({ score }: { score: number }) {
   );
 }
 
-// Notification-timing heads-up, shown on the success screen. Covers quiet hours,
-// weekend off and grouping (patch-26) — everything is applied automatically and
-// adjustable later in Settings → Notifications.
-function NotificationsNote() {
-  return (
-    <div className="mt-6 w-full max-w-md rounded-md border border-border bg-surface-2/40 px-5 py-4 flex items-start gap-2.5 text-left">
-      <Bell size={15} className="mt-0.5 text-muted-foreground shrink-0" />
-      <p className="text-xs text-muted-foreground leading-relaxed">
-        No emails between 10pm and 8am or on weekends, and similar updates are
-        grouped. Critical alerts always come through. Adjust anytime in Settings →
-        Notifications.
-      </p>
-    </div>
-  );
-}
-
 // ── Screen: done (step 4, first session) ─────────────────────────────────
 
 function DoneStep({
@@ -1608,7 +1597,12 @@ function DoneStep({
   plan: Plan;
   onDashboard: () => void;
 }) {
-  const [analyzed, setAnalyzed] = useState(0);
+  // Per-competitor analysis progress (drives the "Analyzing X/Y" badge and the
+  // breakdown popover). A competitor counts as analyzed once it has an AI summary.
+  const [progress, setProgress] = useState<
+    { id: string; name: string; analyzed: boolean }[]
+  >([]);
+  const analyzed = progress.filter((c) => c.analyzed).length;
 
   // Only recommend steps the current plan can actually act on — recommending
   // gated features right after sign-up is frustrating, not helpful.
@@ -1641,7 +1635,13 @@ function DoneStep({
         if (!active) return;
         // Best-effort progress proxy: a competitor counts as analyzed once it has
         // an AI summary (first scrape → classify → summary pipeline produced output).
-        setAnalyzed(competitors.filter((c) => c.aiSummary != null).length);
+        setProgress(
+          competitors.map((c) => ({
+            id: c.id,
+            name: c.name,
+            analyzed: c.aiSummary != null,
+          })),
+        );
       } catch {
         // ignore — indicator is informational
       }
@@ -1676,17 +1676,62 @@ function DoneStep({
         now — we'll send you a notification the moment the first analysis is ready.
       </p>
 
-      <div className="mt-6 inline-flex items-center gap-2 rounded-md border border-border bg-surface-2/60 px-4 py-2">
-        {!allDone && <Loader2 size={14} className="animate-spin text-muted-foreground" />}
-        {allDone && <Check size={14} className="text-positive" />}
-        <span className="text-sm text-foreground">
-          {allDone
-            ? `${totalCompetitors} competitors analyzed`
-            : `Analyzing ${analyzed}/${totalCompetitors} competitors…`}
-        </span>
-      </div>
-
-      <NotificationsNote />
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            className="group mt-6 inline-flex items-center gap-2 rounded-md border border-border bg-surface-2/60 px-4 py-2 outline-none transition-colors hover:bg-surface-2 focus-visible:ring-[3px] focus-visible:ring-ring/35"
+          >
+            {!allDone && (
+              <Loader2 size={14} className="animate-spin text-muted-foreground" />
+            )}
+            {allDone && <Check size={14} className="text-positive" />}
+            <span className="text-sm text-foreground">
+              {allDone
+                ? `${totalCompetitors} competitors analyzed`
+                : `Analyzing ${analyzed}/${totalCompetitors} competitors…`}
+            </span>
+            <ChevronDown
+              size={14}
+              className="text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
+            />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent align="center" className="w-72 p-2">
+          <p className="px-2 pb-2 pt-1 text-meta text-muted-foreground">
+            Analysis progress
+          </p>
+          <ul className="flex max-h-64 flex-col overflow-y-auto">
+            {progress.length === 0 ? (
+              <li className="px-2 py-2 text-sm text-muted-foreground">
+                Loading…
+              </li>
+            ) : (
+              progress.map((c) => (
+                <li
+                  key={c.id}
+                  className="flex items-center gap-2 rounded-sm px-2 py-1.5"
+                >
+                  {c.analyzed ? (
+                    <Check size={14} className="shrink-0 text-positive" />
+                  ) : (
+                    <Loader2
+                      size={14}
+                      className="shrink-0 animate-spin text-muted-foreground"
+                    />
+                  )}
+                  <span className="truncate text-sm text-foreground">
+                    {c.name}
+                  </span>
+                  <span className="ml-auto shrink-0 text-meta text-muted-foreground">
+                    {c.analyzed ? "Ready" : "Analyzing"}
+                  </span>
+                </li>
+              ))
+            )}
+          </ul>
+        </PopoverContent>
+      </Popover>
 
       <p className="text-xs text-muted-foreground mt-6">
         Your first weekly digest will be sent next Monday.

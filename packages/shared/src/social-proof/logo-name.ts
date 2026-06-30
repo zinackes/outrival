@@ -100,6 +100,33 @@ const RATING_COPY_RE =
 const CERTIFICATION_RE =
   /\b(iso\s?\d{4,5}|soc\s?[12]|hipaa|hippa|gdpr|ccpa|pci(?:[-\s]?dss)?|ferpa|fedramp|sox|nist|csa\s?star|cyber\s?essentials)\b|\b(compliant|certified|certification|accredited)\b/i;
 
+// Language names — a language switcher's flag <img> carries the language as its
+// alt ("Français", "English", "Italiano"), and the broad social-proof selector
+// sweeps those in alongside real customer logos (acutely on non-English sites).
+// A bare language word is NOT a customer brand, so it's dropped. Endonyms +
+// French and English exonyms, ASCII-folded & lowercased; matched WHOLE-string
+// (so "Deutsche Bank" / "English Tea Shop" survive — they aren't the bare word).
+const LANGUAGE_NAMES = new Set([
+  // endonyms
+  "english", "francais", "espanol", "deutsch", "italiano", "portugues", "nederlands",
+  "polski", "svenska", "norsk", "dansk", "suomi", "magyar", "romana", "cestina", "turkce",
+  "catala", "galego", "euskara",
+  // French exonyms
+  "anglais", "espagnol", "allemand", "italien", "portugais", "neerlandais",
+  "polonais", "suedois", "norvegien", "danois", "finnois", "hongrois", "roumain", "tcheque",
+  "turc", "russe", "chinois", "japonais", "coreen", "arabe", "grec",
+  // English exonyms
+  "french", "spanish", "german", "italian", "portuguese", "dutch", "polish", "swedish",
+  "norwegian", "danish", "finnish", "hungarian", "romanian", "czech", "turkish", "russian",
+  "chinese", "japanese", "korean", "arabic", "greek",
+  // common non-latin endonyms left verbatim (fold is a no-op on these)
+  "中文", "日本語", "한국어", "русский", "العربية",
+]);
+
+function isLanguageName(cleaned: string): boolean {
+  return LANGUAGE_NAMES.has(fold(cleaned));
+}
+
 // Strip decorative wrappers to recover the brand: "ramp client logo" → "ramp",
 // "Capterra Badge" → "Capterra", "Logo: Acme" → "Acme", "Acme (2)" → "Acme".
 function stripDecoration(t: string): string {
@@ -168,6 +195,7 @@ export function classifyLogoName(raw: string | null | undefined): LogoNameVerdic
   if (REVIEW_PLATFORM_RE.test(cleaned)) return { kind: "junk" };
   if (RATING_COPY_RE.test(cleaned)) return { kind: "junk" };
   if (CERTIFICATION_RE.test(cleaned)) return { kind: "junk" };
+  if (isLanguageName(cleaned)) return { kind: "junk" };
   if (looksLikePersonName(cleaned)) return { kind: "junk" };
   if (looksLikeDescriptivePhrase(cleaned)) return { kind: "junk" };
   if (cleaned.length > 60) return { kind: "junk" }; // a sentence, not a wordmark

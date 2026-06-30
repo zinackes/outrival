@@ -1285,7 +1285,7 @@ function Header({
                 </kbd>
               </TooltipContent>
             </Tooltip>
-            <span className="select-none px-0.5 text-meta tabular-nums text-muted-foreground">
+            <span className="select-none px-0.5 text-dense tabular-nums text-muted-foreground">
               {index + 1}/{total}
             </span>
             <Tooltip>
@@ -2008,13 +2008,15 @@ function SourceChip({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-56">
-        <DropdownMenuLabel className="flex items-center justify-between gap-2">
-          <span>{sourceShortLabel(m.sourceType)}</span>
-          <Eyebrow size="micro">{m.frequency}</Eyebrow>
+        <DropdownMenuLabel className="flex items-center justify-between gap-2 text-sm font-semibold normal-case tracking-normal text-foreground">
+          <span className="truncate">{sourceShortLabel(m.sourceType)}</span>
+          <span className="shrink-0 text-meta font-medium uppercase tracking-wide text-muted-foreground">
+            {m.frequency}
+          </span>
         </DropdownMenuLabel>
         <p
           className={cn(
-            "px-2 pb-1 text-sm",
+            "px-2 pb-1 text-xs",
             failed ? "font-medium text-critical" : "text-muted-foreground",
           )}
         >

@@ -45,6 +45,12 @@ ${homepageText.slice(0, 4000)}
 
 <task>
 Analyze this product/SaaS website and infer its profile.
+"pricingModel": describe the pricing ONLY if the page itself mentions a price,
+plans, "free", "trial", or "subscription". If the page shows no pricing
+information, return an empty string — do not guess or invent a model (most
+homepages put pricing on a separate page, so an empty string is expected).
+For any other field you cannot determine from the page, also return an empty
+string rather than guessing.
 Reply ONLY with a valid JSON object, no markdown and no surrounding text.
 Write all text values in English.
 </task>
@@ -54,7 +60,7 @@ Write all text values in English.
   "category": "e.g. B2B SaaS / Productivity",
   "audience": "e.g. Startups of 1-50 people",
   "valueProp": "e.g. Automating X, in one sentence",
-  "pricingModel": "e.g. Freemium + subscription"
+  "pricingModel": "e.g. Freemium + subscription — or \"\" when the page shows no pricing"
 }
 </format>`;
 

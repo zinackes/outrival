@@ -71,6 +71,25 @@ export function extractContent(html: string, sourceType?: SourceType): string {
     ].join(","),
   ).remove();
 
+  // Site-level chrome (header / nav / footer) is identical on every page of a
+  // site and is NOT what we track on a pricing / blog / jobs page — it only
+  // generates phantom diffs: a sticky header, a desktop+mobile nav duplicated in
+  // the DOM (so its text doubles, e.g. "ContactContact"), or a marketing nav link
+  // added once and re-detected on every page that shares the nav. Strip it for
+  // non-homepage sources. Homepage keeps it: its structured diff parses sections
+  // itself and the relevance filter already absorbs nav churn.
+  //
+  // Only PAGE-level chrome is dropped — a <header>/<footer> nested inside an
+  // <article>/<main> is real content (a blog post's title header, an article
+  // byline footer), so anything under <main>/<article> is preserved.
+  if (sourceType && sourceType !== "homepage") {
+    $("header, nav, footer, [role='banner'], [role='navigation'], [role='contentinfo']").each(
+      (_, el) => {
+        if ($(el).closest("main, article").length === 0) $(el).remove();
+      },
+    );
+  }
+
   const out: string[] = [];
   const body = $("body").toArray();
   const roots = body.length ? body : $.root().toArray();

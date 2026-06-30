@@ -15,7 +15,7 @@ import {
 } from "@outrival/db";
 import { generateBattleCard, AI_CONFIG } from "@outrival/ai";
 import { uploadToR2 } from "@outrival/shared";
-import { logAiRun } from "../lib/analytics";
+import { logAiRun, getLatestTrial } from "../lib/analytics";
 import { refreshCompetitorSummaryJob } from "./refresh-competitor-summary.job";
 
 const InputSchema = z.object({
@@ -92,6 +92,10 @@ export const generateBattleCardJob = task({
       limit: 8,
     });
 
+    // Latest detected free-trial state (patch-33) — a concrete acquisition lever for
+    // the card. Best-effort: null when no pricing captured / pre-detection.
+    const competitorTrial = await getLatestTrial(competitor.id);
+
     const praisesRows = await db.query.reviews.findMany({
       where: and(eq(reviews.competitorId, competitor.id), eq(reviews.author, "praise")),
       orderBy: desc(reviews.detectedAt),
@@ -129,6 +133,13 @@ export const generateBattleCardJob = task({
         myProduct: { name: product?.name, category: myCategory, valueProp: myValueProp },
         competitorName: competitor.name,
         competitorSummary,
+        competitorTrial: competitorTrial
+          ? {
+              hasTrial: competitorTrial.has_trial,
+              days: competitorTrial.days,
+              requiresCreditCard: competitorTrial.requires_credit_card,
+            }
+          : null,
         reviewPraises: praisesRows.map((r) => r.content ?? "").filter(Boolean),
         reviewComplaints: complaintsRows.map((r) => r.content ?? "").filter(Boolean),
         recentSignals: recentSignals.map((s) => ({

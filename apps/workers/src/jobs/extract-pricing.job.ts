@@ -11,7 +11,7 @@ import {
 } from "@outrival/ai";
 import { getFromR2, PRICING_STATUSES } from "@outrival/shared";
 import { pricingFromStructured } from "@outrival/scrapers/structured-data";
-import { pricingRatiosPlausible } from "@outrival/scrapers/pricing";
+import { pricingRatiosPlausible, detectTrial } from "@outrival/scrapers/pricing";
 import { htmlToText } from "../lib/html-to-text";
 import { insertPricingHistory, getPreviousPricing, loggedAi } from "../lib/analytics";
 import { stagedExtract } from "../lib/staged-extract";
@@ -100,6 +100,12 @@ export const extractPricingJob = task({
     // describe what moved (price changes, new/dropped plans) since last scrape.
     const previous = await getPreviousPricing(input.competitorId);
 
+    // Free-trial detection (patch-33, AI-free regex on the same page text). A
+    // page-level fact stamped identically onto every plan row of this batch, like
+    // status/observedRegion — so the latest batch reflects the current trial state.
+    const trial = detectTrial(text);
+    logger.log("Free-trial detection", { trial });
+
     const recordedAt = new Date();
     // Keep every plan, including quote-based tiers (price null — "Enterprise",
     // "Contact sales", "Custom"): they're real plans the user wants to see. The
@@ -115,6 +121,10 @@ export const extractPricingJob = task({
         status: input.status,
         promotional: input.promotional ? 1 : 0,
         observed_region: input.observedRegion,
+        has_trial: trial.hasTrial ? 1 : 0,
+        trial_days: trial.days,
+        trial_requires_card:
+          trial.requiresCreditCard == null ? null : trial.requiresCreditCard ? 1 : 0,
         recorded_at: recordedAt,
       })),
     );

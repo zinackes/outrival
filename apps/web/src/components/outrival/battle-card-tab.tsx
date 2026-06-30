@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
-import { useSearchParams } from "next/navigation";
+import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import {
   CircleCheck,
   CircleX,
@@ -57,9 +57,9 @@ interface Props {
 }
 
 export function BattleCardTab({ competitorId }: Props) {
-  // patch-28 — scope the card to the active product (selector sets ?product=);
-  // omitted = the org's primary product (the API default).
-  const productId = useSearchParams().get("product") ?? undefined;
+  // patch-28 — scope the card to the active product (cookie-backed switcher, URL
+  // ?product= overrides); omitted = the org's primary product (the API default).
+  const productId = useProductScope() ?? undefined;
   const [card, setCard] = useState<BattleCard | null>(null);
   const [status, setStatus] = useState<Status>("loading");
   const [error, setError] = useState<string | null>(null);

@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { AnimatePresence, motion } from "motion/react";
 import {
   Plus,
@@ -54,6 +55,13 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn, prettyUrl } from "@/lib/utils";
 import { PageHead } from "./page-head";
 import { useSetAskContext } from "./ask-context";
@@ -66,6 +74,7 @@ import {
   COMP_ACCENT,
 } from "@/lib/competitor-color";
 import { FreshnessDot } from "@/components/outrival/freshness-dot";
+import { ProductChips } from "./product-chip";
 import { ListError } from "@/components/outrival/list-error";
 import { toastApiError } from "@/lib/error-helpers";
 import {
@@ -144,8 +153,11 @@ export function CompetitorsList() {
   // Server-seeded on first paint (competitors/page.tsx); shares the ["competitors"]
   // cache with the Overview roster. Polls every 30s via refetchInterval.
   const queryClient = useQueryClient();
-  // patch-28 — active product scope (?product=, from the top-left switcher).
-  const productId = useSearchParams().get("product") ?? undefined;
+  // patch-28 — active product scope (cookie-backed switcher, URL ?product= overrides).
+  const productId = useProductScope() ?? undefined;
+  // Product-attribution chips only make sense in all-products scope (when scoped to one
+  // product everything is already filtered → the chip would be redundant noise).
+  const allProducts = !productId;
   const competitorsQ = useQuery({ ...competitorsQuery(productId), refetchInterval: 30_000 });
   const competitors = competitorsQ.data ?? null;
   const err = competitorsQ.error;
@@ -372,25 +384,24 @@ export function CompetitorsList() {
 
       <div className="flex items-center gap-2 flex-wrap">
         {cats.length > 0 && (
-          <>
-            <span className="text-xs font-medium text-muted-foreground mr-1">
-              Category
-            </span>
-            <ToggleGroup
-              type="multiple"
-              value={Array.from(filterCat)}
-              onValueChange={(v) => setFilterCat(new Set(v as string[]))}
-              variant="outline"
-              size="sm"
-              spacing={4}
-            >
+          <Select
+            value={Array.from(filterCat)[0] ?? "all"}
+            onValueChange={(v) =>
+              setFilterCat(v === "all" ? new Set() : new Set([v]))
+            }
+          >
+            <SelectTrigger size="sm" className="h-8 w-[160px] text-xs">
+              <SelectValue placeholder="All categories" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All categories</SelectItem>
               {cats.map((c) => (
-                <ToggleGroupItem key={c} value={c}>
+                <SelectItem key={c} value={c}>
                   {c}
-                </ToggleGroupItem>
+                </SelectItem>
               ))}
-            </ToggleGroup>
-          </>
+            </SelectContent>
+          </Select>
         )}
         {(filterCat.size > 0 || query.length > 0) && (
           <Button
@@ -592,6 +603,12 @@ export function CompetitorsList() {
                         className="shrink-0 opacity-0 transition-opacity group-hover/url:opacity-100"
                       />
                     </a>
+                    {allProducts && (
+                      <ProductChips
+                        productIds={c.specificProductIds}
+                        className="mt-1"
+                      />
+                    )}
                   </td>
                   <td className="px-3.5 py-3 align-middle text-muted-foreground">
                     {c.category ?? "—"}
@@ -705,6 +722,12 @@ export function CompetitorsList() {
                         className="shrink-0 opacity-0 transition-opacity group-hover/url:opacity-100"
                       />
                     </a>
+                    {allProducts && (
+                      <ProductChips
+                        productIds={c.specificProductIds}
+                        className="mt-1"
+                      />
+                    )}
                   </div>
                   <ColorQuickSet
                     competitor={c}

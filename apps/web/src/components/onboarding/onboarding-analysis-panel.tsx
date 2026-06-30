@@ -21,7 +21,7 @@ export function OnboardingAnalysisPanel({ onTick }: { onTick?: () => void }) {
           ) : (
             <Loader2 size={15} className="animate-spin text-muted-foreground" />
           )}
-          <span className="text-dense font-semibold tracking-tight">
+          <span className="text-content font-semibold tracking-tight">
             {done ? "First analysis complete" : "Analyzing your competitors"}
           </span>
         </div>
@@ -34,7 +34,7 @@ export function OnboardingAnalysisPanel({ onTick }: { onTick?: () => void }) {
         {competitors.map((c) => (
           <li
             key={c.id}
-            className="flex items-center gap-2 text-dense animate-in fade-in duration-500"
+            className="flex items-center gap-2 text-sm animate-in fade-in duration-500"
           >
             {c.ready ? (
               <Check size={12} className="shrink-0 text-positive" />

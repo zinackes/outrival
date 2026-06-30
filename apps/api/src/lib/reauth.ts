@@ -2,7 +2,7 @@ import { randomInt, randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { verification, users } from "@outrival/db";
 import { db } from "./db";
-import { sendReauthCodeEmail } from "./sign-in-email";
+import { sendReauthCodeEmail, sendSetPasswordCodeEmail } from "./sign-in-email";
 
 // Step-up re-authentication for destructive actions (delete workspace / account).
 // A short code is emailed to the account address and must be entered alongside
@@ -14,7 +14,10 @@ const REAUTH_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const MAX_ATTEMPTS = 5;
 const identifierFor = (userId: string) => `reauth-${userId}`;
 
-export async function sendReauthCode(userId: string): Promise<void> {
+export async function sendReauthCode(
+  userId: string,
+  purpose: "destructive" | "password" = "destructive",
+): Promise<void> {
   const dbUser = await db.query.users.findFirst({ where: eq(users.id, userId) });
   if (!dbUser?.email) return;
 
@@ -28,7 +31,11 @@ export async function sendReauthCode(userId: string): Promise<void> {
     expiresAt: new Date(Date.now() + REAUTH_TTL_MS),
   });
 
-  await sendReauthCodeEmail({ to: dbUser.email, code, expiresInMinutes: 10 });
+  if (purpose === "password") {
+    await sendSetPasswordCodeEmail({ to: dbUser.email, code, expiresInMinutes: 10 });
+  } else {
+    await sendReauthCodeEmail({ to: dbUser.email, code, expiresInMinutes: 10 });
+  }
 }
 
 export async function verifyReauthCode(userId: string, code: string): Promise<boolean> {

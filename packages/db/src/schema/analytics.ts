@@ -36,6 +36,13 @@ export const pricingHistory = pgTable(
     status: text("status").notNull().default("unknown"),
     promotional: integer("promotional").notNull().default(0),
     observedRegion: text("observed_region").notNull().default("FR"),
+    // patch-33 — free-trial facts, detected AI-free from the pricing page text and
+    // stamped page-level onto every plan row of a scrape (like status/observedRegion).
+    // null = not assessed (legacy rows). hasTrial/trialRequiresCard are 0/1 ints
+    // (mirrors `promotional`); trialDays null = trial with no stated duration.
+    hasTrial: integer("has_trial"),
+    trialDays: integer("trial_days"),
+    trialRequiresCard: integer("trial_requires_card"),
     recordedAt: timestamp("recorded_at").notNull().defaultNow(),
   },
   (t) => [index("pricing_history_competitor_recorded_idx").on(t.competitorId, t.recordedAt)],

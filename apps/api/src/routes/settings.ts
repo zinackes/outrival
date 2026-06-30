@@ -99,7 +99,9 @@ settingsRouter.patch("/workspace", async (c) => {
 // Step-up re-auth: email a confirmation code before a destructive action.
 settingsRouter.post("/reauth/send", async (c) => {
   const user = c.get("user");
-  await sendReauthCode(user.id);
+  const body = (await c.req.json().catch(() => ({}))) as { purpose?: unknown };
+  const purpose = body.purpose === "password" ? "password" : "destructive";
+  await sendReauthCode(user.id, purpose);
   // Identical response regardless — the email either arrives or it doesn't.
   return c.json({ ok: true });
 });

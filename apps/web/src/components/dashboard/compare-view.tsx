@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useSearchParams } from "next/navigation";
+import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import {
   Columns3,
   Rows3,
@@ -606,9 +606,9 @@ export function CompareView() {
   // Server-seeded on first paint (compare/page.tsx): the picker inputs (products +
   // competitors). useState lazy-inits from the hydrated cache; a sync effect fills
   // them in when the seed was missing and the queries resolve client-side.
-  // patch-28 — active product scope (?product=): the picker offers only that
-  // product's competitors; absent → all org competitors (unchanged).
-  const productId = useSearchParams().get("product") ?? undefined;
+  // patch-28 — active product scope (cookie-backed switcher, URL ?product= overrides):
+  // the picker offers only that product's competitors; absent → all org competitors.
+  const productId = useProductScope() ?? undefined;
   const productsQ = useQuery(productsListQuery());
   const competitorsQ = useQuery(competitorsQuery(productId));
   const [entities, setEntities] = useState<PickEntity[] | null>(() =>

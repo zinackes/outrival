@@ -641,6 +641,33 @@ competitorsRouter.get("/", async (c) => {
     monitorsByCompetitor.set(m.competitorId, arr);
   }
 
+  // Per-competitor product attribution for the all-products chip (patch-28): only the
+  // products a competitor is *specific* to (isSpecific). Shared competitors get an
+  // empty list → the web renders no chip. Org-joined so a forged productId can't leak.
+  const linkRows = await db
+    .select({
+      competitorId: productCompetitors.competitorId,
+      productId: productCompetitors.productId,
+    })
+    .from(productCompetitors)
+    .innerJoin(products, eq(products.id, productCompetitors.productId))
+    .where(
+      and(
+        eq(products.orgId, orgId),
+        eq(productCompetitors.isSpecific, true),
+        inArray(
+          productCompetitors.competitorId,
+          list.map((c) => c.id),
+        ),
+      ),
+    );
+  const specificByCompetitor = new Map<string, string[]>();
+  for (const r of linkRows) {
+    const arr = specificByCompetitor.get(r.competitorId) ?? [];
+    arr.push(r.productId);
+    specificByCompetitor.set(r.competitorId, arr);
+  }
+
   const enriched = list.map((c) => {
     const a = byCompetitor.get(c.id);
     const freshness =
@@ -648,6 +675,7 @@ competitorsRouter.get("/", async (c) => {
       ({ lastScrapedAt: null, status: "success" } as const);
     return {
       ...c,
+      specificProductIds: specificByCompetitor.get(c.id) ?? [],
       freshness,
       stats: {
         signals7d: a?.signals7d ?? 0,
@@ -968,9 +996,16 @@ competitorsRouter.get("/:id/pricing-history", async (c) => {
     price: number | null;
     currency: string;
     billing_period: string;
+    has_trial: boolean | null;
+    trial_days: number | null;
+    trial_requires_card: boolean | null;
     recorded_at: string;
   }>(sql`
-    SELECT plan_name, price, currency, billing_period, recorded_at::text AS recorded_at
+    SELECT plan_name, price, currency, billing_period,
+           (has_trial = 1) AS has_trial,
+           trial_days,
+           (trial_requires_card = 1) AS trial_requires_card,
+           recorded_at::text AS recorded_at
     FROM pricing_history
     WHERE competitor_id = ${competitor.id}
     ORDER BY recorded_at ASC

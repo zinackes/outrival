@@ -75,7 +75,7 @@ function LogoChip({ logo }: { logo: { name: string | null; src: string | null } 
   // to the theme — the standard "trusted by" wall treatment: coherent regardless of the
   // source artwork, polarity-correct in both light (dark ink) and dark (light ink) mode.
   const tile = (
-    <div className="flex h-12 items-center justify-center bg-card px-3">
+    <div className="flex h-14 items-center justify-center bg-card px-3">
       {showImage ? (
         // eslint-disable-next-line @next/next/no-img-element -- arbitrary external logo URL, next/image can't whitelist competitor domains
         <img
@@ -96,10 +96,10 @@ function LogoChip({ logo }: { logo: { name: string | null; src: string | null } 
             // one. Wide wordmark logos (the ones that read well) are kept as images.
             if (name && img.naturalWidth / img.naturalHeight <= 1.4) setBlocky(true);
           }}
-          className="max-h-5 max-w-full object-contain opacity-50 transition-opacity duration-150 [filter:brightness(0)] hover:opacity-80 dark:[filter:brightness(0)_invert(1)]"
+          className="max-h-7 max-w-full object-contain opacity-50 transition-opacity duration-150 [filter:brightness(0)] hover:opacity-80 dark:[filter:brightness(0)_invert(1)]"
         />
       ) : (
-        <span className="truncate text-meta font-medium text-muted-foreground">{name}</span>
+        <span className="truncate text-xs font-medium text-muted-foreground">{name}</span>
       )}
     </div>
   );
@@ -298,7 +298,7 @@ export function OverviewTab({
         <TabSection title="Customers & proof" icon={Users}>
           {customerLogos.length > 0 && (
             <TooltipProvider delayDuration={150}>
-              <div className="grid grid-cols-[repeat(auto-fit,minmax(104px,1fr))] gap-px overflow-hidden rounded-lg border border-border bg-card">
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(124px,1fr))] gap-px overflow-hidden rounded-lg border border-border bg-card">
                 {customerLogos.map((l, i) => (
                   <LogoChip key={i} logo={l} />
                 ))}

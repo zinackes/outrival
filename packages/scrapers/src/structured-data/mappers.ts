@@ -48,7 +48,14 @@ function offerToPlan(offer: JsonLdNode, fallbackName: string | null): Structured
   const price = asPrice(offer["price"]) ?? asPrice(spec?.["price"]);
   const currency =
     asText(offer["priceCurrency"]) ?? asText(spec?.["priceCurrency"]) ?? "USD";
-  const name = asText(offer["name"]) ?? asText(offer["category"]) ?? fallbackName;
+  // A tier's own name/category wins. With neither, a $0 offer is the Free tier;
+  // only then fall back to the product name — and the caller passes it as null for
+  // multi-tier products, where reusing the product name would mislabel a nameless
+  // tier (typically the free one) with the competitor's name.
+  const name =
+    asText(offer["name"]) ??
+    asText(offer["category"]) ??
+    (price === 0 ? "Free" : fallbackName);
   if (!name) return null;
   return {
     plan_name: name,
@@ -94,8 +101,13 @@ export function pricingFromStructured(html: string): StructuredPricing | null {
   const plans: StructuredPricingPlan[] = [];
   for (const product of products) {
     const productName = asText(product["name"]);
-    for (const offer of offersOf(product)) {
-      const plan = offerToPlan(offer, productName);
+    const offers = offersOf(product);
+    // The product name only stands in for a tier name when the product IS the tier
+    // (a single offer). With several tiers it names the product, not a plan, so it
+    // must not leak onto a nameless tier — see offerToPlan.
+    const fallback = offers.length === 1 ? productName : null;
+    for (const offer of offers) {
+      const plan = offerToPlan(offer, fallback);
       if (plan) plans.push(plan);
     }
   }

@@ -1578,6 +1578,48 @@ export interface ProductDetail {
   competitors: ProductLinkedCompetitor[];
 }
 
+export interface AiVisibilitySubject {
+  competitorId: string;
+  name: string;
+  isSelf: boolean;
+  mentions: number;
+  sov: number;
+  avgRank: number | null;
+}
+export interface AiVisibilityLeaderboard {
+  engine: string;
+  totalPrompts: number;
+  subjects: AiVisibilitySubject[];
+}
+export interface AiVisibilityCell {
+  engine: string;
+  selfMentioned: boolean;
+  selfRank: number | null;
+  mentioned: string[];
+  excerpt: string | null;
+}
+export interface AiVisibilityBreakdownRow {
+  promptId: string;
+  prompt: string;
+  cells: AiVisibilityCell[];
+}
+export interface AiVisibilityPrompt {
+  id: string;
+  prompt: string;
+  isActive: boolean;
+  origin: string;
+}
+export interface AiVisibilityData {
+  enabled: boolean;
+  lastRunAt: string | null;
+  leaderboard: AiVisibilityLeaderboard[];
+  breakdown: AiVisibilityBreakdownRow[];
+  trendKeys: string[];
+  trend: Record<string, string | number>[];
+  prompts: AiVisibilityPrompt[];
+  degraded: boolean;
+}
+
 export const api = {
   search: (q: string) =>
     request<SearchResults>(`/api/search?q=${encodeURIComponent(q)}`),
@@ -1879,6 +1921,21 @@ export const api = {
       : "";
     return request<TrendsSeries>(`${base}${qs}`);
   },
+  getAiVisibility: () => request<AiVisibilityData>("/api/ai-visibility"),
+  addAiVisibilityPrompt: (prompt: string) =>
+    request<{ prompt: AiVisibilityPrompt }>("/api/ai-visibility/prompts", {
+      method: "POST",
+      body: JSON.stringify({ prompt }),
+    }),
+  updateAiVisibilityPrompt: (id: string, patch: { isActive?: boolean; prompt?: string }) =>
+    request<{ prompt: AiVisibilityPrompt }>(`/api/ai-visibility/prompts/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  deleteAiVisibilityPrompt: (id: string) =>
+    request<{ ok: true }>(`/api/ai-visibility/prompts/${id}`, { method: "DELETE" }),
+  runAiVisibility: () =>
+    request<{ runId: string }>("/api/ai-visibility/run", { method: "POST" }),
   compareCompetitors: (ids: string[]) =>
     request<{ competitors: CompareColumn[] }>(
       `/api/compare?competitorIds=${ids.map(encodeURIComponent).join(",")}`,

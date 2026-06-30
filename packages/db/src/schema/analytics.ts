@@ -85,6 +85,43 @@ export const reviewScores = pgTable(
   (t) => [index("review_scores_competitor_recorded_idx").on(t.competitorId, t.recordedAt)],
 );
 
+// AI Visibility / "Share of Model" results (see docs/ai-visibility.md). One row per
+// (prompt × engine × mentioned subject) captured on a run: did this competitor (self
+// or external) appear in the engine's answer, at what rank, cited or not. Append-only,
+// best-effort, no FK — like every table here. Share-of-voice is derived at read time
+// (mentions / prompts, per engine). Read primarily per-org (the visibility page), so
+// it carries an (org, recorded) index in addition to the per-competitor one.
+export const aiVisibilityResults = pgTable(
+  "ai_visibility_results",
+  {
+    id: uuid(),
+    orgId: text("org_id").notNull(),
+    promptId: text("prompt_id").notNull(),
+    // The mentioned subject — a competitor row id (self or external).
+    competitorId: text("competitor_id").notNull(),
+    // chatgpt | perplexity | claude | gemini | google_aio (text, schema-light).
+    engine: text("engine").notNull(),
+    // 0/1 (mirrors pricing_history.promotional/has_trial int-bool convention).
+    mentioned: integer("mentioned").notNull().default(0),
+    // Order of first mention in the answer (1 = first). Null when not mentioned.
+    rank: integer("rank"),
+    // 1 when the subject appeared as a linked/cited source (not just text). Null = n/a.
+    cited: integer("cited"),
+    sentimentScore: doublePrecision("sentiment_score"),
+    // Truncated answer text kept as evidence ("show the work"). Null to save space.
+    answerExcerpt: text("answer_excerpt"),
+    // Groups all rows written by one engine×prompt sweep, so a run is queryable as a unit.
+    runId: text("run_id").notNull(),
+    recordedAt: timestamp("recorded_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("ai_visibility_results_org_recorded_idx").on(t.orgId, t.recordedAt),
+    index("ai_visibility_results_competitor_recorded_idx").on(t.competitorId, t.recordedAt),
+  ],
+);
+
+export type AiVisibilityResult = InferSelectModel<typeof aiVisibilityResults>;
+
 export const signalFeed = pgTable(
   "signal_feed",
   {

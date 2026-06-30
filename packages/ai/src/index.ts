@@ -58,6 +58,15 @@ export type { PricingExtraction, PricingPlan } from "./tasks/extract-pricing";
 export { extractJobs, JobsSchema, JobPostingSchema } from "./tasks/extract-jobs";
 export type { JobsExtraction, ExtractedJob } from "./tasks/extract-jobs";
 export { extractReviews, ReviewsSchema } from "./tasks/extract-reviews";
+export {
+  extractAiVisibility,
+  AiVisibilityExtractionSchema,
+  AiVisibilityMentionSchema,
+} from "./tasks/extract-ai-visibility";
+export type {
+  AiVisibilityExtraction,
+  AiVisibilityMention,
+} from "./tasks/extract-ai-visibility";
 export type { ReviewsExtraction } from "./tasks/extract-reviews";
 export { generateExtractor } from "./tasks/generate-extractor";
 export type { ExtractorKind } from "./tasks/generate-extractor";

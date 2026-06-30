@@ -51,6 +51,7 @@ export const SOURCE_SHORT_LABELS: Record<SourceType, string> = {
   status: "Status page",
   sitemap: "Sitemap",
   news: "News",
+  ai_visibility: "AI visibility",
 };
 
 export function sourceShortLabel(sourceType: string | null | undefined): string {

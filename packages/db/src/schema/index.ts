@@ -37,4 +37,5 @@ export * from "./saved-views";
 export * from "./crm-destinations";
 export * from "./signal-comments";
 export * from "./ask-history";
+export * from "./ai-visibility";
 export * from "./analytics";

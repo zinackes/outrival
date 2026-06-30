@@ -46,6 +46,10 @@ export interface PlanLimits {
     fullMode: boolean;
     // CRM integrations — backlog feature; flag carried so the source of truth is complete.
     crmIntegrations: boolean;
+    // AI Visibility / "Share of Model" — track presence in LLM answer engines
+    // (docs/ai-visibility.md). Premium capability (pro+); gates the feature, while the
+    // ai_visibility anchor source itself stays ungated (internal, like tech_stack).
+    aiVisibility: boolean;
   };
 }
 
@@ -62,7 +66,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     usersPerOrg: 1,
     historyRetentionDays: 7,
     // Battle cards now open to every tier, governed by battleCardsPerDay (not a hard gate).
-    features: { battleCards: true, realtimeAlerts: false, api: false, multiUser: false, fullMode: false, crmIntegrations: false },
+    features: { battleCards: true, realtimeAlerts: false, api: false, multiUser: false, fullMode: false, crmIntegrations: false, aiVisibility: false },
   },
   starter: {
     maxCompetitors: 5,
@@ -75,7 +79,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     discoveriesPerMonth: 20,
     usersPerOrg: 1,
     historyRetentionDays: 30,
-    features: { battleCards: true, realtimeAlerts: false, api: false, multiUser: false, fullMode: true, crmIntegrations: false },
+    features: { battleCards: true, realtimeAlerts: false, api: false, multiUser: false, fullMode: true, crmIntegrations: false, aiVisibility: false },
   },
   pro: {
     maxCompetitors: 15,
@@ -88,7 +92,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     discoveriesPerMonth: 100,
     usersPerOrg: 3,
     historyRetentionDays: 365,
-    features: { battleCards: true, realtimeAlerts: true, api: false, multiUser: false, fullMode: true, crmIntegrations: false },
+    features: { battleCards: true, realtimeAlerts: true, api: false, multiUser: false, fullMode: true, crmIntegrations: false, aiVisibility: true },
   },
   business: {
     // Decided 2026-06-04: a real, displayed cap — no "unlimited" anywhere.
@@ -109,7 +113,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     discoveriesPerMonth: 500,
     usersPerOrg: 10,
     historyRetentionDays: 1095,
-    features: { battleCards: true, realtimeAlerts: true, api: true, multiUser: true, fullMode: true, crmIntegrations: true },
+    features: { battleCards: true, realtimeAlerts: true, api: true, multiUser: true, fullMode: true, crmIntegrations: true, aiVisibility: true },
   },
 };
 

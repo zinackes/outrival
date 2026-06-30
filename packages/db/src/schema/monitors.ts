@@ -29,6 +29,13 @@ export const sourceTypeEnum = pgEnum("source_type", [
   // schedule-scraping and scraped via getScraper (Google News RSS by brand); the
   // diff of its sorted snapshot surfaces new events, classified funding/product.
   "news",
+  // AI Visibility / "Share of Model" (docs/ai-visibility.md). Infra-only anchor
+  // source (like tech_stack): never user-selectable, excluded from plan gating —
+  // it exists solely to anchor the snapshot → change → signal FK chain when the
+  // visibility picture shifts (a competitor overtakes you in an engine's answers).
+  // The capability is gated by the org-level features.aiVisibility plan flag, not
+  // by allowedSources; the actual data lives in ai_visibility_prompts/_results.
+  "ai_visibility",
 ]);
 
 export const frequencyEnum = pgEnum("frequency", ["realtime", "daily", "weekly"]);

@@ -212,12 +212,15 @@ type CapturedSummary =
       } | null;
     };
 
-// Shape the per-family captured columns into one discriminated summary. A failed
-// run captured nothing (we couldn't reach the page), so it stays null instead of
-// reading as "nothing found". A data source with no batch (extraction came back
-// empty) keeps its kind with zeroed counts → the UI says "Nothing found".
+// Shape the per-family captured columns into one discriminated summary. Captured
+// reflects what THIS run extracted: only a 'success' run wrote a fresh snapshot and
+// re-ran extraction. A 'no_change' run (hash dedup early-return) and a 'failed' run
+// extract nothing, so they carry no captured data — left null rather than back-filled
+// with the last-known batch, which re-printed a stale "still €14" on every scrape and
+// read as a fresh capture repeating. A success data source with no batch (extraction
+// came back empty) keeps its kind with zeroed counts → the UI says "Nothing found".
 function shapeCaptured(r: RawRun): CapturedSummary | null {
-  if (r.status === "failed") return null;
+  if (r.status !== "success") return null;
   if (r.sourceType === "jobs") {
     return {
       kind: "jobs",
@@ -392,10 +395,13 @@ activityRouter.get("/timeline", async (c) => {
     LEFT JOIN monitors m ON m.id = r.monitor_id
     -- Captured data per data source: aggregate the analytics batch nearest this
     -- run (the latest recorded at/just-after the run — extraction lands a touch
-    -- after scrape_runs is logged; for a no-change run, no new batch exists so we
-    -- carry the last known state, i.e. "still N"). Batches are ≥1 day apart for
-    -- these sources, so "latest <= run + 1h" uniquely picks the right one. Each
-    -- LATERAL is gated by source_type so a row never borrows another family's data.
+    -- after scrape_runs is logged). Gated to status='success' runs: only those wrote
+    -- a fresh snapshot and re-ran extraction, so the batch is genuinely this run's. A
+    -- no_change run (hash dedup) extracts nothing — left null rather than carrying the
+    -- last-known batch forward, which read as "still €14" repeating on every scrape.
+    -- Batches are ≥1 day apart for these sources, so "latest <= run + 1h" uniquely
+    -- picks the right one. Each LATERAL is also gated by source_type so a row never
+    -- borrows another family's data.
     LEFT JOIN LATERAL (
       SELECT coalesce(sum(jc.count), 0)::int AS total, count(*)::int AS teams,
              json_agg(json_build_object('department', jc.department, 'count', jc.count)
@@ -407,7 +413,7 @@ activityRouter.get("/timeline", async (c) => {
           WHERE jc2.competitor_id = r.competitor_id
             AND jc2.recorded_at <= r.recorded_at + interval '1 hour'
         )
-    ) jobcap ON r.source_type = 'jobs'
+    ) jobcap ON r.source_type = 'jobs' AND r.status = 'success'
     LEFT JOIN LATERAL (
       SELECT count(*)::int AS plan_count,
              min(ph.price) FILTER (WHERE ph.price > 0) AS min_price,
@@ -422,7 +428,7 @@ activityRouter.get("/timeline", async (c) => {
           WHERE ph2.competitor_id = r.competitor_id
             AND ph2.recorded_at <= r.recorded_at + interval '1 hour'
         )
-    ) pricecap ON r.source_type = 'pricing'
+    ) pricecap ON r.source_type = 'pricing' AND r.status = 'success'
     LEFT JOIN LATERAL (
       SELECT rs.score, rs.review_count,
              json_build_object('easeOfUse', rs.sub_ease_of_use, 'support', rs.sub_support,
@@ -437,7 +443,7 @@ activityRouter.get("/timeline", async (c) => {
             AND rs2.recorded_at <= r.recorded_at + interval '1 hour'
         )
       LIMIT 1
-    ) reviewcap ON r.source_type ~ '_reviews$'
+    ) reviewcap ON r.source_type ~ '_reviews$' AND r.status = 'success'
     -- The page this run inspected, by its resolved URL. A no-change run writes no
     -- new snapshot (content-hash dedup), so we take the monitor's latest snapshot
     -- as of the run — the actual monitored page (e.g. the pricing URL), not just

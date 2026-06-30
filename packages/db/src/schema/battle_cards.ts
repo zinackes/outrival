@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { competitors } from "./competitors";
 import { organizations } from "./organizations";
 import { products } from "./products";
@@ -31,4 +31,8 @@ export const battleCards = pgTable("battle_cards", {
   // One card per (product, competitor) couple. Postgres treats NULL productId as
   // distinct, so legacy rows (pre-backfill) don't collide; new rows always set it.
   uniqueIndex("battle_cards_product_competitor_uq").on(t.productId, t.competitorId),
+  // Org feed (GET /api/battle-cards) + competitor cascade — the unique index above
+  // leads with productId, so neither orgId nor competitorId is covered on its own.
+  index("battle_cards_org_idx").on(t.orgId),
+  index("battle_cards_competitor_idx").on(t.competitorId),
 ]);

@@ -4,9 +4,10 @@ import type {
   SourceType,
   MonitorFrequency,
   DetectionConfig,
+  AnalysisStatus,
 } from "@outrival/shared";
 
-export type { DetectionConfig } from "@outrival/shared";
+export type { DetectionConfig, AnalysisStatus } from "@outrival/shared";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -138,6 +139,10 @@ export interface Competitor {
   // Aggregate freshness for the global list dot (patch-14): the stalest active
   // source's last scrape + whether any source's last scan failed.
   freshness?: { lastScrapedAt: string | null; status: "success" | "failed" };
+  // Where the first AI analysis is at (queued → scraping → summarizing → ready).
+  // Present on the list endpoint only; the row shows an "Analyzing…" badge while
+  // pending so a freshly-added competitor doesn't read as idle.
+  analysis?: AnalysisStatus;
 }
 
 export interface CompetitorJob {
@@ -755,6 +760,11 @@ export interface ProductProfile {
   audience: string;
   valueProp: string;
   pricingModel: string;
+  // Concrete description of what the product does + functional search keywords —
+  // both sharpen competitor discovery. Optional: profiles created before this
+  // change (and the legacy 4-field editors) don't carry them.
+  whatItDoes?: string;
+  keywords?: string[];
 }
 
 export type ProjectStage = "idea" | "document" | "developing" | "live";
@@ -870,6 +880,10 @@ export interface BillingInfo {
   plan: Plan;
   planPeriod: BillingPeriod | null;
   hasSubscription: boolean;
+  // Pending downgrade-to-free: the sub is set to cancel at the cycle end. cancelAt is
+  // the epoch-ms cutover (then the org drops to Free). false/null when not cancelling.
+  cancelAtPeriodEnd: boolean;
+  cancelAt: number | null;
   usage: {
     competitors: { used: number; limit: number | null };
   };
@@ -953,6 +967,9 @@ export interface MyProduct {
   scanning: boolean;
   scanError: string | null;
   scanErrorSource: string | null;
+  // Where the first AI analysis is at (queued → scraping → summarizing → ready),
+  // so the profile shows progress instead of looking idle between scrape and summary.
+  analysis: AnalysisStatus;
   aiSummary: string | null;
   profile: SelfProfile;
   pricing: {
@@ -2113,21 +2130,32 @@ export const api = {
   // patch-29 — org-wide list for the dedicated battle cards page + overview section.
   listBattleCards: () =>
     request<{ battleCards: BattleCardSummary[] }>("/api/battle-cards"),
-  listCandidates: (status?: "new" | "dismissed" | "added") =>
-    request<{
+  // patch-28 — discovery is product-scoped: pass the active product so each SKU gets
+  // its own review queue. Omitted → the API defaults to the org's primary product.
+  listCandidates: (status?: "new" | "dismissed" | "added", productId?: string) => {
+    const qs = new URLSearchParams();
+    if (status) qs.set("status", status);
+    if (productId) qs.set("productId", productId);
+    const s = qs.toString();
+    return request<{
       candidates: CompetitorCandidate[];
       counts: { new: number; dismissed: number };
-    }>(`/api/candidates${status ? `?status=${status}` : ""}`),
-  detectCandidates: () =>
-    request<{ detected: number }>(`/api/candidates/detect`, { method: "POST" }),
-  // Whether re-running discovery is worth it (patch-22): "fresh" → greyed-out button.
-  getDiscoveryStaleness: () =>
+    }>(`/api/candidates${s ? `?${s}` : ""}`);
+  },
+  detectCandidates: (productId?: string) =>
+    request<{ detected: number }>(
+      `/api/candidates/detect${productId ? `?productId=${productId}` : ""}`,
+      { method: "POST" },
+    ),
+  // Whether re-running discovery is worth it (patch-22, per-product patch-28): "fresh"
+  // → greyed-out button.
+  getDiscoveryStaleness: (productId?: string) =>
     request<{
       staleness: "never_run" | "fresh" | "outdated";
       needsRediscovery: boolean;
       lastDiscoveryAt?: string;
       reason?: string;
-    }>(`/api/candidates/staleness`),
+    }>(`/api/candidates/staleness${productId ? `?productId=${productId}` : ""}`),
   getDetectionConfig: () =>
     request<{ config: DetectionConfig; lastRunAt: string | null }>(
       `/api/candidates/config`,
@@ -2157,11 +2185,21 @@ export const api = {
   deleteCandidate: (id: string) =>
     request<{ ok: true }>(`/api/candidates/${id}`, { method: "DELETE" }),
   getBilling: () => request<BillingInfo>("/api/billing"),
-  createCheckout: (plan: Exclude<Plan, "free">, period: BillingPeriod) =>
-    request<{ url: string }>("/api/billing/checkout", {
+  // Move onto / between paid plans. `url` = redirect to Checkout (no sub yet);
+  // `updated` = the existing subscription was switched in place (prorated).
+  changePlan: (plan: Exclude<Plan, "free">, period: BillingPeriod) =>
+    request<{ url?: string; updated?: boolean }>("/api/billing/change-plan", {
       method: "POST",
       body: JSON.stringify({ plan, period }),
     }),
+  // Schedule the subscription to cancel at period end → org reverts to Free.
+  downgradeToFree: () =>
+    request<{ ok: true; cancelAt: number | null }>("/api/billing/downgrade", {
+      method: "POST",
+    }),
+  // Undo a scheduled downgrade-to-free.
+  resumeSubscription: () =>
+    request<{ ok: true }>("/api/billing/resume", { method: "POST" }),
   openPortal: () =>
     request<{ url: string }>("/api/billing/portal", { method: "POST" }),
   getInvoices: () =>

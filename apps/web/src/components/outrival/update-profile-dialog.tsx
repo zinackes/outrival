@@ -12,6 +12,7 @@ import {
   Upload,
   RefreshCw,
   ArrowRight,
+  ArrowLeft,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, type ProductProfile, type ProjectStage } from "@/lib/api";
@@ -39,7 +40,21 @@ import { cn } from "@/lib/utils";
 
 type ModalMode = "update" | "setup";
 
-const EMPTY: ProductProfile = { category: "", audience: "", valueProp: "", pricingModel: "" };
+const EMPTY: ProductProfile = {
+  category: "",
+  audience: "",
+  valueProp: "",
+  pricingModel: "",
+  whatItDoes: "",
+};
+
+// The editable text fields (excludes `keywords`, which is a string[] fed to
+// discovery, not a typed field). Narrowed so `working[key]` is always a string.
+type ProfileTextKey = "category" | "audience" | "whatItDoes" | "valueProp" | "pricingModel";
+
+// Required to save — `whatItDoes` is encouraged but never blocks (the AI fills it,
+// and legacy profiles predate it).
+const REQUIRED_FIELDS: ProfileTextKey[] = ["category", "audience", "valueProp", "pricingModel"];
 
 const STAGES: { key: ProjectStage; label: string; icon: typeof Globe }[] = [
   { key: "idea", label: "Idea", icon: Lightbulb },
@@ -49,29 +64,36 @@ const STAGES: { key: ProjectStage; label: string; icon: typeof Globe }[] = [
 ];
 
 const PROFILE_FIELDS: Array<{
-  key: keyof ProductProfile;
+  key: ProfileTextKey;
   label: string;
   placeholder: string;
   multiline?: boolean;
 }> = [
-  { key: "category", label: "Category", placeholder: "e.g. B2B SaaS CRM" },
-  { key: "audience", label: "Target audience", placeholder: "e.g. Sales teams of 10–200" },
+  { key: "category", label: "Category", placeholder: "e.g. Appointment-scheduling software" },
+  { key: "audience", label: "Target audience", placeholder: "e.g. Independent clinics of 5–50 staff" },
+  {
+    key: "whatItDoes",
+    label: "What it does",
+    placeholder: "Concretely, what the product does — its real capabilities",
+    multiline: true,
+  },
   {
     key: "valueProp",
     label: "Value proposition",
-    placeholder: "What makes your product unique",
+    placeholder: "The concrete job it does and the outcome — no filler",
     multiline: true,
   },
   { key: "pricingModel", label: "Pricing model", placeholder: "e.g. Freemium + Pro at $20/mo" },
 ];
 
-// Fields mirrored to the My Product self-profile (pricingModel stays org-only).
+// Fields mirrored to the My Product self-profile (pricingModel/whatItDoes stay
+// org-only — the self-profile schema doesn't carry them).
 const SHARED_FIELDS = ["category", "audience", "valueProp"] as const;
 type SharedField = (typeof SHARED_FIELDS)[number];
 const isShared = (k: keyof ProductProfile): k is SharedField =>
   (SHARED_FIELDS as readonly string[]).includes(k);
 
-function changedKeys(before: ProductProfile, after: ProductProfile): Array<keyof ProductProfile> {
+function changedKeys(before: ProductProfile, after: ProductProfile): ProfileTextKey[] {
   return PROFILE_FIELDS.map((f) => f.key).filter(
     (k) => (before[k] ?? "").trim() !== (after[k] ?? "").trim(),
   );
@@ -118,6 +140,9 @@ export function UpdateProfileDialog({
   const [analyzing, setAnalyzing] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // Two-step flow: pick the lifecycle stage first, then edit source + profile.
+  const [step, setStep] = useState<"stage" | "details">("stage");
+
   useEffect(() => {
     if (!open) return;
     let active = true;
@@ -125,6 +150,7 @@ export function UpdateProfileDialog({
     setReanalysis(null);
     setManual(new Set());
     setFile(null);
+    setStep("stage");
     Promise.all([api.onboardingStatus(), api.getMyProduct().catch(() => ({ product: null }))])
       .then(([status, my]) => {
         if (!active) return;
@@ -200,6 +226,9 @@ export function UpdateProfileDialog({
       // each new value one by one (a visible field update) rather than silently
       // overwriting everything — so "Use new" actually shows the change happening.
       setReanalysis({ before: { ...working }, after: res.profile });
+      // keywords have no diff row — adopt the fresh set silently so a re-analysis
+      // still refreshes what discovery searches on.
+      setWorking((w) => ({ ...w, keywords: res.profile.keywords ?? w.keywords }));
       setManual(new Set());
       toast.success("Re-analyzed — review the proposed changes below");
     } catch (e) {
@@ -209,7 +238,7 @@ export function UpdateProfileDialog({
     }
   }
 
-  const emptyField = PROFILE_FIELDS.some((f) => !(working[f.key] ?? "").trim());
+  const emptyField = REQUIRED_FIELDS.some((k) => !(working[k] ?? "").trim());
   // A new live URL / repo is a real change even when the stage and profile text are
   // unchanged — it must enable Save and be persisted (wires up monitoring).
   const liveSourceChanged =
@@ -270,6 +299,8 @@ export function UpdateProfileDialog({
   }
 
   const diffRows = reanalysis ? changedKeys(reanalysis.before, reanalysis.after) : [];
+  const activeStage = STAGES.find((s) => s.key === stage) ?? null;
+  const ActiveStageIcon = activeStage?.icon;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -279,8 +310,9 @@ export function UpdateProfileDialog({
             {mode === "setup" ? "Complete your product profile" : "Update product profile"}
           </DialogTitle>
           <DialogDescription>
-            Edit the profile directly, or re-analyze your source when it has changed —
-            we&apos;ll show you exactly what moved.
+            {step === "stage"
+              ? "First, tell us where your product is in its lifecycle."
+              : "Edit the profile directly, or re-analyze your source when it has changed — we'll show you exactly what moved."}
           </DialogDescription>
         </DialogHeader>
 
@@ -288,37 +320,49 @@ export function UpdateProfileDialog({
           <div className="py-10 flex items-center justify-center text-muted-foreground">
             <Loader2 size={16} className="animate-spin" />
           </div>
+        ) : step === "stage" ? (
+          /* Step 1 — pick the product's lifecycle stage */
+          <div className="flex flex-col gap-2">
+            <Label className="text-xs font-medium text-muted-foreground">Stage</Label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+              {STAGES.map((s) => {
+                const Icon = s.icon;
+                const active = stage === s.key;
+                return (
+                  <button
+                    key={s.key}
+                    type="button"
+                    onClick={() => setStage(s.key)}
+                    aria-pressed={active}
+                    className={cn(
+                      "flex flex-col items-center gap-1 rounded-md border px-2 py-2 text-meta transition-all",
+                      active
+                        ? "border-primary bg-primary/10 ring-1 ring-primary/40 text-foreground"
+                        : "border-border hover:border-border-strong hover:bg-surface-2 text-muted-foreground",
+                    )}
+                  >
+                    <Icon size={15} className={active ? "text-primary" : undefined} />
+                    {s.label}
+                  </button>
+                );
+              })}
+            </div>
+            {stage && stage !== baseStage && (
+              <p className="text-meta text-muted-foreground">
+                Changing the stage updates which source we monitor next.
+              </p>
+            )}
+          </div>
         ) : (
           <div className="flex flex-col gap-5">
-            {/* Stage */}
-            <div className="flex flex-col gap-2">
-              <Label className="text-xs font-medium text-muted-foreground">
-                Stage
-              </Label>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                {STAGES.map((s) => {
-                  const Icon = s.icon;
-                  const active = stage === s.key;
-                  return (
-                    <button
-                      key={s.key}
-                      type="button"
-                      onClick={() => setStage(s.key)}
-                      aria-pressed={active}
-                      className={cn(
-                        "flex flex-col items-center gap-1 rounded-md border px-2 py-2 text-meta transition-all",
-                        active
-                          ? "border-primary bg-primary/10 ring-1 ring-primary/40 text-foreground"
-                          : "border-border hover:border-border-strong hover:bg-surface-2 text-muted-foreground",
-                      )}
-                    >
-                      <Icon size={15} className={active ? "text-primary" : undefined} />
-                      {s.label}
-                    </button>
-                  );
-                })}
+            {/* Selected stage recap — change it via Back */}
+            {activeStage && ActiveStageIcon && (
+              <div className="flex items-center gap-2 text-dense">
+                <ActiveStageIcon size={14} className="text-primary" />
+                <span className="font-medium text-foreground">{activeStage.label}</span>
+                <span className="text-muted-foreground">stage</span>
               </div>
-            </div>
+            )}
 
             {/* Source + re-analyze */}
             <div className="flex flex-col gap-2">
@@ -476,13 +520,42 @@ export function UpdateProfileDialog({
         )}
 
         <DialogFooter>
-          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)} disabled={saving}>
-            Cancel
-          </Button>
-          <Button size="sm" onClick={save} disabled={saving || loading || !dirty || emptyField}>
-            {saving && <Loader2 size={12} className="animate-spin" />}
-            {mode === "setup" ? "Save & find competitors" : "Save changes"}
-          </Button>
+          {step === "stage" ? (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onOpenChange(false)}
+                disabled={saving}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => setStep("details")}
+                disabled={loading || !stage}
+              >
+                Continue
+                <ArrowRight size={13} />
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setStep("stage")}
+                disabled={saving}
+              >
+                <ArrowLeft size={13} />
+                Back
+              </Button>
+              <Button size="sm" onClick={save} disabled={saving || loading || !dirty || emptyField}>
+                {saving && <Loader2 size={12} className="animate-spin" />}
+                {mode === "setup" ? "Save & find competitors" : "Save changes"}
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

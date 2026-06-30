@@ -16,7 +16,7 @@ import {
   Play,
   Languages,
 } from "lucide-react";
-import { api, type CompetitorOverview, type Monitor } from "@/lib/api";
+import { api, type CompetitorOverview, type Monitor, type PricingStatus } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -131,6 +131,8 @@ export function OverviewTab({
   overview,
   monitors,
   scrapingIds,
+  pricingStatus,
+  pricingNote,
   onRun,
   onOpenTab,
 }: {
@@ -138,10 +140,27 @@ export function OverviewTab({
   overview: CompetitorOverview;
   monitors: Monitor[];
   scrapingIds: Set<string>;
+  // Pricing taxonomy of the competitor — drives a meaningful "Pricing now" empty
+  // state (a known model without public numbers) instead of a flat "Not captured".
+  pricingStatus: PricingStatus | null;
+  pricingNote: string | null;
   onRun: (id: string) => void;
   onOpenTab: (tab: TabKey) => void;
 }) {
   const { homepage, numericClaims, pricingNow, reviews, hiring, capturedAt } = overview;
+
+  // When no price tier is captured but the page does state its pricing model — a
+  // usage-based calculator or a sales-gated wall — surface that note rather than
+  // "Not captured", which wrongly reads as a scrape failure. Only for statuses
+  // that genuinely carry no public number; `public`/`unknown` stay "Not captured".
+  const pricingModelNote =
+    pricingNow.length === 0 &&
+    !!pricingNote &&
+    (pricingStatus === "dynamic" ||
+      pricingStatus === "gated_demo" ||
+      pricingStatus === "gated_signup")
+      ? pricingNote
+      : null;
 
   // The fact sheet is scraped verbatim, so a foreign competitor's copy shows in its
   // own language. `language` is detected from the actual copy server-side (not just
@@ -349,6 +368,8 @@ export function OverviewTab({
                 </li>
               ))}
             </ul>
+          ) : pricingModelNote ? (
+            <span className="text-dense text-muted-foreground">{pricingModelNote}</span>
           ) : (
             <span className="text-dense text-muted-foreground">Not captured</span>
           )}

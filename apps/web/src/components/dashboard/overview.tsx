@@ -16,6 +16,7 @@ import { formatDistanceToNow } from "date-fns";
 import { type Signal } from "@/lib/api";
 import { signalsQuery, competitorsQuery } from "@/lib/queries";
 import { toCsv, downloadCsv } from "@/lib/csv";
+import { formatDate } from "@/lib/format-date";
 import { prettyUrl } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -48,6 +49,7 @@ import { useSampleMode } from "@/hooks/use-sample-mode";
 import { getSampleData } from "@/lib/sample-data";
 import { ListError } from "@/components/outrival/list-error";
 import { OnboardingAnalysisPanel } from "@/components/onboarding/onboarding-analysis-panel";
+import { useOnboardingStreaming } from "@/hooks/use-onboarding-streaming";
 import DashboardLoading from "@/app/dashboard/dashboard-skeleton";
 
 const SEV_ORDER: Record<Signal["severity"], number> = {
@@ -108,9 +110,7 @@ function trendLabels(fromMs: number, toMs: number, buckets: number): string[] {
   const labels: string[] = [];
   for (let i = 0; i < buckets; i++) {
     const date = new Date(fromMs + i * slice);
-    labels.push(
-      date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-    );
+    labels.push(formatDate(date, { month: "short", day: "numeric" }));
   }
   return labels;
 }
@@ -156,6 +156,12 @@ export function OverviewView() {
     });
     void queryClient.refetchQueries({ queryKey: competitorsQuery(productId).queryKey });
   }, [queryClient, productId]);
+
+  // Lifted here (single poller) so the Overview can stagger its first-run
+  // surfaces: while the first analysis streams in, only the analysis panel shows
+  // — the "Get set up" checklist below it waits until analysis settles.
+  const analysis = useOnboardingStreaming(load);
+  const analysisActive = analysis.active && analysis.total > 0;
 
   function exportCsv() {
     if (!dsSignals) return;
@@ -365,9 +371,9 @@ export function OverviewView() {
     <div className="space-y-9">
       {/* Progressive streaming right after onboarding (patch-25) — refreshes this
           view each poll so signals/competitors fill in live. Self-hides otherwise. */}
-      {!sample && <OnboardingAnalysisPanel onTick={load} />}
+      {!sample && <OnboardingAnalysisPanel state={analysis} />}
 
-      {!sample && <OnboardingChecklistCard />}
+      {!sample && !analysisActive && <OnboardingChecklistCard />}
 
       <SampleBanner />
 

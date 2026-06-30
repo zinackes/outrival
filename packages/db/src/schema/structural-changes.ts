@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, jsonb, pgEnum, index } from "drizzle-orm/pg-core";
 import type { InferSelectModel } from "drizzle-orm";
 import { competitors } from "./competitors";
 
@@ -37,6 +37,9 @@ export const structuralChanges = pgTable("structural_changes", {
   // When the proactive email for this change was last sent — used to throttle to
   // at most one email per competitor per month.
   emailSentAt: timestamp("email_sent_at"),
-});
+}, (t) => [
+  // Listed/filtered per competitor; also covers the competitors-FK teardown.
+  index("structural_changes_competitor_idx").on(t.competitorId),
+]);
 
 export type StructuralChange = InferSelectModel<typeof structuralChanges>;

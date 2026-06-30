@@ -40,10 +40,28 @@ billingRouter.get("/", async (c) => {
   const limits = PLAN_LIMITS[org.plan];
   const limit = limits.maxCompetitors;
 
+  // Pending downgrade-to-free state: when the user cancels, Stripe keeps the sub
+  // `active` with cancel_at_period_end=true until the cycle ends (then fires
+  // subscription.deleted → free). Read it live (best-effort) so the dashboard can
+  // show "cancels on <date>" + a Resume affordance without a schema column.
+  let cancelAtPeriodEnd = false;
+  let cancelAt: number | null = null;
+  if (org.stripeSubscriptionId) {
+    try {
+      const sub = await getStripe().subscriptions.retrieve(org.stripeSubscriptionId);
+      cancelAtPeriodEnd = sub.cancel_at_period_end === true;
+      cancelAt = sub.cancel_at ? sub.cancel_at * 1000 : null;
+    } catch {
+      // Stripe hiccup → treat as no pending cancellation; never block the page.
+    }
+  }
+
   return c.json({
     plan: org.plan,
     planPeriod: org.planPeriod,
     hasSubscription: Boolean(org.stripeSubscriptionId),
+    cancelAtPeriodEnd,
+    cancelAt,
     usage: {
       competitors: {
         used,
@@ -88,7 +106,12 @@ billingRouter.get("/invoices", async (c) => {
   }
 });
 
-billingRouter.post("/checkout", async (c) => {
+// Single entry point for moving onto / between paid plans. With no active sub the
+// first paid plan goes through Checkout (collects a payment method, handles SCA);
+// with one already in place we switch the item price IN PLACE (prorated) instead of
+// opening a second checkout — the old flow created a duplicate, untracked
+// subscription that kept billing after the webhook overwrote stripeSubscriptionId.
+billingRouter.post("/change-plan", async (c) => {
   const body = await c.req.json().catch(() => null);
   const parsed = CheckoutSchema.safeParse(body);
   if (!parsed.success) {
@@ -106,6 +129,38 @@ billingRouter.post("/checkout", async (c) => {
 
   const stripe = getStripe();
 
+  let priceId: string;
+  try {
+    priceId = getPriceId(parsed.data.plan, parsed.data.period);
+  } catch (e) {
+    return c.json({ error: "price_not_configured", detail: String(e) }, 500);
+  }
+
+  // In-place switch when a reusable subscription exists (a canceled/expired one is
+  // not updatable → fall through to a fresh checkout). The webhook re-maps the plan
+  // from the new price on customer.subscription.updated.
+  if (org.stripeSubscriptionId) {
+    const sub = await stripe.subscriptions.retrieve(org.stripeSubscriptionId);
+    const reusable =
+      sub.status === "active" || sub.status === "trialing" || sub.status === "past_due";
+    const itemId = sub.items.data[0]?.id;
+    if (reusable && itemId) {
+      await stripe.subscriptions.update(org.stripeSubscriptionId, {
+        items: [{ id: itemId, price: priceId }],
+        proration_behavior: "create_prorations",
+        // A plan change also clears any scheduled downgrade-to-free.
+        cancel_at_period_end: false,
+        metadata: { orgId, plan: parsed.data.plan, period: parsed.data.period },
+      });
+      void captureServerEvent(userId, "plan_changed", {
+        plan: parsed.data.plan,
+        period: parsed.data.period,
+        orgId,
+      });
+      return c.json({ updated: true });
+    }
+  }
+
   let customerId = org.stripeCustomerId;
   if (!customerId) {
     const customer = await stripe.customers.create({
@@ -118,13 +173,6 @@ billingRouter.post("/checkout", async (c) => {
       .update(organizations)
       .set({ stripeCustomerId: customerId, updatedAt: new Date() })
       .where(eq(organizations.id, orgId));
-  }
-
-  let priceId: string;
-  try {
-    priceId = getPriceId(parsed.data.plan, parsed.data.period);
-  } catch (e) {
-    return c.json({ error: "price_not_configured", detail: String(e) }, 500);
   }
 
   const base = webBaseUrl();
@@ -151,6 +199,53 @@ billingRouter.post("/checkout", async (c) => {
   });
 
   return c.json({ url: session.url });
+});
+
+// Downgrade to Free = schedule cancellation at period end (the FAQ promise: one
+// click, keep access until the cycle ends). subscription.deleted then drops the org
+// to free. The over-limit competitors aren't touched — schedule-scraping freezes the
+// excess non-destructively and restores them on re-upgrade.
+billingRouter.post("/downgrade", async (c) => {
+  const userId = c.get("user").id;
+  const orgId = await ensureUserOrg(userId);
+
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, orgId),
+  });
+  if (!org) return c.json({ error: "Not found" }, 404);
+  if (!org.stripeSubscriptionId) {
+    return c.json({ error: "no_subscription" }, 400);
+  }
+
+  const sub = await getStripe().subscriptions.update(org.stripeSubscriptionId, {
+    cancel_at_period_end: true,
+  });
+
+  void captureServerEvent(userId, "plan_downgrade_scheduled", { orgId });
+
+  return c.json({ ok: true, cancelAt: sub.cancel_at ? sub.cancel_at * 1000 : null });
+});
+
+// Undo a scheduled downgrade-to-free before it takes effect.
+billingRouter.post("/resume", async (c) => {
+  const userId = c.get("user").id;
+  const orgId = await ensureUserOrg(userId);
+
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, orgId),
+  });
+  if (!org) return c.json({ error: "Not found" }, 404);
+  if (!org.stripeSubscriptionId) {
+    return c.json({ error: "no_subscription" }, 400);
+  }
+
+  await getStripe().subscriptions.update(org.stripeSubscriptionId, {
+    cancel_at_period_end: false,
+  });
+
+  void captureServerEvent(userId, "plan_downgrade_cancelled", { orgId });
+
+  return c.json({ ok: true });
 });
 
 billingRouter.post("/portal", async (c) => {

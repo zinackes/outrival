@@ -13,7 +13,12 @@ import {
   type SelfProfile,
   type SelfProfileField,
 } from "@outrival/db";
-import { normalizeHostname, validatePublicUrl, forcedRescansPerDay } from "@outrival/shared";
+import {
+  normalizeHostname,
+  validatePublicUrl,
+  forcedRescansPerDay,
+  deriveAnalysisStatus,
+} from "@outrival/shared";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
@@ -165,9 +170,30 @@ myProductRouter.get("/", async (c) => {
   const self = await resolveSelf(orgId, c.req.query("productId"));
   if (!self) return c.json({ product: null });
 
-  const selfMonitors = await db.query.monitors.findMany({
-    where: eq(monitors.competitorId, self.id),
-  });
+  // selfMonitors / pricingRows / jobs only depend on self.id and are independent
+  // of one another — run them concurrently instead of three serial round-trips on
+  // the dashboard hot path. pricingRows is best-effort ([] on error); jobs capped 50.
+  const [selfMonitors, pricingRows, jobs] = await Promise.all([
+    db.query.monitors.findMany({ where: eq(monitors.competitorId, self.id) }),
+    analyticsQuery<{
+      plan_name: string;
+      price: number | null;
+      currency: string;
+      billing_period: string;
+      recorded_at: string;
+    }>(sql`
+      SELECT plan_name, price, currency, billing_period, (recorded_at AT TIME ZONE 'UTC') AS recorded_at
+      FROM pricing_history
+      WHERE competitor_id = ${self.id}
+      ORDER BY recorded_at DESC
+      LIMIT 40
+    `),
+    db.query.jobPostings.findMany({
+      where: and(eq(jobPostings.competitorId, self.id), eq(jobPostings.isActive, true)),
+      orderBy: desc(jobPostings.detectedAt),
+      limit: 50,
+    }),
+  ]);
   const lastScanAt = selfMonitors
     .map((m) => m.lastRunAt?.getTime() ?? 0)
     .reduce((a, b) => Math.max(a, b), 0);
@@ -188,20 +214,7 @@ myProductRouter.get("/", async (c) => {
       ? String((repoMonitor.config as { url: unknown }).url)
       : null;
 
-  // Latest pricing batch from analytics (best-effort: [] on error).
-  const pricingRows = await analyticsQuery<{
-    plan_name: string;
-    price: number | null;
-    currency: string;
-    billing_period: string;
-    recorded_at: string;
-  }>(sql`
-    SELECT plan_name, price, currency, billing_period, recorded_at::text AS recorded_at
-    FROM pricing_history
-    WHERE competitor_id = ${self.id}
-    ORDER BY recorded_at DESC
-    LIMIT 40
-  `);
+  // Latest pricing batch from analytics (fetched above, best-effort: [] on error).
   const latestAt = pricingRows[0]?.recorded_at ?? null;
   const detectedTiers = latestAt ? pricingRows.filter((r) => r.recorded_at === latestAt) : [];
 
@@ -211,11 +224,25 @@ myProductRouter.get("/", async (c) => {
   const manualTiers = profile.pricingTiers;
   const tiers = manualTiers ? manualTiers.value : detectedTiers;
 
-  const jobs = await db.query.jobPostings.findMany({
-    where: and(eq(jobPostings.competitorId, self.id), eq(jobPostings.isActive, true)),
-    orderBy: desc(jobPostings.detectedAt),
-    limit: 50,
-  });
+  // Where the first AI analysis is at (queued → scraping → summarizing → ready)
+  // so the profile can show "Summarizing with AI…" instead of looking idle in the
+  // gap between the scrape finishing and the summary landing. The homepage monitor
+  // is the anchor; an idea/document product with no live URL has none → "idle".
+  const homepageSelfMonitor = selfMonitors.find((m) => m.sourceType === "homepage") ?? null;
+  const analysis = deriveAnalysisStatus(
+    {
+      hasSummary: Boolean(self.aiSummary),
+      anchor: homepageSelfMonitor
+        ? {
+            lastRunAt: homepageSelfMonitor.lastRunAt,
+            lastFailedAt: homepageSelfMonitor.lastFailedAt,
+            scrapeStartedAt: homepageSelfMonitor.scrapeStartedAt,
+            markedUnscrapable: homepageSelfMonitor.markedUnscrapable,
+          }
+        : null,
+    },
+    Date.now(),
+  );
 
   return c.json({
     product: {
@@ -227,6 +254,7 @@ myProductRouter.get("/", async (c) => {
       scanning,
       scanError,
       scanErrorSource,
+      analysis,
       aiSummary: self.aiSummary,
       profile,
       pricing: {

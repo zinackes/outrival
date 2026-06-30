@@ -106,7 +106,7 @@ export function NotificationSettingsForm() {
   );
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-6 max-w-xl">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-6">
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="slack-webhook" className="flex items-center gap-1.5">
           Slack webhook URL

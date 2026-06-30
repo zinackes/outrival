@@ -2,6 +2,7 @@ import { complete } from "../provider";
 import { AI_CONFIG } from "../config";
 import { safeParseJson } from "../lib/parse";
 import { ProductProfileSchema, type ProductProfile } from "../tasks/analyze-product";
+import { buildProfilePrompt } from "./profile-prompt";
 
 /**
  * Structured artefacts gathered from a public GitHub repo by the caller (API layer).
@@ -39,7 +40,7 @@ export async function fromRepo(
       ? (artifacts.packageJson.description as string)
       : null;
 
-  const prompt = `<repo>
+  const sourceBlock = `<repo>
 ${pkgName ? `name: ${pkgName}` : ""}
 ${pkgDescription ? `description: ${pkgDescription}` : ""}
 dependencies: ${deps.slice(0, 60).join(", ") || "(unknown)"}
@@ -47,24 +48,11 @@ top-level dirs: ${artifacts.topLevelDirs.slice(0, 40).join(", ") || "(unknown)"}
 ${artifacts.envExample ? `\nenv example:\n${artifacts.envExample.slice(0, 1000)}` : ""}
 ${artifacts.readme ? `\nreadme:\n${artifacts.readme.slice(0, 6000)}` : ""}
 ${artifacts.docsExcerpt ? `\ndocs:\n${artifacts.docsExcerpt.slice(0, 2000)}` : ""}
-</repo>
-
-<task>
-This GitHub repo is a product under development. Infer its profile.
-Use the README as the primary source of the product promise, the dependencies to
-infer the stack and product type, and the structure to guess the features.
-Reply ONLY with a valid JSON object, no markdown and no surrounding text.
-Write all text values in English.
-</task>
-
-<format>
-{
-  "category": "e.g. B2B SaaS / DevTools",
-  "audience": "e.g. Backend developers",
-  "valueProp": "e.g. Automating X, in one sentence",
-  "pricingModel": "e.g. Open-source + paid cloud"
-}
-</format>`;
+</repo>`;
+  const prompt = buildProfilePrompt(
+    sourceBlock,
+    "This GitHub repo is a product under development. Profile it using the README as the primary source of the product promise, the dependencies to infer the stack, and the structure to infer the features.",
+  );
 
   const raw = await complete(AI_CONFIG.classification, { prompt, json: true });
   const result = safeParseJson(raw, ProductProfileSchema);

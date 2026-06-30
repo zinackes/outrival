@@ -38,7 +38,9 @@ export async function scoreOverlap(
   const prompt = `<my_product>
 Category: ${profile.category}
 Audience: ${profile.audience}
+What it does: ${profile.whatItDoes?.trim() || profile.valueProp}
 Value: ${profile.valueProp}
+Keywords: ${(profile.keywords ?? []).join(", ")}
 Model: ${profile.pricingModel}
 </my_product>
 

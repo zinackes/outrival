@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, integer, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, integer, jsonb, index } from "drizzle-orm/pg-core";
 import type { InferSelectModel, InferInsertModel } from "drizzle-orm";
 import { organizations } from "./organizations";
 import { competitors } from "./competitors";
@@ -27,7 +27,10 @@ export const signalBatches = pgTable("signal_batches", {
   windowStart: timestamp("window_start").notNull(),
   windowEnd: timestamp("window_end").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  // signal-batching cron groups by (org, competitor); also covers eraseOrg cascade.
+  index("signal_batches_org_competitor_idx").on(t.orgId, t.competitorId),
+]);
 
 export type SignalBatch = InferSelectModel<typeof signalBatches>;
 export type NewSignalBatch = InferInsertModel<typeof signalBatches>;

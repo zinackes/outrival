@@ -2,6 +2,7 @@ import { complete } from "../provider";
 import { AI_CONFIG } from "../config";
 import { safeParseJson } from "../lib/parse";
 import { ProductProfileSchema, type ProductProfile } from "../tasks/analyze-product";
+import { buildProfilePrompt } from "./profile-prompt";
 
 /**
  * "Document" stage adapter: the caller has already extracted the raw text from a
@@ -16,26 +17,10 @@ export async function fromDocument(
   const text = condense(extractedText).slice(0, 10000);
   if (text.length < 50) return null;
 
-  const prompt = `<document>
-${text}
-</document>
-
-<task>
-This text comes from a pitch deck or business plan. Infer the profile of the product described.
-Ignore cover pages, tables of contents and repetitions. Focus on what the
-product does, for whom, and its business model.
-Reply ONLY with a valid JSON object, no markdown and no surrounding text.
-Write all text values in English.
-</task>
-
-<format>
-{
-  "category": "e.g. B2B SaaS / Productivity",
-  "audience": "e.g. Startups of 1-50 people",
-  "valueProp": "e.g. Automating X, in one sentence",
-  "pricingModel": "e.g. Freemium + subscription"
-}
-</format>`;
+  const prompt = buildProfilePrompt(
+    `<document>\n${text}\n</document>`,
+    "This text comes from a pitch deck or business plan. Profile the product it describes. Ignore cover pages, tables of contents and repetitions; focus on what the product actually does, for whom, and how it makes money.",
+  );
 
   const raw = await complete(AI_CONFIG.classification, { prompt, json: true });
   const result = safeParseJson(raw, ProductProfileSchema);

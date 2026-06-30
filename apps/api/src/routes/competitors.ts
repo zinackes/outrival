@@ -39,12 +39,14 @@ import {
   validateMonitorUrl,
   validatePublicUrl,
   aggregateFreshness,
+  deriveAnalysisStatus,
   computeNextScanAt,
   TECH_STACK_SCRAPE_INTERVAL_DAYS,
   isValidCompetitorColor,
   classifyLogoName,
   isBlankSvgDataUri,
   isStoreBadgeSrc,
+  isLanguageFlagSrc,
   type SourceType,
   type MonitorFrequency,
 } from "@outrival/shared";
@@ -163,7 +165,8 @@ function refineLogo(
   const name = verdict.kind === "brand" ? verdict.name : null;
 
   let src = logo.src;
-  if (src && (isBlankSvgDataUri(src) || isStoreBadgeSrc(src))) src = null;
+  if (src && (isBlankSvgDataUri(src) || isStoreBadgeSrc(src) || isLanguageFlagSrc(src)))
+    src = null;
 
   const cleaned: FactSheetLogo = { name, src };
   if (!cleaned.name && !cleaned.src) return null;
@@ -425,20 +428,37 @@ competitorsRouter.post("/", async (c) => {
     });
   }
 
+  // Stamp scrapeStartedAt on seed so the detail page / list show the first scrape
+  // as in-progress straight away (isServerScraping + deriveAnalysisStatus both
+  // derive "running" from scrapeStartedAt > lastRunAt). Without it a freshly-added
+  // competitor looked idle for up to an hour while waiting on the scraping cron —
+  // the user had no signal anything was happening. Mirrors the discovery-add path.
+  const scrapeStartedAt = new Date();
   const createdMonitors = await db
     .insert(monitors)
     .values([
-      { competitorId: competitor.id, sourceType: "homepage", frequency: "daily" },
-      { competitorId: competitor.id, sourceType: "pricing", frequency: "daily" },
-      { competitorId: competitor.id, sourceType: "blog", frequency: "weekly" },
+      { competitorId: competitor.id, sourceType: "homepage", frequency: "daily", scrapeStartedAt },
+      { competitorId: competitor.id, sourceType: "pricing", frequency: "daily", scrapeStartedAt },
+      { competitorId: competitor.id, sourceType: "blog", frequency: "weekly", scrapeStartedAt },
       // patch-32: internal sitemap-diff anchor (weekly). Not user-facing; the diff
       // of its sorted URL-list snapshot surfaces brand-new competitor pages.
-      { competitorId: competitor.id, sourceType: "sitemap", frequency: "weekly" },
+      { competitorId: competitor.id, sourceType: "sitemap", frequency: "weekly", scrapeStartedAt },
       // Internal news/funding anchor (weekly). Google News RSS by brand → diff
       // surfaces company-level events (funding/M&A/leadership/press).
-      { competitorId: competitor.id, sourceType: "news", frequency: "weekly" },
+      { competitorId: competitor.id, sourceType: "news", frequency: "weekly", scrapeStartedAt },
     ])
     .returning();
+
+  // Kick the first scrape now instead of waiting on the hourly cron, so the
+  // add → scrape → summarize → ready pipeline starts (and is visibly tracked)
+  // immediately. Best-effort: a trigger miss just falls back to the cron.
+  for (const m of createdMonitors) {
+    try {
+      await tasks.trigger("scrape-monitor", { monitorId: m.id, force: true });
+    } catch (e) {
+      console.error("Failed to trigger initial scrape", { monitorId: m.id, error: String(e) });
+    }
+  }
 
   void captureServerEvent(user.id, "competitor_added", {
     competitorId: competitor.id,
@@ -634,6 +654,29 @@ competitorsRouter.get("/", async (c) => {
       ),
     );
 
+  // Homepage monitor per competitor — the anchor whose scrape feeds the AI summary.
+  // Kept separate from the freshness aggregate (which excludes unscrapable rows):
+  // here we WANT markedUnscrapable so a blocked homepage reads as "needs attention".
+  const homepageRows = await db
+    .select({
+      competitorId: monitors.competitorId,
+      lastRunAt: monitors.lastRunAt,
+      lastFailedAt: monitors.lastFailedAt,
+      scrapeStartedAt: monitors.scrapeStartedAt,
+      markedUnscrapable: monitors.markedUnscrapable,
+    })
+    .from(monitors)
+    .where(
+      and(
+        inArray(
+          monitors.competitorId,
+          list.map((c) => c.id),
+        ),
+        eq(monitors.sourceType, "homepage"),
+      ),
+    );
+  const homepageByCompetitor = new Map(homepageRows.map((m) => [m.competitorId, m]));
+
   const monitorsByCompetitor = new Map<string, typeof monitorRows>();
   for (const m of monitorRows) {
     const arr = monitorsByCompetitor.get(m.competitorId) ?? [];
@@ -668,15 +711,24 @@ competitorsRouter.get("/", async (c) => {
     specificByCompetitor.set(r.competitorId, arr);
   }
 
+  const nowMs = Date.now();
   const enriched = list.map((c) => {
     const a = byCompetitor.get(c.id);
     const freshness =
       aggregateFreshness(monitorsByCompetitor.get(c.id) ?? []) ??
       ({ lastScrapedAt: null, status: "success" } as const);
+    // Where the first AI analysis is at (queued → scraping → summarizing → ready),
+    // so the list can mark a freshly-added competitor as "Analyzing…" instead of
+    // looking idle until its summary lands.
+    const analysis = deriveAnalysisStatus(
+      { hasSummary: Boolean(c.aiSummary), anchor: homepageByCompetitor.get(c.id) ?? null },
+      nowMs,
+    );
     return {
       ...c,
       specificProductIds: specificByCompetitor.get(c.id) ?? [],
       freshness,
+      analysis,
       stats: {
         signals7d: a?.signals7d ?? 0,
         signalsPrev: a?.signalsPrev ?? 0,
@@ -704,13 +756,41 @@ competitorsRouter.get("/:id", async (c) => {
   const competitor = await assertOwnedCompetitor(id, orgId);
   if (!competitor) return c.json({ error: "Not found" }, 404);
 
-  // Org plan ships with the detail payload so the UI can gate per-source actions
-  // (e.g. lock review sources the plan doesn't include) without a second roundtrip.
-  const plan = await getOrgPlan(orgId);
-
-  const allMonitors = await db.query.monitors.findMany({
-    where: eq(monitors.competitorId, competitor.id),
-  });
+  // plan / allMonitors / recentSignals / techStack only need orgId or competitor.id
+  // and are independent of each other — run them concurrently. recentChanges depends
+  // on the monitor ids derived below, so it stays a second step. Org plan ships with
+  // the payload so the UI can gate per-source actions without a second roundtrip.
+  const [plan, allMonitors, recentSignals, techRows] = await Promise.all([
+    getOrgPlan(orgId),
+    db.query.monitors.findMany({ where: eq(monitors.competitorId, competitor.id) }),
+    db
+      .select({
+        id: signals.id,
+        severity: signals.severity,
+        category: signals.category,
+        insight: signals.insight,
+        soWhat: signals.soWhat,
+        recommendedAction: signals.recommendedAction,
+        isRead: signals.isRead,
+        createdAt: signals.createdAt,
+        changeId: signals.changeId,
+        sourceType: monitors.sourceType,
+        monitorUrl: sql<string | null>`COALESCE(${snapshots.resolvedUrl}, ${monitors.config}->>'url')`,
+      })
+      .from(signals)
+      .leftJoin(changes, eq(changes.id, signals.changeId))
+      .leftJoin(monitors, eq(monitors.id, changes.monitorId))
+      .leftJoin(snapshots, eq(snapshots.id, changes.snapshotAfterId))
+      .where(eq(signals.competitorId, competitor.id))
+      .orderBy(desc(signals.createdAt))
+      .limit(20),
+    db.query.techStackEntries.findMany({
+      where: and(
+        eq(techStackEntries.competitorId, competitor.id),
+        eq(techStackEntries.isActive, true),
+      ),
+    }),
+  ]);
   // Hide internal anchor monitors — they're infra, not user-facing sources:
   // tech_stack (patch-18, surfaced as its own read-only tab), sitemap (patch-32,
   // a discovery anchor whose URL-diff feeds signals) and news (Google News RSS
@@ -744,36 +824,7 @@ competitorsRouter.get("/:id", async (c) => {
         .limit(20)
     : [];
 
-  const recentSignals = await db
-    .select({
-      id: signals.id,
-      severity: signals.severity,
-      category: signals.category,
-      insight: signals.insight,
-      soWhat: signals.soWhat,
-      recommendedAction: signals.recommendedAction,
-      isRead: signals.isRead,
-      createdAt: signals.createdAt,
-      changeId: signals.changeId,
-      sourceType: monitors.sourceType,
-      monitorUrl: sql<string | null>`COALESCE(${snapshots.resolvedUrl}, ${monitors.config}->>'url')`,
-    })
-    .from(signals)
-    .leftJoin(changes, eq(changes.id, signals.changeId))
-    .leftJoin(monitors, eq(monitors.id, changes.monitorId))
-    .leftJoin(snapshots, eq(snapshots.id, changes.snapshotAfterId))
-    .where(eq(signals.competitorId, competitor.id))
-    .orderBy(desc(signals.createdAt))
-    .limit(20);
-
-  // Detected tech stack (patch-18): current (active) entries for the profile
-  // section, plus the last scrape time for the freshness dot. Grouped client-side.
-  const techRows = await db.query.techStackEntries.findMany({
-    where: and(
-      eq(techStackEntries.competitorId, competitor.id),
-      eq(techStackEntries.isActive, true),
-    ),
-  });
+  // recentSignals + techRows (techStack) were fetched in the Promise.all above.
   const techStack = {
     entries: techRows.map((t) => ({
       techId: t.techId,
@@ -883,7 +934,7 @@ competitorsRouter.get("/:id/job-trends", async (c) => {
     count: number;
     recorded_at: string;
   }>(sql`
-    SELECT department, count, recorded_at::text AS recorded_at
+    SELECT department, count, (recorded_at AT TIME ZONE 'UTC') AS recorded_at
     FROM job_counts
     WHERE competitor_id = ${competitor.id}
       AND recorded_at >= now() - make_interval(days => 90)
@@ -974,7 +1025,7 @@ competitorsRouter.get("/:id/review-scores", async (c) => {
     sentiment_score: number;
     recorded_at: string;
   }>(sql`
-    SELECT source, score, review_count, sentiment_score, recorded_at::text AS recorded_at
+    SELECT source, score, review_count, sentiment_score, (recorded_at AT TIME ZONE 'UTC') AS recorded_at
     FROM review_scores
     WHERE competitor_id = ${competitor.id}
       AND recorded_at >= now() - make_interval(days => 180)

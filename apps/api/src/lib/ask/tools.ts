@@ -175,7 +175,7 @@ const getPricingHistory: AskTool = {
         FROM pricing_history WHERE competitor_id = ${id}
       )
       SELECT plan_name AS "planName", price, prev_price AS "prevPrice",
-             billing_period AS "billingPeriod", recorded_at AS "recordedAt"
+             billing_period AS "billingPeriod", (recorded_at AT TIME ZONE 'UTC') AS "recordedAt"
       FROM ranked WHERE prev_price IS NOT NULL AND price <> prev_price
       ORDER BY recorded_at DESC LIMIT 10
     `);
@@ -294,7 +294,7 @@ const getTechStackChanges: AskTool = {
       .where(and(eq(techStackEntries.competitorId, id), eq(techStackEntries.isActive, true)));
 
     const changes = await analyticsQuery<RawTechChange>(sql`
-      SELECT tech_id AS "techId", event, importance, recorded_at AS "recordedAt"
+      SELECT tech_id AS "techId", event, importance, (recorded_at AT TIME ZONE 'UTC') AS "recordedAt"
       FROM tech_stack_history WHERE competitor_id = ${id}
       ORDER BY recorded_at DESC LIMIT 20
     `);

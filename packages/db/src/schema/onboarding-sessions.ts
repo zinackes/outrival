@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, jsonb, pgEnum, index } from "drizzle-orm/pg-core";
 import type { InferSelectModel, InferInsertModel } from "drizzle-orm";
 import { users } from "./users";
 import { organizations } from "./organizations";
@@ -53,7 +53,10 @@ export const onboardingSessions = pgTable("onboarding_sessions", {
   startedAt: timestamp("started_at").notNull().defaultNow(),
   lastActivityAt: timestamp("last_activity_at").notNull().defaultNow(),
   completedAt: timestamp("completed_at"),
-});
+}, (t) => [
+  // "Active resumable session for this user" is looked up by userId on key requests.
+  index("onboarding_sessions_user_idx").on(t.userId),
+]);
 
 export type OnboardingSession = InferSelectModel<typeof onboardingSessions>;
 export type NewOnboardingSession = InferInsertModel<typeof onboardingSessions>;

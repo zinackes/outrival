@@ -103,28 +103,50 @@ const CERTIFICATION_RE =
 // Language names — a language switcher's flag <img> carries the language as its
 // alt ("Français", "English", "Italiano"), and the broad social-proof selector
 // sweeps those in alongside real customer logos (acutely on non-English sites).
-// A bare language word is NOT a customer brand, so it's dropped. Endonyms +
-// French and English exonyms, ASCII-folded & lowercased; matched WHOLE-string
-// (so "Deutsche Bank" / "English Tea Shop" survive — they aren't the bare word).
+// A bare language word is NOT a customer brand, so it's dropped. Entries are
+// PRE-FOLDED (ASCII, accent-stripped, lowercased) so the hot path folds the
+// input ONCE and does an O(1) Set lookup — no per-entry work, no extra regex.
+// Matched WHOLE-string (so "Deutsche Bank" / "Polished" survive — they extend
+// the bare word, they aren't it). Endonym + English/French exonym for each, so
+// a switcher showing the autonym, "French", or "Français" all resolve.
 const LANGUAGE_NAMES = new Set([
-  // endonyms
+  // Latin-script endonyms
   "english", "francais", "espanol", "deutsch", "italiano", "portugues", "nederlands",
-  "polski", "svenska", "norsk", "dansk", "suomi", "magyar", "romana", "cestina", "turkce",
-  "catala", "galego", "euskara",
-  // French exonyms
-  "anglais", "espagnol", "allemand", "italien", "portugais", "neerlandais",
-  "polonais", "suedois", "norvegien", "danois", "finnois", "hongrois", "roumain", "tcheque",
-  "turc", "russe", "chinois", "japonais", "coreen", "arabe", "grec",
+  "polski", "svenska", "norsk", "dansk", "suomi", "magyar", "romana", "cestina",
+  "slovencina", "slovenscina", "hrvatski", "srpski", "turkce", "catala", "galego",
+  "euskara", "islenska", "gaeilge", "cymraeg", "eesti", "latviesu", "lietuviu",
+  "bahasa indonesia", "bahasa melayu", "tieng viet",
   // English exonyms
   "french", "spanish", "german", "italian", "portuguese", "dutch", "polish", "swedish",
-  "norwegian", "danish", "finnish", "hungarian", "romanian", "czech", "turkish", "russian",
-  "chinese", "japanese", "korean", "arabic", "greek",
-  // common non-latin endonyms left verbatim (fold is a no-op on these)
-  "中文", "日本語", "한국어", "русский", "العربية",
+  "norwegian", "danish", "finnish", "hungarian", "romanian", "czech", "slovak", "slovenian",
+  "croatian", "serbian", "turkish", "catalan", "galician", "basque", "icelandic", "irish",
+  "welsh", "estonian", "latvian", "lithuanian", "indonesian", "malay", "vietnamese",
+  "russian", "ukrainian", "bulgarian", "greek", "hebrew", "arabic", "persian", "farsi",
+  "thai", "hindi", "chinese", "japanese", "korean",
+  // French exonyms
+  "anglais", "espagnol", "allemand", "italien", "portugais", "neerlandais", "polonais",
+  "suedois", "norvegien", "danois", "finnois", "hongrois", "roumain", "tcheque", "slovaque",
+  "slovene", "croate", "serbe", "turc", "galicien", "islandais", "irlandais", "gallois",
+  "estonien", "letton", "lituanien", "indonesien", "malais", "vietnamien", "russe",
+  "ukrainien", "bulgare", "grec", "hebreu", "persan", "chinois", "japonais", "coreen", "arabe",
+]);
+
+// Autonyms a multilingual switcher shows in-script. Matched by NFC-lowercase, NOT
+// `fold()`: the Latin accent-folder corrupts these scripts (NFD decomposes Hangul
+// 한국어 → jamo, and strips the breve that turns Cyrillic й into и). These scripts
+// carry no Latin decoration for fold to target, so NFC-lowercase is exact & cheap.
+const LANGUAGE_AUTONYMS_NONLATIN = new Set([
+  "中文", "日本語", "한국어", "русский", "українська", "български",
+  "العربية", "עברית", "ελληνικά", "ไทย", "हिन्दी", "فارسی",
 ]);
 
 function isLanguageName(cleaned: string): boolean {
-  return LANGUAGE_NAMES.has(fold(cleaned));
+  // Latin path first (the common case): one fold + O(1) lookup. Only fall through
+  // to the autonym set for the non-Latin scripts the folder can't normalize.
+  return (
+    LANGUAGE_NAMES.has(fold(cleaned)) ||
+    LANGUAGE_AUTONYMS_NONLATIN.has(cleaned.normalize("NFC").toLowerCase())
+  );
 }
 
 // Strip decorative wrappers to recover the brand: "ramp client logo" → "ramp",
@@ -227,4 +249,12 @@ export function isStoreBadgeSrc(src: string): boolean {
   return /(apple|app)[-_]?store|play[-_]?store|google[-_]?play|download[-_]?on|get[-_]?it[-_]?on/i.test(
     src,
   );
+}
+
+// Country-flag image of a language switcher ("/flags/fr.svg", "flag-de.png",
+// flagcdn). The flag asset itself has no alt, so the name classifier can't catch
+// it — drop on the src side, mirroring the store-badge filter. `flag` is matched
+// as a whole token so real brands ("flagship-logo.svg", "/flagstaff/…") survive.
+export function isLanguageFlagSrc(src: string): boolean {
+  return /(^|[/_-])flags?([/_-]|$)/i.test(src) || /\bflagcdn\.com/i.test(src);
 }

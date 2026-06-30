@@ -4,6 +4,7 @@ import {
   isJunkLogoName,
   isBlankSvgDataUri,
   isStoreBadgeSrc,
+  isLanguageFlagSrc,
 } from "./logo-name";
 
 // ─── junk: design-tool exports & dimensions ──────────────────────────────────
@@ -93,10 +94,13 @@ test("drops lowercase descriptive phrases", () => {
 });
 
 // ─── junk: language-switcher labels ──────────────────────────────────────────
-test("drops bare language names (switcher flags, any casing/accent)", () => {
+test("drops bare language names — endonym, English & French exonyms, any casing/accent", () => {
   for (const n of [
     "Français", "français", "Anglais", "Italien", "Español", "Deutsch", "English",
-    "Nederlands", "Português", "中文", "日本語",
+    "Nederlands", "Português", "Svenska", "Polski", "Türkçe", "Čeština", "Norsk",
+    "French", "Spanish", "German", "Russian", "Arabic", "Greek", "Korean",
+    "Allemand", "Néerlandais", "Suédois", "Tchèque", "Coréen", "Russe", "Grec",
+    "中文", "日本語", "한국어", "Русский", "العربية",
   ]) {
     expect(isJunkLogoName(n)).toBe(true);
   }
@@ -106,6 +110,29 @@ test("keeps brands that merely contain/extend a language word (whole-string matc
   // "deutsche" ≠ "deutsch", "polished" ≠ "polish", two-word name isn't the bare word.
   for (const n of ["Deutsche Bank", "Polished", "French Connection"]) {
     expect(classifyLogoName(n).kind).toBe("brand");
+  }
+});
+
+// ─── image-source junk: language-switcher flags ──────────────────────────────
+test("isLanguageFlagSrc flags country-flag switcher images", () => {
+  for (const s of [
+    "https://site.fr/img/flags/fr.svg",
+    "https://site.fr/assets/flag-de.png",
+    "/static/flag_it.png",
+    "https://flagcdn.com/w320/fr.png",
+    "https://cdn.x/flag/en.svg",
+  ]) {
+    expect(isLanguageFlagSrc(s)).toBe(true);
+  }
+});
+
+test("isLanguageFlagSrc leaves real logos alone (flag as a substring)", () => {
+  for (const s of [
+    "https://flagship.com/logo.svg",
+    "https://x.com/flagstaff-brewing-logo.png",
+    "https://acme.com/assets/acme-logo.svg",
+  ]) {
+    expect(isLanguageFlagSrc(s)).toBe(false);
   }
 });
 

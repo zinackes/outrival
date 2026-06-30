@@ -8,10 +8,7 @@ import {
   LayoutDashboard,
   Radio,
   Activity,
-  Sparkles,
-  Globe,
   LineChart,
-  Columns3,
   Users,
   Box,
   Boxes,
@@ -20,6 +17,9 @@ import {
   Settings,
   ChevronsUpDown,
   CreditCard,
+  Sparkles,
+  Globe,
+  Columns3,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -93,6 +93,9 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
     ],
   },
   {
+    // Slimmed (page-audit-2026-06-30): Ask lives in the always-on ask-dock, Sector is
+    // reached from the Overview teaser, Compare via Cmd-K / deep-link — none earn a
+    // rail slot. Trends stays; AI Visibility will land here next.
     label: "Analyze",
     items: [
       { href: "/dashboard/ask", label: "Ask", icon: Sparkles },
@@ -197,7 +200,11 @@ export function WorkspaceSwitcher({
                 // Product is the primary context; org/plan drops to the muted sub-line.
                 <div className="grid flex-1 text-left leading-tight">
                   <span className="truncate text-sm font-semibold inline-flex items-center gap-1">
-                    <Boxes className="size-3.5 shrink-0 text-muted-foreground" />
+                    {activeProduct ? (
+                      <Box className="size-3.5 shrink-0 text-muted-foreground" />
+                    ) : (
+                      <Boxes className="size-3.5 shrink-0 text-muted-foreground" />
+                    )}
                     {activeProduct?.name ?? "All products"}
                   </span>
                   <span className="truncate text-meta text-[var(--muted-2)]">
@@ -247,7 +254,7 @@ export function WorkspaceSwitcher({
                     onSelect={() => selectProduct(p.id)}
                     className="gap-2"
                   >
-                    <Boxes className="size-3.5 text-muted-foreground" />
+                    <Box className="size-3.5 text-muted-foreground" />
                     <span className="flex-1 truncate">{p.name}</span>
                     {current === p.id && <Check className="size-3.5 shrink-0" />}
                   </DropdownMenuItem>
@@ -256,7 +263,7 @@ export function WorkspaceSwitcher({
                   onSelect={() => selectProduct(ALL_PRODUCTS)}
                   className="gap-2"
                 >
-                  <Box className="size-3.5 text-muted-foreground" />
+                  <Boxes className="size-3.5 text-muted-foreground" />
                   <span className="flex-1 truncate">All products</span>
                   {current === ALL_PRODUCTS && <Check className="size-3.5 shrink-0" />}
                 </DropdownMenuItem>
@@ -332,21 +339,16 @@ export function AppSidebar({ org, user }: { org: Org; user: SwitcherUser }) {
             <SidebarMenu>{renderItem(OVERVIEW)}</SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-        {GROUPS.map((group) => {
-          const items = showSector
-            ? group.items
-            : group.items.filter((it) => it.href !== "/dashboard/sector");
-          return (
-            <SidebarGroup key={group.label} className="py-1">
-              <SidebarGroupLabel className="font-normal uppercase tracking-wide">
-                {group.label}
-              </SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>{items.map(renderItem)}</SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          );
-        })}
+        {GROUPS.map((group) => (
+          <SidebarGroup key={group.label} className="py-1">
+            <SidebarGroupLabel className="font-normal uppercase tracking-wide">
+              {group.label}
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>{group.items.map(renderItem)}</SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
         <SidebarSeparator className="my-1" />
         <SidebarGroup className="py-1">
           <SidebarGroupContent>

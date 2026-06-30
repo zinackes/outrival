@@ -21,6 +21,7 @@ import {
   ACTIVITY_PAGE_SIZE,
 } from "@/lib/queries";
 import { sourceLabel } from "@/lib/source-labels";
+import { formatDateTime } from "@/lib/format-date";
 import { competitorNameColor } from "@/lib/competitor-color";
 import { cn } from "@/lib/utils";
 import { DataTablePagination } from "@/components/ui/data-table-pagination";
@@ -103,12 +104,10 @@ function duration(ms: number): string {
   return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
 }
 
-// Absolute date + time for the "When" hover tooltip (e.g. "Jun 7, 2026, 9:08 AM").
+// Absolute date + time for the "When" hover tooltip. Clock adapts to the viewer's
+// region (24h in FR, 12h in US); text stays English. See lib/format-date.
 function absDateTime(iso: string): string {
-  return new Date(iso).toLocaleString("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+  return formatDateTime(iso);
 }
 
 

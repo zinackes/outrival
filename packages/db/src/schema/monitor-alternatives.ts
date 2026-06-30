@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, pgEnum, index } from "drizzle-orm/pg-core";
 import type { InferSelectModel } from "drizzle-orm";
 import { monitors } from "./monitors";
 
@@ -34,6 +34,9 @@ export const monitorAlternatives = pgTable("monitor_alternatives", {
   status: alternativeStatusEnum("status").notNull().default("proposed"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   resolvedAt: timestamp("resolved_at"),
-});
+}, (t) => [
+  // Alternatives are always looked up per monitor; also covers the monitors-FK teardown.
+  index("monitor_alternatives_monitor_idx").on(t.monitorId),
+]);
 
 export type MonitorAlternative = InferSelectModel<typeof monitorAlternatives>;

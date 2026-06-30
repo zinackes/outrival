@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, date } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, jsonb, date, index } from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
 
 export const digests = pgTable("digests", {
@@ -10,4 +10,7 @@ export const digests = pgTable("digests", {
   temperature: text("temperature"),
   sentAt: timestamp("sent_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  // Weekly digest idempotency lookup (org_id, week_start) + eraseOrg delete.
+  index("digests_org_week_idx").on(t.orgId, t.weekStart),
+]);

@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, pgEnum, index } from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
 
 export const roleEnum = pgEnum("role", ["owner", "admin", "member"]);
@@ -14,4 +14,8 @@ export const users = pgTable("users", {
   // code issued). Null = active.
   suspendedAt: timestamp("suspended_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  // Resolved on every authenticated request (ensureUserOrg) + members list +
+  // eraseOrg cascade. Without it each lookup is a seq scan of the users table.
+  index("users_org_idx").on(t.orgId),
+]);

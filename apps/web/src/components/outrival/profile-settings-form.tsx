@@ -87,7 +87,6 @@ function EmailField({ currentEmail }: { currentEmail: string }) {
             value={currentEmail}
             readOnly
             disabled
-            className="max-w-sm"
             data-ph-mask
           />
           <div>
@@ -99,7 +98,7 @@ function EmailField({ currentEmail }: { currentEmail: string }) {
       )}
 
       {mode === "email" && (
-        <div className="flex flex-col gap-2 max-w-sm">
+        <div className="flex flex-col gap-2">
           <Input
             id="profile-email"
             type="email"
@@ -213,7 +212,6 @@ export function ProfileSettingsForm() {
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Your name"
-          className="max-w-sm"
         />
       </div>
 

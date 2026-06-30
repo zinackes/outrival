@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, X } from "lucide-react";
 import { api } from "@/lib/api";
+import { formatTime } from "@/lib/format-date";
 
 const POLL_MS = 60_000;
 const DISMISS_KEY = "outrival.ai-status-dismissed";
@@ -45,7 +46,7 @@ export function AiStatusBanner() {
   // but the pool is still serving. Scrapes keep running either way (patch-22).
   const recoveryText =
     recovery && Number.isFinite(Date.parse(recovery))
-      ? ` Service should resume around ${new Date(recovery).toLocaleTimeString([], {
+      ? ` Service should resume around ${formatTime(recovery, {
           hour: "2-digit",
           minute: "2-digit",
         })}.`

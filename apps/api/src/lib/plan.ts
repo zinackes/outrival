@@ -1,4 +1,4 @@
-import { and, eq, gte, isNull, ne, count } from "drizzle-orm";
+import { and, eq, gte, isNull, ne, count, sql } from "drizzle-orm";
 import { competitors, organizations, battleCards, discoveryRuns, forcedRescanLog, products } from "@outrival/db";
 import {
   PLAN_LIMITS,
@@ -114,11 +114,19 @@ async function dimensionUsage(orgId: string, dimension: LimitDimension): Promise
       .where(and(eq(battleCards.orgId, orgId), gte(battleCards.generatedAt, utcDayStart())));
     return row?.value ?? 0;
   }
-  const run = await db.query.discoveryRuns.findFirst({ where: eq(discoveryRuns.orgId, orgId) });
-  // The single discovery_runs row carries the calendar-month counter; a stale month
-  // means the quota has rolled over (the next /detect resets it).
-  if (!run || run.detectCountMonth !== currentMonthKey()) return 0;
-  return run.detectCount;
+  // Org-level monthly usage = sum of this month's per-product discovery counters
+  // (patch-28 made discovery_runs product-scoped). A stale detectCountMonth on a row
+  // means its quota has rolled over, so it's excluded by the month filter.
+  const [row] = await db
+    .select({ value: sql<number>`coalesce(sum(${discoveryRuns.detectCount}), 0)::int` })
+    .from(discoveryRuns)
+    .where(
+      and(
+        eq(discoveryRuns.orgId, orgId),
+        eq(discoveryRuns.detectCountMonth, currentMonthKey()),
+      ),
+    );
+  return row?.value ?? 0;
 }
 
 /**

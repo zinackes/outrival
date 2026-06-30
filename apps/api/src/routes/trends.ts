@@ -110,8 +110,11 @@ trendsRouter.get("/summary", async (c) => {
     sql`, `,
   );
 
-  // Recent price changes (a plan's price differs from its previous batch).
-  const pricingRes = await analyticsQueryResult<RawPricingMove>(sql`
+  // pricing / hiring / reviews / tech leaderboards are independent analytics queries
+  // — run them concurrently instead of four serial round-trips (the route caches 60s).
+  const [pricingRes, hiringRes, reviewsRes, techRes] = await Promise.all([
+    // Recent price changes (a plan's price differs from its previous batch).
+    analyticsQueryResult<RawPricingMove>(sql`
     WITH ranked AS (
       SELECT competitor_id, plan_name, price, currency, billing_period, recorded_at,
              lag(price) OVER (
@@ -123,15 +126,15 @@ trendsRouter.get("/summary", async (c) => {
     )
     SELECT competitor_id AS "competitorId", plan_name AS "planName", price,
            prev_price AS "prevPrice", currency, billing_period AS "billingPeriod",
-           recorded_at AS "recordedAt"
+           (recorded_at AT TIME ZONE 'UTC') AS "recordedAt"
     FROM ranked
     WHERE prev_price IS NOT NULL AND price <> prev_price
     ORDER BY recorded_at DESC
     LIMIT 50
-  `);
+  `),
 
-  // Net open roles added over the window (latest total − earliest total).
-  const hiringRes = await analyticsQueryResult<RawHiringMove>(sql`
+    // Net open roles added over the window (latest total − earliest total).
+    analyticsQueryResult<RawHiringMove>(sql`
     WITH totals AS (
       SELECT competitor_id, recorded_at, sum(count)::int AS total
       FROM job_counts
@@ -150,30 +153,31 @@ trendsRouter.get("/summary", async (c) => {
     FROM bounds
     ORDER BY abs(latest - earliest) DESC, latest DESC
     LIMIT 50
-  `);
+  `),
 
-  // Latest score per (competitor, source).
-  const reviewsRes = await analyticsQueryResult<RawReviewMove>(sql`
+    // Latest score per (competitor, source).
+    analyticsQueryResult<RawReviewMove>(sql`
     SELECT DISTINCT ON (competitor_id, source)
            competitor_id AS "competitorId", source, score, review_count AS "reviewCount",
-           recorded_at AS "recordedAt"
+           (recorded_at AT TIME ZONE 'UTC') AS "recordedAt"
     FROM review_scores
     WHERE competitor_id IN (${idList})
       AND recorded_at >= ${fromIso}::timestamp AND recorded_at <= ${toIso}::timestamp
     ORDER BY competitor_id, source, recorded_at DESC
     LIMIT 100
-  `);
+  `),
 
-  // Recent tech appeared/disappeared across all competitors.
-  const techRes = await analyticsQueryResult<RawTechMove>(sql`
+    // Recent tech appeared/disappeared across all competitors.
+    analyticsQueryResult<RawTechMove>(sql`
     SELECT competitor_id AS "competitorId", tech_id AS "techId", event, importance,
-           recorded_at AS "recordedAt"
+           (recorded_at AT TIME ZONE 'UTC') AS "recordedAt"
     FROM tech_stack_history
     WHERE competitor_id IN (${idList})
       AND recorded_at >= ${fromIso}::timestamp AND recorded_at <= ${toIso}::timestamp
     ORDER BY recorded_at DESC
     LIMIT 50
-  `);
+  `),
+  ]);
 
   const withName = <T extends { competitorId: string }>(rows: T[]) =>
     rows.map((r) => ({ ...r, competitorName: nameById.get(r.competitorId) ?? "Unknown" }));
@@ -230,7 +234,7 @@ trendsRouter.get("/series", async (c) => {
   let points: SeriesPoint[] = [];
   if (metric === "pricing") {
     points = await analyticsQuery<SeriesPoint>(sql`
-      SELECT recorded_at AS "t", plan_name AS "key", price AS "value"
+      SELECT (recorded_at AT TIME ZONE 'UTC') AS "t", plan_name AS "key", price AS "value"
       FROM pricing_history
       WHERE competitor_id = ${competitorId}
         AND price IS NOT NULL
@@ -239,7 +243,7 @@ trendsRouter.get("/series", async (c) => {
     `);
   } else if (metric === "hiring") {
     points = await analyticsQuery<SeriesPoint>(sql`
-      SELECT recorded_at AS "t", department AS "key", count AS "value"
+      SELECT (recorded_at AT TIME ZONE 'UTC') AS "t", department AS "key", count AS "value"
       FROM job_counts
       WHERE competitor_id = ${competitorId}
         AND recorded_at >= ${fromIso}::timestamp AND recorded_at <= ${toIso}::timestamp
@@ -247,7 +251,7 @@ trendsRouter.get("/series", async (c) => {
     `);
   } else {
     points = await analyticsQuery<SeriesPoint>(sql`
-      SELECT recorded_at AS "t", source AS "key", score AS "value"
+      SELECT (recorded_at AT TIME ZONE 'UTC') AS "t", source AS "key", score AS "value"
       FROM review_scores
       WHERE competitor_id = ${competitorId}
         AND recorded_at >= ${fromIso}::timestamp AND recorded_at <= ${toIso}::timestamp

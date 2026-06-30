@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, jsonb, pgEnum, index } from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
 import { competitors } from "./competitors";
 import { changes } from "./changes";
@@ -42,4 +42,7 @@ export const selfProductChanges = pgTable("self_product_changes", {
   status: selfChangeStatusEnum("status").notNull().default("pending"),
   detectedAt: timestamp("detected_at").notNull().defaultNow(),
   resolvedAt: timestamp("resolved_at"),
-});
+}, (t) => [
+  // "My product" pending-changes view filters by org; also covers eraseOrg cascade.
+  index("self_product_changes_org_idx").on(t.orgId),
+]);

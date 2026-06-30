@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { tasks } from "@trigger.dev/sdk/v3";
 import {
   competitorCandidates,
@@ -8,6 +8,7 @@ import {
   discoveryRuns,
   monitors,
   organizations,
+  products,
   selfProfileLastEditedAt,
 } from "@outrival/db";
 import { DetectionConfigSchema, resolveDetectionConfig } from "@outrival/shared";
@@ -15,7 +16,11 @@ import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
-import { associateCompetitorWithPrimaryProduct } from "../lib/products";
+import {
+  associateCompetitorWithProduct,
+  primaryProductId,
+  productDiscoveryTarget,
+} from "../lib/products";
 import {
   checkCompetitorQuota,
   getOrgPlan,
@@ -23,7 +28,7 @@ import {
   tierLimitBody,
   currentMonthKey,
 } from "../lib/plan";
-import { detectCandidatesForOrg } from "../lib/detect-candidates";
+import { detectCandidatesForProduct } from "../lib/detect-candidates";
 
 type Variables = { user: { id: string } };
 
@@ -56,17 +61,18 @@ function normalizeDomain(raw: string): string | null {
   }
 }
 
-// Latest moment the user hand-edited their self-product profile (patch-22): drives
-// discovery staleness — editing the profile makes a past discovery worth re-running.
-async function selfProfileEditedAt(orgId: string): Promise<Date | null> {
-  const self = await db.query.competitors.findFirst({
-    where: and(
-      eq(competitors.orgId, orgId),
-      eq(competitors.type, "self"),
-      isNull(competitors.deletedAt),
-    ),
-  });
-  return self ? (selfProfileLastEditedAt(self.selfProfile) ?? self.updatedAt) : null;
+// Resolve the discovery product scope (patch-28): the supplied productId when it
+// belongs to the org, otherwise the org's primary product. Null only when the org has
+// no product yet (pre-onboarding edge). Keeps every discovery route product-scoped.
+async function resolveProductId(orgId: string, raw?: string): Promise<string | null> {
+  if (raw) {
+    const owned = await db.query.products.findFirst({
+      where: and(eq(products.id, raw), eq(products.orgId, orgId)),
+      columns: { id: true },
+    });
+    if (owned) return owned.id;
+  }
+  return primaryProductId(orgId);
 }
 
 function deriveCompetitorName(url: string, title: string | null): string {
@@ -84,13 +90,20 @@ candidatesRouter.get("/", async (c) => {
   const orgId = await ensureUserOrg(user.id);
   const statusParam = c.req.query("status");
 
+  // patch-28 — discovery is product-scoped: each SKU has its own review queue.
+  const productId = await resolveProductId(orgId, c.req.query("productId"));
+  if (!productId) {
+    return c.json({ candidates: [], counts: { new: 0, dismissed: 0 } });
+  }
+
+  const scope = and(
+    eq(competitorCandidates.orgId, orgId),
+    eq(competitorCandidates.productId, productId),
+  );
   const where =
     statusParam === "new" || statusParam === "dismissed" || statusParam === "added"
-      ? and(
-          eq(competitorCandidates.orgId, orgId),
-          eq(competitorCandidates.status, statusParam),
-        )
-      : eq(competitorCandidates.orgId, orgId);
+      ? and(scope, eq(competitorCandidates.status, statusParam))
+      : scope;
 
   const rows = await db.query.competitorCandidates.findMany({
     where,
@@ -98,7 +111,7 @@ candidatesRouter.get("/", async (c) => {
     limit: 100,
   });
 
-  // Tab counts (org-scoped, status-independent) so the UI can badge both tabs
+  // Tab counts (product-scoped, status-independent) so the UI can badge both tabs
   // without a second round-trip per tab switch.
   const countRows = await db
     .select({
@@ -106,7 +119,7 @@ candidatesRouter.get("/", async (c) => {
       n: sql<number>`count(*)::int`,
     })
     .from(competitorCandidates)
-    .where(eq(competitorCandidates.orgId, orgId))
+    .where(scope)
     .groupBy(competitorCandidates.status);
 
   const counts = { new: 0, dismissed: 0 };
@@ -167,8 +180,15 @@ candidatesRouter.get("/staleness", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
 
+  // patch-28 — staleness is per product: a brand-new SKU reads as "never_run" even
+  // when the primary product was just discovered.
+  const productId = await resolveProductId(orgId, c.req.query("productId"));
+  if (!productId) {
+    return c.json({ staleness: "never_run", needsRediscovery: true });
+  }
+
   const lastRun = await db.query.discoveryRuns.findFirst({
-    where: eq(discoveryRuns.orgId, orgId),
+    where: and(eq(discoveryRuns.orgId, orgId), eq(discoveryRuns.productId, productId)),
     orderBy: desc(discoveryRuns.lastDiscoveryAt),
   });
   if (!lastRun) {
@@ -176,7 +196,10 @@ candidatesRouter.get("/staleness", async (c) => {
   }
 
   const daysSince = (Date.now() - lastRun.lastDiscoveryAt.getTime()) / 86400000;
-  const profileAt = await selfProfileEditedAt(orgId);
+  const target = await productDiscoveryTarget(orgId, productId);
+  const profileAt = target
+    ? (selfProfileLastEditedAt(target.selfProfile) ?? target.selfUpdatedAt)
+    : null;
   const profileChanged =
     !!profileAt &&
     (!lastRun.basedOnProfileUpdateAt || profileAt > lastRun.basedOnProfileUpdateAt);
@@ -229,8 +252,13 @@ candidatesRouter.post("/:id/add", async (c) => {
     .returning();
   if (!competitor) return c.json({ error: "Failed to create competitor" }, 500);
 
-  // patch-28 — tag this competitor into the org's primary product (shared).
-  await associateCompetitorWithPrimaryProduct(orgId, competitor.id);
+  // patch-28 — tag this competitor into the product it was discovered for (shared),
+  // so it lands in that SKU's feed, not always the primary. Legacy candidates with no
+  // productId fall back to the primary.
+  const targetProductId = candidate.productId ?? (await primaryProductId(orgId));
+  if (targetProductId) {
+    await associateCompetitorWithProduct(orgId, targetProductId, competitor.id);
+  }
 
   // patch-31 — detect the platform profile (fire-and-forget) so the first scrapes
   // can route via structured connectors. Never blocks the add.
@@ -285,27 +313,36 @@ candidatesRouter.post("/detect", aiIntensiveRateLimit, async (c) => {
     return c.json({ error: "cooldown", retryInSec }, 429);
   }
 
+  // patch-28 — discovery targets one product (its self-profile drives the search).
+  const productId = await resolveProductId(orgId, c.req.query("productId"));
+  if (!productId) return c.json({ error: "missing_profile" }, 400);
+
   // Per-tier monthly discovery quota (tier-limits). On-demand /detect only — the
-  // weekly cron auto-discovery doesn't consume it.
+  // weekly cron auto-discovery doesn't consume it. Counted org-wide (summed across
+  // the org's product rows).
   const quota = await assertWithinLimit(orgId, "discoveriesPerMonth");
   if (!quota.ok) return c.json(tierLimitBody(quota), 429);
 
   lastDetectAt.set(orgId, Date.now());
 
   try {
-    const result = await detectCandidatesForOrg(orgId);
+    const result = await detectCandidatesForProduct(orgId, productId);
     if (!result.ok) {
       lastDetectAt.delete(orgId);
       return c.json({ error: result.error }, 400);
     }
 
-    // Record the run for staleness (patch-22): snapshot the profile edit it was based
-    // on so a later profile edit (or 7+ days) marks the next discovery worth running.
-    // The same row carries the monthly quota counter (reset when the month rolls over).
-    const profileAt = await selfProfileEditedAt(orgId);
+    // Record the run for staleness (patch-22, per-product in patch-28): snapshot the
+    // profile edit it was based on so a later profile edit (or 7+ days) marks the next
+    // discovery worth running. The (org, product) row also carries the monthly quota
+    // counter (reset when the month rolls over).
+    const target = await productDiscoveryTarget(orgId, productId);
+    const profileAt = target
+      ? (selfProfileLastEditedAt(target.selfProfile) ?? target.selfUpdatedAt)
+      : null;
     const month = currentMonthKey();
     const existingRun = await db.query.discoveryRuns.findFirst({
-      where: eq(discoveryRuns.orgId, orgId),
+      where: and(eq(discoveryRuns.orgId, orgId), eq(discoveryRuns.productId, productId)),
     });
     const nextCount =
       (existingRun?.detectCountMonth === month ? existingRun.detectCount : 0) + 1;
@@ -322,6 +359,7 @@ candidatesRouter.post("/detect", aiIntensiveRateLimit, async (c) => {
     } else {
       await db.insert(discoveryRuns).values({
         orgId,
+        productId,
         lastDiscoveryAt: new Date(),
         basedOnProfileUpdateAt: profileAt,
         detectCount: nextCount,

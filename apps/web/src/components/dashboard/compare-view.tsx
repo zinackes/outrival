@@ -22,6 +22,7 @@ import {
   type ProductSummary,
 } from "@/lib/api";
 import { productsListQuery, competitorsQuery } from "@/lib/queries";
+import { formatDate } from "@/lib/format-date";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -118,7 +119,7 @@ function money(value: number, currency: string | null): string {
 }
 
 function shortDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return formatDate(iso, { month: "short", day: "numeric" });
 }
 
 function prettyHost(url: string): string {

@@ -7,7 +7,7 @@ import {
   insertAiQualityCheck,
 } from "@outrival/db";
 import { findSimilarCompanies } from "@outrival/scrapers/discovery";
-import { scoreOverlap, buildDiscoveryQuery } from "@outrival/ai";
+import { scoreOverlap, buildDiscoveryQuery, selfProfileToDiscoveryProfile } from "@outrival/ai";
 import {
   buildDetectionBody,
   buildDetectionTitle,
@@ -15,20 +15,36 @@ import {
   resolveDetectionConfig,
 } from "@outrival/shared";
 import { db } from "./db";
+import { productDiscoveryTarget } from "./products";
 
 const CANDIDATES_PER_ORG = 20;
 
 export type DetectResult =
   | { ok: true; detected: number }
-  | { ok: false; error: "missing_profile" };
+  | { ok: false; error: "missing_profile" | "product_not_found" };
 
-export async function detectCandidatesForOrg(orgId: string): Promise<DetectResult> {
+// patch-28 multi-SKU — discovery for one product. Searches on the product's own
+// self-profile (auto-refreshed) so each SKU surfaces its own competitors; candidates
+// + the run record are tagged with productId. The primary product falls back to the
+// org's legacy productProfile/productUrl so existing orgs keep working unchanged.
+export async function detectCandidatesForProduct(
+  orgId: string,
+  productId: string,
+): Promise<DetectResult> {
   const org = await db.query.organizations.findFirst({
     where: eq(organizations.id, orgId),
   });
-  if (!org || !org.productProfile) {
-    return { ok: false, error: "missing_profile" };
-  }
+  if (!org) return { ok: false, error: "missing_profile" };
+
+  const target = await productDiscoveryTarget(orgId, productId);
+  if (!target) return { ok: false, error: "product_not_found" };
+
+  const profile = selfProfileToDiscoveryProfile(
+    target.selfProfile,
+    target.isPrimary ? org.productProfile : null,
+  );
+  const productUrl = target.url ?? (target.isPrimary ? org.productUrl : null);
+  if (!profile) return { ok: false, error: "missing_profile" };
 
   const cfg = resolveDetectionConfig(org.detectionConfig);
   const excludedHosts = new Set(cfg.excludedDomains);
@@ -38,6 +54,9 @@ export async function detectCandidatesForOrg(orgId: string): Promise<DetectResul
     .set({ detectionLastRunAt: new Date() })
     .where(eq(organizations.id, orgId));
 
+  // Dedup against every competitor already tracked in the org (don't re-suggest a
+  // company we already monitor anywhere), but only against candidates already seen
+  // for THIS product — the same company can surface as a candidate for two SKUs.
   const existing = await db.query.competitors.findMany({
     where: and(eq(competitors.orgId, orgId), isNull(competitors.deletedAt)),
   });
@@ -48,7 +67,10 @@ export async function detectCandidatesForOrg(orgId: string): Promise<DetectResul
   }
 
   const seen = await db.query.competitorCandidates.findMany({
-    where: eq(competitorCandidates.orgId, orgId),
+    where: and(
+      eq(competitorCandidates.orgId, orgId),
+      eq(competitorCandidates.productId, productId),
+    ),
   });
   const seenUrls = new Set(seen.map((c) => c.url));
   const seenHosts = new Set<string>();
@@ -58,8 +80,8 @@ export async function detectCandidatesForOrg(orgId: string): Promise<DetectResul
   }
 
   const discovered = await findSimilarCompanies(
-    org.productUrl,
-    buildDiscoveryQuery(org.productProfile, cfg.keywords),
+    productUrl,
+    buildDiscoveryQuery(profile, cfg.keywords),
     CANDIDATES_PER_ORG,
     cfg.excludedDomains,
     cfg.region,
@@ -74,18 +96,9 @@ export async function detectCandidatesForOrg(orgId: string): Promise<DetectResul
     return true;
   });
 
-  // TEMP debug — à retirer
-  console.log("[detect]", {
-    orgId,
-    discovered: discovered.length,
-    freshAfterDedup: fresh.length,
-    existingHosts: [...existingHosts],
-    seenCount: seen.length,
-  });
-
   if (fresh.length === 0) return { ok: true, detected: 0 };
 
-  const scored = await scoreOverlap(org.productProfile, fresh);
+  const scored = await scoreOverlap(profile, fresh);
   const scoredByUrl = new Map(scored.map((s) => [s.url, s]));
 
   // Anti-hallucination (patch-24): persist the call-level grounding + self-check
@@ -96,8 +109,6 @@ export async function detectCandidatesForOrg(orgId: string): Promise<DetectResul
     orgId,
     quality: scored._quality,
   });
-  // TEMP debug — à retirer
-  console.log("[detect] scores", scored.map((s) => `${s.overlapScore} ${s.url}`));
 
   const detectedTitles: string[] = [];
   for (const d of fresh) {
@@ -107,6 +118,7 @@ export async function detectCandidatesForOrg(orgId: string): Promise<DetectResul
 
     await db.insert(competitorCandidates).values({
       orgId,
+      productId,
       url: d.url,
       title: d.title,
       overlapScore: scoring.overlapScore,
@@ -124,7 +136,7 @@ export async function detectCandidatesForOrg(orgId: string): Promise<DetectResul
       type: "new_competitor",
       title: buildDetectionTitle(detected),
       body: buildDetectionBody(detectedTitles),
-      linkUrl: `/dashboard/candidates`,
+      linkUrl: `/dashboard/discovery?product=${productId}`,
     });
   }
 

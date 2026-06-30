@@ -65,7 +65,7 @@ const PLANS: Plan[] = [
     price: "199",
     suffix: "€ / month",
     desc: "50 competitors, every review source, multi-user, and API access.",
-    cta: "Talk to the team",
+    cta: "Get started",
     featured: false,
     features: [
       "50 competitors",
@@ -144,15 +144,7 @@ export function Pricing() {
                 variant={p.featured ? "default" : "outline"}
                 className="mt-6 w-full"
               >
-                <a
-                  href={
-                    p.tag === "Business"
-                      ? "mailto:hello@outrival.app?subject=Outrival%20Business%20plan"
-                      : "#cta"
-                  }
-                >
-                  {p.cta}
-                </a>
+                <a href="#cta">{p.cta}</a>
               </Button>
             </div>
           ))}

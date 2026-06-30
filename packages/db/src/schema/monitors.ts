@@ -1,4 +1,5 @@
 import { pgTable, text, timestamp, boolean, jsonb, integer, pgEnum, index } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { competitors } from "./competitors";
 
 export const sourceTypeEnum = pgEnum("source_type", [
@@ -75,8 +76,11 @@ export const monitors = pgTable("monitors", {
   aiSummaryUpdatedAt: timestamp("ai_summary_updated_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (t) => [
-  // Hourly scheduler scan: isActive && (nextRunAt null || <= now).
-  index("monitors_next_run_idx").on(t.nextRunAt),
+  // Hourly scheduler scan: isActive && (nextRunAt null || <= now). Partial on
+  // is_active so the index only holds the rows the scheduler actually considers
+  // (paused / tech_stack / inactive monitors are excluded), keeping it small and
+  // the predicate index-only at scale.
+  index("monitors_due_idx").on(t.nextRunAt).where(sql`is_active = true`),
   // Competitor detail / provisioning: all monitors of one competitor.
   index("monitors_competitor_idx").on(t.competitorId),
 ]);

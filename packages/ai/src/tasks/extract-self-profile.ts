@@ -34,10 +34,16 @@ ${homepageText.slice(0, 6000)}
 </homepage>
 
 <task>
-This is a product/SaaS website. Extract:
-1. "category" — what kind of product this is, one short phrase.
-2. "audience" — who it is for (target users / segments), one short phrase.
-3. "valueProp" — the core value proposition in one sentence.
+Profile the product behind this page. Be specific and grounded in what the page
+actually says — never fall back to a generic label. Extract:
+1. "category" — the specific FUNCTIONAL category, defined by what the product
+   does, not its business model or delivery format. Do NOT answer "B2B SaaS",
+   "mobile app" or "platform". Good answers span every kind of business, e.g.
+   "competitive-intelligence software", "appointment-scheduling tool",
+   "freelance marketplace for designers", "meal-kit delivery service".
+2. "audience" — who specifically uses or buys it (role plus context), one phrase.
+3. "valueProp" — ONE sentence naming the concrete job it does and the outcome.
+   Ban filler ("streamline your workflow", "all-in-one"); say what it changes.
 4. "features" — the concrete capabilities the product offers (what it actually
    does), as short noun phrases. Skip taglines and generic marketing claims.
 5. "techStack" — technologies the product is clearly built on or integrates with
@@ -50,11 +56,11 @@ Write all text values in English. Cap each list at 12 items.
 
 <format>
 {
-  "category": "e.g. Competitive intelligence SaaS",
-  "audience": "e.g. Product and marketing teams at B2B SaaS companies",
-  "valueProp": "e.g. Automatically track competitors and turn changes into insights",
-  "features": ["e.g. Automatic competitor discovery", "e.g. Real-time alerts"],
-  "techStack": ["e.g. Next.js", "e.g. Stripe"]
+  "category": "<specific functional category>",
+  "audience": "<who specifically uses it>",
+  "valueProp": "<one concrete sentence>",
+  "features": ["<concrete capability>", "<concrete capability>"],
+  "techStack": ["<technology>", "<technology>"]
 }
 </format>`;
 

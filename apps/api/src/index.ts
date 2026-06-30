@@ -4,6 +4,7 @@ import { Sentry } from "./lib/sentry";
 import { Hono } from "hono";
 import { getPostHog } from "./lib/posthog";
 import { cors } from "hono/cors";
+import { contextStorage } from "hono/context-storage";
 import { logger as honoLogger } from "hono/logger";
 import { logger } from "@outrival/shared";
 import { env } from "./env";
@@ -48,6 +49,10 @@ import { notificationPreferencesRouter } from "./routes/notification-preferences
 
 const app = new Hono();
 
+// Expose the current request's Context to non-handler code via getContext()
+// (hono/context-storage). The auth middleware stamps the resolved orgId on it so
+// ensureUserOrg can skip its second users round-trip on every authenticated call.
+app.use("*", contextStorage());
 app.use("*", honoLogger());
 app.use(
   "*",

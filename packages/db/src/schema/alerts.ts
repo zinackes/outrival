@@ -15,4 +15,6 @@ export const alerts = pgTable("alerts", {
 }, (t) => [
   // Monitor teardown and signal detail both look alerts up by signal.
   index("alerts_signal_idx").on(t.signalId),
+  // eraseOrg deletes alerts by org; without this it seq-scans the table.
+  index("alerts_org_idx").on(t.orgId),
 ]);

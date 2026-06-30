@@ -16,6 +16,7 @@ import {
   type TechMove,
 } from "@/lib/api";
 import { trendsSummaryQuery } from "@/lib/queries";
+import { formatDate } from "@/lib/format-date";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -53,7 +54,7 @@ const TrendsDrillChart = dynamic(() => import("./trends-drill-chart"), {
 });
 
 function shortDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return formatDate(iso, { month: "short", day: "numeric" });
 }
 
 function money(value: number, currency: string): string {

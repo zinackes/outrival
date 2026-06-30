@@ -74,6 +74,7 @@ import {
   COMP_ACCENT,
 } from "@/lib/competitor-color";
 import { FreshnessDot } from "@/components/outrival/freshness-dot";
+import { AnalysisBadge } from "@/components/outrival/analysis-status";
 import { ProductChips } from "./product-chip";
 import { ListError } from "@/components/outrival/list-error";
 import { toastApiError } from "@/lib/error-helpers";
@@ -603,6 +604,7 @@ export function CompetitorsList() {
                         className="shrink-0 opacity-0 transition-opacity group-hover/url:opacity-100"
                       />
                     </a>
+                    <AnalysisBadge analysis={c.analysis} className="mt-1" />
                     {allProducts && (
                       <ProductChips
                         productIds={c.specificProductIds}
@@ -722,6 +724,7 @@ export function CompetitorsList() {
                         className="shrink-0 opacity-0 transition-opacity group-hover/url:opacity-100"
                       />
                     </a>
+                    <AnalysisBadge analysis={c.analysis} className="mt-1" />
                     {allProducts && (
                       <ProductChips
                         productIds={c.specificProductIds}

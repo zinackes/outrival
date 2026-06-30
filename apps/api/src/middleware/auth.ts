@@ -10,14 +10,19 @@ export const authMiddleware = createMiddleware(async (c, next) => {
 
   // Suspended accounts (set by an operator from /admin) are locked out: existing
   // sessions are rejected here. Lightweight PK lookup; the OTP send path is also
-  // gated so no new code is ever issued to a suspended email.
+  // gated so no new code is ever issued to a suspended email. We grab orgId in the
+  // same row so ensureUserOrg can reuse it (via getContext) instead of re-reading
+  // the users table on every authenticated request.
   const appUser = await db.query.users.findFirst({
     where: eq(users.id, session.user.id),
-    columns: { suspendedAt: true },
+    columns: { suspendedAt: true, orgId: true },
   });
   if (appUser?.suspendedAt) return c.json({ error: "Account suspended" }, 403);
 
   c.set("user", session.user);
   c.set("session", session.session);
+  // Null for a brand-new user with no org yet — ensureUserOrg falls through to its
+  // create path in that case.
+  c.set("orgId", appUser?.orgId ?? null);
   await next();
 });

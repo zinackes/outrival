@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Check, Loader2 } from "lucide-react";
@@ -125,6 +126,13 @@ export function BillingDashboard() {
   // Invoices only matter once subscribed; gated so it doesn't fetch otherwise.
   const invoicesQ = useQuery({ ...invoicesQuery(), enabled: !!billing?.hasSubscription });
   const invoices: Invoice[] = invoicesQ.data ?? [];
+  // Show the 3 most recent by default (Stripe returns newest-first); the rest
+  // sit behind a toggle so the history doesn't dominate the page.
+  const [showAllInvoices, setShowAllInvoices] = useState(false);
+  const INVOICE_PREVIEW_COUNT = 3;
+  const visibleInvoices = showAllInvoices
+    ? invoices
+    : invoices.slice(0, INVOICE_PREVIEW_COUNT);
 
   useEffect(() => {
     const status = search.get("status");
@@ -240,6 +248,9 @@ export function BillingDashboard() {
   // frozen non-destructively by the scheduler, not deleted — surfaced as a banner.
   const overLimit = limit !== null && used > limit;
   const overBy = overLimit ? used - (limit as number) : 0;
+  // The exact competitors the cap froze (newest-added first), so the notice names
+  // them instead of just a count. Server keeps the oldest `limit` monitored.
+  const pausedCompetitors = billing.usage.competitors.paused;
 
   // Competitors that the confirmed target plan would pause (over-cap), for the
   // pre-confirmation warning. 0 when the target's cap still covers current usage.
@@ -267,14 +278,29 @@ export function BillingDashboard() {
       {overLimit && (
         <div
           role="status"
-          className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-high/40 bg-high/[0.06] px-4 py-3 text-sm"
+          className="flex flex-wrap items-start justify-between gap-3 rounded-md border border-high/40 bg-high/[0.06] px-4 py-3 text-sm"
         >
-          <span className="text-foreground">
-            {overBy} competitor{overBy > 1 ? "s" : ""} over your{" "}
-            {PLAN_LABELS[billing.plan]} limit{" "}
-            {overBy > 1 ? "are" : "is"} paused. Nothing was deleted — upgrade to
-            resume monitoring{overBy > 1 ? " them" : " it"}.
-          </span>
+          <div className="flex flex-col gap-2">
+            <span className="text-foreground">
+              {overBy} competitor{overBy > 1 ? "s" : ""} over your{" "}
+              {PLAN_LABELS[billing.plan]} limit{" "}
+              {overBy > 1 ? "are" : "is"} paused. Nothing was deleted — upgrade to
+              resume monitoring{overBy > 1 ? " them" : " it"}.
+            </span>
+            {pausedCompetitors.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                {pausedCompetitors.map((c) => (
+                  <Link
+                    key={c.id}
+                    href={`/dashboard/competitors/${c.id}`}
+                    className="rounded border border-high/30 bg-background/40 px-1.5 py-0.5 text-dense text-foreground transition-colors hover:border-high/60"
+                  >
+                    {c.name}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
           <Button
             size="sm"
             onClick={() => {
@@ -392,7 +418,7 @@ export function BillingDashboard() {
         <section className="flex flex-col gap-4">
           <h3 className="font-semibold text-base tracking-tight">Billing history</h3>
           <Card className="divide-y divide-border overflow-hidden p-0">
-            {invoices.map((inv) => (
+            {visibleInvoices.map((inv) => (
               <div key={inv.id ?? inv.date} className="flex items-center gap-3 px-5 py-3">
                 <div className="min-w-0 flex-1">
                   <div className="text-dense text-foreground">
@@ -421,6 +447,17 @@ export function BillingDashboard() {
                 ) : null}
               </div>
             ))}
+            {invoices.length > INVOICE_PREVIEW_COUNT && (
+              <Button
+                variant="ghost"
+                onClick={() => setShowAllInvoices((v) => !v)}
+                className="h-auto w-full justify-center rounded-none py-2.5 text-dense font-normal text-muted-foreground"
+              >
+                {showAllInvoices
+                  ? "Show less"
+                  : `Show ${invoices.length - INVOICE_PREVIEW_COUNT} more`}
+              </Button>
+            )}
           </Card>
         </section>
       )}

@@ -64,6 +64,25 @@ export async function productCompetitorIds(orgId: string, productId: string): Pr
 }
 
 /**
+ * patch-28 — the self-competitor id wrapped by a product (its monitoring anchor),
+ * org-scoped through the products.orgId filter so a forged/foreign productId yields
+ * null. The self-competitor is referenced by `products.selfCompetitorId`, not the
+ * `product_competitors` junction, so it must be added back explicitly when scoping a
+ * feed that should include the user's own product (e.g. the Activity timeline).
+ */
+export async function productSelfCompetitorId(
+  orgId: string,
+  productId: string,
+): Promise<string | null> {
+  const [row] = await db
+    .select({ selfCompetitorId: products.selfCompetitorId })
+    .from(products)
+    .where(and(eq(products.id, productId), eq(products.orgId, orgId)))
+    .limit(1);
+  return row?.selfCompetitorId ?? null;
+}
+
+/**
  * patch-28 — ensure the org's self-competitor is wrapped by a `products` row. Called
  * wherever a self-competitor is created (onboarding, My Product) so new orgs get a
  * product the same way the migration backfilled existing ones. The first product of

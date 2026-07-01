@@ -29,6 +29,7 @@ function signal(s: Partial<Signal> & Pick<Signal, "id" | "severity" | "category"
     changeId: `sample-change-${s.id}`,
     sourceType: null,
     feedbackVerdict: null,
+    feedbackId: null,
     aiConfidence: "high",
     aiFlagged: false,
     aiQualityCheckId: null,

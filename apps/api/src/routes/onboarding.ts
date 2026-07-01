@@ -39,6 +39,7 @@ import {
 } from "../lib/products";
 import { fetchRepoArtifacts } from "../lib/github";
 import { extractDocumentText } from "../lib/extract-document";
+import { productProfileToSelfProfile } from "../lib/profile-derivation";
 import {
   checkCompetitorQuota,
   getOrgPlan,
@@ -111,15 +112,7 @@ async function createSelfCompetitor(orgId: string) {
   if (existingSelf) return;
 
   const pp = org.productProfile;
-  const seed = <T,>(value: T | null | undefined): SelfProfileField<T> | undefined =>
-    value == null || (typeof value === "string" && value.trim() === "")
-      ? undefined
-      : { value, isFromAutoDetect: true, lastEditedByUserAt: null };
-  const selfProfile: SelfProfile = {
-    category: seed(pp?.category),
-    audience: seed(pp?.audience),
-    valueProp: seed(pp?.valueProp),
-  };
+  const selfProfile = productProfileToSelfProfile(pp);
 
   const [selfCompetitor] = await db
     .insert(competitors)

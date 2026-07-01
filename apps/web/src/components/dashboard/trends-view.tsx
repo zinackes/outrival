@@ -108,7 +108,10 @@ function Card({
           No data in this window yet.
         </p>
       ) : (
-        <div className="mt-1">{children}</div>
+        // Cap the row list so a long card (Tech especially) can't stretch the
+        // grid — ~7 rows stay visible, the rest scrolls internally. pr-1 keeps
+        // the right-aligned values clear of the scrollbar.
+        <div className="mt-1 max-h-72 overflow-y-auto pr-1">{children}</div>
       )}
     </section>
   );

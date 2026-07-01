@@ -534,7 +534,9 @@ export function OnboardingForm({
   async function handleProfileConfirm() {
     if (!profile) return;
     setError(null);
-    const empty = (["category", "audience", "valueProp", "pricingModel"] as const).filter(
+    // pricingModel is intentionally optional — a free / open-source product (e.g. a
+    // package registry) legitimately has no pricing, and the AI leaves it blank.
+    const empty = (["category", "audience", "valueProp"] as const).filter(
       (k) => !profile[k].trim(),
     );
     if (empty.length > 0) {

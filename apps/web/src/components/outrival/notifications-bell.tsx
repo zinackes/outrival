@@ -196,7 +196,7 @@ export function NotificationsBell({ compact = false }: { compact?: boolean } = {
         </Tooltip>
 
         {open && (
-          <Card className="absolute right-0 top-12 w-96 max-w-[calc(100vw-2rem)] max-h-[480px] overflow-hidden z-50 shadow-lg">
+          <Card className="fixed inset-x-4 top-14 sm:absolute sm:inset-x-auto sm:right-0 sm:top-12 sm:w-96 max-h-[480px] overflow-hidden z-50 shadow-lg">
             <div className="flex items-center justify-between px-3 py-2 border-b border-border">
               <span className="text-xs uppercase tracking-wide text-muted-foreground">
                 Notifications

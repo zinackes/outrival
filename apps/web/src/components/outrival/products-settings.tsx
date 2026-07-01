@@ -16,12 +16,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { api, ApiError } from "@/lib/api";
+import { api } from "@/lib/api";
+import { toastApiError } from "@/lib/error-helpers";
 import { productsSettingsQuery } from "@/lib/queries";
 import { PLAN_LABELS, type Plan } from "@outrival/shared";
+import { AddProductWizard } from "@/components/outrival/add-product-wizard";
 
 // patch-28 — manage the org's products (SKUs): add (within the per-tier limit),
 // promote a primary, archive. Per-competitor sharing/reclassification is managed
@@ -38,9 +38,6 @@ export function ProductsSettings() {
   const err = productsQ.error;
 
   const [addOpen, setAddOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [url, setUrl] = useState("");
-  const [busy, setBusy] = useState(false);
   // Soft-archive on the backend, but presented as a delete: confirm before
   // removing a product from the workspace.
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
@@ -53,40 +50,12 @@ export function ProductsSettings() {
   const active = (products ?? []).filter((p) => p.status !== "archived");
   const atLimit = active.length >= limit;
 
-  async function onAdd() {
-    if (!name.trim()) return;
-    setBusy(true);
-    try {
-      await api.createProduct({
-        name: name.trim(),
-        url: url.trim() || undefined,
-      });
-      toast.success(`Product "${name.trim()}" added.`);
-      setAddOpen(false);
-      setName("");
-      setUrl("");
-      load();
-    } catch (e) {
-      if (e instanceof ApiError && e.code === "plan_limit_products") {
-        const suggested = e.data.suggestedPlan as Plan | undefined;
-        toast.error(
-          `You've reached your plan's product limit (${e.data.limit}).` +
-            (suggested ? ` Upgrade to ${PLAN_LABELS[suggested]} for more.` : ""),
-        );
-      } else {
-        toast.error(e instanceof Error ? e.message : "Failed to add product.");
-      }
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function onSetPrimary(id: string) {
     try {
       await api.updateProduct(id, { isPrimary: true });
       load();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to update product.");
+      toastApiError(e, { title: "Couldn't update the product" });
     }
   }
 
@@ -99,7 +68,7 @@ export function ProductsSettings() {
       setDeleteTarget(null);
       load();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to delete product.");
+      toastApiError(e, { title: "Couldn't delete the product" });
     } finally {
       setDeleting(false);
     }
@@ -190,46 +159,7 @@ export function ProductsSettings() {
         ))}
       </div>
 
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add a product</DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col gap-3 py-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="product-name">Name</Label>
-              <Input
-                id="product-name"
-                placeholder="Marketing Hub"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                autoFocus
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="product-url">Site URL (optional)</Label>
-              <Input
-                id="product-url"
-                placeholder="https://example.com/marketing"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                With a URL we start monitoring the product right away.
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setAddOpen(false)} disabled={busy}>
-              Cancel
-            </Button>
-            <Button onClick={onAdd} disabled={busy || !name.trim()}>
-              {busy && <Loader2 size={14} className="mr-1 animate-spin" />}
-              Add product
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <AddProductWizard open={addOpen} onOpenChange={setAddOpen} onCreated={load} />
 
       <Dialog
         open={deleteTarget != null}

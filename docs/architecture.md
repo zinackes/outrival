@@ -425,7 +425,12 @@ carte (état live uniquement).
        jobs    → extract-jobs    → diff actives + Postgres job_counts
                   (structured-first = ATS API JSON island puis JobPosting JSON-LD ; pipeline complet.
                    patch-32 : 7 ATS — Greenhouse/Lever/Ashby/SmartRecruiters/Recruitee/Workable +
-                   Personio (feed XML) ; schéma cross-ATS enrichi séniorité/datePost/salaire normalisé)
+                   Personio (feed XML) ; schéma cross-ATS enrichi séniorité/datePost/salaire normalisé.
+                   careers-link discovery élargie (labels « Jobs »/« Hiring », paths open-positions,
+                   boards Notion off-site) + JOBS_RENDER_ENABLED : la page careers/board retenue et
+                   les hops off-site sont rendus au navigateur (L1) + scroll, sinon les offres injectées
+                   côté client — placeholder SSR « Loading positions… » — restent invisibles ; le
+                   probing des paths reste en L0. Sans ça : chemin L0-only précédent)
        g2/capt → extract-reviews → praises/complaints + Postgres review_scores
                   (structured-first scores via AggregateRating ; résumé qualitatif reste IA.
                    patch-32 : l'extraction IA renvoie en plus les sous-notes /5
@@ -706,6 +711,7 @@ HOMEPAGE_SCROLL_PASSES=2              # patch-16 — progressive scroll passes (
 HOMEPAGE_LAZY_WAIT_MS=2000            # patch-16 — wait after each scroll pass
 HOMEPAGE_NARRATIVE_MIN_SEVERITY=medium  # patch-16 — min severity to spend an AI narrative
 HOMEPAGE_SCREENSHOT_ENABLED=true     # capture a homepage screenshot (floors the cascade at L1 = browser render per homepage scrape) → pHash visual-redesign + before/after visual diff. false = cheap L0 fetch, no screenshot
+JOBS_RENDER_ENABLED=true             # jobs source only — render the committed careers/board page at L1 + scroll so client-injected openings (SSR "Loading positions…" placeholders) load before extraction. Path probing stays cheap L0; only the kept page + off-site hops pay a render. false = previous L0-only behaviour exactly
 ENRICHMENTS_PHASH_THRESHOLD=15          # patch-17 — Hamming distance → visual redesign
 ENRICHMENTS_VOLATILE_THRESHOLD=5        # patch-17 — consecutive diffs → line is volatile
 ENRICHMENTS_VOLATILE_RESET=10           # patch-17 — stable scrapes → analysable again

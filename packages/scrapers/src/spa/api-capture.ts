@@ -1,6 +1,7 @@
 import { chromium } from "patchright";
 import { patchrightLaunchOptions } from "../lib/proxy";
 import { realisticHeaders, realisticUserAgent } from "../lib/fingerprint";
+import { collapseAnimatedCounters } from "../lib/normalize-text";
 import type { CapturedApiCall } from "./filter";
 
 /**
@@ -70,7 +71,7 @@ export async function scrapeWithApiCapture(url: string): Promise<SpaCaptureResul
       // Let late XHR/fetch calls (post-hydration data fetches) land.
       await page.waitForTimeout(2000);
       const html = await page.content();
-      const text = await page.evaluate(() => document.body?.innerText ?? "");
+      const text = collapseAnimatedCounters(await page.evaluate(() => document.body?.innerText ?? ""));
       return { html, text, statusCode: response?.status(), apiCalls };
     } finally {
       await context.close().catch(() => {});

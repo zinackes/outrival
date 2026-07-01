@@ -35,7 +35,7 @@ import {
   type SelfProductChange,
 } from "@/lib/api";
 import { SelfChangesPanel } from "@/components/outrival/self-change-review";
-import { AnalysisNotice } from "@/components/outrival/analysis-status";
+import { AnalysisNotice, AnalysisProgress } from "@/components/outrival/analysis-status";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -927,6 +927,12 @@ export function MyProductView({
           </div>
         }
       />
+
+      {/* Prominent stepper while the first analysis runs — mirrors the competitor
+          page so the profile cards below read as "in progress", not empty. Only the
+          in-flight case; scan failures stay owned by the scanError card below and
+          the summary-slot notice keeps handling needs_attention. */}
+      {p.analysis.pending && <AnalysisProgress analysis={p.analysis} className="mb-4" />}
 
       <SelfChangesPanel changes={changes} actingId={actingId} onResolve={resolve} />
 

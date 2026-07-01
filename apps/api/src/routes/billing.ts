@@ -6,7 +6,7 @@ import { BILLING_PERIODS, PLAN_LIMITS, PLANS, type Plan } from "@outrival/shared
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
-import { countActiveCompetitors } from "../lib/plan";
+import { countActiveCompetitors, pausedByPlanCap } from "../lib/plan";
 import { getPriceId, getStripe } from "../lib/stripe";
 import { captureServerEvent } from "../lib/posthog";
 
@@ -40,6 +40,13 @@ billingRouter.get("/", async (c) => {
   const limits = PLAN_LIMITS[org.plan];
   const limit = limits.maxCompetitors;
 
+  // Which competitors the plan cap actually froze — the notice names them so the
+  // user isn't left guessing. Only queried when over cap (empty otherwise).
+  const paused =
+    Number.isFinite(limit) && used > limit
+      ? await pausedByPlanCap(orgId, org.plan)
+      : [];
+
   // Pending downgrade-to-free state: when the user cancels, Stripe keeps the sub
   // `active` with cancel_at_period_end=true until the cycle ends (then fires
   // subscription.deleted → free). Read it live (best-effort) so the dashboard can
@@ -66,6 +73,7 @@ billingRouter.get("/", async (c) => {
       competitors: {
         used,
         limit: Number.isFinite(limit) ? limit : null,
+        paused,
       },
     },
     features: limits.features,

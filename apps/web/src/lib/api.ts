@@ -133,6 +133,10 @@ export interface Competitor {
   // source; muted = signals still tracked but no immediate alert.
   monitoringPaused: boolean;
   alertsMuted: boolean;
+  // Frozen by the plan's competitor cap (over-cap after a downgrade) — the scheduler
+  // skips it non-destructively until the org upgrades. List endpoint only; distinct
+  // from the user-driven monitoringPaused. Absent/false = within cap.
+  pausedByPlan?: boolean;
   createdAt: string;
   updatedAt: string;
   stats?: CompetitorStats;
@@ -314,6 +318,9 @@ export interface Signal {
   // The current user's quality verdict on this signal (patch-21), preloaded so
   // the inline feedback buttons render in the right state. null = no verdict yet.
   feedbackVerdict: "useful" | "not_useful" | "neutral" | null;
+  // Id of that verdict row, so re-clicking the active thumb removes it instead of
+  // re-submitting (the delete path needs the id). null when there's no verdict.
+  feedbackId: string | null;
   // AI self-confidence + self-check flag (patch-24). aiConfidence drives the
   // ConfidenceDot (hidden when "high"); aiFlagged shows the "couldn't be verified"
   // warning. Both null when the signal predates grounding.
@@ -418,6 +425,9 @@ export interface ActivitySource {
   competitorId: string;
   competitorName: string;
   competitorColor?: string | null;
+  // True for the org's own product (self-competitor): the UI badges it and links to
+  // the products page instead of a competitor detail page.
+  isSelf?: boolean;
   sourceType: string;
   lastRunAt: string | null;
   nextRunAt: string | null;
@@ -432,6 +442,7 @@ export interface ActivityUpcoming {
   competitorId: string;
   competitorName: string;
   competitorColor?: string | null;
+  isSelf?: boolean;
   sourceType: string;
   nextRunAt: string;
 }
@@ -485,6 +496,9 @@ export interface ActivityEvent {
   competitorId: string;
   competitorName: string;
   competitorColor?: string | null;
+  // True for the org's own product (self-competitor) — badged and linked to the
+  // products page rather than a competitor detail page.
+  isSelf?: boolean;
   sourceType: string;
   status: "success" | "no_change" | "failed";
   durationMs: number;
@@ -885,7 +899,13 @@ export interface BillingInfo {
   cancelAtPeriodEnd: boolean;
   cancelAt: number | null;
   usage: {
-    competitors: { used: number; limit: number | null };
+    // paused = real competitors frozen by the plan cap (over-cap after a
+    // downgrade), oldest-kept / newest-paused. Empty when within the cap.
+    competitors: {
+      used: number;
+      limit: number | null;
+      paused: Array<{ id: string; name: string }>;
+    };
   };
   features: {
     battleCards: boolean;
@@ -1838,11 +1858,43 @@ export const api = {
     request<{ products: ProductSummary[]; plan: string; limit: number }>(
       `/api/products`,
     ),
-  createProduct: (body: { name: string; url?: string }) =>
+  createProduct: (body: {
+    name: string;
+    url?: string;
+    repoUrl?: string;
+    profile?: ProductProfile;
+  }) =>
     request<{ product: { id: string } }>(`/api/products`, {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  // Add-product wizard — session-less profile derivation (mirrors the onboarding
+  // analyze-* methods, but scoped to a not-yet-created product; the returned profile
+  // is edited then submitted to createProduct).
+  analyzeProductUrl: (url: string) =>
+    request<{ profile: ProductProfile }>("/api/products/analyze", {
+      method: "POST",
+      body: JSON.stringify({ mode: "url", url }),
+    }),
+  analyzeProductDescription: (body: {
+    description: string;
+    category?: string;
+    inspirations?: string[];
+  }) =>
+    request<{ profile: ProductProfile }>("/api/products/analyze", {
+      method: "POST",
+      body: JSON.stringify({ mode: "description", ...body }),
+    }),
+  analyzeProductRepo: (repoUrl: string) =>
+    request<{ profile: ProductProfile }>("/api/products/analyze", {
+      method: "POST",
+      body: JSON.stringify({ mode: "repo", repoUrl }),
+    }),
+  analyzeProductDocument: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return postForm<{ profile: ProductProfile }>("/api/products/analyze-document", form);
+  },
   updateProduct: (
     id: string,
     body: { name?: string; position?: number; isPrimary?: true },

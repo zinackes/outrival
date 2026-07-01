@@ -451,6 +451,7 @@ export function SignalCard({
             targetType="signal"
             targetId={signal.id}
             currentVerdict={signal.feedbackVerdict}
+            currentFeedbackId={signal.feedbackId}
           />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

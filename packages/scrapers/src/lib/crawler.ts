@@ -72,6 +72,7 @@ export async function scrapePage(
     progressiveScroll: options.progressiveScroll,
     screenshot: options.screenshot,
     blockResources: options.blockResources,
+    render: options.render,
   });
 
   if (!outcome.ok || outcome.level === null || !outcome.html) {

@@ -3,12 +3,14 @@
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { Lock, Plus, Loader2, Activity, Star, Settings2 } from "lucide-react";
+import { Lock, Plus, Loader2, Activity, Star, Settings2, Link2 } from "lucide-react";
 import {
   PLAN_LABELS,
   MONITOR_FREQUENCIES,
   planIncludesSource,
   minPlanForSource,
+  planIncludesFrequency,
+  minPlanForFrequency,
   validateReviewUrl,
   type Plan,
   type SourceType,
@@ -20,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Dialog,
   DialogContent,
@@ -36,7 +39,6 @@ import {
   TabLoading,
   MonitorEmptyState,
   SourceSummary,
-  FrequencyButton,
   type MonitorSourceProps,
 } from "./shared";
 
@@ -73,45 +75,6 @@ const REVIEW_SOURCE_OPTIONS: {
   },
 ];
 
-// A review-source pill carrying the plan it's included in. Sources the current
-// plan doesn't cover are locked (lock icon) and route to the paywall on click
-// instead of being selectable — keeping the picker in sync with the server gate.
-function ReviewSourceButton({
-  option,
-  plan,
-  selected,
-  onSelect,
-  onLocked,
-}: {
-  option: { value: ReviewSourceType; label: string };
-  plan: Plan;
-  selected: boolean;
-  onSelect: () => void;
-  onLocked: () => void;
-}) {
-  const locked = !planIncludesSource(plan, option.value);
-  return (
-    <Button
-      type="button"
-      size="sm"
-      variant={selected ? "default" : "secondary"}
-      onClick={() => (locked ? onLocked() : onSelect())}
-      className="h-7 gap-1.5 text-xs"
-    >
-      {locked && <Lock size={10} className="opacity-70" />}
-      {option.label}
-      <span
-        className={cn(
-          "inline-flex items-center rounded px-1 py-0.5 text-meta leading-none font-medium uppercase tracking-wide",
-          selected ? "bg-primary-foreground/15" : "bg-muted-foreground/15 text-muted-foreground",
-        )}
-      >
-        {PLAN_LABELS[minPlanForSource(option.value)]}
-      </span>
-    </Button>
-  );
-}
-
 function ReviewEnableState({
   plan,
   onEnable,
@@ -145,33 +108,68 @@ function ReviewEnableState({
         </p>
       </div>
 
-      <div className="flex gap-1.5">
-        {REVIEW_SOURCE_OPTIONS.map((o) => (
-          <ReviewSourceButton
-            key={o.value}
-            option={o}
-            plan={plan}
-            selected={o.value === source}
-            onSelect={() => setSource(o.value)}
-            onLocked={() => onLockedSource?.(o.value)}
-          />
-        ))}
-      </div>
+      <div className="w-full max-w-md space-y-4 text-left">
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-foreground">Review source</p>
+          <ToggleGroup
+            type="single"
+            value={source}
+            onValueChange={(v) => {
+              if (!v) return;
+              const next = v as ReviewSourceType;
+              if (!planIncludesSource(plan, next)) {
+                onLockedSource?.(next);
+                return;
+              }
+              setSource(next);
+            }}
+            variant="outline"
+            size="sm"
+            className="w-full"
+          >
+            {REVIEW_SOURCE_OPTIONS.map((o) => {
+              const locked = !planIncludesSource(plan, o.value);
+              return (
+                <ToggleGroupItem
+                  key={o.value}
+                  value={o.value}
+                  className="grow basis-0 gap-1.5"
+                  title={
+                    locked ? `Requires ${PLAN_LABELS[minPlanForSource(o.value)]}` : undefined
+                  }
+                >
+                  {locked && <Lock size={11} className="opacity-70" />}
+                  {o.label}
+                </ToggleGroupItem>
+              );
+            })}
+          </ToggleGroup>
+        </div>
 
-      <div className="w-full max-w-md flex flex-col gap-1.5 text-left">
-        <Input
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder={active.placeholder}
-          inputMode="url"
-          autoComplete="off"
-          disabled={sourceLocked}
-        />
-        <p className="text-xs text-muted-foreground">
-          {sourceLocked
-            ? `${active.label} reviews are included in the ${PLAN_LABELS[minPlanForSource(active.value)]} plan.`
-            : `Must be a ${active.host} URL.`}
-        </p>
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-foreground">Page URL</p>
+          <div className="relative">
+            <Link2
+              size={14}
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder={active.placeholder}
+              inputMode="url"
+              autoComplete="off"
+              disabled={sourceLocked}
+              className="pl-8"
+              aria-invalid={trimmed !== "" && !sourceLocked && !valid}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {sourceLocked
+              ? `${active.label} reviews are included in the ${PLAN_LABELS[minPlanForSource(active.value)]} plan.`
+              : `Must be a ${active.host} URL.`}
+          </p>
+        </div>
       </div>
 
       <Button
@@ -415,7 +413,7 @@ function ReviewSourceToolbar({
         )}
       </div>
       <Button size="sm" variant="outline" onClick={onManage} className="h-7 text-xs shrink-0">
-        <Settings2 size={12} /> Manage source
+        <Settings2 size={12} /> Configure
       </Button>
     </div>
   );
@@ -487,71 +485,115 @@ function ReviewSourceDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Manage review source</DialogTitle>
+          <DialogTitle>Configure reviews</DialogTitle>
           <DialogDescription>
-            Edit the watched page and cadence, or switch to another review site.
+            Choose the review site, pin the page to watch, and how often it&apos;s checked.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
+        <div className="space-y-5">
           <div className="space-y-1.5">
-            <p className="text-xs font-medium text-muted-foreground">
-              Source
-            </p>
-            <div className="flex gap-1.5">
-              {REVIEW_SOURCE_OPTIONS.map((o) => (
-                <ReviewSourceButton
-                  key={o.value}
-                  option={o}
-                  plan={plan}
-                  selected={o.value === source}
-                  onSelect={() => setSource(o.value)}
-                  onLocked={() => {
-                    onClose();
-                    onLockedSource?.(o.value);
-                  }}
-                />
-              ))}
-            </div>
+            <p className="text-xs font-medium text-foreground">Review source</p>
+            <ToggleGroup
+              type="single"
+              value={source}
+              onValueChange={(v) => {
+                if (!v) return;
+                const next = v as ReviewSourceType;
+                if (!planIncludesSource(plan, next)) {
+                  onClose();
+                  onLockedSource?.(next);
+                  return;
+                }
+                setSource(next);
+              }}
+              variant="outline"
+              size="sm"
+              className="w-full"
+            >
+              {REVIEW_SOURCE_OPTIONS.map((o) => {
+                const locked = !planIncludesSource(plan, o.value);
+                return (
+                  <ToggleGroupItem
+                    key={o.value}
+                    value={o.value}
+                    className="grow basis-0 gap-1.5"
+                    title={
+                      locked ? `Requires ${PLAN_LABELS[minPlanForSource(o.value)]}` : undefined
+                    }
+                  >
+                    {locked && <Lock size={11} className="opacity-70" />}
+                    {o.label}
+                  </ToggleGroupItem>
+                );
+              })}
+            </ToggleGroup>
           </div>
           <div className="space-y-1.5">
-            <p className="text-xs font-medium text-muted-foreground">
-              Frequency
+            <p className="text-xs font-medium text-foreground">Check frequency</p>
+            <ToggleGroup
+              type="single"
+              value={frequency}
+              onValueChange={(v) => {
+                if (!v) return;
+                const next = v as MonitorFrequency;
+                if (!planIncludesFrequency(plan, next)) {
+                  onClose();
+                  onLockedFrequency(next);
+                  return;
+                }
+                setFrequency(next);
+              }}
+              variant="outline"
+              size="sm"
+              className="w-full"
+              disabled={sourceChanged}
+            >
+              {MONITOR_FREQUENCIES.map((f) => {
+                const locked = !planIncludesFrequency(plan, f);
+                return (
+                  <ToggleGroupItem
+                    key={f}
+                    value={f}
+                    className="grow basis-0 gap-1.5 capitalize"
+                    title={
+                      locked ? `Requires ${PLAN_LABELS[minPlanForFrequency(f)]}` : undefined
+                    }
+                  >
+                    {locked && <Lock size={11} className="opacity-70" />}
+                    {f}
+                  </ToggleGroupItem>
+                );
+              })}
+            </ToggleGroup>
+            <p className="text-xs text-muted-foreground">
+              An upper bound — stable sources are checked less often automatically.
             </p>
-            <div className="flex gap-1.5">
-              {MONITOR_FREQUENCIES.map((f) => (
-                <FrequencyButton
-                  key={f}
-                  freq={f}
-                  plan={plan}
-                  selected={frequency === f}
-                  disabled={sourceChanged}
-                  onSelect={() => setFrequency(f)}
-                  onLocked={() => {
-                    onClose();
-                    onLockedFrequency(f);
-                  }}
-                />
-              ))}
-            </div>
           </div>
           <div className="space-y-1.5">
-            <p className="text-xs font-medium text-muted-foreground">
-              Page URL
-            </p>
-            <Input
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder={active.placeholder}
-              inputMode="url"
-              autoComplete="off"
-            />
-            <p className="text-xs text-muted-foreground">Must be a {active.host} URL.</p>
-            {trimmed !== "" && !urlValid && (
-              <p className="text-xs text-critical/80">
+            <p className="text-xs font-medium text-foreground">Page URL</p>
+            <div className="relative">
+              <Link2
+                size={14}
+                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder={active.placeholder}
+                inputMode="url"
+                autoComplete="off"
+                className="pl-8"
+                aria-invalid={trimmed !== "" && !urlValid}
+              />
+            </div>
+            {trimmed !== "" && !urlValid ? (
+              <p className="text-xs text-critical">
                 This URL isn&apos;t valid for {active.label}.
               </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">Must be a {active.host} URL.</p>
             )}
           </div>
           {sourceChanged && (

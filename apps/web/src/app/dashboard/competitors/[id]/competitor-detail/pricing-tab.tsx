@@ -345,6 +345,22 @@ function convertCurrency(
 
 type TierLite = { price: number | null; currency: string; billing_period: string };
 
+// The competitor's price expressed in our currency, e.g. "≈ €89/mo" — the concrete
+// number the "converted to EUR" footnote otherwise only promises. Null when there's
+// nothing to convert (same currency, quote-based/free tier, or no rate loaded yet).
+function convertedLabel(
+  tier: TierLite,
+  to: string,
+  rates: Record<string, number> | null,
+): string | null {
+  if (!to || tier.currency === to || tier.price == null || tier.price <= 0) return null;
+  const converted = convertCurrency(tier.price, tier.currency, to, rates);
+  if (converted === null) return null;
+  // Whole euros for the usual double-digit competitor prices; cents only when small.
+  const rounded = converted >= 10 ? Math.round(converted) : Math.round(converted * 100) / 100;
+  return `≈ ${formatTierPrice({ price: rounded, currency: to, billing_period: tier.billing_period })}`;
+}
+
 // Sort tiers by ascending price, pushing quote-based tiers (price null) last so
 // the entry/top ranking reads off the numeric ones.
 function byPriceAsc(a: { price: number | null }, b: { price: number | null }): number {
@@ -484,10 +500,11 @@ function PricingComparison({
   const lines: string[] = [];
   const entryCmp = compareTiers(ourEntry, theirEntry, rates);
   if (entryCmp.pct !== null && Math.abs(entryCmp.pct) >= 1) {
+    const theirConv = entryCmp.converted ? convertedLabel(theirEntry, ourCurrency, rates) : null;
     lines.push(
       `Your entry tier (${formatTierPrice(ourEntry)}) is ${Math.abs(entryCmp.pct).toFixed(0)}% ${
         entryCmp.pct < 0 ? "below" : "above"
-      } theirs (${formatTierPrice(theirEntry)})${entryCmp.converted ? ", currency-adjusted" : ""}.`,
+      } theirs (${formatTierPrice(theirEntry)}${theirConv ? ` ${theirConv}` : ""}).`,
     );
   }
   if (theirEntry.price === 0 && ourEntry.price != null && ourEntry.price > 0) {
@@ -512,15 +529,18 @@ function PricingComparison({
         </p>
       </div>
 
-      <table className="w-full text-sm">
+      {/* table-fixed + bounded widths so long plan names truncate instead of
+          blowing out the columns on a narrow mobile card; per-cell pr-3 keeps the
+          tier/price columns from touching when space is tight (worst on the left). */}
+      <table className="w-full table-fixed text-sm">
         <thead>
           <tr className="text-xs text-muted-foreground">
-            <th className="w-16 py-1.5 text-left font-normal">Tier</th>
-            <th className="py-1.5 text-left font-normal">You</th>
-            <th className="py-1.5 text-left font-normal">
-              <span className="block max-w-[140px] truncate normal-case">{competitorName}</span>
+            <th className="w-14 py-1.5 pr-3 text-left font-normal">Tier</th>
+            <th className="py-1.5 pr-3 text-left font-normal">You</th>
+            <th className="py-1.5 pr-3 text-left font-normal">
+              <span className="block truncate normal-case">{competitorName}</span>
             </th>
-            <th className="py-1.5 text-right font-normal">
+            <th className="w-12 py-1.5 text-right font-normal">
               <Percent className="ml-auto size-3 text-muted-foreground" aria-label="Difference" />
             </th>
           </tr>
@@ -528,18 +548,18 @@ function PricingComparison({
         <tbody>
           {rows.map(({ mine, theirs, cmp }, i) => (
             <tr key={i} className="border-t border-border">
-              <td className={cn("py-1.5", eyebrowClass("micro"))}>{rankLabel(i)}</td>
-              <td className="py-1.5">
+              <td className={cn("py-1.5 pr-3 align-top", eyebrowClass("micro"))}>{rankLabel(i)}</td>
+              <td className="py-1.5 pr-3 align-top">
                 {mine ? <TierCell tier={mine} /> : <span className="text-muted-foreground">—</span>}
               </td>
-              <td className="py-1.5">
+              <td className="py-1.5 pr-3 align-top">
                 {theirs ? (
-                  <TierCell tier={theirs} />
+                  <TierCell tier={theirs} convertedTo={ourCurrency} rates={rates} />
                 ) : (
                   <span className="text-muted-foreground">—</span>
                 )}
               </td>
-              <td className="py-1.5 text-right">
+              <td className="py-1.5 text-right align-top">
                 <DeltaCell cmp={cmp} from={theirs?.currency} to={mine?.currency} />
               </td>
             </tr>
@@ -568,17 +588,28 @@ function PricingComparison({
   );
 }
 
-// One side's tier in the comparison table: price (bold) and its plan name inline
-// (muted) on a single line, so each row stays one line tall.
+// One side's tier in the comparison table: price (bold) + plan name inline (muted).
+// When the tier is in a foreign currency, a second muted line shows what it costs in
+// our currency — the actual number a raw "149 AUD/mo" leaves the reader guessing at.
 function TierCell({
   tier,
+  convertedTo,
+  rates,
 }: {
   tier: { plan_name: string; price: number | null; currency: string; billing_period: string };
+  convertedTo?: string;
+  rates?: Record<string, number> | null;
 }) {
+  const conv = convertedTo ? convertedLabel(tier, convertedTo, rates ?? null) : null;
   return (
-    <div className="flex items-baseline gap-1.5 min-w-0">
-      <span className="font-semibold tabular-nums shrink-0">{formatTierPrice(tier)}</span>
-      <span className="truncate text-xs text-muted-foreground">{tier.plan_name}</span>
+    <div className="flex flex-col gap-0.5 min-w-0">
+      <div className="flex items-baseline gap-1.5 min-w-0">
+        <span className="font-semibold tabular-nums shrink-0">{formatTierPrice(tier)}</span>
+        <span className="truncate text-xs text-muted-foreground">{tier.plan_name}</span>
+      </div>
+      {conv && (
+        <span className="font-mono text-xs tabular-nums text-muted-foreground">{conv}</span>
+      )}
     </div>
   );
 }

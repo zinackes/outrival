@@ -46,6 +46,13 @@ const GENERIC_TOKENS = new Set([
   "thumbnail", "mark", "wordmark", "company",
 ]);
 
+// Placeholder / CMS-export words that, PAIRED WITH AN INDEX, name a slot rather than
+// a brand: "image 17", "Picture1", "logo 2", "screenshot 3", "asset-4". Distinct from
+// GENERIC_TOKENS (a bare "Logo" is uninformative, not junk) — here the trailing number
+// is what makes it confidently non-brand.
+const PLACEHOLDER_WORD_RE =
+  /^(images?|img|pictures?|photos?|logos?|logotypes?|wordmarks?|assets?|graphics?|banners?|thumbnails?|screenshots?|frames?|groups?|untitled|placeholders?|icons?|avatars?|marks?|files?|unnamed|downloads?|uploads?|copy|default|items?|slides?|elements?|rectangles?|layers?|vectors?|bitmaps?|masks?|artboards?|components?)$/i;
+
 // Org / institution keywords. A name carrying one of these is a company, never a
 // person — they protect brands like "Sommet Education" / "Brave Browser" from the
 // person-name heuristic. Lowercase; ASCII-folded comparison happens at call site.
@@ -202,6 +209,60 @@ function looksLikeDescriptivePhrase(t: string): boolean {
   return hasFn && noCaps; // a lowercase 3+ word run with a function word reads as prose
 }
 
+// A name whose tokens are ALL placeholder-words / bare numbers, with at least one
+// index present: "image 17", "Picture1 1", "logo 2". A lone "Logo" stays
+// UNINFORMATIVE (handled earlier) — it's the index that turns it into junk.
+function isGenericNumbered(tokens: string[]): boolean {
+  if (tokens.length === 0) return false;
+  let hasIndex = false;
+  for (const tok of tokens) {
+    if (/^\d+$/.test(tok)) {
+      hasIndex = true;
+      continue;
+    }
+    const glued = tok.match(/^([a-z]+)(\d+)$/i); // "Picture1", "image17"
+    if (glued && PLACEHOLDER_WORD_RE.test(glued[1]!)) {
+      hasIndex = true;
+      continue;
+    }
+    if (PLACEHOLDER_WORD_RE.test(tok)) continue;
+    return false; // a real word ⇒ not a generic-numbered placeholder
+  }
+  return hasIndex;
+}
+
+// A single token that reads as a machine-generated asset id / CMS upload hash rather
+// than a brand: "aU65NHNYClf9opnN", "8BOoF08xf1E", "wp1a2b3c". A LONG token is flagged
+// on strong randomness signals — digits interleaved among letters, 3+ internal case
+// switches over an unpronounceable base, or a near-vowelless consonant run — none of
+// which a real wordmark exhibits. Short tokens are exempt so acronyms / tickers survive
+// ("PSA", "3M", "eBay", "Auth0", "H2O", "23andMe"), and CamelCase brands survive via the
+// vowel-ratio guard ("BigCommerce", "OpenTable" read as pronounceable, not hashes).
+function looksLikeAssetHash(token: string): boolean {
+  if (token.length < 8) return false;
+  const letters = token.replace(/[^a-z]/gi, "");
+  if (letters.length < 2) return false; // pure-number handled by isGenericNumbered
+  const vowels = (token.match(/[aeiouy]/gi) ?? []).length;
+  const vowelRatio = vowels / letters.length;
+  const hasDigit = /\d/.test(token);
+  const interleavedDigit = /[a-z]\d+[a-z]/i.test(token); // excludes leading "3M" / trailing "s3"
+  let switches = 0;
+  for (let i = 1; i < token.length; i++) {
+    const prev = token[i - 1]!;
+    const cur = token[i]!;
+    if (
+      (/[a-z]/.test(prev) && /[A-Z]/.test(cur)) ||
+      (/[A-Z]/.test(prev) && /[a-z]/.test(cur))
+    )
+      switches++;
+  }
+  return (
+    (hasDigit && interleavedDigit && (switches >= 1 || vowelRatio < 0.34)) ||
+    (switches >= 3 && vowelRatio < 0.3) ||
+    (vowelRatio < 0.2 && letters.length >= 8)
+  );
+}
+
 /**
  * Classify an `<img alt>` for the customer wall. `null`/empty → uninformative
  * (the entry may still carry a renderable image).
@@ -220,6 +281,14 @@ export function classifyLogoName(raw: string | null | undefined): LogoNameVerdic
   if (isLanguageName(cleaned)) return { kind: "junk" };
   if (looksLikePersonName(cleaned)) return { kind: "junk" };
   if (looksLikeDescriptivePhrase(cleaned)) return { kind: "junk" };
+
+  // Machine-generated names slip past every rule above because they aren't words at
+  // all: CMS upload hashes ("aU65NHNYClf9opnN bg right") and indexed placeholders
+  // ("image 17", "Picture1 1"). Neither is a customer brand — drop them.
+  const tokens = cleaned.split(/[\s._\-–—/|]+/).filter(Boolean);
+  if (tokens.some(looksLikeAssetHash)) return { kind: "junk" };
+  if (isGenericNumbered(tokens)) return { kind: "junk" };
+
   if (cleaned.length > 60) return { kind: "junk" }; // a sentence, not a wordmark
 
   return { kind: "brand", name: cleaned };

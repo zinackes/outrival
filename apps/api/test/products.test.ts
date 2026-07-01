@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Hono } from "hono";
+import { eq } from "drizzle-orm";
 import { competitors } from "@outrival/db";
 import { makeTestDb, type TestDb } from "./db-harness";
 import { asUser, installAppMocks, mountApp, seedOrg } from "./app-harness";
@@ -120,5 +121,55 @@ describe("products per-tier limit + invariants", () => {
     );
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe("primary_product");
+  });
+});
+
+describe("add-product wizard: synchronous profile seeding", () => {
+  test("creating a product with a profile seeds the self-competitor's selfProfile", async () => {
+    // A fresh pro org so this is its first (primary) product and under the limit.
+    const C = await seedOrg(testDb, { plan: "pro" });
+    const res = await app.request(
+      "/api/products",
+      asUser(C.userId, C.email, {
+        method: "POST",
+        body: JSON.stringify({
+          name: "Analytics Suite",
+          profile: {
+            category: "Product analytics",
+            audience: "Product managers",
+            valueProp: "See what users actually do",
+            pricingModel: "",
+          },
+        }),
+      }),
+    );
+    expect(res.status).toBe(201);
+    const productId = (await res.json()).product.id;
+
+    // The wizard's whole point: the backing self-competitor carries the seeded,
+    // auto-detected profile immediately — this is what unblocks discovery for a
+    // freshly added SKU instead of waiting on the first async scrape.
+    const detail = await (
+      await app.request(`/api/products/${productId}`, asUser(C.userId, C.email))
+    ).json();
+    const [self] = await testDb
+      .select()
+      .from(competitors)
+      .where(eq(competitors.id, detail.product.selfCompetitorId));
+    expect(self?.type).toBe("self");
+    expect(self?.selfProfile?.category?.value).toBe("Product analytics");
+    expect(self?.selfProfile?.category?.isFromAutoDetect).toBe(true);
+    expect(self?.selfProfile?.valueProp?.value).toBe("See what users actually do");
+  });
+
+  test("analyze rejects an invalid body before any AI call (400)", async () => {
+    const res = await app.request(
+      "/api/products/analyze",
+      asUser(A.userId, A.email, {
+        method: "POST",
+        body: JSON.stringify({ mode: "url", url: "not-a-url" }),
+      }),
+    );
+    expect(res.status).toBe(400);
   });
 });

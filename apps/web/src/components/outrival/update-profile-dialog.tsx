@@ -53,8 +53,9 @@ const EMPTY: ProductProfile = {
 type ProfileTextKey = "category" | "audience" | "whatItDoes" | "valueProp" | "pricingModel";
 
 // Required to save — `whatItDoes` is encouraged but never blocks (the AI fills it,
-// and legacy profiles predate it).
-const REQUIRED_FIELDS: ProfileTextKey[] = ["category", "audience", "valueProp", "pricingModel"];
+// and legacy profiles predate it). `pricingModel` is optional too: a free /
+// open-source product legitimately has no pricing, and the AI leaves it blank.
+const REQUIRED_FIELDS: ProfileTextKey[] = ["category", "audience", "valueProp"];
 
 const STAGES: { key: ProjectStage; label: string; icon: typeof Globe }[] = [
   { key: "idea", label: "Idea", icon: Lightbulb },

@@ -86,7 +86,7 @@ import {
   type AnalysisStatus,
 } from "@outrival/shared";
 import { FreshnessDot } from "@/components/outrival/freshness-dot";
-import { AnalysisNotice } from "@/components/outrival/analysis-status";
+import { AnalysisNotice, AnalysisProgress } from "@/components/outrival/analysis-status";
 import { MonitorFreshnessAction } from "@/components/outrival/monitor-freshness";
 import { MonitorAlternatives } from "@/components/outrival/monitor-alternatives";
 import { CompetitorTechStack } from "@/components/outrival/competitor-tech-stack";
@@ -954,6 +954,18 @@ export function CompetitorDetailView({ id }: { id: string }) {
           onExport={exportSignals}
         />
 
+        {/* Where the first analysis is — a prominent stepper for a freshly added
+            competitor so the empty tabs below read as "in progress", not broken.
+            Self-hides once ready/idle; needs_attention retries the homepage scrape. */}
+        <AnalysisProgress
+          analysis={analysis}
+          onRetry={() => {
+            const homepage = monitors.find((m) => m.sourceType === "homepage");
+            if (homepage) requestRunMonitor(homepage.id);
+            else startSummaryGeneration();
+          }}
+        />
+
         <MonitorSources
           monitors={monitors}
           scrapingIds={scrapingIds}
@@ -1061,6 +1073,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
                 overview={overview}
                 monitors={monitors}
                 scrapingIds={scrapingIds}
+                analysis={analysis}
                 pricingStatus={competitor.pricingStatus}
                 pricingNote={competitor.pricingNote}
                 onRun={requestRunMonitor}

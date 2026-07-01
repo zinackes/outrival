@@ -200,8 +200,8 @@ export function BattleCardTab({ competitorId }: Props) {
           title="No battle card for this competitor yet"
           description="Generate one with AI in a few seconds."
           actions={
-            <Button onClick={onGenerate}>
-              <Sparkles size={14} /> Generate battle card
+            <Button size="sm" onClick={onGenerate}>
+              <Sparkles size={12} /> Generate battle card
             </Button>
           }
         />
@@ -383,8 +383,12 @@ export function BattleCardTab({ competitorId }: Props) {
           })}
           {!card.pdfR2Key && " · PDF pending"}
         </p>
-        {/* Quality feedback (patch-21): "not useful" flags the card for regeneration. */}
-        {!editing && <FeedbackButtons targetType="battle_card" targetId={card.id} />}
+        {/* Quality feedback (patch-21): "not useful" flags the card for regeneration.
+            autoHydrate — a single card, so it self-fetches the existing verdict on
+            mount rather than threading it through the battle-card payload. */}
+        {!editing && (
+          <FeedbackButtons targetType="battle_card" targetId={card.id} autoHydrate />
+        )}
       </div>
       {paywallNode}
     </TabCard>

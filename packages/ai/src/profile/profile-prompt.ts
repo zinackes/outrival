@@ -36,7 +36,8 @@ For any text field you cannot determine, return "" (or [] for keywords) — neve
 guess and never fall back to a generic label.`;
 
 export const PROFILE_OUTPUT_RULES = `Reply ONLY with a valid JSON object, no markdown and no surrounding text.
-Write all text values in English.`;
+Write every text value in English. If the source page is written in another
+language, translate the values into English — never echo the source language.`;
 
 export const PROFILE_FORMAT_BLOCK = `<format>
 {

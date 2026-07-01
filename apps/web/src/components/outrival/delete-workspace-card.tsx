@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -16,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
+import { toastApiError } from "@/lib/error-helpers";
 import { workspaceSettingsQuery } from "@/lib/queries";
 import { ReauthCodeField } from "@/components/outrival/reauth-code-field";
 
@@ -38,7 +38,7 @@ export function DeleteWorkspaceCard() {
       window.location.assign("/dashboard");
     } catch (err) {
       setDeleting(false);
-      toast.error(err instanceof Error ? err.message : "Deletion failed — try again.");
+      toastApiError(err, { title: "Couldn't delete the workspace" });
     }
   }
 

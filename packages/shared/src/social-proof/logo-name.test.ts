@@ -158,6 +158,42 @@ test("keeps real brands, including lowercase wordmarks", () => {
   }
 });
 
+// ─── junk: CMS asset hashes / machine-generated upload names ──────────────────
+test("drops CMS asset-hash names (incl. with descriptive suffixes)", () => {
+  for (const n of [
+    "aU65NHNYClf9opnN",
+    "aU65NHNYClf9opnN bg right",
+    "afNV 8BOoF08xf1E Dashboard",
+    "8BOoF08xf1E",
+    "wp1a2b3c",
+  ]) {
+    expect(isJunkLogoName(n)).toBe(true);
+  }
+});
+
+test("keeps real brands that look acronym/ticker/CamelCase-y", () => {
+  // Short acronyms, tickers, digit-bearing and CamelCase brands must survive the
+  // asset-hash heuristic.
+  for (const n of [
+    "PSA", "CGC", "TAG", "eBay", "IKEA", "3M", "H2O", "Auth0", "23andMe", "37signals",
+    "BigCommerce", "OpenTable", "PayPal", "GitHub", "WooCommerce", "Salesforce",
+    "TCGplayer", "cardmarket", "Heritage Auctions",
+  ]) {
+    expect(classifyLogoName(n).kind).toBe("brand");
+  }
+});
+
+// ─── junk: indexed placeholder names ─────────────────────────────────────────
+test("drops indexed placeholder names, keeps bare placeholders uninformative", () => {
+  for (const n of ["image 17", "image 19", "Picture1 1", "img 3", "logo 2", "screenshot 4", "asset-7"]) {
+    expect(isJunkLogoName(n)).toBe(true);
+  }
+  // A lone placeholder word (no index) stays uninformative — lean on the image.
+  expect(classifyLogoName("image").kind).toBe("uninformative");
+  // A real word + number is NOT a placeholder ("Studio 54", "7-Eleven").
+  expect(classifyLogoName("Studio 54").kind).toBe("brand");
+});
+
 // ─── image-source junk ───────────────────────────────────────────────────────
 test("isBlankSvgDataUri flags empty <svg/> spacers only", () => {
   expect(

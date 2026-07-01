@@ -192,6 +192,7 @@ export function WorkspaceSwitcher({
               <UserAvatar
                 seed={user.email ?? user.name ?? "user"}
                 size={32}
+                className="rounded-md"
               />
               {multiProduct ? (
                 // Product is the primary context; org/plan drops to the muted sub-line.

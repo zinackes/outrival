@@ -53,6 +53,23 @@ const ERROR_CONFIGS: Record<string, ErrorConfig> = {
     title: "Not found",
     description: "That item doesn't exist anymore, or you don't have access to it.",
   },
+  // Generic Zod validation failure — the API returns `{ error: "Invalid body" }` on
+  // every route, so this keys on that exact string. Front-end field validation should
+  // catch most cases first; this is the clean fallback when one slips through.
+  "Invalid body": {
+    title: "Some details need fixing",
+    description: "Check the highlighted fields and try again.",
+  },
+  // Step-up re-auth (delete workspace / account): the 6-digit code was wrong/expired.
+  reauth_failed: {
+    title: "That code didn't match",
+    description: "Check the 6-digit verification code we emailed you, then try again.",
+  },
+  // Type-to-confirm value didn't match the workspace name / account email.
+  confirm_mismatch: {
+    title: "Confirmation didn't match",
+    description: "Type the exact value shown to confirm this action.",
+  },
 };
 
 const DEFAULT_CONFIG: ErrorConfig = {
@@ -102,11 +119,14 @@ export function toastRescanLimit(err: unknown, toastId?: string | number): boole
 
 export function toastApiError(
   err: unknown,
-  opts?: { title?: string; onRetry?: () => void },
+  opts?: { title?: string; onRetry?: () => void; id?: string | number },
 ): void {
   const cfg = errorConfig(err);
   const showRetry = cfg.action?.type === "retry" && Boolean(opts?.onRetry);
   toast.error(opts?.title ?? cfg.title, {
+    // `id` lets a caller replace an in-flight loading toast (e.g. a re-scan) instead
+    // of stacking a second one.
+    id: opts?.id,
     description: cfg.description,
     // An error carrying a Retry action must outlive the default 5s — the user
     // reads the description, then decides. Plain errors keep the default.

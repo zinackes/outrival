@@ -41,7 +41,7 @@ plus par `db:push` direct (qui causait du drift + des colonnes manquantes en pro
 - JAMAIS de package à la racine sauf tooling (eslint, typescript, turbo)
 - JAMAIS d'import cross-apps direct — passer par @outrival/shared
 - Noms : @outrival/web · @outrival/api · @outrival/workers
-         @outrival/db · @outrival/ai · @outrival/scrapers · @outrival/shared
+         @outrival/db · @outrival/ai · @outrival/scrapers · @outrival/shared · @outrival/queue
 
 ## Routage des données — CRITIQUE
 

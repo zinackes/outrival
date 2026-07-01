@@ -70,7 +70,7 @@ const WORKSPACE: NavItem[] = [
   { href: "/dashboard/settings/members", label: "Members", icon: Users, exact: true, multiUserOnly: true, keywords: "team invite roles" },
   { href: "/dashboard/settings/billing", label: "Subscription", icon: CreditCard, keywords: "plan upgrade invoice payment stripe billing renew receipt" },
   { href: "/dashboard/settings/usage", label: "Usage", icon: Gauge, exact: true, keywords: "limits quota competitors battle cards rescans" },
-  { href: "/dashboard/settings/integrations", label: "Integrations", icon: Puzzle, exact: true, keywords: "slack webhook crm hubspot salesforce zapier" },
+  { href: "/dashboard/settings/integrations", label: "Integrations", icon: Puzzle, exact: true, keywords: "crm hubspot salesforce zapier make webhooks destinations" },
   { href: "/dashboard/settings/api-keys", label: "API keys", icon: Key, exact: true, keywords: "api token" },
   { href: "/dashboard/settings/data", label: "Data", icon: Database, exact: true, keywords: "export import gdpr retention privacy download" },
 ];

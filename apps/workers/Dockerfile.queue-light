@@ -1,0 +1,32 @@
+# @outrival/workers — pg-boss LIGHT worker (crons, AI lane, extracts, digests,
+# alerts — no browser). Entry: src/queue/worker.ts with WORKER_ROLE=light.
+# Build from the MONOREPO ROOT:
+#   docker build -f apps/workers/Dockerfile.queue-light .
+# In Coolify: Build Pack = Dockerfile, Base Directory = /, Dockerfile = apps/workers/Dockerfile.queue-light.
+# syntax=docker/dockerfile:1
+
+# --- build: same pattern as apps/api/Dockerfile — deps cached on the lockfile,
+#     workers-only install, then a self-contained prod-only deploy tree.
+FROM node:22-bookworm-slim AS build
+ENV PNPM_HOME="/pnpm" PATH="/pnpm:$PATH"
+# The light worker never launches a browser — block every browser download.
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 PATCHRIGHT_SKIP_BROWSER_DOWNLOAD=1 PUPPETEER_SKIP_DOWNLOAD=1
+RUN corepack enable
+WORKDIR /repo
+# package.json alongside the lockfile so corepack pins the same pnpm for fetch
+# and install (see apps/api/Dockerfile for the drift failure mode).
+COPY package.json pnpm-lock.yaml ./
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm fetch
+COPY . .
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+    pnpm install --offline --frozen-lockfile --filter @outrival/workers...
+RUN pnpm --filter=@outrival/workers --prod deploy --legacy /app
+
+# --- runtime: Bun executes the TS entry directly (no build step), non-root.
+FROM oven/bun:1-slim AS runtime
+ENV NODE_ENV=production WORKER_ROLE=light
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 PATCHRIGHT_SKIP_BROWSER_DOWNLOAD=1
+WORKDIR /app
+COPY --from=build --chown=bun:bun /app /app
+USER bun
+CMD ["bun", "run", "src/queue/worker.ts"]

@@ -63,12 +63,44 @@ billingRouter.get("/", async (c) => {
     }
   }
 
+  // The card on file (default payment method) so the page can show "Visa •••• 4242"
+  // and drive an in-app update instead of bouncing to the hosted portal. Best-effort:
+  // a Stripe hiccup just hides the card line, never blocks the page.
+  let paymentMethod: {
+    brand: string | null;
+    last4: string | null;
+    expMonth: number | null;
+    expYear: number | null;
+  } | null = null;
+  if (org.stripeCustomerId) {
+    try {
+      const customer = await getStripe().customers.retrieve(org.stripeCustomerId, {
+        expand: ["invoice_settings.default_payment_method"],
+      });
+      if (!("deleted" in customer)) {
+        const pm = customer.invoice_settings?.default_payment_method;
+        const card = pm && typeof pm !== "string" ? pm.card : null;
+        if (card) {
+          paymentMethod = {
+            brand: card.brand ?? null,
+            last4: card.last4 ?? null,
+            expMonth: card.exp_month ?? null,
+            expYear: card.exp_year ?? null,
+          };
+        }
+      }
+    } catch {
+      // Card display is a nicety — ignore and render the page without it.
+    }
+  }
+
   return c.json({
     plan: org.plan,
     planPeriod: org.planPeriod,
     hasSubscription: Boolean(org.stripeSubscriptionId),
     cancelAtPeriodEnd,
     cancelAt,
+    paymentMethod,
     usage: {
       competitors: {
         used,
@@ -256,7 +288,12 @@ billingRouter.post("/resume", async (c) => {
   return c.json({ ok: true });
 });
 
-billingRouter.post("/portal", async (c) => {
+// In-app payment-method update — replaces the hosted portal for the one thing it was
+// still used for. Two steps: (1) mint a SetupIntent the Payment Element confirms
+// client-side, so card data goes straight to Stripe and never touches our server
+// (keeps us SAQ A); (2) the client hands the resulting payment method back to
+// /payment-method, which pins it as the customer + subscription default.
+billingRouter.post("/setup-intent", async (c) => {
   const userId = c.get("user").id;
   const orgId = await ensureUserOrg(userId);
 
@@ -264,16 +301,67 @@ billingRouter.post("/portal", async (c) => {
     where: eq(organizations.id, orgId),
   });
   if (!org) return c.json({ error: "Not found" }, 404);
-  if (!org.stripeCustomerId) {
-    return c.json({ error: "no_subscription" }, 400);
-  }
+  if (!org.stripeCustomerId) return c.json({ error: "no_subscription" }, 400);
 
-  const stripe = getStripe();
-  const base = webBaseUrl();
-  const portal = await stripe.billingPortal.sessions.create({
+  const setupIntent = await getStripe().setupIntents.create({
     customer: org.stripeCustomerId,
-    return_url: `${base}/dashboard/settings/billing`,
+    payment_method_types: ["card"],
+    usage: "off_session",
+    metadata: { orgId },
   });
 
-  return c.json({ url: portal.url });
+  if (!setupIntent.client_secret) return c.json({ error: "no_client_secret" }, 500);
+  return c.json({ clientSecret: setupIntent.client_secret });
+});
+
+const PaymentMethodSchema = z.object({ paymentMethodId: z.string().min(1) });
+
+billingRouter.post("/payment-method", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const parsed = PaymentMethodSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: "Invalid body" }, 400);
+
+  const userId = c.get("user").id;
+  const orgId = await ensureUserOrg(userId);
+
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, orgId),
+  });
+  if (!org) return c.json({ error: "Not found" }, 404);
+  if (!org.stripeCustomerId) return c.json({ error: "no_subscription" }, 400);
+
+  const stripe = getStripe();
+  const { paymentMethodId } = parsed.data;
+
+  // The SetupIntent already attached the PM to this customer; Stripe rejects a PM
+  // that isn't attached, so a forged/cross-tenant id can't be set here. Pin it as the
+  // default on the customer (drives future invoices) and on the subscription (avoids
+  // relying on the customer-default fallback resolution).
+  await stripe.customers.update(org.stripeCustomerId, {
+    invoice_settings: { default_payment_method: paymentMethodId },
+  });
+  if (org.stripeSubscriptionId) {
+    try {
+      await stripe.subscriptions.update(org.stripeSubscriptionId, {
+        default_payment_method: paymentMethodId,
+      });
+    } catch {
+      // A canceled/expired sub can't be updated — the customer default still applies.
+    }
+  }
+
+  void captureServerEvent(userId, "payment_method_updated", { orgId });
+
+  const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
+  return c.json({
+    ok: true,
+    card: pm.card
+      ? {
+          brand: pm.card.brand ?? null,
+          last4: pm.card.last4 ?? null,
+          expMonth: pm.card.exp_month ?? null,
+          expYear: pm.card.exp_year ?? null,
+        }
+      : null,
+  });
 });

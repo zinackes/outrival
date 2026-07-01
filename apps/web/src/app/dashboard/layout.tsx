@@ -1,7 +1,15 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { headers, cookies } from "next/headers";
+import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import { makeServerQueryClient } from "@/lib/server-query";
+import { getShellData } from "@/lib/api-server";
+import {
+  productsListQuery,
+  structuralChangesQuery,
+  aiStatusQuery,
+} from "@/lib/queries";
 import { PostHogIdentitySync } from "@/lib/posthog/identity-sync";
 import { TimezoneSync } from "@/components/outrival/timezone-sync";
 import { FeedbackWidget } from "@/components/outrival/feedback-widget";
@@ -84,11 +92,12 @@ export default async function DashboardLayout({
   const h = await headers();
   const cookieStore = await cookies();
 
-  const [session, status, billing, resumeSession] = await Promise.all([
+  const [session, status, billing, resumeSession, shell] = await Promise.all([
     getSession(h),
     getOnboardingStatus(h),
     getBilling(h),
     getResumeSession(h),
+    getShellData(),
   ]);
 
   if (!session) redirect("/auth");
@@ -123,26 +132,50 @@ export default async function DashboardLayout({
   const productScope = normalizeScope(cookieStore.get(PRODUCT_COOKIE)?.value);
 
   const userId = session?.user?.id as string | undefined;
+  // Read from the server session (same field SecuritySettings uses) and pass it down
+  // so the nudge banner doesn't fire its own client get-session on every page.
+  const twoFactorEnabled = Boolean(
+    (session?.user as { twoFactorEnabled?: boolean } | undefined)?.twoFactorEnabled,
+  );
+
+  // Seed the always-on shell widgets (switcher roster + the two banners) so they
+  // land in the first paint instead of firing one client fetch each on mount.
+  // Best-effort: a null field is skipped → that widget fetches client-side as before.
+  const queryClient = makeServerQueryClient();
+  if (shell.products) {
+    queryClient.setQueryData(productsListQuery().queryKey, shell.products);
+  }
+  if (shell.structuralChanges) {
+    queryClient.setQueryData(
+      structuralChangesQuery().queryKey,
+      shell.structuralChanges,
+    );
+  }
+  if (shell.aiStatus) {
+    queryClient.setQueryData(aiStatusQuery().queryKey, shell.aiStatus);
+  }
 
   return (
-    <DashboardShell
-      user={user}
-      org={org}
-      defaultOpen={defaultOpen}
-      productScope={productScope}
-    >
-      {userId && <PostHogIdentitySync userId={userId} plan={org.plan} />}
-      {userId && <TimezoneSync />}
-      {resumeSession && <OnboardingResumeBanner session={resumeSession} />}
-      {showOnboardingBanner && <OnboardingBanner />}
-      <AiStatusBanner />
-      <TwoFactorNudgeBanner />
-      <div className="px-4 pt-4 sm:px-6 empty:hidden">
-        <StructuralChangeBanner />
-      </div>
-      {children}
-      <FeedbackWidget />
-      <NpsPrompt />
-    </DashboardShell>
+    <HydrationBoundary state={dehydrate(queryClient)}>
+      <DashboardShell
+        user={user}
+        org={org}
+        defaultOpen={defaultOpen}
+        productScope={productScope}
+      >
+        {userId && <PostHogIdentitySync userId={userId} plan={org.plan} />}
+        {userId && <TimezoneSync />}
+        {resumeSession && <OnboardingResumeBanner session={resumeSession} />}
+        {showOnboardingBanner && <OnboardingBanner />}
+        <AiStatusBanner />
+        <TwoFactorNudgeBanner twoFactorEnabled={twoFactorEnabled} />
+        <div className="px-4 pt-4 sm:px-6 empty:hidden">
+          <StructuralChangeBanner />
+        </div>
+        {children}
+        <FeedbackWidget />
+        <NpsPrompt />
+      </DashboardShell>
+    </HydrationBoundary>
   );
 }

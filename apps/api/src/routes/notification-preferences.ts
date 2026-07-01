@@ -1,7 +1,11 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
-import { orgNotificationPreferences, orgRelevanceThreshold } from "@outrival/db";
+import { and, count, eq } from "drizzle-orm";
+import {
+  orgNotificationPreferences,
+  orgRelevanceThreshold,
+  qualityFeedback,
+} from "@outrival/db";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
@@ -112,9 +116,24 @@ notificationPreferencesRouter.get("/relevance-threshold", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
 
-  const row = await db.query.orgRelevanceThreshold.findFirst({
-    where: eq(orgRelevanceThreshold.orgId, orgId),
-  });
+  // Visible learning loop (post-onboarding activation, Lever 10): alongside the
+  // threshold itself, expose how much signal feedback the org has given — the
+  // input the weekly recalc learns from — so the UI can show the loop working.
+  const [row, feedbackRows] = await Promise.all([
+    db.query.orgRelevanceThreshold.findFirst({
+      where: eq(orgRelevanceThreshold.orgId, orgId),
+    }),
+    db
+      .select({ verdict: qualityFeedback.verdict, v: count() })
+      .from(qualityFeedback)
+      .where(
+        and(eq(qualityFeedback.orgId, orgId), eq(qualityFeedback.targetType, "signal")),
+      )
+      .groupBy(qualityFeedback.verdict),
+  ]);
+
+  const useful = feedbackRows.find((r) => r.verdict === "useful")?.v ?? 0;
+  const notUseful = feedbackRows.find((r) => r.verdict === "not_useful")?.v ?? 0;
 
   const defaultThreshold = Number(process.env.RELEVANCE_THRESHOLD_DEFAULT ?? 0.5);
   return c.json({
@@ -122,5 +141,7 @@ notificationPreferencesRouter.get("/relevance-threshold", async (c) => {
     source: row?.source ?? "default",
     feedbackCountAtCalc: row?.feedbackCountAtCalc ?? 0,
     lastRecalculatedAt: row?.lastRecalculatedAt ?? null,
+    feedback: { useful, notUseful, total: useful + notUseful },
+    autoAdjustMin: Number(process.env.RELEVANCE_AUTO_ADJUST_MIN_FEEDBACKS ?? 10),
   });
 });

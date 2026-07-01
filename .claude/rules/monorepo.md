@@ -18,14 +18,15 @@ S'applique à tous les fichiers du projet.
 - packages/ai    → @outrival/ai        (prompts + pipeline Claude/Groq)
 - packages/scrapers → @outrival/scrapers (scrapers par source)
 - packages/shared   → @outrival/shared  (types, utils, constantes partagés)
+- packages/queue    → @outrival/queue   (pg-boss : jobs registry + client, remplace Trigger.dev)
 
 ## Imports cross-packages
 
 - web peut importer : @outrival/shared
-- api peut importer : @outrival/db, @outrival/ai, @outrival/shared
-- workers peut importer : @outrival/db, @outrival/ai, @outrival/scrapers, @outrival/shared
+- api peut importer : @outrival/db, @outrival/ai, @outrival/shared, @outrival/queue (enqueue only)
+- workers peut importer : @outrival/db, @outrival/ai, @outrival/scrapers, @outrival/shared, @outrival/queue
 - scrapers peut importer : @outrival/shared
-- JAMAIS : web → api, api → workers, workers → web
+- JAMAIS : web → api, api → workers, workers → web, web → queue
 
 ## Scripts turbo
 

@@ -7,12 +7,15 @@
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "bun test test/",
-    "trigger:dev": "trigger dev"
+    "trigger:dev": "trigger dev",
+    "queue:dev": "bun run --hot src/queue/worker.ts",
+    "queue:start": "bun run src/queue/worker.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",
     "@outrival/ai": "workspace:*",
     "@outrival/db": "workspace:*",
+    "@outrival/queue": "workspace:*",
     "@outrival/scrapers": "workspace:*",
     "@outrival/shared": "workspace:*",
     "@sentry/esbuild-plugin": "^5.3.0",

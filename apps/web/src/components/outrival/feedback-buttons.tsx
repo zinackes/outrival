@@ -123,9 +123,17 @@ export function FeedbackButtons({
       setShowReasons(next === "not_useful");
       // "not useful" has a visible server side-effect (its description); "useful"
       // has none, so give it its own confirmation — otherwise the click feels dead.
+      // Signal feedback feeds the relevance-threshold learning (patch-26) — say so
+      // (Lever 10: the loop is invisible unless we surface it where it's fed).
       toast(
         res.immediateAction?.description ??
-          (next === "useful" ? "Thanks — marked as useful." : "Thanks for the feedback."),
+          (next === "useful"
+            ? targetType === "signal"
+              ? "Thanks — Outrival learns what's relevant to you from this."
+              : "Thanks — marked as useful."
+            : targetType === "signal"
+              ? "Noted — Outrival will tune what it sends you."
+              : "Thanks for the feedback."),
       );
     } catch {
       toast.error("Couldn't save your feedback. Try again.");

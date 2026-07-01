@@ -30,8 +30,8 @@ import { ListError } from "@/components/outrival/list-error";
 
 const CHANNEL_OPTIONS: { value: ChannelMode; label: string }[] = [
   { value: "email_immediate", label: "Email — immediate" },
-  { value: "digest_daily", label: "Daily digest" },
-  { value: "digest_weekly", label: "Weekly digest" },
+  { value: "digest_daily", label: "Daily briefing" },
+  { value: "digest_weekly", label: "Weekly briefing" },
   { value: "in_app_only", label: "In-app only" },
   { value: "muted", label: "Muted" },
 ];
@@ -142,11 +142,13 @@ export function NotificationModerationForm() {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-6 max-w-xl">
-      {/* Channels per severity */}
+      {/* Briefing cadence — channels per severity (Lever 11: the daily/weekly
+          digests ARE the product's habit surface; name them as briefings). */}
       <fieldset className="flex flex-col gap-3">
-        <legend className="text-sm font-medium mb-1">Channels by priority</legend>
+        <legend className="text-sm font-medium mb-1">Briefing cadence</legend>
         <p className="text-xs text-muted-foreground -mt-1">
-          How each severity reaches you. Critical always comes through immediately.
+          How each severity reaches you — in your daily or weekly briefing, as an
+          immediate email, or in-app only. Critical always comes through immediately.
         </p>
         {SEVERITY_ROWS.map((row) => (
           <div key={row.key} className="flex items-center justify-between gap-3">
@@ -282,13 +284,35 @@ export function NotificationModerationForm() {
         </p>
       </fieldset>
 
-      {/* Relevance threshold (read-only) */}
+      {/* Signal quality — the visible learning loop (Lever 10): the user's
+          feedback is an investment; show it working instead of tuning silently. */}
       {threshold && (
         <div className="flex flex-col gap-1 pt-4 border-t border-border">
-          <span className="text-sm font-medium">Relevance threshold</span>
+          <span className="text-sm font-medium">Signal quality</span>
+          {!threshold.feedback || threshold.feedback.total === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Rate signals as useful or not useful and Outrival learns what&apos;s
+              relevant to you — the relevance threshold auto-adjusts from your
+              feedback.
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Learning from your feedback —{" "}
+              <span className="text-foreground">
+                {threshold.feedback.useful} of {threshold.feedback.total}
+              </span>{" "}
+              rated signal{threshold.feedback.total > 1 ? "s" : ""} marked useful.
+              {threshold.source !== "auto_adjusted" &&
+              threshold.autoAdjustMin != null &&
+              threshold.feedback.total < threshold.autoAdjustMin
+                ? ` Auto-tuning starts at ${threshold.autoAdjustMin} ratings (${threshold.feedback.total}/${threshold.autoAdjustMin}).`
+                : ""}
+            </p>
+          )}
           <p className="text-sm text-muted-foreground">
-            Current: <span className="text-foreground">{threshold.threshold.toFixed(2)}</span>{" "}
-            — {THRESHOLD_SOURCE_LABEL[threshold.source]}
+            Relevance threshold:{" "}
+            <span className="text-foreground">{threshold.threshold.toFixed(2)}</span> —{" "}
+            {THRESHOLD_SOURCE_LABEL[threshold.source]}
           </p>
           <p className="text-xs text-muted-foreground">
             Signals below this score are kept out of your emails. It adapts to your

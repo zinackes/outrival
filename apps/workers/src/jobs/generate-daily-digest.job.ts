@@ -105,7 +105,7 @@ export const generateDailyDigestJob = schedules.task({
           : undefined;
 
       const html = darkEmailShell(
-        `<p style="font-size:12px;color:#a3a3a3;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 4px;">Daily digest</p>
+        `<p style="font-size:12px;color:#a3a3a3;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 4px;">Daily briefing</p>
   <h2 style="font-family:Syne,sans-serif;margin:0 0 16px;color:#fafafa;">${deferred.length} update${deferred.length > 1 ? "s" : ""} since yesterday</h2>
   ${rows}
   ${unsubscribeUrl ? `<div style="margin-top:24px;font-size:11px;color:#525252;text-align:center;"><a href="${unsubscribeUrl}" style="color:#525252;text-decoration:underline;">Unsubscribe</a></div>` : ""}`,
@@ -115,7 +115,8 @@ export const generateDailyDigestJob = schedules.task({
         await getResend().emails.send({
           from: ALERT_FROM,
           to: org.digestEmail,
-          subject: `Daily digest — ${deferred.length} competitor update${deferred.length > 1 ? "s" : ""}`,
+          // Lever 11 — same briefing branding as the weekly send.
+          subject: `Your Daily Briefing — ${deferred.length} competitor update${deferred.length > 1 ? "s" : ""}`,
           html,
           ...(unsubscribeUrl
             ? {

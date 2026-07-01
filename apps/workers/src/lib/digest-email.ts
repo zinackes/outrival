@@ -69,7 +69,7 @@ export function renderDigestEmail(
   return darkEmailShell(
     `<div style="margin-bottom:24px;">
         <span style="font-family:Syne,sans-serif;font-size:24px;font-weight:bold;color:#fafafa;">Out<span style="color:#f59e0b;">rival</span></span>
-        <div style="font-size:12px;color:#a3a3a3;margin-top:4px;">Digest from ${weekStart} to ${weekEnd}</div>
+        <div style="font-size:12px;color:#a3a3a3;margin-top:4px;">Your weekly competitive briefing · ${weekStart} → ${weekEnd}</div>
       </div>
       <div style="background:#171717;border:1px solid #262626;border-radius:6px;padding:20px;margin-bottom:24px;">
         <div style="font-size:12px;color:#a3a3a3;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">Temperature · ${escapeHtml(digest.temperature)}</div>
@@ -80,7 +80,7 @@ export function renderDigestEmail(
       ${
         feedbackLinks
           ? `<div style="margin-top:28px;border-top:1px solid #262626;padding-top:18px;text-align:center;font-size:13px;color:#a3a3a3;">
-        Was this digest useful?
+        Was this briefing useful?
         <a href="${feedbackLinks.useful}" style="color:#22c55e;text-decoration:none;margin:0 8px;">👍 Yes</a>
         <a href="${feedbackLinks.notUseful}" style="color:#ef4444;text-decoration:none;margin:0 8px;">👎 No</a>
       </div>`

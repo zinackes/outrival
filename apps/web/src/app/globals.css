@@ -426,6 +426,15 @@
     -webkit-font-smoothing: antialiased;
   }
 
+  /* Tap feedback (mobile). iOS Safari only fires :active on an element that has
+     cursor:pointer (or a touch listener) — Tailwind v4 dropped the default pointer
+     on <button>, so without this the button variants' active: styles stay dead on
+     iPhone. Also restores the pointer on desktop for interactive elements. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+
   /* Real headings run on the display grotesque (Space Grotesk); everything else
      on the body sans. Inline display usages (font-[var(--font-display)]) still
      work. Default weight 600 (H2/H3); Display/H1 sites add font-bold. Per-role

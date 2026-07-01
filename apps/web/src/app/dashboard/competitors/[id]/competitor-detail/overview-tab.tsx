@@ -169,6 +169,13 @@ type TranslatedFacts = {
   testimonials: Array<{ quote: string; author: string | null }>;
 };
 
+// The translation is a per-competitor view preference: once a user translates (and
+// whether they're viewing English or flipped back to the original), that choice should
+// survive a refresh or navigation. We cache both the fetched translation and the
+// toggle in localStorage, keyed by competitor, so we neither re-fetch nor reset.
+const translationStorageKey = (id: string) => `outrival.overview-translation.${id}`;
+type PersistedTranslation = { translated: TranslatedFacts; showOriginal: boolean };
+
 export function OverviewTab({
   competitorId,
   overview,
@@ -220,6 +227,38 @@ export function OverviewTab({
   const [translated, setTranslated] = useState<TranslatedFacts | null>(null);
   const [translating, setTranslating] = useState(false);
   const [showOriginal, setShowOriginal] = useState(false);
+
+  // Restore the persisted translation + toggle after mount (read post-mount to dodge
+  // an SSR/hydration mismatch). Keyed by competitor, so switching competitors reloads
+  // that competitor's own choice.
+  useEffect(() => {
+    if (!isForeign) return;
+    try {
+      const raw = window.localStorage.getItem(translationStorageKey(competitorId));
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as PersistedTranslation;
+      if (parsed?.translated) {
+        setTranslated(parsed.translated);
+        setShowOriginal(!!parsed.showOriginal);
+      }
+    } catch {
+      /* localStorage blocked or malformed — fall back to the un-translated view */
+    }
+  }, [competitorId, isForeign]);
+
+  // Persist the current view (fetched translation + which side is showing) so a refresh
+  // keeps exactly what the user left on screen.
+  useEffect(() => {
+    if (!translated) return;
+    try {
+      window.localStorage.setItem(
+        translationStorageKey(competitorId),
+        JSON.stringify({ translated, showOriginal } satisfies PersistedTranslation),
+      );
+    } catch {
+      /* localStorage unavailable — the toggle just won't survive a refresh */
+    }
+  }, [competitorId, translated, showOriginal]);
 
   async function handleTranslate() {
     if (translating) return;

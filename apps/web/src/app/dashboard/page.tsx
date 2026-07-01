@@ -3,7 +3,13 @@ import { OverviewView } from "@/components/dashboard/overview";
 import { getOverviewData } from "@/lib/api-server";
 import { makeServerQueryClient } from "@/lib/server-query";
 import { resolveServerScope } from "@/lib/product-scope-server";
-import { signalsQuery, competitorsQuery } from "@/lib/queries";
+import {
+  signalsQuery,
+  competitorsQuery,
+  sectoralTeaserQuery,
+  battleCardsQuery,
+  onboardingChecklistQuery,
+} from "@/lib/queries";
 
 export default async function DashboardHomePage({
   searchParams,
@@ -25,6 +31,17 @@ export default async function DashboardHomePage({
       initial.signals,
     );
     queryClient.setQueryData(competitorsQuery(product).queryKey, initial.competitors);
+    // Secondary sections — seed only when present (a plan-gated/null teaser leaves
+    // the cache empty so the client query fetches + renders its own gated state).
+    if (initial.sectoral) {
+      queryClient.setQueryData(sectoralTeaserQuery().queryKey, initial.sectoral);
+    }
+    if (initial.battleCards) {
+      queryClient.setQueryData(battleCardsQuery().queryKey, initial.battleCards);
+    }
+    if (initial.checklist) {
+      queryClient.setQueryData(onboardingChecklistQuery().queryKey, initial.checklist);
+    }
   }
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>

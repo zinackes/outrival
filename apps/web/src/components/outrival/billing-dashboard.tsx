@@ -29,10 +29,17 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { PaymentMethodDialog } from "@/components/outrival/payment-method-dialog";
 import { BillingDashboardSkeleton } from "@/app/dashboard/settings/billing/billing-skeleton";
 
 type PaidPlan = Exclude<Plan, "free">;
 type Invoice = Awaited<ReturnType<typeof api.getInvoices>>["invoices"][number];
+
+/** "visa" → "Visa"; passes through already-cased brands, falls back to "Card". */
+function formatCardBrand(brand: string | null): string {
+  if (!brand) return "Card";
+  return brand.charAt(0).toUpperCase() + brand.slice(1);
+}
 
 function formatInvoiceAmount(cents: number, currency: string): string {
   try {
@@ -123,6 +130,8 @@ export function BillingDashboard() {
   // Target plan awaiting confirmation (downgrade to Free, or any switch that would
   // leave the org over the new tier's competitor cap). null = no dialog open.
   const [confirm, setConfirm] = useState<Plan | null>(null);
+  // Payment-method (Stripe Payment Element) dialog open state.
+  const [payOpen, setPayOpen] = useState(false);
   // Invoices only matter once subscribed; gated so it doesn't fetch otherwise.
   const invoicesQ = useQuery({ ...invoicesQuery(), enabled: !!billing?.hasSubscription });
   const invoices: Invoice[] = invoicesQ.data ?? [];
@@ -215,16 +224,10 @@ export function BillingDashboard() {
     setBusy(null);
   }
 
-  async function handlePortal() {
-    setBusy("portal");
-    setError(null);
-    try {
-      const { url } = await api.openPortal();
-      window.location.href = url;
-    } catch (e) {
-      setError(String(e));
-      setBusy(null);
-    }
+  function handlePaymentUpdated() {
+    setPayOpen(false);
+    setToast("Payment method updated.");
+    queryClient.invalidateQueries({ queryKey: billingQuery().queryKey });
   }
 
   if ((error || billingQ.error) && !billing)
@@ -341,17 +344,21 @@ export function BillingDashboard() {
                 </>
               )}
             </p>
+            {billing.paymentMethod?.last4 && (
+              <p className="font-mono text-xs tabular-nums text-muted-foreground">
+                {formatCardBrand(billing.paymentMethod.brand)} ···· {billing.paymentMethod.last4}
+                {billing.paymentMethod.expMonth && billing.paymentMethod.expYear
+                  ? ` · expires ${billing.paymentMethod.expMonth}/${String(
+                      billing.paymentMethod.expYear,
+                    ).slice(-2)}`
+                  : ""}
+              </p>
+            )}
           </div>
 
           {billing.hasSubscription && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handlePortal}
-              disabled={busy === "portal"}
-            >
-              {busy === "portal" && <Loader2 size={12} className="animate-spin" />}
-              {busy === "portal" ? "Opening…" : "Manage billing"}
+            <Button variant="outline" size="sm" onClick={() => setPayOpen(true)}>
+              {billing.paymentMethod?.last4 ? "Update payment method" : "Add payment method"}
             </Button>
           )}
         </div>
@@ -674,6 +681,13 @@ export function BillingDashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Payment-method update (Stripe Payment Element) ─────────────────── */}
+      <PaymentMethodDialog
+        open={payOpen}
+        onOpenChange={setPayOpen}
+        onUpdated={handlePaymentUpdated}
+      />
     </div>
   );
 }

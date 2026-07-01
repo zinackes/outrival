@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api, type StructuralChangeRow } from "@/lib/api";
+import { structuralChangesQuery } from "@/lib/queries";
 
 const TYPE_LABEL: Record<string, string> = {
   pivot: "appears to have pivoted",
@@ -19,17 +20,14 @@ const TYPE_LABEL: Record<string, string> = {
 // user must resolve each one explicitly — we never auto-resolve.
 export function StructuralChangeBanner() {
   const queryClient = useQueryClient();
-  const changesQ = useQuery({
-    queryKey: ["structuralChanges", "detected"],
-    queryFn: () => api.getStructuralChanges("detected").then((r) => r.changes),
-  });
+  const changesQ = useQuery(structuralChangesQuery());
   const changes = changesQ.data ?? [];
   const [busyId, setBusyId] = useState<string | null>(null);
 
   // Optimistic write-through for the resolve mutation below.
   function setChanges(updater: (prev: StructuralChangeRow[]) => StructuralChangeRow[]) {
     queryClient.setQueryData<StructuralChangeRow[]>(
-      ["structuralChanges", "detected"],
+      structuralChangesQuery().queryKey,
       (prev) => updater(prev ?? []),
     );
   }

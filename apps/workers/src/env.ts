@@ -17,6 +17,11 @@ const EnvSchema = z.object({
   // present so a malformed value is caught early.
   TRIGGER_SECRET_KEY: z.string().optional(),
   TRIGGER_PROJECT_ID: z.string().optional(),
+  // pg-boss queue (Trigger.dev replacement). Optional here so Trigger deploys
+  // keep booting during the side-by-side migration; the queue worker entry
+  // (src/queue/worker.ts) hard-requires both itself.
+  QUEUE_DATABASE_URL: z.string().url().optional(),
+  WORKER_ROLE: z.enum(["browser", "light"]).optional(),
   GROQ_API_KEY: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),

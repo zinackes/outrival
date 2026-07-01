@@ -43,6 +43,7 @@ import { CategoryBar, CategoryKey } from "./category-bar";
 import { DeltaPill, computeDelta } from "./delta-pill";
 import { SectoralSignalsSection } from "./sectoral-signals";
 import { OnboardingChecklistCard } from "./onboarding-checklist";
+import { LandscapeSection } from "./landscape";
 import { EmptyState } from "./empty-state";
 import { SampleBanner } from "./sample-banner";
 import { useSampleMode } from "@/hooks/use-sample-mode";
@@ -402,18 +403,10 @@ export function OverviewView() {
       />
 
       {watching ? (
-        <EmptyState
-          icon={Radar}
-          title={`Outrival is watching ${comps.length} competitor${comps.length > 1 ? "s" : ""}`}
-          description="Scans run continuously. Your first signals — pricing, hiring, product and content moves — land here the moment something changes."
-          actions={
-            <Button asChild size="sm" variant="outline">
-              <Link href="/dashboard/competitors">
-                Review competitors <ArrowRight size={11} />
-              </Link>
-            </Button>
-          }
-        />
+        // Day-0 landscape (post-onboarding activation): competitors exist but no
+        // signal yet — deliver the first-scrape "state of the world" instead of a
+        // bare wait state. Falls back to the wait empty-state on fetch error.
+        <LandscapeSection productId={productId} competitorCount={comps.length} />
       ) : (
         <>
 

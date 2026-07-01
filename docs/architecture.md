@@ -687,8 +687,10 @@ AUTH_RATE_LIMIT_WINDOW_MIN=15 # patch-19 — window length in minutes
 RESEND_AUTH_FROM=            # patch-19 — optional, defaults to "Outrival <auth@outrival.io>"
 
 # Jobs
-TRIGGER_SECRET_KEY=
+TRIGGER_SECRET_KEY=          # Trigger.dev — being replaced by pg-boss (removed at migration Phase 7)
 TRIGGER_PROJECT_ID=
+QUEUE_DATABASE_URL=          # pg-boss queue — DEDICATED always-on Postgres, NEVER Neon (cf. docs/trigger-to-pgboss-migration.md)
+WORKER_ROLE=                 # browser | light — which queues a worker process handles
 
 # Scraping & discovery (patch-20 — ScrapingBee/Webshare supprimés)
 PROXYSCRAPE_DC_ENDPOINT=     # datacenter host:port (L2) — optionnel
@@ -805,6 +807,7 @@ AI_VISIBILITY_PERPLEXITY_MODEL=sonar   # modèle Perplexity (sonar = search fee 
 # Billing
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=  # build-time — in-app Payment Element (card update). Vide → dialog dégradé
 STRIPE_PRICE_STARTER_MONTHLY=
 STRIPE_PRICE_STARTER_YEARLY=
 STRIPE_PRICE_PRO_MONTHLY=

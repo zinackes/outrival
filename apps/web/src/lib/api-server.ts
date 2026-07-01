@@ -24,6 +24,9 @@ import type {
   NotificationPreferences,
   RelevanceThresholdInfo,
   AiVisibilityData,
+  OnboardingChecklist,
+  StructuralChangeRow,
+  AiStatus,
 } from "./api";
 import type { CompetitorData } from "@/app/dashboard/competitors/[id]/competitor-detail-view";
 
@@ -42,6 +45,17 @@ async function serverGet<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+// Best-effort variant: null on any failure (missing cookie, plan-gated 403, API
+// down) so a secondary seed never nulls the whole aggregate — the matching client
+// query just re-fetches. Use for optional/gated surfaces, not the primary payload.
+async function tryGet<T>(path: string): Promise<T | null> {
+  try {
+    return await serverGet<T>(path);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Prefetch the dashboard overview data on the server so it lands in the first
  * paint instead of after JS hydration + a browser round-trip.
@@ -53,19 +67,61 @@ async function serverGet<T>(path: string): Promise<T> {
 export async function getOverviewData(productId?: string): Promise<{
   signals: Signal[];
   competitors: Competitor[];
+  sectoral: SectoralSignal[] | null;
+  battleCards: BattleCardSummary[] | null;
+  checklist: OnboardingChecklist | null;
 } | null> {
   // patch-28 — an optional product scope filters both feeds; absent → org-wide.
   const scope = productId ? `&productId=${encodeURIComponent(productId)}` : "";
   const compScope = productId ? `?productId=${encodeURIComponent(productId)}` : "";
   try {
-    const [s, c] = await Promise.all([
+    // signals + competitors gate the whole seed (their failure nulls it, keeping
+    // the prior contract). The three secondary Overview sections are best-effort
+    // (tryGet → null), so a plan-gated sectoral teaser or a checklist blip never
+    // sinks the hero feeds; each falls back to its own client fetch.
+    const [s, c, sectoral, cards, checklist] = await Promise.all([
       serverGet<{ signals: Signal[] }>(`/api/signals?limit=200${scope}`),
       serverGet<{ competitors: Competitor[] }>(`/api/competitors${compScope}`),
+      tryGet<{ signals: SectoralSignal[] }>(`/api/sectoral?limit=3`),
+      tryGet<{ battleCards: BattleCardSummary[] }>(`/api/battle-cards`),
+      tryGet<OnboardingChecklist>(`/api/onboarding/checklist`),
     ]);
-    return { signals: s.signals, competitors: c.competitors };
+    return {
+      signals: s.signals,
+      competitors: c.competitors,
+      sectoral: sectoral?.signals ?? null,
+      battleCards: cards?.battleCards ?? null,
+      checklist: checklist ?? null,
+    };
   } catch {
     return null;
   }
+}
+
+/**
+ * Prefetch the always-on dashboard shell widgets (mounted by the layout on every
+ * page): the product-scope switcher's roster, the structural-change banner, and
+ * the AI-degradation banner. Each is independently best-effort — a null just lets
+ * that widget fetch client-side as before. Seeded once in the layout so these
+ * don't cost three client round-trips on every dashboard navigation.
+ */
+export async function getShellData(): Promise<{
+  products: ProductSummary[] | null;
+  structuralChanges: StructuralChangeRow[] | null;
+  aiStatus: AiStatus | null;
+}> {
+  const [products, structural, aiStatus] = await Promise.all([
+    tryGet<{ products: ProductSummary[] }>(`/api/products`),
+    tryGet<{ changes: StructuralChangeRow[] }>(
+      `/api/structural-changes?status=detected`,
+    ),
+    tryGet<AiStatus>(`/api/system/ai-status`),
+  ]);
+  return {
+    products: products?.products ?? null,
+    structuralChanges: structural?.changes ?? null,
+    aiStatus: aiStatus ?? null,
+  };
 }
 
 /**
@@ -338,26 +394,6 @@ export async function getBattleCardsData(): Promise<BattleCardSummary[] | null> 
 export async function getWorkspaceSettingsData(): Promise<WorkspaceSettings | null> {
   try {
     return await serverGet<WorkspaceSettings>("/api/settings/workspace");
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Prefetch the Integrations settings: notification settings + the plan (gates
- * the webhook channel). Best-effort: null → IntegrationsSettings falls back to
- * its own client fetches.
- */
-export async function getIntegrationsData(): Promise<{
-  settings: NotificationSettings;
-  plan: Plan;
-} | null> {
-  try {
-    const [settings, billing] = await Promise.all([
-      serverGet<NotificationSettings>("/api/settings/notifications"),
-      serverGet<{ plan: Plan }>("/api/billing"),
-    ]);
-    return { settings, plan: billing.plan };
   } catch {
     return null;
   }

@@ -15,6 +15,12 @@ export const ONBOARDING_EVENTS = {
   REDIRECT_TO_DASHBOARD: "onboarding_redirect_to_dashboard",
   FIRST_SIGNAL_RECEIVED: "onboarding_first_signal_received",
   ANALYSIS_COMPLETED: "onboarding_analysis_completed",
+  // The aha moment (post-onboarding activation, Lever 3): the user saw their
+  // first competitive insight — the day-0 landscape with at least one quick-win
+  // card. Note FIRST_SIGNAL_RECEIVED above is analysis-ready (first aiSummary),
+  // NOT a real signal; the true first signal is stamped server-side by
+  // generate-signal into onboarding_sessions.timings.first_real_signal.
+  FIRST_INSIGHT_VIEWED: "onboarding_first_insight_viewed",
 } as const;
 
 export type OnboardingEvent = (typeof ONBOARDING_EVENTS)[keyof typeof ONBOARDING_EVENTS];

@@ -656,14 +656,23 @@ onboardingRouter.post("/complete", async (c) => {
     const scrapeStartedAt = new Date();
     const monitorRows = await db
       .insert(monitors)
-      .values(
-        monitoringPrefs.sources.map((sourceType) => ({
+      .values([
+        ...monitoringPrefs.sources.map((sourceType) => ({
           competitorId: competitor.id,
           sourceType,
           frequency: monitoringPrefs.frequency,
           scrapeStartedAt,
         })),
-      )
+        // Internal news anchor (never user-selectable, not plan-gated) — mirrors
+        // the manual-creation path so the day-0 landscape has dated events
+        // (funding, launches, press) to show from the very first scrape.
+        {
+          competitorId: competitor.id,
+          sourceType: "news" as const,
+          frequency: "weekly" as const,
+          scrapeStartedAt,
+        },
+      ])
       .returning();
 
     created.push({

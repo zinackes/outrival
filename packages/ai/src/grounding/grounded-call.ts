@@ -50,6 +50,13 @@ const GROUNDING_POLICY: Record<string, { grounding: boolean; confidence: boolean
   // truncating the JSON → parse miss → null → the competitor stuck "analyzing".
   // Drop grounding so the output is just { summary, category } and fits.
   summarize_competitor: { grounding: false, confidence: false },
+  // Self-product profile extraction (extractSelfProfile) — internal, never shows
+  // citations to the user. With the default full-grounding envelope, the free
+  // pool provider (a reasoning model) wraps/malforms the per-assertion citation
+  // JSON → parse miss → null → the My Product profile stays empty while the scrape
+  // reports success. Same failure mode as summarize_competitor above; drop grounding
+  // so the output is just the bare { category, audience, valueProp, features, techStack }.
+  extract_features: { grounding: false, confidence: false },
 };
 
 /**

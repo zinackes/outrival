@@ -1,0 +1,21 @@
+{
+  "name": "@outrival/queue",
+  "version": "0.0.1",
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "pg-boss": "^12.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1"
+  }
+}

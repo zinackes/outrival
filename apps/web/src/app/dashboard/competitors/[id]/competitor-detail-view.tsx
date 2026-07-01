@@ -982,6 +982,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
             runningAll ||
             monitors.every((m) => scrapingIds.has(m.id) || isServerScraping(m))
           }
+          monitoringPaused={competitor.monitoringPaused}
           plan={plan}
           onLockedFrequency={(freq) =>
             setPaywall({ code: "plan_locked_frequency", frequency: freq, plan })
@@ -1741,6 +1742,7 @@ function MonitorSources({
   competitorUrl,
   runningAll,
   disabled,
+  monitoringPaused,
   plan,
   onLockedFrequency,
   techLastScrapedAt,
@@ -1757,6 +1759,7 @@ function MonitorSources({
   competitorUrl: string;
   runningAll: boolean;
   disabled: boolean;
+  monitoringPaused: boolean;
   plan: Plan;
   onLockedFrequency: (freq: MonitorFrequency) => void;
   techLastScrapedAt: string | null;
@@ -1799,6 +1802,7 @@ function MonitorSources({
               monitor={m}
               running={running}
               status={monitorStatus(m, running)}
+              monitoringPaused={monitoringPaused}
               onRun={onRun}
               onResume={onResume}
               onConfigure={() => setEditing(m)}
@@ -1833,6 +1837,7 @@ function MonitorSources({
                     : status === "ok" && m.lastRunAt
                       ? formatDistanceToNow(new Date(m.lastRunAt), { addSuffix: true })
                       : "never scraped";
+            const nextText = nextScanLabel(m, status, monitoringPaused);
             return (
               <div key={m.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5">
                 <SourceStatusIcon status={status} />
@@ -1848,6 +1853,9 @@ function MonitorSources({
                 >
                   {ageText}
                 </span>
+                {nextText && (
+                  <span className="text-xs text-muted-foreground">· {nextText}</span>
+                )}
                 <div className="ml-auto flex items-center gap-1.5">
                   <MonitorFreshnessAction
                     monitorId={m.id}
@@ -1986,6 +1994,24 @@ function MonitorSources({
   );
 }
 
+// When the scheduler will next check this source. The hourly cron scrapes any
+// active monitor whose nextRunAt is null or already past, so a null/overdue value
+// means "on the next hourly run" — we never surface it as a stale past date.
+// Returns null when there's nothing meaningful to show (currently scraping, or
+// paused after repeated failures — neither is on a schedule).
+function nextScanLabel(
+  m: Monitor,
+  status: MonitorStatus,
+  monitoringPaused: boolean,
+): string | null {
+  if (monitoringPaused) return "Monitoring paused";
+  if (status === "running" || status === "disabled") return null;
+  if (m.isActive === false) return null;
+  const next = m.nextRunAt ? new Date(m.nextRunAt).getTime() : 0;
+  if (!next || next <= Date.now()) return "Next scan within the hour";
+  return `Next scan ${formatDistanceToNow(new Date(next), { addSuffix: true })}`;
+}
+
 // Compact relative age for the source chips ("2m" / "5h" / "3d") — the long
 // "about 2 hours ago" reads fine in a row but is too wide for a dense chip strip.
 function shortAge(d: Date): string {
@@ -2003,6 +2029,7 @@ function SourceChip({
   monitor: m,
   running,
   status,
+  monitoringPaused,
   onRun,
   onResume,
   onConfigure,
@@ -2010,6 +2037,7 @@ function SourceChip({
   monitor: Monitor;
   running: boolean;
   status: MonitorStatus;
+  monitoringPaused: boolean;
   onRun: (id: string) => void;
   onResume: (id: string) => void;
   onConfigure: () => void;
@@ -2036,6 +2064,7 @@ function SourceChip({
           : status === "ok" && m.lastRunAt
             ? formatDistanceToNow(new Date(m.lastRunAt), { addSuffix: true })
             : "never scraped";
+  const nextText = nextScanLabel(m, status, monitoringPaused);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -2079,6 +2108,9 @@ function SourceChip({
         >
           {ageText}
         </p>
+        {nextText && (
+          <p className="px-2 pb-1 text-xs text-muted-foreground">{nextText}</p>
+        )}
         {failed && m.lastError && (
           <p className="px-2 pb-1.5 text-sm leading-relaxed text-muted-foreground break-words">
             {friendlyScrapeError(m.lastError, m.sourceType)}

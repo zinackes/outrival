@@ -24,7 +24,7 @@ const STEP_META: Record<ChecklistStepKey, { label: string; href: string }> = {
   product: { label: "Set up your product profile", href: "/dashboard/products" },
   competitor: { label: "Add your first competitor", href: "/dashboard/competitors" },
   monitoring: { label: "Enable monitoring on a competitor", href: "/dashboard/competitors" },
-  notifications: { label: "Choose how you get notified", href: "/dashboard/settings/notifications" },
+  notifications: { label: "Choose your briefing cadence", href: "/dashboard/settings/notifications" },
   signal: { label: "Receive your first signal", href: "/dashboard/signals" },
 };
 

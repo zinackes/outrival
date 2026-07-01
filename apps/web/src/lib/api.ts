@@ -260,6 +260,9 @@ export interface Monitor {
   frequency: string;
   config: { url?: string } | null;
   lastRunAt: string | null;
+  // When the scheduler will next check this source. Null (or past) = due on the
+  // next hourly cron tick, not a stale timestamp — never render it as a past date.
+  nextRunAt: string | null;
   lastChangedAt: string | null;
   scrapeStartedAt: string | null;
   lastFailedAt: string | null;
@@ -611,6 +614,70 @@ export interface TrendsSeries {
   points: TrendSeriesPoint[];
 }
 
+// Day-0 competitive landscape (post-onboarding activation, Lever 1) — the
+// "where you stand today" aggregate shown while no signal exists yet.
+export interface LandscapeCompetitor {
+  id: string;
+  name: string;
+  url: string | null;
+  color: string | null;
+  category: string | null;
+  overlapScore: number | null;
+  aiSummary: string | null;
+}
+export interface LandscapePricingRow {
+  competitorId: string;
+  planName: string;
+  price: number | null;
+  currency: string | null;
+  billingPeriod: string | null;
+  hasTrial: boolean | null;
+  trialDays: number | null;
+  recordedAt: string;
+}
+export interface LandscapeHiring {
+  competitorId: string;
+  total: number;
+  departments: Array<{ department: string; count: number }>;
+}
+export interface LandscapeReview {
+  competitorId: string;
+  source: string;
+  score: number;
+  reviewCount: number;
+}
+export interface LandscapeNewsItem {
+  competitorId: string;
+  competitorName: string;
+  title: string;
+  link: string | null;
+  source: string | null;
+  publishedAt: string | null;
+}
+export interface LandscapeSource {
+  competitorId: string;
+  sourceType: string;
+  status: "captured" | "pending" | "unavailable";
+}
+export interface LandscapeInsight {
+  kind: "pricing_gap" | "trial" | "hiring" | "reviews";
+  text: string;
+  competitorId: string | null;
+}
+export interface LandscapeData {
+  competitors: LandscapeCompetitor[];
+  self: { id: string; name: string; url: string | null } | null;
+  pricing: LandscapePricingRow[];
+  selfPricing: LandscapePricingRow[];
+  hiring: LandscapeHiring[];
+  reviews: LandscapeReview[];
+  recentActivity: LandscapeNewsItem[];
+  sources: LandscapeSource[];
+  insights: LandscapeInsight[];
+  nextCheckAt: string | null;
+  degraded: boolean;
+}
+
 // Consumption cockpit (Phase A) — N-way comparison matrix column.
 export interface CompareColumn {
   id: string;
@@ -759,6 +826,11 @@ export interface RelevanceThresholdInfo {
   source: "default" | "auto_adjusted" | "user_set";
   feedbackCountAtCalc: number;
   lastRecalculatedAt: string | null;
+  // Visible learning loop (Lever 10) — org-wide signal feedback counts + the
+  // auto-tune floor. Optional: absent from responses of an older API during a
+  // deploy skew, so the UI must guard.
+  feedback?: { useful: number; notUseful: number; total: number };
+  autoAdjustMin?: number;
 }
 
 export interface WorkspaceSettings {
@@ -898,6 +970,14 @@ export interface BillingInfo {
   // the epoch-ms cutover (then the org drops to Free). false/null when not cancelling.
   cancelAtPeriodEnd: boolean;
   cancelAt: number | null;
+  // The card on file (default payment method). null when none is set, no customer
+  // exists yet, or Stripe was unreachable — the UI just hides the card line then.
+  paymentMethod: {
+    brand: string | null;
+    last4: string | null;
+    expMonth: number | null;
+    expYear: number | null;
+  } | null;
   usage: {
     // paused = real competitors frozen by the plan cap (over-cap after a
     // downgrade), oldest-kept / newest-paused. Empty when within the cap.
@@ -1669,14 +1749,7 @@ export const api = {
     request<{ history: PricingHistoryPoint[] }>(`/api/competitors/${id}/pricing-history`),
   // Whether AI generations are currently failing (rate limits) — drives the
   // "AI is catching up" dashboard banner. `since` keys the current incident.
-  getAiStatus: () =>
-    request<{
-      status: "healthy" | "degraded" | "down";
-      degraded: boolean;
-      errorCount: number;
-      since: string | null;
-      estimatedRecovery: string | null;
-    }>("/api/system/ai-status"),
+  getAiStatus: () => request<AiStatus>("/api/system/ai-status"),
   updateCompetitorPricing: (
     id: string,
     body: { status: PricingStatus; demoUrl?: string | null; note?: string | null },
@@ -1973,6 +2046,10 @@ export const api = {
       : "";
     return request<TrendsSeries>(`${base}${qs}`);
   },
+  getLandscape: (productId?: string) =>
+    request<LandscapeData>(
+      `/api/landscape${productId ? `?productId=${encodeURIComponent(productId)}` : ""}`,
+    ),
   getAiVisibility: () => request<AiVisibilityData>("/api/ai-visibility"),
   addAiVisibilityPrompt: (prompt: string) =>
     request<{ prompt: AiVisibilityPrompt }>("/api/ai-visibility/prompts", {
@@ -2309,8 +2386,26 @@ export const api = {
   // Undo a scheduled downgrade-to-free.
   resumeSubscription: () =>
     request<{ ok: true }>("/api/billing/resume", { method: "POST" }),
-  openPortal: () =>
-    request<{ url: string }>("/api/billing/portal", { method: "POST" }),
+  // In-app payment-method update (replaces the hosted portal). Mint a SetupIntent the
+  // Payment Element confirms client-side…
+  createSetupIntent: () =>
+    request<{ clientSecret: string }>("/api/billing/setup-intent", {
+      method: "POST",
+    }),
+  // …then hand the confirmed payment method back to set it as the default.
+  setDefaultPaymentMethod: (paymentMethodId: string) =>
+    request<{
+      ok: true;
+      card: {
+        brand: string | null;
+        last4: string | null;
+        expMonth: number | null;
+        expYear: number | null;
+      } | null;
+    }>("/api/billing/payment-method", {
+      method: "POST",
+      body: JSON.stringify({ paymentMethodId }),
+    }),
   getInvoices: () =>
     request<{
       invoices: Array<{
@@ -2538,6 +2633,14 @@ export interface ManualSnapshotRow {
 }
 
 export type StructuralChangeType = "pivot" | "site_dead" | "acquired" | "category_shift";
+
+export interface AiStatus {
+  status: "healthy" | "degraded" | "down";
+  degraded: boolean;
+  errorCount: number;
+  since: string | null;
+  estimatedRecovery: string | null;
+}
 
 export interface StructuralChangeRow {
   id: string;

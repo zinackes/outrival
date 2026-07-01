@@ -172,6 +172,14 @@ export function productDetailQuery(id: string) {
   });
 }
 
+// Day-0 competitive landscape (Overview cold-start while no signal exists yet).
+export function landscapeQuery(productId?: string) {
+  return queryOptions({
+    queryKey: ["landscape", productId ?? null] as const,
+    queryFn: () => api.getLandscape(productId),
+  });
+}
+
 // Sector-trends teaser (top 3) for the Overview section.
 export function sectoralTeaserQuery() {
   return queryOptions({
@@ -185,6 +193,24 @@ export function onboardingChecklistQuery() {
   return queryOptions({
     queryKey: ["onboardingChecklist"] as const,
     queryFn: () => api.getOnboardingChecklist(),
+  });
+}
+
+// Structural-change proposals awaiting a decision (layout banner). Server-seeded so
+// the banner doesn't cost a client round-trip on every dashboard page.
+export function structuralChangesQuery() {
+  return queryOptions({
+    queryKey: ["structuralChanges", "detected"] as const,
+    queryFn: () => api.getStructuralChanges("detected").then((r) => r.changes),
+  });
+}
+
+// AI degradation status (layout banner). Server-seeded for the initial paint; the
+// banner adds its own refetchInterval to keep polling.
+export function aiStatusQuery() {
+  return queryOptions({
+    queryKey: ["aiStatus"] as const,
+    queryFn: () => api.getAiStatus(),
   });
 }
 

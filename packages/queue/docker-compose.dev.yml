@@ -1,0 +1,28 @@
+# Local dedicated Postgres for the pg-boss queue (dev + live POC).
+# pg-boss auto-creates its `pgboss` schema on first `boss.start()` — nothing to migrate.
+# In prod this is a small Coolify one-click Postgres, NOT the Neon relational DB.
+#
+#   docker compose -f packages/queue/docker-compose.dev.yml up -d
+#   QUEUE_DATABASE_URL=postgres://queue:queue@localhost:5433/outrival_queue
+#
+# Port 5433 so it never clashes with a local app Postgres on 5432.
+services:
+  queue-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: queue
+      POSTGRES_PASSWORD: queue
+      POSTGRES_DB: outrival_queue
+    ports:
+      - "5433:5432"
+    volumes:
+      - queue-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U queue -d outrival_queue"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  queue-pgdata:

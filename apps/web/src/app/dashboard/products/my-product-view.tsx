@@ -31,6 +31,7 @@ import {
   type MyProductPatch,
   type MyProductPricingTier,
   type MyProductRescanCategory,
+  type SelfProfile,
   type SelfProfileField,
   type SelfProductChange,
 } from "@/lib/api";
@@ -507,6 +508,16 @@ function PricingCard({
   );
 }
 
+/** Whether any profile field (auto-detected or user-entered) has landed. A scrape can
+ * succeed while the downstream AI extraction (extract-self-profile) returns nothing —
+ * a "scan complete" must not claim the profile is up to date when it's still empty. */
+function hasProfileContent(profile: SelfProfile | undefined): boolean {
+  if (!profile) return false;
+  if ([profile.category, profile.audience, profile.valueProp].some((f) => (f?.value ?? "").trim().length > 0))
+    return true;
+  return [profile.features, profile.techStack].some((f) => (f?.value?.length ?? 0) > 0);
+}
+
 const RESCAN_CATEGORIES: { key: MyProductRescanCategory; label: string }[] = [
   { key: "profile", label: "Profile" },
   { key: "pricing", label: "Pricing" },
@@ -685,26 +696,52 @@ export function MyProductView({
       const t = setInterval(() => load(), 4000);
       return () => clearInterval(t);
     }
-    if (wasScanning.current) {
-      wasScanning.current = false;
-      if (product?.scanError) {
-        toast.error("Scan failed", {
-          description: friendlyScrapeError(product.scanError, product.scanErrorSource ?? undefined),
-        });
-      } else {
-        toast.success("Scan complete", { description: "Your profile is up to date." });
-        // Profile-divergence proposals + features/tech stack are written by
-        // downstream AI tasks (extract-self-profile, …) that finish a few seconds
-        // AFTER scrapeStartedAt clears, so a single reload races them. Keep polling
-        // a few more cycles to surface those late changes.
-        let n = 0;
-        const t = setInterval(() => {
-          void load();
-          if (++n >= 5) clearInterval(t);
-        }, 4000);
-        return () => clearInterval(t);
-      }
+    if (!wasScanning.current) return;
+    wasScanning.current = false;
+
+    if (product?.scanError) {
+      toast.error("Scan failed", {
+        description: friendlyScrapeError(product.scanError, product.scanErrorSource ?? undefined),
+      });
+      return;
     }
+
+    // Fast path: the profile already has content (re-scan of an analysed product) →
+    // confirm immediately; still poll a few cycles to fold in any refreshed fields.
+    if (hasProfileContent(product?.profile)) {
+      toast.success("Scan complete", { description: "Your profile is up to date." });
+      let n = 0;
+      const t = setInterval(() => {
+        void load();
+        if (++n >= 5) clearInterval(t);
+      }, 4000);
+      return () => clearInterval(t);
+    }
+
+    // Slow path: the profile is still empty at settle time. It may be in-flight — the
+    // fields are written by a downstream AI task (extract-self-profile) that lands a
+    // few seconds AFTER scrapeStartedAt clears — or the extraction may have silently
+    // failed (parse miss → empty profile). Poll for the late write, then tell the
+    // truth instead of claiming "up to date" over a blank profile.
+    const toastId = toast.loading("Scan complete — reading your profile…");
+    let n = 0;
+    const t = setInterval(async () => {
+      await load();
+      const latest = queryClient.getQueryData<MyProduct>(myProductQuery(productId).queryKey);
+      const populated = hasProfileContent(latest?.profile);
+      if (!populated && ++n < 6) return;
+      clearInterval(t);
+      if (populated) {
+        toast.success("Scan complete", { id: toastId, description: "Your profile is up to date." });
+      } else {
+        toast.warning("Scan complete — couldn't read your profile", {
+          id: toastId,
+          description:
+            "We scanned your site but couldn't extract the profile automatically. Add it manually, or try another re-scan.",
+        });
+      }
+    }, 4000);
+    return () => clearInterval(t);
   }, [product?.scanning, product?.scanError]);
 
   async function patch(body: MyProductPatch) {

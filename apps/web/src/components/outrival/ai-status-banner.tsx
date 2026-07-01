@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, X } from "lucide-react";
-import { api } from "@/lib/api";
+import { aiStatusQuery } from "@/lib/queries";
 import { formatTime } from "@/lib/format-date";
 
 const POLL_MS = 60_000;
@@ -19,11 +19,7 @@ const DISMISS_KEY = "outrival.ai-status-dismissed";
 export function AiStatusBanner() {
   // Polled via useQuery; an auth blip / API error just leaves data undefined → the
   // banner stays hidden (since is null).
-  const statusQ = useQuery({
-    queryKey: ["aiStatus"],
-    queryFn: () => api.getAiStatus(),
-    refetchInterval: POLL_MS,
-  });
+  const statusQ = useQuery({ ...aiStatusQuery(), refetchInterval: POLL_MS });
   const data = statusQ.data;
   const since = data?.degraded ? data.since : null;
   const down = data?.status === "down";

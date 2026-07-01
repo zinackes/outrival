@@ -219,7 +219,9 @@ export const generateWeeklyDigestJob = schedules.task({
           await getResend().emails.send({
             from: ALERT_FROM,
             to: org.digestEmail,
-            subject: `Outrival — Weekly digest, week of ${isoDate(weekStart)}`,
+            // Lever 11 — the weekly send IS the product's habit surface; brand
+            // it as the Monday briefing ritual, not a generic digest.
+            subject: `Your Monday Competitive Briefing — week of ${isoDate(weekStart)}`,
             html,
             // One-click unsubscribe headers improve inbox placement and let
             // mail clients surface their native unsubscribe affordance.

@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { NotificationSettingsForm } from "@/components/outrival/notification-settings-form";
 import { NotificationModerationForm } from "@/components/outrival/notification-moderation-form";
 import { getNotificationsPageData } from "@/lib/api-server";
@@ -13,10 +12,10 @@ import {
   planQuery,
 } from "@/lib/queries";
 
-// patch-29 — two distinct delivery modes in tabs: individual real-time alerts
-// (patch-26 moderation: channels by severity, quiet hours, cap, batching, threshold)
-// and the recurring digest (delivery channels + schedule). Channel setup also lives
-// in Integrations; here you pick how each mode reaches you.
+// One home for everything notification-related, in two stacked sections:
+// Channels (the endpoints alerts + the digest are delivered to) and Alert
+// routing (patch-26 moderation: severity → channel, quiet hours, cap, batching,
+// threshold). The outbound CRM/webhook destinations live in Integrations.
 export default async function NotificationSettingsPage() {
   // Seed both forms' queries. Best-effort: null → the forms' useQueries fetch.
   const queryClient = makeServerQueryClient();
@@ -36,36 +35,43 @@ export default async function NotificationSettingsPage() {
     queryClient.setQueryData(planQuery().queryKey, initial.digest.plan);
   }
   return (
-    <section className="flex flex-col gap-5">
+    <section className="flex flex-col gap-6">
       <header>
         <h2 className="font-semibold text-base tracking-tight">Notifications</h2>
         <p className="text-muted-foreground text-sm mt-1">
-          Two delivery modes: individual real-time alerts and the recurring digest.
+          Where alerts and briefings are delivered, and how each severity reaches you.
         </p>
       </header>
 
       <HydrationBoundary state={dehydrate(queryClient)}>
-        <Tabs defaultValue="alerts" className="flex flex-col gap-6">
-          <TabsList>
-            <TabsTrigger value="alerts">Individual alerts</TabsTrigger>
-            <TabsTrigger value="digest">Recurring digest</TabsTrigger>
-          </TabsList>
+        {/* Channels & delivery — the endpoints alerts and the digest are sent to */}
+        <div className="flex flex-col gap-4" data-ph-mask>
+          <div>
+            <h3 className="text-sm font-semibold tracking-tight">Channels</h3>
+            <p className="text-muted-foreground text-xs mt-0.5">
+              Where alerts and your briefings are delivered.
+            </p>
+          </div>
+          <NotificationSettingsForm />
+          <Link
+            href="/dashboard/digests"
+            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            View past digests
+            <ArrowRight size={12} />
+          </Link>
+        </div>
 
-          <TabsContent value="alerts" className="mt-0">
-            <NotificationModerationForm />
-          </TabsContent>
-
-          <TabsContent value="digest" className="mt-0 flex flex-col gap-5" data-ph-mask>
-            <NotificationSettingsForm />
-            <Link
-              href="/dashboard/digests"
-              className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              View past digests
-              <ArrowRight size={12} />
-            </Link>
-          </TabsContent>
-        </Tabs>
+        {/* Alert routing — patch-26 moderation */}
+        <div className="flex flex-col gap-4 pt-6 border-t border-border">
+          <div>
+            <h3 className="text-sm font-semibold tracking-tight">Alert routing</h3>
+            <p className="text-muted-foreground text-xs mt-0.5">
+              Which severity reaches you, when, and how often.
+            </p>
+          </div>
+          <NotificationModerationForm />
+        </div>
       </HydrationBoundary>
     </section>
   );

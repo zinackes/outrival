@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ShieldCheck, X } from "lucide-react";
-import { useSession } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 
 const DISMISS_KEY = "outrival.2fa-nudge-dismissed";
@@ -16,16 +15,18 @@ const DEFER_MS = 24 * 60 * 60 * 1000;
 /**
  * One-time nudge inviting users to turn on two-factor auth. It's a suggestion,
  * never a gate — onboarding stays untouched so activation isn't taxed. Shown only
- * when 2FA is off (read from the session, same field SecuritySettings uses);
- * dismissing persists forever in localStorage so we never nag again, and enabling
- * 2FA removes it on the next session read. Deferred past the first dashboard visit
- * (see DEFER_MS) so it doesn't stack onto the first-run analysis + checklist.
+ * when 2FA is off. `twoFactorEnabled` is read server-side from the session in the
+ * dashboard layout (same field SecuritySettings uses) and passed down, so the nudge
+ * doesn't fire its own client get-session on every page; dismissing persists forever
+ * in localStorage so we never nag again, and enabling 2FA removes it on the next
+ * server render. Deferred past the first dashboard visit (see DEFER_MS) so it doesn't
+ * stack onto the first-run analysis + checklist.
  */
-export function TwoFactorNudgeBanner() {
-  const { data: session, isPending } = useSession();
-  const enabled = Boolean(
-    (session?.user as { twoFactorEnabled?: boolean } | undefined)?.twoFactorEnabled,
-  );
+export function TwoFactorNudgeBanner({
+  twoFactorEnabled,
+}: {
+  twoFactorEnabled: boolean;
+}) {
   // Start hidden so an already-dismissed (or 2FA-enabled) user never sees a flash.
   const [dismissed, setDismissed] = useState(true);
   // Start deferred too — the nudge only appears once the grace window has elapsed.
@@ -48,7 +49,7 @@ export function TwoFactorNudgeBanner() {
     setDeferred(!Number.isFinite(firstSeen) || Date.now() - firstSeen < DEFER_MS);
   }, []);
 
-  if (isPending || !session || enabled || dismissed || deferred) return null;
+  if (twoFactorEnabled || dismissed || deferred) return null;
 
   return (
     <div className="mb-4 flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3">

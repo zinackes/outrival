@@ -10,6 +10,7 @@ import {
   productCompetitors,
   signals,
   organizations,
+  onboardingSessions,
   users,
   insertAiQualityCheck,
 } from "@outrival/db";
@@ -237,6 +238,34 @@ export const generateSignalJob = task({
       recorded_at: new Date(),
     });
 
+    // Post-onboarding activation (Lever 3): the org's first-ever signal is the
+    // true "first value" moment. Stamp it into the latest onboarding session's
+    // timings (the funnel's first_real_signal milestone — FIRST_SIGNAL_RECEIVED
+    // on the web is analysis-ready, not a real signal). Best-effort: never
+    // blocks the signal.
+    let isOrgFirstSignal = false;
+    try {
+      const prior = await db.query.signals.findFirst({
+        where: and(eq(signals.orgId, competitor.orgId), ne(signals.id, newSignal.id)),
+        columns: { id: true },
+      });
+      isOrgFirstSignal = !prior;
+      if (isOrgFirstSignal) {
+        const session = await db.query.onboardingSessions.findFirst({
+          where: eq(onboardingSessions.orgId, competitor.orgId),
+          orderBy: (t, { desc }) => desc(t.startedAt),
+        });
+        if (session && session.timings["first_real_signal"] == null) {
+          await db
+            .update(onboardingSessions)
+            .set({ timings: { ...session.timings, first_real_signal: Date.now() } })
+            .where(eq(onboardingSessions.id, session.id));
+        }
+      }
+    } catch (err) {
+      logger.warn("first_real_signal stamp failed (non-fatal)", { error: String(err) });
+    }
+
     // Notification moderation (patch-26): the dispatcher decides how this signal is
     // delivered — an immediate email, a deferred digest, or dropped. Critical
     // bypasses every filter. The decision is stamped on the signal so the feed,
@@ -290,6 +319,13 @@ export const generateSignalJob = task({
         competitorId: competitor.id,
         orgId: competitor.orgId,
       });
+      if (isOrgFirstSignal) {
+        await captureWorkerEvent(orgOwner.id, "first_real_signal", {
+          severity,
+          category,
+          orgId: competitor.orgId,
+        });
+      }
     }
     await shutdownPostHog();
 

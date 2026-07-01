@@ -194,7 +194,14 @@ const ROWS: Row[] = [
     label: "Positioning",
     compact: (c) => (
       <div className="space-y-1.5">
-        {c.positioning.category && <Badge variant="outline">{c.positioning.category}</Badge>}
+        {c.positioning.category && (
+          <Badge
+            variant="outline"
+            className="max-w-full justify-start whitespace-normal text-left leading-snug"
+          >
+            <span className="line-clamp-2">{c.positioning.category}</span>
+          </Badge>
+        )}
         {c.positioning.summary ? (
           <p className="text-muted-foreground line-clamp-3 text-sm leading-snug">
             {c.positioning.summary}
@@ -597,9 +604,11 @@ function buildPickList(
   const comps: PickEntity[] = competitors.map(
     (co): PickEntity => ({ id: co.id, name: co.name, kind: "competitor" }),
   );
+  // Fill the table by default: your first product pinned, then as many
+  // competitors as fit up to MAX (list order = most recently added first).
   const seed = you.length
-    ? [...you.slice(0, 1), ...comps.slice(0, 2)]
-    : comps.slice(0, 3);
+    ? [...you.slice(0, 1), ...comps.slice(0, MAX - 1)]
+    : comps.slice(0, MAX);
   return { entities: [...you, ...comps], selected: seed.map((e) => e.id) };
 }
 

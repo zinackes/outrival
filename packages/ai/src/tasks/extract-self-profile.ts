@@ -51,7 +51,9 @@ actually says — never fall back to a generic label. Extract:
    strongly implied. Leave empty if nothing is detectable — do not guess.
 For any text field you cannot determine, return an empty string — never guess.
 Reply ONLY with a valid JSON object, no markdown and no surrounding text.
-Write all text values in English. Cap each list at 12 items.
+Write every text value in English. If the page is written in another language,
+translate the values into English — never echo the source language. Cap each
+list at 12 items.
 </task>
 
 <format>

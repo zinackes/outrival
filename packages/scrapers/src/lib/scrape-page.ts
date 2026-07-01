@@ -35,6 +35,12 @@ export type CascadeOutcome = ScrapeResult & {
 export interface CascadeOptions extends PatchrightOptions {
   /** Start the cascade at this level (learned per monitor). Defaults to 0 (L0). */
   knownLevel?: ScrapeLevel;
+  /**
+   * Floor the cascade at L1 (browser render) without capturing a screenshot —
+   * for pages whose L0 HTML can't be trusted (client-rendered listings). Like the
+   * `screenshot` floor, but no PNG. See ScrapeOptions.render.
+   */
+  render?: boolean;
 }
 
 // The L0 failure was "needs a browser, not a different IP" (SPA shell / soft
@@ -75,7 +81,7 @@ export async function scrapePage(url: string, options: CascadeOptions = {}): Pro
   // kill-switch.
   const start = Math.max(
     options.knownLevel ?? 0,
-    options.screenshot ? 1 : 0,
+    options.screenshot || options.render ? 1 : 0,
   ) as ScrapeLevel;
   const browserOpts: PatchrightOptions = {
     fullPage: options.fullPage,

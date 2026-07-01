@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { toast } from "sonner";
 import { useSession } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -16,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
+import { toastApiError } from "@/lib/error-helpers";
 import { ReauthCodeField } from "@/components/outrival/reauth-code-field";
 
 // Permanent account erasure (GDPR). Distinct from "delete workspace": this also
@@ -38,7 +38,7 @@ export function DeleteAccountCard() {
       window.location.assign("/");
     } catch (err) {
       setDeleting(false);
-      toast.error(err instanceof Error ? err.message : "Deletion failed — try again.");
+      toastApiError(err, { title: "Couldn't delete the account" });
     }
   }
 

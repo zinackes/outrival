@@ -14,6 +14,8 @@ const SOURCE_LABELS: Record<string, string> = {
   g2_reviews: "G2 reviews",
   capterra_reviews: "Capterra reviews",
   appstore_reviews: "App Store page",
+  // Self-product "developing" stage watches its GitHub repo (surfaces in Activity).
+  github_repo: "GitHub repo",
   linkedin: "LinkedIn",
   twitter: "X / Twitter",
   // patch-18: signals from the independent tech-stack scraper.

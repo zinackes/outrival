@@ -1,11 +1,11 @@
 import { Hono } from "hono";
-import { and, eq, inArray, isNull, ne } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { competitors, monitors } from "@outrival/db";
 import { db } from "../lib/db";
 import { analyticsQuery, sql } from "../lib/analytics-safe";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
-import { productCompetitorIds } from "../lib/products";
+import { productCompetitorIds, productSelfCompetitorId } from "../lib/products";
 
 type Variables = { user: { id: string } };
 
@@ -19,8 +19,11 @@ activityRouter.use("*", authMiddleware);
 const HIDDEN_SOURCES = ["tech_stack", "sitemap", "news"] as const;
 const HIDDEN_SET = new Set<string>(HIDDEN_SOURCES);
 
-// Excludes the self-competitor: the user's own product is monitored too, but it
-// belongs on the "My product" page, not in this competitor-facing activity feed.
+// All monitored entities of the org, INCLUDING the self-competitor (the user's own
+// product): its scrapes are real work Outrival does and belong in this feed too. The
+// `type` distinguishes self rows so the UI can badge them and link to the product page
+// instead of a competitor detail page. Restrict-to-product scoping is applied by the
+// callers (see scopedActivityIds).
 async function orgCompetitors(orgId: string) {
   return db
     .select({
@@ -28,15 +31,21 @@ async function orgCompetitors(orgId: string) {
       name: competitors.name,
       url: competitors.url,
       color: competitors.color,
+      type: competitors.type,
     })
     .from(competitors)
-    .where(
-      and(
-        eq(competitors.orgId, orgId),
-        isNull(competitors.deletedAt),
-        ne(competitors.type, "self"),
-      ),
-    );
+    .where(and(eq(competitors.orgId, orgId), isNull(competitors.deletedAt)));
+}
+
+// The competitor ids in scope for a given product: its linked competitors
+// (product_competitors junction) PLUS the product's own self-competitor, which the
+// junction never holds. Absent product → all org competitors (callers pass null).
+async function scopedActivityIds(orgId: string, productId: string): Promise<string[]> {
+  const [linked, selfId] = await Promise.all([
+    productCompetitorIds(orgId, productId),
+    productSelfCompetitorId(orgId, productId),
+  ]);
+  return selfId ? [...linked, selfId] : linked;
 }
 
 // Current per-source health: when each monitored source last ran, when it runs
@@ -47,9 +56,9 @@ activityRouter.get("/health", async (c) => {
   const orgId = await ensureUserOrg(user.id);
 
   // patch-28 — optional product scope: restrict the source roster to the product's
-  // linked competitors. Absent → all org competitors (unchanged).
+  // linked competitors + its own self-product. Absent → all org competitors incl. self.
   const productId = c.req.query("productId");
-  const restrictIds = productId ? await productCompetitorIds(orgId, productId) : null;
+  const restrictIds = productId ? await scopedActivityIds(orgId, productId) : null;
   // A product with no linked competitors → nothing to show (avoids inArray([])).
   if (restrictIds && restrictIds.length === 0) {
     return c.json({ sources: [], upcoming: [] });
@@ -61,6 +70,7 @@ activityRouter.get("/health", async (c) => {
       competitorId: competitors.id,
       competitorName: competitors.name,
       competitorColor: competitors.color,
+      competitorType: competitors.type,
       sourceType: monitors.sourceType,
       isActive: monitors.isActive,
       lastRunAt: monitors.lastRunAt,
@@ -74,8 +84,8 @@ activityRouter.get("/health", async (c) => {
       and(
         eq(competitors.orgId, orgId),
         isNull(competitors.deletedAt),
-        // Self-product monitoring lives on "My product", not in this feed.
-        ne(competitors.type, "self"),
+        // Self-product monitoring is now surfaced here too (the user's own scrapes),
+        // badged as "your product" by the UI.
         restrictIds ? inArray(competitors.id, restrictIds) : undefined,
       ),
     );
@@ -87,6 +97,7 @@ activityRouter.get("/health", async (c) => {
       competitorId: r.competitorId,
       competitorName: r.competitorName,
       competitorColor: r.competitorColor,
+      isSelf: r.competitorType === "self",
       sourceType: r.sourceType,
       lastRunAt: r.lastRunAt,
       nextRunAt: r.nextRunAt,
@@ -114,6 +125,7 @@ activityRouter.get("/health", async (c) => {
       competitorId: r.competitorId,
       competitorName: r.competitorName,
       competitorColor: r.competitorColor,
+      isSelf: r.competitorType === "self",
       sourceType: r.sourceType,
       nextRunAt: r.nextRunAt,
     }))
@@ -306,16 +318,18 @@ activityRouter.get("/timeline", async (c) => {
     ? (statusRaw as (typeof STATUS_FILTERS)[number])
     : undefined;
 
-  // patch-28 — optional product scope (same as /health).
+  // patch-28 — optional product scope (same as /health): the product's linked
+  // competitors + its own self-product.
   const productId = c.req.query("productId");
   let comps = await orgCompetitors(orgId);
   if (productId) {
-    const allowed = new Set(await productCompetitorIds(orgId, productId));
+    const allowed = new Set(await scopedActivityIds(orgId, productId));
     comps = comps.filter((x) => allowed.has(x.id));
   }
   const nameById = new Map(comps.map((x) => [x.id, x.name]));
   const urlById = new Map(comps.map((x) => [x.id, x.url]));
   const colorById = new Map(comps.map((x) => [x.id, x.color]));
+  const selfById = new Map(comps.map((x) => [x.id, x.type === "self"]));
   const ids = comps.map((x) => x.id);
   if (ids.length === 0) return c.json({ events: [], total: 0 });
 
@@ -465,6 +479,7 @@ activityRouter.get("/timeline", async (c) => {
     competitorId: r.competitorId,
     competitorName: nameById.get(r.competitorId) ?? "Unknown",
     competitorColor: colorById.get(r.competitorId) ?? null,
+    isSelf: selfById.get(r.competitorId) ?? false,
     sourceType: r.sourceType,
     status: r.status, // success | no_change | failed
     durationMs: r.durationMs,

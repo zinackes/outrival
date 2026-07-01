@@ -7,6 +7,7 @@ import { patchrightLaunchOptions, type ProxyTier } from "./proxy";
 import { realisticHeaders, realisticUserAgent } from "./fingerprint";
 import { navWaitUntil, settleAfterNav } from "./nav-strategy";
 import { isCloudflareChallenge } from "./block-detection";
+import { collapseAnimatedCounters } from "./normalize-text";
 
 // Cascade level a scrape was served from (patch-20). 0/1 are free (no proxy),
 // 2/3/4 cost money. Stored per monitor as `requiresLevel` once learned.
@@ -153,7 +154,9 @@ export async function capturePage(
   if (isCloudflareChallenge(html))
     return { ok: false, statusCode, failureReason: "cloudflare_challenge", durationMs: Date.now() - startedAt };
 
-  const text = await page.evaluate(() => document.body?.innerText ?? "");
+  // innerText ignores overflow clipping, so animated counter widgets (odometer &
+  // co.) leak their full 0-9 digit ribbons into the text — strip them here.
+  const text = collapseAnimatedCounters(await page.evaluate(() => document.body?.innerText ?? ""));
   if (text.length < 100 && statusCode === 200)
     return { ok: false, statusCode, failureReason: "soft_block", durationMs: Date.now() - startedAt };
 

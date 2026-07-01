@@ -19,6 +19,7 @@ import {
   ExternalLink,
   Telescope,
   Building2,
+  PauseCircle,
 } from "lucide-react";
 import { EmptyState } from "./empty-state";
 import { formatDistanceToNow } from "date-fns";
@@ -93,6 +94,32 @@ type SortDir = "asc" | "desc";
 
 const TH_BASE =
   "text-left px-3.5 py-2.5 text-xs text-muted-foreground font-medium border-b border-border whitespace-nowrap";
+
+// Marks a competitor the plan cap froze (over-cap after a downgrade). The scheduler
+// skips it non-destructively; the tooltip points the user to billing to resume it.
+function PausedByPlanBadge({ className }: { className?: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Link
+          href="/dashboard/settings/billing"
+          onClick={(e) => e.stopPropagation()}
+          className={cn(
+            "flex w-fit items-center gap-1 rounded border border-high/40 bg-high/[0.06] px-1.5 py-0.5 text-meta font-medium text-medium",
+            className,
+          )}
+        >
+          <PauseCircle size={11} className="shrink-0" />
+          Paused · plan limit
+        </Link>
+      </TooltipTrigger>
+      <TooltipContent>
+        Over your plan&apos;s competitor limit — monitoring is paused. Upgrade to
+        resume.
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 // Current-color chip on the quick-set trigger: a filled swatch at the accent
 // lightness when set, a neutral outlined square when the competitor has no color.
@@ -605,6 +632,7 @@ export function CompetitorsList() {
                       />
                     </a>
                     <AnalysisBadge analysis={c.analysis} className="mt-1" />
+                    {c.pausedByPlan && <PausedByPlanBadge className="mt-1" />}
                     {allProducts && (
                       <ProductChips
                         productIds={c.specificProductIds}
@@ -725,6 +753,7 @@ export function CompetitorsList() {
                       />
                     </a>
                     <AnalysisBadge analysis={c.analysis} className="mt-1" />
+                    {c.pausedByPlan && <PausedByPlanBadge className="mt-1" />}
                     {allProducts && (
                       <ProductChips
                         productIds={c.specificProductIds}

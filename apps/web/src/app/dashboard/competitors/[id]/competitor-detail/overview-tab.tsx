@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { formatDistanceToNow } from "date-fns";
+import { useEffect, useState } from "react";
+import { classifyLogoName, type AnalysisStatus } from "@outrival/shared";
 import { toast } from "sonner";
 import {
   Activity,
@@ -58,14 +58,56 @@ function OverviewStat({
 
 function LogoChip({ logo }: { logo: { name: string | null; src: string | null } }) {
   const [failed, setFailed] = useState(false);
-  // A square/blocky source image silhouettes into a featureless block. We only learn the
-  // shape once the image loads, and pixels can't be read (cross-origin <img>) — aspect
-  // ratio is the one signal we get. When it's blocky and we have a name, fall back to text.
+  // An opaque/square source image silhouettes into a featureless block under the wall's
+  // ink filter. Two signals flip `blocky`: a CORS pixel probe (opaque coverage, below)
+  // and the loaded aspect ratio (onLoad). When blocky, the tile shows its name — or
+  // drops entirely when there's none.
   const [blocky, setBlocky] = useState(false);
   const src = logo.src?.trim() || "";
-  // Name to label/alt the logo: the brand name when captured, else derived from
-  // the image filename so a path-only logo still reads as something.
-  const name = logo.name?.trim() || (src ? logoLabel(src) : "");
+  // Name to label/alt the logo. A stored brand name is already classifier-verified
+  // (API refineLogo). The filename-derived fallback, however, is usually junk
+  // ("image 17", "Picture1 1", an asset hash) — surface it as text ONLY when it
+  // independently reads as a real brand, otherwise lean on the image (or drop).
+  const derived = src ? logoLabel(src) : "";
+  const name =
+    logo.name?.trim() ||
+    (derived && classifyLogoName(derived).kind === "brand" ? derived : "");
+
+  // A logo with no transparent background fills the whole tile with solid black under
+  // the silhouette filter — a featureless grey block. Probe the pixels via a CORS
+  // load (most logo CDNs allow it); if the artwork is near-fully opaque, treat it as
+  // blocky so it renders its name instead — and drops when there's no name. When CORS
+  // is unavailable the probe stays silent and the aspect-ratio heuristic (onLoad) is
+  // the fallback. React runs hooks unconditionally, so this sits above any early return.
+  useEffect(() => {
+    if (!src || !isRenderableLogoSrc(src) || /^data:/i.test(src)) return;
+    let cancelled = false;
+    const probe = new Image();
+    probe.crossOrigin = "anonymous";
+    probe.onload = () => {
+      if (cancelled) return;
+      try {
+        const size = 24;
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        if (!ctx) return;
+        ctx.drawImage(probe, 0, 0, size, size);
+        const { data } = ctx.getImageData(0, 0, size, size); // throws if CORS-tainted
+        let opaque = 0;
+        for (let i = 3; i < data.length; i += 4) if (data[i]! > 32) opaque++;
+        if (opaque / (size * size) > 0.92) setBlocky(true);
+      } catch {
+        /* cross-origin taint — fall back to the aspect-ratio heuristic */
+      }
+    };
+    probe.src = src;
+    return () => {
+      cancelled = true;
+    };
+  }, [src]);
+
   const showImage = !!src && isRenderableLogoSrc(src) && !failed && !blocky;
   if (!showImage && !name) return null;
 
@@ -91,10 +133,11 @@ function LogoChip({ logo }: { logo: { name: string | null; src: string | null } 
               setFailed(true);
               return;
             }
-            // Square-ish artwork (opaque brand square, favicon-style mark) collapses into a
-            // meaningless block under the silhouette filter — prefer the name when we have
-            // one. Wide wordmark logos (the ones that read well) are kept as images.
-            if (name && img.naturalWidth / img.naturalHeight <= 1.4) setBlocky(true);
+            // The wall is a coherent row of wide wordmark silhouettes. Square-ish artwork
+            // (opaque brand square, favicon-style mark) collapses into a meaningless block
+            // under the filter — treat it as blocky so it shows its name, or drops when
+            // there's none. Wide wordmarks (the ones that read well) stay as images.
+            if (img.naturalWidth / img.naturalHeight <= 1.4) setBlocky(true);
           }}
           className="max-h-7 max-w-full object-contain opacity-50 transition-opacity duration-150 [filter:brightness(0)] hover:opacity-80 dark:[filter:brightness(0)_invert(1)]"
         />
@@ -131,6 +174,7 @@ export function OverviewTab({
   overview,
   monitors,
   scrapingIds,
+  analysis,
   pricingStatus,
   pricingNote,
   onRun,
@@ -140,6 +184,10 @@ export function OverviewTab({
   overview: CompetitorOverview;
   monitors: Monitor[];
   scrapingIds: Set<string>;
+  // Where the first analysis is (queued → scraping → summarizing). Drives the
+  // empty state so a freshly added competitor reads as "in progress" rather than
+  // a static "nothing captured" with a redundant manual-scrape button.
+  analysis: AnalysisStatus | null;
   // Pricing taxonomy of the competitor — drives a meaningful "Pricing now" empty
   // state (a known model without public numbers) instead of a flat "Not captured".
   pricingStatus: PricingStatus | null;
@@ -147,7 +195,7 @@ export function OverviewTab({
   onRun: (id: string) => void;
   onOpenTab: (tab: TabKey) => void;
 }) {
-  const { homepage, numericClaims, pricingNow, reviews, hiring, capturedAt } = overview;
+  const { homepage, numericClaims, pricingNow, reviews, hiring } = overview;
 
   // When no price tier is captured but the page does state its pricing model — a
   // usage-based calculator or a sales-gated wall — surface that note rather than
@@ -225,6 +273,18 @@ export function OverviewTab({
   if (!hasAnything) {
     const homepageMonitor = monitors.find((m) => m.sourceType === "homepage");
     const running = homepageMonitor ? scrapingIds.has(homepageMonitor.id) : false;
+    // The first analysis is still running (queued → scraping → summarizing). The
+    // top-of-page stepper carries the live stage; here we just avoid a misleading
+    // "Nothing captured yet" + manual-scrape button while it's already working.
+    if (analysis?.pending || running) {
+      return (
+        <EmptyState
+          icon={LayoutGrid}
+          title="Analyzing this competitor…"
+          description="We're scanning the homepage and generating the first insights. This tab fills in automatically once it's done — no need to refresh."
+        />
+      );
+    }
     return (
       <EmptyState
         icon={LayoutGrid}
@@ -408,11 +468,6 @@ export function OverviewTab({
         </OverviewStat>
       </div>
 
-      {capturedAt && (
-        <p className="text-xs font-mono text-muted-foreground">
-          homepage facts captured {formatDistanceToNow(new Date(capturedAt), { addSuffix: true })}
-        </p>
-      )}
       </TabSection>
     </TabCard>
   );

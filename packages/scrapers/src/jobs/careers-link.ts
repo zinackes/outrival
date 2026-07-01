@@ -28,6 +28,12 @@ const TEXT_SIGNALS: RegExp[] = [
   /\bwe['’`]?re\s*hiring\b/i,
   /\bopen\s*(roles|positions|jobs)\b/i,
   /\bwork\s*with\s*us\b/i,
+  // Bare "Jobs" / "Hiring" / "Vacancies" nav or footer labels — common, and not
+  // covered by the phrase patterns above. E.g. CardNexus links its Notion job
+  // board with just "Jobs", which otherwise scores 0 and is never followed.
+  /\bjobs?\b/i,
+  /\bhiring\b/i,
+  /\bvacanc(?:y|ies)\b/i,
 ];
 
 // Weaker signal — matched against `host + path` (an icon/image link with no text
@@ -47,6 +53,10 @@ const HREF_SIGNALS = [
   "/emploi",
   "/hiring",
   "/career",
+  // "/open-positions", "/positions", and Notion boards titled
+  // "Open-Positions-at-<Company>" all carry "position" in the path.
+  "position",
+  "vacanc",
 ];
 
 // A careers-dedicated subdomain is itself a signal (`jobs.acme.com`).

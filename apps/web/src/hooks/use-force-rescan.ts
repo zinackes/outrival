@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
+import { toastApiError } from "@/lib/error-helpers";
 import { formatDate } from "@/lib/format-date";
 
 interface Options {
@@ -83,9 +84,7 @@ export function useForceRescan(monitorId: string, options?: Options) {
             : undefined,
         });
       } else {
-        toast.error(err instanceof Error ? err.message : "Re-scan failed. Please try again.", {
-          id: toastId,
-        });
+        toastApiError(err, { title: "Re-scan failed", id: toastId });
       }
     } finally {
       activeRef.current = false;

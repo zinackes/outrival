@@ -121,6 +121,22 @@ function Dot({ color }: { color: string }) {
   );
 }
 
+// The user's own product (self-competitor) surfaces in this feed alongside
+// competitors; its name is often a bare hostname, so a badge makes it unambiguous.
+function SelfBadge() {
+  return (
+    <span className="ml-1.5 whitespace-nowrap rounded bg-muted px-1.5 py-0.5 align-middle text-meta font-medium text-muted-foreground">
+      Your product
+    </span>
+  );
+}
+
+// A self row links to the products page (self-competitors have no competitor detail
+// page); a competitor row links to its detail page.
+function entityHref(id: string, isSelf?: boolean): string {
+  return isSelf ? "/dashboard/products" : `/dashboard/competitors/${id}`;
+}
+
 // Readable label per structured-diff kind (homepage). Sentence case, not an
 // uppercase mono eyebrow — these read as plain field names, not tags.
 const KIND_LABEL: Record<string, string> = {
@@ -589,12 +605,13 @@ export function ActivityView() {
                   </span>
                   <span className="min-w-0 truncate">
                     <Link
-                      href={`/dashboard/competitors/${nextCheck.competitorId}`}
+                      href={entityHref(nextCheck.competitorId, nextCheck.isSelf)}
                       className="font-medium hover:underline"
                       style={competitorNameColor(nextCheck.competitorColor)}
                     >
                       {nextCheck.competitorName}
                     </Link>
+                    {nextCheck.isSelf && <SelfBadge />}
                     <span className="text-muted-foreground">
                       {" · "}
                       {sourceLabel(nextCheck.sourceType)}{" "}
@@ -634,12 +651,13 @@ export function ActivityView() {
                           >
                             <span className="min-w-0 truncate">
                               <Link
-                                href={`/dashboard/competitors/${u.competitorId}`}
+                                href={entityHref(u.competitorId, u.isSelf)}
                                 className="font-medium hover:underline"
                                 style={competitorNameColor(u.competitorColor)}
                               >
                                 {u.competitorName}
                               </Link>
+                              {u.isSelf && <SelfBadge />}
                               <span className="text-muted-foreground">
                                 {" · "}
                                 {sourceLabel(u.sourceType)}
@@ -788,13 +806,14 @@ export function ActivityView() {
                             </TableCell>
                             <TableCell>
                               <Link
-                                href={`/dashboard/competitors/${e.competitorId}`}
+                                href={entityHref(e.competitorId, e.isSelf)}
                                 className="font-medium hover:underline"
                                 style={competitorNameColor(e.competitorColor)}
                                 onClick={(ev) => ev.stopPropagation()}
                               >
                                 {e.competitorName}
                               </Link>
+                              {e.isSelf && <SelfBadge />}
                             </TableCell>
                             <TableCell className="text-muted-foreground">
                               {sourceLabel(e.sourceType)}
@@ -873,7 +892,8 @@ export function ActivityView() {
                 <DialogTitle>
                   <span style={competitorNameColor(detailEvent.competitorColor)}>
                     {detailEvent.competitorName}
-                  </span>{" "}
+                  </span>
+                  {detailEvent.isSelf && <SelfBadge />}{" "}
                   · {sourceLabel(detailEvent.sourceType)}
                 </DialogTitle>
                 <DialogDescription>

@@ -84,26 +84,44 @@ export async function scrape(
   const lowered = url.toLowerCase();
   const direct = CAREERS_KEYWORDS.some((k) => lowered.includes(k));
 
-  const pageOpts = {
-    // Jobs parse HTML/JSON only — no screenshot needed; drop media/font bandwidth.
-    blockResources: true,
-    knownLevel: options.knownLevel,
-  };
+  // Careers / job-board pages routinely inject their openings CLIENT-SIDE (the SSR
+  // HTML carries only a "Loading open positions…" placeholder). That HTML is still
+  // text-rich (marketing copy, team, culture), so L0's needs_render guard accepts
+  // it and the browser is never used → the roles are invisible. When JOBS_RENDER_
+  // ENABLED (default on), render the pages we COMMIT to (the found careers page,
+  // followed board/off-site hops) at L1 and scroll so the bounded settle catches
+  // the openings XHR. Path PROBING stays cheap L0 (most candidates 404) — only the
+  // page we keep pays a render. Kill-switch off ⇒ exactly the previous behaviour.
+  const renderJobs = process.env.JOBS_RENDER_ENABLED !== "false";
+  // Jobs parse HTML/JSON only — no screenshot needed; drop media/font bandwidth.
+  const probeOpts = { blockResources: true, knownLevel: options.knownLevel };
+  const renderPage = (u: string) =>
+    scrapePage(u, renderJobs ? { ...probeOpts, render: true, progressiveScroll: true } : probeOpts);
+
   let result: ScrapeOutcome;
+  let onCareersPage: boolean; // false ⇒ the homepage fallback, not a careers page
+  let rendered = false; // did `result` already come from a browser render?
   if (direct) {
-    result = await scrapePage(url, pageOpts);
+    // The monitor URL is itself a careers URL → render it straight away.
+    result = await renderPage(url);
+    onCareersPage = true;
+    rendered = renderJobs;
   } else {
     try {
-      result = await scrapeFirstSuccess(url, CAREERS_PATHS, (u) => scrapePage(u, pageOpts));
+      result = await scrapeFirstSuccess(url, CAREERS_PATHS, (u) => scrapePage(u, probeOpts));
+      onCareersPage = true;
     } catch {
       // No same-host careers page — scrape the homepage anyway so we can still
       // discover an off-site careers link (footer "Nous rejoindre" → external site).
-      result = await scrapePage(url, pageOpts);
+      result = await scrapePage(url, probeOpts);
+      onCareersPage = false;
     }
   }
 
   // Most competitors host their openings on an ATS (Greenhouse, Lever, Ashby, …)
   // linked/embedded from the careers page — scraping the page alone misses them.
+  // The board link lives in the SSR HTML, so the cheap L0 probe already surfaces it
+  // (no render needed to reach the structured API).
   const board = detectAtsBoard(result.html);
   if (board) {
     // Phase A — pull the postings from the ATS public JSON API and append them to
@@ -124,9 +142,10 @@ export async function scrape(
 
     // Phase B — no usable API (Workable, fetch failed, empty board): follow the
     // board link one hop so the worker LLM-extracts from the real listing page
-    // instead of the marketing careers page. Fail-soft: keep the careers page.
+    // instead of the marketing careers page. Board pages are JS-heavy → render.
+    // Fail-soft: keep the careers page.
     try {
-      const hop = await scrapePage(board.boardUrl, pageOpts);
+      const hop = await renderPage(board.boardUrl);
       if (hop.text.length > result.text.length) {
         return {
           ...hop,
@@ -140,9 +159,10 @@ export async function scrape(
   }
 
   // No known ATS — the openings may live on a custom, external careers site
-  // linked from the nav/footer ("Nous rejoindre" → a separate jobs site, e.g.
-  // Welcome to the Jungle). Follow that link one cross-host hop; the downstream
-  // LLM extracts the listing. Same-host links are already covered by the path
+  // linked from the nav/footer ("Nous rejoindre", "Jobs" → a separate jobs site,
+  // e.g. Welcome to the Jungle or a Notion board). Follow that link one cross-host
+  // hop (rendered — these targets are almost always SPAs); the downstream LLM
+  // extracts the listing. Same-host links are already covered by the path
   // discovery above, so only an off-site hop is worth the extra scrape.
   //
   // Keep the hop whenever it returns real content (floor) rather than requiring
@@ -154,13 +174,28 @@ export async function scrape(
   if (careersLink) {
     try {
       if (new URL(careersLink).hostname !== new URL(finalUrl).hostname) {
-        const hop = await scrapePage(careersLink, pageOpts);
+        const hop = await renderPage(careersLink);
         if (hop.text.length > MIN_CAREERS_HOP_TEXT) {
           return { ...hop, metadata: { ...hop.metadata, careersFollowed: careersLink } };
         }
       }
     } catch {
       // ignore — fall through to the original page
+    }
+  }
+
+  // Same-host careers page, no ATS, no off-site link: it may still render its
+  // openings client-side (a "Loading positions…" placeholder). The probe fetched
+  // it cheaply at L0, so render it once now to surface the roles. Fail-soft and
+  // only kept when the render yields more text than the L0 capture.
+  if (renderJobs && onCareersPage && !rendered) {
+    try {
+      const full = await renderPage(finalUrl);
+      if (full.text.length > result.text.length) {
+        return { ...full, metadata: { ...full.metadata, jobsRendered: true } };
+      }
+    } catch {
+      // ignore — keep the L0 careers page below
     }
   }
   return result;

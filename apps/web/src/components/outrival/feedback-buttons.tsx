@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ThumbsUp, ThumbsDown, X } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -19,6 +19,12 @@ import { cn } from "@/lib/utils";
 // the reason is always optional. Re-clicking the active verdict cancels it (and
 // reverts the immediate action server-side). Severity feedback and NPS have their
 // own controls — this component covers signal / discovery / battle card / digest.
+//
+// Legibility (2026-07): every action confirms with a toast (even "useful", which
+// has no server side-effect), the current verdict is shown inline in words, and
+// the state is preloaded — from server props (signals feed) or self-fetched
+// (autoHydrate) — so re-clicking to remove works after a reload instead of
+// silently re-submitting.
 type ThumbsTargetType = "signal" | "discovery_suggestion" | "battle_card" | "digest";
 
 interface FeedbackButtonsProps {
@@ -26,6 +32,13 @@ interface FeedbackButtonsProps {
   targetId: string;
   currentVerdict?: QualityFeedbackVerdict | null;
   currentFeedbackId?: string | null;
+  currentReason?: QualityFeedbackReason | null;
+  /**
+   * Fetch the user's existing verdict on mount. Use where the parent can't cheaply
+   * preload it (e.g. a single battle card). Skipped on high-cardinality lists
+   * (the signals feed), which preload the verdict + id through their own query.
+   */
+  autoHydrate?: boolean;
   size?: "sm" | "md";
   className?: string;
 }
@@ -55,18 +68,42 @@ export function FeedbackButtons({
   targetId,
   currentVerdict = null,
   currentFeedbackId = null,
+  currentReason = null,
+  autoHydrate = false,
   size = "sm",
   className,
 }: FeedbackButtonsProps) {
   const [verdict, setVerdict] = useState<QualityFeedbackVerdict | null>(currentVerdict);
   const [feedbackId, setFeedbackId] = useState<string | null>(currentFeedbackId);
-  const [showReasons, setShowReasons] = useState(false);
+  const [reason, setReason] = useState<QualityFeedbackReason | null>(currentReason);
+  const [showReasons, setShowReasons] = useState(currentVerdict === "not_useful");
   const [busy, setBusy] = useState(false);
+  // Once the user interacts, a late-arriving hydrate must not clobber their choice.
+  const touched = useRef(false);
 
   const iconSize = size === "sm" ? 14 : 16;
 
+  useEffect(() => {
+    if (!autoHydrate || currentFeedbackId) return;
+    let cancelled = false;
+    void api
+      .getQualityFeedback(targetType, targetId)
+      .then((res) => {
+        if (cancelled || touched.current || !res.feedback) return;
+        setVerdict(res.feedback.verdict);
+        setFeedbackId(res.feedback.id);
+        setReason(res.feedback.reason);
+        setShowReasons(res.feedback.verdict === "not_useful");
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [autoHydrate, currentFeedbackId, targetType, targetId]);
+
   const handleVerdict = async (next: "useful" | "not_useful") => {
     if (busy) return;
+    touched.current = true;
     setBusy(true);
     try {
       // Re-clicking the active verdict cancels it.
@@ -74,6 +111,7 @@ export function FeedbackButtons({
         await api.deleteQualityFeedback(feedbackId);
         setVerdict(null);
         setFeedbackId(null);
+        setReason(null);
         setShowReasons(false);
         toast("Feedback removed.");
         return;
@@ -81,8 +119,14 @@ export function FeedbackButtons({
       const res = await api.submitQualityFeedback({ targetType, targetId, verdict: next });
       setVerdict(next);
       setFeedbackId(res.feedbackId);
+      setReason(null);
       setShowReasons(next === "not_useful");
-      if (res.immediateAction) toast(res.immediateAction.description);
+      // "not useful" has a visible server side-effect (its description); "useful"
+      // has none, so give it its own confirmation — otherwise the click feels dead.
+      toast(
+        res.immediateAction?.description ??
+          (next === "useful" ? "Thanks — marked as useful." : "Thanks for the feedback."),
+      );
     } catch {
       toast.error("Couldn't save your feedback. Try again.");
     } finally {
@@ -90,18 +134,21 @@ export function FeedbackButtons({
     }
   };
 
-  const handleReason = async (reason: QualityFeedbackReason) => {
+  const handleReason = async (next: QualityFeedbackReason) => {
     if (busy) return;
+    touched.current = true;
     setBusy(true);
     try {
       const res = await api.submitQualityFeedback({
         targetType,
         targetId,
         verdict: "not_useful",
-        reason,
+        reason: next,
       });
       setFeedbackId(res.feedbackId);
+      setReason(next);
       setShowReasons(false);
+      toast(`Noted — “${REASON_LABELS[next]}”. Thanks.`);
     } catch {
       toast.error("Couldn't save your feedback. Try again.");
     } finally {
@@ -109,8 +156,17 @@ export function FeedbackButtons({
     }
   };
 
+  const statusText =
+    verdict === "useful"
+      ? "Marked useful"
+      : verdict === "not_useful"
+        ? reason
+          ? `Not useful · ${REASON_LABELS[reason]}`
+          : "Marked not useful"
+        : null;
+
   return (
-    <div className={cn("flex items-center gap-1.5 text-xs text-text-subtle", className)}>
+    <div className={cn("flex flex-wrap items-center gap-1.5 text-xs text-text-subtle", className)}>
       <span className="sr-only">Was this useful?</span>
       <Tooltip>
         <TooltipTrigger asChild>
@@ -149,17 +205,31 @@ export function FeedbackButtons({
         <TooltipContent>{verdict === "not_useful" ? "Remove feedback" : "Not useful"}</TooltipContent>
       </Tooltip>
 
+      {/* Persistent, plain-words readout of what the user submitted — so the state
+          is legible at a glance (and after a reload), not just a subtle icon tint. */}
+      {statusText && (
+        <span aria-live="polite" className="text-xs text-text-subtle">
+          {statusText}
+        </span>
+      )}
+
       {showReasons && (
         <div className="flex flex-wrap items-center gap-1">
-          {REASONS_BY_TYPE[targetType].map((reason) => (
+          {REASONS_BY_TYPE[targetType].map((r) => (
             <button
-              key={reason}
+              key={r}
               type="button"
               disabled={busy}
-              onClick={() => handleReason(reason)}
-              className="rounded border border-border px-1.5 py-0.5 text-meta text-text-subtle transition-colors hover:border-border-strong hover:text-foreground disabled:opacity-50"
+              aria-pressed={reason === r}
+              onClick={() => handleReason(r)}
+              className={cn(
+                "rounded border px-1.5 py-0.5 text-meta transition-colors disabled:opacity-50",
+                reason === r
+                  ? "border-border-strong text-foreground"
+                  : "border-border text-text-subtle hover:border-border-strong hover:text-foreground",
+              )}
             >
-              {REASON_LABELS[reason]}
+              {REASON_LABELS[r]}
             </button>
           ))}
           <button

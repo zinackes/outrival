@@ -2,6 +2,8 @@
 
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
+import { productsListQuery } from "@/lib/queries";
 import {
   ALL_PRODUCTS,
   normalizeScope,
@@ -52,6 +54,19 @@ export function ProductScopeProvider({
     setStored(next);
     writeCookie(next);
   }, []);
+
+  // Self-heal a stale/foreign scope: the cookie is a global browser preference (not
+  // org-scoped), so a product id persisted while signed into another org — or one
+  // since deleted — otherwise sticks and filters every product-scoped feed down to
+  // nothing, with no escape hatch on a mono-product org (the switcher is hidden).
+  // Once the org's real products load, drop a scope that isn't among them back to All
+  // products (clears the cookie). Deduped with the sidebar's identical query.
+  const productsQ = useQuery(productsListQuery());
+  React.useEffect(() => {
+    const products = productsQ.data;
+    if (!products || stored === null) return;
+    if (!products.some((p) => p.id === stored)) setScope(null);
+  }, [productsQ.data, stored, setScope]);
 
   const value = React.useMemo<ScopeCtx>(
     () => ({ stored, setScope }),

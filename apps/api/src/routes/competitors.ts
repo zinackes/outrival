@@ -30,6 +30,7 @@ import {
   getOrgPlan,
   isSourceAllowed,
   isFrequencyAllowed,
+  pausedByPlanCap,
 } from "../lib/plan";
 import {
   SOURCE_TYPES,
@@ -63,9 +64,17 @@ const CreateCompetitorSchema = z.object({
   description: z.string().optional(),
 });
 
+// Resolves a competitor the caller owns, EXCLUDING soft-deleted rows (deletedAt).
+// A deleted competitor must be invisible everywhere it's served — the detail page
+// and every sub-route (signals/jobs/reviews/pricing…) resolve through this helper,
+// so filtering here 404s them all at once instead of relying on a per-handler check.
 async function assertOwnedCompetitor(competitorId: string, orgId: string) {
   return db.query.competitors.findFirst({
-    where: and(eq(competitors.id, competitorId), eq(competitors.orgId, orgId)),
+    where: and(
+      eq(competitors.id, competitorId),
+      eq(competitors.orgId, orgId),
+      isNull(competitors.deletedAt),
+    ),
   });
 }
 
@@ -711,6 +720,12 @@ competitorsRouter.get("/", async (c) => {
     specificByCompetitor.set(r.competitorId, arr);
   }
 
+  // Competitors frozen by the plan cap (over-cap after a downgrade). Org-level and
+  // independent of any product scope — the oldest `maxCompetitors` stay monitored,
+  // everything newer is paused. Empty set for orgs within their cap / unlimited.
+  const plan = await getOrgPlan(orgId);
+  const pausedByPlan = new Set((await pausedByPlanCap(orgId, plan)).map((p) => p.id));
+
   const nowMs = Date.now();
   const enriched = list.map((c) => {
     const a = byCompetitor.get(c.id);
@@ -727,6 +742,7 @@ competitorsRouter.get("/", async (c) => {
     return {
       ...c,
       specificProductIds: specificByCompetitor.get(c.id) ?? [],
+      pausedByPlan: pausedByPlan.has(c.id),
       freshness,
       analysis,
       stats: {

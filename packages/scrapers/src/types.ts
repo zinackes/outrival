@@ -37,6 +37,15 @@ export interface ScrapeOptions {
    */
   progressiveScroll?: boolean;
   /**
+   * Floor the cascade at L1 (browser render) even when L0 would have "succeeded".
+   * Unlike `screenshot`, no PNG is captured — this is purely "L0's HTML is not
+   * trustworthy for this page, render it". The jobs scraper uses it for careers /
+   * board pages, whose openings are routinely injected client-side (a "Loading
+   * open positions…" placeholder sits in the SSR HTML that L0's needs_render guard
+   * accepts). Default off; L0 stays the norm for every other source.
+   */
+  render?: boolean;
+  /**
    * Start the scraping cascade at this level instead of L0 (patch-20). Set from
    * the monitor's learned `requiresLevel` so a site known to need a proxy skips
    * the cheaper attempts. Levels 0/1 are free, 2/3/4 cost money.

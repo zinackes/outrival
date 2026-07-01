@@ -118,6 +118,9 @@ signalsRouter.get("/", async (c) => {
       // The current user's quality verdict on this signal (patch-21), so the
       // inline feedback buttons render in the right state without an extra request.
       feedbackVerdict: qualityFeedback.verdict,
+      // …and its row id, so re-clicking the active thumb removes the verdict
+      // (the delete path needs the id) instead of silently re-submitting it.
+      feedbackId: qualityFeedback.id,
       // AI self-confidence + self-check flag (patch-24): drives the ConfidenceDot
       // and the "couldn't be verified" warning. One quality check per signal
       // (generate-signal is idempotent by changeId), so this join stays 1:1.

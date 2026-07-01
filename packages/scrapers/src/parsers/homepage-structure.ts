@@ -7,6 +7,7 @@ import {
 } from "@outrival/shared";
 import { hashTestimonial, type TestimonialItem, type CustomerLogo } from "./social-proof";
 import { extractJsonLd, findByType, asText } from "../structured-data/json-ld";
+import { collapseAnimatedCounters } from "../lib/normalize-text";
 
 /**
  * Turns rendered homepage HTML into a typed, diff-friendly semantic structure
@@ -102,7 +103,12 @@ const MAX_LOGOS = 60;
 const MAX_TESTIMONIALS = 40;
 const MAX_FOOTER_TEXT = 2000;
 
-const norm = (s: string): string => s.replace(/\s+/g, " ").trim();
+// cheerio .text()/textContent, like innerText, dumps the full 0-9 digit ribbons of
+// animated counter widgets (odometer & co.) into the extracted text — strip those
+// here so every field parsed by this module (hero headline/subheadline, sections,
+// nav, footer, CTAs) is clean.
+const norm = (s: string): string =>
+  collapseAnimatedCounters(s).replace(/\s+/g, " ").trim();
 
 function resolveHref(raw: string | undefined, baseUrl: string): string | null {
   if (!raw) return null;

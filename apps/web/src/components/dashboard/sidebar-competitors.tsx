@@ -4,7 +4,7 @@ import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Users, ChevronRight, MoreHorizontal } from "lucide-react";
+import { Users, ChevronRight, ChevronUp, MoreHorizontal } from "lucide-react";
 
 import { type Competitor } from "@/lib/api";
 import { competitorsQuery } from "@/lib/queries";
@@ -23,6 +23,9 @@ import { ProductChips } from "./product-chip";
 
 const CAP = 8;
 const POLL_MS = 60_000;
+// Persist the "show all" preference client-side so an unfolded roster survives
+// navigation and reloads (localStorage, read after mount to dodge SSR mismatch).
+const SHOW_ALL_KEY = "outrival:sidebar:competitorsShowAll";
 
 // Competitor row: smooth neutral hover (no side border / stripe). Two-tier
 // neutral fill encodes selection — hover is a light wash, the current row is a
@@ -55,6 +58,22 @@ export function SidebarCompetitors() {
   // The cookie carries the scope across navigation, so plain links open scoped too.
   const listHref = "/dashboard/competitors";
   const [open, setOpen] = React.useState(true);
+  // "Show all" unfolds the full roster in place (past CAP); persisted so it sticks.
+  const [showAll, setShowAll] = React.useState(false);
+  React.useEffect(() => {
+    try {
+      setShowAll(localStorage.getItem(SHOW_ALL_KEY) === "1");
+    } catch {}
+  }, []);
+  const toggleShowAll = React.useCallback(() => {
+    setShowAll((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(SHOW_ALL_KEY, next ? "1" : "0");
+      } catch {}
+      return next;
+    });
+  }, []);
 
   const activeId = React.useMemo(() => {
     const m = pathname.match(/^\/dashboard\/competitors\/([^/]+)/);
@@ -76,17 +95,19 @@ export function SidebarCompetitors() {
     });
   }, [comps]);
 
-  // Cap to the most active, but always keep the open competitor visible.
+  // Cap to the most active, but always keep the open competitor visible — unless
+  // the user unfolded the full roster ("Show all").
   const shown = React.useMemo(() => {
+    if (showAll) return sorted;
     const top = sorted.slice(0, CAP);
     if (activeId && !top.some((c) => c.id === activeId)) {
       const act = sorted.find((c) => c.id === activeId);
       if (act) top.push(act);
     }
     return top;
-  }, [sorted, activeId]);
+  }, [sorted, activeId, showAll]);
 
-  const hiddenCount = sorted.length - shown.length;
+  const overCap = sorted.length > CAP;
   const hasAny = comps == null || comps.length > 0;
 
   return (
@@ -140,16 +161,29 @@ export function SidebarCompetitors() {
               </SidebarMenuSubItem>
             );
           })}
-          {hiddenCount > 0 && (
+          {overCap && (
             <SidebarMenuSubItem>
               <SidebarMenuSubButton
                 asChild
                 className="w-full text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground motion-reduce:transition-none"
               >
-                <Link href={listHref}>
-                  <MoreHorizontal />
-                  <span>View all ({sorted.length})</span>
-                </Link>
+                <button
+                  type="button"
+                  onClick={toggleShowAll}
+                  aria-expanded={showAll}
+                >
+                  {showAll ? (
+                    <>
+                      <ChevronUp />
+                      <span>Show less</span>
+                    </>
+                  ) : (
+                    <>
+                      <MoreHorizontal />
+                      <span>Show all ({sorted.length})</span>
+                    </>
+                  )}
+                </button>
               </SidebarMenuSubButton>
             </SidebarMenuSubItem>
           )}

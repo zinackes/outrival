@@ -161,8 +161,9 @@ export function DiscoveryView() {
           description: "Detection is rate-limited to avoid excess API costs.",
         });
       } else if (e instanceof ApiError && e.data.error === "missing_profile") {
-        toast.error("Complete onboarding first", {
-          description: "Your product profile is required to detect competitors.",
+        toast.error("This product needs a profile first", {
+          description:
+            "Add a URL or fill in the product's category and value prop to enable discovery.",
         });
       } else {
         toastApiError(e, { title: "Detection failed" });

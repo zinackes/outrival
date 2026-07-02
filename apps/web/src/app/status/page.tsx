@@ -8,17 +8,17 @@ export const metadata: Metadata = {
 };
 
 const SYSTEMS = [
-  { name: "Dashboard & API", state: "Operational" },
-  { name: "Scraping pipeline", state: "Operational" },
-  { name: "AI insights", state: "Operational" },
-  { name: "Email & Slack delivery", state: "Operational" },
+  { name: "Dashboard & API", state: "Monitored" },
+  { name: "Scraping pipeline", state: "Monitored" },
+  { name: "AI insights", state: "Monitored" },
+  { name: "Email & Slack delivery", state: "Monitored" },
 ];
 
 export default function StatusPage() {
   return (
     <DocPage
       title="System status"
-      intro="All systems operational. Incidents and maintenance windows will be posted here."
+      intro="The core systems behind Outrival. Incidents and scheduled maintenance are posted here — this page is informational, not a live health feed."
     >
       <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
         {SYSTEMS.map((s) => (
@@ -27,8 +27,7 @@ export default function StatusPage() {
             className="flex items-center justify-between gap-3 px-4 py-3"
           >
             <span className="text-sm text-foreground">{s.name}</span>
-            <span className="inline-flex items-center gap-1.5 font-mono text-xs text-text-subtle">
-              <span className="size-1.5 rounded-full bg-positive" />
+            <span className="font-mono text-xs text-text-subtle">
               {s.state}
             </span>
           </li>

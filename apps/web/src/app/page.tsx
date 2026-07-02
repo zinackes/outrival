@@ -18,7 +18,9 @@ import { Sources } from "@/components/landing/sources";
 import { Trust } from "@/components/landing/trust";
 
 export const metadata: Metadata = {
-  title: "Outrival — Automated competitive intelligence, written by AI",
+  title: {
+    absolute: "Outrival — Automated competitive intelligence, written by AI",
+  },
   description:
     "Outrival monitors every public surface a competitor has — pricing, product, hiring, reviews. AI filters out 99% of the noise and writes a strategic digest every Monday, with Slack alerts on critical signals. Hosted in the EU.",
   alternates: { canonical: "/" },

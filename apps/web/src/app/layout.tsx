@@ -82,21 +82,16 @@ export const metadata: Metadata = {
     title: "Outrival — Automated competitive intelligence, written by AI",
     description:
       "Monitor 15 competitors continuously. AI filters out 99% of noise. Strategic digest every Monday, real-time Slack alerts on critical signals. Hosted in the EU.",
-    images: [
-      {
-        url: "/og.png",
-        width: 1200,
-        height: 630,
-        alt: "Outrival — Automated competitive intelligence",
-      },
-    ],
+    // og:image is supplied by the app/opengraph-image.tsx file convention. Do NOT
+    // set openGraph.images here: an explicit value overrides the file convention
+    // (Next merges the file only when openGraph has no own `images` key).
   },
   twitter: {
     card: "summary_large_image",
     title: "Outrival — Automated competitive intelligence, written by AI",
     description:
       "AI filters out 99% of noise. Strategic digest every Monday. Hosted in the EU.",
-    images: ["/og.png"],
+    // twitter image is supplied by app/twitter-image.tsx (file convention).
   },
   robots: {
     index: true,

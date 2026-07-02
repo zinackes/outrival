@@ -551,7 +551,7 @@
   --font-display: var(--font-zodiak), ui-serif, Georgia, serif;
 }
 
-.dark.landing-canvas {
+.dark .landing-canvas {
   /* Same neutral-graphite shift as the dashboard — chroma stripped so the deep
      landing canvas no longer reads navy; lightness kept so the band rhythm and
      card separation are unchanged. */

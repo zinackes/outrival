@@ -52,7 +52,7 @@ export function Alerts() {
           </h2>
           <p className="text-text-muted leading-relaxed">
             For a high or critical signal, we push the alert to Slack, email, or
-            webhook within the minute — with just enough context to act.
+            webhook within minutes — with just enough context to act.
           </p>
         </div>
 

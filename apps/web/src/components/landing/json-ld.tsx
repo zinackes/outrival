@@ -43,7 +43,7 @@ export function JsonLd() {
       "@id": `${SITE_URL}#org`,
       name: "Outrival",
       url: SITE_URL,
-      logo: `${SITE_URL}/og.png`,
+      logo: `${SITE_URL}/opengraph-image`,
       sameAs: [],
       contactPoint: {
         "@type": "ContactPoint",

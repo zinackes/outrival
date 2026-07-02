@@ -23,6 +23,23 @@ verified healthy. No critical security finding. The real exposure is concentrate
 
 ## 1. P0 — merge blockers on the landing branch (fix before commit)
 
+> **STATUS 2026-07-02 — all 5 resolved (typecheck-green, uncommitted):** (1) added
+> `app/opengraph-image.tsx` + `app/twitter-image.tsx` (dynamic 1200×630 via `next/og`),
+> removed the explicit `openGraph.images`/`twitter.images` from `layout.tsx` so the file
+> convention drives them, repointed the json-ld logo to `/opengraph-image`. (2) home
+> title → `title.absolute`. (3) `.dark.landing-canvas` → `.dark .landing-canvas`. (4) per
+> user decision the footer legal identity was a placeholder → address + RCS removed, kept
+> `© 2026 Outrival`. (5) footer Product + FAQ anchors → `/#…`.
+>
+> **Content-integrity items also resolved (same pass):** Business plan multi-user / API
+> access / audit-log claims removed from `pricing.tsx` + `demo/page.tsx` (per user — those
+> features are Phase 10/11); latency copy aligned to ≤5 min (`alerts.tsx` "within the
+> minute" → "within minutes"); "All systems operational" removed from the footer (link →
+> "Status", green dot dropped) and the `/status` page reframed as informational, not a
+> live health feed (rows "Operational" → "Monitored", dot removed); primary CTAs
+> ("Start free" / "Start monitoring free" / "Add your product free") now link to `/auth`
+> instead of scrolling to `#cta`. All typecheck-green, uncommitted.
+
 | # | ✓ | Finding | Where |
 |---|---|---------|-------|
 | 1 | ✓ | **`/og.png` does not exist** — `public/` contains only `.gitkeep`, yet root metadata (OG + Twitter) and JSON-LD `logo` all reference it. Every social share renders a blank/broken card. Ship a 1200×630 `public/og.png` or an `opengraph-image.tsx`. | `app/layout.tsx:87,99`, `components/landing/json-ld.tsx:46` |

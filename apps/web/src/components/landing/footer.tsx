@@ -45,17 +45,17 @@ export function Footer() {
             <FooterCol
               head="Product"
               links={[
-                { label: "Sources", href: "#sources" },
-                { label: "Pipeline", href: "#pipeline" },
-                { label: "Signals", href: "#signals" },
-                { label: "Compare", href: "#compare" },
-                { label: "Pricing", href: "#pricing" },
+                { label: "Sources", href: "/#sources" },
+                { label: "Pipeline", href: "/#pipeline" },
+                { label: "Signals", href: "/#signals" },
+                { label: "Compare", href: "/#compare" },
+                { label: "Pricing", href: "/#pricing" },
               ]}
             />
             <FooterCol
               head="Resources"
               links={[
-                { label: "FAQ", href: "#faq" },
+                { label: "FAQ", href: "/#faq" },
                 { label: "Changelog", href: "/changelog" },
                 { label: "API docs", href: "/docs" },
                 { label: "Contact", href: "mailto:hello@outrival.app" },
@@ -73,16 +73,14 @@ export function Footer() {
           </div>
         </div>
         <div className="mt-10 flex flex-col gap-3 border-t border-border pt-6 text-xs text-text-subtle sm:flex-row sm:items-center sm:justify-between">
-          <div>© 2026 Outrival SAS · 8 rue de la Paix, 75002 Paris</div>
+          <div>© 2026 Outrival</div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-            <span>RCS Paris 932 481 297</span>
             <span>v0.7.0</span>
             <a
               href="/status"
-              className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground"
+              className="transition-colors hover:text-foreground"
             >
-              <span className="size-1.5 rounded-full bg-positive" /> All systems
-              operational
+              Status
             </a>
           </div>
         </div>

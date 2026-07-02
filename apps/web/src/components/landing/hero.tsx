@@ -50,7 +50,7 @@ export function Hero() {
 
         <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
           <Button asChild size="lg">
-            <a href="#cta">Start monitoring free</a>
+            <a href="/auth">Start monitoring free</a>
           </Button>
           <Button asChild size="lg" variant="outline">
             <a href="#digest">See a sample digest</a>

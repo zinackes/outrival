@@ -124,7 +124,7 @@ export function Sources() {
             </p>
           </div>
           <Button asChild size="lg">
-            <a href="#cta">
+            <a href="/auth">
               Add your product free <ArrowRight size={15} />
             </a>
           </Button>

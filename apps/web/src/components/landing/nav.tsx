@@ -65,7 +65,7 @@ export function Nav() {
                 <Link href="/auth">Sign in</Link>
               </Button>
               <Button asChild size="sm">
-                <a href="#cta">Start free</a>
+                <Link href="/auth">Start free</Link>
               </Button>
             </>
           )}

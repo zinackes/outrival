@@ -70,16 +70,22 @@ describe("best-effort: failures return null, never throw", () => {
 });
 
 describe("success path maps the API shape", () => {
-  test("getOverviewData merges the two parallel fetches", async () => {
-    router = (u) =>
-      u.includes("/api/signals")
-        ? ok({ signals: [{ id: "s1" }] })
-        : ok({ competitors: [{ id: "c1" }] });
+  test("getOverviewData merges the parallel fetches", async () => {
+    router = (u) => {
+      if (u.includes("/api/signals")) return ok({ signals: [{ id: "s1" }] });
+      if (u.includes("/api/competitors")) return ok({ competitors: [{ id: "c1" }] });
+      if (u.includes("/api/sectoral")) return ok({ signals: [{ id: "sec1" }] });
+      if (u.includes("/api/battle-cards")) return ok({ battleCards: [{ id: "bc1" }] });
+      return ok({ completed: false }); // /api/onboarding/checklist
+    };
     const { getOverviewData } = await load();
 
     expect(await getOverviewData()).toEqual({
       signals: [{ id: "s1" }],
       competitors: [{ id: "c1" }],
+      sectoral: [{ id: "sec1" }],
+      battleCards: [{ id: "bc1" }],
+      checklist: { completed: false },
     });
   });
 

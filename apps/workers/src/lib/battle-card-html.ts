@@ -10,7 +10,9 @@ function escape(value: string): string {
 }
 
 function list(items: string[]): string {
-  if (!items.length) return `<li class="muted">—</li>`;
+  // An empty section is deliberate (the model abstained for lack of verified
+  // evidence), not a rendering gap — say so rather than showing a bare dash.
+  if (!items.length) return `<li class="muted">Not enough verified data yet.</li>`;
   return items.map((i) => `<li>${escape(i)}</li>`).join("");
 }
 
@@ -28,7 +30,7 @@ export function renderBattleCardHtml(input: {
             `<div class="obj"><div class="obj-q">«&nbsp;${escape(o.objection)}&nbsp;»</div><div class="obj-a">${escape(o.response)}</div></div>`,
         )
         .join("")
-    : `<div class="muted">—</div>`;
+    : `<div class="muted">Not enough verified data yet.</div>`;
 
   return `<!doctype html>
 <html lang="en">

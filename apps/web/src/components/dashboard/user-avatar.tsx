@@ -29,7 +29,10 @@ export function UserAvatar({
       style={{ width: size, height: size }}
       aria-hidden
     >
-      <Avatar name={seed} variant="marble" size={size} colors={AVATAR_PALETTE} />
+      {/* `square` fills the whole box; the wrapper's border-radius + overflow-hidden
+          own the shape, so the mark follows the container (round by default, the
+          switcher's rounded-md) instead of boring-avatars' hardcoded circular mask. */}
+      <Avatar name={seed} variant="marble" size={size} colors={AVATAR_PALETTE} square />
     </span>
   );
 }

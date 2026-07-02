@@ -12,7 +12,8 @@ import {
 } from "@outrival/ai";
 import type { SelfProfile, SelfProfileField } from "@outrival/db";
 import { normalizeHostname } from "@outrival/shared";
-import { quickFetchText } from "@outrival/scrapers/quick-fetch";
+import { quickFetch, quickFetchText } from "@outrival/scrapers/quick-fetch";
+import { discoverPricingUrl } from "@outrival/scrapers/pricing";
 import { fetchRepoArtifacts } from "./github";
 import { extractDocumentText } from "./extract-document";
 
@@ -44,14 +45,34 @@ async function derive(fn: () => Promise<ProductProfile | null>): Promise<DeriveR
 
 /** Mode: live — fetch the homepage text and extract a profile from it. */
 export async function deriveProfileFromUrl(url: string): Promise<DeriveResult> {
+  let html: string;
   let text: string;
   try {
-    text = await quickFetchText(url);
+    ({ html, text } = await quickFetch(url));
   } catch (e) {
     return { ok: false, reason: "fetch_failed", detail: String(e) };
   }
   if (text.length < 100) return { ok: false, reason: "too_short" };
-  return derive(() => fromUrl(text));
+  const pricingText = await fetchPricingText(url, html);
+  return derive(() => fromUrl(text, pricingText));
+}
+
+/**
+ * Best-effort: resolve the product's dedicated pricing page from the homepage and
+ * fetch its text, so onboarding's `pricingModel` is grounded on the real price grid
+ * rather than a homepage that rarely shows prices (e.g. Neon). Everything degrades
+ * to `undefined` — no pricing page found, a JS-only page too thin for a plain fetch,
+ * a block — and the profiler simply falls back to the homepage. Never throws.
+ */
+async function fetchPricingText(url: string, homepageHtml: string): Promise<string | undefined> {
+  try {
+    const candidate = await discoverPricingUrl(url, homepageHtml);
+    // null → no pricing page; homepage_section → prices already in the homepage text.
+    if (!candidate || candidate.source === "homepage_section") return undefined;
+    return await quickFetchText(candidate.url);
+  } catch {
+    return undefined;
+  }
 }
 
 /** Mode: idea — extract a profile from a free-text description (+ optional hints). */

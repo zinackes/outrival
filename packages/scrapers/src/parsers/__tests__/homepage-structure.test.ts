@@ -123,6 +123,20 @@ describe("parseHomepageStructure — break-aware text extraction", () => {
     );
     expect(s.hero.headline).toBe("Gérer une ESN");
   });
+  it("inserts a space across inline spans made block via CSS (Supabase hero)", () => {
+    // Two inline <span> stacked as separate lines by `display:block` — cheerio
+    // has no layout so this relied on the class/style intent, not the tag.
+    const viaClass = parseHomepageStructure(
+      html('<h1><span class="block">Build in a weekend</span><span class="block">Scale to millions</span></h1>'),
+      BASE,
+    );
+    expect(viaClass.hero.headline).toBe("Build in a weekend Scale to millions");
+    const viaStyle = parseHomepageStructure(
+      html('<h1><span style="display:block">Build in a weekend</span><span style="display: block">Scale to millions</span></h1>'),
+      BASE,
+    );
+    expect(viaStyle.hero.headline).toBe("Build in a weekend Scale to millions");
+  });
   it("keeps an inline-styled fragment of a single word glued", () => {
     const s = parseHomepageStructure(html('<h1>Out<span class="x">rival</span></h1>'), BASE);
     expect(s.hero.headline).toBe("Outrival");
@@ -200,6 +214,48 @@ describe("parseHomepageStructure — own logo and pixels excluded from the wall"
   it("keeps only the two real customer logos", () => {
     const names = s.socialProof.customerLogos.map((l) => l.name);
     expect(names).toEqual(["Globex", "Initech"]);
+  });
+});
+
+// Modern homepages ship customer logos as inline monochrome <svg> wordmarks in
+// utility-class containers (no "logo"/"customer" class) — the brand signal is an
+// aria-label on the list and on each svg. Both must be captured (Supabase pattern).
+describe("parseHomepageStructure — inline SVG logos in aria-labelled containers", () => {
+  const svg = (label: string, extra = "") =>
+    `<svg role="img" aria-label="${label}" ${extra} viewBox="0 0 60 20"><path d="M0 0h60v20H0z"></path></svg>`;
+  const HTML = `<!doctype html><html><head><title>Acme</title></head><body>
+    <header><a href="/">${svg("Acme")}</a></header>
+    <main>
+      <p>Trusted by fast-growing companies worldwide</p>
+      <ul aria-label="Trusted by fast-growing companies worldwide" class="grid grid-cols-6">
+        <li class="flex">${svg("Betashares")}</li>
+        <li class="flex">${svg("Figma")}</li>
+        <li class="flex">${svg("Loops")}</li>
+        <li class="flex"><svg aria-hidden="true" viewBox="0 0 8 8"><path d="M0 0h8v8H0z"></path></svg></li>
+      </ul>
+    </main>
+  </body></html>`;
+  const s = parseHomepageStructure(HTML, "https://acme.com/");
+
+  it("captures the brand svgs, skipping the decorative and own-brand marks", () => {
+    expect(s.socialProof.customerLogos.map((l) => l.name)).toEqual([
+      "Betashares",
+      "Figma",
+      "Loops",
+    ]);
+  });
+  it("serializes each svg to a renderable data:image/svg+xml URI", () => {
+    for (const l of s.socialProof.customerLogos) {
+      expect(l.src).toMatch(/^data:image\/svg\+xml;base64,/);
+    }
+  });
+  it("falls back to the name chip (src null) when the svg exceeds the size cap", () => {
+    const big = svg("Humata", `data-x="${"p".repeat(6100)}"`);
+    const html = `<!doctype html><html><head><title>x</title></head><body><main>
+      <ul aria-label="Used by leading teams"><li>${big}</li></ul>
+    </main></body></html>`;
+    const one = parseHomepageStructure(html, "https://acme.com/").socialProof.customerLogos;
+    expect(one).toEqual([{ name: "Humata", src: null }]);
   });
 });
 

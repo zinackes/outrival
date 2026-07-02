@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import {
+  deeperPricingLinks,
   discoverPricingUrl,
   findFooterPricingLink,
   findNavPricingLink,
@@ -95,4 +96,55 @@ test("tier link with no prices on the target page is rejected", async () => {
   const html = `<nav><a href="/pro-features">Pro features</a></nav>`;
   const got = await discoverPricingUrl(BASE, html);
   expect(got).toBeNull();
+});
+
+// ── pricing hub → product page drill (Back4App case) ────────────────────────
+const HUB_PAGE = `<html><body><h1>Pricing</h1>
+  <a href="/pricing/backend-as-a-service">Backend as a Service</a>
+  <a href="/pricing/containers">Containers as a Service</a>
+</body></html>`;
+
+test("deeperPricingLinks finds same-origin children under the hub path", () => {
+  expect(deeperPricingLinks(HUB_PAGE, "https://collx.app/pricing")).toEqual([
+    "https://collx.app/pricing/backend-as-a-service",
+    "https://collx.app/pricing/containers",
+  ]);
+});
+
+test("priceless /pricing hub drills to the first product page that has prices", async () => {
+  mockFetch((url, method) => {
+    if (method === "HEAD") return { ok: url.endsWith("/pricing") };
+    if (url.endsWith("/pricing")) return { ok: true, body: HUB_PAGE };
+    if (url.includes("/pricing/backend-as-a-service")) return { ok: true, body: PRICED_PAGE };
+    return { ok: false };
+  });
+  const got = await discoverPricingUrl(BASE, "<nav></nav>");
+  expect(got).toEqual({
+    url: "https://collx.app/pricing/backend-as-a-service",
+    source: "direct",
+  });
+});
+
+test("a priced /pricing is kept — no drill even if it links to a sub-page", async () => {
+  const MAIN = `<html><body><h2>Pro</h2><p>$29 / mo</p>
+    <a href="/pricing/enterprise">Enterprise</a></body></html>`;
+  const calls = mockFetch((url, method) => {
+    if (method === "HEAD") return { ok: url.endsWith("/pricing") };
+    if (url.endsWith("/pricing")) return { ok: true, body: MAIN };
+    return { ok: false };
+  });
+  const got = await discoverPricingUrl(BASE, "<nav></nav>");
+  expect(got).toEqual({ url: "https://collx.app/pricing", source: "direct" });
+  // The page had its own prices, so no child was fetched.
+  expect(calls.some((c) => c.url.includes("/enterprise"))).toBe(false);
+});
+
+test("a JS-rendered /pricing with no children is kept as-is", async () => {
+  mockFetch((url, method) => {
+    if (method === "HEAD") return { ok: url.endsWith("/pricing") };
+    if (url.endsWith("/pricing")) return { ok: true, body: `<html><body><div id="root"></div></body></html>` };
+    return { ok: false };
+  });
+  const got = await discoverPricingUrl(BASE, "<nav></nav>");
+  expect(got).toEqual({ url: "https://collx.app/pricing", source: "direct" });
 });

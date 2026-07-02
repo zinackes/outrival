@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { Lock, Plus, Loader2, Activity, Star, Settings2, Link2 } from "lucide-react";
+import { Lock, Plus, Loader2, Activity, Star, Settings2, Link2, HelpCircle } from "lucide-react";
 import {
   PLAN_LABELS,
   MONITOR_FREQUENCIES,
@@ -23,6 +23,12 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   Dialog,
   DialogContent,
@@ -531,7 +537,25 @@ function ReviewSourceDialog({
             </ToggleGroup>
           </div>
           <div className="space-y-1.5">
-            <p className="text-xs font-medium text-foreground">Check frequency</p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-xs font-medium text-foreground">Check frequency</p>
+              <TooltipProvider delayDuration={150}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label="What does check frequency mean?"
+                      className="text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground"
+                    >
+                      <HelpCircle size={13} />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-56">
+                    An upper bound — stable sources are checked less often automatically.
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
             <ToggleGroup
               type="single"
               value={frequency}
@@ -556,7 +580,7 @@ function ReviewSourceDialog({
                   <ToggleGroupItem
                     key={f}
                     value={f}
-                    className="grow basis-0 gap-1.5 capitalize"
+                    className="grow basis-0 gap-1.5 capitalize hover:bg-muted hover:text-foreground data-[state=on]:font-semibold data-[state=on]:hover:bg-accent data-[state=on]:hover:text-accent-foreground"
                     title={
                       locked ? `Requires ${PLAN_LABELS[minPlanForFrequency(f)]}` : undefined
                     }
@@ -567,9 +591,6 @@ function ReviewSourceDialog({
                 );
               })}
             </ToggleGroup>
-            <p className="text-xs text-muted-foreground">
-              An upper bound — stable sources are checked less often automatically.
-            </p>
           </div>
           <div className="space-y-1.5">
             <p className="text-xs font-medium text-foreground">Page URL</p>

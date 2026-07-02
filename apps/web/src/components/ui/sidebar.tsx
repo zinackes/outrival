@@ -175,6 +175,23 @@ function Sidebar({
 }) {
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
 
+  // Dismiss the mobile sheet the instant a nav link is tapped — not after the
+  // destination RSC finishes loading. The pathname-effect above only closes it
+  // once navigation commits, which on mobile (no hover prefetch, slower network)
+  // is a 1-2s wait during which the sheet lingered over the page. Delegated on the
+  // container so every in-tree link (rail, competitor roster) is covered without a
+  // close callback threaded through each one; portalled dropdown items and
+  // programmatic navigations still fall back to the pathname effect.
+  const dismissOnNavigate = React.useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const link = (e.target as HTMLElement).closest("a[href]")
+      if (link && !link.getAttribute("href")?.startsWith("#")) {
+        setOpenMobile(false)
+      }
+    },
+    [setOpenMobile]
+  )
+
   if (collapsible === "none") {
     return (
       <div
@@ -209,7 +226,12 @@ function Sidebar({
             <SheetTitle>Sidebar</SheetTitle>
             <SheetDescription>Displays the mobile sidebar.</SheetDescription>
           </SheetHeader>
-          <div className="flex h-full w-full flex-col overflow-x-hidden">{children}</div>
+          <div
+            onClick={dismissOnNavigate}
+            className="flex h-full w-full flex-col overflow-x-hidden"
+          >
+            {children}
+          </div>
         </SheetContent>
       </Sheet>
     )

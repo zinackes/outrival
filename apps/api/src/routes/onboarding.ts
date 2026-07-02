@@ -409,7 +409,11 @@ onboardingRouter.post("/discover", async (c) => {
     candidates = await findSimilarCompanies(
       parsed.data.productUrl ?? null,
       buildDiscoveryQuery(parsed.data.profile),
-      15,
+      // Over-fetch: Exa ranks by query-text similarity, not competitor quality, so
+      // well-known rivals (e.g. Supabase for a Postgres product) can sit past the
+      // first page. Pull a wider pool, then let the LLM overlap score + sort below
+      // promote the real competitors to the top.
+      30,
       [],
       parsed.data.region ?? null,
     );

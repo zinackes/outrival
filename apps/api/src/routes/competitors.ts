@@ -437,6 +437,35 @@ competitorsRouter.post("/", async (c) => {
     });
   }
 
+  // Score the competitive overlap against the org's product profile (best-effort,
+  // fire-and-forget). The manual-add path had no overlap at all — unlike the
+  // discovery-add path, which carries the score from discovery. Reuses the same
+  // scorer as /recompute-overlap; the list/overview refetch (while the first scrape
+  // runs) picks the value up. Skipped silently if the org has no profile yet.
+  void (async () => {
+    try {
+      const org = await db.query.organizations.findFirst({
+        where: eq(organizations.id, orgId),
+        columns: { productProfile: true },
+      });
+      if (!org?.productProfile) return;
+      const scored = await scoreOverlap(org.productProfile, [
+        { url: safeUrl.url, title: competitor.name, snippet: competitor.description ?? "" },
+      ]);
+      const overlapScore = scored[0]?.overlapScore ?? null;
+      if (overlapScore == null) return;
+      await db
+        .update(competitors)
+        .set({ overlapScore, updatedAt: new Date() })
+        .where(eq(competitors.id, competitor.id));
+    } catch (e) {
+      console.error("Failed to score competitor overlap", {
+        competitorId: competitor.id,
+        error: String(e),
+      });
+    }
+  })();
+
   // Stamp scrapeStartedAt on seed so the detail page / list show the first scrape
   // as in-progress straight away (isServerScraping + deriveAnalysisStatus both
   // derive "running" from scrapeStartedAt > lastRunAt). Without it a freshly-added

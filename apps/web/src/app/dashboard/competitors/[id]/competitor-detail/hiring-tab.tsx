@@ -207,8 +207,10 @@ export function HiringTab({
           </div>
         )}
         {/* Two columns on sm+: the flat role list is the tallest block, so
-            splitting it across columns roughly halves the tab's height. */}
-        <ul className="grid gap-x-8 sm:grid-cols-2">
+            splitting it across columns roughly halves the tab's height. Cap it
+            and scroll — a full 50-role list would otherwise dwarf the tab. The
+            -mr-2/pr-2 gives the scrollbar a gutter without shifting content. */}
+        <ul className="grid max-h-[30rem] gap-x-8 overflow-y-auto scrollbar-thin -mr-2 pr-2 sm:grid-cols-2">
           {allRoles.map((role) => {
             const salary = salaryLabel(role);
             return (

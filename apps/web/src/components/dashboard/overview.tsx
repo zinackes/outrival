@@ -125,8 +125,12 @@ export function OverviewView() {
   // Server-seeded on first paint (see app/dashboard/page.tsx) → useQuery reads the
   // hydrated cache instead of fetching; falls back to a client fetch when the seed
   // was missing or the server prefetch failed.
-  const signalsQ = useQuery(signalsQuery({ limit: 200, productId }));
-  const competitorsQ = useQuery(competitorsQuery(productId));
+  // Poll every 30s (matching the competitors list / sidebar roster). The global
+  // QueryClient is staleTime 60s + refetchOnWindowFocus:false, so without an interval
+  // the "Recent signals" list — and the watching→populated flip that gates on the first
+  // signal landing in signalsQ — never refresh on their own, while the count surfaces do.
+  const signalsQ = useQuery({ ...signalsQuery({ limit: 200, productId }), refetchInterval: 30_000 });
+  const competitorsQ = useQuery({ ...competitorsQuery(productId), refetchInterval: 30_000 });
   const signals = signalsQ.data ?? null;
   const competitors = competitorsQ.data ?? null;
   const err = signalsQ.error ?? competitorsQ.error;
@@ -625,11 +629,10 @@ export function OverviewView() {
       {/* Sector trends — meso-level, distinct from the micro signals above.
           Self-fetches real org data, so it's hidden while exploring sample data. */}
       {!sample && <SectoralSignalsSection />}
-        </>
-      )}
 
       {/* Top-8 competitor roster — a condensed mirror of the Competitors page
-          table: same server stats, same columns, same look. */}
+          table. Populated view only: at day-0 (watching) every activity column
+          would be empty, so the LandscapeSection stands in for it there. */}
       <section>
         <SectionHead
           title="Your competitors"
@@ -802,6 +805,8 @@ export function OverviewView() {
         </div>
         </TooltipProvider>
       </section>
+        </>
+      )}
 
       {!sample && <RecentBattleCards />}
     </div>

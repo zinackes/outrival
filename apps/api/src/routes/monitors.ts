@@ -53,12 +53,33 @@ monitorsRouter.patch("/:id", async (c) => {
   });
   if (!competitor) return c.json({ error: "Forbidden" }, 403);
 
-  const updates: { config?: { url: string }; frequency?: MonitorFrequency; nextRunAt?: Date } = {};
+  const updates: {
+    config?: { url: string };
+    frequency?: MonitorFrequency;
+    nextRunAt?: Date;
+    lastRunAt?: Date | null;
+    lastChangedAt?: Date | null;
+    lastFailedAt?: Date | null;
+    lastError?: string | null;
+  } = {};
 
   if (parsed.data.url !== undefined) {
     const valid = validateMonitorUrl(monitor.sourceType, parsed.data.url, competitor.url);
     if (!valid.ok) return c.json({ error: "invalid_monitor_url", reason: valid.error }, 400);
+    const currentUrl = (monitor.config as { url?: string } | null)?.url ?? null;
     updates.config = { url: valid.url };
+    // Retargeting the source to a different page invalidates the freshness state:
+    // the new URL has never been scraped. Clear the last-run markers so (a) the UI
+    // stops showing "Scraped just now" (freshness derives from lastRunAt) and (b) the
+    // next manual scrape counts as an initial fetch — /:id/run keys "re-scan vs first
+    // scrape" off lastRunAt, so it stays UNMETERED against the forced-rescan cap
+    // instead of being billed as a forced re-scan of the old page.
+    if (valid.url !== currentUrl) {
+      updates.lastRunAt = null;
+      updates.lastChangedAt = null;
+      updates.lastFailedAt = null;
+      updates.lastError = null;
+    }
   }
 
   if (parsed.data.frequency !== undefined) {
@@ -234,9 +255,11 @@ monitorsRouter.post("/:id/run", aiIntensiveRateLimit, async (c) => {
 
 // Patch-27 — user-forced re-scan from the stale-data "Re-scan" affordance. Like
 // /:id/run it enforces the per-tier daily cap and logs a forced_rescan_log row
-// (counted per user); unlike /run it ALWAYS meters (it's never a first scrape) and
-// returns the log id so the client can poll the outcome for its contextual toast.
-// The scrape reuses `force: true`, which bypasses the idempotence window + hash dedup.
+// (counted per user), and — also like /run — exempts a monitor's first scrape
+// (never run, e.g. just retargeted to a new URL): that's an initial fetch, not a
+// re-scan of existing data, so it isn't metered and returns a null log id. Metered
+// re-scans return the log id so the client can poll the outcome for its contextual
+// toast. The scrape reuses `force: true`, which bypasses the idempotence window + hash dedup.
 monitorsRouter.post("/:id/force-rescan", async (c) => {
   const id = c.req.param("id");
   const user = c.get("user");
@@ -254,29 +277,39 @@ monitorsRouter.post("/:id/force-rescan", async (c) => {
   });
   if (!competitor) return c.json({ error: "Forbidden" }, 403);
 
+  // A monitor that has never run (freshly enabled, or just retargeted to a new URL
+  // which cleared lastRunAt) is doing a FIRST scrape, not a forced re-scan of existing
+  // data — exempt it from the per-tier cap + log, exactly like /:id/run. Only genuine
+  // re-scans are metered and get a log row (which the client polls for its outcome).
+  const isRescan = monitor.lastRunAt !== null;
   const plan = await getOrgPlan(orgId);
   const limit = forcedRescansPerDay(plan);
-  const usageToday = await countUserForcedRescansToday(user.id);
-  if (usageToday >= limit) {
-    return c.json(rescanLimitBody(plan, limit), 429);
+  let usageToday = 0;
+  let logId: string | null = null;
+  if (isRescan) {
+    usageToday = await countUserForcedRescansToday(user.id);
+    if (usageToday >= limit) {
+      return c.json(rescanLimitBody(plan, limit), 429);
+    }
+    // Log first so the worker can stamp resultCapturedAt/hadNewSignal via the id.
+    const [log] = await db
+      .insert(forcedRescanLog)
+      .values({ userId: user.id, orgId, monitorId: monitor.id })
+      .returning({ id: forcedRescanLog.id });
+    logId = log!.id;
   }
-
-  // Log first so the worker can stamp resultCapturedAt/hadNewSignal via the id.
-  const [log] = await db
-    .insert(forcedRescanLog)
-    .values({ userId: user.id, orgId, monitorId: monitor.id })
-    .returning({ id: forcedRescanLog.id });
-  const logId = log!.id;
 
   const handle = await tasks.trigger("scrape-monitor", {
     monitorId: monitor.id,
     force: true,
-    triggeredBy: "user_forced_rescan",
-    userId: user.id,
-    forcedRescanLogId: logId,
+    ...(logId
+      ? { triggeredBy: "user_forced_rescan" as const, userId: user.id, forcedRescanLogId: logId }
+      : {}),
   });
 
-  await db.update(forcedRescanLog).set({ taskId: handle.id }).where(eq(forcedRescanLog.id, logId));
+  if (logId) {
+    await db.update(forcedRescanLog).set({ taskId: handle.id }).where(eq(forcedRescanLog.id, logId));
+  }
   await db
     .update(monitors)
     .set({ scrapeStartedAt: new Date(), lastFailedAt: null, lastError: null })
@@ -285,9 +318,12 @@ monitorsRouter.post("/:id/force-rescan", async (c) => {
   return c.json({
     ok: true,
     runId: handle.id,
+    // null when unmetered (first scrape): there's no log row to poll — the client
+    // falls back to its own scrape-progress polling.
     rescanLogId: logId,
     monitorId: monitor.id,
-    usageToday: usageToday + 1,
+    metered: isRescan,
+    usageToday: isRescan ? usageToday + 1 : usageToday,
     dailyLimit: limit,
   });
 });

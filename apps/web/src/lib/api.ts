@@ -49,6 +49,14 @@ async function throwApiError(res: Response): Promise<never> {
 // "TypeError: Failed to fetch" into a clear, actionable error.
 const REQUEST_TIMEOUT_MS = 20_000;
 
+// AI-heavy endpoints run synchronous discovery/derivation (Exa search + LLM
+// scoring/extraction) that routinely runs past the 20s ceiling. Aborting the
+// client early doesn't cancel the server handler — it finishes and commits
+// (candidates + a new_competitor notification), so a 20s abort makes the caller
+// show "couldn't find competitors" while the SSE bell toasts the ones the server
+// actually found. Give these calls headroom to outlive the server work.
+const AI_REQUEST_TIMEOUT_MS = 90_000;
+
 // Wraps fetch so a timeout or network drop surfaces as a typed ApiError instead
 // of a bare TypeError that callers stringify into "TypeError: Failed to fetch".
 async function safeFetch(url: string, init: RequestInit): Promise<Response> {
@@ -66,12 +74,16 @@ async function safeFetch(url: string, init: RequestInit): Promise<Response> {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(
+  path: string,
+  init?: RequestInit,
+  timeoutMs = REQUEST_TIMEOUT_MS,
+): Promise<T> {
   const res = await safeFetch(`${BASE}${path}`, {
     credentials: "include",
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
     cache: "no-store",
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
     ...init,
   });
   if (!res.ok) await throwApiError(res);
@@ -79,12 +91,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 // Multipart POST — never set Content-Type, the browser adds the boundary.
-async function postForm<T>(path: string, form: FormData): Promise<T> {
+async function postForm<T>(
+  path: string,
+  form: FormData,
+  timeoutMs = REQUEST_TIMEOUT_MS,
+): Promise<T> {
   const res = await safeFetch(`${BASE}${path}`, {
     method: "POST",
     credentials: "include",
     cache: "no-store",
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
     body: form,
   });
   if (!res.ok) await throwApiError(res);
@@ -935,6 +951,20 @@ export interface BattleCard {
   pdfR2Key: string | null;
   generatedAt: string;
   updatedAt: string;
+}
+
+// Phase 2B — provenance/freshness shown above the card: the card-level confidence
+// (from the systematic self-check) + per evidence source whether it was captured
+// and how fresh it is. Best-effort read-time data; may be absent on older responses.
+export type BattleCardEvidenceKind = "pricing" | "reviews" | "techStack" | "homepage";
+
+export interface BattleCardEvidence {
+  confidence: "low" | "medium" | "high" | null;
+  sources: Array<{
+    kind: BattleCardEvidenceKind;
+    present: boolean;
+    lastVerifiedAt: string | null;
+  }>;
 }
 
 // patch-29 — org-wide battle card list item for /dashboard/battle-cards and the
@@ -1856,8 +1886,11 @@ export const api = {
     request<{
       ok: true;
       runId: string;
-      rescanLogId: string;
+      // null when the scrape wasn't metered (a monitor's first scrape / just-retargeted
+      // URL) — there's no log row to poll for an outcome.
+      rescanLogId: string | null;
       monitorId: string;
+      metered: boolean;
       usageToday: number;
       dailyLimit: number;
     }>(`/api/monitors/${id}/force-rescan`, { method: "POST" }),
@@ -1945,28 +1978,35 @@ export const api = {
   // analyze-* methods, but scoped to a not-yet-created product; the returned profile
   // is edited then submitted to createProduct).
   analyzeProductUrl: (url: string) =>
-    request<{ profile: ProductProfile }>("/api/products/analyze", {
-      method: "POST",
-      body: JSON.stringify({ mode: "url", url }),
-    }),
+    request<{ profile: ProductProfile }>(
+      "/api/products/analyze",
+      { method: "POST", body: JSON.stringify({ mode: "url", url }) },
+      AI_REQUEST_TIMEOUT_MS,
+    ),
   analyzeProductDescription: (body: {
     description: string;
     category?: string;
     inspirations?: string[];
   }) =>
-    request<{ profile: ProductProfile }>("/api/products/analyze", {
-      method: "POST",
-      body: JSON.stringify({ mode: "description", ...body }),
-    }),
+    request<{ profile: ProductProfile }>(
+      "/api/products/analyze",
+      { method: "POST", body: JSON.stringify({ mode: "description", ...body }) },
+      AI_REQUEST_TIMEOUT_MS,
+    ),
   analyzeProductRepo: (repoUrl: string) =>
-    request<{ profile: ProductProfile }>("/api/products/analyze", {
-      method: "POST",
-      body: JSON.stringify({ mode: "repo", repoUrl }),
-    }),
+    request<{ profile: ProductProfile }>(
+      "/api/products/analyze",
+      { method: "POST", body: JSON.stringify({ mode: "repo", repoUrl }) },
+      AI_REQUEST_TIMEOUT_MS,
+    ),
   analyzeProductDocument: (file: File) => {
     const form = new FormData();
     form.append("file", file);
-    return postForm<{ profile: ProductProfile }>("/api/products/analyze-document", form);
+    return postForm<{ profile: ProductProfile }>(
+      "/api/products/analyze-document",
+      form,
+      AI_REQUEST_TIMEOUT_MS,
+    );
   },
   updateProduct: (
     id: string,
@@ -2288,7 +2328,7 @@ export const api = {
   // patch-28 — battle cards are per (product, competitor); productId scopes the
   // couple (the API defaults to the org's primary product when omitted).
   getBattleCard: (competitorId: string, productId?: string) =>
-    request<{ battleCard: BattleCard }>(
+    request<{ battleCard: BattleCard; evidence?: BattleCardEvidence }>(
       `/api/competitors/${competitorId}/battle-card${productId ? `?productId=${productId}` : ""}`,
     ),
   // Whether regenerating is worth it (patch-22): "fresh" → greyed-out button.
@@ -2317,7 +2357,7 @@ export const api = {
   listBattleCards: () =>
     request<{ battleCards: BattleCardSummary[] }>("/api/battle-cards"),
   // patch-28 — discovery is product-scoped: pass the active product so each SKU gets
-  // its own review queue. Omitted → the API defaults to the org's primary product.
+  // its own review queue. Omitted ("all products") → the API unions every SKU's queue.
   listCandidates: (status?: "new" | "dismissed" | "added", productId?: string) => {
     const qs = new URLSearchParams();
     if (status) qs.set("status", status);
@@ -2332,6 +2372,7 @@ export const api = {
     request<{ detected: number }>(
       `/api/candidates/detect${productId ? `?productId=${productId}` : ""}`,
       { method: "POST" },
+      AI_REQUEST_TIMEOUT_MS,
     ),
   // Whether re-running discovery is worth it (patch-22, per-product patch-28): "fresh"
   // → greyed-out button.

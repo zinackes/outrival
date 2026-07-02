@@ -33,7 +33,10 @@ export function Topbar({ user }: { user: User }) {
       <SidebarTrigger className="-ml-1 size-8" />
       <div className="flex-1" />
       <GlobalSearch />
-      <div className="flex-1" />
+      {/* Right spacer only on desktop → the search bar stays centered there.
+          On mobile it collapses so the (icon-only) search groups with the
+          action cluster on the right instead of floating in the middle. */}
+      <div className="hidden flex-1 md:block" />
       <Tooltip>
         <TooltipTrigger asChild>
           <Button asChild variant="outline" size="sm">

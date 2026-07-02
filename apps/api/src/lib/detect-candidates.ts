@@ -17,7 +17,10 @@ import {
 import { db } from "./db";
 import { productDiscoveryTarget } from "./products";
 
-const CANDIDATES_PER_ORG = 20;
+// Exa recall (not a DB cap): over-fetch so well-known rivals that Exa ranks past
+// the first page still enter the pool — the overlap score + minOverlap threshold
+// downstream keep precision.
+const CANDIDATES_PER_ORG = 30;
 
 export type DetectResult =
   | { ok: true; detected: number }

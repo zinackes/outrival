@@ -99,32 +99,37 @@ export function Kpi({
           </span>
         )}
       </div>
-      <div className="font-semibold text-stat tracking-tighter leading-none flex items-baseline gap-2">
-        <span className={`tabular-nums font-mono ${valueClassName ?? ""}`}>
-          {value}
-        </span>
-        {suffix && (
-          <span className="text-dense font-sans font-medium text-muted-foreground tracking-normal">
-            {suffix}
+      <div className="flex items-center justify-between gap-4">
+        <div className="font-semibold text-stat tracking-tighter leading-none flex items-baseline gap-2 min-w-0">
+          <span className={`tabular-nums font-mono ${valueClassName ?? ""}`}>
+            {value}
           </span>
+          {suffix && (
+            <span className="text-dense font-sans font-medium text-muted-foreground tracking-normal">
+              {suffix}
+            </span>
+          )}
+        </div>
+        {/* Trend spark sits on the value's row, aligned to the right edge of the
+            cell (fills up to a cap so it stays a compact indicator, not a full
+            chart) rather than as a full-width band below the number. */}
+        {spark && (
+          <div className="h-8 flex-1 max-w-[170px]">
+            <Sparkline
+              data={spark}
+              labels={sparkLabels}
+              valueLabel={sparkValueLabel}
+              w="100%"
+              h={32}
+              color={sparkColor ?? "var(--muted)"}
+              fill
+              interactive
+            />
+          </div>
         )}
       </div>
       {meta && (
         <div className="text-muted-foreground text-xs">{meta}</div>
-      )}
-      {spark && (
-        <div className="mt-1 h-7">
-          <Sparkline
-            data={spark}
-            labels={sparkLabels}
-            valueLabel={sparkValueLabel}
-            w={220}
-            h={28}
-            color={sparkColor ?? "var(--muted)"}
-            fill
-            interactive
-          />
-        </div>
       )}
     </>
   );

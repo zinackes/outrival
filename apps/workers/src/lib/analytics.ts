@@ -335,6 +335,117 @@ export async function getLatestTrial(competitorId: string): Promise<LatestTrial 
   };
 }
 
+export interface PricingTierRow {
+  planName: string;
+  price: number;
+  currency: string;
+  billingPeriod: string;
+}
+
+// Latest captured pricing tiers for a competitor: the most recent price per
+// (plan, billing period) from pricing_history. Feeds the battle card real,
+// current tiers to ground pricing comparisons instead of the model guessing.
+// Best-effort: [] on miss/error or when pricing was never scraped.
+export async function getLatestPricingTiers(competitorId: string): Promise<PricingTierRow[]> {
+  const rows = await bestEffortRead<{
+    plan_name: string | null;
+    price: number | null;
+    currency: string | null;
+    billing_period: string | null;
+  }>("getLatestPricingTiers", () =>
+    db
+      .select({
+        plan_name: pricingHistory.planName,
+        price: pricingHistory.price,
+        currency: pricingHistory.currency,
+        billing_period: pricingHistory.billingPeriod,
+      })
+      .from(pricingHistory)
+      .where(eq(pricingHistory.competitorId, competitorId))
+      .orderBy(desc(pricingHistory.recordedAt))
+      .limit(60),
+  );
+  if (!rows) return [];
+  // Rows are newest-first; keep the first (most recent) seen per plan+period.
+  const seen = new Map<string, PricingTierRow>();
+  for (const r of rows) {
+    if (!r.plan_name || r.price == null) continue;
+    const period = r.billing_period ?? "monthly";
+    const key = `${r.plan_name}|${period}`;
+    if (seen.has(key)) continue;
+    seen.set(key, {
+      planName: r.plan_name,
+      price: r.price,
+      currency: r.currency ?? "USD",
+      billingPeriod: period,
+    });
+  }
+  return [...seen.values()];
+}
+
+export interface ReviewScoreSummary {
+  source: string;
+  score: number | null;
+  reviewCount: number | null;
+  subScores: {
+    easeOfUse: number | null;
+    support: number | null;
+    features: number | null;
+    value: number | null;
+  };
+  complaintThemes: Array<{ theme: string; prevalence: string }>;
+}
+
+// Latest review-score row for a competitor (rating + per-criterion sub-scores +
+// clustered complaint themes). Feeds the battle card the real, sourced review
+// signal instead of the model inventing satisfaction claims. Best-effort: null on
+// miss/error or when no review source is enabled.
+export async function getLatestReviewScore(competitorId: string): Promise<ReviewScoreSummary | null> {
+  const rows = await bestEffortRead<{
+    source: string;
+    score: number | null;
+    review_count: number | null;
+    sub_ease_of_use: number | null;
+    sub_support: number | null;
+    sub_features: number | null;
+    sub_value: number | null;
+    complaint_themes: unknown;
+  }>("getLatestReviewScore", () =>
+    db
+      .select({
+        source: reviewScores.source,
+        score: reviewScores.score,
+        review_count: reviewScores.reviewCount,
+        sub_ease_of_use: reviewScores.subEaseOfUse,
+        sub_support: reviewScores.subSupport,
+        sub_features: reviewScores.subFeatures,
+        sub_value: reviewScores.subValue,
+        complaint_themes: reviewScores.complaintThemes,
+      })
+      .from(reviewScores)
+      .where(eq(reviewScores.competitorId, competitorId))
+      .orderBy(desc(reviewScores.recordedAt))
+      .limit(1),
+  );
+  const r = rows?.[0];
+  if (!r) return null;
+  const themes = Array.isArray(r.complaint_themes)
+    ? (r.complaint_themes as Array<{ theme: string; prevalence: string }>)
+    : [];
+  return {
+    source: r.source,
+    score: r.score,
+    reviewCount: r.review_count,
+    subScores: {
+      easeOfUse: r.sub_ease_of_use,
+      support: r.sub_support,
+      features: r.sub_features,
+      value: r.sub_value,
+    },
+    complaintThemes: themes,
+  };
+}
+
 export interface JobCountRow {
   competitor_id: string;
   department: string;

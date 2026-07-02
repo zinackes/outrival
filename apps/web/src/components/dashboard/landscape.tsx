@@ -23,8 +23,6 @@ import { competitorNameColor } from "@/lib/competitor-color";
 import { Button } from "@/components/ui/button";
 import { SectionHead } from "./section-head";
 import { EmptyState } from "./empty-state";
-import { SeverityBadge } from "./severity-pill";
-import { CatPill } from "./cat-pill";
 import { CompAvatar } from "./comp-avatar";
 
 // Day-0 competitive landscape (docs/post-onboarding-activation.md, Levers 1/3/4).
@@ -75,20 +73,73 @@ function fmtPrice(row: LandscapePricingRow): string {
   return `${base}${period}`;
 }
 
-// Table header cell — same style as the Overview / Competitors tables.
-const TH =
-  "text-left px-3.5 py-2.5 text-xs text-muted-foreground font-medium border-b border-border whitespace-nowrap";
+// Compresses a company's captured plans to one line: the entry price and an
+// honest range, so the day-0 baseline reads at a glance instead of dumping every
+// plan. `primary` is null when nothing priceable was captured yet (→ pending).
+function summarizePricing(rows: LandscapePricingRow[]): {
+  primary: string | null;
+  secondary: string;
+} {
+  const priced = [...rows]
+    .filter((r) => r.price != null)
+    .sort((a, b) => (a.price ?? 0) - (b.price ?? 0));
+  if (priced.length === 0) {
+    return {
+      primary: null,
+      secondary:
+        rows.length > 0
+          ? `${rows.length} plan${rows.length > 1 ? "s" : ""} · custom pricing`
+          : "pricing scan pending",
+    };
+  }
+  const entry = priced[0]!;
+  const top = priced[priced.length - 1]!;
+  const hasFree = entry.price === 0;
+  let secondary: string;
+  if (hasFree && top.price != null && top.price > 0) {
+    secondary = `free tier · up to ${fmtPrice(top)}`;
+  } else if (hasFree) {
+    secondary = "free tier";
+  } else if (top.price !== entry.price) {
+    secondary = `up to ${fmtPrice(top)}`;
+  } else {
+    secondary = `${rows.length} plan${rows.length > 1 ? "s" : ""}`;
+  }
+  return { primary: `from ${fmtPrice(entry)}`, secondary };
+}
 
 // The investment step (Hooked model): one tap of feedback on a quick-win card.
 // PostHog-only in v1 — landscape insights aren't signals, so the signal-scoped
 // quality_feedback loop doesn't apply here.
-function InsightFeedback({ insight }: { insight: LandscapeInsight }) {
+function InsightFeedback({
+  insight,
+  scopeId,
+}: {
+  insight: LandscapeInsight;
+  scopeId: string;
+}) {
   const [given, setGiven] = useState(false);
+  // Persist the ack so leaving and returning to the page doesn't re-offer the
+  // prompt (and re-fire the event). Read in an effect, not a lazy initializer,
+  // so the first render always matches SSR — no hydration mismatch.
+  const storageKey = `landscape-insight-feedback:${scopeId}:${insight.kind}`;
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(storageKey) === "1") setGiven(true);
+    } catch {
+      /* localStorage unavailable — feedback just won't persist */
+    }
+  }, [storageKey]);
   if (given) {
     return <span className="text-meta text-muted-foreground">Thanks — noted.</span>;
   }
   const send = (useful: boolean) => {
     track("landscape_insight_feedback", { kind: insight.kind, useful });
+    try {
+      localStorage.setItem(storageKey, "1");
+    } catch {
+      /* persistence best-effort */
+    }
     setGiven(true);
   };
   return (
@@ -111,6 +162,33 @@ function InsightFeedback({ insight }: { insight: LandscapeInsight }) {
         <ThumbsDown size={13} />
       </button>
     </div>
+  );
+}
+
+// One compact price line in the compressed pricing module: mono entry price on
+// top, an honest range/state label below (or a "pending" clock when unpriced).
+function PriceCell({
+  summary,
+}: {
+  summary: { primary: string | null; secondary: string };
+}) {
+  return (
+    <span className="ml-auto text-right">
+      {summary.primary ? (
+        <>
+          <span className="block font-mono text-dense font-semibold tabular-nums">
+            {summary.primary}
+          </span>
+          <span className="block text-meta text-muted-foreground">
+            {summary.secondary}
+          </span>
+        </>
+      ) : (
+        <span className="inline-flex items-center gap-1.5 text-meta text-muted-foreground">
+          <Clock3 size={11} aria-hidden /> {summary.secondary}
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -191,12 +269,77 @@ export function LandscapeSection({
     data.reviews.length > 0 ||
     data.recentActivity.length > 0;
 
+  const sourceCount = data.sources.length;
+  const planCount = data.pricing.length + data.selfPricing.length;
+  const hasBaseline =
+    hasPricing || data.hiring.length > 0 || data.reviews.length > 0;
+
   return (
     <>
-      <p className="text-sm text-muted-foreground">
-        Your first signals land when something changes. Meanwhile, here&apos;s where you
-        stand today — from the first scan of your competitors.
-      </p>
+      {/* Status hero — the one clear thing on arrival: monitoring is live, the
+          scope, and that signals arrive on change. Replaces the loose intro. */}
+      <section className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-border bg-card px-5 py-4">
+        <div className="flex min-w-0 items-start gap-3.5">
+          <span className="grid size-9 shrink-0 place-items-center rounded-md bg-primary/15">
+            <span className="relative flex size-2">
+              <span className="absolute inline-flex size-full rounded-full bg-primary opacity-60 motion-safe:animate-ping" />
+              <span className="relative inline-flex size-2 rounded-full bg-primary" />
+            </span>
+          </span>
+          <div className="min-w-0">
+            <h2 className="text-content font-semibold tracking-tight">
+              You&apos;re all set. Monitoring is live.
+            </h2>
+            <p className="mt-1 max-w-[62ch] text-sm text-muted-foreground">
+              Outrival is watching{" "}
+              <span className="font-medium text-foreground">
+                {competitorCount} competitor{competitorCount > 1 ? "s" : ""}
+              </span>{" "}
+              across{" "}
+              <span className="font-medium text-foreground">
+                {sourceCount} source{sourceCount > 1 ? "s" : ""}
+              </span>
+              . Your first signals land here the moment a price, product, or hire
+              changes.
+            </p>
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          {data.nextCheckAt && (
+            <span className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1 text-xs">
+              <span className="size-1.5 rounded-full bg-primary" aria-hidden />
+              Next scan{" "}
+              <span className="font-mono text-muted-foreground">
+                {formatDistanceToNow(new Date(data.nextCheckAt), {
+                  addSuffix: true,
+                })}
+              </span>
+            </span>
+          )}
+          <div className="flex gap-3.5 text-xs text-muted-foreground">
+            <span>
+              <span className="font-mono font-semibold text-foreground">
+                {competitorCount}
+              </span>{" "}
+              competitors
+            </span>
+            <span>
+              <span className="font-mono font-semibold text-foreground">
+                {sourceCount}
+              </span>{" "}
+              sources
+            </span>
+            {planCount > 0 && (
+              <span>
+                <span className="font-mono font-semibold text-foreground">
+                  {planCount}
+                </span>{" "}
+                plans
+              </span>
+            )}
+          </div>
+        </div>
+      </section>
 
       {/* Quick wins — the aha moment, deterministic "did you know" cards. */}
       {data.insights.length > 0 && (
@@ -207,7 +350,7 @@ export function LandscapeSection({
             divider={false}
           />
           <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {data.insights.map((insight) => (
+            {data.insights.slice(0, 3).map((insight) => (
               <div
                 key={insight.kind}
                 className="flex flex-col justify-between gap-3 rounded-md border border-border bg-card p-4"
@@ -224,7 +367,10 @@ export function LandscapeSection({
                   ) : (
                     <span />
                   )}
-                  <InsightFeedback insight={insight} />
+                  <InsightFeedback
+                    insight={insight}
+                    scopeId={self?.id ?? productId ?? "default"}
+                  />
                 </div>
               </div>
             ))}
@@ -232,136 +378,135 @@ export function LandscapeSection({
         </section>
       )}
 
-      {/* Pricing side-by-side — the user's own plans first, then each competitor. */}
-      {hasPricing && (
+      {/* Your starting position — the compact baseline the first scan captured:
+          pricing compressed to one line per company, hiring + reviews beside it. */}
+      {hasBaseline && (
         <section>
-          <SectionHead title="Pricing today" sub="latest captured prices" divider={false} />
-          <div className="mt-3 overflow-x-auto rounded-md border border-border">
-            <table className="w-full border-collapse text-dense min-w-[560px]">
-              <thead>
-                <tr>
-                  <th className={TH}>Company</th>
-                  <th className={TH}>Plan</th>
-                  <th className={`${TH} text-right`}>Price</th>
-                  <th className={TH}>Free trial</th>
-                </tr>
-              </thead>
-              <tbody>
-                {self &&
-                  data.selfPricing.slice(0, 4).map((row, i) => (
-                    <tr
-                      key={`self-${row.planName}-${row.billingPeriod}`}
-                      className="border-b border-border last:border-b-0 bg-accent/30"
-                    >
-                      <td className="px-3.5 py-2.5 align-middle">
-                        {i === 0 && (
-                          <span className="flex items-center gap-2 font-medium">
-                            {self.name}
-                            <span className="rounded-full border border-border px-1.5 py-px text-meta text-muted-foreground">
-                              You
-                            </span>
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-3.5 py-2.5 align-middle">{row.planName}</td>
-                      <td className="px-3.5 py-2.5 align-middle text-right tabular-nums font-mono">
-                        {fmtPrice(row)}
-                      </td>
-                      <td className="px-3.5 py-2.5 align-middle text-muted-foreground">
-                        {row.hasTrial ? (row.trialDays ? `${row.trialDays} days` : "Yes") : "—"}
-                      </td>
-                    </tr>
-                  ))}
-                {data.competitors.map((c) =>
-                  (pricingByComp.get(c.id) ?? []).slice(0, 4).map((row, i) => (
-                    <tr
-                      key={`${c.id}-${row.planName}-${row.billingPeriod}`}
-                      className="border-b border-border last:border-b-0"
-                    >
-                      <td className="px-3.5 py-2.5 align-middle">
-                        {i === 0 && (
-                          <Link
-                            href={`/dashboard/competitors/${c.id}`}
-                            className="flex items-center gap-2 font-medium hover:underline underline-offset-2"
-                            style={competitorNameColor(c.color)}
-                          >
-                            <CompAvatar name={c.name} url={c.url} />
-                            {c.name}
-                          </Link>
-                        )}
-                      </td>
-                      <td className="px-3.5 py-2.5 align-middle">{row.planName}</td>
-                      <td className="px-3.5 py-2.5 align-middle text-right tabular-nums font-mono">
-                        {fmtPrice(row)}
-                      </td>
-                      <td className="px-3.5 py-2.5 align-middle text-muted-foreground">
-                        {row.hasTrial ? (row.trialDays ? `${row.trialDays} days` : "Yes") : "—"}
-                      </td>
-                    </tr>
-                  )),
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
+          <SectionHead
+            title="Your starting position"
+            sub="the baseline the first scan captured"
+            divider={false}
+          />
 
-      {/* Hiring + reviews — compact standing, side by side. */}
-      {(data.hiring.length > 0 || data.reviews.length > 0) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {data.hiring.length > 0 && (
-            <section className="rounded-md border border-border">
-              <h2 className="px-4 pt-3.5 text-sm font-semibold tracking-tight">Hiring right now</h2>
-              <ul className="mt-1 pb-2">
-                {data.hiring.slice(0, 5).map((h) => {
-                  const comp = nameById.get(h.competitorId);
-                  if (!comp) return null;
-                  return (
-                    <li
-                      key={h.competitorId}
-                      className="flex items-baseline justify-between gap-3 px-4 py-2 text-dense"
+          {hasPricing && (
+            <div className="mt-3 overflow-hidden rounded-md border border-border bg-card">
+              <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2.5">
+                <h3 className="text-sm font-semibold tracking-tight">Pricing</h3>
+                <Link
+                  href="/dashboard/compare"
+                  className="inline-flex items-center gap-1 text-xs text-link underline-offset-2 hover:underline"
+                >
+                  Compare pricing <ArrowRight size={11} />
+                </Link>
+              </div>
+              <div>
+                {self && (
+                  <div className="flex items-center gap-3 border-b border-border bg-accent/30 px-4 py-2.5 last:border-b-0">
+                    <CompAvatar name={self.name} url={self.url} />
+                    <span className="flex items-center gap-2 text-dense font-medium">
+                      {self.name}
+                      <span className="rounded-full border border-border px-1.5 py-px text-meta text-muted-foreground">
+                        You
+                      </span>
+                    </span>
+                    <PriceCell summary={summarizePricing(data.selfPricing)} />
+                  </div>
+                )}
+                {data.competitors.map((c) => (
+                  <div
+                    key={c.id}
+                    className="flex items-center gap-3 border-b border-border px-4 py-2.5 last:border-b-0"
+                  >
+                    <CompAvatar name={c.name} url={c.url} />
+                    <Link
+                      href={`/dashboard/competitors/${c.id}`}
+                      className="text-dense font-medium underline-offset-2 hover:underline"
+                      style={competitorNameColor(c.color)}
                     >
-                      <span className="font-medium truncate" style={competitorNameColor(comp.color)}>
-                        {comp.name}
-                      </span>
-                      <span className="shrink-0 text-muted-foreground">
-                        <span className="font-mono tabular-nums text-foreground">{h.total}</span>{" "}
-                        open role{h.total > 1 ? "s" : ""}
-                        {h.departments[0] ? ` · mostly ${h.departments[0].department}` : ""}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
+                      {c.name}
+                    </Link>
+                    <PriceCell
+                      summary={summarizePricing(pricingByComp.get(c.id) ?? [])}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
-          {data.reviews.length > 0 && (
-            <section className="rounded-md border border-border">
-              <h2 className="px-4 pt-3.5 text-sm font-semibold tracking-tight">Review scores</h2>
-              <ul className="mt-1 pb-2">
-                {data.reviews.slice(0, 5).map((r) => {
-                  const comp = nameById.get(r.competitorId);
-                  if (!comp) return null;
-                  return (
-                    <li
-                      key={`${r.competitorId}-${r.source}`}
-                      className="flex items-baseline justify-between gap-3 px-4 py-2 text-dense"
-                    >
-                      <span className="font-medium truncate" style={competitorNameColor(comp.color)}>
-                        {comp.name}
-                      </span>
-                      <span className="shrink-0 text-muted-foreground">
-                        {REVIEW_SOURCE_LABELS[r.source] ?? r.source}{" "}
-                        <span className="font-mono tabular-nums text-foreground">{r.score}/5</span> (
-                        {r.reviewCount})
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
+
+          {(data.hiring.length > 0 || data.reviews.length > 0) && (
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {data.hiring.length > 0 && (
+                <div className="rounded-md border border-border bg-card">
+                  <h3 className="px-4 pt-3.5 text-sm font-semibold tracking-tight">
+                    Hiring right now
+                  </h3>
+                  <ul className="mt-1 pb-2">
+                    {data.hiring.slice(0, 5).map((h) => {
+                      const comp = nameById.get(h.competitorId);
+                      if (!comp) return null;
+                      return (
+                        <li
+                          key={h.competitorId}
+                          className="flex items-baseline justify-between gap-3 px-4 py-2 text-dense"
+                        >
+                          <span
+                            className="font-medium truncate"
+                            style={competitorNameColor(comp.color)}
+                          >
+                            {comp.name}
+                          </span>
+                          <span className="shrink-0 text-muted-foreground">
+                            <span className="font-mono tabular-nums text-foreground">
+                              {h.total}
+                            </span>{" "}
+                            open role{h.total > 1 ? "s" : ""}
+                            {h.departments[0]
+                              ? ` · mostly ${h.departments[0].department}`
+                              : ""}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+              {data.reviews.length > 0 && (
+                <div className="rounded-md border border-border bg-card">
+                  <h3 className="px-4 pt-3.5 text-sm font-semibold tracking-tight">
+                    Review scores
+                  </h3>
+                  <ul className="mt-1 pb-2">
+                    {data.reviews.slice(0, 5).map((r) => {
+                      const comp = nameById.get(r.competitorId);
+                      if (!comp) return null;
+                      return (
+                        <li
+                          key={`${r.competitorId}-${r.source}`}
+                          className="flex items-baseline justify-between gap-3 px-4 py-2 text-dense"
+                        >
+                          <span
+                            className="font-medium truncate"
+                            style={competitorNameColor(comp.color)}
+                          >
+                            {comp.name}
+                          </span>
+                          <span className="shrink-0 text-muted-foreground">
+                            {REVIEW_SOURCE_LABELS[r.source] ?? r.source}{" "}
+                            <span className="font-mono tabular-nums text-foreground">
+                              {r.score}/5
+                            </span>{" "}
+                            ({r.reviewCount})
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+            </div>
           )}
-        </div>
+        </section>
       )}
 
       {/* Recent activity — dated events the first news scrape already carries. */}
@@ -373,7 +518,7 @@ export function LandscapeSection({
             divider={false}
           />
           <div className="mt-3 rounded-md border border-border">
-            {data.recentActivity.map((item) => {
+            {data.recentActivity.slice(0, 6).map((item) => {
               const comp = nameById.get(item.competitorId);
               return (
                 <div
@@ -475,26 +620,6 @@ export function LandscapeSection({
           A signal appears when something actually changes on one of these sources — we
           can&apos;t predict when a competitor moves, only that we&apos;ll catch it.
         </p>
-      </section>
-
-      {/* What a signal will look like — clearly labeled example, never real data. */}
-      <section>
-        <div className="rounded-md border border-dashed border-border px-4 py-3.5">
-          <div className="flex items-center gap-2 mb-1.5">
-            <span className="rounded-full border border-border px-1.5 py-px text-meta text-muted-foreground">
-              Example signal
-            </span>
-            <span className="font-semibold text-content">Acme</span>
-            <SeverityBadge severity="high" />
-            <CatPill size="compact">pricing</CatPill>
-          </div>
-          <div className="text-content leading-snug">
-            Acme dropped its Pro plan from $49 to $39/mo.
-          </div>
-          <div className="text-muted-foreground text-sm mt-1">
-            Undercuts your mid-tier by 20% — expect pressure in head-to-head trials.
-          </div>
-        </div>
       </section>
 
       {!hasAnyContent && data.sources.length === 0 && (

@@ -15,13 +15,13 @@ const ROWS: Row[] = [
     label: "Strategic insight generated (so-what + action)",
     manual: { text: "write it yourself", tone: "no" },
     legacy: { text: "templates", tone: "partial" },
-    us: "frontier LLM",
+    us: "AI-written",
   },
   {
     label: "Noise filtered before analysis",
     manual: { text: "no", tone: "no" },
     legacy: { text: "everything passes through", tone: "no" },
-    us: "Llama 70B classifier",
+    us: "AI classifier",
   },
   {
     label: "Real-time alert on critical signal",
@@ -33,13 +33,13 @@ const ROWS: Row[] = [
     label: "Data hosted in EU",
     manual: { text: "depends on tools", tone: "partial" },
     legacy: { text: "mostly US", tone: "no" },
-    us: "OVH · Neon (EU)",
+    us: "Yes (100%)",
   },
   {
     label: "Setup",
     manual: { text: "2h / week", tone: "partial" },
     legacy: { text: "2-4 weeks", tone: "partial" },
-    us: "10 minutes",
+    us: "5 minutes",
   },
   {
     label: "Typical monthly cost",
@@ -59,7 +59,7 @@ const ROW = "grid grid-cols-[1.6fr_1fr_1fr_1fr]";
 
 export function Comparison() {
   return (
-    <section className="py-16 sm:py-24" id="compare">
+    <section className="py-16 sm:py-24" id="compare" data-reveal>
       <div className="mx-auto w-full max-w-6xl px-6">
         <div className="grid gap-x-10 gap-y-4 lg:grid-cols-2 lg:items-end">
           <h2 className="text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">

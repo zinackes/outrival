@@ -27,6 +27,7 @@ export function DigestFeature() {
     <section
       className="border-y border-border bg-background-2 py-16 sm:py-24"
       id="digest"
+      data-reveal
     >
       <div className="mx-auto w-full max-w-6xl px-6">
         <div className="grid grid-cols-1 items-center gap-12 lg:grid-cols-2">

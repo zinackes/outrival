@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { headers, cookies } from "next/headers";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import { PageReveal } from "@/components/dashboard/page-reveal";
 import { makeServerQueryClient } from "@/lib/server-query";
 import { getShellData } from "@/lib/api-server";
 import {
@@ -172,7 +173,7 @@ export default async function DashboardLayout({
         <div className="px-4 pt-4 sm:px-6 empty:hidden">
           <StructuralChangeBanner />
         </div>
-        {children}
+        <PageReveal>{children}</PageReveal>
         <FeedbackWidget />
         <NpsPrompt />
       </DashboardShell>

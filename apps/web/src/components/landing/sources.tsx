@@ -59,7 +59,7 @@ const FAMILIES: {
 
 export function Sources() {
   return (
-    <section className="py-16 sm:py-24" id="sources">
+    <section className="py-16 sm:py-24" id="sources" data-reveal>
       <div className="mx-auto w-full max-w-6xl px-6">
         <div className="max-w-3xl">
           <h2 className="text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">
@@ -69,7 +69,7 @@ export function Sources() {
             Every public surface a competitor has, grouped into families. Each is
             scraped by a stealth browser that escalates through a
             datacenter-to-residential proxy cascade only when a site blocks us,
-            stored on R2, and diffed against its previous state.
+            stored in the EU, and diffed against its previous state.
           </p>
         </div>
 

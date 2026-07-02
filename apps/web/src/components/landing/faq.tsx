@@ -14,7 +14,7 @@ const FAQS: Faq[] = [
   },
   {
     q: "What qualifies a change as a signal?",
-    a: "A fast Llama 3.3 70B classifier runs on every diff and tags category, severity, and a 'significant' boolean. Only significant changes go on to a frontier LLM for insight generation. On average we surface 1 signal for every 70 changes scanned.",
+    a: "A fast AI classifier runs on every diff and tags category, severity, and a 'significant' boolean. Only significant changes go on to a second AI pass that writes the strategic insight. On average we surface 1 signal for every 70 changes scanned.",
   },
   {
     q: "Where is the data stored?",
@@ -36,7 +36,7 @@ const FAQS: Faq[] = [
 
 export function FAQ() {
   return (
-    <section className="py-16 sm:py-24" id="faq">
+    <section className="py-16 sm:py-24" id="faq" data-reveal>
       <div className="mx-auto w-full max-w-6xl px-6">
         <div className="grid gap-x-12 gap-y-8 lg:grid-cols-[1fr_1.6fr]">
           <div>

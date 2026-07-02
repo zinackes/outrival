@@ -1,5 +1,6 @@
-import { Mail } from "lucide-react";
+import { ArrowUpRight, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { UserAvatar } from "@/components/dashboard/user-avatar";
 
 function SlackGlyph({ size = 14 }: { size?: number }) {
   return (
@@ -23,9 +24,25 @@ function SlackGlyph({ size = 14 }: { size?: number }) {
   );
 }
 
+// Shared window chrome so both mockups read as one system (a titlebar with the
+// source glyph on the left).
+function MockHeader({
+  icon,
+  label,
+}: {
+  icon: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <div className="flex items-center gap-2 border-b border-border bg-background-2 px-4 py-2.5 font-mono text-xs text-text-muted">
+      {icon} {label}
+    </div>
+  );
+}
+
 export function Alerts() {
   return (
-    <section className="py-16 sm:py-24" id="alerts">
+    <section className="py-16 sm:py-24" id="alerts" data-reveal>
       <div className="mx-auto w-full max-w-6xl px-6">
         <div className="grid gap-x-10 gap-y-4 lg:grid-cols-2 lg:items-end">
           <h2 className="text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">
@@ -34,36 +51,40 @@ export function Alerts() {
             wait until Monday.
           </h2>
           <p className="text-text-muted leading-relaxed">
-            For a high or critical signal, we push the alert to Slack, email,
-            or webhook within the minute — with just enough context to act.
+            For a high or critical signal, we push the alert to Slack, email, or
+            webhook within the minute — with just enough context to act.
           </p>
         </div>
 
         <div className="mt-10 grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <div className="overflow-hidden rounded-xl border border-border bg-surface">
-            <div className="flex items-center gap-2 border-b border-border bg-background-2 px-4 py-2.5 font-mono text-xs text-text-muted">
-              <SlackGlyph size={14} /> #competitive-intel
-            </div>
+          {/* Slack */}
+          <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-xl shadow-black/5 dark:shadow-black/30">
+            <MockHeader icon={<SlackGlyph size={14} />} label="#competitive-intel" />
             <div className="p-4">
               <div className="flex gap-3">
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary text-sm font-bold text-primary-foreground">
-                  O
-                </div>
-                <div className="flex-1">
-                  <div>
+                <UserAvatar seed="Outrival" size={36} className="mt-0.5 rounded-md" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold">Outrival</span>
-                    <span className="ml-2 font-mono text-meta text-text-subtle">
-                      today · 09:42
+                    <span className="rounded bg-surface-2 px-1 py-px font-mono text-meta uppercase tracking-wide text-text-subtle">
+                      app
+                    </span>
+                    <span className="font-mono text-meta text-text-subtle">
+                      09:42
                     </span>
                   </div>
-                  <div className="mt-0.5 text-sm text-text-muted">
-                    <span className="text-primary">Critical</span> signal at{" "}
-                    <b className="text-foreground">Linear</b> ·{" "}
-                    <span className="font-mono">pricing</span>
+                  <div className="mt-1 text-sm text-text-muted">
+                    <span className="inline-flex items-center gap-1.5 align-middle">
+                      <span className="size-1.5 rounded-full bg-critical" />
+                      <span className="font-medium text-critical">Critical</span>
+                    </span>{" "}
+                    signal at <b className="text-foreground">Vantage</b> ·{" "}
+                    <span className="font-mono text-xs">pricing</span>
                   </div>
-                  <div className="mt-2 rounded-md bg-background-2 p-3 text-sm text-text-muted">
+                  {/* Slack-style left-border attachment */}
+                  <div className="mt-2.5 rounded-r-md border-l-2 border-critical bg-background-2 p-3 text-sm text-text-muted">
                     <div className="mb-1 font-mono text-meta text-text-subtle">
-                      linear.app/pricing · diff at 09:31
+                      vantage.app/pricing · diff at 09:31
                     </div>
                     <b className="text-foreground">Business</b> plan:{" "}
                     <b className="text-foreground">$16/seat</b> →{" "}
@@ -71,11 +92,11 @@ export function Alerts() {
                     annually&quot; badge added, the 250-member cap removed.
                   </div>
                   <div className="mt-3.5 flex gap-2">
-                    <Button asChild variant="outline" size="sm">
-                      <span>Open the signal</span>
+                    <Button variant="outline" size="sm">
+                      Open the signal
                     </Button>
-                    <Button asChild variant="outline" size="sm">
-                      <span>See the diff</span>
+                    <Button variant="ghost" size="sm">
+                      See the diff
                     </Button>
                   </div>
                 </div>
@@ -83,35 +104,48 @@ export function Alerts() {
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-xl border border-border bg-surface">
-            <div className="flex items-center gap-2 border-b border-border bg-background-2 px-4 py-2.5 font-mono text-xs text-text-muted">
-              <Mail size={14} /> alerts@outrival.app
+          {/* Email */}
+          <div className="flex flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-xl shadow-black/5 dark:shadow-black/30">
+            <MockHeader icon={<Mail size={14} />} label="alerts@outrival.app" />
+            <div className="border-b border-border bg-background-2 px-4 py-3">
+              <div className="text-sm font-semibold">
+                Vantage repositions Business — action required
+              </div>
+              <div className="mt-1 flex items-center gap-2">
+                <UserAvatar seed="Outrival" size={18} className="rounded-md" />
+                <span className="font-mono text-meta text-text-subtle">
+                  Outrival · to you@team.com · 09:42
+                </span>
+              </div>
             </div>
-            <div>
-              <div className="border-b border-border bg-background-2 px-4 py-3">
-                <div className="text-sm font-semibold">
-                  Linear repositions Business — action required
+            <div className="flex-1 space-y-3 p-4 text-sm leading-relaxed text-text-muted">
+              <p>
+                A <b className="text-foreground">critical</b> signal was just
+                detected at Vantage.
+              </p>
+              <div className="rounded-md border border-border bg-background-2 p-3">
+                <div className="text-meta font-medium uppercase tracking-wide text-text-subtle">
+                  Insight
                 </div>
-                <div className="mt-0.5 font-mono text-meta text-text-subtle">
-                  from Outrival · to you@team.com · 09:42
-                </div>
-              </div>
-              <div className="space-y-3 p-4 text-sm leading-relaxed text-text-muted">
-                <p>
-                  A <b className="text-foreground">critical</b> signal was just
-                  detected at Linear.
-                </p>
-                <p>
-                  <b className="text-foreground">Insight.</b> Linear repositions
-                  Business as the entry tier — the gap with your Pro plan
-                  tightens from $4 to $2.
-                </p>
-                <p>
-                  <b className="text-foreground">Recommended action.</b> Revisit
-                  the pricing grid before the next public release, especially
-                  the &quot;Pro vs Business&quot; messaging.
+                <p className="mt-1">
+                  Vantage repositions Business as the entry tier — the gap with
+                  your Pro plan tightens from $4 to $2.
                 </p>
               </div>
+              <div className="rounded-md border border-border bg-background-2 p-3">
+                <div className="text-meta font-medium uppercase tracking-wide text-text-subtle">
+                  Recommended action
+                </div>
+                <p className="mt-1">
+                  Revisit the pricing grid before the next public release —
+                  especially the &quot;Pro vs Business&quot; messaging.
+                </p>
+              </div>
+            </div>
+            <div className="border-t border-border px-4 py-3">
+              <Button variant="outline" size="sm">
+                View the full signal <ArrowUpRight size={14} />
+              </Button>
             </div>
           </div>
         </div>

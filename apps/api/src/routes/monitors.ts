@@ -30,6 +30,10 @@ monitorsRouter.use("*", authMiddleware);
 const UpdateMonitorSchema = z.object({
   url: z.string().optional(),
   frequency: z.enum(MONITOR_FREQUENCIES).optional(),
+  // Manual pause / enable of a single source (distinct from the competitor-wide
+  // monitoringPaused and from the auto-pause after repeated failures). isActive=false
+  // makes the scheduler skip it; the data + config are kept.
+  isActive: z.boolean().optional(),
 });
 
 monitorsRouter.patch("/:id", async (c) => {
@@ -56,7 +60,8 @@ monitorsRouter.patch("/:id", async (c) => {
   const updates: {
     config?: { url: string };
     frequency?: MonitorFrequency;
-    nextRunAt?: Date;
+    isActive?: boolean;
+    nextRunAt?: Date | null;
     lastRunAt?: Date | null;
     lastChangedAt?: Date | null;
     lastFailedAt?: Date | null;
@@ -95,6 +100,22 @@ monitorsRouter.patch("/:id", async (c) => {
       monitor.lastChangedAt,
       monitor.createdAt,
     );
+  }
+
+  if (parsed.data.isActive !== undefined) {
+    // tech_stack / ai_visibility are infra-only anchor monitors that must stay
+    // inactive — they have no scraper and the scheduler skips them by design. Don't
+    // let a manual toggle flip them on.
+    if (monitor.sourceType === "tech_stack" || monitor.sourceType === "ai_visibility") {
+      return c.json({ error: "source_not_toggleable", source: monitor.sourceType }, 400);
+    }
+    updates.isActive = parsed.data.isActive;
+    // Re-enabling hands the source back to the hourly scheduler: null nextRunAt = due
+    // on the next tick (unless this same PATCH changed frequency, which already
+    // recomputed it). Pausing needs no reschedule — inactive monitors are skipped.
+    if (parsed.data.isActive && updates.nextRunAt === undefined) {
+      updates.nextRunAt = null;
+    }
   }
 
   if (Object.keys(updates).length === 0) return c.json({ monitor });

@@ -36,9 +36,7 @@ export function Trust() {
             <dt className="text-2xl font-medium tracking-tight tabular-nums">
               100<span className="text-base text-text-subtle">%</span>
             </dt>
-            <dd className="mt-1.5 text-xs text-text-muted">
-              EU-hosted · OVH · Neon · R2
-            </dd>
+            <dd className="mt-1.5 text-xs text-text-muted">EU-hosted</dd>
           </div>
         </dl>
       </div>

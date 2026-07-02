@@ -983,6 +983,9 @@ export interface BattleCardSummary {
 export interface CompetitorCandidate {
   id: string;
   orgId: string;
+  // patch-28 — the product (SKU) this candidate was discovered for. Null on legacy rows.
+  // Drives the product badge in the all-products discovery view.
+  productId: string | null;
   url: string;
   title: string | null;
   overlapScore: number | null;
@@ -1902,7 +1905,10 @@ export const api = {
   // NODE_ENV !== "production"). Tech stack otherwise runs on its own monthly cron.
   scrapeTechStack: (id: string) =>
     request<{ runId: string }>(`/api/dev/competitors/${id}/scrape-tech-stack`, { method: "POST" }),
-  updateMonitor: (id: string, patch: { url?: string; frequency?: MonitorFrequency }) =>
+  updateMonitor: (
+    id: string,
+    patch: { url?: string; frequency?: MonitorFrequency; isActive?: boolean },
+  ) =>
     request<{ monitor: Monitor }>(`/api/monitors/${id}`, {
       method: "PATCH",
       body: JSON.stringify(patch),

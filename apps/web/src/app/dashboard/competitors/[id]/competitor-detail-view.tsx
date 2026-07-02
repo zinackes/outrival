@@ -35,6 +35,7 @@ import {
   Cpu,
   Pencil,
   Pause,
+  Power,
   PowerOff,
   Bell,
   BellOff,
@@ -238,7 +239,7 @@ const EXTRACTION_REFETCH_DELAYS_MS = [4000, 12000, 25000, 45000, 70000];
 const summaryGenKey = (competitorId: string) => `outrival:summary-gen:${competitorId}`;
 type SummaryGenMeta = { startedAt: number; baseline: string | null };
 
-type MonitorStatus = "running" | "failed" | "disabled" | "ok" | "idle";
+type MonitorStatus = "running" | "failed" | "disabled" | "paused" | "ok" | "idle";
 
 function monitorStatus(m: Monitor, running: boolean): MonitorStatus {
   if (running) return "running";
@@ -246,6 +247,10 @@ function monitorStatus(m: Monitor, running: boolean): MonitorStatus {
   // distinct, muted state — not the loud "failed" hue — so the strip shows the
   // source is intentionally off and won't retry on its own, not mid-retry.
   if (m.markedUnscrapable) return "disabled";
+  // Manually paused by the user (isActive=false, no auto-pause flag): a deliberate
+  // off state, re-enabled from the source menu. Kept separate from "disabled" so the
+  // copy says "you paused this" rather than "we stopped after failures".
+  if (m.isActive === false) return "paused";
   const lastRun = m.lastRunAt ? new Date(m.lastRunAt).getTime() : 0;
   const lastFailed = m.lastFailedAt ? new Date(m.lastFailedAt).getTime() : 0;
   if (lastFailed > 0 && lastFailed > lastRun) return "failed";
@@ -553,7 +558,8 @@ export function CompetitorDetailView({ id }: { id: string }) {
 
   async function runAllMonitors() {
     if (!data) return;
-    const idle = data.monitors.filter((m) => !scrapingIds.has(m.id));
+    // Skip paused sources — "Scrape all" shouldn't wake a source the user turned off.
+    const idle = data.monitors.filter((m) => !scrapingIds.has(m.id) && m.isActive !== false);
     if (idle.length === 0) return;
     setRunningAll(true);
     try {
@@ -945,6 +951,43 @@ export function CompetitorDetailView({ id }: { id: string }) {
     }
   }
 
+  // Manually pause / enable a single source (distinct from the competitor-wide
+  // monitoringPaused and from the auto-pause after repeated failures). A paused source
+  // keeps its data + config; the scheduler simply skips it until re-enabled. Optimistic
+  // flip so the chip updates immediately; revert on failure.
+  async function setMonitorActive(monitorId: string, active: boolean) {
+    const monitor = data?.monitors.find((m) => m.id === monitorId);
+    if (!monitor) return;
+    const flip = (value: boolean) =>
+      setData((d) =>
+        d
+          ? {
+              ...d,
+              monitors: d.monitors.map((m) =>
+                m.id === monitorId ? { ...m, isActive: value } : m,
+              ),
+            }
+          : d,
+      );
+    flip(active);
+    try {
+      await api.updateMonitor(monitorId, { isActive: active });
+      toast.success(
+        active
+          ? `${sourceShortLabel(monitor.sourceType)} enabled`
+          : `${sourceShortLabel(monitor.sourceType)} paused`,
+        {
+          description: active
+            ? "It will scrape again on its normal schedule."
+            : "This source is frozen — no scheduled scrapes until you enable it.",
+        },
+      );
+    } catch (e) {
+      flip(!active);
+      toastApiError(e, { title: "Couldn't update the source" });
+    }
+  }
+
   // Intelligent rate limiting (patch-22): a manual re-scrape of a source that was
   // checked recently with no change is friction, not blocked. Mirrors the server
   // GET /monitors/:id/staleness thresholds, computed client-side from data we already
@@ -1002,7 +1045,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+      <div className="space-y-6">
         <Header
           competitor={competitor}
           lastRunMs={lastRunMs}
@@ -1019,6 +1062,10 @@ export function CompetitorDetailView({ id }: { id: string }) {
           onRedetectPricing={redetectPricingFromMenu}
           onExport={exportSignals}
         />
+
+        {competitor.monitoringPaused && (
+          <MonitoringPausedBanner onResume={toggleMonitoringPaused} />
+        )}
 
         {/* Where the first analysis is — a prominent stepper for a freshly added
             competitor so the empty tabs below read as "in progress", not broken.
@@ -1037,6 +1084,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
           scrapingIds={scrapingIds}
           onRun={requestRunMonitor}
           onResume={resumeMonitor}
+          onSetActive={setMonitorActive}
           onForceRescanStarted={(mid) =>
             setScrapingIds((prev) => new Set(prev).add(mid))
           }
@@ -1046,7 +1094,9 @@ export function CompetitorDetailView({ id }: { id: string }) {
           runningAll={runningAll}
           disabled={
             runningAll ||
-            monitors.every((m) => scrapingIds.has(m.id) || isServerScraping(m))
+            monitors.every(
+              (m) => scrapingIds.has(m.id) || isServerScraping(m) || m.isActive === false,
+            )
           }
           monitoringPaused={competitor.monitoringPaused}
           plan={plan}
@@ -1778,7 +1828,7 @@ function SourceStatusIcon({ status }: { status: MonitorStatus }) {
   if (status === "running")
     return <Loader2 size={13} className="animate-spin text-muted-foreground shrink-0" />;
   if (status === "failed") return <AlertCircle size={13} className="text-critical shrink-0" />;
-  if (status === "disabled")
+  if (status === "disabled" || status === "paused")
     return <PowerOff size={13} className="text-muted-foreground shrink-0" />;
   return (
     <span
@@ -1790,11 +1840,33 @@ function SourceStatusIcon({ status }: { status: MonitorStatus }) {
   );
 }
 
+// A paused competitor is a deliberate, easily-missed state — the header carries only
+// a compact badge. This full-width banner makes it unmistakable and puts Resume one
+// click away, so the empty / stale tabs below read as "paused", not broken.
+function MonitoringPausedBanner({ onResume }: { onResume: () => void }) {
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/40 px-4 py-3">
+      <Pause className="h-4 w-4 shrink-0 text-muted-foreground" />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-foreground">Monitoring is paused</p>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          No sources are being scraped — the data below won&apos;t update until you
+          resume.
+        </p>
+      </div>
+      <Button size="sm" onClick={onResume} className="shrink-0">
+        <Play size={13} /> Resume monitoring
+      </Button>
+    </div>
+  );
+}
+
 function MonitorSources({
   monitors,
   scrapingIds,
   onRun,
   onResume,
+  onSetActive,
   onForceRescanStarted,
   onRunAll,
   onEdit,
@@ -1812,6 +1884,7 @@ function MonitorSources({
   scrapingIds: Set<string>;
   onRun: (id: string) => void;
   onResume: (id: string) => void;
+  onSetActive: (id: string, active: boolean) => void;
   onForceRescanStarted?: (id: string) => void;
   onRunAll: () => void;
   onEdit: (id: string, patch: { url?: string; frequency?: MonitorFrequency }) => Promise<void>;
@@ -1864,6 +1937,7 @@ function MonitorSources({
               monitoringPaused={monitoringPaused}
               onRun={onRun}
               onResume={onResume}
+              onSetActive={onSetActive}
               onConfigure={() => setEditing(m)}
             />
           );
@@ -1889,7 +1963,9 @@ function MonitorSources({
             const ageText =
               status === "running"
                 ? "scraping…"
-                : status === "disabled"
+                : status === "paused"
+                  ? "Paused — not scraping"
+                  : status === "disabled"
                   ? "Paused after repeated failures"
                   : status === "failed" && m.lastFailedAt
                     ? `Failed ${formatDistanceToNow(new Date(m.lastFailedAt), { addSuffix: true })}`
@@ -1916,14 +1992,28 @@ function MonitorSources({
                   <span className="text-xs text-muted-foreground">· {nextText}</span>
                 )}
                 <div className="ml-auto flex items-center gap-1.5">
-                  <MonitorFreshnessAction
-                    monitorId={m.id}
-                    sourceType={m.sourceType}
-                    lastScrapedAt={m.lastRunAt}
-                    status={status === "failed" ? "failed" : "success"}
-                    canForceRescan={!running}
-                    onStarted={() => onForceRescanStarted?.(m.id)}
-                  />
+                  {status !== "paused" && (
+                    <MonitorFreshnessAction
+                      monitorId={m.id}
+                      sourceType={m.sourceType}
+                      lastScrapedAt={m.lastRunAt}
+                      status={status === "failed" ? "failed" : "success"}
+                      canForceRescan={!running}
+                      onStarted={() => onForceRescanStarted?.(m.id)}
+                    />
+                  )}
+                  {/* Pause an active source. Paused sources re-enable via the primary
+                      button below; running / auto-paused have their own affordances. */}
+                  {(status === "ok" || status === "idle" || status === "failed") && (
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      onClick={() => onSetActive(m.id, false)}
+                      aria-label="Pause source"
+                    >
+                      <PowerOff size={13} />
+                    </Button>
+                  )}
                   {status === "failed" && m.lastError && (
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -1968,6 +2058,15 @@ function MonitorSources({
                           <RefreshCw size={11} /> Resume
                         </>
                       )}
+                    </Button>
+                  ) : status === "paused" ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => onSetActive(m.id, true)}
+                      className="h-7 text-xs min-w-[84px]"
+                    >
+                      <Power size={11} /> Enable
                     </Button>
                   ) : (
                     <Button
@@ -2091,6 +2190,7 @@ function SourceChip({
   monitoringPaused,
   onRun,
   onResume,
+  onSetActive,
   onConfigure,
 }: {
   monitor: Monitor;
@@ -2099,16 +2199,20 @@ function SourceChip({
   monitoringPaused: boolean;
   onRun: (id: string) => void;
   onResume: (id: string) => void;
+  onSetActive: (id: string, active: boolean) => void;
   onConfigure: () => void;
 }) {
   const failed = status === "failed";
   const isDisabled = status === "disabled";
+  const isPaused = status === "paused";
+  // Both the auto-pause and the manual pause read as a muted "off" chip.
+  const off = isDisabled || isPaused;
   const ageLabel =
     status === "running"
       ? "…"
       : failed
         ? null
-        : isDisabled
+        : off
           ? "off"
           : status === "ok" && m.lastRunAt
             ? shortAge(new Date(m.lastRunAt))
@@ -2116,7 +2220,9 @@ function SourceChip({
   const ageText =
     status === "running"
       ? "scraping…"
-      : isDisabled
+      : isPaused
+        ? "Paused — not scraping"
+        : isDisabled
         ? "Paused after repeated failures"
         : failed && m.lastFailedAt
           ? `Failed ${formatDistanceToNow(new Date(m.lastFailedAt), { addSuffix: true })}`
@@ -2133,7 +2239,7 @@ function SourceChip({
             "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-dense transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             failed
               ? "border-critical/40 text-critical hover:bg-critical/10"
-              : isDisabled
+              : off
                 ? "border-border text-muted-foreground hover:bg-accent"
                 : "border-border text-foreground hover:bg-accent",
           )}
@@ -2180,17 +2286,31 @@ function SourceChip({
             We stopped scraping this source after repeated failures. Resume to try again.
           </p>
         )}
+        {isPaused && (
+          <p className="px-2 pb-1.5 text-sm leading-relaxed text-muted-foreground break-words">
+            Paused — this source won&apos;t be scraped until you enable it.
+          </p>
+        )}
         <DropdownMenuSeparator />
         {isDisabled ? (
           <DropdownMenuItem onClick={() => onResume(m.id)} disabled={running}>
             {running ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
             {running ? "Resuming…" : "Resume monitoring"}
           </DropdownMenuItem>
-        ) : (
-          <DropdownMenuItem onClick={() => onRun(m.id)} disabled={running}>
-            {running ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
-            {running ? "Scraping…" : "Run now"}
+        ) : isPaused ? (
+          <DropdownMenuItem onClick={() => onSetActive(m.id, true)}>
+            <Power size={13} /> Enable monitoring
           </DropdownMenuItem>
+        ) : (
+          <>
+            <DropdownMenuItem onClick={() => onRun(m.id)} disabled={running}>
+              {running ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
+              {running ? "Scraping…" : "Run now"}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onSetActive(m.id, false)} disabled={running}>
+              <PowerOff size={13} /> Pause monitoring
+            </DropdownMenuItem>
+          </>
         )}
         <DropdownMenuItem onClick={onConfigure}>
           <Settings2 size={13} /> Configure

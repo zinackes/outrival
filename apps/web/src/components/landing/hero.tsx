@@ -14,11 +14,11 @@ const SIGNALS: Record<
   number,
   { competitor: string; category: string; detail: string }
 > = {
-  13: { competitor: "Notion", category: "hiring", detail: "opens 3 AI Research roles — first EU team" },
-  15: { competitor: "Linear", category: "pricing", detail: "Business plan $16 → $14/seat" },
-  24: { competitor: "Asana", category: "reviews", detail: "G2 score slips 4.4 → 4.2" },
-  28: { competitor: "Stripe", category: "product", detail: "launches usage-based billing" },
-  31: { competitor: "Coda", category: "funding", detail: "raises Series E, $200M" },
+  13: { competitor: "Lumen", category: "hiring", detail: "opens 3 AI Research roles — first EU team" },
+  15: { competitor: "Vantage", category: "pricing", detail: "Business plan $16 → $14/seat" },
+  24: { competitor: "Cobalt", category: "reviews", detail: "G2 score slips 4.4 → 4.2" },
+  28: { competitor: "Meridian", category: "product", detail: "launches usage-based billing" },
+  31: { competitor: "Beacon", category: "funding", detail: "raises Series E, $200M" },
 };
 
 export function Hero() {
@@ -72,7 +72,7 @@ export function Hero() {
                 style={{ height: `${h}px` }}
                 className={`group relative w-[3px] sm:w-[5px] shrink-0 rounded-[3px] transition-opacity duration-150 ${
                   sig
-                    ? "z-20 bg-primary opacity-90 hover:opacity-100"
+                    ? "z-20 bg-primary opacity-90 hover:z-[100] hover:opacity-100"
                     : "bg-text-muted opacity-25 hover:opacity-60"
                 }`}
               >
@@ -81,7 +81,7 @@ export function Hero() {
                     {/* Hit area wider than the 5px bar so the signal is easy to
                         hover without enlarging the visual. */}
                     <span className="absolute inset-y-0 -left-2.5 -right-2.5 cursor-default" />
-                    <span className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-3 -translate-x-1/2 whitespace-nowrap rounded-md border border-border bg-surface px-3 py-1.5 text-xs opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100">
+                    <span className="pointer-events-none absolute bottom-full left-1/2 z-[100] mb-3 -translate-x-1/2 whitespace-nowrap rounded-md border border-border bg-surface px-3 py-1.5 text-xs opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100">
                       <span className="text-text-subtle">{sig.category}</span>
                       {" · "}
                       <span className="font-semibold">{sig.competitor}</span>{" "}

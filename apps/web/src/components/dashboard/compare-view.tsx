@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { cloneElement, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import {
@@ -50,6 +50,12 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 const MAX = 6;
@@ -511,25 +517,42 @@ interface Takeaway {
   key: string;
   text: string;
   tone: Tone;
+  // Full detail revealed on hover when `text` was truncated to keep the pill short.
+  tooltip?: string;
+}
+
+// Join competitor names for a takeaway, capped so the pill stays short:
+// "Acme" · "Acme and Beta" · "Acme, Beta +2".
+function nameList(names: string[]): string {
+  if (names.length <= 2) return names.join(" and ");
+  return `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
 }
 
 function buildTakeaways(you: CompareColumn, comps: CompareColumn[]): Takeaway[] {
   const out: Takeaway[] = [];
 
   const youEntry = you.pricing?.entry ?? null;
-  const entries = comps.map((c) => c.pricing?.entry).filter((v): v is number => v != null);
-  if (youEntry != null && entries.length) {
-    const cheaper = entries.filter((e) => youEntry < e).length;
+  const priced = comps
+    .map((c) => ({ name: c.name, entry: c.pricing?.entry }))
+    .filter((c): c is { name: string; entry: number } => c.entry != null);
+  if (youEntry != null && priced.length) {
+    const entries = priced.map((c) => c.entry);
     if (youEntry <= Math.min(...entries))
       out.push({ key: "pricing", text: "Lowest entry price", tone: "good" });
     else if (youEntry >= Math.max(...entries))
       out.push({ key: "pricing", text: "Highest entry price", tone: "bad" });
-    else
+    else {
+      // Name who you undercut, not a bare count — "Cheaper than 1 of 2" left the
+      // user asking "cheaper than which one?". Past 2 names the pill truncates to
+      // "+N", so surface the full list on hover.
+      const beat = priced.filter((c) => youEntry < c.entry).map((c) => c.name);
       out.push({
         key: "pricing",
-        text: `Cheaper than ${cheaper} of ${entries.length}`,
+        text: `Cheaper than ${nameList(beat)}`,
         tone: "neutral",
+        tooltip: beat.length > 2 ? beat.join(", ") : undefined,
       });
+    }
   }
 
   const youAvg = avgReview(you);
@@ -570,21 +593,30 @@ const TONE_TEXT: Record<Tone, string> = {
 function SummaryBand({ you, comps }: { you: CompareColumn; comps: CompareColumn[] }) {
   const items = buildTakeaways(you, comps);
   if (items.length === 0) return null;
+  const pill = (t: Takeaway) => (
+    <span className="bg-background border-border inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-dense">
+      <span className={cn("size-1.5 shrink-0 rounded-full", TONE_DOT[t.tone])} aria-hidden />
+      <span className={TONE_TEXT[t.tone]}>{t.text}</span>
+    </span>
+  );
   return (
-    <div className="border-border bg-card flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-lg border px-3 py-2.5">
-      <span className="text-muted-foreground text-dense">
-        How <span className="text-foreground font-medium">{you.name}</span> stacks up
-      </span>
-      {items.map((t) => (
-        <span
-          key={t.key}
-          className="bg-background border-border inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-dense"
-        >
-          <span className={cn("size-1.5 shrink-0 rounded-full", TONE_DOT[t.tone])} aria-hidden />
-          <span className={TONE_TEXT[t.tone]}>{t.text}</span>
+    <TooltipProvider delayDuration={150}>
+      <div className="border-border bg-card flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-lg border px-3 py-2.5">
+        <span className="text-muted-foreground text-dense">
+          How <span className="text-foreground font-medium">{you.name}</span> stacks up
         </span>
-      ))}
-    </div>
+        {items.map((t) =>
+          t.tooltip ? (
+            <Tooltip key={t.key}>
+              <TooltipTrigger asChild>{pill(t)}</TooltipTrigger>
+              <TooltipContent className="max-w-64">{t.tooltip}</TooltipContent>
+            </Tooltip>
+          ) : (
+            cloneElement(pill(t), { key: t.key })
+          ),
+        )}
+      </div>
+    </TooltipProvider>
   );
 }
 

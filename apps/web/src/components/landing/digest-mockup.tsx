@@ -17,13 +17,15 @@ const SEV_DOT: Record<Signal["sev"], string> = {
   low: "bg-low",
 };
 
+// Fabricated example data → fictional competitors (never real brands), so no false
+// fact is attributed to a real company.
 const SIGNALS: Signal[] = [
   {
     sev: "critical",
     cat: "pricing",
     text: (
       <span>
-        <b>Linear</b> drops Business from <b>$16 → $14/seat</b>. Old plan
+        <b>Vantage</b> drops Business from <b>$16 → $14/seat</b>. Old plan
         removed from the pricing page.
       </span>
     ),
@@ -34,7 +36,7 @@ const SIGNALS: Signal[] = [
     cat: "hiring",
     text: (
       <span>
-        <b>Notion</b> opens 3 &quot;AI Research&quot; roles in Paris. First R&amp;D
+        <b>Lumen</b> opens 3 &quot;AI Research&quot; roles in Paris. First R&amp;D
         presence in the EU.
       </span>
     ),
@@ -45,7 +47,7 @@ const SIGNALS: Signal[] = [
     cat: "product",
     text: (
       <span>
-        <b>Linear</b> ships &quot;Cycles 2.0&quot; — planning overhaul plus
+        <b>Vantage</b> ships &quot;Cycles 2.0&quot; — planning overhaul plus
         native GitHub integration.
       </span>
     ),
@@ -56,7 +58,7 @@ const SIGNALS: Signal[] = [
     cat: "reviews",
     text: (
       <span>
-        <b>Asana</b> drops 4.4 → 4.2 on G2 (38 new reviews, sentiment ≤ 0).
+        <b>Cobalt</b> drops 4.4 → 4.2 on G2 (38 new reviews, sentiment ≤ 0).
       </span>
     ),
     time: "yesterday",
@@ -66,7 +68,7 @@ const SIGNALS: Signal[] = [
     cat: "content",
     text: (
       <span>
-        <b>Notion</b> publishes &quot;The end of all-in-one&quot; — vertical
+        <b>Lumen</b> publishes &quot;The end of all-in-one&quot; — vertical
         repositioning.
       </span>
     ),
@@ -77,7 +79,7 @@ const SIGNALS: Signal[] = [
     cat: "funding",
     text: (
       <span>
-        <b>Coda</b> announces Series E $200M, valuation $1.6B.
+        <b>Beacon</b> announces Series E $200M, valuation $1.6B.
       </span>
     ),
     time: "2d",
@@ -107,9 +109,9 @@ export function DigestMockup({ animate = true }: { animate?: boolean }) {
 
   return (
     <div
-      className="overflow-hidden rounded-xl border border-border bg-surface shadow-2xl shadow-black/40"
+      className="overflow-hidden rounded-xl border border-border bg-surface shadow-2xl shadow-black/10 dark:shadow-black/40"
       role="img"
-      aria-label="Outrival weekly digest"
+      aria-label="Outrival weekly digest — illustrative sample"
     >
       <div className="flex items-center justify-between border-b border-border bg-background-2 px-4 py-3">
         <div className="flex items-center gap-2.5">
@@ -140,7 +142,16 @@ export function DigestMockup({ animate = true }: { animate?: boolean }) {
         </Button>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-px border-y border-border bg-border">
+      {/* Digest "temperature" + one-line AI summary — mirrors the real weekly email. */}
+      <div className="flex items-start gap-2.5 border-y border-border bg-background-2 px-4 py-2.5">
+        <span className="mt-1 size-2 shrink-0 rounded-full bg-high" />
+        <p className="text-xs leading-relaxed text-text-muted">
+          <span className="font-medium text-foreground">Warm week.</span> One
+          pricing move worth acting on and an early hiring signal in the EU.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-px border-b border-border bg-border sm:grid-cols-4">
         {[
           { label: "Signals", value: "12", delta: "+4" },
           { label: "Critical", value: "2" },
@@ -151,7 +162,7 @@ export function DigestMockup({ animate = true }: { animate?: boolean }) {
             <div className="text-meta font-medium text-text-subtle">
               {s.label}
             </div>
-            <div className="mt-0.5 flex items-baseline gap-1 text-lg font-semibold">
+            <div className="mt-0.5 flex items-baseline gap-1 text-lg font-semibold tabular-nums">
               {s.value}
               {s.delta && (
                 <span className="text-xs text-positive">{s.delta}</span>
@@ -163,13 +174,12 @@ export function DigestMockup({ animate = true }: { animate?: boolean }) {
 
       <div className="max-h-[290px] divide-y divide-border overflow-y-auto">
         {SIGNALS.slice(0, visible).map((s, i) => (
-          <div
-            key={i}
-            className="flex items-center gap-2.5 px-4 py-2.5 text-xs"
-          >
+          <div key={i} className="flex items-center gap-2.5 px-4 py-2.5 text-xs">
             <span className={`size-2 shrink-0 rounded-full ${SEV_DOT[s.sev]}`} />
-            <span className="w-14 shrink-0 text-meta uppercase text-text-subtle">
-              {s.cat}
+            <span className="w-16 shrink-0">
+              <span className="rounded bg-surface-2 px-1.5 py-0.5 text-meta font-medium uppercase tracking-wide text-text-subtle">
+                {s.cat}
+              </span>
             </span>
             <span className="flex-1 text-text-muted [&_b]:text-foreground">
               {s.text}

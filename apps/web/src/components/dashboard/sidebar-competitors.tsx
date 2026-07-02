@@ -9,7 +9,7 @@ import { Users, ChevronRight, ChevronUp, MoreHorizontal } from "lucide-react";
 
 import { type Competitor } from "@/lib/api";
 import { competitorsQuery } from "@/lib/queries";
-import { feedItemMotion } from "@/lib/motion";
+import { feedItemTransition } from "@/lib/motion";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { cn } from "@/lib/utils";
 import {
@@ -38,9 +38,19 @@ const COMP_ROW =
   "hover:bg-sidebar-accent/60 " +
   "data-[active=true]:bg-sidebar-accent data-[active=true]:hover:bg-sidebar-accent data-[active=true]:font-medium";
 
-// Motion-wrapped sub-item so rows enter/exit and FLIP into place when the
-// roster unfolds ("Show all") / refolds — same choreography as the feeds.
+// Motion-wrapped sub-item. Rows fold their OWN height (accordion) rather than
+// translate + popLayout: refolding the roster ("Show less") then rides the list
+// up smoothly instead of snapping. popLayout pulls exiting rows out of flow, so
+// everything below reflows in a single frame — the abrupt "jump". Spacing lives
+// in each row's padding (the sub-list is gap-0) so height:0 folds the gap away
+// too, and overflow-hidden clips the fixed-height button as the row collapses.
 const MotionSubItem = motion.create(SidebarMenuSubItem);
+const rowMotion = {
+  initial: { opacity: 0, height: 0 },
+  animate: { opacity: 1, height: "auto" },
+  exit: { opacity: 0, height: 0 },
+  transition: feedItemTransition,
+} as const;
 
 function activity(c: Competitor) {
   return c.stats?.signals7d ?? 0;
@@ -137,12 +147,16 @@ export function SidebarCompetitors() {
       )}
 
       {open && comps != null && comps.length > 0 && (
-        <SidebarMenuSub className="mr-0 px-1.5">
-          <AnimatePresence initial={false} mode="popLayout">
+        <SidebarMenuSub className="mr-0 gap-0 px-1.5">
+          <AnimatePresence initial={false}>
             {shown.map((c) => {
               const n = activity(c);
               return (
-                <MotionSubItem key={c.id} {...feedItemMotion}>
+                <MotionSubItem
+                  key={c.id}
+                  {...rowMotion}
+                  className="overflow-hidden py-0.5"
+                >
                   <SidebarMenuSubButton
                     asChild
                     isActive={c.id === activeId}
@@ -169,7 +183,11 @@ export function SidebarCompetitors() {
               );
             })}
             {overCap && (
-              <MotionSubItem key="roster-toggle" {...feedItemMotion}>
+              <MotionSubItem
+                key="roster-toggle"
+                {...rowMotion}
+                className="overflow-hidden py-0.5"
+              >
                 <SidebarMenuSubButton
                   asChild
                   className="w-full text-muted-foreground transition-colors duration-150 ease-out hover:text-foreground motion-reduce:transition-none"

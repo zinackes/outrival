@@ -13,6 +13,7 @@ import { Monitors } from "@/components/landing/monitors";
 import { Nav } from "@/components/landing/nav";
 import { Pipeline } from "@/components/landing/pipeline";
 import { Pricing } from "@/components/landing/pricing";
+import { ScrollReveal } from "@/components/landing/scroll-reveal";
 import { Sources } from "@/components/landing/sources";
 import { Trust } from "@/components/landing/trust";
 
@@ -25,8 +26,9 @@ export const metadata: Metadata = {
 
 export default function HomePage() {
   return (
-    <div className="dark landing-canvas min-h-dvh bg-background font-sans text-foreground antialiased">
+    <div className="landing-canvas min-h-dvh bg-background font-sans text-foreground antialiased">
       <JsonLd />
+      <ScrollReveal />
       <Nav />
       <main id="main-content" tabIndex={-1}>
         <Hero />

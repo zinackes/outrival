@@ -48,6 +48,7 @@ import { manualSnapshotsRouter } from "./routes/manual-snapshots";
 import { structuralChangesRouter } from "./routes/structural-changes";
 import { aiQualityRouter } from "./routes/ai-quality";
 import { notificationPreferencesRouter } from "./routes/notification-preferences";
+import { contactRouter } from "./routes/contact";
 
 const app = new Hono();
 
@@ -79,6 +80,8 @@ app.on(["POST", "GET"], "/api/auth/*", (c) => auth.handler(c.req.raw));
 app.route("/api/stripe/webhook", stripeWebhookRouter);
 
 app.route("/health", healthRouter);
+// Public lead form (landing /demo). No auth middleware — it's a contact form.
+app.route("/api/contact", contactRouter);
 app.route("/api/competitors", competitorsRouter);
 app.route("/api/competitors", battleCardsRouter);
 app.route("/api/battle-cards", battleCardsListRouter);

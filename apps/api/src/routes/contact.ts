@@ -1,0 +1,65 @@
+import { Hono } from "hono";
+import { z } from "zod";
+import { getRedis } from "@outrival/shared";
+import { sendDemoRequestEmail } from "../lib/contact-email";
+import { errorBody } from "../lib/errors";
+
+// Public demo / sales contact form (landing /demo — "Request a demo" and the
+// Business plan "Talk to sales" CTA). No auth: it's a lead form. Spam defences:
+// a dedicated IP rate limit (its own Redis keyspace, no-op without Upstash) + a
+// honeypot field.
+
+export const contactRouter = new Hono();
+
+const schema = z.object({
+  name: z.string().trim().min(1).max(120),
+  email: z.string().trim().email().max(200),
+  company: z.string().trim().max(160).optional(),
+  teamSize: z.string().trim().max(40).optional(),
+  plan: z.string().trim().max(40).optional(),
+  message: z.string().trim().max(4000).optional(),
+  // Honeypot — hidden in the UI, so a non-empty value means a bot filled it.
+  website: z.string().max(200).optional(),
+});
+
+const WINDOW_SEC = 60 * 60; // 1h
+const MAX_PER_IP = 5;
+
+contactRouter.post("/", async (c) => {
+  const redis = getRedis();
+  if (redis) {
+    const ip =
+      c.req.header("cf-connecting-ip") ??
+      c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
+      "unknown";
+    const key = `ratelimit:contact:ip:${ip}`;
+    const count = await redis.incr(key);
+    if (count === 1) await redis.expire(key, WINDOW_SEC);
+    if (count > MAX_PER_IP) {
+      return c.json(
+        errorBody("rate_limited", "Too many requests. Please try again later.", {
+          userAction: "wait",
+          retryAfterSeconds: WINDOW_SEC,
+        }),
+        429,
+      );
+    }
+  }
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = schema.safeParse(body);
+  if (!parsed.success) {
+    return c.json(
+      errorBody("invalid_request", "Please check the form and try again.", {
+        userAction: "retry",
+      }),
+      400,
+    );
+  }
+  // Honeypot tripped → act like success so bots don't learn they were caught.
+  if (parsed.data.website) return c.json({ ok: true });
+
+  const { website: _honeypot, ...req } = parsed.data;
+  await sendDemoRequestEmail(req);
+  return c.json({ ok: true });
+});

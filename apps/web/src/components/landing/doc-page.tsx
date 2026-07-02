@@ -4,9 +4,9 @@ import { ArrowLeft } from "lucide-react";
 import { Footer } from "./footer";
 
 // Shared shell for the standalone marketing/legal pages (terms, privacy, dpa,
-// status, changelog, docs). Matches the landing's dark brand surface but uses a
-// minimal header (logo + back link) instead of the anchored landing nav, whose
-// in-page section links don't resolve off the home page.
+// status, changelog, docs). Matches the landing's brand register (Zodiak headings,
+// theme-aware surfaces) but uses a minimal header (logo + back link) instead of the
+// anchored landing nav, whose in-page section links don't resolve off the home page.
 export function DocPage({
   title,
   updated,
@@ -19,7 +19,7 @@ export function DocPage({
   children: ReactNode;
 }) {
   return (
-    <div className="dark min-h-dvh bg-background font-sans text-foreground antialiased">
+    <div className="landing-canvas min-h-dvh bg-background font-sans text-foreground antialiased">
       <header className="border-b border-border/60">
         <div className="mx-auto flex h-16 w-full max-w-3xl items-center justify-between px-6">
           <Link href="/" className="text-lg font-semibold tracking-tight">

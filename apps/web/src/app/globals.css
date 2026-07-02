@@ -541,6 +541,16 @@
    landing wrapper in page.tsx via .landing-canvas — the product keeps the
    standard tokens. The compound selector (.dark.landing-canvas) wins over .dark
    regardless of source order. */
+/* Landing brand register — Zodiak (a modern editorial serif) drives the headings
+   in BOTH themes. Kept out of the dark-only block so light mode keeps the serif +
+   sans contrast that reads "intelligence briefing", not a default dev-tool
+   grotesque. h1–h5 pick this up via the base rule's var(--font-display). Light
+   surfaces come straight from :root (near-white bands); only the deep dark canvas
+   needs the overrides below. */
+.landing-canvas {
+  --font-display: var(--font-zodiak), ui-serif, Georgia, serif;
+}
+
 .dark.landing-canvas {
   /* Same neutral-graphite shift as the dashboard — chroma stripped so the deep
      landing canvas no longer reads navy; lightness kept so the band rhythm and
@@ -552,9 +562,43 @@
      a stronger edge reads as a drawn box. 0.255 sits close to the card so the
      edge is felt, not shouted (the Linear/Vercel low-contrast border). */
   --border: oklch(0.255 0 0);
-  /* Landing headings run on Zodiak (a modern editorial serif) instead of the
-     dashboard's neutral Geist — a serif+sans contrast that reads "intelligence
-     briefing", not a default dev-tool grotesque. h1–h5 pick this up via the
-     base rule's var(--font-display). */
-  --font-display: var(--font-zodiak), ui-serif, Georgia, serif;
+}
+
+/* Landing: smooth in-page anchor scrolling with an offset for the fixed nav.
+   Scoped to pages that render .landing-canvas so the dashboard is untouched, and
+   disabled under reduced-motion. */
+html:has(.landing-canvas) {
+  scroll-behavior: smooth;
+}
+.landing-canvas section[id] {
+  scroll-margin-top: 5rem;
+}
+@media (prefers-reduced-motion: reduce) {
+  html:has(.landing-canvas) {
+    scroll-behavior: auto;
+  }
+}
+
+/* Scroll reveal — a light fade + rise as a section enters the viewport. The
+   hidden start state is added by the <ScrollReveal> client only to below-the-fold
+   sections (so there is no flash and no-JS renders everything). Reduced-motion
+   users get the content with no transform. */
+[data-reveal].reveal-init {
+  opacity: 0;
+  transform: translateY(14px);
+  transition:
+    opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+[data-reveal].reveal-init.reveal-in {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-reveal].reveal-init {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
 }

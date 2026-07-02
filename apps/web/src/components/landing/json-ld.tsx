@@ -7,7 +7,7 @@ const FAQS = [
   },
   {
     q: "What qualifies a change as a signal?",
-    a: "A fast Llama 3.3 70B classifier runs on every diff and tags category, severity, and a 'significant' boolean. Only significant changes go on to a frontier LLM for insight generation. On average we surface 1 signal for every 70 changes scanned.",
+    a: "A fast AI classifier runs on every diff and tags category, severity, and a 'significant' boolean. Only significant changes go on to a second AI pass that writes the strategic insight. On average we surface 1 signal for every 70 changes scanned.",
   },
   {
     q: "Where is the data stored?",

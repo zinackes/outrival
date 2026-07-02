@@ -27,6 +27,7 @@ export function Pipeline() {
     <section
       className="border-y border-border bg-background-2 py-16 sm:py-24"
       id="pipeline"
+      data-reveal
     >
       <div className="mx-auto w-full max-w-6xl px-6">
         <div className="grid gap-x-10 gap-y-4 lg:grid-cols-2 lg:items-end">
@@ -36,9 +37,9 @@ export function Pipeline() {
             to strategic signal.
           </h2>
           <p className="text-text-muted leading-relaxed">
-            A real example: a change detected on Linear&apos;s pricing page.
-            Here&apos;s exactly what happens between the scrape and the moment
-            it shows up in your digest.
+            A worked example: a change detected on a competitor&apos;s pricing
+            page. Here&apos;s exactly what happens between the scrape and the
+            moment it shows up in your digest.
           </p>
         </div>
 
@@ -46,7 +47,7 @@ export function Pipeline() {
           <div className="flex items-center gap-2 border-b border-border bg-background-2 px-4 py-2.5 font-mono text-xs text-text-muted">
             <span className="size-1.5 rounded-full bg-positive" />
             <span>
-              <span className="text-foreground">linear.app/pricing</span> ·
+              <span className="text-foreground">vantage.app/pricing</span> ·
               snapshot scraped
             </span>
             <span className="ml-auto text-text-subtle">
@@ -54,7 +55,7 @@ export function Pipeline() {
             </span>
           </div>
 
-          <div className="max-h-[200px] overflow-auto bg-[#0a0a0c] py-3 font-mono text-xs leading-relaxed">
+          <div className="max-h-[200px] overflow-auto bg-background py-3 font-mono text-xs leading-relaxed">
             <DiffLine>{'<div class="plan plan-business">'}</DiffLine>
             <DiffLine>{"  <h3>Business</h3>"}</DiffLine>
             <DiffLine kind="del">
@@ -77,7 +78,7 @@ export function Pipeline() {
                 <span className="rounded bg-surface-3 px-1.5 py-0.5 text-text-subtle">
                   step 1
                 </span>
-                <span className="text-text-muted">groq · llama-3.3-70b</span>
+                <span className="text-text-muted">AI · classify</span>
               </div>
               <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 font-mono text-xs">
                 <span className="text-text-subtle">category</span>
@@ -96,11 +97,11 @@ export function Pipeline() {
                 <span className="rounded bg-surface-3 px-1.5 py-0.5 text-text-subtle">
                   step 2
                 </span>
-                <span className="text-text-muted">frontier llm · insight</span>
+                <span className="text-text-muted">AI · insight</span>
               </div>
               <div className="mt-3 text-sm leading-relaxed text-text-muted">
                 <b className="text-foreground">
-                  Linear repositions Business as the entry tier.
+                  Vantage repositions Business as the entry tier.
                 </b>{" "}
                 The gap with your Pro plan tightens from $4 to $2, and the seat
                 cap disappears.
@@ -136,7 +137,7 @@ export function Pipeline() {
 
         <p className="mt-6 text-center text-dense text-text-subtle">
           ~70 changes scanned produce 1 signal · you don&apos;t pay to run AI
-          on noise.
+          on noise. <span className="italic">Illustrative example.</span>
         </p>
       </div>
     </section>

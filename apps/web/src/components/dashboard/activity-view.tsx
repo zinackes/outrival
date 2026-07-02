@@ -99,6 +99,21 @@ function rel(iso: string | null): string {
   return formatDistanceToNow(new Date(iso), { addSuffix: true });
 }
 
+// Relative label for a SCHEDULED (future) run — nextRunAt. formatDistanceToNow with
+// addSuffix renders a past instant as "8 minutes ago", which reads as a scrape that
+// already happened. But an overdue nextRunAt only means the hourly scrape cron hasn't
+// picked the monitor up yet (or, in dev, isn't running) — the check is still pending,
+// not done. Collapse any past/imminent time to "due now" so a next check never looks
+// like a completed one.
+function relNext(iso: string | null): string {
+  if (!iso) return "not scheduled";
+  const ts = new Date(iso).getTime();
+  if (Number.isNaN(ts)) return "not scheduled";
+  // 30s of slack so a run due in seconds reads "due now", not "in 20 seconds".
+  if (ts - Date.now() <= 30_000) return "due now";
+  return formatDistanceToNow(new Date(ts), { addSuffix: true });
+}
+
 function duration(ms: number): string {
   if (!ms) return "—";
   return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
@@ -618,7 +633,7 @@ export function ActivityView() {
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <span className="cursor-default tabular-nums">
-                            {rel(nextCheck.nextRunAt)}
+                            {relNext(nextCheck.nextRunAt)}
                           </span>
                         </TooltipTrigger>
                         <TooltipContent>
@@ -666,7 +681,7 @@ export function ActivityView() {
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <span className="shrink-0 cursor-default text-xs text-muted-foreground tabular-nums">
-                                  {rel(u.nextRunAt)}
+                                  {relNext(u.nextRunAt)}
                                 </span>
                               </TooltipTrigger>
                               <TooltipContent>

@@ -393,9 +393,37 @@ function extractFooter($: CheerioRoot, baseUrl: string): HomepageStructure["foot
 
 // Logo containers matched by class/id keyword AND by aria-label: modern "trusted by"
 // strips carry no semantic class (utility CSS) — the brand signal is an aria-label on
-// the list ("Trusted by fast-growing companies"). Shared by the <svg> and <img> passes.
+// the list ("Trusted by fast-growing companies") or a sibling heading (collectLogoScopes).
+// "brand" is deliberately NOT a class keyword: modern design systems name their accent
+// COLOR "brand" (text-brand-*, bg-brand-*, border-brand-*, after:bg-brand-*), so
+// [class*="brand"] sweeps up every accent-tinted feature card — decorative icons,
+// screenshots — instead of customer logos. Shared by the <svg> and <img> passes.
 const LOGO_CONTAINER_SEL =
-  '[class*="logo" i], [id*="logo" i], [class*="customer" i], [class*="trusted" i], [class*="brand" i], [class*="partner" i], [aria-label*="trusted" i], [aria-label*="customer" i], [aria-label*="partner" i], [aria-label*="companies" i], [aria-label*="used by" i]';
+  '[class*="logo" i], [id*="logo" i], [class*="customer" i], [class*="trusted" i], [class*="partner" i], [aria-label*="trusted" i], [aria-label*="customer" i], [aria-label*="partner" i], [aria-label*="companies" i], [aria-label*="used by" i]';
+
+// A customer wall is often anchored by a HEADING ("Trusted by developers at", "Our
+// customers", "Backed by") with the logos in a utility-class <div> that's a plain
+// sibling of the heading — so LOGO_CONTAINER_SEL can't reach them (nhost pattern).
+// Kept to genuine logo-wall phrasings: testimonial headers ("Loved by teams…") wrap
+// quote walls + duplicate marquee logos + decorative art, so they're excluded here.
+const SOCIAL_PROOF_HEADING_RE =
+  /\b(trusted by|used by|our (customers|clients|partners)|backed by)\b/i;
+
+// The two independent ways a homepage marks its customer wall, unioned: (a) a
+// class/id/aria logo container, and (b) the enclosing SECTION of a social-proof
+// heading. Conservative on (b): only a real sectioning ancestor counts (closest
+// <section>/<article>/[role=region], never <main>/<body>), so a loosely-matching
+// heading can't turn the whole page into a logo wall. Shared by both passes.
+function collectLogoScopes($: CheerioRoot) {
+  const els = $(LOGO_CONTAINER_SEL).toArray();
+  $("h1, h2, h3, h4, h5, h6, p").each((_, el) => {
+    const t = norm($(el).text());
+    if (!t || t.length > 80 || !SOCIAL_PROOF_HEADING_RE.test(t)) return;
+    const section = $(el).closest("section, article, [role='region']").get(0);
+    if (section && "tagName" in section) els.push(section);
+  });
+  return $([...new Set(els)]);
+}
 
 // Site chrome (header/nav/footer own-brand mark, menu glyphs), testimonial/review
 // avatars + review-site badges, and a logo linking back to the homepage root are NOT
@@ -430,7 +458,7 @@ function serializeSvgLogo(rawHtml: string): string | null {
 function extractSvgLogos($: CheerioRoot, baseUrl: string): CustomerLogo[] {
   const logos: CustomerLogo[] = [];
   const seen = new Set<string>();
-  $(LOGO_CONTAINER_SEL)
+  collectLogoScopes($)
     .find("svg")
     .each((_, el) => {
       if (logos.length >= MAX_LOGOS) return;
@@ -469,7 +497,7 @@ function extractSocialProof(
   const seen = new Set<string>(
     svgLogos.map((l) => (l.name ?? l.src ?? "").toLowerCase()).filter(Boolean),
   );
-  $(LOGO_CONTAINER_SEL)
+  collectLogoScopes($)
     .find("img")
     .each((_, el) => {
       if (logos.length >= MAX_LOGOS) return;

@@ -19,6 +19,7 @@ import {
   ExternalLink,
   Telescope,
   Building2,
+  Pause,
   PauseCircle,
 } from "lucide-react";
 import { EmptyState } from "./empty-state";
@@ -116,6 +117,31 @@ function PausedByPlanBadge({ className }: { className?: string }) {
       <TooltipContent>
         Over your plan&apos;s competitor limit — monitoring is paused. Upgrade to
         resume.
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+// Marks a competitor the user deliberately paused (kebab → Pause monitoring on its
+// page). Distinct from the plan-cap freeze above: nothing to upgrade, just a calm
+// reminder that this row's sources are intentionally frozen. Resume lives on the
+// competitor's own page.
+function MonitoringPausedBadge({ className }: { className?: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          className={cn(
+            "flex w-fit items-center gap-1 rounded border border-border bg-muted/50 px-1.5 py-0.5 text-meta font-medium text-muted-foreground",
+            className,
+          )}
+        >
+          <Pause size={11} className="shrink-0" /> Paused
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>
+        Monitoring is paused — no sources are being scraped. Resume it from the
+        competitor&apos;s page.
       </TooltipContent>
     </Tooltip>
   );
@@ -632,7 +658,11 @@ export function CompetitorsList() {
                       />
                     </a>
                     <AnalysisBadge analysis={c.analysis} className="mt-1" />
-                    {c.pausedByPlan && <PausedByPlanBadge className="mt-1" />}
+                    {c.pausedByPlan ? (
+                      <PausedByPlanBadge className="mt-1" />
+                    ) : c.monitoringPaused ? (
+                      <MonitoringPausedBadge className="mt-1" />
+                    ) : null}
                     {allProducts && (
                       <ProductChips
                         productIds={c.specificProductIds}
@@ -753,7 +783,11 @@ export function CompetitorsList() {
                       />
                     </a>
                     <AnalysisBadge analysis={c.analysis} className="mt-1" />
-                    {c.pausedByPlan && <PausedByPlanBadge className="mt-1" />}
+                    {c.pausedByPlan ? (
+                      <PausedByPlanBadge className="mt-1" />
+                    ) : c.monitoringPaused ? (
+                      <MonitoringPausedBadge className="mt-1" />
+                    ) : null}
                     {allProducts && (
                       <ProductChips
                         productIds={c.specificProductIds}

@@ -259,6 +259,57 @@ describe("parseHomepageStructure — inline SVG logos in aria-labelled container
   });
 });
 
+// The nhost.io regression: a "Trusted by" strip whose logos sit in a utility-class
+// <div> that is a plain SIBLING of the heading (no logo/customer/trusted class, no
+// aria-label), on a page whose design system names its accent COLOR "brand"
+// (text-brand-*, bg-brand-*) — so the old [class*="brand"] selector swept up every
+// accent-tinted feature card (decorative icons, screenshots) while missing the real
+// wall entirely.
+describe("parseHomepageStructure — heading-anchored strip + brand-color cards", () => {
+  const HTML = `<!doctype html><html><head><title>Nhostish</title></head><body>
+    <header><a href="/"><img src="/logo.svg" alt="Nhostish Logo"></a></header>
+    <main>
+      <section class="w-full pt-14">
+        <div class="mx-auto max-w-7xl grid justify-center gap-12 text-center">
+          <h2 class="text-base text-white">Trusted by developers at</h2>
+          <div class="flex flex-row flex-wrap items-center justify-center gap-x-6">
+            <img alt="Celsia Logo" src="/customers/celsia.svg">
+            <img alt="React Flow Logo" src="/customers/react-flow.svg">
+            <img alt="RevTron Logo" src="/customers/revtron.svg">
+          </div>
+        </div>
+      </section>
+      <section class="w-full mt-24">
+        <h2 class="font-semibold">Build. Deploy. Scale.</h2>
+        <div class="grid grid-cols-4">
+          <div class="rounded-xl border border-divider text-brand-light hover:border-brand-main">
+            <p>AI &amp; embeddings, ready to use.</p>
+            <div class="flex h-24 items-center justify-center">
+              <img alt="AI Services Icon" src="/products/openai-logo.svg" width="56" height="56">
+            </div>
+          </div>
+          <div class="rounded-xl border border-divider text-brand-light">
+            <img alt="Transparent lines" src="/common/line-grid.svg" width="1003" height="644">
+          </div>
+        </div>
+      </section>
+    </main>
+  </body></html>`;
+  const s = parseHomepageStructure(HTML, "https://nhostish.io/");
+  it("captures the heading-anchored customer logos", () => {
+    expect(s.socialProof.customerLogos.map((l) => l.name)).toEqual([
+      "Celsia",
+      "React Flow",
+      "RevTron",
+    ]);
+  });
+  it("excludes accent-color 'brand-*' feature cards (no AI-icon / decorative art)", () => {
+    const names = s.socialProof.customerLogos.map((l) => l.name);
+    expect(names).not.toContain("AI Services");
+    expect(names).not.toContain("Transparent lines");
+  });
+});
+
 // A rotating carousel changes which testimonial is in the DOM, but the count
 // stays put — the structure must be identical so the diff (step 4) emits nothing.
 describe("parseHomepageStructure — carousel rotation is invisible", () => {

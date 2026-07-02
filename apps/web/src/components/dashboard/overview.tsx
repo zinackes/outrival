@@ -2,46 +2,27 @@
 
 import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
-import {
-  Download,
-  ArrowRight,
-  ExternalLink,
-  Radar,
-  FlaskConical,
-} from "lucide-react";
+import { Download, ArrowRight, Radar, FlaskConical } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { type Signal } from "@/lib/api";
 import { signalsQuery, competitorsQuery } from "@/lib/queries";
 import { toCsv, downloadCsv } from "@/lib/csv";
 import { formatDate } from "@/lib/format-date";
-import { prettyUrl } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   DateRangePicker,
   lastNDays,
   type DateRange,
 } from "@/components/ui/date-range-picker";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { PageHead } from "./page-head";
 import { useSetAskContext } from "./ask-context";
 import { SectionHead } from "./section-head";
-import { RecentBattleCards } from "./recent-battle-cards";
 import { Kpi } from "./kpi";
 import { SeverityBadge } from "./severity-pill";
 import { CatPill } from "./cat-pill";
-import { CompAvatar } from "./comp-avatar";
-import { competitorNameColor } from "@/lib/competitor-color";
-import { CategoryBar, CategoryKey } from "./category-bar";
-import { DeltaPill, computeDelta } from "./delta-pill";
-import { SectoralSignalsSection } from "./sectoral-signals";
 import { OnboardingChecklistCard } from "./onboarding-checklist";
 import { LandscapeSection } from "./landscape";
 import { EmptyState } from "./empty-state";
@@ -59,24 +40,6 @@ const SEV_ORDER: Record<Signal["severity"], number> = {
   medium: 2,
   low: 3,
 };
-
-// The category wayfinding scale (globals.css --cat-*), shared with the feed pills
-// and the competitor charts. A system separate from severity and brand cyan —
-// the old map borrowed those hues, which mislabeled pricing as critical-red and
-// spent the brand accent on a category.
-const CATEGORY_COLORS: Record<string, string> = {
-  pricing: "var(--cat-pricing)",
-  product: "var(--cat-product)",
-  hiring: "var(--cat-hiring)",
-  reviews: "var(--cat-reviews)",
-  content: "var(--cat-content)",
-  funding: "var(--cat-funding)",
-};
-
-// Header cell style, shared verbatim with the Competitors page table so the two
-// rosters read as one system.
-const TH =
-  "text-left px-3.5 py-2.5 text-xs text-muted-foreground font-medium border-b border-border whitespace-nowrap";
 
 interface Counts {
   signals: number;
@@ -117,7 +80,6 @@ function trendLabels(fromMs: number, toMs: number, buckets: number): string[] {
 }
 
 export function OverviewView() {
-  const router = useRouter();
   useSetAskContext({ kind: "view", label: "Overview dashboard" });
   const queryClient = useQueryClient();
   // patch-28 — active product scope (cookie-backed switcher, URL ?product= overrides).
@@ -217,85 +179,6 @@ export function OverviewView() {
       })
       .slice(0, 5);
   }, [dsSignals, range]);
-
-  // Top-8 competitor roster, windowed to the selected range so the whole page
-  // follows the date picker. Per-competitor counts / delta / category mix are
-  // recomputed from the loaded signal set (same ≤200-signal cap as the KPIs, so
-  // the two stay internally consistent — may differ slightly from the dedicated
-  // Competitors page, which uses uncapped server-side 7d stats). "Last signal"
-  // is recency, range-independent: latest loaded signal, falling back to the
-  // server stat when a competitor's last move predates the loaded tail.
-  const competitorRows = useMemo(() => {
-    if (!dsCompetitors) return [];
-    const sigs = dsSignals ?? [];
-    const span = Math.max(1, rangeTo - rangeFrom);
-    const prevFrom = rangeFrom - span;
-    const curByComp: Record<string, Signal[]> = {};
-    const prevByComp: Record<string, number> = {};
-    const lastByComp: Record<string, number> = {};
-    for (const s of sigs) {
-      const t = new Date(s.createdAt).getTime();
-      if (t > (lastByComp[s.competitorId] ?? 0)) lastByComp[s.competitorId] = t;
-      if (t >= rangeFrom && t <= rangeTo) {
-        (curByComp[s.competitorId] ??= []).push(s);
-      } else if (t >= prevFrom && t < rangeFrom) {
-        prevByComp[s.competitorId] = (prevByComp[s.competitorId] ?? 0) + 1;
-      }
-    }
-    return [...dsCompetitors]
-      .map((c) => {
-        const inRange = curByComp[c.id] ?? [];
-        const categoryCounts: Record<string, number> = {};
-        for (const s of inRange) {
-          categoryCounts[s.category] = (categoryCounts[s.category] ?? 0) + 1;
-        }
-        const last = lastByComp[c.id];
-        return {
-          id: c.id,
-          name: c.name,
-          url: c.url,
-          color: c.color,
-          category: c.category ?? "—",
-          overlap: c.overlapScore != null ? Math.round(c.overlapScore) : null,
-          signals: inRange.length,
-          delta: computeDelta(inRange.length, prevByComp[c.id] ?? 0),
-          categoryCounts,
-          lastSignal: last
-            ? new Date(last).toISOString()
-            : (c.stats?.lastSignalAt ?? null),
-        };
-      })
-      .sort((a, b) => b.signals - a.signals)
-      .slice(0, 8);
-  }, [dsCompetitors, dsSignals, range]);
-
-  // Scale for the in-row magnitude bar behind the signals value (Plausible
-  // pattern): a tinted fill ∝ value, so the column reads as a chart at a glance.
-  const maxSignals = useMemo(
-    () => competitorRows.reduce((m, c) => Math.max(m, c.signals), 0),
-    [competitorRows],
-  );
-
-  const categoryBreakdown = useMemo(() => {
-    if (!dsSignals) return [];
-    const inRange = dsSignals.filter(
-      (s) => inWindow(s.createdAt),
-    );
-    const map: Record<string, number> = {};
-    for (const s of inRange) {
-      map[s.category] = (map[s.category] ?? 0) + 1;
-    }
-    return Object.entries(map)
-      .sort((a, b) => b[1] - a[1])
-      .map(([name, count]) => ({
-        name,
-        count,
-        color: CATEGORY_COLORS[name] ?? "var(--muted-3)",
-      }));
-  }, [dsSignals, range]);
-
-  const totalCats = categoryBreakdown.reduce((a, b) => a + b.count, 0) || 1;
-  const [hoveredCat, setHoveredCat] = useState<string | null>(null);
 
   // One daily bucket per day in the range (≥2 points so a sparkline still reads,
   // capped at 60 so long ranges don't produce sub-pixel bars).
@@ -544,271 +427,8 @@ export function OverviewView() {
         </TooltipProvider>
       </section>
 
-      {/* Signal categories — a thin band, not a card. Self-hides with no signals. */}
-      {categoryBreakdown.length > 0 && (
-        <div>
-          <h2 className="font-semibold text-lg tracking-tight leading-tight mb-2.5">
-            Signal categories
-          </h2>
-          <TooltipProvider delayDuration={80}>
-            <div className="flex h-2 rounded-full overflow-hidden bg-background">
-              {categoryBreakdown.map((c) => {
-                const pct = (c.count / totalCats) * 100;
-                const isActive = hoveredCat === c.name;
-                const isDimmed = hoveredCat !== null && !isActive;
-                return (
-                  <Tooltip key={c.name}>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        aria-label={`${c.name}: ${c.count} signals`}
-                        onMouseEnter={() => setHoveredCat(c.name)}
-                        onMouseLeave={() => setHoveredCat(null)}
-                        onFocus={() => setHoveredCat(c.name)}
-                        onBlur={() => setHoveredCat(null)}
-                        className="h-full cursor-default outline-none transition-[opacity,filter] duration-300 ease-out focus-visible:shadow-[inset_0_0_0_2px_var(--ring)]"
-                        style={{
-                          background: c.color,
-                          width: `${pct}%`,
-                          opacity: isDimmed ? 0.25 : 1,
-                          filter: isActive
-                            ? "brightness(1.15) saturate(1.1)"
-                            : undefined,
-                        }}
-                      />
-                    </TooltipTrigger>
-                    <TooltipContent className="flex items-center gap-2">
-                      <span
-                        className="w-2 h-2 rounded-sm"
-                        style={{ background: c.color }}
-                      />
-                      <span className="capitalize font-medium">{c.name}</span>
-                      <span className="tabular-nums text-muted-foreground">
-                        {c.count} · {Math.round(pct)}%
-                      </span>
-                    </TooltipContent>
-                  </Tooltip>
-                );
-              })}
-            </div>
-          </TooltipProvider>
-          <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5">
-            {categoryBreakdown.map((c) => {
-              const isActive = hoveredCat === c.name;
-              const isDimmed = hoveredCat !== null && !isActive;
-              return (
-                <span
-                  key={c.name}
-                  onMouseEnter={() => setHoveredCat(c.name)}
-                  onMouseLeave={() => setHoveredCat(null)}
-                  className="flex items-center gap-1.5 text-xs cursor-default transition-opacity duration-200"
-                  style={{ opacity: isDimmed ? 0.4 : 1 }}
-                >
-                  <span
-                    className="w-2 h-2 rounded-sm transition-transform duration-200 ease-out"
-                    style={{
-                      background: c.color,
-                      transform: isActive ? "scale(1.4)" : undefined,
-                    }}
-                  />
-                  <span
-                    className={`capitalize text-meta transition-colors duration-200 ${
-                      isActive ? "text-foreground" : "text-muted-foreground"
-                    }`}
-                  >
-                    {c.name}
-                  </span>
-                  <span className="tabular-nums font-mono">{c.count}</span>
-                </span>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Sector trends — meso-level, distinct from the micro signals above.
-          Self-fetches real org data, so it's hidden while exploring sample data. */}
-      {!sample && <SectoralSignalsSection />}
-
-      {/* Top-8 competitor roster — a condensed mirror of the Competitors page
-          table. Populated view only: at day-0 (watching) every activity column
-          would be empty, so the LandscapeSection stands in for it there. */}
-      <section>
-        <SectionHead
-          title="Your competitors"
-          sub={`sorted by activity · ${rangeLabel}`}
-          divider={false}
-          action={
-            <Button asChild variant="outline" size="sm">
-              <Link href="/dashboard/competitors">
-                View all <ArrowRight size={11} />
-              </Link>
-            </Button>
-          }
-        />
-        <TooltipProvider delayDuration={80}>
-        <div className="mt-3 overflow-x-auto rounded-md border border-border">
-          <table className="w-full border-collapse text-dense min-w-[760px]">
-            <thead>
-              <tr>
-                <th className={`${TH} w-8`} />
-                <th className={TH}>Competitor</th>
-                <th className={TH}>Category</th>
-                <th className={TH}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="inline-flex items-center gap-1 cursor-help">
-                        Overlap
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      How closely this competitor overlaps with your product
-                      (0–100).
-                    </TooltipContent>
-                  </Tooltip>
-                </th>
-                <th className={`${TH} text-right`}>Signals {rangeDays}d</th>
-                <th className={`${TH} text-right`}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="inline-flex items-center gap-1 cursor-help">
-                        {rangeDays}d trend
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      Signals in the last {rangeDays} days vs the previous{" "}
-                      {rangeDays} days
-                    </TooltipContent>
-                  </Tooltip>
-                </th>
-                <th className={TH}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="inline-flex items-center gap-1 cursor-help">
-                        Signal mix ({rangeDays}d)
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="mb-1.5 font-medium normal-case tracking-normal">
-                        Share of the last {rangeDays} days&apos; signals by
-                        category
-                      </p>
-                      <CategoryKey />
-                    </TooltipContent>
-                  </Tooltip>
-                </th>
-                <th className={TH}>Last signal</th>
-                <th className={`${TH} w-8`} />
-              </tr>
-            </thead>
-            <tbody>
-              {competitorRows.length === 0 && (
-                <tr>
-                  <td colSpan={9} className="p-7">
-                    <div className="text-center text-muted-foreground text-dense">
-                      No competitors. Add one to get started.
-                    </div>
-                  </td>
-                </tr>
-              )}
-              {competitorRows.map((c) => (
-                <tr
-                  key={c.id}
-                  onClick={() => router.push(`/dashboard/competitors/${c.id}`)}
-                  className="border-b border-border last:border-b-0 cursor-pointer transition-colors hover:bg-accent/50"
-                >
-                  <td className="px-3.5 py-3 align-middle">
-                    <CompAvatar name={c.name} url={c.url} />
-                  </td>
-                  <td className="px-3.5 py-3 align-middle">
-                    <div className="font-medium">
-                      <Link
-                        href={`/dashboard/competitors/${c.id}`}
-                        onClick={(e) => e.stopPropagation()}
-                        className="rounded-sm underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
-                        style={competitorNameColor(c.color)}
-                      >
-                        {c.name}
-                      </Link>
-                    </div>
-                    <a
-                      href={c.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="group/url inline-flex items-center gap-1 mt-px w-fit max-w-full font-mono text-meta text-muted-foreground transition-colors hover:text-foreground"
-                    >
-                      <span className="truncate underline-offset-2 group-hover/url:underline">
-                        {prettyUrl(c.url)}
-                      </span>
-                      <ExternalLink
-                        size={10}
-                        className="shrink-0 opacity-0 transition-opacity group-hover/url:opacity-100"
-                      />
-                    </a>
-                  </td>
-                  <td className="px-3.5 py-3 align-middle text-muted-foreground">
-                    {c.category}
-                  </td>
-                  <td className="px-3.5 py-3 align-middle">
-                    {c.overlap != null ? (
-                      <div className="flex items-center gap-2.5">
-                        <div className="h-1.5 w-[70px] bg-background rounded border border-border overflow-hidden">
-                          <span
-                            className="block h-full bg-primary rounded"
-                            style={{ width: `${c.overlap}%` }}
-                          />
-                        </div>
-                        <span className="tabular-nums font-mono text-xs w-6">
-                          {c.overlap}
-                        </span>
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </td>
-                  <td className="relative px-3.5 py-3 align-middle text-right tabular-nums font-mono font-semibold">
-                    {maxSignals > 0 && c.signals > 0 && (
-                      <span
-                        aria-hidden
-                        className="pointer-events-none absolute inset-y-1.5 left-1 rounded-sm bg-muted-foreground/10"
-                        style={{
-                          width: `calc(${(c.signals / maxSignals) * 100}% - 8px)`,
-                        }}
-                      />
-                    )}
-                    <span className="relative">{c.signals}</span>
-                  </td>
-                  <td className="px-3.5 py-3 align-middle text-right">
-                    <DeltaPill delta={c.delta} />
-                  </td>
-                  <td className="px-3.5 py-3 align-middle">
-                    <CategoryBar counts={c.categoryCounts} w={110} />
-                  </td>
-                  <td className="px-3.5 py-3 align-middle text-muted-foreground tabular-nums font-mono text-xs">
-                    {c.lastSignal
-                      ? formatDistanceToNow(new Date(c.lastSignal), {
-                          addSuffix: true,
-                        })
-                      : "—"}
-                  </td>
-                  <td className="w-8 text-right px-3.5 py-3 align-middle">
-                    <ArrowRight
-                      size={14}
-                      className="text-muted-foreground inline"
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        </TooltipProvider>
-      </section>
         </>
       )}
-
-      {!sample && <RecentBattleCards />}
     </div>
   );
 }

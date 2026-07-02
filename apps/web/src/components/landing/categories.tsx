@@ -42,7 +42,7 @@ const CATEGORIES: { name: string; sev: Sev; desc: string }[] = [
 
 export function Categories() {
   return (
-    <section className="py-16 sm:py-24" id="signals">
+    <section className="py-16 sm:py-24" id="signals" data-reveal>
       <div className="mx-auto w-full max-w-6xl px-6">
         <div className="grid gap-x-10 gap-y-4 lg:grid-cols-2 lg:items-end">
           <h2 className="text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">
@@ -72,18 +72,6 @@ export function Categories() {
               </p>
             </div>
           ))}
-        </div>
-
-        {/* What one signal actually reads like — the closing moment. */}
-        <div className="mt-12 border-t border-primary/70 pt-6">
-          <span className="text-meta font-medium text-primary">
-            A signal reads
-          </span>
-          <p className="mt-3 max-w-3xl text-content leading-relaxed">
-            <span className="font-semibold">Linear</span> drops Business from $16
-            → $14/seat and removes the 250-member cap. Business gets repositioned
-            as the entry tier — your Pro plan loses $2 of competitive headroom.
-          </p>
         </div>
       </div>
     </section>

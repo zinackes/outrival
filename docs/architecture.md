@@ -747,6 +747,7 @@ AI_INTENSIVE_WINDOW_SEC=3600       # fenêtre 1h
 
 # Notifications
 RESEND_API_KEY=
+CONTACT_EMAIL=               # inbox for the public landing /demo lead form (default hello@outrival.app)
 
 # Notification moderation (patch-26)
 NOTIFICATION_DAILY_EMAIL_CAP=10        # max emails immédiats/jour/org (critical bypasse)

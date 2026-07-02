@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import {
@@ -14,12 +14,18 @@ import {
   RotateCcw,
   Archive,
   Telescope,
+  Package,
 } from "lucide-react";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { ApiError, api, type CompetitorCandidate } from "@/lib/api";
-import { candidatesQuery, discoveryStalenessQuery, competitorsQuery } from "@/lib/queries";
+import {
+  candidatesQuery,
+  discoveryStalenessQuery,
+  competitorsQuery,
+  productsListQuery,
+} from "@/lib/queries";
 import { toastApiError } from "@/lib/error-helpers";
 import { ListError } from "@/components/outrival/list-error";
 import {
@@ -75,6 +81,20 @@ export function DiscoveryView() {
   const error = candidatesQ.error;
   const stalenessQ = useQuery(discoveryStalenessQuery(productId));
   const discoveryFresh = stalenessQ.data ? !stalenessQ.data.needsRediscovery : false;
+
+  // Product provenance (patch-28): in "all products" scope a candidate can belong to any
+  // SKU, so the mixed list needs a per-card label to stay legible. Only worth showing when
+  // it adds signal — the all-products view AND the org actually juggles >1 non-archived
+  // product. In a single-product scope every card is that product, so the badge is noise.
+  // Reuses the same query the scope switcher already runs (cached, no extra request).
+  const productsQ = useQuery(productsListQuery());
+  const productNames = useMemo(
+    () => new Map((productsQ.data ?? []).map((p) => [p.id, p.name])),
+    [productsQ.data],
+  );
+  const showProductBadge =
+    productId === undefined &&
+    (productsQ.data ?? []).filter((p) => p.status !== "archived").length > 1;
 
   // Rewrite the active tab's cached candidates / counts so the optimistic mutations
   // (and their rollbacks) below keep working unchanged after the move to useQuery.
@@ -501,6 +521,18 @@ export function DiscoveryView() {
                       )}
                     </div>
                   </div>
+
+                  {showProductBadge && c.productId && productNames.get(c.productId) && (
+                    <div className="mb-3.5">
+                      <span
+                        className="inline-flex max-w-full items-center gap-1 rounded-md border border-border bg-muted/40 px-1.5 py-0.5 text-meta text-muted-foreground"
+                        title={`Discovered for ${productNames.get(c.productId)}`}
+                      >
+                        <Package size={11} className="shrink-0" />
+                        <span className="truncate">{productNames.get(c.productId)}</span>
+                      </span>
+                    </div>
+                  )}
 
                   {overlap != null && (
                     <div className="mb-3.5">

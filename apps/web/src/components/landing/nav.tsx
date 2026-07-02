@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/dashboard/theme-toggle";
 import { useSession } from "@/lib/auth-client";
 
 const LINKS = [
@@ -53,6 +54,7 @@ export function Nav() {
           ))}
         </div>
         <div className="flex items-center gap-2">
+          <ThemeToggle />
           {isAuthed ? (
             <Button asChild size="sm">
               <Link href="/dashboard">Go to dashboard</Link>

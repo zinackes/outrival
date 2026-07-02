@@ -167,6 +167,20 @@ billingRouter.post("/change-plan", async (c) => {
   ]);
   if (!org || !dbUser) return c.json({ error: "Not found" }, 404);
 
+  // Business is sales-assisted (landing + settings route to /demo, not checkout).
+  // Backstop against a crafted/replayed self-serve upgrade to Business; an org that
+  // is already on Business can still manage its subscription (e.g. period switch).
+  if (parsed.data.plan === "business" && org.plan !== "business") {
+    return c.json(
+      {
+        error: "plan_sales_only",
+        message:
+          "Business is sales-assisted — contact us at hello@outrival.app to get set up.",
+      },
+      403,
+    );
+  }
+
   const stripe = getStripe();
 
   let priceId: string;

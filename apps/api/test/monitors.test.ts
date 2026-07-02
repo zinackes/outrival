@@ -68,6 +68,16 @@ beforeAll(async () => {
       config: { url: "https://rival-d.com/pricing" },
       lastRunAt: new Date(Date.now() - 60_000),
     },
+    // Manual pause / enable target (starts active, with a far-future nextRunAt so
+    // re-enabling can be seen to reset it to "due next tick").
+    {
+      id: "m-toggle",
+      competitorId: "c-a",
+      sourceType: "blog",
+      nextRunAt: new Date(Date.now() + 7 * 86_400_000),
+    },
+    // Infra-only anchor — a manual toggle must refuse to flip it on.
+    { id: "m-tech", competitorId: "c-a", sourceType: "tech_stack", isActive: false },
   ]);
 });
 
@@ -221,5 +231,38 @@ describe("PATCH url change resets freshness so the next run is a first scrape", 
       .from(forcedRescanLog)
       .where(eq(forcedRescanLog.monitorId, "m-d-same"));
     expect(logs).toHaveLength(1);
+  });
+});
+
+describe("PATCH isActive — manual pause / enable of a single source", () => {
+  test("IDOR: a foreign org cannot toggle another org's monitor → 403", async () => {
+    const res = await patchMonitor(B, "m-toggle", { isActive: false });
+    expect(res.status).toBe(403);
+    const [m] = await testDb.select().from(monitors).where(eq(monitors.id, "m-toggle"));
+    expect(m?.isActive).toBe(true); // untouched
+  });
+
+  test("pausing sets isActive=false (no reschedule)", async () => {
+    const res = await patchMonitor(A, "m-toggle", { isActive: false });
+    expect(res.status).toBe(200);
+    const [m] = await testDb.select().from(monitors).where(eq(monitors.id, "m-toggle"));
+    expect(m?.isActive).toBe(false);
+    expect(m?.nextRunAt).not.toBeNull(); // pause leaves the schedule as-is
+  });
+
+  test("re-enabling sets isActive=true and makes it due next tick (nextRunAt null)", async () => {
+    const res = await patchMonitor(A, "m-toggle", { isActive: true });
+    expect(res.status).toBe(200);
+    const [m] = await testDb.select().from(monitors).where(eq(monitors.id, "m-toggle"));
+    expect(m?.isActive).toBe(true);
+    expect(m?.nextRunAt).toBeNull();
+  });
+
+  test("infra-only anchor sources refuse the toggle → 400 source_not_toggleable", async () => {
+    const res = await patchMonitor(A, "m-tech", { isActive: true });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("source_not_toggleable");
+    const [m] = await testDb.select().from(monitors).where(eq(monitors.id, "m-tech"));
+    expect(m?.isActive).toBe(false); // still off
   });
 });

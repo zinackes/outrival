@@ -62,10 +62,12 @@ const PLAN_RANK: Record<Plan, number> = {
 const EYEBROW =
   "text-xs font-medium text-[var(--muted-2)]";
 
-/** Curated plan blurbs + feature bullets, mirrored from the landing pricing section. */
+/** Curated plan blurbs + feature bullets, mirrored from the landing pricing section
+ *  (`components/landing/pricing.tsx`) — keep the two in sync. `includes` renders the
+ *  "Everything in <prev>, plus:" line so each tier reads as additive. */
 const PLAN_CARDS: Record<
   Plan,
-  { tag: string; featured: boolean; desc: string; features: string[] }
+  { tag: string; featured: boolean; desc: string; includes?: string; features: string[] }
 > = {
   free: {
     tag: "Free",
@@ -82,20 +84,20 @@ const PLAN_CARDS: Record<
     tag: "Starter",
     featured: false,
     desc: "For solo operators who need daily scans and Slack delivery.",
+    includes: "Everything in Free, plus:",
     features: [
       "5 competitors",
       "Daily scans · Slack & email digests",
       "Adds jobs + status page",
-      "1 user",
     ],
   },
   pro: {
     tag: "Pro",
     featured: true,
     desc: "For product, growth, or strategy teams that need the full signal stream.",
+    includes: "Everything in Starter, plus:",
     features: [
       "15 competitors",
-      "All categories + severities",
       "Real-time Slack/email alerts",
       "AI-generated battle cards",
       "G2, Capterra, Trustpilot & Reddit reviews",
@@ -105,6 +107,7 @@ const PLAN_CARDS: Record<
     tag: "Business",
     featured: false,
     desc: "50 competitors, every review source, multi-user, and API access.",
+    includes: "Everything in Pro, plus:",
     features: [
       "50 competitors",
       "Every review source (+ Gartner, TrustRadius)",
@@ -568,7 +571,17 @@ export function BillingDashboard() {
                   {card.desc}
                 </p>
 
-                <ul className="mt-5 flex-1 space-y-2.5 text-sm">
+                {card.includes && (
+                  <p className="mt-5 text-xs font-medium text-text-subtle">
+                    {card.includes}
+                  </p>
+                )}
+                <ul
+                  className={cn(
+                    "flex-1 space-y-2.5 text-sm",
+                    card.includes ? "mt-2.5" : "mt-5",
+                  )}
+                >
                   {card.features.map((f, i) => (
                     <li key={i} className="flex items-start gap-2">
                       <Check size={14} className="mt-0.5 shrink-0 text-primary" />
@@ -584,6 +597,16 @@ export function BillingDashboard() {
                     className="mt-6 w-full font-normal"
                   >
                     Current plan
+                  </Button>
+                ) : plan === "business" ? (
+                  // Business is sales-assisted (workspace setup, users, DPA) — not
+                  // self-serve checkout. Mirrors the landing "Talk to sales" CTA.
+                  <Button
+                    asChild
+                    variant={isUpgrade ? "default" : "outline"}
+                    className="mt-6 w-full"
+                  >
+                    <Link href="/demo?plan=business">Talk to sales</Link>
                   </Button>
                 ) : isPaid ? (
                   <Button

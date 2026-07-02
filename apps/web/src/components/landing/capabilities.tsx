@@ -4,7 +4,7 @@ const FEATURES = [
   {
     icon: MessageSquare,
     title: "Ask Outrival",
-    desc: "Ask in plain English — “how did Linear's pricing move this quarter?” — and get an answer grounded on the data we already track, deep-linked back to the signal it came from.",
+    desc: "Ask in plain English — “how did Vantage's pricing move this quarter?” — and get an answer grounded on the data we already track, deep-linked back to the signal it came from.",
   },
   {
     icon: Swords,
@@ -25,7 +25,7 @@ const FEATURES = [
 
 export function Capabilities() {
   return (
-    <section className="py-16 sm:py-24" id="features">
+    <section className="py-16 sm:py-24" id="features" data-reveal>
       <div className="mx-auto w-full max-w-6xl px-6">
         <div className="grid gap-x-10 gap-y-4 lg:grid-cols-2 lg:items-end">
           <h2 className="text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">

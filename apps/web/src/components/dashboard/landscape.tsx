@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -9,16 +8,12 @@ import {
   Clock3,
   ExternalLink,
   Radar,
-  ThumbsDown,
-  ThumbsUp,
   TriangleAlert,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
-import type { LandscapeData, LandscapeInsight, LandscapePricingRow } from "@/lib/api";
+import type { LandscapeData, LandscapePricingRow } from "@/lib/api";
 import { landscapeQuery } from "@/lib/queries";
 import { formatDate } from "@/lib/format-date";
-import { track } from "@/lib/posthog/events";
-import { ONBOARDING_EVENTS, trackOnboarding } from "@/lib/posthog/onboarding-events";
 import { competitorNameColor } from "@/lib/competitor-color";
 import { Button } from "@/components/ui/button";
 import { SectionHead } from "./section-head";
@@ -108,63 +103,6 @@ function summarizePricing(rows: LandscapePricingRow[]): {
   return { primary: `from ${fmtPrice(entry)}`, secondary };
 }
 
-// The investment step (Hooked model): one tap of feedback on a quick-win card.
-// PostHog-only in v1 — landscape insights aren't signals, so the signal-scoped
-// quality_feedback loop doesn't apply here.
-function InsightFeedback({
-  insight,
-  scopeId,
-}: {
-  insight: LandscapeInsight;
-  scopeId: string;
-}) {
-  const [given, setGiven] = useState(false);
-  // Persist the ack so leaving and returning to the page doesn't re-offer the
-  // prompt (and re-fire the event). Read in an effect, not a lazy initializer,
-  // so the first render always matches SSR — no hydration mismatch.
-  const storageKey = `landscape-insight-feedback:${scopeId}:${insight.kind}`;
-  useEffect(() => {
-    try {
-      if (localStorage.getItem(storageKey) === "1") setGiven(true);
-    } catch {
-      /* localStorage unavailable — feedback just won't persist */
-    }
-  }, [storageKey]);
-  if (given) {
-    return <span className="text-meta text-muted-foreground">Thanks — noted.</span>;
-  }
-  const send = (useful: boolean) => {
-    track("landscape_insight_feedback", { kind: insight.kind, useful });
-    try {
-      localStorage.setItem(storageKey, "1");
-    } catch {
-      /* persistence best-effort */
-    }
-    setGiven(true);
-  };
-  return (
-    <div className="flex items-center gap-1.5">
-      <span className="text-meta text-muted-foreground">Useful?</span>
-      <button
-        type="button"
-        aria-label="Mark insight as useful"
-        onClick={() => send(true)}
-        className="text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <ThumbsUp size={13} />
-      </button>
-      <button
-        type="button"
-        aria-label="Mark insight as not useful"
-        onClick={() => send(false)}
-        className="text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <ThumbsDown size={13} />
-      </button>
-    </div>
-  );
-}
-
 // One compact price line in the compressed pricing module: mono entry price on
 // top, an honest range/state label below (or a "pending" clock when unpriced).
 function PriceCell({
@@ -221,23 +159,6 @@ export function LandscapeSection({
   const q = useQuery({ ...landscapeQuery(productId), refetchInterval: 30_000 });
   const data = q.data ?? null;
 
-  // Aha milestone (Lever 3): the first time this browser sees at least one
-  // quick-win insight. Once ever — repeat visits don't re-fire the funnel event.
-  const trackedRef = useRef(false);
-  useEffect(() => {
-    if (trackedRef.current || !data || data.insights.length === 0) return;
-    trackedRef.current = true;
-    try {
-      if (localStorage.getItem("onboardingFirstInsightViewed") === "1") return;
-      localStorage.setItem("onboardingFirstInsightViewed", "1");
-    } catch {
-      /* still track below */
-    }
-    trackOnboarding(ONBOARDING_EVENTS.FIRST_INSIGHT_VIEWED, null, {
-      insights: data.insights.length,
-    });
-  }, [data]);
-
   if (q.isError) return <WaitEmptyState competitorCount={competitorCount} />;
   if (!data) {
     return (
@@ -270,7 +191,6 @@ export function LandscapeSection({
     data.recentActivity.length > 0;
 
   const sourceCount = data.sources.length;
-  const planCount = data.pricing.length + data.selfPricing.length;
   const hasBaseline =
     hasPricing || data.hiring.length > 0 || data.reviews.length > 0;
 
@@ -304,79 +224,18 @@ export function LandscapeSection({
             </p>
           </div>
         </div>
-        <div className="flex shrink-0 flex-col items-end gap-2">
-          {data.nextCheckAt && (
-            <span className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1 text-xs">
-              <span className="size-1.5 rounded-full bg-primary" aria-hidden />
-              Next scan{" "}
-              <span className="font-mono text-muted-foreground">
-                {formatDistanceToNow(new Date(data.nextCheckAt), {
-                  addSuffix: true,
-                })}
-              </span>
+        {data.nextCheckAt && (
+          <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-border bg-background px-3 py-1 text-xs">
+            <span className="size-1.5 rounded-full bg-primary" aria-hidden />
+            Next scan{" "}
+            <span className="font-mono text-muted-foreground">
+              {formatDistanceToNow(new Date(data.nextCheckAt), {
+                addSuffix: true,
+              })}
             </span>
-          )}
-          <div className="flex gap-3.5 text-xs text-muted-foreground">
-            <span>
-              <span className="font-mono font-semibold text-foreground">
-                {competitorCount}
-              </span>{" "}
-              competitors
-            </span>
-            <span>
-              <span className="font-mono font-semibold text-foreground">
-                {sourceCount}
-              </span>{" "}
-              sources
-            </span>
-            {planCount > 0 && (
-              <span>
-                <span className="font-mono font-semibold text-foreground">
-                  {planCount}
-                </span>{" "}
-                plans
-              </span>
-            )}
-          </div>
-        </div>
+          </span>
+        )}
       </section>
-
-      {/* Quick wins — the aha moment, deterministic "did you know" cards. */}
-      {data.insights.length > 0 && (
-        <section>
-          <SectionHead
-            title="What we already know"
-            sub="from the first scan — before any change happened"
-            divider={false}
-          />
-          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {data.insights.slice(0, 3).map((insight) => (
-              <div
-                key={insight.kind}
-                className="flex flex-col justify-between gap-3 rounded-md border border-border bg-card p-4"
-              >
-                <p className="text-content leading-snug">{insight.text}</p>
-                <div className="flex items-center justify-between gap-2">
-                  {insight.competitorId ? (
-                    <Link
-                      href={`/dashboard/competitors/${insight.competitorId}`}
-                      className="text-dense text-muted-foreground hover:text-foreground hover:underline underline-offset-2 transition-colors"
-                    >
-                      View competitor
-                    </Link>
-                  ) : (
-                    <span />
-                  )}
-                  <InsightFeedback
-                    insight={insight}
-                    scopeId={self?.id ?? productId ?? "default"}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
 
       {/* Your starting position — the compact baseline the first scan captured:
           pricing compressed to one line per company, hiring + reviews beside it. */}
@@ -564,15 +423,12 @@ export function LandscapeSection({
         </section>
       )}
 
-      {/* Transparent waiting (Lever 4) — per-source lights + the honest ETA. */}
+      {/* Transparent waiting (Lever 4) — per-source lights. The next-scan ETA
+          lives once on the hero pill above, so it isn't repeated here. */}
       <section>
         <SectionHead
-          title="Monitoring status"
-          sub={
-            data.nextCheckAt
-              ? `next change check ${formatDistanceToNow(new Date(data.nextCheckAt), { addSuffix: true })}`
-              : "scans run continuously"
-          }
+          title="What we're watching"
+          sub="every source we check on each competitor"
           divider={false}
         />
         <div className="mt-3 rounded-md border border-border">

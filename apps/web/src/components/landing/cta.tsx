@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 
 export function CTA() {
   return (
-    <section className="py-16 sm:py-24" id="cta">
+    <section className="py-16 sm:py-24" id="cta" data-reveal>
       <div className="mx-auto w-full max-w-6xl px-6">
         <div className="grid gap-8 rounded-2xl border border-border bg-gradient-to-b from-surface to-background-2 p-8 sm:p-12 lg:grid-cols-2 lg:items-center">
           <div>
@@ -26,10 +26,13 @@ export function CTA() {
               </Link>
             </Button>
             <Button asChild variant="outline">
-              <a href="mailto:hello@outrival.app">Request a demo</a>
+              <Link href="/demo">Request a demo</Link>
             </Button>
             <div className="text-xs text-text-subtle">
-              Your data stays in the EU · DPA available on request
+              Your data stays in the EU ·{" "}
+              <Link href="/dpa" className="underline-offset-2 hover:text-foreground hover:underline">
+                DPA available on request
+              </Link>
             </div>
           </div>
         </div>

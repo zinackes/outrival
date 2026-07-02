@@ -12,7 +12,7 @@ import {
 export interface SparklineProps {
   data: number[];
   labels?: string[];
-  w?: number;
+  w?: number | string;
   h?: number;
   color?: string;
   fill?: boolean;

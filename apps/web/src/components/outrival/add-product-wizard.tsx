@@ -208,7 +208,14 @@ export function AddProductWizard({
       const { detected } = await api.detectCandidates(pid);
       setDetected(detected);
     } catch (e) {
-      if (e instanceof ApiError && e.status === 429) {
+      // A client timeout doesn't cancel the server: discovery keeps running and
+      // its results (candidates + a notification) land moments later. Don't claim
+      // failure — that would contradict the notification toast that follows.
+      if (e instanceof ApiError && e.data?.error === "timeout") {
+        setDiscoverError(
+          "Still searching for competitors — they'll appear on the Discovery page and in your notifications shortly.",
+        );
+      } else if (e instanceof ApiError && e.status === 429) {
         setDiscoverError("Discovery is rate-limited right now — you can run it later from the Discovery page.");
       } else {
         setDiscoverError("Couldn't run discovery now — you can run it later from the Discovery page.");

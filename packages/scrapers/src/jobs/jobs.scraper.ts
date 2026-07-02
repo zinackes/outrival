@@ -62,6 +62,21 @@ const CAREERS_KEYWORDS = [
 // actually get a page, not an empty SPA shell" floor — not a richness contest.
 const MIN_CAREERS_HOP_TEXT = 200;
 
+// Same page ignoring hash/query/trailing-slash — hopping there would just re-fetch
+// what we already have (e.g. the monitor URL is `/about-us` and the discovered
+// careers link is `/about-us#careers`).
+function isSameResource(a: string, b: string): boolean {
+  try {
+    const norm = (u: string) => {
+      const url = new URL(u);
+      return `${url.hostname}${url.pathname.replace(/\/+$/, "")}`.toLowerCase();
+    };
+    return norm(a) === norm(b);
+  } catch {
+    return false;
+  }
+}
+
 export async function scrape(
   _competitorId: string,
   url: string,
@@ -158,22 +173,30 @@ export async function scrape(
     return { ...result, metadata: { ...result.metadata, atsDetected: board.provider } };
   }
 
-  // No known ATS — the openings may live on a custom, external careers site
-  // linked from the nav/footer ("Nous rejoindre", "Jobs" → a separate jobs site,
-  // e.g. Welcome to the Jungle or a Notion board). Follow that link one cross-host
-  // hop (rendered — these targets are almost always SPAs); the downstream LLM
-  // extracts the listing. Same-host links are already covered by the path
-  // discovery above, so only an off-site hop is worth the extra scrape.
+  // No known ATS — the openings may live on a custom careers page linked from the
+  // nav/footer ("Nous rejoindre", "Jobs"). Follow the strongest discovered link one
+  // hop (rendered — these targets are often SPAs); the downstream LLM extracts the
+  // listing.
   //
-  // Keep the hop whenever it returns real content (floor) rather than requiring
-  // it to beat `result`: `result` is often the marketing homepage, which has far
-  // more raw text than a jobs listing yet zero openings — comparing lengths would
-  // wrongly discard the page that actually has the jobs. Fail-soft: keep `result`.
+  // A CROSS-host link (Welcome to the Jungle, a Notion board, careers.microsoft.com)
+  // is always worth it. A SAME-host link is followed only when `result` is the
+  // homepage fallback (`!onCareersPage`): the standard path guesses (/careers,
+  // /jobs, …) 404'd, yet the site still links its openings at a non-standard path
+  // (e.g. thenile.dev → /about-us#careers, often only from the footer). Without this
+  // the link is discovered but never opened, so no jobs ever surface. Re-fetching
+  // the page we already have (same host+path) is skipped.
+  //
+  // Keep the hop whenever it returns real content (floor) rather than requiring it
+  // to beat `result`: `result` is often the marketing homepage, which has far more
+  // raw text than a jobs listing yet zero openings — comparing lengths would wrongly
+  // discard the page that actually has the jobs. Fail-soft: keep `result`.
   const finalUrl = (typeof result.metadata.url === "string" && result.metadata.url) || url;
   const careersLink = findCareersLink(result.html, finalUrl);
   if (careersLink) {
     try {
-      if (new URL(careersLink).hostname !== new URL(finalUrl).hostname) {
+      const crossHost = new URL(careersLink).hostname !== new URL(finalUrl).hostname;
+      const followSameHost = !onCareersPage && !isSameResource(careersLink, finalUrl);
+      if (crossHost || followSameHost) {
         const hop = await renderPage(careersLink);
         if (hop.text.length > MIN_CAREERS_HOP_TEXT) {
           return { ...hop, metadata: { ...hop.metadata, careersFollowed: careersLink } };

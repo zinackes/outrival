@@ -220,7 +220,7 @@ export function PricingTab({
           summary={pricingMonitor?.aiSummary}
           summaryUpdatedAt={pricingMonitor?.aiSummaryUpdatedAt}
         />
-        {latestTrial && (
+        {latestTrial?.hasTrial && (
           <div className="mt-3">
             <TrialBadge trial={latestTrial} />
           </div>
@@ -256,22 +256,14 @@ export function PricingTab({
   );
 }
 
-// Free-trial pill (patch-33). A confident "No free trial" is itself useful
-// comparative intel ("they don't offer one, we do"), so we render both states —
-// the absent case is only filtered upstream when the scrape predates detection.
+// Free-trial pill (patch-33). Only rendered when a trial actually exists — a
+// "No free trial" badge is noise, so the caller gates on trial.hasTrial and the
+// null case (scrape predates detection) is filtered upstream.
 function TrialBadge({
   trial,
 }: {
   trial: { hasTrial: boolean; days: number | null; requiresCard: boolean | null };
 }) {
-  if (!trial.hasTrial) {
-    return (
-      <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-border bg-muted/40 px-2.5 py-1 text-meta font-medium text-muted-foreground">
-        <Clock className="size-3.5" />
-        No free trial
-      </span>
-    );
-  }
   const parts = [
     trial.days != null ? `${trial.days}-day` : null,
     trial.requiresCard === false

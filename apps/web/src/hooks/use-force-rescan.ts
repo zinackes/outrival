@@ -41,6 +41,16 @@ export function useForceRescan(monitorId: string, options?: Options) {
     try {
       const res = await api.forceRescan(monitorId);
       options?.onStarted?.();
+
+      // Unmetered first scrape (freshly enabled / just-retargeted URL): there's no
+      // forced_rescan_log row to poll for an outcome. The parent's own scrape-progress
+      // polling (kicked off by onStarted) refreshes the row when it lands, so just
+      // confirm it started rather than polling a log id that doesn't exist.
+      if (!res.rescanLogId) {
+        toast.success("Re-scan started — the data will refresh here shortly.");
+        return;
+      }
+
       toastId = toast.loading("Re-scanning… this can take up to a minute.");
 
       const start = Date.now();

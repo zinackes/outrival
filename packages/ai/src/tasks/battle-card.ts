@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { AI_CONFIG } from "../config";
+import { complete } from "../provider";
+import { safeParseJson } from "../lib/parse";
 import { groundedAiCall } from "../grounding/grounded-call";
 import { attachQuality, type WithQuality } from "../grounding/types";
 
@@ -21,16 +23,54 @@ export const BattleCardSchema = z.object({
 
 export type BattleCardContent = z.infer<typeof BattleCardSchema>;
 
+// One pricing tier as captured on a product (from pricing_history / the self
+// profile). Fed to the card so pricing comparisons are grounded in real numbers.
+export interface BattleCardPricingTier {
+  planName: string;
+  price: number;
+  currency: string;
+  billingPeriod: string;
+}
+
 export interface BattleCardInput {
-  myProduct: { name?: string; category: string; valueProp: string };
+  // The user's own product — now carries its REAL captured facts (features, tech
+  // stack, pricing, homepage excerpt), not just a one-line value prop, so the card
+  // can compare like-for-like instead of inventing "our" advantages.
+  myProduct: {
+    name?: string;
+    category: string;
+    valueProp: string;
+    audience?: string | null;
+    features?: string[];
+    techStack?: string[];
+    pricingTiers?: BattleCardPricingTier[];
+    homepageExcerpt?: string | null;
+  };
   competitorName: string;
   competitorSummary: string | null;
+  // Real, current material about the competitor — the single biggest lever against
+  // stale parametric claims. All optional / best-effort: a section is simply omitted
+  // from the evidence (and the model must abstain on it) when we haven't captured it.
+  competitorHomepageExcerpt?: string | null;
   // patch-33 — the competitor's detected free-trial offer (acquisition lever to
   // compare against). null when unknown / no pricing captured yet.
   competitorTrial?: {
     hasTrial: boolean;
     days: number | null;
     requiresCreditCard: boolean | null;
+  } | null;
+  competitorPricingTiers?: BattleCardPricingTier[];
+  competitorTechStack?: Array<{ name: string; category: string; importance: string }>;
+  competitorReviews?: {
+    score: number | null;
+    reviewCount: number | null;
+    subScores?: {
+      easeOfUse: number | null;
+      support: number | null;
+      features: number | null;
+      value: number | null;
+    } | null;
+    complaintThemes?: Array<{ theme: string; prevalence: string }> | null;
   } | null;
   reviewComplaints: string[];
   reviewPraises: string[];
@@ -40,9 +80,32 @@ export interface BattleCardInput {
   otherProductNames?: string[];
 }
 
-export async function generateBattleCard(
-  input: BattleCardInput,
-): Promise<WithQuality<BattleCardContent> | null> {
+function bullets(items: string[] | undefined, empty = "Not captured."): string {
+  return items && items.length ? items.map((i) => `- ${i}`).join("\n") : empty;
+}
+
+function pricingBlock(tiers: BattleCardPricingTier[] | undefined): string {
+  if (!tiers || !tiers.length) return "Pricing: not captured.";
+  return tiers
+    .map((t) => `- ${t.planName}: ${t.price} ${t.currency} / ${t.billingPeriod}`)
+    .join("\n");
+}
+
+interface EvidenceBlocks {
+  signalsBlock: string;
+  praisesBlock: string;
+  complaintsBlock: string;
+  trialBlock: string;
+  competitorTechBlock: string;
+  reviewScoreBlock: string;
+  myHomepage: string | null;
+  competitorHomepage: string | null;
+  focusNote: string;
+}
+
+// Compute every evidence block ONCE, so the generation prompt, the grounding
+// sourceText, and the revise pass all reason over byte-identical evidence.
+function computeBlocks(input: BattleCardInput): EvidenceBlocks {
   const signalsBlock = input.recentSignals.length
     ? input.recentSignals
         .slice(0, 8)
@@ -50,13 +113,8 @@ export async function generateBattleCard(
         .join("\n")
     : "No recent signals.";
 
-  const praisesBlock = input.reviewPraises.length
-    ? input.reviewPraises.slice(0, 8).map((p) => `- ${p}`).join("\n")
-    : "n/a";
-
-  const complaintsBlock = input.reviewComplaints.length
-    ? input.reviewComplaints.slice(0, 8).map((p) => `- ${p}`).join("\n")
-    : "n/a";
+  const praisesBlock = bullets(input.reviewPraises?.slice(0, 8), "n/a");
+  const complaintsBlock = bullets(input.reviewComplaints?.slice(0, 8), "n/a");
 
   // Free-trial line: a concrete acquisition comparison the rep can lean on.
   const trialBlock = (() => {
@@ -74,6 +132,47 @@ export async function generateBattleCard(
     return `Free trial: yes (${bits.join(", ")}).`;
   })();
 
+  const competitorTechBlock = input.competitorTechStack?.length
+    ? input.competitorTechStack
+        .slice(0, 20)
+        .map((t) => `- ${t.name} (${t.category}, ${t.importance})`)
+        .join("\n")
+    : "Detected tech stack: not captured.";
+
+  const reviewScoreBlock = (() => {
+    const r = input.competitorReviews;
+    if (!r) return "Review ratings: not captured.";
+    const parts: string[] = [];
+    if (r.score != null)
+      parts.push(
+        `Overall rating: ${r.score}${r.reviewCount != null ? ` (${r.reviewCount} reviews)` : ""}`,
+      );
+    const subs = r.subScores;
+    if (subs) {
+      const s = [
+        subs.easeOfUse != null ? `ease of use ${subs.easeOfUse}/5` : null,
+        subs.support != null ? `support ${subs.support}/5` : null,
+        subs.features != null ? `features ${subs.features}/5` : null,
+        subs.value != null ? `value ${subs.value}/5` : null,
+      ].filter(Boolean);
+      if (s.length) parts.push(`Sub-scores: ${s.join(", ")}`);
+    }
+    if (r.complaintThemes?.length)
+      parts.push(
+        `Recurring complaint themes: ${r.complaintThemes
+          .map((c) => `${c.theme} (${c.prevalence})`)
+          .join(", ")}`,
+      );
+    return parts.length ? parts.join("\n") : "Review ratings: not captured.";
+  })();
+
+  const myHomepage = input.myProduct.homepageExcerpt?.trim()
+    ? input.myProduct.homepageExcerpt.trim().slice(0, 3500)
+    : null;
+  const competitorHomepage = input.competitorHomepageExcerpt?.trim()
+    ? input.competitorHomepageExcerpt.trim().slice(0, 3500)
+    : null;
+
   // Multi-SKU focus guard: keep the card about THIS product, not the org's others.
   const focusNote =
     input.otherProductNames && input.otherProductNames.length > 0
@@ -84,37 +183,104 @@ export async function generateBattleCard(
         } ONLY — do not describe or reference the other products.`
       : "";
 
-  const prompt = `<my_product>
+  return {
+    signalsBlock,
+    praisesBlock,
+    complaintsBlock,
+    trialBlock,
+    competitorTechBlock,
+    reviewScoreBlock,
+    myHomepage,
+    competitorHomepage,
+    focusNote,
+  };
+}
+
+// The evidence, rendered as two symmetric product blocks. Shared by the prompt and
+// (verbatim) by the grounding sourceText + the revise pass, so a claim can only
+// survive if it traces to text every stage saw.
+function evidenceBlock(input: BattleCardInput, b: EvidenceBlocks): string {
+  return `<my_product>
 ${input.myProduct.name ? `Name: ${input.myProduct.name}\n` : ""}Category: ${input.myProduct.category}
-Value proposition: ${input.myProduct.valueProp}${focusNote}
+${input.myProduct.audience ? `Audience: ${input.myProduct.audience}\n` : ""}Value proposition: ${input.myProduct.valueProp}
+Features (from our own site):
+${bullets(input.myProduct.features)}
+Tech stack:
+${bullets(input.myProduct.techStack)}
+Pricing:
+${pricingBlock(input.myProduct.pricingTiers)}
+${b.myHomepage ? `Homepage excerpt:\n${b.myHomepage}\n` : ""}${b.focusNote}
 </my_product>
 
 <competitor>
 Name: ${input.competitorName}
 Summary: ${input.competitorSummary ?? "unknown"}
-${trialBlock}
-</competitor>
+${b.trialBlock}
+Pricing:
+${pricingBlock(input.competitorPricingTiers)}
+Tech stack (detected on their site):
+${b.competitorTechBlock}
+Reviews:
+${b.reviewScoreBlock}
+${b.competitorHomepage ? `Homepage excerpt:\n${b.competitorHomepage}\n` : ""}</competitor>
 
 <reviews>
 What their customers love:
-${praisesBlock}
+${b.praisesBlock}
 
 What their customers complain about:
-${complaintsBlock}
+${b.complaintsBlock}
 </reviews>
 
 <recent_signals>
-${signalsBlock}
-</recent_signals>
+${b.signalsBlock}
+</recent_signals>`;
+}
+
+// A flat source text (same facts, no tags) that the grounding validator and the
+// revise pass match citations/claims against.
+function evidenceSourceText(input: BattleCardInput, b: EvidenceBlocks): string {
+  return [
+    `My product — category: ${input.myProduct.category}; value: ${input.myProduct.valueProp}`,
+    input.myProduct.audience ? `My product audience: ${input.myProduct.audience}` : "",
+    `My product features:\n${bullets(input.myProduct.features)}`,
+    `My product tech stack:\n${bullets(input.myProduct.techStack)}`,
+    `My product pricing:\n${pricingBlock(input.myProduct.pricingTiers)}`,
+    b.myHomepage ? `My product homepage:\n${b.myHomepage}` : "",
+    `Competitor summary: ${input.competitorSummary ?? ""}`,
+    b.trialBlock,
+    `Competitor pricing:\n${pricingBlock(input.competitorPricingTiers)}`,
+    `Competitor tech stack:\n${b.competitorTechBlock}`,
+    `Competitor reviews:\n${b.reviewScoreBlock}`,
+    b.competitorHomepage ? `Competitor homepage:\n${b.competitorHomepage}` : "",
+    `What their customers love:\n${b.praisesBlock}`,
+    `What their customers complain about:\n${b.complaintsBlock}`,
+    `Recent signals:\n${b.signalsBlock}`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+export async function generateBattleCard(
+  input: BattleCardInput,
+): Promise<WithQuality<BattleCardContent> | null> {
+  const blocks = computeBlocks(input);
+
+  const prompt = `${evidenceBlock(input, blocks)}
+
+<rules>
+- Base EVERY statement ONLY on the evidence blocks above. Do NOT rely on any prior or outside knowledge you may have about these two products: treat your own memory as unreliable and possibly out of date — it has produced false competitive claims before.
+- COMPARATIVE CLAIMS REQUIRE BOTH SIDES. Only call something an advantage (our_strengths / their_weaknesses) or a strength (their_strengths) when the evidence describes that same dimension for BOTH products. If the evidence covers only one side, state it as a plain fact about that side and do NOT imply the other side lacks it. Example of a FORBIDDEN claim: saying a capability "differentiates" or is "unique to" one product when the evidence never establishes whether the other product has it too.
+- Prefer few, well-grounded points over full sections. Returning an EMPTY array for a section is the correct, expected answer when the evidence does not support it — never pad a section to reach the maximum, and never fabricate to fill space.
+- Be concrete and specific: cite the actual plan, price, feature, tech, rating or complaint from the evidence rather than generic adjectives ("powerful", "easy to use").
+</rules>
 
 <task>
-Generate a sales battle card to help win against this competitor.
-Be concrete, factual, actionable. Short sentences, in English.
-- their_strengths: their real advantages (max 5)
-- our_strengths: our edge against them (max 5)
-- their_weaknesses: their real weak points (max 5)
-- common_objections: objections a prospect might raise to pick them
-  + your sales response (max 5)
+Generate a sales battle card to help win against this competitor, in English.
+- their_strengths: their real advantages, each traceable to the evidence (max 5)
+- our_strengths: our real edge against them, each supported by evidence for BOTH sides (max 5)
+- their_weaknesses: their real weak points, each traceable to the evidence (max 5)
+- common_objections: objections a prospect might raise to pick them + your sourced sales response (max 5)
 - when_we_win: profiles / contexts where we win (max 4)
 - when_we_lose: profiles / contexts where we lose (max 4)
 
@@ -132,23 +298,71 @@ Reply ONLY with a valid JSON object, no markdown and no surrounding text.
 }
 </format>`;
 
-  // Ground the card against the real inputs we fed it (summary + reviews + signals),
-  // so cited "their strength / weakness" claims must trace back to evidence.
-  const sourceText = [
-    input.competitorSummary ?? "",
-    trialBlock,
-    `What their customers love:\n${praisesBlock}`,
-    `What their customers complain about:\n${complaintsBlock}`,
-    `Recent signals:\n${signalsBlock}`,
-  ].join("\n\n");
-
   const result = await groundedAiCall({
     taskName: "generate_battle_card",
     config: AI_CONFIG.insights,
     prompt,
-    sourceText,
+    sourceText: evidenceSourceText(input, blocks),
     schema: BattleCardSchema,
     maxTokens: 2048,
   });
   return result ? attachQuality(result.output, result.quality) : null;
+}
+
+/**
+ * Phase 2A — verification pass with teeth. Re-reads the drafted card against the
+ * SAME evidence and returns a cleaned card that KEEPS only claims traceable to it
+ * (Chain-of-Verification). Unlike the self-check (which merely flags), this removes
+ * unsupported / one-sided comparative claims before the card is ever shown.
+ *
+ * Pure: no DB. Returns the cleaned content with the draft's quality envelope
+ * re-attached, or null on a parse miss (the caller keeps the draft in that case).
+ */
+export async function reviseBattleCard(
+  input: BattleCardInput,
+  draft: WithQuality<BattleCardContent>,
+): Promise<WithQuality<BattleCardContent> | null> {
+  const blocks = computeBlocks(input);
+  const sourceText = evidenceSourceText(input, blocks);
+
+  const prompt = `You are a strict fact-checker cleaning a competitive sales battle card before it is shown to a user. You are given the EVIDENCE (the only facts that may back a claim) and a DRAFT card. Return the SAME JSON structure, keeping ONLY claims that survive verification.
+
+<evidence>
+${sourceText}
+</evidence>
+
+<draft>
+${JSON.stringify(draft)}
+</draft>
+
+<verification_rules>
+- DELETE any claim not directly supported by the evidence — do not soften it into a vaguer claim, remove it entirely.
+- DELETE any comparative claim (advantage, weakness, differentiator, "unlike them", "we win because") unless the evidence describes that same dimension for BOTH products. A claim that a capability differentiates one product is invalid when the evidence does not establish whether the other product also has it.
+- Do NOT add any new claim, fact, or comparison that is not already in the draft.
+- You MAY trim a surviving claim down to the part the evidence supports.
+- Keep every key. Empty arrays are correct and expected when nothing survives for a section.
+- Write all text values in English.
+</verification_rules>
+
+Reply ONLY with a valid JSON object matching this shape, no markdown, no surrounding text:
+{
+  "their_strengths": ["..."],
+  "our_strengths": ["..."],
+  "their_weaknesses": ["..."],
+  "common_objections": [{ "objection": "...", "response": "..." }],
+  "when_we_win": ["..."],
+  "when_we_lose": ["..."]
+}`;
+
+  const raw = await complete(AI_CONFIG.insights, { prompt, json: true, maxTokens: 2048 });
+  const parsed = safeParseJson(raw, BattleCardSchema);
+  if (!parsed.ok) {
+    console.error("revise_battle_card parse failed:", parsed.error, "raw:", raw.slice(0, 500));
+    return null;
+  }
+  // Carry the generation-time quality envelope forward — the revised content is a
+  // strict subset, so its confidence/citations still describe it. Best-effort clear
+  // of the human-review flag: we just acted on the flagged issues by pruning.
+  const quality = { ...draft._quality, flaggedForHumanReview: false };
+  return attachQuality(parsed.value, quality);
 }

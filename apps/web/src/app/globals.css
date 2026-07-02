@@ -411,6 +411,28 @@
   }
 }
 
+/* Thin, themed scrollbar for in-card scroll regions (e.g. the hiring Roles
+   list). The default Windows/Edge gutter is a chunky opaque chunk that looks
+   out of place inside a card; this keeps the affordance but quiets it. */
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+  &::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background-color: var(--border);
+    border-radius: 9999px;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background-color: var(--muted-foreground);
+  }
+}
+
 @layer base {
   * {
     box-sizing: border-box;

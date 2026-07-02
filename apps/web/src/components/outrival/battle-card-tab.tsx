@@ -19,7 +19,13 @@ import {
   X,
 } from "lucide-react";
 import { EmptyState } from "@/components/dashboard/empty-state";
-import { api, type BattleCard, type BattleCardContent } from "@/lib/api";
+import {
+  api,
+  type BattleCard,
+  type BattleCardContent,
+  type BattleCardEvidence,
+  type BattleCardEvidenceKind,
+} from "@/lib/api";
 import { formatDate } from "@/lib/format-date";
 import { track } from "@/lib/posthog/events";
 import {
@@ -62,6 +68,7 @@ export function BattleCardTab({ competitorId }: Props) {
   // ?product= overrides); omitted = the org's primary product (the API default).
   const productId = useProductScope() ?? undefined;
   const [card, setCard] = useState<BattleCard | null>(null);
+  const [evidence, setEvidence] = useState<BattleCardEvidence | null>(null);
   const [status, setStatus] = useState<Status>("loading");
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
@@ -84,6 +91,7 @@ export function BattleCardTab({ competitorId }: Props) {
     try {
       const res = await api.getBattleCard(competitorId, productId);
       setCard(res.battleCard);
+      setEvidence(res.evidence ?? null);
       setDraft(res.battleCard.content);
       // While polling, the poll loop owns the status (it keeps the "generating"
       // spinner up until fresh content lands) — don't pre-empt it here.
@@ -319,6 +327,8 @@ export function BattleCardTab({ competitorId }: Props) {
         </div>
       )}
 
+      {!editing && evidence && <BattleCardProvenance evidence={evidence} />}
+
       {/* Positioning triad on one row — their strengths / our strengths / their
           weaknesses read as a single "where we stand" unit and save vertical space. */}
       <section className="grid grid-cols-1 gap-x-8 gap-y-6 p-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -426,9 +436,54 @@ function Heading({
   );
 }
 
+// Phase 2B — provenance/freshness strip: the card's confidence + which evidence
+// sources backed it and how fresh each is. Makes the card auditable (Klue/
+// IndustryLens model) rather than a summary taken on faith.
+const EVIDENCE_LABELS: Record<BattleCardEvidenceKind, string> = {
+  pricing: "Pricing",
+  reviews: "Reviews",
+  techStack: "Tech stack",
+  homepage: "Homepage",
+};
+
+function BattleCardProvenance({ evidence }: { evidence: BattleCardEvidence }) {
+  const confColor =
+    evidence.confidence === "high"
+      ? "text-positive"
+      : evidence.confidence === "medium"
+        ? "text-primary"
+        : evidence.confidence === "low"
+          ? "text-destructive"
+          : "text-muted-foreground";
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t bg-muted/20 px-5 py-2.5 text-dense text-muted-foreground">
+      <span className="inline-flex items-center gap-1.5">
+        <ShieldCheck size={13} className={cn("shrink-0", confColor)} />
+        {evidence.confidence ? `Confidence: ${evidence.confidence}` : "Confidence: not scored"}
+      </span>
+      {evidence.sources.map((s) => (
+        <span key={s.kind} className="inline-flex items-center gap-1.5">
+          <span
+            className={cn(
+              "size-1.5 shrink-0 rounded-full",
+              s.present ? "bg-positive" : "bg-muted-foreground/40",
+            )}
+          />
+          {EVIDENCE_LABELS[s.kind]}
+          {s.present && s.lastVerifiedAt
+            ? ` · verified ${formatDate(s.lastVerifiedAt, { day: "2-digit", month: "short" })}`
+            : " · not tracked"}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function BulletList({ items }: { items: string[] }) {
   if (items.length === 0)
-    return <p className="text-content text-muted-foreground">—</p>;
+    return (
+      <p className="text-content text-muted-foreground">Not enough verified data yet.</p>
+    );
   return (
     <ul className="flex flex-col gap-2">
       {items.map((it, i) => (
@@ -546,7 +601,7 @@ function ObjectionsSection({
           )}
         </div>
       ) : items.length === 0 ? (
-        <p className="text-content text-muted-foreground">—</p>
+        <p className="text-content text-muted-foreground">Not enough verified data yet.</p>
       ) : (
         <div className="flex flex-col gap-4">
           {items.map((o, i) => (

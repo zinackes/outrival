@@ -54,8 +54,8 @@ export function DiscoveryView() {
   useSetAskContext({ kind: "view", label: "Competitor discovery" });
   const queryClient = useQueryClient();
   // patch-28 — discovery is product-scoped: the active product (cookie / URL override)
-  // drives which SKU's review queue and staleness are shown. undefined = the API's
-  // default (the org's primary product).
+  // drives which SKU's review queue and staleness are shown. undefined ("all products")
+  // → the API unions every SKU's queue (and Refresh spans them all).
   const productId = useProductScope() ?? undefined;
   const [actingId, setActingId] = useState<string | null>(null);
   const [paywall, setPaywall] = useState<PaywallReason | null>(null);
@@ -403,28 +403,34 @@ export function DiscoveryView() {
       )}
 
       {items && items.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2.5">
-          <ToggleGroup
-            type="single"
-            variant="outline"
-            size="sm"
-            value={sort}
-            onValueChange={(v) => v && setSort(v as SortMode)}
-          >
-            <ToggleGroupItem value="overlap">Overlap</ToggleGroupItem>
-            <ToggleGroupItem value="recent">Recent</ToggleGroupItem>
-          </ToggleGroup>
-          <ToggleGroup
-            type="single"
-            variant="outline"
-            size="sm"
-            value={String(minOverlap)}
-            onValueChange={(v) => v !== "" && setMinOverlap(Number(v))}
-          >
-            <ToggleGroupItem value="0">All</ToggleGroupItem>
-            <ToggleGroupItem value="70">≥ 70</ToggleGroupItem>
-            <ToggleGroupItem value="85">≥ 85</ToggleGroupItem>
-          </ToggleGroup>
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2.5">
+          <div className="flex items-center gap-2">
+            <span className="text-meta text-muted-foreground shrink-0">Sort</span>
+            <ToggleGroup
+              type="single"
+              variant="outline"
+              size="sm"
+              value={sort}
+              onValueChange={(v) => v && setSort(v as SortMode)}
+            >
+              <ToggleGroupItem value="overlap">Overlap</ToggleGroupItem>
+              <ToggleGroupItem value="recent">Recent</ToggleGroupItem>
+            </ToggleGroup>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-meta text-muted-foreground shrink-0">Min overlap</span>
+            <ToggleGroup
+              type="single"
+              variant="outline"
+              size="sm"
+              value={String(minOverlap)}
+              onValueChange={(v) => v !== "" && setMinOverlap(Number(v))}
+            >
+              <ToggleGroupItem value="0">All</ToggleGroupItem>
+              <ToggleGroupItem value="70">≥ 70</ToggleGroupItem>
+              <ToggleGroupItem value="85">≥ 85</ToggleGroupItem>
+            </ToggleGroup>
+          </div>
 
           {tab === "new" && (
             <DropdownMenu>

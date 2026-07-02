@@ -102,6 +102,10 @@ const MAX_FOOTER_LINKS = 120;
 const MAX_LOGOS = 60;
 const MAX_TESTIMONIALS = 40;
 const MAX_FOOTER_TEXT = 2000;
+// Serialize an inline-SVG logo to a data-URI only up to this raw size; larger ones
+// fall back to the name chip. Bounds the stored homepage_structure jsonb — a wall
+// of vector wordmarks would otherwise add tens of KB per snapshot.
+const MAX_SVG_LOGO_CHARS = 6000;
 
 // cheerio .text()/textContent, like innerText, dumps the full 0-9 digit ribbons of
 // animated counter widgets (odometer & co.) into the extracted text — strip those
@@ -158,6 +162,23 @@ const BREAKING_TAGS = new Set([
   "dl", "dt", "dd", "nav", "form", "fieldset", "address",
 ]);
 
+// An inline tag (span, a, strong…) doesn't break lines by default, but sites
+// routinely stack hero lines with an inline element made block via CSS —
+// `<span class="block">Build in a weekend</span><span class="block">Scale to
+//  millions</span>` (Supabase). Cheerio has no layout engine, so recover the
+// intent from the class utility / inline style; without it the lines glue into
+// "Build in a weekendScale to millions". A mid-word styling span
+// ("Out<span class="x">rival</span>") carries no such class and stays glued.
+const BLOCKISH_DISPLAY_RE = /display\s*:\s*(?:block|flex|grid|table|list-item|flow-root)/i;
+const BLOCKISH_CLASS_RE = /^(?:(?:sm|md|lg|xl|2xl):)?(?:block|flex|grid|table)$/;
+function isBlockish(n: DomNode): boolean {
+  const style = n.attribs?.style;
+  if (style && BLOCKISH_DISPLAY_RE.test(style)) return true;
+  const cls = n.attribs?.class;
+  if (!cls) return false;
+  return cls.split(/\s+/).some((t) => BLOCKISH_CLASS_RE.test(t));
+}
+
 // Browser-like text extraction: concatenate text nodes verbatim (preserving the
 // source's own whitespace), inserting a space only at break boundaries. Cheerio's
 // native .text() omits these breaks → "Gérer<br>une" collapses to "Gérerune".
@@ -175,7 +196,7 @@ function nodeText(node: DomNode): string {
       if (alt) out.push(` ${alt} `);
       return;
     }
-    const breaks = BREAKING_TAGS.has(name);
+    const breaks = BREAKING_TAGS.has(name) || isBlockish(n);
     if (breaks) out.push(" ");
     for (const c of n.children ?? []) collect(c);
     if (breaks) out.push(" ");
@@ -370,31 +391,90 @@ function extractFooter($: CheerioRoot, baseUrl: string): HomepageStructure["foot
   return { links, text };
 }
 
+// Logo containers matched by class/id keyword AND by aria-label: modern "trusted by"
+// strips carry no semantic class (utility CSS) — the brand signal is an aria-label on
+// the list ("Trusted by fast-growing companies"). Shared by the <svg> and <img> passes.
+const LOGO_CONTAINER_SEL =
+  '[class*="logo" i], [id*="logo" i], [class*="customer" i], [class*="trusted" i], [class*="brand" i], [class*="partner" i], [aria-label*="trusted" i], [aria-label*="customer" i], [aria-label*="partner" i], [aria-label*="companies" i], [aria-label*="used by" i]';
+
+// Site chrome (header/nav/footer own-brand mark, menu glyphs), testimonial/review
+// avatars + review-site badges, and a logo linking back to the homepage root are NOT
+// customer proof — true when a logo node sits in one and must be skipped.
+const LOGO_CHROME_SEL =
+  'header, nav, footer, blockquote, [class*="header" i], [class*="navbar" i], [class*="footer" i], [class*="testimonial" i], [class*="quote" i], [class*="review" i], [class*="rating" i], [class*="avatar" i]';
+
+// Turn an inline <svg> wordmark into a standalone data:image/svg+xml URI so the
+// customer wall can render the real logo (most modern sites ship monochrome inline
+// SVG logos with no <img> src). Rendered via <img>, so scripts never execute;
+// still reject scripted / foreignObject svgs and cap the size. Returns null when the
+// markup isn't a serializable svg or is over the size cap (→ name chip fallback).
+function serializeSvgLogo(rawHtml: string): string | null {
+  const raw = rawHtml.trim();
+  if (!/^<svg[\s>]/i.test(raw)) return null;
+  if (/<script|<foreignobject/i.test(raw)) return null;
+  // Empty spacer <svg/> with no drawable element renders blank — drop it (checked on
+  // the raw markup, not the encoded data-URI where tag names are opaque under base64).
+  if (!/<(path|rect|circle|ellipse|polygon|polyline|line|image|text|use|g)\b/i.test(raw))
+    return null;
+  if (raw.length > MAX_SVG_LOGO_CHARS) return null;
+  const withNs = /\sxmlns=/i.test(raw)
+    ? raw
+    : raw.replace(/^<svg/i, '<svg xmlns="http://www.w3.org/2000/svg"');
+  return `data:image/svg+xml;base64,${Buffer.from(withNs, "utf8").toString("base64")}`;
+}
+
+// Inline <svg> customer wordmarks (the Supabase/Vercel/Linear pattern — monochrome
+// SVGs with no <img> src, brand identity in aria-label). Captured in a dedicated pass
+// because parseHomepageStructure strips <svg> before the section walk (they'd pollute
+// prose). NAME-gated: a nameless svg is a decorative icon, not a customer mark.
+function extractSvgLogos($: CheerioRoot, baseUrl: string): CustomerLogo[] {
+  const logos: CustomerLogo[] = [];
+  const seen = new Set<string>();
+  $(LOGO_CONTAINER_SEL)
+    .find("svg")
+    .each((_, el) => {
+      if (logos.length >= MAX_LOGOS) return;
+      const $el = $(el);
+      if ($el.attr("aria-hidden") === "true") return;
+      if ($el.closest(LOGO_CHROME_SEL).length) return;
+      const linkHref = $el.closest("a").attr("href");
+      if (linkHref && isHomepageRoot(linkHref, baseUrl)) return;
+      // Brand identity lives in the svg's aria-label or a child <title>.
+      const svgName =
+        norm($el.attr("aria-label") || "") ||
+        norm($el.find("title").first().text() || "") ||
+        null;
+      const verdict = classifyLogoName(svgName);
+      if (verdict.kind !== "brand") return;
+      const brandName = verdict.name;
+      // Serialize the vector art to a data-URI so the wall renders the real logo
+      // under its existing ink filter; null (name-chip fallback) when too heavy/blank.
+      const cleanSrc = serializeSvgLogo($.html(el) || "");
+      const key = brandName.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      logos.push({ name: brandName, src: cleanSrc });
+    });
+  return logos;
+}
+
 function extractSocialProof(
   $: CheerioRoot,
   baseUrl: string,
+  svgLogos: CustomerLogo[],
 ): HomepageStructure["socialProof"] {
-  const logos: CustomerLogo[] = [];
-  const seen = new Set<string>();
-  $(
-    '[class*="logo" i], [id*="logo" i], [class*="customer" i], [class*="trusted" i], [class*="brand" i], [class*="partner" i]',
-  )
+  // Seed with the inline-<svg> logos captured before <svg> was stripped, then add the
+  // <img> logos, deduped by brand name / src across both passes.
+  const logos: CustomerLogo[] = [...svgLogos];
+  const seen = new Set<string>(
+    svgLogos.map((l) => (l.name ?? l.src ?? "").toLowerCase()).filter(Boolean),
+  );
+  $(LOGO_CONTAINER_SEL)
     .find("img")
     .each((_, el) => {
       if (logos.length >= MAX_LOGOS) return;
       const $el = $(el);
-      // Site chrome (header/nav/footer) carries the competitor's OWN brand mark
-      // and menu glyphs, not customer proof — customer "trusted by" strips live
-      // in the page body. Likewise an img wrapped in a link back to the homepage
-      // root is the own logo. Both otherwise flood the wall with the site itself.
-      // Testimonial / review / rating cards hold author avatars and review-site
-      // badges (Capterra/G2 stars), not customer brands — exclude their context.
-      if (
-        $el.closest(
-          'header, nav, footer, blockquote, [class*="header" i], [class*="navbar" i], [class*="footer" i], [class*="testimonial" i], [class*="quote" i], [class*="review" i], [class*="rating" i], [class*="avatar" i]',
-        ).length
-      )
-        return;
+      if ($el.closest(LOGO_CHROME_SEL).length) return;
       const linkHref = $el.closest("a").attr("href");
       if (linkHref && isHomepageRoot(linkHref, baseUrl)) return;
       // Tracking pixels / spacer gifs declared with tiny dimensions render as
@@ -502,19 +582,26 @@ export function parseHomepageStructure(html: string, baseUrl: string): HomepageS
     }
   }
 
-  // 2. Strip non-content: scripts/styles/SVG/iframes, aria-hidden, cookie banners.
-  $("script, style, noscript, svg, template, head, iframe, object, embed, canvas").remove();
+  // 2. Strip non-content: scripts/styles/iframes, aria-hidden, cookie banners. <svg>
+  //    is kept one beat longer than the rest — inline-SVG customer logos are captured
+  //    below before it's stripped for the section walk.
+  $("script, style, noscript, template, head, iframe, object, embed, canvas").remove();
   $("[aria-hidden='true'], [hidden]").remove();
   $(
     "#onetrust-consent-sdk, #onetrust-banner-sdk, #CybotCookiebotDialog, #osano-cm-window, [class*='cookie-banner' i], [id*='cookie-banner' i]",
   ).remove();
 
-  // 3. Capture nav/footer/social proof on the cleaned DOM, then remove nav and
+  // Capture inline-SVG customer logos (Supabase/Vercel pattern) while <svg> is still
+  // in the DOM, then strip <svg> so it doesn't pollute the nav/footer/section text.
+  const svgLogos = extractSvgLogos($, baseUrl);
+  $("svg").remove();
+
+  // 3. Capture nav/footer/social proof on the (now svg-free) DOM, then remove nav and
   //    footer so the section walk below doesn't attribute their links to a section.
   const hero = extractHero($, baseUrl);
   const navigation = extractNavigation($, baseUrl);
   const footer = extractFooter($, baseUrl);
-  const socialProof = extractSocialProof($, baseUrl);
+  const socialProof = extractSocialProof($, baseUrl, svgLogos);
   $("nav, footer").remove();
 
   // 4. Section walk over the body, then heuristically type each section.

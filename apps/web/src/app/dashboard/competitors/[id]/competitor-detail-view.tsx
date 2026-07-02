@@ -43,6 +43,7 @@ import {
   Boxes,
   Crosshair,
   Palette,
+  HelpCircle,
 } from "lucide-react";
 import {
   Dialog,
@@ -88,7 +89,7 @@ import {
 import { FreshnessDot } from "@/components/outrival/freshness-dot";
 import { AnalysisNotice, AnalysisProgress } from "@/components/outrival/analysis-status";
 import { MonitorFreshnessAction } from "@/components/outrival/monitor-freshness";
-import { MonitorAlternatives } from "@/components/outrival/monitor-alternatives";
+import { PausedMonitors } from "@/components/outrival/monitor-alternatives";
 import { CompetitorTechStack } from "@/components/outrival/competitor-tech-stack";
 import { Eyebrow } from "@/components/outrival/eyebrow";
 import { CompetitorColorPicker } from "@/components/dashboard/competitor-color-picker";
@@ -126,6 +127,7 @@ import {
 } from "@/lib/api";
 import { competitorDetailQuery, competitorsQuery } from "@/lib/queries";
 import { useSetAskContext } from "@/components/dashboard/ask-context";
+import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import {
   POLL_TIMEOUT_MS,
   isServerScraping,
@@ -204,6 +206,30 @@ const TAB_PANEL_CLASS = "animate-in fade-in slide-in-from-bottom-1 duration-300"
 
 const POLL_INTERVAL_MS = 3000;
 
+// Sources whose tab data is written by an async DOWNSTREAM extraction job
+// (extract-pricing / extract-jobs / extract-reviews), not by the scrape itself.
+// Their per-tab query (["competitor", id, "pricingHistory"|"jobs"|…]) has nothing
+// new to show at the instant the scrape's lastRunAt moves — the extraction lands
+// seconds-to-minutes later. See the re-invalidation loop in the scrape poller.
+const EXTRACTION_BACKED_SOURCES = new Set<string>([
+  "pricing",
+  "jobs",
+  "g2_reviews",
+  "capterra_reviews",
+  "appstore_reviews",
+  "trustpilot_reviews",
+  "trustradius_reviews",
+  "gartner_reviews",
+  "playstore_reviews",
+  "reddit",
+]);
+
+// Delays (ms after the scrape finishes) at which we re-invalidate the per-tab
+// queries to pick up the downstream extraction result. Spread out so a slow AI
+// extraction (provider failover, queue) is still caught, and the last one clears
+// the 60s staleTime window so a tab switch after it can't serve stale cache.
+const EXTRACTION_REFETCH_DELAYS_MS = [4000, 12000, 25000, 45000, 70000];
+
 // AI-summary generation is a fire-and-trigger job (refresh-competitor-summary) that
 // can take well beyond a single tick — queued behind other summaries (concurrency 1),
 // slow AI failover, retries. We persist the in-progress marker per competitor so the
@@ -260,6 +286,10 @@ export function CompetitorDetailView({ id }: { id: string }) {
   const [deleting, setDeleting] = useState(false);
   const [paywall, setPaywall] = useState<PaywallReason | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Pending re-invalidation timers for downstream extraction results (pricing/
+  // jobs/reviews land after the scrape's lastRunAt moves). Tracked so we can clear
+  // them on unmount / competitor switch — they target this id's queries.
+  const extractionTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
   const scrapingStartRef = useRef<
     Map<
       string,
@@ -303,7 +333,10 @@ export function CompetitorDetailView({ id }: { id: string }) {
   // fetch the ordered roster once; the pager walks it so an analyst flips through
   // competitors without bouncing back to the list. Order = the list's default.
   // Shares the ["competitors"] roster cache with the list / overview / sidebar.
-  const rosterQ = useQuery(competitorsQuery());
+  // Scoped to the active product (patch-28 switcher) so the pager stays within the
+  // product's competitors instead of walking the whole org roster across products.
+  const productScope = useProductScope() ?? undefined;
+  const rosterQ = useQuery(competitorsQuery(productScope));
   const roster = useMemo(
     () => rosterQ.data?.map((c) => ({ id: c.id, name: c.name })) ?? null,
     [rosterQ.data],
@@ -457,6 +490,29 @@ export function CompetitorDetailView({ id }: { id: string }) {
           toast.info("Scrape complete · no change", { description: unchangedLabels.join(", ") });
         }
         void queryClient.invalidateQueries({ queryKey: ["competitor", id] });
+
+        // Extraction-backed sources write their tab data in a downstream job that
+        // finishes AFTER lastRunAt moves, so the invalidate above refetches stale
+        // data and then the poll stops — the fresh tiers/jobs would never appear
+        // until a hard refresh. Re-invalidate the per-tab queries (not the heavy
+        // detail, already refreshed above) a few more times to catch the result.
+        const extractionFinished = finished.some((mid) =>
+          EXTRACTION_BACKED_SOURCES.has(
+            fresh.monitors.find((m) => m.id === mid)?.sourceType ?? "",
+          ),
+        );
+        if (extractionFinished) {
+          for (const delay of EXTRACTION_REFETCH_DELAYS_MS) {
+            const timer = setTimeout(() => {
+              extractionTimersRef.current.delete(timer);
+              void queryClient.invalidateQueries({
+                queryKey: ["competitor", id],
+                predicate: (q) => q.queryKey[2] !== "detail",
+              });
+            }, delay);
+            extractionTimersRef.current.add(timer);
+          }
+        }
       }
       if (failed.length > 0) {
         for (const mid of failed) {
@@ -484,6 +540,16 @@ export function CompetitorDetailView({ id }: { id: string }) {
       }
     };
   }, [scrapingIds, id]);
+
+  // Cancel any pending extraction re-invalidation timers when switching competitor
+  // or unmounting (they invalidate this id's queries).
+  useEffect(() => {
+    const timers = extractionTimersRef.current;
+    return () => {
+      for (const t of timers) clearTimeout(t);
+      timers.clear();
+    };
+  }, [id]);
 
   async function runAllMonitors() {
     if (!data) return;
@@ -992,17 +1058,10 @@ export function CompetitorDetailView({ id }: { id: string }) {
           techScraping={techScraping}
         />
 
-        {monitors
-          .filter((m) => m.markedUnscrapable)
-          .map((m) => (
-            <MonitorAlternatives
-              key={m.id}
-              monitorId={m.id}
-              sourceType={m.sourceType}
-              failureCategory={m.lastFailureCategory}
-              onResolved={refresh}
-            />
-          ))}
+        <PausedMonitors
+          monitors={monitors.filter((m) => m.markedUnscrapable)}
+          onResolved={refresh}
+        />
 
         <AiSummary
           competitor={competitor}
@@ -2215,7 +2274,25 @@ function MonitorEditDialog({
         </DialogHeader>
         <div className="space-y-5">
           <div className="space-y-1.5">
-            <p className="text-xs font-medium text-foreground">Check frequency</p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-xs font-medium text-foreground">Check frequency</p>
+              <TooltipProvider delayDuration={150}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label="What does check frequency mean?"
+                      className="text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground"
+                    >
+                      <HelpCircle size={13} />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-56">
+                    An upper bound — stable sources are checked less often automatically.
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
             <ToggleGroup
               type="single"
               value={frequency}
@@ -2239,7 +2316,7 @@ function MonitorEditDialog({
                   <ToggleGroupItem
                     key={f}
                     value={f}
-                    className="grow basis-0 gap-1.5 capitalize"
+                    className="grow basis-0 gap-1.5 capitalize hover:bg-muted hover:text-foreground data-[state=on]:font-semibold data-[state=on]:hover:bg-accent data-[state=on]:hover:text-accent-foreground"
                     title={
                       locked
                         ? `Requires ${PLAN_LABELS[minPlanForFrequency(f)]}`
@@ -2252,9 +2329,6 @@ function MonitorEditDialog({
                 );
               })}
             </ToggleGroup>
-            <p className="text-xs text-muted-foreground">
-              An upper bound — stable sources are checked less often automatically.
-            </p>
           </div>
           <div className="space-y-1.5">
             <p className="text-xs font-medium text-foreground">Page URL</p>
@@ -2322,17 +2396,19 @@ function AiSummary({
         </Card>
       );
     }
-    // The first analysis is still running on its own (queued → scraping →
-    // summarizing). Show the live stage and no button — it lands without a click
-    // (the detail view polls while summarizing). This replaces the old static
-    // "not generated yet", which read as idle while the pipeline was actually busy.
-    if (analysis?.pending) {
+    // The first analysis is still running on its own. Only surface a notice here
+    // once the AI is actually writing the summary — it lands without a click (the
+    // detail view polls while summarizing). While the site is still being pulled
+    // down (queued → scraping) this card stays empty: the AnalysisProgress stepper
+    // above already shows that stage, so a "Scraping the site…" line here is noise.
+    if (analysis?.stage === "summarizing") {
       return (
         <Card className="px-4 py-3 border-dashed">
           <AnalysisNotice analysis={analysis} />
         </Card>
       );
     }
+    if (analysis?.pending) return null;
     // Nothing in flight — the summary stalled (needs_attention) or was never
     // attempted (idle, e.g. an idea/document self). Offer a manual generate.
     return (

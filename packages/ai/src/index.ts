@@ -74,7 +74,7 @@ export { generateCompetitorSummary, SummarySchema } from "./tasks/competitor-sum
 export type { CompetitorSummary, CompetitorSummaryInput } from "./tasks/competitor-summary";
 export { summarizeSource, SourceSummarySchema } from "./tasks/summarize-source";
 export type { SourceSummary, SourceSummaryInput } from "./tasks/summarize-source";
-export { generateBattleCard, BattleCardSchema } from "./tasks/battle-card";
+export { generateBattleCard, reviseBattleCard, BattleCardSchema } from "./tasks/battle-card";
 export type { BattleCardContent, BattleCardInput } from "./tasks/battle-card";
 // Ask Outrival — conversational intelligence (tool-agent planner + grounded synthesis)
 export {

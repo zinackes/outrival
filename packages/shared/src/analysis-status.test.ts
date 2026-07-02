@@ -79,6 +79,51 @@ test("needs_attention: markedUnscrapable short-circuits", () => {
   expect(s).toEqual({ stage: "needs_attention", pending: false });
 });
 
+test("needs_attention: first scrape failed, never succeeded (no more infinite 'queued')", () => {
+  // The screenshot bug: homepage scrape timed out. The worker stamped lastFailedAt
+  // and cleared scrapeStartedAt, nextRunAt is hours out. Must NOT read as queued.
+  const s = deriveAnalysisStatus(
+    {
+      hasSummary: false,
+      anchor: anchor({
+        scrapeStartedAt: null,
+        lastFailedAt: new Date(NOW - 8 * 60_000),
+        lastRunAt: null,
+      }),
+    },
+    NOW,
+  );
+  expect(s).toEqual({ stage: "needs_attention", pending: false });
+});
+
+test("a fresh retry after a failed first scrape reads as scraping again", () => {
+  const s = deriveAnalysisStatus(
+    {
+      hasSummary: false,
+      anchor: anchor({
+        lastFailedAt: new Date(NOW - 60_000), // earlier failure
+        scrapeStartedAt: new Date(NOW - 5_000), // user hit "Retry"
+      }),
+    },
+    NOW,
+  );
+  expect(s).toEqual({ stage: "scraping", pending: true });
+});
+
+test("a recent success supersedes an older failure (summarizing, not needs_attention)", () => {
+  const s = deriveAnalysisStatus(
+    {
+      hasSummary: false,
+      anchor: anchor({
+        lastFailedAt: new Date(NOW - 120_000), // older failure
+        lastRunAt: new Date(NOW - 60_000), // later success, summary pending
+      }),
+    },
+    NOW,
+  );
+  expect(s).toEqual({ stage: "summarizing", pending: true });
+});
+
 test("a re-scan in flight after a prior success reads as scraping", () => {
   const s = deriveAnalysisStatus(
     {

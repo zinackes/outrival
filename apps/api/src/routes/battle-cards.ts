@@ -5,6 +5,7 @@ import { tasks } from "@trigger.dev/sdk/v3";
 import { battleCards, competitors, products, signals, selfProfileLastEditedAt } from "@outrival/db";
 import { getBytesFromR2 } from "@outrival/shared";
 import { db } from "../lib/db";
+import { analyticsQuery, sql } from "../lib/analytics-safe";
 import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
@@ -127,8 +128,40 @@ battleCardsRouter.get("/:id/battle-card", async (c) => {
   });
   if (!card) return c.json({ error: "Not generated" }, 404);
 
-  return c.json({ battleCard: card });
+  const evidence = await battleCardEvidence(competitor.id, card.id);
+  return c.json({ battleCard: card, evidence });
 });
+
+// Phase 2B — provenance & freshness the UI shows above the card: the card-level
+// confidence (from the systematic self-check persisted to ai_quality_checks) plus,
+// per evidence source, whether it was captured and how fresh it is. All read-time,
+// best-effort (a hiccup just yields nulls) — no migration, no stored duplication.
+async function battleCardEvidence(competitorId: string, cardId: string) {
+  const [row] = await analyticsQuery<{
+    pricing_at: string | null;
+    reviews_at: string | null;
+    tech_at: string | null;
+    homepage_at: string | null;
+    confidence: string | null;
+  }>(sql`
+    SELECT
+      (SELECT max(recorded_at) AT TIME ZONE 'UTC' FROM pricing_history WHERE competitor_id = ${competitorId}) AS pricing_at,
+      (SELECT max(recorded_at) AT TIME ZONE 'UTC' FROM review_scores WHERE competitor_id = ${competitorId}) AS reviews_at,
+      (SELECT max(last_detected_at) AT TIME ZONE 'UTC' FROM tech_stack_entries WHERE competitor_id = ${competitorId} AND is_active = true) AS tech_at,
+      (SELECT max(s.scraped_at) AT TIME ZONE 'UTC' FROM snapshots s JOIN monitors m ON m.id = s.monitor_id WHERE m.competitor_id = ${competitorId} AND m.source_type = 'homepage') AS homepage_at,
+      (SELECT confidence FROM ai_quality_checks WHERE target_type = 'battle_card' AND target_id = ${cardId} ORDER BY created_at DESC LIMIT 1) AS confidence
+  `);
+  const conf = row?.confidence?.trim();
+  return {
+    confidence: conf === "low" || conf === "medium" || conf === "high" ? conf : null,
+    sources: [
+      { kind: "pricing", present: !!row?.pricing_at, lastVerifiedAt: row?.pricing_at ?? null },
+      { kind: "reviews", present: !!row?.reviews_at, lastVerifiedAt: row?.reviews_at ?? null },
+      { kind: "techStack", present: !!row?.tech_at, lastVerifiedAt: row?.tech_at ?? null },
+      { kind: "homepage", present: !!row?.homepage_at, lastVerifiedAt: row?.homepage_at ?? null },
+    ],
+  };
+}
 
 // Whether the battle card is worth regenerating (patch-22 intelligent rate limiting):
 // stale when the user's self-profile changed, a new competitor signal landed since the

@@ -49,6 +49,9 @@ const PRICING_SECTION_ID = /(pricing|tarifs|tarification|plans|prix|premium)/i;
 
 const HEAD_TIMEOUT_MS = 5000;
 const VERIFY_TIMEOUT_MS = 8000;
+// A pricing hub can list many product pages; cap how many children we verify so a
+// hub never turns discovery into a fetch storm.
+const MAX_HUB_CHILDREN = 3;
 // A plain desktop UA — some sites 403 a header-less fetch of a marketing page.
 const VERIFY_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36";
@@ -70,7 +73,11 @@ export async function discoverPricingUrl(
   for (const path of DIRECT_PATHS) {
     const candidate = new URL(path, base).toString();
     if (await isReachable(candidate)) {
-      return { url: candidate, source: "direct" };
+      // A reachable convention path can still be a *hub* that lists one pricing
+      // page per product with no prices of its own (e.g. Back4App's /pricing →
+      // /pricing/backend-as-a-service). Drill to the real product page when so.
+      const drilled = await drillPricingHub(candidate);
+      return { url: drilled ?? candidate, source: "direct" };
     }
   }
 
@@ -110,14 +117,8 @@ async function resolveCandidate(match: LinkMatch | null): Promise<string | null>
   return (await looksLikePricing(match.url)) ? match.url : null;
 }
 
-/**
- * Cheap L0 GET → true when the page shows any pricing signal (a price token, a
- * "contact sales" gate, a calculator, or a signup wall). Used to confirm a
- * tier-branded link before trusting it. Server-rendered pricing (CollX's
- * `/collx-pro`) passes here; JS-only prices won't — but those pages are almost
- * always named "pricing" and take the trusted path instead.
- */
-async function looksLikePricing(url: string): Promise<boolean> {
+/** L0 GET → the page body when reachable (2xx), else null. */
+async function fetchHtml(url: string): Promise<string | null> {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), VERIFY_TIMEOUT_MS);
@@ -127,13 +128,52 @@ async function looksLikePricing(url: string): Promise<boolean> {
       headers: { "user-agent": VERIFY_UA, accept: "text/html" },
     });
     clearTimeout(timer);
-    if (!res.ok) return false;
-    const html = await res.text();
-    const s = detectPricingSignals(html);
-    return s.hasPriceTokens || s.hasGatedKeywords || s.hasCalculator || s.hasSignupWall;
+    if (!res.ok) return null;
+    return await res.text();
   } catch {
-    return false;
+    return null;
   }
+}
+
+/** True when the HTML carries any pricing signal (price, gate, calculator, wall). */
+function hasPricingSignals(html: string): boolean {
+  const s = detectPricingSignals(html);
+  return s.hasPriceTokens || s.hasGatedKeywords || s.hasCalculator || s.hasSignupWall;
+}
+
+/**
+ * Cheap L0 GET → true when the page shows any pricing signal (a price token, a
+ * "contact sales" gate, a calculator, or a signup wall). Used to confirm a
+ * tier-branded link before trusting it. Server-rendered pricing (CollX's
+ * `/collx-pro`) passes here; JS-only prices won't — but those pages are almost
+ * always named "pricing" and take the trusted path instead.
+ */
+async function looksLikePricing(url: string): Promise<boolean> {
+  const html = await fetchHtml(url);
+  return html !== null && hasPricingSignals(html);
+}
+
+/**
+ * When a reachable pricing page carries no prices of its own but links to deeper
+ * pricing pages, it's a *hub* (e.g. Back4App's /pricing lists a page per product).
+ * Fetch it once and drill to the first child that shows prices at L0, else the
+ * shallowest child. Returns null — keep the original candidate — when the page is
+ * a real pricing page (has signals), is JS-rendered with no children, or exposes
+ * only a lone unverifiable child (likelier an incidental sub-link than a hub).
+ */
+async function drillPricingHub(hubUrl: string): Promise<string | null> {
+  const html = await fetchHtml(hubUrl);
+  if (html === null || hasPricingSignals(html)) return null;
+
+  const children = deeperPricingLinks(html, hubUrl).slice(0, MAX_HUB_CHILDREN);
+  if (children.length === 0) return null;
+
+  for (const child of children) {
+    if (await looksLikePricing(child)) return child;
+  }
+  // No child confirmed prices at L0. Only trust the drill when the page is clearly
+  // a hub (several product-pricing children); the browser scrape will render them.
+  return children.length >= 2 ? (children[0] ?? null) : null;
 }
 
 /** First pricing link inside <nav>/<header>, resolved absolute. Pure. */
@@ -165,6 +205,43 @@ export function hasHomepagePricingSection(html: string): boolean {
     if (PRICING_LINK.test($(el).text())) found = true;
   });
   return found;
+}
+
+/**
+ * Same-origin links that dive DEEPER into pricing than `fromUrl` — a hub page's
+ * product-specific pricing children (e.g. /pricing → /pricing/backend-as-a-service).
+ * A link qualifies when it stays on the origin and either extends the hub's path
+ * (`…/pricing/<child>`) or carries pricing vocabulary in a longer path. Ranked
+ * shallowest-first (the most canonical child). Pure.
+ */
+export function deeperPricingLinks(html: string, fromUrl: string): string[] {
+  const from = new URL(fromUrl);
+  const fromPath = from.pathname.replace(/\/+$/, ""); // strip trailing slash(es)
+  const $ = cheerio.load(html);
+  const seen = new Set<string>();
+  const out: { url: string; depth: number }[] = [];
+  $("a[href]").each((_, el) => {
+    const href = $(el).attr("href");
+    if (!href) return;
+    let u: URL;
+    try {
+      u = new URL(href, from);
+    } catch {
+      return; // skip malformed href
+    }
+    if (u.origin !== from.origin) return;
+    u.hash = "";
+    const path = u.pathname.replace(/\/+$/, "");
+    if (path === "" || path === fromPath) return; // root or self
+    const isChild = path.startsWith(`${fromPath}/`);
+    const isDeeperPricing = PRICING_HREF.test(path) && path.length > fromPath.length;
+    if (!isChild && !isDeeperPricing) return;
+    const abs = u.toString();
+    if (seen.has(abs)) return;
+    seen.add(abs);
+    out.push({ url: abs, depth: path.split("/").filter(Boolean).length });
+  });
+  return out.sort((a, b) => a.depth - b.depth).map((x) => x.url);
 }
 
 /**

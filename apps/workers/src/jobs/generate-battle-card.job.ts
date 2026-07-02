@@ -7,16 +7,53 @@ import {
   competitors,
   products,
   organizations,
+  monitors,
+  snapshots,
   reviews,
   signals,
+  techStackEntries,
   selfProfileLastEditedAt,
   insertAiQualityCheck,
   type SelfProfile,
 } from "@outrival/db";
-import { generateBattleCard, AI_CONFIG } from "@outrival/ai";
-import { uploadToR2 } from "@outrival/shared";
-import { logAiRun, getLatestTrial } from "../lib/analytics";
+import { generateBattleCard, reviseBattleCard, AI_CONFIG } from "@outrival/ai";
+import { uploadToR2, getFromR2 } from "@outrival/shared";
+import { isCloudflareChallenge } from "@outrival/scrapers/block-detection";
+import { htmlToText } from "../lib/html-to-text";
+import {
+  logAiRun,
+  getLatestTrial,
+  getLatestPricingTiers,
+  getLatestReviewScore,
+} from "../lib/analytics";
 import { refreshCompetitorSummaryJob } from "./refresh-competitor-summary.job";
+
+// Pull the latest homepage capture as clean text so the card grounds feature
+// claims on what a product ACTUALLY says about itself — the biggest lever against
+// stale parametric comparisons. Best-effort: null on no monitor / no snapshot / R2
+// miss / anti-bot shell (mirrors refresh-competitor-summary's guard).
+async function loadHomepageExcerpt(
+  competitorId: string,
+  maxChars = 3500,
+): Promise<string | null> {
+  const homepageMonitor = await db.query.monitors.findFirst({
+    where: and(eq(monitors.competitorId, competitorId), eq(monitors.sourceType, "homepage")),
+  });
+  if (!homepageMonitor) return null;
+  const latest = await db.query.snapshots.findFirst({
+    where: eq(snapshots.monitorId, homepageMonitor.id),
+    orderBy: desc(snapshots.scrapedAt),
+  });
+  if (!latest) return null;
+  try {
+    const html = await getFromR2(`${latest.r2Key}.html`);
+    if (isCloudflareChallenge(html)) return null;
+    return htmlToText(html).slice(0, maxChars);
+  } catch (err) {
+    logger.warn("Failed to load homepage snapshot for battle card", { err: String(err) });
+    return null;
+  }
+}
 
 const InputSchema = z.object({
   competitorId: z.string(),
@@ -125,30 +162,77 @@ export const generateBattleCardJob = task({
       }
     }
 
+    // Real, current facts for BOTH sides — the fix for stale parametric comparisons.
+    // Each is best-effort (empty/null when never captured) so the model abstains on a
+    // dimension rather than inventing it. The competitor's evidence:
+    const competitorPricingTiers = await getLatestPricingTiers(competitor.id);
+    const competitorTechRows = await db.query.techStackEntries.findMany({
+      where: and(
+        eq(techStackEntries.competitorId, competitor.id),
+        eq(techStackEntries.isActive, true),
+      ),
+      orderBy: desc(techStackEntries.lastDetectedAt),
+      limit: 20,
+    });
+    const competitorReviews = await getLatestReviewScore(competitor.id);
+    const competitorHomepageExcerpt = await loadHomepageExcerpt(competitor.id);
+
+    // Our own product's evidence — features / tech / pricing come from the self
+    // profile (extract-self-profile keeps them current), homepage from its snapshot.
+    const myFeatures = sp?.features?.value ?? [];
+    const myTechStack = sp?.techStack?.value ?? [];
+    const myPricingTiers = (sp?.pricingTiers?.value ?? []).map((t) => ({
+      planName: t.plan_name,
+      price: t.price,
+      currency: t.currency,
+      billingPeriod: t.billing_period,
+    }));
+    const myAudience = sp?.audience?.value ?? null;
+    const myHomepageExcerpt = productSelf ? await loadHomepageExcerpt(productSelf.id) : null;
+
+    const battleCardInput = {
+      myProduct: {
+        name: product?.name,
+        category: myCategory,
+        valueProp: myValueProp,
+        audience: myAudience,
+        features: myFeatures,
+        techStack: myTechStack,
+        pricingTiers: myPricingTiers,
+        homepageExcerpt: myHomepageExcerpt,
+      },
+      competitorName: competitor.name,
+      competitorSummary,
+      competitorHomepageExcerpt,
+      competitorTrial: competitorTrial
+        ? {
+            hasTrial: competitorTrial.has_trial,
+            days: competitorTrial.days,
+            requiresCreditCard: competitorTrial.requires_credit_card,
+          }
+        : null,
+      competitorPricingTiers,
+      competitorTechStack: competitorTechRows.map((t) => ({
+        name: t.techName,
+        category: t.category,
+        importance: t.importance,
+      })),
+      competitorReviews,
+      reviewPraises: praisesRows.map((r) => r.content ?? "").filter(Boolean),
+      reviewComplaints: complaintsRows.map((r) => r.content ?? "").filter(Boolean),
+      recentSignals: recentSignals.map((s) => ({
+        category: s.category,
+        severity: s.severity,
+        insight: s.insight,
+      })),
+      otherProductNames: otherProducts.map((p) => p.name),
+    };
+
     // Ops quality logging (patch-02): success / parse_failed (null) / error.
     const { provider, model } = AI_CONFIG.insights;
     let content;
     try {
-      content = await generateBattleCard({
-        myProduct: { name: product?.name, category: myCategory, valueProp: myValueProp },
-        competitorName: competitor.name,
-        competitorSummary,
-        competitorTrial: competitorTrial
-          ? {
-              hasTrial: competitorTrial.has_trial,
-              days: competitorTrial.days,
-              requiresCreditCard: competitorTrial.requires_credit_card,
-            }
-          : null,
-        reviewPraises: praisesRows.map((r) => r.content ?? "").filter(Boolean),
-        reviewComplaints: complaintsRows.map((r) => r.content ?? "").filter(Boolean),
-        recentSignals: recentSignals.map((s) => ({
-          category: s.category,
-          severity: s.severity,
-          insight: s.insight,
-        })),
-        otherProductNames: otherProducts.map((p) => p.name),
-      });
+      content = await generateBattleCard(battleCardInput);
     } catch (err) {
       await logAiRun("battle_card", provider, model, "error");
       throw err;
@@ -157,6 +241,21 @@ export const generateBattleCardJob = task({
 
     if (!content) {
       throw new AbortTaskRunError("Battle card generation returned null");
+    }
+
+    // Phase 2A — verification pass with teeth: re-read the draft against the same
+    // evidence and drop every claim that isn't traceable to it (removes the stale
+    // one-sided comparisons the self-check only used to flag). Best-effort: on a
+    // parse miss we keep the grounded draft rather than lose the card.
+    try {
+      const revised = await reviseBattleCard(battleCardInput, content);
+      await logAiRun("battle_card_revise", provider, model, revised ? "success" : "parse_failed");
+      if (revised) content = revised;
+    } catch (err) {
+      // A verification failure (rate limit / breaker) must never sink the card —
+      // patch-22 graceful degradation. Keep the draft; log the miss.
+      await logAiRun("battle_card_revise", provider, model, "error");
+      logger.warn("Battle card revise pass skipped", { err: String(err) });
     }
 
     // Safety net: a grounded card with no evidence comes back with every section

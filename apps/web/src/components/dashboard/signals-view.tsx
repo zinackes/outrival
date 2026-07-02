@@ -144,7 +144,16 @@ export function SignalsView() {
   const queryClient = useQueryClient();
   const sampleData = useMemo(() => getSampleData(), []);
   const sigOpts = signalsQuery({ limit: 200, productId: productId ?? undefined, sort });
-  const signalsQ = useQuery({ ...sigOpts, enabled: !sample, placeholderData: keepPreviousData });
+  // Poll every 30s like the competitor-count surfaces (competitors list / sidebar),
+  // so a freshly-generated signal lands in the feed on its own — the global config
+  // is staleTime 60s + refetchOnWindowFocus:false, so without this the feed never
+  // refreshes until a remount while the polled KPIs update within 30s.
+  const signalsQ = useQuery({
+    ...sigOpts,
+    enabled: !sample,
+    placeholderData: keepPreviousData,
+    refetchInterval: 30_000,
+  });
   const signals = sample ? sampleData.signals : (signalsQ.data ?? null);
   const err = signalsQ.error;
 
@@ -779,12 +788,12 @@ export function SignalsView() {
           }
         />
       ) : (
-        <div className="lg:grid lg:grid-cols-[minmax(300px,340px)_minmax(0,1fr)] lg:items-start lg:gap-6">
+        <div className="lg:grid lg:grid-cols-[minmax(0,270px)_minmax(0,1fr)] lg:items-start lg:gap-5 xl:grid-cols-[minmax(0,320px)_minmax(0,1fr)] xl:gap-6">
           {/* Master list — compact, scannable rows; the detail lives on the right. */}
           <div
             role="listbox"
             aria-label="Signals"
-            className="flex flex-col gap-0.5 rounded-xl border border-border p-1 lg:max-h-[calc(100dvh-220px)] lg:overflow-y-auto"
+            className="flex flex-col gap-0.5 rounded-lg border border-border p-1.5 lg:max-h-[calc(100dvh-220px)] lg:overflow-y-auto"
           >
             {feedItems.map((item) =>
               item.kind === "single" ? (

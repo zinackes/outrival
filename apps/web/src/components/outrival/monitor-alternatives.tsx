@@ -1,10 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowRight, Link2, PauseCircle, PencilLine, Play, RefreshCcw, X } from "lucide-react";
+import {
+  ArrowRight,
+  ChevronDown,
+  Link2,
+  PauseCircle,
+  PencilLine,
+  Play,
+  RefreshCcw,
+  X,
+} from "lucide-react";
 import { isReviewSource, type SourceType } from "@outrival/shared";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -31,6 +41,18 @@ const CAUSE_LABEL: Record<string, string> = {
   unknown: "we couldn't reach this source after several attempts",
 };
 
+// Terse restatement of the cause for the grouped row header, where the source
+// label already carries the context (the full sentence lives on the single card).
+const CAUSE_SHORT: Record<string, string> = {
+  anti_bot: "blocked by anti-bot",
+  site_dead: "site down",
+  site_redirected: "domain redirected",
+  login_required: "login required",
+  spa_empty: "content not captured",
+  geo_blocked: "geo-restricted",
+  unknown: "unreachable",
+};
+
 // Secondary, diagnosis-specific suggestions shown below the paused card. Manual
 // entry and resume are first-class actions on the card itself; the source is
 // auto-paused on the unscrapable transition, so there is no "pause" option.
@@ -45,9 +67,17 @@ interface Props {
   failureCategory?: string | null;
   /** Called after an action resolves an alternative, so the parent can refresh. */
   onResolved?: () => void;
+  /** "card" (default) = standalone banner; "row" = collapsible line inside a group. */
+  variant?: "card" | "row";
 }
 
-export function MonitorAlternatives({ monitorId, sourceType, failureCategory, onResolved }: Props) {
+export function MonitorAlternatives({
+  monitorId,
+  sourceType,
+  failureCategory,
+  onResolved,
+  variant = "card",
+}: Props) {
   const queryClient = useQueryClient();
   const alternativesQ = useQuery({
     queryKey: ["monitorAlternatives", monitorId],
@@ -67,6 +97,7 @@ export function MonitorAlternatives({ monitorId, sourceType, failureCategory, on
     );
   }
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const [resuming, setResuming] = useState(false);
   const [dismissing, setDismissing] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
@@ -78,6 +109,7 @@ export function MonitorAlternatives({ monitorId, sourceType, failureCategory, on
 
   const label = sourceShortLabel(sourceType);
   const cause = CAUSE_LABEL[failureCategory ?? "unknown"] ?? CAUSE_LABEL.unknown;
+  const shortCause = CAUSE_SHORT[failureCategory ?? "unknown"] ?? CAUSE_SHORT.unknown;
   const manualAlt = alternatives.find((a) => a.type === "manual_data_entry");
   // Pointing at a different URL only helps sources with a single canonical page
   // we may have reached wrong. Review sources are brand-locked to G2/Capterra/…
@@ -167,81 +199,63 @@ export function MonitorAlternatives({ monitorId, sourceType, failureCategory, on
     }
   }
 
-  return (
-    <div className="relative rounded-lg border border-border bg-secondary/30 p-4">
-      <button
-        type="button"
-        onClick={dismiss}
-        disabled={dismissing}
-        aria-label="Dismiss"
-        className="absolute right-2.5 top-2.5 rounded-md p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-50"
-      >
-        <X className="h-4 w-4" />
-      </button>
-      <div className="flex items-start gap-2.5 pr-8">
-        <PauseCircle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-        <div className="text-sm">
-          <p className="font-medium text-foreground">{label} monitoring is paused</p>
-          <p className="mt-0.5 text-muted-foreground">We paused it because {cause}. {recoveryHint}</p>
-        </div>
-      </div>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {canSetUrl && (
-          <Button size="sm" variant="outline" onClick={() => setUrlOpen(true)}>
-            <Link2 className="h-4 w-4" /> Set the URL
-          </Button>
-        )}
-        {manualAlt && (
-          <Button size="sm" variant="outline" onClick={() => setManualOpen(true)}>
-            <PencilLine className="h-4 w-4" /> Enter data
-          </Button>
-        )}
-        <Button size="sm" onClick={resume} disabled={resuming}>
-          <Play className="h-4 w-4" /> Resume anyway
+  const actions = (
+    <div className="mt-3 flex flex-wrap gap-2">
+      {canSetUrl && (
+        <Button size="sm" variant="outline" onClick={() => setUrlOpen(true)}>
+          <Link2 className="h-4 w-4" /> Set the URL
         </Button>
-      </div>
-
-      {suggestions.length > 0 && (
-        <ul className="mt-3 flex flex-col gap-2.5">
-          {suggestions.map((alt) => {
-            const Icon = ICON[alt.type] ?? ArrowRight;
-            return (
-              <li
-                key={alt.id}
-                className="flex flex-col gap-2 rounded-md border border-border bg-background p-3 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div className="flex items-start gap-2.5">
-                  <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                  <div>
-                    <p className="text-sm text-foreground">{alt.description}</p>
-                    {alt.rationale && (
-                      <p className="mt-0.5 text-xs text-muted-foreground">{alt.rationale}</p>
-                    )}
-                  </div>
-                </div>
-                <div className="flex shrink-0 gap-2">
-                  <Button
-                    size="sm"
-                    onClick={() => acceptSuggestion(alt)}
-                    disabled={busyId === alt.id}
-                  >
-                    {alt.type === "different_url" ? "Follow this URL" : "Got it"}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => rejectSuggestion(alt)}
-                    disabled={busyId === alt.id}
-                  >
-                    Dismiss
-                  </Button>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
       )}
+      {manualAlt && (
+        <Button size="sm" variant="outline" onClick={() => setManualOpen(true)}>
+          <PencilLine className="h-4 w-4" /> Enter data
+        </Button>
+      )}
+      <Button size="sm" onClick={resume} disabled={resuming}>
+        <Play className="h-4 w-4" /> Resume anyway
+      </Button>
+    </div>
+  );
 
+  const suggestionsList = suggestions.length > 0 && (
+    <ul className="mt-3 flex flex-col gap-2.5">
+      {suggestions.map((alt) => {
+        const Icon = ICON[alt.type] ?? ArrowRight;
+        return (
+          <li
+            key={alt.id}
+            className="flex flex-col gap-2 rounded-md border border-border bg-background p-3 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div className="flex items-start gap-2.5">
+              <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+              <div>
+                <p className="text-sm text-foreground">{alt.description}</p>
+                {alt.rationale && (
+                  <p className="mt-0.5 text-xs text-muted-foreground">{alt.rationale}</p>
+                )}
+              </div>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <Button size="sm" onClick={() => acceptSuggestion(alt)} disabled={busyId === alt.id}>
+                {alt.type === "different_url" ? "Follow this URL" : "Got it"}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => rejectSuggestion(alt)}
+                disabled={busyId === alt.id}
+              >
+                Dismiss
+              </Button>
+            </div>
+          </li>
+        );
+      })}
+    </ul>
+  );
+
+  const dialogs = (
+    <>
       <ManualDataEntry
         monitorId={monitorId}
         sourceType={sourceType}
@@ -285,6 +299,131 @@ export function MonitorAlternatives({ monitorId, sourceType, failureCategory, on
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </>
+  );
+
+  // Grouped-list line: a compact, collapsible row. The wrapping <PausedMonitors>
+  // card owns the pause icon, count and the shared recovery hint, so the row only
+  // carries the source label + terse cause and reveals actions on demand.
+  if (variant === "row") {
+    return (
+      <div className="px-3 py-2.5">
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          className="flex w-full items-center gap-1.5 text-left"
+        >
+          <span className="text-sm font-medium text-foreground">{label}</span>
+          <span className="truncate text-sm text-muted-foreground">· {shortCause}</span>
+          <ChevronDown
+            className={cn(
+              "ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+              expanded && "rotate-180",
+            )}
+          />
+        </button>
+        {expanded && (
+          <div>
+            {actions}
+            {suggestionsList}
+            <button
+              type="button"
+              onClick={dismiss}
+              disabled={dismissing}
+              className="mt-3 text-xs text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline disabled:opacity-50"
+            >
+              Dismiss this source
+            </button>
+          </div>
+        )}
+        {dialogs}
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative rounded-lg border border-border bg-secondary/30 p-4">
+      <button
+        type="button"
+        onClick={dismiss}
+        disabled={dismissing}
+        aria-label="Dismiss"
+        className="absolute right-2.5 top-2.5 rounded-md p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-50"
+      >
+        <X className="h-4 w-4" />
+      </button>
+      <div className="flex items-start gap-2.5 pr-8">
+        <PauseCircle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+        <div className="text-sm">
+          <p className="font-medium text-foreground">{label} monitoring is paused</p>
+          <p className="mt-0.5 text-muted-foreground">We paused it because {cause}. {recoveryHint}</p>
+        </div>
+      </div>
+      {actions}
+      {suggestionsList}
+      {dialogs}
+    </div>
+  );
+}
+
+interface PausedMonitorsProps {
+  monitors: Array<{ id: string; sourceType: string; lastFailureCategory?: string | null }>;
+  /** Called after a source resolves, so the parent can refresh its monitor list. */
+  onResolved?: () => void;
+}
+
+// Collapses N auto-paused sources into one card so a competitor blocking every
+// source doesn't stack N full banners. Reads each source's alternatives from the
+// shared query cache (same key as the row), so a single source renders the full
+// card and dismiss/resume propagate back to the count with no extra fetch.
+export function PausedMonitors({ monitors, onResolved }: PausedMonitorsProps) {
+  const results = useQueries({
+    queries: monitors.map((m) => ({
+      queryKey: ["monitorAlternatives", m.id],
+      queryFn: () => api.getMonitorAlternatives(m.id).then((r) => r.alternatives),
+    })),
+  });
+  const active = monitors.filter((_, i) => (results[i]?.data?.length ?? 0) > 0);
+
+  if (active.length === 0) return null;
+
+  if (active.length === 1) {
+    const m = active[0]!;
+    return (
+      <MonitorAlternatives
+        monitorId={m.id}
+        sourceType={m.sourceType}
+        failureCategory={m.lastFailureCategory}
+        onResolved={onResolved}
+      />
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-border bg-secondary/30 p-4">
+      <div className="flex items-start gap-2.5">
+        <PauseCircle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+        <div className="text-sm">
+          <p className="font-medium text-foreground">{active.length} sources paused</p>
+          <p className="mt-0.5 text-muted-foreground">
+            Set a URL, enter the data yourself, or resume — we&apos;ll try again.
+          </p>
+        </div>
+      </div>
+      <ul className="mt-3 divide-y divide-border overflow-hidden rounded-md border border-border bg-background">
+        {active.map((m) => (
+          <li key={m.id}>
+            <MonitorAlternatives
+              variant="row"
+              monitorId={m.id}
+              sourceType={m.sourceType}
+              failureCategory={m.lastFailureCategory}
+              onResolved={onResolved}
+            />
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { tasks } from "@trigger.dev/sdk/v3";
 import {
   competitorCandidates,
@@ -61,18 +61,103 @@ function normalizeDomain(raw: string): string | null {
   }
 }
 
-// Resolve the discovery product scope (patch-28): the supplied productId when it
-// belongs to the org, otherwise the org's primary product. Null only when the org has
-// no product yet (pre-onboarding edge). Keeps every discovery route product-scoped.
-async function resolveProductId(orgId: string, raw?: string): Promise<string | null> {
+// Resolve the discovery product scope (patch-28). A supplied productId owned by the org
+// narrows to that SKU; its absence means "all products" — the union across the org's
+// products. Tenant-safe: a forged/foreign id falls through to the org-wide union (still
+// org-scoped), never another tenant's data.
+type DiscoveryScope = { kind: "product"; productId: string } | { kind: "all" };
+
+async function resolveScope(orgId: string, raw?: string): Promise<DiscoveryScope> {
   if (raw) {
     const owned = await db.query.products.findFirst({
       where: and(eq(products.id, raw), eq(products.orgId, orgId)),
       columns: { id: true },
     });
-    if (owned) return owned.id;
+    if (owned) return { kind: "product", productId: owned.id };
   }
-  return primaryProductId(orgId);
+  return { kind: "all" };
+}
+
+// The org's non-archived products, primary first — the set an "all products" discovery
+// action (list union, refresh, staleness) spans.
+async function nonArchivedProductIds(orgId: string): Promise<string[]> {
+  const rows = await db.query.products.findMany({
+    where: and(eq(products.orgId, orgId), ne(products.status, "archived")),
+    orderBy: [desc(products.isPrimary), asc(products.position), asc(products.createdAt)],
+    columns: { id: true },
+  });
+  return rows.map((r) => r.id);
+}
+
+// Per-product discovery staleness (patch-22): "fresh" while the last run is <7 days old
+// AND the self-profile hasn't been edited since. Aggregated for the all-products view.
+async function productStaleness(
+  orgId: string,
+  productId: string,
+): Promise<{ needsRediscovery: boolean; lastDiscoveryAt: Date | null; reason?: string }> {
+  const lastRun = await db.query.discoveryRuns.findFirst({
+    where: and(eq(discoveryRuns.orgId, orgId), eq(discoveryRuns.productId, productId)),
+    orderBy: desc(discoveryRuns.lastDiscoveryAt),
+  });
+  if (!lastRun) return { needsRediscovery: true, lastDiscoveryAt: null };
+
+  const daysSince = (Date.now() - lastRun.lastDiscoveryAt.getTime()) / 86400000;
+  const target = await productDiscoveryTarget(orgId, productId);
+  const profileAt = target
+    ? (selfProfileLastEditedAt(target.selfProfile) ?? target.selfUpdatedAt)
+    : null;
+  const profileChanged =
+    !!profileAt &&
+    (!lastRun.basedOnProfileUpdateAt || profileAt > lastRun.basedOnProfileUpdateAt);
+
+  if (daysSince < 7 && !profileChanged) {
+    return {
+      needsRediscovery: false,
+      lastDiscoveryAt: lastRun.lastDiscoveryAt,
+      reason: "profile_unchanged_recent_run",
+    };
+  }
+  return {
+    needsRediscovery: true,
+    lastDiscoveryAt: lastRun.lastDiscoveryAt,
+    reason: profileChanged ? "profile_changed" : "stale_run",
+  };
+}
+
+// Record a discovery run for staleness + the monthly quota counter (patch-22/28). The
+// (org, product) row snapshots the profile edit it was based on so a later edit (or 7+
+// days) marks the next run worth doing, and carries that month's on-demand detect count.
+async function recordDiscoveryRun(orgId: string, productId: string): Promise<void> {
+  const target = await productDiscoveryTarget(orgId, productId);
+  const profileAt = target
+    ? (selfProfileLastEditedAt(target.selfProfile) ?? target.selfUpdatedAt)
+    : null;
+  const month = currentMonthKey();
+  const existingRun = await db.query.discoveryRuns.findFirst({
+    where: and(eq(discoveryRuns.orgId, orgId), eq(discoveryRuns.productId, productId)),
+  });
+  const nextCount =
+    (existingRun?.detectCountMonth === month ? existingRun.detectCount : 0) + 1;
+  if (existingRun) {
+    await db
+      .update(discoveryRuns)
+      .set({
+        lastDiscoveryAt: new Date(),
+        basedOnProfileUpdateAt: profileAt,
+        detectCount: nextCount,
+        detectCountMonth: month,
+      })
+      .where(eq(discoveryRuns.id, existingRun.id));
+  } else {
+    await db.insert(discoveryRuns).values({
+      orgId,
+      productId,
+      lastDiscoveryAt: new Date(),
+      basedOnProfileUpdateAt: profileAt,
+      detectCount: nextCount,
+      detectCountMonth: month,
+    });
+  }
 }
 
 function deriveCompetitorName(url: string, title: string | null): string {
@@ -90,16 +175,17 @@ candidatesRouter.get("/", async (c) => {
   const orgId = await ensureUserOrg(user.id);
   const statusParam = c.req.query("status");
 
-  // patch-28 — discovery is product-scoped: each SKU has its own review queue.
-  const productId = await resolveProductId(orgId, c.req.query("productId"));
-  if (!productId) {
-    return c.json({ candidates: [], counts: { new: 0, dismissed: 0 } });
-  }
-
-  const scope = and(
-    eq(competitorCandidates.orgId, orgId),
-    eq(competitorCandidates.productId, productId),
-  );
+  // patch-28 — discovery is product-scoped: each SKU has its own review queue. "All
+  // products" (no scope) unions every SKU's queue so the org-wide view isn't limited to
+  // the primary product.
+  const scopeSel = await resolveScope(orgId, c.req.query("productId"));
+  const scope =
+    scopeSel.kind === "product"
+      ? and(
+          eq(competitorCandidates.orgId, orgId),
+          eq(competitorCandidates.productId, scopeSel.productId),
+        )
+      : eq(competitorCandidates.orgId, orgId);
   const where =
     statusParam === "new" || statusParam === "dismissed" || statusParam === "added"
       ? and(scope, eq(competitorCandidates.status, statusParam))
@@ -180,44 +266,50 @@ candidatesRouter.get("/staleness", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
 
-  // patch-28 — staleness is per product: a brand-new SKU reads as "never_run" even
-  // when the primary product was just discovered.
-  const productId = await resolveProductId(orgId, c.req.query("productId"));
-  if (!productId) {
+  // patch-28 — staleness is per product: a brand-new SKU reads as "never_run" even when
+  // the primary product was just discovered. The all-products view aggregates: it's worth
+  // refreshing if ANY non-archived SKU is stale or never run.
+  const scopeSel = await resolveScope(orgId, c.req.query("productId"));
+  const productIds =
+    scopeSel.kind === "product"
+      ? [scopeSel.productId]
+      : await nonArchivedProductIds(orgId);
+  if (productIds.length === 0) {
     return c.json({ staleness: "never_run", needsRediscovery: true });
   }
 
-  const lastRun = await db.query.discoveryRuns.findFirst({
-    where: and(eq(discoveryRuns.orgId, orgId), eq(discoveryRuns.productId, productId)),
-    orderBy: desc(discoveryRuns.lastDiscoveryAt),
-  });
-  if (!lastRun) {
-    return c.json({ staleness: "never_run", needsRediscovery: true });
+  let anyRun = false;
+  let anyStale = false;
+  let latest: Date | null = null;
+  let staleReason: string | undefined;
+  for (const productId of productIds) {
+    const s = await productStaleness(orgId, productId);
+    if (s.lastDiscoveryAt) {
+      anyRun = true;
+      if (!latest || s.lastDiscoveryAt > latest) latest = s.lastDiscoveryAt;
+    }
+    if (s.needsRediscovery) {
+      anyStale = true;
+      staleReason ??= s.reason ?? "stale_run";
+    }
   }
 
-  const daysSince = (Date.now() - lastRun.lastDiscoveryAt.getTime()) / 86400000;
-  const target = await productDiscoveryTarget(orgId, productId);
-  const profileAt = target
-    ? (selfProfileLastEditedAt(target.selfProfile) ?? target.selfUpdatedAt)
-    : null;
-  const profileChanged =
-    !!profileAt &&
-    (!lastRun.basedOnProfileUpdateAt || profileAt > lastRun.basedOnProfileUpdateAt);
-
-  if (daysSince < 7 && !profileChanged) {
+  if (!anyRun) {
+    return c.json({ staleness: "never_run", needsRediscovery: true });
+  }
+  if (anyStale) {
     return c.json({
-      staleness: "fresh",
-      needsRediscovery: false,
-      lastDiscoveryAt: lastRun.lastDiscoveryAt,
-      reason: "profile_unchanged_recent_run",
+      staleness: "outdated",
+      needsRediscovery: true,
+      lastDiscoveryAt: latest,
+      reason: staleReason,
     });
   }
-
   return c.json({
-    staleness: "outdated",
-    needsRediscovery: true,
-    lastDiscoveryAt: lastRun.lastDiscoveryAt,
-    reason: profileChanged ? "profile_changed" : "stale_run",
+    staleness: "fresh",
+    needsRediscovery: false,
+    lastDiscoveryAt: latest,
+    reason: "profile_unchanged_recent_run",
   });
 });
 
@@ -313,61 +405,51 @@ candidatesRouter.post("/detect", aiIntensiveRateLimit, async (c) => {
     return c.json({ error: "cooldown", retryInSec }, 429);
   }
 
-  // patch-28 — discovery targets one product (its self-profile drives the search).
-  const productId = await resolveProductId(orgId, c.req.query("productId"));
-  if (!productId) return c.json({ error: "missing_profile" }, 400);
-
-  // Per-tier monthly discovery quota (tier-limits). On-demand /detect only — the
-  // weekly cron auto-discovery doesn't consume it. Counted org-wide (summed across
-  // the org's product rows).
-  const quota = await assertWithinLimit(orgId, "discoveriesPerMonth");
-  if (!quota.ok) return c.json(tierLimitBody(quota), 429);
+  // patch-28 — discovery targets a product's self-profile. "All products" refreshes every
+  // non-archived SKU (bounded by the monthly quota), not just the primary.
+  const scopeSel = await resolveScope(orgId, c.req.query("productId"));
+  const productIds =
+    scopeSel.kind === "product"
+      ? [scopeSel.productId]
+      : await nonArchivedProductIds(orgId);
+  if (productIds.length === 0) return c.json({ error: "missing_profile" }, 400);
 
   lastDetectAt.set(orgId, Date.now());
 
+  let totalDetected = 0;
+  let ranAny = false;
   try {
-    const result = await detectCandidatesForProduct(orgId, productId);
-    if (!result.ok) {
+    for (const productId of productIds) {
+      // Per-tier monthly discovery quota, summed org-wide (tier-limits). On-demand only —
+      // the weekly cron doesn't consume it. Re-checked each iteration so an all-products
+      // refresh stops cleanly when the budget runs out.
+      const quota = await assertWithinLimit(orgId, "discoveriesPerMonth");
+      if (!quota.ok) {
+        if (!ranAny) return c.json(tierLimitBody(quota), 429);
+        break; // partial run — the detected count reflects what completed
+      }
+
+      const result = await detectCandidatesForProduct(orgId, productId);
+      if (!result.ok) {
+        // A single profileless SKU shouldn't abort an all-products refresh.
+        if (scopeSel.kind === "product") {
+          lastDetectAt.delete(orgId);
+          return c.json({ error: result.error }, 400);
+        }
+        continue;
+      }
+
+      // Record the run for staleness + the monthly quota counter (patch-22/28).
+      await recordDiscoveryRun(orgId, productId);
+      totalDetected += result.detected;
+      ranAny = true;
+    }
+
+    if (!ranAny) {
       lastDetectAt.delete(orgId);
-      return c.json({ error: result.error }, 400);
+      return c.json({ error: "missing_profile" }, 400);
     }
-
-    // Record the run for staleness (patch-22, per-product in patch-28): snapshot the
-    // profile edit it was based on so a later profile edit (or 7+ days) marks the next
-    // discovery worth running. The (org, product) row also carries the monthly quota
-    // counter (reset when the month rolls over).
-    const target = await productDiscoveryTarget(orgId, productId);
-    const profileAt = target
-      ? (selfProfileLastEditedAt(target.selfProfile) ?? target.selfUpdatedAt)
-      : null;
-    const month = currentMonthKey();
-    const existingRun = await db.query.discoveryRuns.findFirst({
-      where: and(eq(discoveryRuns.orgId, orgId), eq(discoveryRuns.productId, productId)),
-    });
-    const nextCount =
-      (existingRun?.detectCountMonth === month ? existingRun.detectCount : 0) + 1;
-    if (existingRun) {
-      await db
-        .update(discoveryRuns)
-        .set({
-          lastDiscoveryAt: new Date(),
-          basedOnProfileUpdateAt: profileAt,
-          detectCount: nextCount,
-          detectCountMonth: month,
-        })
-        .where(eq(discoveryRuns.id, existingRun.id));
-    } else {
-      await db.insert(discoveryRuns).values({
-        orgId,
-        productId,
-        lastDiscoveryAt: new Date(),
-        basedOnProfileUpdateAt: profileAt,
-        detectCount: nextCount,
-        detectCountMonth: month,
-      });
-    }
-
-    return c.json({ detected: result.detected });
+    return c.json({ detected: totalDetected });
   } catch (e) {
     lastDetectAt.delete(orgId);
     console.error("detect-candidates failed", { orgId, error: String(e) });

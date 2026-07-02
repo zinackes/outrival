@@ -81,21 +81,31 @@ export function deriveAnalysisStatus(
   const lastFailed = toMs(a.lastFailedAt);
   const started = toMs(a.scrapeStartedAt);
 
+  // A scrape is in flight only while its start stamp is fresh AND newer than the
+  // last terminal event — a success or a failure both close the in-flight window.
   const scrapingNow =
     started !== null &&
     started > Math.max(lastRun ?? 0, lastFailed ?? 0) &&
     nowMs - started < ANALYSIS_SCRAPE_TIMEOUT_MS;
+  if (scrapingNow) return { stage: "scraping", pending: true };
+
+  // The anchor's most recent terminal event is a failure: on a settled failure the
+  // worker stamps lastFailedAt, clears scrapeStartedAt and pushes nextRunAt hours
+  // out. This is the stuck state the user actually sees — without this branch a
+  // first scrape that timed out falls through to "queued" and spins forever with no
+  // visible way out. Flag it so the UI shows the actionable retry instead.
+  if (lastFailed !== null && lastFailed >= (lastRun ?? 0)) {
+    return { stage: "needs_attention", pending: false };
+  }
 
   if (lastRun !== null) {
-    // Scraped at least once; the summary is what we're waiting on now.
-    if (scrapingNow) return { stage: "scraping", pending: true };
+    // Scraped at least once, no failure since; the summary is what we await now.
     if (nowMs - lastRun <= ANALYSIS_SUMMARY_GRACE_MS) {
       return { stage: "summarizing", pending: true };
     }
     return { stage: "needs_attention", pending: false };
   }
 
-  // Never successfully scraped yet.
-  if (scrapingNow) return { stage: "scraping", pending: true };
+  // Seeded, first scrape hasn't started or finished yet.
   return { stage: "queued", pending: true };
 }

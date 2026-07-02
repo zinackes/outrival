@@ -39,21 +39,124 @@ function isJunkHost(host: string): boolean {
   return JUNK_HOST_SUFFIXES.some((s) => host === s || host.endsWith(`.${s}`));
 }
 
-const REACHABILITY_TIMEOUT_MS = 5000;
+// Social networks, company directories, review sites, app stores and press —
+// Exa's "company" category routinely returns these when a product is well-known
+// (e.g. the LinkedIn page of the user's OWN product, which then scores ~95% on
+// overlap because its snippet describes the product itself). None of them is a
+// competitor's actual product site, so they are never valid discovery results.
+const SOCIAL_AGGREGATOR_HOSTS = [
+  "linkedin.com",
+  "twitter.com",
+  "x.com",
+  "facebook.com",
+  "fb.com",
+  "instagram.com",
+  "youtube.com",
+  "youtu.be",
+  "tiktok.com",
+  "reddit.com",
+  "medium.com",
+  "substack.com",
+  "crunchbase.com",
+  "pitchbook.com",
+  "tracxn.com",
+  "owler.com",
+  "similarweb.com",
+  "g2.com",
+  "capterra.com",
+  "getapp.com",
+  "softwareadvice.com",
+  "trustpilot.com",
+  "trustradius.com",
+  "gartner.com",
+  "producthunt.com",
+  "wellfound.com",
+  "angel.co",
+  "glassdoor.com",
+  "indeed.com",
+  "wikipedia.org",
+  "github.com",
+  "gitlab.com",
+  "apps.apple.com",
+  "play.google.com",
+  "bloomberg.com",
+  "forbes.com",
+  "techcrunch.com",
+  "ycombinator.com",
+];
 
-// Exa surfaces defunct startups whose domain no longer resolves (expired,
-// parked, dead). A network-level failure (DNS miss, refused connection,
-// timeout) means the domain is dead → drop it. ANY HTTP response — even a
-// 403/503 from anti-bot — means the site is alive, so we keep it.
-async function isReachable(url: string): Promise<boolean> {
+function isSocialOrAggregatorHost(host: string): boolean {
+  return SOCIAL_AGGREGATOR_HOSTS.some((s) => host === s || host.endsWith(`.${s}`));
+}
+
+const REACHABILITY_TIMEOUT_MS = 5000;
+// Only the head + first scripts carry the parking signature (title/meta/provider
+// script host), so a slice is enough — no need to buffer a whole page.
+const PARKING_SCAN_CHARS = 30000;
+
+// Domain-marketplace / parking providers. A defunct startup's domain gets resold
+// and served by one of these — the page answers HTTP 200, so the reachability
+// ping alone treats it as alive. Matched anywhere in the (sliced) HTML because the
+// provider's script/CDN host is present even when the URL itself doesn't redirect.
+const PARKING_HOST_SIGNATURES = [
+  "domainmarket.com",
+  "sedoparking.com",
+  "afternic.com",
+  "dan.com",
+  "hugedomains.com",
+  "bodis.com",
+  "parkingcrew.net",
+  "above.com",
+  "undeveloped.com",
+  "sav.com",
+  "cashparking.com",
+  "namebright.com",
+  "fabulous.com",
+  "smartname.com",
+  "parklogic.com",
+];
+
+// For-sale / parking copy. Kept specific (always "domain …") so a legitimate SaaS
+// that happens to say "for sale" isn't dropped.
+const PARKING_TEXT_SIGNATURES = [
+  "this domain is for sale",
+  "this domain may be for sale",
+  "domain is for sale",
+  "domain available for sale",
+  "buy this domain",
+  "this domain is parked",
+  "domain parking",
+];
+
+// True when the fetched page is a parked / for-sale landing rather than a real
+// product. Pure over already-lowercased HTML + the final (post-redirect) host so
+// it's unit-testable without network. Exported for tests.
+export function isParkedPage(finalHost: string, htmlLower: string): boolean {
+  if (
+    PARKING_HOST_SIGNATURES.some(
+      (h) => finalHost === h || finalHost.endsWith(`.${h}`) || htmlLower.includes(h),
+    )
+  ) {
+    return true;
+  }
+  return PARKING_TEXT_SIGNATURES.some((s) => htmlLower.includes(s));
+}
+
+// Exa surfaces defunct startups whose domain no longer resolves (expired, dead)
+// or has been resold and now serves a parking / for-sale page. A network-level
+// failure (DNS miss, refused connection, timeout) means the domain is dead → drop
+// it. ANY HTTP response — even a 403/503 from anti-bot — means the site is alive,
+// UNLESS the body is a known domain-marketplace landing (backand.com et al.).
+async function isLiveProduct(url: string): Promise<boolean> {
   try {
     const res = await fetch(url, {
       method: "GET",
       redirect: "follow",
       signal: AbortSignal.timeout(REACHABILITY_TIMEOUT_MS),
     });
-    res.body?.cancel().catch(() => {});
-    return true;
+    const body = (await res.text()).slice(0, PARKING_SCAN_CHARS).toLowerCase();
+    const finalHost = extractHostname(res.url) ?? "";
+    return !isParkedPage(finalHost, body);
   } catch {
     return false;
   }
@@ -115,6 +218,9 @@ export async function findSimilarCompanies(
     if (!host) return false;
     // Clones/templates hosted on builders & preview platforms.
     if (isJunkHost(host)) return false;
+    // Social / directory / review / app-store / press pages — never a
+    // competitor's own site (this is what surfaced the product's own LinkedIn).
+    if (isSocialOrAggregatorHost(host)) return false;
     // The user's own company on another TLD (amazon.fr, amazon.de…) —
     // excludeDomains only filters the exact hostname.
     if (ownBrand !== null && extractBrand(r.url) === ownBrand) return false;
@@ -126,25 +232,12 @@ export async function findSimilarCompanies(
     return true;
   });
 
-  // Drop dead domains (parallel, network-error = dead). Junk hosts are already
-  // gone, so we only ping plausible candidates.
+  // Drop dead / parked domains (parallel; network-error = dead, for-sale landing =
+  // not a product). Junk hosts are already gone, so we only ping plausible candidates.
   const reachability = await Promise.all(
-    filtered.map(async (r) => ({ r, alive: await isReachable(r.url) })),
+    filtered.map(async (r) => ({ r, alive: await isLiveProduct(r.url) })),
   );
   const live = reachability.filter((x) => x.alive).map((x) => x.r);
-
-  // TEMP debug — à retirer
-  console.log("[discovery]", {
-    productUrl,
-    ownBrand,
-    rawCount: mapped.length,
-    afterFilter: filtered.length,
-    afterReachable: live.length,
-    dropped: mapped
-      .filter((r) => !filtered.includes(r))
-      .map((r) => r.url),
-    dead: reachability.filter((x) => !x.alive).map((x) => x.r.url),
-  });
 
   return live;
 }

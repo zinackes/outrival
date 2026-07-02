@@ -11,7 +11,11 @@ import { PLAN_LIMITS, type Plan } from "@outrival/shared";
 // last recorded_at in ai_visibility_results, not on a monitor row.
 export const scheduleAiVisibilityJob = schedules.task({
   id: "schedule-ai-visibility",
-  cron: "0 7 * * 1", // Mondays 07:00 UTC
+  // Cron-less: the Trigger.dev account is at its 10/10 declarative-schedule cap, so
+  // this ships dormant (on-demand only) — matching how v20260630.3 first deployed.
+  // It no-ops anyway until PERPLEXITY_API_KEY is set and orgs seed active prompts.
+  // Re-enable this cron once a slot frees (delete an unused schedule) or the plan
+  // is upgraded: cron: "0 7 * * 1" (Mondays 07:00 UTC).
   maxDuration: 120,
 
   async run() {

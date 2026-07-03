@@ -19,6 +19,7 @@ export type FailureReason =
   | "cloudflare_challenge"
   | "soft_block"
   | "needs_render" // HTML fetched but too little content → needs a browser (L0 → L1)
+  | "http_error" // 4xx/5xx (not 403/503) — dead/invalid target, no render will fix it
   | "network_error"
   | "timeout";
 
@@ -137,6 +138,14 @@ export async function capturePage(
     return { ok: false, statusCode, failureReason: "blocked_403", durationMs: Date.now() - startedAt };
   if (statusCode === 503)
     return { ok: false, statusCode, failureReason: "blocked_503", durationMs: Date.now() - startedAt };
+  // Any other non-2xx/3xx status is a dead/invalid target — reject it so an error
+  // page (a 404 "Not Found" shell) never lands as a successful snapshot. Needed at
+  // the browser tiers too: sources that floor the cascade at L1 (jobs `render`,
+  // homepage `screenshot`) skip L0's guard entirely, so without this a 404 careers /
+  // pricing page would be captured and extracted as empty. 403/503 above keep their
+  // block-specific reason (they escalate to a proxy); this one does not.
+  if (statusCode >= 400)
+    return { ok: false, statusCode, failureReason: "http_error", durationMs: Date.now() - startedAt };
 
   // Bounded settle for late content (F6) — only now that we know the page isn't a
   // hard block, so a 403/503 never pays the wait. No-op in legacy networkidle mode.
@@ -157,7 +166,10 @@ export async function capturePage(
   // innerText ignores overflow clipping, so animated counter widgets (odometer &
   // co.) leak their full 0-9 digit ribbons into the text — strip them here.
   const text = collapseAnimatedCounters(await page.evaluate(() => document.body?.innerText ?? ""));
-  if (text.length < 100 && statusCode === 200)
+  // Only 2xx/3xx reach here (4xx/5xx rejected above), so any near-empty body now is a
+  // soft-block returning a styled shell → escalate. (Previously gated on `=== 200`,
+  // which let a tiny non-200 body slip through as a success.)
+  if (text.length < 100 && statusCode < 400)
     return { ok: false, statusCode, failureReason: "soft_block", durationMs: Date.now() - startedAt };
 
   // Screenshot only when asked (homepage pHash). For every other source it would

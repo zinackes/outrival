@@ -5,9 +5,17 @@ import type {
   MonitorFrequency,
   DetectionConfig,
   AnalysisStatus,
+  PricingTier,
+  PricingPlanOverride,
+  ResolvedPricingTier,
 } from "@outrival/shared";
 
 export type { DetectionConfig, AnalysisStatus } from "@outrival/shared";
+export type {
+  PricingTier,
+  PricingPlanOverride,
+  ResolvedPricingTier,
+} from "@outrival/shared";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -208,6 +216,10 @@ export interface PricingHistoryPoint {
   has_trial?: boolean | null;
   trial_days?: number | null;
   trial_requires_card?: boolean | null;
+  // Permanent free plan advertised on the page (detect-free-plan). Distinct from
+  // has_trial. Catches a free tier the priced-card extractor missed (e.g. a "Free"
+  // comparison column with no price token). null on pre-detection (legacy) rows.
+  has_free_plan?: boolean | null;
   recorded_at: string;
 }
 
@@ -1780,6 +1792,19 @@ export const api = {
     request<{ scores: ReviewScorePoint[] }>(`/api/competitors/${id}/review-scores`),
   getCompetitorPricingHistory: (id: string) =>
     request<{ history: PricingHistoryPoint[] }>(`/api/competitors/${id}/pricing-history`),
+  // Per-plan pricing overlay: the latest detected batch, the user's overrides, and
+  // the resolved current plans (detected + overlay merged) with provenance/drift.
+  getCompetitorPricingPlans: (id: string) =>
+    request<{
+      detected: PricingTier[];
+      overrides: PricingPlanOverride[];
+      resolved: ResolvedPricingTier[];
+    }>(`/api/competitors/${id}/pricing-plans`),
+  putCompetitorPricingPlans: (id: string, plans: PricingPlanOverride[]) =>
+    request<{ ok: true; overrides: PricingPlanOverride[]; resolved: ResolvedPricingTier[] }>(
+      `/api/competitors/${id}/pricing-plans`,
+      { method: "PUT", body: JSON.stringify({ plans }) },
+    ),
   // Whether AI generations are currently failing (rate limits) — drives the
   // "AI is catching up" dashboard banner. `since` keys the current incident.
   getAiStatus: () => request<AiStatus>("/api/system/ai-status"),
@@ -2115,6 +2140,10 @@ export const api = {
     request<{ competitors: CompareColumn[] }>(
       `/api/compare?competitorIds=${ids.map(encodeURIComponent).join(",")}`,
     ),
+  // Per-competitor data-completeness score (0-6) → orders the compare picker so the
+  // richest, best-overlap competitors surface first. Map keyed by competitor id.
+  getCompareRanking: () =>
+    request<{ ranking: Record<string, number> }>("/api/compare/ranking"),
   getOnboardingChecklist: () =>
     request<OnboardingChecklist>("/api/onboarding/checklist"),
   listSavedViews: () => request<{ views: SavedView[] }>("/api/saved-views"),

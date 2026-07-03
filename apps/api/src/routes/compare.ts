@@ -1,7 +1,13 @@
 import { Hono } from "hono";
-import { and, eq, isNull, inArray, desc } from "drizzle-orm";
+import { and, eq, ne, isNull, inArray, desc } from "drizzle-orm";
 import { competitors, signals, techStackEntries } from "@outrival/db";
-import { type PlatformProfile, platformLabel } from "@outrival/shared";
+import {
+  type PlatformProfile,
+  platformLabel,
+  resolveCurrentPricing,
+  type PricingTier,
+  type CompetitorOverrides,
+} from "@outrival/shared";
 import { db } from "../lib/db";
 import { analyticsQuery, sql } from "../lib/analytics-safe";
 import { authMiddleware } from "../middleware/auth";
@@ -129,6 +135,7 @@ compareRouter.get("/", async (c) => {
       description: competitors.description,
       aiSummary: competitors.aiSummary,
       platformProfile: competitors.platformProfile,
+      overrides: competitors.overrides,
     })
     .from(competitors)
     .where(
@@ -170,7 +177,7 @@ compareRouter.get("/", async (c) => {
   // Analytics (best-effort): the latest batch per competitor, kept row-level (one
   // row per plan / department / review source) so the client can render either a
   // compact summary or the per-plan / per-department / sub-score detail.
-  const pricingPlans = await analyticsQuery<RawPricingPlan>(sql`
+  const detectedPlans = await analyticsQuery<RawPricingPlan>(sql`
     WITH latest AS (
       SELECT competitor_id, max(recorded_at) AS rid
       FROM pricing_history WHERE competitor_id IN (${idList}) GROUP BY competitor_id
@@ -181,6 +188,37 @@ compareRouter.get("/", async (c) => {
     JOIN latest l ON l.competitor_id = p.competitor_id AND p.recorded_at = l.rid
     ORDER BY p.competitor_id, p.price
   `);
+  // Apply each competitor's per-plan overlay so a hand-edited/added/hidden plan
+  // shows in the comparison grid too, not just its own pricing tab. Grouped by
+  // competitor, resolved against that competitor's overrides, re-flattened —
+  // iterating over all owned ids so a competitor with only manual plans still shows.
+  const overridesById = new Map(
+    owned.map((o) => [o.id, (o.overrides ?? null) as CompetitorOverrides | null]),
+  );
+  const plansByComp = new Map<string, RawPricingPlan[]>();
+  for (const p of detectedPlans) {
+    const arr = plansByComp.get(p.competitorId);
+    if (arr) arr.push(p);
+    else plansByComp.set(p.competitorId, [p]);
+  }
+  const pricingPlans: RawPricingPlan[] = [];
+  for (const cid of ids) {
+    const detectedTiers: PricingTier[] = (plansByComp.get(cid) ?? []).map((p) => ({
+      planName: p.planName,
+      price: p.price,
+      currency: p.currency ?? "USD",
+      billingPeriod: p.billingPeriod ?? "monthly",
+    }));
+    for (const r of resolveCurrentPricing(detectedTiers, overridesById.get(cid) ?? null)) {
+      pricingPlans.push({
+        competitorId: cid,
+        planName: r.planName,
+        price: r.price,
+        currency: r.currency,
+        billingPeriod: r.billingPeriod,
+      });
+    }
+  }
 
   const hiringDepts = await analyticsQuery<RawHiringDept>(sql`
     WITH latest AS (
@@ -310,4 +348,74 @@ compareRouter.get("/", async (c) => {
     });
 
   return c.json({ competitors: columns });
+});
+
+// Picker ranking — a per-competitor "data completeness" score (0-6) so the default
+// columns + the picker surface the competitors that actually have data to compare
+// side-by-side (and, on ties, the best overlap — applied client-side). The six
+// dimensions map 1:1 to the compare table rows: positioning, platform, tech,
+// pricing, hiring, reviews. Cheap existence checks; the analytics dimensions are
+// best-effort (missing → simply not counted, never a 500). Org-wide (the client
+// only reads ids in its scoped picker); short private cache like the matrix.
+compareRouter.get("/ranking", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  c.header("Cache-Control", "private, max-age=60");
+
+  const owned = await db
+    .select({
+      id: competitors.id,
+      aiSummary: competitors.aiSummary,
+      platformProfile: competitors.platformProfile,
+    })
+    .from(competitors)
+    .where(
+      and(
+        eq(competitors.orgId, orgId),
+        isNull(competitors.deletedAt),
+        ne(competitors.type, "self"),
+      ),
+    );
+  if (owned.length === 0) return c.json({ ranking: {} });
+
+  const ids = owned.map((o) => o.id);
+  const idList = sql.join(
+    ids.map((id) => sql`${id}`),
+    sql`, `,
+  );
+
+  const techRows = await db
+    .selectDistinct({ competitorId: techStackEntries.competitorId })
+    .from(techStackEntries)
+    .where(and(inArray(techStackEntries.competitorId, ids), eq(techStackEntries.isActive, true)));
+  const hasTech = new Set(techRows.map((t) => t.competitorId));
+
+  // Best-effort analytics existence sets (empty on error → that dimension is just
+  // not counted for anyone, so the ranking degrades to overlap order — never fails).
+  const [pricingIds, hiringIds, reviewIds] = await Promise.all([
+    analyticsQuery<{ competitorId: string }>(
+      sql`SELECT DISTINCT competitor_id AS "competitorId" FROM pricing_history WHERE competitor_id IN (${idList})`,
+    ),
+    analyticsQuery<{ competitorId: string }>(
+      sql`SELECT DISTINCT competitor_id AS "competitorId" FROM job_counts WHERE competitor_id IN (${idList})`,
+    ),
+    analyticsQuery<{ competitorId: string }>(
+      sql`SELECT DISTINCT competitor_id AS "competitorId" FROM review_scores WHERE competitor_id IN (${idList})`,
+    ),
+  ]);
+  const hasPricing = new Set(pricingIds.map((r) => r.competitorId));
+  const hasHiring = new Set(hiringIds.map((r) => r.competitorId));
+  const hasReviews = new Set(reviewIds.map((r) => r.competitorId));
+
+  const ranking: Record<string, number> = {};
+  for (const o of owned) {
+    ranking[o.id] =
+      (o.aiSummary ? 1 : 0) +
+      (o.platformProfile ? 1 : 0) +
+      (hasTech.has(o.id) ? 1 : 0) +
+      (hasPricing.has(o.id) ? 1 : 0) +
+      (hasHiring.has(o.id) ? 1 : 0) +
+      (hasReviews.has(o.id) ? 1 : 0);
+  }
+  return c.json({ ranking });
 });

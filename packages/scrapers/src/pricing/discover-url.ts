@@ -110,11 +110,20 @@ async function isReachable(url: string): Promise<boolean> {
   }
 }
 
-/** A trusted link goes through as-is; an ambiguous one must prove it has prices. */
+/**
+ * Resolve a homepage pricing link to a committed URL, or null. BOTH kinds are
+ * fetched once to confirm the target is actually live: a "trusted" link (text/href
+ * literally says "pricing") only has to return 2xx — a 404/dead page is dropped so
+ * the caller falls back instead of scraping an error shell (the apex-host `/pricing`
+ * 404 bug). An "ambiguous" tier-branded link (Pro/Gold/…) must additionally show
+ * real pricing signals. One GET covers both checks.
+ */
 async function resolveCandidate(match: LinkMatch | null): Promise<string | null> {
   if (!match) return null;
-  if (!match.needsVerify) return match.url;
-  return (await looksLikePricing(match.url)) ? match.url : null;
+  const html = await fetchHtml(match.url);
+  if (html === null) return null; // unreachable / non-2xx (e.g. 404) → drop
+  if (!match.needsVerify) return match.url; // trusted + live
+  return hasPricingSignals(html) ? match.url : null;
 }
 
 /** L0 GET → the page body when reachable (2xx), else null. */

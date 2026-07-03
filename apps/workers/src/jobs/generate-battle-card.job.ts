@@ -17,7 +17,12 @@ import {
   type SelfProfile,
 } from "@outrival/db";
 import { generateBattleCard, reviseBattleCard, AI_CONFIG } from "@outrival/ai";
-import { uploadToR2, getFromR2 } from "@outrival/shared";
+import {
+  uploadToR2,
+  getFromR2,
+  resolveCurrentPricing,
+  type CompetitorOverrides,
+} from "@outrival/shared";
 import { isCloudflareChallenge } from "@outrival/scrapers/block-detection";
 import { htmlToText } from "../lib/html-to-text";
 import {
@@ -27,6 +32,7 @@ import {
   getLatestReviewScore,
 } from "../lib/analytics";
 import { refreshCompetitorSummaryJob } from "./refresh-competitor-summary.job";
+import { notifyJobComplete } from "../lib/job-complete";
 
 // Pull the latest homepage capture as clean text so the card grounds feature
 // claims on what a product ACTUALLY says about itself — the biggest lever against
@@ -61,6 +67,10 @@ const InputSchema = z.object({
   // patch-28 — which product (SKU) this card defends. Optional: defaults to the
   // org's primary product (so single-product orgs and legacy callers are unchanged).
   productId: z.string().optional(),
+  // Set by the on-demand generate route → drop a durable "battle card ready"
+  // notification when the card lands, so a user who navigated away (the ~10-20s +
+  // PDF render outlasts a page visit) isn't left without any signal it finished.
+  notifyOnComplete: z.boolean().optional(),
 });
 
 export const generateBattleCardJob = task({
@@ -165,7 +175,21 @@ export const generateBattleCardJob = task({
     // Real, current facts for BOTH sides — the fix for stale parametric comparisons.
     // Each is best-effort (empty/null when never captured) so the model abstains on a
     // dimension rather than inventing it. The competitor's evidence:
-    const competitorPricingTiers = await getLatestPricingTiers(competitor.id);
+    // Apply the user's pricing overlay so the card reflects hand-edited/added/hidden
+    // plans, not just raw detection (identical to detection when no overrides exist).
+    // Quote-based tiers (price null) are dropped to keep the card's numeric shape.
+    const detectedPricingTiers = await getLatestPricingTiers(competitor.id);
+    const competitorPricingTiers = resolveCurrentPricing(
+      detectedPricingTiers,
+      (competitor.overrides ?? null) as CompetitorOverrides | null,
+    )
+      .filter((t): t is typeof t & { price: number } => t.price != null)
+      .map((t) => ({
+        planName: t.planName,
+        price: t.price,
+        currency: t.currency,
+        billingPeriod: t.billingPeriod,
+      }));
     const competitorTechRows = await db.query.techStackEntries.findMany({
       where: and(
         eq(techStackEntries.competitorId, competitor.id),
@@ -371,6 +395,20 @@ export const generateBattleCardJob = task({
       .update(battleCards)
       .set({ pdfR2Key: r2Key, updatedAt: new Date() })
       .where(eq(battleCards.id, battleCardId));
+
+    if (input.notifyOnComplete) {
+      // Deep-link to the competitor's Battle Card tab, scoped to this SKU when the
+      // request named one (the web product scope defaults to primary otherwise).
+      const linkUrl =
+        `/dashboard/competitors/${competitor.id}?tab=battlecard` +
+        (input.productId ? `&product=${input.productId}` : "");
+      await notifyJobComplete({
+        orgId: org.id,
+        title: `Battle card vs ${competitor.name} is ready`,
+        body: "Your AI battle card is ready to view and download.",
+        linkUrl,
+      });
+    }
 
     logger.log("Completed generate-battle-card", {
       battleCardId,

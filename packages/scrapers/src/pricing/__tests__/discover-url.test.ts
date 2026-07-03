@@ -67,13 +67,27 @@ test("hasHomepagePricingSection detects an embedded section", () => {
 });
 
 // ── discovery cascade with content verification ─────────────────────────────
-test("trusted nav link is returned without a content fetch", async () => {
-  const calls = mockFetch((_url, method) => (method === "HEAD" ? { ok: false } : { ok: false }));
+test("trusted nav link is committed once its target resolves (2xx)", async () => {
+  // HEAD probes all 404 (no convention route) → discovery falls to the nav link.
+  // The trusted link is now GET-verified for reachability before being committed.
+  const calls = mockFetch((url, method) => {
+    if (method === "HEAD") return { ok: false };
+    return { ok: url.endsWith("/pricing"), body: `<html><body><div id="root"></div></body></html>` };
+  });
   const html = `<nav><a href="/pricing">Pricing</a></nav>`;
   const got = await discoverPricingUrl(BASE, html);
   expect(got).toEqual({ url: "https://collx.app/pricing", source: "nav" });
-  // No GET was needed — the match was trusted.
-  expect(calls.some((c) => c.method === "GET")).toBe(false);
+  expect(calls.some((c) => c.method === "GET" && c.url.endsWith("/pricing"))).toBe(true);
+});
+
+test("trusted nav link whose target 404s is dropped (apex sub-path bug)", async () => {
+  // Regression guard: codebenders.ai 301s only its root to www and hard-404s
+  // /pricing. The nav link resolves to a dead URL — it must NOT be committed (or the
+  // scraper captures a 404 "Not Found" shell and pricing shows "unknown").
+  mockFetch((_url, method) => (method === "HEAD" ? { ok: false } : { ok: false }));
+  const html = `<nav><a href="/pricing">Pricing</a></nav>`;
+  const got = await discoverPricingUrl(BASE, html);
+  expect(got).toBeNull();
 });
 
 test("CollX case: tier link is verified by content and accepted", async () => {

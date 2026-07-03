@@ -30,6 +30,20 @@ export async function scrapeDirect(url: string): Promise<ScrapeResult> {
         failureReason: "cloudflare_challenge",
         durationMs: Date.now() - startedAt,
       };
+    // Any other non-2xx/3xx (404 not-found, 401/451 gated, 410 gone, 429 rate-limit,
+    // 5xx) is a dead or invalid target, NOT a SPA that needs rendering. Fail fast and
+    // do NOT escalate: burning a browser/proxy on a 404 won't make the page exist,
+    // and — the bug this closes — a tiny "Not Found" body would otherwise fall through
+    // to the `needs_render` branch, get browser-rendered, and land as a *successful*
+    // snapshot of an error page (→ empty pricing/jobs extraction shown as "unknown").
+    // Real anti-bot blocks (403/503/challenge) are handled above and keep escalating.
+    if (res.status >= 400)
+      return {
+        ok: false,
+        statusCode: res.status,
+        failureReason: "http_error",
+        durationMs: Date.now() - startedAt,
+      };
 
     // "Enough content" heuristic: otherwise it's probably a SPA shell → escalate
     // to L1 (browser) rather than to a proxy. Strip <script>/<style>/comment

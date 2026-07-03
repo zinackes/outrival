@@ -241,6 +241,9 @@ battleCardsRouter.post("/:id/battle-card/generate", aiIntensiveRateLimit, async 
     competitorId: competitor.id,
     orgId,
     productId: product?.id,
+    // User-initiated → drop a durable "ready" notification in the bell when the job
+    // lands, covering the case where they navigate away before it finishes.
+    notifyOnComplete: true,
   });
 
   void captureServerEvent(user.id, "battle_card_generated", {

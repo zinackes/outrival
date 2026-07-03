@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { DollarSign, Activity, ArrowUp, ArrowDown, Percent, Clock } from "lucide-react";
+import { Activity, ArrowUp, ArrowDown, Percent, Clock, Gift } from "lucide-react";
 import {
   api,
   type Competitor,
@@ -16,6 +16,7 @@ import { eyebrowClass } from "@/components/outrival/eyebrow";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
 import { CompetitorPricingCard } from "@/components/outrival/competitor-pricing-card";
 import { buildPricingSeries } from "./charts";
+import { PricingPlansEditor } from "./pricing-plans-editor";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatTierPrice } from "./helpers";
 import {
@@ -62,14 +63,30 @@ export function PricingTab({
     placeholderData: keepPreviousData,
     retry: false,
   });
+  // Resolved current plans (detected batch + the user's per-plan overlay). Shared
+  // key with the PricingPlansEditor (one fetch) so a manual edit flows into the
+  // "you vs them" comparison too, not just the plan list.
+  const pricingPlansQuery = useQuery({
+    queryKey: ["competitor", competitorId, "pricingPlans"],
+    queryFn: () => api.getCompetitorPricingPlans(competitorId).then((r) => r.resolved),
+    placeholderData: keepPreviousData,
+  });
 
   const history = historyQuery.data ?? null;
   const myProduct = myProductQuery.data ?? null;
-  // When our own product has no captured pricing tiers, the "you vs them"
-  // comparison can't list the competitor's prices (it falls back to an
-  // "add your plans" nudge), so the competitor's own plan list must stay
-  // visible — see the no-trend branch below.
-  const ourHasTiers = (myProduct?.pricing.tiers.length ?? 0) > 0;
+  const resolvedTiers = pricingPlansQuery.data ?? null;
+  // The competitor's plans in the comparison's PricingHistoryPoint shape, sourced
+  // from the overlay when loaded (falls back to the raw latest batch while loading).
+  const theirTiers = (latest: PricingHistoryPoint[]): PricingHistoryPoint[] =>
+    resolvedTiers
+      ? resolvedTiers.map((r) => ({
+          plan_name: r.planName,
+          price: r.price,
+          currency: r.currency,
+          billing_period: r.billingPeriod,
+          recorded_at: "",
+        }))
+      : latest;
 
   const series = useMemo(
     () => (history ? buildPricingSeries(history) : null),
@@ -101,6 +118,8 @@ export function PricingTab({
               summaryUpdatedAt={pricingMonitor?.aiSummaryUpdatedAt}
             />
           </TabSection>
+          {/* Reachable with nothing detected: gated/demo pricing → add plans by hand. */}
+          <PricingPlansEditor competitorId={competitorId} history={history} onSaved={onRefresh} />
         </TabCard>
         <MonitorEmptyState
           source="pricing"
@@ -124,9 +143,7 @@ export function PricingTab({
     (a, b) => new Date(a.recorded_at).getTime() - new Date(b.recorded_at).getTime(),
   );
   const latestByPlan = new Map<string, PricingHistoryPoint>();
-  const firstByPlan = new Map<string, PricingHistoryPoint>();
   for (const p of sorted) latestByPlan.set(p.plan_name, p);
-  for (const p of sorted) if (!firstByPlan.has(p.plan_name)) firstByPlan.set(p.plan_name, p);
 
   // Free trial (patch-33) is a page-level fact stamped identically onto the latest
   // batch's rows — read it off the most recent row. null has_trial = pre-detection
@@ -141,73 +158,19 @@ export function PricingTab({
         }
       : null;
 
+  // Permanent free plan (detect-free-plan) — a page-level fact on the latest batch.
+  // The extractor only captures priced cards, so a free tier written on the page but
+  // not priced (e.g. a "Free" comparison column) never lands as a $0 plan row. Show
+  // the badge only when we DIDN'T already capture a $0 tier, so it fills the gap
+  // instead of restating a "Free — 0" row the list already shows.
+  const hasCapturedFreeTier = Array.from(latestByPlan.values()).some((p) => p.price === 0);
+  const showFreePlanBadge = latestRow?.has_free_plan === true && !hasCapturedFreeTier;
+
   // A single capture is a one-dot line — not worth a 260px chart. The per-plan
   // list also has no deltas yet on first capture, so it just restates current
   // prices; we keep it full-width then (it's the only structured tier view),
   // unless a "you vs them" comparison already shows those same prices above.
   const hasTrend = series.points.length >= 2;
-  const planList = (
-    <TabSection
-      title={hasTrend ? "Plan changes" : "Current plans"}
-      icon={DollarSign}
-      className={hasTrend ? "border-t border-border lg:border-t-0 lg:border-l" : undefined}
-    >
-      <ul className="flex flex-col divide-y divide-border">
-        {plans.map((plan) => {
-          const latest = latestByPlan.get(plan)!;
-          const first = firstByPlan.get(plan)!;
-          const lp = latest.price;
-          const fp = first.price;
-          // A delta needs a numeric price at both ends; quote-based tiers have none.
-          const delta = lp != null && fp != null ? lp - fp : 0;
-          const pct = lp != null && fp != null && fp > 0 ? (delta / fp) * 100 : 0;
-          return (
-            <li
-              key={plan}
-              className="flex items-baseline justify-between gap-3 py-2.5 first:pt-0 last:pb-0"
-            >
-              <div className="flex items-baseline gap-2 min-w-0">
-                {/* The plan name is the competitor's real product/brand name (often
-                    non-English) — render it as content in its original case, not as an
-                    uppercased eyebrow, so a name reads as a name, not scaffolding. */}
-                <span className="min-w-0 truncate text-sm font-medium text-foreground">
-                  {plan}
-                </span>
-                {lp != null ? (
-                  <span className="shrink-0 text-sm font-semibold tabular-nums">
-                    {lp} {latest.currency}
-                    <span className="text-xs font-normal text-muted-foreground">
-                      {" "}
-                      / {latest.billing_period.replace(/_/g, "-")}
-                    </span>
-                  </span>
-                ) : (
-                  <span className="shrink-0 text-sm font-medium text-muted-foreground">
-                    Custom
-                  </span>
-                )}
-              </div>
-              {delta !== 0 && (
-                <span
-                  className={cn(
-                    "inline-flex items-center gap-0.5 shrink-0 text-xs font-mono tabular-nums",
-                    delta > 0 ? "text-critical" : "text-positive",
-                  )}
-                >
-                  {delta > 0 ? (
-                    <ArrowUp className="size-3" />
-                  ) : (
-                    <ArrowDown className="size-3" />
-                  )}
-                  {Math.abs(delta).toFixed(0)} {latest.currency} ({pct.toFixed(0)}%)
-                </span>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-    </TabSection>
-  );
 
   return (
     <TabCard>
@@ -220,9 +183,10 @@ export function PricingTab({
           summary={pricingMonitor?.aiSummary}
           summaryUpdatedAt={pricingMonitor?.aiSummaryUpdatedAt}
         />
-        {latestTrial?.hasTrial && (
-          <div className="mt-3">
-            <TrialBadge trial={latestTrial} />
+        {(showFreePlanBadge || latestTrial?.hasTrial) && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {showFreePlanBadge && <FreePlanBadge />}
+            {latestTrial?.hasTrial && <TrialBadge trial={latestTrial} />}
           </div>
         )}
       </TabSection>
@@ -232,27 +196,41 @@ export function PricingTab({
             competitorName={competitor.name}
             competitorPricingStatus={competitor.pricingStatus}
             ours={myProduct.pricing.tiers}
-            theirs={Array.from(latestByPlan.values())}
+            theirs={theirTiers(Array.from(latestByPlan.values()))}
           />
         </TabSection>
       )}
       {hasTrend ? (
-        // Real history: chart + per-plan deltas side by side on lg — both
-        // describe the competitor's price trend, so pairing the wide chart with
-        // the narrow list halves the height vs stacking two full-width blocks.
+        // Real history: chart (observed price trend) beside the editable current
+        // plans — pairing the wide chart with the narrow list halves the height vs
+        // stacking two full-width blocks.
         <div className="grid lg:grid-cols-2">
           <TabSection title="Price over time" icon={Activity}>
             <MultiLineChart data={series.points} seriesKeys={numericPlans} height={260} />
           </TabSection>
-          {planList}
+          <PricingPlansEditor
+            competitorId={competitorId}
+            history={history}
+            onSaved={onRefresh}
+            className="border-t border-border lg:border-t-0 lg:border-l"
+          />
         </div>
       ) : (
-        // First capture, no trend yet: skip the one-dot chart. Show the bare tier
-        // list unless the comparison above already lists those prices — which it
-        // only does when we have our own tiers to compare against.
-        (!myProduct || !ourHasTiers) && planList
+        <PricingPlansEditor competitorId={competitorId} history={history} onSaved={onRefresh} />
       )}
     </TabCard>
+  );
+}
+
+// Free-plan pill (detect-free-plan). Surfaces a permanent free tier the priced-card
+// extractor didn't capture (e.g. a "Free" comparison column with no price token), so
+// the tab stops implying "no free plan". Gated on the detected fact upstream.
+function FreePlanBadge() {
+  return (
+    <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-positive/30 bg-positive/10 px-2.5 py-1 text-meta font-medium text-positive">
+      <Gift className="size-3.5" />
+      Free plan
+    </span>
   );
 }
 
@@ -499,9 +477,14 @@ function PricingComparison({
       } theirs (${formatTierPrice(theirEntry)}${theirConv ? ` ${theirConv}` : ""}).`,
     );
   }
-  if (theirEntry.price === 0 && ourEntry.price != null && ourEntry.price > 0) {
+  // Their free tier = a captured $0 plan OR a free plan detected on the page but not
+  // priced as a card (detect-free-plan) — otherwise a "Free" comparison column the
+  // extractor skipped would make us wrongly claim they have no free tier.
+  const theyHaveFree = theirEntry.price === 0 || theirs.some((t) => t.has_free_plan === true);
+  const weHaveFree = ourEntry.price === 0;
+  if (theyHaveFree && !weHaveFree) {
     lines.push(`${competitorName} offers a free tier — you don't.`);
-  } else if (ourEntry.price === 0 && theirEntry.price != null && theirEntry.price > 0) {
+  } else if (weHaveFree && !theyHaveFree) {
     lines.push(`You offer a free tier — ${competitorName} doesn't.`);
   }
   if (

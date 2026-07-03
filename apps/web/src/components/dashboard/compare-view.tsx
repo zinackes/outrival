@@ -21,7 +21,7 @@ import {
   type CompareColumn,
   type ProductSummary,
 } from "@/lib/api";
-import { productsListQuery, competitorsQuery } from "@/lib/queries";
+import { productsListQuery, competitorsQuery, compareRankingQuery } from "@/lib/queries";
 import { formatDate } from "@/lib/format-date";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -626,18 +626,34 @@ const EXPORT_STORAGE = "compare:export";
 // Derive the entity pick-list + the default "you vs them" selection from the
 // raw products/competitors. Shared by the server-seeded initial state and the
 // client fetch so both produce the exact same list.
+//
+// `dataScore` (competitor id → 0-6 completeness, from /api/compare/ranking) orders
+// the competitors so the ones actually worth comparing win the default columns and
+// sit at the top of the picker: most data first, best overlap on ties. Absent/empty
+// (analytics best-effort) → falls back to overlap order, then the input order
+// (most recently added first).
 function buildPickList(
   products: ProductSummary[],
   competitors: Competitor[],
+  dataScore: Record<string, number>,
 ): { entities: PickEntity[]; selected: string[] } {
   const you: PickEntity[] = products
     .filter((pr) => pr.status !== "archived")
     .map((pr): PickEntity => ({ id: pr.selfCompetitorId, name: pr.name, kind: "you" }));
-  const comps: PickEntity[] = competitors.map(
+  // Stable sort: ties keep the incoming createdAt-desc order.
+  const ranked = [...competitors].sort((a, b) => {
+    const sa = dataScore[a.id] ?? 0;
+    const sb = dataScore[b.id] ?? 0;
+    if (sa !== sb) return sb - sa;
+    const oa = a.overlapScore ?? -1;
+    const ob = b.overlapScore ?? -1;
+    return ob - oa;
+  });
+  const comps: PickEntity[] = ranked.map(
     (co): PickEntity => ({ id: co.id, name: co.name, kind: "competitor" }),
   );
   // Fill the table by default: your first product pinned, then as many
-  // competitors as fit up to MAX (list order = most recently added first).
+  // competitors as fit up to MAX (richest + best-overlap first).
   const seed = you.length
     ? [...you.slice(0, 1), ...comps.slice(0, MAX - 1)]
     : comps.slice(0, MAX);
@@ -653,19 +669,24 @@ export function CompareView() {
   const productId = useProductScope() ?? undefined;
   const productsQ = useQuery(productsListQuery());
   const competitorsQ = useQuery(competitorsQuery(productId));
+  // Data-completeness ranking (best-effort) that orders the picker + default columns.
+  const rankingQ = useQuery(compareRankingQuery());
   const [entities, setEntities] = useState<PickEntity[] | null>(() =>
     productsQ.data && competitorsQ.data
-      ? buildPickList(productsQ.data, competitorsQ.data).entities
+      ? buildPickList(productsQ.data, competitorsQ.data, rankingQ.data ?? {}).entities
       : null,
   );
   const [selected, setSelected] = useState<string[]>(() =>
     productsQ.data && competitorsQ.data
-      ? buildPickList(productsQ.data, competitorsQ.data).selected
+      ? buildPickList(productsQ.data, competitorsQ.data, rankingQ.data ?? {}).selected
       : [],
   );
   // True once the picker has been built, so a later refetch can't clobber the
-  // user's live selection. Seeded → already built on the first render.
-  const initializedRef = useRef(productsQ.data != null && competitorsQ.data != null);
+  // user's live selection. Seeded → already built on the first render (ranking is
+  // seeded alongside, so the first paint is already ordered).
+  const initializedRef = useRef(
+    productsQ.data != null && competitorsQ.data != null && !rankingQ.isLoading,
+  );
   const [matrix, setMatrix] = useState<CompareColumn[] | null>(null);
   // A refetch keeps the prior matrix on screen (no full-table blank); this just
   // drives per-column shimmer for ids not yet present in `matrix`. Seeded true
@@ -735,14 +756,21 @@ export function CompareView() {
   }, [exportFormat, exportVisibleOnly, exportIncludeYou]);
 
   // Build the picker once the inputs are available (covers the non-seeded path);
-  // guarded so a later refetch can't clobber the user's live selection.
+  // guarded so a later refetch can't clobber the user's live selection. Wait for
+  // the ranking to settle (success OR error) so the default columns are data-ranked;
+  // it's best-effort, so a failure (isLoading→false, no data) still builds.
   useEffect(() => {
-    if (initializedRef.current || !productsQ.data || !competitorsQ.data) return;
+    if (initializedRef.current || !productsQ.data || !competitorsQ.data || rankingQ.isLoading)
+      return;
     initializedRef.current = true;
-    const { entities, selected } = buildPickList(productsQ.data, competitorsQ.data);
+    const { entities, selected } = buildPickList(
+      productsQ.data,
+      competitorsQ.data,
+      rankingQ.data ?? {},
+    );
     setEntities(entities);
     setSelected(selected);
-  }, [productsQ.data, competitorsQ.data]);
+  }, [productsQ.data, competitorsQ.data, rankingQ.isLoading, rankingQ.data]);
 
   useEffect(() => {
     if (selected.length === 0) {

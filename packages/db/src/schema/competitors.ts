@@ -1,5 +1,5 @@
 import { pgTable, text, timestamp, real, jsonb, boolean, index } from "drizzle-orm/pg-core";
-import type { PlatformProfile } from "@outrival/shared";
+import type { PlatformProfile, CompetitorOverrides } from "@outrival/shared";
 import { organizations } from "./organizations";
 
 // One editable profile field on the self-competitor (patch-12). Tracks whether the
@@ -83,6 +83,12 @@ export const competitors = pgTable("competitors", {
   pricingNote: text("pricing_note"),
   // When the user fills pricing in manually, scrapes must not overwrite it.
   pricingManualOverride: boolean("pricing_manual_override").notNull().default(false),
+  // User content overlay (per-plan pricing lock + future analyst edits). Merged
+  // with the latest detected pricing_history batch at read time via
+  // resolveCurrentPricing — kept OFF the append-only log so charts stay observed-only.
+  // Null = no manual edits (display = pure detection). Applies to any competitor,
+  // unlike selfProfile (self only).
+  overrides: jsonb("overrides").$type<CompetitorOverrides>(),
   // User froze monitoring for this competitor (kebab → Pause). The scheduler skips
   // every monitor of a paused competitor (schedule-scraping) without touching the
   // individual monitor.isActive flags, so resuming restores their exact prior state.

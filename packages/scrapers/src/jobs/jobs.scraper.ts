@@ -9,6 +9,16 @@ import {
   type AtsJob,
 } from "./ats";
 import { findCareersLink } from "./careers-link";
+import { hasCareersSignals } from "./signals";
+
+// A page is only trusted as "the careers page" when it actually reads like a jobs
+// listing OR links/embeds an ATS board — not merely because the path returned HTTP
+// 200. On a client-routed SPA every path 200s with the app shell, so without this a
+// non-existent `/careers` would lock in and get LLM-extracted for jobs that aren't
+// there. Fail-open on the ATS side: detectAtsBoard reads the same HTML cheaply.
+function looksLikeCareers(res: ScrapeOutcome): boolean {
+  return hasCareersSignals(res.html) || detectAtsBoard(res.html) !== null;
+}
 
 // patch-31 — synthesise a jobs snapshot straight from the ATS API result, no
 // browser scrape. Deterministic (appendAtsJobsToHtml sorts) so the content hash is
@@ -123,7 +133,12 @@ export async function scrape(
     rendered = renderJobs;
   } else {
     try {
-      result = await scrapeFirstSuccess(url, CAREERS_PATHS, (u) => scrapePage(u, probeOpts));
+      result = await scrapeFirstSuccess(
+        url,
+        CAREERS_PATHS,
+        (u) => scrapePage(u, probeOpts),
+        looksLikeCareers,
+      );
       onCareersPage = true;
     } catch {
       // No same-host careers page — scrape the homepage anyway so we can still
@@ -198,7 +213,9 @@ export async function scrape(
       const followSameHost = !onCareersPage && !isSameResource(careersLink, finalUrl);
       if (crossHost || followSameHost) {
         const hop = await renderPage(careersLink);
-        if (hop.text.length > MIN_CAREERS_HOP_TEXT) {
+        // Keep the hop only when it's a real listing, not just a page that rendered
+        // (a mis-followed link → SPA home, or a "why work here" blurb with no roles).
+        if (hop.text.length > MIN_CAREERS_HOP_TEXT && looksLikeCareers(hop)) {
           return { ...hop, metadata: { ...hop.metadata, careersFollowed: careersLink } };
         }
       }

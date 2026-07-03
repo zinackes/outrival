@@ -22,6 +22,16 @@ const SOURCE_LABELS: Record<string, string> = {
   tech_stack: "Tech stack",
   // Company-level events from the Google News RSS anchor (funding/M&A/press).
   news: "News",
+  // patch-32: additional review platforms + Reddit mentions (enable-on-demand).
+  trustpilot_reviews: "Trustpilot reviews",
+  trustradius_reviews: "TrustRadius reviews",
+  gartner_reviews: "Gartner reviews",
+  playstore_reviews: "Play Store reviews",
+  reddit: "Reddit mentions",
+  // patch-31: competitor status page (incidents / uptime).
+  status: "Status page",
+  // patch-32: internal sitemap-diff anchor (new/removed pages).
+  sitemap: "Sitemap",
 };
 
 export function sourceLabel(sourceType: string | null | undefined): string {

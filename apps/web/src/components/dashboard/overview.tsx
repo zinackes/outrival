@@ -20,6 +20,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { PageHead } from "./page-head";
 import { useSetAskContext } from "./ask-context";
 import { SectionHead } from "./section-head";
+import { RecentBattleCards } from "./recent-battle-cards";
 import { Kpi } from "./kpi";
 import { SeverityBadge } from "./severity-pill";
 import { CatPill } from "./cat-pill";
@@ -426,6 +427,11 @@ export function OverviewView() {
           </div>
         </TooltipProvider>
       </section>
+
+      {/* Recent battle cards — discreet surface, self-hides when the org has no
+          cards. Restores the pre-landing-overhaul section: with signals present the
+          overview otherwise reads as just KPIs + one list. */}
+      {!sample && <RecentBattleCards />}
 
         </>
       )}

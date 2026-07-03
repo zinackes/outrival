@@ -57,11 +57,11 @@ type ProfileTextKey = "category" | "audience" | "whatItDoes" | "valueProp" | "pr
 // open-source product legitimately has no pricing, and the AI leaves it blank.
 const REQUIRED_FIELDS: ProfileTextKey[] = ["category", "audience", "valueProp"];
 
-const STAGES: { key: ProjectStage; label: string; icon: typeof Globe }[] = [
-  { key: "idea", label: "Idea", icon: Lightbulb },
-  { key: "document", label: "Pitch / brief", icon: FileText },
-  { key: "developing", label: "Building", icon: GitBranch },
-  { key: "live", label: "Live", icon: Globe },
+const STAGES: { key: ProjectStage; label: string; hint: string; icon: typeof Globe }[] = [
+  { key: "idea", label: "Idea", hint: "Describe it in a few words — no site yet.", icon: Lightbulb },
+  { key: "document", label: "Pitch / brief", hint: "A spec or deck — read in memory, never stored.", icon: FileText },
+  { key: "developing", label: "Building", hint: "A public GitHub repo we can read for a profile.", icon: GitBranch },
+  { key: "live", label: "Live", hint: "It has a public website — we analyze and monitor it.", icon: Globe },
 ];
 
 const PROFILE_FIELDS: Array<{
@@ -321,10 +321,9 @@ export function UpdateProfileDialog({
             <Loader2 size={16} className="animate-spin" />
           </div>
         ) : step === "stage" ? (
-          /* Step 1 — pick the product's lifecycle stage */
+          /* Step 1 — pick the product's lifecycle stage (mirrors the add-product wizard) */
           <div className="flex flex-col gap-2">
-            <Label className="text-xs font-medium text-muted-foreground">Stage</Label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+            <div className="grid gap-2 sm:grid-cols-2">
               {STAGES.map((s) => {
                 const Icon = s.icon;
                 const active = stage === s.key;
@@ -335,14 +334,22 @@ export function UpdateProfileDialog({
                     onClick={() => setStage(s.key)}
                     aria-pressed={active}
                     className={cn(
-                      "flex flex-col items-center gap-1 rounded-md border px-2 py-2 text-meta transition-all",
+                      "group flex flex-col gap-1.5 rounded-lg border p-4 text-left transition-colors",
                       active
-                        ? "border-primary bg-primary/10 ring-1 ring-primary/40 text-foreground"
-                        : "border-border hover:border-border-strong hover:bg-surface-2 text-muted-foreground",
+                        ? "border-primary bg-primary/[0.06] ring-1 ring-primary/40"
+                        : "border-border bg-card hover:border-primary/50 hover:bg-accent",
                     )}
                   >
-                    <Icon size={15} className={active ? "text-primary" : undefined} />
-                    {s.label}
+                    <Icon
+                      size={18}
+                      className={cn(
+                        active
+                          ? "text-primary"
+                          : "text-muted-foreground group-hover:text-foreground",
+                      )}
+                    />
+                    <span className="font-medium">{s.label}</span>
+                    <span className="text-sm text-muted-foreground">{s.hint}</span>
                   </button>
                 );
               })}

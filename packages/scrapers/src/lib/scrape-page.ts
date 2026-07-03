@@ -12,6 +12,8 @@ import { getProxyConfig } from "./proxy";
 // network error is NOT here: it's a transient/site problem, not a "this level is
 // too weak" signal, so we let Trigger.dev retry the same level instead of burning
 // proxy budget. needs_render means "L0 got HTML but no content" → go to L1.
+// `http_error` (4xx/5xx that isn't a 403/503 block) is deliberately absent: a 404
+// won't become a 200 at a higher tier, so the cascade fails fast instead.
 const ESCALATING_FAILURES = new Set<string>([
   "blocked_403",
   "blocked_503",

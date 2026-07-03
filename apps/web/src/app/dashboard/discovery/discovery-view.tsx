@@ -493,8 +493,8 @@ export function DiscoveryView() {
             const overlap =
               c.overlapScore != null ? Math.round(c.overlapScore) : null;
             return (
-              <motion.div key={c.id} {...feedItemMotion}>
-              <Card>
+              <motion.div key={c.id} className="h-full" {...feedItemMotion}>
+              <Card className="h-full">
                 <div className="p-5 flex flex-col flex-1">
                   <div className="flex items-center gap-2.5 mb-3.5">
                     <CompAvatar name={name} url={c.url} />

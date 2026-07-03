@@ -1,6 +1,11 @@
 import { and, desc, eq, gte, inArray, isNull } from "drizzle-orm";
 import { competitors, signals, reviews, techStackEntries } from "@outrival/db";
 import type { AskToolSpec } from "@outrival/ai";
+import {
+  resolveCurrentPricing,
+  type PricingTier,
+  type CompetitorOverrides,
+} from "@outrival/shared";
 import { db } from "../db";
 import { analyticsQuery, sql } from "../analytics-safe";
 
@@ -37,7 +42,7 @@ async function ownedCompetitor(orgId: string, competitorId?: string) {
       eq(competitors.orgId, orgId),
       isNull(competitors.deletedAt),
     ),
-    columns: { id: true, name: true, url: true },
+    columns: { id: true, name: true, url: true, overrides: true },
   });
 }
 
@@ -161,13 +166,30 @@ const getPricingHistory: AskTool = {
     if (!owned) return { plans: [], changes: [] };
     const id = owned.id;
 
-    const plans = await analyticsQuery<RawPricingPlan>(sql`
+    const detected = await analyticsQuery<RawPricingPlan>(sql`
       WITH latest AS (SELECT max(recorded_at) AS rid FROM pricing_history WHERE competitor_id = ${id})
       SELECT plan_name AS "planName", price, currency, billing_period AS "billingPeriod"
       FROM pricing_history, latest
       WHERE competitor_id = ${id} AND recorded_at = latest.rid
       ORDER BY price
     `);
+    // Apply the user's per-plan overlay so Ask grounds on the plans the user sees
+    // (hand-edited/added/hidden), not just raw detection.
+    const detectedTiers: PricingTier[] = detected.map((p) => ({
+      planName: p.planName,
+      price: p.price,
+      currency: p.currency ?? "USD",
+      billingPeriod: p.billingPeriod ?? "monthly",
+    }));
+    const plans = resolveCurrentPricing(
+      detectedTiers,
+      (owned.overrides ?? null) as CompetitorOverrides | null,
+    ).map((r) => ({
+      planName: r.planName,
+      price: r.price,
+      currency: r.currency,
+      billingPeriod: r.billingPeriod,
+    }));
     const changes = await analyticsQuery<RawPricingChange>(sql`
       WITH ranked AS (
         SELECT plan_name, price, billing_period, recorded_at,

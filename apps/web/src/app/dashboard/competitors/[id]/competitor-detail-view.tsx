@@ -96,6 +96,7 @@ import { Eyebrow } from "@/components/outrival/eyebrow";
 import { CompetitorColorPicker } from "@/components/dashboard/competitor-color-picker";
 import { competitorNameColor } from "@/lib/competitor-color";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
+import { Reveal } from "@/components/outrival/reveal";
 import { ListError } from "@/components/outrival/list-error";
 import { toastApiError, toastRescanLimit } from "@/lib/error-helpers";
 import { Button } from "@/components/ui/button";
@@ -225,11 +226,15 @@ const EXTRACTION_BACKED_SOURCES = new Set<string>([
   "reddit",
 ]);
 
-// Delays (ms after the scrape finishes) at which we re-invalidate the per-tab
-// queries to pick up the downstream extraction result. Spread out so a slow AI
-// extraction (provider failover, queue) is still caught, and the last one clears
-// the 60s staleTime window so a tab switch after it can't serve stale cache.
-const EXTRACTION_REFETCH_DELAYS_MS = [4000, 12000, 25000, 45000, 70000];
+// Extraction-backed tab data (jobs/pricing/reviews) is written by a downstream job
+// that finishes AFTER the scrape's lastRunAt moves, and stamps the source monitor's
+// aiSummaryUpdatedAt when it lands. Rather than guess the delay with fixed timers
+// (the old scheme gave up at 70s and left slow extractions stuck until a hard
+// refresh), we poll the detail until that timestamp advances past the pre-scrape
+// baseline, then invalidate the tab query — bounded by a hard deadline for the rare
+// case where extraction never stamps (no data, or the summary AI failed).
+const EXTRACTION_WATCH_INTERVAL_MS = 5000;
+const EXTRACTION_WATCH_TIMEOUT_MS = 210_000;
 
 // AI-summary generation is a fire-and-trigger job (refresh-competitor-summary) that
 // can take well beyond a single tick — queued behind other summaries (concurrency 1),
@@ -291,10 +296,14 @@ export function CompetitorDetailView({ id }: { id: string }) {
   const [deleting, setDeleting] = useState(false);
   const [paywall, setPaywall] = useState<PaywallReason | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Pending re-invalidation timers for downstream extraction results (pricing/
-  // jobs/reviews land after the scrape's lastRunAt moves). Tracked so we can clear
-  // them on unmount / competitor switch — they target this id's queries.
-  const extractionTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+  // Watches downstream extraction results (pricing/jobs/reviews land after the
+  // scrape's lastRunAt moves). Holds the poll interval + the monitors we're waiting
+  // on (baseline aiSummaryUpdatedAt at scrape-finish + a hard deadline). Cleared on
+  // unmount / competitor switch — it targets this id's queries.
+  const extractionWatchRef = useRef<{
+    interval: ReturnType<typeof setInterval> | null;
+    monitors: Map<string, { baseline: string | null; deadline: number }>;
+  }>({ interval: null, monitors: new Map() });
   const scrapingStartRef = useRef<
     Map<
       string,
@@ -303,6 +312,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
         lastRunAt: string | null;
         lastFailedAt: string | null;
         lastChangedAt: string | null;
+        aiSummaryUpdatedAt: string | null;
       }
     >
   >(new Map());
@@ -396,6 +406,46 @@ export function CompetitorDetailView({ id }: { id: string }) {
     return r.data ?? null;
   }
 
+  // Broad-invalidate every per-tab query for this competitor (not the heavy detail,
+  // refreshed separately by the pollers) so whichever tab is active refetches.
+  function invalidateExtractionTabs() {
+    void queryClient.invalidateQueries({
+      queryKey: ["competitor", id],
+      predicate: (q) => q.queryKey[2] !== "detail",
+    });
+  }
+
+  // Poll the detail until each pending source's aiSummaryUpdatedAt advances past the
+  // baseline captured at scrape-finish (= its downstream extraction landed), then
+  // invalidate the tab queries. A per-monitor deadline bounds the wait so a scrape
+  // whose extraction never stamps (no data / summary AI failed) still gets one final
+  // refresh instead of polling forever.
+  function watchExtraction(pending: { id: string; baseline: string | null }[]) {
+    const ref = extractionWatchRef.current;
+    const deadline = Date.now() + EXTRACTION_WATCH_TIMEOUT_MS;
+    for (const p of pending) ref.monitors.set(p.id, { baseline: p.baseline, deadline });
+    if (ref.interval) return;
+    ref.interval = setInterval(async () => {
+      const fresh = await refresh();
+      const now = Date.now();
+      let touched = false;
+      for (const [mid, meta] of ref.monitors) {
+        const updated = fresh?.monitors.find((x) => x.id === mid)?.aiSummaryUpdatedAt ?? null;
+        // Extraction stamped a fresh summary → its tab data has landed. Or the
+        // deadline passed → give up and refresh once regardless.
+        if ((updated !== null && updated !== meta.baseline) || now > meta.deadline) {
+          ref.monitors.delete(mid);
+          touched = true;
+        }
+      }
+      if (touched) invalidateExtractionTabs();
+      if (ref.monitors.size === 0 && ref.interval) {
+        clearInterval(ref.interval);
+        ref.interval = null;
+      }
+    }, EXTRACTION_WATCH_INTERVAL_MS);
+  }
+
   // Restore the active tab from the URL (?tab=) so a refresh stays on the same
   // tab. Runs once on mount, before the Tabs render (data is still loading).
   useEffect(() => {
@@ -426,6 +476,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
         lastRunAt: m.lastRunAt,
         lastFailedAt: m.lastFailedAt,
         lastChangedAt: m.lastChangedAt,
+        aiSummaryUpdatedAt: m.aiSummaryUpdatedAt,
       });
     }
     setScrapingIds(new Set(running.map((m) => m.id)));
@@ -450,6 +501,9 @@ export function CompetitorDetailView({ id }: { id: string }) {
       const changed: string[] = [];
       const failed: string[] = [];
       const timedOut: string[] = [];
+      // Pre-scrape aiSummaryUpdatedAt per finished extraction-backed source, so the
+      // watcher can tell when the downstream extraction has stamped a fresh one.
+      const extractionBaselines = new Map<string, string | null>();
       const now = Date.now();
       for (const monitorId of scrapingIds) {
         const tracker = scrapingStartRef.current.get(monitorId);
@@ -459,6 +513,9 @@ export function CompetitorDetailView({ id }: { id: string }) {
         const updatedFailed = updated?.lastFailedAt ?? null;
         if (updatedRun !== null && updatedRun !== tracker.lastRunAt) {
           finished.push(monitorId);
+          if (updated && EXTRACTION_BACKED_SOURCES.has(updated.sourceType)) {
+            extractionBaselines.set(monitorId, tracker.aiSummaryUpdatedAt);
+          }
           const updatedChanged = updated?.lastChangedAt ?? null;
           if (updatedChanged !== null && updatedChanged !== tracker.lastChangedAt) {
             changed.push(monitorId);
@@ -497,27 +554,18 @@ export function CompetitorDetailView({ id }: { id: string }) {
         void queryClient.invalidateQueries({ queryKey: ["competitor", id] });
 
         // Extraction-backed sources write their tab data in a downstream job that
-        // finishes AFTER lastRunAt moves, so the invalidate above refetches stale
-        // data and then the poll stops — the fresh tiers/jobs would never appear
-        // until a hard refresh. Re-invalidate the per-tab queries (not the heavy
-        // detail, already refreshed above) a few more times to catch the result.
-        const extractionFinished = finished.some((mid) =>
-          EXTRACTION_BACKED_SOURCES.has(
-            fresh.monitors.find((m) => m.id === mid)?.sourceType ?? "",
-          ),
-        );
-        if (extractionFinished) {
-          for (const delay of EXTRACTION_REFETCH_DELAYS_MS) {
-            const timer = setTimeout(() => {
-              extractionTimersRef.current.delete(timer);
-              void queryClient.invalidateQueries({
-                queryKey: ["competitor", id],
-                predicate: (q) => q.queryKey[2] !== "detail",
-              });
-            }, delay);
-            extractionTimersRef.current.add(timer);
-          }
-        }
+        // finishes AFTER lastRunAt moves — the invalidate above refetches data that
+        // isn't there yet. Watch each such source until its extraction stamps a fresh
+        // aiSummaryUpdatedAt, unless it already landed within this tick (the
+        // invalidate above caught it — skip the wait).
+        const pending = finished
+          .filter((mid) => extractionBaselines.has(mid))
+          .filter((mid) => {
+            const current = fresh.monitors.find((x) => x.id === mid)?.aiSummaryUpdatedAt ?? null;
+            return current === (extractionBaselines.get(mid) ?? null);
+          })
+          .map((mid) => ({ id: mid, baseline: extractionBaselines.get(mid) ?? null }));
+        if (pending.length > 0) watchExtraction(pending);
       }
       if (failed.length > 0) {
         for (const mid of failed) {
@@ -546,13 +594,14 @@ export function CompetitorDetailView({ id }: { id: string }) {
     };
   }, [scrapingIds, id]);
 
-  // Cancel any pending extraction re-invalidation timers when switching competitor
-  // or unmounting (they invalidate this id's queries).
+  // Tear down the extraction watch when switching competitor or unmounting (it
+  // invalidates this id's queries).
   useEffect(() => {
-    const timers = extractionTimersRef.current;
+    const ref = extractionWatchRef.current;
     return () => {
-      for (const t of timers) clearTimeout(t);
-      timers.clear();
+      if (ref.interval) clearInterval(ref.interval);
+      ref.interval = null;
+      ref.monitors.clear();
     };
   }, [id]);
 
@@ -897,6 +946,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
       lastRunAt: monitor.lastRunAt,
       lastFailedAt: monitor.lastFailedAt,
       lastChangedAt: monitor.lastChangedAt,
+      aiSummaryUpdatedAt: monitor.aiSummaryUpdatedAt,
     });
     setScrapingIds((prev) => new Set(prev).add(monitorId));
     try {
@@ -932,6 +982,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
       lastRunAt: monitor.lastRunAt,
       lastFailedAt: monitor.lastFailedAt,
       lastChangedAt: monitor.lastChangedAt,
+      aiSummaryUpdatedAt: monitor.aiSummaryUpdatedAt,
     });
     setScrapingIds((prev) => new Set(prev).add(monitorId));
     try {
@@ -2500,6 +2551,15 @@ function AiSummary({
   generating: boolean;
   onGenerate: () => void;
 }) {
+  // Was a summary already on screen last render? Drives the reveal: the very first
+  // summary lands via a branch swap (the "Generating…" card is replaced), so it
+  // should fade in — but an existing summary already painted on page load should
+  // sit still (only re-animating when its content actually changes, via `token`).
+  const hadSummary = useRef(Boolean(competitor.aiSummary));
+  useEffect(() => {
+    hadSummary.current = Boolean(competitor.aiSummary);
+  }, [competitor.aiSummary]);
+
   if (!competitor.aiSummary) {
     // A user-triggered generation is in flight — keep the explicit "Generating…" UX.
     if (generating) {
@@ -2549,6 +2609,7 @@ function AiSummary({
     );
   }
   return (
+    <Reveal token={competitor.aiSummaryUpdatedAt} initial={!hadSummary.current}>
     <Card className="px-5 py-4">
       <div className="flex items-center justify-between gap-2 mb-2.5">
         <h3 className="flex items-center gap-2 text-content font-semibold tracking-tight leading-tight">
@@ -2576,6 +2637,7 @@ function AiSummary({
         </p>
       )}
     </Card>
+    </Reveal>
   );
 }
 

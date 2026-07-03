@@ -27,7 +27,7 @@ export function Hero() {
       {/* One restrained glow behind the statement; no dot grid, no gradient text. */}
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
         <div
-          className="absolute left-1/2 top-24 h-[34rem] w-[60rem] max-w-[120vw] -translate-x-1/2 rounded-full opacity-50 blur-[150px]"
+          className="absolute left-1/2 top-24 h-[34rem] w-[60rem] max-w-[120vw] -translate-x-1/2 rounded-full opacity-50 blur-3xl"
           style={{
             background:
               "radial-gradient(circle, color-mix(in srgb, var(--accent) 11%, transparent) 0%, transparent 65%)",

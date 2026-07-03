@@ -37,7 +37,7 @@ export function Nav() {
   }, [open]);
 
   return (
-    <nav className="fixed inset-x-0 top-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur-md">
+    <nav className="fixed inset-x-0 top-0 z-50 border-b border-border/60 bg-background/85 backdrop-blur-sm">
       <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-6">
         <a href="/" className="text-lg font-semibold tracking-tight">
           Out<span className="text-primary">rival</span>

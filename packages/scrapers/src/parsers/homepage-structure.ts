@@ -8,6 +8,7 @@ import {
 import { hashTestimonial, type TestimonialItem, type CustomerLogo } from "./social-proof";
 import { extractJsonLd, findByType, asText } from "../structured-data/json-ld";
 import { collapseAnimatedCounters } from "../lib/normalize-text";
+import { detectLanguage } from "../lib/detect-language";
 
 /**
  * Turns rendered homepage HTML into a typed, diff-friendly semantic structure
@@ -56,8 +57,9 @@ export interface HomepageSection {
 export interface HomepageStructure {
   // Global metadata
   title: string;
-  /** Primary language subtag from <html lang> ("fr", "de", "en"), lowercased.
-   *  Null when the page declares none. Lets the UI flag/translate foreign copy. */
+  /** Primary language subtag ("fr", "de", "en"), lowercased. Detected from the
+   *  visible copy (tinyld), falling back to <html lang> on sparse pages. Null when
+   *  neither yields one. Lets the UI flag/translate foreign copy. */
   language: string | null;
   metaDescription: string | null;
   canonical: string | null;
@@ -580,10 +582,11 @@ export function parseHomepageStructure(html: string, baseUrl: string): HomepageS
 
   // 1. Metadata first — read before we strip <head>.
   const title = norm($("title").first().text());
-  // <html lang="fr-FR"> → "fr". The lang attribute lives on the root element, so
-  // it survives the <head> strip below, but read it here with the rest of the meta.
-  const langAttr = ($("html").attr("lang") || "").trim().split(/[-_]/)[0]?.toLowerCase();
-  const language = langAttr ? langAttr : null;
+  // <html lang="fr-FR"> → "fr". Read here with the rest of the meta (it survives the
+  // <head> strip below), but treat it only as a *fallback*: many sites ship a stale
+  // boilerplate `lang="fr"` on plainly-English copy. The authoritative language is
+  // detected from the actual text further down (detectLanguage).
+  const declaredLang = ($("html").attr("lang") || "").trim().split(/[-_]/)[0]?.toLowerCase() || null;
   const metaDescription = $('meta[name="description"]').attr("content")?.trim() || null;
   const canonical = $('link[rel="canonical"]').attr("href")?.trim() || null;
   const openGraph = {
@@ -645,6 +648,22 @@ export function parseHomepageStructure(html: string, baseUrl: string): HomepageS
       ctas: s.ctas,
     };
   });
+
+  // Detect the real language from the visible copy (meta + hero + sections), not the
+  // possibly-stale <html lang>. Nav/footer are excluded — they're boilerplate and
+  // often carry a language-switcher's foreign labels. Falls back to declaredLang.
+  const languageSample = [
+    title,
+    metaDescription,
+    openGraph.title,
+    openGraph.description,
+    hero.headline,
+    hero.subheadline,
+    ...sections.map((s) => `${s.heading} ${s.bodyText}`),
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const language = detectLanguage(languageSample, declaredLang);
 
   return {
     title,

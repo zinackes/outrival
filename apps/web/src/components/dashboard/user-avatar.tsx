@@ -23,7 +23,7 @@ export function UserAvatar({
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 overflow-hidden rounded-full border border-border",
+        "inline-block shrink-0 overflow-hidden rounded-full border border-border",
         className,
       )}
       style={{ width: size, height: size }}
@@ -31,8 +31,18 @@ export function UserAvatar({
     >
       {/* `square` fills the whole box; the wrapper's border-radius + overflow-hidden
           own the shape, so the mark follows the container (round by default, the
-          switcher's rounded-md) instead of boring-avatars' hardcoded circular mask. */}
-      <Avatar name={seed} variant="marble" size={size} colors={AVATAR_PALETTE} square />
+          switcher's rounded-md) instead of boring-avatars' hardcoded circular mask.
+          `block h-full w-full` makes the svg fill the (border-box-shrunk) content area
+          exactly — otherwise flex/intrinsic sizing shrinks its width but not its height,
+          and the square viewBox letterboxes into a transparent band at the top. */}
+      <Avatar
+        name={seed}
+        variant="marble"
+        size={size}
+        colors={AVATAR_PALETTE}
+        square
+        className="block h-full w-full"
+      />
     </span>
   );
 }

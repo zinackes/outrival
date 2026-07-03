@@ -3,7 +3,7 @@ import { CompareView } from "@/components/dashboard/compare-view";
 import { getCompareData } from "@/lib/api-server";
 import { makeServerQueryClient } from "@/lib/server-query";
 import { resolveServerScope } from "@/lib/product-scope-server";
-import { productsListQuery, competitorsQuery } from "@/lib/queries";
+import { productsListQuery, competitorsQuery, compareRankingQuery } from "@/lib/queries";
 
 export default async function ComparePage({
   searchParams,
@@ -21,6 +21,7 @@ export default async function ComparePage({
   if (initial) {
     queryClient.setQueryData(productsListQuery().queryKey, initial.products);
     queryClient.setQueryData(competitorsQuery(product).queryKey, initial.competitors);
+    queryClient.setQueryData(compareRankingQuery().queryKey, initial.ranking);
   }
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>

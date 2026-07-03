@@ -56,6 +56,13 @@ export function friendlyScrapeError(
     return `Couldn't load the ${page} — it needs a browser to render and we couldn't capture it.`;
   }
 
+  // The URL returned an HTTP error (404 not found, 410 gone, 401/451 gated, 5xx) —
+  // the page doesn't exist at this address, as opposed to an anti-bot block. Common
+  // when a URL lost its `www` (an apex host that 404s sub-paths) or the page moved.
+  if (e.includes("http_error")) {
+    return `The ${page} URL returned an error — it may have moved or no longer exists. Check the URL in the monitor settings.`;
+  }
+
   // Domain unreachable / DNS.
   if (
     e.includes("enotfound") ||

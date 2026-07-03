@@ -75,7 +75,7 @@ export function SavedViewsMenu({
       setName("");
       refresh();
     } catch {
-      toast.error("Couldn’t save this view");
+      toast.error("Couldn't save this view");
     } finally {
       setSaving(false);
     }
@@ -101,7 +101,7 @@ export function SavedViewsMenu({
       toast.success(`Updated “${view.name}”`);
       setEditing(null);
     } catch {
-      toast.error("Couldn’t update this view");
+      toast.error("Couldn't update this view");
     } finally {
       setSavingEdit(false);
     }
@@ -120,7 +120,7 @@ export function SavedViewsMenu({
       setViews((p) =>
         [...p, target].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
       );
-      toast.error("Couldn’t delete this view");
+      toast.error("Couldn't delete this view");
     } finally {
       setDeleting(false);
     }

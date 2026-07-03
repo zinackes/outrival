@@ -151,10 +151,9 @@ export function MonitorAlternatives({
 
   async function submitUrl() {
     const url = urlValue.trim();
-    if (!url) {
-      toast.error("Enter the page URL first.");
-      return;
-    }
+    // The submit button is disabled while the field is empty, so this is a guard,
+    // not a user-facing validation path.
+    if (!url) return;
     setSavingUrl(true);
     try {
       await api.setMonitorUrl(monitorId, url);
@@ -293,7 +292,7 @@ export function MonitorAlternatives({
             <Button variant="ghost" onClick={() => setUrlOpen(false)} disabled={savingUrl}>
               Cancel
             </Button>
-            <Button onClick={submitUrl} disabled={savingUrl}>
+            <Button onClick={submitUrl} disabled={savingUrl || !urlValue.trim()}>
               {savingUrl ? "Saving…" : "Save & rescan"}
             </Button>
           </DialogFooter>

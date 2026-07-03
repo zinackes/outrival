@@ -1,8 +1,9 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { logger } from "@trigger.dev/sdk/v3";
-import { db, competitors } from "@outrival/db";
+import { db, competitors, monitors } from "@outrival/db";
 import {
   normalizeDomain,
+  normalizeHostname,
   extractHostname,
   type PlatformProfile,
   type PlatformConfidence,
@@ -75,6 +76,13 @@ export async function detectAndPersistPlatform(competitorId: string): Promise<Pl
 
     if (!profile) return { detected: false, skipped: "unfetchable" };
 
+    // Recall boost: the wappalyzer-style detector only emits `changelog` for hosted
+    // widgets (canny/headway/beamer) or an advertised RSS <link> — it misses the
+    // common self-hosted /changelog page. Scan the homepage HTML we already fetched
+    // for a same-origin changelog link and record it as `page:<url>` so the source
+    // gets provisioned (below). Only fills in when detection found nothing scrapeable.
+    enrichChangelogFromHtml(profile, evidence?.html ?? "", evidence?.url ?? url);
+
     const now = new Date();
     await db
       .update(competitors)
@@ -95,6 +103,11 @@ export async function detectAndPersistPlatform(competitorId: string): Promise<Pl
       duration_ms: Date.now() - startedAt,
       recorded_at: now,
     });
+
+    // Provision the sources detection resolved to a structured connector:
+    // changelog (scrapeable page/RSS) and status (status page). Both are seeded
+    // here so they stop depending on a manual enable nobody ever performs.
+    await seedDetectedSources(competitorId, url, profile);
 
     return { detected: true, stage };
   } catch (err) {
@@ -174,4 +187,100 @@ function countTechs(profile: PlatformProfile): number {
   let n = profile.analytics?.length ?? 0;
   for (const k of SINGLE_FIELDS) if (profile[k]) n++;
   return n;
+}
+
+// A changelog value the changelog scraper can actually fetch: an RSS feed or a
+// concrete page URL. Hosted-widget tokens (canny/headway/beamer) are not.
+function scrapeableChangelogUrl(value: string | undefined): string | null {
+  if (value?.startsWith("rss:")) return value.slice(4);
+  if (value?.startsWith("page:")) return value.slice(5);
+  return null;
+}
+
+// A changelog keyword either as a full path segment or as the subdomain label. Kept
+// conservative (full-segment match, no bare "/updates") so the auto-seeder doesn't
+// latch onto a "/product-updates" blog link.
+const CHANGELOG_PATH_RE = /(^|\/)(changelog|releases|release-notes|whats-new)(\/|$)/i;
+const CHANGELOG_HOST_RE = /^(changelog|releases|release-notes|whats-new)\./i;
+
+function findChangelogLink(html: string, pageUrl: string): string | null {
+  // Same registrable domain (not same origin) so a "changelog.acme.com" or
+  // "docs.acme.com/changelog" subdomain still counts, while a link off to another
+  // company is rejected.
+  const pageDomain = normalizeHostname(pageUrl);
+  if (!pageDomain) return null;
+  for (const m of html.matchAll(/<a[^>]+href=["']([^"']+)["']/gi)) {
+    const href = m[1];
+    if (!href) continue;
+    let abs: URL;
+    try {
+      abs = new URL(href, pageUrl);
+    } catch {
+      continue;
+    }
+    if (normalizeHostname(abs.hostname) !== pageDomain) continue;
+    if (CHANGELOG_HOST_RE.test(abs.hostname) || CHANGELOG_PATH_RE.test(abs.pathname)) {
+      return abs.toString();
+    }
+  }
+  return null;
+}
+
+/** Fill `profile.changelog` with a self-hosted page URL when detection found no
+ *  scrapeable changelog. Mutates in place; a no-op when a URL is already present. */
+function enrichChangelogFromHtml(profile: PlatformProfile, html: string, pageUrl: string): void {
+  if (scrapeableChangelogUrl(profile.changelog?.value)) return;
+  const link = findChangelogLink(html, pageUrl);
+  if (!link) return;
+  profile.changelog = {
+    value: `page:${link}`,
+    confidence: "low",
+    evidence: ["html:changelog-link"],
+  };
+}
+
+/** Insert a weekly monitor for `sourceType` unless one already exists. Idempotent
+ *  (one per competitor+source); returns whether a row was created. */
+async function seedMonitorOnce(
+  competitorId: string,
+  sourceType: "changelog" | "status",
+  config: { url: string },
+): Promise<boolean> {
+  const existing = await db.query.monitors.findFirst({
+    where: and(eq(monitors.competitorId, competitorId), eq(monitors.sourceType, sourceType)),
+    columns: { id: true },
+  });
+  if (existing) return false;
+  await db.insert(monitors).values({ competitorId, sourceType, frequency: "weekly", config });
+  return true;
+}
+
+/** Provision the sources platform detection can resolve to a connector. Never
+ *  throws — a seeding failure must not break detection.
+ *  - changelog: seeded when a scrapeable URL was found (page/RSS). Ungated → runs
+ *    on every plan.
+ *  - status: seeded when a status page was detected; the connector resolves its
+ *    host from profile.statusPage at scrape time, so the competitor URL is only the
+ *    fetch fallback here. Plan-gated (starter+) → schedule-scraping freezes the
+ *    monitor until the org is entitled, then it activates on upgrade with no
+ *    re-detection needed. */
+async function seedDetectedSources(
+  competitorId: string,
+  competitorUrl: string,
+  profile: PlatformProfile,
+): Promise<void> {
+  try {
+    const changelogUrl = scrapeableChangelogUrl(profile.changelog?.value);
+    if (changelogUrl && (await seedMonitorOnce(competitorId, "changelog", { url: changelogUrl }))) {
+      logger.log("Seeded changelog monitor from platform detection", { competitorId, url: changelogUrl });
+    }
+    if (profile.statusPage?.value && (await seedMonitorOnce(competitorId, "status", { url: competitorUrl }))) {
+      logger.log("Seeded status monitor from platform detection", { competitorId });
+    }
+  } catch (err) {
+    logger.warn("Seeding detected-source monitors failed (non-fatal)", {
+      competitorId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }

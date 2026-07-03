@@ -13,3 +13,4 @@ export { pricingRatiosPlausible } from "./validate-ratios";
 export type { PricingRatioPlan } from "./validate-ratios";
 export { detectTrial, NO_TRIAL } from "./detect-trial";
 export type { TrialInfo } from "./detect-trial";
+export { detectFreePlan } from "./detect-free-plan";

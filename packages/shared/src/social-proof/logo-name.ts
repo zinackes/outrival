@@ -240,6 +240,14 @@ function isGenericNumbered(tokens: string[]): boolean {
 // vowel-ratio guard ("BigCommerce", "OpenTable" read as pronounceable, not hashes).
 function looksLikeAssetHash(token: string): boolean {
   if (token.length < 8) return false;
+  // A long pure-hex token carrying a digit is a content hash or DB id (MongoDB
+  // ObjectId = 24 hex, md5 = 32, sha1 = 40): CMS filenames prefix the real slug with
+  // one, so the src-derived label reads e.g. "67600ed9f57754ebe3153166 dhl min"
+  // (Webflow). Caught explicitly because a hex string's a–f letters can lift the
+  // vowel ratio past the randomness heuristics below — leaving detection a per-id
+  // coin flip. The digit requirement keeps it safe (no wordmark is 12+ chars of only
+  // a–f), mirroring HEX_BARE_RE.
+  if (token.length >= 12 && /^[0-9a-f]+$/i.test(token) && /\d/.test(token)) return true;
   const letters = token.replace(/[^a-z]/gi, "");
   if (letters.length < 2) return false; // pure-number handled by isGenericNumbered
   const vowels = (token.match(/[aeiouy]/gi) ?? []).length;

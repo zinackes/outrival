@@ -270,7 +270,8 @@ export async function generateBattleCard(
 
 <rules>
 - Base EVERY statement ONLY on the evidence blocks above. Do NOT rely on any prior or outside knowledge you may have about these two products: treat your own memory as unreliable and possibly out of date — it has produced false competitive claims before.
-- COMPARATIVE CLAIMS REQUIRE BOTH SIDES. Only call something an advantage (our_strengths / their_weaknesses) or a strength (their_strengths) when the evidence describes that same dimension for BOTH products. If the evidence covers only one side, state it as a plain fact about that side and do NOT imply the other side lacks it. Example of a FORBIDDEN claim: saying a capability "differentiates" or is "unique to" one product when the evidence never establishes whether the other product has it too.
+- GROUND EACH SECTION ON ITS OWN SIDE. their_strengths and their_weaknesses are grounded on the competitor's evidence; our_strengths on OUR product's evidence (features, tech, pricing, homepage, value proposition). A section does NOT need evidence from the other side to be filled — a real, sourced fact about ONE product is a valid entry on its own.
+- NO FABRICATED CONTRAST. Never claim or imply that the other side LACKS, is worse at, or does not have something unless the evidence for that other side actually establishes it. Phrasing like "unlike them", "unique to us", "they can't", "we're the only", "differentiates" REQUIRES evidence on BOTH sides — otherwise state the capability as a plain positive fact about the one product ("We offer X") with no comparison.
 - Prefer few, well-grounded points over full sections. Returning an EMPTY array for a section is the correct, expected answer when the evidence does not support it — never pad a section to reach the maximum, and never fabricate to fill space.
 - Be concrete and specific: cite the actual plan, price, feature, tech, rating or complaint from the evidence rather than generic adjectives ("powerful", "easy to use").
 </rules>
@@ -278,7 +279,7 @@ export async function generateBattleCard(
 <task>
 Generate a sales battle card to help win against this competitor, in English.
 - their_strengths: their real advantages, each traceable to the evidence (max 5)
-- our_strengths: our real edge against them, each supported by evidence for BOTH sides (max 5)
+- our_strengths: our real, evidence-backed selling points drawn from OUR product's evidence (features, tech, pricing, homepage, value proposition). Do NOT require evidence that the competitor lacks them, and do NOT claim they lack them — state them as concrete positive facts about us (max 5)
 - their_weaknesses: their real weak points, each traceable to the evidence (max 5)
 - common_objections: objections a prospect might raise to pick them + your sourced sales response (max 5)
 - when_we_win: profiles / contexts where we win (max 4)
@@ -337,7 +338,7 @@ ${JSON.stringify(draft)}
 
 <verification_rules>
 - DELETE any claim not directly supported by the evidence — do not soften it into a vaguer claim, remove it entirely.
-- DELETE any comparative claim (advantage, weakness, differentiator, "unlike them", "we win because") unless the evidence describes that same dimension for BOTH products. A claim that a capability differentiates one product is invalid when the evidence does not establish whether the other product also has it.
+- DELETE any claim that the competitor LACKS, is worse at, or does not have something (and any "unlike them", "unique to us", "we win because", "differentiates" phrasing) unless the evidence describes that same dimension for BOTH products. But a one-sided positive fact about a SINGLE product — a real feature, price, tech or rating drawn from its own evidence — is VALID and must be KEPT even when the other side's evidence is silent. Only fabricated or unproven CONTRASTS are removed, not grounded one-sided facts.
 - Do NOT add any new claim, fact, or comparison that is not already in the draft.
 - You MAY trim a surviving claim down to the part the evidence supports.
 - Keep every key. Empty arrays are correct and expected when nothing survives for a section.

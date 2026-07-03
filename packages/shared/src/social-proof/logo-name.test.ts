@@ -171,6 +171,25 @@ test("drops CMS asset-hash names (incl. with descriptive suffixes)", () => {
   }
 });
 
+test("drops CMS filename ids prefixing a real slug (MongoDB ObjectId / content hash)", () => {
+  // Webflow etc. name the asset "<24-hex ObjectId>_<slug>.svg"; the UI derives a label
+  // off the filename, so the wall showed "67600ed9f57754ebe3153166 dhl min" as a chip.
+  // The hex id must be dropped regardless of its vowel ratio (per-id coin flip before).
+  for (const n of [
+    "67600ed9f57754ebe3153166 dhl min",
+    "69fc99b9e24df52da856d42a Vodafone",
+    "65cb16666bcdb6cabf582372 nike",
+    "d41d8cd98f00b204e9800998ecf8427e", // md5
+    "a1b2c3d4e5f6", // 12-hex minimum
+  ]) {
+    expect(isJunkLogoName(n)).toBe(true);
+  }
+  // An all-letter hex-ish word (no digit) is NOT an id — real brands survive.
+  for (const n of ["deadbeef", "facebeef", "Deeded"]) {
+    expect(classifyLogoName(n).kind).not.toBe("junk");
+  }
+});
+
 test("keeps real brands that look acronym/ticker/CamelCase-y", () => {
   // Short acronyms, tickers, digit-bearing and CamelCase brands must survive the
   // asset-hash heuristic.

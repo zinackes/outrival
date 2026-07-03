@@ -275,6 +275,9 @@ export interface PricingHistoryRow {
   has_trial?: number | null;
   trial_days?: number | null;
   trial_requires_card?: number | null;
+  // Permanent free plan advertised on the page (detect-free-plan). Page-level, like
+  // the trial facts. 0/1; null = not assessed.
+  has_free_plan?: number | null;
   recorded_at: Date;
 }
 
@@ -294,6 +297,7 @@ export async function insertPricingHistory(rows: PricingHistoryRow[]): Promise<v
         hasTrial: r.has_trial ?? null,
         trialDays: r.trial_days ?? null,
         trialRequiresCard: r.trial_requires_card ?? null,
+        hasFreePlan: r.has_free_plan ?? null,
         recordedAt: r.recorded_at,
       })),
     ),

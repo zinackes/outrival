@@ -13,7 +13,17 @@ const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 interface Notification {
   id: string;
-  type: "signal" | "new_competitor";
+  // Mirrors the notification_type enum (packages/db). The bell renders every type
+  // the same way (title/body/link), so this is documentation + a narrowing guard,
+  // not a switch.
+  type:
+    | "signal"
+    | "new_competitor"
+    | "self_change"
+    | "onboarding_complete"
+    | "structural_change"
+    | "silent_monitor"
+    | "analysis_ready";
   title: string;
   body: string | null;
   linkUrl: string | null;

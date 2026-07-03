@@ -11,7 +11,7 @@ import {
 } from "@outrival/ai";
 import { getFromR2, PRICING_STATUSES } from "@outrival/shared";
 import { pricingFromStructured } from "@outrival/scrapers/structured-data";
-import { pricingRatiosPlausible, detectTrial } from "@outrival/scrapers/pricing";
+import { pricingRatiosPlausible, detectTrial, detectFreePlan } from "@outrival/scrapers/pricing";
 import { htmlToText } from "../lib/html-to-text";
 import { insertPricingHistory, getPreviousPricing, loggedAi } from "../lib/analytics";
 import { stagedExtract } from "../lib/staged-extract";
@@ -104,7 +104,12 @@ export const extractPricingJob = task({
     // page-level fact stamped identically onto every plan row of this batch, like
     // status/observedRegion — so the latest batch reflects the current trial state.
     const trial = detectTrial(text);
-    logger.log("Free-trial detection", { trial });
+    // Permanent free plan (AI-free). The priced-card extractor misses a free tier
+    // that isn't a priced card (e.g. a "Free" comparison column with no price token),
+    // so this page-level fact is what keeps the tab from wrongly claiming "no free
+    // tier". Stamped identically onto every plan row, like the trial facts.
+    const freePlan = detectFreePlan(text);
+    logger.log("Free-plan / trial detection", { freePlan, trial });
 
     const recordedAt = new Date();
     // Keep every plan, including quote-based tiers (price null — "Enterprise",
@@ -125,6 +130,7 @@ export const extractPricingJob = task({
         trial_days: trial.days,
         trial_requires_card:
           trial.requiresCreditCard == null ? null : trial.requiresCreditCard ? 1 : 0,
+        has_free_plan: freePlan ? 1 : 0,
         recorded_at: recordedAt,
       })),
     );

@@ -79,7 +79,7 @@ describe("parseHomepageStructure — metadata", () => {
     expect(s.openGraph.image).toBe("https://acme.com/og.png");
     expect(s.openGraph.type).toBe("website");
   });
-  it("reads the primary language subtag from <html lang>", () => {
+  it("falls back to the <html lang> subtag when there's too little copy to detect", () => {
     expect(parseHomepageStructure(`<html lang="fr-FR"><title>x</title></html>`, BASE).language).toBe(
       "fr",
     );
@@ -87,6 +87,23 @@ describe("parseHomepageStructure — metadata", () => {
       "en",
     );
     expect(parseHomepageStructure(`<html><title>x</title></html>`, BASE).language).toBeNull();
+  });
+  it("detects the real language from the copy, overriding a wrong <html lang>", () => {
+    // The bug: a stale boilerplate lang="fr" on plainly-English copy flagged the
+    // page as foreign and offered a bogus "Translate to English".
+    const englishUnderFrLang = `<html lang="fr"><head><title>Acme — sales platform</title>
+      <meta name="description" content="Transforming how businesses connect, serve and grow."></head>
+      <body><main><h1>Transforming how businesses Connect, Serve & Grow.</h1>
+      <p>Our platform helps teams automate outreach, close deals faster, and grow revenue.
+      Trusted by thousands of companies worldwide. Start your free trial today.</p></main></body></html>`;
+    expect(parseHomepageStructure(englishUnderFrLang, BASE).language).toBe("en");
+  });
+  it("detects a genuinely foreign page even without a lang attribute", () => {
+    const frenchNoLang = `<html><head><title>Acme — plateforme commerciale</title></head>
+      <body><main><h1>Transformez la façon dont les entreprises se connectent et grandissent.</h1>
+      <p>Notre plateforme aide les équipes à automatiser leurs campagnes et à conclure des ventes
+      plus rapidement. Des milliers d'entreprises nous font déjà confiance.</p></main></body></html>`;
+    expect(parseHomepageStructure(frenchNoLang, BASE).language).toBe("fr");
   });
 });
 

@@ -48,8 +48,13 @@ import {
   isBlankSvgDataUri,
   isStoreBadgeSrc,
   isLanguageFlagSrc,
+  resolveCurrentPricing,
+  normalizePlanKey,
   type SourceType,
   type MonitorFrequency,
+  type PricingTier,
+  type PricingPlanOverride,
+  type CompetitorOverrides,
 } from "@outrival/shared";
 
 type Variables = { user: { id: string } };
@@ -1095,12 +1100,14 @@ competitorsRouter.get("/:id/pricing-history", async (c) => {
     has_trial: boolean | null;
     trial_days: number | null;
     trial_requires_card: boolean | null;
+    has_free_plan: boolean | null;
     recorded_at: string;
   }>(sql`
     SELECT plan_name, price, currency, billing_period,
            (has_trial = 1) AS has_trial,
            trial_days,
            (trial_requires_card = 1) AS trial_requires_card,
+           (has_free_plan = 1) AS has_free_plan,
            recorded_at::text AS recorded_at
     FROM pricing_history
     WHERE competitor_id = ${competitor.id}
@@ -1164,6 +1171,118 @@ competitorsRouter.post("/:id/pricing/redetect", async (c) => {
   return c.json({ ok: true, rescraped: Boolean(pricingMonitor) });
 });
 
+// ─── Per-plan pricing overlay (user content editing) ─────────────────────────
+// The user edits/adds/hides individual pricing plans. Overrides live on
+// competitors.overrides (jsonb), merged with the latest detected pricing_history
+// batch at read time via resolveCurrentPricing — the append-only log (and thus
+// the price-over-time chart) is never touched. The scraper keeps running: an
+// untouched plan stays fresh, a new plan appears on its own, an edited plan whose
+// detection diverges surfaces `drift` instead of being overwritten.
+
+// The most recent detected batch as plain tiers (the overlay's baseline). Best-effort.
+async function latestDetectedPricing(competitorId: string): Promise<PricingTier[]> {
+  const rows = await analyticsQuery<{
+    plan_name: string;
+    price: number | null;
+    currency: string;
+    billing_period: string;
+    recorded_at: string;
+  }>(sql`
+    SELECT plan_name, price, currency, billing_period,
+           (recorded_at AT TIME ZONE 'UTC')::text AS recorded_at
+    FROM pricing_history
+    WHERE competitor_id = ${competitorId}
+    ORDER BY recorded_at DESC
+    LIMIT 60
+  `);
+  const latestAt = rows[0]?.recorded_at ?? null;
+  if (!latestAt) return [];
+  return rows
+    .filter((r) => r.recorded_at === latestAt)
+    .map((r) => ({
+      planName: r.plan_name,
+      price: r.price,
+      currency: r.currency,
+      billingPeriod: r.billing_period,
+    }));
+}
+
+const PricingTierBodySchema = z.object({
+  planName: z.string().min(1).max(120),
+  price: z.number().finite().nullable(),
+  currency: z.string().min(1).max(8),
+  billingPeriod: z.string().min(1).max(24),
+});
+
+const PricingPlanOverrideBodySchema = z
+  .object({
+    planKey: z.string().min(1).max(120),
+    action: z.enum(["edit", "add", "hide"]),
+    value: PricingTierBodySchema.optional(),
+    lastEditedByUserAt: z.string().datetime().optional(),
+  })
+  .refine((o) => o.action === "hide" || o.value != null, {
+    message: "edit and add overrides require a value",
+  });
+
+const PutPricingPlansSchema = z.object({
+  plans: z.array(PricingPlanOverrideBodySchema).max(40),
+});
+
+competitorsRouter.get("/:id/pricing-plans", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor) return c.json({ error: "Not found" }, 404);
+
+  const detected = await latestDetectedPricing(competitor.id);
+  const overrides = (competitor.overrides ?? null) as CompetitorOverrides | null;
+  return c.json({
+    detected,
+    overrides: overrides?.pricingPlans ?? [],
+    resolved: resolveCurrentPricing(detected, overrides),
+  });
+});
+
+// Replace the pricing overlay wholesale (the client manages add/edit/hide/revert
+// as a list and PUTs it). The server re-derives each merge key from the plan name
+// so identity always tracks the value, dedupes by key (last wins), and stamps the
+// edit time. Revert-all = PUT { plans: [] }.
+competitorsRouter.put("/:id/pricing-plans", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor) return c.json({ error: "Not found" }, 404);
+
+  const body = PutPricingPlansSchema.safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: "Invalid body", issues: body.error.issues }, 400);
+
+  const now = new Date().toISOString();
+  const byKey = new Map<string, PricingPlanOverride>();
+  for (const p of body.data.plans) {
+    const key = p.value ? normalizePlanKey(p.value.planName) : normalizePlanKey(p.planKey);
+    byKey.set(key, {
+      planKey: key,
+      action: p.action,
+      value: p.value,
+      lastEditedByUserAt: p.lastEditedByUserAt ?? now,
+    });
+  }
+  const plans = [...byKey.values()];
+
+  const existing = (competitor.overrides ?? {}) as CompetitorOverrides;
+  const overrides: CompetitorOverrides = { ...existing, pricingPlans: plans };
+  await db
+    .update(competitors)
+    .set({ overrides, updatedAt: new Date() })
+    .where(eq(competitors.id, competitor.id));
+
+  const detected = await latestDetectedPricing(competitor.id);
+  return c.json({ ok: true, overrides: plans, resolved: resolveCurrentPricing(detected, overrides) });
+});
+
 competitorsRouter.post("/:id/refresh-summary", aiIntensiveRateLimit, async (c) => {
   const id = c.req.param("id");
   const user = c.get("user");
@@ -1174,6 +1293,10 @@ competitorsRouter.post("/:id/refresh-summary", aiIntensiveRateLimit, async (c) =
 
   const handle = await tasks.trigger("refresh-competitor-summary", {
     competitorId: id,
+    // User-initiated refresh → drop a durable "summary ready" notification when it
+    // lands, so leaving the page doesn't lose the result. Automated refreshes
+    // (post-scrape, onboarding, battle-card) omit the flag and stay silent.
+    notifyOnComplete: true,
   });
   return c.json({ runId: handle.id });
 });

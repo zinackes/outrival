@@ -1,0 +1,1 @@
+ALTER TABLE "pricing_history" ADD COLUMN "has_free_plan" integer;

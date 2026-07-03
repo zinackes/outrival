@@ -21,10 +21,11 @@ import { cn } from "@/lib/utils";
 // own controls — this component covers signal / discovery / battle card / digest.
 //
 // Legibility (2026-07): every action confirms with a toast (even "useful", which
-// has no server side-effect), the current verdict is shown inline in words, and
-// the state is preloaded — from server props (signals feed) or self-fetched
-// (autoHydrate) — so re-clicking to remove works after a reload instead of
-// silently re-submitting.
+// has no server side-effect); the active verdict reads as a filled thumb (green /
+// red pill) rather than an adjacent words readout, and gets a press effect on
+// click. The state is preloaded — from server props (signals feed) or self-fetched
+// (autoHydrate) — so the fill survives a reload and re-clicking to remove works
+// instead of silently re-submitting.
 type ThumbsTargetType = "signal" | "discovery_suggestion" | "battle_card" | "digest";
 
 interface FeedbackButtonsProps {
@@ -164,15 +165,6 @@ export function FeedbackButtons({
     }
   };
 
-  const statusText =
-    verdict === "useful"
-      ? "Marked useful"
-      : verdict === "not_useful"
-        ? reason
-          ? `Not useful · ${REASON_LABELS[reason]}`
-          : "Marked not useful"
-        : null;
-
   return (
     <div className={cn("flex flex-wrap items-center gap-1.5 text-xs text-text-subtle", className)}>
       <span className="sr-only">Was this useful?</span>
@@ -185,8 +177,8 @@ export function FeedbackButtons({
             disabled={busy}
             onClick={() => handleVerdict("useful")}
             className={cn(
-              "rounded p-1 transition-colors hover:text-foreground disabled:opacity-50",
-              verdict === "useful" && "text-positive",
+              "rounded-md p-1.5 text-text-subtle transition-[transform,background-color,color] duration-150 ease-out hover:bg-surface-3 hover:text-foreground active:scale-90 disabled:opacity-50",
+              verdict === "useful" && "bg-positive/12 text-positive hover:bg-positive/15 hover:text-positive",
             )}
           >
             <ThumbsUp size={iconSize} />
@@ -203,8 +195,8 @@ export function FeedbackButtons({
             disabled={busy}
             onClick={() => handleVerdict("not_useful")}
             className={cn(
-              "rounded p-1 transition-colors hover:text-foreground disabled:opacity-50",
-              verdict === "not_useful" && "text-critical",
+              "rounded-md p-1.5 text-text-subtle transition-[transform,background-color,color] duration-150 ease-out hover:bg-surface-3 hover:text-foreground active:scale-90 disabled:opacity-50",
+              verdict === "not_useful" && "bg-critical/12 text-critical hover:bg-critical/15 hover:text-critical",
             )}
           >
             <ThumbsDown size={iconSize} />
@@ -212,14 +204,6 @@ export function FeedbackButtons({
         </TooltipTrigger>
         <TooltipContent>{verdict === "not_useful" ? "Remove feedback" : "Not useful"}</TooltipContent>
       </Tooltip>
-
-      {/* Persistent, plain-words readout of what the user submitted — so the state
-          is legible at a glance (and after a reload), not just a subtle icon tint. */}
-      {statusText && (
-        <span aria-live="polite" className="text-xs text-text-subtle">
-          {statusText}
-        </span>
-      )}
 
       {showReasons && (
         <div className="flex flex-wrap items-center gap-1">
@@ -231,7 +215,7 @@ export function FeedbackButtons({
               aria-pressed={reason === r}
               onClick={() => handleReason(r)}
               className={cn(
-                "rounded border px-1.5 py-0.5 text-meta transition-colors disabled:opacity-50",
+                "rounded border px-1.5 py-0.5 text-meta transition-[transform,border-color,color] duration-150 ease-out active:scale-95 disabled:opacity-50",
                 reason === r
                   ? "border-border-strong text-foreground"
                   : "border-border text-text-subtle hover:border-border-strong hover:text-foreground",

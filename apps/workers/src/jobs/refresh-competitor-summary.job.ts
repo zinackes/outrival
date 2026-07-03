@@ -7,9 +7,14 @@ import { getFromR2 } from "@outrival/shared";
 import { isCloudflareChallenge } from "@outrival/scrapers/block-detection";
 import { htmlToText } from "../lib/html-to-text";
 import { loggedAi } from "../lib/analytics";
+import { notifyJobComplete } from "../lib/job-complete";
 
 const InputSchema = z.object({
   competitorId: z.string(),
+  // Set by the on-demand refresh route → drop a durable "summary ready" notification
+  // when the refresh lands. Automated triggers (post-scrape / onboarding /
+  // battle-card) omit it and stay silent.
+  notifyOnComplete: z.boolean().optional(),
 });
 
 // Onboarding /complete fires every competitor's homepage scrape at once, so this
@@ -129,6 +134,15 @@ export const refreshCompetitorSummaryJob = task({
         ...(nextCategory ? { category: nextCategory } : {}),
       })
       .where(eq(competitors.id, competitor.id));
+
+    if (input.notifyOnComplete) {
+      await notifyJobComplete({
+        orgId: competitor.orgId,
+        title: `${competitor.name}'s summary is ready`,
+        body: "The refreshed AI competitive summary is ready to view.",
+        linkUrl: `/dashboard/competitors/${competitor.id}`,
+      });
+    }
 
     logger.log("Completed refresh-competitor-summary", { competitorId: competitor.id });
     return { ok: true, summary: result.summary };

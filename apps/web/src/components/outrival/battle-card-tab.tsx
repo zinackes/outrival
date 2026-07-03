@@ -39,9 +39,11 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FeedbackButtons } from "@/components/outrival/feedback-buttons";
 import { TabCard } from "@/components/outrival/tab-shell";
+import { Reveal } from "@/components/outrival/reveal";
 import { cn } from "@/lib/utils";
 
 const EMPTY_CONTENT: BattleCardContent = {
@@ -54,6 +56,49 @@ const EMPTY_CONTENT: BattleCardContent = {
 };
 
 type Status = "loading" | "absent" | "ready" | "generating" | "saving" | "error";
+
+// A battle-card generation lives only in this component's state — the poll loop and
+// the "generating" spinner die on unmount. Navigating away and back used to show the
+// stale card (or the empty "Generate" state) with no hint a job was still running,
+// because the worker writes the row only when it finishes. We drop a durable marker
+// at generation start so a remount can resume the spinner + polling.
+const GEN_MARKER_TTL_MS = 5 * 60 * 1000; // generation caps ~3 min; a little slack
+
+type GenMarker = { prev: string | null; at: number };
+
+function genMarkerKey(competitorId: string, productId: string | undefined) {
+  return `outrival.bc-generating.${competitorId}.${productId ?? "default"}`;
+}
+
+function readGenMarker(competitorId: string, productId: string | undefined): GenMarker | null {
+  try {
+    const raw = localStorage.getItem(genMarkerKey(competitorId, productId));
+    if (!raw) return null;
+    const m = JSON.parse(raw) as GenMarker;
+    return typeof m?.at === "number" ? m : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeGenMarker(competitorId: string, productId: string | undefined, prev: string | null) {
+  try {
+    localStorage.setItem(
+      genMarkerKey(competitorId, productId),
+      JSON.stringify({ prev, at: Date.now() } satisfies GenMarker),
+    );
+  } catch {
+    // private mode / quota — the in-session spinner still works, just no resume.
+  }
+}
+
+function clearGenMarker(competitorId: string, productId: string | undefined) {
+  try {
+    localStorage.removeItem(genMarkerKey(competitorId, productId));
+  } catch {
+    // ignore
+  }
+}
 
 type Staleness = Awaited<ReturnType<typeof api.getBattleCardStaleness>> | null;
 
@@ -76,6 +121,10 @@ export function BattleCardTab({ competitorId }: Props) {
   const [paywall, setPaywall] = useState<PaywallReason | null>(null);
   const [staleness, setStaleness] = useState<Staleness>(null);
   const [confirmingRegen, setConfirmingRegen] = useState(false);
+  // Epoch ms the current generation started — drives the elapsed counter + staged
+  // progress while status === "generating". Seeded from the resume marker so a wait
+  // that began before we navigated away shows its true elapsed time.
+  const [genStartedAt, setGenStartedAt] = useState<number | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   async function refreshStaleness() {
@@ -116,25 +165,49 @@ export function BattleCardTab({ competitorId }: Props) {
     (async () => {
       const loaded = await load();
       if (loaded) await refreshStaleness();
+      resumeGeneration(loaded);
     })();
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, [competitorId, productId]);
 
+  // On remount, pick up a generation started before we navigated away.
+  function resumeGeneration(loaded: BattleCard | null) {
+    const marker = readGenMarker(competitorId, productId);
+    if (!marker) return;
+    if (Date.now() - marker.at > GEN_MARKER_TTL_MS) {
+      clearGenMarker(competitorId, productId); // stale — assume the job is long done
+      return;
+    }
+    // The job already produced a fresh card while we were away → nothing to resume.
+    if (loaded && loaded.generatedAt !== marker.prev) {
+      clearGenMarker(competitorId, productId);
+      return;
+    }
+    // Still in flight: show the spinner (matches the in-place regenerate UX) and
+    // resume polling against the pre-generation snapshot the marker captured.
+    setGenStartedAt(marker.at);
+    setStatus("generating");
+    startPolling(marker.prev, loaded?.pdfR2Key ?? null);
+  }
+
   function stopPolling() {
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = null;
   }
 
-  function startPolling() {
+  // The pre-generation snapshot the poll compares against is passed in (not read from
+  // `card`) so a resume after remount is deterministic and not tied to stale state.
+  // The job writes the card content first (~10-20s of AI) and only then renders +
+  // uploads the PDF (slower). Reveal the card the moment new content lands — don't
+  // make the user stare at a spinner through the extra PDF step — and keep polling
+  // silently to enable Download.
+  function startPolling(
+    prevGeneratedAt: string | null = card?.generatedAt ?? null,
+    prevR2: string | null = card?.pdfR2Key ?? null,
+  ) {
     stopPolling();
-    // Snapshot the pre-generation state. The job writes the card content first
-    // (~10-20s of AI) and only then renders + uploads the PDF (slower). Reveal the
-    // card the moment new content lands — don't make the user stare at a spinner
-    // through the extra PDF step — and keep polling silently to enable Download.
-    const prevGeneratedAt = card?.generatedAt ?? null;
-    const prevR2 = card?.pdfR2Key ?? null;
     let polls = 0;
     let revealed = false;
     pollRef.current = setInterval(async () => {
@@ -143,6 +216,7 @@ export function BattleCardTab({ competitorId }: Props) {
       if (fresh && fresh.generatedAt !== prevGeneratedAt) {
         setStatus("ready");
         revealed = true;
+        clearGenMarker(competitorId, productId); // content landed → nothing to resume
       }
       if (fresh && fresh.pdfR2Key && fresh.pdfR2Key !== prevR2) {
         stopPolling();
@@ -152,6 +226,7 @@ export function BattleCardTab({ competitorId }: Props) {
       // Safety net: a failed/stuck job must not spin forever (~3 min cap).
       if (polls >= 60) {
         stopPolling();
+        clearGenMarker(competitorId, productId);
         if (!revealed) setStatus(card ? "ready" : "absent");
       }
     }, 3000);
@@ -159,11 +234,15 @@ export function BattleCardTab({ competitorId }: Props) {
 
   async function onGenerate() {
     setConfirmingRegen(false);
+    setGenStartedAt(Date.now());
     setStatus("generating");
     setError(null);
     try {
       await api.generateBattleCard(competitorId, productId);
       track("battle_card_generated", { competitorId });
+      // Persist a resume marker BEFORE polling: if the user navigates away mid-
+      // generation, the remount reads this and re-shows the spinner + poll loop.
+      writeGenMarker(competitorId, productId, card?.generatedAt ?? null);
       startPolling();
     } catch (e) {
       // 403 plan_* feature locks → paywallFromError; the 429 daily-cap quota →
@@ -219,25 +298,27 @@ export function BattleCardTab({ competitorId }: Props) {
   }
 
   if (status === "generating") {
-    return (
-      <Card className="p-6 text-center flex flex-col items-center gap-2">
-        <RefreshCw size={18} className="animate-spin text-primary" />
-        <p className="text-dense text-muted-foreground">Generating… (~10-20s)</p>
-      </Card>
-    );
+    return <GeneratingState startedAt={genStartedAt ?? Date.now()} firstTime={!card} />;
   }
 
   if (!card) return null;
   const showContent = editing ? draft : card.content;
   const canDownload = !editing && Boolean(card.pdfR2Key);
 
+  // Ease the card in when it lands — a fresh generation swaps the spinner for this
+  // subtree (a hard pop otherwise), and even a plain open reveals it behind the
+  // skeleton. `token` replays it should a newer card land while we stay on the tab.
   return (
+    <Reveal token={card.generatedAt}>
     <TabCard>
       <div className="flex items-center justify-between gap-3 px-5 py-4">
-        <h2 className="flex items-center gap-2 text-content font-semibold tracking-tight leading-tight">
-          <Swords size={14} className="text-muted-foreground shrink-0" />
-          Battle card
-        </h2>
+        <div className="flex min-w-0 items-center gap-2.5">
+          <h2 className="flex items-center gap-2 text-content font-semibold tracking-tight leading-tight">
+            <Swords size={14} className="text-muted-foreground shrink-0" />
+            Battle card
+          </h2>
+          {!editing && evidence && <BattleCardProvenance evidence={evidence} />}
+        </div>
         <div className="flex items-center gap-2">
           {editing ? (
           <>
@@ -327,8 +408,6 @@ export function BattleCardTab({ competitorId }: Props) {
         </div>
       )}
 
-      {!editing && evidence && <BattleCardProvenance evidence={evidence} />}
-
       {/* Positioning triad on one row — their strengths / our strengths / their
           weaknesses read as a single "where we stand" unit and save vertical space. */}
       <section className="grid grid-cols-1 gap-x-8 gap-y-6 p-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -402,6 +481,7 @@ export function BattleCardTab({ competitorId }: Props) {
       </div>
       {paywallNode}
     </TabCard>
+    </Reveal>
   );
 }
 
@@ -436,9 +516,10 @@ function Heading({
   );
 }
 
-// Phase 2B — provenance/freshness strip: the card's confidence + which evidence
-// sources backed it and how fresh each is. Makes the card auditable (Klue/
-// IndustryLens model) rather than a summary taken on faith.
+// Phase 2B — provenance/freshness: a compact confidence pill in the header that
+// opens a popover breaking down which evidence sources backed the card and how
+// fresh each is. Makes the card auditable (Klue/IndustryLens model) rather than a
+// summary taken on faith — without spending a full-width strip on it.
 const EVIDENCE_LABELS: Record<BattleCardEvidenceKind, string> = {
   pricing: "Pricing",
   reviews: "Reviews",
@@ -455,27 +536,49 @@ function BattleCardProvenance({ evidence }: { evidence: BattleCardEvidence }) {
         : evidence.confidence === "low"
           ? "text-destructive"
           : "text-muted-foreground";
+  const label = evidence.confidence
+    ? `Confidence: ${evidence.confidence}`
+    : "Confidence: not scored";
+  const verifiedCount = evidence.sources.filter((s) => s.present).length;
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t bg-muted/20 px-5 py-2.5 text-dense text-muted-foreground">
-      <span className="inline-flex items-center gap-1.5">
-        <ShieldCheck size={13} className={cn("shrink-0", confColor)} />
-        {evidence.confidence ? `Confidence: ${evidence.confidence}` : "Confidence: not scored"}
-      </span>
-      {evidence.sources.map((s) => (
-        <span key={s.kind} className="inline-flex items-center gap-1.5">
-          <span
-            className={cn(
-              "size-1.5 shrink-0 rounded-full",
-              s.present ? "bg-positive" : "bg-muted-foreground/40",
-            )}
-          />
-          {EVIDENCE_LABELS[s.kind]}
-          {s.present && s.lastVerifiedAt
-            ? ` · verified ${formatDate(s.lastVerifiedAt, { day: "2-digit", month: "short" })}`
-            : " · not tracked"}
-        </span>
-      ))}
-    </div>
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-muted/30 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        >
+          <ShieldCheck size={12} className={cn("shrink-0", confColor)} />
+          {label}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-64 p-0">
+        <div className="flex items-center gap-1.5 border-b border-border px-3.5 py-2.5 text-dense">
+          <ShieldCheck size={13} className={cn("shrink-0", confColor)} />
+          <span className="font-medium">{label}</span>
+          <span className="ml-auto text-meta text-muted-foreground tabular-nums">
+            {verifiedCount}/{evidence.sources.length} sources
+          </span>
+        </div>
+        <ul className="flex flex-col px-3.5 py-2 text-dense">
+          {evidence.sources.map((s) => (
+            <li key={s.kind} className="flex items-center gap-2 py-1">
+              <span
+                className={cn(
+                  "size-1.5 shrink-0 rounded-full",
+                  s.present ? "bg-positive" : "bg-muted-foreground/40",
+                )}
+              />
+              <span className="text-foreground">{EVIDENCE_LABELS[s.kind]}</span>
+              <span className="ml-auto text-muted-foreground">
+                {s.present && s.lastVerifiedAt
+                  ? `verified ${formatDate(s.lastVerifiedAt, { day: "2-digit", month: "short" })}`
+                  : "not tracked"}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -705,6 +808,83 @@ function BattleCardSkeleton() {
         <SkeletonColumn />
       </div>
     </TabCard>
+  );
+}
+
+// Staged wait for a generation in flight. The job has no DB-written progress (poll
+// reveals the card the instant real content lands — see startPolling), so the steps
+// are paced off elapsed time purely to fill the wait: they never claim "done" before
+// the real card swaps in. First-time cards are far slower — they build the AI summary
+// first (a serialized sub-job) on top of a cold Trigger machine — so the estimate
+// stretches when there's no existing card, and a reassurance line explains the wait.
+function GeneratingState({ startedAt, firstTime }: { startedAt: number; firstTime: boolean }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const elapsed = Math.max(0, Math.floor((now - startedAt) / 1000));
+
+  const steps = firstTime
+    ? [
+        { label: "Gathering evidence", until: 10 },
+        { label: "Analyzing the competitor", until: 28 },
+        { label: "Writing the battle card", until: 50 },
+        { label: "Rendering the PDF", until: Infinity },
+      ]
+    : [
+        { label: "Gathering evidence", until: 4 },
+        { label: "Analyzing the competitor", until: 10 },
+        { label: "Writing the battle card", until: 20 },
+        { label: "Rendering the PDF", until: Infinity },
+      ];
+  // Rest on the last "still working" step once past every estimate — never mark the
+  // final step done here; the real card landing is what ends this view.
+  const activeIndex = steps.findIndex((s) => elapsed < s.until);
+  const active = activeIndex === -1 ? steps.length - 1 : activeIndex;
+  const slow = elapsed > (firstTime ? 60 : 30);
+
+  return (
+    <Card className="flex flex-col gap-4 p-6">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Sparkles size={14} className="shrink-0 text-primary" />
+          <span className="text-content font-medium">Generating battle card</span>
+        </div>
+        <span className="text-xs text-muted-foreground tabular-nums">{elapsed}s</span>
+      </div>
+
+      <ul className="flex flex-col gap-2.5">
+        {steps.map((s, i) => {
+          const done = i < active;
+          const isActive = i === active;
+          return (
+            <li key={s.label} className="flex items-center gap-2.5 text-sm">
+              <span className="flex w-4 shrink-0 justify-center">
+                {done ? (
+                  <CircleCheck size={15} className="text-positive" />
+                ) : isActive ? (
+                  <Loader2 size={15} className="animate-spin text-primary" />
+                ) : (
+                  <span className="size-1.5 rounded-full bg-muted-foreground/40" />
+                )}
+              </span>
+              <span className={cn(isActive ? "text-foreground" : "text-muted-foreground")}>
+                {s.label}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+
+      <p className="text-sm text-muted-foreground">
+        {slow
+          ? "Still working — this one's taking a little longer than usual. You can leave this page; we'll drop a notification in the bell when it's ready."
+          : firstTime
+            ? "The first card for a competitor takes longer — it builds the AI summary first. You can safely leave this page and we'll notify you."
+            : "You can leave this page — we'll notify you in the bell when it's ready."}
+      </p>
+    </Card>
   );
 }
 

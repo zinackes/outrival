@@ -32,6 +32,138 @@ export const PRICING_STATUS_LABELS: Record<PricingStatus, string> = {
   unknown: "Pricing not detected",
 };
 
+// ---------------------------------------------------------------------------
+// User-editable pricing overlay (per-plan lock).
+//
+// Detected pricing lives in the append-only pricing_history log — never edited.
+// The user's hand-edits live on competitors.overrides as a small overlay, merged
+// with the latest detected batch at read time. This keeps the time-series clean
+// (charts stay "observed only") while letting the user own the displayed value.
+//
+// Per-plan lock: the merge key is the normalized plan name. A user can edit,
+// add, or hide individual plans. Plans the user never touched keep flowing from
+// the scraper (fresh on every scrape); new detected plans appear on their own;
+// an edited plan whose detection diverges surfaces `drift` instead of being
+// overwritten, so a manual value can't silently rot.
+// ---------------------------------------------------------------------------
+
+// One pricing plan, in the shape shared by the detected batch and the overlay.
+// price is nullable: quote-based tiers ("Enterprise", "Contact sales") carry no
+// public number but are still real plans worth showing.
+export interface PricingTier {
+  planName: string;
+  price: number | null;
+  currency: string;
+  billingPeriod: string;
+}
+
+export type PricingPlanAction = "edit" | "add" | "hide";
+
+// One user override, keyed by normalized plan name. `value` is required for
+// edit/add (the locked plan) and absent for hide.
+export interface PricingPlanOverride {
+  planKey: string;
+  action: PricingPlanAction;
+  value?: PricingTier;
+  lastEditedByUserAt: string; // ISO timestamp
+}
+
+// The competitor-level overlay (competitors.overrides jsonb). Extensible: only
+// pricingPlans today, room for analyst notes etc. later without a new column.
+export interface CompetitorOverrides {
+  pricingPlans?: PricingPlanOverride[];
+}
+
+// A resolved plan as shown to the user, carrying its provenance so the UI can
+// badge "Edited by you" / "Added" and flag drift or a vanished plan.
+export interface ResolvedPricingTier extends PricingTier {
+  origin: "detected" | "edited" | "added";
+  locked: boolean; // a user override governs this plan
+  // Present on an edited plan whose current detection disagrees with the locked
+  // value: the source moved, we kept yours, here's what the source now says.
+  drift?: PricingTier;
+  // A locked plan the latest scrape no longer surfaces at all.
+  noLongerDetected?: boolean;
+}
+
+// Merge identity for a plan. Case/whitespace-insensitive so "Pro Plan" and
+// "pro  plan" collapse to the same plan across scrapes and edits.
+export function normalizePlanKey(planName: string): string {
+  return planName.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function tiersDiffer(a: PricingTier, b: PricingTier): boolean {
+  return (
+    a.price !== b.price ||
+    a.currency !== b.currency ||
+    a.billingPeriod !== b.billingPeriod
+  );
+}
+
+/**
+ * Resolve the pricing tiers to display: the latest detected batch with the
+ * user's per-plan overlay applied. Pure — the single source of truth for
+ * "current pricing" across the pricing tab, battle cards, compare and Ask, so
+ * an edit is reflected everywhere rather than only on the tab.
+ *
+ * - untouched detected plans pass through (scraper keeps them fresh),
+ * - an `edit`/`add` override with a matching detected key locks that plan and
+ *   surfaces `drift` when the detection diverges,
+ * - a `hide` override drops the detected plan,
+ * - an `add` with no detected match is appended,
+ * - an `edit`/`hide` whose plan vanished from detection is kept (edit) with
+ *   `noLongerDetected`, or dropped (hide).
+ */
+export function resolveCurrentPricing(
+  detected: PricingTier[],
+  overrides: CompetitorOverrides | null | undefined,
+): ResolvedPricingTier[] {
+  const plans = overrides?.pricingPlans ?? [];
+  const byKey = new Map<string, PricingPlanOverride>();
+  for (const ov of plans) byKey.set(ov.planKey, ov);
+
+  const consumed = new Set<string>();
+  const result: ResolvedPricingTier[] = [];
+
+  for (const tier of detected) {
+    const key = normalizePlanKey(tier.planName);
+    const ov = byKey.get(key);
+    if (!ov) {
+      result.push({ ...tier, origin: "detected", locked: false });
+      continue;
+    }
+    consumed.add(key);
+    if (ov.action === "hide") continue;
+    if (ov.value) {
+      result.push({
+        ...ov.value,
+        origin: ov.action === "add" ? "added" : "edited",
+        locked: true,
+        drift: tiersDiffer(ov.value, tier) ? tier : undefined,
+      });
+    } else {
+      // Malformed edit (no value) — fall back to the detected plan untouched.
+      result.push({ ...tier, origin: "detected", locked: false });
+    }
+  }
+
+  // Overrides with no detected counterpart: user-added plans, or edits/hides on
+  // plans the source no longer shows.
+  for (const ov of plans) {
+    if (consumed.has(ov.planKey)) continue;
+    if (ov.action === "hide") continue;
+    if (!ov.value) continue;
+    result.push({
+      ...ov.value,
+      origin: ov.action === "add" ? "added" : "edited",
+      locked: true,
+      noLongerDetected: ov.action === "edit" ? true : undefined,
+    });
+  }
+
+  return result;
+}
+
 export type PricingRepositioningType =
   | "pricing_gated" // pulled public prices behind a gate
   | "pricing_public" // exposed previously gated prices

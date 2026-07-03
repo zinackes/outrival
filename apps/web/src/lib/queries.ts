@@ -40,6 +40,16 @@ export function competitorsQuery(productId?: string) {
   });
 }
 
+// Compare picker ranking — per-competitor data-completeness score keyed by id.
+// Orders the picker/default columns toward the competitors worth comparing.
+// Best-effort: an empty map degrades to overlap order client-side.
+export function compareRankingQuery() {
+  return queryOptions({
+    queryKey: ["compare", "ranking"] as const,
+    queryFn: () => api.getCompareRanking().then((r) => r.ranking),
+  });
+}
+
 // Full competitor detail (the [id] page: competitor + monitors + recent changes/
 // signals + tech stack + overview + plan). Distinct ["competitor", id, "detail"]
 // key from the per-tab queries (["competitor", id, "jobs"|"pricingHistory"|…]).

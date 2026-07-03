@@ -20,6 +20,7 @@ import {
   type AiVisibilityResultRow,
 } from "../lib/analytics";
 import { aggregate, computeDeltas, type VisibilityDelta } from "../lib/ai-visibility/diff";
+import { notifyJobComplete } from "../lib/job-complete";
 
 // AI Visibility / "Share of Model" — phases 2+3 (docs/ai-visibility.md). For one org:
 // query each engine once per tracked prompt, parse which roster subjects (self +
@@ -28,7 +29,13 @@ import { aggregate, computeDeltas, type VisibilityDelta } from "../lib/ai-visibi
 // a competitor overtakes you / a competitor newly appears). No UI yet (phase 4); one
 // engine (Perplexity, phase 5 adds more). Independent of the scrape-monitor pipeline.
 
-const InputSchema = z.object({ orgId: z.string() });
+const InputSchema = z.object({
+  orgId: z.string(),
+  // Set by the on-demand "Run now" route → drop a durable "run complete" notification
+  // when the run lands (it resolves ~a minute later, off the page). The weekly
+  // scheduler omits it, so an automated run stays silent.
+  notifyOnComplete: z.boolean().optional(),
+});
 
 const ENGINES: Engine[] = ["perplexity"]; // OpenAI + Google AIO land in phase 5
 
@@ -52,7 +59,7 @@ export const scrapeAiVisibilityJob = task({
   retry: { maxAttempts: 2, minTimeoutInMs: 2000, maxTimeoutInMs: 15000, factor: 2 },
 
   async run(payload: z.input<typeof InputSchema>) {
-    const { orgId } = InputSchema.parse(payload);
+    const { orgId, notifyOnComplete } = InputSchema.parse(payload);
 
     // Kill-switch: explicit "false" disables; missing key disables (no cost incurred).
     if (process.env.AI_VISIBILITY_ENABLED === "false") {
@@ -171,6 +178,16 @@ export const scrapeAiVisibilityJob = task({
       rowsWritten: allRows.length,
       signalled,
     });
+
+    if (notifyOnComplete) {
+      await notifyJobComplete({
+        orgId,
+        title: "AI Visibility run complete",
+        body: `Perplexity checked ${prompts.length} prompt${prompts.length === 1 ? "" : "s"}. Your latest results are ready to view.`,
+        linkUrl: "/dashboard/ai-visibility",
+      });
+    }
+
     return { prompts: prompts.length, queries, rowsWritten: allRows.length, signalled, runId };
   },
 });

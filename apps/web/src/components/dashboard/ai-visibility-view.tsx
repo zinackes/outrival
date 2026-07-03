@@ -45,7 +45,9 @@ export function AiVisibilityView() {
     setRunning(true);
     try {
       await api.runAiVisibility();
-      toast.success("Visibility run started — results appear in about a minute.");
+      toast.success("Visibility run started", {
+        description: "We'll notify you when your results are ready, in about a minute.",
+      });
       // The run is async on a worker; pull the fresh results in a little while.
       setTimeout(refresh, 60_000);
     } catch {

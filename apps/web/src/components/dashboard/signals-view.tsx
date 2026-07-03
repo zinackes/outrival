@@ -365,6 +365,15 @@ export function SignalsView() {
   // list-first (unselected) state.
   const focusSyncedRef = useRef(false);
   useEffect(() => {
+    // Desktop only. The side pane's open row is mirrored to ?focus= for deep-links
+    // and refresh-persistence. On mobile the detail is a full-screen sheet whose
+    // open/close is owned by the history-back effect below (so the OS back button
+    // dismisses it) — writing ?focus= there would fight that history entry.
+    if (
+      typeof window !== "undefined" &&
+      !window.matchMedia("(min-width: 1024px)").matches
+    )
+      return;
     if (!focusedId && !focusSyncedRef.current) return;
     focusSyncedRef.current = true;
     if (focusId === focusedId) return;
@@ -375,12 +384,19 @@ export function SignalsView() {
   // Overview, or a reload — the sync effect above keeps it in the URL), else
   // default to the first row on desktop so the detail pane is never empty. Mobile
   // starts unselected (list-first).
+  const deepLinkConsumedRef = useRef(false);
   useEffect(() => {
     if (focusedId || !navIds.length) return;
-    const wanted = focusId && navIds.includes(focusId) ? focusId : null;
-    if (wanted) {
-      selectRow(wanted);
-      return;
+    // Consume a deep-linked ?focus= exactly once. On mobile the URL keeps the
+    // stale param after the sheet closes (we don't write it back) — re-reading it
+    // every time focus clears would reopen the signal the user just backed out of.
+    if (!deepLinkConsumedRef.current) {
+      deepLinkConsumedRef.current = true;
+      const wanted = focusId && navIds.includes(focusId) ? focusId : null;
+      if (wanted) {
+        selectRow(wanted);
+        return;
+      }
     }
     if (focusedRef.current === "init") return;
     if (
@@ -407,6 +423,39 @@ export function SignalsView() {
       ) ?? null
     );
   }, [selectedId, feedItems]);
+
+  // Mobile: the detail renders as a full-screen sheet, which reads as its own
+  // screen — so the OS/browser back button and iOS edge-swipe must dismiss it
+  // back to the list, not leave /dashboard/signals. The sheet's open state isn't
+  // a route, so while it's up we push a throwaway history entry and close on the
+  // resulting popstate; dismissed another way (the in-app back button, a filter
+  // dropping the row) we pop our own entry so history stays balanced. Body scroll
+  // is locked underneath so the list can't scroll behind the sheet.
+  const sheetOpen = Boolean(selectedItem);
+  useEffect(() => {
+    if (!sheetOpen) return;
+    if (window.matchMedia("(min-width: 1024px)").matches) return;
+
+    window.history.pushState(
+      { ...window.history.state, __signalSheet: true },
+      "",
+    );
+    const onPop = () => setFocusedId(null);
+    window.addEventListener("popstate", onPop);
+
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      window.removeEventListener("popstate", onPop);
+      document.body.style.overflow = prevOverflow;
+      // Closed without a Back (in-app button, filtered out): the sentinel is still
+      // on top, so consume it. After a real Back it's already gone (guard false),
+      // and navigating deeper put a real route on top (guard false) — so we never
+      // pop someone else's entry.
+      if (window.history.state?.__signalSheet) window.history.back();
+    };
+  }, [sheetOpen, setFocusedId]);
 
   // Scope Ask to the open signal, else to the single filtered competitor, else the feed.
   const askContext = useMemo<AskEntity | null>(() => {
@@ -822,7 +871,7 @@ export function SignalsView() {
             className={cn(
               "lg:sticky lg:top-4",
               selectedItem
-                ? "fixed inset-0 z-50 overflow-y-auto bg-background p-4 lg:static lg:inset-auto lg:z-auto lg:overflow-visible lg:bg-transparent lg:p-0"
+                ? "fixed inset-0 z-50 overflow-y-auto bg-background p-4 animate-in fade-in slide-in-from-bottom-2 duration-200 lg:static lg:inset-auto lg:z-auto lg:overflow-visible lg:bg-transparent lg:p-0 lg:animate-none"
                 : "hidden lg:block",
             )}
           >
@@ -830,7 +879,13 @@ export function SignalsView() {
               <>
                 <button
                   type="button"
-                  onClick={() => setFocusedId(null)}
+                  onClick={() => {
+                    // Mirror the OS back button: pop our history sentinel so both
+                    // paths converge on the same popstate → close. Fallback for the
+                    // rare case the sentinel isn't there (opened before a resize).
+                    if (window.history.state?.__signalSheet) window.history.back();
+                    else setFocusedId(null);
+                  }}
                   className="mb-3 inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground lg:hidden"
                 >
                   <ArrowLeft size={14} /> Back to signals
@@ -846,6 +901,7 @@ export function SignalsView() {
                     <div className="grid max-w-[820px] grid-cols-1 items-start gap-4 @4xl/detail:max-w-[1148px] @4xl/detail:grid-cols-[minmax(0,820px)_300px] @4xl/detail:gap-6">
                       <div className="min-w-0 space-y-4">
                         <SignalCard
+                          key={selectedItem.signal.id}
                           signal={selectedItem.signal}
                           interactive={!sample}
                           onMarkRead={!sample ? markRead : undefined}

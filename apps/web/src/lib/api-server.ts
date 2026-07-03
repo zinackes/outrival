@@ -274,14 +274,19 @@ export async function getActivityData(productId?: string): Promise<{
 export async function getCompareData(productId?: string): Promise<{
   products: ProductSummary[];
   competitors: Competitor[];
+  ranking: Record<string, number>;
 } | null> {
   const scope = productId ? `?productId=${encodeURIComponent(productId)}` : "";
   try {
-    const [p, c] = await Promise.all([
+    const [p, c, r] = await Promise.all([
       serverGet<{ products: ProductSummary[] }>("/api/products"),
       serverGet<{ competitors: Competitor[] }>(`/api/competitors${scope}`),
+      // Best-effort: ranking is a picker-ordering nicety, never a blocker.
+      serverGet<{ ranking: Record<string, number> }>("/api/compare/ranking").catch(() => ({
+        ranking: {},
+      })),
     ]);
-    return { products: p.products, competitors: c.competitors };
+    return { products: p.products, competitors: c.competitors, ranking: r.ranking };
   } catch {
     return null;
   }

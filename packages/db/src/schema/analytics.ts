@@ -43,6 +43,12 @@ export const pricingHistory = pgTable(
     hasTrial: integer("has_trial"),
     trialDays: integer("trial_days"),
     trialRequiresCard: integer("trial_requires_card"),
+    // Permanent free plan / freemium tier advertised on the page (AI-free regex,
+    // detect-free-plan). Distinct from has_trial: a free *plan* is a $0 tier, a free
+    // *trial* is time-limited paid access. Stamped page-level like the trial facts.
+    // Catches a free tier the priced-card extractor misses (e.g. a "Free" comparison
+    // column with no price token). 0/1 int; null = pre-detection (legacy rows).
+    hasFreePlan: integer("has_free_plan"),
     recordedAt: timestamp("recorded_at").notNull().defaultNow(),
   },
   (t) => [index("pricing_history_competitor_recorded_idx").on(t.competitorId, t.recordedAt)],

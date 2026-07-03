@@ -116,11 +116,19 @@ export async function scrapeStatic(url: string): Promise<ScrapeOutcome> {
 /**
  * Try a list of candidate paths on a base URL.
  * Returns the first one that scrapes successfully (non-empty text).
+ *
+ * `accept` is an optional content gate: a path that fetches fine but whose CONTENT
+ * isn't what we're after is skipped like a miss. This is what makes probing safe on a
+ * client-routed SPA, where every path returns HTTP 200 with the app shell — status +
+ * text-length alone can't tell `/careers` (real) from `/careers` (the SPA rendering
+ * its home because that route doesn't exist). The jobs scraper passes a "looks like a
+ * careers listing" gate; callers that omit it (blog, changelog) keep the old behaviour.
  */
 export async function scrapeFirstSuccess(
   baseUrl: string,
   candidatePaths: string[],
   scrapeFn: (u: string) => Promise<ScrapeOutcome>,
+  accept?: (res: ScrapeOutcome) => boolean,
 ): Promise<ScrapeOutcome> {
   const base = new URL(baseUrl);
   let lastError: unknown;
@@ -133,7 +141,9 @@ export async function scrapeFirstSuccess(
       // body, so `text.length` alone can't tell) is not a hit — skip it so the
       // caller can fall back instead of locking onto a non-existent page.
       if (res.statusCode && res.statusCode >= 400) continue;
-      if (res.text.length > 50) return res;
+      if (res.text.length <= 50) continue;
+      if (accept && !accept(res)) continue;
+      return res;
     } catch (err) {
       lastError = err;
     }

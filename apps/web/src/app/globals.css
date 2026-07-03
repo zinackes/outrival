@@ -5,6 +5,16 @@
    `dark:` utilities activate only under the `.dark` class on <html>. */
 @custom-variant dark (&:is(.dark *));
 
+/* Tailwind v4 compiles `hover:` to `@media (hover: hover) { &:hover }`, so every
+   hover style is dead on touch — a tap produced no feedback anywhere the design
+   leans on hover: alone (sidebar nav, tabs, list rows, dropdown/select items,
+   table rows, cards). Redefining the variant drops the media gate: on touch a tap
+   now fires :hover (it stays lit until the next tap elsewhere), matching the
+   desktop color change. Desktop is unchanged — it always satisfied hover:hover.
+   As a bonus, actions revealed on hover (opacity-0 → hover:opacity-100) become
+   reachable by finger. Buttons keep their momentary active: press states on top. */
+@custom-variant hover (&:hover);
+
 :root {
   color-scheme: light;
 
@@ -594,6 +604,9 @@ html:has(.landing-canvas) {
 [data-reveal].reveal-init.reveal-in {
   opacity: 1;
   transform: none;
+  /* Release the promoted compositor layer once the section has landed — leaving
+     will-change set keeps every revealed section permanently layer-promoted. */
+  will-change: auto;
 }
 @media (prefers-reduced-motion: reduce) {
   [data-reveal].reveal-init {

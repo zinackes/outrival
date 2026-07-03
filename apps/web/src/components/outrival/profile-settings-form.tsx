@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { emailSchema } from "@outrival/shared";
 import { useSession, authClient } from "@/lib/auth-client";
@@ -174,6 +174,9 @@ export function ProfileSettingsForm() {
 
   const [name, setName] = useState(currentName);
   const [saving, setSaving] = useState(false);
+  // Inline "Saved" beats a corner toast here: the result lands on the same form the
+  // user is looking at. Matches the notification/workspace settings forms.
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     setName(currentName);
@@ -190,7 +193,8 @@ export function ProfileSettingsForm() {
     try {
       const res = await authClient.updateUser({ name: name.trim() });
       if (res.error) throw new Error(res.error.message ?? "Update failed");
-      toast.success("Profile updated");
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
       router.refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not update profile");
@@ -217,11 +221,16 @@ export function ProfileSettingsForm() {
 
       <EmailField currentEmail={email} />
 
-      <div>
+      <div className="flex items-center gap-3">
         <Button size="sm" onClick={save} disabled={!dirty || saving}>
           {saving && <Loader2 size={13} className="animate-spin" />}
           Save changes
         </Button>
+        {saved && (
+          <span className="flex items-center gap-1.5 text-sm text-positive">
+            <Check className="size-4" /> Saved
+          </span>
+        )}
       </div>
     </div>
   );

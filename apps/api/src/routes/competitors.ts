@@ -1174,6 +1174,10 @@ competitorsRouter.post("/:id/refresh-summary", aiIntensiveRateLimit, async (c) =
 
   const handle = await tasks.trigger("refresh-competitor-summary", {
     competitorId: id,
+    // User-initiated refresh → drop a durable "summary ready" notification when it
+    // lands, so leaving the page doesn't lose the result. Automated refreshes
+    // (post-scrape, onboarding, battle-card) omit the flag and stay silent.
+    notifyOnComplete: true,
   });
   return c.json({ runId: handle.id });
 });

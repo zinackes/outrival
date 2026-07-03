@@ -17,6 +17,11 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   // A monitored source has produced nothing for a long time (patch-27). The user
   // is prompted to re-scan, pause, or swap it. Rate-limited to 1 per org / 30 days.
   "silent_monitor",
+  // A background analysis the user kicked off by hand has finished and its result
+  // is ready to view (competitor summary refresh, AI Visibility run). Durable so a
+  // completion that lands minutes later isn't lost to a toast the user has already
+  // navigated away from.
+  "analysis_ready",
 ]);
 
 export const notifications = pgTable("notifications", {

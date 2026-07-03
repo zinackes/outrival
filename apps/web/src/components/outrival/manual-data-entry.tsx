@@ -65,6 +65,9 @@ export function ManualDataEntry({ monitorId, sourceType, open, onOpenChange, onS
   const [values, setValues] = useState<Record<string, string>>({});
   const [evidenceUrl, setEvidenceUrl] = useState("");
   const [saving, setSaving] = useState(false);
+  // Save stays disabled until there's at least one field to store, so an empty
+  // submit is unreachable — no need to throw a validation toast on click.
+  const hasData = fields.some((f) => (values[f.key] ?? "").trim().length > 0);
 
   async function submit() {
     const data: Record<string, unknown> = {};
@@ -72,10 +75,7 @@ export function ManualDataEntry({ monitorId, sourceType, open, onOpenChange, onS
       const v = values[f.key]?.trim();
       if (v) data[f.key] = v;
     }
-    if (Object.keys(data).length === 0) {
-      toast.error("Add at least one piece of information before saving.");
-      return;
-    }
+    if (Object.keys(data).length === 0) return;
     setSaving(true);
     try {
       await api.submitManualSnapshot(monitorId, {
@@ -139,7 +139,7 @@ export function ManualDataEntry({ monitorId, sourceType, open, onOpenChange, onS
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={saving}>
+          <Button onClick={submit} disabled={saving || !hasData}>
             {saving ? "Saving…" : "Save"}
           </Button>
         </DialogFooter>

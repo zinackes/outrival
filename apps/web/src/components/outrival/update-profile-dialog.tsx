@@ -254,10 +254,9 @@ export function UpdateProfileDialog({
     PROFILE_FIELDS.some((f) => (working[f.key] ?? "").trim() !== (baseline[f.key] ?? "").trim());
 
   async function save() {
-    if (emptyField) {
-      toast.error("All profile fields are required");
-      return;
-    }
+    // Save is gated on `emptyField` (footer button + the inline hint below the
+    // fields), so this only runs once the required fields are filled.
+    if (emptyField) return;
     setSaving(true);
     try {
       const manualShared = [...manual].filter(isShared);
@@ -517,6 +516,12 @@ export function UpdateProfileDialog({
                 </div>
               ))}
             </div>
+
+            {emptyField && (
+              <p className="text-xs text-critical">
+                Category, target audience and value proposition are required.
+              </p>
+            )}
           </div>
         )}
 

@@ -213,6 +213,46 @@ describe("parseHomepageStructure — navigation, footer, social proof", () => {
   });
 });
 
+// The broad quote selector (`[class*="testimonial"]`, `[class*="quote"]`) matches a
+// testimonial CARD and its inner `.testimonial-text` / `.testimonial-author` parts.
+// Regression: the proof list came out as bare names/roles ("Managing Director @ …")
+// with the actual reviews missing (real-world SlideLizard markup).
+describe("parseHomepageStructure — testimonials with class-tagged inner parts", () => {
+  const HTML = `<!doctype html><html><head><title>T</title></head><body>
+    <section>
+      <h2>What our customers say</h2>
+      <div class="testimonial">
+        <p class="testimonial-text">With the help of SlideLizard, we conducted our management conference completely online for the first time. The participants were excited!</p>
+        <p class="testimonial-author">Head of Marketing/Communications @ DB Schenker Austria</p>
+      </div>
+      <div class="testimonial">
+        <p class="testimonial-text">The tool made our hybrid event effortless and our attendees loved every session of it.</p>
+        <p class="testimonial-author">Managing Director @ Reichl und Partner (Ad Agency)</p>
+      </div>
+    </section>
+  </body></html>`;
+  const s = parseHomepageStructure(HTML, BASE);
+  const quotes = s.socialProof.testimonials.map((t) => t.quote);
+
+  it("captures the actual review text, not the person's role", () => {
+    expect(quotes.some((q) => q.startsWith("With the help of SlideLizard"))).toBe(true);
+    expect(quotes.some((q) => q.includes("hybrid event effortless"))).toBe(true);
+  });
+  it("never surfaces an attribution line as a quote", () => {
+    expect(quotes.some((q) => q.includes("Managing Director"))).toBe(false);
+    expect(quotes.some((q) => q.includes("Head of Marketing"))).toBe(false);
+  });
+  it("captures every card (does not collapse the wall to one)", () => {
+    expect(s.socialProof.testimonials.length).toBe(2);
+  });
+  it("links the role to its quote as the author", () => {
+    const first = s.socialProof.testimonials.find((t) =>
+      t.quote.startsWith("With the help of SlideLizard"),
+    );
+    expect(first?.author).toContain("DB Schenker Austria");
+  });
+});
+
 // The broad social-proof selector also matches the site's own header/footer brand
 // mark and tracking pixels — they must never flood the customer wall.
 describe("parseHomepageStructure — own logo and pixels excluded from the wall", () => {

@@ -29,6 +29,9 @@ export interface AnalysisMonitorInput {
   lastFailedAt: string | Date | null;
   scrapeStartedAt: string | Date | null;
   markedUnscrapable: boolean;
+  // Whether the anchor source is still switched on. An off source (user-paused, or
+  // auto-paused via markedUnscrapable) is parked — nothing in flight to flag.
+  isActive: boolean;
 }
 
 export interface AnalysisStatusInput {
@@ -75,7 +78,12 @@ export function deriveAnalysisStatus(
 
   const a = input.anchor;
   if (!a) return { stage: "idle", pending: false };
-  if (a.markedUnscrapable) return { stage: "needs_attention", pending: false };
+
+  // The anchor source is off — either the user paused it or the cascade gave up
+  // (markedUnscrapable, which still lists it in the dedicated unscrapable surface).
+  // Either way it's parked: nothing is in flight, so don't nag with the "needs
+  // attention" banner. Only an *active* anchor can be queued / scraping / stuck.
+  if (!a.isActive || a.markedUnscrapable) return { stage: "idle", pending: false };
 
   const lastRun = toMs(a.lastRunAt);
   const lastFailed = toMs(a.lastFailedAt);

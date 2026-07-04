@@ -20,8 +20,11 @@ interface Call {
   method: string;
 }
 
-/** Route by URL; HEAD probes default to 404 unless the handler says otherwise. */
-function mockFetch(handler: (url: string, method: string) => { ok: boolean; body?: string }) {
+/** Route by URL; HEAD probes default to 404 unless the handler says otherwise.
+ *  A handler may return `url` to simulate a redirect landing (final `res.url`). */
+function mockFetch(
+  handler: (url: string, method: string) => { ok: boolean; body?: string; url?: string },
+) {
   const calls: Call[] = [];
   globalThis.fetch = (async (input: unknown, init?: { method?: string }) => {
     const url = typeof input === "string" ? input : String(input);
@@ -31,6 +34,7 @@ function mockFetch(handler: (url: string, method: string) => { ok: boolean; body
     return {
       ok: r.ok,
       status: r.ok ? 200 : 404,
+      url: r.url ?? url,
       text: async () => r.body ?? "",
     } as Response;
   }) as typeof fetch;
@@ -88,6 +92,28 @@ test("trusted nav link whose target 404s is dropped (apex sub-path bug)", async 
   const html = `<nav><a href="/pricing">Pricing</a></nav>`;
   const got = await discoverPricingUrl(BASE, html);
   expect(got).toBeNull();
+});
+
+test("catch-all 2xx HEAD probes fall through to the real nav link (mtgstocks)", async () => {
+  // Regression guard: a bot-protected SPA answers a blanket 2xx (mtgstocks 202s)
+  // to HEAD on EVERY path, and its guessed convention routes redirect to an error
+  // shell (/pricing → /error/404). The canonical pricing page is reachable only via
+  // the homepage "Go Premium" nav link — the catch-all HEAD must NOT mask it.
+  const MTG = "https://www.mtgstocks.com/";
+  mockFetch((url, method) => {
+    if (method === "HEAD") {
+      // Guessed pricing conventions redirect onto a soft-404 error shell.
+      if (/\/(pricing|tarifs|plans|price|prix)/.test(url)) {
+        return { ok: true, url: "https://www.mtgstocks.com/error/404" };
+      }
+      return { ok: true }; // blanket 2xx catch-all for anything else
+    }
+    if (url.includes("/go-premium")) return { ok: true, body: PRICED_PAGE };
+    return { ok: false };
+  });
+  const html = `<header><a href="/go-premium">Go Premium</a></header>`;
+  const got = await discoverPricingUrl(MTG, html);
+  expect(got).toEqual({ url: "https://www.mtgstocks.com/go-premium", source: "nav" });
 });
 
 test("CollX case: tier link is verified by content and accepted", async () => {

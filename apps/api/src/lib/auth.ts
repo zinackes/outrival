@@ -4,6 +4,8 @@ import { passkey } from "@better-auth/passkey";
 import { createAuthMiddleware, APIError } from "better-auth/api";
 import { deleteSessionCookie } from "better-auth/cookies";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { eq } from "drizzle-orm";
+import { canonicalizeEmail } from "@outrival/shared";
 import { db } from "./db";
 import { users } from "@outrival/db";
 import * as schema from "@outrival/db";
@@ -66,6 +68,15 @@ export const auth = betterAuth({
   ...(cookieDomain
     ? { advanced: { crossSubDomainCookies: { enabled: true, domain: cookieDomain } } }
     : {}),
+
+  // Server-derived, never user-settable (input:false). Holds the canonical mailbox
+  // key computed in the create hook below — the anti-abuse uniqueness signal that
+  // one Gmail inbox can't fan out into many accounts via dots/+tag.
+  user: {
+    additionalFields: {
+      emailCanonical: { type: "string", required: false, input: false },
+    },
+  },
 
   // Email + password kept as a fallback. Existing accounts (created before patch-19,
   // some with <12-char passwords) keep working: minPasswordLength is only enforced
@@ -244,8 +255,25 @@ export const auth = betterAuth({
               message: "Temporary email addresses aren't accepted",
             });
           }
-          if (user.name && user.name.trim()) return;
-          return { data: { ...user, name: nameFromEmail(user.email) } };
+          // Block a second account on a mailbox that already has one — Gmail
+          // dots/+tag make john@, j.o.hn@ and john+x@ the SAME inbox, so without
+          // this one Gmail account could mint unlimited signups. The canonical key
+          // is server-derived; the applicative check gives a clean error and a
+          // follow-up unique index backstops the race once collisions are cleared.
+          const emailCanonical = canonicalizeEmail(user.email);
+          const dupe = await db
+            .select({ id: schema.user.id })
+            .from(schema.user)
+            .where(eq(schema.user.emailCanonical, emailCanonical))
+            .limit(1);
+          if (dupe.length > 0) {
+            throw new APIError("BAD_REQUEST", {
+              code: "DUPLICATE_MAILBOX",
+              message: "An account already exists for this email.",
+            });
+          }
+          const name = user.name && user.name.trim() ? user.name : nameFromEmail(user.email);
+          return { data: { ...user, emailCanonical, name } };
         },
         after: async (user) => {
           await db

@@ -238,6 +238,7 @@ myProductRouter.get("/", async (c) => {
             lastFailedAt: homepageSelfMonitor.lastFailedAt,
             scrapeStartedAt: homepageSelfMonitor.scrapeStartedAt,
             markedUnscrapable: homepageSelfMonitor.markedUnscrapable,
+            isActive: homepageSelfMonitor.isActive,
           }
         : null,
     },

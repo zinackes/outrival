@@ -488,6 +488,30 @@ function extractSvgLogos($: CheerioRoot, baseUrl: string): CustomerLogo[] {
   return logos;
 }
 
+// The broad testimonial match: a <blockquote> or any element whose class names a
+// testimonial/quote. Reused for the leaf check below — a wrapper card and its inner
+// `.testimonial-text` / `.testimonial-author` all match, so we keep only innermost hits.
+const TESTIMONIAL_SEL = 'blockquote, [class*="testimonial" i], [class*="quote" i]';
+// Where an attribution (person / role / company) lives relative to its quote.
+const TESTIMONIAL_AUTHOR_SEL =
+  'cite, footer, [class*="author" i], [class*="name" i], [class*="role" i], [class*="position" i], [class*="byline" i]';
+
+// A short line that reads as a person's title/affiliation ("Head of Marketing @ DB
+// Schenker Austria", "Managing Director, Reichl und Partner") rather than a review.
+// The broad quote selector otherwise surfaces these attribution sub-elements AS quotes
+// (the reported bug: the proof list showed only names/roles, not the actual reviews).
+// Real testimonials are first-person and/or long; job-title lines are short, third-
+// person, and name a role — reject those so they never masquerade as a quote.
+const JOB_TITLE_RE =
+  /\b(ceo|cto|cfo|coo|cmo|ciso|cpo|cro|founder|co-?founder|co-?owner|owner|president|vice[\s-]?president|vp|svp|evp|director|managing director|manager|head of|chief|officer|managing partner|team lead|tech lead)\b/i;
+const FIRST_PERSON_RE = /\b(we|we'?re|we'?ve|our|ours|us|i|i'?m|i'?ve|my|me)\b/i;
+function looksLikeAttribution(text: string): boolean {
+  const t = text.trim();
+  if (t.length > 100) return false;
+  if (FIRST_PERSON_RE.test(t)) return false;
+  return JOB_TITLE_RE.test(t);
+}
+
 function extractSocialProof(
   $: CheerioRoot,
   baseUrl: string,
@@ -551,23 +575,42 @@ function extractSocialProof(
     $("blockquote").length + $('[class*="testimonial" i], [class*="quote" i]').length;
 
   // Detailed testimonials (patch-17): a hashed quote + author per item, for the
-  // stable add/remove diff. Bounded length filters out non-quote matches; the
-  // hash lets a rotating carousel be matched across scrapes.
+  // stable add/remove diff AND the "Customers & proof" fact sheet. The hash lets a
+  // rotating carousel be matched across scrapes.
+  //
+  // TESTIMONIAL_SEL is broad, so markup that classes the inner parts too
+  // (`.testimonial-text` + `.testimonial-author` inside a `.testimonial` card) matches
+  // the card AND its children. That produced two bugs: a card's `.find("p").first()`
+  // collapsed a whole wall to its first quote, and the attribution sub-element ("Head
+  // of Marketing @ DB Schenker") surfaced as a standalone quote — the proof list ended
+  // up all names/roles, no reviews. So: keep only the INNERMOST matches (skip a node
+  // wrapping another match) → each quote captured once at its own node; drop
+  // attribution-only text; find the author in the node, else the sibling that follows.
   const testimonials: TestimonialItem[] = [];
   const seenQuotes = new Set<string>();
-  $('blockquote, [class*="testimonial" i], [class*="quote" i]').each((_, el) => {
+  $(TESTIMONIAL_SEL).each((_, el) => {
     if (testimonials.length >= MAX_TESTIMONIALS) return;
     const $el = $(el);
+    // Wrapper node holding another matched quote → skip; the inner one is captured.
+    if ($el.find(TESTIMONIAL_SEL).length > 0) return;
     const quote =
       elText($el.find("p").first()[0] as unknown as DomNode | undefined) ||
       elText(el as unknown as DomNode);
     if (quote.length < 30 || quote.length > 1000) return;
-    const author =
-      elText(
-        $el.find('cite, [class*="author" i], [class*="name" i]').first()[0] as unknown as
-          | DomNode
-          | undefined,
-      ) || null;
+    // A job-title/affiliation line is an attribution, not a review — never a quote.
+    if (looksLikeAttribution(quote)) return;
+    // Author: an attribution element inside the quote node, else the one that follows
+    // it in the same card (`.testimonial-author` sibling after `.testimonial-text`).
+    let author =
+      elText($el.find(TESTIMONIAL_AUTHOR_SEL).first()[0] as unknown as DomNode | undefined) ||
+      null;
+    if (!author) {
+      author =
+        elText(
+          $el.nextAll(TESTIMONIAL_AUTHOR_SEL).first()[0] as unknown as DomNode | undefined,
+        ) || null;
+    }
+    if (author && author.length > 100) author = null;
     const hash = hashTestimonial(quote);
     if (seenQuotes.has(hash)) return;
     seenQuotes.add(hash);

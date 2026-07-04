@@ -12,6 +12,7 @@ const anchor = (o: Partial<AnalysisMonitorInput>): AnalysisMonitorInput => ({
   lastFailedAt: null,
   scrapeStartedAt: null,
   markedUnscrapable: false,
+  isActive: true,
   ...o,
 });
 
@@ -68,7 +69,7 @@ test("needs_attention: scraped long ago, summary never arrived", () => {
   expect(s).toEqual({ stage: "needs_attention", pending: false });
 });
 
-test("needs_attention: markedUnscrapable short-circuits", () => {
+test("idle: markedUnscrapable (cascade gave up) — parked, its own surface lists it", () => {
   const s = deriveAnalysisStatus(
     {
       hasSummary: false,
@@ -76,7 +77,20 @@ test("needs_attention: markedUnscrapable short-circuits", () => {
     },
     NOW,
   );
-  expect(s).toEqual({ stage: "needs_attention", pending: false });
+  expect(s).toEqual({ stage: "idle", pending: false });
+});
+
+test("idle: user paused the anchor — no nag even if the first scrape had failed", () => {
+  // The reported case: sources turned off, yet the banner stuck because the derive
+  // ignored isActive. A paused anchor is parked → idle, not needs_attention.
+  const s = deriveAnalysisStatus(
+    {
+      hasSummary: false,
+      anchor: anchor({ isActive: false, lastFailedAt: new Date(NOW - 8 * 60_000) }),
+    },
+    NOW,
+  );
+  expect(s).toEqual({ stage: "idle", pending: false });
 });
 
 test("needs_attention: first scrape failed, never succeeded (no more infinite 'queued')", () => {

@@ -337,6 +337,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
               lastFailedAt: homepage.lastFailedAt,
               scrapeStartedAt: homepage.scrapeStartedAt,
               markedUnscrapable: homepage.markedUnscrapable ?? false,
+              isActive: homepage.isActive !== false,
             }
           : null,
       },

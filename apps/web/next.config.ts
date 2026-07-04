@@ -24,6 +24,12 @@ const nextConfig: NextConfig = {
     cpus: 1,
     staticGenerationMinPagesPerWorker: 1000,
     staticGenerationMaxConcurrency: 4,
+    // Tree-shake barrel/umbrella imports on the hot path: `radix-ui` (the umbrella
+    // meta-package used by every ui/* primitive) and `motion` (pulled into the shell
+    // chunk on every dashboard page). Without this, an umbrella import can drag in far
+    // more than the single primitive used. lucide-react/date-fns are already covered
+    // by Next's defaults; recharts is already lazy via next/dynamic.
+    optimizePackageImports: ["radix-ui", "motion"],
   },
   // Baseline security headers on every response. Deliberately NO full
   // Content-Security-Policy (default-src/script-src): the app loads Turnstile,

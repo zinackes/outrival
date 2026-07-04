@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { headers, cookies } from "next/headers";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
+import { AppProviders } from "@/components/app-providers";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { PageReveal } from "@/components/dashboard/page-reveal";
 import { makeServerQueryClient } from "@/lib/server-query";
@@ -69,7 +70,10 @@ async function getBilling(h: Headers): Promise<{
   competitorsUsed?: number;
   competitorsLimit?: number | null;
 } | null> {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/billing`, {
+  // ?summary=1 — the layout only needs plan + seat usage (DB-backed). This skips the
+  // two sequential Stripe round-trips the full endpoint makes, which were the single
+  // slowest fetch gating the dashboard's first paint on hard loads.
+  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/billing?summary=1`, {
     headers: h,
     cache: "no-store",
   });
@@ -157,13 +161,14 @@ export default async function DashboardLayout({
   }
 
   return (
-    <HydrationBoundary state={dehydrate(queryClient)}>
-      <DashboardShell
-        user={user}
-        org={org}
-        defaultOpen={defaultOpen}
-        productScope={productScope}
-      >
+    <AppProviders>
+      <HydrationBoundary state={dehydrate(queryClient)}>
+        <DashboardShell
+          user={user}
+          org={org}
+          defaultOpen={defaultOpen}
+          productScope={productScope}
+        >
         {userId && <PostHogIdentitySync userId={userId} plan={org.plan} />}
         {userId && <TimezoneSync />}
         {resumeSession && <OnboardingResumeBanner session={resumeSession} />}
@@ -176,7 +181,8 @@ export default async function DashboardLayout({
         <PageReveal>{children}</PageReveal>
         <FeedbackWidget />
         <NpsPrompt />
-      </DashboardShell>
-    </HydrationBoundary>
+        </DashboardShell>
+      </HydrationBoundary>
+    </AppProviders>
   );
 }

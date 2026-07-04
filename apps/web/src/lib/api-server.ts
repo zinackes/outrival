@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { endOfDay, startOfDay, subDays } from "date-fns";
 import type { Plan } from "@outrival/shared";
@@ -35,17 +36,25 @@ import type { CompetitorData } from "@/app/dashboard/competitors/[id]/competitor
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
-// Server-side GET that forwards the caller's session cookie to the API.
-// CORS doesn't apply server-to-server, so the only thing the API needs is the
-// auth cookie — which lives on `.outrival.app` and reaches this web server too.
-async function serverGet<T>(path: string): Promise<T> {
+// Request-scoped GET, deduped by path via React.cache: when the layout and the
+// page (or two loaders) fetch the same endpoint within one render — e.g. /api/products
+// on the compare/products routes — the round-trip runs once and both callers share it.
+// Non-generic so it composes with cache(); serverGet is the thin typed wrapper.
+const cachedGet = cache(async (path: string): Promise<unknown> => {
   const cookieHeader = (await cookies()).toString();
   const res = await fetch(`${BASE}${path}`, {
     headers: { cookie: cookieHeader },
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`server API ${path} -> ${res.status}`);
-  return res.json() as Promise<T>;
+  return res.json();
+});
+
+// Server-side GET that forwards the caller's session cookie to the API.
+// CORS doesn't apply server-to-server, so the only thing the API needs is the
+// auth cookie — which lives on `.outrival.app` and reaches this web server too.
+async function serverGet<T>(path: string): Promise<T> {
+  return (await cachedGet(path)) as T;
 }
 
 // Best-effort variant: null on any failure (missing cookie, plan-gated 403, API
@@ -491,7 +500,8 @@ export async function getNotificationsPageData(): Promise<{
         "/api/notification-preferences/relevance-threshold",
       ),
       serverGet<NotificationSettings>("/api/settings/notifications"),
-      serverGet<{ plan: Plan }>("/api/billing"),
+      // Only `.plan` is read here — ?summary=1 skips the endpoint's Stripe calls.
+      serverGet<{ plan: Plan }>("/api/billing?summary=1"),
     ]);
     return {
       moderation: { preferences: prefs.preferences, threshold },

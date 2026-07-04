@@ -31,6 +31,13 @@ billingRouter.get("/", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
 
+  // ?summary=1 → return only the DB-backed fields (plan + usage) and skip the two
+  // Stripe round-trips below. The dashboard layout and the notifications page call
+  // this on their critical path but read only `plan`/usage, so the Stripe lookups
+  // (cancel state, card on file) were pure latency there. The settings billing page
+  // omits the flag and still gets the full payload.
+  const summary = c.req.query("summary") === "1";
+
   const org = await db.query.organizations.findFirst({
     where: eq(organizations.id, orgId),
   });
@@ -53,7 +60,7 @@ billingRouter.get("/", async (c) => {
   // show "cancels on <date>" + a Resume affordance without a schema column.
   let cancelAtPeriodEnd = false;
   let cancelAt: number | null = null;
-  if (org.stripeSubscriptionId) {
+  if (!summary && org.stripeSubscriptionId) {
     try {
       const sub = await getStripe().subscriptions.retrieve(org.stripeSubscriptionId);
       cancelAtPeriodEnd = sub.cancel_at_period_end === true;
@@ -72,7 +79,7 @@ billingRouter.get("/", async (c) => {
     expMonth: number | null;
     expYear: number | null;
   } | null = null;
-  if (org.stripeCustomerId) {
+  if (!summary && org.stripeCustomerId) {
     try {
       const customer = await getStripe().customers.retrieve(org.stripeCustomerId, {
         expand: ["invoice_settings.default_payment_method"],

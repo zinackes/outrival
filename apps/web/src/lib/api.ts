@@ -523,6 +523,24 @@ export type ActivityCaptured =
       } | null;
     };
 
+// What MOVED on a change run vs the previous capture — shown in the "Captured"
+// column instead of the running total, which reads oddly next to "What changed".
+// Only set on change rows where a prior batch exists and something actually moved;
+// quiet runs (no_change / first_capture) fall back to the ActivityCaptured snapshot.
+export type ActivityCapturedDelta =
+  | { kind: "jobs"; before: number; after: number }
+  | { kind: "reviews"; unit: "score" | "count"; before: number; after: number }
+  | {
+      kind: "pricing";
+      plan: string;
+      currency: string | null;
+      billingPeriod: string;
+      before: number | null;
+      after: number | null;
+      more: number; // other plans that also changed / were added or removed
+    }
+  | { kind: "pricingCount"; before: number; after: number };
+
 export interface ActivityEvent {
   competitorId: string;
   competitorName: string;
@@ -558,6 +576,9 @@ export interface ActivityEvent {
   // for every data-source run, not just the first capture. Null for sources with
   // no structured payload and for failed runs.
   captured?: ActivityCaptured | null;
+  // On a change row, the delta vs the previous capture (e.g. "Pro $40 → $48").
+  // Null on quiet runs — the UI shows the `captured` snapshot there instead.
+  capturedDelta?: ActivityCapturedDelta | null;
 }
 
 // The user-facing outcome buckets used to filter the activity feed — derived from

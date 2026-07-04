@@ -108,7 +108,13 @@ function LogoChip({ logo }: { logo: { name: string | null; src: string | null } 
     };
   }, [src]);
 
-  const showImage = !!src && isRenderableLogoSrc(src) && !failed && !blocky;
+  // A JPEG can't carry transparency, so it always silhouettes into a solid filled
+  // tile (a featureless grey block) under the ink filter — never a clean wordmark.
+  // The CORS pixel probe (above) misses it when the CDN is tainted, and the
+  // aspect-ratio heuristic (onLoad) only catches square art, not wide opaque
+  // banners. Treat the format as blocky up front so it takes the name-or-drop path.
+  const opaqueFormat = /\.jpe?g(\?|#|$)/i.test(src) || /^data:image\/jpe?g/i.test(src);
+  const showImage = !!src && isRenderableLogoSrc(src) && !failed && !blocky && !opaqueFormat;
   if (!showImage && !name) return null;
 
   // Scraped customer logos arrive in every color, polarity and format. Slapping each

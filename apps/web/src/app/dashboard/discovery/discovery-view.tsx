@@ -63,7 +63,17 @@ export function DiscoveryView() {
   // drives which SKU's review queue and staleness are shown. undefined ("all products")
   // → the API unions every SKU's queue (and Refresh spans them all).
   const productId = useProductScope() ?? undefined;
-  const [actingId, setActingId] = useState<string | null>(null);
+  // A set, not a single id: tracking/removing runs per-card and users fire several
+  // in a row before the first resolves — a scalar would drop the loader on all but
+  // the last-clicked card.
+  const [actingIds, setActingIds] = useState<Set<string>>(() => new Set());
+  const startActing = (id: string) => setActingIds((s) => new Set(s).add(id));
+  const stopActing = (id: string) =>
+    setActingIds((s) => {
+      const next = new Set(s);
+      next.delete(id);
+      return next;
+    });
   const [paywall, setPaywall] = useState<PaywallReason | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
@@ -209,7 +219,7 @@ export function DiscoveryView() {
   }
 
   async function add(id: string) {
-    setActingId(id);
+    startActing(id);
     try {
       await api.addCandidate(id);
       recordDiscoveryFeedback(id, "useful");
@@ -224,7 +234,7 @@ export function DiscoveryView() {
         toastApiError(e, { title: "Couldn't add the competitor" });
       }
     } finally {
-      setActingId(null);
+      stopActing(id);
     }
   }
 
@@ -313,7 +323,7 @@ export function DiscoveryView() {
   // Permanent delete from the Dismissed tab: the candidate row is destroyed (no undo,
   // unlike dismiss). Optimistic removal with rollback on failure.
   async function remove(item: CompetitorCandidate) {
-    setActingId(item.id);
+    startActing(item.id);
     setItems((prev) => prev?.filter((c) => c.id !== item.id) ?? null);
     bumpCounts({ dismissed: -1 });
     try {
@@ -324,7 +334,7 @@ export function DiscoveryView() {
       bumpCounts({ dismissed: 1 });
       toastApiError(e, { title: "Delete failed" });
     } finally {
-      setActingId(null);
+      stopActing(item.id);
     }
   }
 
@@ -573,7 +583,7 @@ export function DiscoveryView() {
                         variant="outline"
                         size="sm"
                         className="flex-1"
-                        disabled={actingId === c.id}
+                        disabled={actingIds.has(c.id)}
                         onClick={() => void restore(c)}
                       >
                         <RotateCcw size={11} />
@@ -584,7 +594,7 @@ export function DiscoveryView() {
                           <Button
                             variant="outline"
                             size="sm"
-                            disabled={actingId === c.id}
+                            disabled={actingIds.has(c.id)}
                             onClick={() => void remove(c)}
                             aria-label="Delete permanently"
                           >
@@ -599,10 +609,10 @@ export function DiscoveryView() {
                       <Button
                         size="sm"
                         className="flex-1"
-                        disabled={actingId === c.id}
+                        disabled={actingIds.has(c.id)}
                         onClick={() => add(c.id)}
                       >
-                        {actingId === c.id ? (
+                        {actingIds.has(c.id) ? (
                           <Loader2 size={11} className="animate-spin" />
                         ) : (
                           <Plus size={11} />
@@ -614,7 +624,7 @@ export function DiscoveryView() {
                           <Button
                             variant="outline"
                             size="sm"
-                            disabled={actingId === c.id}
+                            disabled={actingIds.has(c.id)}
                             onClick={() => dismiss(c.id)}
                             aria-label="Dismiss"
                           >

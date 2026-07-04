@@ -707,6 +707,7 @@ competitorsRouter.get("/", async (c) => {
       lastFailedAt: monitors.lastFailedAt,
       scrapeStartedAt: monitors.scrapeStartedAt,
       markedUnscrapable: monitors.markedUnscrapable,
+      isActive: monitors.isActive,
     })
     .from(monitors)
     .where(

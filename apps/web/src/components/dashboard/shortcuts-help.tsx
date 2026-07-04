@@ -24,6 +24,7 @@ const GROUPS: { label: string; rows: { keys: string[]; action: string }[] }[] = 
     label: "Act on the focused signal",
     rows: [
       { keys: ["r"], action: "Mark read / unread" },
+      { keys: ["x"], action: "Select / deselect (for bulk actions)" },
       { keys: ["t"], action: "Track (set action status)" },
       { keys: ["c"], action: "Discuss (toggle comments)" },
     ],

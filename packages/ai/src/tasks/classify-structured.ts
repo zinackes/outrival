@@ -95,10 +95,12 @@ ${renderForPrompt(changes).slice(0, 8000)}
 Reply ONLY with a valid JSON object, no markdown and no surrounding text.
 Write all text values in English.
 
-Identify the single MAIN change and describe it in plain language:
-  - humanChangeBefore: the value BEFORE, phrased naturally
-  - humanChangeAfter:  the value AFTER, phrased naturally
-If you can't extract a clean before/after, return null for BOTH.
+Identify the SINGLE most important change and describe just that one:
+  - humanChangeBefore: the value BEFORE — a short phrase, at most ~8 words
+  - humanChangeAfter:  the value AFTER  — a short phrase, at most ~8 words
+Describe ONLY that one change; never concatenate several changes into one string,
+and never paste raw section text. If you can't extract a clean before/after,
+return null for BOTH.
 
 Return "assessments": an array with EXACTLY one significance per change, in the
 SAME ORDER as the numbered list above.

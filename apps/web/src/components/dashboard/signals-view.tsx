@@ -26,8 +26,18 @@ import {
   ArrowLeft,
   ArrowUpRight,
   Radar,
+  Rows3,
+  ListTodo,
+  EyeOff,
 } from "lucide-react";
-import { startOfWeek, endOfWeek, formatDistanceToNow } from "date-fns";
+import {
+  startOfWeek,
+  endOfWeek,
+  formatDistanceToNow,
+  format,
+  isToday,
+  isYesterday,
+} from "date-fns";
 import { toast } from "sonner";
 import { AnimatePresence, motion } from "motion/react";
 import {
@@ -96,6 +106,33 @@ const SEV_DOT: Record<Sev, string> = {
 
 const SEV_RANK: Record<Sev, number> = { critical: 4, high: 3, medium: 2, low: 1 };
 
+// Master-list grouping (client-only — pure presentation, never touches feedParams
+// so it costs no refetch). Persisted in ?group= so a refresh keeps the view.
+const GROUP_MODES = ["none", "competitor", "day"] as const;
+type GroupMode = (typeof GROUP_MODES)[number];
+const GROUP_LABEL: Record<GroupMode, string> = {
+  none: "No grouping",
+  competitor: "By competitor",
+  day: "By day",
+};
+
+// Bulk "Track" targets — mirrors SignalCard's ACTION_OPTIONS, applied to a selection.
+const TRACK_OPTIONS: { value: ActionStatus; label: string }[] = [
+  { value: "todo", label: "To do" },
+  { value: "doing", label: "In progress" },
+  { value: "done", label: "Done" },
+  { value: "dismissed", label: "Dismissed" },
+];
+
+// Day bucket for the "By day" grouping — a stable key + a human label.
+function dayGroup(iso: string): { key: string; label: string } {
+  const d = new Date(iso);
+  return {
+    key: format(d, "yyyy-MM-dd"),
+    label: isToday(d) ? "Today" : isYesterday(d) ? "Yesterday" : format(d, "MMM d"),
+  };
+}
+
 // A feed row is either a standalone signal or a batch of similar ones (patch-26)
 // collapsed under a single summary card.
 type FeedItem =
@@ -124,8 +161,20 @@ export function SignalsView() {
   // doesn't keep snapping back to the first row.
   const focusedRef = useRef<string | null>(null);
 
+  // Collapsed group keys (client-only). Multi-select (checkboxes / x / bulk bar) is
+  // orthogonal to the single "open in detail" focus: `selected` drives bulk actions,
+  // `focusedId` still drives the detail pane. lastSelectedRef anchors shift-click ranges.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const lastSelectedRef = useRef<string | null>(null);
+
   const focusId = searchParams.get("focus");
   const quickView = (searchParams.get("view") as QuickView) || "all";
+  const group = (GROUP_MODES as readonly string[]).includes(
+    searchParams.get("group") ?? "",
+  )
+    ? (searchParams.get("group") as GroupMode)
+    : "none";
   const sev = useMemo(() => parseSet(searchParams.get("severity")) as Set<Sev>, [searchParams]);
   const cat = useMemo(() => parseSet(searchParams.get("category")), [searchParams]);
   const comp = useMemo(() => parseSet(searchParams.get("competitor")), [searchParams]);
@@ -347,16 +396,225 @@ export function SignalsView() {
     [filtered],
   );
 
+  // Grouped view of the feed (client-only). group="none" → a single implicit group
+  // holding every item (same order as the flat feed). Groups keep first-appearance
+  // order so the server's threat/recent ranking still drives the top of the list.
+  const groups = useMemo<{ key: string; label: string; items: FeedItem[] }[]>(() => {
+    if (group === "none") return [{ key: "__all", label: "", items: feedItems }];
+    const map = new Map<string, { key: string; label: string; items: FeedItem[] }>();
+    const order: string[] = [];
+    for (const it of feedItems) {
+      const sig = it.kind === "single" ? it.signal : it.signals[0]!;
+      const { key, label } =
+        group === "competitor"
+          ? { key: sig.competitorId, label: sig.competitorName }
+          : dayGroup(sig.createdAt);
+      let g = map.get(key);
+      if (!g) {
+        g = { key, label, items: [] };
+        map.set(key, g);
+        order.push(key);
+      }
+      g.items.push(it);
+    }
+    return order.map((k) => map.get(k)!);
+  }, [feedItems, group]);
+
   // Master-detail nav: one id per feed item — a batch is a single selectable row
   // whose members render together in the detail pane. Selection (j/k or click)
-  // drives the right pane; no inline expansion to traverse.
-  const navIds = useMemo(
-    () =>
-      feedItems.map((it) =>
-        it.kind === "single" ? it.signal.id : `batch:${it.batchId}`,
-      ),
-    [feedItems],
+  // drives the right pane; no inline expansion to traverse. Runs over the VISIBLE
+  // rows only, so j/k skips rows hidden inside a collapsed group.
+  const navIds = useMemo(() => {
+    const out: string[] = [];
+    for (const g of groups) {
+      if (group !== "none" && collapsed.has(g.key)) continue;
+      for (const it of g.items)
+        out.push(it.kind === "single" ? it.signal.id : `batch:${it.batchId}`);
+    }
+    return out;
+  }, [groups, collapsed, group]);
+
+  // Selectable ids = visible single-signal rows (batches aren't individually selectable).
+  const selectableIds = useMemo(
+    () => navIds.filter((id) => !id.startsWith("batch:")),
+    [navIds],
   );
+
+  const selectionActive = selected.size > 0;
+
+  function toggleCollapsed(key: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  // Toggle a row's selection. `range` (shift-click) selects every row between the
+  // last-touched row and this one along the visible order.
+  function toggleSelectId(id: string, range: boolean) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      const anchor = lastSelectedRef.current;
+      if (range && anchor && anchor !== id) {
+        const a = selectableIds.indexOf(anchor);
+        const b = selectableIds.indexOf(id);
+        if (a !== -1 && b !== -1) {
+          const [lo, hi] = a < b ? [a, b] : [b, a];
+          for (let i = lo; i <= hi; i++) next.add(selectableIds[i]!);
+          lastSelectedRef.current = id;
+          return next;
+        }
+      }
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      lastSelectedRef.current = id;
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelected(new Set());
+    lastSelectedRef.current = null;
+  }
+
+  // Bulk read/unread — one server call (setSignalsRead) over the selection.
+  async function bulkMarkRead(read: boolean) {
+    const ids = [...selected];
+    if (!ids.length) return;
+    const idSet = new Set(ids);
+    mutateSignals((prev) =>
+      prev.map((s) => (idSet.has(s.id) ? { ...s, isRead: read } : s)),
+    );
+    clearSelection();
+    if (sample) return;
+    try {
+      await api.setSignalsRead(ids, read);
+      queryClient.invalidateQueries({ queryKey: ["signals", "facets"] });
+    } catch {
+      toast.error("Couldn't update those signals. Try again.");
+      queryClient.invalidateQueries({ queryKey: feedOpts.queryKey });
+    }
+  }
+
+  // Bulk track/dismiss — no bulk endpoint, so fan out setSignalAction per id.
+  async function bulkSetAction(status: ActionStatus | null) {
+    const ids = [...selected];
+    if (!ids.length) return;
+    const idSet = new Set(ids);
+    const n = ids.length;
+    mutateSignals((prev) =>
+      prev.map((s) => (idSet.has(s.id) ? { ...s, actionStatus: status } : s)),
+    );
+    clearSelection();
+    if (sample) {
+      toast.success(`${n} signal${n > 1 ? "s" : ""} updated`);
+      return;
+    }
+    try {
+      await Promise.all(ids.map((id) => api.setSignalAction(id, status)));
+      toast.success(
+        `${n} signal${n > 1 ? "s" : ""} ${status ? "updated" : "cleared"}`,
+      );
+    } catch {
+      toast.error("Couldn't update those signals. Try again.");
+      queryClient.invalidateQueries({ queryKey: feedOpts.queryKey });
+    }
+  }
+
+  // Remove signals from the loaded feed cache (optimistic hide). Keeps per-page
+  // totals roughly right; the next poll reconciles with the server, which filters
+  // hiddenForUserAt out of the feed anyway.
+  function removeFromFeed(ids: Set<string>) {
+    queryClient.setQueryData<InfiniteData<SignalsPage>>(
+      feedOpts.queryKey,
+      (data) => {
+        if (!data) return data;
+        let removed = 0;
+        const pages = data.pages.map((pg) => {
+          const keep = pg.signals.filter((s) => !ids.has(s.id));
+          removed += pg.signals.length - keep.length;
+          return { ...pg, signals: keep };
+        });
+        return {
+          ...data,
+          pages: pages.map((pg) => ({
+            ...pg,
+            total: Math.max(0, pg.total - removed),
+          })),
+        };
+      },
+    );
+  }
+
+  // If the open signal is being dismissed, advance to the next surviving visible row
+  // so the detail pane never points at a removed signal.
+  function nextSelectionAfter(removing: Set<string>): string | null {
+    if (!selectedId || !removing.has(selectedId)) return selectedId;
+    const idx = navIds.indexOf(selectedId);
+    for (let i = idx + 1; i < navIds.length; i++)
+      if (!removing.has(navIds[i]!)) return navIds[i]!;
+    for (let i = idx - 1; i >= 0; i--)
+      if (!removing.has(navIds[i]!)) return navIds[i]!;
+    return null;
+  }
+
+  // Dismiss as noise — a not_useful verdict hides the signal AND trains the org's
+  // relevance threshold (both server-side, patch-26). Optimistic + undoable: the
+  // toast's Undo deletes the feedback, which un-hides and re-surfaces the signal.
+  async function dismissSignals(ids: string[]) {
+    if (!ids.length) return;
+    const idSet = new Set(ids);
+    const nextSel = nextSelectionAfter(idSet);
+    removeFromFeed(idSet);
+    if (nextSel !== selectedId) setFocusedId(nextSel);
+    clearSelection();
+    const n = ids.length;
+    if (sample) {
+      toast.success(`${n} signal${n > 1 ? "s" : ""} dismissed`);
+      return;
+    }
+    let feedbackIds: string[];
+    try {
+      const results = await Promise.all(
+        ids.map((id) =>
+          api.submitQualityFeedback({
+            targetType: "signal",
+            targetId: id,
+            verdict: "not_useful",
+            reason: "irrelevant",
+          }),
+        ),
+      );
+      feedbackIds = results.map((r) => r.feedbackId);
+      queryClient.invalidateQueries({ queryKey: ["signals", "facets"] });
+    } catch {
+      toast.error("Couldn't dismiss those signals. Try again.");
+      queryClient.invalidateQueries({ queryKey: feedOpts.queryKey });
+      return;
+    }
+    toast.success(
+      `${n} signal${n > 1 ? "s" : ""} dismissed — Outrival will show fewer like ${
+        n > 1 ? "these" : "this"
+      }`,
+      {
+        action: {
+          label: "Undo",
+          onClick: () => {
+            Promise.all(feedbackIds.map((fid) => api.deleteQualityFeedback(fid)))
+              .then(() => {
+                queryClient.invalidateQueries({ queryKey: feedOpts.queryKey });
+                queryClient.invalidateQueries({ queryKey: ["signals", "facets"] });
+              })
+              .catch(() =>
+                toast.error("Couldn't undo. Some signals stay dismissed."),
+              );
+          },
+        },
+      },
+    );
+  }
 
   const elementId = useCallback(
     (id: string) =>
@@ -391,6 +649,9 @@ export function SignalsView() {
       case "r":
         if (sig.isRead) markUnread(fid);
         else markRead(fid);
+        return true;
+      case "x":
+        toggleSelectId(fid, false);
         return true;
     }
     return false;
@@ -665,6 +926,59 @@ export function SignalsView() {
     }
   }
 
+  // One master-list row: a selection checkbox in a reserved gutter + the row.
+  // Shared by the flat and grouped renders. The checkbox is a SIBLING of the row
+  // button (never nested — invalid HTML), so signal-row.tsx stays untouched.
+  const renderRow = (item: FeedItem) => {
+    if (item.kind === "single") {
+      const id = item.signal.id;
+      return (
+        <motion.div key={id} role="presentation" {...feedItemMotion}>
+          <div className="group/row flex items-center gap-1.5">
+            <SelectCheckbox
+              visible={selectionActive}
+              checked={selected.has(id)}
+              onToggle={(e) => {
+                e.stopPropagation();
+                toggleSelectId(id, e.shiftKey);
+              }}
+            />
+            <div className="min-w-0 flex-1">
+              <SignalRow
+                signal={item.signal}
+                selected={selectedId === id}
+                tabStop={tabStopId === id}
+                onFocus={() => setFocusedId(id)}
+                onSelect={() => selectRow(id)}
+              />
+            </div>
+          </div>
+        </motion.div>
+      );
+    }
+    const bid = `batch:${item.batchId}`;
+    return (
+      <motion.div key={item.batchId} role="presentation" {...feedItemMotion}>
+        <div className="flex items-center gap-1.5">
+          {/* Batches aren't individually selectable — spacer keeps their row aligned
+              with the checkbox gutter of single rows. */}
+          <span className="size-4 shrink-0" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <BatchRow
+              batchId={item.batchId}
+              signals={item.signals}
+              summary={item.summary}
+              selected={selectedId === bid}
+              tabStop={tabStopId === bid}
+              onFocus={() => setFocusedId(bid)}
+              onSelect={() => selectRow(bid)}
+            />
+          </div>
+        </div>
+      </motion.div>
+    );
+  };
+
   if (err && signals === null) {
     return (
       <div className="space-y-6">
@@ -752,6 +1066,30 @@ export function SignalsView() {
             >
               Most recent
             </DropdownMenuCheckboxItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm">
+              <Rows3 size={13} />
+              {GROUP_LABEL[group]}
+              <ChevronDown size={11} className="opacity-60" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>Group by</DropdownMenuLabel>
+            {GROUP_MODES.map((m) => (
+              <DropdownMenuCheckboxItem
+                key={m}
+                checked={group === m}
+                onCheckedChange={() =>
+                  setParam({ group: m === "none" ? null : m })
+                }
+              >
+                {GROUP_LABEL[m]}
+              </DropdownMenuCheckboxItem>
+            ))}
           </DropdownMenuContent>
         </DropdownMenu>
 
@@ -950,48 +1288,81 @@ export function SignalsView() {
           }
         />
       ) : (
-        <div className="lg:grid lg:grid-cols-[minmax(0,270px)_minmax(0,1fr)] lg:items-start lg:gap-5 xl:grid-cols-[minmax(0,320px)_minmax(0,1fr)] xl:gap-6">
+        <>
+          {/* Bulk selection bar — appears once ≥1 row is checked. Actions run over
+              the selection (setSignalsRead in one call; setSignalAction fanned out). */}
+          {selectionActive && (
+            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 shadow-sm">
+              <span className="text-dense font-medium">
+                {selected.size} selected
+              </span>
+              <span className="h-4 w-px bg-border" />
+              <Button variant="ghost" size="sm" onClick={() => bulkMarkRead(true)}>
+                <Check size={13} /> Mark read
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => bulkMarkRead(false)}>
+                Mark unread
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm">
+                    <ListTodo size={13} /> Track
+                    <ChevronDown size={11} className="opacity-60" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  {TRACK_OPTIONS.map((o) => (
+                    <DropdownMenuItem
+                      key={o.value}
+                      onSelect={() => bulkSetAction(o.value)}
+                    >
+                      {o.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground"
+                onClick={() => dismissSignals([...selected])}
+              >
+                <EyeOff size={13} /> Dismiss as noise
+              </Button>
+              <span className="flex-1" />
+              <Button variant="ghost" size="sm" onClick={clearSelection}>
+                Clear
+              </Button>
+            </div>
+          )}
+          <div className="lg:grid lg:grid-cols-[minmax(0,270px)_minmax(0,1fr)] lg:items-start lg:gap-5 xl:grid-cols-[minmax(0,320px)_minmax(0,1fr)] xl:gap-6">
           {/* Master list — compact, scannable rows; the detail lives on the right. */}
           <div
             role="listbox"
             aria-label="Signals"
             className="flex flex-col gap-0.5 rounded-lg border border-border p-1.5 lg:max-h-[calc(100dvh-220px)] lg:overflow-y-auto"
           >
-            <AnimatePresence initial={false} mode="popLayout">
-            {feedItems.map((item) =>
-              item.kind === "single" ? (
-                <motion.div
-                  key={item.signal.id}
-                  role="presentation"
-                  {...feedItemMotion}
-                >
-                  <SignalRow
-                    signal={item.signal}
-                    selected={selectedId === item.signal.id}
-                    tabStop={tabStopId === item.signal.id}
-                    onFocus={() => setFocusedId(item.signal.id)}
-                    onSelect={() => selectRow(item.signal.id)}
+            {group === "none" ? (
+              <AnimatePresence initial={false} mode="popLayout">
+                {groups[0]?.items.map(renderRow)}
+              </AnimatePresence>
+            ) : (
+              groups.map((g) => (
+                <div key={g.key} className="mb-1 last:mb-0">
+                  <GroupHeader
+                    label={g.label}
+                    count={g.items.length}
+                    collapsed={collapsed.has(g.key)}
+                    onToggle={() => toggleCollapsed(g.key)}
                   />
-                </motion.div>
-              ) : (
-                <motion.div
-                  key={item.batchId}
-                  role="presentation"
-                  {...feedItemMotion}
-                >
-                  <BatchRow
-                    batchId={item.batchId}
-                    signals={item.signals}
-                    summary={item.summary}
-                    selected={selectedId === `batch:${item.batchId}`}
-                    tabStop={tabStopId === `batch:${item.batchId}`}
-                    onFocus={() => setFocusedId(`batch:${item.batchId}`)}
-                    onSelect={() => selectRow(`batch:${item.batchId}`)}
-                  />
-                </motion.div>
-              ),
+                  {!collapsed.has(g.key) && (
+                    <AnimatePresence initial={false} mode="popLayout">
+                      {g.items.map(renderRow)}
+                    </AnimatePresence>
+                  )}
+                </div>
+              ))
             )}
-            </AnimatePresence>
             {!sample && feedQ.hasNextPage && (
               <Button
                 variant="ghost"
@@ -1043,17 +1414,16 @@ export function SignalsView() {
                     <div className="grid max-w-[820px] grid-cols-1 items-start gap-4 @4xl/detail:max-w-[1148px] @4xl/detail:grid-cols-[minmax(0,820px)_300px] @4xl/detail:gap-6">
                       <div className="min-w-0 space-y-4">
                         <SignalCard
-                          // Distinct key prefix: SignalCard and SignalEvidence are
-                          // siblings and MUST NOT share a key. When both used
-                          // `selectedItem.signal.id`, the duplicate key broke React's
-                          // reconciliation (silently, prod strips the warning) — the
-                          // card wasn't removed on focus change and stacked up.
+                          // Distinct key prefixes: SignalCard and SignalEvidence are
+                          // siblings and MUST NOT share a key, or React's reconciliation
+                          // breaks (silently in prod) and the card stacks on focus change.
                           key={`card-${selectedItem.signal.id}`}
                           signal={selectedItem.signal}
                           interactive={!sample}
                           onMarkRead={!sample ? markRead : undefined}
                           onMarkUnread={!sample ? markUnread : undefined}
                           onActionChange={onActionChange}
+                          onDismiss={(id) => dismissSignals([id])}
                         />
                         {/* Evidence dossier — best-effort; renders nothing without
                             structured evidence, and is skipped in sample mode (no
@@ -1107,6 +1477,7 @@ export function SignalsView() {
                         onMarkRead={!sample ? markRead : undefined}
                         onMarkUnread={!sample ? markUnread : undefined}
                         onActionChange={onActionChange}
+                        onDismiss={(id) => dismissSignals([id])}
                       />
                     ))}
                   </div>
@@ -1121,10 +1492,81 @@ export function SignalsView() {
             )}
           </div>
         </div>
+        </>
       )}
 
       <ShortcutsHelp open={helpOpen} onOpenChange={setHelpOpen} />
     </div>
+  );
+}
+
+// Row selection checkbox — sits in a reserved gutter left of each row. Hidden until
+// the row is hovered, unless a selection is already active (then all show).
+function SelectCheckbox({
+  checked,
+  visible,
+  onToggle,
+}: {
+  checked: boolean;
+  visible: boolean;
+  onToggle: (e: React.MouseEvent) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={checked}
+      aria-label={checked ? "Deselect signal" : "Select signal"}
+      onClick={onToggle}
+      className={cn(
+        "flex size-4 shrink-0 items-center justify-center rounded-sm border outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
+        checked
+          ? "border-primary bg-primary text-primary-foreground opacity-100"
+          : "border-border text-transparent hover:border-foreground/40",
+        !checked &&
+          (visible ? "opacity-100" : "opacity-0 group-hover/row:opacity-100"),
+      )}
+    >
+      <Check size={11} strokeWidth={3} />
+    </button>
+  );
+}
+
+// A collapsible group header for the "By competitor" / "By day" list views. Sticks
+// to the top of the scrolling list so the current group stays labelled while scrolling.
+function GroupHeader({
+  label,
+  count,
+  collapsed,
+  onToggle,
+}: {
+  label: string;
+  count: number;
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={!collapsed}
+      className="sticky top-0 z-10 flex w-full items-center gap-1.5 rounded-md bg-card/95 px-2 py-1.5 text-left outline-none backdrop-blur transition-colors hover:bg-accent/50 focus-visible:bg-accent/50"
+    >
+      <ChevronDown
+        size={13}
+        className={cn(
+          "shrink-0 text-muted-foreground transition-transform",
+          collapsed && "-rotate-90",
+        )}
+        aria-hidden
+      />
+      <span className="min-w-0 flex-1 truncate text-dense font-semibold text-foreground/90">
+        {label}
+      </span>
+      <span className="shrink-0 font-mono text-meta text-muted-foreground tabular-nums">
+        {count}
+      </span>
+    </button>
   );
 }
 

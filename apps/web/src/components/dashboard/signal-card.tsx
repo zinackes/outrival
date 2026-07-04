@@ -44,6 +44,8 @@ interface SignalCardProps {
   /** This signal was read automatically (by dwell), so the click-to-unread affordance shows. */
   wasAutoRead?: boolean;
   onActionChange?: (id: string, status: ActionStatus | null) => void;
+  /** Dismiss this signal as noise (hides it + trains the relevance threshold). */
+  onDismiss?: (id: string) => void;
   highlight?: boolean;
   /** Keyboard-nav focus (j/k). Reuses the deep-link highlight ring. */
   focused?: boolean;
@@ -86,6 +88,32 @@ function threatBars(score: number): number {
   return 1;
 }
 
+// The 3-bar threat meter — lives in the quiet footer meta line now, not the loud
+// header. Muted-foreground bars so it stays discreet next to the source label.
+function ThreatMeter({ score }: { score: number }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="flex items-end gap-px" aria-label="Threat level">
+          {[0, 1, 2].map((i) => (
+            <span
+              key={i}
+              className={cn(
+                "w-[3px] rounded-sm",
+                i === 0 ? "h-1.5" : i === 1 ? "h-2" : "h-2.5",
+                i < threatBars(score) ? "bg-muted-foreground" : "bg-border",
+              )}
+            />
+          ))}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>
+        Threat level — severity × competitor overlap × relevance
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 export function SignalCard({
   signal,
   onMarkRead,
@@ -93,6 +121,7 @@ export function SignalCard({
   onMarkUnread,
   wasAutoRead,
   onActionChange,
+  onDismiss,
   highlight,
   focused,
   interactive = true,
@@ -246,26 +275,8 @@ export function SignalCard({
             specific to. Renders nothing unless in all-products scope with a specific
             link — see CompetitorProductChips. */}
         <CompetitorProductChips competitorId={signal.competitorId} />
-        {/* AI confidence (patch-24): renders nothing when confidence is high. */}
-        <ConfidenceDot confidence={signal.aiConfidence ?? "high"} />
-        {/* Threat level (gap-F): why this signal ranks where it does in the feed. */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="flex items-end gap-px" aria-label="Threat level">
-              {[0, 1, 2].map((i) => (
-                <span
-                  key={i}
-                  className={cn(
-                    "w-[3px] rounded-sm",
-                    i === 0 ? "h-1.5" : i === 1 ? "h-2" : "h-2.5",
-                    i < threatBars(signal.threatScore) ? "bg-foreground/70" : "bg-border",
-                  )}
-                />
-              ))}
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>Threat level — severity × competitor overlap × relevance</TooltipContent>
-        </Tooltip>
+        {/* Confidence + threat used to crowd this header (9+ chips read as slop);
+            they moved to the quiet meta line in the footer. */}
         <span className="flex-1" />
         <span className="tabular-nums font-mono text-muted-foreground text-xs">
           {timeAgo}
@@ -373,30 +384,13 @@ export function SignalCard({
         </div>
       )}
 
-      {/* One quiet footer (patch-29): evidence on the left, feedback + the rare
-          AI-severity correction (tucked in the menu) on the right. The former
-          stack of action / source / feedback rows collapses into this line. */}
+      {/* Two-row footer: an action row (discuss / track / helpful / severity
+          correction) over a discreet meta line (source, confidence, threat). The
+          meta was demoted out of the header, which had grown to 9+ chips. */}
       {interactive && (
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-border pt-3.5">
-        <div className="flex min-w-0 items-center gap-2">
-          <SignalSourceLine
-            signalId={signal.id}
-            sourceType={signal.sourceType}
-            detectedAt={signal.createdAt}
-            showDetected={false}
-          />
-          {signal.filteredReason && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="shrink-0 text-xs text-muted-foreground">· Held back</span>
-              </TooltipTrigger>
-              <TooltipContent>
-                Not sent as an alert —{" "}
-                {FILTERED_REASON_LABEL[signal.filteredReason] ??
-                  signal.filteredReason.replace(/_/g, " ")}
-              </TooltipContent>
-            </Tooltip>
-          )}
+      <div className="mt-4 space-y-2.5 border-t border-border pt-3.5">
+        {/* Action row — what to do with the signal, right-aligned. */}
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
           <Button
             variant="ghost"
             size="sm"
@@ -406,8 +400,7 @@ export function SignalCard({
             <MessageSquare size={13} />
             {commentCount && commentCount > 0 ? commentCount : "Discuss"}
           </Button>
-        </div>
-        <div className="flex items-center gap-1.5">
+          <span className="w-px h-3 bg-border" />
           <DropdownMenu open={trackOpen} onOpenChange={setTrackOpen}>
             <DropdownMenuTrigger asChild>
               <Button
@@ -465,6 +458,14 @@ export function SignalCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
+              {onDismiss && (
+                <>
+                  <DropdownMenuItem onSelect={() => onDismiss(signal.id)}>
+                    Dismiss as noise
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
               <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
                 {severityAdjusted
                   ? "Severity feedback sent"
@@ -484,6 +485,31 @@ export function SignalCard({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+        </div>
+        {/* Meta line — discreet provenance + calibration, demoted from the header
+            so the header stays quiet: source (opens "Why this insight?"), AI
+            confidence (renders nothing when high), the threat meter, held-back. */}
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <SignalSourceLine
+            signalId={signal.id}
+            sourceType={signal.sourceType}
+            detectedAt={signal.createdAt}
+            showDetected={false}
+          />
+          <ConfidenceDot confidence={signal.aiConfidence ?? "high"} />
+          <ThreatMeter score={signal.threatScore} />
+          {signal.filteredReason && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="shrink-0 text-xs text-muted-foreground">· Held back</span>
+              </TooltipTrigger>
+              <TooltipContent>
+                Not sent as an alert —{" "}
+                {FILTERED_REASON_LABEL[signal.filteredReason] ??
+                  signal.filteredReason.replace(/_/g, " ")}
+              </TooltipContent>
+            </Tooltip>
+          )}
         </div>
       </div>
       )}

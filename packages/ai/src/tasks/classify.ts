@@ -55,11 +55,12 @@ Use the page type (provided with the change) to judge significance: rotating tes
 Reply ONLY with a valid JSON object, no markdown and no surrounding text.
 Write all text values in English.
 
-Also identify the single MAIN change and describe it in plain language:
+Also identify the SINGLE most important change and describe just that one:
   - humanChangeBefore: the value BEFORE, phrased naturally (e.g. "Standard · $99/mo")
   - humanChangeAfter:  the value AFTER, phrased naturally (e.g. "Standard · $79/mo")
-Keep each side short (a few words). If you can't extract a clean before/after,
-return null for BOTH fields.
+Keep each side to a short phrase (at most ~8 words); describe only that one change,
+never concatenate several. If you can't extract a clean before/after, return null
+for BOTH fields.
 
 <format>
 {

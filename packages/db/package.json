@@ -18,7 +18,8 @@
     "db:studio": "drizzle-kit studio",
     "db:generate": "drizzle-kit generate",
     "db:baseline": "bun run src/baseline.ts",
-    "db:backfill-news": "bun run src/backfill-news-monitors.ts"
+    "db:backfill-news": "bun run src/backfill-news-monitors.ts",
+    "db:backfill-email-canonical": "bun run src/backfill-email-canonical.ts"
   },
   "dependencies": {
     "@outrival/shared": "workspace:*",

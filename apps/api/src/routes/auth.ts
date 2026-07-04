@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { and, eq } from "drizzle-orm";
-import { emailSchema, validatePasswordWithHibp } from "@outrival/shared";
+import { emailSchema, canonicalizeEmail, validatePasswordWithHibp } from "@outrival/shared";
 import { db } from "../lib/db";
 import { users, account } from "@outrival/db";
 import { auth } from "../lib/auth";
@@ -12,6 +12,11 @@ import { authMiddleware } from "../middleware/auth";
 import { errorBody } from "../lib/errors";
 import { verifyReauthCode } from "../lib/reauth";
 import { isDisposableEmail } from "../lib/disposable-email";
+import {
+  overSignupIpCap,
+  domainCanReceiveMail,
+  localPartLooksRandom,
+} from "../lib/signup-abuse";
 
 export const authRouter = new Hono<{ Variables: { user: { id: string } } }>();
 
@@ -79,10 +84,39 @@ authRouter.post("/check-and-send-magic-link", authRateLimit, async (c) => {
     );
   }
 
+  // Reject domains that provably can't receive mail (typos, unlisted throwaways).
+  // Same generic shape as the disposable/format failures — it leaks only that the
+  // DOMAIN is unusable, never anything about the account. Fail-open internally.
+  const [localPart = "", domain = ""] = email.split("@");
+  if (!(await domainCanReceiveMail(domain))) {
+    return c.json(
+      errorBody("invalid_email", "That email address can't be used. Try another one.", {
+        userAction: "retry",
+      }),
+      400,
+    );
+  }
+  // Non-blocking signal: measure how often random-looking local parts sign up
+  // before ever deciding to act on them.
+  if (localPartLooksRandom(localPart)) {
+    void captureServerEvent(email, "signup_suspicious_localpart", { domain });
+  }
+
   // Best-effort analytics only — never branches the HTTP response below.
   const existing = await db.query.users
     .findFirst({ where: eq(users.email, email) })
     .catch(() => undefined);
+
+  // Per-IP new-account cap — enforced ONLY for would-be sign-ups (unknown email),
+  // so a shared NAT IP that has hit the cap never blocks real LOGINS. Returns the
+  // identical generic response without sending a code, so the cap never leaks and
+  // existence never leaks. Fail-open when Redis is absent or the cap is disabled.
+  if (!existing && (await overSignupIpCap(clientIp(c), canonicalizeEmail(email)))) {
+    return c.json({
+      ok: true,
+      message: "If that email is valid, a sign-in code is on its way.",
+    });
+  }
 
   // Suspended accounts (operator lock-out) never get a code. The HTTP response
   // below stays identical either way, so suspension never leaks via this endpoint.

@@ -30,6 +30,41 @@ export function isDisposableEmailDomain(email: string): boolean {
   return domain ? DISPOSABLE_DOMAINS.has(domain) : false;
 }
 
+// Google (gmail.com / googlemail.com) treats dots as insignificant and ignores
+// everything after a "+" in the local part, so j.o.h.n@gmail.com, john@gmail.com
+// and john+anything@googlemail.com all deliver to ONE inbox.
+const GOOGLE_DOMAINS = new Set<string>(["gmail.com", "googlemail.com"]);
+
+/**
+ * Reduce an address to the single inbox it actually reaches, for use ONLY as an
+ * anti-abuse uniqueness key — mail is still sent to the address exactly as typed,
+ * so a legitimate user's +tag keeps working. Two addresses with the same canonical
+ * form belong to the same mailbox, which is how one Gmail account can otherwise
+ * spin up unlimited "distinct" signups.
+ *
+ * Subaddressing (local+tag) is standard (RFC 5233) and widely honoured, so we drop
+ * the +tag for EVERY domain. Dots are only provably insignificant on Google, so we
+ * strip them there alone and fold googlemail.com into gmail.com.
+ */
+export function canonicalizeEmail(email: string): string {
+  const normalized = email.trim().toLowerCase();
+  const at = normalized.lastIndexOf("@");
+  if (at === -1) return normalized;
+
+  let local = normalized.slice(0, at);
+  let domain = normalized.slice(at + 1);
+
+  const plus = local.indexOf("+");
+  if (plus !== -1) local = local.slice(0, plus);
+
+  if (GOOGLE_DOMAINS.has(domain)) {
+    local = local.replace(/\./g, "");
+    domain = "gmail.com";
+  }
+
+  return `${local}@${domain}`;
+}
+
 // Strict email schema shared by the web client and the API so validation can
 // never diverge. Trims + lowercases before validating.
 export const emailSchema = z

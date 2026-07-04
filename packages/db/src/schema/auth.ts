@@ -1,24 +1,37 @@
-import { pgTable, text, timestamp, boolean, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, integer, uniqueIndex } from "drizzle-orm/pg-core";
 import { roleEnum } from "./users";
 
-export const user = pgTable("user", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  email: text("email").notNull().unique(),
-  emailVerified: boolean("email_verified").notNull().default(false),
-  image: text("image"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-  // Better Auth `twoFactor` plugin (patch — settings security P0). Flipped to
-  // true only once the user confirms a TOTP code (verify-first), never on enable.
-  twoFactorEnabled: boolean("two_factor_enabled").notNull().default(false),
-  // Legacy: org membership & role live on the `users` (plural) app table,
-  // mirrored via the Better Auth create hook. These columns linger on the
-  // Better Auth `user` table from an earlier design and are unused by app
-  // code — declared here only so drizzle-kit push doesn't drop them.
-  orgId: text("org_id"),
-  role: roleEnum("role").notNull().default("member"),
-});
+export const user = pgTable(
+  "user",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    email: text("email").notNull().unique(),
+    emailVerified: boolean("email_verified").notNull().default(false),
+    image: text("image"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+    // Better Auth `twoFactor` plugin (patch — settings security P0). Flipped to
+    // true only once the user confirms a TOTP code (verify-first), never on enable.
+    twoFactorEnabled: boolean("two_factor_enabled").notNull().default(false),
+    // Anti-abuse uniqueness key: the single inbox this address actually reaches
+    // (Gmail dots/+tag folded). Filled server-side by the Better Auth create hook
+    // (input:false), used to block one mailbox spinning up many accounts. Nullable
+    // (OAuth/change-email edges + Postgres treats NULLs as distinct, so it never
+    // blocks). Backfilled on existing rows; the UNIQUE index backstops the
+    // create-hook's applicative check against races.
+    emailCanonical: text("email_canonical"),
+    // Legacy: org membership & role live on the `users` (plural) app table,
+    // mirrored via the Better Auth create hook. These columns linger on the
+    // Better Auth `user` table from an earlier design and are unused by app
+    // code — declared here only so drizzle-kit push doesn't drop them.
+    orgId: text("org_id"),
+    role: roleEnum("role").notNull().default("member"),
+  },
+  (t) => ({
+    emailCanonicalIdx: uniqueIndex("user_email_canonical_idx").on(t.emailCanonical),
+  }),
+);
 
 // Better Auth `twoFactor` plugin storage. One row per user with 2FA set up.
 // Field names (secret/backupCodes/userId/verified/failedVerificationCount/

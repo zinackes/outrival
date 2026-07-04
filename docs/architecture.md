@@ -647,6 +647,22 @@ set-password depuis settings). Events PostHog funnel (`auth_magic_link_requested
 helper `track` no-op si pas opt-in). `emailSchema`/`passwordSchema` partagés
 client/serveur (`packages/shared/src/validation/`).
 
+**Durcissement anti-bot / faux-comptes à l'inscription** (au-delà de Turnstile + du
+rate-limit OTP + de la blocklist disposable) — 3 couches, toutes fail-open :
+- **Mailbox canonique** (`canonicalizeEmail`, shared) : `user.email_canonical` (plie
+  les points/+tag Gmail vers une seule inbox) sert de clé d'unicité anti-abus. Le
+  `databaseHooks.user.create.before` refuse un 2ᵉ compte sur une mailbox déjà prise
+  (empêche 1 boîte Gmail → N comptes). Index non-unique d'abord ; promu **UNIQUE** en
+  migration séparée après backfill (`db:backfill-email-canonical`) + résolution des
+  collisions. Ne se recalcule pas sur changement d'email (vecteur d'abus faible, différé).
+- **Cap comptes/IP** (`overSignupIpCap`, `lib/signup-abuse.ts`) : `SIGNUP_IP_DAILY_CAP`
+  mailboxes NEUVES distinctes/IP/24h (Upstash, garde NX sur la mailbox canonique). Enforce
+  au send **uniquement pour les emails inconnus** → les LOGINS depuis un NAT partagé ne
+  sont jamais bloqués ; réponse générique identique (ne leak ni le cap ni l'existence).
+- **Délivrabilité + signal** (`domainCanReceiveMail`/`localPartLooksRandom`) : rejet dur
+  si le domaine n'a **ni MX ni A/AAAA** (kill-switch `SIGNUP_MX_CHECK_ENABLED`, cache 7j) ;
+  local-part aléatoire → event PostHog `signup_suspicious_localpart` (mesure, non bloquant).
+
 > **Setup manuel (hors code)** : créer les credentials Google OAuth (Console Google,
 > redirect URI = `{BETTER_AUTH_URL}/api/auth/callback/google` en dev **et** prod), le
 > site Turnstile (CF dashboard, mode Managed), et vérifier le domaine `auth@outrival.io`
@@ -685,6 +701,8 @@ AUTH_RATE_LIMIT_EMAIL=3      # patch-19 — max attempts per email per window (U
 AUTH_RATE_LIMIT_IP=10        # patch-19 — max attempts per IP per window
 AUTH_RATE_LIMIT_WINDOW_MIN=15 # patch-19 — window length in minutes
 RESEND_AUTH_FROM=            # patch-19 — optional, defaults to "Outrival <auth@outrival.io>"
+SIGNUP_IP_DAILY_CAP=5        # signup-abuse — max distinct NEW mailboxes one IP may register / 24h (<=0 disables; logins never counted). Fail-open without Upstash
+SIGNUP_MX_CHECK_ENABLED=true # signup-abuse — reject domains with no MX and no A/AAAA record (undeliverable). false → skip the DNS check
 
 # Jobs
 TRIGGER_SECRET_KEY=          # Trigger.dev — being replaced by pg-boss (removed at migration Phase 7)

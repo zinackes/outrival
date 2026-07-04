@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
-import { and, asc, count, eq, ne } from "drizzle-orm";
+import { and, asc, count, eq, isNull, ne } from "drizzle-orm";
 import { tasks } from "@trigger.dev/sdk/v3";
 import { products, productCompetitors, competitors, monitors } from "@outrival/db";
 import { productLimit, minPlanForProductCount, validatePublicUrl } from "@outrival/shared";
@@ -152,7 +152,8 @@ productsRouter.get("/", async (c) => {
     .select({ productId: productCompetitors.productId, value: count() })
     .from(productCompetitors)
     .innerJoin(products, eq(products.id, productCompetitors.productId))
-    .where(eq(products.orgId, orgId))
+    .innerJoin(competitors, eq(competitors.id, productCompetitors.competitorId))
+    .where(and(eq(products.orgId, orgId), isNull(competitors.deletedAt)))
     .groupBy(productCompetitors.productId);
   const countBy = new Map(counts.map((r) => [r.productId, r.value]));
 
@@ -182,7 +183,7 @@ productsRouter.get("/:id", async (c) => {
     })
     .from(productCompetitors)
     .innerJoin(competitors, eq(competitors.id, productCompetitors.competitorId))
-    .where(eq(productCompetitors.productId, product.id));
+    .where(and(eq(productCompetitors.productId, product.id), isNull(competitors.deletedAt)));
 
   return c.json({ product, competitors: linked });
 });

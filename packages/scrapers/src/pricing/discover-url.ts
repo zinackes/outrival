@@ -18,17 +18,19 @@ interface LinkMatch {
 // Tried in order against the base URL via cheap HEAD probes before we fall
 // back to parsing the homepage. FR + EN since the SaaS ecosystem is EN-first
 // but Outrival also targets FR sites.
+// NB: no "/premium" here on purpose — it's a false-positive magnet (marketing
+// `/premium` pages, soft-404 SPA shells that render nothing) and rarely the real
+// pricing route. "premium" stays honoured as verified link text/href below, so a
+// homepage "Go Premium" → /go-premium link is still found and content-checked.
 const DIRECT_PATHS = [
   "/pricing",
   "/tarifs",
   "/plans",
   "/price",
   "/prix",
-  "/premium",
   "/pricing/",
   "/tarifs/",
   "/plans/",
-  "/premium/",
 ];
 
 // Unambiguous pricing vocabulary — a match here is trusted without a content
@@ -94,6 +96,14 @@ export async function discoverPricingUrl(
   return null;
 }
 
+// A guessed convention path is "reachable" only when a *browser-looking* request
+// gets a 2xx that didn't land on an error/not-found shell.
+//   - Browser UA: bot-protected SPAs answer a blanket 2xx (e.g. mtgstocks 202s
+//     EVERY path) to non-browser requests, which made the first DIRECT_PATH win
+//     blindly. Sending VERIFY_UA makes the site route normally instead.
+//   - Error-URL guard: SPAs 302 a dead route onto /error/404 (still 200 after the
+//     redirect follow); the final `res.url` reveals it. Reject those so discovery
+//     falls through to the homepage nav link.
 async function isReachable(url: string): Promise<boolean> {
   try {
     const controller = new AbortController();
@@ -102,12 +112,26 @@ async function isReachable(url: string): Promise<boolean> {
       method: "HEAD",
       redirect: "follow",
       signal: controller.signal,
+      headers: { "user-agent": VERIFY_UA, accept: "text/html" },
     });
     clearTimeout(timer);
-    return res.ok;
+    if (!res.ok) return false;
+    const finalUrl = typeof res.url === "string" && res.url ? res.url : url;
+    return !landedOnErrorPage(finalUrl);
   } catch {
     return false;
   }
+}
+
+/** True when a URL's path looks like an error / not-found shell (soft-404 redirect target). */
+function landedOnErrorPage(url: string): boolean {
+  let path: string;
+  try {
+    path = new URL(url).pathname;
+  } catch {
+    return false;
+  }
+  return /\/(error|404|not[-_]?found)(\/|$)/i.test(path);
 }
 
 /**

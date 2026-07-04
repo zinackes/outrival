@@ -293,6 +293,33 @@ export function WorkspaceSwitcher({
   );
 }
 
+// Nav link with hover/focus data-prefetch. By default Next only prefetches the shell
+// (loading.tsx) for these dynamic routes — the page's server data is still fetched at
+// click. On the first hover or keyboard focus we upgrade to prefetch={true}, which for a
+// dynamic route prefetches the FULL route (server-rendered data included), so the click
+// lands on already-warm data instead of waiting a round-trip. Hover-gated so the routes
+// don't all render server-side on page load; the router cache holds the warm result
+// (staleTimes.static) once fetched.
+function NavMenuItem({ item, active }: { item: NavItem; active: boolean }) {
+  const [warm, setWarm] = React.useState(false);
+  const Ic = item.icon;
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton asChild isActive={active} tooltip={item.label}>
+        <Link
+          href={item.href}
+          prefetch={warm ? true : undefined}
+          onMouseEnter={() => setWarm(true)}
+          onFocus={() => setWarm(true)}
+        >
+          <Ic />
+          <span>{item.label}</span>
+        </Link>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+}
+
 export function AppSidebar({ org, user }: { org: Org; user: SwitcherUser }) {
   const pathname = usePathname();
   // The active product scope rides the cookie (read server-side) — plain hrefs keep it
@@ -307,17 +334,8 @@ export function AppSidebar({ org, user }: { org: Org; user: SwitcherUser }) {
     if (it.href === "/dashboard/competitors") {
       return <SidebarCompetitors key={it.href} />;
     }
-    const Ic = it.icon;
-    const active = isActive(it.href, it.exact);
     return (
-      <SidebarMenuItem key={it.href}>
-        <SidebarMenuButton asChild isActive={active} tooltip={it.label}>
-          <Link href={it.href}>
-            <Ic />
-            <span>{it.label}</span>
-          </Link>
-        </SidebarMenuButton>
-      </SidebarMenuItem>
+      <NavMenuItem key={it.href} item={it} active={isActive(it.href, it.exact)} />
     );
   }
 

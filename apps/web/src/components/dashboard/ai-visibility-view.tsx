@@ -21,14 +21,13 @@ import { paywallFromError } from "@/components/outrival/paywall-dialog";
 import { useSetAskContext } from "@/components/dashboard/ask-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 
 const AiVisibilityChart = dynamic(() => import("./ai-visibility-chart"), {
   ssr: false,
   loading: () => <div className="h-64 w-full animate-pulse rounded-lg bg-muted/30" />,
 });
 
-const ENGINE_LABEL: Record<string, string> = { perplexity: "Perplexity" };
+const ENGINE_LABEL: Record<string, string> = { perplexity: "Perplexity", gemini: "Gemini" };
 const engineLabel = (e: string) => ENGINE_LABEL[e] ?? e;
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 
@@ -46,9 +45,7 @@ export function AiVisibilityView() {
     setRunning(true);
     try {
       await api.runAiVisibility();
-      toast.success("Visibility run started", {
-        description: "We'll notify you when your results are ready, in about a minute.",
-      });
+      toast.success("Visibility run started — results appear in about a minute.");
       // The run is async on a worker; pull the fresh results in a little while.
       setTimeout(refresh, 60_000);
     } catch {
@@ -102,8 +99,7 @@ export function AiVisibilityView() {
 
   const hasData = data.leaderboard.length > 0;
   const showChart = data.trend.length >= 2 && data.trendKeys.length > 0;
-  const primaryEngine = data.leaderboard[0]?.engine ?? "perplexity";
-  const activePromptCount = data.prompts.filter((p) => p.isActive).length;
+  const primaryEngine = data.leaderboard[0]?.engine ?? "gemini";
 
   return (
     <Shell>
@@ -238,19 +234,10 @@ export function AiVisibilityView() {
       )}
 
       <section className="rounded-lg border border-border bg-card p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-medium">Tracked prompts</h2>
-            <p className="text-meta text-muted-foreground">
-              The buyer questions we ask the engines each run.
-            </p>
-          </div>
-          {data.prompts.length > 0 && (
-            <span className="shrink-0 text-meta text-muted-foreground">
-              {activePromptCount} active
-            </span>
-          )}
-        </div>
+        <h2 className="text-sm font-medium">Tracked prompts</h2>
+        <p className="text-meta text-muted-foreground">
+          The buyer questions we ask the engines. Toggle off to pause, or add your own.
+        </p>
         <div className="mt-3 flex gap-2">
           <Input
             value={draft}
@@ -265,43 +252,39 @@ export function AiVisibilityView() {
             Add
           </Button>
         </div>
-        {data.prompts.length === 0 ? (
-          <p className="mt-3 rounded-md border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
-            No prompts yet — add one above, or run a check to seed defaults.
-          </p>
-        ) : (
-          <ul className="mt-3 space-y-0.5">
-            {data.prompts.map((p) => (
-              <li
-                key={p.id}
-                className="group flex items-center gap-3 rounded-md px-2 py-1.5 transition-colors hover:bg-muted/40"
+        <ul className="mt-3 space-y-1">
+          {data.prompts.map((p) => (
+            <li key={p.id} className="flex items-center gap-2">
+              <button
+                onClick={() => togglePrompt(p.id, !p.isActive)}
+                className={`shrink-0 rounded px-2 py-0.5 text-meta ${
+                  p.isActive ? "text-[var(--link)]" : "text-muted-foreground"
+                }`}
               >
-                <Switch
-                  checked={p.isActive}
-                  onCheckedChange={(v) => togglePrompt(p.id, v)}
-                  aria-label={p.isActive ? "Pause prompt" : "Activate prompt"}
-                />
-                <span
-                  className={`flex-1 truncate text-sm ${
-                    p.isActive ? "text-foreground" : "text-muted-foreground"
-                  }`}
-                >
-                  {p.prompt}
-                </span>
-                {!p.isActive && (
-                  <span className="shrink-0 text-meta text-muted-foreground">Paused</span>
-                )}
-                <button
-                  onClick={() => removePrompt(p.id)}
-                  className="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition-[color,opacity] hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
-                  aria-label="Remove prompt"
-                >
-                  <Trash2 className="size-4" />
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+                {p.isActive ? "Active" : "Paused"}
+              </button>
+              <span
+                className={`flex-1 truncate text-dense ${
+                  p.isActive ? "" : "text-muted-foreground line-through"
+                }`}
+              >
+                {p.prompt}
+              </span>
+              <button
+                onClick={() => removePrompt(p.id)}
+                className="shrink-0 text-muted-foreground hover:text-foreground"
+                aria-label="Remove prompt"
+              >
+                <Trash2 className="size-4" />
+              </button>
+            </li>
+          ))}
+          {data.prompts.length === 0 && (
+            <li className="text-meta text-muted-foreground">
+              No prompts yet — add one, or run a check to seed defaults.
+            </li>
+          )}
+        </ul>
       </section>
     </Shell>
   );

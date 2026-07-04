@@ -37,7 +37,10 @@ const InputSchema = z.object({
   notifyOnComplete: z.boolean().optional(),
 });
 
-const ENGINES: Engine[] = ["perplexity"]; // OpenAI + Google AIO land in phase 5
+// gemini first — it's the FREE default (Google Search grounding free tier). perplexity
+// only runs if PERPLEXITY_API_KEY is set (else queryEngine returns null and it's skipped),
+// so no key = gemini-only = $0. OpenAI + Google AIO land in phase 5.
+const ENGINES: Engine[] = ["gemini", "perplexity"];
 
 const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
 
@@ -192,7 +195,7 @@ export const scrapeAiVisibilityJob = task({
   },
 });
 
-const ENGINE_LABEL: Record<string, string> = { perplexity: "Perplexity" };
+const ENGINE_LABEL: Record<string, string> = { perplexity: "Perplexity", gemini: "Gemini" };
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 
 function deltaCopy(d: VisibilityDelta, name: string): { diffText: string; reason: string } {

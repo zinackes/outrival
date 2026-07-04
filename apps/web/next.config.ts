@@ -30,6 +30,15 @@ const nextConfig: NextConfig = {
     // more than the single primitive used. lucide-react/date-fns are already covered
     // by Next's defaults; recharts is already lazy via next/dynamic.
     optimizePackageImports: ["radix-ui", "motion"],
+    // Client Router Cache TTL. Default `dynamic: 0` means every dashboard page — all
+    // dynamic (cookie product-scope + no-store API reads) — re-renders on the server on
+    // every navigation, even when re-visiting a page seconds later. A 30s dynamic window
+    // keeps visited RSC segments in the browser cache so back-and-forth between pages is
+    // instant (no round-trip). TanStack Query still revalidates stale data in the
+    // background on remount (its own staleTime 60s + polling), so this affects only
+    // first-paint freshness, not correctness. `static: 180` lets prefetched loading
+    // shells stay reusable longer. Experimental flag, but stable since 14.2.
+    staleTimes: { dynamic: 30, static: 180 },
   },
   // Baseline security headers on every response. Deliberately NO full
   // Content-Security-Policy (default-src/script-src): the app loads Turnstile,

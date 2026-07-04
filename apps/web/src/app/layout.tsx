@@ -3,9 +3,6 @@ import { Suspense } from "react";
 import { Geist, Geist_Mono } from "next/font/google";
 import localFont from "next/font/local";
 import { ThemeProvider } from "@/components/theme-provider";
-import { QueryProvider } from "@/components/query-provider";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { Toaster } from "@/components/ui/sonner";
 import { PostHogProvider } from "@/lib/posthog/provider";
 import { PostHogPageView } from "@/lib/posthog/pageview";
 import { ConsentBanner } from "@/components/outrival/consent-banner";
@@ -136,16 +133,16 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <QueryProvider>
-            <PostHogProvider>
-              <TooltipProvider delayDuration={200}>{children}</TooltipProvider>
-              <Suspense fallback={null}>
-                <PostHogPageView />
-              </Suspense>
-              <ConsentBanner />
-            </PostHogProvider>
-          </QueryProvider>
-          <Toaster />
+          {/* QueryProvider / TooltipProvider / Toaster live in <AppProviders>, added
+              per-area (dashboard, admin, onboarding, dev) — not here — so public routes
+              don't ship react-query + sonner + radix-tooltip in their first-load JS. */}
+          <PostHogProvider>
+            {children}
+            <Suspense fallback={null}>
+              <PostHogPageView />
+            </Suspense>
+            <ConsentBanner />
+          </PostHogProvider>
         </ThemeProvider>
       </body>
     </html>

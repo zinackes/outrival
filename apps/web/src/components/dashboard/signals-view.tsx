@@ -337,37 +337,15 @@ export function SignalsView() {
     });
   }, [signals, sample, sev, cat, comp, quickView, query]);
 
-  // Collapse batched signals (patch-26) into one group, preserving the feed order
-  // (the group sits at its first member's position). A batch left with a single
-  // visible member after filtering degrades back to a normal card.
-  const feedItems = useMemo<FeedItem[]>(() => {
-    const items: FeedItem[] = [];
-    const batchAt = new Map<string, number>();
-    for (const s of filtered) {
-      if (s.batchedIntoId) {
-        const at = batchAt.get(s.batchedIntoId);
-        if (at != null) {
-          (items[at] as Extract<FeedItem, { kind: "batch" }>).signals.push(s);
-          continue;
-        }
-        batchAt.set(s.batchedIntoId, items.length);
-        items.push({
-          kind: "batch",
-          batchId: s.batchedIntoId,
-          summary: s.batchSummary,
-          count: s.batchCount ?? 1,
-          signals: [s],
-        });
-      } else {
-        items.push({ kind: "single", signal: s });
-      }
-    }
-    return items.map((it) =>
-      it.kind === "batch" && it.signals.length === 1
-        ? ({ kind: "single", signal: it.signals[0]! } as FeedItem)
-        : it,
-    );
-  }, [filtered]);
+  // One signal per row and exactly ONE card in the detail — batch collapsing is
+  // intentionally disabled. It grouped signals by `batchedIntoId`, which could pile
+  // several (even unrelated, cross-competitor) cards into the detail pane; the feed
+  // must always open a single signal. Every row is its own single-card detail, so
+  // the batch render branches below never fire.
+  const feedItems = useMemo<FeedItem[]>(
+    () => filtered.map((signal) => ({ kind: "single", signal })),
+    [filtered],
+  );
 
   // Master-detail nav: one id per feed item — a batch is a single selectable row
   // whose members render together in the detail pane. Selection (j/k or click)

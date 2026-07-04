@@ -1,0 +1,1 @@
+ALTER TABLE "signals" ADD COLUMN "snoozed_until" timestamp;

@@ -2074,8 +2074,25 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ status, note }),
     }),
+  // Snooze a signal out of the feed until `until` (ISO); null un-snoozes.
+  snoozeSignal: (id: string, until: string | null) =>
+    request<{ ok: true }>(`/api/signals/${id}/snooze`, {
+      method: "PATCH",
+      body: JSON.stringify({ until }),
+    }),
   getSignalDetail: (id: string) =>
     request<{ signal: SignalDetail }>(`/api/signals/${id}/detail`),
+  // AI feed brief (best-effort; server caches ~30 min per org+product). refresh=true
+  // forces a fresh synthesis. brief is null below the threshold or on any AI failure.
+  getSignalsBrief: (productId?: string, refresh?: boolean) => {
+    const params = new URLSearchParams();
+    if (productId) params.set("productId", productId);
+    if (refresh) params.set("refresh", "1");
+    const qs = params.toString();
+    return request<{ brief: string | null; count: number }>(
+      `/api/signals/brief${qs ? `?${qs}` : ""}`,
+    );
+  },
   listProducts: () =>
     request<{ products: ProductSummary[]; plan: string; limit: number }>(
       `/api/products`,

@@ -39,7 +39,7 @@ export default function ChangelogPage() {
           <section key={e.version} className="flex flex-col gap-3">
             <div className="flex items-baseline gap-3">
               <h2 className="!mt-0 text-foreground">{e.version}</h2>
-              <span className="font-mono text-xs text-text-subtle">{e.date}</span>
+              <span className="text-xs text-text-subtle">{e.date}</span>
             </div>
             <ul className="flex flex-col gap-2">
               {e.items.map((it) => (

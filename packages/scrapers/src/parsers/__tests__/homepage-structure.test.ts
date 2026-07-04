@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, test } from "bun:test";
-import { parseHomepageStructure } from "../homepage-structure";
+import { parseHomepageStructure, isIncompleteRender } from "../homepage-structure";
 
 const BASE = "https://acme.com/";
 
@@ -409,5 +409,40 @@ describe("parseHomepageStructure — real fixtures don't throw", () => {
     const s = parseHomepageStructure(HOMEPAGE, BASE);
     expect(s.openGraph.title).toBe("Acme OG");
     expect(s.openGraph.description).toBe("OG desc");
+  });
+});
+
+describe("isIncompleteRender", () => {
+  // Mirrors a real production capture (misprint.com): a client-rendered SPA that
+  // served its error boundary with HTTP 200 — the static nav/footer shell rendered
+  // but the main content is a single "Something went wrong" blurb, no hero.
+  const ERROR_BOUNDARY = `<!doctype html><html><head>
+    <title>Misprint: Buy and Sell Pokémon Cards</title>
+  </head><body>
+    <header><nav><a href="/shop">Shop All</a><a href="/join">Join</a></nav></header>
+    <main>
+      <section>
+        <h2>Something went wrong</h2>
+        <p>We're sorry for the inconvenience. Please try refreshing the page.</p>
+      </section>
+    </main>
+    <footer><a href="/about">About Us</a><a href="/careers">Careers</a></footer>
+  </body></html>`;
+
+  it("flags an SPA error boundary (no hero, one blurb section) as incomplete", () => {
+    expect(isIncompleteRender(parseHomepageStructure(ERROR_BOUNDARY, BASE))).toBe(true);
+  });
+
+  it("does not flag a real homepage with a hero", () => {
+    expect(isIncompleteRender(parseHomepageStructure(HOMEPAGE, BASE))).toBe(false);
+  });
+
+  it("does not flag a heroless page that still carries several sections", () => {
+    const heroless = `<!doctype html><html><head><title>Docs</title></head><body>
+      <section><h2>Guides</h2><p>Getting started with the platform.</p></section>
+      <section><h2>Reference</h2><p>Full API reference for every endpoint.</p></section>
+      <section><h2>Support</h2><p>Reach the team through chat or email.</p></section>
+    </body></html>`;
+    expect(isIncompleteRender(parseHomepageStructure(heroless, BASE))).toBe(false);
   });
 });

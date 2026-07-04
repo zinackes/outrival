@@ -213,7 +213,7 @@ export function SourceSummary({
           )}
         />
         {updatedAt && (
-          <span className="ml-auto text-xs font-mono text-muted-foreground">
+          <span className="ml-auto text-xs text-muted-foreground">
             {formatDistanceToNow(new Date(updatedAt), { addSuffix: true })}
           </span>
         )}

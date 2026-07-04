@@ -36,8 +36,9 @@ export const candidatesRouter = new Hono<{ Variables: Variables }>();
 
 candidatesRouter.use("*", authMiddleware);
 
-// TEMP: rate limit désactivé pour les tests — repasser à true pour réactiver
-const DETECT_RATE_LIMIT_ENABLED = false;
+// Per-org 30-min cooldown on the paid Exa discovery call. NOTE: lastDetectAt below is
+// an in-memory Map, so this cooldown is single-instance only (multi-replica TODO).
+const DETECT_RATE_LIMIT_ENABLED = true;
 const DETECT_COOLDOWN_MS = 30 * 60 * 1000;
 const lastDetectAt = new Map<string, number>();
 

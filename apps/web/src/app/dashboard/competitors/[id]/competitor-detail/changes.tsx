@@ -60,7 +60,7 @@ export function ChangeCard({
         <Badge variant="outline" className="text-meta uppercase tracking-wide font-medium px-2 py-0">
           {change.sourceType}
         </Badge>
-        <span className="text-muted-foreground font-mono text-meta">
+        <span className="text-muted-foreground text-meta">
           · {formatDistanceToNow(new Date(change.detectedAt), { addSuffix: true })}
         </span>
         {pageUrl && (

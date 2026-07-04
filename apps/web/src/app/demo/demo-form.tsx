@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +16,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
 const TEAM_SIZES = ["Just me", "2–10", "11–50", "51–200", "200+"];
 
@@ -23,6 +25,10 @@ type Status = "idle" | "submitting" | "success" | "error";
 export function DemoForm({ defaultPlan }: { defaultPlan?: string }) {
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
+  const turnstileRef = useRef<TurnstileInstance | null>(null);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const turnstileRequired = Boolean(TURNSTILE_SITE_KEY);
+  const tokenReady = !turnstileRequired || Boolean(turnstileToken);
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -39,13 +45,21 @@ export function DemoForm({ defaultPlan }: { defaultPlan?: string }) {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (status === "submitting") return;
+    if (!tokenReady) {
+      setError("Please wait a moment and try again.");
+      return;
+    }
     setStatus("submitting");
     setError(null);
     try {
       const res = await fetch(`${API_BASE}/api/contact`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, plan: defaultPlan }),
+        body: JSON.stringify({
+          ...form,
+          plan: defaultPlan,
+          turnstileToken: turnstileToken ?? "",
+        }),
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { message?: string };
@@ -55,12 +69,18 @@ export function DemoForm({ defaultPlan }: { defaultPlan?: string }) {
     } catch (err) {
       setStatus("error");
       setError(err instanceof Error ? err.message : "Something went wrong.");
+      // Turnstile tokens are single-use; refresh so a retry has a fresh one.
+      turnstileRef.current?.reset();
+      setTurnstileToken(null);
     }
   }
 
   if (status === "success") {
     return (
-      <div className="flex flex-col items-start justify-center rounded-xl border border-border bg-surface p-8">
+      <div
+        role="status"
+        className="flex flex-col items-start justify-center rounded-xl border border-border bg-surface p-8"
+      >
         <CheckCircle2 className="text-primary" size={28} />
         <h2 className="mt-4 text-xl font-semibold tracking-tight">
           Thanks — we&apos;ll be in touch.
@@ -150,6 +170,18 @@ export function DemoForm({ defaultPlan }: { defaultPlan?: string }) {
           onChange={(e) => set("website", e.target.value)}
           className="absolute left-[-9999px] h-0 w-0 opacity-0"
         />
+
+        {/* Invisible managed Turnstile — no-op in dev when the site key is unset. */}
+        {turnstileRequired && (
+          <Turnstile
+            ref={turnstileRef}
+            siteKey={TURNSTILE_SITE_KEY!}
+            options={{ appearance: "interaction-only" }}
+            onSuccess={setTurnstileToken}
+            onExpire={() => setTurnstileToken(null)}
+            onError={() => setTurnstileToken(null)}
+          />
+        )}
 
         {error && (
           <p role="alert" className="text-sm text-critical">

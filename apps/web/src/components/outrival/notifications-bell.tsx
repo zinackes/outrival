@@ -39,6 +39,7 @@ export function NotificationsBell({ compact = false }: { compact?: boolean } = {
   const esRef = useRef<EventSource | null>(null);
   const seenIds = useRef<Set<string>>(new Set());
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   async function loadInitial() {
     try {
@@ -99,13 +100,24 @@ export function NotificationsBell({ compact = false }: { compact?: boolean } = {
   }, []);
 
   useEffect(() => {
+    if (!open) return;
     function onClickOutside(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setOpen(false);
       }
     }
-    if (open) document.addEventListener("mousedown", onClickOutside);
-    return () => document.removeEventListener("mousedown", onClickOutside);
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus(); // return focus to the trigger, not the void
+      }
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onClickOutside);
+      document.removeEventListener("keydown", onKeyDown);
+    };
   }, [open]);
 
   async function markRead(id: string) {
@@ -169,10 +181,14 @@ export function NotificationsBell({ compact = false }: { compact?: boolean } = {
           <TooltipTrigger asChild>
             {compact ? (
               <Button
+                ref={triggerRef}
                 variant="ghost"
                 size="icon-sm"
                 onClick={() => setOpen((o) => !o)}
                 aria-label="Notifications"
+                aria-haspopup="true"
+                aria-expanded={open}
+                aria-controls="notifications-panel"
                 className="relative"
               >
                 <Bell size={14} />
@@ -185,10 +201,14 @@ export function NotificationsBell({ compact = false }: { compact?: boolean } = {
               </Button>
             ) : (
               <Button
+                ref={triggerRef}
                 variant="outline"
                 size="icon"
                 onClick={() => setOpen((o) => !o)}
                 aria-label="Notifications"
+                aria-haspopup="true"
+                aria-expanded={open}
+                aria-controls="notifications-panel"
                 className="relative"
               >
                 <Bell size={16} />
@@ -206,7 +226,12 @@ export function NotificationsBell({ compact = false }: { compact?: boolean } = {
         </Tooltip>
 
         {open && (
-          <Card className="fixed inset-x-4 top-14 sm:absolute sm:inset-x-auto sm:right-0 sm:top-12 sm:w-96 max-h-[480px] overflow-hidden z-50 shadow-lg">
+          <Card
+            id="notifications-panel"
+            role="region"
+            aria-label="Notifications"
+            className="fixed inset-x-4 top-14 sm:absolute sm:inset-x-auto sm:right-0 sm:top-12 sm:w-96 max-h-[480px] overflow-hidden z-50 shadow-lg"
+          >
             <div className="flex items-center justify-between px-3 py-2 border-b border-border">
               <span className="text-xs uppercase tracking-wide text-muted-foreground">
                 Notifications

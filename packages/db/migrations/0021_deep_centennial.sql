@@ -1,0 +1,1 @@
+CREATE INDEX "scrape_runs_competitor_recorded_idx" ON "scrape_runs" USING btree ("competitor_id","recorded_at");

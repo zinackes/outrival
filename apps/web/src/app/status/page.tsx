@@ -27,7 +27,7 @@ export default function StatusPage() {
             className="flex items-center justify-between gap-3 px-4 py-3"
           >
             <span className="text-sm text-foreground">{s.name}</span>
-            <span className="font-mono text-xs text-text-subtle">
+            <span className="text-xs text-text-subtle">
               {s.state}
             </span>
           </li>

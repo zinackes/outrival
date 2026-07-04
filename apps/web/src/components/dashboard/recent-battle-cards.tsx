@@ -52,7 +52,7 @@ export function RecentBattleCards() {
             <span className="min-w-0 flex-1 truncate text-dense text-foreground">
               {cardTitle(c)}
             </span>
-            <span className="shrink-0 text-meta text-muted-foreground font-mono">
+            <span className="shrink-0 text-meta text-muted-foreground">
               {formatDistanceToNow(new Date(c.updatedAt), { addSuffix: true })}
             </span>
           </Link>

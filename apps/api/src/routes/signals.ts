@@ -1,5 +1,5 @@
-import { Hono } from "hono";
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { Hono, type Context } from "hono";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { captureServerEvent } from "../lib/posthog";
 import {
   signals,
@@ -28,46 +28,140 @@ signalsRouter.use("*", authMiddleware);
 
 // Intel → action loop (Phase B). Triage statuses a user can set on a signal.
 const ACTION_STATUSES = ["todo", "doing", "done", "dismissed"] as const;
+const SEVERITIES = ["low", "medium", "high", "critical"] as const;
+const CATEGORIES = ["pricing", "product", "hiring", "reviews", "content", "funding"] as const;
 
-signalsRouter.get("/", async (c) => {
-  const user = c.get("user");
-  const orgId = await ensureUserOrg(user.id);
+// The full set of feed filters, parsed from the query string. Shared by the list,
+// facets, mark-all-read and export handlers so they always agree on "the current
+// scope". Multi-value filters arrive comma-separated (severity/category/competitor).
+type FeedQuery = {
+  productId?: string;
+  competitorId?: string;
+  competitors?: string[];
+  categories?: string[];
+  severities?: string[];
+  view?: string;
+  q?: string;
+  unreadOnly?: boolean;
+  actionStatus?: string;
+  sort: "threat" | "recent";
+};
 
-  const limit = Math.min(Number(c.req.query("limit") ?? 50), 200);
-  const competitorIdFilter = c.req.query("competitorId");
-  const severityFilter = c.req.query("severity");
-  const unreadOnly = c.req.query("unreadOnly") === "true";
-  // patch-28 — scope the feed to one product (SKU). Signals are tagged with the
-  // products affected (signals.productIds) at creation; "All products" omits it.
-  const productIdFilter = c.req.query("productId");
-  // Phase B — action board: "open" = todo|doing; a specific status filters to it.
-  const actionStatusFilter = c.req.query("actionStatus");
-  // P0 — feed ordering. Default "threat": severity × competitor overlap × relevance,
-  // so the frontal competitor moving on our turf outranks a tangential one. "recent"
-  // restores the chronological feed.
-  const sort = c.req.query("sort") === "recent" ? "recent" : "threat";
+function parseFeedQuery(c: Context): FeedQuery {
+  const csv = (v: string | undefined) =>
+    v ? v.split(",").map((s) => s.trim()).filter(Boolean) : undefined;
+  return {
+    productId: c.req.query("productId") || undefined,
+    competitorId: c.req.query("competitorId") || undefined,
+    competitors: csv(c.req.query("competitor")),
+    categories: csv(c.req.query("category")),
+    severities: csv(c.req.query("severity")),
+    view: c.req.query("view") || undefined,
+    q: (c.req.query("q") || "").trim() || undefined,
+    unreadOnly: c.req.query("unreadOnly") === "true",
+    actionStatus: c.req.query("actionStatus") || undefined,
+    sort: c.req.query("sort") === "recent" ? "recent" : "threat",
+  };
+}
 
-  // Hide signals the user marked "not useful" (patch-21). Also drop signals whose
-  // competitor was soft-deleted — otherwise the feed (and the filter dropdown built
-  // from it) keeps surfacing stale competitors the user no longer tracks.
+// Build the WHERE conds for the feed. Base guards (org, not hidden, competitor not
+// soft-deleted) + every active filter. Every query that scopes to "the feed" runs
+// through this so the list, its counts, mark-all-read and export never drift apart.
+// Requires an innerJoin on `competitors` (deletedAt + name search).
+function feedConds(orgId: string, f: FeedQuery) {
   const conds = [
     eq(signals.orgId, orgId),
     isNull(signals.hiddenForUserAt),
     isNull(competitors.deletedAt),
   ];
-  if (competitorIdFilter) conds.push(eq(signals.competitorId, competitorIdFilter));
-  if (productIdFilter) {
-    conds.push(sql`${signals.productIds} @> ${JSON.stringify([productIdFilter])}::jsonb`);
+  // patch-28 — scope to one product (SKU); "All products" omits it.
+  if (f.productId) {
+    conds.push(sql`${signals.productIds} @> ${JSON.stringify([f.productId])}::jsonb`);
   }
-  if (actionStatusFilter === "open") {
+  if (f.competitorId) conds.push(eq(signals.competitorId, f.competitorId));
+  if (f.competitors?.length) conds.push(inArray(signals.competitorId, f.competitors));
+  if (f.categories?.length) {
+    const cats = f.categories.filter((x): x is (typeof CATEGORIES)[number] =>
+      (CATEGORIES as readonly string[]).includes(x),
+    );
+    if (cats.length) conds.push(inArray(signals.category, cats));
+  }
+  if (f.severities?.length) {
+    const sevs = f.severities.filter((x): x is (typeof SEVERITIES)[number] =>
+      (SEVERITIES as readonly string[]).includes(x),
+    );
+    if (sevs.length) conds.push(inArray(signals.severity, sevs));
+  }
+  // Quick view — mirrors the tabs. Raw severity (not the override) to match the
+  // client's historical counts. "week" = this ISO week (Monday) in UTC.
+  switch (f.view) {
+    case "unread":
+      conds.push(eq(signals.isRead, false));
+      break;
+    case "alerts":
+      conds.push(inArray(signals.severity, ["critical", "high"]));
+      break;
+    case "critical":
+      conds.push(eq(signals.severity, "critical"));
+      break;
+    case "actions":
+      conds.push(inArray(signals.actionStatus, ["todo", "doing"]));
+      break;
+    case "week":
+      conds.push(sql`${signals.createdAt} >= date_trunc('week', now())`);
+      break;
+  }
+  // Legacy action-board param (competitor detail / saved views): "open" = todo|doing.
+  if (f.actionStatus === "open") {
     conds.push(inArray(signals.actionStatus, ["todo", "doing"]));
-  } else if ((ACTION_STATUSES as readonly string[]).includes(actionStatusFilter ?? "")) {
-    conds.push(eq(signals.actionStatus, actionStatusFilter as (typeof ACTION_STATUSES)[number]));
+  } else if ((ACTION_STATUSES as readonly string[]).includes(f.actionStatus ?? "")) {
+    conds.push(eq(signals.actionStatus, f.actionStatus as (typeof ACTION_STATUSES)[number]));
   }
-  if (severityFilter === "low" || severityFilter === "medium" || severityFilter === "high" || severityFilter === "critical") {
-    conds.push(eq(signals.severity, severityFilter));
+  if (f.unreadOnly) conds.push(eq(signals.isRead, false));
+  // Search — insight OR competitor name. Escape LIKE metacharacters so a literal
+  // % / _ in the query doesn't act as a wildcard (default ESCAPE '\').
+  if (f.q) {
+    const esc = f.q.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+    const like = `%${esc}%`;
+    conds.push(sql`(${signals.insight} ILIKE ${like} OR ${competitors.name} ILIKE ${like})`);
   }
-  if (unreadOnly) conds.push(eq(signals.isRead, false));
+  return conds;
+}
+
+// Feed ordering. Unread signals form a hard top tier (isRead ASC = false first) so
+// anything still needing attention outranks everything already seen; within each tier
+// we rank by the threat score (severity × overlap × relevance, override wins), createdAt
+// as the tie-break. "recent" stays purely chronological — the escape hatch for "newest
+// regardless", so read-state must not reorder it.
+function feedOrderBy(sort: "threat" | "recent") {
+  if (sort === "recent") return [desc(signals.createdAt)];
+  return [
+    asc(signals.isRead),
+    sql`(
+      CASE COALESCE(${signals.severityOverride}, ${signals.severity})
+        WHEN 'critical' THEN 1 WHEN 'high' THEN 0.75 WHEN 'medium' THEN 0.5 ELSE 0.25
+      END
+      * COALESCE(${competitors.overlapScore} / 100.0, 0.5)
+      * COALESCE(${signals.relevanceScore}, 0.5)
+    ) DESC`,
+    desc(signals.createdAt),
+  ];
+}
+
+signalsRouter.get("/", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  // Pagination — offset/limit so the feed pages through the full set (the client's
+  // "load more" appends pages). Limit clamped 1–200.
+  const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 50), 1), 200);
+  const offset = Math.max(Number(c.req.query("offset") ?? 0), 0);
+  const f = parseFeedQuery(c);
+
+  // Every feed filter (product/competitor/category/severity/quick-view/search) is
+  // applied server-side now, so the LIMIT keeps the right window and the totals add up
+  // at any scale. Hides "not useful" signals + soft-deleted competitors (feedConds).
+  const conds = feedConds(orgId, f);
 
   const rows = await db
     .select({
@@ -127,6 +221,9 @@ signalsRouter.get("/", async (c) => {
       aiConfidence: aiQualityChecks.confidence,
       aiFlagged: aiQualityChecks.flaggedForHumanReview,
       aiQualityCheckId: aiQualityChecks.id,
+      // Full match count (window fn, evaluated before LIMIT) → the total for the
+      // "X of Y" label and for knowing whether another page exists. Stripped per row.
+      total: sql<number>`count(*) over()`,
     })
     .from(signals)
     .innerJoin(competitors, eq(competitors.id, signals.competitorId))
@@ -149,29 +246,15 @@ signalsRouter.get("/", async (c) => {
     )
     .leftJoin(signalBatches, eq(signalBatches.id, signals.batchedIntoId))
     .where(and(...conds))
-    // Threat ordering done in SQL so the LIMIT keeps the most threatening signals,
-    // not just the most recent N. Mirrors computeThreatScore (severity uses the
-    // user override when set), with createdAt as the tie-break. NULL overlap/relevance
-    // fall back to the same neutral 0.5 as the shared scorer.
-    .orderBy(
-      ...(sort === "recent"
-        ? [desc(signals.createdAt)]
-        : [
-            sql`(
-              CASE COALESCE(${signals.severityOverride}, ${signals.severity})
-                WHEN 'critical' THEN 1 WHEN 'high' THEN 0.75 WHEN 'medium' THEN 0.5 ELSE 0.25
-              END
-              * COALESCE(${competitors.overlapScore} / 100.0, 0.5)
-              * COALESCE(${signals.relevanceScore}, 0.5)
-            ) DESC`,
-            desc(signals.createdAt),
-          ]),
-    )
-    .limit(limit);
+    .orderBy(...feedOrderBy(f.sort))
+    .limit(limit)
+    .offset(offset);
 
-  // Attach the threat score per row (same formula as the SQL ordering) so the feed
-  // can render a discreet indicator. Uses the effective severity (override wins).
-  const withThreat = rows.map((r) => ({
+  // total rides along on every row (window fn, pre-LIMIT). Strip it, then attach the
+  // per-row threat score (same formula as the ordering) for the feed's discreet
+  // indicator — read-state never touches this number, only the ordering tier.
+  const total = rows.length ? Number(rows[0]!.total) : 0;
+  const withThreat = rows.map(({ total: _total, ...r }) => ({
     ...r,
     threatScore: computeThreatScore({
       severity: r.severityOverride ?? r.severity,
@@ -179,8 +262,171 @@ signalsRouter.get("/", async (c) => {
       relevanceScore: r.relevanceScore,
     }),
   }));
+  const nextOffset = offset + rows.length < total ? offset + limit : null;
 
-  return c.json({ signals: withThreat });
+  return c.json({ signals: withThreat, total, nextOffset });
+});
+
+// Feed facets — the tab counts + the distinct categories/competitors that populate the
+// filter dropdowns. Product-scoped only (independent of the active view/severity/search
+// filters), so switching a tab or filter never needs a recount. One cheap aggregate +
+// two distinct scans; refetched on the same cadence as the list.
+signalsRouter.get("/facets", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const productId = c.req.query("productId") || undefined;
+
+  const base = [
+    eq(signals.orgId, orgId),
+    isNull(signals.hiddenForUserAt),
+    isNull(competitors.deletedAt),
+  ];
+  if (productId) {
+    base.push(sql`${signals.productIds} @> ${JSON.stringify([productId])}::jsonb`);
+  }
+
+  const [counts] = await db
+    .select({
+      all: sql<number>`count(*)`,
+      unread: sql<number>`count(*) filter (where ${signals.isRead} = false)`,
+      alerts: sql<number>`count(*) filter (where ${signals.severity} in ('critical','high'))`,
+      critical: sql<number>`count(*) filter (where ${signals.severity} = 'critical')`,
+      week: sql<number>`count(*) filter (where ${signals.createdAt} >= date_trunc('week', now()))`,
+      actions: sql<number>`count(*) filter (where ${signals.actionStatus} in ('todo','doing'))`,
+    })
+    .from(signals)
+    .innerJoin(competitors, eq(competitors.id, signals.competitorId))
+    .where(and(...base));
+
+  const catRows = await db
+    .selectDistinct({ category: signals.category })
+    .from(signals)
+    .innerJoin(competitors, eq(competitors.id, signals.competitorId))
+    .where(and(...base));
+
+  const compRows = await db
+    .selectDistinct({ id: signals.competitorId, name: competitors.name })
+    .from(signals)
+    .innerJoin(competitors, eq(competitors.id, signals.competitorId))
+    .where(and(...base))
+    .orderBy(competitors.name);
+
+  return c.json({
+    counts: {
+      all: Number(counts?.all ?? 0),
+      unread: Number(counts?.unread ?? 0),
+      alerts: Number(counts?.alerts ?? 0),
+      week: Number(counts?.week ?? 0),
+      critical: Number(counts?.critical ?? 0),
+      actions: Number(counts?.actions ?? 0),
+    },
+    categories: catRows.map((r) => r.category).sort(),
+    competitors: compRows,
+  });
+});
+
+// Mark all read — full scope, server-side. Two paths on one endpoint:
+//  • body.ids → set exactly those signals' read state (org-guarded). Used for the
+//    toast Undo, so it reverts precisely the rows the bulk flip touched.
+//  • no ids → mark EVERY unread signal matching the current feed filters (query string)
+//    read, and return the flipped ids (capped) so the client can offer that Undo.
+signalsRouter.post("/mark-all-read", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const body = (await c.req.json().catch(() => ({}))) as { ids?: unknown; read?: unknown };
+
+  if (Array.isArray(body.ids)) {
+    const ids = body.ids.filter((x): x is string => typeof x === "string").slice(0, 2000);
+    if (!ids.length) return c.json({ ok: true, count: 0 });
+    const read = body.read === undefined ? true : Boolean(body.read);
+    const updated = await db
+      .update(signals)
+      .set({ isRead: read })
+      .where(and(eq(signals.orgId, orgId), inArray(signals.id, ids)))
+      .returning({ id: signals.id });
+    return c.json({ ok: true, count: updated.length });
+  }
+
+  const f = parseFeedQuery(c);
+  const conds = feedConds(orgId, f);
+  // Subquery (needs the competitors join for the guards/search) → UPDATE by id IN (…).
+  const matching = db
+    .select({ id: signals.id })
+    .from(signals)
+    .innerJoin(competitors, eq(competitors.id, signals.competitorId))
+    .where(and(...conds, eq(signals.isRead, false)));
+  const updated = await db
+    .update(signals)
+    .set({ isRead: true })
+    .where(inArray(signals.id, matching))
+    .returning({ id: signals.id });
+  const ids = updated.map((u) => u.id);
+  return c.json({ ok: true, count: ids.length, ids: ids.length <= 2000 ? ids : undefined });
+});
+
+// CSV export — full scope, server-side, so the export reflects every matching signal,
+// not just the loaded pages. Same filters + ordering as the list; capped at 10k rows.
+signalsRouter.get("/export", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const f = parseFeedQuery(c);
+  const conds = feedConds(orgId, f);
+
+  const rows = await db
+    .select({
+      createdAt: signals.createdAt,
+      severity: sql<string>`COALESCE(${signals.severityOverride}, ${signals.severity})`,
+      category: signals.category,
+      competitorName: competitors.name,
+      insight: signals.insight,
+      soWhat: signals.soWhat,
+      recommendedAction: signals.recommendedAction,
+      isRead: signals.isRead,
+    })
+    .from(signals)
+    .innerJoin(competitors, eq(competitors.id, signals.competitorId))
+    .where(and(...conds))
+    .orderBy(...feedOrderBy(f.sort))
+    .limit(10_000);
+
+  const escape = (v: unknown) => {
+    const s = v == null ? "" : String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const header = [
+    "Date",
+    "Severity",
+    "Category",
+    "Competitor",
+    "Insight",
+    "So what",
+    "Recommended action",
+    "Read",
+  ];
+  const lines = [header.join(",")];
+  for (const r of rows) {
+    lines.push(
+      [
+        r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
+        r.severity,
+        r.category,
+        r.competitorName,
+        r.insight,
+        r.soWhat ?? "",
+        r.recommendedAction ?? "",
+        r.isRead ? "yes" : "no",
+      ]
+        .map(escape)
+        .join(","),
+    );
+  }
+  const date = new Date().toISOString().slice(0, 10);
+  return new Response(lines.join("\n"), {
+    headers: {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": `attachment; filename="outrival-signals-${date}.csv"`,
+    },
+  });
 });
 
 // User-safe "Why this insight?" detail (patch-14, progressive disclosure level 2).

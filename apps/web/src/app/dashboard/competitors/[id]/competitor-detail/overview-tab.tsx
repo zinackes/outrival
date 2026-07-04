@@ -435,7 +435,7 @@ export function OverviewTab({
                 <li key={i} className="border-l border-border pl-3.5">
                   <p className="text-content italic leading-relaxed">“{t.quote}”</p>
                   {t.author && (
-                    <p className="text-xs font-mono text-muted-foreground mt-1">
+                    <p className="text-xs text-muted-foreground mt-1">
                       — {t.author}
                     </p>
                   )}

@@ -168,12 +168,12 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
 
             <section className="space-y-1.5">
               <SectionLabel>Detection</SectionLabel>
-              <p className="text-dense text-foreground/90 font-mono">
+              <p className="text-dense text-foreground/90">
                 Detected on {format(new Date(detail.detectedAt), "MMM d, yyyy 'at' HH:mm")}
               </p>
               {/* Relevance score (patch-17) — discreet; mostly for beta calibration. */}
               {typeof detail.relevanceScore === "number" && (
-                <p className="text-meta text-muted-foreground font-mono">
+                <p className="text-meta text-muted-foreground">
                   Relevance score: {detail.relevanceScore.toFixed(2)}
                 </p>
               )}

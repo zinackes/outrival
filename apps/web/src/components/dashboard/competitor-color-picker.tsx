@@ -24,7 +24,7 @@ export function CompetitorColorPicker({
   const customValue = isCustom ? value! : "#6d5eff";
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
+    <div className="grid w-fit grid-cols-7 gap-1.5">
       <button
         type="button"
         onClick={() => onChange(null)}

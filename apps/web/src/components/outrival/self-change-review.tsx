@@ -19,7 +19,6 @@ import {
 } from "@/components/ui/sheet";
 import type { SelfProductChange } from "@/lib/api";
 
-const mono = { fontFamily: "var(--font-mono)" } as const;
 
 /** Field path (profile key or signal category) → human label. */
 const FIELD_LABELS: Record<string, string> = {
@@ -214,7 +213,7 @@ export function SelfChangesPanel({
                   </span>
                 </span>
                 {preview && (
-                  <span className="hidden shrink-0 text-meta text-[var(--muted-2)] sm:inline" style={mono}>
+                  <span className="hidden shrink-0 text-meta text-[var(--muted-2)] sm:inline">
                     {preview}
                   </span>
                 )}
@@ -520,7 +519,6 @@ function ReviewBody({
                   {extra.map((item) => (
                     <span
                       key={item}
-                      style={mono}
                       className="inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-meta"
                     >
                       {item}
@@ -571,7 +569,6 @@ function ReviewBody({
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 rows={4}
-                style={mono}
                 className="text-xs leading-relaxed"
               />
             </section>

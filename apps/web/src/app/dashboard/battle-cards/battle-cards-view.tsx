@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import { ChevronDown, Download, Swords } from "lucide-react";
@@ -18,6 +19,7 @@ import {
   DropdownMenuRadioItem,
 } from "@/components/ui/dropdown-menu";
 import { PageHead } from "@/components/dashboard/page-head";
+import { feedItemMotion } from "@/lib/motion";
 import { ListRowsSkeleton } from "@/components/dashboard/skeletons";
 import { ListError } from "@/components/outrival/list-error";
 
@@ -144,9 +146,11 @@ export function BattleCardsView() {
       ) : (
         <Card className="overflow-hidden">
           <div className="divide-y divide-border">
+              <AnimatePresence initial={false} mode="popLayout">
               {filtered.map((c) => (
-                <div
+                <motion.div
                   key={c.id}
+                  {...feedItemMotion}
                   className="flex items-center gap-3 px-4 py-3 hover:bg-accent/30 transition-colors"
                 >
                   <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground">
@@ -159,7 +163,7 @@ export function BattleCardsView() {
                     >
                       {cardTitle(c)}
                     </Link>
-                    <div className="text-meta text-muted-foreground font-mono">
+                    <div className="text-meta text-muted-foreground">
                       Updated {formatDistanceToNow(new Date(c.updatedAt), { addSuffix: true })}
                     </div>
                   </div>
@@ -173,8 +177,9 @@ export function BattleCardsView() {
                       </Button>
                     </a>
                   )}
-                </div>
+                </motion.div>
               ))}
+              </AnimatePresence>
             </div>
         </Card>
       )}

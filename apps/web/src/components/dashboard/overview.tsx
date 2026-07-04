@@ -92,8 +92,11 @@ export function OverviewView() {
   // QueryClient is staleTime 60s + refetchOnWindowFocus:false, so without an interval
   // the "Recent signals" list — and the watching→populated flip that gates on the first
   // signal landing in signalsQ — never refresh on their own, while the count surfaces do.
-  const signalsQ = useQuery({ ...signalsQuery({ limit: 200, productId }), refetchInterval: 30_000 });
-  const competitorsQ = useQuery({ ...competitorsQuery(productId), refetchInterval: 30_000 });
+  // 60s (not 30s): the signals query pulls limit:200 with insight/so_what/narrative
+  // (~100KB) and criticals already arrive live via SSE/alerts, so a tighter idle poll
+  // just burns bandwidth on an idle tab.
+  const signalsQ = useQuery({ ...signalsQuery({ limit: 200, productId }), refetchInterval: 60_000 });
+  const competitorsQ = useQuery({ ...competitorsQuery(productId), refetchInterval: 60_000 });
   const signals = signalsQ.data ?? null;
   const competitors = competitorsQ.data ?? null;
   const err = signalsQ.error ?? competitorsQ.error;
@@ -198,7 +201,7 @@ export function OverviewView() {
 
   // Loading / error gates apply to the live fetch only — sample data is always
   // ready, so demo mode renders immediately even before the real fetch settles.
-  if (!sample && err && signals === null) {
+  if (!sample && err && (signals === null || competitors === null)) {
     return (
       <div className="mt-10">
         <ListError error={err} onRetry={load} />

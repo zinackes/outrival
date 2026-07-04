@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
 import { Globe, Lock } from "lucide-react";
 import { minPlanForSectoral, PLAN_LABELS } from "@outrival/shared";
@@ -14,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ListRowsSkeleton } from "@/components/dashboard/skeletons";
+import { feedItemMotion } from "@/lib/motion";
 import { CATEGORY_META, EvidenceModal, SectoralRow } from "./sectoral-signals";
 import { PageHead } from "./page-head";
 import { EmptyState } from "./empty-state";
@@ -228,14 +230,21 @@ export function SectoralFeed({
       ) : (
         <>
           <div>
+            <AnimatePresence initial={false} mode="popLayout">
             {signals.map((s) => (
-              <SectoralRow
+              <motion.div
                 key={s.id}
-                signal={s}
-                onOpen={() => openDetail(s)}
-                onDismiss={view === "active" ? () => dismiss(s.id) : undefined}
-              />
+                {...feedItemMotion}
+                className="border-b border-border last:border-b-0"
+              >
+                <SectoralRow
+                  signal={s}
+                  onOpen={() => openDetail(s)}
+                  onDismiss={view === "active" ? () => dismiss(s.id) : undefined}
+                />
+              </motion.div>
             ))}
+            </AnimatePresence>
           </div>
           {hasMore && (
             <div>

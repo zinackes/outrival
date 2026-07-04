@@ -65,7 +65,7 @@ export function SignalComments({
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-2">
                   <span className="text-xs font-medium">{c.authorName}</span>
-                  <span className="text-muted-foreground font-mono text-meta">
+                  <span className="text-muted-foreground text-meta">
                     {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true })}
                   </span>
                 </div>

@@ -745,7 +745,18 @@ export function ActivityView() {
             </Select>
           </div>
 
-          {events === null ? (
+          {timelineQ.isError ? (
+            <p className="text-sm text-muted-foreground">
+              Couldn&apos;t load activity.{" "}
+              <button
+                type="button"
+                onClick={() => void timelineQ.refetch()}
+                className="text-link underline underline-offset-2"
+              >
+                Retry
+              </button>
+            </p>
+          ) : events === null ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : events.length === 0 ? (
             <p className="text-sm text-muted-foreground">
@@ -763,19 +774,19 @@ export function ActivityView() {
                 aria-busy={loading}
               >
                 <TooltipProvider delayDuration={150}>
-                <Table>
+                <Table className="table-fixed">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-8" />
-                      <TableHead className="text-xs text-muted-foreground">Competitor</TableHead>
-                      <TableHead className="text-xs text-muted-foreground">Source</TableHead>
-                      <TableHead className="text-xs text-muted-foreground">Status</TableHead>
-                      <TableHead className="text-xs text-muted-foreground">What changed</TableHead>
-                      <TableHead className="text-xs text-muted-foreground">Captured</TableHead>
-                      <TableHead className="text-right text-xs text-muted-foreground">
+                      <TableHead className="w-[17%] text-xs text-muted-foreground">Competitor</TableHead>
+                      <TableHead className="w-[10%] text-xs text-muted-foreground">Source</TableHead>
+                      <TableHead className="w-[12%] text-xs text-muted-foreground">Status</TableHead>
+                      <TableHead className="w-[24%] text-xs text-muted-foreground">What changed</TableHead>
+                      <TableHead className="w-[17%] text-xs text-muted-foreground">Captured</TableHead>
+                      <TableHead className="w-[8%] text-right text-xs text-muted-foreground">
                         Duration
                       </TableHead>
-                      <TableHead className="text-right text-xs text-muted-foreground">When</TableHead>
+                      <TableHead className="w-[12%] text-right text-xs text-muted-foreground">When</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -819,7 +830,7 @@ export function ActivityView() {
                                 />
                               )}
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="truncate">
                               <Link
                                 href={entityHref(e.competitorId, e.isSelf)}
                                 className="font-medium hover:underline"
@@ -840,7 +851,7 @@ export function ActivityView() {
                               </span>
                             </TableCell>
                             <TableCell
-                              className="max-w-[420px] truncate text-muted-foreground"
+                              className="truncate text-muted-foreground"
                               title={outcome === "change" ? (e.changeSummary ?? undefined) : undefined}
                             >
                               {outcome === "change"

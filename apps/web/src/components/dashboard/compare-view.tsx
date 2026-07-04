@@ -356,7 +356,7 @@ const ROWS: Row[] = [
           ).map(([k, v]) => (
             <div key={k} className="flex items-baseline justify-between gap-3">
               <span className={detailKey}>{k}</span>
-              <span className="font-mono text-dense">{v ?? "—"}</span>
+              <span className="text-dense">{v ?? "—"}</span>
             </div>
           ))}
         </div>
@@ -396,7 +396,7 @@ const ROWS: Row[] = [
           <Badge variant={SEV_VARIANT[c.latestSignal.severity] ?? "outline"}>
             {c.latestSignal.severity}
           </Badge>
-          <span className="text-muted-foreground font-mono text-meta">
+          <span className="text-muted-foreground text-meta">
             {shortDate(c.latestSignal.createdAt)}
           </span>
         </span>
@@ -688,6 +688,13 @@ export function CompareView() {
     productsQ.data != null && competitorsQ.data != null && !rankingQ.isLoading,
   );
   const [matrix, setMatrix] = useState<CompareColumn[] | null>(null);
+  // Set when the compare fetch fails, so we surface an error+retry instead of a
+  // lying "Nothing to compare." Bumping the reload key re-runs the fetch effect.
+  const [matrixError, setMatrixError] = useState(false);
+  const [matrixReloadKey, setMatrixReloadKey] = useState(0);
+  // The picker can't be built if products/competitors failed to load — used to show
+  // an error+retry instead of an indefinite skeleton.
+  const buildErr = productsQ.error ?? competitorsQ.error;
   // A refetch keeps the prior matrix on screen (no full-table blank); this just
   // drives per-column shimmer for ids not yet present in `matrix`. Seeded true
   // when a selection exists at mount so the first paint shows the shimmer table,
@@ -788,17 +795,20 @@ export function CompareView() {
       .then((r) => {
         if (cancelled) return;
         setMatrix(r.competitors);
+        setMatrixError(false);
         setIsFetching(false);
       })
       .catch(() => {
         if (cancelled) return;
-        setMatrix([]);
+        // Keep the prior matrix on screen and flag the error — the render surfaces
+        // an error+retry rather than a silent "Nothing to compare." empty state.
+        setMatrixError(true);
         setIsFetching(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [selected]);
+  }, [selected, matrixReloadKey]);
 
   function addColumn(id: string) {
     if (selected.includes(id) || selected.length >= MAX) return;
@@ -1085,7 +1095,23 @@ export function CompareView() {
       </header>
 
       {entities === null ? (
-        <Skeleton className="h-9 w-full" />
+        buildErr ? (
+          <p className="text-muted-foreground text-sm">
+            Couldn&apos;t load your competitors.{" "}
+            <button
+              type="button"
+              onClick={() => {
+                void productsQ.refetch();
+                void competitorsQ.refetch();
+              }}
+              className="text-link underline underline-offset-2"
+            >
+              Retry
+            </button>
+          </p>
+        ) : (
+          <Skeleton className="h-9 w-full" />
+        )
       ) : !hasCompetitors ? (
         <p className="text-muted-foreground text-sm">
           Add competitors first, then compare them against your product.
@@ -1161,6 +1187,20 @@ export function CompareView() {
           {selected.length === 0 ? (
             <p className="text-muted-foreground text-sm">
               Pick competitors above to compare.
+            </p>
+          ) : matrixError && (matrix?.length ?? 0) === 0 ? (
+            <p className="text-muted-foreground text-sm">
+              Couldn&apos;t load the comparison.{" "}
+              <button
+                type="button"
+                onClick={() => {
+                  setMatrixError(false);
+                  setMatrixReloadKey((k) => k + 1);
+                }}
+                className="text-link underline underline-offset-2"
+              >
+                Retry
+              </button>
             </p>
           ) : !isFetching && (matrix?.length ?? 0) === 0 ? (
             // Fetch settled with nothing (e.g. all ids dropped server-side); while

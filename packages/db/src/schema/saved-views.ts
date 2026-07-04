@@ -13,6 +13,7 @@ export interface SavedViewFilters {
   categories?: string[];
   severities?: string[];
   view?: string;
+  sort?: "recent" | "threat";
 }
 
 export const savedViews = pgTable(

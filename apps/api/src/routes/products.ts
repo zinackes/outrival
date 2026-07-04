@@ -188,10 +188,16 @@ productsRouter.get("/:id", async (c) => {
   return c.json({ product, competitors: linked });
 });
 
+const publicUrl = () =>
+  z
+    .string()
+    .url()
+    .refine((u) => validatePublicUrl(u).ok, { message: "URL must be a public http(s) site" });
+
 const CreateSchema = z.object({
   name: z.string().min(1).max(120),
-  url: z.string().url().optional(),
-  repoUrl: z.string().url().optional(),
+  url: publicUrl().optional(),
+  repoUrl: publicUrl().optional(),
   // The wizard analyses the product first, then submits the (edited) profile so the
   // self-competitor's editable selfProfile is seeded synchronously — discovery works
   // immediately instead of waiting on the first async scrape to populate it.

@@ -140,9 +140,11 @@ function EmailField({ currentEmail }: { currentEmail: string }) {
               if (e.key === "Enter" && otp.length === 6 && !busy) void confirm();
             }}
             placeholder="123456"
+            aria-label="Verification code"
+            aria-describedby="email-otp-hint"
             className="font-mono tracking-[0.3em]"
           />
-          <p className="text-xs text-muted-foreground" data-ph-mask>
+          <p id="email-otp-hint" className="text-xs text-muted-foreground" data-ph-mask>
             Enter the code sent to {newEmail.trim()}.
           </p>
           <div className="flex items-center gap-2">

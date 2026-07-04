@@ -350,6 +350,72 @@ export function diffHomepages(
   ];
 }
 
+/** Normalized heading set of a structure's sections (null-safe: a pre-patch
+ *  snapshot with no structure counts as zero sections, keeping window alignment).
+ *  Empty headings are dropped — they can't be tracked stably. */
+function sectionHeadingSet(s: HomepageStructure | null): Set<string> {
+  const set = new Set<string>();
+  for (const sec of s?.sections ?? []) {
+    const k = norm(sec.heading).toLowerCase();
+    if (k) set.add(k);
+  }
+  return set;
+}
+
+/**
+ * Sections that stably appeared / disappeared across a window of snapshots —
+ * the same TWO-window guard as `diffTestimonialsStable`, applied to section
+ * headings. A lazy/async section (a client-rendered data widget that fetches on
+ * load, sometimes erroring) flickers in and out between scrapes; a single
+ * 2-snapshot diff turns each flicker into a phantom "new section" / "section
+ * removed". Given the last `2 * window` structures newest-first:
+ *  - added:   present in EVERY recent scrape AND absent in EVERY prior one,
+ *  - removed: absent in EVERY recent scrape AND present in EVERY prior one.
+ * A flickering section is neither present nor absent for `window` consecutive
+ * scrapes, so it satisfies neither — and never fires. Fewer than `2 * window`
+ * structures ⇒ empty (not enough history to confirm stability). Keys are
+ * normalized headings. PURE.
+ */
+function stableSectionTransitions(
+  structuresNewestFirst: (HomepageStructure | null)[],
+  window: number,
+): { added: Set<string>; removed: Set<string> } {
+  const added = new Set<string>();
+  const removed = new Set<string>();
+  if (structuresNewestFirst.length < window * 2) return { added, removed };
+  const sets = structuresNewestFirst.map(sectionHeadingSet);
+  const recent = sets.slice(0, window);
+  const prior = sets.slice(window, window * 2);
+  for (const k of recent[0] ?? []) {
+    if (recent.every((s) => s.has(k)) && prior.every((s) => !s.has(k))) added.add(k);
+  }
+  for (const k of prior[0] ?? []) {
+    if (recent.every((s) => !s.has(k)) && prior.every((s) => s.has(k))) removed.add(k);
+  }
+  return { added, removed };
+}
+
+/**
+ * Drops `section_added` / `section_removed` changes that aren't confirmed by the
+ * stability window (see `stableSectionTransitions`). Every other change kind
+ * passes through untouched. `structuresNewestFirst[0]` is the current structure
+ * (the one whose diff produced `changes`). Worker-orchestrated because it needs
+ * more history than the 2-snapshot structural diff, mirroring the testimonial
+ * add/remove path.
+ */
+export function filterUnstableSections(
+  changes: StructuredChange[],
+  structuresNewestFirst: (HomepageStructure | null)[],
+  window = 3,
+): StructuredChange[] {
+  const { added, removed } = stableSectionTransitions(structuresNewestFirst, window);
+  return changes.filter((c) => {
+    if (c.kind === "section_added") return added.has(norm(c.after).toLowerCase());
+    if (c.kind === "section_removed") return removed.has(norm(c.before).toLowerCase());
+    return true;
+  });
+}
+
 /**
  * Renders a StructuredChange[] as readable text for the `changes.diff_text`
  * column (so downstream consumers that read diffText — the AI insight prompt, the

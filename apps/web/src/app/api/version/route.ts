@@ -12,11 +12,16 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export function GET(): Response {
+  // NEXT_PUBLIC_BUILD_SHA = explicit GIT_SHA override; NEXT_PUBLIC_BUILD_COMMIT =
+  // Coolify's predefined SOURCE_COMMIT build arg (auto, no manual config). Either
+  // is inlined at `next build`, so this reports the exact commit the live web
+  // container was built from — the definitive stale-deploy check.
+  const commit =
+    process.env.NEXT_PUBLIC_BUILD_SHA ||
+    process.env.NEXT_PUBLIC_BUILD_COMMIT ||
+    "unknown";
   return Response.json(
-    {
-      commit: process.env.NEXT_PUBLIC_BUILD_SHA ?? "unknown",
-      builtAt: process.env.NEXT_PUBLIC_BUILD_TIME ?? "unknown",
-    },
+    { commit, builtAt: process.env.NEXT_PUBLIC_BUILD_TIME || "unknown" },
     { headers: { "Cache-Control": "no-store, max-age=0" } },
   );
 }

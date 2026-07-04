@@ -1043,7 +1043,12 @@ export function SignalsView() {
                     <div className="grid max-w-[820px] grid-cols-1 items-start gap-4 @4xl/detail:max-w-[1148px] @4xl/detail:grid-cols-[minmax(0,820px)_300px] @4xl/detail:gap-6">
                       <div className="min-w-0 space-y-4">
                         <SignalCard
-                          key={selectedItem.signal.id}
+                          // Distinct key prefix: SignalCard and SignalEvidence are
+                          // siblings and MUST NOT share a key. When both used
+                          // `selectedItem.signal.id`, the duplicate key broke React's
+                          // reconciliation (silently, prod strips the warning) — the
+                          // card wasn't removed on focus change and stacked up.
+                          key={`card-${selectedItem.signal.id}`}
                           signal={selectedItem.signal}
                           interactive={!sample}
                           onMarkRead={!sample ? markRead : undefined}
@@ -1055,7 +1060,7 @@ export function SignalsView() {
                             backend to fetch from). */}
                         {!sample && (
                           <SignalEvidence
-                            key={selectedItem.signal.id}
+                            key={`evidence-${selectedItem.signal.id}`}
                             signalId={selectedItem.signal.id}
                           />
                         )}

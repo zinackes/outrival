@@ -823,6 +823,10 @@ STRIPE_PRICE_BUSINESS_YEARLY=
 # Public
 NEXT_PUBLIC_API_URL=         # https://api.outrival.io
 WEB_URL=                     # https://outrival.io (callbacks Stripe)
+
+# Build provenance (Docker build args for @outrival/web, inlined at build time)
+GIT_SHA=                     # deploying commit sha → surfaced by GET /api/version (stale-deploy check)
+BUILD_TIME=                  # build timestamp → GET /api/version. In Coolify: pass SOURCE_COMMIT as GIT_SHA
 ```
 
 ## Décisions architecturales clés

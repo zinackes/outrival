@@ -46,6 +46,8 @@ interface SignalCardProps {
   onActionChange?: (id: string, status: ActionStatus | null) => void;
   /** Dismiss this signal as noise (hides it + trains the relevance threshold). */
   onDismiss?: (id: string) => void;
+  /** Snooze this signal out of the feed for `ms` milliseconds. */
+  onSnooze?: (id: string, ms: number) => void;
   highlight?: boolean;
   /** Keyboard-nav focus (j/k). Reuses the deep-link highlight ring. */
   focused?: boolean;
@@ -71,6 +73,14 @@ const ACTION_LABEL: Record<ActionStatus, string> = {
   done: "Done",
   dismissed: "Dismissed",
 };
+
+// Snooze durations (the client computes the absolute `until` from `ms`). Exported so
+// the feed's bulk bar reuses the same set — single source of truth, no drift.
+export const SNOOZE_PRESETS: { label: string; ms: number }[] = [
+  { label: "Later today", ms: 4 * 60 * 60 * 1000 },
+  { label: "Tomorrow", ms: 24 * 60 * 60 * 1000 },
+  { label: "Next week", ms: 7 * 24 * 60 * 60 * 1000 },
+];
 
 // patch-26 moderation transparency (gap-E): why a signal wasn't sent as an alert.
 const FILTERED_REASON_LABEL: Record<string, string> = {
@@ -122,6 +132,7 @@ export function SignalCard({
   wasAutoRead,
   onActionChange,
   onDismiss,
+  onSnooze,
   highlight,
   focused,
   interactive = true,
@@ -463,6 +474,22 @@ export function SignalCard({
                   <DropdownMenuItem onSelect={() => onDismiss(signal.id)}>
                     Dismiss as noise
                   </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
+              {onSnooze && (
+                <>
+                  <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                    Snooze
+                  </DropdownMenuLabel>
+                  {SNOOZE_PRESETS.map((p) => (
+                    <DropdownMenuItem
+                      key={p.label}
+                      onSelect={() => onSnooze(signal.id, p.ms)}
+                    >
+                      {p.label}
+                    </DropdownMenuItem>
+                  ))}
                   <DropdownMenuSeparator />
                 </>
               )}

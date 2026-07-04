@@ -29,6 +29,7 @@ import {
   Rows3,
   ListTodo,
   EyeOff,
+  Clock,
 } from "lucide-react";
 import {
   startOfWeek,
@@ -68,7 +69,7 @@ import { cn } from "@/lib/utils";
 import { feedItemMotion } from "@/lib/motion";
 import { PageHead } from "./page-head";
 import { SignalsBrief } from "./signals-brief";
-import { SignalCard } from "./signal-card";
+import { SignalCard, SNOOZE_PRESETS } from "./signal-card";
 import { SignalEvidence } from "@/components/outrival/signal-evidence";
 import { SignalRow, BatchRow } from "./signal-row";
 import { SeverityBadge } from "./severity-pill";
@@ -615,6 +616,45 @@ export function SignalsView() {
         },
       },
     );
+  }
+
+  // Snooze — hide the signal(s) from the feed until `ms` from now; they reappear on
+  // the next poll (the feed filters snoozed_until <= now(), no cron). Optimistic +
+  // undoable, reusing the same removal/selection helpers as dismiss.
+  async function snoozeSignals(ids: string[], ms: number) {
+    if (!ids.length) return;
+    const until = new Date(Date.now() + ms).toISOString();
+    const idSet = new Set(ids);
+    const nextSel = nextSelectionAfter(idSet);
+    removeFromFeed(idSet);
+    if (nextSel !== selectedId) setFocusedId(nextSel);
+    clearSelection();
+    const n = ids.length;
+    if (sample) {
+      toast.success(`${n} signal${n > 1 ? "s" : ""} snoozed`);
+      return;
+    }
+    try {
+      await Promise.all(ids.map((id) => api.snoozeSignal(id, until)));
+      queryClient.invalidateQueries({ queryKey: ["signals", "facets"] });
+    } catch {
+      toast.error("Couldn't snooze those signals. Try again.");
+      queryClient.invalidateQueries({ queryKey: feedOpts.queryKey });
+      return;
+    }
+    toast.success(`${n} signal${n > 1 ? "s" : ""} snoozed`, {
+      action: {
+        label: "Undo",
+        onClick: () => {
+          Promise.all(ids.map((id) => api.snoozeSignal(id, null)))
+            .then(() => {
+              queryClient.invalidateQueries({ queryKey: feedOpts.queryKey });
+              queryClient.invalidateQueries({ queryKey: ["signals", "facets"] });
+            })
+            .catch(() => toast.error("Couldn't undo the snooze."));
+        },
+      },
+    });
   }
 
   const elementId = useCallback(
@@ -1328,6 +1368,28 @@ export function SignalsView() {
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground"
+                  >
+                    <Clock size={13} /> Snooze
+                    <ChevronDown size={11} className="opacity-60" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  {SNOOZE_PRESETS.map((p) => (
+                    <DropdownMenuItem
+                      key={p.label}
+                      onSelect={() => snoozeSignals([...selected], p.ms)}
+                    >
+                      {p.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Button
                 variant="ghost"
                 size="sm"
@@ -1431,6 +1493,7 @@ export function SignalsView() {
                           onMarkUnread={!sample ? markUnread : undefined}
                           onActionChange={onActionChange}
                           onDismiss={(id) => dismissSignals([id])}
+                          onSnooze={(id, ms) => snoozeSignals([id], ms)}
                         />
                         {/* Evidence dossier — best-effort; renders nothing without
                             structured evidence, and is skipped in sample mode (no
@@ -1485,6 +1548,7 @@ export function SignalsView() {
                         onMarkUnread={!sample ? markUnread : undefined}
                         onActionChange={onActionChange}
                         onDismiss={(id) => dismissSignals([id])}
+                        onSnooze={(id, ms) => snoozeSignals([id], ms)}
                       />
                     ))}
                   </div>

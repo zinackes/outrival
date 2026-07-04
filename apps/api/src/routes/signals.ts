@@ -74,6 +74,8 @@ function feedConds(orgId: string, f: FeedQuery) {
   const conds = [
     eq(signals.orgId, orgId),
     isNull(signals.hiddenForUserAt),
+    // Snoozed signals drop out of the feed until their time passes, then reappear.
+    sql`(${signals.snoozedUntil} IS NULL OR ${signals.snoozedUntil} <= now())`,
     isNull(competitors.deletedAt),
   ];
   // patch-28 — scope to one product (SKU); "All products" omits it.
@@ -721,6 +723,35 @@ signalsRouter.patch("/:id/action", async (c) => {
     });
   }
 
+  return c.json({ ok: true });
+});
+
+// Snooze a signal out of the feed until a future moment (or null to un-snooze). It
+// reappears on the next poll once the time passes — no cron needed (the feed filters
+// `snoozed_until <= now()`). Org-scoped like the other per-signal mutations.
+signalsRouter.patch("/:id/snooze", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const id = c.req.param("id");
+
+  const body = (await c.req.json().catch(() => ({}))) as { until?: unknown };
+  let snoozedUntil: Date | null = null;
+  if (body.until !== null && body.until !== undefined) {
+    if (typeof body.until !== "string") return c.json({ error: "invalid_until" }, 400);
+    const d = new Date(body.until);
+    if (Number.isNaN(d.getTime()) || d.getTime() <= Date.now()) {
+      return c.json({ error: "invalid_until" }, 400);
+    }
+    snoozedUntil = d;
+  }
+
+  const signal = await db.query.signals.findFirst({
+    where: and(eq(signals.id, id), eq(signals.orgId, orgId)),
+    columns: { id: true },
+  });
+  if (!signal) return c.json(notFound("signal"), 404);
+
+  await db.update(signals).set({ snoozedUntil }).where(eq(signals.id, id));
   return c.json({ ok: true });
 });
 

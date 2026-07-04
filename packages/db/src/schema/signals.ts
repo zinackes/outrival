@@ -70,6 +70,10 @@ export const signals = pgTable("signals", {
   actionStatus: text("action_status"),
   actionNote: text("action_note"),
   actionUpdatedAt: timestamp("action_updated_at"),
+  // Snooze (user triage): hide the signal from the feed until this moment passes,
+  // then it reappears on the next poll. Null = not snoozed. The feed filters
+  // `snoozed_until IS NULL OR snoozed_until <= now()`. Reversible (set back to null).
+  snoozedUntil: timestamp("snoozed_until"),
   isRead: boolean("is_read").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (t) => [

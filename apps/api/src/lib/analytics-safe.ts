@@ -19,7 +19,20 @@ export async function analyticsQueryResult<T>(
   query: SQL,
 ): Promise<{ ok: boolean; rows: T[] }> {
   try {
-    const rows = await db.execute(query);
+    // Cap every analytics read at 10s. These best-effort reads are the heavy
+    // ones (LATERAL, timeline, window functions over the org's whole history);
+    // with no ceiling one slow scan pins a pooled connection for 30s+ and a few
+    // of them starve the shared 10-conn pool (API-wide latency spike). SET LOCAL
+    // is the only cap that survives Neon's transaction-mode pooler — a
+    // connection-level statement_timeout is silently stripped, and it is scoped
+    // to this transaction so it never leaks to another pooled session. A timed
+    // out query throws → caught below → same best-effort [] contract as any
+    // other failure. The relational hot path (which never routes through here)
+    // is untouched.
+    const rows = await db.transaction(async (tx) => {
+      await tx.execute(sql`SET LOCAL statement_timeout = 10000`);
+      return await tx.execute(query);
+    });
     return { ok: true, rows: rows as unknown as T[] };
   } catch (err) {
     logger.error({ err }, "analytics query failed");

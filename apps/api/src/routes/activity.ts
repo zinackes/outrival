@@ -186,6 +186,18 @@ interface RawRun {
     features: number | null;
     value: number | null;
   } | null;
+  // The immediately-previous batch's key values (the capture before this run's).
+  // Used to compute what moved on a CHANGE row — null when there is no prior batch
+  // (first data point) or the run isn't a data source.
+  jobsPrevTotal: number | null;
+  pricingPrevPlans: Array<{
+    planName: string;
+    price: number | null;
+    currency: string;
+    billingPeriod: string;
+  }> | null;
+  reviewPrevScore: number | null;
+  reviewPrevReviewCount: number | null;
 }
 
 // The captured-data summary attached to a timeline event. Discriminated by the
@@ -262,6 +274,83 @@ function shapeCaptured(r: RawRun): CapturedSummary | null {
       subScores: hasSub ? s : null,
     };
   }
+  return null;
+}
+
+// What MOVED on this run, for the "Captured" column on a change row: the delta vs
+// the previous capture, not the running total. A total ("3 plans · $10–$50") reads
+// oddly next to "What changed", so on a change row we surface the change itself and
+// leave the full snapshot to the "View more" breakdown. Quiet runs (no_change,
+// first_capture) keep the total via shapeCaptured — that value is their whole point.
+type CapturedDelta =
+  | { kind: "jobs"; before: number; after: number }
+  | { kind: "reviews"; unit: "score" | "count"; before: number; after: number }
+  | {
+      kind: "pricing";
+      plan: string;
+      currency: string | null;
+      billingPeriod: string;
+      before: number | null;
+      after: number | null;
+      more: number; // other plans that also changed/were added/removed
+    }
+  | { kind: "pricingCount"; before: number; after: number };
+
+// Null unless this is a change row on a data source AND a meaningful delta exists
+// (a prior batch is present and something actually moved). Falls back to null so the
+// UI shows the snapshot summary instead.
+function shapeCapturedDelta(r: RawRun): CapturedDelta | null {
+  if (r.status !== "success" || !r.changeId) return null;
+
+  if (r.sourceType === "jobs") {
+    const after = r.jobsTotal ?? 0;
+    const before = r.jobsPrevTotal;
+    if (before == null || before === after) return null;
+    return { kind: "jobs", before, after };
+  }
+
+  if (r.sourceType === "pricing") {
+    const cur = Array.isArray(r.pricingPlans) ? r.pricingPlans : [];
+    const prev = Array.isArray(r.pricingPrevPlans) ? r.pricingPrevPlans : [];
+    if (prev.length === 0) return null;
+    // Match plans across batches by name + billing period (a plan has separate
+    // monthly/yearly rows — keying on name alone would collide them).
+    const keyOf = (p: { planName: string; billingPeriod: string }) =>
+      `${p.planName} ${p.billingPeriod}`;
+    const prevMap = new Map(prev.map((p) => [keyOf(p), p]));
+    const curMap = new Map(cur.map((p) => [keyOf(p), p]));
+    const priceChanges = cur.flatMap((p) => {
+      const q = prevMap.get(keyOf(p));
+      return q && p.price != null && q.price != null && p.price !== q.price
+        ? [{ plan: p.planName, currency: p.currency, billingPeriod: p.billingPeriod, before: q.price, after: p.price }]
+        : [];
+    });
+    if (priceChanges.length > 0) {
+      const added = cur.filter((p) => !prevMap.has(keyOf(p))).length;
+      const removed = prev.filter((p) => !curMap.has(keyOf(p))).length;
+      const primary = priceChanges[0]!;
+      return { kind: "pricing", ...primary, more: priceChanges.length - 1 + added + removed };
+    }
+    if (cur.length !== prev.length) {
+      return { kind: "pricingCount", before: prev.length, after: cur.length };
+    }
+    return null;
+  }
+
+  if (/_reviews$/.test(r.sourceType)) {
+    if (r.reviewPrevScore != null && r.reviewScore != null && r.reviewPrevScore !== r.reviewScore) {
+      return { kind: "reviews", unit: "score", before: r.reviewPrevScore, after: r.reviewScore };
+    }
+    if (
+      r.reviewPrevReviewCount != null &&
+      r.reviewCount != null &&
+      r.reviewPrevReviewCount !== r.reviewCount
+    ) {
+      return { kind: "reviews", unit: "count", before: r.reviewPrevReviewCount, after: r.reviewCount };
+    }
+    return null;
+  }
+
   return null;
 }
 
@@ -389,12 +478,14 @@ activityRouter.get("/timeline", async (c) => {
            (m.last_changed_at AT TIME ZONE 'UTC') AS "lastChangedAt",
            snap.resolved_url AS "resolvedUrl",
            jobcap.total AS "jobsTotal", jobcap.teams AS "jobsTeams",
-           jobcap.by_dept AS "jobsByDept",
+           jobcap.by_dept AS "jobsByDept", jobcap.prev_total AS "jobsPrevTotal",
            pricecap.plan_count AS "pricingPlanCount", pricecap.min_price AS "pricingMinPrice",
            pricecap.max_price AS "pricingMaxPrice", pricecap.currency AS "pricingCurrency",
-           pricecap.plans AS "pricingPlans",
+           pricecap.plans AS "pricingPlans", pricecap.prev_plans AS "pricingPrevPlans",
            reviewcap.score AS "reviewScore", reviewcap.review_count AS "reviewCount",
-           reviewcap.subs AS "reviewSubs"
+           reviewcap.subs AS "reviewSubs",
+           reviewcap.prev_score AS "reviewPrevScore",
+           reviewcap.prev_review_count AS "reviewPrevReviewCount"
     FROM scrape_runs r
     LEFT JOIN LATERAL (
       SELECT c.id, c.summary, c.diff_text, c.structured_diff
@@ -419,7 +510,22 @@ activityRouter.get("/timeline", async (c) => {
     LEFT JOIN LATERAL (
       SELECT coalesce(sum(jc.count), 0)::int AS total, count(*)::int AS teams,
              json_agg(json_build_object('department', jc.department, 'count', jc.count)
-                      ORDER BY jc.count DESC) AS by_dept
+                      ORDER BY jc.count DESC) AS by_dept,
+             -- Total roles in the batch BEFORE this run's (the one preceding cur_ts).
+             -- NULL (not 0) when there is no prior batch → the UI shows no delta.
+             (
+               SELECT sum(jcp.count)::int FROM job_counts jcp
+               WHERE jcp.competitor_id = r.competitor_id
+                 AND jcp.recorded_at = (
+                   SELECT max(jc3.recorded_at) FROM job_counts jc3
+                   WHERE jc3.competitor_id = r.competitor_id
+                     AND jc3.recorded_at < (
+                       SELECT max(jc4.recorded_at) FROM job_counts jc4
+                       WHERE jc4.competitor_id = r.competitor_id
+                         AND jc4.recorded_at <= r.recorded_at + interval '1 hour'
+                     )
+                 )
+             ) AS prev_total
       FROM job_counts jc
       WHERE jc.competitor_id = r.competitor_id
         AND jc.recorded_at = (
@@ -434,7 +540,24 @@ activityRouter.get("/timeline", async (c) => {
              max(ph.price) AS max_price, max(ph.currency) AS currency,
              json_agg(json_build_object('planName', ph.plan_name, 'price', ph.price,
                                         'currency', ph.currency, 'billingPeriod', ph.billing_period)
-                      ORDER BY ph.price NULLS LAST) AS plans
+                      ORDER BY ph.price NULLS LAST) AS plans,
+             -- The plan rows from the batch BEFORE this run's, to diff price moves /
+             -- plan add-removes against. NULL when there is no prior batch.
+             (
+               SELECT json_agg(json_build_object('planName', php.plan_name, 'price', php.price,
+                                                 'currency', php.currency, 'billingPeriod', php.billing_period))
+               FROM pricing_history php
+               WHERE php.competitor_id = r.competitor_id
+                 AND php.recorded_at = (
+                   SELECT max(ph3.recorded_at) FROM pricing_history ph3
+                   WHERE ph3.competitor_id = r.competitor_id
+                     AND ph3.recorded_at < (
+                       SELECT max(ph4.recorded_at) FROM pricing_history ph4
+                       WHERE ph4.competitor_id = r.competitor_id
+                         AND ph4.recorded_at <= r.recorded_at + interval '1 hour'
+                     )
+                 )
+             ) AS prev_plans
       FROM pricing_history ph
       WHERE ph.competitor_id = r.competitor_id
         AND ph.recorded_at = (
@@ -446,7 +569,35 @@ activityRouter.get("/timeline", async (c) => {
     LEFT JOIN LATERAL (
       SELECT rs.score, rs.review_count,
              json_build_object('easeOfUse', rs.sub_ease_of_use, 'support', rs.sub_support,
-                               'features', rs.sub_features, 'value', rs.sub_value) AS subs
+                               'features', rs.sub_features, 'value', rs.sub_value) AS subs,
+             -- The score / count from the batch BEFORE this run's, to show what moved.
+             -- rs.recorded_at is this run's cur_ts (the WHERE-selected batch), so the
+             -- prior batch is the max recorded_at strictly before it. Scalar subqueries
+             -- in the SELECT list run once (post-WHERE/LIMIT), not per historical row.
+             (
+               SELECT rsp.score FROM review_scores rsp
+               WHERE rsp.competitor_id = r.competitor_id
+                 AND rsp.source = replace(r.source_type, '_reviews', '')
+                 AND rsp.recorded_at = (
+                   SELECT max(rs3.recorded_at) FROM review_scores rs3
+                   WHERE rs3.competitor_id = r.competitor_id
+                     AND rs3.source = replace(r.source_type, '_reviews', '')
+                     AND rs3.recorded_at < rs.recorded_at
+                 )
+               LIMIT 1
+             ) AS prev_score,
+             (
+               SELECT rsp.review_count FROM review_scores rsp
+               WHERE rsp.competitor_id = r.competitor_id
+                 AND rsp.source = replace(r.source_type, '_reviews', '')
+                 AND rsp.recorded_at = (
+                   SELECT max(rs3.recorded_at) FROM review_scores rs3
+                   WHERE rs3.competitor_id = r.competitor_id
+                     AND rs3.source = replace(r.source_type, '_reviews', '')
+                     AND rs3.recorded_at < rs.recorded_at
+                 )
+               LIMIT 1
+             ) AS prev_review_count
       FROM review_scores rs
       WHERE rs.competitor_id = r.competitor_id
         AND rs.source = replace(r.source_type, '_reviews', '')
@@ -495,6 +646,9 @@ activityRouter.get("/timeline", async (c) => {
     url: r.resolvedUrl ?? urlById.get(r.competitorId) ?? null,
     lastChangedAt: r.lastChangedAt,
     captured: shapeCaptured(r),
+    // On a change row, what moved vs the previous capture (delta); null elsewhere,
+    // where the UI keeps the full snapshot (captured) instead.
+    capturedDelta: shapeCapturedDelta(r),
   }));
 
   // Total matching rows, for numbered pagination. Expressed without the LATERAL

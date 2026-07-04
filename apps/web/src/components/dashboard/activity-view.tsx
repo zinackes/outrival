@@ -13,6 +13,7 @@ import {
   type ActivityEvent,
   type ActivityChange,
   type ActivityCaptured,
+  type ActivityCapturedDelta,
   type ActivityStatusFilter,
 } from "@/lib/api";
 import {
@@ -369,33 +370,120 @@ function capturedSummary(c: ActivityCaptured): string | null {
   return c.reviewCount > 0 ? `${stars} · ${c.reviewCount.toLocaleString()} reviews` : stars;
 }
 
-// "Captured" cell content: a dash for non-data sources, "Nothing found" for a
-// data source whose extraction came back empty, else the summary line plus a
-// "View more" that opens the breakdown modal. A non-null summary always implies a
-// real payload, so the link is shown whenever there's a summary.
+// One before→after pair, muted → foreground, matching the change detail styling.
+function DeltaArrow({ before, after }: { before: ReactNode; after: ReactNode }) {
+  return (
+    <span className="inline-flex items-baseline gap-1 tabular-nums">
+      <span className="text-muted-foreground">{before}</span>
+      <span className="text-muted-foreground" aria-hidden>
+        →
+      </span>
+      <span className="text-foreground">{after}</span>
+    </span>
+  );
+}
+
+// What MOVED on a change run — the delta line shown in the "Captured" column
+// instead of the running total. Reuses fmtPrice / PERIOD units above.
+function CapturedDeltaContent({ delta }: { delta: ActivityCapturedDelta }) {
+  if (delta.kind === "jobs") {
+    return (
+      <span className="inline-flex items-baseline gap-1">
+        <DeltaArrow before={delta.before} after={delta.after} />
+        <span className="text-muted-foreground">roles</span>
+      </span>
+    );
+  }
+  if (delta.kind === "pricingCount") {
+    return (
+      <span className="inline-flex items-baseline gap-1">
+        <DeltaArrow before={delta.before} after={delta.after} />
+        <span className="text-muted-foreground">plans</span>
+      </span>
+    );
+  }
+  if (delta.kind === "reviews") {
+    if (delta.unit === "score") {
+      return (
+        <DeltaArrow
+          before={`${delta.before.toFixed(1)}★`}
+          after={`${delta.after.toFixed(1)}★`}
+        />
+      );
+    }
+    return (
+      <span className="inline-flex items-baseline gap-1">
+        <DeltaArrow
+          before={delta.before.toLocaleString()}
+          after={delta.after.toLocaleString()}
+        />
+        <span className="text-muted-foreground">reviews</span>
+      </span>
+    );
+  }
+  // pricing — a plan's price moved (before/after always present for this kind)
+  return (
+    <span className="inline-flex min-w-0 items-baseline gap-1.5">
+      <span className="min-w-0 truncate text-foreground">{delta.plan}</span>
+      <DeltaArrow
+        before={fmtPrice(delta.before, delta.currency)}
+        after={fmtPrice(delta.after, delta.currency)}
+      />
+      {delta.more > 0 && (
+        <span className="shrink-0 text-muted-foreground">+{delta.more} more</span>
+      )}
+    </span>
+  );
+}
+
+// "View more" — opens the full snapshot breakdown modal for a run.
+function ViewMoreButton({ onView }: { onView: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onView();
+      }}
+      className="shrink-0 text-xs text-link hover:underline"
+    >
+      View more
+    </button>
+  );
+}
+
+// "Captured" cell content. On a change row (delta present) we show what MOVED vs
+// the previous capture, not the running total — the total reads oddly next to
+// "What changed". "View more" still opens the full current-state breakdown. On a
+// quiet run: a dash for non-data sources, "Nothing found" for an empty extraction,
+// else the snapshot summary line plus "View more".
 function CapturedCell({
   captured,
+  delta,
   onView,
 }: {
   captured: ActivityCaptured | null | undefined;
+  delta: ActivityCapturedDelta | null | undefined;
   onView: () => void;
 }) {
+  if (delta) {
+    const hasBreakdown = captured != null && capturedSummary(captured) != null;
+    return (
+      <span className="inline-flex min-w-0 items-center gap-2">
+        <span className="min-w-0 truncate">
+          <CapturedDeltaContent delta={delta} />
+        </span>
+        {hasBreakdown && <ViewMoreButton onView={onView} />}
+      </span>
+    );
+  }
   if (!captured) return <span className="text-muted-foreground">—</span>;
   const summary = capturedSummary(captured);
   if (!summary) return <span className="text-muted-foreground">Nothing found</span>;
   return (
     <span className="inline-flex items-center gap-2">
       <span className="tabular-nums text-foreground">{summary}</span>
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          onView();
-        }}
-        className="shrink-0 text-xs text-link hover:underline"
-      >
-        View more
-      </button>
+      <ViewMoreButton onView={onView} />
     </span>
   );
 }
@@ -863,6 +951,7 @@ export function ActivityView() {
                             <TableCell className="text-muted-foreground">
                               <CapturedCell
                                 captured={e.captured}
+                                delta={e.capturedDelta}
                                 onView={() => setDetailEvent(e)}
                               />
                             </TableCell>

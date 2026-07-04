@@ -63,8 +63,8 @@ Value proposition: ${myProduct.valueProp}
     : "";
 
   const soWhatGuidance = myProduct
-    ? "Strategic implication for OUR product specifically — whether it overlaps with our positioning, threatens our differentiation, or opens a gap we can exploit. 1-2 sentences"
-    : "Strategic implication for the user, 1-2 sentences";
+    ? "Strategic implication for OUR product specifically — whether it overlaps with our positioning, threatens our differentiation, or opens a gap we can exploit. One or two SHORT sentences, plain and specific. Do not chain clauses with semicolons."
+    : "Strategic implication for the user. One or two SHORT sentences, plain and specific. Do not chain clauses with semicolons.";
 
   return `<context>
 Competitor: ${competitorName}
@@ -84,9 +84,9 @@ Write all text values in English.
 
 <format>
 {
-  "insight": "What happened, 1-2 factual sentences",
+  "insight": "What happened, 1-2 short factual sentences",
   "so_what": "${soWhatGuidance}",
-  "recommended_action": "A concrete action, or null"
+  "recommended_action": "One concrete next step in a single short sentence, or null"
 }
 </format>`;
 }

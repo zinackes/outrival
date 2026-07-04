@@ -8,6 +8,7 @@ import {
   ListTodo,
   MessageSquare,
   Sparkles,
+  ChevronDown,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
@@ -141,6 +142,9 @@ export function SignalCard({
   const [severityAdjusted, setSeverityAdjusted] = useState(false);
   const [actionStatus, setActionStatus] = useState<ActionStatus | null>(signal.actionStatus);
   const [showComments, setShowComments] = useState(false);
+  // The strategic narrative (patch-16) lives in a collapsed "Context" below the
+  // decision path, closed by default — it was duplicating "So what" up top.
+  const [showContext, setShowContext] = useState(false);
   const [commentCount, setCommentCount] = useState<number | null>(null);
   const [trackOpen, setTrackOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -355,21 +359,6 @@ export function SignalCard({
         {signal.insight}
       </p>
 
-      {/* Strategic narrative (patch-16): contextual explanation of a significant
-          structured homepage change. Visually distinct via a tonal inset + AI mark
-          (no side-stripe/italic), adds context below the title — never replaces it.
-          Absent → unchanged. */}
-      {signal.narrative && (
-        <div className="mb-4 flex gap-2 rounded-md bg-surface-2 px-3 py-2.5 text-content leading-relaxed text-foreground/85">
-          <Sparkles
-            size={14}
-            className="mt-0.5 shrink-0 text-muted-foreground"
-            aria-hidden
-          />
-          <p>{signal.narrative}</p>
-        </div>
-      )}
-
       {hasDetails && (
         <div className="grid grid-cols-[64px_1fr] gap-x-4 gap-y-3.5 pt-4">
           {signal.soWhat && (
@@ -391,6 +380,35 @@ export function SignalCard({
                 {signal.recommendedAction}
               </div>
             </>
+          )}
+        </div>
+      )}
+
+      {/* Strategic narrative (patch-16), demoted to a collapsed "Context" so it stops
+          duplicating "So what" at the top of the card. Closed by default → the decision
+          path (insight → so what → action) reads first. */}
+      {signal.narrative && (
+        <div className="mt-4">
+          <button
+            type="button"
+            onClick={() => setShowContext((v) => !v)}
+            aria-expanded={showContext}
+            className="flex items-center gap-1.5 text-dense font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground"
+          >
+            <Sparkles size={13} className="shrink-0" aria-hidden />
+            Context
+            <ChevronDown
+              className={cn(
+                "size-3.5 transition-transform",
+                showContext && "rotate-180",
+              )}
+              aria-hidden
+            />
+          </button>
+          {showContext && (
+            <p className="mt-2 rounded-md bg-surface-2 px-3 py-2.5 text-content leading-relaxed text-foreground/85">
+              {signal.narrative}
+            </p>
           )}
         </div>
       )}

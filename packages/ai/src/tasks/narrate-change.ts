@@ -45,18 +45,18 @@ export async function narrateChange(input: NarrateChangeInput): Promise<string |
     .map((c) => `- [${c.kind}] ${c.field}: ${c.before ?? "∅"} → ${c.after ?? "∅"}`)
     .join("\n");
 
-  const myProductBlock = input.myProduct
-    ? `\n\nOUR product (judge the change from our perspective): ${input.myProduct.category} for ${input.myProduct.audience} — ${input.myProduct.valueProp}.`
-    : "";
-  const angle = input.myProduct
-    ? "what this change suggests strategically for OUR product (overlap, threat to our differentiation, or a gap we can exploit)"
-    : "what this change suggests strategically";
+  // Narrative = descriptive CONTEXT about the competitor's move, deliberately distinct
+  // from the signal's "so what" (which states the implication for OUR product). They
+  // used to share the same "overlap / threat / gap" angle and printed the same analysis
+  // twice; keeping the narrative competitor-descriptive stops that duplication.
+  const angle =
+    "what this move reveals about the competitor's own strategy and direction — how they're positioning, who they seem to be targeting, and where it fits their broader trajectory";
 
   const prompt = `You are a strategic competitive-intelligence analyst. Here is what changed on the homepage of ${input.competitor.name} (category: ${input.competitor.category}):
 
-${list.slice(0, 4000)}${myProductBlock}
+${list.slice(0, 4000)}
 
-Explain in 2-3 sentences ${angle}. Sober, factual tone. No superlatives. No gratuitous speculation. Write in English. If you don't have enough information to say anything useful, reply exactly: "Change noted, significance to be confirmed."
+Explain in 2-3 short sentences ${angle}. This is CONTEXT, not advice — describe the competitor's move; do NOT state what we should do about it or how it affects our product (that is covered separately). Sober, factual tone. No superlatives, no gratuitous speculation. Write in English. If you don't have enough information to say anything useful, reply exactly: "Change noted, significance to be confirmed."
 
 Reply with the explanation text only — no markdown, no preamble.`;
 

@@ -13,6 +13,7 @@ import {
 import {
   Tooltip,
   TooltipContent,
+  TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
@@ -35,20 +36,26 @@ export function ThemeToggle() {
 
   return (
     <DropdownMenu>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon-sm" aria-label="Toggle theme">
-              {mounted && resolvedTheme === "dark" ? (
-                <Moon size={14} />
-              ) : (
-                <Sun size={14} />
-              )}
-            </Button>
-          </DropdownMenuTrigger>
-        </TooltipTrigger>
-        <TooltipContent>Theme: {mounted ? currentLabel : "System"}</TooltipContent>
-      </Tooltip>
+      {/* Self-contained provider: ThemeToggle also renders on the public landing nav,
+          which has no ancestor TooltipProvider (it lives only in the dashboard/admin/
+          onboarding AppProviders). Without this, radix Tooltip throws at prerender of
+          "/". Nesting inside the dashboard's provider is harmless (inner wins). */}
+      <TooltipProvider delayDuration={80}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-sm" aria-label="Toggle theme">
+                {mounted && resolvedTheme === "dark" ? (
+                  <Moon size={14} />
+                ) : (
+                  <Sun size={14} />
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent>Theme: {mounted ? currentLabel : "System"}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <DropdownMenuContent align="end" sideOffset={8} className="w-36">
         {OPTIONS.map(({ value, label, icon: Icon }) => (
           <DropdownMenuItem

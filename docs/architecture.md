@@ -647,22 +647,6 @@ set-password depuis settings). Events PostHog funnel (`auth_magic_link_requested
 helper `track` no-op si pas opt-in). `emailSchema`/`passwordSchema` partagés
 client/serveur (`packages/shared/src/validation/`).
 
-**Durcissement anti-bot / faux-comptes à l'inscription** (au-delà de Turnstile + du
-rate-limit OTP + de la blocklist disposable) — 3 couches, toutes fail-open :
-- **Mailbox canonique** (`canonicalizeEmail`, shared) : `user.email_canonical` (plie
-  les points/+tag Gmail vers une seule inbox) sert de clé d'unicité anti-abus. Le
-  `databaseHooks.user.create.before` refuse un 2ᵉ compte sur une mailbox déjà prise
-  (empêche 1 boîte Gmail → N comptes). Index non-unique d'abord ; promu **UNIQUE** en
-  migration séparée après backfill (`db:backfill-email-canonical`) + résolution des
-  collisions. Ne se recalcule pas sur changement d'email (vecteur d'abus faible, différé).
-- **Cap comptes/IP** (`overSignupIpCap`, `lib/signup-abuse.ts`) : `SIGNUP_IP_DAILY_CAP`
-  mailboxes NEUVES distinctes/IP/24h (Upstash, garde NX sur la mailbox canonique). Enforce
-  au send **uniquement pour les emails inconnus** → les LOGINS depuis un NAT partagé ne
-  sont jamais bloqués ; réponse générique identique (ne leak ni le cap ni l'existence).
-- **Délivrabilité + signal** (`domainCanReceiveMail`/`localPartLooksRandom`) : rejet dur
-  si le domaine n'a **ni MX ni A/AAAA** (kill-switch `SIGNUP_MX_CHECK_ENABLED`, cache 7j) ;
-  local-part aléatoire → event PostHog `signup_suspicious_localpart` (mesure, non bloquant).
-
 > **Setup manuel (hors code)** : créer les credentials Google OAuth (Console Google,
 > redirect URI = `{BETTER_AUTH_URL}/api/auth/callback/google` en dev **et** prod), le
 > site Turnstile (CF dashboard, mode Managed), et vérifier le domaine `auth@outrival.io`
@@ -701,8 +685,6 @@ AUTH_RATE_LIMIT_EMAIL=3      # patch-19 — max attempts per email per window (U
 AUTH_RATE_LIMIT_IP=10        # patch-19 — max attempts per IP per window
 AUTH_RATE_LIMIT_WINDOW_MIN=15 # patch-19 — window length in minutes
 RESEND_AUTH_FROM=            # patch-19 — optional, defaults to "Outrival <auth@outrival.io>"
-SIGNUP_IP_DAILY_CAP=5        # signup-abuse — max distinct NEW mailboxes one IP may register / 24h (<=0 disables; logins never counted). Fail-open without Upstash
-SIGNUP_MX_CHECK_ENABLED=true # signup-abuse — reject domains with no MX and no A/AAAA record (undeliverable). false → skip the DNS check
 
 # Jobs
 TRIGGER_SECRET_KEY=          # Trigger.dev — being replaced by pg-boss (removed at migration Phase 7)
@@ -815,12 +797,16 @@ PLATFORM_REDETECT_DRIFT_COOLDOWN_HOURS=24  # min heures entre re-détections sur
 VISUAL_DIFF_ENABLED=true               # false → endpoints screenshot 404, section diff masquée
 
 # AI Visibility / "Share of Model" — présence self + concurrents dans les réponses des
-# moteurs IA (Perplexity d'abord). Feature premium (features.aiVisibility, pro+).
-# 📄 docs/ai-visibility.md
+# moteurs IA. Feature premium (features.aiVisibility, pro+). gemini = moteur par défaut
+# GRATUIT (Google Search grounding, ~5k prompts groundés/mois gratuits sur AI Studio 3.x)
+# → active sans payer. Chaque moteur best-effort (vide → skip, 0 coût). Stratégie coût-zéro
+# (BYOK, scrape-cascade AIO) : 📄 docs/ai-visibility-free.md — 📄 docs/ai-visibility.md
 AI_VISIBILITY_ENABLED=true             # false → scheduler + job no-op (kill-switch)
 AI_VISIBILITY_INTERVAL_DAYS=7          # cadence par org (jours entre 2 runs)
 AI_VISIBILITY_MAX_PROMPTS=10           # cap prompts/org/run (garde-fou coût)
-PERPLEXITY_API_KEY=                    # moteur Perplexity Sonar ; vide → moteur skip (0 coût)
+GEMINI_API_KEY=                        # moteur Gemini + grounding (GRATUIT, défaut) ; vide → skip
+AI_VISIBILITY_GEMINI_MODEL=gemini-flash-latest  # pin un Flash 3.x pour le quota grounding gratuit
+PERPLEXITY_API_KEY=                    # moteur Perplexity Sonar (PAYANT) ; vide → moteur skip
 AI_VISIBILITY_PERPLEXITY_MODEL=sonar   # modèle Perplexity (sonar = search fee le moins cher)
 
 # Billing

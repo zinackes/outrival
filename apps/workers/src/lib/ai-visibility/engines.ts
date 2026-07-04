@@ -5,7 +5,7 @@ import { logger } from "@trigger.dev/sdk/v3";
 // tracked subjects appear. Best-effort: a missing key or an API error returns null so
 // the job skips that prompt rather than failing — no key configured means no cost.
 
-export type Engine = "perplexity"; // chatgpt | google_aio land in phase 5
+export type Engine = "perplexity" | "gemini"; // chatgpt | google_aio land in phase 5
 
 export interface EngineAnswer {
   answer: string;
@@ -58,10 +58,69 @@ async function queryPerplexity(prompt: string): Promise<EngineAnswer | null> {
   }
 }
 
+// Gemini + Google Search grounding — the FREE default engine (docs/ai-visibility-free.md).
+// Gemini 3.x gets ~5,000 grounded prompts/month free on the AI Studio tier, so a
+// GEMINI_API_KEY (free) replaces the paid Perplexity Sonar fee. It's a web-grounded
+// answer with citations that stands in for "Google's AI answer". Model is overridable:
+// pin AI_VISIBILITY_GEMINI_MODEL to the current 3.x Flash to land in the free grounding
+// quota (the default alias may resolve to a paid-grounding 2.5 model).
+async function queryGemini(prompt: string): Promise<EngineAnswer | null> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    logger.warn("ai-visibility: GEMINI_API_KEY not set, skipping gemini");
+    return null;
+  }
+  const model = process.env.AI_VISIBILITY_GEMINI_MODEL ?? "gemini-flash-latest";
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+      {
+        method: "POST",
+        headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          tools: [{ google_search: {} }],
+        }),
+      },
+    );
+    if (!res.ok) {
+      logger.error("ai-visibility: gemini request failed", {
+        status: res.status,
+        body: (await res.text()).slice(0, 300),
+      });
+      return null;
+    }
+    const data = (await res.json()) as {
+      candidates?: {
+        content?: { parts?: { text?: string }[] };
+        groundingMetadata?: { groundingChunks?: { web?: { uri?: string } }[] };
+      }[];
+    };
+    const candidate = data.candidates?.[0];
+    const answer = candidate?.content?.parts
+      ?.map((p) => p.text ?? "")
+      .join("")
+      .trim();
+    if (!answer) {
+      logger.warn("ai-visibility: gemini returned an empty answer");
+      return null;
+    }
+    const citations = (candidate?.groundingMetadata?.groundingChunks ?? [])
+      .map((c) => c.web?.uri)
+      .filter((u): u is string => Boolean(u));
+    return { answer, citations, model };
+  } catch (err) {
+    logger.error("ai-visibility: gemini request threw", { err: String(err) });
+    return null;
+  }
+}
+
 export async function queryEngine(engine: Engine, prompt: string): Promise<EngineAnswer | null> {
   switch (engine) {
     case "perplexity":
       return queryPerplexity(prompt);
+    case "gemini":
+      return queryGemini(prompt);
     default:
       return null;
   }

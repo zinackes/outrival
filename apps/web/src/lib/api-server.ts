@@ -491,7 +491,8 @@ export async function getNotificationsPageData(): Promise<{
         "/api/notification-preferences/relevance-threshold",
       ),
       serverGet<NotificationSettings>("/api/settings/notifications"),
-      serverGet<{ plan: Plan }>("/api/billing"),
+      // Only `.plan` is read here — ?summary=1 skips the endpoint's Stripe calls.
+      serverGet<{ plan: Plan }>("/api/billing?summary=1"),
     ]);
     return {
       moderation: { preferences: prefs.preferences, threshold },

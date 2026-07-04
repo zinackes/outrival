@@ -69,7 +69,10 @@ async function getBilling(h: Headers): Promise<{
   competitorsUsed?: number;
   competitorsLimit?: number | null;
 } | null> {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/billing`, {
+  // ?summary=1 — the layout only needs plan + seat usage (DB-backed). This skips the
+  // two sequential Stripe round-trips the full endpoint makes, which were the single
+  // slowest fetch gating the dashboard's first paint on hard loads.
+  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/billing?summary=1`, {
     headers: h,
     cache: "no-store",
   });

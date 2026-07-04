@@ -37,11 +37,13 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
 # Build provenance: the deploying commit + build time, inlined into the bundle so
 # GET /api/version reports which build is live (stale-deploy detection). Declared
 # here — after install — so a changed SHA only busts the `build` layer, not the
-# cached pnpm install. Default "unknown" keeps local `docker build` working with
-# no args. In Coolify: pass GIT_SHA (its SOURCE_COMMIT) as a build variable.
-ARG GIT_SHA=unknown
-ARG BUILD_TIME=unknown
-ENV NEXT_PUBLIC_BUILD_SHA=$GIT_SHA NEXT_PUBLIC_BUILD_TIME=$BUILD_TIME
+# cached pnpm install. SOURCE_COMMIT is Coolify's predefined build arg for the
+# deploying commit → /api/version self-reports with zero manual config; GIT_SHA is
+# an explicit override. Empty defaults keep local `docker build` working with no args.
+ARG SOURCE_COMMIT=
+ARG GIT_SHA=
+ARG BUILD_TIME=
+ENV NEXT_PUBLIC_BUILD_SHA=$GIT_SHA NEXT_PUBLIC_BUILD_COMMIT=$SOURCE_COMMIT NEXT_PUBLIC_BUILD_TIME=$BUILD_TIME
 RUN pnpm --filter @outrival/web build
 
 # --- runtime: minimal standalone server, non-root. HOSTNAME=0.0.0.0 so it binds

@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard,
   Radio,
+  FileText,
   Activity,
   LineChart,
   Eye,
@@ -87,6 +88,7 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
     label: "Monitor",
     items: [
       { href: "/dashboard/signals", label: "Signals", icon: Radio },
+      { href: "/dashboard/digests", label: "Digests", icon: FileText },
       { href: "/dashboard/activity", label: "Activity", icon: Activity },
     ],
   },

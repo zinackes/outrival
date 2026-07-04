@@ -67,6 +67,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils";
 import { feedItemMotion } from "@/lib/motion";
 import { PageHead } from "./page-head";
+import { SignalsBrief } from "./signals-brief";
 import { SignalCard } from "./signal-card";
 import { SignalEvidence } from "@/components/outrival/signal-evidence";
 import { SignalRow, BatchRow } from "./signal-row";
@@ -1018,6 +1019,12 @@ export function SignalsView() {
           </>
         }
       />
+
+      {/* AI executive brief of the week's signals — renders only when there's enough
+          to summarize; the server caches it, so mounting it here is cheap. */}
+      {!sample && (
+        <SignalsBrief productId={productId ?? undefined} enabled={total >= 3} />
+      )}
 
       <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center lg:gap-2">
         <Tabs

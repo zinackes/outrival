@@ -14,10 +14,12 @@ import {
   users,
 } from "@outrival/db";
 import { computeThreatScore, getBytesFromR2 } from "@outrival/shared";
+import { complete, AI_CONFIG } from "@outrival/ai";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
+import { logApiAiRun } from "../lib/ai-runs";
 import { notFound } from "../lib/errors";
 
 type Variables = { user: { id: string } };
@@ -323,6 +325,83 @@ signalsRouter.get("/facets", async (c) => {
     categories: catRows.map((r) => r.category).sort(),
     competitors: compRows,
   });
+});
+
+// AI feed brief — a 2-3 sentence executive read of the org's last week of signals.
+// In-memory cache (per org+product, 30 min TTL) bounds the model spend to ~2/hour/org
+// regardless of how many page loads hit it; `?refresh=1` forces a fresh synthesis.
+const briefCache = new Map<
+  string,
+  { brief: string | null; count: number; at: number }
+>();
+const BRIEF_TTL_MS = 30 * 60 * 1000;
+
+signalsRouter.get("/brief", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const productId = c.req.query("productId") || undefined;
+  const refresh = c.req.query("refresh") === "1";
+  const cacheKey = `${orgId}:${productId ?? ""}`;
+
+  if (!refresh) {
+    const hit = briefCache.get(cacheKey);
+    if (hit && Date.now() - hit.at < BRIEF_TTL_MS) {
+      return c.json({ brief: hit.brief, count: hit.count });
+    }
+  }
+
+  // Last week of signals for this scope — same base guards as the feed (not hidden,
+  // competitor not soft-deleted), most recent first, capped.
+  const conds = [
+    eq(signals.orgId, orgId),
+    isNull(signals.hiddenForUserAt),
+    isNull(competitors.deletedAt),
+    sql`${signals.createdAt} >= now() - interval '7 days'`,
+  ];
+  if (productId) {
+    conds.push(sql`${signals.productIds} @> ${JSON.stringify([productId])}::jsonb`);
+  }
+
+  const rows = await db
+    .select({
+      severity: signals.severity,
+      category: signals.category,
+      insight: signals.insight,
+      competitorName: competitors.name,
+    })
+    .from(signals)
+    .innerJoin(competitors, eq(competitors.id, signals.competitorId))
+    .where(and(...conds))
+    .orderBy(desc(signals.createdAt))
+    .limit(40);
+
+  // Below a handful of signals the feed already reads at a glance — skip the spend.
+  if (rows.length < 3) {
+    briefCache.set(cacheKey, { brief: null, count: rows.length, at: Date.now() });
+    return c.json({ brief: null, count: rows.length });
+  }
+
+  const lines = rows
+    .map((r) => `- [${r.severity}] ${r.competitorName} (${r.category}): ${r.insight}`)
+    .join("\n");
+  const prompt = `You are a competitive-intelligence analyst briefing a busy founder who has a few minutes.
+Below are the ${rows.length} most recent competitor signals from the past week (most recent first).
+Write a 2-3 sentence executive brief: the through-line across these moves, who is most active, and the single thing that most deserves attention this week. Be specific and concrete (name competitors and categories). No preamble, no bullet points, no markdown, no headings. Write in English.
+
+<signals>
+${lines.slice(0, 6000)}
+</signals>`;
+
+  try {
+    const raw = await complete(AI_CONFIG.insights, { prompt, maxTokens: 240 });
+    const brief = raw.trim() || null;
+    await logApiAiRun("signals_brief", AI_CONFIG.insights.model, "success");
+    briefCache.set(cacheKey, { brief, count: rows.length, at: Date.now() });
+    return c.json({ brief, count: rows.length });
+  } catch {
+    await logApiAiRun("signals_brief", AI_CONFIG.insights.model, "error");
+    return c.json({ brief: null, count: rows.length });
+  }
 });
 
 // Mark all read — full scope, server-side. Two paths on one endpoint:

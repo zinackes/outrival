@@ -678,3 +678,23 @@ export function parseHomepageStructure(html: string, baseUrl: string): HomepageS
     socialProof,
   };
 }
+
+/**
+ * A homepage capture that failed to render its real content: a client-rendered SPA
+ * that served its error boundary ("Something went wrong"), a soft-block shell, or a
+ * page whose client render never populated — all served with HTTP 200, so the
+ * scrape cascade accepts them. Structurally these carry only the static shell
+ * (nav/footer) plus at most a single error blurb: no hero headline AND ≤1 content
+ * section.
+ *
+ * Every live marketing homepage has either a hero or several sections, so this only
+ * matches a broken capture, never a real (if minimal) page. Such a structure must
+ * NEVER be diffed against another: `∅ → value` (the site recovering) or
+ * `value → ∅` (a fresh failure) would fake a high-severity positioning change (a
+ * whole "new hero section", a "visual redesign" from the blank screenshot) out of a
+ * transient capture artifact. PURE.
+ */
+export function isIncompleteRender(s: HomepageStructure): boolean {
+  const hasHero = Boolean(s.hero.headline && s.hero.headline.trim());
+  return !hasHero && s.sections.length <= 1;
+}

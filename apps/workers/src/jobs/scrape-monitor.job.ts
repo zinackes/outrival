@@ -37,6 +37,7 @@ import { extractContent, isContentCollapsed } from "@outrival/scrapers/extract";
 // monitors (patch-16). Replaces the lexical diff for homepages only.
 import {
   parseHomepageStructure,
+  isIncompleteRender,
   type HomepageStructure,
 } from "@outrival/scrapers/homepage-structure";
 import { diffHomepages, renderStructuredChanges } from "@outrival/scrapers/homepage-diff";
@@ -710,7 +711,33 @@ export const scrapeMonitorJob = task({
     // prior snapshot predates the patch (no structure) — for that one iteration
     // only; the next scrape will have two structures and use the structured diff.
     const prevStructure = (lastSnapshot?.homepageStructure ?? null) as HomepageStructure | null;
-    if (lastSnapshot && monitor.sourceType === "homepage" && homepageStructure && prevStructure) {
+    if (
+      lastSnapshot &&
+      monitor.sourceType === "homepage" &&
+      homepageStructure &&
+      prevStructure &&
+      (isIncompleteRender(prevStructure) || isIncompleteRender(homepageStructure))
+    ) {
+      // One side is a failed render — a client-rendered SPA that served its error
+      // boundary ("Something went wrong"), a soft-block shell, or a page whose JS
+      // never populated — all with HTTP 200, so the cascade accepted them. Diffing
+      // against it fabricates a high-severity change (a whole "new hero section", a
+      // "visual redesign" from the blank screenshot) out of a transient capture
+      // artifact. Skip the diff entirely: the snapshot is already stored as the new
+      // baseline, so emit no change/signal. Handled BEFORE the structured branch so
+      // it does not fall through to the lexical diff, which would resurrect the same
+      // false signal from the raw text delta.
+      logger.log("Skipping homepage diff — incomplete render on one side", {
+        monitorId: monitor.id,
+        prevIncomplete: isIncompleteRender(prevStructure),
+        currIncomplete: isIncompleteRender(homepageStructure),
+      });
+    } else if (
+      lastSnapshot &&
+      monitor.sourceType === "homepage" &&
+      homepageStructure &&
+      prevStructure
+    ) {
       const structuredChanges = diffHomepages(prevStructure, homepageStructure);
 
       // Visual redesign (patch-17): a large screenshot Hamming distance with FEW

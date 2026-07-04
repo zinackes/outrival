@@ -13,6 +13,7 @@ import {
   Crosshair,
   DollarSign,
   GitCompare,
+  Info,
   Loader2,
   MessageSquare,
   Package,
@@ -397,6 +398,17 @@ export function AskPanel({
           </span>
         </div>
       )}
+
+      {/* AI Act (Art. 50) transparency: the user is told they're interacting
+          with an AI system, at the latest at first interaction, in clear terms
+          that aren't buried in the terms of service. */}
+      <p className="mb-3 flex items-start gap-1.5 text-meta text-muted-foreground">
+        <Info className="mt-0.5 size-3 shrink-0" aria-hidden />
+        <span>
+          You&apos;re interacting with AI. Ask Outrival generates answers from
+          your workspace data and can be inaccurate — verify important details.
+        </span>
+      </p>
 
       <form
         onSubmit={(e) => {

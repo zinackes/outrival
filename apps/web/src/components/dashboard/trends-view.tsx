@@ -379,7 +379,7 @@ export function TrendsView() {
                       <Badge variant={m.event === "appeared" ? "secondary" : "outline"}>
                         {m.event}
                       </Badge>
-                      <span className="text-muted-foreground font-mono text-meta">
+                      <span className="text-muted-foreground text-meta">
                         {shortDate(m.recordedAt)}
                       </span>
                     </span>

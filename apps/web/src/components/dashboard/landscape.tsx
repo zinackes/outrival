@@ -190,52 +190,15 @@ export function LandscapeSection({
     data.reviews.length > 0 ||
     data.recentActivity.length > 0;
 
-  const sourceCount = data.sources.length;
   const hasBaseline =
     hasPricing || data.hiring.length > 0 || data.reviews.length > 0;
 
   return (
     <>
-      {/* Status hero — the one clear thing on arrival: monitoring is live, the
-          scope, and that signals arrive on change. Replaces the loose intro. */}
-      <section className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-border bg-card px-5 py-4">
-        <div className="flex min-w-0 items-start gap-3.5">
-          <span className="grid size-9 shrink-0 place-items-center rounded-md bg-primary/15">
-            <span className="relative flex size-2">
-              <span className="absolute inline-flex size-full rounded-full bg-primary opacity-60 motion-safe:animate-ping" />
-              <span className="relative inline-flex size-2 rounded-full bg-primary" />
-            </span>
-          </span>
-          <div className="min-w-0">
-            <h2 className="text-content font-semibold tracking-tight">
-              You&apos;re all set. Monitoring is live.
-            </h2>
-            <p className="mt-1 max-w-[62ch] text-sm text-muted-foreground">
-              Outrival is watching{" "}
-              <span className="font-medium text-foreground">
-                {competitorCount} competitor{competitorCount > 1 ? "s" : ""}
-              </span>{" "}
-              across{" "}
-              <span className="font-medium text-foreground">
-                {sourceCount} source{sourceCount > 1 ? "s" : ""}
-              </span>
-              . Your first signals land here the moment a price, product, or hire
-              changes.
-            </p>
-          </div>
-        </div>
-        {data.nextCheckAt && (
-          <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-border bg-background px-3 py-1 text-xs">
-            <span className="size-1.5 rounded-full bg-primary" aria-hidden />
-            Next scan{" "}
-            <span className="font-mono text-muted-foreground">
-              {formatDistanceToNow(new Date(data.nextCheckAt), {
-                addSuffix: true,
-              })}
-            </span>
-          </span>
-        )}
-      </section>
+      {/* No reassurance hero: the page scope already lives in the PageHead, and
+          while the first scan runs the OnboardingAnalysisPanel owns the status —
+          a "monitoring is live" card here contradicts it and reads as filler.
+          Substance (baseline, activity) appears below only once it exists. */}
 
       {/* Your starting position — the compact baseline the first scan captured:
           pricing compressed to one line per company, hiring + reviews beside it. */}
@@ -423,13 +386,27 @@ export function LandscapeSection({
         </section>
       )}
 
-      {/* Transparent waiting (Lever 4) — per-source lights. The next-scan ETA
-          lives once on the hero pill above, so it isn't repeated here. */}
+      {/* Transparent waiting (Lever 4) — per-source lights, with the next-scan
+          ETA carried once in the section header (the hero that used to hold it
+          is gone). */}
       <section>
         <SectionHead
           title="What we're watching"
           sub="every source we check on each competitor"
           divider={false}
+          action={
+            data.nextCheckAt ? (
+              <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-border bg-background px-3 py-1 text-xs">
+                <span className="size-1.5 rounded-full bg-primary" aria-hidden />
+                Next scan{" "}
+                <span className="text-muted-foreground">
+                  {formatDistanceToNow(new Date(data.nextCheckAt), {
+                    addSuffix: true,
+                  })}
+                </span>
+              </span>
+            ) : undefined
+          }
         />
         <div className="mt-3 rounded-md border border-border">
           {data.competitors.map((c) => {

@@ -1,8 +1,11 @@
 import { cookies } from "next/headers";
 import { endOfDay, startOfDay, subDays } from "date-fns";
 import type { Plan } from "@outrival/shared";
+import { SIGNALS_PAGE_SIZE } from "./queries";
 import type {
   Signal,
+  SignalsPage,
+  SignalsFacets,
   Competitor,
   TrendsSummary,
   Digest,
@@ -141,6 +144,28 @@ export async function getSignalsData(params: {
   } catch {
     return null;
   }
+}
+
+/**
+ * Prefetch the paginated Signals feed's first page + its facets. The page passes the
+ * URL's product/sort so the seed matches the "no filters" key SignalsView reads on
+ * mount (any active filter yields a different key → a client fetch). Both best-effort.
+ */
+export async function getSignalsFeedPage(params: {
+  productId?: string;
+  sort?: "threat" | "recent";
+}): Promise<SignalsPage | null> {
+  const q = new URLSearchParams({
+    limit: String(SIGNALS_PAGE_SIZE),
+    sort: params.sort ?? "threat",
+  });
+  if (params.productId) q.set("productId", params.productId);
+  return tryGet<SignalsPage>(`/api/signals?${q.toString()}`);
+}
+
+export async function getSignalsFacets(productId?: string): Promise<SignalsFacets | null> {
+  const qs = productId ? `?productId=${encodeURIComponent(productId)}` : "";
+  return tryGet<SignalsFacets>(`/api/signals/facets${qs}`);
 }
 
 /**

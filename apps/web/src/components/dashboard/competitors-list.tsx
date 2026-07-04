@@ -715,6 +715,7 @@ export function CompetitorsList() {
                         <Button
                           variant="ghost"
                           size="sm"
+                          aria-label={`More actions for ${c.name}`}
                           className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
                           onClick={(e) => e.stopPropagation()}
                         >
@@ -751,8 +752,18 @@ export function CompetitorsList() {
           {sorted.map((c) => (
             <motion.div key={c.id} {...feedItemMotion}>
             <Card
+              role="link"
+              tabIndex={0}
+              aria-label={c.name}
               onClick={() => router.push(`/dashboard/competitors/${c.id}`)}
-              className="cursor-pointer transition-colors hover:bg-accent/30"
+              onKeyDown={(e) => {
+                // Only the card itself navigates on Enter — nested buttons (kebab,
+                // color picker) keep their own keyboard behaviour without double-firing.
+                if (e.key === "Enter" && e.target === e.currentTarget) {
+                  router.push(`/dashboard/competitors/${c.id}`);
+                }
+              }}
+              className="cursor-pointer outline-none transition-colors hover:bg-accent/30 focus-visible:ring-[3px] focus-visible:ring-ring/70"
             >
               <div className="p-5">
                 <div className="flex items-center gap-2.5 mb-3.5">
@@ -959,7 +970,7 @@ function KpiCell({
         <span className="truncate">{value}</span>
       </div>
       {sub && (
-        <div className="text-muted-foreground text-meta font-mono truncate">
+        <div className="text-muted-foreground text-meta truncate">
           {sub}
         </div>
       )}
@@ -985,30 +996,35 @@ function SortHeader({
   tip?: string;
 }) {
   const active = sortBy === col;
-  const label = (
-    <span
+  // The sort control is a real <button> (keyboard-operable), and the <th> carries
+  // aria-sort so assistive tech announces the current column + direction.
+  const control = (
+    <button
+      type="button"
+      onClick={() => onClick(col)}
+      aria-label={`Sort by ${typeof children === "string" ? children : col}`}
       className={cn(
-        "inline-flex items-center gap-1",
+        "inline-flex cursor-pointer select-none items-center gap-1 rounded-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/70",
         active && "text-foreground",
       )}
     >
       {children}
       {active &&
         (sortDir === "desc" ? <ArrowDown size={10} /> : <ArrowUp size={10} />)}
-    </span>
+    </button>
   );
   return (
     <th
-      className={cn(TH_BASE, "cursor-pointer select-none", num && "text-right")}
-      onClick={() => onClick(col)}
+      className={cn(TH_BASE, num && "text-right")}
+      aria-sort={active ? (sortDir === "desc" ? "descending" : "ascending") : "none"}
     >
       {tip ? (
         <Tooltip>
-          <TooltipTrigger asChild>{label}</TooltipTrigger>
+          <TooltipTrigger asChild>{control}</TooltipTrigger>
           <TooltipContent>{tip}</TooltipContent>
         </Tooltip>
       ) : (
-        label
+        control
       )}
     </th>
   );

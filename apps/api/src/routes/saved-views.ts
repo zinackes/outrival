@@ -26,6 +26,7 @@ function sanitizeFilters(raw: unknown): SavedViewFilters {
   const severities = strArr(f.severities);
   if (severities) out.severities = severities;
   if (typeof f.view === "string") out.view = f.view.slice(0, 40);
+  if (f.sort === "recent" || f.sort === "threat") out.sort = f.sort;
   return out;
 }
 

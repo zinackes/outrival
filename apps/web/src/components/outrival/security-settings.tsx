@@ -695,7 +695,7 @@ function PasskeysDialog({
                 <div className="min-w-0 flex-1">
                   <div className="text-dense font-medium">{p.name || "Passkey"}</div>
                   {p.createdAt && (
-                    <div className="text-meta text-muted-foreground font-mono">
+                    <div className="text-meta text-muted-foreground">
                       Added {formatDistanceToNow(new Date(p.createdAt), { addSuffix: true })}
                     </div>
                   )}
@@ -763,26 +763,27 @@ function PasskeysRow() {
 // Linked OAuth providers (e.g. Google), rendered as rows in the same list.
 // Disconnecting never locks anyone out — email-code sign-in always works.
 function ConnectedAccountRows() {
-  const [accounts, setAccounts] = useState<{ providerId: string }[] | null>(null);
+  const queryClient = useQueryClient();
+  // Shares the ["authAccounts"] query with PasswordSection so the page fetches the
+  // account list once (was two independent listAccounts() calls), and a disconnect
+  // refreshes both sections instead of only this one.
+  const accountsQ = useQuery({
+    queryKey: ["authAccounts"],
+    queryFn: () => authClient.listAccounts().then((res) => res.data ?? []),
+  });
+  const accounts = accountsQ.isError
+    ? [] // preserve the original catch(()=>[]) behaviour: error → "no accounts" row
+    : accountsQ.data
+      ? accountsQ.data.map((a) => ({ providerId: a.providerId }))
+      : null;
   const [busy, setBusy] = useState<string | null>(null);
-
-  const load = useCallback(() => {
-    authClient
-      .listAccounts()
-      .then((res) => setAccounts((res.data ?? []).map((a) => ({ providerId: a.providerId }))))
-      .catch(() => setAccounts([]));
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
 
   async function disconnect(providerId: string) {
     setBusy(providerId);
     try {
       await api.disconnectOAuth(providerId);
       toast.success(`${PROVIDER_LABELS[providerId] ?? providerId} disconnected`);
-      load();
+      await queryClient.invalidateQueries({ queryKey: ["authAccounts"] });
     } catch (e) {
       toast.error(
         e instanceof ApiError && typeof e.data.message === "string"
@@ -1241,13 +1242,13 @@ function ActiveSessions() {
                   <div className="flex items-center gap-2 text-dense font-medium">
                     {deviceLabel(s.userAgent)}
                     {current && (
-                      <span className="inline-flex items-center gap-1.5 font-mono text-meta text-positive">
+                      <span className="inline-flex items-center gap-1.5 text-meta text-positive">
                         <span className="size-2 rounded-full bg-positive" />
                         This device
                       </span>
                     )}
                   </div>
-                  <div className="text-meta text-muted-foreground font-mono" data-ph-mask>
+                  <div className="text-meta text-muted-foreground" data-ph-mask>
                     {[s.ipAddress, `Signed in ${formatDistanceToNow(new Date(s.createdAt), { addSuffix: true })}`]
                       .filter(Boolean)
                       .join(" · ")}

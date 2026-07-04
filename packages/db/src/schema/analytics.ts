@@ -164,6 +164,9 @@ export const scrapeRuns = pgTable(
   (t) => [
     index("scrape_runs_recorded_idx").on(t.recordedAt),
     index("scrape_runs_monitor_recorded_idx").on(t.monitorId, t.recordedAt),
+    // Activity timeline filters `competitor_id IN (...) ORDER BY recorded_at DESC`
+    // (org-scoped over the whole history) — without this it's a near-full scan.
+    index("scrape_runs_competitor_recorded_idx").on(t.competitorId, t.recordedAt),
   ],
 );
 

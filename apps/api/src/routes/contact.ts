@@ -2,12 +2,13 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { getRedis } from "@outrival/shared";
 import { sendDemoRequestEmail } from "../lib/contact-email";
+import { verifyTurnstileToken } from "../lib/turnstile";
 import { errorBody } from "../lib/errors";
 
 // Public demo / sales contact form (landing /demo — "Request a demo" and the
 // Business plan "Talk to sales" CTA). No auth: it's a lead form. Spam defences:
-// a dedicated IP rate limit (its own Redis keyspace, no-op without Upstash) + a
-// honeypot field.
+// managed Turnstile + a dedicated IP rate limit (its own Redis keyspace, no-op
+// without Upstash) + a honeypot field.
 
 export const contactRouter = new Hono();
 
@@ -20,18 +21,21 @@ const schema = z.object({
   message: z.string().trim().max(4000).optional(),
   // Honeypot — hidden in the UI, so a non-empty value means a bot filled it.
   website: z.string().max(200).optional(),
+  // Managed Turnstile token (bypassed server-side in dev when the secret is unset).
+  turnstileToken: z.string().max(2048).optional(),
 });
 
 const WINDOW_SEC = 60 * 60; // 1h
 const MAX_PER_IP = 5;
 
 contactRouter.post("/", async (c) => {
+  const ip =
+    c.req.header("cf-connecting-ip") ??
+    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
+    "unknown";
+
   const redis = getRedis();
   if (redis) {
-    const ip =
-      c.req.header("cf-connecting-ip") ??
-      c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
-      "unknown";
     const key = `ratelimit:contact:ip:${ip}`;
     const count = await redis.incr(key);
     if (count === 1) await redis.expire(key, WINDOW_SEC);
@@ -56,10 +60,21 @@ contactRouter.post("/", async (c) => {
       400,
     );
   }
+
+  const captchaOk = await verifyTurnstileToken(parsed.data.turnstileToken, ip);
+  if (!captchaOk) {
+    return c.json(
+      errorBody("invalid_captcha", "Captcha verification failed. Please try again.", {
+        userAction: "retry",
+      }),
+      400,
+    );
+  }
+
   // Honeypot tripped → act like success so bots don't learn they were caught.
   if (parsed.data.website) return c.json({ ok: true });
 
-  const { website: _honeypot, ...req } = parsed.data;
+  const { website: _honeypot, turnstileToken: _token, ...req } = parsed.data;
   await sendDemoRequestEmail(req);
   return c.json({ ok: true });
 });

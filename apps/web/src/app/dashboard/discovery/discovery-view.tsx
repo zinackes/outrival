@@ -560,7 +560,7 @@ export function DiscoveryView() {
                     </p>
                   )}
 
-                  <div className="flex justify-between items-center text-meta text-muted-foreground mb-3.5 font-mono mt-auto">
+                  <div className="flex justify-between items-center text-meta text-muted-foreground mb-3.5 mt-auto">
                     <span>via Exa.ai</span>
                     <span>
                       detected {formatDistanceToNow(new Date(c.firstSeenAt), { addSuffix: true })}

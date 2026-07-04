@@ -131,7 +131,7 @@ export function SectoralRow({
   const Icon = meta.icon;
   const unread = signal.readAt === null;
   return (
-    <div className="px-1.5 py-3.5 border-b border-border last:border-b-0">
+    <div className="px-1.5 py-3.5">
       <div className="flex items-start gap-3">
         <Icon
           size={15}

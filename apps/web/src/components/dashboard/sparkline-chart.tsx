@@ -36,7 +36,7 @@ function SparkTooltip({ active, payload, labels, valueLabel }: TipProps) {
   return (
     <div className="pointer-events-none rounded-md border border-border bg-popover px-2 py-1 shadow-sm whitespace-nowrap">
       {labels?.[i] && (
-        <div className="font-mono text-meta text-muted-foreground">
+        <div className="text-meta text-muted-foreground">
           {labels[i]}
         </div>
       )}

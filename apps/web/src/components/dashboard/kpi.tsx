@@ -92,7 +92,7 @@ export function Kpi({
         </span>
         {delta && (
           <span
-            className={`font-mono text-meta inline-flex items-center gap-1 ${DELTA_COLOR[deltaKind]}`}
+            className={`text-meta inline-flex items-center gap-1 ${DELTA_COLOR[deltaKind]}`}
           >
             <DeltaIcon size={11} strokeWidth={2.25} aria-hidden />
             {delta}

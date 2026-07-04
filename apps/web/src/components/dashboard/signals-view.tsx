@@ -1,8 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { signalsQuery } from "@/lib/queries";
+import {
+  useQuery,
+  useInfiniteQuery,
+  useQueryClient,
+  keepPreviousData,
+  type InfiniteData,
+} from "@tanstack/react-query";
+import { signalsFeedQuery, signalsFacetsQuery } from "@/lib/queries";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
@@ -23,7 +29,15 @@ import {
 } from "lucide-react";
 import { startOfWeek, endOfWeek, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
-import { api, type Signal, type ActionStatus, type SavedViewFilters } from "@/lib/api";
+import { AnimatePresence, motion } from "motion/react";
+import {
+  api,
+  type Signal,
+  type ActionStatus,
+  type SavedViewFilters,
+  type SignalsFeedParams,
+  type SignalsPage,
+} from "@/lib/api";
 import { toCsv, downloadCsv } from "@/lib/csv";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -41,6 +55,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { feedItemMotion } from "@/lib/motion";
 import { PageHead } from "./page-head";
 import { SignalCard } from "./signal-card";
 import { SignalEvidence } from "@/components/outrival/signal-evidence";
@@ -129,6 +144,19 @@ export function SignalsView() {
     [router, searchParams],
   );
 
+  // Debounced search: type into local state for instant feedback, but write the URL
+  // (which refetches the feed + facets server-side) at most once per 300ms instead of
+  // on every keystroke. Re-syncs when `q` changes externally (e.g. Clear filters).
+  const [searchInput, setSearchInput] = useState(query);
+  useEffect(() => {
+    setSearchInput(query);
+  }, [query]);
+  useEffect(() => {
+    if (searchInput === query) return;
+    const t = setTimeout(() => setParam({ q: searchInput || null }), 300);
+    return () => clearTimeout(t);
+  }, [searchInput, query, setParam]);
+
   // patch-28 — scope the feed to the active product (cookie-backed switcher, URL
   // ?product= overrides); absent = aggregate "All products".
   const productId = useProductScope();
@@ -138,30 +166,68 @@ export function SignalsView() {
   // it re-fetches.
   const sort = searchParams.get("sort") === "recent" ? "recent" : "threat";
 
-  // Server-seeded on first paint (signals/page.tsx); the queryKey embeds product +
-  // sort, so changing either refetches automatically (keepPreviousData avoids a
-  // skeleton flash). Disabled in sample mode, where the feed reads fixtures.
+  // Debounce the search box so typing doesn't refetch the server feed on every
+  // keystroke — the input stays instant (URL param), only the query hitting the server
+  // is delayed.
+  const [debouncedQuery, setDebouncedQuery] = useState(query.trim());
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query.trim()), 300);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  // Every feed filter now resolves server-side. Build the params so the "no filters"
+  // state is exactly { productId?, sort } — matching the SSR seed key (signals/page.tsx)
+  // so the first page hydrates without a client refetch. Arrays sorted so selection
+  // order doesn't churn the query key.
+  const feedParams = useMemo<SignalsFeedParams>(() => {
+    const p: SignalsFeedParams = { sort };
+    if (productId) p.productId = productId;
+    if (quickView !== "all") p.view = quickView;
+    if (cat.size) p.categories = Array.from(cat).sort();
+    if (comp.size) p.competitors = Array.from(comp).sort();
+    if (sev.size) p.severities = Array.from(sev).sort();
+    if (debouncedQuery) p.q = debouncedQuery;
+    return p;
+  }, [sort, productId, quickView, cat, comp, sev, debouncedQuery]);
+
   const queryClient = useQueryClient();
   const sampleData = useMemo(() => getSampleData(), []);
-  const sigOpts = signalsQuery({ limit: 200, productId: productId ?? undefined, sort });
-  // Poll every 30s like the competitor-count surfaces (competitors list / sidebar),
-  // so a freshly-generated signal lands in the feed on its own — the global config
-  // is staleTime 60s + refetchOnWindowFocus:false, so without this the feed never
-  // refreshes until a remount while the polled KPIs update within 30s.
-  const signalsQ = useQuery({
-    ...sigOpts,
+  const feedOpts = signalsFeedQuery(feedParams);
+  // Poll every 30s so a freshly-generated signal lands on its own; keepPreviousData
+  // avoids a skeleton flash when filters/sort change. Disabled in sample mode (fixtures).
+  const feedQ = useInfiniteQuery({
+    ...feedOpts,
     enabled: !sample,
     placeholderData: keepPreviousData,
     refetchInterval: 30_000,
   });
-  const signals = sample ? sampleData.signals : (signalsQ.data ?? null);
-  const err = signalsQ.error;
+  // Facets back the tab counts + the filter dropdowns — product-scoped, filter-agnostic,
+  // so switching a tab never recounts. Polled alongside the feed.
+  const facetsQ = useQuery({
+    ...signalsFacetsQuery(productId ?? undefined),
+    enabled: !sample,
+    refetchInterval: 30_000,
+  });
+  const loadedPages = feedQ.data?.pages;
+  const signals = sample
+    ? sampleData.signals
+    : loadedPages
+      ? loadedPages.flatMap((pg) => pg.signals)
+      : null;
+  // Total matching the current filters (from the server, whole set); sample counts its
+  // fixtures.
+  const total = sample
+    ? sampleData.signals.length
+    : (loadedPages?.[0]?.total ?? signals?.length ?? 0);
+  const err = feedQ.error;
 
-  // Optimistic write-through to the active signals query (mark-read, mark-all-read
-  // + its undo, action-status changes). Mutations only run when !sample.
+  // Optimistic write-through to the loaded pages (mark-read/unread, action status).
+  // The updaters are id-keyed, so applying per page == applying to the flat list.
   function mutateSignals(updater: (prev: Signal[]) => Signal[]) {
-    queryClient.setQueryData<Signal[]>(sigOpts.queryKey, (prev) =>
-      prev ? updater(prev) : prev,
+    queryClient.setQueryData<InfiniteData<SignalsPage>>(feedOpts.queryKey, (data) =>
+      data
+        ? { ...data, pages: data.pages.map((pg) => ({ ...pg, signals: updater(pg.signals) })) }
+        : data,
     );
   }
 
@@ -181,34 +247,47 @@ export function SignalsView() {
     }
   }
 
+  // Mark all read — full scope, server-side (not just the loaded pages). The server
+  // returns the flipped ids (capped) so Undo reverts exactly those. Refetch facets (the
+  // unread count) + the feed (the unread-first tier reorders the just-read rows).
   async function markAllRead() {
-    const unreadIds = (signals ?? []).filter((s) => !s.isRead).map((s) => s.id);
-    if (unreadIds.length === 0) return;
-    const idSet = new Set(unreadIds);
-    // Optimistic: flip them all read locally, then reconcile with the server.
-    mutateSignals((prev) => prev.map((s) => (idSet.has(s.id) ? { ...s, isRead: true } : s)));
-    toast.success(
-      `${unreadIds.length} signal${unreadIds.length > 1 ? "s" : ""} marked read`,
-      {
-        action: {
-          label: "Undo",
-          onClick: () => {
-            mutateSignals((prev) =>
-              prev.map((s) => (idSet.has(s.id) ? { ...s, isRead: false } : s)),
-            );
-            if (sample) return;
-            Promise.all(
-              unreadIds.map((id) => api.markSignalRead(id, false)),
-            ).catch(() => toast.error("Couldn't undo. Some signals stay read."));
-          },
-        },
-      },
-    );
-    if (sample) return;
+    if (sample) {
+      const idSet = new Set(sampleData.signals.filter((s) => !s.isRead).map((s) => s.id));
+      if (!idSet.size) return;
+      mutateSignals((prev) => prev.map((s) => (idSet.has(s.id) ? { ...s, isRead: true } : s)));
+      toast.success(`${idSet.size} signal${idSet.size > 1 ? "s" : ""} marked read`);
+      return;
+    }
+    // Optimistic: flip every loaded unread row read immediately.
+    mutateSignals((prev) => prev.map((s) => (s.isRead ? s : { ...s, isRead: true })));
     try {
-      await Promise.all(unreadIds.map((id) => api.markSignalRead(id)));
+      const res = await api.markAllSignalsRead(feedParams);
+      queryClient.invalidateQueries({ queryKey: ["signals", "facets"] });
+      queryClient.invalidateQueries({ queryKey: feedOpts.queryKey });
+      if (res.count === 0) return;
+      const flipped = res.ids;
+      toast.success(
+        `${res.count} signal${res.count > 1 ? "s" : ""} marked read`,
+        flipped && flipped.length
+          ? {
+              action: {
+                label: "Undo",
+                onClick: () => {
+                  api
+                    .setSignalsRead(flipped, false)
+                    .then(() => {
+                      queryClient.invalidateQueries({ queryKey: ["signals", "facets"] });
+                      queryClient.invalidateQueries({ queryKey: feedOpts.queryKey });
+                    })
+                    .catch(() => toast.error("Couldn't undo. Some signals stay read."));
+                },
+              },
+            }
+          : undefined,
+      );
     } catch {
       toast.error("Couldn't mark all read. Try again.");
+      queryClient.invalidateQueries({ queryKey: feedOpts.queryKey });
     }
   }
 
@@ -218,8 +297,11 @@ export function SignalsView() {
     mutateSignals((prev) => prev.map((s) => (s.id === id ? { ...s, actionStatus: status } : s)));
   }
 
+  // The real feed is already filtered server-side → passthrough. Sample mode reads the
+  // fixtures (not server-filtered), so it keeps the client-side predicates.
   const filtered = useMemo(() => {
     if (!signals) return [];
+    if (!sample) return signals;
     const q = query.toLowerCase();
     const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 }).getTime();
     const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 }).getTime();
@@ -253,7 +335,7 @@ export function SignalsView() {
         return false;
       return true;
     });
-  }, [signals, sev, cat, comp, quickView, query]);
+  }, [signals, sample, sev, cat, comp, quickView, query]);
 
   // Collapse batched signals (patch-26) into one group, preserving the feed order
   // (the group sits at its first member's position). A batch left with a single
@@ -342,6 +424,9 @@ export function SignalsView() {
     onKey,
   });
   const selectedId = focusedId;
+  // The single Tab entry point into the listbox (roving tabindex): the open row, or
+  // the first row when nothing is open yet. Tab lands here, then j/k/arrows take over.
+  const tabStopId = focusedId ?? navIds[0] ?? null;
 
   // Select a row: drive the detail pane + mark the signal read (selecting is
   // reading, the Linear/Superhuman model). Click and keyboard share this path.
@@ -376,9 +461,19 @@ export function SignalsView() {
       return;
     if (!focusedId && !focusSyncedRef.current) return;
     focusSyncedRef.current = true;
-    if (focusId === focusedId) return;
-    setParam({ focus: focusedId });
-  }, [focusedId, focusId, setParam]);
+    // Mirror the open signal to ?focus= via the NATIVE history API, never
+    // router.replace. router.replace re-executes the Server Component
+    // (signals/page.tsx reads searchParams), which re-fetches the feed + facets and
+    // re-hydrates the TanStack cache on *every* selection — and the re-hydrated feed
+    // is re-sorted server-side (the just-read signal drops in the isRead tier of the
+    // threat sort), churning the animated list so rows pile up. history.replaceState
+    // updates the URL with zero navigation, keeping selection a pure client concern;
+    // a fresh load still reads ?focus= server-side for the deep-link bootstrap.
+    const url = new URL(window.location.href);
+    if (focusedId) url.searchParams.set("focus", focusedId);
+    else url.searchParams.delete("focus");
+    window.history.replaceState(window.history.state, "", url.toString());
+  }, [focusedId]);
 
   // Bootstrap selection: open the signal named by ?focus= (deep-link from the
   // Overview, or a reload — the sync effect above keeps it in the URL), else
@@ -474,8 +569,20 @@ export function SignalsView() {
   }, [selectedItem, comp]);
   useSetAskContext(askContext);
 
+  // Tab counts come from facets (whole set, server-side) so they're right at any scale;
+  // sample mode counts its fixtures.
   const quickCounts = useMemo(() => {
-    if (!signals) return { all: 0, alerts: 0, unread: 0, week: 0, critical: 0, actions: 0 };
+    if (!sample) {
+      const c = facetsQ.data?.counts;
+      return {
+        all: c?.all ?? 0,
+        alerts: c?.alerts ?? 0,
+        unread: c?.unread ?? 0,
+        week: c?.week ?? 0,
+        critical: c?.critical ?? 0,
+        actions: c?.actions ?? 0,
+      };
+    }
     const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 }).getTime();
     const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 }).getTime();
     let alerts = 0;
@@ -483,7 +590,7 @@ export function SignalsView() {
     let week = 0;
     let critical = 0;
     let actions = 0;
-    for (const s of signals) {
+    for (const s of sampleData.signals) {
       if (!s.isRead) unread++;
       const t = new Date(s.createdAt).getTime();
       if (t >= weekStart && t <= weekEnd) week++;
@@ -491,22 +598,25 @@ export function SignalsView() {
       if (s.severity === "critical" || s.severity === "high") alerts++;
       if (s.actionStatus === "todo" || s.actionStatus === "doing") actions++;
     }
-    return { all: signals.length, alerts, unread, week, critical, actions };
-  }, [signals]);
+    return { all: sampleData.signals.length, alerts, unread, week, critical, actions };
+  }, [sample, facetsQ.data, sampleData]);
 
+  // Filter dropdowns from facets (whole set); sample derives from its fixtures.
   const allCategories = useMemo(() => {
+    if (!sample) return facetsQ.data?.categories ?? [];
     const set = new Set<string>();
-    (signals ?? []).forEach((s) => set.add(s.category));
+    sampleData.signals.forEach((s) => set.add(s.category));
     return Array.from(set).sort();
-  }, [signals]);
+  }, [sample, facetsQ.data, sampleData]);
 
   const allCompetitors = useMemo(() => {
+    if (!sample) return facetsQ.data?.competitors ?? [];
     const m = new Map<string, string>();
-    (signals ?? []).forEach((s) => m.set(s.competitorId, s.competitorName));
+    sampleData.signals.forEach((s) => m.set(s.competitorId, s.competitorName));
     return Array.from(m.entries())
       .map(([id, name]) => ({ id, name }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [signals]);
+  }, [sample, facetsQ.data, sampleData]);
 
   const activeFilterCount = sev.size + cat.size + comp.size;
 
@@ -528,6 +638,7 @@ export function SignalsView() {
     categories: Array.from(cat),
     competitorIds: Array.from(comp),
     view: quickView,
+    sort,
   };
   function applyView(f: SavedViewFilters) {
     setParam({
@@ -535,31 +646,52 @@ export function SignalsView() {
       category: f.categories?.length ? f.categories.join(",") : null,
       competitor: f.competitorIds?.length ? f.competitorIds.join(",") : null,
       view: f.view && f.view !== "all" ? f.view : null,
+      // "threat" is the default; a legacy view without a sort resets to it, so
+      // applying a view always yields a deterministic feed order.
+      sort: f.sort === "recent" ? "recent" : null,
     });
   }
 
-  function exportCsv() {
-    const rows = filtered;
-    if (!rows.length) return;
-    const csv = toCsv(rows, [
-      { key: "createdAt", label: "Date" },
-      { key: "severity", label: "Severity" },
-      { key: "category", label: "Category" },
-      { key: "competitorName", label: "Competitor" },
-      { key: "insight", label: "Insight" },
-      { key: "soWhat", label: "So what" },
-      { key: "recommendedAction", label: "Recommended action" },
-      { key: "isRead", label: "Read", map: (r) => (r.isRead ? "yes" : "no") },
-    ]);
-    const date = new Date().toISOString().slice(0, 10);
-    downloadCsv(`outrival-signals-${date}.csv`, csv);
+  // Sample mode exports its loaded fixtures client-side; the real feed streams the full
+  // filtered scope from the server (every match, not just the loaded pages).
+  async function exportCsv() {
+    if (sample) {
+      const rows = filtered;
+      if (!rows.length) return;
+      const csv = toCsv(rows, [
+        { key: "createdAt", label: "Date" },
+        { key: "severity", label: "Severity" },
+        { key: "category", label: "Category" },
+        { key: "competitorName", label: "Competitor" },
+        { key: "insight", label: "Insight" },
+        { key: "soWhat", label: "So what" },
+        { key: "recommendedAction", label: "Recommended action" },
+        { key: "isRead", label: "Read", map: (r) => (r.isRead ? "yes" : "no") },
+      ]);
+      const date = new Date().toISOString().slice(0, 10);
+      downloadCsv(`outrival-signals-${date}.csv`, csv);
+      return;
+    }
+    try {
+      const blob = await api.exportSignals(feedParams);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `outrival-signals-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Couldn't export signals. Try again.");
+    }
   }
 
   if (err && signals === null) {
     return (
       <div className="space-y-6">
         <PageHead title="Signals" sub="Classified by AI." />
-        <ListError error={err} onRetry={() => signalsQ.refetch()} />
+        <ListError error={err} onRetry={() => feedQ.refetch()} />
       </div>
     );
   }
@@ -571,7 +703,7 @@ export function SignalsView() {
         title="Signals"
         sub={
           signals
-            ? `Classified by AI · ${signals.length} signal${signals.length > 1 ? "s" : ""}.`
+            ? `Classified by AI · ${total} signal${total === 1 ? "" : "s"}.`
             : "Loading…"
         }
         actions={
@@ -580,14 +712,14 @@ export function SignalsView() {
               variant="outline"
               size="sm"
               onClick={exportCsv}
-              disabled={!signals || filtered.length === 0}
+              disabled={!signals || total === 0}
             >
               <Download size={13} /> CSV
             </Button>
             <Button
               size="sm"
               onClick={markAllRead}
-              disabled={!signals || !signals.some((s) => !s.isRead)}
+              disabled={!signals || quickCounts.unread === 0}
             >
               <Check size={13} /> Mark all read
             </Button>
@@ -595,8 +727,9 @@ export function SignalsView() {
         }
       />
 
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center lg:gap-2">
         <Tabs
+          className="min-w-0"
           value={quickView}
           onValueChange={(v) => setParam({ view: v === "all" ? null : v })}
         >
@@ -612,8 +745,11 @@ export function SignalsView() {
           </TabsList>
         </Tabs>
 
-        <div className="flex-1" />
+        <div className="hidden lg:block lg:flex-1" />
 
+        {/* Controls stay on one wrapping row so mobile stacks them under the
+            tabs instead of scattering each button on its own line. */}
+        <div className="flex flex-wrap items-center gap-2">
         <SavedViewsMenu current={currentFilters} onApply={applyView} />
 
         <DropdownMenu>
@@ -628,14 +764,12 @@ export function SignalsView() {
             <DropdownMenuLabel>Sort by</DropdownMenuLabel>
             <DropdownMenuCheckboxItem
               checked={sort === "threat"}
-              onSelect={(e) => e.preventDefault()}
               onCheckedChange={() => setParam({ sort: null })}
             >
               Most relevant
             </DropdownMenuCheckboxItem>
             <DropdownMenuCheckboxItem
               checked={sort === "recent"}
-              onSelect={(e) => e.preventDefault()}
               onCheckedChange={() => setParam({ sort: "recent" })}
             >
               Most recent
@@ -734,8 +868,8 @@ export function SignalsView() {
             id="signals-search"
             aria-label="Search signals"
             placeholder="Search…"
-            value={query}
-            onChange={(e) => setParam({ q: e.target.value || null })}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             className="h-8 pl-8 text-sm w-48"
           />
         </div>
@@ -756,6 +890,7 @@ export function SignalsView() {
             <kbd className="font-mono">?</kbd>
           </TooltipContent>
         </Tooltip>
+        </div>
       </div>
 
       {activeFilterCount > 0 && (
@@ -844,24 +979,53 @@ export function SignalsView() {
             aria-label="Signals"
             className="flex flex-col gap-0.5 rounded-lg border border-border p-1.5 lg:max-h-[calc(100dvh-220px)] lg:overflow-y-auto"
           >
+            <AnimatePresence initial={false} mode="popLayout">
             {feedItems.map((item) =>
               item.kind === "single" ? (
-                <SignalRow
+                <motion.div
                   key={item.signal.id}
-                  signal={item.signal}
-                  selected={selectedId === item.signal.id}
-                  onSelect={() => selectRow(item.signal.id)}
-                />
+                  role="presentation"
+                  {...feedItemMotion}
+                >
+                  <SignalRow
+                    signal={item.signal}
+                    selected={selectedId === item.signal.id}
+                    tabStop={tabStopId === item.signal.id}
+                    onFocus={() => setFocusedId(item.signal.id)}
+                    onSelect={() => selectRow(item.signal.id)}
+                  />
+                </motion.div>
               ) : (
-                <BatchRow
+                <motion.div
                   key={item.batchId}
-                  batchId={item.batchId}
-                  signals={item.signals}
-                  summary={item.summary}
-                  selected={selectedId === `batch:${item.batchId}`}
-                  onSelect={() => selectRow(`batch:${item.batchId}`)}
-                />
+                  role="presentation"
+                  {...feedItemMotion}
+                >
+                  <BatchRow
+                    batchId={item.batchId}
+                    signals={item.signals}
+                    summary={item.summary}
+                    selected={selectedId === `batch:${item.batchId}`}
+                    tabStop={tabStopId === `batch:${item.batchId}`}
+                    onFocus={() => setFocusedId(`batch:${item.batchId}`)}
+                    onSelect={() => selectRow(`batch:${item.batchId}`)}
+                  />
+                </motion.div>
               ),
+            )}
+            </AnimatePresence>
+            {!sample && feedQ.hasNextPage && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mt-1 w-full text-muted-foreground"
+                onClick={() => feedQ.fetchNextPage()}
+                disabled={feedQ.isFetchingNextPage}
+              >
+                {feedQ.isFetchingNextPage
+                  ? "Loading…"
+                  : `Load more · ${total - signals.length} left`}
+              </Button>
             )}
           </div>
 
@@ -1019,7 +1183,7 @@ function MoreFromCompetitor({
                 <span className="min-w-0 flex-1 truncate text-dense text-foreground/90 group-hover:text-foreground">
                   {s.insight}
                 </span>
-                <time className="shrink-0 font-mono text-meta text-muted-foreground tabular-nums">
+                <time className="shrink-0 text-meta text-muted-foreground tabular-nums">
                   {formatDistanceToNow(new Date(s.createdAt), { addSuffix: false })}
                 </time>
               </button>

@@ -1,19 +1,18 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { usePathname } from "next/navigation";
+import { useSelectedLayoutSegment } from "next/navigation";
 
-// Page-open reveal — a gentle fade + rise, generalized from the effect the
-// competitor detail view played on its content container. Keyed by pathname so
-// the animation replays every time a new dashboard page is opened. Reduced-motion
-// users get the content with no motion (globals.css neutralizes animate-in).
+// Page-open reveal — a gentle fade as a new dashboard SECTION opens. Keyed by the
+// first-level segment (not the full pathname): navigating within a section — e.g.
+// between two competitor detail pages — no longer remounts the whole subtree, which
+// used to drop state, re-run effects, resubscribe TanStack observers and repaint at
+// opacity 0 for the full duration. Reduced-motion users get no motion (globals.css
+// neutralizes animate-in).
 export function PageReveal({ children }: { children: ReactNode }) {
-  const pathname = usePathname();
+  const segment = useSelectedLayoutSegment();
   return (
-    <div
-      key={pathname}
-      className="animate-in fade-in slide-in-from-bottom-2 duration-500"
-    >
+    <div key={segment ?? "index"} className="animate-in fade-in duration-200">
       {children}
     </div>
   );

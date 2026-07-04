@@ -763,6 +763,7 @@ export interface SavedViewFilters {
   categories?: string[];
   severities?: string[];
   view?: string;
+  sort?: "recent" | "threat";
 }
 export interface SavedView {
   id: string;
@@ -1765,6 +1766,53 @@ export interface AiVisibilityData {
   degraded: boolean;
 }
 
+// Signals feed filters, shared by the paginated list, facets, mark-all-read and export
+// (they all resolve to the same query string). Multi-value filters are comma-joined.
+export type SignalsFeedParams = {
+  productId?: string;
+  competitorId?: string;
+  sort?: "threat" | "recent";
+  view?: string;
+  categories?: string[];
+  competitors?: string[];
+  severities?: string[];
+  q?: string;
+};
+
+export interface SignalsPage {
+  signals: Signal[];
+  total: number;
+  nextOffset: number | null;
+}
+
+export interface SignalsFacets {
+  counts: {
+    all: number;
+    unread: number;
+    alerts: number;
+    week: number;
+    critical: number;
+    actions: number;
+  };
+  categories: string[];
+  competitors: { id: string; name: string }[];
+}
+
+function buildFeedQs(p: SignalsFeedParams & { limit?: number; offset?: number }): string {
+  const q = new URLSearchParams();
+  if (p.limit != null) q.set("limit", String(p.limit));
+  if (p.offset != null) q.set("offset", String(p.offset));
+  if (p.productId) q.set("productId", p.productId);
+  if (p.competitorId) q.set("competitorId", p.competitorId);
+  if (p.sort) q.set("sort", p.sort);
+  if (p.view && p.view !== "all") q.set("view", p.view);
+  if (p.categories?.length) q.set("category", p.categories.join(","));
+  if (p.competitors?.length) q.set("competitor", p.competitors.join(","));
+  if (p.severities?.length) q.set("severity", p.severities.join(","));
+  if (p.q) q.set("q", p.q);
+  return q.toString();
+}
+
 export const api = {
   search: (q: string) =>
     request<SearchResults>(`/api/search?q=${encodeURIComponent(q)}`),
@@ -1978,6 +2026,43 @@ export const api = {
     if (params?.sort) q.set("sort", params.sort);
     const qs = q.toString();
     return request<{ signals: Signal[] }>(`/api/signals${qs ? `?${qs}` : ""}`);
+  },
+  // Paginated feed page (offset/limit). Returns the rows + total + nextOffset for
+  // "load more". All filters resolve server-side via buildFeedQs.
+  listSignalsPage: (params: SignalsFeedParams & { limit?: number; offset?: number }) => {
+    const qs = buildFeedQs(params);
+    return request<SignalsPage>(`/api/signals${qs ? `?${qs}` : ""}`);
+  },
+  // Feed facets — tab counts + distinct categories/competitors (product-scoped).
+  getSignalsFacets: (productId?: string) => {
+    const qs = productId ? `?productId=${encodeURIComponent(productId)}` : "";
+    return request<SignalsFacets>(`/api/signals/facets${qs}`);
+  },
+  // Mark every unread signal matching the current filters read (full scope). Returns
+  // the flipped ids (capped) so the caller can offer a precise Undo.
+  markAllSignalsRead: (params: SignalsFeedParams) => {
+    const qs = buildFeedQs(params);
+    return request<{ ok: true; count: number; ids?: string[] }>(
+      `/api/signals/mark-all-read${qs ? `?${qs}` : ""}`,
+      { method: "POST", body: JSON.stringify({}) },
+    );
+  },
+  // Set exactly these signals' read state (the Undo path for mark-all-read).
+  setSignalsRead: (ids: string[], read: boolean) =>
+    request<{ ok: true; count: number }>(`/api/signals/mark-all-read`, {
+      method: "POST",
+      body: JSON.stringify({ ids, read }),
+    }),
+  // Full-scope CSV export (every matching signal, not just the loaded pages).
+  exportSignals: async (params: SignalsFeedParams): Promise<Blob> => {
+    const qs = buildFeedQs(params);
+    const res = await safeFetch(`${BASE}/api/signals/export${qs ? `?${qs}` : ""}`, {
+      credentials: "include",
+      cache: "no-store",
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    if (!res.ok) await throwApiError(res);
+    return res.blob();
   },
   markSignalRead: (id: string, read = true) =>
     request<{ ok: true }>(`/api/signals/${id}/read`, {

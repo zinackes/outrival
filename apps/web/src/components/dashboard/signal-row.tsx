@@ -43,10 +43,16 @@ export function SignalRow({
   signal,
   selected,
   onSelect,
+  tabStop = false,
+  onFocus,
 }: {
   signal: Signal;
   selected: boolean;
   onSelect: () => void;
+  // Roving tabindex: exactly one row in the listbox is the Tab entry point (0);
+  // the rest are -1 (still programmatically focusable by the arrow/j-k handler).
+  tabStop?: boolean;
+  onFocus?: () => void;
 }) {
   const sev = signal.severityOverride ?? signal.severity;
   const Icon = SEV_ICON[sev];
@@ -56,9 +62,10 @@ export function SignalRow({
     <button
       type="button"
       id={`row-${signal.id}`}
-      tabIndex={-1}
+      tabIndex={tabStop ? 0 : -1}
       role="option"
       aria-selected={selected}
+      onFocus={onFocus}
       onClick={onSelect}
       className={cn(
         "group relative grid w-full grid-cols-[auto_1fr_auto] items-start gap-x-2.5 rounded-md px-3 py-2.5 text-left outline-none transition-colors",
@@ -99,7 +106,7 @@ export function SignalRow({
       </span>
 
       <span className="flex shrink-0 items-center gap-2 pt-0.5">
-        <time className="font-mono text-meta text-muted-foreground tabular-nums">
+        <time className="text-meta text-muted-foreground tabular-nums">
           {formatDistanceToNow(new Date(signal.createdAt), { addSuffix: false })}
         </time>
         {unread && (
@@ -124,12 +131,16 @@ export function BatchRow({
   summary,
   selected,
   onSelect,
+  tabStop = false,
+  onFocus,
 }: {
   batchId: string;
   signals: Signal[];
   summary: string | null;
   selected: boolean;
   onSelect: () => void;
+  tabStop?: boolean;
+  onFocus?: () => void;
 }) {
   const first = signals[0]!;
   const maxSev = signals.reduce<Sev>(
@@ -142,9 +153,10 @@ export function BatchRow({
     <button
       type="button"
       id={`row-batch-${batchId}`}
-      tabIndex={-1}
+      tabIndex={tabStop ? 0 : -1}
       role="option"
       aria-selected={selected}
+      onFocus={onFocus}
       onClick={onSelect}
       className={cn(
         "group relative grid w-full grid-cols-[auto_1fr_auto] items-start gap-x-2.5 rounded-md px-3 py-2.5 text-left outline-none transition-colors",
@@ -180,7 +192,7 @@ export function BatchRow({
         </span>
       </span>
       <span className="flex shrink-0 items-center gap-2 pt-0.5">
-        <time className="font-mono text-meta text-muted-foreground tabular-nums">
+        <time className="text-meta text-muted-foreground tabular-nums">
           {formatDistanceToNow(new Date(first.createdAt), { addSuffix: false })}
         </time>
         {unread && (

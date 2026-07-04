@@ -157,6 +157,12 @@ export async function capturePage(
   if (options.progressiveScroll) {
     // Best-effort: a scroll failure must not lose the capture we already have.
     await scrollThroughPage(page).catch(() => {});
+    // Scrolling to the bottom mounts scroll-revealed sections that fetch their data
+    // on intersection (client-rendered data widgets). Settle the network once more so
+    // those in-flight requests resolve and the section renders before capture —
+    // otherwise the section lands in some snapshots and not others, faking section
+    // add/remove diffs downstream. Bounded + best-effort; no-op in networkidle mode.
+    await settleAfterNav(page);
   }
 
   const html = await page.content();

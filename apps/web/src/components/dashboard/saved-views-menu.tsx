@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bookmark, Pencil, Trash2, ChevronDown } from "lucide-react";
+import { Bookmark, Pencil, Trash2, ChevronDown, Check } from "lucide-react";
 import { toast } from "sonner";
 import { api, type SavedView, type SavedViewFilters } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -26,6 +27,23 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+
+// Order-insensitive comparison of a saved filter set against the live feed state,
+// so we can highlight which view (if any) is currently applied. Legacy views
+// predate `sort` — normalize their absent sort to the "threat" default they were
+// implicitly saved at.
+function normSet(arr?: string[]): string {
+  return [...(arr ?? [])].sort().join(",");
+}
+function filtersEqual(a: SavedViewFilters, b: SavedViewFilters): boolean {
+  return (
+    normSet(a.competitorIds) === normSet(b.competitorIds) &&
+    normSet(a.categories) === normSet(b.categories) &&
+    normSet(a.severities) === normSet(b.severities) &&
+    (a.view || "all") === (b.view || "all") &&
+    (a.sort || "threat") === (b.sort || "threat")
+  );
+}
 
 export function SavedViewsMenu({
   current,
@@ -61,8 +79,14 @@ export function SavedViewsMenu({
     current.competitorIds?.length ||
       current.categories?.length ||
       current.severities?.length ||
-      (current.view && current.view !== "all"),
+      (current.view && current.view !== "all") ||
+      current.sort === "recent",
   );
+
+  // The saved view matching the live feed state, so the trigger names it and its
+  // row gets a check. Recomputed on every filter change → clears the moment the
+  // user diverges from the saved set.
+  const activeView = views.find((v) => filtersEqual(v.filters, current)) ?? null;
 
   async function save() {
     const trimmed = name.trim();
@@ -130,9 +154,13 @@ export function SavedViewsMenu({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm">
-            <Bookmark size={13} />
-            Views
+          <Button variant={activeView ? "secondary" : "outline"} size="sm">
+            <Bookmark size={13} className={cn(activeView && "fill-current")} />
+            {activeView ? (
+              <span className="max-w-[140px] truncate">{activeView.name}</span>
+            ) : (
+              "Views"
+            )}
             <ChevronDown size={11} className="opacity-60" />
           </Button>
         </DropdownMenuTrigger>
@@ -147,7 +175,16 @@ export function SavedViewsMenu({
                 onSelect={() => onApply(v.filters)}
                 className="group flex items-center justify-between gap-2"
               >
-                <span className="truncate text-dense">{v.name}</span>
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <Check
+                    size={12}
+                    className={cn(
+                      "shrink-0 text-primary",
+                      activeView?.id === v.id ? "opacity-100" : "opacity-0",
+                    )}
+                  />
+                  <span className="truncate text-dense">{v.name}</span>
+                </span>
                 <span className="flex shrink-0 items-center gap-1">
                   <button
                     onClick={(e) => {

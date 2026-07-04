@@ -1,3 +1,5 @@
+import { CookiePreferencesButton } from "@/components/legal/cookie-preferences-button";
+
 function FooterCol({
   head,
   links,
@@ -64,10 +66,11 @@ export function Footer() {
             <FooterCol
               head="Legal"
               links={[
-                { label: "Terms", href: "/terms" },
+                { label: "Legal notice", href: "/legal-notice" },
                 { label: "Privacy", href: "/privacy" },
-                { label: "DPA", href: "/dpa" },
-                { label: "Status", href: "/status" },
+                { label: "Cookies", href: "/cookies" },
+                { label: "Terms", href: "/terms" },
+                { label: "All legal", href: "/legal" },
               ]}
             />
           </div>
@@ -76,6 +79,12 @@ export function Footer() {
           <div>© 2026 Outrival</div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
             <span>v0.7.0</span>
+            <CookiePreferencesButton className="transition-colors hover:text-foreground">
+              Cookie preferences
+            </CookiePreferencesButton>
+            <a href="/legal" className="transition-colors hover:text-foreground">
+              Legal
+            </a>
             <a
               href="/status"
               className="transition-colors hover:text-foreground"

@@ -118,7 +118,7 @@ export function ActivityTab({
                     </span>
                   )}
                   <Eyebrow size="micro">{s.category}</Eyebrow>
-                  <span className="text-muted-foreground font-mono text-meta">
+                  <span className="text-muted-foreground text-meta">
                     · {formatDistanceToNow(new Date(s.createdAt), { addSuffix: true })}
                   </span>
                   <a

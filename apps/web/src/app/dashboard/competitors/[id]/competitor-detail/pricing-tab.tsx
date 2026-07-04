@@ -499,7 +499,7 @@ function PricingComparison({
     <div className="flex flex-col gap-3">
       <div className="flex items-baseline justify-between gap-2">
         <p className="text-sm font-medium">Pricing comparison</p>
-        <p className="truncate font-mono text-xs text-muted-foreground">
+        <p className="truncate text-xs text-muted-foreground">
           You vs {competitorName}
         </p>
       </div>

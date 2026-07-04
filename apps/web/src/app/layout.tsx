@@ -41,6 +41,10 @@ const zodiak = localFont({
   ],
   variable: "--font-zodiak",
   display: "swap",
+  // Landing-only (brand serif), but the variable lives on the root <html>, so Next
+  // would preload both weights (~42KB) on every dashboard page that never uses them.
+  // `display: swap` still loads them on demand when the landing renders.
+  preload: false,
 });
 
 const SITE_URL = "https://outrival.app";

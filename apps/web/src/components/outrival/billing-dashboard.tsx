@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -146,24 +146,38 @@ export function BillingDashboard() {
     ? invoices
     : invoices.slice(0, INVOICE_PREVIEW_COUNT);
 
+  // Guards against re-processing the same checkout return. `router.replace` below
+  // strips `?status=` and re-runs this effect; keying on the handled status lets the
+  // re-run (status=null) reset the guard without cancelling the pending poll.
+  const handledCheckout = useRef<string | null>(null);
   useEffect(() => {
     const status = search.get("status");
+    if (!status) {
+      handledCheckout.current = null;
+      return;
+    }
+    if (status === handledCheckout.current) return;
+    handledCheckout.current = status;
+
     if (status === "success") {
       setToast(
         "Subscription activated. The new plan will be available in a few seconds.",
       );
-      // Stripe needs a beat to propagate the new plan; refetch billing after a delay.
-      const t = setTimeout(
-        () => queryClient.invalidateQueries({ queryKey: billingQuery().queryKey }),
-        2000,
-      );
-      router.replace("/dashboard/settings/billing");
-      return () => clearTimeout(t);
-    }
-    if (status === "cancelled") {
+      // Stripe propagates the new plan via webhook, which can take a few seconds and
+      // occasionally more than one. Poll the billing query a handful of times instead
+      // of a single 2s refetch. NOT tied to this effect's cleanup: router.replace
+      // re-runs the effect and a cleanup-based clear would cancel the poll before it
+      // fires (the original bug). invalidateQueries is safe after unmount.
+      let tries = 0;
+      const poll = () => {
+        void queryClient.invalidateQueries({ queryKey: billingQuery().queryKey });
+        if (++tries < 5) window.setTimeout(poll, 2000);
+      };
+      window.setTimeout(poll, 2000);
+    } else if (status === "cancelled") {
       setToast("Checkout cancelled. No changes made.");
-      router.replace("/dashboard/settings/billing");
     }
+    router.replace("/dashboard/settings/billing");
   }, [search, router, queryClient]);
 
   // Apply a plan change. Free → schedule cancel-at-period-end; paid → Checkout
@@ -424,6 +438,23 @@ export function BillingDashboard() {
       </Card>
 
       {/* ── Billing history ────────────────────────────────────────────── */}
+      {invoicesQ.isError && (
+        <section className="flex flex-col gap-4">
+          <h3 className="font-semibold text-base tracking-tight">Billing history</h3>
+          <Card className="p-5">
+            <p className="text-sm text-muted-foreground">
+              Couldn&apos;t load your billing history.{" "}
+              <button
+                type="button"
+                onClick={() => void invoicesQ.refetch()}
+                className="text-link underline underline-offset-2"
+              >
+                Retry
+              </button>
+            </p>
+          </Card>
+        </section>
+      )}
       {invoices.length > 0 && (
         <section className="flex flex-col gap-4">
           <h3 className="font-semibold text-base tracking-tight">Billing history</h3>

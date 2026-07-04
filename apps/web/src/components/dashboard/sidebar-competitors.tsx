@@ -69,11 +69,16 @@ export function SidebarCompetitors() {
   const productId = useProductScope() ?? undefined;
   // Product dot only in all-products scope (redundant once scoped to one product).
   const allProducts = !productId;
-  const compsQ = useQuery({ ...competitorsQuery(productId), refetchInterval: POLL_MS });
+  const [open, setOpen] = React.useState(true);
+  // Only poll while the roster is expanded — a collapsed section can't show the
+  // refreshed data, so the 60s background query is pure waste when folded.
+  const compsQ = useQuery({
+    ...competitorsQuery(productId),
+    refetchInterval: open ? POLL_MS : false,
+  });
   const comps = compsQ.data ?? null;
   // The cookie carries the scope across navigation, so plain links open scoped too.
   const listHref = "/dashboard/competitors";
-  const [open, setOpen] = React.useState(true);
   // "Show all" unfolds the full roster in place (past CAP); persisted so it sticks.
   const [showAll, setShowAll] = React.useState(false);
   React.useEffect(() => {
@@ -213,6 +218,29 @@ export function SidebarCompetitors() {
               </MotionSubItem>
             )}
           </AnimatePresence>
+        </SidebarMenuSub>
+      )}
+
+      {open && comps == null && (
+        <SidebarMenuSub className="mr-0 gap-0 px-1.5">
+          {compsQ.isError ? (
+            <li className="px-2 py-1.5 text-meta text-muted-foreground">
+              Couldn&apos;t load.{" "}
+              <button
+                type="button"
+                onClick={() => void compsQ.refetch()}
+                className="text-link underline underline-offset-2"
+              >
+                Retry
+              </button>
+            </li>
+          ) : (
+            Array.from({ length: 3 }).map((_, i) => (
+              <li key={i} className="px-2 py-1.5">
+                <div className="h-4 w-full animate-pulse rounded bg-muted/40" />
+              </li>
+            ))
+          )}
         </SidebarMenuSub>
       )}
     </SidebarMenuItem>

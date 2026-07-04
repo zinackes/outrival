@@ -1,5 +1,5 @@
-import { queryOptions } from "@tanstack/react-query";
-import { api, type ActivityStatusFilter } from "./api";
+import { queryOptions, infiniteQueryOptions } from "@tanstack/react-query";
+import { api, type ActivityStatusFilter, type SignalsFeedParams } from "./api";
 
 /**
  * Shared query definitions — one source of truth for `queryKey` + `queryFn`,
@@ -26,6 +26,33 @@ export function signalsQuery(params: SignalsParams = {}) {
   return queryOptions({
     queryKey: ["signals", params] as const,
     queryFn: () => api.listSignals(params).then((r) => r.signals),
+  });
+}
+
+// Page size for the paginated Signals feed. Shared so the SSR seed (first page) and
+// the client's initial page hit the same limit → the same cache entry.
+export const SIGNALS_PAGE_SIZE = 50;
+
+// Paginated Signals feed (offset "load more"). All filters resolve server-side and are
+// embedded in the key, so switching any filter/sort/view refetches. The "no filters"
+// params ({ productId?, sort }) match the SSR seed key exactly (see signals/page.tsx).
+export function signalsFeedQuery(params: SignalsFeedParams) {
+  return infiniteQueryOptions({
+    queryKey: ["signals", "feed", params] as const,
+    queryFn: ({ pageParam }) =>
+      api.listSignalsPage({ ...params, limit: SIGNALS_PAGE_SIZE, offset: pageParam }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => lastPage.nextOffset ?? undefined,
+  });
+}
+
+// Feed facets — tab counts + the filter dropdown options (categories/competitors),
+// product-scoped and independent of the active filters. Slow-changing; polled alongside
+// the feed so the tab counts stay live without recounting on every filter change.
+export function signalsFacetsQuery(productId?: string) {
+  return queryOptions({
+    queryKey: ["signals", "facets", productId ?? null] as const,
+    queryFn: () => api.getSignalsFacets(productId),
   });
 }
 

@@ -40,7 +40,11 @@ import {
   isIncompleteRender,
   type HomepageStructure,
 } from "@outrival/scrapers/homepage-structure";
-import { diffHomepages, renderStructuredChanges } from "@outrival/scrapers/homepage-diff";
+import {
+  diffHomepages,
+  renderStructuredChanges,
+  filterUnstableSections,
+} from "@outrival/scrapers/homepage-diff";
 // Pure subpath — sharp only. Perceptual hash for visual-redesign detection (patch-17).
 import {
   computePerceptualHash,
@@ -738,7 +742,7 @@ export const scrapeMonitorJob = task({
       homepageStructure &&
       prevStructure
     ) {
-      const structuredChanges = diffHomepages(prevStructure, homepageStructure);
+      let structuredChanges = diffHomepages(prevStructure, homepageStructure);
 
       // Visual redesign (patch-17): a large screenshot Hamming distance with FEW
       // structural changes ⇒ a redesign with little/no copy move — exactly what the
@@ -817,6 +821,19 @@ export const scrapeMonitorJob = task({
         limit: 6,
         columns: { homepageStructure: true },
       });
+
+      // Section add/remove stability (same history, same window as testimonials).
+      // A lazy/async section — a client-rendered data widget that fetches on load
+      // (and can even render its own error state) — flickers in and out between
+      // scrapes, so the 2-snapshot diff above fabricates a phantom "new section"/
+      // "section removed" every time it does. Keep such a change only when the
+      // section is stably present/absent across the window; a flicker fires
+      // nothing. Other change kinds are untouched.
+      const sectionHistory = recentSnaps.map(
+        (s) => s.homepageStructure as HomepageStructure | null,
+      );
+      structuredChanges = filterUnstableSections(structuredChanges, sectionHistory);
+
       const testimonialSets = recentSnaps.map(
         (s) =>
           (s.homepageStructure as HomepageStructure | null)?.socialProof?.testimonials ?? [],

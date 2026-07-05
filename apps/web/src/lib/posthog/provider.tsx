@@ -12,9 +12,11 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
 
     posthog.init(key, {
       // Same-origin reverse proxy (see rewrites in next.config.ts) so ad-blockers
-      // can't blacklist the ingest host by domain. ui_host keeps "Open in PostHog"
+      // can't blacklist the ingest host. Path is a non-obvious slug ("/relay", not
+      // "/ingest"): EasyPrivacy/uBlock block by PATH pattern too, and "/ingest" is
+      // itself blacklisted, so it stayed blocked. ui_host keeps "Open in PostHog"
       // links pointing at the real EU app.
-      api_host: "/ingest",
+      api_host: "/relay",
       ui_host: "https://eu.posthog.com",
       person_profiles: "identified_only",
       capture_pageview: false,

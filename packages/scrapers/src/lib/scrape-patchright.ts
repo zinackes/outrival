@@ -8,6 +8,7 @@ import { realisticHeaders, realisticUserAgent } from "./fingerprint";
 import { navWaitUntil, settleAfterNav } from "./nav-strategy";
 import { isCloudflareChallenge } from "./block-detection";
 import { collapseAnimatedCounters } from "./normalize-text";
+import { extractContent, isContentCollapsed } from "./extract-content";
 
 // Cascade level a scrape was served from (patch-20). 0/1 are free (no proxy),
 // 2/3/4 cost money. Stored per monitor as `requiresLevel` once learned.
@@ -172,10 +173,18 @@ export async function capturePage(
   // innerText ignores overflow clipping, so animated counter widgets (odometer &
   // co.) leak their full 0-9 digit ribbons into the text — strip them here.
   const text = collapseAnimatedCounters(await page.evaluate(() => document.body?.innerText ?? ""));
-  // Only 2xx/3xx reach here (4xx/5xx rejected above), so any near-empty body now is a
+  // Only 2xx/3xx reach here (4xx/5xx rejected above), so a near-empty body now is a
   // soft-block returning a styled shell → escalate. (Previously gated on `=== 200`,
   // which let a tiny non-200 body slip through as a success.)
-  if (text.length < 100 && statusCode < 400)
+  //
+  // `innerText` respects computed CSS, so it reads near-empty on real pages whose
+  // copy lives in a <canvas>/WebGL hero or is kept CSS-hidden until a JS reveal
+  // animation runs — both common on marketing homepages, neither a block. The
+  // markup-based extractor the pipeline actually diffs (cheerio, no computed CSS)
+  // isn't fooled by either, so cross-check it before escalating: a genuine block
+  // serves a thin shell that's empty in the markup too, whereas these pages carry
+  // the real text in the DOM. Only pay the parse in the rare near-empty branch.
+  if (text.length < 100 && statusCode < 400 && isContentCollapsed(extractContent(html)))
     return { ok: false, statusCode, failureReason: "soft_block", durationMs: Date.now() - startedAt };
 
   // Screenshot only when asked (homepage pHash). For every other source it would

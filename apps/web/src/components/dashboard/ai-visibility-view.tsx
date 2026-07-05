@@ -11,6 +11,7 @@ import {
   api,
   type AiVisibilityData,
   type AiVisibilityLeaderboard,
+  type AiVisibilityPrompt,
   type AiVisibilitySubject,
 } from "@/lib/api";
 import { paywallFromError } from "@/components/outrival/paywall-dialog";
@@ -24,6 +25,14 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 const AiVisibilityChart = dynamic(() => import("./ai-visibility-chart"), {
   ssr: false,
@@ -72,19 +81,41 @@ export function AiVisibilityView() {
       toast.error("Couldn't add the prompt.");
     }
   }
+  // Optimistic: flip the switch in the cache immediately (the round-trip + refetch
+  // otherwise left it stuck for ~2s), revert to server truth on error.
   async function togglePrompt(id: string, isActive: boolean) {
+    const key = aiVisibilityQuery().queryKey;
+    const prev = qc.getQueryData<AiVisibilityData>(key);
+    qc.setQueryData<AiVisibilityData>(key, (old) =>
+      old
+        ? { ...old, prompts: old.prompts.map((p) => (p.id === id ? { ...p, isActive } : p)) }
+        : old,
+    );
     try {
       await api.updateAiVisibilityPrompt(id, { isActive });
-      refresh();
     } catch {
+      if (prev) qc.setQueryData(key, prev);
       toast.error("Couldn't update the prompt.");
     }
   }
+  // Optimistic: drop the prompt from the list AND from the "By prompt" evidence right
+  // away (the last run's rows still reference it until the next run reruns).
   async function removePrompt(id: string) {
+    const key = aiVisibilityQuery().queryKey;
+    const prev = qc.getQueryData<AiVisibilityData>(key);
+    qc.setQueryData<AiVisibilityData>(key, (old) =>
+      old
+        ? {
+            ...old,
+            prompts: old.prompts.filter((p) => p.id !== id),
+            breakdown: old.breakdown.filter((b) => b.promptId !== id),
+          }
+        : old,
+    );
     try {
       await api.deleteAiVisibilityPrompt(id);
-      refresh();
     } catch {
+      if (prev) qc.setQueryData(key, prev);
       toast.error("Couldn't remove the prompt.");
     }
   }
@@ -306,19 +337,21 @@ function LeaderboardRow({
       </span>
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         <div className="flex items-center gap-2">
-          <span
-            className={`truncate text-sm ${
+          <Link
+            href={s.isSelf ? "/dashboard/products" : `/dashboard/competitors/${s.competitorId}`}
+            className={`truncate text-sm underline-offset-2 hover:underline ${
               s.isSelf ? "font-semibold text-foreground" : "text-foreground"
             }`}
           >
             {s.name}
-          </span>
+          </Link>
           {s.isSelf && <Badge variant="tracked">You</Badge>}
         </div>
         <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
           <div
             className={`h-full rounded-full ${s.isSelf ? "bg-[var(--link)]" : "bg-foreground/25"}`}
-            style={{ width: `${Math.max(2, Math.round((s.sov / max) * 100))}%` }}
+            // 0% stays empty; a non-zero share floors at 2% so the bar is still visible.
+            style={{ width: `${s.sov <= 0 ? 0 : Math.max(2, Math.round((s.sov / max) * 100))}%` }}
           />
         </div>
       </div>
@@ -426,6 +459,7 @@ function PromptManager({
   onToggle: (id: string, isActive: boolean) => void;
   onRemove: (id: string) => void;
 }) {
+  const [deleteTarget, setDeleteTarget] = useState<AiVisibilityPrompt | null>(null);
   return (
     <section>
       <SectionHead
@@ -467,7 +501,7 @@ function PromptManager({
                 {p.prompt}
               </span>
               <button
-                onClick={() => onRemove(p.id)}
+                onClick={() => setDeleteTarget(p)}
                 className="shrink-0 rounded-md p-1 text-muted-foreground outline-none transition-colors hover:bg-accent/40 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
                 aria-label="Remove prompt"
               >
@@ -477,6 +511,33 @@ function PromptManager({
           ))}
         </ul>
       )}
+
+      <Dialog open={deleteTarget !== null} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove this prompt?</DialogTitle>
+            <DialogDescription>
+              &ldquo;{deleteTarget?.prompt}&rdquo; will no longer be checked against AI answer
+              engines. Past results for it are removed from the breakdown.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="secondary" onClick={() => setDeleteTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                if (deleteTarget) onRemove(deleteTarget.id);
+                setDeleteTarget(null);
+              }}
+            >
+              Remove
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }
@@ -484,7 +545,9 @@ function PromptManager({
 // --- Scaffolding: shell, empty, loading, locked. ------------------------------------
 
 function Shell({ children }: { children: React.ReactNode }) {
-  return <div className="mx-auto flex max-w-6xl flex-col gap-6 p-4 sm:p-6">{children}</div>;
+  // Match sibling dashboard views (Activity/Signals) — the dashboard shell already
+  // provides the page padding, so no extra max-width / padding here.
+  return <div className="flex flex-col gap-6">{children}</div>;
 }
 
 function EmptyState({ onRun, running }: { onRun: () => void; running: boolean }) {

@@ -140,7 +140,12 @@ aiVisibilityRouter.get("/", async (c) => {
     arr.push(r);
     promptGroups.set(r.promptId, arr);
   }
-  const breakdown = [...promptGroups.entries()].map(([promptId, rows]) => {
+  // Only surface prompts that still exist (active or paused) — a deleted prompt's rows
+  // linger in the append-only run table, so drop them instead of showing "(removed)".
+  const visibleGroups = [...promptGroups.entries()].filter(([promptId]) =>
+    promptText.has(promptId),
+  );
+  const breakdown = visibleGroups.map(([promptId, rows]) => {
     const engines = new Map<string, RawRow[]>();
     for (const r of rows) engines.set(r.engine, [...(engines.get(r.engine) ?? []), r]);
     return {

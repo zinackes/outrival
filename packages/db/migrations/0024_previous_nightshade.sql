@@ -1,1 +1,0 @@
-ALTER TABLE "snapshots" ADD COLUMN "origin" text DEFAULT 'live' NOT NULL;

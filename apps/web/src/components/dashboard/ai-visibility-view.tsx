@@ -15,6 +15,7 @@ import {
   type AiVisibilitySubject,
 } from "@/lib/api";
 import { paywallFromError } from "@/components/outrival/paywall-dialog";
+import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { useSetAskContext } from "@/components/dashboard/ask-context";
 import { PageHead } from "@/components/dashboard/page-head";
 import { SectionHead } from "@/components/dashboard/section-head";
@@ -50,7 +51,8 @@ const pctOf = (x: number) => `${Math.round(x * 100)}%`;
 export function AiVisibilityView() {
   useSetAskContext({ kind: "view", label: "AI Visibility" });
   const qc = useQueryClient();
-  const q = useQuery(aiVisibilityQuery());
+  const productId = useProductScope() ?? undefined;
+  const q = useQuery(aiVisibilityQuery(productId));
   const [running, setRunning] = useState(false);
   const [draft, setDraft] = useState("");
   const [engine, setEngine] = useState<string | null>(null);
@@ -74,7 +76,7 @@ export function AiVisibilityView() {
     const p = draft.trim();
     if (p.length < 3) return;
     try {
-      await api.addAiVisibilityPrompt(p);
+      await api.addAiVisibilityPrompt(p, productId);
       setDraft("");
       refresh();
     } catch {
@@ -84,7 +86,7 @@ export function AiVisibilityView() {
   // Optimistic: flip the switch in the cache immediately (the round-trip + refetch
   // otherwise left it stuck for ~2s), revert to server truth on error.
   async function togglePrompt(id: string, isActive: boolean) {
-    const key = aiVisibilityQuery().queryKey;
+    const key = aiVisibilityQuery(productId).queryKey;
     const prev = qc.getQueryData<AiVisibilityData>(key);
     qc.setQueryData<AiVisibilityData>(key, (old) =>
       old
@@ -101,7 +103,7 @@ export function AiVisibilityView() {
   // Optimistic: drop the prompt from the list AND from the "By prompt" evidence right
   // away (the last run's rows still reference it until the next run reruns).
   async function removePrompt(id: string) {
-    const key = aiVisibilityQuery().queryKey;
+    const key = aiVisibilityQuery(productId).queryKey;
     const prev = qc.getQueryData<AiVisibilityData>(key);
     qc.setQueryData<AiVisibilityData>(key, (old) =>
       old

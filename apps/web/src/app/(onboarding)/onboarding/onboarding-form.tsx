@@ -362,13 +362,21 @@ export function OnboardingForm({
 
   // ── Analyze (per mode) ─────────────────────────────────────────────────
   function onProfileReady(p: ProductProfile, url: string | null) {
-    setProfile(p);
+    // A product with no pricing on the source — an early-stage idea, a GitHub repo,
+    // an open-source tool — leaves pricingModel blank. Treat "no pricing found" as
+    // Free: the field is never an empty blocker, the user can still edit it, and
+    // downstream (overlap scoring, battle cards) reads a concrete value.
+    const normalized: ProductProfile = {
+      ...p,
+      pricingModel: p.pricingModel?.trim() || "Free",
+    };
+    setProfile(normalized);
     setCommittedUrl(url);
     setCompetitors([]);
     setRemoved([]);
     trackOnboarding(ONBOARDING_EVENTS.PRODUCT_ANALYZED, sessionId);
     void updateSession({
-      productProfile: p,
+      productProfile: normalized,
       productUrl: url,
       timings: { [milestoneKey(ONBOARDING_EVENTS.PRODUCT_ANALYZED)]: Date.now() },
     });

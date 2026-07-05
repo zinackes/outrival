@@ -1,5 +1,5 @@
 {
-  "id": "dd29b66f-f289-4c69-90b5-52bc1ec49d1f",
+  "id": "c73c532c-2de4-453d-87f3-d68897ec53ca",
   "prevId": "17422d7a-8e80-46b5-8f00-62c3a3a1889e",
   "version": "7",
   "dialect": "postgresql",
@@ -1545,13 +1545,6 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": false
-        },
-        "origin": {
-          "name": "origin",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'live'"
         }
       },
       "indexes": {
@@ -5523,6 +5516,12 @@
           "notNull": true,
           "default": "'auto'"
         },
+        "product_id": {
+          "name": "product_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
@@ -5546,6 +5545,27 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "ai_visibility_prompts_org_product_idx": {
+          "name": "ai_visibility_prompts_org_product_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "product_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -5555,6 +5575,19 @@
           "tableTo": "organizations",
           "columnsFrom": [
             "org_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "ai_visibility_prompts_product_id_products_id_fk": {
+          "name": "ai_visibility_prompts_product_id_products_id_fk",
+          "tableFrom": "ai_visibility_prompts",
+          "tableTo": "products",
+          "columnsFrom": [
+            "product_id"
           ],
           "columnsTo": [
             "id"
@@ -5705,6 +5738,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "product_id": {
+          "name": "product_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "engine": {
           "name": "engine",
           "type": "text",
@@ -5783,6 +5822,33 @@
           "columns": [
             {
               "expression": "competitor_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "recorded_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ai_visibility_results_org_product_recorded_idx": {
+          "name": "ai_visibility_results_org_product_recorded_idx",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "product_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

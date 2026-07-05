@@ -509,6 +509,7 @@ export interface AiVisibilityResultRow {
   org_id: string;
   prompt_id: string;
   competitor_id: string;
+  product_id?: string | null;
   engine: string;
   mentioned: boolean;
   rank?: number | null;
@@ -530,6 +531,7 @@ export async function insertAiVisibilityResults(rows: AiVisibilityResultRow[]): 
         orgId: r.org_id,
         promptId: r.prompt_id,
         competitorId: r.competitor_id,
+        productId: r.product_id ?? null,
         engine: r.engine,
         mentioned: r.mentioned ? 1 : 0,
         rank: r.rank ?? null,
@@ -552,18 +554,24 @@ export interface AiVisibilityRunRow {
 }
 
 // The previous run's rows for an org (the most recent run_id that isn't the current
-// one), for the phase-3 diff. Best-effort: null on error → caller treats it as "no
-// baseline" and emits no signals.
+// one), for the phase-3 diff. patch-28 (phase B): scoped to one product when given, so
+// the baseline for a product's deltas is its own prior run, not another SKU's. Best-effort:
+// null on error → caller treats it as "no baseline" and emits no signals.
 export async function getPreviousAiVisibilityRun(
   orgId: string,
   currentRunId: string,
+  productId?: string | null,
 ): Promise<AiVisibilityRunRow[] | null> {
   return bestEffortRead("getPreviousAiVisibilityRun", async () => {
     const latest = await db
       .select({ runId: aiVisibilityResults.runId })
       .from(aiVisibilityResults)
       .where(
-        and(eq(aiVisibilityResults.orgId, orgId), ne(aiVisibilityResults.runId, currentRunId)),
+        and(
+          eq(aiVisibilityResults.orgId, orgId),
+          ne(aiVisibilityResults.runId, currentRunId),
+          productId ? eq(aiVisibilityResults.productId, productId) : undefined,
+        ),
       )
       .orderBy(desc(aiVisibilityResults.recordedAt))
       .limit(1);
@@ -578,7 +586,12 @@ export async function getPreviousAiVisibilityRun(
         rank: aiVisibilityResults.rank,
       })
       .from(aiVisibilityResults)
-      .where(eq(aiVisibilityResults.runId, prevRunId));
+      .where(
+        and(
+          eq(aiVisibilityResults.runId, prevRunId),
+          productId ? eq(aiVisibilityResults.productId, productId) : undefined,
+        ),
+      );
     return rows.map((r) => ({
       competitorId: r.competitorId,
       engine: r.engine,

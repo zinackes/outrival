@@ -975,9 +975,14 @@ export function SignalsView() {
       const id = item.signal.id;
       return (
         <motion.div key={id} role="presentation" {...feedItemMotion}>
-          <div className="group/row flex items-center gap-1.5">
+          <div
+            className={cn(
+              "group/row relative flex items-center",
+              selectionActive && "gap-1.5",
+            )}
+          >
             <SelectCheckbox
-              visible={selectionActive}
+              active={selectionActive}
               checked={selected.has(id)}
               onToggle={(e) => {
                 e.stopPropagation();
@@ -1000,10 +1005,10 @@ export function SignalsView() {
     const bid = `batch:${item.batchId}`;
     return (
       <motion.div key={item.batchId} role="presentation" {...feedItemMotion}>
-        <div className="flex items-center gap-1.5">
-          {/* Batches aren't individually selectable — spacer keeps their row aligned
-              with the checkbox gutter of single rows. */}
-          <span className="size-4 shrink-0" aria-hidden />
+        <div className={cn("flex items-center", selectionActive && "gap-1.5")}>
+          {/* Batches aren't individually selectable — match the single rows' gutter
+              only while a selection is active, so idle rows all sit flush. */}
+          {selectionActive && <span className="size-4 shrink-0" aria-hidden />}
           <div className="min-w-0 flex-1">
             <BatchRow
               batchId={item.batchId}
@@ -1066,9 +1071,9 @@ export function SignalsView() {
         <SignalsBrief productId={productId ?? undefined} enabled={total >= 3} />
       )}
 
-      <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center lg:gap-2">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-2">
         <Tabs
-          className="min-w-0"
+          className="min-w-0 shrink-0"
           value={quickView}
           onValueChange={(v) => setParam({ view: v === "all" ? null : v })}
         >
@@ -1575,11 +1580,12 @@ export function SignalsView() {
 // the row is hovered, unless a selection is already active (then all show).
 function SelectCheckbox({
   checked,
-  visible,
+  active,
   onToggle,
 }: {
   checked: boolean;
-  visible: boolean;
+  // A selection is in progress (≥1 row checked) → all checkboxes take a real gutter.
+  active: boolean;
   onToggle: (e: React.MouseEvent) => void;
 }) {
   return (
@@ -1590,12 +1596,18 @@ function SelectCheckbox({
       aria-label={checked ? "Deselect signal" : "Select signal"}
       onClick={onToggle}
       className={cn(
-        "flex size-4 shrink-0 items-center justify-center rounded-sm border outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
+        "flex size-4 shrink-0 items-center justify-center rounded-sm border outline-none transition-opacity focus-visible:ring-2 focus-visible:ring-ring/50",
         checked
-          ? "border-primary bg-primary text-primary-foreground opacity-100"
+          ? "border-primary bg-primary text-primary-foreground"
           : "border-border text-transparent hover:border-foreground/40",
-        !checked &&
-          (visible ? "opacity-100" : "opacity-0 group-hover/row:opacity-100"),
+        // Active selection → in the row flow (a real gutter). Otherwise pinned to the
+        // left edge and only faded in on hover, so idle rows carry no empty gutter.
+        active
+          ? "static opacity-100"
+          : cn(
+              "absolute left-1.5 top-1/2 z-10 -translate-y-1/2",
+              checked ? "opacity-100" : "opacity-0 group-hover/row:opacity-100",
+            ),
       )}
     >
       <Check size={11} strokeWidth={3} />

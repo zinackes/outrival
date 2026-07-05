@@ -360,26 +360,29 @@ export function SignalCard({
       </p>
 
       {hasDetails && (
-        <div className="grid grid-cols-[64px_1fr] gap-x-4 gap-y-3.5 pt-4">
+        // Labels stacked above their text so the values align full-width with the
+        // insight above them (the old 64px label column indented them ~86px, which
+        // read as misaligned against the flush insight/narrative).
+        <div className="space-y-3.5 pt-4">
           {signal.soWhat && (
-            <>
-              <div className="text-dense font-medium text-muted-foreground pt-0.5">
+            <div>
+              <div className="mb-1 text-dense font-medium text-muted-foreground">
                 So what
               </div>
-              <div className="text-content leading-relaxed text-foreground/85">
+              <p className="text-content leading-relaxed text-foreground/85">
                 {signal.soWhat}
-              </div>
-            </>
+              </p>
+            </div>
           )}
           {signal.recommendedAction && signal.recommendedAction !== "—" && (
-            <>
-              <div className="text-dense font-medium text-muted-foreground pt-0.5">
+            <div>
+              <div className="mb-1 text-dense font-medium text-muted-foreground">
                 Action
               </div>
-              <div className="text-content leading-relaxed text-foreground/85">
+              <p className="text-content leading-relaxed text-foreground/85">
                 {signal.recommendedAction}
-              </div>
-            </>
+              </p>
+            </div>
           )}
         </div>
       )}

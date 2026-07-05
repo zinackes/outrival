@@ -12,8 +12,8 @@ import { Hero } from "@/components/landing/hero";
 import { JsonLd } from "@/components/landing/json-ld";
 import { Monitors } from "@/components/landing/monitors";
 import { Nav } from "@/components/landing/nav";
-import { Pipeline } from "@/components/landing/pipeline";
 import { Pricing } from "@/components/landing/pricing";
+import { ProductShowcase } from "@/components/landing/product-showcase";
 import { ScrollReveal } from "@/components/landing/scroll-reveal";
 import { Sources } from "@/components/landing/sources";
 import { Trust } from "@/components/landing/trust";
@@ -38,7 +38,7 @@ export default function HomePage() {
         <Trust />
         <Monitors />
         <Sources />
-        <Pipeline />
+        <ProductShowcase />
         <Categories />
         <DigestFeature />
         <Alerts />

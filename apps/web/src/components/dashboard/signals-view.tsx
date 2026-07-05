@@ -80,21 +80,20 @@ import { ListRowsSkeleton } from "./skeletons";
 import { ListError } from "@/components/outrival/list-error";
 import { useListKeyboardNav } from "@/hooks/use-list-keyboard-nav";
 import { useSampleMode } from "@/hooks/use-sample-mode";
-import { getSampleData } from "@/lib/sample-data";
+import { getSampleData, getSampleSignalDetail } from "@/lib/sample-data";
 
 type Sev = Signal["severity"];
 type QuickView = "all" | "alerts" | "unread" | "week" | "critical" | "actions";
 
 // patch-29 — "Alerts" surfaces the urgent feed (critical + high) as a first-class
 // tab, replacing the standalone /dashboard/alerts page in the navigation.
-// Phase B — "Actions" surfaces the intel→action board (todo + doing).
+// The intel→action board still lives per-card (Track); it's no longer a feed tab.
 const QUICK_VIEWS: { value: QuickView; label: string }[] = [
   { value: "all", label: "All" },
   { value: "alerts", label: "Alerts" },
   { value: "unread", label: "Unread" },
   { value: "week", label: "This week" },
   { value: "critical", label: "Critical" },
-  { value: "actions", label: "Actions" },
 ];
 
 const SEVERITIES: Sev[] = ["critical", "high", "medium", "low"];
@@ -442,6 +441,22 @@ export function SignalsView() {
     [navIds],
   );
 
+  // Prune the selection to rows still in the feed. Non-destructive bulk actions
+  // (mark read/unread, track) keep the selection so a follow-up action hits the
+  // same set — but if one of those rows later leaves the view (e.g. marking read
+  // in the Unread view, next poll drops it), its stale id must not linger and
+  // inflate the "N selected" count. Returns `prev` unchanged when nothing left,
+  // so a stable selectableIds ref can't loop.
+  useEffect(() => {
+    setSelected((prev) => {
+      if (prev.size === 0) return prev;
+      const visible = new Set(selectableIds);
+      const next = new Set<string>();
+      for (const id of prev) if (visible.has(id)) next.add(id);
+      return next.size === prev.size ? prev : next;
+    });
+  }, [selectableIds]);
+
   const selectionActive = selected.size > 0;
 
   function toggleCollapsed(key: string) {
@@ -489,7 +504,8 @@ export function SignalsView() {
     mutateSignals((prev) =>
       prev.map((s) => (idSet.has(s.id) ? { ...s, isRead: read } : s)),
     );
-    clearSelection();
+    // Keep the selection: the rows stay in the feed, so a follow-up bulk action
+    // can hit the same set (stale ids are pruned by the effect above).
     if (sample) return;
     try {
       await api.setSignalsRead(ids, read);
@@ -509,7 +525,7 @@ export function SignalsView() {
     mutateSignals((prev) =>
       prev.map((s) => (idSet.has(s.id) ? { ...s, actionStatus: status } : s)),
     );
-    clearSelection();
+    // Keep the selection (rows stay in the feed); stale ids are pruned above.
     if (sample) {
       toast.success(`${n} signal${n > 1 ? "s" : ""} updated`);
       return;
@@ -674,7 +690,7 @@ export function SignalsView() {
       document.getElementById("signals-search")?.focus();
       return true;
     }
-    if (key >= "1" && key <= "6") {
+    if (key >= "1" && key <= "5") {
       const v = QUICK_VIEWS[Number(key) - 1];
       if (v) setParam({ view: v.value === "all" ? null : v.value });
       return true;
@@ -975,12 +991,7 @@ export function SignalsView() {
       const id = item.signal.id;
       return (
         <motion.div key={id} role="presentation" {...feedItemMotion}>
-          <div
-            className={cn(
-              "group/row relative flex items-center",
-              selectionActive && "gap-1.5",
-            )}
-          >
+          <div className="group/row flex items-center gap-1.5">
             <SelectCheckbox
               active={selectionActive}
               checked={selected.has(id)}
@@ -1005,10 +1016,10 @@ export function SignalsView() {
     const bid = `batch:${item.batchId}`;
     return (
       <motion.div key={item.batchId} role="presentation" {...feedItemMotion}>
-        <div className={cn("flex items-center", selectionActive && "gap-1.5")}>
-          {/* Batches aren't individually selectable — match the single rows' gutter
-              only while a selection is active, so idle rows all sit flush. */}
-          {selectionActive && <span className="size-4 shrink-0" aria-hidden />}
+        <div className="flex items-center gap-1.5">
+          {/* Batches aren't individually selectable — reserve the same gutter so
+              their content stays aligned with the single rows'. */}
+          <span className="size-4 shrink-0" aria-hidden />
           <div className="min-w-0 flex-1">
             <BatchRow
               batchId={item.batchId}
@@ -1073,11 +1084,13 @@ export function SignalsView() {
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-2">
         <Tabs
-          className="min-w-0 shrink-0"
+          className="min-w-0"
           value={quickView}
           onValueChange={(v) => setParam({ view: v === "all" ? null : v })}
         >
-          <TabsList>
+          {/* Scrolls horizontally rather than wrapping when desktop space is
+              tight, so the tabs + controls stay on a single row. */}
+          <TabsList className="max-w-full overflow-x-auto">
             {QUICK_VIEWS.map((v) => (
               <TabsTrigger key={v.value} value={v.value}>
                 {v.label}
@@ -1091,9 +1104,9 @@ export function SignalsView() {
 
         <div className="hidden lg:block lg:flex-1" />
 
-        {/* Controls stay on one wrapping row so mobile stacks them under the
-            tabs instead of scattering each button on its own line. */}
-        <div className="flex flex-wrap items-center gap-2">
+        {/* One row on desktop (lg:flex-nowrap) — the search box shrinks to keep
+            everything on a single line; on mobile it wraps under the tabs. */}
+        <div className="flex flex-wrap items-center gap-2 lg:flex-nowrap">
         <SavedViewsMenu current={currentFilters} onApply={applyView} />
 
         <DropdownMenu>
@@ -1227,7 +1240,7 @@ export function SignalsView() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <div className="relative">
+        <div className="relative w-full min-w-0 lg:w-44">
           <Search
             size={14}
             className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
@@ -1238,7 +1251,7 @@ export function SignalsView() {
             placeholder="Search…"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            className="h-8 pl-8 text-sm w-48"
+            className="h-8 w-full pl-8 text-sm"
           />
         </div>
 
@@ -1501,9 +1514,16 @@ export function SignalsView() {
                           onSnooze={(id, ms) => snoozeSignals([id], ms)}
                         />
                         {/* Evidence dossier — best-effort; renders nothing without
-                            structured evidence, and is skipped in sample mode (no
-                            backend to fetch from). */}
-                        {!sample && (
+                            structured evidence. In sample mode it reads the fixture
+                            dossier instead of the backend, so the demo shows the same
+                            before/after the real app would. */}
+                        {sample ? (
+                          <SignalEvidence
+                            key={`evidence-${selectedItem.signal.id}`}
+                            signalId={selectedItem.signal.id}
+                            detail={getSampleSignalDetail(selectedItem.signal.id)}
+                          />
+                        ) : (
                           <SignalEvidence
                             key={`evidence-${selectedItem.signal.id}`}
                             signalId={selectedItem.signal.id}
@@ -1576,15 +1596,17 @@ export function SignalsView() {
   );
 }
 
-// Row selection checkbox — sits in a reserved gutter left of each row. Hidden until
-// the row is hovered, unless a selection is already active (then all show).
+// Row selection checkbox — always occupies a reserved gutter left of each row, so
+// it never overlaps the row's severity icon and enabling a selection doesn't shift
+// the list. Invisible at rest; fades in on row hover, or stays visible once checked
+// or while a selection is active (all rows show their box).
 function SelectCheckbox({
   checked,
   active,
   onToggle,
 }: {
   checked: boolean;
-  // A selection is in progress (≥1 row checked) → all checkboxes take a real gutter.
+  // A selection is in progress (≥1 row checked) → every checkbox stays visible.
   active: boolean;
   onToggle: (e: React.MouseEvent) => void;
 }) {
@@ -1596,17 +1618,12 @@ function SelectCheckbox({
       aria-label={checked ? "Deselect signal" : "Select signal"}
       onClick={onToggle}
       className={cn(
-        "flex size-4 shrink-0 items-center justify-center rounded-sm border outline-none transition-opacity focus-visible:ring-2 focus-visible:ring-ring/50",
+        "flex size-4 shrink-0 items-center justify-center rounded-sm border outline-none transition-[opacity,color,background-color,border-color] focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50",
         checked
-          ? "border-primary bg-primary text-primary-foreground"
-          : "border-border text-transparent hover:border-foreground/40",
-        // Active selection → in the row flow (a real gutter). Otherwise pinned to the
-        // left edge and only faded in on hover, so idle rows carry no empty gutter.
-        active
-          ? "static opacity-100"
+          ? "border-primary bg-primary text-primary-foreground opacity-100"
           : cn(
-              "absolute left-1.5 top-1/2 z-10 -translate-y-1/2",
-              checked ? "opacity-100" : "opacity-0 group-hover/row:opacity-100",
+              "border-border text-transparent hover:border-foreground/50",
+              active ? "opacity-100" : "opacity-0 group-hover/row:opacity-100",
             ),
       )}
     >

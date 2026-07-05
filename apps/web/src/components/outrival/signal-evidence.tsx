@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, CornerDownRight } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, type SignalDetail } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VisualDiff } from "@/components/outrival/visual-diff";
 import { ChangeBreakdown } from "@/components/outrival/change-breakdown";
@@ -27,20 +27,34 @@ const Label = ({ children }: { children: React.ReactNode }) => (
  *
  * Best-effort: renders nothing while loading fails, or when the signal carries no
  * structured evidence (lexical / jobs / pricing signals) — the card stands alone.
+ *
+ * `detail` can be injected to render from a fixture instead of fetching — sample /
+ * demo mode passes the sample dossier so the panel shows without a backend. When
+ * it's undefined (the default, real usage) the query runs exactly as before.
  */
-export function SignalEvidence({ signalId }: { signalId: string }) {
+export function SignalEvidence({
+  signalId,
+  detail: injectedDetail,
+}: {
+  signalId: string;
+  detail?: SignalDetail | null;
+}) {
   const [showAll, setShowAll] = useState(false);
+  const injected = injectedDetail !== undefined;
   // Shares the ["signalDetail", id] cache with the "Why this insight?" panel.
   const detailQ = useQuery({
     queryKey: ["signalDetail", signalId],
     queryFn: () => api.getSignalDetail(signalId).then((r) => r.signal),
+    enabled: !injected,
   });
-  const detail = detailQ.data ?? null;
-  const state: "loading" | "error" | "idle" = detailQ.isError
-    ? "error"
-    : detailQ.isFetching
-      ? "loading"
-      : "idle";
+  const detail = injected ? injectedDetail : (detailQ.data ?? null);
+  const state: "loading" | "error" | "idle" = injected
+    ? "idle"
+    : detailQ.isError
+      ? "error"
+      : detailQ.isFetching
+        ? "loading"
+        : "idle";
 
   if (state === "loading") {
     return (

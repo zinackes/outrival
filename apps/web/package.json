@@ -7,7 +7,8 @@
     "build": "next build",
     "typecheck": "tsc --noEmit",
     "test": "bun test test/",
-    "start": "next start"
+    "start": "next start",
+    "capture:shots": "node scripts/capture-product-shots.mjs"
   },
   "dependencies": {
     "@better-auth/passkey": "^1.6.22",
@@ -51,6 +52,8 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.0",
+    "playwright": "^1.49.1",
+    "sharp": "^0.33.5",
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
     "tailwindcss": "^4.3.0"

@@ -12,7 +12,10 @@ export function SampleBanner() {
   const [sample, setSample] = useSampleMode();
   if (!sample) return null;
   return (
-    <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-surface-2 px-4 py-2.5">
+    <div
+      data-sample-banner
+      className="flex items-center justify-between gap-3 rounded-md border border-border bg-surface-2 px-4 py-2.5"
+    >
       <div className="flex min-w-0 items-center gap-2.5">
         <span className="size-1.5 shrink-0 rounded-full bg-primary" aria-hidden />
         <span className="text-sm text-muted-foreground">

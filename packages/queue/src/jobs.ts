@@ -119,6 +119,12 @@ export const sendWelcomeDigest = defineJob<OrgRefPayload>("send-welcome-digest",
   retryLimit: 0,
   expireInSeconds: 60,
 });
+// Lever 9 — monthly recap teaser email, triggered from generate-daily-digest at the
+// org's local first-of-month morning (no new cron; idempotency-keyed per org+month).
+export const sendMonthlyRecap = defineJob<{ orgId: string; month: string }>(
+  "send-monthly-recap",
+  { retryLimit: 0, expireInSeconds: 60 },
+);
 export const generateBattleCard = defineJob<GenerateBattleCardPayload>("generate-battle-card", {
   expireInSeconds: 180, // browser (PDF via Playwright) — browser worker
 });

@@ -1,4 +1,4 @@
-import { schedules, logger } from "@trigger.dev/sdk/v3";
+import { schedules, logger, tasks } from "@trigger.dev/sdk/v3";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import {
   db,
@@ -101,6 +101,32 @@ export const generateDailyDigestJob = schedules.task({
       if (localHour(timezone, now) !== morningHour) {
         skipped++;
         continue;
+      }
+
+      // Piggyback (Lever 9): at the org's local FIRST-of-month morning, fire the monthly
+      // recap for the month that just ended. No new cron (the 10-schedule cap is full) —
+      // idempotency-keyed per org+month so the hourly cron can only send it once.
+      const localParts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: timezone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).formatToParts(now);
+      if (localParts.find((p) => p.type === "day")?.value === "01") {
+        const ly = Number(localParts.find((p) => p.type === "year")?.value);
+        const lm = Number(localParts.find((p) => p.type === "month")?.value); // 1-12
+        const py = lm === 1 ? ly - 1 : ly;
+        const pm = lm === 1 ? 12 : lm - 1;
+        const recapMonth = `${py}-${String(pm).padStart(2, "0")}`;
+        try {
+          await tasks.trigger(
+            "send-monthly-recap",
+            { orgId: org.id, month: recapMonth },
+            { idempotencyKey: `recap-${org.id}-${recapMonth}` },
+          );
+        } catch (e) {
+          logger.warn("Failed to trigger monthly recap", { orgId: org.id, error: String(e) });
+        }
       }
 
       const deferred = await db

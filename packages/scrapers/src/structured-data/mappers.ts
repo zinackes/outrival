@@ -21,7 +21,11 @@ export interface StructuredPricingPlan {
   plan_name: string;
   price: number | null;
   currency: string;
-  billing_period: "monthly" | "yearly" | "one_time" | "custom";
+  billing_period: "monthly" | "yearly" | "one_time" | "custom" | "usage";
+  // Dimensional pricing — the metered/outcome unit for a "usage" price ("API call",
+  // "credit"). Null for a flat subscription tier. included_quantity isn't reliably in
+  // schema.org markup, so it's left to the AI floor. See docs/pricing-coverage-2026.md.
+  unit?: string | null;
 }
 export interface StructuredPricing {
   plans: StructuredPricingPlan[];
@@ -56,8 +60,13 @@ function isUsagePriced(spec: JsonLdNode | null): boolean {
   if (!spec) return false;
   // An explicit billing duration/period is a subscription marker, never usage.
   if (asText(spec["billingDuration"]) ?? asText(spec["billingPeriod"])) return false;
-  const unit = (asText(spec["unitText"]) ?? asText(spec["unitCode"]) ?? "").trim();
-  return unit.length > 0 && !TIME_UNIT.test(unit);
+  const unit = usageUnit(spec);
+  return unit != null && !TIME_UNIT.test(unit);
+}
+
+/** The metered unit a per-unit price applies to ("API call", "credit"), or null. */
+function usageUnit(spec: JsonLdNode | null): string | null {
+  return asText(spec?.["unitText"]) ?? asText(spec?.["unitCode"]) ?? null;
 }
 
 function offerToPlan(offer: JsonLdNode, fallbackName: string | null): StructuredPricingPlan | null {
@@ -74,11 +83,18 @@ function offerToPlan(offer: JsonLdNode, fallbackName: string | null): Structured
     asText(offer["category"]) ??
     (price === 0 ? "Free" : fallbackName);
   if (!name) return null;
+  // A metered/per-unit offer is a usage RATE, not a subscription tier: label it
+  // "usage" with its unit instead of mislabeling it as a "$X/month plan". (A
+  // usage-ONLY page falls through entirely — see the guard in pricingFromStructured.)
+  if (isUsagePriced(spec)) {
+    return { plan_name: name, price, currency, billing_period: "usage", unit: usageUnit(spec) };
+  }
   return {
     plan_name: name,
     price, // null is valid (quote-based / "Contact sales")
     currency,
     billing_period: billingPeriod(spec, price === null),
+    unit: null,
   };
 }
 
@@ -135,9 +151,7 @@ export function pricingFromStructured(html: string): StructuredPricing | null {
       const plan = offerToPlan(offer, fallback);
       if (!plan) continue;
       plans.push(plan);
-      if (!isUsagePriced((offer["priceSpecification"] as JsonLdNode | undefined) ?? null)) {
-        sawSubscriptionPlan = true;
-      }
+      if (plan.billing_period !== "usage") sawSubscriptionPlan = true;
     }
   }
   if (!sawSubscriptionPlan) return null;

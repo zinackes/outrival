@@ -65,8 +65,8 @@ test("pricingFromStructured maps Product offers to plans", () => {
   });
   const result = pricingFromStructured(html);
   expect(result?.plans).toEqual([
-    { plan_name: "Pro", price: 29, currency: "USD", billing_period: "monthly" },
-    { plan_name: "Enterprise", price: null, currency: "USD", billing_period: "custom" },
+    { plan_name: "Pro", price: 29, currency: "USD", billing_period: "monthly", unit: null },
+    { plan_name: "Enterprise", price: null, currency: "USD", billing_period: "custom", unit: null },
   ]);
 });
 
@@ -81,8 +81,8 @@ test("pricingFromStructured names a nameless $0 tier Free, not the product name"
   });
   const result = pricingFromStructured(html);
   expect(result?.plans).toEqual([
-    { plan_name: "Free", price: 0, currency: "USD", billing_period: "monthly" },
-    { plan_name: "Business", price: 49, currency: "USD", billing_period: "monthly" },
+    { plan_name: "Free", price: 0, currency: "USD", billing_period: "monthly", unit: null },
+    { plan_name: "Business", price: 49, currency: "USD", billing_period: "monthly", unit: null },
   ]);
 });
 
@@ -94,7 +94,7 @@ test("pricingFromStructured uses the product name for a single nameless tier", (
   });
   const result = pricingFromStructured(html);
   expect(result?.plans).toEqual([
-    { plan_name: "Acme Pro", price: 29, currency: "USD", billing_period: "monthly" },
+    { plan_name: "Acme Pro", price: 29, currency: "USD", billing_period: "monthly", unit: null },
   ]);
 });
 
@@ -112,7 +112,7 @@ test("pricingFromStructured unwraps AggregateOffer and dedupes", () => {
   });
   const result = pricingFromStructured(html);
   expect(result?.plans).toEqual([
-    { plan_name: "Yearly", price: 290, currency: "EUR", billing_period: "yearly" },
+    { plan_name: "Yearly", price: 290, currency: "EUR", billing_period: "yearly", unit: null },
   ]);
 });
 
@@ -155,8 +155,10 @@ test("pricingFromStructured keeps subscription tiers when a usage offer is mixed
     ],
   });
   const result = pricingFromStructured(html);
-  // Real tier is kept; the usage offer is left exactly as before (no tier is dropped).
-  expect(result?.plans[0]).toEqual({ plan_name: "Pro", price: 29, currency: "USD", billing_period: "monthly" });
+  // Real tier is kept; the usage offer is now correctly tagged as a per-unit rate
+  // (was mislabeled "monthly" before) — no tier is dropped.
+  expect(result?.plans[0]).toEqual({ plan_name: "Pro", price: 29, currency: "USD", billing_period: "monthly", unit: null });
+  expect(result?.plans[1]).toEqual({ plan_name: "Overage", price: 0.02, currency: "USD", billing_period: "usage", unit: "request" });
   expect(result?.plans).toHaveLength(2);
 });
 

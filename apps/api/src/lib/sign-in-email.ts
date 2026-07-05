@@ -24,8 +24,11 @@ const AUTH_FROM = process.env.RESEND_AUTH_FROM ?? "Outrival <auth@outrival.io>";
 // the `bgcolor` attribute (honored far more reliably than CSS background) carries
 // the dark surface; the color-scheme meta keeps supporting clients from inverting
 // colors in light mode. All auth emails share this shell.
-const BRAND = `<div style="font-size:22px;font-weight:700;letter-spacing:-0.02em;margin-bottom:40px;">
-        <span style="color:#fafafa;">out</span><span style="color:#f59e0b;">rival</span>
+// alt="" so an image-blocking client falls back to the wordmark text, not a
+// duplicated "Outrival". Hosted from the deployed web app (canonical domain).
+const BRAND = `<div style="margin-bottom:40px;">
+        <img src="https://outrival.app/logo-light.png" width="26" height="26" alt="" style="vertical-align:middle;border:0;outline:none;" />
+        <span style="font-size:22px;font-weight:700;letter-spacing:-0.02em;color:#fafafa;vertical-align:middle;padding-left:8px;">Outrival</span>
       </div>`;
 
 function renderShell(inner: string): string {
@@ -82,7 +85,7 @@ function renderSignInEmail(
         Or just click the button to sign in on this device:
       </p>
 
-      <a href="${linkUrl}" style="display:inline-block;background-color:#f59e0b;color:#0b0b0d;font-size:14px;font-weight:600;text-decoration:none;padding:12px 24px;border-radius:6px;">
+      <a href="${linkUrl}" style="display:inline-block;background-color:#6366f1;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:12px 24px;border-radius:6px;">
         Sign in to Outrival →
       </a>
 

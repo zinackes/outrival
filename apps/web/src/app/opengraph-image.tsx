@@ -26,13 +26,34 @@ export default function OgImage() {
         <div style={{ display: "flex", alignItems: "center" }}>
           <div
             style={{
-              width: 44,
-              height: 44,
-              borderRadius: 12,
-              background: "#6366f1",
+              position: "relative",
+              display: "flex",
+              width: 52,
+              height: 52,
               marginRight: 18,
             }}
-          />
+          >
+            <div
+              style={{
+                width: 52,
+                height: 52,
+                borderRadius: 26,
+                border: "7px solid #fafafa",
+              }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                top: 2,
+                right: 0,
+                width: 19,
+                height: 19,
+                borderRadius: 10,
+                background: "#6d5cff",
+                boxShadow: "0 0 14px 3px rgba(109,92,255,0.85)",
+              }}
+            />
+          </div>
           <div style={{ fontSize: 38, fontWeight: 700, letterSpacing: "-0.02em" }}>
             Outrival
           </div>

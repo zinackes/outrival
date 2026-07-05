@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/dashboard/theme-toggle";
+import { LogoMark } from "@/components/outrival/logo";
 import { useSession } from "@/lib/auth-client";
 
 const LINKS = [
@@ -41,7 +42,11 @@ export function Nav() {
   return (
     <nav className="fixed inset-x-0 top-0 z-50 border-b border-border/60 bg-background/85 backdrop-blur-sm">
       <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-6">
-        <a href="/" className="text-lg font-semibold tracking-tight">
+        <a
+          href="/"
+          className="inline-flex items-center gap-2 text-lg font-semibold tracking-tight"
+        >
+          <LogoMark size={26} />
           Out<span className="text-primary">rival</span>
         </a>
         <div className="hidden items-center gap-7 text-sm text-text-muted md:flex">

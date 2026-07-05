@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
 
-// Apple touch icon (iOS home screen). Same brand mark as app/icon.tsx on the
+// Apple touch icon (iOS home screen). Same orbit mark as app/icon.tsx on the
 // graphite surface, sized 180×180 (iOS rounds the corners itself).
 export const size = { width: 180, height: 180 };
 export const contentType = "image/png";
@@ -18,21 +18,27 @@ export default function AppleIcon() {
           background: "linear-gradient(135deg, #0b0b0d 0%, #16161a 100%)",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 132,
-            height: 132,
-            borderRadius: 30,
-            background: "#6366f1",
-            color: "#fafafa",
-            fontSize: 78,
-            fontWeight: 700,
-          }}
-        >
-          O
+        <div style={{ position: "relative", display: "flex", width: 118, height: 118 }}>
+          <div
+            style={{
+              width: 118,
+              height: 118,
+              borderRadius: 59,
+              border: "15px solid #f4f4f5",
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              top: 6,
+              right: 0,
+              width: 42,
+              height: 42,
+              borderRadius: 21,
+              background: "#6d5cff",
+              boxShadow: "0 0 18px 4px rgba(109,92,255,0.8)",
+            }}
+          />
         </div>
       </div>
     ),

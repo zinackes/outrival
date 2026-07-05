@@ -10,6 +10,7 @@ import { signIn } from "@/lib/auth-client";
 import { track, identifyUser } from "@/lib/posthog/events";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { LogoMark } from "@/components/outrival/logo";
 import { cn } from "@/lib/utils";
 
 const RESEND_COOLDOWN_SECONDS = 30;
@@ -270,10 +271,13 @@ export function AuthForm() {
         {/* Wordmark */}
         <Link
           href="/"
-          className="mx-auto block w-fit text-2xl font-semibold tracking-tight font-[var(--font-display)] transition-opacity hover:opacity-80"
+          className="mx-auto flex w-fit flex-col items-center gap-3 text-2xl font-semibold tracking-tight font-[var(--font-display)] transition-opacity hover:opacity-80"
         >
-          <span className="text-foreground">out</span>
-          <span className="text-primary">rival</span>
+          <LogoMark size={44} />
+          <span>
+            <span className="text-foreground">out</span>
+            <span className="text-primary">rival</span>
+          </span>
         </Link>
 
         {/* Card */}

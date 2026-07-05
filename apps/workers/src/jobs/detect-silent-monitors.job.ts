@@ -209,6 +209,6 @@ function silentEmailHtml(title: string, body: string, href: string): string {
   return darkEmailShell(
     `<h1 style="font-size:18px;color:#fff;margin:0 0 12px">${title}</h1>
       <p style="font-size:14px;line-height:1.6;color:#a3a3a3;margin:0 0 24px">${body}</p>
-      <a href="${href}" style="display:inline-block;background-color:#f59e0b;color:#0a0a0a;font-weight:600;font-size:14px;text-decoration:none;padding:10px 18px;border-radius:8px">Review the source</a>`,
+      <a href="${href}" style="display:inline-block;background-color:#6366f1;color:#ffffff;font-weight:600;font-size:14px;text-decoration:none;padding:10px 18px;border-radius:8px">Review the source</a>`,
   );
 }

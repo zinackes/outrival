@@ -45,7 +45,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SidebarCompetitors } from "@/components/dashboard/sidebar-competitors";
-import { UserAvatar } from "@/components/dashboard/user-avatar";
+import { LogoMark } from "@/components/outrival/logo";
 import { productsListQuery } from "@/lib/queries";
 import {
   ALL_PRODUCTS,
@@ -119,9 +119,10 @@ const BOTTOM_NAV: NavItem[] = [
 
 export function WorkspaceSwitcher({
   org,
-  user,
 }: {
   org: Org;
+  // Still threaded by AppSidebar; the switcher now leads with the brand mark
+  // instead of a per-user avatar, so the value is currently unused.
   user: SwitcherUser;
 }) {
   const { isMobile } = useSidebar();
@@ -191,11 +192,7 @@ export function WorkspaceSwitcher({
               tooltip={org.name}
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
-              <UserAvatar
-                seed={user.email ?? user.name ?? "user"}
-                size={32}
-                className="rounded-md"
-              />
+              <LogoMark size={30} />
               {multiProduct ? (
                 // Product is the primary context; org/plan drops to the muted sub-line.
                 <div className="grid flex-1 text-left leading-tight">
@@ -214,12 +211,8 @@ export function WorkspaceSwitcher({
                 </div>
               ) : (
                 <div className="grid flex-1 text-left leading-tight">
-                  <span
-                    className="truncate text-sm font-bold"
-                    style={{ fontFamily: "var(--font-display)" }}
-                  >
-                    <span className="text-muted-foreground">Out</span>
-                    <span className="text-foreground">rival</span>
+                  <span className="truncate text-sm font-semibold text-foreground">
+                    {org.name}
                   </span>
                   {meta && (
                     <span className="truncate text-meta text-[var(--muted-2)]">

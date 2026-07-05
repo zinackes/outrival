@@ -84,7 +84,7 @@ export async function notifyStructuralChange(structuralChangeId: string): Promis
   <h2 style="margin: 0 0 12px; font-family: Syne, sans-serif; color: #fafafa;">${escapeHtml(competitor.name)}</h2>
   <p style="margin: 0 0 12px;">${label}</p>
   ${summary ? `<p style="color: #d4d4d4; margin: 0 0 16px;">${escapeHtml(summary)}</p>` : ""}
-  <a href="${linkUrl}" style="color: #f59e0b;">Open your dashboard to decide what to do →</a>`,
+  <a href="${linkUrl}" style="color: #818cf8;">Open your dashboard to decide what to do →</a>`,
   );
 
   try {

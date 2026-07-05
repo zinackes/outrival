@@ -20,6 +20,12 @@ export function darkEmailShell(inner: string, maxWidthPx = 520): string {
         <table role="presentation" width="${maxWidthPx}" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:${maxWidthPx}px;">
           <tr>
             <td style="color:#fafafa;font-family:Inter,sans-serif;text-align:left;">
+              <div style="margin-bottom:28px;">
+                <a href="https://outrival.app" style="text-decoration:none;">
+                  <img src="https://outrival.app/logo-light.png" width="24" height="24" alt="" style="vertical-align:middle;border:0;outline:none;" />
+                  <span style="font-size:18px;font-weight:600;letter-spacing:-0.01em;color:#fafafa;vertical-align:middle;padding-left:8px;">Outrival</span>
+                </a>
+              </div>
               ${inner}
             </td>
           </tr>

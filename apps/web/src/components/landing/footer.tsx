@@ -48,7 +48,7 @@ export function Footer() {
               head="Product"
               links={[
                 { label: "Sources", href: "/#sources" },
-                { label: "Pipeline", href: "/#pipeline" },
+                { label: "Product", href: "/#product" },
                 { label: "Signals", href: "/#signals" },
                 { label: "Compare", href: "/#compare" },
                 { label: "Pricing", href: "/#pricing" },

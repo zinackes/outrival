@@ -18,7 +18,11 @@ export type FilteredReason =
   | "below_threshold"
   | "quiet_hours"
   | "frequency_cap"
-  | "channel_muted";
+  | "channel_muted"
+  // L2 archive backfill: an archive-derived signal never pages the user (in-app
+  // only). Stamped by generate-signal, not decided here — the dispatcher is
+  // bypassed for backfill.
+  | "backfill";
 
 export interface NotificationContext {
   signalId?: string;

@@ -30,6 +30,12 @@ export const snapshots = pgTable("snapshots", {
   // Char length of the extracted visible content (patch-17): feeds the anti-void
   // median guard. Populated on every snapshot post-patch; null for older rows.
   contentSize: integer("content_size"),
+  // Provenance (L2 archive backfill). "live" = captured by our scraper cascade;
+  // "archive" = reconstructed from the Wayback Machine at onboarding to bootstrap
+  // day-0 change value. Archive rows carry a backdated scrapedAt (the capture time)
+  // and are invisible to normal latest-snapshot diffing (older than any live row);
+  // generate-signal reads it to keep an archive-derived signal in-app only.
+  origin: text("origin").notNull().default("live"),
 }, (t) => [
   // Every scrape fetches the previous snapshot: latest per monitor.
   index("snapshots_monitor_scraped_idx").on(t.monitorId, t.scrapedAt),

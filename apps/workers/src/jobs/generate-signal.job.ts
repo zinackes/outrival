@@ -4,6 +4,7 @@ import { and, eq, ne } from "drizzle-orm";
 import {
   db,
   changes,
+  snapshots,
   monitors,
   competitors,
   products,
@@ -72,6 +73,20 @@ export const generateSignalJob = task({
     });
     if (!change) throw new AbortTaskRunError(`Change ${input.changeId} not found`);
     if (!change.diffText) throw new AbortTaskRunError("Change has no diffText");
+
+    // L2 archive backfill: a change whose "before" snapshot is a Wayback capture is
+    // a real historical move surfaced at day 0. It must NEVER email/Slack (the user
+    // didn't ask to be paged for the past) — it stays in-app only, stamped
+    // filtered_reason='backfill', bypassing the dispatcher entirely (so it also
+    // doesn't consume the daily email cap). The badge is derived from that reason.
+    let isBackfill = false;
+    if (change.snapshotBeforeId) {
+      const before = await db.query.snapshots.findFirst({
+        where: eq(snapshots.id, change.snapshotBeforeId),
+        columns: { origin: true },
+      });
+      isBackfill = before?.origin === "archive";
+    }
 
     const monitor = await db.query.monitors.findFirst({
       where: eq(monitors.id, change.monitorId),
@@ -269,14 +284,17 @@ export const generateSignalJob = task({
     // Notification moderation (patch-26): the dispatcher decides how this signal is
     // delivered — an immediate email, a deferred digest, or dropped. Critical
     // bypasses every filter. The decision is stamped on the signal so the feed,
-    // the digest jobs, and the ops metrics can read it.
-    const decision = await decideDispatch(competitor.orgId, {
-      signalId: newSignal.id,
-      severity,
-      relevanceScore: newSignal.relevanceScore,
-      competitorId: competitor.id,
-      category,
-    });
+    // the digest jobs, and the ops metrics can read it. Backfill signals skip the
+    // dispatcher outright (in-app only, see above).
+    const decision = isBackfill
+      ? ({ send: false, channel: "in_app_only", filteredReason: "backfill" } as const)
+      : await decideDispatch(competitor.orgId, {
+          signalId: newSignal.id,
+          severity,
+          relevanceScore: newSignal.relevanceScore,
+          competitorId: competitor.id,
+          category,
+        });
     await db
       .update(signals)
       .set({

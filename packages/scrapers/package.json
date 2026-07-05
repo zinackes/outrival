@@ -23,6 +23,10 @@
       "types": "./src/pricing/index.ts",
       "default": "./src/pricing/index.ts"
     },
+    "./backfill": {
+      "types": "./src/backfill/wayback.ts",
+      "default": "./src/backfill/wayback.ts"
+    },
     "./extract": {
       "types": "./src/lib/extract-content.ts",
       "default": "./src/lib/extract-content.ts"

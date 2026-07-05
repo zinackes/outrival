@@ -22,21 +22,13 @@ import { AiStatusBanner } from "@/components/outrival/ai-status-banner";
 import { normalizeScope, PRODUCT_COOKIE } from "@/lib/product-scope";
 import { TwoFactorNudgeBanner } from "@/components/outrival/two-factor-nudge-banner";
 import { StructuralChangeBanner } from "@/components/outrival/structural-change-banner";
+import { getServerSession } from "@/lib/server-session";
 import type { OnboardingSession } from "@/lib/api";
 
 export const metadata: Metadata = {
   title: "Dashboard",
   robots: { index: false, follow: false },
 };
-
-async function getSession(h: Headers) {
-  const res = await fetch(
-    `${process.env.NEXT_PUBLIC_API_URL}/api/auth/get-session`,
-    { headers: h, cache: "no-store" },
-  );
-  if (!res.ok) return null;
-  return res.json();
-}
 
 async function getOnboardingStatus(
   h: Headers,
@@ -98,7 +90,7 @@ export default async function DashboardLayout({
   const cookieStore = await cookies();
 
   const [session, status, billing, resumeSession, shell] = await Promise.all([
-    getSession(h),
+    getServerSession(h),
     getOnboardingStatus(h),
     getBilling(h),
     getResumeSession(h),

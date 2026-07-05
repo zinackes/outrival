@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
+import { getServerSession } from "@/lib/server-session";
 
 export const metadata: Metadata = {
   title: "Sign in",
@@ -12,21 +13,12 @@ export const metadata: Metadata = {
   },
 };
 
-async function getSession(h: Headers) {
-  const res = await fetch(
-    `${process.env.NEXT_PUBLIC_API_URL}/api/auth/get-session`,
-    { headers: h, cache: "no-store" },
-  );
-  if (!res.ok) return null;
-  return res.json();
-}
-
 export default async function AuthLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const session = await getSession(await headers());
+  const session = await getServerSession(await headers());
   if (session) redirect("/dashboard");
 
   return children;

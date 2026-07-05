@@ -496,7 +496,6 @@ export function SignalCard({
             </DropdownMenuContent>
           </DropdownMenu>
           <span className="w-px h-3 bg-border" />
-          <span className="text-xs text-muted-foreground">Helpful?</span>
           <FeedbackButtons
             targetType="signal"
             targetId={signal.id}

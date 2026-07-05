@@ -45,6 +45,7 @@ export function SignalRow({
   onSelect,
   tabStop = false,
   onFocus,
+  selecting = false,
 }: {
   signal: Signal;
   selected: boolean;
@@ -53,6 +54,10 @@ export function SignalRow({
   // the rest are -1 (still programmatically focusable by the arrow/j-k handler).
   tabStop?: boolean;
   onFocus?: () => void;
+  // The selection checkbox occupies this row's severity-icon slot (row hover, or a
+  // live selection). Fade the icon out underneath so the two never overlap — the
+  // slot is reused instead of reserving a permanent empty gutter left of the list.
+  selecting?: boolean;
 }) {
   const sev = signal.severityOverride ?? signal.severity;
   const Icon = SEV_ICON[sev];
@@ -79,7 +84,11 @@ export function SignalRow({
     >
       <Icon
         size={15}
-        className={cn("mt-0.5 shrink-0", SEV_TEXT[sev])}
+        className={cn(
+          "mt-0.5 shrink-0 transition-opacity group-hover/row:opacity-0",
+          selecting && "opacity-0",
+          SEV_TEXT[sev],
+        )}
         aria-label={`${sev} severity`}
       />
 

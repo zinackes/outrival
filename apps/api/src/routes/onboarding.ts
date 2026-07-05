@@ -827,6 +827,18 @@ onboardingRouter.post("/complete", async (c) => {
     }
   }
 
+  // Welcome digest (Lever 5 brick 1): "here's your starting position". Idempotency-keyed
+  // per org so a re-run of /complete doesn't double-send. Best-effort.
+  try {
+    await tasks.trigger(
+      "send-welcome-digest",
+      { orgId },
+      { idempotencyKey: `welcome-digest-${orgId}` },
+    );
+  } catch (e) {
+    console.error("Failed to trigger welcome digest", { orgId, error: String(e) });
+  }
+
   void captureServerEvent(user.id, "onboarding_completed", {
     competitorsCreated: created.length,
     sources: monitoringPrefs.sources,

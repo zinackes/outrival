@@ -114,6 +114,11 @@ export const aiVisibilityTeaser = defineJob<OrgRefPayload>("ai-visibility-teaser
   retryLimit: 0,
   expireInSeconds: 120,
 });
+// Lever 5 brick 1 — D0 welcome digest, event-triggered from onboarding/complete.
+export const sendWelcomeDigest = defineJob<OrgRefPayload>("send-welcome-digest", {
+  retryLimit: 0,
+  expireInSeconds: 60,
+});
 export const generateBattleCard = defineJob<GenerateBattleCardPayload>("generate-battle-card", {
   expireInSeconds: 180, // browser (PDF via Playwright) — browser worker
 });

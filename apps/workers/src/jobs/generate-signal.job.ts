@@ -1,6 +1,6 @@
 import { task, logger, tasks, AbortTaskRunError } from "@trigger.dev/sdk/v3";
 import { z } from "zod";
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, ne, or, isNull } from "drizzle-orm";
 import {
   db,
   changes,
@@ -25,9 +25,15 @@ import {
   toMyProductContext,
 } from "@outrival/ai";
 import type { StructuredChange } from "@outrival/scrapers/homepage-diff";
-import { PLAN_LIMITS, PRICING_STATUSES, PRICING_STATUS_LABELS } from "@outrival/shared";
+import {
+  PLAN_LIMITS,
+  PRICING_STATUSES,
+  PRICING_STATUS_LABELS,
+  renderCelebrationEmail,
+} from "@outrival/shared";
 import { insertSignalFeed, logAiRun } from "../lib/analytics";
 import { captureWorkerEvent, shutdownPostHog } from "../lib/posthog";
+import { getResend, ALERT_FROM } from "../lib/resend";
 import { groqQueue } from "../lib/queues";
 import { decideDispatch } from "../lib/notification-dispatcher";
 
@@ -323,6 +329,44 @@ export const generateSignalJob = task({
         channel: decision.channel,
         reason: decision.filteredReason ?? null,
       });
+    }
+
+    // First-change celebration (Lever 5) — "Your monitoring just paid off". The single
+    // most important lifecycle email, so it's strict: fires ONCE per org, on the first
+    // LIVE change only. NEVER for a backfill/archive signal (celebrating reconstructed
+    // history is hollow — the monitoring didn't catch anything live). Best-effort.
+    if (!isBackfill && org?.digestEmail) {
+      try {
+        const priorLive = await db.query.signals.findFirst({
+          where: and(
+            eq(signals.orgId, competitor.orgId),
+            ne(signals.id, newSignal.id),
+            // A live signal = anything not stamped 'backfill' (null reason = sent live;
+            // quiet_hours/cap = live but held). IS DISTINCT FROM, so NULLs count.
+            or(isNull(signals.filteredReason), ne(signals.filteredReason, "backfill")),
+          ),
+          columns: { id: true },
+        });
+        if (!priorLive) {
+          const webUrl = process.env.WEB_URL ?? "https://outrival.app";
+          const email = renderCelebrationEmail({
+            competitorName: competitor.name,
+            category,
+            insight: insight.insight,
+            soWhat: insight.so_what,
+            signalUrl: `${webUrl}/dashboard/signals`,
+          });
+          await getResend().emails.send({
+            from: ALERT_FROM,
+            to: org.digestEmail,
+            subject: email.subject,
+            html: email.html,
+          });
+          logger.log("First-change celebration sent", { orgId: competitor.orgId });
+        }
+      } catch (err) {
+        logger.warn("Celebration email failed (non-fatal)", { error: String(err) });
+      }
     }
 
     const orgOwner = await db.query.users.findFirst({

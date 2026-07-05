@@ -12,6 +12,7 @@ import {
 import { extractAiVisibility, AI_CONFIG } from "@outrival/ai";
 import { queryEngine, type Engine } from "../lib/ai-visibility/engines";
 import { aggregate } from "../lib/ai-visibility/diff";
+import { buildVisibilityPromptInput, seedVisibilityPrompts } from "../lib/ai-visibility/seed";
 import { loggedAi } from "../lib/analytics";
 
 // AI Visibility onboarding TEASER (Lever 7, docs/post-onboarding-activation.md). A
@@ -24,18 +25,6 @@ import { loggedAi } from "../lib/analytics";
 const InputSchema = z.object({ orgId: z.string() });
 
 const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
-
-// ≤3 buyer-intent prompts from the product's category (mirrors the tracked feature's
-// defaultPrompts, capped tighter — the teaser spends at most 3 free grounded queries).
-function teaserPrompts(selfName: string | null, category: string | null): string[] {
-  const out: string[] = [];
-  if (category) {
-    out.push(`best ${category} tools`, `top ${category} software`, `${category} software comparison`);
-  } else if (selfName) {
-    out.push(`best alternatives to ${selfName}`, `tools like ${selfName}`);
-  }
-  return [...new Set(out)];
-}
 
 export const aiVisibilityTeaserJob = task({
   id: "ai-visibility-teaser",
@@ -106,7 +95,7 @@ export const aiVisibilityTeaserJob = task({
       const self = product
         ? await db.query.competitors.findFirst({
             where: and(eq(competitors.id, product.selfCompetitorId), isNull(competitors.deletedAt)),
-            columns: { id: true, name: true, category: true },
+            columns: { id: true, name: true, category: true, selfProfile: true },
           })
         : null;
       const rivals = product
@@ -126,7 +115,8 @@ export const aiVisibilityTeaserJob = task({
       }
 
       const maxPrompts = Number(process.env.AI_VISIBILITY_TEASER_MAX_PROMPTS ?? 3);
-      const prompts = teaserPrompts(self.name, self.category).slice(0, maxPrompts);
+      const promptInput = buildVisibilityPromptInput(self, rivals.map((r) => r.name));
+      const prompts = await seedVisibilityPrompts(promptInput, maxPrompts);
       if (prompts.length === 0) {
         await writeTeaser("unavailable", engine, null);
         return { skipped: "no_prompts" };

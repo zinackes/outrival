@@ -3,9 +3,16 @@ import { z } from "zod";
 import { and, desc, eq, gte, isNull, lt } from "drizzle-orm";
 import { digests, signals, competitors, organizations } from "@outrival/db";
 import { generateDigest, toMyProductContext, type DigestInputSignal } from "@outrival/ai";
+import {
+  renderDigestEmail,
+  signDigestFeedbackToken,
+  signUnsubscribeToken,
+  type DigestEmailData,
+} from "@outrival/shared";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
+import { getResend, ALERT_FROM } from "../lib/resend";
 
 type Variables = { user: { id: string } };
 
@@ -49,10 +56,11 @@ digestsRouter.get("/", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
 
+  // Both weekly + daily records, newest first. The client tabs by `period`.
   const list = await db.query.digests.findMany({
     where: eq(digests.orgId, orgId),
-    orderBy: desc(digests.weekStart),
-    limit: 50,
+    orderBy: desc(digests.createdAt),
+    limit: 100,
   });
   return c.json({ digests: list });
 });
@@ -117,12 +125,13 @@ digestsRouter.post("/generate", async (c) => {
   const weekStart = isoDate(start);
   const weekEnd = isoDate(end);
 
-  // Reuse an existing unsent preview for the same window (re-click = refresh);
-  // never clobber a digest the cron already sent.
+  // Reuse an existing unsent weekly preview for the same window (re-click = refresh);
+  // never clobber a digest the cron already sent, and never match a daily row.
   const existing = await db.query.digests.findFirst({
     where: and(
       eq(digests.orgId, orgId),
       eq(digests.weekStart, weekStart),
+      eq(digests.period, "weekly"),
       isNull(digests.sentAt),
     ),
   });
@@ -141,6 +150,7 @@ digestsRouter.post("/generate", async (c) => {
           weekEnd,
           content,
           temperature: content.temperature,
+          period: "weekly",
         })
         .returning();
 
@@ -158,4 +168,84 @@ digestsRouter.get("/:id", async (c) => {
   if (!digest) return c.json({ error: "Not found" }, 404);
 
   return c.json({ digest });
+});
+
+// Send (or resend) this digest by email on demand. The weekly cron auto-sends on
+// Monday; this gives the user an explicit "Send by email" / "Resend" action from
+// the reader so a preview — or an already-sent digest — can be delivered now.
+digestsRouter.post("/:id/send", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const id = c.req.param("id");
+
+  const digest = await db.query.digests.findFirst({
+    where: and(eq(digests.id, id), eq(digests.orgId, orgId)),
+  });
+  if (!digest) return c.json({ error: "Not found" }, 404);
+
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, orgId),
+    columns: { digestEmail: true },
+  });
+  const to = org?.digestEmail;
+  if (!to) return c.json({ error: "no_recipient" }, 400);
+
+  const isDaily = digest.period === "daily";
+
+  // One-click feedback + unsubscribe links, signed so the email needs no session
+  // (patch-21). Degrades to no links when the secret / API base isn't configured.
+  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? process.env.BETTER_AUTH_URL ?? "";
+  const secret = process.env.BETTER_AUTH_SECRET ?? "";
+  const links = apiBase && secret;
+  const feedbackLinks = links
+    ? {
+        useful: `${apiBase}/api/digest-feedback?token=${signDigestFeedbackToken(
+          { orgId, digestId: digest.id, verdict: "useful" },
+          secret,
+        )}`,
+        notUseful: `${apiBase}/api/digest-feedback?token=${signDigestFeedbackToken(
+          { orgId, digestId: digest.id, verdict: "not_useful" },
+          secret,
+        )}`,
+      }
+    : undefined;
+  const unsubscribeUrl = links
+    ? `${apiBase}/api/digest-feedback/unsubscribe?token=${signUnsubscribeToken(orgId, secret)}`
+    : undefined;
+
+  const html = renderDigestEmail(
+    digest.content as DigestEmailData,
+    digest.weekStart,
+    digest.weekEnd,
+    feedbackLinks,
+    unsubscribeUrl,
+    isDaily ? "Your daily competitive briefing" : "Your weekly competitive briefing",
+  );
+
+  try {
+    await getResend().emails.send({
+      from: ALERT_FROM,
+      to,
+      subject: isDaily
+        ? "Your Daily Competitive Briefing"
+        : `Your Weekly Competitive Briefing — week of ${digest.weekStart}`,
+      html,
+      ...(unsubscribeUrl
+        ? {
+            headers: {
+              "List-Unsubscribe": `<${unsubscribeUrl}>`,
+              "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+            },
+          }
+        : {}),
+    });
+  } catch (err) {
+    console.error("Digest send failed", { orgId, digestId: digest.id, err: String(err) });
+    return c.json({ error: "send_failed" }, 502);
+  }
+
+  const sentAt = new Date();
+  await db.update(digests).set({ sentAt }).where(eq(digests.id, digest.id));
+
+  return c.json({ ok: true, sentAt: sentAt.toISOString() });
 });

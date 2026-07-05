@@ -87,11 +87,19 @@ export function competitorDetailQuery(id: string) {
   });
 }
 
-// Weekly digests list.
+// Digests list (weekly + daily records).
 export function digestsQuery() {
   return queryOptions({
     queryKey: ["digests"] as const,
     queryFn: () => api.listDigests().then((r) => r.digests),
+  });
+}
+
+// Single digest — backs the /dashboard/digests/[id] reader route.
+export function digestDetailQuery(id: string) {
+  return queryOptions({
+    queryKey: ["digest", id] as const,
+    queryFn: () => api.getDigest(id).then((r) => r.digest),
   });
 }
 

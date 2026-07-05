@@ -69,6 +69,7 @@ export const generateWeeklyDigestJob = schedules.task({
         where: and(
           eq(digests.orgId, org.id),
           eq(digests.weekStart, isoDate(weekStart)),
+          eq(digests.period, "weekly"),
         ),
       });
       if (existing?.sentAt) {
@@ -166,6 +167,7 @@ export const generateWeeklyDigestJob = schedules.task({
               weekEnd: isoDate(weekEnd),
               content: digest,
               temperature: digest.temperature,
+              period: "weekly",
             })
             .returning();
       if (!stored) {

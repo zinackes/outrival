@@ -6,6 +6,7 @@ import {
   orgNotificationPreferences,
   signals,
   competitors,
+  digests,
 } from "@outrival/db";
 import { signUnsubscribeToken } from "@outrival/shared";
 import { getResend, ALERT_FROM } from "../lib/resend";
@@ -19,6 +20,48 @@ const SEVERITY_EMOJI: Record<string, string> = {
   medium: "🟡",
   low: "🟢",
 };
+
+function isoDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+type DeferredSignal = {
+  severity: string;
+  category: string;
+  insight: string;
+  soWhat: string | null;
+  competitorName: string;
+};
+
+// Map a signal's severity to the digest reader's urgency buckets (action_required
+// / watch / fyi) so a persisted daily digest renders through the same UI + email
+// template as the weekly one. No AI call — daily digests stay free.
+function severityToUrgency(severity: string): "action_required" | "watch" | "fyi" {
+  if (severity === "critical" || severity === "high") return "action_required";
+  if (severity === "medium") return "watch";
+  return "fyi";
+}
+
+function buildDailyDigestContent(deferred: DeferredSignal[]) {
+  const hasHigh = deferred.some(
+    (s) => s.severity === "critical" || s.severity === "high",
+  );
+  const hasMedium = deferred.some((s) => s.severity === "medium");
+  const temperature = hasHigh ? "high" : hasMedium ? "moderate" : "low";
+  return {
+    temperature,
+    tldr: [
+      `${deferred.length} competitor update${deferred.length > 1 ? "s" : ""} since your last briefing.`,
+    ],
+    sections: deferred.map((s) => ({
+      urgency: severityToUrgency(s.severity),
+      competitor: s.competitorName,
+      category: s.category,
+      insight: s.insight,
+      so_what: s.soWhat ?? "",
+    })),
+  };
+}
 
 // Patch-26: delivers the signals the dispatcher deferred to a daily digest
 // (high severity by default, plus anything pushed off an immediate email by quiet
@@ -133,15 +176,36 @@ export const generateDailyDigestJob = schedules.task({
         continue;
       }
 
+      const sentAt = new Date();
       await db
         .update(signals)
-        .set({ dailyDigestSentAt: new Date() })
+        .set({ dailyDigestSentAt: sentAt })
         .where(
           inArray(
             signals.id,
             deferred.map((s) => s.id),
           ),
         );
+
+      // Persist the sent daily briefing so it shows up in-app alongside the weekly
+      // digests (same reader UI). period="daily" keeps it out of the weekly cron's
+      // idempotency/finalize lookups. Best-effort — a failure here never blocks the
+      // send (the email already went out and the signals are stamped).
+      try {
+        const content = buildDailyDigestContent(deferred);
+        const day = isoDate(sentAt);
+        await db.insert(digests).values({
+          orgId: org.id,
+          weekStart: day,
+          weekEnd: day,
+          content,
+          temperature: content.temperature,
+          period: "daily",
+          sentAt,
+        });
+      } catch (err) {
+        logger.error("Daily digest persist failed", { orgId: org.id, err: String(err) });
+      }
       sent++;
     }
 

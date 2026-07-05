@@ -248,6 +248,15 @@ export async function getDigestsData(): Promise<Digest[] | null> {
 }
 
 /**
+ * Prefetch a single digest for the reader route. Best-effort: null → the reader's
+ * useQuery fetches client-side (and the page renders notFound on a hard miss).
+ */
+export async function getDigestDetailData(id: string): Promise<Digest | null> {
+  const r = await tryGet<{ digest: Digest }>(`/api/digests/${encodeURIComponent(id)}`);
+  return r?.digest ?? null;
+}
+
+/**
  * Prefetch the sectoral feed's default page (no category, active view) — must
  * match SectoralFeed's initial fetch (limit 25). Best-effort: null → the feed
  * falls back to its own client fetch. Pagination + filters stay client-side.

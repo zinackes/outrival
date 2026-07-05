@@ -22,7 +22,7 @@ import { AiStatusBanner } from "@/components/outrival/ai-status-banner";
 import { normalizeScope, PRODUCT_COOKIE } from "@/lib/product-scope";
 import { TwoFactorNudgeBanner } from "@/components/outrival/two-factor-nudge-banner";
 import { StructuralChangeBanner } from "@/components/outrival/structural-change-banner";
-import { getServerSession } from "@/lib/server-session";
+import { getServerSession, getServerJson } from "@/lib/server-session";
 import type { OnboardingSession } from "@/lib/api";
 
 export const metadata: Metadata = {
@@ -30,6 +30,9 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
+// Resilient (retries transient failures) — this read GATES the onboarding
+// redirect, so a single cold-Neon/API hiccup misreading it as null would
+// fail-open and drop a brand-new, un-onboarded user straight onto the dashboard.
 async function getOnboardingStatus(
   h: Headers,
 ): Promise<{
@@ -37,12 +40,7 @@ async function getOnboardingStatus(
   onboardingSkipped: boolean;
   profile: unknown;
 } | null> {
-  const res = await fetch(
-    `${process.env.NEXT_PUBLIC_API_URL}/api/onboarding/status`,
-    { headers: h, cache: "no-store" },
-  );
-  if (!res.ok) return null;
-  return res.json();
+  return getServerJson("/api/onboarding/status", h);
 }
 
 async function getResumeSession(

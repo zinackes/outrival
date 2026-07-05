@@ -7,7 +7,7 @@ import type {
   ProjectStage,
 } from "@/lib/api";
 import type { Plan } from "@outrival/shared";
-import { getServerSession } from "@/lib/server-session";
+import { getServerSession, getServerJson } from "@/lib/server-session";
 import { OnboardingForm } from "./onboarding-form";
 
 export const metadata: Metadata = {
@@ -25,12 +25,7 @@ interface Status {
 }
 
 async function getOnboardingStatus(h: Headers): Promise<Status | null> {
-  const res = await fetch(
-    `${process.env.NEXT_PUBLIC_API_URL}/api/onboarding/status`,
-    { headers: h, cache: "no-store" },
-  );
-  if (!res.ok) return null;
-  return res.json();
+  return getServerJson<Status>("/api/onboarding/status", h);
 }
 
 export default async function OnboardingPage() {

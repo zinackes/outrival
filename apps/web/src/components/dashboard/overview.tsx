@@ -26,6 +26,7 @@ import { SeverityBadge } from "./severity-pill";
 import { CatPill } from "./cat-pill";
 import { OnboardingChecklistCard } from "./onboarding-checklist";
 import { LandscapeSection } from "./landscape";
+import { ShareSnapshotButton } from "./share-snapshot-button";
 import { EmptyState } from "./empty-state";
 import { SampleBanner } from "./sample-banner";
 import { useSampleMode } from "@/hooks/use-sample-mode";
@@ -289,6 +290,9 @@ export function OverviewView() {
             >
               <Download size={13} /> Export
             </Button>
+            {/* Always-available entry to the public "Competitive Snapshot Report"
+                (Lever 8) — not just the day-0 landscape. */}
+            {!sample && <ShareSnapshotButton productId={productId} />}
           </>
         }
       />

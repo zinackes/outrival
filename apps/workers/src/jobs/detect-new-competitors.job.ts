@@ -1,4 +1,4 @@
-import { schedules, logger } from "@trigger.dev/sdk/v3";
+import { task, logger } from "@trigger.dev/sdk/v3";
 import { and, asc, desc, eq, isNull, ne } from "drizzle-orm";
 import {
   db,
@@ -31,9 +31,8 @@ function normalizeHostname(url: string | null | undefined): string | null {
   }
 }
 
-export const detectNewCompetitorsJob = schedules.task({
+export const detectNewCompetitorsJob = task({
   id: "detect-new-competitors",
-  cron: "0 20 * * 0",
   maxDuration: 600,
 
   async run() {

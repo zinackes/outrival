@@ -1,4 +1,4 @@
-import { schedules, logger } from "@trigger.dev/sdk/v3";
+import { task, logger } from "@trigger.dev/sdk/v3";
 import { and, eq, ne, gte, isNull, sql } from "drizzle-orm";
 import {
   db,
@@ -34,11 +34,8 @@ interface SilentMonitor {
   daysSilent: number;
 }
 
-export const detectSilentMonitorsJob = schedules.task({
+export const detectSilentMonitorsJob = task({
   id: "detect-silent-monitors",
-  // Schedule disabled to fit Trigger's free-plan 10-schedule cap (we have 15).
-  // Re-enable (uncomment) on a paid plan. Task still runs if triggered manually.
-  // cron: "0 8 * * *",
   maxDuration: 300,
 
   async run() {

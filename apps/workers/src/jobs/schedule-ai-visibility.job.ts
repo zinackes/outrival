@@ -1,4 +1,4 @@
-import { schedules, logger, tasks } from "@trigger.dev/sdk/v3";
+import { task, logger, tasks } from "@trigger.dev/sdk/v3";
 import { eq, inArray, sql } from "drizzle-orm";
 import { db, organizations, aiVisibilityPrompts, aiVisibilityResults } from "@outrival/db";
 import { PLAN_LIMITS, type Plan } from "@outrival/shared";
@@ -9,13 +9,8 @@ import { PLAN_LIMITS, type Plan } from "@outrival/shared";
 // seeds prompts, this set is empty, so nothing auto-runs and no cost is incurred), and
 // (c) are due (no results within AI_VISIBILITY_INTERVAL_DAYS). Cadence lives on the
 // last recorded_at in ai_visibility_results, not on a monitor row.
-export const scheduleAiVisibilityJob = schedules.task({
+export const scheduleAiVisibilityJob = task({
   id: "schedule-ai-visibility",
-  // Cron-less: the Trigger.dev account is at its 10/10 declarative-schedule cap, so
-  // this ships dormant (on-demand only) — matching how v20260630.3 first deployed.
-  // It no-ops anyway until PERPLEXITY_API_KEY is set and orgs seed active prompts.
-  // Re-enable this cron once a slot frees (delete an unused schedule) or the plan
-  // is upgraded: cron: "0 7 * * 1" (Mondays 07:00 UTC).
   maxDuration: 120,
 
   async run() {

@@ -9,9 +9,7 @@ import { redis, sendSlackMessage } from "@outrival/shared";
 // sendSlackMessage is silent when the webhook is unset/down.
 export const aiCapacityCheckJob = schedules.task({
   id: "ai-capacity-check",
-  // Schedule disabled to fit Trigger's free-plan 10-schedule cap (we have 15).
-  // Re-enable (uncomment) on a paid plan. Task still runs if triggered manually.
-  // cron: "*/30 * * * *",
+  cron: "*/30 * * * *",
   maxDuration: 60,
 
   async run() {

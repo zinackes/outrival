@@ -1,4 +1,4 @@
-import { schedules, logger } from "@trigger.dev/sdk/v3";
+import { task, logger } from "@trigger.dev/sdk/v3";
 import { and, eq, isNotNull } from "drizzle-orm";
 import { db, qualityFeedback, signals, orgRelevanceThreshold } from "@outrival/db";
 
@@ -17,9 +17,8 @@ function average(xs: number[]): number {
 // relevance of "useful" and "not_useful" signals. Needs enough data on both sides;
 // clamped to [0.2, 0.8] to avoid extremes. Orgs without enough feedback keep the
 // default 0.5.
-export const relevanceThresholdRecalculationJob = schedules.task({
+export const relevanceThresholdRecalculationJob = task({
   id: "relevance-threshold-recalculation",
-  cron: "0 3 * * 0", // Sundays 03:00 UTC
   maxDuration: 300,
   retry: { maxAttempts: 3, minTimeoutInMs: 5_000, maxTimeoutInMs: 60_000, factor: 2 },
 

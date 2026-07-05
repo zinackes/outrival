@@ -1,4 +1,4 @@
-import { schedules, logger } from "@trigger.dev/sdk/v3";
+import { task, logger } from "@trigger.dev/sdk/v3";
 import { and, eq, gte, sql } from "drizzle-orm";
 import { db, qualityFeedback } from "@outrival/db";
 import { sendSlackMessage } from "@outrival/shared";
@@ -78,11 +78,8 @@ async function computeFeedbackPatterns(days: number): Promise<FeedbackPattern[]>
   }));
 }
 
-export const feedbackPatternDetectionJob = schedules.task({
+export const feedbackPatternDetectionJob = task({
   id: "feedback-pattern-detection",
-  // Schedule disabled to fit Trigger's free-plan 10-schedule cap (we have 15).
-  // Re-enable (uncomment) on a paid plan. Task still runs if triggered manually.
-  // cron: "0 9 * * 1", // Mondays 09:00 UTC
   maxDuration: 120,
 
   async run() {

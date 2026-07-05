@@ -1,4 +1,4 @@
-import { schedules, logger, tasks } from "@trigger.dev/sdk/v3";
+import { task, logger, tasks } from "@trigger.dev/sdk/v3";
 import { and, isNull, isNotNull, lte, ne, or } from "drizzle-orm";
 import { db, competitors } from "@outrival/db";
 import { TECH_STACK_SCRAPE_INTERVAL_DAYS } from "@outrival/shared";
@@ -8,9 +8,8 @@ import { TECH_STACK_SCRAPE_INTERVAL_DAYS } from "@outrival/shared";
 // TECH_STACK_SCRAPE_INTERVAL_DAYS) — the per-competitor cadence lives on
 // competitors.techStackScrapedAt, NOT on a monitor row, so this never touches the
 // homepage scrape-monitor pipeline. Self-product (type="self") is excluded.
-export const scheduleTechStackJob = schedules.task({
+export const scheduleTechStackJob = task({
   id: "schedule-tech-stack",
-  cron: "0 6 * * *",
   maxDuration: 120,
 
   async run() {

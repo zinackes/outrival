@@ -9,6 +9,7 @@ import {
   MessageSquare,
   Sparkles,
   ChevronDown,
+  Archive,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
@@ -265,6 +266,22 @@ export function SignalCard({
             Solid severity badge, matching the Overview's "Recent signals" list. */}
         <SeverityBadge severity={signal.severityOverride ?? signal.severity} />
         <CatPill size="compact">{signal.category}</CatPill>
+        {/* Provenance (L2): this signal was reconstructed from the web archive at
+            onboarding, not caught live — a visible badge, not a footnote. */}
+        {signal.filteredReason === "backfill" && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-meta font-medium text-muted-foreground">
+                <Archive className="size-3" />
+                From archive
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              Reconstructed from the web archive — this change happened before we
+              started monitoring, so it wasn&apos;t sent as an alert.
+            </TooltipContent>
+          </Tooltip>
+        )}
         <span className="w-px h-3 bg-border" />
         <Link
           href={`/dashboard/competitors/${signal.competitorId}`}
@@ -433,18 +450,9 @@ export function SignalCard({
           />
           <ConfidenceDot confidence={signal.aiConfidence ?? "high"} />
           <ThreatMeter score={signal.threatScore} />
-          {signal.filteredReason === "backfill" ? (
-            // L2: an archive-derived change surfaced at day 0 — not a suppression.
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="shrink-0 text-xs text-muted-foreground">· From archive</span>
-              </TooltipTrigger>
-              <TooltipContent>
-                Reconstructed from the web archive — this change happened before we
-                started monitoring, so it wasn&apos;t sent as an alert.
-              </TooltipContent>
-            </Tooltip>
-          ) : signal.filteredReason ? (
+          {/* Backfill provenance moved to a header badge; the footer keeps the
+              quiet "held back" note for genuine moderation suppressions. */}
+          {signal.filteredReason && signal.filteredReason !== "backfill" && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <span className="shrink-0 text-xs text-muted-foreground">· Held back</span>
@@ -455,7 +463,7 @@ export function SignalCard({
                   signal.filteredReason.replace(/_/g, " ")}
               </TooltipContent>
             </Tooltip>
-          ) : null}
+          )}
         </div>
         {/* Action cluster — what to do with the signal. */}
         <div className="flex flex-wrap items-center gap-1.5">

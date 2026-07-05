@@ -6,6 +6,7 @@ import {
   AlertCircle,
   ArrowDownRight,
   Layers,
+  Archive,
   type LucideIcon,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
@@ -103,6 +104,14 @@ export function SignalRow({
             {signal.competitorName}
           </span>
           <CatPill size="compact">{signal.category}</CatPill>
+          {/* L2 provenance marker — this row was reconstructed from the web archive. */}
+          {signal.filteredReason === "backfill" && (
+            <Archive
+              size={12}
+              className="shrink-0 text-muted-foreground"
+              aria-label="From archive"
+            />
+          )}
         </span>
         <span
           className={cn(

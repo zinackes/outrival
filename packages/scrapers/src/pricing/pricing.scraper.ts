@@ -12,8 +12,15 @@ export async function scrape(
   const knownLevel = options.knownLevel;
   // Pricing tables are commonly lazy-mounted / scroll-revealed (Framer `whileInView`
   // & co), so always scroll to reveal them before capture — on the dedicated page,
-  // the homepage probe, and an embedded homepage section alike.
-  const opts = { blockResources: true, knownLevel, progressiveScroll: true };
+  // the homepage probe, and an embedded homepage section alike. captureBillingToggle
+  // flips Monthly↔Annual after the primary capture so both periods are extracted
+  // (kill-switch PRICING_TOGGLE_CAPTURE_ENABLED, default on; browser levels only).
+  const opts = {
+    blockResources: true,
+    knownLevel,
+    progressiveScroll: true,
+    captureBillingToggle: process.env.PRICING_TOGGLE_CAPTURE_ENABLED !== "false",
+  };
 
   // URL already points at a pricing page → scrape it directly.
   if (PRICING_KEYWORDS.some((k) => url.toLowerCase().includes(k))) {

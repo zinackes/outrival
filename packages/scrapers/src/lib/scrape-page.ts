@@ -91,6 +91,7 @@ export async function scrapePage(url: string, options: CascadeOptions = {}): Pro
     progressiveScroll: options.progressiveScroll,
     screenshot: options.screenshot,
     blockResources: options.blockResources,
+    captureBillingToggle: options.captureBillingToggle,
   };
 
   const done = (r: ScrapeResult, level: ScrapeLevel): CascadeOutcome => ({

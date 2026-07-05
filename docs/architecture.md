@@ -751,6 +751,7 @@ HOMEPAGE_LAZY_WAIT_MS=2000            # patch-16 — wait after each scroll pass
 HOMEPAGE_NARRATIVE_MIN_SEVERITY=medium  # patch-16 — min severity to spend an AI narrative
 HOMEPAGE_SCREENSHOT_ENABLED=true     # capture a homepage screenshot (floors the cascade at L1 = browser render per homepage scrape) → pHash visual-redesign + before/after visual diff. false = cheap L0 fetch, no screenshot
 JOBS_RENDER_ENABLED=true             # jobs source only — render the committed careers/board page at L1 + scroll so client-injected openings (SSR "Loading positions…" placeholders) load before extraction. Path probing stays cheap L0; only the kept page + off-site hops pay a render. false = previous L0-only behaviour exactly
+PRICING_TOGGLE_CAPTURE_ENABLED=true  # pricing source only — after the primary (default-period) capture, click the Monthly↔Annual toggle and append the other period's prices as a HIDDEN block so the extractor sees both periods (only the default state renders on JS pages). Best-effort + primary-capture-first (never affects the snapshot); the hidden block is stripped by extractContent (change-detection) so a flaky toggle can't fake a pricing change, but survives htmlToText for extraction. Browser levels only. false = default-period only. See docs/pricing-coverage-2026.md
 ENRICHMENTS_PHASH_THRESHOLD=15          # patch-17 — Hamming distance → visual redesign
 ENRICHMENTS_VOLATILE_THRESHOLD=5        # patch-17 — consecutive diffs → line is volatile
 ENRICHMENTS_VOLATILE_RESET=10           # patch-17 — stable scrapes → analysable again

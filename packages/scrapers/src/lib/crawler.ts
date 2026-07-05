@@ -72,6 +72,7 @@ export async function scrapePage(
     progressiveScroll: options.progressiveScroll,
     screenshot: options.screenshot,
     blockResources: options.blockResources,
+    captureBillingToggle: options.captureBillingToggle,
     render: options.render,
   });
 

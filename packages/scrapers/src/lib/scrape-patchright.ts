@@ -47,6 +47,13 @@ export interface PatchrightOptions {
   screenshot?: boolean;
   /** Abort media + font subresources to save proxy bandwidth. Default off. */
   blockResources?: boolean;
+  /**
+   * Pricing only: after the primary capture, click the billing-period toggle
+   * (Monthly ↔ Annual) and append the second period's prices as a compact block, so
+   * the extractor sees BOTH periods (only the default state renders otherwise).
+   * Best-effort and primary-capture-first — a failure never affects the snapshot.
+   */
+  captureBillingToggle?: boolean;
 }
 
 // Never-parsed, heavy subresources that are safe to abort (no anti-bot signal,
@@ -166,9 +173,19 @@ export async function capturePage(
     await settleAfterNav(page);
   }
 
-  const html = await page.content();
+  let html = await page.content();
   if (isCloudflareChallenge(html))
     return { ok: false, statusCode, failureReason: "cloudflare_challenge", durationMs: Date.now() - startedAt };
+
+  // Pricing only: the primary capture above holds the DEFAULT billing period; the
+  // other one (usually Annual) is behind a toggle that only re-renders on click. Now
+  // that the snapshot is secured, best-effort click the toggle and append the second
+  // period's prices as a small labeled block so the extractor sees both. Fully
+  // guarded — any failure keeps the primary html exactly as-is.
+  if (options.captureBillingToggle) {
+    const annual = await captureBillingToggleBlock(page).catch(() => "");
+    if (annual) html += annual;
+  }
 
   // innerText ignores overflow clipping, so animated counter widgets (odometer &
   // co.) leak their full 0-9 digit ribbons into the text — strip them here.
@@ -251,4 +268,84 @@ async function scrollThroughPage(page: Page): Promise<void> {
       await page.waitForTimeout(500);
     }
   }
+}
+
+// Compact list of the price-bearing leaf lines currently visible on the page —
+// the signature used to tell whether flipping the billing toggle actually changed
+// the displayed prices.
+async function priceLines(page: Page): Promise<string[]> {
+  return page
+    .evaluate(() => {
+      const priceRe = /[€$£¥]\s?\d/;
+      const out: string[] = [];
+      const seen = new Set<string>();
+      for (const el of Array.from(document.querySelectorAll("body *"))) {
+        if (el.children.length > 3) continue; // leaf-ish only → "Pro $290/yr", not a whole card
+        const t = (el.textContent ?? "").replace(/\s+/g, " ").trim();
+        if (t.length < 2 || t.length > 120 || !priceRe.test(t)) continue;
+        if (!seen.has(t)) {
+          seen.add(t);
+          out.push(t);
+        }
+      }
+      return out.slice(0, 120);
+    })
+    .catch(() => [] as string[]);
+}
+
+/**
+ * Best-effort: flip a pricing page's billing-period toggle to its non-default state
+ * (Annual/Yearly) and return a compact, HIDDEN block of the price lines it then
+ * shows — so htmlToText (extract-pricing) sees BOTH periods while extractContent
+ * (hash/diff, which strips `[hidden]`) ignores it, so a flaky toggle never fakes a
+ * pricing change. Restricted to real controls (button/switch/tab/radio/label, never
+ * an <a> nav link) and discarded if the click navigates away, so it can only ever
+ * ADD the alternate period's prices, never corrupt the primary capture. "" = no
+ * toggle / nothing changed.
+ */
+async function captureBillingToggleBlock(page: Page): Promise<string> {
+  const urlBefore = page.url();
+  const before = await priceLines(page);
+
+  const clicked = await page
+    .evaluate(() => {
+      const ANNUAL = /\b(annual|annually|yearly|per year|\/\s?yr|\/\s?year|billed\s+year)\b/i;
+      const isOn = (el: Element) =>
+        el.getAttribute("aria-checked") === "true" || el.getAttribute("aria-selected") === "true";
+      const controls = Array.from(
+        document.querySelectorAll('button,[role="switch"],[role="tab"],[role="radio"],label'),
+      );
+      // Prefer a control that names annual/yearly and isn't already the active one.
+      for (const el of controls) {
+        const t = (el.textContent ?? "").trim();
+        if (!t || t.length > 40) continue;
+        if (ANNUAL.test(t) && !isOn(el)) {
+          (el as HTMLElement).click();
+          return true;
+        }
+      }
+      // Fallback: a bare switch/checkbox sitting between Monthly/Annual labels.
+      if (ANNUAL.test(document.body?.innerText ?? "")) {
+        const sw = document.querySelector('[role="switch"],input[type="checkbox"]');
+        if (sw) {
+          (sw as HTMLElement).click();
+          return true;
+        }
+      }
+      return false;
+    })
+    .catch(() => false);
+  if (!clicked) return "";
+
+  await page.waitForTimeout(700);
+  // A navigation means we clicked a link, not a toggle — discard, keep only primary.
+  if (page.url() !== urlBefore) return "";
+
+  const after = await priceLines(page);
+  const beforeSet = new Set(before);
+  const fresh = after.filter((l) => !beforeSet.has(l));
+  if (fresh.length === 0) return ""; // toggle did nothing visible → don't duplicate
+
+  const block = fresh.slice(0, 60).join(" • ").replace(/[<>&]/g, " ");
+  return `<div data-outrival-billing="alternate" hidden>${block}</div>`;
 }

@@ -7,7 +7,8 @@ import type {
   ProjectStage,
 } from "@/lib/api";
 import type { Plan } from "@outrival/shared";
-import { getServerSession, getServerJson } from "@/lib/server-session";
+import { getSessionOutcome, getServerJson } from "@/lib/server-session";
+import { SessionReconnect } from "@/components/outrival/session-reconnect";
 import { OnboardingForm } from "./onboarding-form";
 
 export const metadata: Metadata = {
@@ -30,12 +31,15 @@ async function getOnboardingStatus(h: Headers): Promise<Status | null> {
 
 export default async function OnboardingPage() {
   const h = await headers();
-  const [session, status] = await Promise.all([
-    getServerSession(h),
-    getOnboardingStatus(h),
-  ]);
+  // Same session-gate discipline as the dashboard layout: redirect to /auth only
+  // on a DEFINITIVE "no session", and hold (rather than bounce) on an indeterminate
+  // read, so a transient API hiccup can't flap the URL /onboarding↔/auth.
+  const sessionOutcome = await getSessionOutcome(h);
+  if (sessionOutcome.state === "unauthenticated") redirect("/auth");
+  if (sessionOutcome.state === "indeterminate") return <SessionReconnect />;
 
-  if (!session) redirect("/auth");
+  const status = await getOnboardingStatus(h);
+
   // A fully completed run lands on "done". Skipped users (completed, step !== "done")
   // and re-onboarding users (step reset to "stage") stay here.
   if (status?.onboardingCompleted && status.onboardingStep === "done") {

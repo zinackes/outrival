@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
+import { AiVisibilityTeaser } from "./ai-visibility-teaser";
 import {
   ArrowRight,
   Check,
@@ -195,6 +196,10 @@ export function LandscapeSection({
 
   return (
     <>
+      {/* AI Visibility teaser (Lever 7): the day-0 "wow" — do you show up in AI answer
+          engines vs your competitors? Self-hides until its worker result lands. */}
+      <AiVisibilityTeaser />
+
       {/* No reassurance hero: the page scope already lives in the PageHead, and
           while the first scan runs the OnboardingAnalysisPanel owns the status —
           a "monitoring is live" card here contradicts it and reads as filler.

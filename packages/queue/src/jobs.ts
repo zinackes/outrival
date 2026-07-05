@@ -108,6 +108,12 @@ export const scrapeAiVisibility = defineJob<ScrapeAiVisibilityPayload>("scrape-a
   retryLimit: 1, // was maxAttempts 2
   expireInSeconds: 300,
 });
+// Lever 7 — free one-time "share of model" taste at onboarding. Event-triggered,
+// never retried (would re-spend free-tier quota); writes one terminal row per org.
+export const aiVisibilityTeaser = defineJob<OrgRefPayload>("ai-visibility-teaser", {
+  retryLimit: 0,
+  expireInSeconds: 120,
+});
 export const generateBattleCard = defineJob<GenerateBattleCardPayload>("generate-battle-card", {
   expireInSeconds: 180, // browser (PDF via Playwright) — browser worker
 });

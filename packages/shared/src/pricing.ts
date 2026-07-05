@@ -21,6 +21,40 @@ export const PRICING_STATUSES = [
 
 export type PricingStatus = (typeof PRICING_STATUSES)[number];
 
+// ---------------------------------------------------------------------------
+// billing_period taxonomy (pricing_history.billing_period is a free-text column).
+//
+//   monthly | yearly | one_time  → a comparable currency amount on a price axis
+//   custom                        → quote-based, price null ("Contact sales")
+//   usage                         → a per-`unit` RATE, not a per-time subscription
+//                                   ($0.10 / API call, $0.99 / resolved ticket).
+//                                   Covers metered usage AND outcome-based pricing;
+//                                   the `unit` distinguishes them (no separate enum).
+// ---------------------------------------------------------------------------
+export const BILLING_PERIOD_VALUES = [
+  "monthly",
+  "yearly",
+  "one_time",
+  "custom",
+  "usage",
+] as const;
+export type BillingPeriodValue = (typeof BILLING_PERIOD_VALUES)[number];
+
+// Periods whose `price` is directly comparable on a single currency axis. A usage
+// rate ($0.10) must NEVER be averaged or charted against a subscription price ($99),
+// so numeric readers (compare band, sectoral median, trends) filter through this;
+// display readers stay period-agnostic and render usage rows with their unit.
+export const COMPARABLE_PRICE_PERIODS: ReadonlySet<string> = new Set([
+  "monthly",
+  "yearly",
+  "one_time",
+]);
+export function isComparablePricePeriod(
+  billingPeriod: string | null | undefined,
+): boolean {
+  return billingPeriod != null && COMPARABLE_PRICE_PERIODS.has(billingPeriod);
+}
+
 // Plain-language label per status, for the user-facing before/after of a pricing
 // repositioning signal (patch-14 "Why this insight?" panel). English only.
 export const PRICING_STATUS_LABELS: Record<PricingStatus, string> = {
@@ -55,6 +89,13 @@ export interface PricingTier {
   price: number | null;
   currency: string;
   billingPeriod: string;
+  // patch — dimensional pricing (2026 models). Optional so every existing
+  // constructor stays valid. `unit`: what a `usage`/per-seat price applies to
+  // ("API call", "resolved conversation", "credit", "seat"); null/absent = flat.
+  // `includedQuantity`: units bundled into the plan (credit pack size, included
+  // calls); null/absent = N/A. See docs/pricing-coverage-2026.md.
+  unit?: string | null;
+  includedQuantity?: number | null;
 }
 
 export type PricingPlanAction = "edit" | "add" | "hide";

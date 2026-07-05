@@ -32,7 +32,15 @@ export const pricingHistory = pgTable(
     // row (price = null) instead of dropping it — numeric readers filter null.
     price: doublePrecision("price"),
     currency: text("currency").notNull(),
+    // monthly | yearly | one_time | custom | usage. "usage" = the price is a
+    // per-`unit` rate (metered or outcome-based), not a per-time subscription.
     billingPeriod: text("billing_period").notNull(),
+    // Dimensional pricing (2026 models). unit = what a usage/per-seat price applies
+    // to ("API call", "resolved conversation", "credit", "seat"); null = flat.
+    // includedQuantity = units bundled into the plan (credit-pack size, included
+    // calls); null = N/A. See docs/pricing-coverage-2026.md.
+    unit: text("unit"),
+    includedQuantity: doublePrecision("included_quantity"),
     status: text("status").notNull().default("unknown"),
     promotional: integer("promotional").notNull().default(0),
     observedRegion: text("observed_region").notNull().default("FR"),

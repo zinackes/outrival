@@ -220,6 +220,11 @@ export interface PricingHistoryPoint {
   // has_trial. Catches a free tier the priced-card extractor missed (e.g. a "Free"
   // comparison column with no price token). null on pre-detection (legacy) rows.
   has_free_plan?: boolean | null;
+  // Dimensional pricing (2026 models). unit = what a "usage" price applies to ("API
+  // call", "credit"); includedQuantity = units bundled into the plan (credit-pack
+  // size). Optional — absent on legacy/history rows. See docs/pricing-coverage-2026.md.
+  unit?: string | null;
+  includedQuantity?: number | null;
   recorded_at: string;
 }
 

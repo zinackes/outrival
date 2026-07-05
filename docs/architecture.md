@@ -838,9 +838,16 @@ VISUAL_DIFF_ENABLED=true               # false → endpoints screenshot 404, sec
 # GRATUIT (Google Search grounding, ~5k prompts groundés/mois gratuits sur AI Studio 3.x)
 # → active sans payer. Chaque moteur best-effort (vide → skip, 0 coût). Stratégie coût-zéro
 # (BYOK, scrape-cascade AIO) : 📄 docs/ai-visibility-free.md — 📄 docs/ai-visibility.md
+# L7 teaser (docs/post-onboarding-activation.md) : dérivé GRATUIT non-gaté — 1 run/org à
+# l'onboarding (job `ai-visibility-teaser`, event-triggered depuis /complete) écrit 1 ligne
+# `ai_visibility_teasers` (org unique = garde one-run), lue non-gatée par GET /api/ai-visibility/teaser
+# → carte day-0 sur le landscape. Gemini free, ≤3 prompts, best-effort (ligne terminale
+# ready|unavailable). Cache réponses cross-org différé (coût déjà ≈0 via free tier).
 AI_VISIBILITY_ENABLED=true             # false → scheduler + job no-op (kill-switch)
 AI_VISIBILITY_INTERVAL_DAYS=7          # cadence par org (jours entre 2 runs)
 AI_VISIBILITY_MAX_PROMPTS=10           # cap prompts/org/run (garde-fou coût)
+AI_VISIBILITY_TEASER_ENABLED=true      # L7 — teaser onboarding gratuit 1×/org (false → "unavailable")
+AI_VISIBILITY_TEASER_MAX_PROMPTS=3     # requêtes groundées free dépensées par teaser
 GEMINI_API_KEY=                        # moteur Gemini + grounding (GRATUIT, défaut) ; vide → skip
 AI_VISIBILITY_GEMINI_MODEL=gemini-flash-latest  # pin un Flash 3.x pour le quota grounding gratuit
 PERPLEXITY_API_KEY=                    # moteur Perplexity Sonar (PAYANT) ; vide → moteur skip

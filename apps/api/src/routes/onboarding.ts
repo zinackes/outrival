@@ -812,6 +812,21 @@ onboardingRouter.post("/complete", async (c) => {
     }
   }
 
+  // AI Visibility teaser (Lever 7): a one-time free "share of model" taste at day 0.
+  // Best-effort, self-guarded (one row per org), no-ops without an engine key — fire
+  // and forget. Needs competitors for the comparative framing.
+  if (created.length > 0) {
+    try {
+      await tasks.trigger(
+        "ai-visibility-teaser",
+        { orgId },
+        { idempotencyKey: `ai-visibility-teaser-${orgId}` },
+      );
+    } catch (e) {
+      console.error("Failed to trigger ai-visibility teaser", { orgId, error: String(e) });
+    }
+  }
+
   void captureServerEvent(user.id, "onboarding_completed", {
     competitorsCreated: created.length,
     sources: monitoringPrefs.sources,

@@ -737,6 +737,24 @@ export interface LandscapeInsight {
   text: string;
   competitorId: string | null;
 }
+// AI Visibility onboarding teaser (Lever 7) — a free one-time "share of model" taste.
+// "pending" = the worker is still computing; "unavailable" = nothing to show (no
+// engine key / empty roster / no answers → the card hides); "ready" carries the payload.
+export type AiVisibilityTeaser =
+  | { status: "pending" }
+  | { status: "unavailable" }
+  | {
+      status: "ready";
+      engine: string;
+      promptsRun: number;
+      self: { name: string; mentions: number; sov: number };
+      topRival: { name: string; mentions: number; sov: number } | null;
+      selfMentioned: boolean;
+      leader: "self" | "rival" | "none";
+      ratio: number | null;
+      citations: string[];
+    };
+
 export interface LandscapeData {
   competitors: LandscapeCompetitor[];
   self: { id: string; name: string; url: string | null } | null;
@@ -2271,6 +2289,7 @@ export const api = {
     request<LandscapeData>(
       `/api/landscape${productId ? `?productId=${encodeURIComponent(productId)}` : ""}`,
     ),
+  getAiVisibilityTeaser: () => request<AiVisibilityTeaser>("/api/ai-visibility/teaser"),
   getAiVisibility: (productId?: string) =>
     request<AiVisibilityData>(
       `/api/ai-visibility${productId ? `?productId=${encodeURIComponent(productId)}` : ""}`,

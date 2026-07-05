@@ -227,6 +227,16 @@ export function landscapeQuery(productId?: string) {
   });
 }
 
+// AI Visibility onboarding teaser (Lever 7) — poll while the worker computes it, stop
+// once the row is terminal (ready | unavailable) so it settles after the day-0 wow.
+export function aiVisibilityTeaserQuery() {
+  return queryOptions({
+    queryKey: ["ai-visibility", "teaser"] as const,
+    queryFn: () => api.getAiVisibilityTeaser(),
+    refetchInterval: (query) => (query.state.data?.status === "pending" ? 4000 : false),
+  });
+}
+
 // Sector-trends teaser (top 3) for the Overview section.
 export function sectoralTeaserQuery() {
   return queryOptions({

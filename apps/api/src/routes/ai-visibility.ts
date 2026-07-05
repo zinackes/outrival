@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { tasks } from "@trigger.dev/sdk/v3";
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { db, competitors, aiVisibilityPrompts } from "@outrival/db";
+import { db, competitors, aiVisibilityPrompts, aiVisibilityTeasers } from "@outrival/db";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
 import { getOrgPlan, isFeatureAllowed } from "../lib/plan";
@@ -31,6 +31,20 @@ const MAX_TREND_LINES = 6;
 
 const num = (v: unknown): number => Number(v ?? 0) || 0;
 const pct = (v: unknown): number => Math.round(num(v) * 100);
+
+// Onboarding TEASER (Lever 7) — the ONE ungated read in this router: a free one-time
+// "share of model" taste any plan sees at day 0. Returns "pending" until the worker
+// writes its terminal row, "unavailable" when there's nothing to show (no engine key /
+// empty roster / no answers), else the aggregated payload the day-0 card renders.
+aiVisibilityRouter.get("/teaser", async (c) => {
+  const orgId = await ensureUserOrg(c.get("user").id);
+  const row = await db.query.aiVisibilityTeasers.findFirst({
+    where: eq(aiVisibilityTeasers.orgId, orgId),
+  });
+  if (!row) return c.json({ status: "pending" });
+  if (row.status !== "ready" || !row.result) return c.json({ status: "unavailable" });
+  return c.json({ status: "ready", ...(row.result as Record<string, unknown>) });
+});
 
 aiVisibilityRouter.get("/", async (c) => {
   const orgId = await ensureUserOrg(c.get("user").id);

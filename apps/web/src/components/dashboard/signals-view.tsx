@@ -983,32 +983,43 @@ export function SignalsView() {
     }
   }
 
-  // One master-list row: a selection checkbox in a reserved gutter + the row.
-  // Shared by the flat and grouped renders. The checkbox is a SIBLING of the row
-  // button (never nested — invalid HTML), so signal-row.tsx stays untouched.
+  // One master-list row. No reserved selection gutter (that read as a permanent
+  // empty column): the checkbox overlays the row's severity-icon slot, which fades
+  // out underneath (SignalRow `selecting`), so the list is a clean single column at
+  // rest and the box appears on row hover — or on every row once a selection is
+  // live. The checkbox is a SIBLING of the row button (never nested — invalid HTML).
   const renderRow = (item: FeedItem) => {
     if (item.kind === "single") {
       const id = item.signal.id;
+      const isChecked = selected.has(id);
       return (
         <motion.div key={id} role="presentation" {...feedItemMotion}>
-          <div className="group/row flex items-center gap-1.5">
-            <SelectCheckbox
-              active={selectionActive}
-              checked={selected.has(id)}
-              onToggle={(e) => {
-                e.stopPropagation();
-                toggleSelectId(id, e.shiftKey);
-              }}
-            />
-            <div className="min-w-0 flex-1">
-              <SignalRow
-                signal={item.signal}
-                selected={selectedId === id}
-                tabStop={tabStopId === id}
-                onFocus={() => setFocusedId(id)}
-                onSelect={() => selectRow(id)}
+          <div className="group/row relative">
+            <div
+              className={cn(
+                "absolute left-3 top-3 z-10 transition-opacity",
+                selectionActive || isChecked
+                  ? "opacity-100"
+                  : "pointer-events-none opacity-0 group-hover/row:pointer-events-auto group-hover/row:opacity-100",
+              )}
+            >
+              <SelectCheckbox
+                active={selectionActive}
+                checked={isChecked}
+                onToggle={(e) => {
+                  e.stopPropagation();
+                  toggleSelectId(id, e.shiftKey);
+                }}
               />
             </div>
+            <SignalRow
+              signal={item.signal}
+              selecting={selectionActive || isChecked}
+              selected={selectedId === id}
+              tabStop={tabStopId === id}
+              onFocus={() => setFocusedId(id)}
+              onSelect={() => selectRow(id)}
+            />
           </div>
         </motion.div>
       );
@@ -1016,22 +1027,17 @@ export function SignalsView() {
     const bid = `batch:${item.batchId}`;
     return (
       <motion.div key={item.batchId} role="presentation" {...feedItemMotion}>
-        <div className="flex items-center gap-1.5">
-          {/* Batches aren't individually selectable — reserve the same gutter so
-              their content stays aligned with the single rows'. */}
-          <span className="size-4 shrink-0" aria-hidden />
-          <div className="min-w-0 flex-1">
-            <BatchRow
-              batchId={item.batchId}
-              signals={item.signals}
-              summary={item.summary}
-              selected={selectedId === bid}
-              tabStop={tabStopId === bid}
-              onFocus={() => setFocusedId(bid)}
-              onSelect={() => selectRow(bid)}
-            />
-          </div>
-        </div>
+        {/* Batches aren't individually selectable — no checkbox. Their Layers icon
+            keeps the same left slot, so they stay aligned with the single rows. */}
+        <BatchRow
+          batchId={item.batchId}
+          signals={item.signals}
+          summary={item.summary}
+          selected={selectedId === bid}
+          tabStop={tabStopId === bid}
+          onFocus={() => setFocusedId(bid)}
+          onSelect={() => selectRow(bid)}
+        />
       </motion.div>
     );
   };
@@ -1111,9 +1117,16 @@ export function SignalsView() {
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm">
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              aria-label={`Sort: ${sort === "recent" ? "Most recent" : "Most relevant"}`}
+            >
               <ArrowUpDown size={13} />
-              {sort === "recent" ? "Most recent" : "Most relevant"}
+              <span className="hidden xl:inline">
+                {sort === "recent" ? "Most recent" : "Most relevant"}
+              </span>
               <ChevronDown size={11} className="opacity-60" />
             </Button>
           </DropdownMenuTrigger>
@@ -1136,9 +1149,14 @@ export function SignalsView() {
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm">
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              aria-label={`Group: ${GROUP_LABEL[group]}`}
+            >
               <Rows3 size={13} />
-              {GROUP_LABEL[group]}
+              <span className="hidden xl:inline">{GROUP_LABEL[group]}</span>
               <ChevronDown size={11} className="opacity-60" />
             </Button>
           </DropdownMenuTrigger>
@@ -1160,7 +1178,7 @@ export function SignalsView() {
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" className="shrink-0">
               <SlidersHorizontal size={13} />
               Filters
               {activeFilterCount > 0 && (
@@ -1240,7 +1258,7 @@ export function SignalsView() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <div className="relative w-full min-w-0 lg:w-44">
+        <div className="relative w-full min-w-0 lg:w-40 lg:shrink-0 xl:w-52">
           <Search
             size={14}
             className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
@@ -1260,6 +1278,7 @@ export function SignalsView() {
             <Button
               variant="ghost"
               size="icon-sm"
+              className="hidden shrink-0 lg:inline-flex"
               aria-label="Keyboard shortcuts"
               onClick={() => setHelpOpen(true)}
             >
@@ -1596,10 +1615,10 @@ export function SignalsView() {
   );
 }
 
-// Row selection checkbox — always occupies a reserved gutter left of each row, so
-// it never overlaps the row's severity icon and enabling a selection doesn't shift
-// the list. Invisible at rest; fades in on row hover, or stays visible once checked
-// or while a selection is active (all rows show their box).
+// Row selection checkbox — overlays the row's severity-icon slot (positioned by the
+// wrapper in renderRow). Its visibility/pointer-events are driven there (hover, or a
+// live selection); here it's just the box. Not a tab stop until a selection is live
+// or it's checked, so an invisible-at-rest overlay never traps keyboard focus.
 function SelectCheckbox({
   checked,
   active,
@@ -1616,15 +1635,13 @@ function SelectCheckbox({
       role="checkbox"
       aria-checked={checked}
       aria-label={checked ? "Deselect signal" : "Select signal"}
+      tabIndex={active || checked ? 0 : -1}
       onClick={onToggle}
       className={cn(
-        "flex size-4 shrink-0 items-center justify-center rounded-sm border outline-none transition-[opacity,color,background-color,border-color] focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50",
+        "flex size-4 shrink-0 items-center justify-center rounded-sm border outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
         checked
-          ? "border-primary bg-primary text-primary-foreground opacity-100"
-          : cn(
-              "border-border text-transparent hover:border-foreground/50",
-              active ? "opacity-100" : "opacity-0 group-hover/row:opacity-100",
-            ),
+          ? "border-primary bg-primary text-primary-foreground"
+          : "border-border text-transparent hover:border-foreground/50",
       )}
     >
       <Check size={11} strokeWidth={3} />

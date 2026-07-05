@@ -54,13 +54,6 @@ aiVisibilityRouter.get("/", async (c) => {
   }
   c.header("Cache-Control", "private, max-age=30");
 
-  // Roster (relational, org-scoped) — names for every subject the run wrote rows for.
-  const roster = await db
-    .select({ id: competitors.id, name: competitors.name, type: competitors.type })
-    .from(competitors)
-    .where(and(eq(competitors.orgId, orgId), isNull(competitors.deletedAt)));
-  const nameById = new Map(roster.map((r) => [r.id, r.name]));
-
   // Resolve the product in focus (phase B): an explicit ?productId= or, for "all
   // products", the org's primary product — the page is per-product now. "You" + the
   // in-scope subject set + the prompt/result filters all key off it. Legacy orgs with
@@ -68,46 +61,60 @@ aiVisibilityRouter.get("/", async (c) => {
   let productId = c.req.query("productId") || undefined;
   if (!productId) productId = (await primaryProductId(orgId)) ?? undefined;
 
-  let selfId: string | null = null;
-  let scopeIds: Set<string> | null = null;
-  if (productId) {
-    selfId = await productSelfCompetitorId(orgId, productId);
-    const linked = await productCompetitorIds(orgId, productId);
-    scopeIds = new Set([...(selfId ? [selfId] : []), ...linked]);
-  }
-  if (!selfId) selfId = roster.find((r) => r.type === "self")?.id ?? null;
-  const inScope = (id: string) => !scopeIds || scopeIds.has(id);
-
   // Result rows carry product_id (phase B); scope every analytics read to the product
   // in focus. Empty fragment for legacy org-level orgs (no product) → unfiltered.
   const productFilter = productId ? sql`AND product_id = ${productId}` : sql``;
 
-  // Tracked prompts for this product (the editor + breakdown labels).
-  const promptRows = await db
-    .select({
-      id: aiVisibilityPrompts.id,
-      prompt: aiVisibilityPrompts.prompt,
-      isActive: aiVisibilityPrompts.isActive,
-      origin: aiVisibilityPrompts.origin,
-    })
-    .from(aiVisibilityPrompts)
-    .where(
-      and(
-        eq(aiVisibilityPrompts.orgId, orgId),
-        productId ? eq(aiVisibilityPrompts.productId, productId) : undefined,
-      ),
-    )
-    .orderBy(desc(aiVisibilityPrompts.createdAt));
+  // Everything below keys off orgId (+ the resolved productId) and is otherwise
+  // independent. Fan the round-trips out: this read backs the whole page, and
+  // serialised on a cold Neon connection each hop re-paid the wake-up latency.
+  const [roster, scopedSelfId, linked, promptRows, latestRows] = await Promise.all([
+    // Roster (relational, org-scoped) — names for every subject the run wrote rows for.
+    db
+      .select({ id: competitors.id, name: competitors.name, type: competitors.type })
+      .from(competitors)
+      .where(and(eq(competitors.orgId, orgId), isNull(competitors.deletedAt))),
+    productId ? productSelfCompetitorId(orgId, productId) : Promise.resolve(null),
+    productId ? productCompetitorIds(orgId, productId) : Promise.resolve([] as string[]),
+    // Tracked prompts for this product (the editor + breakdown labels).
+    db
+      .select({
+        id: aiVisibilityPrompts.id,
+        prompt: aiVisibilityPrompts.prompt,
+        isActive: aiVisibilityPrompts.isActive,
+        origin: aiVisibilityPrompts.origin,
+      })
+      .from(aiVisibilityPrompts)
+      .where(
+        and(
+          eq(aiVisibilityPrompts.orgId, orgId),
+          productId ? eq(aiVisibilityPrompts.productId, productId) : undefined,
+        ),
+      )
+      .orderBy(desc(aiVisibilityPrompts.createdAt)),
+    // Latest run = the run_id of the most recent row for this org + product.
+    analyticsQueryResult<{ runId: string; recordedAt: string }>(sql`
+      SELECT run_id AS "runId", recorded_at AS "recordedAt"
+      FROM ai_visibility_results
+      WHERE org_id = ${orgId} ${productFilter}
+      ORDER BY recorded_at DESC
+      LIMIT 1`),
+  ]);
+  const nameById = new Map(roster.map((r) => [r.id, r.name]));
+
+  // In-scope subject set = the product's self + its linked competitors (phase B). scopeIds
+  // keeps the product-scoped self only; selfId itself falls back to the org's type="self"
+  // competitor for legacy no-product orgs (matching the pre-parallelised order).
+  let selfId: string | null = scopedSelfId;
+  const scopeIds: Set<string> | null = productId
+    ? new Set([...(scopedSelfId ? [scopedSelfId] : []), ...linked])
+    : null;
+  if (!selfId) selfId = roster.find((r) => r.type === "self")?.id ?? null;
+  const inScope = (id: string) => !scopeIds || scopeIds.has(id);
+
   const promptText = new Map(promptRows.map((p) => [p.id, p.prompt]));
   const enabled = promptRows.some((p) => p.isActive);
 
-  // Latest run = the run_id of the most recent row for this org + product.
-  const latestRows = await analyticsQueryResult<{ runId: string; recordedAt: string }>(sql`
-    SELECT run_id AS "runId", recorded_at AS "recordedAt"
-    FROM ai_visibility_results
-    WHERE org_id = ${orgId} ${productFilter}
-    ORDER BY recorded_at DESC
-    LIMIT 1`);
   const latestRunId = latestRows.rows[0]?.runId ?? null;
   const lastRunAt = latestRows.rows[0]?.recordedAt ?? null;
 
@@ -129,13 +136,13 @@ aiVisibilityRouter.get("/", async (c) => {
                count(DISTINCT prompt_id) AS total,
                avg(rank) FILTER (WHERE mentioned = 1) AS "avgRank"
         FROM ai_visibility_results
-        WHERE run_id = ${latestRunId} ${productFilter}
+        WHERE org_id = ${orgId} AND run_id = ${latestRunId} ${productFilter}
         GROUP BY engine, competitor_id`),
       analyticsQueryResult<RawRow>(sql`
         SELECT prompt_id AS "promptId", engine, competitor_id AS "competitorId",
                mentioned, rank, answer_excerpt AS "answerExcerpt"
         FROM ai_visibility_results
-        WHERE run_id = ${latestRunId} ${productFilter}`),
+        WHERE org_id = ${orgId} AND run_id = ${latestRunId} ${productFilter}`),
     ]);
     lbRows = lb.rows;
     rawRows = raw.rows;

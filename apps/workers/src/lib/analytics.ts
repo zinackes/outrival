@@ -776,6 +776,10 @@ export async function getPricingHistorySince(
         and(
           inArray(pricingHistory.competitorId, competitorIds),
           gt(pricingHistory.price, 0),
+          // Comparable periods only: a usage rate ($0.10 / API call) must never be
+          // averaged into the sector-wide price-trend median alongside monthly
+          // subscription prices. Mirrors shared isComparablePricePeriod.
+          inArray(pricingHistory.billingPeriod, ["monthly", "yearly", "one_time"]),
           gte(pricingHistory.recordedAt, sql`now() - make_interval(days => ${days})`),
         ),
       )

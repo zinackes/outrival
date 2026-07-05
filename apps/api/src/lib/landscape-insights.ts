@@ -54,7 +54,10 @@ function fmtPrice(price: number, currency: string | null): string {
 // competitor with only yearly/unlabelled pricing still gets a floor so the
 // comparison degrades instead of vanishing.
 function entryPlan(rows: InsightPricingRow[]): InsightPricingRow | null {
-  const paid = rows.filter((r) => r.price != null && r.price > 0);
+  // Exclude "usage" rates ($0.10 / API call): they aren't a monthly-comparable entry
+  // price, so a pure pay-as-you-go competitor must not surface a $0.10 "entry plan"
+  // against the user's subscription. Null/monthly/yearly/one_time all stay eligible.
+  const paid = rows.filter((r) => r.price != null && r.price > 0 && r.billingPeriod !== "usage");
   if (paid.length === 0) return null;
   const monthly = paid.filter((r) => !r.billingPeriod || r.billingPeriod === "monthly");
   const pool = monthly.length > 0 ? monthly : paid;

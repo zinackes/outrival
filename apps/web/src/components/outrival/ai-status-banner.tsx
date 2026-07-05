@@ -13,30 +13,44 @@ const DISMISS_KEY = "outrival.ai-status-dismissed";
  * Dashboard banner shown when AI generations are currently failing (Groq rate
  * limits etc.) so insights/summaries silently stop refreshing. Persists across
  * refresh and navigation (it lives in the dashboard layout and re-checks the
- * server on every load). The close button stores the incident key (`since`) in
- * localStorage, so dismissing hides this streak but a fresh failure re-shows it.
+ * server on every load).
+ *
+ * Dismiss is edge-triggered: closing hides the *current* incident, and a later
+ * `healthy` poll clears the flag so only a genuinely *new* incident re-shows. This
+ * replaces keying dismiss on the server's `since` value, which drifted between polls
+ * (the breaker ETA is recomputed from wall-clock; a fresh failure advances the error
+ * timestamp) and so re-showed a banner the user had just closed.
  */
 export function AiStatusBanner() {
   // Polled via useQuery; an auth blip / API error just leaves data undefined → the
-  // banner stays hidden (since is null).
+  // banner stays hidden (degraded is false).
   const statusQ = useQuery({ ...aiStatusQuery(), refetchInterval: POLL_MS });
   const data = statusQ.data;
-  const since = data?.degraded ? data.since : null;
+  const degraded = Boolean(data?.degraded);
   const down = data?.status === "down";
   const recovery = data?.estimatedRecovery ?? null;
-  const [dismissed, setDismissed] = useState<string | null>(null);
+  const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
-    setDismissed(localStorage.getItem(DISMISS_KEY));
+    setDismissed(localStorage.getItem(DISMISS_KEY) === "1");
   }, []);
 
-  const dismiss = useCallback(() => {
-    if (!since) return;
-    localStorage.setItem(DISMISS_KEY, since);
-    setDismissed(since);
-  }, [since]);
+  // When the server reports the incident is over, forget the dismissal so the next
+  // incident surfaces again. Only acts on a resolved poll (data present + not degraded)
+  // — an undefined poll (auth blip / cold API) leaves the flag untouched.
+  useEffect(() => {
+    if (data && !degraded && localStorage.getItem(DISMISS_KEY)) {
+      localStorage.removeItem(DISMISS_KEY);
+      setDismissed(false);
+    }
+  }, [data, degraded]);
 
-  if (!since || since === dismissed) return null;
+  const dismiss = useCallback(() => {
+    localStorage.setItem(DISMISS_KEY, "1");
+    setDismissed(true);
+  }, []);
+
+  if (!degraded || dismissed) return null;
 
   // "down" = circuit breaker open (all providers unavailable); "delayed" = rate-limited
   // but the pool is still serving. Scrapes keep running either way (patch-22).

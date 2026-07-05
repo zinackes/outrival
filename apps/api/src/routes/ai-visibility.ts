@@ -6,6 +6,7 @@ import { db, competitors, aiVisibilityPrompts } from "@outrival/db";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
 import { getOrgPlan, isFeatureAllowed } from "../lib/plan";
+import { primaryProductId, productSelfCompetitorId, productCompetitorIds } from "../lib/products";
 import { analyticsQueryResult, sql } from "../lib/analytics-safe";
 
 // AI Visibility / "Share of Model" (docs/ai-visibility.md, phase 4). Read the org's
@@ -13,6 +14,11 @@ import { analyticsQueryResult, sql } from "../lib/analytics-safe";
 // SoV-over-time trend) and manage the tracked prompt set. Premium feature
 // (features.aiVisibility, pro+) → 403 plan_locked_feature, parsed into a paywall on
 // the web. ai_visibility_results carries org_id, so every read filters by it directly.
+//
+// Multi-SKU (patch-28, phase B): AI Visibility is per-product. `?productId=` (or the
+// primary product for "all products") scopes prompts, results, "you" (the product's
+// self) and the leaderboard subjects (self + linked competitors). Prompts and result
+// rows carry product_id; legacy orgs with no product fall back to org-level reads.
 
 type Variables = { user: { id: string } };
 export const aiVisibilityRouter = new Hono<{ Variables: Variables }>();
@@ -34,15 +40,35 @@ aiVisibilityRouter.get("/", async (c) => {
   }
   c.header("Cache-Control", "private, max-age=30");
 
-  // Roster (relational, org-scoped) — names + which competitor is the self product.
+  // Roster (relational, org-scoped) — names for every subject the run wrote rows for.
   const roster = await db
     .select({ id: competitors.id, name: competitors.name, type: competitors.type })
     .from(competitors)
     .where(and(eq(competitors.orgId, orgId), isNull(competitors.deletedAt)));
   const nameById = new Map(roster.map((r) => [r.id, r.name]));
-  const selfId = roster.find((r) => r.type === "self")?.id ?? null;
 
-  // Tracked prompts (for the editor + breakdown labels).
+  // Resolve the product in focus (phase B): an explicit ?productId= or, for "all
+  // products", the org's primary product — the page is per-product now. "You" + the
+  // in-scope subject set + the prompt/result filters all key off it. Legacy orgs with
+  // no product fall through to org-level (productId stays undefined, no scoping).
+  let productId = c.req.query("productId") || undefined;
+  if (!productId) productId = (await primaryProductId(orgId)) ?? undefined;
+
+  let selfId: string | null = null;
+  let scopeIds: Set<string> | null = null;
+  if (productId) {
+    selfId = await productSelfCompetitorId(orgId, productId);
+    const linked = await productCompetitorIds(orgId, productId);
+    scopeIds = new Set([...(selfId ? [selfId] : []), ...linked]);
+  }
+  if (!selfId) selfId = roster.find((r) => r.type === "self")?.id ?? null;
+  const inScope = (id: string) => !scopeIds || scopeIds.has(id);
+
+  // Result rows carry product_id (phase B); scope every analytics read to the product
+  // in focus. Empty fragment for legacy org-level orgs (no product) → unfiltered.
+  const productFilter = productId ? sql`AND product_id = ${productId}` : sql``;
+
+  // Tracked prompts for this product (the editor + breakdown labels).
   const promptRows = await db
     .select({
       id: aiVisibilityPrompts.id,
@@ -51,16 +77,21 @@ aiVisibilityRouter.get("/", async (c) => {
       origin: aiVisibilityPrompts.origin,
     })
     .from(aiVisibilityPrompts)
-    .where(eq(aiVisibilityPrompts.orgId, orgId))
+    .where(
+      and(
+        eq(aiVisibilityPrompts.orgId, orgId),
+        productId ? eq(aiVisibilityPrompts.productId, productId) : undefined,
+      ),
+    )
     .orderBy(desc(aiVisibilityPrompts.createdAt));
   const promptText = new Map(promptRows.map((p) => [p.id, p.prompt]));
   const enabled = promptRows.some((p) => p.isActive);
 
-  // Latest run = the run_id of the most recent row for this org.
+  // Latest run = the run_id of the most recent row for this org + product.
   const latestRows = await analyticsQueryResult<{ runId: string; recordedAt: string }>(sql`
     SELECT run_id AS "runId", recorded_at AS "recordedAt"
     FROM ai_visibility_results
-    WHERE org_id = ${orgId}
+    WHERE org_id = ${orgId} ${productFilter}
     ORDER BY recorded_at DESC
     LIMIT 1`);
   const latestRunId = latestRows.rows[0]?.runId ?? null;
@@ -84,13 +115,13 @@ aiVisibilityRouter.get("/", async (c) => {
                count(DISTINCT prompt_id) AS total,
                avg(rank) FILTER (WHERE mentioned = 1) AS "avgRank"
         FROM ai_visibility_results
-        WHERE run_id = ${latestRunId}
+        WHERE run_id = ${latestRunId} ${productFilter}
         GROUP BY engine, competitor_id`),
       analyticsQueryResult<RawRow>(sql`
         SELECT prompt_id AS "promptId", engine, competitor_id AS "competitorId",
                mentioned, rank, answer_excerpt AS "answerExcerpt"
         FROM ai_visibility_results
-        WHERE run_id = ${latestRunId}`),
+        WHERE run_id = ${latestRunId} ${productFilter}`),
     ]);
     lbRows = lb.rows;
     rawRows = raw.rows;
@@ -100,7 +131,7 @@ aiVisibilityRouter.get("/", async (c) => {
       SELECT recorded_at AS "recordedAt", competitor_id AS "competitorId",
              (count(*) FILTER (WHERE mentioned = 1))::float / nullif(count(DISTINCT prompt_id), 0) AS sov
       FROM ai_visibility_results
-      WHERE org_id = ${orgId} AND engine = ${TREND_ENGINE}
+      WHERE org_id = ${orgId} AND engine = ${TREND_ENGINE} ${productFilter}
       GROUP BY recorded_at, competitor_id
       ORDER BY recorded_at`);
     trendRows = trend.rows;
@@ -121,7 +152,7 @@ aiVisibilityRouter.get("/", async (c) => {
     engine: e.engine,
     totalPrompts: e.totalPrompts,
     subjects: e.subjects
-      .filter((s) => nameById.has(s.competitorId))
+      .filter((s) => nameById.has(s.competitorId) && inScope(s.competitorId))
       .map((s) => ({
         competitorId: s.competitorId,
         name: nameById.get(s.competitorId) ?? "Unknown",
@@ -158,7 +189,13 @@ aiVisibilityRouter.get("/", async (c) => {
           selfMentioned: !!selfRow && selfRow.mentioned === 1,
           selfRank: selfRow?.mentioned === 1 ? selfRow.rank : null,
           mentioned: er
-            .filter((r) => r.mentioned === 1 && r.competitorId !== selfId && nameById.has(r.competitorId))
+            .filter(
+              (r) =>
+                r.mentioned === 1 &&
+                r.competitorId !== selfId &&
+                nameById.has(r.competitorId) &&
+                inScope(r.competitorId),
+            )
             .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99))
             .map((r) => nameById.get(r.competitorId) ?? "Unknown"),
           excerpt: er.find((r) => r.answerExcerpt)?.answerExcerpt ?? null,
@@ -200,7 +237,10 @@ aiVisibilityRouter.get("/", async (c) => {
 
 // --- Prompt editor CRUD (org-scoped; ownership enforced in the WHERE). ---
 
-const PromptBody = z.object({ prompt: z.string().trim().min(3).max(200) });
+const PromptBody = z.object({
+  prompt: z.string().trim().min(3).max(200),
+  productId: z.string().optional(),
+});
 
 aiVisibilityRouter.post("/prompts", async (c) => {
   const orgId = await ensureUserOrg(c.get("user").id);
@@ -210,9 +250,14 @@ aiVisibilityRouter.post("/prompts", async (c) => {
   }
   const parsed = PromptBody.safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "invalid_prompt" }, 400);
+  // Attach to the active product (phase B). Validate ownership: productSelfCompetitorId
+  // is null for a forged/foreign id → fall back to the primary product.
+  let productId: string | undefined = parsed.data.productId;
+  if (productId && !(await productSelfCompetitorId(orgId, productId))) productId = undefined;
+  if (!productId) productId = (await primaryProductId(orgId)) ?? undefined;
   const [row] = await db
     .insert(aiVisibilityPrompts)
-    .values({ orgId, prompt: parsed.data.prompt, origin: "user" })
+    .values({ orgId, productId, prompt: parsed.data.prompt, origin: "user" })
     .returning({
       id: aiVisibilityPrompts.id,
       prompt: aiVisibilityPrompts.prompt,

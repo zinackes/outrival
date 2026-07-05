@@ -234,11 +234,15 @@ export function landscapeQuery(productId?: string) {
 
 // AI Visibility onboarding teaser (Lever 7) — poll while the worker computes it, stop
 // once the row is terminal (ready | unavailable) so it settles after the day-0 wow.
+// Also cap the polling (~15 × 4s ≈ 60s): if a worker hard-kill leaves the terminal row
+// unwritten the endpoint returns "pending" forever, so stop hammering it (the component
+// hides the card past the same window).
 export function aiVisibilityTeaserQuery() {
   return queryOptions({
     queryKey: ["ai-visibility", "teaser"] as const,
     queryFn: () => api.getAiVisibilityTeaser(),
-    refetchInterval: (query) => (query.state.data?.status === "pending" ? 4000 : false),
+    refetchInterval: (query) =>
+      query.state.data?.status === "pending" && query.state.dataUpdateCount < 15 ? 4000 : false,
   });
 }
 

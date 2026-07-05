@@ -218,4 +218,17 @@ export const aiVisibilityTeaserJob = task({
       return { ok: false };
     }
   },
+
+  // Safety net for a HARD kill (maxDuration timeout / crash): those terminate the run
+  // OUTSIDE the in-run try/catch, so no terminal row is written and the day-0 card
+  // polls "pending" forever. Runs once after retries are exhausted — resolve the card
+  // to "unavailable". onConflictDoNothing so we never clobber a "ready" a prior run wrote.
+  async onFailure({ payload }) {
+    const parsed = InputSchema.safeParse(payload);
+    if (!parsed.success) return;
+    await db
+      .insert(aiVisibilityTeasers)
+      .values({ orgId: parsed.data.orgId, status: "unavailable", engine: null, result: null })
+      .onConflictDoNothing({ target: aiVisibilityTeasers.orgId });
+  },
 });

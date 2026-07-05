@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Alerts } from "@/components/landing/alerts";
 import { Capabilities } from "@/components/landing/capabilities";
 import { Categories } from "@/components/landing/categories";
 import { Comparison } from "@/components/landing/comparison";
@@ -10,7 +9,6 @@ import { Footer } from "@/components/landing/footer";
 import { FounderNote } from "@/components/landing/founder-note";
 import { Hero } from "@/components/landing/hero";
 import { JsonLd } from "@/components/landing/json-ld";
-import { Monitors } from "@/components/landing/monitors";
 import { Nav } from "@/components/landing/nav";
 import { Pricing } from "@/components/landing/pricing";
 import { ProductShowcase } from "@/components/landing/product-showcase";
@@ -36,12 +34,10 @@ export default function HomePage() {
       <main id="main-content" tabIndex={-1}>
         <Hero />
         <Trust />
-        <Monitors />
         <Sources />
         <ProductShowcase />
         <Categories />
         <DigestFeature />
-        <Alerts />
         <Capabilities />
         <Comparison />
         <Pricing />

@@ -9,7 +9,7 @@ import { useSession } from "@/lib/auth-client";
 
 const LINKS = [
   { href: "#sources", label: "Sources" },
-  { href: "#pipeline", label: "Pipeline" },
+  { href: "#product", label: "Product" },
   { href: "#signals", label: "Signals" },
   { href: "#compare", label: "Compare" },
   { href: "#pricing", label: "Pricing" },

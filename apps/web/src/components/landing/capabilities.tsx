@@ -1,4 +1,4 @@
-import { Boxes, MessageSquare, Radar, Swords } from "lucide-react";
+import { MessageSquare, Radar, Swords } from "lucide-react";
 
 const FEATURES = [
   {
@@ -15,11 +15,6 @@ const FEATURES = [
     icon: Radar,
     title: "Competitor discovery",
     desc: "Every week we surface look-alike competitors you aren't tracking yet — semantic search across the market, scored by overlap. Add one in a click.",
-  },
-  {
-    icon: Boxes,
-    title: "Multiple products",
-    desc: "Track more than one of your own SKUs. Every signal is tagged to the products it actually affects, so each line gets its own competitive feed.",
   },
 ] as const;
 

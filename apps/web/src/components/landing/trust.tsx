@@ -40,6 +40,11 @@ export function Trust() {
           </div>
         </dl>
       </div>
+      <div className="mx-auto mt-12 w-full max-w-6xl border-t border-border px-6 pt-8">
+        <p className="text-center text-sm text-text-muted">
+          Point Outrival at any public SaaS — set up in minutes
+        </p>
+      </div>
     </section>
   );
 }

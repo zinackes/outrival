@@ -40,13 +40,25 @@ export function formatTierPrice(p: {
   price: number | null;
   currency: string;
   billing_period: string;
+  // Dimensional pricing (2026 models). unit = what a usage/per-seat price applies to
+  // ("API call", "credit", "seat"); includedQuantity = units bundled into the plan
+  // (credit-pack size). See docs/pricing-coverage-2026.md.
+  unit?: string | null;
+  includedQuantity?: number | null;
 }): string {
   // Quote-based tier (Enterprise / "Contact sales") — no public number.
   if (p.price === null) return "Custom";
-  if (p.price === 0) return "Free";
+  if (p.price === 0 && p.billing_period !== "usage") return "Free";
   const sym =
     p.currency === "USD" ? "$" : p.currency === "EUR" ? "€" : p.currency === "GBP" ? "£" : "";
   const amount = sym ? `${sym}${p.price}` : `${p.price} ${p.currency}`;
+  // A usage rate is priced per unit, not per period: "$0.10 / API call".
+  if (p.billing_period === "usage") return p.unit ? `${amount} / ${p.unit}` : `${amount} / use`;
+  // A one-time bundle with a stated size (a credit pack): "$99 · 1,000 credits".
+  if (p.billing_period === "one_time" && p.includedQuantity != null && p.unit) {
+    const qty = p.includedQuantity.toLocaleString();
+    return `${amount} · ${qty} ${p.unit}${p.includedQuantity === 1 ? "" : "s"}`;
+  }
   const per =
     p.billing_period === "monthly" ? "/mo" : p.billing_period === "yearly" ? "/yr" : "";
   return `${amount}${per}`;

@@ -6,6 +6,7 @@ import { db, competitors, aiVisibilityPrompts } from "@outrival/db";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
 import { getOrgPlan, isFeatureAllowed } from "../lib/plan";
+import { primaryProductId, productSelfCompetitorId, productCompetitorIds } from "../lib/products";
 import { analyticsQueryResult, sql } from "../lib/analytics-safe";
 
 // AI Visibility / "Share of Model" (docs/ai-visibility.md, phase 4). Read the org's
@@ -13,6 +14,11 @@ import { analyticsQueryResult, sql } from "../lib/analytics-safe";
 // SoV-over-time trend) and manage the tracked prompt set. Premium feature
 // (features.aiVisibility, pro+) → 403 plan_locked_feature, parsed into a paywall on
 // the web. ai_visibility_results carries org_id, so every read filters by it directly.
+//
+// Multi-SKU (patch-28): "you" is resolved from the product model, not `roster.find(self)`
+// — with N self-competitors that pick was arbitrary. `?productId=` scopes the leaderboard
+// to that product's self + linked competitors; "all products" uses the primary product's
+// self. Prompts + run rows stay org-level for now (phase B = per-product prompts/runs).
 
 type Variables = { user: { id: string } };
 export const aiVisibilityRouter = new Hono<{ Variables: Variables }>();
@@ -34,13 +40,30 @@ aiVisibilityRouter.get("/", async (c) => {
   }
   c.header("Cache-Control", "private, max-age=30");
 
-  // Roster (relational, org-scoped) — names + which competitor is the self product.
+  // Roster (relational, org-scoped) — names for every subject the run wrote rows for.
   const roster = await db
     .select({ id: competitors.id, name: competitors.name, type: competitors.type })
     .from(competitors)
     .where(and(eq(competitors.orgId, orgId), isNull(competitors.deletedAt)));
   const nameById = new Map(roster.map((r) => [r.id, r.name]));
-  const selfId = roster.find((r) => r.type === "self")?.id ?? null;
+
+  // "You" + the in-scope subject set come from the product model, not roster order.
+  // A specific product → its self + linked competitors; "all products" → the primary
+  // product's self is "you" (deterministic), leaderboard unscoped. Legacy orgs with no
+  // products row fall back to the first roster self.
+  const productId = c.req.query("productId") || undefined;
+  let selfId: string | null = null;
+  let scopeIds: Set<string> | null = null;
+  if (productId) {
+    selfId = await productSelfCompetitorId(orgId, productId);
+    const linked = await productCompetitorIds(orgId, productId);
+    scopeIds = new Set([...(selfId ? [selfId] : []), ...linked]);
+  } else {
+    const pid = await primaryProductId(orgId);
+    if (pid) selfId = await productSelfCompetitorId(orgId, pid);
+  }
+  if (!selfId) selfId = roster.find((r) => r.type === "self")?.id ?? null;
+  const inScope = (id: string) => !scopeIds || scopeIds.has(id);
 
   // Tracked prompts (for the editor + breakdown labels).
   const promptRows = await db
@@ -121,7 +144,7 @@ aiVisibilityRouter.get("/", async (c) => {
     engine: e.engine,
     totalPrompts: e.totalPrompts,
     subjects: e.subjects
-      .filter((s) => nameById.has(s.competitorId))
+      .filter((s) => nameById.has(s.competitorId) && inScope(s.competitorId))
       .map((s) => ({
         competitorId: s.competitorId,
         name: nameById.get(s.competitorId) ?? "Unknown",
@@ -158,7 +181,13 @@ aiVisibilityRouter.get("/", async (c) => {
           selfMentioned: !!selfRow && selfRow.mentioned === 1,
           selfRank: selfRow?.mentioned === 1 ? selfRow.rank : null,
           mentioned: er
-            .filter((r) => r.mentioned === 1 && r.competitorId !== selfId && nameById.has(r.competitorId))
+            .filter(
+              (r) =>
+                r.mentioned === 1 &&
+                r.competitorId !== selfId &&
+                nameById.has(r.competitorId) &&
+                inScope(r.competitorId),
+            )
             .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99))
             .map((r) => nameById.get(r.competitorId) ?? "Unknown"),
           excerpt: er.find((r) => r.answerExcerpt)?.answerExcerpt ?? null,

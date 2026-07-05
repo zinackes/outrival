@@ -151,11 +151,13 @@ export function trendsSummaryQuery(range: { from: Date; to: Date }, productId?: 
 }
 
 // AI Visibility / "Share of Model" — one query backs the whole page (leaderboard,
-// breakdown, trend, prompts). Org-scoped server-side; no product scope (org-level).
-export function aiVisibilityQuery() {
+// breakdown, trend, prompts). patch-28: scoped to the active product ("you" + its
+// competitors); "all products" (no id) uses the primary product's self. Prompts + run
+// rows are still org-level, so switching product re-fetches the same prompt set.
+export function aiVisibilityQuery(productId?: string) {
   return queryOptions({
-    queryKey: ["ai-visibility"] as const,
-    queryFn: () => api.getAiVisibility(),
+    queryKey: productId ? (["ai-visibility", productId] as const) : (["ai-visibility"] as const),
+    queryFn: () => api.getAiVisibility(productId),
   });
 }
 

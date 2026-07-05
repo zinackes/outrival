@@ -2271,7 +2271,10 @@ export const api = {
     request<LandscapeData>(
       `/api/landscape${productId ? `?productId=${encodeURIComponent(productId)}` : ""}`,
     ),
-  getAiVisibility: () => request<AiVisibilityData>("/api/ai-visibility"),
+  getAiVisibility: (productId?: string) =>
+    request<AiVisibilityData>(
+      `/api/ai-visibility${productId ? `?productId=${encodeURIComponent(productId)}` : ""}`,
+    ),
   addAiVisibilityPrompt: (prompt: string) =>
     request<{ prompt: AiVisibilityPrompt }>("/api/ai-visibility/prompts", {
       method: "POST",

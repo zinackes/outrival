@@ -211,12 +211,14 @@ export async function getCompetitorDetailData(
  * TrendsView's initial range = lastNDays(90)). Best-effort: null → TrendsView
  * falls back to its own client fetch. Drill-down series stay client-side.
  */
-// AI Visibility seed. Org-level (no product scope). Best-effort: null on any failure
-// (incl. the 403 plan_locked_feature for free/starter) → the client query re-fetches
-// and the view renders the locked/empty state from the error.
-export async function getAiVisibilityData(): Promise<AiVisibilityData | null> {
+// AI Visibility seed. patch-28: scoped to the active product (self + its competitors);
+// "all products" (no id) uses the primary product's self. Best-effort: null on any
+// failure (incl. the 403 plan_locked_feature for free/starter) → the client query
+// re-fetches and the view renders the locked/empty state from the error.
+export async function getAiVisibilityData(productId?: string): Promise<AiVisibilityData | null> {
+  const scope = productId ? `?productId=${encodeURIComponent(productId)}` : "";
   try {
-    return await serverGet<AiVisibilityData>("/api/ai-visibility");
+    return await serverGet<AiVisibilityData>(`/api/ai-visibility${scope}`);
   } catch {
     return null;
   }

@@ -128,6 +128,16 @@ const PARKING_TEXT_SIGNATURES = [
   "domain parking",
 ];
 
+// A domain that answers HTTP is usually alive even behind anti-bot (403/503) or
+// auth (401) — those are the product refusing US, not a missing site. But an
+// explicit "the resource is not / no longer here" (404 Not Found, 410 Gone) means
+// the URL Exa surfaced is dead: a decommissioned startup whose host still answers
+// with a catch-all 404, or a removed page. Seeding a competitor on such a URL gives
+// a monitor that fails forever, so drop it. Pure so it's unit-testable. For tests.
+export function isDeadStatus(status: number): boolean {
+  return status === 404 || status === 410;
+}
+
 // True when the fetched page is a parked / for-sale landing rather than a real
 // product. Pure over already-lowercased HTML + the final (post-redirect) host so
 // it's unit-testable without network. Exported for tests.
@@ -142,11 +152,13 @@ export function isParkedPage(finalHost: string, htmlLower: string): boolean {
   return PARKING_TEXT_SIGNATURES.some((s) => htmlLower.includes(s));
 }
 
-// Exa surfaces defunct startups whose domain no longer resolves (expired, dead)
-// or has been resold and now serves a parking / for-sale page. A network-level
-// failure (DNS miss, refused connection, timeout) means the domain is dead → drop
-// it. ANY HTTP response — even a 403/503 from anti-bot — means the site is alive,
-// UNLESS the body is a known domain-marketplace landing (backand.com et al.).
+// Exa surfaces defunct startups whose domain no longer resolves (expired, dead),
+// has been resold and now serves a parking / for-sale page, or answers a catch-all
+// 404 for the decommissioned site. A network-level failure (DNS miss, refused
+// connection, timeout) means the domain is dead → drop it. A 404/410 means the URL
+// is gone → drop it (isDeadStatus). ANY other HTTP response — even a 403/503 from
+// anti-bot or a 401 behind auth — means the site is alive, UNLESS the body is a
+// known domain-marketplace landing (backand.com et al.).
 async function isLiveProduct(url: string): Promise<boolean> {
   try {
     const res = await fetch(url, {
@@ -154,6 +166,7 @@ async function isLiveProduct(url: string): Promise<boolean> {
       redirect: "follow",
       signal: AbortSignal.timeout(REACHABILITY_TIMEOUT_MS),
     });
+    if (isDeadStatus(res.status)) return false;
     const body = (await res.text()).slice(0, PARKING_SCAN_CHARS).toLowerCase();
     const finalHost = extractHostname(res.url) ?? "";
     return !isParkedPage(finalHost, body);

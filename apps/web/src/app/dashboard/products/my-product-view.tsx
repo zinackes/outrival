@@ -662,6 +662,7 @@ export function MyProductView({
   const [trackingRepo, setTrackingRepo] = useState(false);
   const [changeUrlOpen, setChangeUrlOpen] = useState(false);
   const [updateOpen, setUpdateOpen] = useState(false);
+  const [notLiveOpen, setNotLiveOpen] = useState(false);
 
   // Refresh both queries (called by the scan poller and after every mutation).
   async function load() {
@@ -1012,71 +1013,87 @@ export function MyProductView({
 
       {!p.url && (
         <Card className="p-3.5 mb-4 border-dashed">
-          <h2 className="text-sm font-semibold mb-1">Not live yet</h2>
-          <p className="text-sm text-muted-foreground mb-2.5 max-w-prose">
-            Add a public site URL to monitor pricing, features and changes — or track its GitHub
-            repo while you build. The profile below stays editable by hand.
-          </p>
-          <form
-            className="flex flex-col gap-2 sm:flex-row sm:items-center"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void enableMonitoring();
-            }}
+          <button
+            type="button"
+            onClick={() => setNotLiveOpen((o) => !o)}
+            aria-expanded={notLiveOpen}
+            className="flex w-full items-center justify-between gap-2 text-left"
           >
-            <Input
-              type="url"
-              value={siteUrl}
-              onChange={(e) => setSiteUrl(e.target.value)}
-              placeholder="https://yourproduct.com"
-              className="sm:max-w-sm"
+            <h2 className="text-sm font-semibold">Not live yet</h2>
+            <ChevronDown
+              className={`size-4 shrink-0 text-muted-foreground transition-transform ${
+                notLiveOpen ? "rotate-180" : ""
+              }`}
             />
-            <Button type="submit" disabled={enabling || !siteUrl.trim()}>
-              {enabling ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
-              Enable monitoring
-            </Button>
-          </form>
-
-          <div className="mt-2.5 pt-2.5 border-t border-border">
-            {p.repoUrl ? (
-              <p className="text-dense text-muted-foreground">
-                Tracking repo:{" "}
-                <a
-                  href={p.repoUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 hover:text-foreground underline"
-                >
-                  {p.repoUrl.replace(/^https?:\/\//, "")}
-                  <ExternalLink className="size-3" />
-                </a>
+          </button>
+          {notLiveOpen && (
+            <div className="mt-2.5">
+              <p className="text-sm text-muted-foreground mb-2.5 max-w-prose">
+                Add a public site URL to monitor pricing, features and changes — or track its GitHub
+                repo while you build. The profile below stays editable by hand.
               </p>
-            ) : (
               <form
                 className="flex flex-col gap-2 sm:flex-row sm:items-center"
                 onSubmit={(e) => {
                   e.preventDefault();
-                  void trackRepo();
+                  void enableMonitoring();
                 }}
               >
                 <Input
                   type="url"
-                  value={repoUrl}
-                  onChange={(e) => setRepoUrl(e.target.value)}
-                  placeholder="https://github.com/you/your-repo"
+                  value={siteUrl}
+                  onChange={(e) => setSiteUrl(e.target.value)}
+                  placeholder="https://yourproduct.com"
                   className="sm:max-w-sm"
                 />
-                <Button type="submit" variant="outline" disabled={trackingRepo || !repoUrl.trim()}>
-                  {trackingRepo ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : (
-                    <RefreshCw className="size-3.5" />
-                  )}
-                  Track repo
+                <Button type="submit" disabled={enabling || !siteUrl.trim()}>
+                  {enabling ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+                  Enable monitoring
                 </Button>
               </form>
-            )}
-          </div>
+
+              <div className="mt-2.5 pt-2.5 border-t border-border">
+                {p.repoUrl ? (
+                  <p className="text-dense text-muted-foreground">
+                    Tracking repo:{" "}
+                    <a
+                      href={p.repoUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 hover:text-foreground underline"
+                    >
+                      {p.repoUrl.replace(/^https?:\/\//, "")}
+                      <ExternalLink className="size-3" />
+                    </a>
+                  </p>
+                ) : (
+                  <form
+                    className="flex flex-col gap-2 sm:flex-row sm:items-center"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void trackRepo();
+                    }}
+                  >
+                    <Input
+                      type="url"
+                      value={repoUrl}
+                      onChange={(e) => setRepoUrl(e.target.value)}
+                      placeholder="https://github.com/you/your-repo"
+                      className="sm:max-w-sm"
+                    />
+                    <Button type="submit" variant="outline" disabled={trackingRepo || !repoUrl.trim()}>
+                      {trackingRepo ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <RefreshCw className="size-3.5" />
+                      )}
+                      Track repo
+                    </Button>
+                  </form>
+                )}
+              </div>
+            </div>
+          )}
         </Card>
       )}
 

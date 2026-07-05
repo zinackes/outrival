@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 type Tone = "no" | "partial" | "yes";
 
 type Cmp = { text: string; tone: Tone };
@@ -105,6 +107,23 @@ export function Comparison() {
             ))}
           </div>
         </div>
+
+        <p className="mt-6 text-sm text-text-muted">
+          Weighing a specific tool?{" "}
+          <Link
+            href="/vs/crayon"
+            className="text-primary underline-offset-2 hover:underline"
+          >
+            Outrival vs Crayon
+          </Link>{" "}
+          ·{" "}
+          <Link
+            href="/vs/klue"
+            className="text-primary underline-offset-2 hover:underline"
+          >
+            Outrival vs Klue
+          </Link>
+        </p>
       </div>
     </section>
   );

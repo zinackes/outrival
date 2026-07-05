@@ -7,6 +7,7 @@ import { CTA } from "@/components/landing/cta";
 import { DigestFeature } from "@/components/landing/digest-feature";
 import { FAQ } from "@/components/landing/faq";
 import { Footer } from "@/components/landing/footer";
+import { FounderNote } from "@/components/landing/founder-note";
 import { Hero } from "@/components/landing/hero";
 import { JsonLd } from "@/components/landing/json-ld";
 import { Monitors } from "@/components/landing/monitors";
@@ -45,6 +46,7 @@ export default function HomePage() {
         <Comparison />
         <Pricing />
         <FAQ />
+        <FounderNote />
         <CTA />
       </main>
       <Footer />

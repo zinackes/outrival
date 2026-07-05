@@ -7,6 +7,8 @@
  * carries sentiment + verbatims only. Pure parsing here; the fetch lives in the scraper.
  */
 
+import { REDDIT_SNAPSHOT_MARKER } from "@outrival/shared";
+
 export interface RedditMention {
   id: string;
   title: string;
@@ -61,7 +63,8 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-const MARKER = "outrival-reddit-mentions";
+// Single source of truth with the reader (@outrival/shared parseRedditSnapshotHtml).
+const MARKER = REDDIT_SNAPSHOT_MARKER;
 
 /**
  * Render mentions into a stable snapshot: sorted by id so an unchanged result set

@@ -13,6 +13,8 @@ const LINKS = [
   { href: "#signals", label: "Signals" },
   { href: "#compare", label: "Compare" },
   { href: "#pricing", label: "Pricing" },
+  { href: "/blog", label: "Blog" },
+  { href: "/about", label: "About" },
 ] as const;
 
 export function Nav() {

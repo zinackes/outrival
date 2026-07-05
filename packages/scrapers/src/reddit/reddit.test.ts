@@ -1,4 +1,5 @@
 import { test, expect } from "bun:test";
+import { parseRedditSnapshotHtml } from "@outrival/shared";
 import { parseRedditSearch, buildRedditDoc, redditSearchUrl } from "./reddit";
 
 const LISTING = {
@@ -67,4 +68,24 @@ test("buildRedditDoc is deterministic (sorted by id) and embeds an island", () =
   expect(a.html).toBe(b.html); // order-independent → stable content hash
   expect(a.text).toContain("Acme is overpriced");
   expect(a.html).toContain("outrival-reddit-mentions");
+});
+
+test("parseRedditSnapshotHtml round-trips buildRedditDoc's JSON island", () => {
+  const m = parseRedditSearch(LISTING);
+  const { html } = buildRedditDoc("acme", m);
+  const parsed = parseRedditSnapshotHtml(html);
+  expect(parsed).not.toBeNull();
+  // Doc is sorted by id → "abc" before "xyz"; the reader preserves that order.
+  expect(parsed!.mentions.map((x) => x.id)).toEqual(["abc", "xyz"]);
+  expect(parsed!.mentions[0]).toMatchObject({
+    title: "Acme is overpriced for what it does",
+    subreddit: "SaaS",
+    score: 42,
+    numComments: 17,
+    permalink: "/r/SaaS/comments/abc/acme/",
+  });
+});
+
+test("parseRedditSnapshotHtml returns null for a non-Reddit document", () => {
+  expect(parseRedditSnapshotHtml("<html><body>nothing here</body></html>")).toBeNull();
 });

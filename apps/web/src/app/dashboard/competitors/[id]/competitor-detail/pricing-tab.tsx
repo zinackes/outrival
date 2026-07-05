@@ -66,15 +66,20 @@ export function PricingTab({
   // Resolved current plans (detected batch + the user's per-plan overlay). Shared
   // key with the PricingPlansEditor (one fetch) so a manual edit flows into the
   // "you vs them" comparison too, not just the plan list.
+  // Fetch the FULL payload ({ detected, overrides, resolved }) — the same shape the
+  // PricingPlansEditor's query returns. Both observers share this key so they share
+  // one fetch/cache; if this queryFn narrowed to `.resolved`, the editor (which reads
+  // `.resolved`/`.detected` off the shared value) would see `undefined` and render
+  // "No plans captured yet" even though the comparison shows the tiers.
   const pricingPlansQuery = useQuery({
     queryKey: ["competitor", competitorId, "pricingPlans"],
-    queryFn: () => api.getCompetitorPricingPlans(competitorId).then((r) => r.resolved),
+    queryFn: () => api.getCompetitorPricingPlans(competitorId),
     placeholderData: keepPreviousData,
   });
 
   const history = historyQuery.data ?? null;
   const myProduct = myProductQuery.data ?? null;
-  const resolvedTiers = pricingPlansQuery.data ?? null;
+  const resolvedTiers = pricingPlansQuery.data?.resolved ?? null;
   // The competitor's plans in the comparison's PricingHistoryPoint shape, sourced
   // from the overlay when loaded (falls back to the raw latest batch while loading).
   const theirTiers = (latest: PricingHistoryPoint[]): PricingHistoryPoint[] =>

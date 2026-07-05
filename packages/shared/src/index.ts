@@ -13,6 +13,7 @@ export * from "./scoring/threat";
 export * from "./scheduling";
 export * from "./url";
 export * from "./reviews";
+export * from "./reddit";
 export * from "./monitor-url";
 export * from "./candidates";
 export * from "./pricing";

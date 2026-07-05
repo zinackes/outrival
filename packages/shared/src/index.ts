@@ -32,3 +32,4 @@ export * from "./social-proof/logo-name";
 export * from "./email/escape-html";
 export * from "./email/shell";
 export * from "./email/digest";
+export * from "./email/lifecycle";

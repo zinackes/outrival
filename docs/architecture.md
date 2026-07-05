@@ -239,7 +239,11 @@ source_type       homepage | pricing | blog | changelog | jobs |
                   tech_stack | status | sitemap | news
                   — reviews+ (trustpilot/trustradius/gartner/playstore) : patch-32, enable
                     on-demand pro+, même chemin que g2/capterra. reddit : patch-32,
-                    mention-tracking (pas de page notée → pas de ligne review_scores).
+                    mention-tracking (pas de page notée → pas de ligne review_scores) ;
+                    accès migré du path www.reddit.com/*.json (403 datacenter) vers l'API
+                    OAuth (oauth.reddit.com, app-only). DISABLED par défaut (kill-switch
+                    NEXT_PUBLIC_REDDIT_ENABLED) — la Responsible Builder Policy (2026-06)
+                    gate la création d'app free-tier ; réactivable quand les creds arrivent.
                   — internes, jamais user-selectable : tech_stack (patch-18, infra, tab
                     read-only), sitemap + news (patch-32, semés weekly, diff = pages/
                     événements neufs). status : on-demand starter+ (patch-31).
@@ -705,6 +709,14 @@ SCRAPING_LEVEL_1_ENABLED=true  # kill-switch L2 (datacenter)
 SCRAPING_LEVEL_2_ENABLED=true  # kill-switch L3 (residential)
 SCRAPING_LEVEL_3_ENABLED=true  # kill-switch L4 (camoufox)
 EXA_API_KEY=
+REDDIT_CLIENT_ID=            # reddit source — OAuth app-only (client_credentials) creds
+REDDIT_CLIENT_SECRET=       # register at reddit.com/prefs/apps. Auth'd → oauth.reddit.com
+                            # (server-IP-friendly, free tier 100 QPM). Empty → reddit source fails.
+                            # NOTE 2026-07: Reddit's Responsible Builder Policy gates NEW app
+                            # creation behind manual approval (silent-fails), so free-tier creds
+                            # aren't obtainable now → source ships DISABLED via the flag below.
+NEXT_PUBLIC_REDDIT_ENABLED=false  # reddit kill-switch (default OFF): hides the Mentions tab (web)
+                            # + rejects enabling reddit (API/onboarding). Flip "true" once creds land.
 # Onboarding (patch-25)
 NEXT_PUBLIC_ONBOARDING_PARALLEL_DISCOVERY=true   # prefetch discovery during profile edit
 NEXT_PUBLIC_ONBOARDING_DISCOVERY_DEBOUNCE_MS=3000 # debounce before prefetch (limits Exa spend)

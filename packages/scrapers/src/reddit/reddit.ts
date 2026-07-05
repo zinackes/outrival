@@ -1,10 +1,14 @@
 /**
  * Reddit mention tracking (patch-32). Reddit is NOT a product-review site with a
  * star rating — it's discussion. So instead of an AggregateRating we collect recent
- * MENTIONS of the competitor via Reddit's public search JSON (no auth), render them
- * into a deterministic document, and let extract-reviews judge sentiment + recurring
- * complaint themes ("complaints = opportunities"). No fabricated /5 score: the source
- * carries sentiment + verbatims only. Pure parsing here; the fetch lives in the scraper.
+ * MENTIONS of the competitor via Reddit's search API, render them into a deterministic
+ * document, and let extract-reviews judge sentiment + recurring complaint themes
+ * ("complaints = opportunities"). No fabricated /5 score: the source carries sentiment
+ * + verbatims only. Pure parsing here; the authenticated fetch lives in the scraper.
+ *
+ * Access moved from the unauthenticated www.reddit.com/*.json path (now 403'd from
+ * datacenter IPs) to the OAuth API (oauth.reddit.com) — cf. reddit-auth.ts. The
+ * listing JSON shape is identical, so parseRedditSearch is unchanged.
  */
 
 import { REDDIT_SNAPSHOT_MARKER } from "@outrival/shared";
@@ -21,10 +25,14 @@ export interface RedditMention {
   body: string;
 }
 
-/** Public Reddit search endpoint (read-only, no auth). Quote the term for precision. */
+/**
+ * OAuth Reddit search endpoint (read-only). Quote the term for precision; raw_json=1
+ * disables HTML-entity encoding so bodies come back clean. The bearer token is added
+ * by the scraper (cf. reddit-auth.ts) — the listing shape matches the old search.json.
+ */
 export function redditSearchUrl(query: string, limit = 25): string {
   const q = encodeURIComponent(`"${query}"`);
-  return `https://www.reddit.com/search.json?q=${q}&sort=relevance&t=year&limit=${limit}`;
+  return `https://oauth.reddit.com/search?q=${q}&sort=relevance&t=year&limit=${limit}&raw_json=1`;
 }
 
 function str(x: unknown): string {

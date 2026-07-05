@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft, Check } from "lucide-react";
+import Image from "next/image";
 import { Footer } from "@/components/landing/footer";
 import { DemoForm } from "./demo-form";
 
@@ -49,6 +50,41 @@ export default async function DemoPage({
       </header>
 
       <main className="mx-auto grid w-full max-w-5xl gap-12 px-6 py-16 lg:grid-cols-2 lg:gap-16">
+        {/* Real product, above the form — see it before you book. Spans both
+            grid columns so it sits above the form on desktop and mobile alike. */}
+        <section className="lg:col-span-2">
+          <span className="text-meta font-medium uppercase tracking-wider text-primary">
+            A look at the product
+          </span>
+          <div className="mt-5 grid gap-5 sm:grid-cols-2 sm:items-start">
+            <figure className="space-y-2.5">
+              <Image
+                src="/product/overview.webp"
+                alt="Outrival dashboard overview: KPI tiles for signals, critical pending and active competitors, above a feed of recent competitor signals across pricing, product, hiring and funding."
+                width={2240}
+                height={1626}
+                sizes="(min-width: 640px) 400px, 100vw"
+                className="h-auto w-full rounded-xl border border-border bg-surface shadow-lg shadow-black/20"
+              />
+              <figcaption className="text-dense text-text-subtle">
+                Your overview — every competitor, ranked by what moved.
+              </figcaption>
+            </figure>
+            <figure className="space-y-2.5">
+              <Image
+                src="/product/signal-detail.webp"
+                alt="A single Outrival signal in detail: a critical pricing alert that a competitor cut its Pro plan 30%, with the strategic insight, recommended action, and a before-and-after of the pricing change."
+                width={1720}
+                height={886}
+                sizes="(min-width: 640px) 400px, 100vw"
+                className="h-auto w-full rounded-xl border border-border bg-surface shadow-lg shadow-black/20"
+              />
+              <figcaption className="text-dense text-text-subtle">
+                One signal, in full — what changed, why, and what to do.
+              </figcaption>
+            </figure>
+          </div>
+        </section>
         <div>
           <span className="text-meta font-medium uppercase tracking-wider text-primary">
             {isBusiness ? "Business plan" : "Request a demo"}

@@ -79,6 +79,7 @@ import {
   PLAN_LABELS,
   minPlanForSource,
   planIncludesSource,
+  isRedditEnabled,
   minPlanForFrequency,
   planIncludesFrequency,
   aggregateFreshness,
@@ -160,6 +161,10 @@ const TABS: Array<{ key: TabKey; label: string; icon: typeof Activity }> = [
   { key: "techstack", label: "Tech stack", icon: Cpu },
   { key: "battlecard", label: "Battle Card", icon: Swords },
 ];
+
+// Reddit (Mentions tab) is hidden entirely while the source is runtime-disabled —
+// without global OAuth creds it can't be enabled, so we don't dangle a dead tab.
+const VISIBLE_TABS = TABS.filter((t) => t.key !== "mentions" || isRedditEnabled());
 
 // Per-tab freshness dot (patch-14): tabs backed by monitored sources show how
 // recent that section's data is. Activity (signal feed) and Battle Card have no
@@ -461,7 +466,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
   // tab. Runs once on mount, before the Tabs render (data is still loading).
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get("tab");
-    if (t && TABS.some((x) => x.key === t)) setTab(t as TabKey);
+    if (t && VISIBLE_TABS.some((x) => x.key === t)) setTab(t as TabKey);
   }, []);
 
   // Switch tab and mirror it into the URL so it survives a reload (replaceState,
@@ -1195,7 +1200,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
           }}
         >
           <TabsList variant="line" className="w-full justify-start overflow-x-auto">
-            {TABS.map((t) => {
+            {VISIBLE_TABS.map((t) => {
               const Icon = t.icon;
               const lock = tabLock(t.key, plan);
               // Tech stack isn't monitor-backed (its own monthly cron), so its
@@ -1297,19 +1302,21 @@ export function CompetitorDetailView({ id }: { id: string }) {
                 }
               />
             </TabsContent>
-            <TabsContent value="mentions" className={TAB_PANEL_CLASS}>
-              <MentionsTab
-                competitorId={id}
-                monitors={monitors}
-                scrapingIds={scrapingIds}
-                onRun={requestRunMonitor}
-                onEnable={enableMonitor}
-                plan={plan}
-                onLockedSource={(source) =>
-                  setPaywall({ code: "plan_locked_source", source, plan })
-                }
-              />
-            </TabsContent>
+            {isRedditEnabled() && (
+              <TabsContent value="mentions" className={TAB_PANEL_CLASS}>
+                <MentionsTab
+                  competitorId={id}
+                  monitors={monitors}
+                  scrapingIds={scrapingIds}
+                  onRun={requestRunMonitor}
+                  onEnable={enableMonitor}
+                  plan={plan}
+                  onLockedSource={(source) =>
+                    setPaywall({ code: "plan_locked_source", source, plan })
+                  }
+                />
+              </TabsContent>
+            )}
             <TabsContent value="content" className={TAB_PANEL_CLASS}>
               <ContentTab
                 changes={recentChanges}

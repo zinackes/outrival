@@ -1015,6 +1015,16 @@ export function ActivityView() {
                   Captured {absDateTime(detailEvent.recordedAt)}
                 </DialogDescription>
               </DialogHeader>
+              {detailEvent.capturedDelta && (
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-meta font-medium text-muted-foreground">
+                    What changed
+                  </p>
+                  <div className="text-sm">
+                    <CapturedDeltaContent delta={detailEvent.capturedDelta} />
+                  </div>
+                </div>
+              )}
               {detailEvent.captured && (
                 <CapturedDetail captured={detailEvent.captured} />
               )}

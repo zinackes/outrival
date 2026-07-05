@@ -105,6 +105,10 @@ export const aiVisibilityResults = pgTable(
     promptId: text("prompt_id").notNull(),
     // The mentioned subject — a competitor row id (self or external).
     competitorId: text("competitor_id").notNull(),
+    // patch-28 multi-SKU (phase B) — the product (SKU) this row belongs to. Per-product
+    // runs; null on pre-B historical rows. No FK (analytics convention) — reads that
+    // filter by product_id simply skip the legacy null rows.
+    productId: text("product_id"),
     // chatgpt | perplexity | claude | gemini | google_aio (text, schema-light).
     engine: text("engine").notNull(),
     // 0/1 (mirrors pricing_history.promotional/has_trial int-bool convention).
@@ -123,6 +127,11 @@ export const aiVisibilityResults = pgTable(
   (t) => [
     index("ai_visibility_results_org_recorded_idx").on(t.orgId, t.recordedAt),
     index("ai_visibility_results_competitor_recorded_idx").on(t.competitorId, t.recordedAt),
+    index("ai_visibility_results_org_product_recorded_idx").on(
+      t.orgId,
+      t.productId,
+      t.recordedAt,
+    ),
   ],
 );
 

@@ -76,7 +76,7 @@ export function AiVisibilityView() {
     const p = draft.trim();
     if (p.length < 3) return;
     try {
-      await api.addAiVisibilityPrompt(p);
+      await api.addAiVisibilityPrompt(p, productId);
       setDraft("");
       refresh();
     } catch {

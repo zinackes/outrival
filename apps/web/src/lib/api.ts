@@ -2275,10 +2275,10 @@ export const api = {
     request<AiVisibilityData>(
       `/api/ai-visibility${productId ? `?productId=${encodeURIComponent(productId)}` : ""}`,
     ),
-  addAiVisibilityPrompt: (prompt: string) =>
+  addAiVisibilityPrompt: (prompt: string, productId?: string) =>
     request<{ prompt: AiVisibilityPrompt }>("/api/ai-visibility/prompts", {
       method: "POST",
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify(productId ? { prompt, productId } : { prompt }),
     }),
   updateAiVisibilityPrompt: (id: string, patch: { isActive?: boolean; prompt?: string }) =>
     request<{ prompt: AiVisibilityPrompt }>(`/api/ai-visibility/prompts/${id}`, {

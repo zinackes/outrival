@@ -1,11 +1,13 @@
 import { task, logger, tasks, AbortTaskRunError } from "@trigger.dev/sdk/v3";
 import { z } from "zod";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, ne } from "drizzle-orm";
 import {
   db,
   competitors,
   organizations,
   aiVisibilityPrompts,
+  products,
+  productCompetitors,
   monitors,
   snapshots,
   changes,
@@ -22,12 +24,13 @@ import {
 import { aggregate, computeDeltas, type VisibilityDelta } from "../lib/ai-visibility/diff";
 import { notifyJobComplete } from "../lib/job-complete";
 
-// AI Visibility / "Share of Model" — phases 2+3 (docs/ai-visibility.md). For one org:
-// query each engine once per tracked prompt, parse which roster subjects (self +
-// competitors) the answer mentions, append the verdicts to ai_visibility_results, then
-// diff against the previous run and emit signals on meaningful shifts (self drops out /
-// a competitor overtakes you / a competitor newly appears). No UI yet (phase 4); one
-// engine (Perplexity, phase 5 adds more). Independent of the scrape-monitor pipeline.
+// AI Visibility / "Share of Model" — phases 2+3 (docs/ai-visibility.md). For one org,
+// PER PRODUCT (patch-28 phase B): for each active SKU, query each engine once per its
+// tracked prompts, parse which of its roster subjects (that product's self + linked
+// competitors) the answer mentions, append the verdicts to ai_visibility_results tagged
+// with product_id, then diff against that product's previous run and emit signals on
+// meaningful shifts (self drops out / a competitor overtakes you / a competitor newly
+// appears). Independent of the scrape-monitor pipeline.
 
 const InputSchema = z.object({
   orgId: z.string(),
@@ -44,9 +47,9 @@ const ENGINES: Engine[] = ["gemini", "perplexity"];
 
 const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
 
-// Seed a small starter prompt set from the self product when the org has none, so a
-// run is testable before the (phase 4) enable UI exists. Idempotent: only seeds when
-// the org has zero prompts. Mirrors what the enable flow will later do.
+// Seed a small starter prompt set from a product's self when it has none yet, so a run
+// works before the user curates prompts. Idempotent: only seeds when the product has
+// zero prompts. Same shape the enable flow uses.
 function defaultPrompts(selfName: string | null, category: string | null): string[] {
   const out: string[] = [];
   if (category) {
@@ -75,110 +78,153 @@ export const scrapeAiVisibilityJob = task({
     if (!org) throw new AbortTaskRunError(`Org ${orgId} not found`);
     logger.log("Starting scrape-ai-visibility", { orgId, plan: org.plan });
 
-    // Roster = the org's self product + tracked competitors (non-deleted). Subjects the
-    // answers are parsed against; the self competitor also seeds default prompts.
-    const roster = await db.query.competitors.findMany({
-      where: and(eq(competitors.orgId, orgId), isNull(competitors.deletedAt)),
-      columns: { id: true, name: true, type: true, category: true, url: true },
+    // patch-28 (phase B): AI Visibility is per-product. Track each active SKU
+    // independently — its own self, its own linked competitors, its own prompt set,
+    // its own SoV baseline. One shared runId groups the whole sweep; rows are tagged
+    // with product_id so reads + the diff scope to a single product.
+    const productList = await db.query.products.findMany({
+      where: and(eq(products.orgId, orgId), ne(products.status, "archived")),
+      columns: { id: true, name: true, selfCompetitorId: true },
+      orderBy: (p, { asc, desc }) => [desc(p.isPrimary), asc(p.position), asc(p.createdAt)],
     });
-    if (roster.length === 0) {
-      logger.log("No competitors in roster, skipping", { orgId });
-      return { skipped: true, reason: "empty_roster" };
+    if (productList.length === 0) {
+      logger.log("No active products, skipping", { orgId });
+      return { skipped: true, reason: "no_products" };
     }
-    const self = roster.find((c) => c.type === "self") ?? null;
 
-    // Prompts: active set, or a seeded starter set if the org has none yet.
-    let prompts = await db.query.aiVisibilityPrompts.findMany({
-      where: and(eq(aiVisibilityPrompts.orgId, orgId), eq(aiVisibilityPrompts.isActive, true)),
-    });
-    if (prompts.length === 0) {
-      const seeds = defaultPrompts(self?.name ?? null, self?.category ?? null);
-      if (seeds.length === 0) {
-        logger.log("No prompts and nothing to seed (no self product), skipping", { orgId });
-        return { skipped: true, reason: "no_prompts" };
-      }
-      await db.insert(aiVisibilityPrompts).values(
-        seeds.map((p) => ({ orgId, prompt: p, origin: "auto" })),
-      );
-      prompts = await db.query.aiVisibilityPrompts.findMany({
-        where: and(eq(aiVisibilityPrompts.orgId, orgId), eq(aiVisibilityPrompts.isActive, true)),
-      });
-      logger.log("Seeded default prompts", { orgId, count: seeds.length });
-    }
-    prompts = prompts.slice(0, maxPrompts);
-
-    const subjectNames = roster.map((c) => c.name);
     const runId = crypto.randomUUID();
     const now = new Date();
-    const allRows: AiVisibilityResultRow[] = [];
-    let queries = 0;
-
-    for (const prompt of prompts) {
-      for (const engine of ENGINES) {
-        const res = await queryEngine(engine, prompt.prompt);
-        if (!res) continue; // missing key / API error — best-effort, skip
-        queries++;
-
-        const extraction = await loggedAi("extract_ai_visibility", AI_CONFIG.classification, () =>
-          extractAiVisibility(res.answer, subjectNames),
-        );
-        if (!extraction) continue;
-
-        // Index the model's verdicts by normalized subject name (identity is trusted
-        // from the ROSTER, never the model — unmatched names are ignored).
-        const verdict = new Map(extraction.mentions.map((m) => [norm(m.name), m]));
-        const excerpt = res.answer.slice(0, 2000);
-
-        // One row per roster subject, mentioned or not, so share-of-voice is derivable.
-        const rows: AiVisibilityResultRow[] = roster.map((c) => {
-          const v = verdict.get(norm(c.name));
-          return {
-            org_id: orgId,
-            prompt_id: prompt.id,
-            competitor_id: c.id,
-            engine,
-            mentioned: v?.mentioned ?? false,
-            rank: v?.mentioned ? v.rank : null,
-            cited: v?.mentioned ? v.cited : null,
-            sentiment_score: v?.mentioned ? v.sentiment : null,
-            answer_excerpt: excerpt,
-            run_id: runId,
-            recorded_at: now,
-          };
-        });
-        await insertAiVisibilityResults(rows);
-        allRows.push(...rows);
-      }
-    }
-
-    // Phase 3: diff against the previous run and signal on meaningful shifts only.
+    let totalRows = 0;
+    let totalPrompts = 0;
+    let totalQueries = 0;
     let signalled = 0;
-    if (allRows.length > 0) {
-      const prevRows = await getPreviousAiVisibilityRun(orgId, runId);
-      if (prevRows && prevRows.length > 0) {
-        const currAgg = aggregate(
-          allRows.map((r) => ({
-            competitorId: r.competitor_id,
-            engine: r.engine,
-            promptId: r.prompt_id,
-            mentioned: r.mentioned,
-            rank: r.rank ?? null,
-          })),
+
+    for (const product of productList) {
+      // Roster for this product = its self product + its linked competitors (non-deleted).
+      const self = await db.query.competitors.findFirst({
+        where: and(eq(competitors.id, product.selfCompetitorId), isNull(competitors.deletedAt)),
+        columns: { id: true, name: true, category: true, url: true },
+      });
+      const linked = await db
+        .select({ id: competitors.id, name: competitors.name, url: competitors.url })
+        .from(productCompetitors)
+        .innerJoin(competitors, eq(competitors.id, productCompetitors.competitorId))
+        .where(
+          and(eq(productCompetitors.productId, product.id), isNull(competitors.deletedAt)),
         );
-        const deltas = computeDeltas(aggregate(prevRows), currAgg, self?.id ?? null);
-        if (deltas.length > 0) {
-          const nameById = new Map(roster.map((c) => [c.id, c.name]));
-          const urlById = new Map(roster.map((c) => [c.id, c.url ?? null]));
-          signalled = await emitVisibilitySignals(deltas, nameById, urlById);
+      const roster = [
+        ...(self ? [{ id: self.id, name: self.name, url: self.url }] : []),
+        ...linked,
+      ];
+      if (roster.length === 0) {
+        logger.log("Product has empty roster, skipping", { orgId, productId: product.id });
+        continue;
+      }
+
+      // Prompts for this product (active), or a seeded starter set from its self.
+      let prompts = await db.query.aiVisibilityPrompts.findMany({
+        where: and(
+          eq(aiVisibilityPrompts.orgId, orgId),
+          eq(aiVisibilityPrompts.productId, product.id),
+          eq(aiVisibilityPrompts.isActive, true),
+        ),
+      });
+      if (prompts.length === 0) {
+        const seeds = defaultPrompts(self?.name ?? null, self?.category ?? null);
+        if (seeds.length === 0) {
+          logger.log("No prompts and nothing to seed for product, skipping", {
+            orgId,
+            productId: product.id,
+          });
+          continue;
+        }
+        await db.insert(aiVisibilityPrompts).values(
+          seeds.map((p) => ({ orgId, productId: product.id, prompt: p, origin: "auto" })),
+        );
+        prompts = await db.query.aiVisibilityPrompts.findMany({
+          where: and(
+            eq(aiVisibilityPrompts.orgId, orgId),
+            eq(aiVisibilityPrompts.productId, product.id),
+            eq(aiVisibilityPrompts.isActive, true),
+          ),
+        });
+        logger.log("Seeded default prompts", { orgId, productId: product.id, count: seeds.length });
+      }
+      prompts = prompts.slice(0, maxPrompts);
+
+      const subjectNames = roster.map((c) => c.name);
+      const productRows: AiVisibilityResultRow[] = [];
+
+      for (const prompt of prompts) {
+        for (const engine of ENGINES) {
+          const res = await queryEngine(engine, prompt.prompt);
+          if (!res) continue; // missing key / API error — best-effort, skip
+          totalQueries++;
+
+          const extraction = await loggedAi("extract_ai_visibility", AI_CONFIG.classification, () =>
+            extractAiVisibility(res.answer, subjectNames),
+          );
+          if (!extraction) continue;
+
+          // Index the model's verdicts by normalized subject name (identity is trusted
+          // from the ROSTER, never the model — unmatched names are ignored).
+          const verdict = new Map(extraction.mentions.map((m) => [norm(m.name), m]));
+          const excerpt = res.answer.slice(0, 2000);
+
+          // One row per roster subject, mentioned or not, so share-of-voice is derivable.
+          const rows: AiVisibilityResultRow[] = roster.map((c) => {
+            const v = verdict.get(norm(c.name));
+            return {
+              org_id: orgId,
+              prompt_id: prompt.id,
+              competitor_id: c.id,
+              product_id: product.id,
+              engine,
+              mentioned: v?.mentioned ?? false,
+              rank: v?.mentioned ? v.rank : null,
+              cited: v?.mentioned ? v.cited : null,
+              sentiment_score: v?.mentioned ? v.sentiment : null,
+              answer_excerpt: excerpt,
+              run_id: runId,
+              recorded_at: now,
+            };
+          });
+          await insertAiVisibilityResults(rows);
+          productRows.push(...rows);
+        }
+      }
+      totalRows += productRows.length;
+      totalPrompts += prompts.length;
+
+      // Phase 3 diff: against THIS product's previous run, signal on meaningful shifts.
+      if (productRows.length > 0) {
+        const prevRows = await getPreviousAiVisibilityRun(orgId, runId, product.id);
+        if (prevRows && prevRows.length > 0) {
+          const currAgg = aggregate(
+            productRows.map((r) => ({
+              competitorId: r.competitor_id,
+              engine: r.engine,
+              promptId: r.prompt_id,
+              mentioned: r.mentioned,
+              rank: r.rank ?? null,
+            })),
+          );
+          const deltas = computeDeltas(aggregate(prevRows), currAgg, self?.id ?? null);
+          if (deltas.length > 0) {
+            const nameById = new Map(roster.map((c) => [c.id, c.name]));
+            const urlById = new Map(roster.map((c) => [c.id, c.url ?? null]));
+            signalled += await emitVisibilitySignals(deltas, nameById, urlById);
+          }
         }
       }
     }
 
     logger.log("Completed scrape-ai-visibility", {
       orgId,
-      prompts: prompts.length,
-      queries,
-      rowsWritten: allRows.length,
+      products: productList.length,
+      prompts: totalPrompts,
+      queries: totalQueries,
+      rowsWritten: totalRows,
       signalled,
     });
 
@@ -186,12 +232,19 @@ export const scrapeAiVisibilityJob = task({
       await notifyJobComplete({
         orgId,
         title: "AI Visibility run complete",
-        body: `Perplexity checked ${prompts.length} prompt${prompts.length === 1 ? "" : "s"}. Your latest results are ready to view.`,
+        body: `We checked ${totalPrompts} prompt${totalPrompts === 1 ? "" : "s"} across ${productList.length} product${productList.length === 1 ? "" : "s"}. Your latest results are ready to view.`,
         linkUrl: "/dashboard/ai-visibility",
       });
     }
 
-    return { prompts: prompts.length, queries, rowsWritten: allRows.length, signalled, runId };
+    return {
+      products: productList.length,
+      prompts: totalPrompts,
+      queries: totalQueries,
+      rowsWritten: totalRows,
+      signalled,
+      runId,
+    };
   },
 });
 

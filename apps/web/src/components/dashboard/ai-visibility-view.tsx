@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -48,30 +48,59 @@ const ENGINE_LABEL: Record<string, string> = { perplexity: "Perplexity", gemini:
 const engineLabel = (e: string) => ENGINE_LABEL[e] ?? e;
 const pctOf = (x: number) => `${Math.round(x * 100)}%`;
 
-export function AiVisibilityView() {
+export function AiVisibilityView({ locked = false }: { locked?: boolean }) {
   useSetAskContext({ kind: "view", label: "AI Visibility" });
   const qc = useQueryClient();
   const productId = useProductScope() ?? undefined;
-  const q = useQuery(aiVisibilityQuery(productId));
   const [running, setRunning] = useState(false);
   const [draft, setDraft] = useState("");
   const [engine, setEngine] = useState<string | null>(null);
 
+  // While a run is in flight, poll the payload so fresh mentions stream in. The worker
+  // stamps one run at start and writes rows per prompt×engine, so `lastRunAt` advancing
+  // past the pre-run baseline is our "results are landing" signal.
+  const q = useQuery({
+    ...aiVisibilityQuery(productId),
+    enabled: !locked,
+    refetchInterval: running ? 5_000 : false,
+  });
+
+  const baselineRunAt = useRef<string | null>(null);
+  const runDeadline = useRef(0);
+  const landedAt = useRef(0);
+
   const refresh = () => qc.invalidateQueries({ queryKey: ["ai-visibility"] });
 
   async function runNow() {
+    baselineRunAt.current = q.data?.lastRunAt ?? null;
+    runDeadline.current = Date.now() + 180_000;
+    landedAt.current = 0;
     setRunning(true);
     try {
       await api.runAiVisibility();
-      toast.success("Visibility run started — results appear in about a minute.");
-      // The run is async on a worker; pull the fresh results in a little while.
-      setTimeout(refresh, 60_000);
+      toast.success("Visibility check started — results appear as engines respond.");
     } catch {
-      toast.error("Couldn't start the run.");
-    } finally {
       setRunning(false);
+      toast.error("Couldn't start the run.");
     }
   }
+
+  // Settle the run once fresh rows land (plus a short tail so the leaderboard fills), or
+  // after a hard deadline if nothing shows (the notification bell still fires on true
+  // completion). Re-checked on every poll via q.dataUpdatedAt.
+  useEffect(() => {
+    if (!running) return;
+    const now = Date.now();
+    const advanced = !!q.data?.lastRunAt && q.data.lastRunAt !== baselineRunAt.current;
+    if (advanced && landedAt.current === 0) landedAt.current = now;
+    if ((landedAt.current > 0 && now - landedAt.current > 20_000) || now > runDeadline.current) {
+      setRunning(false);
+      if (landedAt.current > 0) toast.success("AI Visibility results updated.");
+    }
+  }, [q.dataUpdatedAt, q.errorUpdatedAt, q.data?.lastRunAt, running]);
+
+  const runLanding =
+    running && !!q.data?.lastRunAt && q.data.lastRunAt !== baselineRunAt.current;
   async function addPrompt() {
     const p = draft.trim();
     if (p.length < 3) return;
@@ -122,7 +151,9 @@ export function AiVisibilityView() {
     }
   }
 
-  // Free/starter: the data query 403s with plan_locked_feature → locked upsell.
+  // Free/starter: the seed reported the plan-locked 403 → upsell, server-rendered (no
+  // client fetch). Kept as a belt-and-braces fallback if the client query 403s too.
+  if (locked) return <LockedState />;
   if (q.error && paywallFromError(q.error)) return <LockedState />;
   if (q.isLoading && !q.data) return <LoadingState />;
   const data = q.data;
@@ -149,7 +180,7 @@ export function AiVisibilityView() {
   const runButton = (
     <Button onClick={runNow} disabled={running} size="sm">
       {running ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
-      Run now
+      {running ? "Running…" : "Run now"}
     </Button>
   );
 
@@ -171,6 +202,8 @@ export function AiVisibilityView() {
         }
         actions={runButton}
       />
+
+      {running && <RunProgressBanner landing={runLanding} />}
 
       {!hasData ? (
         <EmptyState onRun={runNow} running={running} />
@@ -567,6 +600,31 @@ function EmptyState({ onRun, running }: { onRun: () => void; running: boolean })
         {running ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
         Run first check
       </Button>
+    </div>
+  );
+}
+
+// In-progress strip shown from "Run now" click until the fresh run's rows land (a run is
+// async on a worker, ~a minute) — otherwise the button just flickers and nothing tells the
+// user the check is underway.
+function RunProgressBanner({ landing }: { landing: boolean }) {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="flex items-start gap-3 rounded-md border border-border bg-card px-4 py-3"
+    >
+      <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-[var(--link)]" aria-hidden />
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-foreground">
+          {landing ? "Results are landing…" : "Checking AI answer engines…"}
+        </p>
+        <p className="text-dense text-muted-foreground">
+          {landing
+            ? "Fresh mentions are streaming in as each engine responds."
+            : "We're asking Gemini and Perplexity your tracked prompts. This usually takes about a minute."}
+        </p>
+      </div>
     </div>
   );
 }

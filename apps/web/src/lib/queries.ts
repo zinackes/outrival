@@ -1,5 +1,5 @@
 import { queryOptions, infiniteQueryOptions } from "@tanstack/react-query";
-import { api, type ActivityStatusFilter, type SignalsFeedParams } from "./api";
+import { api, ApiError, type ActivityStatusFilter, type SignalsFeedParams } from "./api";
 
 /**
  * Shared query definitions — one source of truth for `queryKey` + `queryFn`,
@@ -158,6 +158,11 @@ export function aiVisibilityQuery(productId?: string) {
   return queryOptions({
     queryKey: productId ? (["ai-visibility", productId] as const) : (["ai-visibility"] as const),
     queryFn: () => api.getAiVisibility(productId),
+    // The 403 plan_locked_feature (and any other 4xx) is terminal — retrying it just
+    // holds a free/starter user on the loading skeleton through three backoffs before
+    // the upsell shows. Retry only transient failures (network / 5xx).
+    retry: (failureCount, err) =>
+      !(err instanceof ApiError && err.status >= 400 && err.status < 500) && failureCount < 2,
   });
 }
 

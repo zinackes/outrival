@@ -1,8 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Copy, Trash2, Link2 } from "lucide-react";
+import { Copy, Trash2, Link2, Plus } from "lucide-react";
 import { api } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,11 +13,30 @@ import { Button } from "@/components/ui/button";
 // from the Overview's "Share snapshot"; here the user can kill them.
 export function SharedReportsSettings() {
   const qc = useQueryClient();
+  const [creating, setCreating] = useState(false);
   const { data } = useQuery({
     queryKey: ["share-links"],
     queryFn: () => api.listShareLinks(),
   });
   const links = data?.links ?? [];
+
+  // Create-or-return for the primary product, so this list is a place to create a
+  // link too (not just manage day-0 ones). Copies the URL on success.
+  const create = async () => {
+    setCreating(true);
+    try {
+      const { url } = await api.createShareLink();
+      await navigator.clipboard?.writeText(url);
+      await qc.invalidateQueries({ queryKey: ["share-links"] });
+      toast.success("Snapshot link created & copied", {
+        description: "Anyone with the link can view this report.",
+      });
+    } catch {
+      toast.error("Couldn’t create the link. Please try again.");
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const revoke = async (id: string) => {
     try {
@@ -35,18 +55,25 @@ export function SharedReportsSettings() {
 
   return (
     <section className="flex flex-col gap-5">
-      <header>
-        <h2 className="font-semibold text-base tracking-tight">Shared reports</h2>
-        <p className="text-muted-foreground text-sm mt-1">
-          Public read-only links to your Competitive Snapshot. Anyone with a link can view
-          it — revoke anytime.
-        </p>
+      <header className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="font-semibold text-base tracking-tight">Shared reports</h2>
+          <p className="text-muted-foreground text-sm mt-1">
+            Public read-only links to your Competitive Snapshot. Anyone with a link can view
+            it — revoke anytime.
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={create} disabled={creating}>
+          <Plus className="size-4" />
+          Create link
+        </Button>
       </header>
 
       {links.length === 0 ? (
         <Card className="px-5 py-4">
           <div className="text-dense text-muted-foreground">
-            No shared reports yet. Create one from the Overview with “Share snapshot”.
+            No shared reports yet. Create one here, or from the Overview with “Share
+            snapshot”.
           </div>
         </Card>
       ) : (

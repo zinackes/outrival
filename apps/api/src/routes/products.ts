@@ -370,6 +370,22 @@ productsRouter.delete("/:id", async (c) => {
     .update(products)
     .set({ status: "archived", updatedAt: new Date() })
     .where(eq(products.id, product.id));
+
+  // Archiving a SKU means "stop tracking it". Its self-competitor is the monitoring
+  // anchor — take it out of circulation too, otherwise it lingered as a live "self":
+  // still in every roster (e.g. showing up as "you" in AI Visibility) and, because the
+  // scheduler treats a self absent from `selfManaged` as a legacy self, still scraped.
+  // Soft-delete removes it from rosters/feeds; deactivating its monitors stops scraping.
+  // Reversible in place if an un-archive flow is ever added (clear deletedAt + reactivate).
+  await db
+    .update(competitors)
+    .set({ deletedAt: new Date() })
+    .where(and(eq(competitors.id, product.selfCompetitorId), eq(competitors.orgId, orgId)));
+  await db
+    .update(monitors)
+    .set({ isActive: false })
+    .where(eq(monitors.competitorId, product.selfCompetitorId));
+
   return c.json({ ok: true });
 });
 

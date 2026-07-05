@@ -89,6 +89,11 @@ export { evaluateSignificance } from "./filters/significance";
 export type { DiffInput, SignificanceResult } from "./filters/significance";
 export { extractSelfProfile, SelfProfileExtractionSchema } from "./tasks/extract-self-profile";
 export type { SelfProfileExtraction } from "./tasks/extract-self-profile";
+export {
+  generateVisibilityPrompts,
+  fallbackVisibilityPrompts,
+} from "./tasks/generate-visibility-prompts";
+export type { VisibilityPromptInput } from "./tasks/generate-visibility-prompts";
 export { verifyContentMatchesProfile, VerifyContentSchema } from "./tasks/verify-content-profile";
 export type { VerifyContentResult, VerifyContentInput } from "./tasks/verify-content-profile";
 export {

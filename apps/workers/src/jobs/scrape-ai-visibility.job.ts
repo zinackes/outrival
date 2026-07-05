@@ -22,6 +22,7 @@ import {
   type AiVisibilityResultRow,
 } from "../lib/analytics";
 import { aggregate, computeDeltas, type VisibilityDelta } from "../lib/ai-visibility/diff";
+import { buildVisibilityPromptInput, seedVisibilityPrompts } from "../lib/ai-visibility/seed";
 import { notifyJobComplete } from "../lib/job-complete";
 
 // AI Visibility / "Share of Model" — phases 2+3 (docs/ai-visibility.md). For one org,
@@ -46,18 +47,6 @@ const InputSchema = z.object({
 const ENGINES: Engine[] = ["gemini", "perplexity"];
 
 const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
-
-// Seed a small starter prompt set from a product's self when it has none yet, so a run
-// works before the user curates prompts. Idempotent: only seeds when the product has
-// zero prompts. Same shape the enable flow uses.
-function defaultPrompts(selfName: string | null, category: string | null): string[] {
-  const out: string[] = [];
-  if (category) {
-    out.push(`best ${category} tools`, `top ${category} software`, `${category} software comparison`);
-  }
-  if (selfName) out.push(`best alternatives to ${selfName}`, `tools like ${selfName}`);
-  return [...new Set(out)].slice(0, 5);
-}
 
 export const scrapeAiVisibilityJob = task({
   id: "scrape-ai-visibility",
@@ -103,7 +92,7 @@ export const scrapeAiVisibilityJob = task({
       // Roster for this product = its self product + its linked competitors (non-deleted).
       const self = await db.query.competitors.findFirst({
         where: and(eq(competitors.id, product.selfCompetitorId), isNull(competitors.deletedAt)),
-        columns: { id: true, name: true, category: true, url: true },
+        columns: { id: true, name: true, category: true, url: true, selfProfile: true },
       });
       const linked = await db
         .select({ id: competitors.id, name: competitors.name, url: competitors.url })
@@ -130,7 +119,11 @@ export const scrapeAiVisibilityJob = task({
         ),
       });
       if (prompts.length === 0) {
-        const seeds = defaultPrompts(self?.name ?? null, self?.category ?? null);
+        const promptInput = buildVisibilityPromptInput(
+          self ?? { name: null, category: null },
+          linked.map((c) => c.name),
+        );
+        const seeds = await seedVisibilityPrompts(promptInput, maxPrompts);
         if (seeds.length === 0) {
           logger.log("No prompts and nothing to seed for product, skipping", {
             orgId,

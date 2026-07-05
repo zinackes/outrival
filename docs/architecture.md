@@ -905,6 +905,16 @@ BUILD_TIME=                  # build timestamp → GET /api/version. In Coolify:
   "Powered by Outrival" (boucle d'acquisition). Bouton "Share snapshot" sur le landscape
   (create-or-return idempotent + copie presse-papier), liste révocable dans Settings → Data.
   📄 docs/post-onboarding-activation.md
+- **Monthly "Competitive Recap" — Wrapped (L9, feature ad-hoc)** — recap mensuel style
+  year-in-review. `buildMonthlyRecap(orgId, month?)` (`lib/monthly-recap.ts`, pur, depuis
+  signals/quality_feedback/scrape_runs — 0 table) → `GET /api/recap` + page in-app
+  `/dashboard/recap` = slideshow animé (motion/react : count-ups, reveals, progress dots,
+  nav clavier/tap). Email teaser (`send-monthly-recap` job) = hook vers la page (l'email
+  n'anime pas). Scheduling SANS nouveau cron (cap 10/10 plein) : piggyback
+  generate-daily-digest au 1er du mois local de l'org, idempotency-key /org/mois.
+  **Partageable** via l'infra L8 : `share_links.type='recap'` + `meta{month}` (migration
+  0028), public résout `kind='recap'` → `RecapDeck publicMode` (mêmes cartes, sans liens
+  dashboard). 📄 docs/post-onboarding-activation.md
 - **Couverture des sources élargie (patch-32)** — étend la couverture par source via la
   détection plateforme (patch-31) + le pipeline étagé (patch-30), sans toucher la cascade.
   **HIRING** : 7 connecteurs ATS no-auth (+ Personio feed XML) + schéma d'offre cross-ATS

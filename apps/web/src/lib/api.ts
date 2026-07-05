@@ -2330,6 +2330,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ type: "landscape", ...(productId ? { productId } : {}) }),
     }),
+  createRecapShareLink: (month: string) =>
+    request<{ id: string; token: string; url: string }>("/api/share", {
+      method: "POST",
+      body: JSON.stringify({ type: "recap", month }),
+    }),
   listShareLinks: () => request<{ links: ShareLink[] }>("/api/share"),
   revokeShareLink: (id: string) =>
     request<{ ok: true }>(`/api/share/${id}`, { method: "DELETE" }),

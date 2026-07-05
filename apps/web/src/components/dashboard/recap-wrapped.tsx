@@ -7,6 +7,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { ChevronLeft, ChevronRight, Sparkles, ArrowUpRight } from "lucide-react";
 import { api, type MonthlyRecap } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { ShareRecapButton } from "./share-recap-button";
 
 // Monthly "Competitive Recap" — Wrapped-style (Lever 9). A full-bleed slideshow of
 // animated stat cards built from buildMonthlyRecap. The email teaser drives here.
@@ -78,8 +79,9 @@ const Eyebrow = ({ children }: { children: React.ReactNode }) => (
   </motion.p>
 );
 
-// Build the ordered slides for a recap (skips cards with no data).
-function buildSlides(r: MonthlyRecap): React.ReactNode[] {
+// Build the ordered slides for a recap (skips cards with no data). In `publicMode`
+// (a shared link) the dashboard-only links are dropped for a "Powered by Outrival" close.
+function buildSlides(r: MonthlyRecap, publicMode: boolean): React.ReactNode[] {
   const slides: React.ReactNode[] = [];
   const a = (i: number) => ACCENTS[i % ACCENTS.length]!;
 
@@ -149,11 +151,13 @@ function buildSlides(r: MonthlyRecap): React.ReactNode[] {
           <motion.p variants={item} className="mt-3 text-lead leading-snug">
             {r.biggestMove.insight}
           </motion.p>
-          <motion.div variants={item} className="mt-5">
-            <Button asChild variant="outline" size="sm">
-              <Link href="/dashboard/signals">See the signal</Link>
-            </Button>
-          </motion.div>
+          {!publicMode && (
+            <motion.div variants={item} className="mt-5">
+              <Button asChild variant="outline" size="sm">
+                <Link href="/dashboard/signals">See the signal</Link>
+              </Button>
+            </motion.div>
+          )}
         </Slide>,
       );
     }
@@ -205,11 +209,22 @@ function buildSlides(r: MonthlyRecap): React.ReactNode[] {
       <Big>That&apos;s your month.</Big>
       <Lead>We&apos;ll keep watching. See you next month.</Lead>
       <motion.div variants={item} className="mt-6 flex items-center justify-center gap-2">
-        <Button asChild variant="outline" size="sm">
-          <Link href="/dashboard">
-            Back to dashboard <ArrowUpRight className="size-4" />
-          </Link>
-        </Button>
+        {publicMode ? (
+          <Button asChild variant="outline" size="sm">
+            <Link href="https://outrival.app">
+              <Sparkles className="size-4 text-link" /> Powered by Outrival
+            </Link>
+          </Button>
+        ) : (
+          <>
+            <ShareRecapButton month={r.month.key} />
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/dashboard">
+                Back to dashboard <ArrowUpRight className="size-4" />
+              </Link>
+            </Button>
+          </>
+        )}
       </motion.div>
     </Slide>,
   );
@@ -217,14 +232,11 @@ function buildSlides(r: MonthlyRecap): React.ReactNode[] {
   return slides;
 }
 
-export function RecapWrapped({ month }: { month?: string }) {
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ["recap", month ?? null] as const,
-    queryFn: () => api.getRecap(month),
-  });
+// Presentational slideshow — NO data fetching, so the public share page (outside the
+// dashboard's QueryClientProvider) can render it directly with pre-loaded data.
+export function RecapDeck({ recap, publicMode = false }: { recap: MonthlyRecap; publicMode?: boolean }) {
   const [i, setI] = useState(0);
-
-  const slides = data ? buildSlides(data) : [];
+  const slides = buildSlides(recap, publicMode);
   const count = slides.length;
 
   const go = useCallback(
@@ -240,24 +252,6 @@ export function RecapWrapped({ month }: { month?: string }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [go]);
-
-  if (isLoading) {
-    return (
-      <div className="flex min-h-[70vh] items-center justify-center text-sm text-muted-foreground">
-        Assembling your recap…
-      </div>
-    );
-  }
-  if (isError || !data || count === 0) {
-    return (
-      <div className="flex min-h-[70vh] flex-col items-center justify-center gap-3 text-center">
-        <p className="text-sm text-muted-foreground">Your recap isn’t ready yet.</p>
-        <Button asChild variant="outline" size="sm">
-          <Link href="/dashboard">Back to dashboard</Link>
-        </Button>
-      </div>
-    );
-  }
 
   return (
     <div className="relative min-h-[76vh] overflow-hidden rounded-xl border border-border bg-card">
@@ -316,4 +310,32 @@ export function RecapWrapped({ month }: { month?: string }) {
       </div>
     </div>
   );
+}
+
+// Dashboard entry — fetches the authed recap (needs the dashboard QueryClientProvider),
+// then renders the deck. The public share page renders <RecapDeck> directly instead.
+export function RecapWrapped({ month, publicMode = false }: { month?: string; publicMode?: boolean }) {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["recap", month ?? null] as const,
+    queryFn: () => api.getRecap(month),
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-[70vh] items-center justify-center text-sm text-muted-foreground">
+        Assembling your recap…
+      </div>
+    );
+  }
+  if (isError || !data) {
+    return (
+      <div className="flex min-h-[70vh] flex-col items-center justify-center gap-3 text-center">
+        <p className="text-sm text-muted-foreground">Your recap isn’t ready yet.</p>
+        <Button asChild variant="outline" size="sm">
+          <Link href="/dashboard">Back to dashboard</Link>
+        </Button>
+      </div>
+    );
+  }
+  return <RecapDeck recap={data} publicMode={publicMode} />;
 }

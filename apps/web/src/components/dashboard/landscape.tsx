@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { AiVisibilityTeaser } from "./ai-visibility-teaser";
+import { ShareSnapshotButton } from "./share-snapshot-button";
 import {
   ArrowRight,
   Check,
@@ -196,6 +197,11 @@ export function LandscapeSection({
 
   return (
     <>
+      {/* Share the day-0 snapshot as a public "Competitive Snapshot Report" (Lever 8). */}
+      <div className="flex justify-end">
+        <ShareSnapshotButton productId={productId} />
+      </div>
+
       {/* AI Visibility teaser (Lever 7): the day-0 "wow" — do you show up in AI answer
           engines vs your competitors? Self-hides until its worker result lands. */}
       <AiVisibilityTeaser />

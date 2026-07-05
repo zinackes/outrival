@@ -35,6 +35,7 @@ export * from "./forced-rescan-log";
 export * from "./parser-extractors";
 export * from "./saved-views";
 export * from "./crm-destinations";
+export * from "./share-links";
 export * from "./signal-comments";
 export * from "./ask-history";
 export * from "./ai-visibility";

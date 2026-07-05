@@ -1,4 +1,4 @@
-import { schedules, logger } from "@trigger.dev/sdk/v3";
+import { task, logger } from "@trigger.dev/sdk/v3";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import {
   db,
@@ -24,9 +24,8 @@ type StructuralChangeType = "pivot" | "site_dead" | "acquired" | "category_shift
 // Weekly, before the Monday digest. Combines a cheap structural signal (text +
 // pHash diff over consecutive stable scrapes) with an AI profile-match check to
 // flag a pivot/acquisition/category-shift — never auto-resolved (patch-23).
-export const detectStructuralChangesJob = schedules.task({
+export const detectStructuralChangesJob = task({
   id: "detect-structural-changes",
-  cron: "0 6 * * 1",
   maxDuration: 600,
 
   async run() {

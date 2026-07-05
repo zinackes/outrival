@@ -1,4 +1,4 @@
-import { schedules, logger } from "@trigger.dev/sdk/v3";
+import { task, logger } from "@trigger.dev/sdk/v3";
 import { sendSlackMessage } from "@outrival/shared";
 import { getQualityByTask } from "@outrival/db";
 import {
@@ -38,11 +38,8 @@ function pct(part: number, total: number): string {
   return total > 0 ? `${Math.round((part / total) * 100)}%` : "0%";
 }
 
-export const opsHealthCheckJob = schedules.task({
+export const opsHealthCheckJob = task({
   id: "ops-health-check",
-  // Schedule disabled to fit Trigger's free-plan 10-schedule cap (we have 15).
-  // Re-enable (uncomment) on a paid plan. Task still runs if triggered manually.
-  // cron: "0 */6 * * *",
   maxDuration: 120,
 
   async run() {

@@ -1,4 +1,4 @@
-import { schedules, logger, tasks } from "@trigger.dev/sdk/v3";
+import { task, logger, tasks } from "@trigger.dev/sdk/v3";
 import { and, isNull, isNotNull, lte, ne, or } from "drizzle-orm";
 import { db, competitors } from "@outrival/db";
 
@@ -7,9 +7,8 @@ import { db, competitors } from "@outrival/db";
 // PLATFORM_REDETECT_INTERVAL_DAYS — keyed on competitors.platformDetectedAt (a
 // dedicated cadence column, like techStackScrapedAt). Self-product (type="self")
 // is excluded. The connector-failure trigger (patch-31 phase 5) is separate.
-export const schedulePlatformDetectionJob = schedules.task({
+export const schedulePlatformDetectionJob = task({
   id: "schedule-platform-detection",
-  cron: "0 4 * * *",
   maxDuration: 120,
 
   async run() {

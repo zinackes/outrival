@@ -1,4 +1,4 @@
-import { schedules, logger } from "@trigger.dev/sdk/v3";
+import { task, logger } from "@trigger.dev/sdk/v3";
 import { and, eq, gte, inArray, isNull, ne } from "drizzle-orm";
 import {
   db,
@@ -28,9 +28,8 @@ interface Candidate {
 // shows "3 minor feature updates from Linear" instead of three rows. Critical
 // signals are never batched. Runs every 6h; idempotent (already-batched signals are
 // excluded by batchedIntoId).
-export const signalBatchingJob = schedules.task({
+export const signalBatchingJob = task({
   id: "signal-batching",
-  cron: "0 */6 * * *",
   maxDuration: 300,
   retry: { maxAttempts: 3, minTimeoutInMs: 5_000, maxTimeoutInMs: 60_000, factor: 2 },
 

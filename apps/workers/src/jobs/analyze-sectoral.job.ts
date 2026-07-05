@@ -1,4 +1,4 @@
-import { schedules, logger } from "@trigger.dev/sdk/v3";
+import { task, logger } from "@trigger.dev/sdk/v3";
 import { and, eq, gte, inArray, isNull, ne } from "drizzle-orm";
 import {
   db,
@@ -100,10 +100,8 @@ async function loadOrgSectoralData(
   }));
 }
 
-export const analyzeSectoralJob = schedules.task({
+export const analyzeSectoralJob = task({
   id: "analyze-sectoral",
-  // Monday 07:00 UTC. SECTORAL_ANALYSIS_DAY documents intent but the cron is static.
-  cron: "0 7 * * 1",
   maxDuration: 600,
 
   async run() {

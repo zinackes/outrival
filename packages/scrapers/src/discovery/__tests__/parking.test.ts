@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { isParkedPage } from "../discover";
+import { isDeadStatus, isParkedPage } from "../discover";
 
 // Real signatures served by backand.com (a defunct BaaS whose domain was resold
 // to DomainMarket and now answers HTTP 200 — the case that motivated this filter).
@@ -35,4 +35,16 @@ test("real product page is not flagged", () => {
 test("legitimate 'for sale' copy that is not about a domain is not flagged", () => {
   const html = "browse thousands of homes for sale in your area.".toLowerCase();
   expect(isParkedPage("zillow-clone.io", html)).toBe(false);
+});
+
+test("404 / 410 mean the URL is dead", () => {
+  expect(isDeadStatus(404)).toBe(true);
+  expect(isDeadStatus(410)).toBe(true);
+});
+
+test("anti-bot, auth and transient statuses are still alive", () => {
+  // The product refusing US (or being briefly down) is not a dead site.
+  for (const s of [200, 301, 401, 403, 429, 500, 503]) {
+    expect(isDeadStatus(s)).toBe(false);
+  }
 });

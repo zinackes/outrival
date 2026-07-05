@@ -43,6 +43,23 @@ function billingPeriod(spec: JsonLdNode | null, priceIsNull: boolean): Structure
   return priceIsNull ? "custom" : "monthly";
 }
 
+// Free-text units + UN/CEFACT codes that denote a billing *period* (a subscription:
+// per month/year), as opposed to a metered unit ("API call", "request", "GB", "C62").
+const TIME_UNIT = /year|ann|\bmon\b|month|p1y|p12m|p1m|p30d|week|\bday\b|hour/i;
+
+/**
+ * True when an Offer prices a metered unit ("$0.10 per API call") rather than a
+ * subscription tier. Such an offer is a usage/entry-point price the mapper would
+ * otherwise mislabel as a "$0.10/month plan" — see the usage-only guard below.
+ */
+function isUsagePriced(spec: JsonLdNode | null): boolean {
+  if (!spec) return false;
+  // An explicit billing duration/period is a subscription marker, never usage.
+  if (asText(spec["billingDuration"]) ?? asText(spec["billingPeriod"])) return false;
+  const unit = (asText(spec["unitText"]) ?? asText(spec["unitCode"]) ?? "").trim();
+  return unit.length > 0 && !TIME_UNIT.test(unit);
+}
+
 function offerToPlan(offer: JsonLdNode, fallbackName: string | null): StructuredPricingPlan | null {
   const spec = (offer["priceSpecification"] as JsonLdNode | undefined) ?? null;
   const price = asPrice(offer["price"]) ?? asPrice(spec?.["price"]);
@@ -99,6 +116,14 @@ export function pricingFromStructured(html: string): StructuredPricing | null {
     ...findByType(nodes, "Service"),
   ];
   const plans: StructuredPricingPlan[] = [];
+  // A pricing JSON-LD that carries ONLY metered/usage offers (e.g. CarsXE advertises
+  // just "Pay-as-you-go $0.10 per API call") is not a subscription pricing table —
+  // the real tiers live only in the rendered DOM. Trusting it would short-circuit the
+  // staged extractor with a lone mislabeled "monthly" plan and drop every other tier.
+  // Track whether any real (non-usage) tier was seen; if none, fall through (return
+  // null) so the cached parser / AI floor reads the page. A MIXED result keeps every
+  // offer exactly as before — this only guards the usage-only case.
+  let sawSubscriptionPlan = false;
   for (const product of products) {
     const productName = asText(product["name"]);
     const offers = offersOf(product);
@@ -108,9 +133,14 @@ export function pricingFromStructured(html: string): StructuredPricing | null {
     const fallback = offers.length === 1 ? productName : null;
     for (const offer of offers) {
       const plan = offerToPlan(offer, fallback);
-      if (plan) plans.push(plan);
+      if (!plan) continue;
+      plans.push(plan);
+      if (!isUsagePriced((offer["priceSpecification"] as JsonLdNode | undefined) ?? null)) {
+        sawSubscriptionPlan = true;
+      }
     }
   }
+  if (!sawSubscriptionPlan) return null;
   // Dedupe identical (name, price, period) tiers some sites emit twice.
   const seen = new Set<string>();
   const deduped = plans.filter((p) => {

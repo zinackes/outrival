@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
 import type { InferSelectModel } from "drizzle-orm";
 import { organizations } from "./organizations";
 import { users } from "./users";
@@ -22,6 +22,8 @@ export const shareLinks = pgTable(
       .references(() => organizations.id, { onDelete: "cascade" }),
     type: text("type").notNull().default("landscape"),
     productId: text("product_id").references(() => products.id, { onDelete: "cascade" }),
+    // Type-specific params — e.g. { month: "2026-10" } for a "recap" link. Null for landscape.
+    meta: jsonb("meta"),
     // The capability. Generated server-side (128-bit, unguessable), unique so a lookup
     // resolves exactly one artifact.
     token: text("token").notNull(),

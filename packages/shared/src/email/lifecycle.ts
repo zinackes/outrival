@@ -66,3 +66,40 @@ ${button(input.signalUrl, "See what changed")}
     html: darkEmailShell(inner),
   };
 }
+
+// Lever 9 — monthly "Competitive Recap" TEASER. The email can't be the Wrapped (no JS);
+// it's the hook that drives to the in-app animated recap. 2-3 headline numbers + a CTA.
+export function renderMonthlyRecapEmail(input: {
+  monthLabel: string;
+  totalMoves: number;
+  competitorsTracked: number;
+  busiestName?: string | null;
+  biggestInsight?: string | null;
+  recapUrl: string;
+}): { subject: string; html: string } {
+  const stat = (n: number, label: string) =>
+    `<td style="padding:0 8px;"><div style="font-size:30px;font-weight:700;color:#fafafa;line-height:1;">${n}</div><div style="font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#a3a3a3;margin-top:6px;">${escapeHtml(label)}</div></td>`;
+  const inner = `
+${WORDMARK}
+<div style="font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#a3a3a3;margin-bottom:6px;">${escapeHtml(input.monthLabel)}</div>
+<div style="font-size:20px;font-weight:600;color:#fafafa;margin-bottom:18px;">Your competitive recap is ready.</div>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;text-align:center;">
+  <tr>${stat(input.totalMoves, "moves caught")}${stat(input.competitorsTracked, "competitors")}</tr>
+</table>
+${
+  input.busiestName
+    ? `<div style="color:#d4d4d4;font-size:14px;line-height:1.6;margin-bottom:8px;">Your most active rival was <strong style="color:#fafafa;">${escapeHtml(input.busiestName)}</strong>.</div>`
+    : ""
+}
+${
+  input.biggestInsight
+    ? `<div style="background:#171717;border:1px solid #262626;border-radius:6px;padding:14px;margin-bottom:20px;color:#fafafa;font-size:13px;">Biggest move: ${escapeHtml(input.biggestInsight)}</div>`
+    : ""
+}
+${button(input.recapUrl, "See your full recap →")}
+<div style="color:#737373;font-size:12px;margin-top:28px;">A quick look back — tap through your month.</div>`;
+  return {
+    subject: `Your ${input.monthLabel} competitive recap`,
+    html: darkEmailShell(inner),
+  };
+}

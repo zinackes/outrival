@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Sparkles, ArrowUpRight } from "lucide-react";
+import { RecapDeck } from "@/components/dashboard/recap-wrapped";
+import type { MonthlyRecap } from "@/lib/api";
 
-// Public, read-only "Competitive Snapshot Report" (Lever 8). Rendered from a share
-// token — no auth, no cookies. Always noindex + never in the sitemap: the token is
-// the only capability. "Powered by Outrival" footer closes the acquisition loop.
+// Public, read-only share view (Lever 8/9). Rendered from a share token — no auth, no
+// cookies. Always noindex + never in the sitemap: the token is the only capability.
+// Resolves to a "Competitive Snapshot Report" (landscape) or a "Wrapped" recap.
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -41,6 +43,9 @@ type Report = {
     publishedAt: string | null;
   }[];
   insights: { kind: string; text: string }[];
+  // Discriminator (Lever 9): "recap" → the shared Wrapped instead of the landscape.
+  kind?: "landscape" | "recap";
+  recap?: MonthlyRecap;
 };
 
 async function fetchReport(token: string): Promise<Report | null> {
@@ -110,6 +115,16 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
           </p>
         </div>
         <PoweredBy />
+      </Shell>
+    );
+  }
+
+  // Recap share (Lever 9): the Wrapped, in public mode (dashboard links dropped, its own
+  // "Powered by Outrival" close).
+  if (report.kind === "recap" && report.recap) {
+    return (
+      <Shell>
+        <RecapDeck recap={report.recap} publicMode />
       </Shell>
     );
   }

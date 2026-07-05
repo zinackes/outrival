@@ -760,6 +760,27 @@ export type AiVisibilityTeaser =
       citations: string[];
     };
 
+// Monthly "Competitive Recap" (Lever 9) — the Wrapped payload.
+export interface MonthlyRecap {
+  month: { key: string; label: string; start: string; end: string };
+  isEmpty: boolean;
+  totalMoves: number;
+  competitorsTracked: number;
+  pagesChecked: number | null;
+  busiest: { name: string; count: number } | null;
+  quietest: { name: string } | null;
+  biggestMove: {
+    competitorName: string;
+    category: string;
+    severity: string;
+    insight: string;
+    signalId: string;
+  } | null;
+  categoryBreakdown: { category: string; count: number; pct: number }[];
+  topExposure: { category: string; count: number } | null;
+  feedback: { useful: number; notUseful: number; total: number };
+}
+
 // Public share link (Lever 8) — a revocable token for a shared artifact.
 export interface ShareLink {
   id: string;
@@ -2305,11 +2326,19 @@ export const api = {
       `/api/landscape${productId ? `?productId=${encodeURIComponent(productId)}` : ""}`,
     ),
   getAiVisibilityTeaser: () => request<AiVisibilityTeaser>("/api/ai-visibility/teaser"),
+  // Monthly "Competitive Recap" (Lever 9) — the Wrapped stats. Defaults to last month.
+  getRecap: (month?: string) =>
+    request<MonthlyRecap>(`/api/recap${month ? `?month=${encodeURIComponent(month)}` : ""}`),
   // Public share links (Lever 8). Create-or-return is idempotent per (org, product).
   createShareLink: (productId?: string) =>
     request<{ id: string; token: string; url: string }>("/api/share", {
       method: "POST",
       body: JSON.stringify({ type: "landscape", ...(productId ? { productId } : {}) }),
+    }),
+  createRecapShareLink: (month: string) =>
+    request<{ id: string; token: string; url: string }>("/api/share", {
+      method: "POST",
+      body: JSON.stringify({ type: "recap", month }),
     }),
   listShareLinks: () => request<{ links: ShareLink[] }>("/api/share"),
   revokeShareLink: (id: string) =>

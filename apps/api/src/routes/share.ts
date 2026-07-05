@@ -29,12 +29,40 @@ const mintToken = () =>
 shareRouter.post("/", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
-  const body = (await c.req.json().catch(() => ({}))) as { productId?: unknown };
-  const type = "landscape"; // the only shareable artifact in v1
+  const body = (await c.req.json().catch(() => ({}))) as {
+    type?: unknown;
+    productId?: unknown;
+    month?: unknown;
+  };
+  const type = body.type === "recap" ? "recap" : "landscape";
 
+  // Recap link: keyed to a month, no product. Dedupe on (org, recap, meta.month).
+  if (type === "recap") {
+    const month =
+      typeof body.month === "string" && /^\d{4}-\d{2}$/.test(body.month) ? body.month : null;
+    if (!month) return c.json({ error: "month_required" }, 400);
+    const recaps = await db
+      .select({ id: shareLinks.id, token: shareLinks.token, meta: shareLinks.meta })
+      .from(shareLinks)
+      .where(
+        and(eq(shareLinks.orgId, orgId), eq(shareLinks.type, "recap"), isNull(shareLinks.revokedAt)),
+      );
+    const existing = recaps.find((r) => (r.meta as { month?: string } | null)?.month === month);
+    if (existing) {
+      return c.json({ id: existing.id, token: existing.token, url: publicUrl(existing.token) });
+    }
+    const token = mintToken();
+    const [row] = await db
+      .insert(shareLinks)
+      .values({ orgId, type: "recap", meta: { month }, token, createdBy: user.id })
+      .returning({ id: shareLinks.id, token: shareLinks.token });
+    if (!row) return c.json({ error: "create_failed" }, 500);
+    return c.json({ id: row.id, token: row.token, url: publicUrl(row.token) }, 201);
+  }
+
+  // Landscape link: scoped to a product (defaults to primary).
   let productId = typeof body.productId === "string" ? body.productId : undefined;
   if (productId) {
-    // Tenant guard: the product must belong to the caller's org.
     const owned = await db.query.products.findFirst({
       where: and(eq(products.id, productId), eq(products.orgId, orgId)),
       columns: { id: true },
@@ -47,7 +75,7 @@ shareRouter.post("/", async (c) => {
   const existing = await db.query.shareLinks.findFirst({
     where: and(
       eq(shareLinks.orgId, orgId),
-      eq(shareLinks.type, type),
+      eq(shareLinks.type, "landscape"),
       productId ? eq(shareLinks.productId, productId) : isNull(shareLinks.productId),
       isNull(shareLinks.revokedAt),
     ),
@@ -59,7 +87,7 @@ shareRouter.post("/", async (c) => {
   const token = mintToken();
   const [row] = await db
     .insert(shareLinks)
-    .values({ orgId, type, productId: productId ?? null, token, createdBy: user.id })
+    .values({ orgId, type: "landscape", productId: productId ?? null, token, createdBy: user.id })
     .returning({ id: shareLinks.id, token: shareLinks.token });
   if (!row) return c.json({ error: "create_failed" }, 500);
   return c.json({ id: row.id, token: row.token, url: publicUrl(row.token) }, 201);

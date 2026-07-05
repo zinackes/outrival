@@ -1,0 +1,38 @@
+"use client";
+
+import { useState } from "react";
+import { toast } from "sonner";
+import { Share2, Check } from "lucide-react";
+import { api } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+
+// Share the monthly recap as a public "Wrapped" link (Lever 9, on the L8 infra).
+// Create-or-return is idempotent per (org, month); copies the link.
+export function ShareRecapButton({ month }: { month: string }) {
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const share = async () => {
+    setBusy(true);
+    try {
+      const { url } = await api.createRecapShareLink(month);
+      await navigator.clipboard?.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      toast.success("Recap link copied", {
+        description: "Anyone with the link can view your recap. Revoke it in Settings → Data.",
+      });
+    } catch {
+      toast.error("Couldn’t create the share link. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Button variant="outline" size="sm" onClick={share} disabled={busy}>
+      {copied ? <Check className="size-4" /> : <Share2 className="size-4" />}
+      {copied ? "Link copied" : "Share recap"}
+    </Button>
+  );
+}

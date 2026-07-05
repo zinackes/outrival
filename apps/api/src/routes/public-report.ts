@@ -3,6 +3,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { shareLinks, organizations, products } from "@outrival/db";
 import { db } from "../lib/db";
 import { buildLandscape } from "../lib/landscape-data";
+import { buildMonthlyRecap } from "../lib/monthly-recap";
 
 // PUBLIC (no auth) resolver for a share token → the "Competitive Snapshot Report"
 // (Lever 8). Mounted OUTSIDE authMiddleware. The token is the only capability: a
@@ -30,17 +31,25 @@ publicReportRouter.get("/:token", async (c) => {
   });
   if (!org) return c.json({ error: "not_found" }, 404);
 
+  c.header("Cache-Control", "public, max-age=300");
+
+  // Recap share (Lever 9): the shared "Wrapped". Month is pinned in the link's meta.
+  if (link.type === "recap") {
+    const month = (link.meta as { month?: string } | null)?.month;
+    const recap = await buildMonthlyRecap(link.orgId, month);
+    return c.json({ kind: "recap", org: { name: org.name }, recap });
+  }
+
+  // Landscape share (Lever 8): the "Competitive Snapshot Report".
   const product = link.productId
     ? await db.query.products.findFirst({
         where: eq(products.id, link.productId),
         columns: { name: true },
       })
     : null;
-
   const data = await buildLandscape(link.orgId, link.productId ?? undefined);
-
-  c.header("Cache-Control", "public, max-age=300");
   return c.json({
+    kind: "landscape",
     org: { name: org.name },
     product: product ? { name: product.name } : null,
     generatedAt: new Date().toISOString(),

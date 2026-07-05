@@ -113,7 +113,7 @@ snapshots              id, monitor_id, r2_key, content_hash, scraped_at,
                        screenshot_phash (hex dHash — patch-17), content_size (patch-17),
                        origin (live|archive — L2 archive backfill : "archive" =
                        capture Wayback reconstruite à l'onboarding, scraped_at
-                       backdaté, invisible au diff latest-snapshot ; migration 0024)
+                       backdaté, invisible au diff latest-snapshot ; migration 0025)
 
 changes                id, monitor_id, snapshot_before_id, snapshot_after_id,
                        diff_text (50KB max), diff_type (text|structured),

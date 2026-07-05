@@ -22,7 +22,8 @@ import { AiStatusBanner } from "@/components/outrival/ai-status-banner";
 import { normalizeScope, PRODUCT_COOKIE } from "@/lib/product-scope";
 import { TwoFactorNudgeBanner } from "@/components/outrival/two-factor-nudge-banner";
 import { StructuralChangeBanner } from "@/components/outrival/structural-change-banner";
-import { getServerSession, getServerJson } from "@/lib/server-session";
+import { getSessionOutcome, getServerJson } from "@/lib/server-session";
+import { SessionReconnect } from "@/components/outrival/session-reconnect";
 import type { OnboardingSession } from "@/lib/api";
 
 export const metadata: Metadata = {
@@ -87,15 +88,24 @@ export default async function DashboardLayout({
   const h = await headers();
   const cookieStore = await cookies();
 
-  const [session, status, billing, resumeSession, shell] = await Promise.all([
-    getServerSession(h),
+  // Resolve the session gate FIRST and ALONE. On /auth this same read runs by
+  // itself and settles reliably; here it used to share a 5-way Promise.all, so
+  // under a constrained backend get-session could be the one to fail while /auth's
+  // lone read succeeded — /dashboard bounced to /auth, /auth bounced back, and the
+  // URL flapped. Reading it on its own removes that contention, and holding on an
+  // indeterminate answer (rather than bouncing) makes the loop impossible.
+  const sessionOutcome = await getSessionOutcome(h);
+  if (sessionOutcome.state === "unauthenticated") redirect("/auth");
+  if (sessionOutcome.state === "indeterminate") return <SessionReconnect />;
+  const session = sessionOutcome.session;
+
+  const [status, billing, resumeSession, shell] = await Promise.all([
     getOnboardingStatus(h),
     getBilling(h),
     getResumeSession(h),
     getShellData(),
   ]);
 
-  if (!session) redirect("/auth");
   // Skip mode grants dashboard access without completing onboarding.
   if (status && !status.onboardingCompleted && !status.onboardingSkipped) {
     redirect("/onboarding");

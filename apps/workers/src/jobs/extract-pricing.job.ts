@@ -128,6 +128,8 @@ export const extractPricingJob = task({
         price: p.price,
         currency: p.currency,
         billing_period: p.billing_period,
+        unit: p.unit ?? null,
+        included_quantity: p.included_quantity ?? null,
         status: input.status,
         promotional: input.promotional ? 1 : 0,
         observed_region: input.observedRegion,

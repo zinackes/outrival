@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AppProviders } from "@/components/app-providers";
+import { LogoMark } from "@/components/outrival/logo";
 import { requireAdmin } from "./_lib/server";
 import { AdminNav } from "./_components/admin-nav";
 import { AdminMobileNav } from "./_components/admin-mobile-nav";
@@ -20,6 +21,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <div className="mx-auto flex max-w-7xl gap-6 p-6">
           <aside className="sticky top-6 hidden h-fit w-52 shrink-0 md:block">
             <Link href="/admin" className="mb-4 flex items-center gap-2 px-3">
+              <LogoMark size={20} />
               <span className="text-sm font-semibold">Outrival</span>
               <span className="rounded bg-secondary px-1.5 py-0.5 text-meta uppercase tracking-wide text-muted-foreground">
                 ops

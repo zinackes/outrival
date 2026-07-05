@@ -21,3 +21,6 @@ PRODUCT.md
 
 # Playwright MCP scratch (screenshots/snapshots; never source)
 .playwright-mcp/
+
+# Orca drop staging (source-asset scratch; the processed assets live in public/)
+.orca/

@@ -1,18 +1,26 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { AiVisibilityTeaser } from "./ai-visibility-teaser";
 import {
   ArrowRight,
+  Briefcase,
   Check,
+  ChevronDown,
   Clock3,
   ExternalLink,
+  Gift,
+  Lightbulb,
   Radar,
+  Star,
+  Tag,
   TriangleAlert,
+  type LucideIcon,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
-import type { LandscapeData, LandscapePricingRow } from "@/lib/api";
+import type { LandscapeData, LandscapeInsight, LandscapePricingRow } from "@/lib/api";
 import { landscapeQuery } from "@/lib/queries";
 import { formatDate } from "@/lib/format-date";
 import { competitorNameColor } from "@/lib/competitor-color";
@@ -148,6 +156,194 @@ function WaitEmptyState({ competitorCount }: { competitorCount: number }) {
   );
 }
 
+// Day-0 "Did you know?" quick wins (Lever 3) — the aha the API already computes
+// in computeLandscapeInsights but the page never surfaced. Deterministic, no AI:
+// the sharpest pricing/hiring/review gaps between the user and each competitor.
+const INSIGHT_ICON: Record<LandscapeInsight["kind"], LucideIcon> = {
+  pricing_gap: Tag,
+  trial: Gift,
+  hiring: Briefcase,
+  reviews: Star,
+};
+
+function InsightCards({
+  insights,
+  nameById,
+}: {
+  insights: LandscapeInsight[];
+  nameById: Map<string, LandscapeData["competitors"][number]>;
+}) {
+  if (insights.length === 0) return null;
+  return (
+    <section>
+      <SectionHead
+        title="What we already found"
+        sub="the sharpest gaps between you and your competitors"
+        icon={<Lightbulb size={16} />}
+        divider={false}
+      />
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {insights.map((ins) => {
+          const Icon = INSIGHT_ICON[ins.kind];
+          const comp = ins.competitorId ? nameById.get(ins.competitorId) : null;
+          const body = (
+            <>
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-full border border-border bg-accent/40 text-primary">
+                <Icon size={14} aria-hidden />
+              </span>
+              <span className="text-sm leading-snug">{ins.text}</span>
+            </>
+          );
+          return comp ? (
+            <Link
+              key={ins.kind}
+              href={`/dashboard/competitors/${comp.id}`}
+              className="flex items-start gap-3 rounded-md border border-border bg-card px-4 py-3.5 transition-colors hover:bg-accent/50"
+            >
+              {body}
+            </Link>
+          ) : (
+            <div
+              key={ins.kind}
+              className="flex items-start gap-3 rounded-md border border-border bg-card px-4 py-3.5"
+            >
+              {body}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+// Transparent waiting (Lever 4), demoted to a collapsible strip: the healthy
+// source lights are reassurance, not intelligence, so they stay folded. Only a
+// source we can't reach (markedUnscrapable) surfaces inline, always — that's the
+// one coverage fact worth seeing at a glance.
+function SourcesCoverage({
+  competitors,
+  sourcesByComp,
+  nextCheckAt,
+}: {
+  competitors: LandscapeData["competitors"];
+  sourcesByComp: Map<string, LandscapeData["sources"]>;
+  nextCheckAt: string | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const total = [...sourcesByComp.values()].reduce((n, s) => n + s.length, 0);
+  const failed = competitors.flatMap((c) =>
+    (sourcesByComp.get(c.id) ?? [])
+      .filter((s) => s.status === "unavailable")
+      .map((s) => ({ competitor: c, sourceType: s.sourceType })),
+  );
+  if (total === 0) return null;
+
+  return (
+    <section className="rounded-md border border-border">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-2 px-4 py-3 text-left"
+      >
+        <ChevronDown
+          size={14}
+          aria-hidden
+          className={`shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
+        />
+        <span className="text-dense font-medium">
+          Watching <span className="font-mono tabular-nums">{total}</span> source
+          {total > 1 ? "s" : ""} across{" "}
+          <span className="font-mono tabular-nums">{competitors.length}</span>{" "}
+          competitor{competitors.length > 1 ? "s" : ""}
+        </span>
+        {nextCheckAt && (
+          <span className="ml-auto inline-flex shrink-0 items-center gap-2 rounded-full border border-border bg-background px-3 py-1 text-xs">
+            <span className="size-1.5 rounded-full bg-primary" aria-hidden />
+            Next scan{" "}
+            <span className="text-muted-foreground">
+              {formatDistanceToNow(new Date(nextCheckAt), { addSuffix: true })}
+            </span>
+          </span>
+        )}
+      </button>
+
+      {failed.length > 0 && (
+        <div className="border-t border-border">
+          {failed.map(({ competitor, sourceType }) => (
+            <div
+              key={`${competitor.id}-${sourceType}`}
+              className="flex items-center gap-2 border-b border-border px-4 py-2 text-dense last:border-b-0"
+            >
+              <TriangleAlert
+                size={12}
+                className="shrink-0 text-muted-foreground"
+                aria-hidden
+              />
+              <span
+                className="font-medium"
+                style={competitorNameColor(competitor.color)}
+              >
+                {competitor.name}
+              </span>
+              <span className="text-muted-foreground">
+                · {SOURCE_LABELS[sourceType] ?? sourceType.replace(/_/g, " ")} —
+                couldn&apos;t reach it
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {open && (
+        <div className="border-t border-border">
+          {competitors.map((c) => {
+            const srcs = sourcesByComp.get(c.id) ?? [];
+            if (srcs.length === 0) return null;
+            return (
+              <div
+                key={c.id}
+                className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-2.5 last:border-b-0"
+              >
+                <Link
+                  href={`/dashboard/competitors/${c.id}`}
+                  className="flex w-40 shrink-0 items-center gap-2 truncate text-dense font-medium underline-offset-2 hover:underline"
+                  style={competitorNameColor(c.color)}
+                >
+                  <CompAvatar name={c.name} url={c.url} />
+                  {c.name}
+                </Link>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {srcs.map((s) => (
+                    <span
+                      key={s.sourceType}
+                      className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-meta text-muted-foreground"
+                    >
+                      {s.status === "captured" ? (
+                        <Check size={11} className="text-primary" aria-hidden />
+                      ) : s.status === "pending" ? (
+                        <Clock3 size={11} aria-hidden />
+                      ) : (
+                        <TriangleAlert size={11} aria-hidden />
+                      )}
+                      {SOURCE_LABELS[s.sourceType] ?? s.sourceType.replace(/_/g, " ")}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+          <p className="border-t border-border px-4 py-3 text-sm text-muted-foreground">
+            A signal appears when something actually changes on one of these
+            sources — we can&apos;t predict when a competitor moves, only that
+            we&apos;ll catch it.
+          </p>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function LandscapeSection({
   productId,
   competitorCount,
@@ -196,22 +392,20 @@ export function LandscapeSection({
 
   return (
     <>
+      {/* Quick-win "Did you know?" cards (Lever 3) — the aha, first. */}
+      <InsightCards insights={data.insights} nameById={nameById} />
+
       {/* AI Visibility teaser (Lever 7): the day-0 "wow" — do you show up in AI answer
           engines vs your competitors? Self-hides until its worker result lands. */}
       <AiVisibilityTeaser />
 
-      {/* No reassurance hero: the page scope already lives in the PageHead, and
-          while the first scan runs the OnboardingAnalysisPanel owns the status —
-          a "monitoring is live" card here contradicts it and reads as filler.
-          Substance (baseline, activity) appears below only once it exists. */}
-
-      {/* Your starting position — the compact baseline the first scan captured:
+      {/* Where you stand today — the compact baseline the first scan captured:
           pricing compressed to one line per company, hiring + reviews beside it. */}
       {hasBaseline && (
         <section>
           <SectionHead
-            title="Your starting position"
-            sub="the baseline the first scan captured"
+            title="Where you stand today"
+            sub="pricing, hiring and reviews across your competitors"
             divider={false}
           />
 
@@ -391,74 +585,13 @@ export function LandscapeSection({
         </section>
       )}
 
-      {/* Transparent waiting (Lever 4) — per-source lights, with the next-scan
-          ETA carried once in the section header (the hero that used to hold it
-          is gone). */}
-      <section>
-        <SectionHead
-          title="What we're watching"
-          sub="every source we check on each competitor"
-          divider={false}
-          action={
-            data.nextCheckAt ? (
-              <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-border bg-background px-3 py-1 text-xs">
-                <span className="size-1.5 rounded-full bg-primary" aria-hidden />
-                Next scan{" "}
-                <span className="text-muted-foreground">
-                  {formatDistanceToNow(new Date(data.nextCheckAt), {
-                    addSuffix: true,
-                  })}
-                </span>
-              </span>
-            ) : undefined
-          }
-        />
-        <div className="mt-3 rounded-md border border-border">
-          {data.competitors.map((c) => {
-            const srcs = sourcesByComp.get(c.id) ?? [];
-            return (
-              <div
-                key={c.id}
-                className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5 border-b border-border last:border-b-0"
-              >
-                <Link
-                  href={`/dashboard/competitors/${c.id}`}
-                  className="flex w-40 shrink-0 items-center gap-2 text-dense font-medium truncate hover:underline underline-offset-2"
-                  style={competitorNameColor(c.color)}
-                >
-                  <CompAvatar name={c.name} url={c.url} />
-                  {c.name}
-                </Link>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {srcs.map((s) => (
-                    <span
-                      key={s.sourceType}
-                      className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-meta text-muted-foreground"
-                    >
-                      {s.status === "captured" ? (
-                        <Check size={11} className="text-primary" aria-hidden />
-                      ) : s.status === "pending" ? (
-                        <Clock3 size={11} aria-hidden />
-                      ) : (
-                        <TriangleAlert size={11} aria-hidden />
-                      )}
-                      {SOURCE_LABELS[s.sourceType] ?? s.sourceType.replace(/_/g, " ")}
-                      {s.status === "pending" && <span className="sr-only"> — first scan pending</span>}
-                      {s.status === "unavailable" && (
-                        <span className="sr-only"> — temporarily unavailable</span>
-                      )}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        <p className="mt-2 text-sm text-muted-foreground">
-          A signal appears when something actually changes on one of these sources — we
-          can&apos;t predict when a competitor moves, only that we&apos;ll catch it.
-        </p>
-      </section>
+      {/* Transparent waiting (Lever 4) — demoted to a collapsible coverage strip;
+          only unreachable sources surface inline, the healthy lights stay folded. */}
+      <SourcesCoverage
+        competitors={data.competitors}
+        sourcesByComp={sourcesByComp}
+        nextCheckAt={data.nextCheckAt}
+      />
 
       {!hasAnyContent && data.sources.length === 0 && (
         <WaitEmptyState competitorCount={competitorCount} />

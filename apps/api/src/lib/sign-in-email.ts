@@ -85,7 +85,7 @@ function renderSignInEmail(
         Or just click the button to sign in on this device:
       </p>
 
-      <a href="${linkUrl}" style="display:inline-block;background-color:#f59e0b;color:#0b0b0d;font-size:14px;font-weight:600;text-decoration:none;padding:12px 24px;border-radius:6px;">
+      <a href="${linkUrl}" style="display:inline-block;background-color:#6366f1;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:12px 24px;border-radius:6px;">
         Sign in to Outrival →
       </a>
 

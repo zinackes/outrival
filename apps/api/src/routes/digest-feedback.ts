@@ -16,7 +16,7 @@ function page(message: string): string {
 <title>Outrival feedback</title></head>
 <body style="margin:0;background:#0a0a0a;color:#fafafa;font-family:Inter,system-ui,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;">
 <div style="text-align:center;padding:24px;">
-<div style="font-family:Syne,sans-serif;font-size:24px;font-weight:bold;margin-bottom:12px;">Out<span style="color:#f59e0b;">rival</span></div>
+<div style="font-family:Syne,sans-serif;font-size:24px;font-weight:bold;margin-bottom:12px;">Out<span style="color:#818cf8;">rival</span></div>
 <p style="color:#a3a3a3;font-size:15px;">${message}</p>
 </div></body></html>`;
 }

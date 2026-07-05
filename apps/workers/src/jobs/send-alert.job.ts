@@ -164,7 +164,7 @@ export const sendAlertJob = task({
           `<p style="font-size: 12px; color: #a3a3a3; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 8px;">${signal.severity.toUpperCase()} · ${signal.category}</p>
   <h2 style="margin: 0 0 12px; font-family: Syne, sans-serif; color: #fafafa;">${escapeHtml(competitor.name)}</h2>
   <p style="margin: 0 0 12px;">${escapeHtml(signal.insight)}</p>
-  ${signal.soWhat ? `<p style="color: #f59e0b; margin: 0 0 12px;">→ ${escapeHtml(signal.soWhat)}</p>` : ""}
+  ${signal.soWhat ? `<p style="color: #818cf8; margin: 0 0 12px;">→ ${escapeHtml(signal.soWhat)}</p>` : ""}
   ${signal.recommendedAction ? `<p style="margin: 0; color: #d4d4d4;"><strong>Action:</strong> ${escapeHtml(signal.recommendedAction)}</p>` : ""}`,
         );
         await getResend().emails.send({

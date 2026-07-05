@@ -48,23 +48,23 @@ export function renderBattleCardHtml(input: {
     font-size: 11px;
     line-height: 1.5;
   }
-  header { display: flex; justify-content: space-between; align-items: end; border-bottom: 2px solid #F59E0B; padding-bottom: 12px; margin-bottom: 18px; }
+  header { display: flex; justify-content: space-between; align-items: end; border-bottom: 2px solid #4f46e5; padding-bottom: 12px; margin-bottom: 18px; }
   .brand { font-family: "Syne", Helvetica, sans-serif; font-size: 20px; font-weight: 700; letter-spacing: -0.5px; }
-  .brand span { color: #F59E0B; }
+  .brand span { color: #4f46e5; }
   .meta { font-size: 10px; color: #555; text-align: right; }
   h1 { font-family: "Syne", Helvetica, sans-serif; font-size: 26px; margin: 0 0 6px; letter-spacing: -0.6px; }
   .subtitle { font-size: 11px; color: #666; margin: 0 0 18px; }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   section { border: 1px solid #e5e5e5; border-radius: 8px; padding: 12px 14px; break-inside: avoid; }
   section.full { grid-column: 1 / -1; }
-  section h2 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; color: #F59E0B; font-weight: 700; }
+  section h2 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; color: #4f46e5; font-weight: 700; }
   ul { margin: 0; padding-left: 16px; }
   ul li { margin-bottom: 4px; }
   .muted { color: #999; font-style: italic; }
   .obj { margin-bottom: 10px; }
   .obj:last-child { margin-bottom: 0; }
   .obj-q { font-weight: 600; color: #333; }
-  .obj-a { color: #444; margin-top: 2px; padding-left: 8px; border-left: 2px solid #F59E0B; }
+  .obj-a { color: #444; margin-top: 2px; padding-left: 8px; border-left: 2px solid #4f46e5; }
   .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   footer { margin-top: 22px; padding-top: 10px; border-top: 1px solid #e5e5e5; font-size: 9px; color: #999; text-align: center; }
 </style>

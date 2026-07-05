@@ -135,7 +135,7 @@ export const generateDailyDigestJob = schedules.task({
   <div style="background:#171717;border:1px solid #262626;border-radius:6px;padding:16px;margin-bottom:12px;">
     <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#a3a3a3;margin-bottom:6px;">${emoji} ${escapeHtml(s.competitorName)} · ${s.category}</div>
     <div style="color:#fafafa;font-size:14px;margin-bottom:8px;">${escapeHtml(s.insight)}</div>
-    ${s.soWhat ? `<div style="color:#f59e0b;font-size:13px;">→ ${escapeHtml(s.soWhat)}</div>` : ""}
+    ${s.soWhat ? `<div style="color:#818cf8;font-size:13px;">→ ${escapeHtml(s.soWhat)}</div>` : ""}
   </div>`;
         })
         .join("");

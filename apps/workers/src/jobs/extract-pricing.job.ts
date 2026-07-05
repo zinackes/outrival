@@ -24,6 +24,11 @@ const InputSchema = z.object({
   status: z.enum(PRICING_STATUSES).optional().default("unknown"),
   promotional: z.boolean().optional().default(false),
   observedRegion: z.string().optional().default("FR"),
+  // L2 archive backfill: when set, this snapshot is a Wayback capture, not a live
+  // scrape. We backdate the pricing_history rows to the capture time (trend depth
+  // on day 0) and, because the page is historical, skip the monitor aiSummary
+  // refresh so a stale archive never overwrites the current source summary.
+  recordedAt: z.string().datetime().optional(),
 });
 
 export const extractPricingJob = task({
@@ -111,7 +116,7 @@ export const extractPricingJob = task({
     const freePlan = detectFreePlan(text);
     logger.log("Free-plan / trial detection", { freePlan, trial });
 
-    const recordedAt = new Date();
+    const recordedAt = input.recordedAt ? new Date(input.recordedAt) : new Date();
     // Keep every plan, including quote-based tiers (price null — "Enterprise",
     // "Contact sales", "Custom"): they're real plans the user wants to see. The
     // pricing_history.price column is nullable; numeric readers (charts, trends,
@@ -135,18 +140,22 @@ export const extractPricingJob = task({
       })),
     );
 
-    const summary = await loggedAi("source_summary", AI_CONFIG.classification, () =>
-      summarizeSource({
-        kind: "pricing",
-        current: extracted.plans,
-        previous,
-      }),
-    );
-    if (summary) {
-      await db
-        .update(monitors)
-        .set({ aiSummary: summary.summary, aiSummaryUpdatedAt: new Date() })
-        .where(eq(monitors.id, snapshot.monitorId));
+    // Backfill runs only seed the historical pricing_history rows — never the
+    // qualitative source summary (a 90-day-old page would clobber the current one).
+    if (!input.recordedAt) {
+      const summary = await loggedAi("source_summary", AI_CONFIG.classification, () =>
+        summarizeSource({
+          kind: "pricing",
+          current: extracted.plans,
+          previous,
+        }),
+      );
+      if (summary) {
+        await db
+          .update(monitors)
+          .set({ aiSummary: summary.summary, aiSummaryUpdatedAt: new Date() })
+          .where(eq(monitors.id, snapshot.monitorId));
+      }
     }
 
     logger.log("Completed extract-pricing", {

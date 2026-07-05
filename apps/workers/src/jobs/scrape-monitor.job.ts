@@ -75,6 +75,15 @@ import { scrapeMonitorQueue } from "../lib/scrape-queues";
 
 const SCRAPER_REGION = process.env.SCRAPER_REGION ?? "FR";
 
+// L2 archive backfill: on a source's first-ever capture we reconstruct its recent
+// past from the Wayback Machine (day-0 change value). Sources are frozen to the
+// ones whose archive-vs-now diff is meaningful.
+const BACKFILL_ENABLED = process.env.BACKFILL_ENABLED !== "false";
+const BACKFILL_SOURCES = (process.env.BACKFILL_SOURCES ?? "homepage,pricing")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
 // patch-17 — Hamming distance above which a homepage screenshot counts as a
 // visual redesign (when little structural change accompanies it).
 const PHASH_THRESHOLD = Number(process.env.ENRICHMENTS_PHASH_THRESHOLD ?? 15);
@@ -1141,6 +1150,22 @@ export const scrapeMonitorJob = task({
         snapshotId: newSnapshot.id,
         competitorId: competitor.id,
         source: "reddit",
+      });
+    }
+
+    // L2 archive backfill — fire once, on the first-ever capture of a backfillable
+    // source for a real competitor. Reuses this fresh snapshot as the diff's
+    // "after" side (race-free: it's already committed). Best-effort, never blocks.
+    if (
+      !lastSnapshot &&
+      competitor.type !== "self" &&
+      BACKFILL_ENABLED &&
+      BACKFILL_SOURCES.includes(monitor.sourceType)
+    ) {
+      await tasks.trigger("backfill-history", {
+        monitorId: monitor.id,
+        competitorId: competitor.id,
+        sourceType: monitor.sourceType,
       });
     }
 

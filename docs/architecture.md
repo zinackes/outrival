@@ -110,7 +110,10 @@ monitors               id, competitor_id, source_type, frequency, config (jsonb)
 snapshots              id, monitor_id, r2_key, content_hash, scraped_at,
                        status (success|failed|partial), etag, last_modified,
                        resolved_url, homepage_structure (jsonb — patch-16, homepage only),
-                       screenshot_phash (hex dHash — patch-17), content_size (patch-17)
+                       screenshot_phash (hex dHash — patch-17), content_size (patch-17),
+                       origin (live|archive — L2 archive backfill : "archive" =
+                       capture Wayback reconstruite à l'onboarding, scraped_at
+                       backdaté, invisible au diff latest-snapshot ; migration 0024)
 
 changes                id, monitor_id, snapshot_before_id, snapshot_after_id,
                        diff_text (50KB max), diff_type (text|structured),
@@ -448,6 +451,19 @@ carte (état live uniquement).
                    surface les pages neuves/retirées ; catégorisation par path. Interne, weekly)
   └─ reschedule : computeNextRun(frequency, lastChangedAt, createdAt)
        (multiplicateur ×1 / ×2 / ×3 / ×4 selon staleness — plafond MAX_INTERVAL)
+  └─ L2 backfill : au 1er snapshot d'une source BACKFILL_SOURCES (competitor non-self)
+       → trigger backfill-history {monitorId, competitorId, sourceType}
+
+[on first scrape] backfill-history (L2, docs/post-onboarding-activation.md)
+  └─ Wayback Machine (fetch pur, gratuit, sans clé ; @outrival/scrapers/backfill) —
+       reconstruit le passé récent pour donner de la valeur "changement" au jour 0
+  └─ homepage : 1 capture archive (~BACKFILL_LOOKBACK_DAYS) → R2 avant DB → snapshot
+       origin=archive (scraped_at backdaté) → diff lexical vs scrape courant → change
+       → classify-change (chaîne normale)
+  └─ pricing : captures à 30/90/180j → snapshots archive + extract-pricing backdaté
+       (seed pricing_history, skip résumé) + change au point lookback
+  └─ best-effort (pas d'archive/diff → skip silencieux), ne retry jamais (insert non
+       idempotent), throttlé (backfillQueue conc.2 + ~1 req/s)
 
 [par change] classify-change (Groq llama-3.3-70b)
   └─ lexical → classifyChange (8b) ; structuré (patch-16) → classifyStructuredChanges
@@ -466,6 +482,9 @@ carte (état live uniquement).
        (2) canal par severity, (3) quiet hours, (4) frequency cap ; critical bypasse TOUT.
        Stamp signals.dispatched_channel/filtered_reason/filtered_at. email_immediate →
        trigger send-alert (gating plan inchangé) ; sinon déféré au digest (daily/weekly)
+  └─ L2 backfill : si le snapshot_before du change est origin=archive → bypass du
+       dispatcher, dispatched_channel=in_app_only + filtered_reason='backfill' (jamais
+       email/Slack, ne consomme pas le cap) ; badge "From archive" sur la carte signal
 
 [par signal critique] send-alert
   └─ insert notification (in-app, si realtimeAlerts dans le plan)
@@ -721,6 +740,12 @@ NEXT_PUBLIC_REDDIT_ENABLED=false  # reddit kill-switch (default OFF): hides the 
 NEXT_PUBLIC_ONBOARDING_PARALLEL_DISCOVERY=true   # prefetch discovery during profile edit
 NEXT_PUBLIC_ONBOARDING_DISCOVERY_DEBOUNCE_MS=3000 # debounce before prefetch (limits Exa spend)
 ONBOARDING_RESUME_TTL_DAYS=7                      # days an unfinished session stays resumable
+# Archive backfill (L2) — reconstruct a source's recent past from the Wayback
+# Machine on its first scrape (day-0 change value). Free, best-effort, in-app only.
+BACKFILL_ENABLED=true                            # false → no backfill (exact prior behaviour)
+BACKFILL_LOOKBACK_DAYS=90                         # age of the archive-vs-now change point
+BACKFILL_SOURCES=homepage,pricing                # sources whose archive-vs-now diff is meaningful
+BACKFILL_PRICING_OFFSETS_DAYS=30,180             # extra pricing_history seed points (deduped w/ lookback)
 HOMEPAGE_SCROLL_PASSES=2              # patch-16 — progressive scroll passes (homepage only)
 HOMEPAGE_LAZY_WAIT_MS=2000            # patch-16 — wait after each scroll pass
 HOMEPAGE_NARRATIVE_MIN_SEVERITY=medium  # patch-16 — min severity to spend an AI narrative

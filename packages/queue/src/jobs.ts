@@ -45,6 +45,11 @@ export type ExtractReviewsPayload = { snapshotId: string; competitorId: string; 
 export type ScrapeAiVisibilityPayload = { orgId: string };
 export type GenerateBattleCardPayload = { competitorId: string; productId?: string }; // refine in Phase 2
 export type NotifyOnboardingPayload = { orgId: string; sessionId?: string }; // refine in Phase 2
+export type BackfillHistoryPayload = {
+  monitorId: string;
+  competitorId: string;
+  sourceType: string;
+};
 export type OrgRefPayload = { orgId: string };
 export type Empty = Record<string, never>;
 
@@ -110,6 +115,12 @@ export const notifyOnboardingAnalysis = defineJob<NotifyOnboardingPayload>(
   "notify-onboarding-analysis",
   { expireInSeconds: 600 },
 );
+// L2 archive backfill (Wayback). Event-triggered from scrape-monitor's first
+// capture; never retried (archive inserts aren't idempotent), politely throttled.
+export const backfillHistory = defineJob<BackfillHistoryPayload>("backfill-history", {
+  retryLimit: 0,
+  expireInSeconds: 300,
+});
 
 // ── Scheduled / cron jobs (16 → all become boss.schedule(), no 10-cron cap) ───
 export const scheduleScraping = defineJob<Empty>("schedule-scraping", { expireInSeconds: 120 });

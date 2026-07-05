@@ -169,6 +169,13 @@
       "when": 1783254173002,
       "tag": "0023_shocking_supernaut",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1783260377748,
+      "tag": "0024_previous_nightshade",
+      "breakpoints": true
     }
   ]
 }

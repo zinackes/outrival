@@ -433,7 +433,18 @@ export function SignalCard({
           />
           <ConfidenceDot confidence={signal.aiConfidence ?? "high"} />
           <ThreatMeter score={signal.threatScore} />
-          {signal.filteredReason && (
+          {signal.filteredReason === "backfill" ? (
+            // L2: an archive-derived change surfaced at day 0 — not a suppression.
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="shrink-0 text-xs text-muted-foreground">· From archive</span>
+              </TooltipTrigger>
+              <TooltipContent>
+                Reconstructed from the web archive — this change happened before we
+                started monitoring, so it wasn&apos;t sent as an alert.
+              </TooltipContent>
+            </Tooltip>
+          ) : signal.filteredReason ? (
             <Tooltip>
               <TooltipTrigger asChild>
                 <span className="shrink-0 text-xs text-muted-foreground">· Held back</span>
@@ -444,7 +455,7 @@ export function SignalCard({
                   signal.filteredReason.replace(/_/g, " ")}
               </TooltipContent>
             </Tooltip>
-          )}
+          ) : null}
         </div>
         {/* Action cluster — what to do with the signal. */}
         <div className="flex flex-wrap items-center gap-1.5">

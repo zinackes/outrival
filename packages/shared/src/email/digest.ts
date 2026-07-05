@@ -85,9 +85,10 @@ export function renderDigestEmail(
 </div>`;
 
   return darkEmailShell(
+    // The wordmark now lives in the shared shell's brand header, so the digest
+    // opens straight on its subtitle to avoid a duplicate "Outrival".
     `<div style="margin-bottom:24px;">
-        <span style="font-family:Syne,sans-serif;font-size:24px;font-weight:bold;color:#fafafa;">Out<span style="color:#f59e0b;">rival</span></span>
-        <div style="font-size:12px;color:#a3a3a3;margin-top:4px;">${escapeHtml(subtitle)} · ${weekStart} → ${weekEnd}</div>
+        <div style="font-size:12px;color:#a3a3a3;">${escapeHtml(subtitle)} · ${weekStart} → ${weekEnd}</div>
       </div>
       <div style="background:#171717;border:1px solid #262626;border-radius:6px;padding:20px;margin-bottom:24px;">
         <div style="font-size:12px;color:#a3a3a3;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">Temperature · ${escapeHtml(digest.temperature)}</div>

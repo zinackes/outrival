@@ -24,8 +24,11 @@ const AUTH_FROM = process.env.RESEND_AUTH_FROM ?? "Outrival <auth@outrival.io>";
 // the `bgcolor` attribute (honored far more reliably than CSS background) carries
 // the dark surface; the color-scheme meta keeps supporting clients from inverting
 // colors in light mode. All auth emails share this shell.
-const BRAND = `<div style="font-size:22px;font-weight:700;letter-spacing:-0.02em;margin-bottom:40px;">
-        <span style="color:#fafafa;">out</span><span style="color:#f59e0b;">rival</span>
+// alt="" so an image-blocking client falls back to the wordmark text, not a
+// duplicated "Outrival". Hosted from the deployed web app (canonical domain).
+const BRAND = `<div style="margin-bottom:40px;">
+        <img src="https://outrival.app/logo-light.png" width="26" height="26" alt="" style="vertical-align:middle;border:0;outline:none;" />
+        <span style="font-size:22px;font-weight:700;letter-spacing:-0.02em;color:#fafafa;vertical-align:middle;padding-left:8px;">Outrival</span>
       </div>`;
 
 function renderShell(inner: string): string {

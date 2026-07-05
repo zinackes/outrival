@@ -89,12 +89,18 @@ export function PricingTab({
           price: r.price,
           currency: r.currency,
           billing_period: r.billingPeriod,
+          unit: r.unit,
+          includedQuantity: r.includedQuantity,
           recorded_at: "",
         }))
       : latest;
 
+  // The price-trend chart is for comparable subscription prices — a "usage" rate
+  // ($0.10 / API call) must never share the axis with a $99 plan (and on a hybrid
+  // plan its overage row would zig-zag the plan's own line). Exclude usage rows here;
+  // they're surfaced separately below the comparison.
   const series = useMemo(
-    () => (history ? buildPricingSeries(history) : null),
+    () => (history ? buildPricingSeries(history.filter((p) => p.billing_period !== "usage")) : null),
     [history],
   );
 
@@ -171,6 +177,10 @@ export function PricingTab({
   const hasCapturedFreeTier = Array.from(latestByPlan.values()).some((p) => p.price === 0);
   const showFreePlanBadge = latestRow?.has_free_plan === true && !hasCapturedFreeTier;
 
+  // The competitor's current tiers (overlay-resolved), split so usage rates never
+  // enter the price-ranked comparison — they're shown as a separate line instead.
+  const allTheirTiers = theirTiers(Array.from(latestByPlan.values()));
+
   // A single capture is a one-dot line — not worth a 260px chart. The per-plan
   // list also has no deltas yet on first capture, so it just restates current
   // prices; we keep it full-width then (it's the only structured tier view),
@@ -201,7 +211,8 @@ export function PricingTab({
             competitorName={competitor.name}
             competitorPricingStatus={competitor.pricingStatus}
             ours={myProduct.pricing.tiers}
-            theirs={theirTiers(Array.from(latestByPlan.values()))}
+            theirs={allTheirTiers.filter((t) => t.billing_period !== "usage")}
+            usageTiers={allTheirTiers.filter((t) => t.billing_period === "usage")}
           />
         </TabSection>
       )}
@@ -426,11 +437,14 @@ function PricingComparison({
   competitorPricingStatus,
   ours,
   theirs,
+  usageTiers = [],
 }: {
   competitorName: string;
   competitorPricingStatus: Competitor["pricingStatus"];
   ours: MyProductPricingTier[];
   theirs: PricingHistoryPoint[];
+  // Metered/usage rates ($0.10 / API call) — shown as a line, never price-ranked.
+  usageTiers?: PricingHistoryPoint[];
 }) {
   // Called before the early return so the hook order stays stable (rules of hooks).
   const fx = useFx();
@@ -564,6 +578,19 @@ function PricingComparison({
           ))}
         </ul>
       )}
+
+      {usageTiers.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          {competitorName} also meters usage:{" "}
+          {usageTiers.map((t, i) => (
+            <span key={i}>
+              {i > 0 ? " · " : ""}
+              <span className="text-foreground">{formatTierPrice(t)}</span>
+              {t.plan_name ? ` (${t.plan_name})` : ""}
+            </span>
+          ))}
+        </p>
+      )}
     </div>
   );
 }
@@ -576,7 +603,14 @@ function TierCell({
   convertedTo,
   rates,
 }: {
-  tier: { plan_name: string; price: number | null; currency: string; billing_period: string };
+  tier: {
+    plan_name: string;
+    price: number | null;
+    currency: string;
+    billing_period: string;
+    unit?: string | null;
+    includedQuantity?: number | null;
+  };
   convertedTo?: string;
   rates?: Record<string, number> | null;
 }) {

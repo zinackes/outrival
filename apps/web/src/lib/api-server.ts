@@ -212,15 +212,25 @@ export async function getCompetitorDetailData(
  * falls back to its own client fetch. Drill-down series stay client-side.
  */
 // AI Visibility seed. patch-28: scoped to the active product (self + its competitors);
-// "all products" (no id) uses the primary product's self. Best-effort: null on any
-// failure (incl. the 403 plan_locked_feature for free/starter) → the client query
-// re-fetches and the view renders the locked/empty state from the error.
-export async function getAiVisibilityData(productId?: string): Promise<AiVisibilityData | null> {
+// "all products" (no id) uses the primary product's self. Surfaces the plan-locked 403
+// distinctly (`locked`) so the page renders the upsell server-side — no client round-trip,
+// no skeleton flash for the free/starter majority. Any other failure → { locked:false,
+// data:null } and the client query re-fetches to render the empty/error state.
+export async function getAiVisibilitySeed(
+  productId?: string,
+): Promise<{ locked: boolean; data: AiVisibilityData | null }> {
   const scope = productId ? `?productId=${encodeURIComponent(productId)}` : "";
   try {
-    return await serverGet<AiVisibilityData>(`/api/ai-visibility${scope}`);
+    const cookieHeader = (await cookies()).toString();
+    const res = await fetch(`${BASE}/api/ai-visibility${scope}`, {
+      headers: { cookie: cookieHeader },
+      cache: "no-store",
+    });
+    if (res.status === 403) return { locked: true, data: null };
+    if (!res.ok) return { locked: false, data: null };
+    return { locked: false, data: (await res.json()) as AiVisibilityData };
   } catch {
-    return null;
+    return { locked: false, data: null };
   }
 }
 

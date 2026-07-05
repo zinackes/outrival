@@ -9,7 +9,13 @@ export const PricingPlanSchema = z.object({
   // discard the whole extraction, so the field is nullable, not required.
   price: z.number().nullable(),
   currency: z.string(),
-  billing_period: z.enum(["monthly", "yearly", "one_time", "custom"]),
+  // "usage" = a per-`unit` rate (metered or outcome-based), not a per-time
+  // subscription. See docs/pricing-coverage-2026.md.
+  billing_period: z.enum(["monthly", "yearly", "one_time", "custom", "usage"]),
+  // Dimensional pricing (2026 models). Optional/nullable so the structured-first
+  // mapper and legacy AI outputs (which omit them) still validate against this schema.
+  unit: z.string().nullable().optional(),
+  included_quantity: z.number().nullable().optional(),
 });
 
 export const PricingSchema = z.object({
@@ -46,13 +52,20 @@ ${focusPricingText(pricingPageText)}
 </pricing_page>
 
 <task>
-Extract the structured pricing plans from this pricing page.
+Extract the structured pricing plans from this pricing page. Write all text values in English.
 - "plan_name": exact plan name (e.g. Free, Starter, Pro, Enterprise)
-- "price": numeric amount (0 for free, strip the currency symbol). Use null for quote-based plans with no public price (e.g. "Contact sales", "Custom").
+- "price": numeric amount (0 for free, strip the currency symbol). Use null for quote-based plans with no public price (e.g. "Contact sales", "Custom"). For a "usage" plan, this is the per-unit RATE (e.g. 0.10 for "$0.10 per API call").
 - "currency": ISO code ("USD", "EUR", "GBP"...) — default to "USD" if ambiguous
-- "billing_period": "monthly" | "yearly" | "one_time" | "custom" (Enterprise quote-based => "custom")
-- Ignore add-ons and options; keep only the main plans
-- If no price can be found, return an empty "plans" array
+- "billing_period": one of:
+    - "monthly" / "yearly": a recurring subscription price for that period
+    - "one_time": a one-off purchase or lifetime deal, and credit packs bought once
+    - "custom": quote-based tier with no public price (Enterprise / "Contact sales")
+    - "usage": a per-unit RATE, not a per-time subscription — metered usage ("$0.10 per API call", "per credit", "per GB") OR outcome-based pricing ("$0.99 per resolved ticket", "$2 per conversation")
+- "unit": for a "usage" price OR a per-seat price, WHAT the price applies to ("API call", "resolved conversation", "credit", "seat", "user", "GB", "transaction"). Use null for a flat price.
+- "included_quantity": units bundled INTO the plan when stated — a credit pack's size (1000 for "$99 for 1000 credits"), or a tier's included calls (100 for "100 API calls included"). Use null when not stated.
+- HYBRID plans (a subscription base PLUS a usage/overage rate) → emit TWO entries with the SAME plan_name: the base as "monthly"/"yearly", and the overage as "usage" with its unit.
+- Keep quote-based tiers (price null). Ignore unrelated one-off add-ons and options.
+- If no pricing can be found, return an empty "plans" array
 
 Reply ONLY with a valid JSON object, no markdown and no surrounding text.
 </task>
@@ -60,8 +73,13 @@ Reply ONLY with a valid JSON object, no markdown and no surrounding text.
 <format>
 {
   "plans": [
-    { "plan_name": "Pro", "price": 29, "currency": "USD", "billing_period": "monthly" },
-    { "plan_name": "Enterprise", "price": null, "currency": "USD", "billing_period": "custom" }
+    { "plan_name": "Pro", "price": 29, "currency": "USD", "billing_period": "monthly", "unit": null, "included_quantity": null },
+    { "plan_name": "Team", "price": 15, "currency": "USD", "billing_period": "monthly", "unit": "seat", "included_quantity": null },
+    { "plan_name": "Business", "price": 99, "currency": "USD", "billing_period": "monthly", "unit": null, "included_quantity": 10000 },
+    { "plan_name": "Business", "price": 0.05, "currency": "USD", "billing_period": "usage", "unit": "API call", "included_quantity": null },
+    { "plan_name": "Pay-as-you-go", "price": 0.10, "currency": "USD", "billing_period": "usage", "unit": "API call", "included_quantity": null },
+    { "plan_name": "Credits", "price": 99, "currency": "USD", "billing_period": "one_time", "unit": "credit", "included_quantity": 1000 },
+    { "plan_name": "Enterprise", "price": null, "currency": "USD", "billing_period": "custom", "unit": null, "included_quantity": null }
   ]
 }
 </format>`;

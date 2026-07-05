@@ -267,6 +267,11 @@ export interface PricingHistoryRow {
   price: number | null;
   currency: string;
   billing_period: string;
+  // Dimensional pricing (2026 models). unit = what a usage/per-seat price applies to
+  // ("API call", "resolved conversation", "credit", "seat"); null = flat. included_
+  // quantity = units bundled into the plan; null = N/A. See docs/pricing-coverage-2026.md.
+  unit?: string | null;
+  included_quantity?: number | null;
   // patch-11 taxonomy columns.
   status: string;
   promotional: number;
@@ -291,6 +296,8 @@ export async function insertPricingHistory(rows: PricingHistoryRow[]): Promise<v
         price: r.price,
         currency: r.currency,
         billingPeriod: r.billing_period,
+        unit: r.unit ?? null,
+        includedQuantity: r.included_quantity ?? null,
         status: r.status,
         promotional: r.promotional,
         observedRegion: r.observed_region,
@@ -769,6 +776,10 @@ export async function getPricingHistorySince(
         and(
           inArray(pricingHistory.competitorId, competitorIds),
           gt(pricingHistory.price, 0),
+          // Comparable periods only: a usage rate ($0.10 / API call) must never be
+          // averaged into the sector-wide price-trend median alongside monthly
+          // subscription prices. Mirrors shared isComparablePricePeriod.
+          inArray(pricingHistory.billingPeriod, ["monthly", "yearly", "one_time"]),
           gte(pricingHistory.recordedAt, sql`now() - make_interval(days => ${days})`),
         ),
       )

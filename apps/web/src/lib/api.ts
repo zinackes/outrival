@@ -220,6 +220,11 @@ export interface PricingHistoryPoint {
   // has_trial. Catches a free tier the priced-card extractor missed (e.g. a "Free"
   // comparison column with no price token). null on pre-detection (legacy) rows.
   has_free_plan?: boolean | null;
+  // Dimensional pricing (2026 models). unit = what a "usage" price applies to ("API
+  // call", "credit"); includedQuantity = units bundled into the plan (credit-pack
+  // size). Optional — absent on legacy/history rows. See docs/pricing-coverage-2026.md.
+  unit?: string | null;
+  includedQuantity?: number | null;
   recorded_at: string;
 }
 
@@ -2530,14 +2535,23 @@ export const api = {
     region?: string | null,
     signal?: AbortSignal,
   ) =>
-    request<{ competitors: DiscoveredCompetitor[] }>("/api/onboarding/discover", {
-      method: "POST",
-      body: JSON.stringify({ profile, productUrl: productUrl ?? null, region: region ?? null }),
-      // When provided, the caller's abort signal replaces the default request
-      // timeout — used by the onboarding background prefetch to cancel in-flight
-      // discovery when the profile changes (patch-25).
-      ...(signal ? { signal } : {}),
-    }),
+    request<{ competitors: DiscoveredCompetitor[] }>(
+      "/api/onboarding/discover",
+      {
+        method: "POST",
+        body: JSON.stringify({ profile, productUrl: productUrl ?? null, region: region ?? null }),
+        // When provided, the caller's abort signal replaces the default request
+        // timeout — used by the onboarding background prefetch to cancel in-flight
+        // discovery when the profile changes (patch-25).
+        ...(signal ? { signal } : {}),
+      },
+      // Exa search + LLM overlap scoring routinely runs past the 20s default
+      // ceiling. Without this, the synchronous (no-signal) fallback discovery —
+      // taken when a profile edit invalidates the prefetch — aborts at 20s and
+      // the caller shows "found nothing" even though the server finished. The
+      // prefetch's own signal still overrides this timeout.
+      AI_REQUEST_TIMEOUT_MS,
+    ),
   getOnboardingSession: () =>
     request<{ session: OnboardingSession | null }>("/api/onboarding-session/current"),
   getActiveAnalysisSession: () =>

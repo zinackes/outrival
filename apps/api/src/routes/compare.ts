@@ -5,6 +5,7 @@ import {
   type PlatformProfile,
   platformLabel,
   resolveCurrentPricing,
+  isComparablePricePeriod,
   type PricingTier,
   type CompetitorOverrides,
 } from "@outrival/shared";
@@ -244,23 +245,18 @@ compareRouter.get("/", async (c) => {
   // detail objects (band + plans, total + departments, score + sub-scores).
   const pricingById = new Map<string, PricingDetail>();
   for (const p of pricingPlans) {
-    const cur = pricingById.get(p.competitorId);
+    let cur = pricingById.get(p.competitorId);
     if (!cur) {
-      pricingById.set(p.competitorId, {
-        entry: p.price,
-        top: p.price,
-        currency: p.currency,
-        billingPeriod: p.billingPeriod,
-        plans: [{ name: p.planName, price: p.price, billingPeriod: p.billingPeriod }],
-      });
-    } else {
-      // The entry/top band is numeric-only; quote-based tiers (price null) join
-      // the plan list but never the band.
-      if (p.price != null) {
-        cur.entry = cur.entry == null ? p.price : Math.min(cur.entry, p.price);
-        cur.top = cur.top == null ? p.price : Math.max(cur.top, p.price);
-      }
-      cur.plans.push({ name: p.planName, price: p.price, billingPeriod: p.billingPeriod });
+      cur = { entry: null, top: null, currency: p.currency, billingPeriod: p.billingPeriod, plans: [] };
+      pricingById.set(p.competitorId, cur);
+    }
+    cur.plans.push({ name: p.planName, price: p.price, billingPeriod: p.billingPeriod });
+    // The entry/top band is numeric AND comparable-only: quote-based tiers (price
+    // null) and usage rates ($0.10 / API call) join the plan list but never the band
+    // — you can't min/max a per-call rate against a monthly subscription price.
+    if (p.price != null && isComparablePricePeriod(p.billingPeriod)) {
+      cur.entry = cur.entry == null ? p.price : Math.min(cur.entry, p.price);
+      cur.top = cur.top == null ? p.price : Math.max(cur.top, p.price);
     }
   }
 

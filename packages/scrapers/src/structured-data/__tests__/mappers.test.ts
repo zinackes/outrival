@@ -65,8 +65,8 @@ test("pricingFromStructured maps Product offers to plans", () => {
   });
   const result = pricingFromStructured(html);
   expect(result?.plans).toEqual([
-    { plan_name: "Pro", price: 29, currency: "USD", billing_period: "monthly" },
-    { plan_name: "Enterprise", price: null, currency: "USD", billing_period: "custom" },
+    { plan_name: "Pro", price: 29, currency: "USD", billing_period: "monthly", unit: null },
+    { plan_name: "Enterprise", price: null, currency: "USD", billing_period: "custom", unit: null },
   ]);
 });
 
@@ -81,8 +81,8 @@ test("pricingFromStructured names a nameless $0 tier Free, not the product name"
   });
   const result = pricingFromStructured(html);
   expect(result?.plans).toEqual([
-    { plan_name: "Free", price: 0, currency: "USD", billing_period: "monthly" },
-    { plan_name: "Business", price: 49, currency: "USD", billing_period: "monthly" },
+    { plan_name: "Free", price: 0, currency: "USD", billing_period: "monthly", unit: null },
+    { plan_name: "Business", price: 49, currency: "USD", billing_period: "monthly", unit: null },
   ]);
 });
 
@@ -94,7 +94,7 @@ test("pricingFromStructured uses the product name for a single nameless tier", (
   });
   const result = pricingFromStructured(html);
   expect(result?.plans).toEqual([
-    { plan_name: "Acme Pro", price: 29, currency: "USD", billing_period: "monthly" },
+    { plan_name: "Acme Pro", price: 29, currency: "USD", billing_period: "monthly", unit: null },
   ]);
 });
 
@@ -112,8 +112,54 @@ test("pricingFromStructured unwraps AggregateOffer and dedupes", () => {
   });
   const result = pricingFromStructured(html);
   expect(result?.plans).toEqual([
-    { plan_name: "Yearly", price: 290, currency: "EUR", billing_period: "yearly" },
+    { plan_name: "Yearly", price: 290, currency: "EUR", billing_period: "yearly", unit: null },
   ]);
+});
+
+test("pricingFromStructured returns null for a usage-only (per-unit) markup", () => {
+  // CarsXE-style: JSON-LD advertises only a metered "Pay-as-you-go $0.10/API call"
+  // entry point; the real subscription tiers live in the rendered DOM. This must not
+  // short-circuit as a lone "$0.10/month plan" — fall through so the AI floor reads it.
+  const html = ldScript({
+    "@type": "SoftwareApplication",
+    name: "CarsXE API — Pricing",
+    offers: [
+      {
+        "@type": "Offer",
+        name: "Pay-as-you-go",
+        priceCurrency: "USD",
+        priceSpecification: {
+          "@type": "UnitPriceSpecification",
+          price: "0.10",
+          priceCurrency: "USD",
+          unitText: "API call",
+        },
+      },
+    ],
+  });
+  expect(pricingFromStructured(html)).toBeNull();
+});
+
+test("pricingFromStructured keeps subscription tiers when a usage offer is mixed in", () => {
+  const html = ldScript({
+    "@type": "Product",
+    name: "Acme",
+    offers: [
+      { "@type": "Offer", name: "Pro", price: "29", priceCurrency: "USD", priceSpecification: { billingDuration: "P1M" } },
+      {
+        "@type": "Offer",
+        name: "Overage",
+        priceCurrency: "USD",
+        priceSpecification: { "@type": "UnitPriceSpecification", price: "0.02", unitText: "request" },
+      },
+    ],
+  });
+  const result = pricingFromStructured(html);
+  // Real tier is kept; the usage offer is now correctly tagged as a per-unit rate
+  // (was mislabeled "monthly" before) — no tier is dropped.
+  expect(result?.plans[0]).toEqual({ plan_name: "Pro", price: 29, currency: "USD", billing_period: "monthly", unit: null });
+  expect(result?.plans[1]).toEqual({ plan_name: "Overage", price: 0.02, currency: "USD", billing_period: "usage", unit: "request" });
+  expect(result?.plans).toHaveLength(2);
 });
 
 test("reviewScoresFromStructured reads a standalone AggregateRating", () => {

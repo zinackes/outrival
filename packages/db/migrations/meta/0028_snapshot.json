@@ -1,5 +1,5 @@
 {
-  "id": "9dbea221-cd00-4bc4-beed-b4ef02a98052",
+  "id": "9efbd8dc-68dc-4f8a-b434-777c286fc738",
   "prevId": "58c503dd-56e6-437d-aaca-91e6abcd9579",
   "version": "7",
   "dialect": "postgresql",
@@ -5287,12 +5287,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "meta": {
-          "name": "meta",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
         "token": {
           "name": "token",
           "type": "text",
@@ -6499,6 +6493,18 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "unit": {
+          "name": "unit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "included_quantity": {
+          "name": "included_quantity",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": false
         },
         "status": {
           "name": "status",

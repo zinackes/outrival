@@ -7,6 +7,12 @@ import { logger } from "@trigger.dev/sdk/v3";
 
 export type Engine = "perplexity" | "gemini"; // chatgpt | google_aio land in phase 5
 
+// Hard per-request timeout: Node's fetch has none, so a stalled grounding call would
+// hang until the job's maxDuration hard-kills it — which skips the in-run catch and
+// leaves the teaser card polling forever. Abort the request instead so the engine
+// resolves to null (best-effort skip) well inside the job budget.
+const ENGINE_TIMEOUT_MS = 25_000;
+
 export interface EngineAnswer {
   answer: string;
   citations: string[];
@@ -34,6 +40,7 @@ async function queryPerplexity(prompt: string): Promise<EngineAnswer | null> {
         model,
         messages: [{ role: "user", content: prompt }],
       }),
+      signal: AbortSignal.timeout(ENGINE_TIMEOUT_MS),
     });
     if (!res.ok) {
       logger.error("ai-visibility: perplexity request failed", {
@@ -81,6 +88,7 @@ async function queryGemini(prompt: string): Promise<EngineAnswer | null> {
           contents: [{ parts: [{ text: prompt }] }],
           tools: [{ google_search: {} }],
         }),
+        signal: AbortSignal.timeout(ENGINE_TIMEOUT_MS),
       },
     );
     if (!res.ok) {

@@ -37,6 +37,14 @@ export interface ScrapeOptions {
    */
   progressiveScroll?: boolean;
   /**
+   * Pricing only: after the primary (default-period) capture, click the billing
+   * toggle (Monthly ↔ Annual) and append the other period's prices as a hidden block
+   * so the extractor sees both. Best-effort, primary-capture-first; only meaningful
+   * at browser levels (where a click is possible). Default off. See the pricing
+   * scraper's PRICING_TOGGLE_CAPTURE_ENABLED kill-switch.
+   */
+  captureBillingToggle?: boolean;
+  /**
    * Floor the cascade at L1 (browser render) even when L0 would have "succeeded".
    * Unlike `screenshot`, no PNG is captured — this is purely "L0's HTML is not
    * trustworthy for this page, render it". The jobs scraper uses it for careers /

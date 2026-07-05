@@ -324,6 +324,9 @@ aiVisibilityRouter.post("/run", async (c) => {
   if (!isFeatureAllowed(plan, "aiVisibility")) {
     return c.json({ error: "plan_locked_feature", feature: "aiVisibility", plan }, 403);
   }
-  const handle = await tasks.trigger("scrape-ai-visibility", { orgId });
+  // notifyOnComplete → the worker drops a durable "run complete" notification when it
+  // lands (~a minute later, off the page); the weekly scheduler omits it so automated
+  // runs stay silent.
+  const handle = await tasks.trigger("scrape-ai-visibility", { orgId, notifyOnComplete: true });
   return c.json({ runId: handle.id });
 });

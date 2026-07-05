@@ -1260,9 +1260,11 @@ async function latestDetectedPricing(competitorId: string): Promise<PricingTier[
     price: number | null;
     currency: string;
     billing_period: string;
+    unit: string | null;
+    included_quantity: number | null;
     recorded_at: string;
   }>(sql`
-    SELECT plan_name, price, currency, billing_period,
+    SELECT plan_name, price, currency, billing_period, unit, included_quantity,
            (recorded_at AT TIME ZONE 'UTC')::text AS recorded_at
     FROM pricing_history
     WHERE competitor_id = ${competitorId}
@@ -1278,6 +1280,8 @@ async function latestDetectedPricing(competitorId: string): Promise<PricingTier[
       price: r.price,
       currency: r.currency,
       billingPeriod: r.billing_period,
+      unit: r.unit,
+      includedQuantity: r.included_quantity,
     }));
 }
 

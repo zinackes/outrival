@@ -54,7 +54,7 @@ export function ProductShowcase() {
               src="/product/overview.webp"
               alt="Outrival dashboard overview: KPI tiles for total signals with a trend sparkline, critical signals pending, and active competitors, above a feed of recent competitor signals spanning pricing, product, hiring, funding and content."
               width={2240}
-              height={1360}
+              height={1626}
               sizes="(min-width: 1024px) 540px, 100vw"
               className="h-auto w-full rounded-xl border border-border bg-surface shadow-lg shadow-black/20"
             />
@@ -67,8 +67,8 @@ export function ProductShowcase() {
             <Image
               src="/product/signal-detail.webp"
               alt="A single Outrival signal in detail: a critical pricing alert that Vantage cut its Pro plan 30% to $49 a month, with the strategic insight, why it matters, the recommended action, and a before-and-after of the pricing change."
-              width={1640}
-              height={1180}
+              width={1720}
+              height={886}
               sizes="(min-width: 1024px) 540px, 100vw"
               className="h-auto w-full rounded-xl border border-border bg-surface shadow-lg shadow-black/20"
             />

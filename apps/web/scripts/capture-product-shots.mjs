@@ -43,6 +43,12 @@ async function main() {
     colorScheme: "dark",
   });
 
+  // Pre-answer the CNIL cookie consent (ph_consent cookie) so its banner never opens
+  // and overlaps the capture — it's app chrome, not product.
+  await context.addCookies([
+    { name: "ph_consent", value: "denied", url: BASE_URL },
+  ]);
+
   // Force sample mode + dark theme before any app code runs → no skeleton flash and
   // no theme flip mid-capture.
   await context.addInitScript(() => {

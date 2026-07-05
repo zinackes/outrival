@@ -62,7 +62,7 @@ export default async function DemoPage({
                 src="/product/overview.webp"
                 alt="Outrival dashboard overview: KPI tiles for signals, critical pending and active competitors, above a feed of recent competitor signals across pricing, product, hiring and funding."
                 width={2240}
-                height={1360}
+                height={1626}
                 sizes="(min-width: 640px) 400px, 100vw"
                 className="h-auto w-full rounded-xl border border-border bg-surface shadow-lg shadow-black/20"
               />
@@ -74,8 +74,8 @@ export default async function DemoPage({
               <Image
                 src="/product/signal-detail.webp"
                 alt="A single Outrival signal in detail: a critical pricing alert that a competitor cut its Pro plan 30%, with the strategic insight, recommended action, and a before-and-after of the pricing change."
-                width={1640}
-                height={1180}
+                width={1720}
+                height={886}
                 sizes="(min-width: 640px) 400px, 100vw"
                 className="h-auto w-full rounded-xl border border-border bg-surface shadow-lg shadow-black/20"
               />

@@ -755,6 +755,16 @@ export type AiVisibilityTeaser =
       citations: string[];
     };
 
+// Public share link (Lever 8) — a revocable token for a shared artifact.
+export interface ShareLink {
+  id: string;
+  type: string;
+  productId: string | null;
+  token: string;
+  url: string;
+  createdAt: string;
+}
+
 export interface LandscapeData {
   competitors: LandscapeCompetitor[];
   self: { id: string; name: string; url: string | null } | null;
@@ -2290,6 +2300,15 @@ export const api = {
       `/api/landscape${productId ? `?productId=${encodeURIComponent(productId)}` : ""}`,
     ),
   getAiVisibilityTeaser: () => request<AiVisibilityTeaser>("/api/ai-visibility/teaser"),
+  // Public share links (Lever 8). Create-or-return is idempotent per (org, product).
+  createShareLink: (productId?: string) =>
+    request<{ id: string; token: string; url: string }>("/api/share", {
+      method: "POST",
+      body: JSON.stringify({ type: "landscape", ...(productId ? { productId } : {}) }),
+    }),
+  listShareLinks: () => request<{ links: ShareLink[] }>("/api/share"),
+  revokeShareLink: (id: string) =>
+    request<{ ok: true }>(`/api/share/${id}`, { method: "DELETE" }),
   getAiVisibility: (productId?: string) =>
     request<AiVisibilityData>(
       `/api/ai-visibility${productId ? `?productId=${encodeURIComponent(productId)}` : ""}`,

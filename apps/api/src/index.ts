@@ -34,6 +34,8 @@ import { activityRouter } from "./routes/activity";
 import { usageRouter } from "./routes/usage";
 import { trendsRouter } from "./routes/trends";
 import { landscapeRouter } from "./routes/landscape";
+import { shareRouter } from "./routes/share";
+import { publicReportRouter } from "./routes/public-report";
 import { aiVisibilityRouter } from "./routes/ai-visibility";
 import { compareRouter } from "./routes/compare";
 import { askRouter } from "./routes/ask";
@@ -108,6 +110,9 @@ app.route("/api/activity", activityRouter);
 app.route("/api/usage", usageRouter);
 app.route("/api/trends", trendsRouter);
 app.route("/api/landscape", landscapeRouter);
+app.route("/api/share", shareRouter);
+// Public, unauthed — a share token is the only capability (see routes/public-report.ts).
+app.route("/api/public/report", publicReportRouter);
 app.route("/api/ai-visibility", aiVisibilityRouter);
 app.route("/api/compare", compareRouter);
 app.route("/api/ask", askRouter);

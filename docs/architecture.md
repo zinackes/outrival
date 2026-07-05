@@ -893,6 +893,18 @@ BUILD_TIME=                  # build timestamp → GET /api/version. In Coolify:
   `/health` (monitors ⋈ competitors → statut `ok|failing|paused|unscrapable`) + `/timeline`
   (`scrape_runs` org-scoped best-effort, incl. no-change/échecs). Échecs adoucis, sources
   internes exclues, tous tiers. 0 migration, 0 IA.
+- **Public share links — "Competitive Snapshot Report" (L7/L8, feature ad-hoc)** — lien
+  public read-only révocable d'un artefact (v1 : le landscape par product). Table
+  `share_links` (org_id, type, product_id, token unique, created_by, revoked_at ;
+  migration 0027) = capability non-devinable, révocable (soft `revoked_at`), défaut OFF
+  (créée sur action explicite). L'assemblage landscape (Lever 1) est extrait en
+  `lib/landscape-data.ts` `buildLandscape(orgId, productId?)`, réutilisé par la route
+  authed `/api/landscape` ET la route **publique non-gatée** `GET /api/public/report/:token`
+  (montée hors authMiddleware ; le token résout 1 org+product, 0 surface tenant). Rendu :
+  `app/report/[token]` server-component, `noindex` + `robots` disallow `/report/`, footer
+  "Powered by Outrival" (boucle d'acquisition). Bouton "Share snapshot" sur le landscape
+  (create-or-return idempotent + copie presse-papier), liste révocable dans Settings → Data.
+  📄 docs/post-onboarding-activation.md
 - **Couverture des sources élargie (patch-32)** — étend la couverture par source via la
   détection plateforme (patch-31) + le pipeline étagé (patch-30), sans toucher la cascade.
   **HIRING** : 7 connecteurs ATS no-auth (+ Personio feed XML) + schéma d'offre cross-ATS

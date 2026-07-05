@@ -22,21 +22,17 @@ function ForceSample({ children }: { children: React.ReactNode }) {
 // (a) The real Overview, populated by sample data — KPI strip + Recent signals feed.
 function OverviewShot() {
   return (
-    <ForceSample>
-      <ProductScopeProvider initial={null}>
-        <AskContextProvider>
-          {/* The sample-data banner is app chrome, not part of the product story we're
-              selling — hide it so the marketing capture is clean. */}
-          <style>{`[data-sample-banner]{display:none!important}`}</style>
-          <div
-            data-shot="overview"
-            className="mx-auto w-full max-w-[1120px] px-8 py-8"
-          >
-            <OverviewView />
-          </div>
-        </AskContextProvider>
-      </ProductScopeProvider>
-    </ForceSample>
+    <>
+      {/* The sample-data banner is app chrome, not part of the product story we're
+          selling — hide it so the marketing capture is clean. */}
+      <style>{`[data-sample-banner]{display:none!important}`}</style>
+      <div
+        data-shot="overview"
+        className="mx-auto w-full max-w-[1120px] px-8 py-8"
+      >
+        <OverviewView />
+      </div>
+    </>
   );
 }
 
@@ -50,10 +46,7 @@ function SignalShot() {
   const detail = getSampleSignalDetail("sample-s1");
   if (!sig) return null;
   return (
-    <div
-      data-shot="signal"
-      className="mx-auto w-full max-w-[860px] px-8 py-8"
-    >
+    <div data-shot="signal" className="mx-auto w-full max-w-[860px] px-8 py-8">
       <div className="space-y-4">
         <SignalCard signal={sig} interactive={false} />
         {detail && <SignalEvidence signalId={sig.id} detail={detail} />}
@@ -63,9 +56,19 @@ function SignalShot() {
 }
 
 export function PreviewClient({ shot }: { shot: "overview" | "signal" }) {
+  // Both shots render real dashboard components, which reach for the same providers
+  // the app supplies (product scope, ask context) on top of the query/tooltip/toaster
+  // from the /dev layout. Wrap both so e.g. SignalCard's product chips (useProductScope)
+  // don't throw.
   return (
     <div className="min-h-dvh bg-background text-foreground">
-      {shot === "signal" ? <SignalShot /> : <OverviewShot />}
+      <ForceSample>
+        <ProductScopeProvider initial={null}>
+          <AskContextProvider>
+            {shot === "signal" ? <SignalShot /> : <OverviewShot />}
+          </AskContextProvider>
+        </ProductScopeProvider>
+      </ForceSample>
     </div>
   );
 }

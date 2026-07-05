@@ -1,11 +1,3 @@
-// Email templates interpolate AI-generated text derived from scraped competitor
-// pages — attacker-influenced content. Escape every dynamic value before it
-// lands in HTML so a prompt-injected payload can't render markup in the inbox.
-export function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
+// Moved to @outrival/shared so the API can reuse it for on-demand digest sends.
+// Re-exported here to keep existing worker imports (`../lib/escape-html`) stable.
+export { escapeHtml } from "@outrival/shared";

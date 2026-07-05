@@ -162,6 +162,13 @@
       "when": 1783203446429,
       "tag": "0022_typical_mathemanic",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1783254173002,
+      "tag": "0023_shocking_supernaut",
+      "breakpoints": true
     }
   ]
 }

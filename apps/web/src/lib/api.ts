@@ -861,6 +861,7 @@ export interface Digest {
   weekEnd: string;
   content: DigestContent;
   temperature: string | null;
+  period: "weekly" | "daily";
   sentAt: string | null;
   createdAt: string;
 }
@@ -2341,6 +2342,10 @@ export const api = {
     request<{ ok: true }>(`/api/signals/${id}/comments/${commentId}`, { method: "DELETE" }),
   listDigests: () => request<{ digests: Digest[] }>("/api/digests"),
   getDigest: (id: string) => request<{ digest: Digest }>(`/api/digests/${id}`),
+  sendDigest: (id: string) =>
+    request<{ ok: true; sentAt: string }>(`/api/digests/${id}/send`, {
+      method: "POST",
+    }),
   generateDigest: (arg: DigestRange | { from: Date; to: Date } = "this_week") => {
     const body =
       typeof arg === "string"

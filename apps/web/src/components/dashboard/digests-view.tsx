@@ -1,25 +1,21 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeft,
-  Download,
   Loader2,
   Mail,
   RefreshCw,
   Settings as SettingsIcon,
   ArrowRight,
-  Flame,
-  Activity,
-  Minus,
 } from "lucide-react";
 import { EmptyState } from "./empty-state";
-import { endOfDay, format, startOfWeek } from "date-fns";
+import { endOfDay, startOfWeek } from "date-fns";
 import { toast } from "sonner";
 import { toastApiError } from "@/lib/error-helpers";
 import { ListError } from "@/components/outrival/list-error";
-import { api, type Digest } from "@/lib/api";
+import { api } from "@/lib/api";
 import { digestsQuery } from "@/lib/queries";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -31,10 +27,10 @@ import {
 } from "@/components/ui/date-range-picker";
 import { PageHead } from "./page-head";
 import { SeverityPill } from "./severity-pill";
-import { CatPill } from "./cat-pill";
 import { StatusPill } from "./status-pill";
 import { DigestSettingsSheet } from "./digest-settings-sheet";
 import { TableSkeleton } from "./skeletons";
+import { TempIcon, digestLabel } from "./digest-reader";
 
 const DIGEST_PRESETS: DatePreset[] = [
   {
@@ -48,65 +44,34 @@ const DIGEST_PRESETS: DatePreset[] = [
   { label: "Last 30 days", range: () => lastNDays(30) },
 ];
 
-const TEMP_MAP: Record<
-  string,
-  { Ic: typeof Flame; color: string; label: string }
-> = {
-  agitée: { Ic: Flame, color: "var(--accent)", label: "high" },
-  haute: { Ic: Flame, color: "var(--accent)", label: "high" },
-  high: { Ic: Flame, color: "var(--accent)", label: "high" },
-  modérée: { Ic: Activity, color: "var(--muted)", label: "moderate" },
-  moderate: { Ic: Activity, color: "var(--muted)", label: "moderate" },
-  calme: { Ic: Minus, color: "var(--muted-2)", label: "low" },
-  faible: { Ic: Minus, color: "var(--muted-2)", label: "low" },
-  low: { Ic: Minus, color: "var(--muted-2)", label: "low" },
-};
-
-function TempIcon({ level }: { level: string }) {
-  const m = TEMP_MAP[level] ?? TEMP_MAP.low!;
-  const Ic = m.Ic;
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 text-dense"
-      style={{ color: m.color }}
-    >
-      <Ic size={13} />
-      {m.label}
-    </span>
-  );
-}
-
-function urgencyMeta(urgency: string) {
-  if (urgency === "action_required") {
-    return { title: "Action required", color: "var(--critical)" };
-  }
-  if (urgency === "watch") {
-    return { title: "Watch", color: "var(--accent)" };
-  }
-  return { title: "FYI", color: "var(--muted)" };
-}
-
-function fmtWeek(start: string, end: string) {
-  try {
-    const s = new Date(start);
-    const e = new Date(end);
-    return `${format(s, "MMM d")} → ${format(e, "MMM d, yyyy")}`;
-  } catch {
-    return `${start} → ${end}`;
-  }
-}
+type Tab = "weekly" | "daily";
 
 export function DigestsView() {
   // Server-seeded on first paint (digests/page.tsx) → useQuery reads the hydrated
   // cache; falls back to a client fetch when the seed is missing.
   const queryClient = useQueryClient();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const digestsQ = useQuery(digestsQuery());
   const digests = digestsQ.data ?? null;
   const err = digestsQ.error;
-  const [active, setActive] = useState<Digest | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [genRange, setGenRange] = useState<DateRange>(() => DIGEST_PRESETS[0]!.range());
+
+  const tab: Tab = searchParams.get("tab") === "daily" ? "daily" : "weekly";
+  function setTab(next: Tab) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === "weekly") params.delete("tab");
+    else params.set("tab", next);
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }
+
+  const weekly = digests?.filter((d) => d.period !== "daily") ?? [];
+  const daily = digests?.filter((d) => d.period === "daily") ?? [];
+  const rows = tab === "daily" ? daily : weekly;
 
   async function handleGenerate(range: DateRange) {
     setGenerating(true);
@@ -121,8 +86,7 @@ export function DigestsView() {
         return;
       }
       await queryClient.invalidateQueries({ queryKey: digestsQuery().queryKey });
-      setActive(digest);
-      toast.success("Digest generated.");
+      router.push(`/dashboard/digests/${digest.id}`);
     } catch (e) {
       toastApiError(e, { title: "Couldn't generate the digest" });
     } finally {
@@ -132,13 +96,11 @@ export function DigestsView() {
 
   if (err && digests === null) return <ListError error={err} />;
 
-  if (active) return <DigestReader d={active} onBack={() => setActive(null)} />;
-
   return (
     <div className="space-y-6">
       <PageHead
-        title="Weekly digests"
-        sub="Sent every Monday at 09:00. Next: Monday June 1."
+        title="Digests"
+        sub="Weekly briefing every Monday at 09:00 UTC · daily briefings when activity warrants."
         actions={
           <>
             <Button
@@ -148,49 +110,75 @@ export function DigestsView() {
             >
               <SettingsIcon size={12} /> Settings
             </Button>
-            <DateRangePicker
-              value={genRange}
-              onChange={setGenRange}
-              presets={DIGEST_PRESETS}
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={generating}
-              onClick={() => handleGenerate(genRange)}
-            >
-              {generating ? (
-                <Loader2 size={13} className="animate-spin" />
-              ) : (
-                <RefreshCw size={13} />
-              )}
-              Generate now
-            </Button>
+            {tab === "weekly" && (
+              <>
+                <DateRangePicker
+                  value={genRange}
+                  onChange={setGenRange}
+                  presets={DIGEST_PRESETS}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={generating}
+                  onClick={() => handleGenerate(genRange)}
+                >
+                  {generating ? (
+                    <Loader2 size={13} className="animate-spin" />
+                  ) : (
+                    <RefreshCw size={13} />
+                  )}
+                  Generate now
+                </Button>
+              </>
+            )}
           </>
         }
       />
 
-      <DigestSettingsSheet
-        open={settingsOpen}
-        onOpenChange={setSettingsOpen}
-      />
+      <DigestSettingsSheet open={settingsOpen} onOpenChange={setSettingsOpen} />
+
+      <div className="inline-flex rounded-md border border-border p-0.5 bg-background">
+        {(["weekly", "daily"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setTab(t)}
+            aria-pressed={tab === t}
+            className={`px-3 py-1.5 text-dense rounded-[5px] transition-colors ${
+              tab === t
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {t === "weekly" ? "Weekly" : "Daily"}
+            <span className="ml-1.5 tabular-nums font-mono text-xs text-muted-foreground">
+              {t === "weekly" ? weekly.length : daily.length}
+            </span>
+          </button>
+        ))}
+      </div>
 
       {digests === null && <TableSkeleton rows={5} columns={5} />}
 
-      {digests && digests.length === 0 && (
+      {digests !== null && rows.length === 0 && (
         <EmptyState
           icon={Mail}
-          title="No digest yet"
-          description="The next digest is generated automatically every Monday morning."
+          title={tab === "daily" ? "No daily briefings yet" : "No weekly digest yet"}
+          description={
+            tab === "daily"
+              ? "A daily briefing lands here when urgent competitor activity is deferred to it."
+              : "The next digest is generated automatically every Monday morning."
+          }
         />
       )}
 
-      {digests && digests.length > 0 && (
+      {digests !== null && rows.length > 0 && (
         <Card className="overflow-x-auto">
           <table className="w-full border-collapse text-dense min-w-[640px]">
             <thead className="bg-background">
               <tr>
-                {["Week", "Signals", "Critical", "Activity", "Sent"].map(
+                {[tab === "daily" ? "Day" : "Week", "Signals", "Critical", "Activity", "Sent"].map(
                   (h) => (
                     <th
                       key={h}
@@ -204,28 +192,29 @@ export function DigestsView() {
               </tr>
             </thead>
             <tbody>
-              {digests.map((d) => {
+              {rows.map((d) => {
                 const sections = d.content?.sections ?? [];
                 const crit = sections.filter(
                   (s) => s.urgency === "action_required",
                 ).length;
+                const open = () => router.push(`/dashboard/digests/${d.id}`);
                 return (
                   <tr
                     key={d.id}
-                    onClick={() => setActive(d)}
+                    onClick={open}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
-                        setActive(d);
+                        open();
                       }
                     }}
                     tabIndex={0}
                     role="button"
-                    aria-label={`Open digest for ${fmtWeek(d.weekStart, d.weekEnd)}`}
+                    aria-label={`Open digest for ${digestLabel(d)}`}
                     className="border-b border-border last:border-b-0 cursor-pointer transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/35 focus-visible:ring-inset"
                   >
                     <td className="px-3.5 py-3 align-middle font-medium">
-                      {fmtWeek(d.weekStart, d.weekEnd)}
+                      {digestLabel(d)}
                     </td>
                     <td className="px-3.5 py-3 align-middle text-right tabular-nums font-mono">
                       {sections.length}
@@ -263,143 +252,5 @@ export function DigestsView() {
         </Card>
       )}
     </div>
-  );
-}
-
-function DigestReader({ d, onBack }: { d: Digest; onBack: () => void }) {
-  const sections = d.content?.sections ?? [];
-  const tldr = d.content?.tldr ?? [];
-  const crit = sections.filter((s) => s.urgency === "action_required");
-  const watch = sections.filter((s) => s.urgency === "watch");
-  const fyi = sections.filter((s) => s.urgency === "fyi");
-
-  return (
-    <div className="space-y-6">
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={onBack}
-        className="-mb-2 self-start px-0 hover:bg-transparent"
-      >
-        <ArrowLeft size={12} /> Back to digests
-      </Button>
-
-      <div className="flex items-baseline justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-title font-bold tracking-tight m-0">
-            Digest · {fmtWeek(d.weekStart, d.weekEnd)}
-          </h1>
-          <div className="text-muted-foreground text-dense mt-1.5 flex items-center gap-1.5 flex-wrap">
-            <span>{sections.length} signals</span>
-            <span className="text-muted-foreground">·</span>
-            <span>{crit.length} critical</span>
-            <span className="text-muted-foreground">·</span>
-            <span>activity</span>
-            <TempIcon level={d.content?.temperature ?? "low"} />
-            {d.sentAt && (
-              <>
-                <span className="text-muted-foreground">·</span>
-                <span>
-                  sent {format(new Date(d.sentAt), "EEEE HH:mm")}
-                </span>
-              </>
-            )}
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled
-            title="PDF export coming soon"
-          >
-            <Download size={13} /> PDF
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled
-            title="Email resend coming soon"
-          >
-            <Mail size={13} /> Resend
-          </Button>
-        </div>
-      </div>
-
-      {tldr.length > 0 && (
-        <Card className="px-5 py-5">
-          <div className="text-xs font-semibold text-primary mb-3">
-            TL;DR
-          </div>
-          <ul className="m-0 pl-5 text-content leading-relaxed">
-            {tldr.map((t, i) => (
-              <li key={i}>{t}</li>
-            ))}
-          </ul>
-        </Card>
-      )}
-
-      {[crit, watch, fyi].map((items, idx) => {
-        if (items.length === 0) return null;
-        const meta = urgencyMeta(items[0]!.urgency);
-        return <DigestSection key={idx} meta={meta} items={items} />;
-      })}
-    </div>
-  );
-}
-
-function DigestSection({
-  meta,
-  items,
-}: {
-  meta: { title: string; color: string };
-  items: Array<{
-    urgency: string;
-    competitor: string;
-    category: string;
-    insight: string;
-    so_what: string;
-  }>;
-}) {
-  return (
-    <Card>
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <span
-            className="size-2 shrink-0 rounded-sm"
-            style={{ background: meta.color }}
-            aria-hidden
-          />
-          <div className="font-semibold text-sm tracking-tight">
-            {meta.title}
-          </div>
-        </div>
-        <span className="text-muted-foreground tabular-nums font-mono text-xs">
-          {items.length} signals
-        </span>
-      </div>
-      <div>
-        {items.map((s, i) => (
-          <div
-            key={i}
-            className="p-5 border-b border-border last:border-b-0"
-          >
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <CatPill>{s.category}</CatPill>
-              <span className="font-semibold text-sm">{s.competitor}</span>
-            </div>
-            <p className="m-0 mb-1.5 text-content leading-snug font-medium">
-              {s.insight}
-            </p>
-            {s.so_what && (
-              <p className="m-0 flex gap-1 text-muted-foreground text-sm leading-snug">
-                <ArrowRight className="size-3.5 mt-0.5 shrink-0" />
-                {s.so_what}
-              </p>
-            )}
-          </div>
-        ))}
-      </div>
-    </Card>
   );
 }

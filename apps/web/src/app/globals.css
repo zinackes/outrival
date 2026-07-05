@@ -615,3 +615,123 @@ html:has(.landing-canvas) {
     transition: none;
   }
 }
+
+/* Blog article prose — long-form editorial styling for MDX-rendered posts.
+   Body runs on the muted text tier (same register as the About / legal pages);
+   headings, strong and links lift to foreground / accent. Code blocks come from
+   rehype-pretty-code with keepBackground:false, so the <pre> surface is ours and
+   only the token colors come from shiki's dual-theme --shiki-light/--shiki-dark. */
+.prose-blog {
+  color: var(--muted);
+  font-size: 1.0625rem; /* 17px — comfortable long-form read (text-lead) */
+  line-height: 1.75;
+}
+.prose-blog > * + * {
+  margin-top: 1.25rem;
+}
+.prose-blog h2 {
+  margin-top: 2.5rem;
+  font-size: 1.625rem; /* 26px — H2 */
+  color: var(--foreground);
+}
+.prose-blog h3 {
+  margin-top: 2rem;
+  font-size: 1.25rem; /* 20px — H3 */
+  color: var(--foreground);
+}
+.prose-blog h2 + *,
+.prose-blog h3 + * {
+  margin-top: 0.75rem;
+}
+.prose-blog strong {
+  color: var(--foreground);
+  font-weight: 600;
+}
+.prose-blog a {
+  color: var(--link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in oklab, var(--link) 40%, transparent);
+}
+.prose-blog a:hover {
+  text-decoration-color: var(--link);
+}
+.prose-blog ul,
+.prose-blog ol {
+  padding-left: 1.5rem;
+}
+.prose-blog ul {
+  list-style: disc;
+}
+.prose-blog ol {
+  list-style: decimal;
+}
+.prose-blog li {
+  margin-top: 0.5rem;
+  padding-left: 0.25rem;
+}
+.prose-blog li::marker {
+  color: var(--muted-3);
+}
+.prose-blog blockquote {
+  border-left: 2px solid var(--accent);
+  padding-left: 1.25rem;
+  color: var(--foreground);
+}
+.prose-blog hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 2.5rem 0;
+}
+.prose-blog img {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  max-width: 100%;
+}
+
+/* Inline code (not inside a highlighted block). */
+.prose-blog :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.1em 0.35em;
+  color: var(--foreground);
+}
+
+/* Fenced code blocks. */
+.prose-blog figure[data-rehype-pretty-code-figure] {
+  margin-top: 1.5rem;
+}
+.prose-blog figcaption[data-rehype-pretty-code-title] {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--muted-3);
+  margin-bottom: 0.5rem;
+}
+.prose-blog pre {
+  overflow-x: auto;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1rem 1.25rem;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+.prose-blog pre code {
+  display: grid; /* one row per source line (rehype-pretty-code wraps each in [data-line]) */
+  font-family: var(--font-mono);
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font-size: inherit;
+}
+/* shiki dual theme: each token span carries --shiki-light and --shiki-dark. */
+.prose-blog pre code span {
+  color: var(--shiki-light);
+}
+.dark .prose-blog pre code span {
+  color: var(--shiki-dark);
+}

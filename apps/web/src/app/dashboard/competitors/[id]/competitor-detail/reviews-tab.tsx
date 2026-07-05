@@ -74,6 +74,12 @@ const REVIEW_SOURCE_OPTIONS: {
     placeholder: "https://www.capterra.com/p/<id>/<slug>/reviews/",
   },
   {
+    value: "trustpilot_reviews",
+    label: "Trustpilot",
+    host: "trustpilot.com",
+    placeholder: "https://www.trustpilot.com/review/<domain>",
+  },
+  {
     value: "appstore_reviews",
     label: "App Store",
     host: "apps.apple.com",
@@ -252,11 +258,10 @@ export function ReviewsTab({
     return <Empty text="Couldn't load this data right now — try again in a moment." />;
   if (!reviews || !scores) return <TabLoading />;
 
-  const reviewMonitor = monitors.find(
-    (m) =>
-      m.sourceType === "g2_reviews" ||
-      m.sourceType === "capterra_reviews" ||
-      m.sourceType === "appstore_reviews",
+  // Detection stays aligned with what the picker actually exposes — a source added
+  // to REVIEW_SOURCE_OPTIONS is recognised here without a second list to maintain.
+  const reviewMonitor = monitors.find((m) =>
+    REVIEW_SOURCE_OPTIONS.some((o) => o.value === m.sourceType),
   );
 
   // No review monitor yet → collect the review-page URL before enabling.

@@ -43,7 +43,7 @@ export function Footer() {
               Paris · hosted in EU
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-8 sm:grid-cols-3">
+          <div className="grid grid-cols-2 gap-8 sm:grid-cols-3 lg:grid-cols-5">
             <FooterCol
               head="Product"
               links={[
@@ -55,12 +55,28 @@ export function Footer() {
               ]}
             />
             <FooterCol
+              head="Compare"
+              links={[
+                { label: "vs Crayon", href: "/vs/crayon" },
+                { label: "vs Klue", href: "/vs/klue" },
+                { label: "Crayon alternatives", href: "/alternatives/crayon" },
+                { label: "Klue alternatives", href: "/alternatives/klue" },
+              ]}
+            />
+            <FooterCol
+              head="Company"
+              links={[
+                { label: "About", href: "/about" },
+                { label: "Contact", href: "mailto:hello@outrival.app" },
+              ]}
+            />
+            <FooterCol
               head="Resources"
               links={[
+                { label: "Blog", href: "/blog" },
                 { label: "FAQ", href: "/#faq" },
                 { label: "Changelog", href: "/changelog" },
                 { label: "API docs", href: "/docs" },
-                { label: "Contact", href: "mailto:hello@outrival.app" },
               ]}
             />
             <FooterCol

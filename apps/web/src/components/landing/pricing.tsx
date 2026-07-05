@@ -62,7 +62,7 @@ const PLANS: Plan[] = [
       "15 competitors",
       "Real-time Slack/email alerts",
       "AI-generated battle cards",
-      "G2, Capterra, Trustpilot & Reddit reviews",
+      "G2, Capterra & Trustpilot reviews",
     ],
   },
   {

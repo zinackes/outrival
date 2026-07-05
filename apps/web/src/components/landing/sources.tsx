@@ -5,7 +5,6 @@ import {
   Cpu,
   FileText,
   Globe,
-  MessageCircle,
   Newspaper,
   Rss,
   Star,
@@ -36,13 +35,12 @@ const FAMILIES: {
   },
   {
     title: "The users",
-    stat: "4 platforms",
+    stat: "3 platforms",
     desc: "What their actual customers say — score, volume, sentiment, sub-ratings.",
     sources: [
       { icon: Star, label: "G2 · Capterra", meta: "sentiment" },
       { icon: Star, label: "Trustpilot · Gartner", meta: "verified" },
       { icon: Star, label: "App Store · Play", meta: "rating" },
-      { icon: MessageCircle, label: "Reddit", meta: "mentions" },
     ],
   },
   {

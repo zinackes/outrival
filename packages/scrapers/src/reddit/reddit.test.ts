@@ -38,9 +38,9 @@ const LISTING = {
   },
 };
 
-test("redditSearchUrl quotes the term and is read-only JSON", () => {
+test("redditSearchUrl quotes the term and targets the OAuth API", () => {
   expect(redditSearchUrl("acme")).toBe(
-    "https://www.reddit.com/search.json?q=%22acme%22&sort=relevance&t=year&limit=25",
+    "https://oauth.reddit.com/search?q=%22acme%22&sort=relevance&t=year&limit=25&raw_json=1",
   );
 });
 

@@ -416,13 +416,38 @@ export function SignalCard({
         </div>
       )}
 
-      {/* Two-row footer: an action row (discuss / track / helpful / severity
-          correction) over a discreet meta line (source, confidence, threat). The
-          meta was demoted out of the header, which had grown to 9+ chips. */}
+      {/* Single-row footer: the discreet meta (source, confidence, threat) sits
+          flush-left, the action cluster (discuss / track / helpful / correction)
+          flush-right, both on one baseline so the two never read as misaligned.
+          Wraps to stacked lines only when the card is too narrow (mobile sheet). */}
       {interactive && (
-      <div className="mt-4 space-y-2.5 border-t border-border pt-3.5">
-        {/* Action row — what to do with the signal, right-aligned. */}
-        <div className="flex flex-wrap items-center justify-end gap-1.5">
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2.5 border-t border-border pt-3.5">
+        {/* Meta line — provenance + calibration: source (opens "Why this insight?"),
+            AI confidence (renders nothing when high), the threat meter, held-back. */}
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <SignalSourceLine
+            signalId={signal.id}
+            sourceType={signal.sourceType}
+            detectedAt={signal.createdAt}
+            showDetected={false}
+          />
+          <ConfidenceDot confidence={signal.aiConfidence ?? "high"} />
+          <ThreatMeter score={signal.threatScore} />
+          {signal.filteredReason && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="shrink-0 text-xs text-muted-foreground">· Held back</span>
+              </TooltipTrigger>
+              <TooltipContent>
+                Not sent as an alert —{" "}
+                {FILTERED_REASON_LABEL[signal.filteredReason] ??
+                  signal.filteredReason.replace(/_/g, " ")}
+              </TooltipContent>
+            </Tooltip>
+          )}
+        </div>
+        {/* Action cluster — what to do with the signal. */}
+        <div className="flex flex-wrap items-center gap-1.5">
           <Button
             variant="ghost"
             size="sm"
@@ -533,31 +558,6 @@ export function SignalCard({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>
-        {/* Meta line — discreet provenance + calibration, demoted from the header
-            so the header stays quiet: source (opens "Why this insight?"), AI
-            confidence (renders nothing when high), the threat meter, held-back. */}
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <SignalSourceLine
-            signalId={signal.id}
-            sourceType={signal.sourceType}
-            detectedAt={signal.createdAt}
-            showDetected={false}
-          />
-          <ConfidenceDot confidence={signal.aiConfidence ?? "high"} />
-          <ThreatMeter score={signal.threatScore} />
-          {signal.filteredReason && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="shrink-0 text-xs text-muted-foreground">· Held back</span>
-              </TooltipTrigger>
-              <TooltipContent>
-                Not sent as an alert —{" "}
-                {FILTERED_REASON_LABEL[signal.filteredReason] ??
-                  signal.filteredReason.replace(/_/g, " ")}
-              </TooltipContent>
-            </Tooltip>
-          )}
         </div>
       </div>
       )}

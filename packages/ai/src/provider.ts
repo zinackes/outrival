@@ -179,8 +179,15 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
         const rateLimited = err instanceof OpenAI.APIError && err.status === 429;
         if (isConfigError(err)) sawConfigError = true;
         else sawTransientError = true;
+        // Park THIS provider (per-provider breaker) and fail over. We deliberately do
+        // NOT feed the GLOBAL breaker here: a per-provider failure the pool routes
+        // around (the task still succeeds on the next provider) is not "all providers
+        // down". Counting it per-attempt let a persistently-broken priority-1 provider
+        // — e.g. a bad Cerebras key that 404s every call — drip failures into the
+        // global counter and trip a 10-min workspace-wide blackout while every task was
+        // actually succeeding via failover. The global breaker is fed once per TASK, at
+        // the exhaustion path below.
         await tripBreaker(provider.id, rateLimited ? "rate_limited" : "provider_error");
-        await recordFailure(provider.id);
         lastErr = err;
         continue;
       }
@@ -188,18 +195,26 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
     }
   }
 
+  // Pool exhausted for THIS task — every pickable provider failed.
   // Config-only exhaustion (every provider rejected with 401/403/404, no transient
-  // fault): the pool is misconfigured, not down. Make the error and the ops ping
-  // actionable so it reads as "fix the env" instead of a generic provider outage.
+  // fault) is a misconfigured pool, not an outage: back-off won't fix an env mistake,
+  // so trip the global breaker immediately and loudly to make ops fix AI_PROVIDER_*.
   const misconfigured = sawConfigError && !sawTransientError;
-  await tripGlobalBreaker(misconfigured ? "ai_provider_misconfigured" : "no_providers_available");
   if (misconfigured) {
+    await tripGlobalBreaker("ai_provider_misconfigured");
     const detail = lastErr instanceof Error ? lastErr.message : String(lastErr);
     throw new AIUnavailableError(
       `ai_provider_misconfigured: every provider rejected the request (last: ${detail}). ` +
         `Check AI_PROVIDER_*_BASE_URL (needs a trailing /v1) and AI_PROVIDER_*_MODEL.`,
     );
   }
+  // Transient cross-provider failure: count this failed TASK (not per attempt).
+  // recordFailure trips the global breaker only once AI_CIRCUIT_BREAKER_THRESHOLD
+  // tasks fail back-to-back — and any task success calls recordSuccess and clears the
+  // streak — so one unlucky task, or a single transient blip on the one provider left
+  // pickable while others sit in their per-provider breakers, no longer blanks AI for
+  // the whole workspace for 10 minutes.
+  await recordFailure();
   throw new AIUnavailableError(
     lastErr instanceof Error ? `all_providers_failed: ${lastErr.message}` : "no_providers_available",
   );

@@ -86,13 +86,10 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
 
         {state === "idle" && detail && (
           <div className="space-y-5">
-            {/* Strategic narrative (patch-16) — shown first when present. */}
-            {detail.narrative && (
-              <p className="border-l-2 border-primary/40 pl-3 text-sm italic leading-relaxed text-primary/90">
-                {detail.narrative}
-              </p>
-            )}
-
+            {/* The strategic narrative used to lead here in italic purple with a
+                left side-stripe (an anti-pattern) and made the panel long; it now
+                lives in the card's collapsed "Context", so this panel stays focused
+                on the evidence + provenance. */}
             <section className="space-y-2.5">
               <SectionLabel>Key change</SectionLabel>
               {hasChange ? (

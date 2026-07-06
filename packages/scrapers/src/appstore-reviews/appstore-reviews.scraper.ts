@@ -33,7 +33,17 @@ export async function scrape(_competitorId: string, url: string): Promise<Scrape
       headers: { accept: "application/json" },
     });
     lastStatus = res.status;
-    if (!res.ok) break;
+    if (!res.ok) {
+      // A failed FIRST page means we fetched nothing — throw so the run fails and
+      // retries instead of storing an empty reviews snapshot as a "success"
+      // baseline, which would fake "N new reviews" the moment the feed recovers.
+      // A later page failing after we already have reviews is just "no more" —
+      // keep what we got (scrape-monitor hardcodes status:success either way).
+      if (page === 1) {
+        throw new Error(`App Store RSS returned ${res.status} for app ${ref.appId}`);
+      }
+      break;
+    }
 
     const json = (await res.json()) as { feed?: { entry?: RssEntry | RssEntry[] } };
     const raw = json.feed?.entry;

@@ -728,6 +728,8 @@ SCRAPING_LEVEL_1_ENABLED=true  # kill-switch L2 (datacenter)
 SCRAPING_LEVEL_2_ENABLED=true  # kill-switch L3 (residential)
 SCRAPING_LEVEL_3_ENABLED=true  # kill-switch L4 (camoufox)
 EXA_API_KEY=
+GITHUB_TOKEN=                # optionnel — source github_repo (self-product developing). Sans
+                            # token : REST public 60 req/h partagé (rate-limit sur burst) ; avec : 5000
 REDDIT_CLIENT_ID=            # reddit source — OAuth app-only (client_credentials) creds
 REDDIT_CLIENT_SECRET=       # register at reddit.com/prefs/apps. Auth'd → oauth.reddit.com
                             # (server-IP-friendly, free tier 100 QPM). Empty → reddit source fails.

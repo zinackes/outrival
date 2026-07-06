@@ -53,21 +53,25 @@ export const scrapeTechStackJob = task({
     const { fetchTechStackEvidence, detectTechStack } = await import(
       "@outrival/scrapers/tech-stack"
     );
+    const { isCloudflareChallenge } = await import("@outrival/scrapers/block-detection");
 
     // Primary source: the homepage. A null result means a blocked/failed fetch —
     // do NOT run the diff (an empty detection would false-flag every current tech
-    // as "disappeared"). Just record the attempt and bail.
+    // as "disappeared"). A 200 anti-bot challenge shell is the same trap: it has
+    // HTML (non-null) but no real tech, so guard it the same way. Record the
+    // attempt and bail in both cases.
     const home = await fetchTechStackEvidence(competitor.url);
-    if (!home) {
-      logger.warn("Tech-stack fetch returned no evidence (blocked/failed), skipping diff", {
+    if (!home || isCloudflareChallenge(home.html)) {
+      logger.warn("Tech-stack fetch blocked/empty (no evidence or challenge shell), skipping diff", {
         competitorId,
         url: competitor.url,
+        reason: home ? "challenge" : "no_evidence",
       });
       await db
         .update(competitors)
         .set({ techStackScrapedAt: new Date() })
         .where(eq(competitors.id, competitor.id));
-      return { skipped: true, reason: "no_evidence" };
+      return { skipped: true, reason: home ? "challenge" : "no_evidence" };
     }
 
     // Merge detections from the homepage and, if present, the /integrations page

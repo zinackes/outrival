@@ -48,4 +48,41 @@ describe("isCloudflareChallenge", () => {
       isCloudflareChallenge(`<html><head><title>Pricing</title></head><body><h1>Plans</h1><p>$10/mo</p></body></html>`),
     ).toBe(false);
   });
+
+  // M4 — beyond Cloudflare: the major anti-bot vendors, each on a vendor-owned tell.
+  test("flags a DataDome challenge (captcha-delivery iframe)", () => {
+    expect(
+      isCloudflareChallenge(
+        `<html><body><iframe src="https://geo.captcha-delivery.com/captcha/?initialCid=x"></iframe></body></html>`,
+      ),
+    ).toBe(true);
+  });
+
+  test("flags a PerimeterX / HUMAN block page", () => {
+    expect(
+      isCloudflareChallenge(`<html><body><div id="px-captcha"></div><p>Please verify you are a human</p></body></html>`),
+    ).toBe(true);
+  });
+
+  test("flags an Imperva / Incapsula interstitial", () => {
+    expect(
+      isCloudflareChallenge(
+        `<html><head><title>example.com</title></head><body><h2>Pardon Our Interruption...</h2><script src="/_Incapsula_Resource?SWJIYLWA=x"></script></body></html>`,
+      ),
+    ).toBe(true);
+  });
+
+  test("flags an Akamai Bot Manager deny page", () => {
+    expect(
+      isCloudflareChallenge(
+        `<html><body><h1>Access Denied</h1><p>Reference #18.abcd</p><img src="https://errors.edgesuite.net/x"></body></html>`,
+      ),
+    ).toBe(true);
+  });
+
+  test("flags a Kasada challenge (KPSDK bootstrap)", () => {
+    expect(
+      isCloudflareChallenge(`<html><head><script>window.KPSDK=window.KPSDK||{}</script></head><body></body></html>`),
+    ).toBe(true);
+  });
 });

@@ -17,6 +17,40 @@ testability debt on the hot path.
 
 ---
 
+## 0. Remediation status (updated 2026-07-06)
+
+Branch **`fix/scraper-critical`** (off `main`). Typecheck green across
+`@outrival/scrapers` + `@outrival/workers`; workers tests 30/30; scrapers 358
+pass (the only 2 failures are the pre-existing `scrapeFirstSuccess` network
+flakes, unrelated). The browser-path changes (M1/M2) are typecheck-verified but
+**not runtime-verified** here (no browsers/proxies/residential creds locally) —
+validate on staging before prod.
+
+**Done — all P0 + every named P1:**
+
+| Findings | Commit | Notes |
+|---|---|---|
+| **C1** empty-jobs false mass-close · **C2** unscrapable monitor auto re-arm | `55dfb8d` | pure helpers `lib/jobs-delta.ts` + `lib/rearm.ts` + repro tests; env `UNSCRAPABLE_REARM_DAYS=7` |
+| **M1** block images (non-screenshot) · **M2** browser-pool teardown | `439bd0d` | `closeTierBrowser` on escalation + `closeScraperBrowsers()` in scrape-monitor `finally`; unblocks pg-boss |
+| **M4** multi-vendor challenge markers · **M5** App Store `!ok` throw · **M6** tech-stack challenge guard · **M7** github timeout + 403 + `GITHUB_TOKEN` doc | `273048a` | block-detection now spans DataDome/PerimeterX/Imperva/Akamai/Kasada (+5 tests) |
+| TEMP DEBUG removal · `refresh-competitor-summary` cooldown · R2 diff-read guards · `Buffer.from` screenshot drop | `16f2326` | `SUMMARY_REFRESH_COOLDOWN_MS=24h`; both diff-path `getFromR2` now `.catch(()=>null)` |
+| g2/capterra unified via `reviewScraper` factory | `c066cbc` | deleted `g2-reviews/` + `capterra-reviews/`, behaviour byte-identical |
+
+**Remaining (deliberately deferred) — pick up here next session:**
+
+- **P1 leftover** — factor `escapeHtml` (7 files) + fetch-with-timeout (10,
+  heterogeneous). Pure cosmetic, 17-file churn → its own refactor PR.
+- **P2 latency** (§2.2 / §4): M3 `source_summary` materiality gate, M8–M14
+  (parallelize careers/pricing probes, deterministic sitemap truncation +
+  bounded walk, ATS `[]` vs `null`, homepage scroll/settle trimming).
+- **P3 structural** (§4): homepage-enrichments → testable lib + first hot-path
+  worker tests, per-source registry, L0.5 HTTP-impersonation rung, Gemini Flash
+  in the AI pool, embeddings pre-filter.
+
+Everything in §2/§4 not listed as done above is still open.
+
+---
+
 ## 1. Inventory
 
 ### 1.1 Architecture

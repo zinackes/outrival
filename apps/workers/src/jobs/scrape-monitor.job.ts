@@ -315,6 +315,11 @@ const LEVEL_REPROBE_INTERVAL_MS = 14 * 24 * 60 * 60 * 1000;
 // source is marked unscrapable so the UI can show a clear "unavailable" state.
 const UNSCRAPABLE_FAILURE_THRESHOLD = 3;
 
+// Min gap between two competitor-summary re-triggers when the summary exists but
+// its category is still empty — caps the backfill loop to daily instead of firing
+// an AI job on every realtime homepage scrape for a competitor the model won't label.
+const SUMMARY_REFRESH_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
 // Failure backoff (hours) indexed by consecutive-failure count. onFailure runs
 // only after every in-run retry is exhausted, so a genuine failure must push
 // nextRunAt forward — otherwise schedule-scraping (which never excludes
@@ -407,10 +412,16 @@ export const scrapeMonitorJob = task({
     // Re-trigger here, before the dedup early-returns below, so an unchanged
     // homepage (304 / same hash) still gets a retry on each scheduled scrape.
     // Fire-and-forget; the job overwrites in place, so it's safe to repeat.
+    // Cooldown on the last summary write so a competitor whose category the model
+    // persistently declines doesn't fire an AI job on EVERY realtime scrape forever
+    // (unbounded loop). A null aiSummaryUpdatedAt (never summarised, or the job kept
+    // failing) bypasses the cooldown → we still retry aggressively until one lands.
     if (
       monitor.sourceType === "homepage" &&
       lastSnapshot &&
-      (!competitor.aiSummary || !competitor.category)
+      (!competitor.aiSummary || !competitor.category) &&
+      (!competitor.aiSummaryUpdatedAt ||
+        Date.now() - competitor.aiSummaryUpdatedAt.getTime() > SUMMARY_REFRESH_COOLDOWN_MS)
     ) {
       await tasks.trigger("refresh-competitor-summary", { competitorId: competitor.id });
     }
@@ -602,8 +613,11 @@ export const scrapeMonitorJob = task({
     // Guarded on the prior snapshot having had real content, so a consistently
     // empty monitor doesn't retry-loop.
     if (lastSnapshot && isContentCollapsed(afterContent)) {
-      const priorHtml = await getFromR2(`${lastSnapshot.r2Key}.html`);
-      if (!isContentCollapsed(extractContent(priorHtml, monitor.sourceType))) {
+      // Prior snapshot is already stored; a missing/unreadable R2 object (retention
+      // purge, transient blip) must not fail this scrape — we just can't run the
+      // regression check, so skip the throw rather than crash (null → guard below).
+      const priorHtml = await getFromR2(`${lastSnapshot.r2Key}.html`).catch(() => null);
+      if (priorHtml !== null && !isContentCollapsed(extractContent(priorHtml, monitor.sourceType))) {
         logger.warn("Extracted content collapsed — likely failed render/soft-block, retrying", {
           monitorId: monitor.id,
           sourceType: monitor.sourceType,
@@ -1026,12 +1040,16 @@ export const scrapeMonitorJob = task({
         }
       }
     } else if (lastSnapshot) {
-      const beforeHtml = await getFromR2(`${lastSnapshot.r2Key}.html`);
-      const diff = computeTextDiff(
-        extractContent(beforeHtml, monitor.sourceType),
-        afterContent,
-      );
-      if (diff.hasChanges) {
+      // If the prior snapshot's R2 object can't be read, skip the diff this run
+      // instead of failing a scrape whose new snapshot is already stored (a wasted
+      // retry that inflates consecutiveFailures → premature unscrapable). The next
+      // scrape diffs against the snapshot we just wrote.
+      const beforeHtml = await getFromR2(`${lastSnapshot.r2Key}.html`).catch(() => null);
+      const diff =
+        beforeHtml === null
+          ? null
+          : computeTextDiff(extractContent(beforeHtml, monitor.sourceType), afterContent);
+      if (diff?.hasChanges) {
         const [newChange] = await db
           .insert(changes)
           .values({

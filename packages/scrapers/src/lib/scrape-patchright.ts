@@ -239,8 +239,10 @@ export async function capturePage(
 
   // Screenshot only when asked (homepage pHash). For every other source it would
   // be rendered, buffered, uploaded to R2 and pHashed for nothing.
+  // page.screenshot() already returns a Buffer — don't Buffer.from-copy the
+  // 5-30 MB PNG a second time (it stays live through diff/DB/upload as it is).
   const screenshotBuffer = options.screenshot
-    ? Buffer.from(await page.screenshot({ fullPage: options.fullPage ?? true, type: "png" }))
+    ? await page.screenshot({ fullPage: options.fullPage ?? true, type: "png" })
     : Buffer.alloc(0);
   const headers = response.headers();
   return {

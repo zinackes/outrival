@@ -48,23 +48,6 @@ export const extractPricingJob = task({
     const html = await getFromR2(`${snapshot.r2Key}.html`);
     const text = htmlToText(html);
 
-    // TEMP DEBUG (pricing-empty investigation): surface where prices sit in the
-    // extracted text so we can tell truncation/windowing apart from a
-    // false-positive "public" status (stray currency tokens, no real plans).
-    const priceRe = /[€$£¥]\s?\d[\d.,]*|\d[\d.,]*\s?[€$£¥]/g;
-    const priceHits = [...text.matchAll(priceRe)].slice(0, 12).map((m) => ({
-      idx: m.index ?? -1,
-      token: m[0].trim(),
-      around: text.slice(Math.max(0, (m.index ?? 0) - 60), (m.index ?? 0) + 60),
-    }));
-    const debug = {
-      resolvedUrl: snapshot.resolvedUrl,
-      textLen: text.length,
-      head: text.slice(0, 400),
-      priceHitCount: priceHits.length,
-      priceHits,
-    };
-
     // Staged extraction (patch-30): structured-first (schema.org Offer) → cached
     // selector parser → AI self-heal → direct AI extraction (the floor). Logs its
     // resolution to extraction_runs; ai_runs is logged via the wrapped aiFallback.
@@ -89,16 +72,18 @@ export const extractPricingJob = task({
     });
     const extracted = result.data;
     if (!extracted) {
-      logger.warn("Pricing extraction returned null", debug);
-      return { ok: false, reason: "parse_failed", debug };
+      logger.warn("Pricing extraction returned null", {
+        resolvedUrl: snapshot.resolvedUrl,
+        textLen: text.length,
+      });
+      return { ok: false, reason: "parse_failed" };
     }
     logger.log("Pricing plans extracted", {
       count: extracted.plans.length,
       resolution: result.resolution,
-      debug,
     });
     if (extracted.plans.length === 0) {
-      return { ok: true, plansInserted: 0, debug };
+      return { ok: true, plansInserted: 0 };
     }
 
     // Read the prior batch before inserting the fresh one, so the summary can

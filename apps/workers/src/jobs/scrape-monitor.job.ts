@@ -518,6 +518,13 @@ export const scrapeMonitorJob = task({
       // retries / onFailure then handles consecutiveFailures + markedUnscrapable.
       await diagnoseAndPersistFailure(monitor.id, scrapeUrl, err);
       throw err;
+    } finally {
+      // Free any pooled browsers the cascade launched now that html/text/screenshot
+      // already live in `result` — holding Chromium/Camoufox through the downstream
+      // diff/AI/DB work just wastes RAM (and leaks on a long-lived pg-boss worker).
+      // No-op for L0-only / api-capture scrapes (api-capture closes its own browser).
+      const { closeScraperBrowsers } = await import("@outrival/scrapers");
+      await closeScraperBrowsers().catch(() => {});
     }
     // Parse the freshly scraped HTML once: reused for the hash and (on a change)
     // for the after-side of the diff, instead of re-parsing the same big page.

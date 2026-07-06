@@ -1,12 +1,23 @@
 import {
   scrapeWithPatchright,
+  closeTierBrowser,
+  closePatchrightPool,
   type PatchrightOptions,
   type ScrapeLevel,
   type ScrapeResult,
 } from "./scrape-patchright";
 import { scrapeDirect } from "./scrape-direct";
-import { scrapeWithCamoufox } from "./scrape-camoufox";
+import { scrapeWithCamoufox, closeCamoufoxBrowser } from "./scrape-camoufox";
 import { getProxyConfig } from "./proxy";
+
+/**
+ * Tear down every pooled scraper browser (Chromium tiers + Camoufox). A run that
+ * may have rendered must call this in a finally so a long-lived worker process
+ * (pg-boss) doesn't leak browsers across jobs. No-op when nothing was launched.
+ */
+export async function closeScraperBrowsers(): Promise<void> {
+  await Promise.all([closePatchrightPool(), closeCamoufoxBrowser()]);
+}
 
 // Failures that justify escalating to a more expensive level. A timeout /
 // network error is NOT here: it's a transient/site problem, not a "this level is
@@ -129,6 +140,8 @@ export async function scrapePage(url: string, options: CascadeOptions = {}): Pro
     const r = await scrapeWithPatchright(url, "direct", browserOpts);
     attempts.push({ level: 1, result: r });
     if (r.ok) return done(r, 1);
+    // Escalating past this tier — free its browser before the next one launches.
+    await closeTierBrowser("direct");
     if (!ESCALATING_FAILURES.has(r.failureReason ?? "")) return fail();
   }
 
@@ -137,6 +150,7 @@ export async function scrapePage(url: string, options: CascadeOptions = {}): Pro
     const r = await scrapeWithPatchright(url, "datacenter", browserOpts);
     attempts.push({ level: 2, result: r });
     if (r.ok) return done(r, 2);
+    await closeTierBrowser("datacenter");
     if (!ESCALATING_FAILURES.has(r.failureReason ?? "")) return fail();
   }
 
@@ -145,6 +159,7 @@ export async function scrapePage(url: string, options: CascadeOptions = {}): Pro
     const r = await scrapeWithPatchright(url, "residential", browserOpts);
     attempts.push({ level: 3, result: r });
     if (r.ok) return done(r, 3);
+    await closeTierBrowser("residential");
     if (!ESCALATING_FAILURES.has(r.failureReason ?? "")) return fail();
   }
 

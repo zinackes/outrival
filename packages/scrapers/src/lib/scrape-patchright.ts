@@ -56,9 +56,17 @@ export interface PatchrightOptions {
   captureBillingToggle?: boolean;
 }
 
-// Never-parsed, heavy subresources that are safe to abort (no anti-bot signal,
-// unlike CSS/images). Cuts residential pay-per-GB bandwidth on data scrapes.
-const BLOCKED_RESOURCE_TYPES = new Set(["media", "font"]);
+// Subresources safe to abort before they hit the (paid) proxy. media + font are
+// never parsed and carry no anti-bot signal. Images add the BULK of proxy
+// bandwidth on data scrapes (jobs/pricing/reviews) — block them too, EXCEPT when
+// the scrape needs a screenshot (homepage pHash), which requires images to render.
+// Stylesheets are deliberately NOT blocked: innerText (the soft-block detector)
+// respects computed CSS, and CSS-blocking is a known anti-bot tell.
+function blockedResourceTypes(options: PatchrightOptions): Set<string> {
+  const types = new Set(["media", "font"]);
+  if (!options.screenshot) types.add("image");
+  return types;
+}
 
 // One browser per proxy tier: datacenter and residential launch with different
 // proxy configs, so they cannot share a single Chromium. Lazily launched, reused
@@ -71,6 +79,30 @@ async function getBrowser(tier: ProxyTier): Promise<Browser> {
   const browser = await chromium.launch(patchrightLaunchOptions(tier));
   browserByTier[tier] = browser;
   return browser;
+}
+
+/**
+ * Close a single pooled tier browser. The cascade calls this on escalation so a
+ * failed lower tier is freed before the next one launches — bounding peak RAM to
+ * one browser instead of holding 3 Chromium resident through an L1→L3 escalation.
+ */
+export async function closeTierBrowser(tier: ProxyTier): Promise<void> {
+  const browser = browserByTier[tier];
+  if (!browser) return;
+  delete browserByTier[tier];
+  await browser.close().catch(() => {});
+}
+
+/**
+ * Close every pooled Chromium browser and empty the pool. Contexts are always
+ * closed per-scrape, but the browsers persist (deliberately, for intra-run reuse).
+ * A run must call this in a finally so a long-lived worker process (pg-boss) does
+ * not leak browsers across jobs. No-op for L0-only scrapes (pool never populated).
+ */
+export async function closePatchrightPool(): Promise<void> {
+  const browsers = Object.entries(browserByTier);
+  for (const [tier] of browsers) delete browserByTier[tier as ProxyTier];
+  await Promise.all(browsers.map(([, b]) => b?.close().catch(() => {})));
 }
 
 /**
@@ -97,9 +129,10 @@ export async function scrapeWithPatchright(
   });
 
   if (options.blockResources) {
-    // Abort heavy never-parsed subresources before they hit the (paid) proxy.
+    // Abort heavy subresources before they hit the (paid) proxy.
+    const blocked = blockedResourceTypes(options);
     await context.route("**/*", (route) => {
-      if (BLOCKED_RESOURCE_TYPES.has(route.request().resourceType())) return route.abort();
+      if (blocked.has(route.request().resourceType())) return route.abort();
       return route.continue();
     });
   }

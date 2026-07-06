@@ -47,6 +47,10 @@ export function getScraper(sourceType: SourceType): ScraperFn {
   return scraper;
 }
 
+// Run-end browser teardown (see lib/scrape-page). A job that may have rendered
+// must call this so a long-lived worker doesn't leak browsers across scrapes.
+export { closeScraperBrowsers } from "./lib/scrape-page";
+
 export type { ScraperResult, ScrapeOptions, ScrapeOutcome } from "./types";
 export { findSimilarCompanies } from "./discovery/discover";
 export type { DiscoveredCompany } from "./discovery/discover";

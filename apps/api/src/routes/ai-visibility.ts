@@ -92,13 +92,19 @@ aiVisibilityRouter.get("/", async (c) => {
         ),
       )
       .orderBy(desc(aiVisibilityPrompts.createdAt)),
-    // Latest run = the run_id of the most recent row for this org + product.
-    analyticsQueryResult<{ runId: string; recordedAt: string }>(sql`
-      SELECT run_id AS "runId", recorded_at AS "recordedAt"
+    // Recent runs with their mention counts. We DISPLAY the most recent run that actually
+    // produced mentions, not merely the most recent one: a degraded run (e.g. the free-tier
+    // engine quota is exhausted so it answers nothing nameable) writes a full roster of
+    // mentioned=0 rows and would otherwise blank the whole board to 0%. Fall back to the
+    // latest run overall only when none in the window has mentions (a genuinely empty org).
+    analyticsQueryResult<{ runId: string; recordedAt: string; mentions: number }>(sql`
+      SELECT run_id AS "runId", max(recorded_at) AS "recordedAt",
+             count(*) FILTER (WHERE mentioned = 1) AS mentions
       FROM ai_visibility_results
       WHERE org_id = ${orgId} ${productFilter}
-      ORDER BY recorded_at DESC
-      LIMIT 1`),
+      GROUP BY run_id
+      ORDER BY max(recorded_at) DESC
+      LIMIT 10`),
   ]);
   const nameById = new Map(roster.map((r) => [r.id, r.name]));
 
@@ -115,8 +121,13 @@ aiVisibilityRouter.get("/", async (c) => {
   const promptText = new Map(promptRows.map((p) => [p.id, p.prompt]));
   const enabled = promptRows.some((p) => p.isActive);
 
-  const latestRunId = latestRows.rows[0]?.runId ?? null;
-  const lastRunAt = latestRows.rows[0]?.recordedAt ?? null;
+  // Prefer the latest run that has any mention; fall back to the newest run overall so a
+  // brand-new org still renders its roster. lastRunAt tracks the DISPLAYED run so the
+  // "as of" date always matches the numbers shown, never a newer empty run.
+  const runsMeta = latestRows.rows;
+  const displayRun = runsMeta.find((r) => num(r.mentions) > 0) ?? runsMeta[0];
+  const latestRunId = displayRun?.runId ?? null;
+  const lastRunAt = displayRun?.recordedAt ?? null;
 
   type LbRow = { engine: string; competitorId: string; mentions: number; total: number; avgRank: number | null };
   type RawRow = { promptId: string; engine: string; competitorId: string; mentioned: number; rank: number | null; answerExcerpt: string | null };
@@ -148,11 +159,18 @@ aiVisibilityRouter.get("/", async (c) => {
     rawRows = raw.rows;
     degraded = degraded || !lb.ok || !raw.ok;
 
+    // Exclude degraded runs (the engine named nobody across the whole roster — a quota /
+    // outage artifact, not a real "everyone at 0%") so the SoV-over-time lines don't
+    // nosedive to 0 on runs that carry no information. Consistent with the leaderboard.
     const trend = await analyticsQueryResult<TrendRow>(sql`
       SELECT recorded_at AS "recordedAt", competitor_id AS "competitorId",
              (count(*) FILTER (WHERE mentioned = 1))::float / nullif(count(DISTINCT prompt_id), 0) AS sov
       FROM ai_visibility_results
       WHERE org_id = ${orgId} AND engine = ${TREND_ENGINE} ${productFilter}
+        AND run_id IN (
+          SELECT run_id FROM ai_visibility_results
+          WHERE org_id = ${orgId} AND engine = ${TREND_ENGINE} ${productFilter}
+          GROUP BY run_id HAVING count(*) FILTER (WHERE mentioned = 1) > 0)
       GROUP BY recorded_at, competitor_id
       ORDER BY recorded_at`);
     trendRows = trend.rows;

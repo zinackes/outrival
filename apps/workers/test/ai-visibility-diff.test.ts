@@ -69,4 +69,15 @@ describe("computeDeltas — AI visibility shifts", () => {
     expect(d).toHaveLength(1);
     expect(d[0]?.type).toBe("competitor_appeared");
   });
+
+  test("minPrompts gate: a run below the sample floor emits nothing (quota-noise guard)", () => {
+    // 2-prompt runs (the fixtures' default) with a floor of 3 → no signal, even for a
+    // shift that would otherwise fire. This is the prod case: 2 answered Gemini prompts
+    // giving 100%/50% SoV is quota starvation, not a market move.
+    const prev = run({ self: ["p1", "p2"], c1: [] });
+    const curr = run({ self: ["p1", "p2"], c1: ["p1"] }); // c1 "appeared" at 0.5
+    expect(computeDeltas(aggregate(prev), aggregate(curr), "self", 3)).toEqual([]);
+    // Same shift clears a floor of 2 → still fires (both runs have 2 prompts).
+    expect(computeDeltas(aggregate(prev), aggregate(curr), "self", 2)).toHaveLength(1);
+  });
 });

@@ -852,6 +852,7 @@ VISUAL_DIFF_ENABLED=true               # false → endpoints screenshot 404, sec
 AI_VISIBILITY_ENABLED=true             # false → scheduler + job no-op (kill-switch)
 AI_VISIBILITY_INTERVAL_DAYS=7          # cadence par org (jours entre 2 runs)
 AI_VISIBILITY_MAX_PROMPTS=10           # cap prompts/org/run (garde-fou coût)
+AI_VISIBILITY_MIN_PROMPTS_FOR_SIGNAL=4 # min prompts répondus (par moteur, sur les DEUX runs) avant qu'un shift SoV soit signalé — sinon skip (1-2 prompts = quota gratuit épuisé, bruit 100%/50%, pas un vrai mouvement)
 AI_VISIBILITY_TEASER_ENABLED=true      # L7 — teaser onboarding gratuit 1×/org (false → "unavailable")
 AI_VISIBILITY_TEASER_MAX_PROMPTS=3     # requêtes groundées free dépensées par teaser
 GEMINI_API_KEY=                        # moteur Gemini + grounding (GRATUIT, défaut) ; vide → skip

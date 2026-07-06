@@ -15,6 +15,7 @@ import { jobsFromStructured } from "@outrival/scrapers/structured-data";
 import { htmlToText } from "../lib/html-to-text";
 import { insertJobCounts, loggedAi, logExtractionRun } from "../lib/analytics";
 import { stagedExtract } from "../lib/staged-extract";
+import { computeJobsDelta } from "../lib/jobs-delta";
 
 interface NormalizedJob {
   title: string;
@@ -33,10 +34,6 @@ const InputSchema = z.object({
   snapshotId: z.string(),
   competitorId: z.string(),
 });
-
-function jobKey(title: string, department: string): string {
-  return `${title.trim().toLowerCase()}::${department.trim().toLowerCase()}`;
-}
 
 export const extractJobsJob = task({
   id: "extract-jobs",
@@ -123,24 +120,21 @@ export const extractJobsJob = task({
     const existing = await db.query.jobPostings.findMany({
       where: and(eq(jobPostings.competitorId, input.competitorId), eq(jobPostings.isActive, true)),
     });
-    const existingByKey = new Map(
-      existing.map((j) => [jobKey(j.title, j.department ?? "Other"), j]),
-    );
 
-    const seenKeys = new Set<string>();
-    const inserts: NormalizedJob[] = [];
-    for (const j of jobs) {
-      const key = jobKey(j.title, j.department);
-      if (seenKeys.has(key)) continue;
-      seenKeys.add(key);
-      if (!existingByKey.has(key)) {
-        inserts.push(j);
-      }
+    // C1: only an authoritative ATS board list makes an empty result mean "all
+    // postings closed". On the fallback path jobs=[] can only be an AI-floor
+    // {jobs:[]} (a timeout / SPA placeholder / no-data) — never real closure — so
+    // computeJobsDelta returns skip:true and we no-op instead of mass-closing.
+    const authoritative = atsJobs !== null;
+    const delta = computeJobsDelta(existing, jobs, authoritative);
+    if (delta.skip) {
+      logger.warn("Empty non-authoritative jobs extraction — skipping close/summary", {
+        competitorId: input.competitorId,
+        snapshotId: input.snapshotId,
+      });
+      return { ok: false, reason: "empty_unverified" };
     }
-
-    const closedIds = existing
-      .filter((j) => !seenKeys.has(jobKey(j.title, j.department ?? "Other")))
-      .map((j) => j.id);
+    const { inserts, closedIds } = delta;
 
     const now = new Date();
 

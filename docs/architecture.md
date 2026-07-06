@@ -811,6 +811,9 @@ FORCED_RESCAN_LIMIT_STARTER=5
 FORCED_RESCAN_LIMIT_PRO=20
 FORCED_RESCAN_LIMIT_BUSINESS=100       # tier-limits 2026-06-04 : vrai cap, plus « illimité »
 SILENT_MONITOR_ALERT_THRESHOLD_DAYS=60 # alerte ops + user si source sans signal depuis Nj
+UNSCRAPABLE_REARM_DAYS=7                # re-probe d'un monitor markedUnscrapable (isActive:false
+                                       # à 3 échecs) tous les Nj → une panne transitoire ne tue
+                                       # plus le monitor définitivement (schedule-scraping)
 
 # Self-product multi-SKU (patch-28)
 PRODUCT_LIMIT_FREE=1                    # max products (SKUs) actifs par org / tier

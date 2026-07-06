@@ -24,10 +24,22 @@ interface CamoufoxContext {
 interface CamoufoxBrowser {
   newContext(opts: Record<string, unknown>): Promise<CamoufoxContext>;
   isConnected(): boolean;
+  close(): Promise<void>;
 }
 type CamoufoxLauncher = (opts: Record<string, unknown>) => Promise<CamoufoxBrowser>;
 
 let camoufoxBrowser: CamoufoxBrowser | null = null;
+
+/**
+ * Close the pooled Camoufox (Firefox) browser, if any. Called by the run-end
+ * teardown so a long-lived worker (pg-boss) doesn't leak the Firefox process.
+ */
+export async function closeCamoufoxBrowser(): Promise<void> {
+  const browser = camoufoxBrowser;
+  if (!browser) return;
+  camoufoxBrowser = null;
+  await browser.close().catch(() => {});
+}
 
 async function getCamoufoxBrowser(): Promise<CamoufoxBrowser> {
   if (camoufoxBrowser && camoufoxBrowser.isConnected()) return camoufoxBrowser;

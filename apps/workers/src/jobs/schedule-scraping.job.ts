@@ -9,6 +9,7 @@ import {
   type SourceType,
 } from "@outrival/shared";
 import { SCRAPE_SLOW_QUEUE_NAME, SLOW_LANE_MIN_LEVEL } from "../lib/scrape-queues";
+import { rearmableMonitorIds } from "../lib/rearm";
 
 type DueMonitor = {
   id: string;
@@ -121,6 +122,23 @@ export const scheduleScrapingJob = schedules.task({
   async run() {
     const now = new Date();
     logger.log("Starting schedule-scraping", { now: now.toISOString() });
+
+    // C2: re-arm monitors that were paused unscrapable after a transient outage.
+    // One probe per interval — flip isActive back on and make them due now so the
+    // select below enqueues them this run. A later success clears the flag; a
+    // fresh failure re-pauses them (onFailure resets lastFailedAt → 7d cooldown).
+    const paused = await db.query.monitors.findMany({
+      where: and(eq(monitors.isActive, false), eq(monitors.markedUnscrapable, true)),
+      columns: { id: true, isActive: true, markedUnscrapable: true, lastFailedAt: true },
+    });
+    const rearmIds = rearmableMonitorIds(paused, now);
+    if (rearmIds.length > 0) {
+      await db
+        .update(monitors)
+        .set({ isActive: true, nextRunAt: now })
+        .where(inArray(monitors.id, rearmIds));
+      logger.log("Re-armed unscrapable monitors", { count: rearmIds.length });
+    }
 
     const due = await db.query.monitors.findMany({
       where: and(

@@ -8,6 +8,10 @@ import type { ScrapeOutcome, ScrapeOptions } from "../types";
 
 const API = "https://api.github.com";
 
+// Per-request ceiling. Three sequential REST reads with no timeout could otherwise
+// hang the whole scrape up to the job's maxDuration on a slow/unreachable API.
+const GITHUB_FETCH_TIMEOUT_MS = 8000;
+
 interface RepoRef {
   owner: string;
   repo: string;
@@ -43,7 +47,10 @@ function ghHeaders(): Record<string, string> {
 }
 
 async function ghGet(path: string): Promise<{ status: number; json: unknown }> {
-  const res = await fetch(`${API}${path}`, { headers: ghHeaders() });
+  const res = await fetch(`${API}${path}`, {
+    headers: ghHeaders(),
+    signal: AbortSignal.timeout(GITHUB_FETCH_TIMEOUT_MS),
+  });
   let json: unknown = null;
   try {
     json = await res.json();
@@ -93,6 +100,17 @@ export async function scrape(
   const repoRes = await ghGet(`/repos/${owner}/${repo}`);
   if (repoRes.status === 404) {
     throw new Error(`GitHub repo not found or private: ${owner}/${repo}`);
+  }
+  // 403 (primary) / 429 (secondary) = rate-limited, not a dead repo. Surface it
+  // clearly (retriable) so it doesn't read as a permanent failure, and point at the
+  // fix: the unauthenticated cap is 60 req/hr shared across every github monitor.
+  if (repoRes.status === 403 || repoRes.status === 429) {
+    throw new Error(
+      `GitHub API rate-limited (${repoRes.status}) for ${owner}/${repo}` +
+        (process.env.GITHUB_TOKEN
+          ? ""
+          : " — set GITHUB_TOKEN to lift the 60 req/hr unauthenticated limit to 5000"),
+    );
   }
   if (repoRes.status !== 200) {
     throw new Error(`GitHub API returned ${repoRes.status} for ${owner}/${repo}`);

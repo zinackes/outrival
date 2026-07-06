@@ -728,6 +728,8 @@ SCRAPING_LEVEL_1_ENABLED=true  # kill-switch L2 (datacenter)
 SCRAPING_LEVEL_2_ENABLED=true  # kill-switch L3 (residential)
 SCRAPING_LEVEL_3_ENABLED=true  # kill-switch L4 (camoufox)
 EXA_API_KEY=
+GITHUB_TOKEN=                # optionnel — source github_repo (self-product developing). Sans
+                            # token : REST public 60 req/h partagé (rate-limit sur burst) ; avec : 5000
 REDDIT_CLIENT_ID=            # reddit source — OAuth app-only (client_credentials) creds
 REDDIT_CLIENT_SECRET=       # register at reddit.com/prefs/apps. Auth'd → oauth.reddit.com
                             # (server-IP-friendly, free tier 100 QPM). Empty → reddit source fails.
@@ -811,6 +813,9 @@ FORCED_RESCAN_LIMIT_STARTER=5
 FORCED_RESCAN_LIMIT_PRO=20
 FORCED_RESCAN_LIMIT_BUSINESS=100       # tier-limits 2026-06-04 : vrai cap, plus « illimité »
 SILENT_MONITOR_ALERT_THRESHOLD_DAYS=60 # alerte ops + user si source sans signal depuis Nj
+UNSCRAPABLE_REARM_DAYS=7                # re-probe d'un monitor markedUnscrapable (isActive:false
+                                       # à 3 échecs) tous les Nj → une panne transitoire ne tue
+                                       # plus le monitor définitivement (schedule-scraping)
 
 # Self-product multi-SKU (patch-28)
 PRODUCT_LIMIT_FREE=1                    # max products (SKUs) actifs par org / tier

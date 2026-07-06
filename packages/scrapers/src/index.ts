@@ -3,8 +3,6 @@ import * as pricing from "./pricing/pricing.scraper";
 import * as blog from "./blog/blog.scraper";
 import * as changelog from "./changelog/changelog.scraper";
 import * as jobs from "./jobs/jobs.scraper";
-import * as g2Reviews from "./g2-reviews/g2-reviews.scraper";
-import * as capterraReviews from "./capterra-reviews/capterra-reviews.scraper";
 import * as appstoreReviews from "./appstore-reviews/appstore-reviews.scraper";
 import * as extraReviews from "./reviews/extra-platforms.scraper";
 import * as reddit from "./reddit/reddit.scraper";
@@ -27,8 +25,8 @@ const scrapers: Partial<Record<SourceType, ScraperFn>> = {
   blog: blog.scrape,
   changelog: changelog.scrape,
   jobs: jobs.scrape,
-  g2_reviews: g2Reviews.scrape,
-  capterra_reviews: capterraReviews.scrape,
+  g2_reviews: extraReviews.g2,
+  capterra_reviews: extraReviews.capterra,
   appstore_reviews: appstoreReviews.scrape,
   trustpilot_reviews: extraReviews.trustpilot,
   trustradius_reviews: extraReviews.trustradius,

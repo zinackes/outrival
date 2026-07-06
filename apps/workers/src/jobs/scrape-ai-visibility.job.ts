@@ -62,6 +62,10 @@ export const scrapeAiVisibilityJob = task({
       return { skipped: true, reason: "disabled" };
     }
     const maxPrompts = Number(process.env.AI_VISIBILITY_MAX_PROMPTS ?? 10);
+    // Minimum answered prompts (per engine, on BOTH runs) before a shift is trustworthy
+    // enough to signal on. Guards against free-tier quota starvation faking swings: a run
+    // where the engine answered 1-2 prompts yields 100%/50% SoV noise, not a market move.
+    const minPromptsForSignal = Number(process.env.AI_VISIBILITY_MIN_PROMPTS_FOR_SIGNAL ?? 4);
 
     const org = await db.query.organizations.findFirst({ where: eq(organizations.id, orgId) });
     if (!org) throw new AbortTaskRunError(`Org ${orgId} not found`);
@@ -202,7 +206,7 @@ export const scrapeAiVisibilityJob = task({
               rank: r.rank ?? null,
             })),
           );
-          const deltas = computeDeltas(aggregate(prevRows), currAgg, self?.id ?? null);
+          const deltas = computeDeltas(aggregate(prevRows), currAgg, self?.id ?? null, minPromptsForSignal);
           if (deltas.length > 0) {
             const nameById = new Map(roster.map((c) => [c.id, c.name]));
             const urlById = new Map(roster.map((c) => [c.id, c.url ?? null]));

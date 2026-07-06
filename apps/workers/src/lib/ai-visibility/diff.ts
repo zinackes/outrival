@@ -83,15 +83,25 @@ const sovOf = (agg: EngineAgg | undefined, id: string | null): number =>
 // engine with no previous baseline yields nothing (the first run just establishes the
 // baseline, like tech-stack's first scrape). Self-drop and overtake need a self product;
 // competitor-appeared works regardless.
+//
+// `minPrompts` is a noise gate: SoV on a run where the engine answered only a handful of
+// prompts is meaningless (1 prompt → 100%/0% swings, 2 prompts → 50% steps). Require a
+// real sample on BOTH runs before trusting a shift. This suppresses "appeared"/"overtaken"
+// events that are really free-tier quota starvation — the engine returned nothing nameable
+// for most prompts, not a market move. Default 1 keeps the pure baseline behaviour; the
+// job passes AI_VISIBILITY_MIN_PROMPTS_FOR_SIGNAL.
 export function computeDeltas(
   prev: RunAgg,
   curr: RunAgg,
   selfId: string | null,
+  minPrompts = 1,
 ): VisibilityDelta[] {
   const deltas: VisibilityDelta[] = [];
   for (const [engine, currEng] of curr) {
     const prevEng = prev.get(engine);
     if (!prevEng) continue; // no baseline → no signal
+    // Both runs need enough answered prompts for their SoV to mean anything.
+    if (currEng.totalPrompts < minPrompts || prevEng.totalPrompts < minPrompts) continue;
 
     const selfAfter = sovOf(currEng, selfId);
     const selfBefore = sovOf(prevEng, selfId);

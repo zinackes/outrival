@@ -1,5 +1,13 @@
-import { describe, expect, it, mock } from "bun:test";
+import { afterAll, describe, expect, it, mock } from "bun:test";
 import type { ScrapeOutcome } from "../../types";
+
+// Capture the real module BEFORE mocking it. jobs/ loads before lib/ in the shared
+// bun-test process, so this namespace holds the real implementation here. Bun's
+// mock.module() mutates the exports on this SAME namespace object, so we grab the
+// real scrapeFirstSuccess as a plain function value now (a plain const is not
+// rewritten by the later mock.module) to delegate to it without infinite recursion.
+const realCrawler = await import("../../lib/crawler");
+const realScrapeFirstSuccess = realCrawler.scrapeFirstSuccess;
 
 // scrape() drives the real careers-link discovery + ATS detection but reaches the
 // network through ../lib/crawler. Mock that module so the whole flow runs offline:
@@ -47,13 +55,26 @@ const scrapePage = mock(async (u: string): Promise<ScrapeOutcome> => {
   if (u.includes("jobs.wttj.com")) return outcome(listingHtml, u);
   return outcome(homepageHtml, HOMEPAGE);
 });
-const scrapeFirstSuccess = mock(async (): Promise<ScrapeOutcome> => {
-  throw new Error("no standard careers path (all 404)");
-});
+// Bun cannot un-register a mock.module mid-run, so instead of restoring the real
+// module in afterAll, keep it mocked for the whole process but make this mock a
+// transparent passthrough to the real scrapeFirstSuccess once this file's tests are
+// done — flipped by the flag below. This un-poisons any later file (e.g.
+// src/lib/__tests__/scrape-first-success.test.ts) that imports the mocked binding.
+let jobsCareersMockActive = true;
+const scrapeFirstSuccess = mock(
+  async (...args: Parameters<typeof realScrapeFirstSuccess>): Promise<ScrapeOutcome> => {
+    if (jobsCareersMockActive) throw new Error("no standard careers path (all 404)");
+    return realScrapeFirstSuccess(...args);
+  },
+);
 
-mock.module("../../lib/crawler", () => ({ scrapePage, scrapeFirstSuccess }));
+mock.module("../../lib/crawler", () => ({ ...realCrawler, scrapePage, scrapeFirstSuccess }));
 
 const { scrape } = await import("../jobs.scraper");
+
+afterAll(() => {
+  jobsCareersMockActive = false;
+});
 
 describe("jobs scraper — careers discovery routing", () => {
   it("follows a discovered SAME-host careers page when the standard paths 404", async () => {

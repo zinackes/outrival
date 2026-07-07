@@ -10,6 +10,8 @@ import {
 } from "@outrival/shared";
 import { detectPlatform, resolveCnames } from "@outrival/scrapers/platform";
 import { fetchTechStackEvidence, extractScriptUrls } from "@outrival/scrapers/tech-stack";
+import { detectAtsBoard } from "@outrival/scrapers/jobs-ats";
+import { findCareersLink } from "@outrival/scrapers/jobs-careers";
 import { logPlatformDetectionRun } from "./analytics";
 
 /**
@@ -82,6 +84,7 @@ export async function detectAndPersistPlatform(competitorId: string): Promise<Pl
     // for a same-origin changelog link and record it as `page:<url>` so the source
     // gets provisioned (below). Only fills in when detection found nothing scrapeable.
     enrichChangelogFromHtml(profile, evidence?.html ?? "", evidence?.url ?? url);
+    await enrichAtsFromCareersPage(profile, evidence?.html ?? "", evidence?.url ?? url);
 
     const now = new Date();
     await db
@@ -224,6 +227,45 @@ function findChangelogLink(html: string, pageUrl: string): string | null {
     }
   }
   return null;
+}
+
+/**
+ * ATS recall boost. Detection runs on the homepage, but a company's ATS link
+ * (Welcome to the Jungle, Greenhouse, …) frequently lives only on the careers page
+ * one hop away (a footer "Nous rejoindre" → /jobs → the ATS board). When the
+ * homepage yielded no ATS, follow the strongest SAME-host careers link with a
+ * single native GET and re-run board detection on it, so the jobs source can take
+ * the render-free structured-API fast path (competitors.platform_profile.ats →
+ * jobs scraper). A cross-host ATS link would already be visible in the homepage
+ * HTML (detectAtsBoard ran on it), so only same-host subpages are worth a fetch.
+ * Mutates `profile.ats` in place; best-effort, never throws.
+ */
+async function enrichAtsFromCareersPage(
+  profile: PlatformProfile,
+  homepageHtml: string,
+  homepageUrl: string,
+): Promise<void> {
+  if (profile.ats) return;
+  const link = findCareersLink(homepageHtml, homepageUrl);
+  if (!link) return;
+  try {
+    const target = new URL(link);
+    const home = new URL(homepageUrl);
+    if (target.hostname !== home.hostname) return; // cross-host ATS is caught on the homepage
+    // A careers link that points back at the page we already have would just refetch it.
+    if (target.pathname.replace(/\/+$/, "") === home.pathname.replace(/\/+$/, "")) return;
+    const evidence = await fetchTechStackEvidence(link);
+    if (!evidence) return;
+    const board = detectAtsBoard(evidence.html);
+    if (!board) return;
+    profile.ats = {
+      value: `${board.provider}:${board.token}`,
+      confidence: "high",
+      evidence: [`ats:${board.provider}:careers-page`],
+    };
+  } catch {
+    // best-effort — leave profile.ats unset, the jobs scraper still detects at scrape time
+  }
 }
 
 /** Fill `profile.changelog` with a self-hosted page URL when detection found no

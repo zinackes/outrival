@@ -11,7 +11,7 @@ import {
 } from "@outrival/db";
 import { extractAiVisibility, AI_CONFIG } from "@outrival/ai";
 import { queryEngine, type Engine } from "../lib/ai-visibility/engines";
-import { aggregate } from "../lib/ai-visibility/diff";
+import { aggregate, promptNamesSubject } from "../lib/ai-visibility/diff";
 import { buildVisibilityPromptInput, seedVisibilityPrompts } from "../lib/ai-visibility/seed";
 import { loggedAi } from "../lib/analytics";
 
@@ -129,6 +129,7 @@ export const aiVisibilityTeaserJob = task({
         engine: string;
         promptId: string;
         mentioned: boolean;
+        promptNamed: boolean;
         rank: number | null;
       }[] = [];
       const citations = new Set<string>();
@@ -148,6 +149,7 @@ export const aiVisibilityTeaserJob = task({
             engine,
             promptId: prompt,
             mentioned: v?.mentioned ?? false,
+            promptNamed: promptNamesSubject(prompt, c.name),
             rank: v?.mentioned ? v.rank : null,
           });
         }

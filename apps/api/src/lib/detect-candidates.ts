@@ -18,9 +18,20 @@ import { db } from "./db";
 import { productDiscoveryTarget } from "./products";
 
 // Exa recall (not a DB cap): over-fetch so well-known rivals that Exa ranks past
-// the first page still enter the pool — the overlap score + minOverlap threshold
+// the first page still enter the pool — the overlap score + the on-demand floor
 // downstream keep precision.
 const CANDIDATES_PER_ORG = 30;
+
+// On-demand discovery (the "add product" wizard's "find competitors" + the Discovery
+// page "Refresh") is a REVIEWABLE picklist, not an auto-notify: mirror onboarding,
+// which surfaces every scored candidate sorted by overlap and lets the user dismiss
+// the weak ones. The org's `minOverlap` (default 65) is the *auto-notification*
+// threshold the weekly cron uses; applying it here silently dropped a niche product's
+// real competitors (which routinely score 50-64) and made the wizard report "0 found".
+// Persist scored candidates above a low sanity floor (drop clearly-unrelated hits),
+// best-first, capped to keep the review queue bounded.
+const ON_DEMAND_MIN_OVERLAP = 20;
+const ON_DEMAND_MAX_CANDIDATES = 15;
 
 export type DetectResult =
   | { ok: true; detected: number }
@@ -113,12 +124,19 @@ export async function detectCandidatesForProduct(
     quality: scored._quality,
   });
 
-  const detectedTitles: string[] = [];
-  for (const d of fresh) {
-    const scoring = scoredByUrl.get(d.url);
-    if (!scoring) continue;
-    if (scoring.overlapScore <= cfg.minOverlap) continue;
+  // Surface the scored candidates like onboarding does: above a low sanity floor,
+  // best-first, capped — not gated by the org's strict notification threshold.
+  const ranked = fresh
+    .flatMap((d) => {
+      const scoring = scoredByUrl.get(d.url);
+      return scoring ? [{ d, scoring }] : [];
+    })
+    .filter((x) => x.scoring.overlapScore > ON_DEMAND_MIN_OVERLAP)
+    .sort((a, b) => b.scoring.overlapScore - a.scoring.overlapScore)
+    .slice(0, ON_DEMAND_MAX_CANDIDATES);
 
+  const detectedTitles: string[] = [];
+  for (const { d, scoring } of ranked) {
     await db.insert(competitorCandidates).values({
       orgId,
       productId,

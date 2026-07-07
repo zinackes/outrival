@@ -519,6 +519,8 @@ export interface AiVisibilityResultRow {
   product_id?: string | null;
   engine: string;
   mentioned: boolean;
+  // The prompt text names this subject → contaminated pair, excluded from organic SoV.
+  prompt_named?: boolean;
   rank?: number | null;
   cited?: boolean | null;
   sentiment_score?: number | null;
@@ -541,6 +543,7 @@ export async function insertAiVisibilityResults(rows: AiVisibilityResultRow[]): 
         productId: r.product_id ?? null,
         engine: r.engine,
         mentioned: r.mentioned ? 1 : 0,
+        promptNamed: r.prompt_named ? 1 : 0,
         rank: r.rank ?? null,
         cited: r.cited == null ? null : r.cited ? 1 : 0,
         sentimentScore: r.sentiment_score ?? null,
@@ -557,6 +560,7 @@ export interface AiVisibilityRunRow {
   engine: string;
   promptId: string;
   mentioned: boolean;
+  promptNamed: boolean;
   rank: number | null;
 }
 
@@ -590,6 +594,7 @@ export async function getPreviousAiVisibilityRun(
         engine: aiVisibilityResults.engine,
         promptId: aiVisibilityResults.promptId,
         mentioned: aiVisibilityResults.mentioned,
+        promptNamed: aiVisibilityResults.promptNamed,
         rank: aiVisibilityResults.rank,
       })
       .from(aiVisibilityResults)
@@ -604,6 +609,7 @@ export async function getPreviousAiVisibilityRun(
       engine: r.engine,
       promptId: r.promptId,
       mentioned: r.mentioned !== 0,
+      promptNamed: r.promptNamed !== 0,
       rank: r.rank,
     }));
   });

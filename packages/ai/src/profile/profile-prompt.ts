@@ -30,8 +30,15 @@ export const PROFILE_FIELD_SPEC = `Fields:
 - "keywords": 4 to 8 short, concrete terms a buyer would actually search to find
   a product like this — the job to be done, capability names, category synonyms.
   No brand names, no bare words like "software", "platform" or "tool".
-- "pricingModel": describe the pricing ONLY if the source mentions a price, plans,
-  "free", "trial" or "subscription"; otherwise return "".
+- "pricingModel": the pricing MODEL — HOW the product charges, not just a number.
+  Read the whole pricing signal, INCLUDING sales-led pages with no public price:
+  a "Contact sales" / "Request a quote" / "Custom" tier → "Contact sales (custom quote)";
+  a "Book a demo" / "Get a demo" gate with no self-serve plan → "Demo-request (sales-led)";
+  metered / "pay as you go" / per-unit or per-usage rates → "Usage-based"; a free tier
+  next to paid plans → "Freemium"; a genuinely free or open-source product → "Free".
+  When plans show prices, name them (e.g. "Freemium + Pro at $20/mo"). Return "" ONLY
+  when the page carries no pricing signal of ANY kind — NEVER infer "Free" from the
+  mere absence of a price.
 For any text field you cannot determine, return "" (or [] for keywords) — never
 guess and never fall back to a generic label.`;
 

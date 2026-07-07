@@ -2,7 +2,8 @@ import type { MetadataRoute } from "next";
 
 // Web app manifest (Next.js file convention → injects <link rel="manifest">).
 // Fills the "no manifest" SEO gap: gives the browser a branded name, theme, and
-// icons. Icons reference the dynamic app/icon + app/apple-icon routes.
+// icons. The favicon is the static app/icon.png (the real logo mark, transparent,
+// no background); the apple touch icon stays the dynamic app/apple-icon route.
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Outrival — Automated competitive intelligence",
@@ -14,7 +15,7 @@ export default function manifest(): MetadataRoute.Manifest {
     background_color: "#0b0b0d",
     theme_color: "#0b0b0d",
     icons: [
-      { src: "/icon", sizes: "32x32", type: "image/png" },
+      { src: "/icon.png", sizes: "512x512", type: "image/png" },
       { src: "/apple-icon", sizes: "180x180", type: "image/png" },
     ],
   };

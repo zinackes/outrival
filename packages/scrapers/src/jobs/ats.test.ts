@@ -225,6 +225,56 @@ test("personio board detected from careers HTML", () => {
   });
 });
 
+// ─── Welcome to the Jungle (Algolia search index) ────────────────────────────
+
+test("welcometothejungle: parses Algolia hits with salary + english department", () => {
+  const jobs = parseAtsResponse("welcometothejungle", {
+    hits: [
+      {
+        name: "Senior Backend Engineer",
+        slug: "senior-backend-engineer_paris",
+        organization: { slug: "dougs" },
+        offices: [{ city: "Paris", country: "France" }],
+        new_profession: { category_name: "Tech & Engineering" },
+        salary_minimum: 60000,
+        salary_maximum: 75000,
+        salary_currency: "EUR",
+        published_at: "2026-07-04T02:00:04Z",
+        experience_level_minimum: null,
+      },
+      { name: "" }, // untitled hit is dropped
+    ],
+  });
+  expect(jobs).toHaveLength(1);
+  expect(jobs[0]).toMatchObject({
+    title: "Senior Backend Engineer",
+    department: "Tech & Engineering",
+    location: "Paris, France",
+    url: "https://www.welcometothejungle.com/en/companies/dougs/jobs/senior-backend-engineer_paris",
+    seniority: "senior", // inferred from the title (no explicit ATS level)
+    salaryMin: 60000,
+    salaryMax: 75000,
+    salaryCurrency: "EUR",
+  });
+});
+
+test("welcometothejungle board detected from careers HTML (org slug, /jobs sub-path)", () => {
+  const board = detectAtsBoard(
+    '<a href="https://www.welcometothejungle.com/fr/companies/dougs/jobs">Nos offres</a>',
+  );
+  expect(board).toEqual({
+    provider: "welcometothejungle",
+    token: "dougs",
+    boardUrl: "https://www.welcometothejungle.com/en/companies/dougs/jobs",
+  });
+});
+
+test("rebuilds a Welcome to the Jungle board from a profile key", () => {
+  expect(atsBoardFromKey("welcometothejungle:dougs")?.boardUrl).toBe(
+    "https://www.welcometothejungle.com/en/companies/dougs/jobs",
+  );
+});
+
 // ─── JSON island round-trip carries enrichment ───────────────────────────────
 
 test("appendAtsJobsToHtml → parseAtsJobsFromHtml preserves salary + seniority", () => {

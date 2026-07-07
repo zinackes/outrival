@@ -193,9 +193,29 @@ interface ProviderDef {
     /** Response format. "xml" providers (Personio) receive the raw text string
      *  in `parse`; "json" (default) receive the parsed JSON value. */
     format?: "json" | "xml";
+    /** POST request descriptor for search-API providers (Algolia — Welcome to the
+     *  Jungle). Headers/body are sent as a POST; absent ⇒ a plain GET (the default
+     *  for the REST board APIs). */
+    post?: (token: string) => { headers: Record<string, string>; body: string };
     parse: (data: unknown, token: string) => AtsJob[];
   };
 }
+
+// Welcome to the Jungle (welcometothejungle.com) — the dominant French/EU job
+// board. Openings are NOT on the company's own careers page (that page just links
+// out to WTTJ), and WTTJ has no per-company REST board API — its listings are
+// served from a PUBLIC, referer-scoped Algolia index that its own frontend queries
+// unauthenticated. We hit that same index directly. The app id / search key /
+// index name are embedded verbatim in every WTTJ page (stable public values); the
+// key is scoped to the welcometothejungle.com referer, so the header is required.
+// Fail-soft: if the key ever rotates the query 403s → fetchAtsJobs returns null →
+// the scraper follows the board link and LLM-extracts (never worse than today).
+const WTTJ_ALGOLIA_APP = "CSEKHVMS53";
+const WTTJ_ALGOLIA_KEY = "4bd8f6215d0cc52b26430765769e65a0";
+// The locale index carries EVERY opening (fr and en indices hold the same jobs by
+// objectID); "_en" additionally localises the profession labels to English, which
+// matches the product language. Titles stay in the posting's own language.
+const WTTJ_JOBS_INDEX = "wttj_jobs_production_en";
 
 const PROVIDERS: ProviderDef[] = [
   {
@@ -377,6 +397,60 @@ const PROVIDERS: ProviderDef[] = [
     },
   },
   {
+    name: "welcometothejungle",
+    // Matches both the company page and its /jobs sub-path, with or without the
+    // /{locale}/ prefix. Group 1 = the org slug (the WTTJ board token).
+    patterns: [/welcometothejungle\.com\/(?:[a-z]{2}\/)?companies\/([a-z0-9][a-z0-9._-]{1,60})/i],
+    boardUrl: (t) => `https://www.welcometothejungle.com/en/companies/${t}/jobs`,
+    api: {
+      url: () => `https://${WTTJ_ALGOLIA_APP}-dsn.algolia.net/1/indexes/${WTTJ_JOBS_INDEX}/query`,
+      post: (token) => ({
+        headers: {
+          "X-Algolia-Application-Id": WTTJ_ALGOLIA_APP,
+          "X-Algolia-API-Key": WTTJ_ALGOLIA_KEY,
+          // The public search key is scoped to this referer — omit it and Algolia 403s.
+          Referer: "https://www.welcometothejungle.com/",
+        },
+        body: JSON.stringify({
+          params: `hitsPerPage=100&facetFilters=${encodeURIComponent(
+            JSON.stringify([`organization.slug:${token}`]),
+          )}`,
+        }),
+      }),
+      parse: (data) => {
+        const hits = (data as { hits?: unknown })?.hits;
+        if (!Array.isArray(hits)) return [];
+        return hits
+          .map((h: Record<string, unknown>) => {
+            const title = str(h?.name);
+            const office = (h?.offices as Record<string, unknown>[] | undefined)?.[0] ?? {};
+            const location = [str(office?.city), str(office?.country)].filter(Boolean).join(", ");
+            const orgSlug = str((h?.organization as { slug?: unknown } | undefined)?.slug);
+            const jobSlug = str(h?.slug);
+            const prof = h?.new_profession as { category_name?: unknown } | undefined;
+            return mkJob({
+              title,
+              department: str(prof?.category_name),
+              location: location || null,
+              url:
+                orgSlug && jobSlug
+                  ? `https://www.welcometothejungle.com/en/companies/${orgSlug}/jobs/${jobSlug}`
+                  : null,
+              postedAt: toIso(h?.published_at),
+              // WTTJ exposes structured yearly comp when disclosed.
+              salary: normalizeSalary({
+                min: h?.salary_minimum,
+                max: h?.salary_maximum,
+                currency: h?.salary_currency,
+              }),
+              seniority: normalizeSeniority(title, str(h?.experience_level_minimum)),
+            });
+          })
+          .filter((j) => j.title);
+      },
+    },
+  },
+  {
     // Workable has no clean public board API → detected for the link-follow
     // fallback only (the worker LLM-extracts from the rendered board page).
     name: "workable",
@@ -426,15 +500,22 @@ export function atsBoardFromKey(key: string): AtsBoard | null {
   return { provider, token, boardUrl: def.boardUrl(token) };
 }
 
-async function fetchJson(url: string, timeoutMs = 8000): Promise<unknown | null> {
+async function fetchJson(
+  url: string,
+  timeoutMs = 8000,
+  init?: { method?: string; headers?: Record<string, string>; body?: string },
+): Promise<unknown | null> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const res = await fetch(url, {
       signal: ctrl.signal,
+      method: init?.method,
+      body: init?.body,
       headers: {
         "user-agent": "Mozilla/5.0 (compatible; OutrivalBot/1.0; +https://outrival.io)",
         accept: "application/json",
+        ...init?.headers,
       },
     });
     if (!res.ok) return null;
@@ -474,10 +555,19 @@ async function fetchText(url: string, timeoutMs = 8000): Promise<string | null> 
 export async function fetchAtsJobs(board: AtsBoard): Promise<AtsJob[] | null> {
   const def = PROVIDERS.find((p) => p.name === board.provider);
   if (!def?.api) return null;
-  const data =
-    def.api.format === "xml"
-      ? await fetchText(def.api.url(board.token))
-      : await fetchJson(def.api.url(board.token));
+  let data: unknown | null;
+  if (def.api.format === "xml") {
+    data = await fetchText(def.api.url(board.token));
+  } else if (def.api.post) {
+    const { headers, body } = def.api.post(board.token);
+    data = await fetchJson(def.api.url(board.token), 8000, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body,
+    });
+  } else {
+    data = await fetchJson(def.api.url(board.token));
+  }
   if (data == null) return null;
   const jobs = def.api.parse(data, board.token);
   return jobs.length > 0 ? jobs : null;

@@ -1,7 +1,9 @@
 import { ImageResponse } from "next/og";
 
-// Apple touch icon (iOS home screen). Same orbit mark as app/icon.tsx on the
-// graphite surface, sized 180×180 (iOS rounds the corners itself).
+// Apple touch icon (iOS home screen). The orbit mark on the graphite surface,
+// sized 180×180 (iOS rounds the corners itself). Kept opaque on purpose: iOS
+// renders transparent home-screen icons on black, so the touch icon carries a
+// background even though the browser favicon (app/icon.png) is transparent.
 export const size = { width: 180, height: 180 };
 export const contentType = "image/png";
 

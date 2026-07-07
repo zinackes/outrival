@@ -362,13 +362,15 @@ export function OnboardingForm({
 
   // ── Analyze (per mode) ─────────────────────────────────────────────────
   function onProfileReady(p: ProductProfile, url: string | null) {
-    // A product with no pricing on the source — an early-stage idea, a GitHub repo,
-    // an open-source tool — leaves pricingModel blank. Treat "no pricing found" as
-    // Free: the field is never an empty blocker, the user can still edit it, and
-    // downstream (overlap scoring, battle cards) reads a concrete value.
+    // Never assume "Free" from a missing price: an empty pricingModel means the AI
+    // found no pricing signal at all (an early-stage idea, a private repo, a bare
+    // landing page). Asserting "Free" would misread sales-led / usage-based / demo
+    // products and poison overlap scoring + battle cards. The field is optional, so
+    // leave it blank for the user to fill — the extractor already classifies the real
+    // model (freemium / usage-based / contact-sales / demo) whenever a signal exists.
     const normalized: ProductProfile = {
       ...p,
-      pricingModel: p.pricingModel?.trim() || "Free",
+      pricingModel: p.pricingModel?.trim() ?? "",
     };
     setProfile(normalized);
     setCommittedUrl(url);

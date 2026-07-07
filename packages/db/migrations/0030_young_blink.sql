@@ -1,0 +1,1 @@
+ALTER TABLE "ai_visibility_results" ADD COLUMN "prompt_named" integer DEFAULT 0 NOT NULL;

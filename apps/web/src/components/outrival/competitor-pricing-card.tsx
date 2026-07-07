@@ -80,11 +80,18 @@ export function CompetitorPricingCard({
   // "Prices are fully visible." (the original bug: status set, zero tiers shown).
   const expectsTiers = status === "public" || status === "public_partial";
   const tiersMissing = expectsTiers && !hasCapturedTiers;
+  // L4 honesty (docs/pricing-coverage-2026.md Part II): when a scrape already ran
+  // and captured no structured tiers, don't promise "they'll appear after the next
+  // scan" — for a configurator or a catalog page the scan structurally won't yield
+  // tiers. Point at the manual editor instead. While a scrape is in flight the
+  // "Capturing pricing…" line below covers it, so suppress the blurb then.
   // Drop the blurb for plain "public" pricing — "Prices are fully visible" is
   // self-evident from the label, so the detected case collapses to one line. A
   // manual note, the missing-tiers warning, or a non-obvious status still show.
   const blurb = tiersMissing
-    ? "Tiers not captured yet — they'll appear after the next successful pricing scan."
+    ? isCapturing
+      ? null
+      : "We couldn't capture structured tiers from this page automatically — add them with Edit."
     : (competitor.pricingNote ?? (status === "public" ? null : meta.blurb));
 
   async function redetect() {

@@ -1,8 +1,12 @@
 import { scrapePage } from "../lib/crawler";
 import type { ScrapeOutcome, ScrapeOptions } from "../types";
-import { discoverPricingUrl } from "./discover-url";
+import { discoverPricingUrl, discoverCommerceCandidates } from "./discover-url";
+import { deriveProductLine, buildAggregatedDocument } from "./product-lines";
 
 const PRICING_KEYWORDS = ["pricing", "tarifs", "plans", "tarification", "prix"];
+// L3 cap: how many product pages a catalog contributes to the aggregated snapshot.
+const MAX_PRODUCT_LINES = 3;
+const AGGREGATE_ENABLED = process.env.PRICING_AGGREGATE_ENABLED !== "false";
 
 export async function scrape(
   _competitorId: string,
@@ -27,20 +31,52 @@ export async function scrape(
     return scrapePage(url, opts);
   }
 
-  // Otherwise scrape the homepage and locate the real pricing page from it
-  // (direct paths → nav → footer → embedded section). Discover against the URL the
-  // homepage ACTUALLY resolved to (post-redirect), not the stored monitor URL: an
-  // apex host like `codebenders.ai` 301s only its root to `www.codebenders.ai` and
-  // hard-404s every sub-path, so resolving a relative `/pricing` nav link against the
-  // pre-redirect apex yields a dead URL. `metadata.url` is the final response URL.
+  // Otherwise scrape the homepage and locate the real pricing page from it.
+  // Discover against the URL the homepage ACTUALLY resolved to (post-redirect), not
+  // the stored monitor URL: an apex host like `codebenders.ai` 301s only its root to
+  // `www.codebenders.ai` and hard-404s every sub-path, so resolving a relative
+  // `/pricing` nav link against the pre-redirect apex yields a dead URL. `metadata.url`
+  // is the final response URL.
   const homepage = await scrapePage(url, opts);
-  const resolvedBase = (typeof homepage.metadata.url === "string" && homepage.metadata.url) || url;
-  const candidate = await discoverPricingUrl(resolvedBase, homepage.html);
+  const resolvedBase =
+    (typeof homepage.metadata.url === "string" && homepage.metadata.url) || url;
 
-  // Not found, or pricing is embedded in the homepage → analyse the homepage.
+  const candidate = await discoverPricingUrl(resolvedBase, homepage.html);
+  // A real convention pricing page (`/pricing`, `/tarifs`, hub-drilled child) is
+  // authoritative — use it and skip the catalog probes entirely.
+  if (candidate && candidate.source === "direct") {
+    return scrapePage(candidate.url, opts);
+  }
+
+  // L3 catalog aggregation: hosting/e-commerce spreads pricing across product pages
+  // / a store subdomain with no /pricing page. When ≥2 priced product pages exist,
+  // capture the top-K and stitch them into ONE delimited snapshot so each becomes a
+  // product-line row. Only reached when there was no convention pricing page.
+  if (AGGREGATE_ENABLED) {
+    const catalog = await discoverCommerceCandidates(resolvedBase, homepage.html);
+    if (catalog.length >= 2) {
+      const scraped: { line: string; page: ScrapeOutcome }[] = [];
+      for (const c of catalog.slice(0, MAX_PRODUCT_LINES)) {
+        const page = await scrapePage(c.url, opts).catch(() => null);
+        if (page) scraped.push({ line: deriveProductLine(c.url, page.html), page });
+      }
+      if (scraped.length >= 2) {
+        const base = scraped[0]!.page;
+        return {
+          ...base,
+          html: buildAggregatedDocument(scraped.map((s) => ({ line: s.line, html: s.page.html }))),
+          metadata: { ...base.metadata, url: resolvedBase, aggregatedLines: scraped.length },
+          level: Math.max(...scraped.map((s) => s.page.level)) as ScrapeOutcome["level"],
+          attempts: scraped.reduce((n, s) => n + s.page.attempts, 0),
+        };
+      }
+    }
+  }
+
+  // Single best page (nav/footer link), or the homepage when pricing is embedded /
+  // nothing was found (the extract-pricing harvest floor recovers visible prices).
   if (!candidate || candidate.source === "homepage_section") {
     return homepage;
   }
-
   return scrapePage(candidate.url, opts);
 }

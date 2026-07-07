@@ -3,7 +3,7 @@ import { detectPricingSignals } from "./signals";
 
 export interface PricingPageCandidate {
   url: string;
-  source: "direct" | "homepage_section" | "nav" | "footer";
+  source: "direct" | "homepage_section" | "nav" | "footer" | "commerce";
 }
 
 // A pricing link found on the homepage. `needsVerify` is true when the match
@@ -51,6 +51,17 @@ const PRICING_SECTION_ID = /(pricing|tarifs|tarification|plans|prix|premium)/i;
 
 const HEAD_TIMEOUT_MS = 5000;
 const VERIFY_TIMEOUT_MS = 8000;
+// L1 catalog reach: hosting/e-commerce split pricing across product pages and store
+// subdomains that carry no "pricing" vocabulary. Generic commerce/catalog vocabulary,
+// applied uniformly (no per-competitor branch); the price-density score is the real
+// filter, so an incidental match with no prices simply drops.
+const COMMERCE_HREF =
+  /(shop|store|boutique|billing|order|cart|buy|checkout|panier|commande|product|produit|hosting|h[eé]bergement|vps|serveur|servers?|dedicated|d[eé]di[eé]|cloud|game|jeu|minecraft|plan)/i;
+const STORE_SUBDOMAIN = /^(shop|store|boutique|billing|order|client|clients|panel|my)$/i;
+// TLD second-level labels (co.uk, com.au, gouv.fr…) so a subdomain is matched by its
+// registrable domain, not blindly by the last two labels.
+const SECOND_LEVEL = new Set(["co", "com", "org", "net", "gov", "edu", "ac", "gouv", "asso"]);
+const MAX_COMMERCE_PROBES = 8;
 // A pricing hub can list many product pages; cap how many children we verify so a
 // hub never turns discovery into a fetch storm.
 const MAX_HUB_CHILDREN = 3;
@@ -94,6 +105,89 @@ export async function discoverPricingUrl(
   }
 
   return null;
+}
+
+/**
+ * L1 catalog discovery (docs/pricing-coverage-2026.md Part II). Find the priced
+ * product pages of a catalog site — hosting/e-commerce that spreads pricing across
+ * `/vps`, `/game-hosting`, a `boutique.` store subdomain, etc. with no `/pricing`
+ * page. Returns same-registrable-domain commerce/category links RANKED by price-token
+ * density (a cheap L0 GET each, capped), highest first. Empty when the homepage has
+ * < 2 commerce links (not a catalog) — the caller then keeps the single-page path.
+ * Cross-registrable-domain links are never followed (tenant safety).
+ */
+export async function discoverCommerceCandidates(
+  baseUrl: string,
+  homepageHtml: string,
+): Promise<PricingPageCandidate[]> {
+  let base: URL;
+  try {
+    base = new URL(baseUrl);
+  } catch {
+    return [];
+  }
+  const links = commerceLinksIn(homepageHtml, base).slice(0, MAX_COMMERCE_PROBES);
+  if (links.length < 2) return []; // not a catalog → skip all network probes
+  const scored: { url: string; score: number; depth: number }[] = [];
+  for (const url of links) {
+    const html = await fetchHtml(url);
+    if (html === null) continue;
+    const score = detectPricingSignals(html).priceMatches.length;
+    if (score > 0) scored.push({ url, score, depth: pathDepth(url) });
+  }
+  // Most prices first; shallower path breaks ties (the more canonical product page).
+  scored.sort((a, b) => b.score - a.score || a.depth - b.depth);
+  return scored.map((s) => ({ url: s.url, source: "commerce" as const }));
+}
+
+/** Same-registrable-domain commerce/category links on the homepage, absolute + deduped. */
+function commerceLinksIn(html: string, base: URL): string[] {
+  const $ = cheerio.load(html);
+  const baseReg = registrableDomain(base.hostname);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  $("a[href]").each((_, el) => {
+    const href = $(el).attr("href");
+    if (!href) return;
+    let u: URL;
+    try {
+      u = new URL(href, base);
+    } catch {
+      return;
+    }
+    if (u.protocol !== "http:" && u.protocol !== "https:") return;
+    if (registrableDomain(u.hostname) !== baseReg) return; // never leave the registrable domain
+    u.hash = "";
+    u.search = "";
+    const path = u.pathname.replace(/\/+$/, "");
+    const isSubdomain = u.hostname !== base.hostname;
+    const firstLabel = u.hostname.split(".")[0] ?? "";
+    const isStoreSubdomain = isSubdomain && STORE_SUBDOMAIN.test(firstLabel);
+    // The base host's own root is not a candidate; a store subdomain's root is.
+    if ((path === "" || path === "/") && !isSubdomain) return;
+    if (!COMMERCE_HREF.test(`${u.hostname}${u.pathname}`) && !isStoreSubdomain) return;
+    const key = u.hostname + path;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(u.toString());
+  });
+  return out;
+}
+
+/** Registrable domain (handles co.uk/gouv.fr style second-level labels). */
+function registrableDomain(host: string): string {
+  const parts = host.toLowerCase().split(".").filter(Boolean);
+  if (parts.length <= 2) return parts.join(".");
+  const take = SECOND_LEVEL.has(parts[parts.length - 2] ?? "") ? 3 : 2;
+  return parts.slice(-take).join(".");
+}
+
+function pathDepth(url: string): number {
+  try {
+    return new URL(url).pathname.split("/").filter(Boolean).length;
+  } catch {
+    return 99;
+  }
 }
 
 // A guessed convention path is "reachable" only when a *browser-looking* request

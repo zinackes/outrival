@@ -21,7 +21,12 @@ import {
   loggedAi,
   type AiVisibilityResultRow,
 } from "../lib/analytics";
-import { aggregate, computeDeltas, type VisibilityDelta } from "../lib/ai-visibility/diff";
+import {
+  aggregate,
+  computeDeltas,
+  promptNamesSubject,
+  type VisibilityDelta,
+} from "../lib/ai-visibility/diff";
 import { buildVisibilityPromptInput, seedVisibilityPrompts } from "../lib/ai-visibility/seed";
 import { notifyJobComplete } from "../lib/job-complete";
 
@@ -178,6 +183,8 @@ export const scrapeAiVisibilityJob = task({
               product_id: product.id,
               engine,
               mentioned: v?.mentioned ?? false,
+              // Seeded when the prompt itself names this subject → excluded from organic SoV.
+              prompt_named: promptNamesSubject(prompt.prompt, c.name),
               rank: v?.mentioned ? v.rank : null,
               cited: v?.mentioned ? v.cited : null,
               sentiment_score: v?.mentioned ? v.sentiment : null,
@@ -203,6 +210,7 @@ export const scrapeAiVisibilityJob = task({
               engine: r.engine,
               promptId: r.prompt_id,
               mentioned: r.mentioned,
+              promptNamed: r.prompt_named ?? false,
               rank: r.rank ?? null,
             })),
           );

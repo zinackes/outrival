@@ -1124,7 +1124,11 @@ export function MyProductView({
 
         <PricingCard pricing={p.pricing} onSave={(pr) => patch({ pricing: pr })} />
 
-        {p.url && <JobsCard jobs={p.jobs} />}
+        {/* The jobs source is monitored independently of the homepage URL — its
+            careers target lives in monitor.config.url (scrape-monitor derives
+            scrapeUrl = configUrl ?? competitor.url). So a product with detected
+            openings but no live homepage URL must still surface them here. */}
+        {(p.url || p.jobs.total > 0) && <JobsCard jobs={p.jobs} />}
 
         <EditableList
           label={`Features detected${profile.features?.value?.length ? ` (${profile.features.value.length})` : ""}`}

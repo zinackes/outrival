@@ -130,7 +130,7 @@ aiVisibilityRouter.get("/", async (c) => {
   const lastRunAt = displayRun?.recordedAt ?? null;
 
   type LbRow = { engine: string; competitorId: string; mentions: number; total: number; avgRank: number | null };
-  type RawRow = { promptId: string; engine: string; competitorId: string; mentioned: number; rank: number | null; answerExcerpt: string | null };
+  type RawRow = { promptId: string; engine: string; competitorId: string; mentioned: number; promptNamed: number; rank: number | null; answerExcerpt: string | null };
   type TrendRow = { recordedAt: string; competitorId: string; sov: number };
 
   let degraded = !latestRows.ok;
@@ -140,18 +140,21 @@ aiVisibilityRouter.get("/", async (c) => {
 
   if (latestRunId) {
     const [lb, raw] = await Promise.all([
+      // Organic share-of-voice: a subject named IN the prompt (prompt_named = 1) is a
+      // seeded, contaminated pair — excluded from both its mention count and its prompt
+      // denominator, so the denominator is per-subject (each subject's un-naming prompts).
       analyticsQueryResult<LbRow>(sql`
         SELECT engine,
                competitor_id AS "competitorId",
-               count(*) FILTER (WHERE mentioned = 1) AS mentions,
-               count(DISTINCT prompt_id) AS total,
-               avg(rank) FILTER (WHERE mentioned = 1) AS "avgRank"
+               count(*) FILTER (WHERE mentioned = 1 AND prompt_named = 0) AS mentions,
+               count(DISTINCT prompt_id) FILTER (WHERE prompt_named = 0) AS total,
+               avg(rank) FILTER (WHERE mentioned = 1 AND prompt_named = 0) AS "avgRank"
         FROM ai_visibility_results
         WHERE org_id = ${orgId} AND run_id = ${latestRunId} ${productFilter}
         GROUP BY engine, competitor_id`),
       analyticsQueryResult<RawRow>(sql`
         SELECT prompt_id AS "promptId", engine, competitor_id AS "competitorId",
-               mentioned, rank, answer_excerpt AS "answerExcerpt"
+               mentioned, prompt_named AS "promptNamed", rank, answer_excerpt AS "answerExcerpt"
         FROM ai_visibility_results
         WHERE org_id = ${orgId} AND run_id = ${latestRunId} ${productFilter}`),
     ]);
@@ -164,7 +167,8 @@ aiVisibilityRouter.get("/", async (c) => {
     // nosedive to 0 on runs that carry no information. Consistent with the leaderboard.
     const trend = await analyticsQueryResult<TrendRow>(sql`
       SELECT recorded_at AS "recordedAt", competitor_id AS "competitorId",
-             (count(*) FILTER (WHERE mentioned = 1))::float / nullif(count(DISTINCT prompt_id), 0) AS sov
+             (count(*) FILTER (WHERE mentioned = 1 AND prompt_named = 0))::float
+               / nullif(count(DISTINCT prompt_id) FILTER (WHERE prompt_named = 0), 0) AS sov
       FROM ai_visibility_results
       WHERE org_id = ${orgId} AND engine = ${TREND_ENGINE} ${productFilter}
         AND run_id IN (
@@ -182,9 +186,13 @@ aiVisibilityRouter.get("/", async (c) => {
   for (const r of lbRows) {
     let e = byEngine.get(r.engine);
     if (!e) {
-      e = { engine: r.engine, totalPrompts: num(r.total), subjects: [] };
+      e = { engine: r.engine, totalPrompts: 0, subjects: [] };
       byEngine.set(r.engine, e);
     }
+    // Each subject's `total` now excludes the prompts that named it, so they differ per
+    // subject; the engine's headline prompt count is the largest (a never-named subject,
+    // e.g. the self on un-branded prompts, sees every prompt).
+    e.totalPrompts = Math.max(e.totalPrompts, num(r.total));
     e.subjects.push(r);
   }
   const leaderboard = [...byEngine.values()].map((e) => ({
@@ -197,7 +205,8 @@ aiVisibilityRouter.get("/", async (c) => {
         name: nameById.get(s.competitorId) ?? "Unknown",
         isSelf: s.competitorId === selfId,
         mentions: num(s.mentions),
-        sov: e.totalPrompts > 0 ? num(s.mentions) / e.totalPrompts : 0,
+        // Per-subject organic denominator (its own un-naming prompts), not the engine total.
+        sov: num(s.total) > 0 ? num(s.mentions) / num(s.total) : 0,
         avgRank: s.avgRank == null ? null : num(s.avgRank),
       }))
       .sort((a, b) => b.sov - a.sov),
@@ -223,14 +232,18 @@ aiVisibilityRouter.get("/", async (c) => {
       prompt: promptText.get(promptId) ?? "(removed prompt)",
       cells: [...engines.entries()].map(([engine, er]) => {
         const selfRow = er.find((r) => r.competitorId === selfId);
+        // A subject named IN this prompt is seeded, not organically surfaced — don't
+        // credit it as a mention in the evidence view (mirrors the SoV exclusion).
+        const organic = selfRow?.mentioned === 1 && selfRow.promptNamed !== 1;
         return {
           engine,
-          selfMentioned: !!selfRow && selfRow.mentioned === 1,
-          selfRank: selfRow?.mentioned === 1 ? selfRow.rank : null,
+          selfMentioned: organic,
+          selfRank: organic ? selfRow.rank : null,
           mentioned: er
             .filter(
               (r) =>
                 r.mentioned === 1 &&
+                r.promptNamed !== 1 &&
                 r.competitorId !== selfId &&
                 nameById.has(r.competitorId) &&
                 inScope(r.competitorId),

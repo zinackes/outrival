@@ -5,7 +5,9 @@ import { complete } from "../provider";
 // Seed prompts for AI Visibility / "Share of Model". These are sent verbatim to LLM
 // answer engines (Gemini/Perplexity), so they must read like what a real buyer TYPES
 // INTO ChatGPT — natural-language, buyer-intent questions — NOT keyword search queries
-// ("best X tools"). We spend one generative call per product at seed time; the result
+// ("best X tools"). They must also be UN-BRANDED: naming a competitor in the prompt
+// guarantees it shows up in the answer, so share-of-model would measure the question,
+// not organic visibility. We spend one generative call per product at seed time; the result
 // is persisted in ai_visibility_prompts, so a run never regenerates. `fallbackVisibility
 // Prompts` is a deterministic, AI-free safety net used when the model errors or the
 // profile is too thin.
@@ -70,7 +72,9 @@ export async function generateVisibilityPrompts(
   input: VisibilityPromptInput,
   count = 10,
 ): Promise<VisibilityPromptOutcome> {
-  const { selfName, category, audience, valueProp, features, competitorNames } = input;
+  // competitorNames is intentionally NOT injected here: the prompts must stay un-branded,
+  // and handing the model rival names invites it to leak them into the questions.
+  const { selfName, category, audience, valueProp, features } = input;
 
   const profile = [
     selfName ? `Product name: ${selfName}` : null,
@@ -78,7 +82,6 @@ export async function generateVisibilityPrompts(
     audience ? `Audience: ${audience}` : null,
     valueProp ? `Value proposition: ${valueProp}` : null,
     features.length ? `Capabilities: ${features.slice(0, 8).join(", ")}` : null,
-    competitorNames.length ? `Competitors: ${competitorNames.slice(0, 8).join(", ")}` : null,
   ]
     .filter(Boolean)
     .join("\n");
@@ -97,11 +100,16 @@ search-engine keyword queries.
 Rules:
 - Write full, natural questions/requests ("What's the best way to...", "Which tool
   can...", "I need software that..."). NEVER bare keyword phrases like "best X tools".
-- Do NOT mention the product's own name in most prompts — we want to see if the AI
-  surfaces it unprompted. At most one prompt may name it (an "alternatives to" query).
+- CRITICAL — keep every prompt UN-BRANDED. These measure whether the AI names brands
+  ON ITS OWN, so the question must NOT contain the product's name, a competitor's name,
+  or ANY specific vendor. Naming a brand guarantees it appears in the answer and
+  measures nothing. Ask category-level questions instead ("Which <category> is best for
+  <audience>?", "What tool can <do the job>?").
+- The ONLY allowed exception is at most ONE "What are the best alternatives to
+  <product>?" prompt that names the product itself. NEVER name a competitor.
 - Cover a mix of intents: discovering options, solving the concrete job (use the
-  capabilities/value proposition), comparing named competitors, and asking for a
-  recommendation for the specific audience.
+  capabilities/value proposition), and asking for a recommendation for the specific
+  audience — every one phrased as an un-branded category question.
 - Ground every prompt in this product's category, audience and capabilities — be
   specific, never generic.
 - Write everything in English. Each prompt under 200 characters.
@@ -159,12 +167,12 @@ export function fallbackVisibilityPrompts(
     // (AI, API, CRM) that show up in feature phrases.
     if (feat) out.push(`Which tools offer ${feat}?`);
   }
+  if (selfName) out.push(`What are the best alternatives to ${selfName}?`);
+  // At most ONE self-anchored comparison — NEVER competitor-vs-competitor. A prompt that
+  // names only rivals guarantees they appear in the answer without ever testing the self
+  // product, so it measures nothing about organic visibility.
   if (selfName && competitorNames[0]) {
     out.push(`How does ${selfName} compare to ${competitorNames[0]}?`);
-  }
-  if (selfName) out.push(`What are the best alternatives to ${selfName}?`);
-  if (competitorNames.length >= 2) {
-    out.push(`${competitorNames[0]} vs ${competitorNames[1]} — which is better?`);
   }
 
   return cleanPrompts(out, count);

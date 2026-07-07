@@ -121,6 +121,11 @@ export const aiVisibilityResults = pgTable(
     engine: text("engine").notNull(),
     // 0/1 (mirrors pricing_history.promotional/has_trial int-bool convention).
     mentioned: integer("mentioned").notNull().default(0),
+    // 1 when the prompt text itself names this subject (a "compare X vs Y" prompt). Such
+    // a (prompt, subject) pair is contaminated — naming a brand guarantees it appears —
+    // so it is EXCLUDED from that subject's organic share-of-voice (numerator + denominator).
+    // Computed once at write time; legacy rows default to 0 (treated as organic).
+    promptNamed: integer("prompt_named").notNull().default(0),
     // Order of first mention in the answer (1 = first). Null when not mentioned.
     rank: integer("rank"),
     // 1 when the subject appeared as a linked/cited source (not just text). Null = n/a.

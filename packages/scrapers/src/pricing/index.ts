@@ -7,10 +7,17 @@ export { detectPricingSignals, emptySignals } from "./signals";
 export type { PricingSignals } from "./signals";
 export { determineStatus } from "./determine-status";
 export type { StatusDecision } from "./determine-status";
-export { discoverPricingUrl } from "./discover-url";
+export { discoverPricingUrl, discoverCommerceCandidates } from "./discover-url";
 export type { PricingPageCandidate } from "./discover-url";
+export {
+  deriveProductLine,
+  buildAggregatedDocument,
+  splitProductLines,
+} from "./product-lines";
 export { pricingRatiosPlausible } from "./validate-ratios";
 export type { PricingRatioPlan } from "./validate-ratios";
 export { detectTrial, NO_TRIAL } from "./detect-trial";
 export type { TrialInfo } from "./detect-trial";
 export { detectFreePlan } from "./detect-free-plan";
+export { harvestPricing, parseAmount } from "./harvest";
+export type { HarvestedPlan, PricingHarvest } from "./harvest";

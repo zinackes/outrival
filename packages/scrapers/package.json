@@ -123,7 +123,7 @@
   "scripts": {
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "bun test src/pricing src/lib src/parsers src/diff src/scoring src/learning src/tech-stack src/structural src/spa src/jobs src/structured-data src/platform src/status src/discovery"
+    "test": "bun test src"
   },
   "dependencies": {
     "@outrival/shared": "workspace:*",

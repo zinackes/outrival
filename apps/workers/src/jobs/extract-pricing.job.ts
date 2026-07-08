@@ -155,6 +155,27 @@ export const extractPricingJob = task({
     logger.log("Free-plan / trial detection", { freePlan, trial });
 
     const recordedAt = input.recordedAt ? new Date(input.recordedAt) : new Date();
+    // Backfill runs only seed the historical pricing_history rows — never the
+    // qualitative source summary (a 90-day-old page would clobber the current one).
+    // Retry-safety: run the throwing AI call (and the monitor update it feeds)
+    // BEFORE the non-idempotent insertPricingHistory below, so a retried run
+    // after an AI failure never leaves duplicate pricing rows behind.
+    if (!input.recordedAt) {
+      const summary = await loggedAi("source_summary", AI_CONFIG.classification, () =>
+        summarizeSource({
+          kind: "pricing",
+          current: plans,
+          previous,
+        }),
+      );
+      if (summary) {
+        await db
+          .update(monitors)
+          .set({ aiSummary: summary.summary, aiSummaryUpdatedAt: new Date() })
+          .where(eq(monitors.id, snapshot.monitorId));
+      }
+    }
+
     // Keep every plan, including quote-based tiers (price null — "Enterprise",
     // "Contact sales", "Custom"): they're real plans the user wants to see. The
     // pricing_history.price column is nullable; numeric readers (charts, trends,
@@ -179,24 +200,6 @@ export const extractPricingJob = task({
         recorded_at: recordedAt,
       })),
     );
-
-    // Backfill runs only seed the historical pricing_history rows — never the
-    // qualitative source summary (a 90-day-old page would clobber the current one).
-    if (!input.recordedAt) {
-      const summary = await loggedAi("source_summary", AI_CONFIG.classification, () =>
-        summarizeSource({
-          kind: "pricing",
-          current: plans,
-          previous,
-        }),
-      );
-      if (summary) {
-        await db
-          .update(monitors)
-          .set({ aiSummary: summary.summary, aiSummaryUpdatedAt: new Date() })
-          .where(eq(monitors.id, snapshot.monitorId));
-      }
-    }
 
     logger.log("Completed extract-pricing", {
       competitorId: input.competitorId,

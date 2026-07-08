@@ -121,32 +121,12 @@ export const extractReviewsJob = task({
       });
     }
 
-    if (verbatims.length > 0) {
-      await db.insert(reviews).values(verbatims);
-    }
-
     // Prior score before inserting the fresh one → summary can note the trend.
     const previousScore = await getPreviousReviewScore(input.competitorId, input.source);
 
-    // Only record a star-score time-series point when there IS a rating. Reddit
-    // (mentions, no AggregateRating) carries sentiment + themes via the verbatims +
-    // summary instead — writing a 0/5 would pollute the score trend (patch-32).
-    if (extracted.average_score != null) {
-      await insertReviewScore({
-        competitor_id: input.competitorId,
-        source: input.source,
-        score: extracted.average_score,
-        review_count: extracted.review_count ?? 0,
-        sentiment_score: extracted.sentiment_score,
-        sub_ease_of_use: extracted.sub_scores?.ease_of_use ?? null,
-        sub_support: extracted.sub_scores?.support ?? null,
-        sub_features: extracted.sub_scores?.features ?? null,
-        sub_value: extracted.sub_scores?.value ?? null,
-        complaint_themes: extracted.complaint_themes ?? null,
-        recorded_at: now,
-      });
-    }
-
+    // Retry-safety: run the throwing AI call (and the monitor update it feeds)
+    // BEFORE the non-idempotent inserts below, so a retried run after an AI
+    // failure never leaves duplicate verbatims/scores behind.
     const summary = await loggedAi("source_summary", AI_CONFIG.classification, () =>
       summarizeSource({
         kind: "reviews",
@@ -166,6 +146,29 @@ export const extractReviewsJob = task({
         .update(monitors)
         .set({ aiSummary: summary.summary, aiSummaryUpdatedAt: new Date() })
         .where(eq(monitors.id, snapshot.monitorId));
+    }
+
+    if (verbatims.length > 0) {
+      await db.insert(reviews).values(verbatims);
+    }
+
+    // Only record a star-score time-series point when there IS a rating. Reddit
+    // (mentions, no AggregateRating) carries sentiment + themes via the verbatims +
+    // summary instead — writing a 0/5 would pollute the score trend (patch-32).
+    if (extracted.average_score != null) {
+      await insertReviewScore({
+        competitor_id: input.competitorId,
+        source: input.source,
+        score: extracted.average_score,
+        review_count: extracted.review_count ?? 0,
+        sentiment_score: extracted.sentiment_score,
+        sub_ease_of_use: extracted.sub_scores?.ease_of_use ?? null,
+        sub_support: extracted.sub_scores?.support ?? null,
+        sub_features: extracted.sub_scores?.features ?? null,
+        sub_value: extracted.sub_scores?.value ?? null,
+        complaint_themes: extracted.complaint_themes ?? null,
+        recorded_at: now,
+      });
     }
 
     logger.log("Completed extract-reviews", {

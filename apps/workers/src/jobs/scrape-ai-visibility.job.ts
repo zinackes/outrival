@@ -27,6 +27,7 @@ import {
   promptNamesSubject,
   type VisibilityDelta,
 } from "../lib/ai-visibility/diff";
+import { textNamesSubject } from "../lib/ai-visibility/match";
 import { buildVisibilityPromptInput, seedVisibilityPrompts } from "../lib/ai-visibility/seed";
 import { notifyJobComplete } from "../lib/job-complete";
 
@@ -176,18 +177,23 @@ export const scrapeAiVisibilityJob = task({
           // One row per roster subject, mentioned or not, so share-of-voice is derivable.
           const rows: AiVisibilityResultRow[] = roster.map((c) => {
             const v = verdict.get(norm(c.name));
+            // Deterministic guard: trust the model's mentioned=true only when the
+            // subject's name actually appears in the answer. The classifier tends to
+            // confirm any name handed to it in <subjects>, inventing phantom mentions
+            // (especially the self) — this drops those false positives.
+            const mentioned = (v?.mentioned ?? false) && textNamesSubject(res.answer, c.name);
             return {
               org_id: orgId,
               prompt_id: prompt.id,
               competitor_id: c.id,
               product_id: product.id,
               engine,
-              mentioned: v?.mentioned ?? false,
+              mentioned,
               // Seeded when the prompt itself names this subject → excluded from organic SoV.
               prompt_named: promptNamesSubject(prompt.prompt, c.name),
-              rank: v?.mentioned ? v.rank : null,
-              cited: v?.mentioned ? v.cited : null,
-              sentiment_score: v?.mentioned ? v.sentiment : null,
+              rank: mentioned ? v?.rank ?? null : null,
+              cited: mentioned ? v?.cited ?? null : null,
+              sentiment_score: mentioned ? v?.sentiment ?? null : null,
               answer_excerpt: excerpt,
               run_id: runId,
               recorded_at: now,

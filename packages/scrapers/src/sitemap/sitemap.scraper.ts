@@ -1,4 +1,5 @@
 import type { ScrapeOutcome, ScrapeOptions } from "../types";
+import { safeFetch } from "../lib/guarded-fetch";
 import { collectSitemapUrls, categorizeUrl, type UrlCategory } from "./parse";
 
 /**
@@ -14,11 +15,9 @@ const ROOT_PATHS = ["/sitemap.xml", "/sitemap_index.xml", "/sitemap-index.xml", 
 const MARKER = "outrival-sitemap";
 
 async function fetchBytes(url: string): Promise<Uint8Array | null> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 10000);
   try {
-    const res = await fetch(url, {
-      signal: ctrl.signal,
+    const res = await safeFetch(url, {
+      timeoutMs: 10000,
       headers: {
         "user-agent": "Mozilla/5.0 (compatible; OutrivalBot/1.0; +https://outrival.io)",
         accept: "application/xml, text/xml, */*",
@@ -28,8 +27,6 @@ async function fetchBytes(url: string): Promise<Uint8Array | null> {
     return new Uint8Array(await res.arrayBuffer());
   } catch {
     return null;
-  } finally {
-    clearTimeout(timer);
   }
 }
 

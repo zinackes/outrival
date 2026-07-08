@@ -1,4 +1,5 @@
 import { scrapeStatic, scrapeFirstSuccess } from "../lib/crawler";
+import { safeFetch } from "../lib/guarded-fetch";
 import type { ScrapeOutcome, ScrapeOptions } from "../types";
 import { discoverFeedUrl, parseFeed, type FeedItem } from "../feeds/rss";
 
@@ -34,11 +35,9 @@ function safeUrl(path: string, base: string): string | null {
 }
 
 async function fetchFeed(feedUrl: string): Promise<FeedItem[] | null> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 8000);
   try {
-    const res = await fetch(feedUrl, {
-      signal: ctrl.signal,
+    const res = await safeFetch(feedUrl, {
+      timeoutMs: 8000,
       headers: {
         "user-agent": "Mozilla/5.0 (compatible; OutrivalBot/1.0; +https://outrival.io)",
         accept: "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
@@ -49,8 +48,6 @@ async function fetchFeed(feedUrl: string): Promise<FeedItem[] | null> {
     return items.length > 0 ? items : null;
   } catch {
     return null;
-  } finally {
-    clearTimeout(timer);
   }
 }
 

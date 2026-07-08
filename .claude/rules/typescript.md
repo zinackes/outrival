@@ -24,7 +24,13 @@ S'applique à tous les fichiers .ts et .tsx.
 
 ## Gestion d'erreurs
 
-- Pattern Result<T, E> pour les fonctions qui peuvent échouer
-- Pas de throw dans les fonctions métier — retourner { ok: false, error }
-- throw uniquement dans les cas vraiment exceptionnels (config manquante au startup)
+- Couche métier / lib : `throw` en cas d'échec (Trigger.dev gère les retries des
+  jobs ; les handlers Hono catchent au niveau route). Ne pas swallow silencieusement
+  une erreur.
+- Frontière HTTP (routes Hono) : réponse `{ data, error }` — jamais de throw naked
+  qui remonte au client (cf. `apps/api/CLAUDE.md`). Codes d'erreur structurés pour
+  le gating.
+- `Result<T, E>` (`packages/shared/src/types/result.ts`) : option locale pour un
+  helper feuille où un échec typé est plus lisible qu'un throw — pas une
+  obligation transverse.
 - Logger les erreurs avec le contexte : logger.error({ err, context })

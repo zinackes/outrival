@@ -1,3 +1,5 @@
+import { safeFetch } from "./guarded-fetch";
+
 export interface ConditionalFetchResult {
   status: number;
   etag?: string;
@@ -27,11 +29,10 @@ export async function conditionalFetch(
   if (prevLastModified) headers["If-Modified-Since"] = prevLastModified;
 
   try {
-    const res = await fetch(url, {
+    const res = await safeFetch(url, {
       method: "GET",
       headers,
-      redirect: "follow",
-      signal: AbortSignal.timeout(8000),
+      timeoutMs: 8000,
     });
 
     // We only need the status + validators, never the body.

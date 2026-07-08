@@ -1,4 +1,5 @@
 import * as cheerio from "cheerio";
+import { safeFetch } from "../lib/guarded-fetch";
 import type { TechStackInput } from "./detector";
 
 export interface TechStackEvidence extends TechStackInput {
@@ -24,12 +25,9 @@ const USER_AGENT =
 export async function fetchTechStackEvidence(
   url: string,
 ): Promise<TechStackEvidence | null> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const res = await fetch(url, {
-      redirect: "follow",
-      signal: controller.signal,
+    const res = await safeFetch(url, {
+      timeoutMs: FETCH_TIMEOUT_MS,
       headers: { "user-agent": USER_AGENT, accept: "text/html,application/xhtml+xml" },
     });
     if (!res.ok) return null;
@@ -52,8 +50,6 @@ export async function fetchTechStackEvidence(
     };
   } catch {
     return null;
-  } finally {
-    clearTimeout(timeout);
   }
 }
 

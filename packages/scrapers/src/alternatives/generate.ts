@@ -1,5 +1,6 @@
 import type { FailureCategory } from "../lib/diagnose-failure";
 import { realisticHeaders, realisticUserAgent } from "../lib/fingerprint";
+import { safeFetch } from "../lib/guarded-fetch";
 
 /**
  * Generate user-facing alternatives for a monitor that became unscrapable
@@ -108,11 +109,10 @@ async function findPublicAlternatives(originalUrl: string): Promise<string[]> {
 
 async function isQuicklyReachable(url: string): Promise<boolean> {
   try {
-    const res = await fetch(url, {
+    const res = await safeFetch(url, {
       method: "GET",
       headers: { ...realisticHeaders(), "User-Agent": realisticUserAgent() },
-      redirect: "follow",
-      signal: AbortSignal.timeout(6000),
+      timeoutMs: 6000,
     });
     return res.status < 400;
   } catch {

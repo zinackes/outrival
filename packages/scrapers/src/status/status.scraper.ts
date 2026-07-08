@@ -1,4 +1,5 @@
 import type { ScrapeOutcome, ScrapeOptions } from "../types";
+import { safeFetch } from "../lib/guarded-fetch";
 
 /**
  * Status-page connector (patch-31). Statuspage / Instatus expose a public JSON
@@ -93,29 +94,22 @@ export async function scrape(
     ? `https://${resolved.host}/summary.json`
     : `https://${resolved.host}/api/v2/summary.json`;
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const res = await fetch(summaryUrl, {
-      redirect: "follow",
-      signal: controller.signal,
-      headers: { "user-agent": USER_AGENT, accept: "application/json" },
-    });
-    if (!res.ok) throw new Error(`status: ${summaryUrl} → HTTP ${res.status}`);
-    const data = (await res.json()) as StatusSummary;
-    const { html, text } = render(data, resolved.host);
-    return {
-      html,
-      text,
-      screenshotBuffer: Buffer.alloc(0),
-      metadata: { url: summaryUrl, scrapedWith: "status-api" },
-      statusCode: res.status,
-      etag: res.headers.get("etag") ?? undefined,
-      lastModified: res.headers.get("last-modified") ?? undefined,
-      level: 0,
-      attempts: 1,
-    };
-  } finally {
-    clearTimeout(timer);
-  }
+  const res = await safeFetch(summaryUrl, {
+    timeoutMs: FETCH_TIMEOUT_MS,
+    headers: { "user-agent": USER_AGENT, accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(`status: ${summaryUrl} → HTTP ${res.status}`);
+  const data = (await res.json()) as StatusSummary;
+  const { html, text } = render(data, resolved.host);
+  return {
+    html,
+    text,
+    screenshotBuffer: Buffer.alloc(0),
+    metadata: { url: summaryUrl, scrapedWith: "status-api" },
+    statusCode: res.status,
+    etag: res.headers.get("etag") ?? undefined,
+    lastModified: res.headers.get("last-modified") ?? undefined,
+    level: 0,
+    attempts: 1,
+  };
 }

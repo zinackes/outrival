@@ -1,5 +1,6 @@
 import Exa from "exa-js";
 import { extractBrand, extractHostname } from "@outrival/shared";
+import { safeFetch } from "../lib/guarded-fetch";
 
 // Free-hosting / website-builder / preview platforms. Exa surfaces these for
 // well-known products (clones, templates, staging deploys) — never real
@@ -161,10 +162,9 @@ export function isParkedPage(finalHost: string, htmlLower: string): boolean {
 // known domain-marketplace landing (backand.com et al.).
 async function isLiveProduct(url: string): Promise<boolean> {
   try {
-    const res = await fetch(url, {
+    const res = await safeFetch(url, {
       method: "GET",
-      redirect: "follow",
-      signal: AbortSignal.timeout(REACHABILITY_TIMEOUT_MS),
+      timeoutMs: REACHABILITY_TIMEOUT_MS,
     });
     if (isDeadStatus(res.status)) return false;
     const body = (await res.text()).slice(0, PARKING_SCAN_CHARS).toLowerCase();

@@ -8,6 +8,7 @@ import {
   validateMonitorUrl,
   computeNextRun,
   forcedRescansPerDay,
+  planAllowsMonitorSource,
   type MonitorFrequency,
 } from "@outrival/shared";
 import { db } from "../lib/db";
@@ -231,6 +232,14 @@ monitorsRouter.post("/:id/run", aiIntensiveRateLimit, async (c) => {
   });
   if (!competitor) return c.json({ error: "Forbidden" }, 403);
 
+  // A source frozen by a plan downgrade (its monitor row is kept but the scheduler
+  // skips it) must not be refreshable on demand either — mirror the scheduler's gate
+  // so a direct trigger can't bypass the entitlement freeze.
+  const plan = await getOrgPlan(orgId);
+  if (!planAllowsMonitorSource(plan, monitor.sourceType)) {
+    return c.json({ error: "plan_locked_source", source: monitor.sourceType, plan }, 403);
+  }
+
   // patch-27 — a genuine re-scan (the source has already run at least once) draws
   // from the per-tier forced-rescan daily cap, exactly like /force-rescan, and is
   // logged so it shows up in usage. A monitor's FIRST scrape (just enabled/switched,
@@ -239,7 +248,6 @@ monitorsRouter.post("/:id/run", aiIntensiveRateLimit, async (c) => {
   const isRescan = monitor.lastRunAt !== null;
   let logId: string | undefined;
   if (isRescan) {
-    const plan = await getOrgPlan(orgId);
     const limit = forcedRescansPerDay(plan);
     const usageToday = await countUserForcedRescansToday(user.id);
     if (usageToday >= limit) return c.json(rescanLimitBody(plan, limit), 429);
@@ -304,6 +312,11 @@ monitorsRouter.post("/:id/force-rescan", async (c) => {
   // re-scans are metered and get a log row (which the client polls for its outcome).
   const isRescan = monitor.lastRunAt !== null;
   const plan = await getOrgPlan(orgId);
+  // Same entitlement gate as /:id/run — a downgraded org can't force-refresh a
+  // premium source the scheduler has frozen.
+  if (!planAllowsMonitorSource(plan, monitor.sourceType)) {
+    return c.json({ error: "plan_locked_source", source: monitor.sourceType, plan }, 403);
+  }
   const limit = forcedRescansPerDay(plan);
   let usageToday = 0;
   let logId: string | null = null;

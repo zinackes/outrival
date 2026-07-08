@@ -17,6 +17,7 @@ import {
   normalizeHostname,
   validatePublicUrl,
   forcedRescansPerDay,
+  planAllowsMonitorSource,
   deriveAnalysisStatus,
 } from "@outrival/shared";
 import { db } from "../lib/db";
@@ -550,6 +551,9 @@ myProductRouter.post("/rescan", aiIntensiveRateLimit, async (c) => {
   const scrapedIds: string[] = [];
   let limitReached = false;
   for (const m of toScrape) {
+    // A source frozen by a plan downgrade stays un-refreshable here too — skip it and
+    // refresh the rest (self homepage/pricing are ungated → always pass).
+    if (!planAllowsMonitorSource(plan, m.sourceType)) continue;
     const isRescan = m.lastRunAt !== null;
     let logId: string | undefined;
     if (isRescan) {

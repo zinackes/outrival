@@ -16,6 +16,7 @@ let closeDb: () => Promise<void>;
 let A: { orgId: string; userId: string; email: string };
 let B: { orgId: string; userId: string; email: string };
 let C: { orgId: string; userId: string; email: string };
+let D: { orgId: string; userId: string; email: string };
 
 afterAll(() => closeDb());
 
@@ -33,6 +34,8 @@ beforeAll(async () => {
   B = await seedOrg(testDb, { plan: "free" });
   // Pro org (cap 20) so the /run metering tests don't collide with A/B's spent free cap.
   C = await seedOrg(testDb, { plan: "pro" });
+  // Fresh free org for the plan-gating tests, so its 1/day free rescan cap is unspent.
+  D = await seedOrg(testDb, { plan: "free" });
   await testDb.insert(competitors).values([
     { id: "c-a", orgId: A.orgId, name: "Rival A" },
     { id: "c-b", orgId: B.orgId, name: "Rival B" },
@@ -40,6 +43,7 @@ beforeAll(async () => {
     { id: "c-c", orgId: C.orgId, name: "Rival C" },
     // A competitor with a URL so a retargeted monitor URL passes the brand-lock guard.
     { id: "c-d", orgId: C.orgId, name: "Rival D", url: "https://rival-d.com" },
+    { id: "c-e", orgId: D.orgId, name: "Rival E" },
   ]);
   await testDb.insert(monitors).values([
     // Already run → a force-rescan is a genuine (metered) re-scan.
@@ -78,6 +82,10 @@ beforeAll(async () => {
     },
     // Infra-only anchor — a manual toggle must refuse to flip it on.
     { id: "m-tech", competitorId: "c-a", sourceType: "tech_stack", isActive: false },
+    // Plan-gating fixtures on free org D. m-e-gated is a premium source (jobs, starter+)
+    // frozen by the free plan; m-e-ungated is a free-tier source that must stay refreshable.
+    { id: "m-e-gated", competitorId: "c-e", sourceType: "jobs", lastRunAt: new Date(Date.now() - 60_000) },
+    { id: "m-e-ungated", competitorId: "c-e", sourceType: "homepage", lastRunAt: new Date(Date.now() - 60_000) },
   ]);
 });
 
@@ -264,5 +272,41 @@ describe("PATCH isActive — manual pause / enable of a single source", () => {
     expect((await res.json()).error).toBe("source_not_toggleable");
     const [m] = await testDb.select().from(monitors).where(eq(monitors.id, "m-tech"));
     expect(m?.isActive).toBe(false); // still off
+  });
+});
+
+// A source frozen by a plan downgrade (its monitor row is kept, the scheduler just
+// skips it) must not be refreshable on demand either — both /run and /force-rescan
+// mirror the scheduler's plan gate. The gate short-circuits BEFORE metering, so a
+// denied premium source never spends the org's forced-rescan cap.
+describe("on-demand re-scan plan gate (premium source frozen on a downgraded plan)", () => {
+  test("force-rescan of a gated source (jobs on free) → 403 plan_locked_source", async () => {
+    const res = await rescan(D, "m-e-gated");
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toBe("plan_locked_source");
+    expect(body.source).toBe("jobs");
+    expect(body.plan).toBe("free");
+    // The gate ran before metering — no log row was written.
+    const logs = await testDb
+      .select()
+      .from(forcedRescanLog)
+      .where(eq(forcedRescanLog.monitorId, "m-e-gated"));
+    expect(logs).toHaveLength(0);
+  });
+
+  test("run of a gated source (jobs on free) → 403 plan_locked_source", async () => {
+    const res = await run(D, "m-e-gated");
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toBe("plan_locked_source");
+    expect(body.source).toBe("jobs");
+    expect(body.plan).toBe("free");
+  });
+
+  test("force-rescan of an ungated source (homepage) on the same free org → 200", async () => {
+    const res = await rescan(D, "m-e-ungated");
+    expect(res.status).toBe(200);
+    expect((await res.json()).ok).toBe(true);
   });
 });

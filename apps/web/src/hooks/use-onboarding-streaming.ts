@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { competitorsQuery, signalsQuery } from "@/lib/queries";
 import {
   ONBOARDING_EVENTS,
   milestoneKey,
@@ -28,16 +30,28 @@ export interface OnboardingStreamingState {
 // onboarding. While the user's session is analysis_in_progress, polls competitor
 // analysis (aiSummary as the ready proxy — same one the notify job uses), fires
 // first_signal_received / analysis_completed once, and closes the session.
-// `onTick` lets the host refresh its own data each poll so the page fills in.
-export function useOnboardingStreaming(onTick?: () => void): OnboardingStreamingState {
+//
+// Reads the roster through the shared `competitorsQuery` TanStack cache (forced
+// fresh via `staleTime: 0` on the fetch, since the app-wide default is 60s) —
+// this is the ONLY competitors fetch per tick. The host's own
+// `useQuery(competitorsQuery(productId))` observes the same cache key and
+// re-renders as soon as this writes fresh data in, so no separate "please
+// refetch competitors" callback is needed anymore. Signals are only
+// `invalidateQueries`'d (lazy — the host's existing 60s refetchInterval or next
+// mount picks it up) when the analyzed count actually moves, not on every 3s
+// tick, so we stop hammering the ~100KB/200-row signals payload every 3s.
+export function useOnboardingStreaming(productId?: string): OnboardingStreamingState {
   const [state, setState] = useState<OnboardingStreamingState>({
     active: false,
     total: 0,
     analyzed: 0,
     competitors: [],
   });
-  const onTickRef = useRef(onTick);
-  onTickRef.current = onTick;
+  const queryClient = useQueryClient();
+  const queryClientRef = useRef(queryClient);
+  queryClientRef.current = queryClient;
+  const productIdRef = useRef(productId);
+  productIdRef.current = productId;
 
   useEffect(() => {
     let live = true;
@@ -46,6 +60,7 @@ export function useOnboardingStreaming(onTick?: () => void): OnboardingStreaming
     let sessionId: string | null = null;
     let firstSignalFired = false;
     let completedFired = false;
+    let lastAnalyzed = 0;
 
     const stop = () => {
       if (interval) clearInterval(interval);
@@ -55,10 +70,17 @@ export function useOnboardingStreaming(onTick?: () => void): OnboardingStreaming
     };
 
     const poll = async () => {
+      // Tab-visibility gate: don't spend the poll (or the network fetch it
+      // drives) while the tab is backgrounded.
+      if (document.visibilityState === "hidden") return;
       try {
-        const { competitors } = await api.listCompetitors();
+        const qc = queryClientRef.current;
+        const pid = productIdRef.current;
+        const competitors = await qc.fetchQuery({
+          ...competitorsQuery(pid),
+          staleTime: 0,
+        });
         if (!live) return;
-        onTickRef.current?.();
         const rows: AnalysisCompetitor[] = competitors.map((c) => ({
           id: c.id,
           name: c.name,
@@ -67,6 +89,13 @@ export function useOnboardingStreaming(onTick?: () => void): OnboardingStreaming
         const analyzed = rows.filter((r) => r.ready).length;
         const total = rows.length;
         setState({ active: true, total, analyzed, competitors: rows });
+
+        if (analyzed > lastAnalyzed) {
+          lastAnalyzed = analyzed;
+          void qc.invalidateQueries({
+            queryKey: signalsQuery({ limit: 200, productId: pid }).queryKey,
+          });
+        }
 
         if (analyzed >= 1 && !firstSignalFired) {
           firstSignalFired = true;

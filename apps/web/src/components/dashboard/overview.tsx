@@ -119,20 +119,24 @@ export function OverviewView() {
   const dsSignals = sample ? sampleData.signals : signals;
   const dsCompetitors = sample ? sampleData.competitors : competitors;
 
-  // Refresh both feeds — used by the error retry and the onboarding analysis
-  // panel's poll. Refetch the exact keys so the cache stays the single source of
+  // Refresh both feeds — used by the error retry (a one-off, so an eager
+  // invalidate is fine here; it immediately refetches since both queries are
+  // active). Invalidate the exact keys so the cache stays the single source of
   // truth (no parallel useState to keep in sync).
   const load = useCallback(() => {
-    void queryClient.refetchQueries({
+    void queryClient.invalidateQueries({
       queryKey: signalsQuery({ limit: 200, productId }).queryKey,
     });
-    void queryClient.refetchQueries({ queryKey: competitorsQuery(productId).queryKey });
+    void queryClient.invalidateQueries({ queryKey: competitorsQuery(productId).queryKey });
   }, [queryClient, productId]);
 
   // Lifted here (single poller) so the Overview can stagger its first-run
   // surfaces: while the first analysis streams in, only the analysis panel shows
-  // — the "Get set up" checklist below it waits until analysis settles.
-  const analysis = useOnboardingStreaming(load);
+  // — the "Get set up" checklist below it waits until analysis settles. The hook
+  // reads/writes the shared competitorsQuery cache directly (see
+  // use-onboarding-streaming.ts), so this view's own useQuery above just
+  // observes the same key — no onTick callback needed.
+  const analysis = useOnboardingStreaming(productId);
   const analysisActive = analysis.active && analysis.total > 0;
 
   function exportCsv() {

@@ -146,12 +146,16 @@ stripeWebhookRouter.post("/", async (c) => {
 
       case "customer.subscription.updated":
       case "customer.subscription.created": {
-        const sub = event.data.object;
-        const orgId = await findOrgId(sub.metadata, sub.customer);
+        const evtSub = event.data.object;
+        const orgId = await findOrgId(evtSub.metadata, evtSub.customer);
         if (!orgId) {
-          logger.error({ type: event.type, subId: sub.id }, "subscription event: no orgId");
+          logger.error({ type: event.type, subId: evtSub.id }, "subscription event: no orgId");
           break;
         }
+        // Re-retrieve so we act on live state, not the (possibly stale/out-of-order) event
+        // snapshot. Stripe doesn't guarantee delivery order; a late `active` for a since-
+        // cancelled sub must not resurrect a paid plan.
+        const sub = await getStripe().subscriptions.retrieve(evtSub.id);
         await applyPlanFromSubscription(orgId, sub);
         break;
       }
@@ -161,6 +165,18 @@ stripeWebhookRouter.post("/", async (c) => {
         const orgId = await findOrgId(sub.metadata, sub.customer);
         if (!orgId) {
           logger.error({ subId: sub.id }, "customer.subscription.deleted: no orgId");
+          break;
+        }
+        const org = await db.query.organizations.findFirst({
+          where: eq(organizations.id, orgId),
+          columns: { stripeSubscriptionId: true },
+        });
+        // Ignore a delete for a subscription the org has already replaced.
+        if (org && org.stripeSubscriptionId && org.stripeSubscriptionId !== sub.id) {
+          logger.warn(
+            { orgId, deletedSub: sub.id, currentSub: org.stripeSubscriptionId },
+            "Ignoring subscription.deleted for a superseded subscription",
+          );
           break;
         }
         await db

@@ -36,14 +36,14 @@ Mise à jour à chaque phase / patch.
 | ORM               | Drizzle ORM                              | Type-safe, léger, Postgres |
 | DB                | PostgreSQL (Neon)                        | Serverless, scale-to-zero, branching ; relationnel + time-series/analytics dans une seule base |
 | Stockage binaire  | Cloudflare R2                            | Quasi-gratuit pour snapshots HTML/screenshots/PDFs |
-| Jobs              | **Trigger.dev v4** Cloud                 | Durable execution, retries, dashboard, schedules |
+| Jobs              | **Trigger.dev v4** (`task()`) — exécution en migration vers pg-boss self-hosted | Durable execution, retries, dashboard, schedules ; migration en cours, cf. `docs/trigger-to-pgboss-migration.md` |
 | Scraping          | Patchright (stealth Chromium) + fetch    | Drop-in Playwright, patches CDP/webdriver — passe Cloudflare au niveau navigateur (patch-20) |
 | Proxy cascade     | ProxyScrape (datacenter→residential) + Camoufox | Cascade 5 niveaux découplée (fingerprint vs IP), pas de coût par requête (patch-20) |
 | Discovery         | Exa.ai (`exa-js`)                        | Recherche sémantique de concurrents similaires |
 | Email             | Resend                                   | Alerts + digests transactionnels |
 | Paiements         | Stripe (SDK v22)                         | Checkout + Customer Portal + webhooks |
 | Insights IA       | Groq (`llama-3.3-70b-versatile`)         | Pipeline complet — abstraction provider, swap Claude = 1 ligne |
-| Déploiement       | Hetzner VPS + Coolify                    | Self-hosted, EU GDPR, €8/mois |
+| Déploiement       | OVH VPS + Coolify                        | Self-hosted, EU GDPR, €8/mois |
 
 > **Note** : Upstash Redis a été retiré du stack (Phase 6). Les alertes temps-réel
 > passent par SSE DB-backed (poll Postgres 3s + heartbeat), latence ~3s suffisante
@@ -52,21 +52,26 @@ Mise à jour à chaque phase / patch.
 ## Infrastructure
 
 ```
-Hetzner CX32 (4 vCPU / 8GB RAM / 80GB SSD) — €8/mois
+OVH VPS (4 vCPU / 8GB RAM / 80GB SSD) — €8/mois
 └── Coolify (PaaS self-hosted)
-    ├── @outrival/web    → outrival.io        (:3000) Next.js 16
-    ├── @outrival/api    → api.outrival.io    (:3001) Hono + Bun
-    └── @outrival/workers (runner Trigger.dev local — dev only)
+    ├── @outrival/web     → outrival.io        (:3000) Next.js 16
+    ├── @outrival/api     → api.outrival.io    (:3001) Hono + Bun
+    └── @outrival/workers → pg-boss (migration en cours depuis Trigger.dev Cloud,
+        cf. docs/trigger-to-pgboss-migration.md) : 2 services, WORKER_ROLE=light
+        (crons/IA/extracts/alerts) et WORKER_ROLE=browser (scrapes/platform/PDF)
 
 Neon (EU) — €0 free tier → ~$19/mois (Launch) à l'échelle
 └── PostgreSQL — relationnel + time-series/analytics (ex-ClickHouse) dans une
-    seule base. Connexion via le pooler (`-pooler`, ?sslmode=require).
+    seule base. Connexion via le pooler (`-pooler`, ?sslmode=require). La queue
+    pg-boss (QUEUE_DATABASE_URL) utilise un Postgres dédié always-on distinct,
+    jamais cette branche Neon.
 
 Cloudflare R2 — ~€1/mois
 └── Snapshots HTML, screenshots, PDFs battle cards
 
 Trigger.dev Cloud — €0 free → Hobby €20/mois (50k runs) → Pro €100
-└── Orchestration jobs (scraping, classify, insight, digest, alerts, battle cards)
+└── Orchestration jobs (scraping, classify, insight, digest, alerts, battle cards) ;
+    exécution migrant progressivement vers les workers pg-boss ci-dessus
 
 ProxyScrape — datacenter ~$10/mois (flat, BW illimitée) + residential pay-per-GB (~$15-30/mois total, patch-20)
 Resend — $20/mois Pro (50k emails/mois)

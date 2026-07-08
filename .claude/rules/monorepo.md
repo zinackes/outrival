@@ -13,7 +13,8 @@ S'applique à tous les fichiers du projet.
 
 - apps/web       → @outrival/web       (Next.js frontend)
 - apps/api       → @outrival/api       (Hono API)
-- apps/workers   → @outrival/workers   (Crawlee + Trigger.dev)
+- apps/workers   → @outrival/workers   (Trigger.dev v4 jobs, exécution en cours de
+  migration vers pg-boss + scrapers Patchright)
 - packages/db    → @outrival/db        (Drizzle + schema + migrations)
 - packages/ai    → @outrival/ai        (prompts + pipeline Claude/Groq)
 - packages/scrapers → @outrival/scrapers (scrapers par source)

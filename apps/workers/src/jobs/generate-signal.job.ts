@@ -56,6 +56,57 @@ const InputSchema = z
     message: "generate-signal needs a classification or a pricingTransition",
   });
 
+// Notification moderation tail (patch-26): decide how a committed signal is
+// delivered, stamp the decision on the row, and trigger the immediate alert when
+// warranted. Extracted so BOTH the normal path and the retry re-dispatch path
+// (a signal committed but left undispatched by a post-commit throw) run the exact
+// same logic. Safe to re-run: decideDispatch is pure and send-alert is
+// idempotency-keyed. Backfill signals bypass the dispatcher (in-app only).
+async function dispatchSignal(args: {
+  signalId: string;
+  severity: typeof signals.$inferSelect.severity;
+  category: typeof signals.$inferSelect.category;
+  relevanceScore: number | null;
+  competitor: { id: string; orgId: string; alertsMuted: boolean | null };
+  org: { alertsEnabled: boolean | null; plan: keyof typeof PLAN_LIMITS } | null | undefined;
+  isBackfill: boolean;
+}): Promise<void> {
+  const { signalId, severity, category, relevanceScore, competitor, org, isBackfill } = args;
+  const decision = isBackfill
+    ? ({ send: false, channel: "in_app_only", filteredReason: "backfill" } as const)
+    : await decideDispatch(competitor.orgId, {
+        signalId,
+        severity,
+        relevanceScore,
+        competitorId: competitor.id,
+        category,
+      });
+  await db
+    .update(signals)
+    .set({
+      dispatchedChannel: decision.channel,
+      filteredReason: decision.filteredReason ?? null,
+      filteredAt: decision.filteredReason ? new Date() : null,
+    })
+    .where(eq(signals.id, signalId));
+
+  if (decision.send && decision.channel === "email_immediate" && !competitor.alertsMuted) {
+    // Plan entitlement still applies (moderation never overrides gating): only
+    // realtime-alert plans get an immediate email/Slack/webhook. A user-muted
+    // competitor (kebab → Mute alerts) keeps tracking signals but skips the alert.
+    if (org?.alertsEnabled && PLAN_LIMITS[org.plan].features.realtimeAlerts) {
+      await tasks.trigger("send-alert", { signalId }, { idempotencyKey: signalId });
+      logger.log("Alert triggered", { signalId });
+    }
+  } else {
+    logger.log("Signal deferred by moderation", {
+      signalId,
+      channel: decision.channel,
+      reason: decision.filteredReason ?? null,
+    });
+  }
+}
+
 export const generateSignalJob = task({
   id: "generate-signal",
   queue: groqQueue,
@@ -70,8 +121,50 @@ export const generateSignalJob = task({
       where: eq(signals.changeId, input.changeId),
     });
     if (existing) {
-      logger.log("Signal already exists, skipping", { signalId: existing.id });
-      return { skipped: true, signalId: existing.id };
+      if (existing.dispatchedChannel !== null) {
+        logger.log("Signal already dispatched, skipping", { signalId: existing.id });
+        return { skipped: true, signalId: existing.id };
+      }
+      // The signal row was committed but a post-commit throw (e.g. a transient Neon
+      // error in decideDispatch or the dispatchedChannel update) left it never
+      // dispatched — dispatchedChannel is still null. A plain retry would hit the
+      // early-return above and skip it forever, so send-alert would never fire.
+      // Re-dispatch idempotently: decideDispatch is pure and send-alert is
+      // idempotency-keyed, so re-running is a no-op if it did partially run.
+      logger.log("Signal exists but was never dispatched — re-dispatching", {
+        signalId: existing.id,
+      });
+      const change = await db.query.changes.findFirst({
+        where: eq(changes.id, input.changeId),
+      });
+      if (!change) throw new AbortTaskRunError(`Change ${input.changeId} not found`);
+      let isBackfill = false;
+      if (change.snapshotBeforeId) {
+        const before = await db.query.snapshots.findFirst({
+          where: eq(snapshots.id, change.snapshotBeforeId),
+          columns: { origin: true },
+        });
+        isBackfill = before?.origin === "archive";
+      }
+      const competitor = await db.query.competitors.findFirst({
+        where: eq(competitors.id, existing.competitorId),
+      });
+      if (!competitor) {
+        throw new AbortTaskRunError(`Competitor ${existing.competitorId} not found`);
+      }
+      const org = await db.query.organizations.findFirst({
+        where: eq(organizations.id, competitor.orgId),
+      });
+      await dispatchSignal({
+        signalId: existing.id,
+        severity: existing.severity,
+        category: existing.category,
+        relevanceScore: existing.relevanceScore,
+        competitor,
+        org,
+        isBackfill,
+      });
+      return { redispatched: true, signalId: existing.id };
     }
 
     const change = await db.query.changes.findFirst({
@@ -291,45 +384,17 @@ export const generateSignalJob = task({
     // delivered — an immediate email, a deferred digest, or dropped. Critical
     // bypasses every filter. The decision is stamped on the signal so the feed,
     // the digest jobs, and the ops metrics can read it. Backfill signals skip the
-    // dispatcher outright (in-app only, see above).
-    const decision = isBackfill
-      ? ({ send: false, channel: "in_app_only", filteredReason: "backfill" } as const)
-      : await decideDispatch(competitor.orgId, {
-          signalId: newSignal.id,
-          severity,
-          relevanceScore: newSignal.relevanceScore,
-          competitorId: competitor.id,
-          category,
-        });
-    await db
-      .update(signals)
-      .set({
-        dispatchedChannel: decision.channel,
-        filteredReason: decision.filteredReason ?? null,
-        filteredAt: decision.filteredReason ? new Date() : null,
-      })
-      .where(eq(signals.id, newSignal.id));
-
-    if (decision.send && decision.channel === "email_immediate" && !competitor.alertsMuted) {
-      // Plan entitlement still applies (moderation never overrides gating): only
-      // realtime-alert plans get an immediate email/Slack/webhook. Reuses the org
-      // loaded up front for the product-aware insight. A user-muted competitor
-      // (kebab → Mute alerts) keeps tracking signals but skips the immediate alert.
-      if (org?.alertsEnabled && PLAN_LIMITS[org.plan].features.realtimeAlerts) {
-        await tasks.trigger(
-          "send-alert",
-          { signalId: newSignal.id },
-          { idempotencyKey: newSignal.id },
-        );
-        logger.log("Alert triggered", { signalId: newSignal.id });
-      }
-    } else {
-      logger.log("Signal deferred by moderation", {
-        signalId: newSignal.id,
-        channel: decision.channel,
-        reason: decision.filteredReason ?? null,
-      });
-    }
+    // dispatcher outright (in-app only, see above). Shared with the retry
+    // re-dispatch path via dispatchSignal.
+    await dispatchSignal({
+      signalId: newSignal.id,
+      severity,
+      category,
+      relevanceScore: newSignal.relevanceScore,
+      competitor,
+      org,
+      isBackfill,
+    });
 
     // First-change celebration (Lever 5) — "Your monitoring just paid off". The single
     // most important lifecycle email, so it's strict: fires ONCE per org, on the first

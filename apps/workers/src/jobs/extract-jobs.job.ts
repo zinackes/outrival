@@ -138,6 +138,39 @@ export const extractJobsJob = task({
 
     const now = new Date();
 
+    const countsByDept = new Map<string, number>();
+    for (const j of jobs) {
+      countsByDept.set(j.department, (countsByDept.get(j.department) ?? 0) + 1);
+    }
+    const closedTitles = existing.filter((j) => closedIds.includes(j.id)).map((j) => j.title);
+
+    // First scrape (no prior active postings) has no diff to classify — give the
+    // hiring tab a readable state. previousTotal=null marks the initial capture.
+    // Retry-safety: run the throwing AI call (and the monitor update it feeds)
+    // BEFORE the non-idempotent writes below, so a retried run after an AI
+    // failure never leaves duplicate postings/counts behind.
+    if (jobs.length > 0 || closedIds.length > 0) {
+      const summary = await loggedAi("source_summary", AI_CONFIG.classification, () =>
+        summarizeSource({
+          kind: "jobs",
+          departments: Array.from(countsByDept.entries()).map(([department, count]) => ({
+            department,
+            count,
+          })),
+          total: jobs.length,
+          added: inserts.map((j) => j.title),
+          closed: closedTitles,
+          previousTotal: existing.length > 0 ? existing.length : null,
+        }),
+      );
+      if (summary) {
+        await db
+          .update(monitors)
+          .set({ aiSummary: summary.summary, aiSummaryUpdatedAt: new Date() })
+          .where(eq(monitors.id, snapshot.monitorId));
+      }
+    }
+
     if (inserts.length > 0) {
       await db.insert(jobPostings).values(
         inserts.map((j) => ({
@@ -164,11 +197,6 @@ export const extractJobsJob = task({
         .where(and(inArray(jobPostings.id, closedIds), isNull(jobPostings.closedAt)));
     }
 
-    const countsByDept = new Map<string, number>();
-    for (const j of jobs) {
-      countsByDept.set(j.department, (countsByDept.get(j.department) ?? 0) + 1);
-    }
-
     await insertJobCounts(
       Array.from(countsByDept.entries()).map(([department, count]) => ({
         competitor_id: input.competitorId,
@@ -177,33 +205,6 @@ export const extractJobsJob = task({
         recorded_at: now,
       })),
     );
-
-    // First scrape (no prior active postings) has no diff to classify — give the
-    // hiring tab a readable state. previousTotal=null marks the initial capture.
-    if (jobs.length > 0 || closedIds.length > 0) {
-      const closedTitles = existing
-        .filter((j) => closedIds.includes(j.id))
-        .map((j) => j.title);
-      const summary = await loggedAi("source_summary", AI_CONFIG.classification, () =>
-        summarizeSource({
-          kind: "jobs",
-          departments: Array.from(countsByDept.entries()).map(([department, count]) => ({
-            department,
-            count,
-          })),
-          total: jobs.length,
-          added: inserts.map((j) => j.title),
-          closed: closedTitles,
-          previousTotal: existing.length > 0 ? existing.length : null,
-        }),
-      );
-      if (summary) {
-        await db
-          .update(monitors)
-          .set({ aiSummary: summary.summary, aiSummaryUpdatedAt: new Date() })
-          .where(eq(monitors.id, snapshot.monitorId));
-      }
-    }
 
     logger.log("Completed extract-jobs", {
       competitorId: input.competitorId,

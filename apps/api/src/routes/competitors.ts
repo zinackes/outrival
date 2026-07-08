@@ -634,6 +634,30 @@ competitorsRouter.get("/", async (c) => {
       restrictIds ? inArray(competitors.id, restrictIds) : undefined,
     ),
     orderBy: desc(competitors.createdAt),
+    // Projected to what this roster response + enrichment actually use (plan-012):
+    // excludes selfProfile/overrides/platformProfile/metadata — heavy jsonb never
+    // read on this list path (only by the :id detail handler + pricing helpers).
+    columns: {
+      id: true,
+      name: true,
+      url: true,
+      description: true,
+      category: true,
+      color: true,
+      overlapScore: true,
+      aiSummary: true,
+      aiSummaryUpdatedAt: true,
+      pricingStatus: true,
+      pricingObservedRegion: true,
+      pricingPromotional: true,
+      pricingDemoUrl: true,
+      pricingNote: true,
+      pricingManualOverride: true,
+      monitoringPaused: true,
+      alertsMuted: true,
+      createdAt: true,
+      updatedAt: true,
+    },
   });
 
   if (list.length === 0) return c.json({ competitors: [] });

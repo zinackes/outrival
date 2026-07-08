@@ -31,6 +31,56 @@ const enable = (userId: string, email: string, competitorId: string, sourceType:
     asUser(userId, email, { method: "POST", body: JSON.stringify({ sourceType }) }),
   );
 
+describe("GET /competitors roster projection", () => {
+  test("list response carries the used fields but omits heavy jsonb columns", async () => {
+    await testDb.insert(competitors).values({
+      id: "comp-projected",
+      orgId: A.orgId,
+      name: "Projected Co",
+      url: "https://projected.example",
+      color: "indigo",
+      category: "SaaS",
+      overlapScore: 42,
+      aiSummary: "Summary text",
+      monitoringPaused: false,
+      alertsMuted: false,
+      // Heavy jsonb the roster must NOT ship (plan-012).
+      overrides: { pricingPlans: [] },
+      platformProfile: { framework: "next", detectedAt: new Date().toISOString() },
+      metadata: { scratch: "value" },
+    });
+
+    const res = await app.request("/api/competitors", asUser(A.userId, A.email));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { competitors: Record<string, unknown>[] };
+    const item = body.competitors.find((c) => c.id === "comp-projected");
+    expect(item).toBeDefined();
+
+    // Fields the roster + web list actually use.
+    expect(item?.name).toBe("Projected Co");
+    expect(item?.url).toBe("https://projected.example");
+    expect(item?.color).toBe("indigo");
+    expect(item?.category).toBe("SaaS");
+    expect(item?.overlapScore).toBe(42);
+    expect(item?.aiSummary).toBe("Summary text");
+    expect(item?.monitoringPaused).toBe(false);
+    expect(item?.alertsMuted).toBe(false);
+
+    // Enrichment computed server-side, must still be present.
+    expect(item?.stats).toBeDefined();
+    expect(item?.freshness).toBeDefined();
+    expect(item?.analysis).toBeDefined();
+    expect(item?.pausedByPlan).toBe(false);
+    expect(item?.specificProductIds).toEqual([]);
+
+    // Heavy jsonb dropped by the columns projection (plan-012).
+    expect(item?.overrides).toBeUndefined();
+    expect(item?.platformProfile).toBeUndefined();
+    expect(item?.selfProfile).toBeUndefined();
+    expect(item?.metadata).toBeUndefined();
+  });
+});
+
 describe("competitors enable-monitor gating", () => {
   test("IDOR: a foreign org cannot enable a monitor on another org's competitor", async () => {
     const res = await enable(B.userId, B.email, "comp-a", "blog");

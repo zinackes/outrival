@@ -18,6 +18,7 @@ function mockFetch(bodies: Record<string, string>) {
       status: body != null ? 200 : 404,
       url,
       text: async () => body ?? "",
+      headers: { get: () => null },
     } as Response;
   }) as typeof fetch;
   return calls;

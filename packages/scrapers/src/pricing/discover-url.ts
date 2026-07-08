@@ -1,4 +1,5 @@
 import * as cheerio from "cheerio";
+import { safeFetch } from "../lib/guarded-fetch";
 import { detectPricingSignals } from "./signals";
 
 export interface PricingPageCandidate {
@@ -200,15 +201,11 @@ function pathDepth(url: string): number {
 //     falls through to the homepage nav link.
 async function isReachable(url: string): Promise<boolean> {
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), HEAD_TIMEOUT_MS);
-    const res = await fetch(url, {
+    const res = await safeFetch(url, {
       method: "HEAD",
-      redirect: "follow",
-      signal: controller.signal,
+      timeoutMs: HEAD_TIMEOUT_MS,
       headers: { "user-agent": VERIFY_UA, accept: "text/html" },
     });
-    clearTimeout(timer);
     if (!res.ok) return false;
     const finalUrl = typeof res.url === "string" && res.url ? res.url : url;
     return !landedOnErrorPage(finalUrl);
@@ -247,14 +244,10 @@ async function resolveCandidate(match: LinkMatch | null): Promise<string | null>
 /** L0 GET → the page body when reachable (2xx), else null. */
 async function fetchHtml(url: string): Promise<string | null> {
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), VERIFY_TIMEOUT_MS);
-    const res = await fetch(url, {
-      redirect: "follow",
-      signal: controller.signal,
+    const res = await safeFetch(url, {
+      timeoutMs: VERIFY_TIMEOUT_MS,
       headers: { "user-agent": VERIFY_UA, accept: "text/html" },
     });
-    clearTimeout(timer);
     if (!res.ok) return null;
     return await res.text();
   } catch {

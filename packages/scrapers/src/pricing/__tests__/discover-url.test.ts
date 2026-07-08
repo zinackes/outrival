@@ -36,6 +36,7 @@ function mockFetch(
       status: r.ok ? 200 : 404,
       url: r.url ?? url,
       text: async () => r.body ?? "",
+      headers: { get: () => null },
     } as Response;
   }) as typeof fetch;
   return calls;

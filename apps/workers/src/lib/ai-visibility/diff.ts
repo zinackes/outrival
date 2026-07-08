@@ -146,7 +146,13 @@ export function computeDeltas(
       if (cid === selfId) continue;
       const after = cAgg.sov;
       const before = sovOf(prevEng, cid);
-      const overtook = selfId !== null && before <= selfBefore && after > selfAfter;
+      // An "overtake" means the competitor GAINED ground and passed the self product
+      // (before at/below self, now above it, AND its own SoV rose). Without the
+      // `after > before` clause, a competitor that merely appears ahead because the
+      // self product collapsed — while the competitor itself declined — would wrongly
+      // fire a HIGH "overtaken" signal; that case is a self decline, not an overtake.
+      const overtook =
+        selfId !== null && before <= selfBefore && after > selfAfter && after > before;
       const appeared = before === 0 && after > 0;
       if (overtook) {
         deltas.push({

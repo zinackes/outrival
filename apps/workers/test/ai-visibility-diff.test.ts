@@ -72,6 +72,22 @@ describe("computeDeltas — AI visibility shifts", () => {
     expect(d[0]?.type).toBe("competitor_appeared");
   });
 
+  test("competitor flat while self collapses → no overtaken (self-decline, not an overtake)", () => {
+    // self 1.0 → 0.5 (fell, but not to 0 → self_dropped does NOT fire), c1 flat at 1.0.
+    // Pre-fix this wrongly emitted a HIGH "c1 overtook you"; c1 never gained ground.
+    const prev = run({ self: ["p1", "p2"], c1: ["p1", "p2"] });
+    const curr = run({ self: ["p1"], c1: ["p1", "p2"] });
+    expect(deltas(prev, curr)).toEqual([]);
+  });
+
+  test("competitor genuinely rises above self → overtaken still fires (no over-correction)", () => {
+    const prev = run({ self: ["p1", "p2"], c1: ["p1"] }); // self 1.0 >= c1 0.5
+    const curr = run({ self: ["p1"], c1: ["p1", "p2"] }); // c1 0.5 → 1.0 (rose) > self 0.5
+    const d = deltas(prev, curr);
+    expect(d).toHaveLength(1);
+    expect(d[0]).toMatchObject({ type: "overtaken", competitorId: "c1", severity: "high" });
+  });
+
   test("minPrompts gate: a run below the sample floor emits nothing (quota-noise guard)", () => {
     // 2-prompt runs (the fixtures' default) with a floor of 3 → no signal, even for a
     // shift that would otherwise fire. This is the prod case: 2 answered Gemini prompts

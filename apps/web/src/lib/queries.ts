@@ -135,12 +135,15 @@ export function invoicesQuery() {
   });
 }
 
-// Trends summary for a date window. The key embeds the ISO bounds so the server
-// seed (default 90d) and the client's lastNDays(90) — both rounded to the day —
-// hit the same cache entry.
+// Trends summary for a date window. `from`/`to` are computed in the runtime's
+// LOCAL timezone (startOfDay/endOfDay) — the server seed runs in the SERVER tz,
+// the client's first render in the BROWSER tz. Keying on the full ISO instant
+// would make the two diverge for any non-UTC user (guaranteed cache miss). Key
+// on the UTC calendar day of each bound instead so server and client produce
+// byte-identical keys for the same instant.
 export function trendsSummaryQuery(range: { from: Date; to: Date }, productId?: string) {
-  const from = range.from.toISOString();
-  const to = range.to.toISOString();
+  const from = range.from.toISOString().slice(0, 10); // UTC yyyy-MM-dd
+  const to = range.to.toISOString().slice(0, 10);
   const key = productId
     ? (["trends", "summary", from, to, productId] as const)
     : (["trends", "summary", from, to] as const);

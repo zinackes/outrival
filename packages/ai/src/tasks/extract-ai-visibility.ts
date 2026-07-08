@@ -46,15 +46,20 @@ The response above was produced by an AI answer engine for a buyer's question.
 For EACH subject in the list above (and ONLY those — do not add any other brand),
 report how it appears in the response. Write all text values in English.
 - "name": copy the subject name EXACTLY as written in the list
-- "mentioned": true if the response names or clearly refers to this subject, else false
+- "mentioned": true ONLY if the subject's name (or an unmistakable reference to it)
+  literally appears in the RESPONSE TEXT above. Judge presence from the response alone
+  — a subject being in this list is NOT evidence it was mentioned, and most subjects
+  are absent from any given answer. If you cannot point to where the name occurs in the
+  response, set false. When in doubt, false.
 - "rank": if mentioned, the 1-based order of its FIRST mention among all brands in the
   answer (1 = mentioned first); null if not mentioned
 - "cited": true if the subject appears as a linked/cited source (a URL or reference),
   not merely named in prose; false otherwise
 - "sentiment": if mentioned, the tone toward this subject from 0 (negative) to 100
   (positive); null if not mentioned
-Return one object per subject, even when "mentioned" is false. Do not invent brands
-that are not in the subject list.
+Return one object per subject, even when "mentioned" is false. Do not mark a subject
+mentioned just because it is a well-known brand or appears in this list — only the
+response text counts. Do not invent brands that are not in the subject list.
 
 Reply ONLY with a valid JSON object, no markdown and no surrounding text.
 </task>

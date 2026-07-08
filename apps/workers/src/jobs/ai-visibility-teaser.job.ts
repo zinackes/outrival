@@ -12,6 +12,7 @@ import {
 import { extractAiVisibility, AI_CONFIG } from "@outrival/ai";
 import { queryEngine, type Engine } from "../lib/ai-visibility/engines";
 import { aggregate, promptNamesSubject } from "../lib/ai-visibility/diff";
+import { textNamesSubject } from "../lib/ai-visibility/match";
 import { buildVisibilityPromptInput, seedVisibilityPrompts } from "../lib/ai-visibility/seed";
 import { loggedAi } from "../lib/analytics";
 
@@ -144,13 +145,16 @@ export const aiVisibilityTeaserJob = task({
         const verdict = new Map(extraction.mentions.map((m) => [norm(m.name), m]));
         for (const c of roster) {
           const v = verdict.get(norm(c.name));
+          // Deterministic guard: keep mentioned=true only when the name is actually in
+          // the answer — the classifier hallucinates mentions for names it's handed.
+          const mentioned = (v?.mentioned ?? false) && textNamesSubject(res.answer, c.name);
           rows.push({
             competitorId: c.id,
             engine,
             promptId: prompt,
-            mentioned: v?.mentioned ?? false,
+            mentioned,
             promptNamed: promptNamesSubject(prompt, c.name),
-            rank: v?.mentioned ? v.rank : null,
+            rank: mentioned ? v?.rank ?? null : null,
           });
         }
         for (const u of res.citations.slice(0, 3)) citations.add(u);

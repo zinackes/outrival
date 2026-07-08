@@ -40,8 +40,20 @@ describe("env Upstash fail-boot in production", () => {
       NODE_ENV: "production",
       UPSTASH_REDIS_REST_URL: "https://x.upstash.io",
       UPSTASH_REDIS_REST_TOKEN: "tok",
+      TURNSTILE_SECRET_KEY: "turnstile-secret",
     });
     expect(r.success).toBe(true);
+  });
+
+  test("production with Upstash but no Turnstile secret fails", () => {
+    const r = EnvSchema.safeParse({
+      ...base,
+      NODE_ENV: "production",
+      UPSTASH_REDIS_REST_URL: "https://x.upstash.io",
+      UPSTASH_REDIS_REST_TOKEN: "tok",
+      // TURNSTILE_SECRET_KEY intentionally omitted — must fail to parse
+    });
+    expect(r.success).toBe(false);
   });
 
   test("development without Upstash parses (no-op rate limiting is fine in dev)", () => {

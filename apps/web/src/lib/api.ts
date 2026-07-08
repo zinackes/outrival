@@ -533,7 +533,18 @@ export type ActivityCaptured =
       minPrice: number | null;
       maxPrice: number | null;
       currency: string | null;
+      // Current plans; `isNew` marks a tier absent from the previous capture so the
+      // breakdown highlights additions on a "8 → 9 plans" change.
       plans: {
+        planName: string;
+        price: number | null;
+        currency: string;
+        billingPeriod: string;
+        isNew?: boolean;
+      }[];
+      // Plans that disappeared vs the previous capture — shown struck-through so a
+      // drop names the removed tier, not just a lower count.
+      removedPlans: {
         planName: string;
         price: number | null;
         currency: string;

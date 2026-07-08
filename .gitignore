@@ -24,3 +24,6 @@ PRODUCT.md
 
 # Orca drop staging (source-asset scratch; the processed assets live in public/)
 .orca/
+
+# Local git worktrees created by Claude Code agents
+.claude/worktrees/

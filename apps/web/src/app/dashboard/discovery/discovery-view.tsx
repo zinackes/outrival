@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import {
@@ -59,6 +60,7 @@ type Tab = "new" | "dismissed";
 export function DiscoveryView() {
   useSetAskContext({ kind: "view", label: "Competitor discovery" });
   const queryClient = useQueryClient();
+  const router = useRouter();
   // patch-28 — discovery is product-scoped: the active product (cookie / URL override)
   // drives which SKU's review queue and staleness are shown. undefined ("all products")
   // → the API unions every SKU's queue (and Refresh spans them all).
@@ -224,6 +226,9 @@ export function DiscoveryView() {
       await api.addCandidate(id);
       recordDiscoveryFeedback(id, "useful");
       void queryClient.invalidateQueries({ queryKey: competitorsQuery().queryKey });
+      // The switcher's competitor-usage count ("N/M seats") is server-rendered in the
+      // dashboard layout — re-run it so the added competitor bumps the count live.
+      router.refresh();
       setItems((prev) => prev?.filter((c) => c.id !== id) ?? null);
       bumpCounts({ new: -1 });
     } catch (e) {

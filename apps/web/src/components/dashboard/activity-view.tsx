@@ -517,6 +517,11 @@ function CapturedDetail({ captured }: { captured: ActivityCaptured }) {
   }
 
   if (captured.kind === "pricing") {
+    const removed = captured.removedPlans ?? [];
+    const priceLabel = (p: { price: number | null; currency: string; billingPeriod: string }) =>
+      p.price != null
+        ? `${fmtPrice(p.price, p.currency)}/${PERIOD_SHORT[p.billingPeriod] ?? p.billingPeriod}`
+        : "Custom";
     return (
       <div className="flex flex-col gap-2 text-sm">
         <p className="text-muted-foreground">
@@ -528,11 +533,42 @@ function CapturedDetail({ captured }: { captured: ActivityCaptured }) {
               key={`${p.planName}-${i}`}
               className="flex items-baseline justify-between gap-4"
             >
-              <span className="min-w-0 truncate text-foreground">{p.planName}</span>
-              <span className="shrink-0 tabular-nums text-muted-foreground">
-                {p.price != null
-                  ? `${fmtPrice(p.price, p.currency)}/${PERIOD_SHORT[p.billingPeriod] ?? p.billingPeriod}`
-                  : "Custom"}
+              <span className="inline-flex min-w-0 items-baseline gap-1.5">
+                <span
+                  className={cn(
+                    "min-w-0 truncate",
+                    p.isNew ? "text-positive" : "text-foreground",
+                  )}
+                >
+                  {p.planName}
+                </span>
+                {p.isNew && (
+                  <span className="shrink-0 text-meta font-medium text-positive">New</span>
+                )}
+              </span>
+              <span
+                className={cn(
+                  "shrink-0 tabular-nums",
+                  p.isNew ? "text-positive" : "text-muted-foreground",
+                )}
+              >
+                {priceLabel(p)}
+              </span>
+            </li>
+          ))}
+          {removed.map((p, i) => (
+            <li
+              key={`removed-${p.planName}-${i}`}
+              className="flex items-baseline justify-between gap-4"
+            >
+              <span className="inline-flex min-w-0 items-baseline gap-1.5">
+                <span className="min-w-0 truncate text-muted-foreground line-through">
+                  {p.planName}
+                </span>
+                <span className="shrink-0 text-meta font-medium text-critical">Removed</span>
+              </span>
+              <span className="shrink-0 tabular-nums text-muted-foreground line-through">
+                {priceLabel(p)}
               </span>
             </li>
           ))}

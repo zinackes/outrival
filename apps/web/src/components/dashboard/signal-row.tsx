@@ -38,7 +38,7 @@ const SEV_RANK: Record<Sev, number> = { critical: 4, high: 3, medium: 2, low: 1 
  * One compact row in the Signals master list (Linear/Sentry inbox register). The
  * detail lives in the right pane; this stays scannable — a severity icon, who
  * moved, the category, the one-line finding, and the age. Read rows dim; unread
- * carry a dot. Selection (a neutral left bar + tint) drives the detail pane.
+ * carry a left accent rail + dot. Selection is a background tint (no bar).
  */
 export function SignalRow({
   signal,
@@ -75,12 +75,13 @@ export function SignalRow({
       onClick={onSelect}
       className={cn(
         "group relative grid w-full grid-cols-[auto_1fr_auto] items-start gap-x-2.5 rounded-md px-3 py-2.5 text-left outline-none transition-colors",
-        // Selection bar as an inset pill (before:) so it floats inside the row and
+        // Unread rail as an inset pill (before:) so it floats inside the row and
         // never collides with the list's rounded corners on the first/last item.
+        // Selection is a background tint only — the rail now flags unread, not
+        // selection (a left-edge cue reads far more than the trailing dot alone).
         "before:absolute before:inset-y-2 before:left-1 before:w-0.5 before:rounded-full before:transition-colors before:content-['']",
-        selected
-          ? "bg-accent before:bg-foreground/55"
-          : "hover:bg-accent/50 focus-visible:bg-accent/50 before:bg-transparent",
+        unread ? "before:bg-primary" : "before:bg-transparent",
+        selected ? "bg-accent" : "hover:bg-accent/50 focus-visible:bg-accent/50",
       )}
     >
       <Icon
@@ -178,12 +179,13 @@ export function BatchRow({
       onClick={onSelect}
       className={cn(
         "group relative grid w-full grid-cols-[auto_1fr_auto] items-start gap-x-2.5 rounded-md px-3 py-2.5 text-left outline-none transition-colors",
-        // Selection bar as an inset pill (before:) so it floats inside the row and
+        // Unread rail as an inset pill (before:) so it floats inside the row and
         // never collides with the list's rounded corners on the first/last item.
+        // Selection is a background tint only — the rail now flags unread, not
+        // selection (a left-edge cue reads far more than the trailing dot alone).
         "before:absolute before:inset-y-2 before:left-1 before:w-0.5 before:rounded-full before:transition-colors before:content-['']",
-        selected
-          ? "bg-accent before:bg-foreground/55"
-          : "hover:bg-accent/50 focus-visible:bg-accent/50 before:bg-transparent",
+        unread ? "before:bg-primary" : "before:bg-transparent",
+        selected ? "bg-accent" : "hover:bg-accent/50 focus-visible:bg-accent/50",
       )}
     >
       <Layers

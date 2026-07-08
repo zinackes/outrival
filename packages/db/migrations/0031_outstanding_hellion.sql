@@ -1,0 +1,1 @@
+ALTER TABLE "forced_rescan_log" ADD COLUMN "failed" boolean;

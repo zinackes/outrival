@@ -2084,7 +2084,7 @@ export const api = {
       dailyLimit: number;
     }>(`/api/monitors/${id}/force-rescan`, { method: "POST" }),
   forceRescanStatus: (logId: string) =>
-    request<{ done: boolean; hadNewSignal: boolean | null; nextRunAt: string | null }>(
+    request<{ done: boolean; failed: boolean; hadNewSignal: boolean | null; nextRunAt: string | null }>(
       `/api/monitors/force-rescan/${logId}/status`,
     ),
   // Dev-only: force a tech-stack scan (the /api/dev router is mounted only when

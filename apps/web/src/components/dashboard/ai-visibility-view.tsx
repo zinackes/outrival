@@ -5,8 +5,8 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Eye, Play, Plus, Trash2, ChevronRight, Lock, Loader2 } from "lucide-react";
-import { aiVisibilityQuery } from "@/lib/queries";
+import { Eye, Play, Plus, Trash2, Pencil, Check, X, ChevronRight, Lock, Loader2, Box } from "lucide-react";
+import { aiVisibilityQuery, productsListQuery } from "@/lib/queries";
 import {
   api,
   type AiVisibilityData,
@@ -52,6 +52,13 @@ export function AiVisibilityView({ locked = false }: { locked?: boolean }) {
   useSetAskContext({ kind: "view", label: "AI Visibility" });
   const qc = useQueryClient();
   const productId = useProductScope() ?? undefined;
+  // AI Visibility is per-product: in "All products" scope the server falls back to the
+  // primary product (routes/ai-visibility.ts), so a multi-product org silently sees only
+  // that one. Surface which product is on screen when the scope doesn't name it itself.
+  const products = useQuery(productsListQuery()).data;
+  const activeProducts = (products ?? []).filter((p) => p.status !== "archived");
+  const primaryProduct = activeProducts.find((p) => p.isPrimary) ?? null;
+  const scopedToPrimary = productId === undefined && activeProducts.length > 1 && !!primaryProduct;
   const [running, setRunning] = useState(false);
   const [draft, setDraft] = useState("");
   const [engine, setEngine] = useState<string | null>(null);
@@ -150,6 +157,27 @@ export function AiVisibilityView({ locked = false }: { locked?: boolean }) {
       toast.error("Couldn't remove the prompt.");
     }
   }
+  // Optimistic: rewrite the prompt text in the list AND relabel its "By prompt" row (past
+  // runs reference the id, so the breakdown keeps its history under the new wording).
+  async function editPrompt(id: string, prompt: string) {
+    const key = aiVisibilityQuery(productId).queryKey;
+    const prev = qc.getQueryData<AiVisibilityData>(key);
+    qc.setQueryData<AiVisibilityData>(key, (old) =>
+      old
+        ? {
+            ...old,
+            prompts: old.prompts.map((p) => (p.id === id ? { ...p, prompt } : p)),
+            breakdown: old.breakdown.map((b) => (b.promptId === id ? { ...b, prompt } : b)),
+          }
+        : old,
+    );
+    try {
+      await api.updateAiVisibilityPrompt(id, { prompt });
+    } catch {
+      if (prev) qc.setQueryData(key, prev);
+      toast.error("Couldn't update the prompt.");
+    }
+  }
 
   // Free/starter: the seed reported the plan-locked 403 → upsell, server-rendered (no
   // client fetch). Kept as a belt-and-braces fallback if the client query 403s too.
@@ -203,6 +231,17 @@ export function AiVisibilityView({ locked = false }: { locked?: boolean }) {
         actions={runButton}
       />
 
+      {scopedToPrimary && (
+        <div className="flex items-center gap-2.5 rounded-md border border-border bg-muted/30 px-3 py-2">
+          <Box className="size-4 shrink-0 text-[var(--link)]" aria-hidden />
+          <p className="text-sm text-muted-foreground">
+            Tracked per product — showing{" "}
+            <span className="font-medium text-foreground">{primaryProduct?.name}</span>. Pick
+            another from the product menu, top-left.
+          </p>
+        </div>
+      )}
+
       {running && <RunProgressBanner landing={runLanding} />}
 
       {!hasData ? (
@@ -248,6 +287,7 @@ export function AiVisibilityView({ locked = false }: { locked?: boolean }) {
         setDraft={setDraft}
         onAdd={addPrompt}
         onToggle={togglePrompt}
+        onEdit={editPrompt}
         onRemove={removePrompt}
       />
     </Shell>
@@ -485,6 +525,7 @@ function PromptManager({
   setDraft,
   onAdd,
   onToggle,
+  onEdit,
   onRemove,
 }: {
   prompts: AiVisibilityData["prompts"];
@@ -492,9 +533,14 @@ function PromptManager({
   setDraft: (v: string) => void;
   onAdd: () => void;
   onToggle: (id: string, isActive: boolean) => void;
+  onEdit: (id: string, prompt: string) => void;
   onRemove: (id: string) => void;
 }) {
   const [deleteTarget, setDeleteTarget] = useState<AiVisibilityPrompt | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+  const iconBtn =
+    "shrink-0 rounded-md p-1 text-muted-foreground outline-none transition-colors hover:bg-accent/40 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-40";
   return (
     <section>
       <SectionHead
@@ -521,29 +567,81 @@ function PromptManager({
         </p>
       ) : (
         <ul className="mt-3 divide-y divide-border">
-          {prompts.map((p) => (
-            <li key={p.id} className="flex items-center gap-3 py-2.5">
-              <Switch
-                checked={p.isActive}
-                onCheckedChange={(v) => onToggle(p.id, v)}
-                aria-label={p.isActive ? "Pause prompt" : "Activate prompt"}
-              />
-              <span
-                className={`min-w-0 flex-1 truncate text-sm ${
-                  p.isActive ? "text-foreground" : "text-muted-foreground"
-                }`}
-              >
-                {p.prompt}
-              </span>
-              <button
-                onClick={() => setDeleteTarget(p)}
-                className="shrink-0 rounded-md p-1 text-muted-foreground outline-none transition-colors hover:bg-accent/40 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-                aria-label="Remove prompt"
-              >
-                <Trash2 className="size-4" />
-              </button>
-            </li>
-          ))}
+          {prompts.map((p) => {
+            const editing = editingId === p.id;
+            const saveEdit = () => {
+              const next = editDraft.trim();
+              if (next.length >= 3 && next !== p.prompt) onEdit(p.id, next);
+              setEditingId(null);
+            };
+            return (
+              <li key={p.id} className="flex items-center gap-3 py-2.5">
+                <Switch
+                  checked={p.isActive}
+                  onCheckedChange={(v) => onToggle(p.id, v)}
+                  disabled={editing}
+                  aria-label={p.isActive ? "Pause prompt" : "Activate prompt"}
+                />
+                {editing ? (
+                  <>
+                    <Input
+                      value={editDraft}
+                      onChange={(e) => setEditDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") saveEdit();
+                        if (e.key === "Escape") setEditingId(null);
+                      }}
+                      autoFocus
+                      className="h-8 min-w-0 flex-1"
+                      aria-label="Edit prompt"
+                    />
+                    <button
+                      onClick={saveEdit}
+                      disabled={editDraft.trim().length < 3}
+                      className={iconBtn}
+                      aria-label="Save prompt"
+                    >
+                      <Check className="size-4" />
+                    </button>
+                    <button
+                      onClick={() => setEditingId(null)}
+                      className={iconBtn}
+                      aria-label="Cancel edit"
+                    >
+                      <X className="size-4" />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span
+                      className={`min-w-0 flex-1 truncate text-sm ${
+                        p.isActive ? "text-foreground" : "text-muted-foreground"
+                      }`}
+                    >
+                      {p.prompt}
+                    </span>
+                    <button
+                      onClick={() => {
+                        setEditDraft(p.prompt);
+                        setEditingId(p.id);
+                      }}
+                      className={iconBtn}
+                      aria-label="Edit prompt"
+                    >
+                      <Pencil className="size-4" />
+                    </button>
+                    <button
+                      onClick={() => setDeleteTarget(p)}
+                      className={iconBtn}
+                      aria-label="Remove prompt"
+                    >
+                      <Trash2 className="size-4" />
+                    </button>
+                  </>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
 

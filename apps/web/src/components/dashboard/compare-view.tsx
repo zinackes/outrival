@@ -1213,7 +1213,7 @@ export function CompareView() {
                 <table className="w-full border-separate border-spacing-0 text-sm">
                   <thead>
                     <tr>
-                      <th className="bg-background sticky left-0 z-20 w-36 border-b border-r border-border px-3 py-2.5 text-left" />
+                      <th className="bg-background sticky left-0 z-20 w-36 min-w-36 max-w-36 border-b border-r border-border px-3 py-2.5 text-left" />
                       {displayCols.map((d) => {
                         const stuck = d.id === stickyYouId;
                         return (
@@ -1272,7 +1272,7 @@ export function CompareView() {
                             // uniform bg-background-2 fill, so it reads as a header band
                             // breaking the column grid, not as a data row with empty cells.
                             <tr key={`grp-${group}`}>
-                              <td className="bg-background-2 sticky left-0 z-20 w-36 whitespace-nowrap border-b border-border px-3 pb-1.5 pt-4">
+                              <td className="bg-background-2 sticky left-0 z-20 w-36 min-w-36 max-w-36 whitespace-nowrap border-b border-border px-3 pb-1.5 pt-4">
                                 <span className="text-muted-foreground text-meta font-semibold">
                                   {group}
                                 </span>
@@ -1294,7 +1294,7 @@ export function CompareView() {
                         const winners = winnersByRow.get(r.key);
                         out.push(
                           <tr key={r.key} className="last:[&>td]:border-b-0">
-                            <td className="bg-background sticky left-0 z-20 w-36 whitespace-nowrap border-b border-r border-border px-3 py-2.5 align-top">
+                            <td className="bg-background sticky left-0 z-20 w-36 min-w-36 max-w-36 whitespace-nowrap border-b border-r border-border px-3 py-2.5 align-top">
                               {r.detail ? (
                                 <button
                                   type="button"

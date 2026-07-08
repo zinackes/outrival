@@ -217,7 +217,18 @@ type CapturedSummary =
       minPrice: number | null;
       maxPrice: number | null;
       currency: string | null;
+      // Current plans, each flagged `isNew` when it wasn't in the previous capture
+      // (matched by name + billing period) — lets the breakdown highlight additions.
       plans: Array<{
+        planName: string;
+        price: number | null;
+        currency: string;
+        billingPeriod: string;
+        isNew?: boolean;
+      }>;
+      // Plans present in the previous capture but gone now — shown struck-through so
+      // a drop ("9 → 8 plans") names which tier disappeared, not just the count.
+      removedPlans: Array<{
         planName: string;
         price: number | null;
         currency: string;
@@ -235,6 +246,12 @@ type CapturedSummary =
         value: number | null;
       } | null;
     };
+
+// A plan has separate monthly/yearly rows, so match across captures by name AND
+// billing period — keying on name alone would collide them. Shared by the captured
+// breakdown (added/removed flags) and the delta line so "same plan" means one thing.
+const planKey = (p: { planName: string; billingPeriod: string }) =>
+  `${p.planName} ${p.billingPeriod}`;
 
 // Shape the per-family captured columns into one discriminated summary. Captured
 // reflects what THIS run extracted: only a 'success' run wrote a fresh snapshot and
@@ -254,13 +271,21 @@ function shapeCaptured(r: RawRun): CapturedSummary | null {
     };
   }
   if (r.sourceType === "pricing") {
+    const cur = Array.isArray(r.pricingPlans) ? r.pricingPlans : [];
+    const prev = Array.isArray(r.pricingPrevPlans) ? r.pricingPrevPlans : [];
+    // With no prior batch (first capture) nothing is "new" — leave every plan plain.
+    const prevKeys = prev.length > 0 ? new Set(prev.map(planKey)) : null;
+    const curKeys = new Set(cur.map(planKey));
     return {
       kind: "pricing",
       planCount: r.pricingPlanCount ?? 0,
       minPrice: r.pricingMinPrice,
       maxPrice: r.pricingMaxPrice,
       currency: r.pricingCurrency,
-      plans: Array.isArray(r.pricingPlans) ? r.pricingPlans : [],
+      plans: prevKeys
+        ? cur.map((p) => (prevKeys.has(planKey(p)) ? p : { ...p, isNew: true }))
+        : cur,
+      removedPlans: prevKeys ? prev.filter((p) => !curKeys.has(planKey(p))) : [],
     };
   }
   if (/_reviews$/.test(r.sourceType)) {
@@ -313,21 +338,17 @@ function shapeCapturedDelta(r: RawRun): CapturedDelta | null {
     const cur = Array.isArray(r.pricingPlans) ? r.pricingPlans : [];
     const prev = Array.isArray(r.pricingPrevPlans) ? r.pricingPrevPlans : [];
     if (prev.length === 0) return null;
-    // Match plans across batches by name + billing period (a plan has separate
-    // monthly/yearly rows — keying on name alone would collide them).
-    const keyOf = (p: { planName: string; billingPeriod: string }) =>
-      `${p.planName} ${p.billingPeriod}`;
-    const prevMap = new Map(prev.map((p) => [keyOf(p), p]));
-    const curMap = new Map(cur.map((p) => [keyOf(p), p]));
+    const prevMap = new Map(prev.map((p) => [planKey(p), p]));
+    const curMap = new Map(cur.map((p) => [planKey(p), p]));
     const priceChanges = cur.flatMap((p) => {
-      const q = prevMap.get(keyOf(p));
+      const q = prevMap.get(planKey(p));
       return q && p.price != null && q.price != null && p.price !== q.price
         ? [{ plan: p.planName, currency: p.currency, billingPeriod: p.billingPeriod, before: q.price, after: p.price }]
         : [];
     });
     if (priceChanges.length > 0) {
-      const added = cur.filter((p) => !prevMap.has(keyOf(p))).length;
-      const removed = prev.filter((p) => !curMap.has(keyOf(p))).length;
+      const added = cur.filter((p) => !prevMap.has(planKey(p))).length;
+      const removed = prev.filter((p) => !curMap.has(planKey(p))).length;
       const primary = priceChanges[0]!;
       return { kind: "pricing", ...primary, more: priceChanges.length - 1 + added + removed };
     }

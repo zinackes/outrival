@@ -303,6 +303,30 @@ Stop and report back (do not improvise) if:
 - `apps/workers && bun test src` is red on the UNMODIFIED base commit (pre-existing
   failure) — note it and verify only your own additions.
 
+## Execution outcome (2026-07-09)
+
+Executed and APPROVED after 2 revision rounds — commit `3f39bce` on
+`advisor/025-deny-page-guard`. Two blind spots in *this plan* surfaced only in review;
+recorded here so a future reader doesn't reintroduce them:
+
+1. **The plan under-specified the length gate.** Its prose left `login_wall` (via the
+   raw password-input signal) and `verification_wall` readable as ungated. Both then
+   false-positived on real long pages. The `< 3000 visible chars` gate is mandatory on
+   **all four** kinds: on the success path a false positive grades a healthy capture
+   `partial` forever, which is a strictly worse failure than the one this plan fixes.
+   The heuristics in `diagnose-failure.ts` may look ungated — they run *after* a page
+   has already failed, where the cost of a false positive is only a mislabeled reason.
+2. **The plan treated `result.html` as "the page".** Eight scrapers synthesize their
+   HTML from already-parsed structured data (`sitemap`, `news`, `reddit`, changelog
+   feed path, ATS jobs, product-lines, `github_repo`, api-capture). A copy heuristic
+   over those is meaningless — a real sitemap listing `/404` grades `soft_404`. Hence
+   `isSyntheticDocument()` + `SYNTHETIC_DOC_SOURCES` + `!monitor.apiCaptureEnabled`.
+3. **Three consumers of `completeness`, not two** — `extractionAllowed` (~line 1219)
+   also had to read the deny-aware verdict, else a soft-404 still fed `extract-pricing`.
+
+Also: the plan's workers test command (`cd apps/workers && bun test src`) matches zero
+files — the suite lives in `apps/workers/test/`.
+
 ## Maintenance notes
 
 - The detector deliberately errs conservative (visible-text < 3 000 chars gate). A

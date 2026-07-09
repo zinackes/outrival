@@ -53,7 +53,7 @@ plan's drift check first. Plans are independent unless "Depends on" says otherwi
 | 022  | Gate CI on new reachable high/critical prod advisory (`pnpm audit --prod` + allowlist) | P1 | S–M | LOW | 021 (soft) | DONE — PR #146 (open, CI ✅ green; 17 GHSAs allowlisted) |
 | 023  | Introduce Biome (format + conservative lint) + CI gate | P2 | M | LOW–MED | 021; land when queue clear | TODO |
 | 024  | Deliberate in-range dependency refresh (bring the stale lockfile current) | P3 | M | MED | land when queue clear | TODO |
-| 025  | Deny/soft-404/login pages can't become "success" snapshots or archive baselines | P1 | M | MED | — | TODO |
+| 025  | Deny/soft-404/login pages can't become "success" snapshots or archive baselines | P1 | M | MED | — | DONE — `advisor/025-deny-page-guard` (`3f39bce`, local, not pushed) |
 | 026  | Tech-stack signals only on real transitions, never on baseline, never "high" | P1 | S | LOW | — | TODO |
 | 027  | Severity rubric in prompts + deterministic critical guard + retriable insight | P1 | M | MED | — | TODO |
 | 028  | Revive dead diff classes (section add/remove, price tweaks, og rebrand, recency) | P1 | M | MED | — | TODO |
@@ -188,6 +188,31 @@ worktree `.claude/worktrees/agent-aac35ed7926f9fd23`, uncommitted). The only thi
 from green was the scrapers suite bug now fixed by 019. **Merge order for a green `pnpm test`:
 019 + 005 together** (005's shared half is green alone; 005's scrapers-glob half needs 019's fix
 present). After both land, re-run 005's done criteria — expect `pnpm test` exit 0.
+
+**025 — executed & reviewed 2026-07-09 (APPROVE, 2 revision rounds); push/PR PENDING.** Commit
+`3f39bce` on `advisor/025-deny-page-guard` (off `bae6d01`), worktree
+`/home/tmfzi/outrival/.claude/worktrees/agent-a2f142c443db7b18a`. Reviewer re-verified in the
+worktree: `pnpm typecheck --force` exit 0 (8/8), scrapers **435 pass / 0 fail** (15 new deny-page
+tests), workers **61 pass / 0 fail**, scope = the 7 in-scope files. Two false-positive classes the
+plan had NOT anticipated were caught in review, not by the plan's own criteria — both would have
+silenced a monitor permanently (`partial` on every capture ⇒ `skipDiffForPartial` + no extraction,
+visible only in a `logger.warn`):
+1. **Ungated branches.** `<input type="password">` and the verification-copy regex ran without the
+   `< 3000 visible chars` gate. Repro: a long real homepage with a hidden `<dialog>` login form →
+   `login_wall`; a docs article quoting "One moment, please" → `verification_wall`. Fixed: all four
+   kinds are now length-gated.
+2. **Synthetic documents.** The detector ran on the docs *our own scrapers build* from parsed data.
+   Repro: a small real sitemap listing `/404` → `soft_404`. Fixed: `isSyntheticDocument()` (marker
+   `data-outrival-{sitemap,news,reddit,changelog,ats,line}`, deliberately excluding `billing` — that
+   marks an appended block on a real page) + `SYNTHETIC_DOC_SOURCES` for the marker-less always-built
+   sources (`sitemap`/`news`/`reddit`/`github_repo`) + `!monitor.apiCaptureEnabled`.
+
+Approved deviation: the plan named two consumers of `completeness`; there are **three**. The executor
+also rewired `extractionAllowed` (`scrape-monitor.job.ts:~1219`) — without it a deny page graded
+`partial` still fed `extract-pricing`/`extract-jobs`/`extract-reviews`, contrary to the plan's goal.
+⚠️ **PENDING: workers deploy.** This is worker code — it ships via `trigger deploy` from `main`, not
+Coolify. Before merge, the plan's own maintenance note still applies: eyeball the deny regexes
+against a handful of real tracked competitor pages.
 
 ## Recommended sequencing
 

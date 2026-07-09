@@ -22,6 +22,7 @@ import {
 import { htmlToText } from "../lib/html-to-text";
 import { insertPricingHistory, getPreviousPricing, loggedAi } from "../lib/analytics";
 import { stagedExtract } from "../lib/staged-extract";
+import { isSuspectedPricingCollapse } from "../lib/pricing-guard";
 
 // Cap the aggregated tier list so a large catalog (many product-line sections ×
 // per-section rows) can't flood the pricing tab or the change diff.
@@ -142,6 +143,35 @@ export const extractPricingJob = task({
     // Read the prior batch before inserting the fresh one, so the summary can
     // describe what moved (price changes, new/dropped plans) since last scrape.
     const previous = await getPreviousPricing(input.competitorId);
+
+    // R4 anti-overwrite guard (see lib/pricing-guard). A mis-parse that collapses a
+    // healthy multi-tier page to a single plan would shadow the real pricing (reads
+    // take the newest batch). Only block when the page STILL visibly carries several
+    // prices — proof the tiers are there and we failed to capture them — so a genuine
+    // simplification is never suppressed. The harvest probe runs only in that rare
+    // collapse case. Live scrapes only: backfill rows are backdated, never "latest".
+    if (!input.recordedAt && previous) {
+      const pricedNow = plans.filter((p) => p.price != null && p.price > 0).length;
+      const pricedBefore = previous.filter((r) => r.price != null && r.price > 0).length;
+      if (pricedBefore >= 3 && pricedNow <= 1) {
+        const visiblePrices = harvestPricing(html).plans.filter(
+          (p) => p.price != null && p.price > 0,
+        ).length;
+        if (isSuspectedPricingCollapse({ pricedBefore, pricedNow, visiblePrices })) {
+          logger.warn(
+            "Suspected pricing mis-parse — page still shows multiple prices but extraction collapsed; keeping the prior batch",
+            {
+              competitorId: input.competitorId,
+              pricedBefore,
+              pricedNow,
+              visiblePrices,
+              resolvedUrl: snapshot.resolvedUrl,
+            },
+          );
+          return { ok: false, reason: "coverage_regression_guard" as const };
+        }
+      }
+    }
 
     // Free-trial detection (patch-33, AI-free regex on the same page text). A
     // page-level fact stamped identically onto every plan row of this batch, like

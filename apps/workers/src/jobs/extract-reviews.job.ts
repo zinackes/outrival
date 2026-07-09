@@ -5,6 +5,7 @@ import { db, snapshots, reviews, monitors } from "@outrival/db";
 import { extractReviews, summarizeSource, AI_CONFIG } from "@outrival/ai";
 import { getFromR2, parseAppStoreSnapshot } from "@outrival/shared";
 import { reviewScoresFromStructured } from "@outrival/scrapers/structured-data";
+import { isCloudflareChallenge } from "@outrival/scrapers/block-detection";
 import { htmlToText } from "../lib/html-to-text";
 import { insertReviewScore, getPreviousReviewScore, loggedAi } from "../lib/analytics";
 
@@ -38,6 +39,20 @@ export const extractReviewsJob = task({
     if (!snapshot) throw new AbortTaskRunError(`Snapshot ${input.snapshotId} not found`);
 
     const html = await getFromR2(`${snapshot.r2Key}.html`);
+
+    // R7: an anti-bot interstitial served at HTTP 200 passes the cascade but is NOT
+    // the reviews page. Reject it here so the LLM never hallucinates an
+    // average_score / verbatims from the challenge shell and writes them to
+    // review_scores (there's no structured AggregateRating on a challenge page to
+    // override it). App Store snapshots are our normalized JSON — they never carry
+    // these HTML challenge markers, so that path is unaffected.
+    if (isCloudflareChallenge(html)) {
+      logger.warn("Reviews page is an anti-bot challenge — skipping extraction", {
+        source: input.source,
+        snapshotId: input.snapshotId,
+      });
+      return { ok: false, reason: "blocked_challenge" };
+    }
 
     // App Store snapshots are our normalized JSON (Apple RSS), not HTML. Score
     // and review_count come straight from the structured data; the AI is used

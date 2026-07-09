@@ -72,6 +72,7 @@ import {
   getLastNumericClaims,
 } from "../lib/analytics";
 import { scrapeMonitorQueue } from "../lib/scrape-queues";
+import { assessCompleteness } from "../lib/completeness";
 
 const SCRAPER_REGION = process.env.SCRAPER_REGION ?? "FR";
 
@@ -104,6 +105,15 @@ const ANTIVOID_THRESHOLD = Number(process.env.ENRICHMENTS_ANTIVOID_THRESHOLD ?? 
 // signature must keep changing to be marked volatile, and stable scrapes to revert.
 const VOLATILE_THRESHOLD = Number(process.env.ENRICHMENTS_VOLATILE_THRESHOLD ?? 5);
 const VOLATILE_RESET = Number(process.env.ENRICHMENTS_VOLATILE_RESET ?? 10);
+
+// R1 (reliability wave 1) — snapshot completeness. Grade a degraded-but-non-blocked
+// capture as `partial` instead of a full success, so the pipeline refuses to diff it
+// (phantom-change guard) and it drops out of the anti-void median. Kill-switch +
+// tunable band; append-y sources are exempt from the size signal (they swing).
+const COMPLETENESS_ENABLED = process.env.SNAPSHOT_COMPLETENESS_ENABLED !== "false";
+const COMPLETENESS_MIN_RATIO = Number(process.env.SNAPSHOT_COMPLETENESS_MIN_RATIO ?? 0.5);
+const COMPLETENESS_MIN_PRIORS = 3;
+const SIZE_VARIABLE_SOURCES = new Set(["blog", "changelog", "news", "sitemap"]);
 
 // Readable "12,000 teams" / "99.9% uptime" for a claim change card.
 function formatClaim(value: number, unit: string | null, context: string): string {
@@ -634,6 +644,7 @@ export const scrapeMonitorJob = task({
     // a real reduction. Throw so Trigger retries (a re-probe may switch to proxy and
     // render real content). Conservative: a large page that merely shrank, or a
     // stably-small monitor, is never flagged. Skips gracefully without prior sizes.
+    let priorSizes: number[] = [];
     if (lastSnapshot) {
       const recentSizes = await db.query.snapshots.findMany({
         where: and(eq(snapshots.monitorId, monitor.id), eq(snapshots.status, "success")),
@@ -641,7 +652,7 @@ export const scrapeMonitorJob = task({
         limit: 5,
         columns: { contentSize: true },
       });
-      const priorSizes = recentSizes
+      priorSizes = recentSizes
         .map((s) => s.contentSize)
         .filter((n): n is number => typeof n === "number" && n > 0);
       const decision = checkAntiVoid(afterContent.length, priorSizes, {
@@ -691,13 +702,39 @@ export const scrapeMonitorJob = task({
         ? parseHomepageStructure(result.html, resolvedUrl)
         : null;
 
+    // R1 completeness: grade this capture. A degraded render is stored `partial` —
+    // excluded from the anti-void median (its query filters status="success") and
+    // skipped by the diff below so it never becomes a phantom-change baseline.
+    const homepageIncomplete =
+      monitor.sourceType === "homepage" && homepageStructure
+        ? isIncompleteRender(homepageStructure)
+        : false;
+    const completeness = COMPLETENESS_ENABLED
+      ? assessCompleteness({
+          contentLength: afterContent.length,
+          priorSizes,
+          homepageIncomplete,
+          ratioEligible: !SIZE_VARIABLE_SOURCES.has(monitor.sourceType),
+          minRatio: COMPLETENESS_MIN_RATIO,
+          minPriors: COMPLETENESS_MIN_PRIORS,
+        })
+      : { complete: true, reason: null };
+    if (!completeness.complete) {
+      logger.warn("Partial capture graded", {
+        monitorId: monitor.id,
+        sourceType: monitor.sourceType,
+        reason: completeness.reason,
+        contentSize: afterContent.length,
+      });
+    }
+
     const [newSnapshot] = await db
       .insert(snapshots)
       .values({
         monitorId: monitor.id,
         r2Key,
         contentHash: newHash,
-        status: "success",
+        status: completeness.complete ? "success" : "partial",
         scrapedAt: new Date(),
         etag: result.etag ?? null,
         lastModified: result.lastModified ?? null,
@@ -745,7 +782,22 @@ export const scrapeMonitorJob = task({
     // prior snapshot predates the patch (no structure) — for that one iteration
     // only; the next scrape will have two structures and use the structured diff.
     const prevStructure = (lastSnapshot?.homepageStructure ?? null) as HomepageStructure | null;
-    if (
+
+    // R1: don't diff a degraded capture, and don't diff AGAINST a degraded baseline
+    // — either fabricates phantom changes. Prepended to the diff chain so no branch
+    // runs when this or the prior snapshot is partial. The homepage incomplete-render
+    // branch below stays as the fallback when the kill-switch is off. When the prior
+    // was partial we lose one diff round; the next complete capture diffs cleanly.
+    const skipDiffForPartial =
+      COMPLETENESS_ENABLED && (!completeness.complete || lastSnapshot?.status === "partial");
+    if (skipDiffForPartial) {
+      logger.log("Skipping diff — partial capture (current or prior)", {
+        monitorId: monitor.id,
+        sourceType: monitor.sourceType,
+        currentPartial: !completeness.complete,
+        priorPartial: lastSnapshot?.status === "partial",
+      });
+    } else if (
       lastSnapshot &&
       monitor.sourceType === "homepage" &&
       homepageStructure &&
@@ -1131,17 +1183,23 @@ export const scrapeMonitorJob = task({
       await tasks.trigger("refresh-competitor-summary", { competitorId: competitor.id });
     }
 
+    // R1b: a partial capture must not feed the destructive extractors (pricing_history
+    // / job_postings / review_scores / self profile) — a degraded page yields wrong or
+    // empty data that overwrites good state. They fire only on a complete capture; with
+    // the completeness kill-switch off, `completeness.complete` is always true.
+    const extractionAllowed = completeness.complete;
+
     // Self-competitor (patch-12): refresh the structured profile (features + tech
     // stack) from each homepage capture. Auto-detected fields are refreshed; fields
     // the user corrected stay sticky.
-    if (monitor.sourceType === "homepage" && competitor.type === "self") {
+    if (extractionAllowed && monitor.sourceType === "homepage" && competitor.type === "self") {
       await tasks.trigger("extract-self-profile", {
         competitorId: competitor.id,
         snapshotId: newSnapshot.id,
       });
     }
 
-    if (monitor.sourceType === "pricing") {
+    if (extractionAllowed && monitor.sourceType === "pricing") {
       await tasks.trigger("extract-pricing", {
         snapshotId: newSnapshot.id,
         competitorId: competitor.id,
@@ -1149,7 +1207,7 @@ export const scrapeMonitorJob = task({
         promotional: pricingAnalysis?.promotional,
         observedRegion: SCRAPER_REGION,
       });
-    } else if (monitor.sourceType === "jobs") {
+    } else if (extractionAllowed && monitor.sourceType === "jobs") {
       await tasks.trigger("extract-jobs", {
         snapshotId: newSnapshot.id,
         competitorId: competitor.id,
@@ -1157,6 +1215,7 @@ export const scrapeMonitorJob = task({
     } else if (
       // Reviews are never scraped for the self-competitor (defensive: we also
       // never create review monitors for it) — too early-stage + proxy cost.
+      extractionAllowed &&
       competitor.type !== "self" &&
       isReviewSource(monitor.sourceType)
     ) {
@@ -1168,7 +1227,7 @@ export const scrapeMonitorJob = task({
         competitorId: competitor.id,
         source: reviewSource,
       });
-    } else if (competitor.type !== "self" && monitor.sourceType === "reddit") {
+    } else if (extractionAllowed && competitor.type !== "self" && monitor.sourceType === "reddit") {
       // patch-32 — Reddit mentions go through extract-reviews for sentiment +
       // complaint themes (no AggregateRating → null star score, no CH score row).
       await tasks.trigger("extract-reviews", {

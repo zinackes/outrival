@@ -766,6 +766,8 @@ ENRICHMENTS_VOLATILE_THRESHOLD=5        # patch-17 — consecutive diffs → lin
 ENRICHMENTS_VOLATILE_RESET=10           # patch-17 — stable scrapes → analysable again
 ENRICHMENTS_ANTIVOID_THRESHOLD=0.3      # patch-17 — content/median ratio → anti-void
 ENRICHMENTS_RELEVANCE_MIN_SCORE=0.5     # patch-17 — min relevance score to emit a signal
+SNAPSHOT_COMPLETENESS_ENABLED=true      # reliability wave 1 (R1) — grade a degraded capture `partial` (skip its diff, drop it from the anti-void median). false = exact current behaviour
+SNAPSHOT_COMPLETENESS_MIN_RATIO=0.5     # R1 — content/median ratio below which a capture is graded partial (size-stable sources only; homepage also uses isIncompleteRender)
 TECH_STACK_SCRAPE_INTERVAL_DAYS=30      # patch-18 — days between tech-stack scrapes per competitor
 TECH_STACK_SIGNAL_MIN_IMPORTANCE=medium # patch-18 — min tech importance to emit a signal on appearance
 

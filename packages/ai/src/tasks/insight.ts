@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { AI_CONFIG } from "../config";
 import { groundedAiCall } from "../grounding/grounded-call";
+import { unsupportedNumbers } from "../grounding/numeric-grounding";
 import { attachQuality, type WithQuality } from "../grounding/types";
 import type { Classification } from "./classify";
 
@@ -110,13 +111,37 @@ export async function generateInsight(
     myProduct,
   );
 
-  const result = await groundedAiCall({
+  const source = diffText.slice(0, 8000);
+  const callParams = {
     taskName: "generate_signal",
     config: AI_CONFIG.insights,
     prompt,
-    sourceText: diffText.slice(0, 8000),
+    sourceText: source,
     schema: InsightSchema,
     ...(requireGrounding ? { requireGrounding: true } : {}),
-  });
-  return result ? attachQuality(result.output, result.quality) : null;
+  };
+
+  let result = await groundedAiCall(callParams);
+  if (!result) return null;
+
+  // R3: deterministic numeric-hallucination guard. A number in the insight absent
+  // from the change diff is an invented statistic (the free reasoning providers'
+  // most common hallucination). Regenerate ONCE; if it's still unsupported, keep the
+  // text but downgrade confidence + flag for review — non-destructive, since a
+  // legitimately derived number (a % computed from two source prices) is rare and
+  // tagging never removes it.
+  const insightText = (o: Insight) =>
+    [o.insight, o.so_what, o.recommended_action].filter(Boolean).join(" ");
+  if (unsupportedNumbers(insightText(result.output), source).length > 0) {
+    const retry = await groundedAiCall(callParams);
+    if (retry) result = retry;
+    if (unsupportedNumbers(insightText(result.output), source).length > 0) {
+      result = {
+        ...result,
+        quality: { ...result.quality, confidence: "low", flaggedForHumanReview: true },
+      };
+    }
+  }
+
+  return attachQuality(result.output, result.quality);
 }

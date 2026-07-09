@@ -1,5 +1,6 @@
 import { complete } from "../provider";
 import { AI_CONFIG } from "../config";
+import { unsupportedNumbers } from "../grounding/numeric-grounding";
 import type { StructuredChangeInput } from "./classify-structured";
 import type { MyProductContext } from "./insight";
 
@@ -60,7 +61,14 @@ Explain in 2-3 short sentences ${angle}. This is CONTEXT, not advice — describ
 
 Reply with the explanation text only — no markdown, no preamble.`;
 
-  const raw = await complete(AI_CONFIG.insights, { prompt });
-  const text = raw.trim();
+  let text = (await complete(AI_CONFIG.insights, { prompt })).trim();
+  // R3: regenerate once if the narrative invents a statistic absent from the change
+  // list (the free reasoning providers' most common hallucination in free prose).
+  // narrate has no confidence channel, so we can only re-roll; a persistent
+  // unsupported number is kept (non-destructive, per the R3 policy).
+  if (text.length > 0 && unsupportedNumbers(text, list).length > 0) {
+    const retry = (await complete(AI_CONFIG.insights, { prompt })).trim();
+    if (retry.length > 0) text = retry;
+  }
   return text.length > 0 ? text : null;
 }

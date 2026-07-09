@@ -118,6 +118,10 @@
     "./block-detection": {
       "types": "./src/lib/block-detection.ts",
       "default": "./src/lib/block-detection.ts"
+    },
+    "./deny-page": {
+      "types": "./src/lib/deny-page.ts",
+      "default": "./src/lib/deny-page.ts"
     }
   },
   "scripts": {

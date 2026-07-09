@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { assessCompleteness } from "../src/lib/completeness";
+import { assessCompleteness, type CompletenessVerdict } from "../src/lib/completeness";
 
 // R1: a degraded-but-non-blocked capture must be graded `partial` (so the pipeline
 // skips diffing it) without false-flagging healthy captures, new monitors, or
@@ -44,5 +44,13 @@ describe("assessCompleteness — R1 snapshot completeness", () => {
 
   test("exactly at the ratio floor → complete (strict <)", () => {
     expect(assessCompleteness({ ...base, contentLength: 500 }).complete).toBe(true);
+  });
+
+  // R1 follow-up (deny-page guard): assessCompleteness itself never returns this
+  // reason — it's stamped by the job when the copy heuristic (detectDenyPage) fires
+  // on an otherwise-complete verdict — but the reason union must accept it.
+  test("reason union accepts deny_page", () => {
+    const verdict: CompletenessVerdict = { complete: false, reason: "deny_page" };
+    expect(verdict.reason).toBe("deny_page");
   });
 });

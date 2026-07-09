@@ -33,7 +33,7 @@ export interface CompletenessInput {
   minPriors: number;
 }
 
-export type CompletenessReason = "incomplete_render" | "below_median_band";
+export type CompletenessReason = "incomplete_render" | "below_median_band" | "deny_page";
 
 export interface CompletenessVerdict {
   complete: boolean;

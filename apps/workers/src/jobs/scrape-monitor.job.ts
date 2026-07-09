@@ -63,6 +63,10 @@ import { checkAntiVoid } from "@outrival/scrapers/anti-void";
 // Pure subpath — per-monitor volatile-line learning (patch-17).
 import { computeVolatileUpdates, filterVolatileLines } from "@outrival/scrapers/volatile";
 import { diagnoseFailure, type AttemptInfo, type FailureCategory } from "@outrival/scrapers/diagnose-failure";
+// Pure subpath — cheerio-free regex heuristics for a 200-status deny page (soft-404,
+// access-denied/geo-block, login wall, worded verification interstitial) that the
+// vendor-string challenge detector misses (R1 follow-up, patch-25 audit).
+import { detectDenyPage, isSyntheticDocument } from "@outrival/scrapers/deny-page";
 import { generateAlternatives } from "@outrival/scrapers/alternatives";
 import { filterRelevantApiCalls, apiCallsToHtmlDoc, toEndpoints } from "@outrival/scrapers/spa-filter";
 import type { ScrapeOutcome } from "@outrival/scrapers";
@@ -72,7 +76,7 @@ import {
   getLastNumericClaims,
 } from "../lib/analytics";
 import { scrapeMonitorQueue } from "../lib/scrape-queues";
-import { assessCompleteness } from "../lib/completeness";
+import { assessCompleteness, type CompletenessVerdict } from "../lib/completeness";
 
 const SCRAPER_REGION = process.env.SCRAPER_REGION ?? "FR";
 
@@ -114,6 +118,13 @@ const COMPLETENESS_ENABLED = process.env.SNAPSHOT_COMPLETENESS_ENABLED !== "fals
 const COMPLETENESS_MIN_RATIO = Number(process.env.SNAPSHOT_COMPLETENESS_MIN_RATIO ?? 0.5);
 const COMPLETENESS_MIN_PRIORS = 3;
 const SIZE_VARIABLE_SOURCES = new Set(["blog", "changelog", "news", "sitemap"]);
+// Sources whose capture is ALWAYS a scraper-synthesized document (built from parsed
+// structured data — no HTML fetch path at all), so the deny-page copy heuristic is
+// meaningless on them: deny-shaped strings in a sitemap/feed listing are content, not
+// a block. github_repo carries no section marker (it's a <pre> dump), hence the set;
+// the feed/ATS/product-line variants of changelog/jobs/pricing DO have an HTML path
+// too, so they're excluded per-capture via isSyntheticDocument, not by source type.
+const SYNTHETIC_DOC_SOURCES = new Set(["sitemap", "news", "reddit", "github_repo"]);
 
 // Readable "12,000 teams" / "99.9% uptime" for a claim change card.
 function formatClaim(value: number, unit: string | null, context: string): string {
@@ -614,6 +625,23 @@ export const scrapeMonitorJob = task({
       return { changed: false, snapshotId: lastSnapshot.id };
     }
 
+    // First-capture anti-collapse guard: the branch below only fires when there's a
+    // prior snapshot to regression-check against, so a monitor's very first scrape
+    // had no emptiness guard at all — an empty shell/error page became the permanent
+    // baseline, turning the next healthy scrape into a phantom "everything added"
+    // change. Throw here too so Trigger retries a clean render instead of seeding
+    // that baseline; a monitor that stays empty surfaces as failed (honest) rather
+    // than fabricating a signal later.
+    if (!lastSnapshot && isContentCollapsed(afterContent)) {
+      logger.warn("Extracted content collapsed on first capture — likely failed render/soft-block, retrying", {
+        monitorId: monitor.id,
+        sourceType: monitor.sourceType,
+      });
+      throw new Error(
+        `Extracted content collapsed on first capture for monitor ${monitor.id} (likely failed render or soft-block)`,
+      );
+    }
+
     // Anti-collapse guard (precision): a hash change whose extracted content is
     // essentially empty is almost always a failed render or soft-block (big HTML
     // shell, no visible body) — not a competitor that deleted their whole page.
@@ -719,11 +747,32 @@ export const scrapeMonitorJob = task({
           minPriors: COMPLETENESS_MIN_PRIORS,
         })
       : { complete: true, reason: null };
-    if (!completeness.complete) {
+
+    // R1 follow-up (2026-07-09 audit): a deny page (soft-404, access-denied/geo-block,
+    // login wall, worded verification interstitial) responds 200 and clears every
+    // size/emptiness guard above, so it's graded on copy instead. Only overrides an
+    // otherwise-complete verdict — never "un-partials" a capture already flagged
+    // incomplete for another reason. Same kill-switch as the rest of the layer.
+    // Skipped on non-page captures: a synthesized document (sitemap/feed/ATS/
+    // product-line, or an api-capture doc) is built from already-parsed structured
+    // data, so deny copy in it is content, not a block — running the copy heuristic
+    // there would silence the monitor forever.
+    const denyCheckable =
+      COMPLETENESS_ENABLED &&
+      !monitor.apiCaptureEnabled &&
+      !SYNTHETIC_DOC_SOURCES.has(monitor.sourceType) &&
+      !isSyntheticDocument(result.html);
+    const denyKind = denyCheckable ? detectDenyPage(result.html) : null;
+    const graded: CompletenessVerdict =
+      completeness.complete && denyKind
+        ? { complete: false, reason: "deny_page" }
+        : completeness;
+    if (!graded.complete) {
       logger.warn("Partial capture graded", {
         monitorId: monitor.id,
         sourceType: monitor.sourceType,
-        reason: completeness.reason,
+        reason: graded.reason,
+        denyKind,
         contentSize: afterContent.length,
       });
     }
@@ -734,7 +783,7 @@ export const scrapeMonitorJob = task({
         monitorId: monitor.id,
         r2Key,
         contentHash: newHash,
-        status: completeness.complete ? "success" : "partial",
+        status: graded.complete ? "success" : "partial",
         scrapedAt: new Date(),
         etag: result.etag ?? null,
         lastModified: result.lastModified ?? null,
@@ -789,12 +838,12 @@ export const scrapeMonitorJob = task({
     // branch below stays as the fallback when the kill-switch is off. When the prior
     // was partial we lose one diff round; the next complete capture diffs cleanly.
     const skipDiffForPartial =
-      COMPLETENESS_ENABLED && (!completeness.complete || lastSnapshot?.status === "partial");
+      COMPLETENESS_ENABLED && (!graded.complete || lastSnapshot?.status === "partial");
     if (skipDiffForPartial) {
       logger.log("Skipping diff — partial capture (current or prior)", {
         monitorId: monitor.id,
         sourceType: monitor.sourceType,
-        currentPartial: !completeness.complete,
+        currentPartial: !graded.complete,
         priorPartial: lastSnapshot?.status === "partial",
       });
     } else if (
@@ -1186,8 +1235,10 @@ export const scrapeMonitorJob = task({
     // R1b: a partial capture must not feed the destructive extractors (pricing_history
     // / job_postings / review_scores / self profile) — a degraded page yields wrong or
     // empty data that overwrites good state. They fire only on a complete capture; with
-    // the completeness kill-switch off, `completeness.complete` is always true.
-    const extractionAllowed = completeness.complete;
+    // the completeness kill-switch off, `graded.complete` is always true. Reads `graded`
+    // (not `completeness`) so a deny page caught only by the copy heuristic also blocks
+    // extraction — the exact same reasoning applies to feeding a soft-404 to extract-pricing.
+    const extractionAllowed = graded.complete;
 
     // Self-competitor (patch-12): refresh the structured profile (features + tech
     // stack) from each homepage capture. Auto-detected fields are refreshed; fields

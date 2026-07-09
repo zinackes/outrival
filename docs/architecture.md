@@ -835,6 +835,8 @@ PRODUCT_LIMIT_BUSINESS=999
 # Staged extraction pipeline (patch-30)
 STAGED_EXTRACTION_ENABLED=true         # false → bypass des étages, comportement actuel exact (plancher)
 EXTRACTOR_HEAL_COOLDOWN_HOURS=12       # min heures entre 2 self-heal sur un extracteur cassé (anti-thrash)
+EXTRACTOR_REVALIDATE_INTERVAL_DAYS=14  # R8 — âge max d'un parser caché avant régénération forcée contre le DOM courant (un sélecteur dérivé "plausible mais faux" ne peut plus être trusté indéfiniment). last_validated_at n'est plus stampé à chaque cache hit
+EXTRACTOR_MAX_CONSECUTIVE_FAILURES=5   # R8 — échecs de replay consécutifs après lesquels un parser caché est distrusté d'office
 PRUNE_HTML_MAX_CHARS=40000             # cap de l'HTML élagué envoyé au générateur de sélecteurs
 
 # Platform auto-detection (patch-31)

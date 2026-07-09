@@ -13,6 +13,7 @@ import { replayExtractor } from "@outrival/scrapers/cached-extractor";
 import { pruneHtmlForSelectors } from "@outrival/scrapers/prune-html";
 import { generateExtractor, AI_CONFIG, type ExtractorKind } from "@outrival/ai";
 import { logExtractionRun, loggedAi } from "./analytics";
+import { shouldTrustCachedExtractor } from "./extractor-trust";
 
 /**
  * The staged extraction orchestrator (patch-30). Moves AI off the hot path: tries
@@ -26,6 +27,13 @@ import { logExtractionRun, loggedAi } from "./analytics";
 const STAGED_ENABLED = process.env.STAGED_EXTRACTION_ENABLED !== "false";
 const HEAL_COOLDOWN_MS =
   Number(process.env.EXTRACTOR_HEAL_COOLDOWN_HOURS ?? 12) * 3_600_000;
+
+// R8 — a cached spec expires and is regenerated against the current DOM, so a
+// drifted selector producing wrong-but-plausible data can't be trusted forever.
+// See lib/extractor-trust.
+const EXTRACTOR_REVALIDATE_MS =
+  Number(process.env.EXTRACTOR_REVALIDATE_INTERVAL_DAYS ?? 14) * 86_400_000;
+const EXTRACTOR_MAX_FAILURES = Number(process.env.EXTRACTOR_MAX_CONSECUTIVE_FAILURES ?? 5);
 
 export interface StagedExtractInput<T> {
   /** Selector-generatable source. Reviews are handled separately (see §8). */
@@ -111,18 +119,37 @@ export async function stagedExtract<T>(
   });
   const cachedSpec = cached ? ExtractorSpecSchema.safeParse(cached.spec) : null;
   if (cached && cachedSpec?.success) {
-    const replayed = stageOk(replayExtractor(input.html, cachedSpec.data));
-    if (replayed) {
+    // R8: an expired (or repeatedly failing) spec is skipped entirely so the ladder
+    // falls through to self-heal, which regenerates the selectors from the CURRENT
+    // DOM. `lastValidatedAt` is therefore NOT stamped on a plain cache hit — only
+    // upsertExtractor (a fresh generation) stamps it, otherwise it could never age.
+    const trusted = shouldTrustCachedExtractor({
+      lastValidatedAt: cached.lastValidatedAt,
+      consecutiveFailures: cached.consecutiveFailures,
+      now: Date.now(),
+      revalidateMs: EXTRACTOR_REVALIDATE_MS,
+      maxFailures: EXTRACTOR_MAX_FAILURES,
+    });
+    if (trusted) {
+      const replayed = stageOk(replayExtractor(input.html, cachedSpec.data));
+      if (replayed) {
+        await db
+          .update(parserExtractors)
+          .set({ consecutiveFailures: 0 })
+          .where(eq(parserExtractors.id, cached.id));
+        return finish(replayed, "cache", cached.version);
+      }
       await db
         .update(parserExtractors)
-        .set({ lastValidatedAt: new Date(), consecutiveFailures: 0 })
+        .set({ consecutiveFailures: cached.consecutiveFailures + 1 })
         .where(eq(parserExtractors.id, cached.id));
-      return finish(replayed, "cache", cached.version);
+    } else {
+      logger.log("cached extractor due for revalidation — regenerating", {
+        sourceType: input.sourceType,
+        domain,
+        consecutiveFailures: cached.consecutiveFailures,
+      });
     }
-    await db
-      .update(parserExtractors)
-      .set({ consecutiveFailures: cached.consecutiveFailures + 1 })
-      .where(eq(parserExtractors.id, cached.id));
   }
 
   // 3. AI self-heal: regenerate the parser (the only new AI call). Skipped while a

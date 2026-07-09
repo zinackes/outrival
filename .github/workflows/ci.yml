@@ -16,5 +16,6 @@ jobs:
         with:
           bun-version: 1.3.13
       - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --prod --audit-level=high
       - run: pnpm typecheck
       - run: pnpm test

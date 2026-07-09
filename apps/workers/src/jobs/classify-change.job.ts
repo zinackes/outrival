@@ -100,8 +100,18 @@ export const classifyChangeJob = task({
       await logAiRun("classify", provider, model, classification ? "success" : "parse_failed");
     }
     if (!classification) {
-      logger.error("Classification failed", { changeId: input.changeId });
-      throw new AbortTaskRunError("Classification returned null");
+      // A null here is a PARSE miss (malformed/empty JSON), not a thrown provider
+      // error — and on the free reasoning providers the grounding/JSON envelope is
+      // malformed transiently. So this is RETRIABLE: aborting used to drop the
+      // signal permanently (the change stayed orphaned, no later scrape recreated
+      // it). Throw a plain error so Trigger re-runs (the null result is never
+      // cached → a fresh LLM call); after maxAttempts it dead-letters as a real
+      // failure instead of a silent abort. The re-run is idempotent — nothing is
+      // persisted before this point (the existing-signal guard covers a race).
+      logger.error("Classification returned null (parse failed) — retrying", {
+        changeId: input.changeId,
+      });
+      throw new Error("Classification returned null (parse failed)");
     }
 
     logger.log("Classification result", {

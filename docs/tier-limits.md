@@ -22,11 +22,18 @@ upgrade prompt.
 | `usersPerOrg` | 1 | 1 | 3 | 10 |
 | `historyRetentionDays` | 7 | 30 | 365 | 1095 |
 | `features.battleCards` | ✓ | ✓ | ✓ | ✓ |
-| `features.api` | ✗ | ✗ | ✗ | ✓ |
+| `features.api` | — | — | — | planned |
 | `features.crmIntegrations` | ✗ | ✗ | ✗ | ✓ |
 | `features.fullMode` | ✗ | ✓ | ✓ | ✓ |
+| `features.multiUser` | — | — | — | planned |
 
 No "unlimited" anywhere — every cap is a real number (transparency choice).
+
+> **`features.api` / `features.multiUser` are advertised but not yet delivered** — no
+> `api_keys` table / public route, and `FEATURE_FLAGS.multiUser = false` (Members page
+> 404s). Both flags are `false` on every tier until built, so the grid marks them
+> **planned** rather than shipped. See `docs/paid-feature-delivery.md` for the
+> sold-vs-exists evidence and the deliver-vs-hide decision.
 
 ## Enforced now
 
@@ -61,7 +68,12 @@ Notes:
 - **`historyRetentionDays`** — no purge job yet. Needs a per-org cron purging PG
   (signals/changes) + ClickHouse beyond the tier window.
 - **`usersPerOrg`** — multi-user (invitations/RBAC) is Phase 10; the cap is carried but
-  there's no invitation flow to gate. `features.multiUser` stays business-only until then.
+  there's no invitation flow to gate. `features.multiUser` is `false` on every tier
+  (hidden, not "business-only") until Phase 10 delivers it — see
+  `docs/paid-feature-delivery.md`.
+- **`features.api`** — Public API is Phase 11; no `api_keys` table or public route exists,
+  so the flag is `false` on every tier (hidden) until delivered — see
+  `docs/paid-feature-delivery.md`.
 - **`scrapeFrequency` `daily_adaptive` / `daily_priority`** — the gate still rides on
   `allowedFrequencies` (and `computeNextRun`, already adaptive). `daily_priority` has no
   distinct queue-priority behaviour yet; the field is the headline label + the `free →

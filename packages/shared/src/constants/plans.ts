@@ -113,7 +113,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     discoveriesPerMonth: 500,
     usersPerOrg: 10,
     historyRetentionDays: 1095,
-    features: { battleCards: true, realtimeAlerts: true, api: true, multiUser: true, fullMode: true, crmIntegrations: true, aiVisibility: true },
+    features: { battleCards: true, realtimeAlerts: true, api: false, multiUser: false, fullMode: true, crmIntegrations: true, aiVisibility: true },
   },
 };
 

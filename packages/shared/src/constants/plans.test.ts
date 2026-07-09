@@ -52,11 +52,19 @@ describe("PLAN_LIMITS — features", () => {
     for (const plan of PLANS) expect(PLAN_LIMITS[plan].features.battleCards).toBe(true);
   });
 
-  test("api + crmIntegrations are business-only", () => {
+  test("crmIntegrations is business-only", () => {
     for (const plan of PLANS) {
       const business = plan === "business";
-      expect(PLAN_LIMITS[plan].features.api).toBe(business);
       expect(PLAN_LIMITS[plan].features.crmIntegrations).toBe(business);
+    }
+  });
+
+  // api + multiUser are advertised but not yet delivered (no api_keys table / no
+  // invitation+RBAC flow) — hidden on every tier until built. See docs/paid-feature-delivery.md.
+  test("api + multiUser are off on every tier (undelivered — hidden)", () => {
+    for (const plan of PLANS) {
+      expect(PLAN_LIMITS[plan].features.api).toBe(false);
+      expect(PLAN_LIMITS[plan].features.multiUser).toBe(false);
     }
   });
 

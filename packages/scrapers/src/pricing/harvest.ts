@@ -32,13 +32,52 @@ const CURRENCY_BY_SYMBOL: Record<string, string> = {
   "€": "EUR",
   $: "USD",
   "£": "GBP",
+  // "¥" spans JPY and CNY; keep the historical JPY mapping rather than guess.
+  // "kr" (SEK/NOK/DKK) is deliberately absent for the same reason — a wrong
+  // currency label is worse than a missing one.
   "¥": "JPY",
+  "R$": "BRL",
+  "A$": "AUD",
+  "AU$": "AUD",
+  "C$": "CAD",
+  "CA$": "CAD",
+  "NZ$": "NZD",
+  "HK$": "HKD",
+  "S$": "SGD",
+  "US$": "USD",
+  "₹": "INR",
+  "₩": "KRW",
+  "₺": "TRY",
+  "₽": "RUB",
+  "₪": "ILS",
+  "฿": "THB",
+  "zł": "PLN",
+  "Kč": "CZK",
 };
 
-// Symbol + number, either order. The number allows spaces (FR thousands) and both
-// separators; `parseAmount` normalizes it. Non-global: we test/exec per element.
-const PRICE_RE =
-  /([€$£¥])\s?(\d[\d.,\s]*\d|\d)|(\d[\d.,\s]*\d|\d)\s?([€$£¥])/;
+// Longest-first so "R$"/"AU$"/"US$" win over a bare "$". The multi-char dollar
+// variants carry a \b so "media$29" can't be read as A$ 29 — it falls back to "$".
+const SYMBOL_ALT =
+  "\\bR\\$|\\bAU\\$|\\bA\\$|\\bCA\\$|\\bC\\$|\\bNZ\\$|\\bHK\\$|\\bUS\\$|\\bS\\$" +
+  "|€|\\$|£|¥|₹|₩|₺|₽|₪|฿|zł|Kč";
+
+// ISO 4217 codes written next to the amount ("USD 29", "29 CHF") — a whole class of
+// pricing pages the symbol-only regex could not see at all. Case-SENSITIVE (no `i`
+// flag on PRICE_RE): "TRY" and "RUB" are English words, and a case-insensitive match
+// would read "Try 30 days free" as a price of 30 TRY on nearly every SaaS page. Those
+// two are omitted entirely; their unambiguous symbols (₺, ₽) cover them instead.
+const ISO_ALT =
+  "USD|EUR|GBP|JPY|CHF|SEK|NOK|DKK|PLN|CZK|INR|BRL|CAD|AUD|NZD|SGD|HKD|KRW|MXN|ZAR|CNY|THB|ILS";
+
+// The number allows spaces (FR thousands) and both separators; `parseAmount`
+// normalizes it. Non-global: we test/exec per element.
+const NUM = "\\d[\\d.,\\s]*\\d|\\d";
+const PRICE_RE = new RegExp(
+  `(${SYMBOL_ALT})\\s?(${NUM})` + // 1 symbol, 2 amount   → €29
+    `|(${NUM})\\s?(${SYMBOL_ALT})` + // 3 amount, 4 symbol → 29€
+    `|\\b(${ISO_ALT})\\s?(${NUM})` + // 5 code, 6 amount   → USD 29
+    `|(${NUM})\\s?(${ISO_ALT})\\b`, // 7 amount, 8 code    → 29 CHF
+);
 
 // A tight price element is short — a big container's text ("€29/mo Everything in
 // Pro plus…") would attach the price to the wrong, sprawling label.
@@ -62,6 +101,13 @@ const MONTHLY = /\/\s?(mo|month|mois)\b|per\s+month|\bmonthly\b|\/\s?mois\b|par\
 const ONE_TIME = /\bone[-\s]?time\b|\blifetime\b|\bune\s+fois\b|\b[àa]\s+vie\b|\bsetup\s+fee\b/i;
 // Per-seat/user is a subscription with a unit, not metered usage.
 const PER_SEAT = /\/\s?(user|seat|utilisateur|si[èe]ge|member)\b|per\s+(user|seat)\b/i;
+// "billed annually" states the COMMITMENT, not the period of the amount shown:
+// "$10/mo billed annually" is a MONTHLY rate. YEARLY is tested before MONTHLY (so
+// "/year" wins over "/mo" when both appear, as in "$1,188/year ($99/mo)"), and its
+// `\bannual(ly)?\b` branch matched "annually" — flipping that $10 into $10/YEAR, a
+// 12x error. Detect the phrase so an explicit per-month token can override it.
+const ANNUAL_COMMITMENT =
+  /\b(billed|paid|invoiced|charged)\s+(annually|yearly)\b|\bfactur[ée]s?\s+annuellement\b/i;
 
 interface Hit {
   amount: number;
@@ -168,11 +214,13 @@ export function harvestPricing(html: string): PricingHarvest {
 function matchPrice(text: string): { amount: number; currency: string } | null {
   const m = PRICE_RE.exec(text);
   if (!m) return null;
-  const symbol = m[1] ?? m[4] ?? "$";
-  const raw = m[2] ?? m[3] ?? "";
+  const symbol = m[1] ?? m[4];
+  const iso = m[5] ?? m[8];
+  const raw = m[2] ?? m[3] ?? m[6] ?? m[7] ?? "";
   const amount = parseAmount(raw);
   if (amount === null) return null;
-  return { amount, currency: CURRENCY_BY_SYMBOL[symbol] ?? "USD" };
+  const currency = iso ?? (symbol ? (CURRENCY_BY_SYMBOL[symbol] ?? "USD") : "USD");
+  return { amount, currency };
 }
 
 /**
@@ -205,6 +253,11 @@ function detectPeriod(ctx: string): { period: BillingPeriodValue; unit: string |
   if (usage) return { period: "usage", unit: usage[1]!.toLowerCase() };
   const seat = PER_SEAT.exec(ctx);
   if (ONE_TIME.test(ctx)) return { period: "one_time", unit: null };
+  // An explicit per-month token beats an annual-commitment phrase: the amount next
+  // to "/mo" is the monthly rate, "billed annually" only says how it's invoiced.
+  if (MONTHLY.test(ctx) && ANNUAL_COMMITMENT.test(ctx)) {
+    return { period: "monthly", unit: seat ? "seat" : null };
+  }
   if (YEARLY.test(ctx)) return { period: "yearly", unit: seat ? "seat" : null };
   if (MONTHLY.test(ctx) || seat) return { period: "monthly", unit: seat ? "seat" : null };
   // No period token → default to monthly (the dominant subscription case). A floor

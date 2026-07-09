@@ -104,3 +104,58 @@ describe("harvestPricing", () => {
     expect(plans[0]!.price).toBe(49);
   });
 });
+
+describe("harvestPricing — currency + period coverage", () => {
+  const card = (title: string, price: string) =>
+    `<body><div class="card"><h3>${title}</h3><span class="price">${price}</span></div></body>`;
+
+  test("ISO code before the amount (USD 29)", () => {
+    const { plans } = harvestPricing(card("Pro", "USD 29 / mo"));
+    expect(plans[0]!.price).toBe(29);
+    expect(plans[0]!.currency).toBe("USD");
+  });
+
+  test("ISO code after the amount (29 CHF)", () => {
+    const { plans } = harvestPricing(card("Pro", "29 CHF / mo"));
+    expect(plans[0]!.price).toBe(29);
+    expect(plans[0]!.currency).toBe("CHF");
+  });
+
+  test("R$ wins over a bare $ (BRL, not USD)", () => {
+    const { plans } = harvestPricing(card("Pro", "R$ 49/mo"));
+    expect(plans[0]!.price).toBe(49);
+    expect(plans[0]!.currency).toBe("BRL");
+  });
+
+  test("non-latin symbols map to their ISO code", () => {
+    expect(harvestPricing(card("Pro", "₹499/mo")).plans[0]!.currency).toBe("INR");
+    expect(harvestPricing(card("Pro", "299 zł")).plans[0]!.currency).toBe("PLN");
+  });
+
+  test("a letter-glued dollar is still USD, not A$ (media$29)", () => {
+    const { plans } = harvestPricing(`<body><div>media$29/mo</div></body>`);
+    expect(plans[0]!.price).toBe(29);
+    expect(plans[0]!.currency).toBe("USD");
+  });
+
+  test("'Try 30 days free' is not a price (TRY is not an ISO candidate)", () => {
+    expect(harvestPricing(`<body><h1>Try 30 days free</h1></body>`).plans).toEqual([]);
+  });
+
+  test("'$10/mo billed annually' is a MONTHLY rate, not $10/year", () => {
+    const { plans } = harvestPricing(card("Pro", "$10/mo billed annually"));
+    expect(plans[0]!.price).toBe(10);
+    expect(plans[0]!.billing_period).toBe("monthly");
+  });
+
+  test("'$99 billed annually' (no per-month token) stays yearly", () => {
+    const { plans } = harvestPricing(card("Pro", "$99 billed annually"));
+    expect(plans[0]!.billing_period).toBe("yearly");
+  });
+
+  test("'$1,188/year' still reads as yearly", () => {
+    const { plans } = harvestPricing(card("Annual", "$1,188/year"));
+    expect(plans[0]!.price).toBe(1188);
+    expect(plans[0]!.billing_period).toBe("yearly");
+  });
+});

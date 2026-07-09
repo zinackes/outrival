@@ -18,6 +18,7 @@ export const forcedRescanLog = pgTable("forced_rescan_log", {
   triggeredAt: timestamp("triggered_at").notNull().defaultNow(),
   resultCapturedAt: timestamp("result_captured_at"),
   hadNewSignal: boolean("had_new_signal"),
+  failed: boolean("failed"), // null = pending/unknown, false = ran, true = all retries failed
 }, (t) => [
   // Daily per-tier limit: count of one user's rescans since midnight.
   index("forced_rescan_log_user_triggered_idx").on(t.userId, t.triggeredAt),

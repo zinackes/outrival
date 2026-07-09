@@ -54,12 +54,13 @@ export function useForceRescan(monitorId: string, options?: Options) {
       toastId = toast.loading("Re-scanning… this can take up to a minute.");
 
       const start = Date.now();
-      let outcome: { hadNewSignal: boolean | null; nextRunAt: string | null } | null = null;
+      let outcome: { failed: boolean; hadNewSignal: boolean | null; nextRunAt: string | null } | null =
+        null;
       while (Date.now() - start < POLL_TIMEOUT_MS) {
         await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
         const status = await api.forceRescanStatus(res.rescanLogId).catch(() => null);
         if (status?.done) {
-          outcome = { hadNewSignal: status.hadNewSignal, nextRunAt: status.nextRunAt };
+          outcome = { failed: status.failed, hadNewSignal: status.hadNewSignal, nextRunAt: status.nextRunAt };
           break;
         }
       }
@@ -69,6 +70,10 @@ export function useForceRescan(monitorId: string, options?: Options) {
           "Re-scan started — it's taking a little longer than usual. The data will refresh shortly.",
           { id: toastId },
         );
+      } else if (outcome.failed) {
+        toast.error("Re-scan failed — we couldn't reach the source. It'll retry automatically.", {
+          id: toastId,
+        });
       } else if (outcome.hadNewSignal) {
         toast.success("Re-scan complete — we found an update. It's in your latest signals.", {
           id: toastId,

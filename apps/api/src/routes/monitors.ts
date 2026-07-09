@@ -382,6 +382,7 @@ monitorsRouter.get("/force-rescan/:logId/status", async (c) => {
 
   return c.json({
     done: log.resultCapturedAt !== null,
+    failed: log.failed ?? false,
     hadNewSignal: log.hadNewSignal,
     nextRunAt: monitor?.nextRunAt ?? null,
   });

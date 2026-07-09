@@ -310,3 +310,65 @@ describe("on-demand re-scan plan gate (premium source frozen on a downgraded pla
     expect((await res.json()).ok).toBe(true);
   });
 });
+
+// The status endpoint is what the web hook polls to show a contextual toast. A
+// failed forced re-scan must be distinguishable from "still running" and from a
+// completed-but-uneventful re-scan — otherwise the client polls to timeout instead
+// of surfacing the honest outcome (fix for the forced-rescan-failure gap).
+describe("GET /force-rescan/:logId/status", () => {
+  const status = (u: { userId: string; email: string }, logId: string) =>
+    app.request(
+      `/api/monitors/force-rescan/${logId}/status`,
+      asUser(u.userId, u.email, { method: "GET" }),
+    );
+
+  test("a failed forced re-scan reports done:true, failed:true", async () => {
+    const [log] = await testDb
+      .insert(forcedRescanLog)
+      .values({
+        userId: A.userId,
+        orgId: A.orgId,
+        monitorId: "m-a",
+        resultCapturedAt: new Date(),
+        hadNewSignal: false,
+        failed: true,
+      })
+      .returning();
+    const res = await status(A, log!.id);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.done).toBe(true);
+    expect(body.failed).toBe(true);
+    expect(body.hadNewSignal).toBe(false);
+  });
+
+  test("a successful forced re-scan reports done:true, failed:false", async () => {
+    const [log] = await testDb
+      .insert(forcedRescanLog)
+      .values({
+        userId: A.userId,
+        orgId: A.orgId,
+        monitorId: "m-a",
+        resultCapturedAt: new Date(),
+        hadNewSignal: true,
+      })
+      .returning();
+    const res = await status(A, log!.id);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.done).toBe(true);
+    expect(body.failed).toBe(false);
+  });
+
+  test("a still-running forced re-scan reports done:false, failed:false", async () => {
+    const [log] = await testDb
+      .insert(forcedRescanLog)
+      .values({ userId: A.userId, orgId: A.orgId, monitorId: "m-a" })
+      .returning();
+    const res = await status(A, log!.id);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.done).toBe(false);
+    expect(body.failed).toBe(false);
+  });
+});

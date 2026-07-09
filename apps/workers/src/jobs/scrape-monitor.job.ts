@@ -1301,6 +1301,15 @@ export const scrapeMonitorJob = task({
     if (monitor && atThreshold && !recoveredViaApi) {
       await proposeAlternatives(monitor);
     }
+    // patch-27 follow-up — stamp the user-forced re-scan outcome as failed so the
+    // status endpoint reports an honest "failed" instead of leaving the client
+    // polling until it times out. Never fires for scheduled scrapes (no forcedRescanLogId).
+    if (parsed.data.triggeredBy === "user_forced_rescan" && parsed.data.forcedRescanLogId) {
+      await db
+        .update(forcedRescanLog)
+        .set({ resultCapturedAt: new Date(), hadNewSignal: false, failed: true })
+        .where(eq(forcedRescanLog.id, parsed.data.forcedRescanLogId));
+    }
     // Runs in a separate invocation after all retries — no run timing available,
     // so duration is 0 and level is the learned level (failure_reason = message).
     await logScrapeRun({

@@ -7,19 +7,30 @@ runbook does not: the app-specific config that breaks a deploy if missed.**
 
 ## Topology (decided)
 
-- **Jobs run on Trigger.dev v4 Cloud** (`project: proj_syxlttkfpjwsjmkdnmhp`).
-  There is **no "workers" service on the VPS** — `apps/workers` has no `start`
-  script and nothing to run continuously. Jobs ship via `trigger deploy` (below).
-- **Two Coolify apps from this one repo**, behind Cloudflare (proxied, Full strict):
+- **Jobs are authored on Trigger.dev v4** (`task()`, `project:
+  proj_syxlttkfpjwsjmkdnmhp`) — execution is **migrating to self-hosted pg-boss**
+  workers (`@outrival/queue`, `apps/workers/src/queue/worker.ts`,
+  `Dockerfile.queue-light` + `Dockerfile.queue-browser`, `WORKER_ROLE=browser|light`,
+  `QUEUE_DATABASE_URL`). Migration in progress — see
+  `docs/trigger-to-pgboss-migration.md` for the phase-by-phase state and which
+  jobs still run on Trigger Cloud vs. the pg-boss workers.
+- **Coolify apps from this one repo**, behind Cloudflare (proxied, Full strict):
   - `web` → `https://outrival.io` (Next.js 16, Node, standalone)
   - `api` → `https://api.outrival.io` (Hono on Bun)
-- **Managed**: Neon (Postgres), Upstash (Redis), Cloudflare R2.
+  - `workers` (pg-boss) → two services built from `Dockerfile.queue-light`
+    (`WORKER_ROLE=light`: crons, AI, extracts, alerts) and
+    `Dockerfile.queue-browser` (`WORKER_ROLE=browser`: scrapes, platform,
+    battle-card PDF) once cut over.
+- **Managed**: Neon (Postgres) — also backs the dedicated always-on
+  `QUEUE_DATABASE_URL` pg-boss queue (never the Neon serverless branch), Upstash
+  (Redis), Cloudflare R2.
 
 > The runbook's *"App 2 — Workers"* Dockerfile (Playwright image + `patchright
-> install` + `camoufox fetch`) assumes **self-hosted** scraping. With Trigger
-> Cloud the browsers run on Trigger's machines, so that container is **not**
-> deployed here. The browser-binary problem it anticipates still exists — it just
-> moves into the Trigger build (see *Browser binaries* below).
+> install` + `camoufox fetch`) assumed **self-hosted** scraping ahead of this
+> migration. On Trigger Cloud the browsers run on Trigger's machines; on the
+> pg-boss `browser` worker they run on the VPS, so that Dockerfile's
+> browser-binary install step applies there. The browser-binary problem it
+> anticipates still exists on both paths (see *Browser binaries* below).
 
 ## ⚠️ Pre-launch blocker #1 — browser binaries on Trigger Cloud
 
@@ -145,6 +156,15 @@ SENTRY_DSN=                           # optional
 `DATABASE_URL`, `R2_*`, `GROQ_API_KEY`/`AI_PROVIDER_*`, `ANTHROPIC_API_KEY`,
 `RESEND_API_KEY`, `EXA_API_KEY`, `PROXYSCRAPE_*`, `CAMOUFOX_*`, `POSTHOG_API_KEY`,
 `SENTRY_*`, and the patch tuning knobs (see `.env.example`).
+
+### `workers` (pg-boss, Coolify runtime — target of the migration)
+Two services, both built from `apps/workers` (`Dockerfile.queue-light` /
+`Dockerfile.queue-browser`), same job env as Trigger.dev Cloud above plus:
+```
+WORKER_ROLE=light                     # or browser — one value per service, not both
+QUEUE_DATABASE_URL=                   # DEDICATED always-on Postgres, NEVER the Neon serverless branch
+```
+See `docs/trigger-to-pgboss-migration.md` for cutover state.
 
 ## Stripe webhook
 

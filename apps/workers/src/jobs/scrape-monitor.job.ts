@@ -1183,17 +1183,23 @@ export const scrapeMonitorJob = task({
       await tasks.trigger("refresh-competitor-summary", { competitorId: competitor.id });
     }
 
+    // R1b: a partial capture must not feed the destructive extractors (pricing_history
+    // / job_postings / review_scores / self profile) — a degraded page yields wrong or
+    // empty data that overwrites good state. They fire only on a complete capture; with
+    // the completeness kill-switch off, `completeness.complete` is always true.
+    const extractionAllowed = completeness.complete;
+
     // Self-competitor (patch-12): refresh the structured profile (features + tech
     // stack) from each homepage capture. Auto-detected fields are refreshed; fields
     // the user corrected stay sticky.
-    if (monitor.sourceType === "homepage" && competitor.type === "self") {
+    if (extractionAllowed && monitor.sourceType === "homepage" && competitor.type === "self") {
       await tasks.trigger("extract-self-profile", {
         competitorId: competitor.id,
         snapshotId: newSnapshot.id,
       });
     }
 
-    if (monitor.sourceType === "pricing") {
+    if (extractionAllowed && monitor.sourceType === "pricing") {
       await tasks.trigger("extract-pricing", {
         snapshotId: newSnapshot.id,
         competitorId: competitor.id,
@@ -1201,7 +1207,7 @@ export const scrapeMonitorJob = task({
         promotional: pricingAnalysis?.promotional,
         observedRegion: SCRAPER_REGION,
       });
-    } else if (monitor.sourceType === "jobs") {
+    } else if (extractionAllowed && monitor.sourceType === "jobs") {
       await tasks.trigger("extract-jobs", {
         snapshotId: newSnapshot.id,
         competitorId: competitor.id,
@@ -1209,6 +1215,7 @@ export const scrapeMonitorJob = task({
     } else if (
       // Reviews are never scraped for the self-competitor (defensive: we also
       // never create review monitors for it) — too early-stage + proxy cost.
+      extractionAllowed &&
       competitor.type !== "self" &&
       isReviewSource(monitor.sourceType)
     ) {
@@ -1220,7 +1227,7 @@ export const scrapeMonitorJob = task({
         competitorId: competitor.id,
         source: reviewSource,
       });
-    } else if (competitor.type !== "self" && monitor.sourceType === "reddit") {
+    } else if (extractionAllowed && competitor.type !== "self" && monitor.sourceType === "reddit") {
       // patch-32 — Reddit mentions go through extract-reviews for sentiment +
       // complaint themes (no AggregateRating → null star score, no CH score row).
       await tasks.trigger("extract-reviews", {

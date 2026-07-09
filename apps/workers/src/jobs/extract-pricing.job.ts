@@ -191,7 +191,7 @@ export const extractPricingJob = task({
     // BEFORE the non-idempotent insertPricingHistory below, so a retried run
     // after an AI failure never leaves duplicate pricing rows behind.
     if (!input.recordedAt) {
-      const summary = await loggedAi("source_summary", AI_CONFIG.classification, () =>
+      const summary = await loggedAi("source_summary", AI_CONFIG.classificationFast, () =>
         summarizeSource({
           kind: "pricing",
           current: plans,

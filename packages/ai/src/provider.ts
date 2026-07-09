@@ -16,7 +16,7 @@ import {
   tripGlobalBreaker,
   AIUnavailableError,
 } from "./provider/circuit-breaker";
-import { markProvider, markUsage } from "./provider/provider-context";
+import { markProvider, markModel, markUsage } from "./provider/provider-context";
 
 // One OpenAI client per pool provider (Cerebras/Groq/Hyperbolic are all
 // OpenAI-compatible, routed by baseURL). maxRetries lets the SDK absorb a transient
@@ -130,6 +130,9 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
     // provider's small 8B-class model when declared — ~10× cheaper than the 70B.
     // Falls back to the default model when the provider has no fast model.
     const model = fast && provider.fastModel ? provider.fastModel : provider.model;
+    // AI_CONFIG.model is ignored on this path — record what we actually send so
+    // ai_runs attributes cost to the real model (see provider-context).
+    markModel(model);
     const reasoningEffort = resolveReasoningEffort(model, provider.reasoningEffort);
     try {
       const res = await clientFor(provider).chat.completions.create({
@@ -233,6 +236,7 @@ async function dispatch(
 
   if (config.provider === "claude") {
     markProvider("claude");
+    markModel(config.model);
     const res = await getClaude().messages.create({
       model: config.model,
       max_tokens: options.maxTokens ?? 1024,

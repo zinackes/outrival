@@ -1,5 +1,5 @@
 import { logger } from "@trigger.dev/sdk/v3";
-import { getActiveProvider, consumeUsage } from "@outrival/ai";
+import { getActiveProvider, getActiveModel, consumeUsage } from "@outrival/ai";
 import {
   db,
   pricingHistory,
@@ -167,6 +167,10 @@ export async function logAiRun(
   // captured by complete() in the same async context (patch-22). Falls back to the
   // static provider from AI_CONFIG when the pool didn't run (e.g. Claude fallback).
   const actual = getActiveProvider() ?? provider;
+  // Same for the model: AI_CONFIG.model is IGNORED on the pool path (callLLM picks
+  // provider.fastModel ?? provider.model), so logging it attributed cost to a model
+  // that never ran. Fall back to the static one only when the pool didn't run.
+  const actualModel = getActiveModel() ?? model;
   // Read-and-clear the tokens accumulated by complete() since the last log point,
   // so this row carries the full cost of the task (incl. any self-check pass).
   const usage = consumeUsage();
@@ -174,7 +178,7 @@ export async function logAiRun(
     db.insert(aiRuns).values({
       task,
       provider: actual,
-      model,
+      model: actualModel,
       status,
       promptTokens: usage.promptTokens,
       completionTokens: usage.completionTokens,

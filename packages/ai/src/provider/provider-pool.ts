@@ -80,8 +80,11 @@ export function loadProviders(): Provider[] {
         id: "groq",
         baseUrl: "https://api.groq.com/openai/v1",
         apiKey: groqKey,
-        model: "llama-3.3-70b-versatile",
-        fastModel: "llama-3.1-8b-instant",
+        // Groq discontinues llama-3.1-8b-instant and llama-3.3-70b-versatile on
+        // 2026-08-16 for free/developer tiers (ours). These are Groq's own
+        // recommended replacements. https://console.groq.com/docs/deprecations
+        model: "openai/gpt-oss-120b",
+        fastModel: "openai/gpt-oss-20b",
         tier: "free",
         dailyTokenQuota: 500000,
         priority: 1,

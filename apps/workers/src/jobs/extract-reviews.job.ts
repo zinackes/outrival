@@ -142,7 +142,7 @@ export const extractReviewsJob = task({
     // Retry-safety: run the throwing AI call (and the monitor update it feeds)
     // BEFORE the non-idempotent inserts below, so a retried run after an AI
     // failure never leaves duplicate verbatims/scores behind.
-    const summary = await loggedAi("source_summary", AI_CONFIG.classification, () =>
+    const summary = await loggedAi("source_summary", AI_CONFIG.classificationFast, () =>
       summarizeSource({
         kind: "reviews",
         source: input.source,

@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { computeJobsDelta, jobKey, type ExistingPosting } from "../src/lib/jobs-delta";
 
-// C1 regression: an empty jobs extraction used to mass-close every active posting
-// (closedIds = all existing when nothing was seen), firing a phantom "hiring
-// freeze" signal. It must only do that when the emptiness is authoritative (a
-// real ATS board list), never when jobs=[] came from an AI-floor / SPA placeholder.
+// Closure regression: a non-authoritative jobs extraction used to close every
+// active posting it didn't see — mass-close on empty (phantom "hiring freeze"),
+// or close-the-missing on a partial/truncated subset (phantom "role removed").
+// Any closure must require the authoritative path (a real ATS board list); the
+// fallback path (AI floor / SPA placeholder / careers HTML) may only ADD.
 
 const posting = (id: string, title: string, department: string | null): ExistingPosting => ({
   id,
@@ -13,7 +14,7 @@ const posting = (id: string, title: string, department: string | null): Existing
 });
 const extracted = (title: string, department: string) => ({ title, department });
 
-describe("computeJobsDelta — C1 mass-close guard", () => {
+describe("computeJobsDelta — closure guard (empty + partial)", () => {
   const existing = [posting("1", "Staff Engineer", "R&D"), posting("2", "AE", "Sales")];
 
   test("empty + NON-authoritative → skip, closes nothing", () => {
@@ -29,8 +30,15 @@ describe("computeJobsDelta — C1 mass-close guard", () => {
     expect(delta.closedIds.sort()).toEqual(["1", "2"]);
   });
 
-  test("partial closure on a positive extraction still closes the missing one", () => {
+  test("partial NON-authoritative extraction never closes the unseen posting", () => {
     const delta = computeJobsDelta(existing, [extracted("Staff Engineer", "R&D")], false);
+    expect(delta.skip).toBe(false);
+    expect(delta.closedIds).toEqual([]);
+    expect(delta.inserts).toEqual([]);
+  });
+
+  test("partial AUTHORITATIVE extraction closes the missing posting", () => {
+    const delta = computeJobsDelta(existing, [extracted("Staff Engineer", "R&D")], true);
     expect(delta.skip).toBe(false);
     expect(delta.closedIds).toEqual(["2"]);
     expect(delta.inserts).toEqual([]);

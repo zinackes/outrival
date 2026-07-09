@@ -113,3 +113,45 @@ export function renderDigestEmail(
     640,
   );
 }
+
+export interface AllQuietDigestData {
+  pages: number;
+  // Best-effort scrape_runs count for the week; 0 (unavailable or genuinely
+  // idle) omits the "M times" clause below — the two cases read the same.
+  checks: number;
+  weekStart: string;
+  weekEnd: string;
+  unsubscribeUrl?: string;
+}
+
+// Lever 6 — a calm week (no signals) still gets a light briefing instead of
+// going silent from the inbox where retention lives. No AI call: the copy is
+// templated straight from the week's scrape counts. Reuses the same dark shell
+// as renderDigestEmail so it reads as the same product, just a quieter edition.
+export function renderAllQuietDigest({
+  pages,
+  checks,
+  weekStart,
+  weekEnd,
+  unsubscribeUrl,
+}: AllQuietDigestData): string {
+  const pageWord = pages === 1 ? "page" : "pages";
+  const checksClause = checks > 0 ? `, ${checks} time${checks === 1 ? "" : "s"}` : "";
+  const copy = `We checked ${pages} ${pageWord}${checksClause} this week. No significant moves — your market was calm.`;
+
+  return darkEmailShell(
+    `<div style="margin-bottom:24px;">
+        <div style="font-size:12px;color:#a3a3a3;">Your weekly competitive briefing · ${weekStart} → ${weekEnd}</div>
+      </div>
+      <div style="background:#171717;border:1px solid #262626;border-radius:6px;padding:20px;margin-bottom:24px;">
+        <div style="font-size:12px;color:#a3a3a3;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">All quiet</div>
+        <div style="font-size:14px;color:#fafafa;line-height:1.5;">${escapeHtml(copy)}</div>
+      </div>
+      <div style="margin-top:32px;font-size:11px;color:#525252;text-align:center;">Outrival · Automated competitive intelligence${
+        unsubscribeUrl
+          ? ` · <a href="${unsubscribeUrl}" style="color:#525252;text-decoration:underline;">Unsubscribe</a>`
+          : ""
+      }</div>`,
+    640,
+  );
+}

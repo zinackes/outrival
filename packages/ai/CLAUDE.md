@@ -9,5 +9,8 @@ Stack : Anthropic SDK, Groq SDK
 - Parsing JSON : toujours try/catch, jamais de JSON.parse sans guard
 
 ## Modèles
-- Groq : llama-3.3-70b-versatile (classification, résumés bulk)
+- Pool (Cerebras p1 → Groq p2 → Hyperbolic p3) : gpt-oss-120b (smart), gpt-oss-20b
+  (fast, Groq seulement — Cerebras n'expose pas de petit modèle). Les anciens
+  llama-3.3-70b-versatile / llama-3.1-8b-instant sont arrêtés par Groq le 2026-08-16.
+  ⚠️ `AI_CONFIG.model` est IGNORÉ sur le chemin pool : seul `tier` route le choix.
 - Claude : claude-sonnet-4-6 (insights stratégiques, digests, battle cards)

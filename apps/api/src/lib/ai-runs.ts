@@ -1,5 +1,5 @@
 import { aiRuns } from "@outrival/db";
-import { getActiveProvider, consumeUsage } from "@outrival/ai";
+import { getActiveProvider, getActiveModel, consumeUsage } from "@outrival/ai";
 import { db } from "./db";
 
 export type AiRunStatus = "success" | "parse_failed" | "error";
@@ -19,12 +19,15 @@ export async function logApiAiRun(
 ): Promise<void> {
   try {
     const provider = getActiveProvider() ?? "groq";
+    // The pool picks the model (provider.fastModel ?? provider.model); the caller's
+    // static AI_CONFIG.model never ran. Prefer what complete() actually sent.
+    const actualModel = getActiveModel() ?? model;
     // Read-and-clear gives each row just this call's tokens.
     const usage = consumeUsage();
     await db.insert(aiRuns).values({
       task,
       provider,
-      model,
+      model: actualModel,
       status,
       promptTokens: usage.promptTokens,
       completionTokens: usage.completionTokens,

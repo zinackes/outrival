@@ -42,7 +42,7 @@ Mise à jour à chaque phase / patch.
 | Discovery         | Exa.ai (`exa-js`)                        | Recherche sémantique de concurrents similaires |
 | Email             | Resend                                   | Alerts + digests transactionnels |
 | Paiements         | Stripe (SDK v22)                         | Checkout + Customer Portal + webhooks |
-| Insights IA       | Groq (`llama-3.3-70b-versatile`)         | Pipeline complet — abstraction provider, swap Claude = 1 ligne |
+| Insights IA       | Pool OpenAI-compat (`gpt-oss-120b`)      | Cerebras p1 → Groq p2 → Hyperbolic p3. `tier:"fast"` → `gpt-oss-20b` (Groq seul). Les llama-3.x sont arrêtés par Groq le 2026-08-16. `AI_CONFIG.model` est ignoré sur le chemin pool |
 | Déploiement       | OVH VPS + Coolify                        | Self-hosted, EU GDPR, €8/mois |
 
 > **Note** : Upstash Redis a été retiré du stack (Phase 6). Les alertes temps-réel

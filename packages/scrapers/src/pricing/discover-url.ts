@@ -36,8 +36,35 @@ const DIRECT_PATHS = [
 
 // Unambiguous pricing vocabulary — a match here is trusted without a content
 // check. Matches link text or href segments pointing at a pricing page.
-const PRICING_LINK = /\b(pricing|tarifs|tarification|plans?|prix|premium)\b/i;
-const PRICING_HREF = /(pricing|tarifs|tarification|plans|prix|premium)/i;
+// Localized (ES/DE/IT/PT) tokens sit here too: a "Precios" / "Preise" / "Prezzi"
+// nav link is as canonical as "Pricing", and this is what catches a non-EN site
+// whose route isn't one of the DIRECT_PATHS conventions.
+const PRICING_LINK =
+  /\b(pricing|tarifs|tarification|plans?|prix|premium|precios|preise|prezzi|pre[cç]os)\b/i;
+const PRICING_HREF =
+  /(pricing|tarifs|tarification|plans|prix|premium|precios|preise|prezzi|precos)/i;
+
+// Convention routes that are NOT safe to commit on reachability alone. Two kinds:
+// localized equivalents of /pricing, and upgrade/commerce vocabulary that exists on
+// plenty of sites without being the pricing page (an account `/upgrade` flow, a
+// `/buy` checkout, a `/subscriptions` settings screen). A bot-protected SPA that
+// answers a blanket 2xx to every path would have any of these committed blindly, so
+// unlike DIRECT_PATHS each one must show real pricing signals on a cheap GET first.
+// Probed AFTER the homepage nav/footer links, so a canonical "Pricing" link wins.
+const VERIFIED_PATHS = [
+  "/precios",
+  "/preise",
+  "/prezzi",
+  "/precos",
+  "/pricing.html",
+  "/pricing-plans",
+  "/compare-plans",
+  "/subscriptions",
+  "/subscribe",
+  "/membership",
+  "/upgrade",
+  "/buy",
+];
 
 // Tier / upgrade vocabulary — consumer apps brand their paid tiers by name
 // ("CollX Pro", "CollX Gold", "Discord Nitro") and expose no /pricing route and
@@ -100,6 +127,13 @@ export async function discoverPricingUrl(
 
   const footer = await resolveCandidate(pricingLinkIn(homepageHtml, "footer a", base));
   if (footer) return { url: footer, source: "footer" };
+
+  // Ambiguous / localized convention routes — reachable AND content-verified.
+  for (const path of VERIFIED_PATHS) {
+    const candidate = new URL(path, base).toString();
+    if (!(await isReachable(candidate))) continue;
+    if (await looksLikePricing(candidate)) return { url: candidate, source: "direct" };
+  }
 
   if (hasHomepagePricingSection(homepageHtml)) {
     return { url: baseUrl, source: "homepage_section" };
@@ -203,6 +237,26 @@ async function isReachable(url: string): Promise<boolean> {
   try {
     const res = await safeFetch(url, {
       method: "HEAD",
+      timeoutMs: HEAD_TIMEOUT_MS,
+      headers: { "user-agent": VERIFY_UA, accept: "text/html" },
+    });
+    if (!res.ok) {
+      // Some servers reject HEAD outright (405 Method Not Allowed / 501) while
+      // serving the page fine on GET — a method restriction must not hide a real
+      // pricing route. Any other non-2xx (404…) stays a miss, no extra request.
+      return res.status === 405 || res.status === 501 ? await reachableViaGet(url) : false;
+    }
+    const finalUrl = typeof res.url === "string" && res.url ? res.url : url;
+    return !landedOnErrorPage(finalUrl);
+  } catch {
+    return false;
+  }
+}
+
+/** GET fallback for servers that reject HEAD. Same 2xx + soft-404 rules. */
+async function reachableViaGet(url: string): Promise<boolean> {
+  try {
+    const res = await safeFetch(url, {
       timeoutMs: HEAD_TIMEOUT_MS,
       headers: { "user-agent": VERIFY_UA, accept: "text/html" },
     });

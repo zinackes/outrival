@@ -23,7 +23,10 @@ interface Call {
 /** Route by URL; HEAD probes default to 404 unless the handler says otherwise.
  *  A handler may return `url` to simulate a redirect landing (final `res.url`). */
 function mockFetch(
-  handler: (url: string, method: string) => { ok: boolean; body?: string; url?: string },
+  handler: (
+    url: string,
+    method: string,
+  ) => { ok: boolean; body?: string; url?: string; status?: number },
 ) {
   const calls: Call[] = [];
   globalThis.fetch = (async (input: unknown, init?: { method?: string }) => {
@@ -33,7 +36,7 @@ function mockFetch(
     const r = handler(url, method);
     return {
       ok: r.ok,
-      status: r.ok ? 200 : 404,
+      status: r.status ?? (r.ok ? 200 : 404),
       url: r.url ?? url,
       text: async () => r.body ?? "",
       headers: { get: () => null },
@@ -188,4 +191,43 @@ test("a JS-rendered /pricing with no children is kept as-is", async () => {
   });
   const got = await discoverPricingUrl(BASE, "<nav></nav>");
   expect(got).toEqual({ url: "https://collx.app/pricing", source: "direct" });
+});
+
+// ── coverage: localized routes, verified ambiguous routes, HEAD-hostile servers ──
+test("a localized nav link (Precios) is trusted like Pricing", () => {
+  const html = `<nav><a href="/precios">Precios</a></nav>`;
+  expect(findNavPricingLink(html, new URL(BASE))).toBe("https://collx.app/precios");
+});
+
+test("an ambiguous route (/membership) is committed only once its content shows prices", async () => {
+  mockFetch((url, method) => {
+    if (method === "HEAD") return { ok: url.endsWith("/membership") };
+    if (url.endsWith("/membership")) return { ok: true, body: PRICED_PAGE };
+    return { ok: false };
+  });
+  const got = await discoverPricingUrl(BASE, "<nav></nav>");
+  expect(got).toEqual({ url: "https://collx.app/membership", source: "direct" });
+});
+
+test("an ambiguous route that is reachable but priceless is rejected (account /upgrade flow)", async () => {
+  mockFetch((url, method) => {
+    if (method === "HEAD") return { ok: url.endsWith("/upgrade") };
+    if (url.endsWith("/upgrade")) return { ok: true, body: NO_PRICE_PAGE };
+    return { ok: false };
+  });
+  const got = await discoverPricingUrl(BASE, "<nav></nav>");
+  expect(got).toBeNull();
+});
+
+test("a server that rejects HEAD (405) is probed with GET instead", async () => {
+  const calls = mockFetch((url, method) => {
+    if (method === "HEAD") {
+      // Method restriction on the real pricing route; everything else is a real 404.
+      return url.endsWith("/pricing") ? { ok: false, status: 405 } : { ok: false };
+    }
+    return url.endsWith("/pricing") ? { ok: true, body: PRICED_PAGE } : { ok: false };
+  });
+  const got = await discoverPricingUrl(BASE, "<nav></nav>");
+  expect(got).toEqual({ url: "https://collx.app/pricing", source: "direct" });
+  expect(calls.some((c) => c.method === "GET" && c.url.endsWith("/pricing"))).toBe(true);
 });

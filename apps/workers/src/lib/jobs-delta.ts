@@ -8,6 +8,13 @@
 // no real closure. Mass-closing every active posting on that fires a phantom
 // "hiring freeze" signal (and its inverse on the next scrape). So when the result
 // is empty and NOT authoritative we skip the whole close/count/summary path.
+//
+// Closure guard (generalises C1): ANY closure — empty→close-all OR partial→close-
+// the-missing — requires the AUTHORITATIVE path. A non-authoritative extraction
+// (AI floor / careers HTML) can return a partial SUBSET (a truncated page, a flaky
+// render), so trusting its omissions to close postings fabricates "role removed"
+// events exactly like the empty case does. On that path we ADD only, never close;
+// principled fallback-path closure returns with the R1 completeness signal.
 
 export function jobKey(title: string, department: string): string {
   return `${title.trim().toLowerCase()}::${department.trim().toLowerCase()}`;
@@ -48,9 +55,13 @@ export function computeJobsDelta<J extends { title: string; department: string }
     if (!existingByKey.has(key)) inserts.push(j);
   }
 
-  const closedIds = existing
-    .filter((j) => !seenKeys.has(jobKey(j.title, j.department ?? "Other")))
-    .map((j) => j.id);
+  // Only an authoritative board list may close postings (see header). A non-
+  // authoritative subset adds new roles but never closes the ones it didn't see.
+  const closedIds = authoritative
+    ? existing
+        .filter((j) => !seenKeys.has(jobKey(j.title, j.department ?? "Other")))
+        .map((j) => j.id)
+    : [];
 
   return { skip: false, inserts, closedIds };
 }

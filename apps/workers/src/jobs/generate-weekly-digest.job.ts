@@ -17,9 +17,10 @@ import {
   type DigestInputSignal,
 } from "@outrival/ai";
 import { signDigestFeedbackToken, signUnsubscribeToken } from "@outrival/shared";
-import { renderDigestEmail } from "../lib/digest-email";
+import { renderDigestEmail, renderAllQuietDigest } from "../lib/digest-email";
 import { getResend, ALERT_FROM } from "../lib/resend";
 import { logAiRun } from "../lib/analytics";
+import { getAllQuietCounts } from "../lib/digest-counts";
 
 function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -63,6 +64,7 @@ export const generateWeeklyDigestJob = schedules.task({
 
     let sent = 0;
     let skipped = 0;
+    let allQuiet = 0;
 
     for (const org of orgs) {
       const existing = await db.query.digests.findFirst({
@@ -101,8 +103,94 @@ export const generateWeeklyDigestJob = schedules.task({
         );
 
       if (weekSignals.length === 0) {
-        logger.log("No signals for org this week, skipping", { orgId: org.id });
-        skipped++;
+        // All-quiet (Lever 6): a calm week still gets a light briefing instead
+        // of going silent from the inbox where retention lives — silence reads
+        // as "is this even running?". No AI call, so it's free to send. Only
+        // sent when there's a recipient; mirrors the signal path's store-then-
+        // send-then-stamp order so the persisted row + its sentAt double as
+        // this org's idempotency marker for the week (checked at the top of
+        // this loop via `existing?.sentAt`).
+        if (!org.digestEmail) {
+          logger.log("No signals and no digest email configured, skipping", {
+            orgId: org.id,
+          });
+          skipped++;
+          continue;
+        }
+
+        const { pages, checks } = await getAllQuietCounts(org.id, weekStart, weekEnd);
+        const allQuietContent = { temperature: "low" as const, tldr: [], sections: [] };
+
+        const [stored] = existing
+          ? await db
+              .update(digests)
+              .set({
+                weekEnd: isoDate(weekEnd),
+                content: allQuietContent,
+                temperature: "low",
+              })
+              .where(eq(digests.id, existing.id))
+              .returning()
+          : await db
+              .insert(digests)
+              .values({
+                orgId: org.id,
+                weekStart: isoDate(weekStart),
+                weekEnd: isoDate(weekEnd),
+                content: allQuietContent,
+                temperature: "low",
+                period: "weekly",
+              })
+              .returning();
+        if (!stored) {
+          logger.error("Failed to store all-quiet digest", { orgId: org.id });
+          skipped++;
+          continue;
+        }
+
+        const apiBase = process.env.NEXT_PUBLIC_API_URL ?? process.env.BETTER_AUTH_URL ?? "";
+        const secret = process.env.BETTER_AUTH_SECRET ?? "";
+        const unsubscribeUrl =
+          apiBase && secret
+            ? `${apiBase}/api/digest-feedback/unsubscribe?token=${signUnsubscribeToken(org.id, secret)}`
+            : undefined;
+        const html = renderAllQuietDigest({
+          pages,
+          checks,
+          weekStart: isoDate(weekStart),
+          weekEnd: isoDate(weekEnd),
+          unsubscribeUrl,
+        });
+
+        try {
+          await getResend().emails.send({
+            from: ALERT_FROM,
+            to: org.digestEmail,
+            subject: `Your Monday Competitive Briefing — all quiet (week of ${isoDate(weekStart)})`,
+            html,
+            ...(unsubscribeUrl
+              ? {
+                  headers: {
+                    "List-Unsubscribe": `<${unsubscribeUrl}>`,
+                    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+                  },
+                }
+              : {}),
+          });
+          await db
+            .update(digests)
+            .set({ sentAt: new Date() })
+            .where(eq(digests.id, stored.id));
+          allQuiet++;
+          logger.log("All-quiet digest email sent", {
+            orgId: org.id,
+            digestId: stored.id,
+            pages,
+            checks,
+          });
+        } catch (err) {
+          logger.error("All-quiet digest email failed", { orgId: org.id, err: String(err) });
+        }
         continue;
       }
 
@@ -253,7 +341,7 @@ export const generateWeeklyDigestJob = schedules.task({
       }
     }
 
-    logger.log("Completed generate-weekly-digest", { sent, skipped });
-    return { sent, skipped };
+    logger.log("Completed generate-weekly-digest", { sent, skipped, allQuiet });
+    return { sent, skipped, allQuiet };
   },
 });

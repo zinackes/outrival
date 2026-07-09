@@ -14,7 +14,7 @@ import {
   platformDetectionRuns,
   aiVisibilityResults,
 } from "@outrival/db";
-import { and, desc, eq, gt, gte, inArray, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, lt, ne, sql } from "drizzle-orm";
 
 // Time-series / analytics access for the workers. These tables used to live in
 // ClickHouse; they are now plain Postgres tables in the same Neon database.
@@ -257,6 +257,31 @@ export async function getRecentSignalCount(hours: number): Promise<number | null
       .where(gte(signalFeed.recordedAt, sql`now() - make_interval(hours => ${hours})`)),
   );
   if (!rows || !rows[0]) return null;
+  return Number(rows[0].c);
+}
+
+// All-quiet weekly digest (Lever 6): best-effort count of this org's scrape_runs
+// in [start, end). 0 both on failure and on a genuinely idle window — the caller
+// treats them the same (omit the "M times" clause).
+export async function getWeeklyCheckCount(
+  competitorIds: string[],
+  start: Date,
+  end: Date,
+): Promise<number> {
+  if (competitorIds.length === 0) return 0;
+  const rows = await bestEffortRead("getWeeklyCheckCount", () =>
+    db
+      .select({ c: sql<string>`count(*)` })
+      .from(scrapeRuns)
+      .where(
+        and(
+          inArray(scrapeRuns.competitorId, competitorIds),
+          gte(scrapeRuns.recordedAt, start),
+          lt(scrapeRuns.recordedAt, end),
+        ),
+      ),
+  );
+  if (!rows || !rows[0]) return 0;
   return Number(rows[0].c);
 }
 

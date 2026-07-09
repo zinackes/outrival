@@ -5,6 +5,8 @@ import { db, monitors, competitors, snapshots, changes } from "@outrival/db";
 import { computeHash, computeTextDiff, uploadToR2, getFromR2 } from "@outrival/shared";
 import { extractContent } from "@outrival/scrapers/extract";
 import { getArchivedPage } from "@outrival/scrapers/backfill";
+import { isCloudflareChallenge } from "@outrival/scrapers/block-detection";
+import { detectDenyPage } from "@outrival/scrapers/deny-page";
 import { evaluateSignificance } from "@outrival/ai/significance";
 import { backfillQueue } from "../lib/queues";
 
@@ -111,6 +113,20 @@ export const backfillHistoryJob = task({
         continue;
       }
       seen.add(page.waybackTimestamp);
+
+      // An archived interstitial (Cloudflare/DataDome/etc. challenge, soft-404,
+      // access-denied/geo-block, login wall) reconstructed from Wayback must not
+      // become a diff baseline — it would fabricate a "here's what changed" signal
+      // against real current content (the HebergHub prod case). Best-effort skip,
+      // consistent with the rest of this best-effort job: never throw/retry.
+      if (isCloudflareChallenge(page.html) || detectDenyPage(page.html) !== null) {
+        logger.log("backfill: archived capture is a challenge/deny page, skipping", {
+          offsetDays,
+          url,
+        });
+        await sleep(1000);
+        continue;
+      }
 
       const content = extractContent(page.html, monitor.sourceType);
       // R2 before DB (invariant). Keyed by the capture time so re-runs are stable.

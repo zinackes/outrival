@@ -12,6 +12,7 @@ import {
 import { computeHash, uploadToR2 } from "@outrival/shared";
 import type { Classification } from "@outrival/ai";
 import { insertTechStackHistory } from "../lib/analytics";
+import { severityForImportance, signalEligibleTechs } from "../lib/tech-stack-signal";
 
 // Independent of the homepage pipeline (patch-18): native fetch + cheerio only,
 // no crawlee/playwright. Lazy subpath import keeps the (light) module out of the
@@ -19,18 +20,6 @@ import { insertTechStackHistory } from "../lib/analytics";
 type DetectedTech = import("@outrival/scrapers/tech-stack").DetectedTech;
 
 const InputSchema = z.object({ competitorId: z.string() });
-
-const IMPORTANCE_RANK: Record<string, number> = { low: 1, medium: 2, high: 3 };
-
-function importanceRank(level: string): number {
-  return IMPORTANCE_RANK[level] ?? 0;
-}
-
-// A tech appearance important enough to spend an AI signal on maps to a severity:
-// a high-importance tell (Stripe, Salesforce) → high (alertable); medium → medium.
-function severityForImportance(importance: string): Classification["severity"] {
-  return importance === "high" ? "high" : "medium";
-}
 
 export const scrapeTechStackJob = task({
   id: "scrape-tech-stack",
@@ -49,6 +38,10 @@ export const scrapeTechStackJob = task({
       logger.log("Competitor has no live URL or is deleted, skipping", { competitorId });
       return { skipped: true };
     }
+    // Read BEFORE this run stamps techStackScrapedAt below — a null here means
+    // this is the first-ever tech-stack scan of this competitor, so every
+    // "appeared" tech is baseline noise, not news.
+    const isBaselineScan = competitor.techStackScrapedAt == null;
 
     const { fetchTechStackEvidence, detectTechStack } = await import(
       "@outrival/scrapers/tech-stack"
@@ -181,14 +174,21 @@ export const scrapeTechStackJob = task({
       .set({ techStackScrapedAt: now })
       .where(eq(competitors.id, competitor.id));
 
-    // Signal only for important appearances (>= TECH_STACK_SIGNAL_MIN_IMPORTANCE).
+    // Signal only for important appearances (>= TECH_STACK_SIGNAL_MIN_IMPORTANCE),
+    // and NEVER on the baseline scan (first-ever run: everything "appears", none of
+    // it is news — audit 2026-07-09 found this was 28% of the entire signal feed).
     // Disappearances never signal (per spec). Each important new tech becomes one
     // signal via the existing pipeline (synthetic monitor → snapshot → change →
     // generate-signal), so signals.changeId's NOT-NULL FK is satisfied.
-    const minImportance = process.env.TECH_STACK_SIGNAL_MIN_IMPORTANCE ?? "medium";
-    const important = appeared.filter(
-      (t) => importanceRank(t.importance) >= importanceRank(minImportance),
-    );
+    const minImportance = process.env.TECH_STACK_SIGNAL_MIN_IMPORTANCE ?? "high";
+    const important = signalEligibleTechs(appeared, { isBaselineScan, minImportance });
+
+    if (isBaselineScan && appeared.length > 0) {
+      logger.log("Baseline tech-stack scan — recording entries, no signals", {
+        competitorId,
+        appeared: appeared.length,
+      });
+    }
 
     if (important.length > 0) {
       await emitTechStackSignals(competitor.id, competitor.name, competitor.url, home.html, important);
@@ -268,8 +268,9 @@ async function emitTechStackSignals(
 
   for (const tech of techs) {
     const diffText =
-      `New technology detected on ${competitorName}: ${tech.name} (${tech.category}). ` +
-      `Evidence: ${tech.evidence.join(", ")}.`;
+      `Technology newly detected on ${competitorName} since the previous tech-stack scan: ` +
+      `${tech.name} (${tech.category}). Evidence: ${tech.evidence.join(", ")}. ` +
+      `Note: detection reflects what the site exposes to visitors — it can lag or lead the actual adoption date.`;
 
     const [change] = await db
       .insert(changes)
@@ -289,7 +290,7 @@ async function emitTechStackSignals(
       category: "product",
       severity: severityForImportance(tech.importance),
       is_significant: true,
-      reason: `${tech.name} (${tech.category}) newly detected in the competitor's stack`,
+      reason: `${tech.name} (${tech.category}) newly detected since the previous tech-stack scan`,
       humanChangeBefore: null,
       humanChangeAfter: tech.name,
     };

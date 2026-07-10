@@ -6,6 +6,7 @@ import {
   getAiParseHealth,
   getRecentSignalCount,
 } from "../lib/analytics";
+import { getFirstSignalSloInputs, evaluateFirstSignalAlerts } from "../lib/slo-first-signal";
 
 // Conservative thresholds — this pings a human, so it must not cry wolf.
 // Every rate alert is gated by a minimum sample so we never alert on 1-of-2.
@@ -114,6 +115,25 @@ export const opsHealthCheckJob = task({
       }
     } catch (err) {
       logger.warn("Hallucination-rate check skipped", { err: String(err) });
+    }
+
+    // First-signal SLO (docs/slos/onboarding-first-signal.md) — event-based checks
+    // piggybacked here because the Trigger schedule cap is full. The SLI and its
+    // coverage companion are always logged so the run output tracks the trend even
+    // when nothing alerts. Best-effort like every other check.
+    try {
+      const slo = await getFirstSignalSloInputs();
+      if (slo) {
+        alerts.push(...evaluateFirstSignalAlerts(slo));
+        logger.log("First-signal SLO", {
+          sli28d: slo.window,
+          sli7d: slo.week,
+          coverage24h: slo.coverage24h,
+          recent: slo.recent,
+        });
+      }
+    } catch (err) {
+      logger.warn("First-signal SLO check skipped", { err: String(err) });
     }
 
     if (alerts.length > 0) {

@@ -83,12 +83,16 @@ export const signalBatchingJob = task({
       if (group.length < minSignals) continue;
 
       const first = group[0]!;
-      const summary = await loggedAi("batch_summary", AI_CONFIG.classification, () =>
-        generateBatchSummary({
-          competitorName: first.competitorName,
-          category: first.category,
-          signals: group.map((s) => ({ severity: s.severity, insight: s.insight })),
-        }),
+      const summary = await loggedAi(
+        "batch_summary",
+        AI_CONFIG.classification,
+        () =>
+          generateBatchSummary({
+            competitorName: first.competitorName,
+            category: first.category,
+            signals: group.map((s) => ({ severity: s.severity, insight: s.insight })),
+          }),
+        { orgId: first.orgId, competitorId: first.competitorId },
       ).catch(() => null);
 
       const highestSeverity = group.reduce(

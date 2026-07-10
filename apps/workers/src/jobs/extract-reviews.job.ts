@@ -83,8 +83,11 @@ export const extractReviewsJob = task({
       }
     }
 
-    const extractedRaw = await loggedAi("extract_reviews", AI_CONFIG.classification, () =>
-      extractReviews(text),
+    const extractedRaw = await loggedAi(
+      "extract_reviews",
+      AI_CONFIG.classification,
+      () => extractReviews(text),
+      { competitorId: input.competitorId },
     );
     if (!extractedRaw) {
       logger.warn("Reviews extraction returned null");
@@ -142,19 +145,23 @@ export const extractReviewsJob = task({
     // Retry-safety: run the throwing AI call (and the monitor update it feeds)
     // BEFORE the non-idempotent inserts below, so a retried run after an AI
     // failure never leaves duplicate verbatims/scores behind.
-    const summary = await loggedAi("source_summary", AI_CONFIG.classificationFast, () =>
-      summarizeSource({
-        kind: "reviews",
-        source: input.source,
-        score: extracted.average_score,
-        reviewCount: extracted.review_count,
-        sentiment: extracted.sentiment_score,
-        praises: extracted.top_praises,
-        complaints: extracted.top_complaints,
-        previousScore,
-        subScores: extracted.sub_scores,
-        themes: extracted.complaint_themes,
-      }),
+    const summary = await loggedAi(
+      "source_summary",
+      AI_CONFIG.classificationFast,
+      () =>
+        summarizeSource({
+          kind: "reviews",
+          source: input.source,
+          score: extracted.average_score,
+          reviewCount: extracted.review_count,
+          sentiment: extracted.sentiment_score,
+          praises: extracted.top_praises,
+          complaints: extracted.top_complaints,
+          previousScore,
+          subScores: extracted.sub_scores,
+          themes: extracted.complaint_themes,
+        }),
+      { competitorId: input.competitorId },
     );
     if (summary) {
       await db

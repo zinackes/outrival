@@ -4,6 +4,12 @@ import { db } from "./db";
 
 export type AiRunStatus = "success" | "parse_failed" | "error";
 
+// Best-effort owner of the spend (cost attribution, 2026-07 audit).
+export interface AiRunAttribution {
+  orgId?: string | null;
+  competitorId?: string | null;
+}
+
 // The API logs its OWN synchronous AI calls to ai_runs — the workers' loggedAi
 // (apps/workers/src/lib/analytics.ts) is job-side only, so before this the API's
 // in-request AI (onboarding analyze, ask) logged nothing and a Groq rate-limit there
@@ -12,10 +18,15 @@ export type AiRunStatus = "success" | "parse_failed" | "error";
 // (patch-22); falls back to "groq" when the pool didn't run.
 // Generic logger for any in-request API AI call. `task` is a free-text column, so
 // new API-side tasks (ask, signals_brief, …) don't need a schema change.
+//
+// MUST run inside withAiContext (established at the request handler / agent
+// boundary) — Bun drops the lazy child-frame enterWith, so outside a context the
+// reads below fall back to static labels and zero tokens.
 export async function logApiAiRun(
   task: string,
   model: string,
   status: AiRunStatus,
+  attribution?: AiRunAttribution,
 ): Promise<void> {
   try {
     const provider = getActiveProvider() ?? "groq";
@@ -32,12 +43,18 @@ export async function logApiAiRun(
       promptTokens: usage.promptTokens,
       completionTokens: usage.completionTokens,
       totalTokens: usage.totalTokens,
+      orgId: attribution?.orgId ?? null,
+      competitorId: attribution?.competitorId ?? null,
     });
   } catch {
     // ai_runs is analytics, never load-bearing — swallow.
   }
 }
 
-export function logAskRun(model: string, status: AiRunStatus): Promise<void> {
-  return logApiAiRun("ask", model, status);
+export function logAskRun(
+  model: string,
+  status: AiRunStatus,
+  attribution?: AiRunAttribution,
+): Promise<void> {
+  return logApiAiRun("ask", model, status, attribution);
 }

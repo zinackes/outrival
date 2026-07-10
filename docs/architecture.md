@@ -503,7 +503,10 @@ carte (état live uniquement).
   └─ Groq insight global → HTML inline → Resend
 
 [cron horaire] generate-daily-digest (patch-26)
-  └─ canal digest_daily (high par défaut + signals déférés par quiet hours / freq cap)
+  └─ canal digest_daily (opt-in + signals déférés par quiet hours / freq cap ;
+     depuis l'audit 2026-07-10, high part par défaut en email_immediate — cf.
+     dispatcher — donc le daily ne porte plus que les déférés et les orgs qui
+     ont choisi ce canal)
   └─ fire par org quand l'heure LOCALE = quiet_hours_end (matin) → 1 digest/jour local
   └─ idempotent via signals.daily_digest_sent_at
 

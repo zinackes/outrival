@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { and, desc, eq, isNull, ne } from "drizzle-orm";
+import { and, desc, eq, isNull, ne, or } from "drizzle-orm";
 import { tasks } from "@trigger.dev/sdk/v3";
 import { battleCards, competitors, products, signals, selfProfileLastEditedAt } from "@outrival/db";
 import { getBytesFromR2 } from "@outrival/shared";
@@ -200,8 +200,16 @@ battleCardsRouter.get("/:id/battle-card/staleness", async (c) => {
       });
   const userLastChange = selfProfileLastEditedAt(self?.selfProfile) ?? self?.updatedAt ?? null;
 
+  // Only signals worth regenerating for: with the raw "any newer signal" rule, a
+  // noisy feed kept the amber "Regenerate" on permanently (2026-07-10 audit) and
+  // nudged users to burn their daily card quota on noise. Low severity and
+  // signals the user dismissed as noise don't age a card.
   const lastSignal = await db.query.signals.findFirst({
-    where: eq(signals.competitorId, competitor.id),
+    where: and(
+      eq(signals.competitorId, competitor.id),
+      ne(signals.severity, "low"),
+      or(isNull(signals.actionStatus), ne(signals.actionStatus, "dismissed")),
+    ),
     orderBy: desc(signals.createdAt),
   });
   const competitorLastChange = lastSignal?.createdAt ?? null;

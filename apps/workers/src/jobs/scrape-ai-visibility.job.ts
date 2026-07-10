@@ -164,8 +164,11 @@ export const scrapeAiVisibilityJob = task({
           if (!res) continue; // missing key / API error — best-effort, skip
           totalQueries++;
 
-          const extraction = await loggedAi("extract_ai_visibility", AI_CONFIG.classification, () =>
-            extractAiVisibility(res.answer, subjectNames),
+          const extraction = await loggedAi(
+            "extract_ai_visibility",
+            AI_CONFIG.classification,
+            () => extractAiVisibility(res.answer, subjectNames),
+            { orgId },
           );
           if (!extraction) continue;
 

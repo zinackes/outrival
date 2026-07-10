@@ -36,6 +36,7 @@ export const detectStructuralChangesJob = task({
       where: isNull(competitors.deletedAt),
       columns: {
         id: true,
+        orgId: true,
         name: true,
         category: true,
         description: true,
@@ -115,6 +116,7 @@ export const detectStructuralChangesJob = task({
             },
             currentContent: points[0]?.text ?? "",
           }),
+        { orgId: comp.orgId, competitorId: comp.id },
       );
       if (!verdict || verdict.matchesProfile) continue;
 

@@ -2,6 +2,7 @@ import type { SelfProfile } from "@outrival/db";
 import {
   generateVisibilityPrompts,
   fallbackVisibilityPrompts,
+  withAiContext,
   AI_CONFIG,
   type VisibilityPromptInput,
 } from "@outrival/ai";
@@ -55,13 +56,18 @@ export async function seedVisibilityPrompts(
     return fallbackVisibilityPrompts(input, count);
   }
 
-  const outcome = await generateVisibilityPrompts(input, count);
-  await logAiRun(
-    "generate_ai_visibility_prompts",
-    AI_CONFIG.classification.provider,
-    AI_CONFIG.classification.model,
-    outcome.status === "ok" ? "success" : outcome.status,
-  );
+  // withAiContext spans the call AND its log so the tokens/model complete() marks
+  // reach logAiRun (the custom outcome→status mapping is why this isn't loggedAi).
+  const outcome = await withAiContext(async () => {
+    const o = await generateVisibilityPrompts(input, count);
+    await logAiRun(
+      "generate_ai_visibility_prompts",
+      AI_CONFIG.classification.provider,
+      AI_CONFIG.classification.model,
+      o.status === "ok" ? "success" : o.status,
+    );
+    return o;
+  });
   if (outcome.status === "ok") return outcome.prompts.slice(0, count);
   return fallbackVisibilityPrompts(input, count);
 }

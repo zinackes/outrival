@@ -138,8 +138,11 @@ export const aiVisibilityTeaserJob = task({
       for (const prompt of prompts) {
         const res = await queryEngine(engine, prompt);
         if (!res) continue; // missing key / API error — best-effort skip
-        const extraction = await loggedAi("extract_ai_visibility", AI_CONFIG.classification, () =>
-          extractAiVisibility(res.answer, subjectNames),
+        const extraction = await loggedAi(
+          "extract_ai_visibility",
+          AI_CONFIG.classification,
+          () => extractAiVisibility(res.answer, subjectNames),
+          { orgId },
         );
         if (!extraction) continue;
         const verdict = new Map(extraction.mentions.map((m) => [norm(m.name), m]));

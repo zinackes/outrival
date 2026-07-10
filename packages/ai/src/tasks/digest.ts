@@ -34,10 +34,42 @@ export interface DigestInputSignal {
   so_what: string | null;
 }
 
+/**
+ * Hard cap on the signals fed to one digest generation. Every input signal costs
+ * prompt tokens AND demands an output section — past ~30 the reply outgrows
+ * maxTokens, truncates mid-JSON and the whole digest parse-fails, so the busiest
+ * (most engaged) org would be exactly the one whose week goes silent. The cap
+ * keeps the highest-severity signals and tells the model how many were left out.
+ */
+export const DIGEST_MAX_SIGNALS = 30;
+
+const SEVERITY_RANK: Record<DigestInputSignal["severity"], number> = {
+  critical: 3,
+  high: 2,
+  medium: 1,
+  low: 0,
+};
+
+/** Top DIGEST_MAX_SIGNALS by severity (ties keep input order) + how many dropped. */
+export function capDigestSignals(signals: DigestInputSignal[]): {
+  kept: DigestInputSignal[];
+  omitted: number;
+} {
+  if (signals.length <= DIGEST_MAX_SIGNALS) return { kept: signals, omitted: 0 };
+  const kept = signals
+    .map((s, i) => ({ s, i }))
+    .sort((a, b) => SEVERITY_RANK[b.s.severity] - SEVERITY_RANK[a.s.severity] || a.i - b.i)
+    .slice(0, DIGEST_MAX_SIGNALS)
+    .sort((a, b) => a.i - b.i)
+    .map(({ s }) => s);
+  return { kept, omitted: signals.length - kept.length };
+}
+
 export async function generateDigest(
-  signals: DigestInputSignal[],
+  allSignals: DigestInputSignal[],
   myProduct?: MyProductContext,
 ): Promise<WithQuality<Digest> | null> {
+  const { kept: signals, omitted } = capDigestSignals(allSignals);
   const myProductBlock = myProduct
     ? `\n<my_product>
 These signals are about OUR competitors. Read the week from our perspective.
@@ -50,10 +82,15 @@ Value proposition: ${myProduct.valueProp}
     ? "TL;DR: 3 key points maximum, each framed around what it means for OUR product (threat, opportunity, or non-event)"
     : "TL;DR: 3 key points maximum";
 
+  const omittedBlock = omitted
+    ? `\n<omitted>
+${omitted} lower-severity signal${omitted > 1 ? "s were" : " was"} left out of the list above for brevity. Do NOT invent their contents — at most, acknowledge the extra volume in one TL;DR point (e.g. "plus ${omitted} smaller changes").
+</omitted>\n`
+    : "";
   const prompt = `<signals>
 ${JSON.stringify(signals, null, 2)}
 </signals>
-${myProductBlock}
+${omittedBlock}${myProductBlock}
 <task>
 Generate a weekly competitive-intelligence digest from these signals.
 - Assess the overall temperature (low/moderate/high)
@@ -80,7 +117,9 @@ Reply ONLY with valid JSON, no markdown.
     prompt,
     sourceText: JSON.stringify(signals, null, 2),
     schema: DigestSchema,
-    maxTokens: 2048,
+    // Room for one section per capped signal plus the TL;DR — 2048 truncated the
+    // JSON on busy weeks (only pay for tokens actually generated).
+    maxTokens: 3072,
   });
   return result ? attachQuality(result.output, result.quality) : null;
 }

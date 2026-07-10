@@ -57,6 +57,12 @@ const GROUNDING_POLICY: Record<string, { grounding: boolean; confidence: boolean
   // reports success. Same failure mode as summarize_competitor above; drop grounding
   // so the output is just the bare { category, audience, valueProp, features, techStack }.
   extract_features: { grounding: false, confidence: false },
+  // The weekly digest re-groups signal insights that are ALREADY AI-written text —
+  // a verbatim sourceQuote per assertion adds little and inflates the output far
+  // past maxTokens on busy weeks: 26% of prod digest generations parse-failed and
+  // those orgs silently skipped their week (2026-07-10 audit). Keep confidence
+  // (drives the ConfidenceDot + self-check trigger), drop the citation envelope.
+  generate_digest: { grounding: false, confidence: true },
 };
 
 /**

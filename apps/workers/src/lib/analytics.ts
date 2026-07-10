@@ -1,5 +1,5 @@
 import { logger } from "@trigger.dev/sdk/v3";
-import { getActiveProvider, getActiveModel, consumeUsage } from "@outrival/ai";
+import { getActiveProvider, getActiveModel, consumeUsage, withAiContext } from "@outrival/ai";
 import {
   db,
   pricingHistory,
@@ -155,13 +155,25 @@ export async function logPlatformDetectionRun(row: PlatformDetectionRunRow): Pro
 
 export type AiRunStatus = "success" | "parse_failed" | "error";
 
+// Best-effort owner of the spend (cost attribution, 2026-07 audit). Pass what the
+// call site already has in scope — never add a query just to fill this.
+export interface AiRunAttribution {
+  orgId?: string | null;
+  competitorId?: string | null;
+}
+
 // The job logs the AI run, never the @outrival/ai task (kept pure, no DB). The
 // task returns null on a parse miss → "parse_failed"; a thrown call → "error".
+//
+// MUST run inside withAiContext (loggedAi provides it) for the provider/model/
+// token reads below to see what complete() marked: outside a context they fall
+// back to the static labels and zero tokens (the pre-fix prod behaviour).
 export async function logAiRun(
   task: string,
   provider: string,
   model: string,
   status: AiRunStatus,
+  attribution?: AiRunAttribution,
 ): Promise<void> {
   // Prefer the real pool provider the call ran on (cerebras|groq|hyperbolic),
   // captured by complete() in the same async context (patch-22). Falls back to the
@@ -183,6 +195,8 @@ export async function logAiRun(
       promptTokens: usage.promptTokens,
       completionTokens: usage.completionTokens,
       totalTokens: usage.totalTokens,
+      orgId: attribution?.orgId ?? null,
+      competitorId: attribution?.competitorId ?? null,
       recordedAt: new Date(),
     }),
   );
@@ -191,19 +205,31 @@ export async function logAiRun(
 // Wrap an @outrival/ai task call so its outcome lands in ai_runs (patch-02):
 // a value → success, null → parse_failed, a throw (e.g. a 429 after the SDK's own
 // retries) → error, rethrown so Trigger.dev still retries the job.
+// withAiContext establishes the token/provider scope in THIS frame — without it
+// the marks complete() makes in its child frames never reach logAiRun (Bun and
+// the Trigger runtime both drop the lazy enterWith; ai_runs logged 0 tokens).
 export async function loggedAi<T>(
   task: string,
   config: { provider: string; model: string },
   fn: () => Promise<T>,
+  attribution?: AiRunAttribution,
 ): Promise<T> {
-  try {
-    const res = await fn();
-    await logAiRun(task, config.provider, config.model, res == null ? "parse_failed" : "success");
-    return res;
-  } catch (err) {
-    await logAiRun(task, config.provider, config.model, "error");
-    throw err;
-  }
+  return withAiContext(async () => {
+    try {
+      const res = await fn();
+      await logAiRun(
+        task,
+        config.provider,
+        config.model,
+        res == null ? "parse_failed" : "success",
+        attribution,
+      );
+      return res;
+    } catch (err) {
+      await logAiRun(task, config.provider, config.model, "error", attribution);
+      throw err;
+    }
+  });
 }
 
 // --- Ops health reads (patch-02, ops-health-check job). Best-effort: null on

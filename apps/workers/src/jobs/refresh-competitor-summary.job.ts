@@ -92,8 +92,11 @@ export const refreshCompetitorSummaryJob = task({
       }
     }
 
-    const result = await loggedAi("competitor_summary", AI_CONFIG.classification, () =>
-      generateCompetitorSummary({
+    const result = await loggedAi(
+      "competitor_summary",
+      AI_CONFIG.classification,
+      () =>
+        generateCompetitorSummary({
       name: competitor.name,
       category: competitor.category ?? null,
       description: competitor.description,
@@ -110,6 +113,7 @@ export const refreshCompetitorSummaryJob = task({
           }
         : undefined,
       }),
+      { orgId: competitor.orgId, competitorId: competitor.id },
     );
 
     if (!result) {

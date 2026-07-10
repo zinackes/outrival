@@ -2,7 +2,12 @@ export { AI_CONFIG } from "./config";
 export type { AIProvider, AITaskConfig } from "./config";
 export { complete } from "./provider";
 // Provider pool + resilience (patch-22)
-export { getActiveProvider, getActiveModel, consumeUsage } from "./provider/provider-context";
+export {
+  getActiveProvider,
+  getActiveModel,
+  consumeUsage,
+  withAiContext,
+} from "./provider/provider-context";
 export type { TokenUsage } from "./provider/provider-context";
 export { AIUnavailableError, checkGlobalBreaker } from "./provider/circuit-breaker";
 export { loadProviders } from "./provider/provider-pool";

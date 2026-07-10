@@ -48,6 +48,24 @@ function scope(): Scope {
   return s;
 }
 
+/**
+ * Establish the AI context in the CALLER's frame for the span of `fn`. Every
+ * complete() call inside mutates this same scope object, so the log site that
+ * follows the await still reads it. The lazy enterWith() above is NOT enough on
+ * its own: Bun (the API runtime) drops an enterWith made in a child async frame,
+ * and the Trigger.dev runtime restores context snapshots around instrumented
+ * calls — both left getStore() undefined at the log site, so every prod ai_runs
+ * row carried 0 tokens and a static model label. store.run() relies only on
+ * downward propagation + in-place mutation, which every runtime honours, and
+ * isolates concurrent flows (the API handles parallel requests in one process).
+ * Wrap at the unit-of-attribution boundary: loggedAi, or a task-call + logAiRun
+ * sequence. The enterWith fallback stays for unwrapped sites (works on plain
+ * Node, degrades to zeros elsewhere — exactly the pre-fix behaviour).
+ */
+export function withAiContext<T>(fn: () => Promise<T>): Promise<T> {
+  return store.run({ id: null, model: null, usage: zeroUsage() }, fn);
+}
+
 export function markProvider(id: string): void {
   scope().id = id;
 }

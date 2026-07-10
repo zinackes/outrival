@@ -90,8 +90,11 @@ export const extractSelfProfileJob = task({
     const html = await getFromR2(`${snapshot.r2Key}.html`);
     const text = htmlToText(html).slice(0, 8000);
 
-    const extracted = await loggedAi("extract_self_profile", AI_CONFIG.classification, () =>
-      extractSelfProfile(text),
+    const extracted = await loggedAi(
+      "extract_self_profile",
+      AI_CONFIG.classification,
+      () => extractSelfProfile(text),
+      { orgId: competitor.orgId, competitorId: competitor.id },
     );
     if (!extracted) {
       logger.warn("Self profile extraction returned null");

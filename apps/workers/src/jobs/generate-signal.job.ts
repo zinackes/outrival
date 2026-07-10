@@ -31,7 +31,7 @@ import {
   PRICING_STATUS_LABELS,
   renderCelebrationEmail,
 } from "@outrival/shared";
-import { insertSignalFeed, logAiRun } from "../lib/analytics";
+import { insertSignalFeed, loggedAi } from "../lib/analytics";
 import { captureWorkerEvent, shutdownPostHog } from "../lib/posthog";
 import { getResend, ALERT_FROM } from "../lib/resend";
 import { groqQueue } from "../lib/queues";
@@ -173,6 +173,8 @@ export const generateSignalJob = task({
     });
     if (!change) throw new AbortTaskRunError(`Change ${input.changeId} not found`);
     if (!change.diffText) throw new AbortTaskRunError("Change has no diffText");
+    // Captured so the narrowing above survives into the loggedAi closure.
+    const diffText = change.diffText;
 
     // L2 archive backfill: a change whose "before" snapshot is a Wayback capture is
     // a real historical move surfaced at day 0. It must NEVER email/Slack (the user
@@ -246,34 +248,33 @@ export const generateSignalJob = task({
 
     // Ops quality logging (patch-02): success / parse_failed (null) / error
     // (thrown). Both insight paths use the 70b model.
-    const { provider, model } = AI_CONFIG.insights;
-    let insight;
-    try {
-      insight = input.pricingTransition
-        ? await generateRepositioningInsight({
-            competitorName: competitor.name,
-            competitorCategory: competitor.category,
-            previous: input.pricingTransition.previous,
-            current: input.pricingTransition.current,
-            type: input.pricingTransition.type,
-            diffText: change.diffText,
-          })
-        : await generateInsight(
-            change.diffText,
-            competitor.name,
-            competitor.category,
-            input.classification!,
-            myProduct,
-            // Lexical diffs (diffType "text") are a raw blob → the most
-            // hallucination-prone path: require verbatim grounding. Structured
-            // homepage changes are already anchored, so they keep the cheap path.
-            change.diffType !== "structured",
-          );
-    } catch (err) {
-      await logAiRun("insight", provider, model, "error");
-      throw err;
-    }
-    await logAiRun("insight", provider, model, insight ? "success" : "parse_failed");
+    const attribution = { orgId: competitor.orgId, competitorId: competitor.id };
+    const insight = await loggedAi(
+      "insight",
+      AI_CONFIG.insights,
+      () =>
+        input.pricingTransition
+          ? generateRepositioningInsight({
+              competitorName: competitor.name,
+              competitorCategory: competitor.category,
+              previous: input.pricingTransition.previous,
+              current: input.pricingTransition.current,
+              type: input.pricingTransition.type,
+              diffText,
+            })
+          : generateInsight(
+              diffText,
+              competitor.name,
+              competitor.category,
+              input.classification!,
+              myProduct,
+              // Lexical diffs (diffType "text") are a raw blob → the most
+              // hallucination-prone path: require verbatim grounding. Structured
+              // homepage changes are already anchored, so they keep the cheap path.
+              change.diffType !== "structured",
+            ),
+      attribution,
+    );
     if (!insight) {
       // Parse miss (malformed/empty JSON), not a provider error — transient on the
       // free reasoning providers, so RETRIABLE: aborting here dropped a change
@@ -292,21 +293,19 @@ export const generateSignalJob = task({
     // above, the narrative is an optional enhancement).
     let narrative: string | null = null;
     if (change.diffType === "structured" && change.structuredDiff && shouldNarrate(severity)) {
-      const narrateModel = AI_CONFIG.insights;
       try {
-        narrative = await narrateChange({
-          changes: change.structuredDiff as StructuredChange[],
-          competitor: { name: competitor.name, category: competitor.category ?? "unknown" },
-          myProduct,
-        });
-        await logAiRun(
+        narrative = await loggedAi(
           "narrate_change",
-          narrateModel.provider,
-          narrateModel.model,
-          narrative ? "success" : "parse_failed",
+          AI_CONFIG.insights,
+          () =>
+            narrateChange({
+              changes: change.structuredDiff as StructuredChange[],
+              competitor: { name: competitor.name, category: competitor.category ?? "unknown" },
+              myProduct,
+            }),
+          attribution,
         );
       } catch {
-        await logAiRun("narrate_change", narrateModel.provider, narrateModel.model, "error");
         logger.warn("Narrative generation failed (non-fatal)", { changeId: input.changeId });
       }
     }

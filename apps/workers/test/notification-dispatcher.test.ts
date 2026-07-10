@@ -188,8 +188,18 @@ describe("decideDispatch — clean immediate path", () => {
 
   test("falls back to default prefs when the org has no preferences row", async () => {
     setSystemTime(NOON);
-    state.prefs = null; // → defaultPrefs(): high = digest_daily
+    state.prefs = null; // → defaultPrefs(): high = email_immediate (2026-07-10 audit)
     const d = await decideDispatch("org-1", { severity: "high", competitorId: "c1" });
-    expect(d).toEqual({ send: true, channel: "digest_daily" });
+    expect(d).toEqual({ send: true, channel: "email_immediate" });
+  });
+
+  test("default prefs still defer a high signal during quiet hours", async () => {
+    // The immediate-by-default high channel must NOT bypass the inbox guards:
+    // quiet hours (and the daily cap) apply exactly as for any immediate email.
+    setSystemTime(QUIET);
+    state.prefs = null;
+    const d = await decideDispatch("org-1", { severity: "high", competitorId: "c1" });
+    expect(d.channel).toBe("digest_daily");
+    expect(d.filteredReason).toBe("quiet_hours");
   });
 });

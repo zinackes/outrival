@@ -47,7 +47,7 @@ import {
   isSourceAllowed,
 } from "../lib/plan";
 
-type Variables = { user: { id: string } };
+type Variables = { user: { id: string; email: string } };
 type ProjectStage = "idea" | "document" | "developing" | "live";
 
 export const onboardingRouter = new Hono<{ Variables: Variables }>();
@@ -753,14 +753,15 @@ onboardingRouter.post("/complete", async (c) => {
     await db.insert(competitorCandidates).values(candidateRows);
   }
 
+  const orgRow = await db.query.organizations.findFirst({
+    where: eq(organizations.id, orgId),
+    columns: { digestEmail: true, detectionConfig: true },
+  });
+
   // Persist the chosen market into detectionConfig (merged over the resolved
   // current config) so later cron / on-demand discovery biases the same way.
   let detectionConfigUpdate: Record<string, unknown> | undefined;
   if (discoveryRegion !== undefined) {
-    const orgRow = await db.query.organizations.findFirst({
-      where: eq(organizations.id, orgId),
-      columns: { detectionConfig: true },
-    });
     detectionConfigUpdate = {
       detectionConfig: {
         ...resolveDetectionConfig(orgRow?.detectionConfig),
@@ -774,6 +775,11 @@ onboardingRouter.post("/complete", async (c) => {
     .set({
       onboardingCompleted: true,
       onboardingStep: "done",
+      // The weekly/daily briefings are the product's retention loop, yet nothing
+      // ever set their recipient (1/33 prod orgs had one — the rest silently got
+      // no email). Default to the account email at completion; Settings can
+      // change or clear it, and every send carries one-click unsubscribe.
+      ...(orgRow?.digestEmail || !user.email ? {} : { digestEmail: user.email }),
       ...detectionConfigUpdate,
       updatedAt: new Date(),
     })

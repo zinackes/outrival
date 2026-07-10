@@ -1,16 +1,10 @@
 import { task, logger } from "@trigger.dev/sdk/v3";
 import { and, eq, isNotNull } from "drizzle-orm";
 import { db, qualityFeedback, signals, orgRelevanceThreshold } from "@outrival/db";
-
-interface OrgStats {
-  useful: number[];
-  notUseful: number[];
-  total: number;
-}
-
-function average(xs: number[]): number {
-  return xs.reduce((a, b) => a + b, 0) / xs.length;
-}
+import {
+  computeRelevanceThreshold,
+  type RelevanceFeedbackStats as OrgStats,
+} from "../lib/relevance-threshold";
 
 // Patch-26 layer 1, learning half: weekly, per org, derive the relevance threshold
 // from the org's signal feedback (patch-21) — the midpoint between the average
@@ -55,13 +49,11 @@ export const relevanceThresholdRecalculationJob = task({
     let insufficient = 0;
 
     for (const [orgId, stats] of byOrg) {
-      if (stats.total < minFeedbacks || stats.useful.length < 3 || stats.notUseful.length < 3) {
+      const threshold = computeRelevanceThreshold(stats, minFeedbacks);
+      if (threshold == null) {
         insufficient++;
         continue;
       }
-
-      const midpoint = (average(stats.useful) + average(stats.notUseful)) / 2;
-      const threshold = Math.max(0.2, Math.min(0.8, midpoint));
 
       await db
         .insert(orgRelevanceThreshold)

@@ -1061,15 +1061,13 @@ export const scrapeMonitorJob = task({
       // Relevance filter (patch-17): score every assembled change (weight of WHERE
       // × magnitude × recency) and keep only those at/above the threshold. A change
       // below it is SILENCED — no change row, no classify, no signal — just logged.
-      // Recency damps a competitor that changes constantly (each change worth less).
+      // Recency damps a churning HOMEPAGE (this monitor only) — a competitor's busy
+      // blog elsewhere must not silence a hero rewrite here.
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
       const recentChangeCount = await db
         .select({ value: count() })
         .from(changes)
-        .innerJoin(monitors, eq(changes.monitorId, monitors.id))
-        .where(
-          and(eq(monitors.competitorId, monitor.competitorId), gte(changes.detectedAt, sevenDaysAgo)),
-        );
+        .where(and(eq(changes.monitorId, monitor.id), gte(changes.detectedAt, sevenDaysAgo)));
       const previousChangesInLast7Days = recentChangeCount[0]?.value ?? 0;
 
       const scored = cleanedChanges.map((change) => ({

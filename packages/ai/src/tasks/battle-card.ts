@@ -80,24 +80,29 @@ export interface BattleCardInput {
   otherProductNames?: string[];
 }
 
-function bullets(items: string[] | undefined, empty = "Not captured."): string {
-  return items && items.length ? items.map((i) => `- ${i}`).join("\n") : empty;
+// Absent evidence is OMITTED (null), never rendered as a placeholder: the old
+// "Not captured." / "n/a" / "unknown" filler reached the model, which converted
+// OUR data gaps into competitor weaknesses ("customer reviews and ratings are
+// not captured") — and the revise pass kept them because the claim was
+// technically traceable to the evidence text (2026-07-10 audit, Iceline card).
+function bullets(items: string[] | undefined): string | null {
+  return items && items.length ? items.map((i) => `- ${i}`).join("\n") : null;
 }
 
-function pricingBlock(tiers: BattleCardPricingTier[] | undefined): string {
-  if (!tiers || !tiers.length) return "Pricing: not captured.";
+function pricingBlock(tiers: BattleCardPricingTier[] | undefined): string | null {
+  if (!tiers || !tiers.length) return null;
   return tiers
     .map((t) => `- ${t.planName}: ${t.price} ${t.currency} / ${t.billingPeriod}`)
     .join("\n");
 }
 
 interface EvidenceBlocks {
-  signalsBlock: string;
-  praisesBlock: string;
-  complaintsBlock: string;
-  trialBlock: string;
-  competitorTechBlock: string;
-  reviewScoreBlock: string;
+  signalsBlock: string | null;
+  praisesBlock: string | null;
+  complaintsBlock: string | null;
+  trialBlock: string | null;
+  competitorTechBlock: string | null;
+  reviewScoreBlock: string | null;
   myHomepage: string | null;
   competitorHomepage: string | null;
   focusNote: string;
@@ -105,21 +110,24 @@ interface EvidenceBlocks {
 
 // Compute every evidence block ONCE, so the generation prompt, the grounding
 // sourceText, and the revise pass all reason over byte-identical evidence.
-function computeBlocks(input: BattleCardInput): EvidenceBlocks {
+// Exported for tests (the no-placeholder guarantee below is load-bearing).
+export function computeBlocks(input: BattleCardInput): EvidenceBlocks {
   const signalsBlock = input.recentSignals.length
     ? input.recentSignals
         .slice(0, 8)
         .map((s) => `- [${s.severity}] ${s.category} — ${s.insight}`)
         .join("\n")
-    : "No recent signals.";
+    : null;
 
-  const praisesBlock = bullets(input.reviewPraises?.slice(0, 8), "n/a");
-  const complaintsBlock = bullets(input.reviewComplaints?.slice(0, 8), "n/a");
+  const praisesBlock = bullets(input.reviewPraises?.slice(0, 8));
+  const complaintsBlock = bullets(input.reviewComplaints?.slice(0, 8));
 
   // Free-trial line: a concrete acquisition comparison the rep can lean on.
+  // "none offered" is a real captured fact (detection ran and found no trial);
+  // an unknown state is omitted like every other absent dimension.
   const trialBlock = (() => {
     const t = input.competitorTrial;
-    if (!t) return "Free trial: unknown.";
+    if (!t) return null;
     if (!t.hasTrial) return "Free trial: none offered.";
     const bits = [
       t.days != null ? `${t.days}-day` : "duration unstated",
@@ -137,11 +145,11 @@ function computeBlocks(input: BattleCardInput): EvidenceBlocks {
         .slice(0, 20)
         .map((t) => `- ${t.name} (${t.category}, ${t.importance})`)
         .join("\n")
-    : "Detected tech stack: not captured.";
+    : null;
 
   const reviewScoreBlock = (() => {
     const r = input.competitorReviews;
-    if (!r) return "Review ratings: not captured.";
+    if (!r) return null;
     const parts: string[] = [];
     if (r.score != null)
       parts.push(
@@ -163,7 +171,7 @@ function computeBlocks(input: BattleCardInput): EvidenceBlocks {
           .map((c) => `${c.theme} (${c.prevalence})`)
           .join(", ")}`,
       );
-    return parts.length ? parts.join("\n") : "Review ratings: not captured.";
+    return parts.length ? parts.join("\n") : null;
   })();
 
   const myHomepage = input.myProduct.homepageExcerpt?.trim()
@@ -198,64 +206,84 @@ function computeBlocks(input: BattleCardInput): EvidenceBlocks {
 
 // The evidence, rendered as two symmetric product blocks. Shared by the prompt and
 // (verbatim) by the grounding sourceText + the revise pass, so a claim can only
-// survive if it traces to text every stage saw.
-function evidenceBlock(input: BattleCardInput, b: EvidenceBlocks): string {
+// survive if it traces to text every stage saw. Absent dimensions are omitted
+// entirely — the model must never see (or cite) a data gap.
+export function evidenceBlock(input: BattleCardInput, b: EvidenceBlocks): string {
+  const myFeatures = bullets(input.myProduct.features);
+  const myTech = bullets(input.myProduct.techStack);
+  const myPricing = pricingBlock(input.myProduct.pricingTiers);
+  const competitorPricing = pricingBlock(input.competitorPricingTiers);
+
+  const myLines = [
+    input.myProduct.name ? `Name: ${input.myProduct.name}` : null,
+    `Category: ${input.myProduct.category}`,
+    input.myProduct.audience ? `Audience: ${input.myProduct.audience}` : null,
+    `Value proposition: ${input.myProduct.valueProp}`,
+    myFeatures ? `Features (from our own site):\n${myFeatures}` : null,
+    myTech ? `Tech stack:\n${myTech}` : null,
+    myPricing ? `Pricing:\n${myPricing}` : null,
+    b.myHomepage ? `Homepage excerpt:\n${b.myHomepage}` : null,
+    b.focusNote.trim() || null,
+  ].filter(Boolean);
+
+  const competitorLines = [
+    `Name: ${input.competitorName}`,
+    input.competitorSummary ? `Summary: ${input.competitorSummary}` : null,
+    b.trialBlock,
+    competitorPricing ? `Pricing:\n${competitorPricing}` : null,
+    b.competitorTechBlock ? `Tech stack (detected on their site):\n${b.competitorTechBlock}` : null,
+    b.reviewScoreBlock ? `Reviews:\n${b.reviewScoreBlock}` : null,
+    b.competitorHomepage ? `Homepage excerpt:\n${b.competitorHomepage}` : null,
+  ].filter(Boolean);
+
+  const reviewsSection =
+    b.praisesBlock || b.complaintsBlock
+      ? `\n\n<reviews>${b.praisesBlock ? `\nWhat their customers love:\n${b.praisesBlock}` : ""}${
+          b.complaintsBlock
+            ? `\nWhat their customers complain about:\n${b.complaintsBlock}`
+            : ""
+        }\n</reviews>`
+      : "";
+
+  const signalsSection = b.signalsBlock
+    ? `\n\n<recent_signals>\n${b.signalsBlock}\n</recent_signals>`
+    : "";
+
   return `<my_product>
-${input.myProduct.name ? `Name: ${input.myProduct.name}\n` : ""}Category: ${input.myProduct.category}
-${input.myProduct.audience ? `Audience: ${input.myProduct.audience}\n` : ""}Value proposition: ${input.myProduct.valueProp}
-Features (from our own site):
-${bullets(input.myProduct.features)}
-Tech stack:
-${bullets(input.myProduct.techStack)}
-Pricing:
-${pricingBlock(input.myProduct.pricingTiers)}
-${b.myHomepage ? `Homepage excerpt:\n${b.myHomepage}\n` : ""}${b.focusNote}
+${myLines.join("\n")}
 </my_product>
 
 <competitor>
-Name: ${input.competitorName}
-Summary: ${input.competitorSummary ?? "unknown"}
-${b.trialBlock}
-Pricing:
-${pricingBlock(input.competitorPricingTiers)}
-Tech stack (detected on their site):
-${b.competitorTechBlock}
-Reviews:
-${b.reviewScoreBlock}
-${b.competitorHomepage ? `Homepage excerpt:\n${b.competitorHomepage}\n` : ""}</competitor>
-
-<reviews>
-What their customers love:
-${b.praisesBlock}
-
-What their customers complain about:
-${b.complaintsBlock}
-</reviews>
-
-<recent_signals>
-${b.signalsBlock}
-</recent_signals>`;
+${competitorLines.join("\n")}
+</competitor>${reviewsSection}${signalsSection}`;
 }
 
 // A flat source text (same facts, no tags) that the grounding validator and the
 // revise pass match citations/claims against.
-function evidenceSourceText(input: BattleCardInput, b: EvidenceBlocks): string {
+export function evidenceSourceText(input: BattleCardInput, b: EvidenceBlocks): string {
+  const myFeatures = bullets(input.myProduct.features);
+  const myTech = bullets(input.myProduct.techStack);
+  const myPricing = pricingBlock(input.myProduct.pricingTiers);
+  const competitorPricing = pricingBlock(input.competitorPricingTiers);
   return [
     `My product — category: ${input.myProduct.category}; value: ${input.myProduct.valueProp}`,
     input.myProduct.audience ? `My product audience: ${input.myProduct.audience}` : "",
-    `My product features:\n${bullets(input.myProduct.features)}`,
-    `My product tech stack:\n${bullets(input.myProduct.techStack)}`,
-    `My product pricing:\n${pricingBlock(input.myProduct.pricingTiers)}`,
+    myFeatures ? `My product features:\n${myFeatures}` : "",
+    myTech ? `My product tech stack:\n${myTech}` : "",
+    myPricing ? `My product pricing:\n${myPricing}` : "",
     b.myHomepage ? `My product homepage:\n${b.myHomepage}` : "",
-    `Competitor summary: ${input.competitorSummary ?? ""}`,
-    b.trialBlock,
-    `Competitor pricing:\n${pricingBlock(input.competitorPricingTiers)}`,
-    `Competitor tech stack:\n${b.competitorTechBlock}`,
-    `Competitor reviews:\n${b.reviewScoreBlock}`,
+    // Always present: claims reference the competitor by name, so the grounding
+    // validator's source must carry it even when every dimension is empty.
+    `Competitor name: ${input.competitorName}`,
+    input.competitorSummary ? `Competitor summary: ${input.competitorSummary}` : "",
+    b.trialBlock ?? "",
+    competitorPricing ? `Competitor pricing:\n${competitorPricing}` : "",
+    b.competitorTechBlock ? `Competitor tech stack:\n${b.competitorTechBlock}` : "",
+    b.reviewScoreBlock ? `Competitor reviews:\n${b.reviewScoreBlock}` : "",
     b.competitorHomepage ? `Competitor homepage:\n${b.competitorHomepage}` : "",
-    `What their customers love:\n${b.praisesBlock}`,
-    `What their customers complain about:\n${b.complaintsBlock}`,
-    `Recent signals:\n${b.signalsBlock}`,
+    b.praisesBlock ? `What their customers love:\n${b.praisesBlock}` : "",
+    b.complaintsBlock ? `What their customers complain about:\n${b.complaintsBlock}` : "",
+    b.signalsBlock ? `Recent signals:\n${b.signalsBlock}` : "",
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -270,6 +298,7 @@ export async function generateBattleCard(
 
 <rules>
 - Base EVERY statement ONLY on the evidence blocks above. Do NOT rely on any prior or outside knowledge you may have about these two products: treat your own memory as unreliable and possibly out of date — it has produced false competitive claims before.
+- The evidence lists ONLY what we have captured. A dimension that is absent from it is UNKNOWN — not a weakness, not a strength, not a differentiator. Never write that something is "not captured", "unknown", "not publicly available" or "has no data": when the evidence is silent on a dimension, say nothing about it at all.
 - GROUND EACH SECTION ON ITS OWN SIDE. their_strengths and their_weaknesses are grounded on the competitor's evidence; our_strengths on OUR product's evidence (features, tech, pricing, homepage, value proposition). A section does NOT need evidence from the other side to be filled — a real, sourced fact about ONE product is a valid entry on its own.
 - NO FABRICATED CONTRAST. Never claim or imply that the other side LACKS, is worse at, or does not have something unless the evidence for that other side actually establishes it. Phrasing like "unlike them", "unique to us", "they can't", "we're the only", "differentiates" REQUIRES evidence on BOTH sides — otherwise state the capability as a plain positive fact about the one product ("We offer X") with no comparison.
 - Prefer few, well-grounded points over full sections. Returning an EMPTY array for a section is the correct, expected answer when the evidence does not support it — never pad a section to reach the maximum, and never fabricate to fill space.
@@ -338,6 +367,7 @@ ${JSON.stringify(draft)}
 
 <verification_rules>
 - DELETE any claim not directly supported by the evidence — do not soften it into a vaguer claim, remove it entirely.
+- DELETE any claim built on the ABSENCE of data — e.g. "reviews are not captured", "no public feature list", "pricing unknown", "no recent signals". Missing evidence is unknown, never a fact about either product.
 - DELETE any claim that the competitor LACKS, is worse at, or does not have something (and any "unlike them", "unique to us", "we win because", "differentiates" phrasing) unless the evidence describes that same dimension for BOTH products. But a one-sided positive fact about a SINGLE product — a real feature, price, tech or rating drawn from its own evidence — is VALID and must be KEPT even when the other side's evidence is silent. Only fabricated or unproven CONTRASTS are removed, not grounded one-sided facts.
 - Do NOT add any new claim, fact, or comparison that is not already in the draft.
 - You MAY trim a surviving claim down to the part the evidence supports.

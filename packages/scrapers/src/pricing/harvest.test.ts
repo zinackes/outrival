@@ -208,6 +208,37 @@ describe("harvestPricing — the period default follows the page, not SaaS", () 
     expect(plans.find((p) => p.plan_name === "Add-on")!.billing_period).toBe("monthly");
   });
 
+  test("a price lead-in is a band, never the plan name nor a section banner", () => {
+    // Real regression: "À partir de" sat closest to the amount and was harvested as
+    // the plan's name. Skipping it must not promote the banner above it either.
+    const html = `
+      <body>
+        <section><h2>Installation partout en France</h2>
+          <div class="card"><h4>À partir de</h4><span class="price">4000€</span></div>
+        </section>
+      </body>`;
+    const { plans } = harvestPricing(html);
+    expect(plans).toHaveLength(1);
+    expect(plans[0]!.plan_name).toBe("From");
+    expect(plans[0]!.price).toBe(4000);
+  });
+
+  test("a real card title above the lead-in still wins", () => {
+    const html = `
+      <body>
+        <div class="card">
+          <h3>Tesla Powerwall 3</h3><h4>À partir de</h4><span class="price">4000€</span>
+        </div>
+      </body>`;
+    const { plans } = harvestPricing(html);
+    expect(plans[0]!.plan_name).toBe("Tesla Powerwall 3");
+  });
+
+  test("English lead-ins are treated the same", () => {
+    const html = `<body><div class="card"><h4>Starting at</h4><span class="price">$99</span></div></body>`;
+    expect(harvestPricing(html).plans[0]!.plan_name).toBe("From");
+  });
+
   test("one-off vocabulary alone does not force a monthly default", () => {
     const html = `
       <body>

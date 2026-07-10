@@ -92,6 +92,14 @@ const MAX_SANE_PRICE = 1_000_000;
 const TITLE_CLASS = /(title|name|plan|product|package|tier|heading|card__?title)/i;
 const PRICE_CLASS = /(price|amount|cost|pricing|montant|tarif)/i;
 
+// A price lead-in ("À partir de", "Starting at") usually sits in its own short node
+// right above the amount, so it wins the nearest-label walk and becomes the plan's
+// name — naming a battery "A partir de", and leaking French into an English UI.
+// It qualifies the price, it never names the product: skip it and keep walking, so
+// a real card title above it can still be found (else we fall back to the band).
+const PRICE_EYEBROW =
+  /^(from|starting\s+(at|from)|starting|as\s+low\s+as|up\s+to|only|[àa]\s+partir\s+de|d[èe]s\b|jusqu'?[àa])\b/i;
+
 // Period / unit vocabulary (EN + FR). Order matters: usage units win over a bare
 // period so "$0.10 / GB" is `usage`, not `monthly`.
 const USAGE_UNIT =
@@ -295,7 +303,11 @@ function detectPeriod(
 /**
  * Walk up from a price element to find its card title: the nearest ancestor's
  * heading (h1-h6) or a title-classed element whose text is short and not itself a
- * price. Null when nothing plausible is within a few levels.
+ * price. Null when nothing plausible is within a few levels — or when the nearest
+ * text is a price lead-in ("À partir de"), which marks the amount as the bottom of
+ * a range rather than a named plan. Give up there instead of walking further up:
+ * the next candidate is a section banner, and "From €4,000" beats naming a battery
+ * after a marketing strip.
  */
 function findLabel($: cheerio.CheerioAPI, $priceEl: CheerioSel): string | null {
   let $node = $priceEl;
@@ -303,8 +315,9 @@ function findLabel($: cheerio.CheerioAPI, $priceEl: CheerioSel): string | null {
     const $parent = $node.parent();
     if ($parent.length === 0) break;
     let found: string | null = null;
+    let isBand = false;
     $parent.find("h1, h2, h3, h4, h5, h6, [class]").each((_, el) => {
-      if (found) return;
+      if (found || isBand) return;
       const $el = $(el);
       const isHeading = /^h[1-6]$/i.test((el as { tagName?: string }).tagName ?? "");
       const cls = $el.attr("class") ?? "";
@@ -312,8 +325,13 @@ function findLabel($: cheerio.CheerioAPI, $priceEl: CheerioSel): string | null {
       const text = $el.text().trim().replace(/\s+/g, " ");
       if (!text || text.length > MAX_LABEL_TEXT) return;
       if (PRICE_RE.test(text)) return; // the price node itself, not a title
+      if (PRICE_EYEBROW.test(text)) {
+        isBand = true; // "À partir de" — qualifies the amount, doesn't name a plan
+        return;
+      }
       found = text;
     });
+    if (isBand) return null;
     if (found) return found;
     $node = $parent;
   }

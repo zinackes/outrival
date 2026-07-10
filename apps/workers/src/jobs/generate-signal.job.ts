@@ -36,6 +36,7 @@ import { captureWorkerEvent, shutdownPostHog } from "../lib/posthog";
 import { getResend, ALERT_FROM } from "../lib/resend";
 import { groqQueue } from "../lib/queues";
 import { decideDispatch } from "../lib/notification-dispatcher";
+import { applySeverityGuard } from "../lib/severity-guard";
 
 // A pricing status transition (patch-11) carries its own severity and replaces
 // the generic diff classification for that change.
@@ -207,10 +208,29 @@ export const generateSignalJob = task({
     // A pricing repositioning replaces the generic classification: it sets the
     // category to "pricing", takes its severity from the transition, and gets a
     // transition-aware insight prompt.
-    const severity = input.pricingTransition
+    let severity = input.pricingTransition
       ? input.pricingTransition.severity
       : input.classification!.severity;
     const category = input.pricingTransition ? "pricing" : input.classification!.category;
+
+    // Deterministic guard (plan-027): "critical" bypasses every notification
+    // filter and pages the customer immediately, but the model is never told
+    // that stake — demote to "high" when the category/source/diff don't back
+    // up that urgency. Applied here, once, so every downstream consumer (the
+    // signal insert, the dispatcher, the alert) sees the guarded value.
+    const guarded = applySeverityGuard({
+      severity,
+      category,
+      sourceType: monitor.sourceType,
+      diffText: change.diffText ?? "",
+    });
+    if (guarded.demoted) {
+      logger.warn("Critical demoted by deterministic guard", {
+        changeId: input.changeId,
+        reason: guarded.reason,
+      });
+    }
+    severity = guarded.severity;
 
     // Human-readable before/after for the "Why this insight?" panel (patch-14).
     // A pricing transition has no price text, so we label its status change
@@ -255,8 +275,15 @@ export const generateSignalJob = task({
     }
     await logAiRun("insight", provider, model, insight ? "success" : "parse_failed");
     if (!insight) {
-      logger.error("Insight generation failed", { changeId: input.changeId });
-      throw new AbortTaskRunError("Insight returned null");
+      // Parse miss (malformed/empty JSON), not a provider error — transient on the
+      // free reasoning providers, so RETRIABLE: aborting here dropped a change
+      // already judged significant. Plain throw → Trigger re-runs (fresh LLM call);
+      // the run is idempotent up to this point (signal insert happens below and is
+      // protected by the signals_change_id_uq unique index).
+      logger.error("Insight returned null (parse failed) — retrying", {
+        changeId: input.changeId,
+      });
+      throw new Error("Insight returned null (parse failed)");
     }
 
     // Strategic narrative (patch-16): only for significant STRUCTURED homepage

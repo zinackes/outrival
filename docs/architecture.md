@@ -769,7 +769,7 @@ ENRICHMENTS_RELEVANCE_MIN_SCORE=0.5     # patch-17 — min relevance score to em
 SNAPSHOT_COMPLETENESS_ENABLED=true      # reliability wave 1 (R1) — grade a degraded capture `partial` (skip its diff, drop it from the anti-void median). false = exact current behaviour
 SNAPSHOT_COMPLETENESS_MIN_RATIO=0.5     # R1 — content/median ratio below which a capture is graded partial (size-stable sources only; homepage also uses isIncompleteRender)
 TECH_STACK_SCRAPE_INTERVAL_DAYS=30      # patch-18 — days between tech-stack scrapes per competitor
-TECH_STACK_SIGNAL_MIN_IMPORTANCE=medium # patch-18 — min tech importance to emit a signal on appearance
+TECH_STACK_SIGNAL_MIN_IMPORTANCE=high   # patch-18 — min tech importance to emit a signal on appearance (high = payments/CRM-class tells only; medium would include hosting/marketing scripts — noisy, plan-026). Baseline (first-ever) scan of a competitor never signals, whatever this value is.
 
 # AI
 ANTHROPIC_API_KEY=           # provider abstrait — Claude fallback (provider="claude")

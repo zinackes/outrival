@@ -83,8 +83,12 @@ const VERIFY_TIMEOUT_MS = 8000;
 // subdomains that carry no "pricing" vocabulary. Generic commerce/catalog vocabulary,
 // applied uniformly (no per-competitor branch); the price-density score is the real
 // filter, so an incidental match with no prices simply drops.
+// `collection` is the Shopify convention (`/collections/<line>`) and `catalog(ue)` the
+// other common one — without them a whole class of storefronts yielded no candidate at
+// all. Deliberately NOT `categor(y|ie)`: it matches blog taxonomies, and MAX_COMMERCE_PROBES
+// caps the list BEFORE scoring, so a broad token can crowd the real product pages out.
 const COMMERCE_HREF =
-  /(shop|store|boutique|billing|order|cart|buy|checkout|panier|commande|product|produit|hosting|h[eé]bergement|vps|serveur|servers?|dedicated|d[eé]di[eé]|cloud|game|jeu|minecraft|plan)/i;
+  /(shop|store|boutique|billing|order|cart|buy|checkout|panier|commande|product|produit|catalog|catalogue|collection|hosting|h[eé]bergement|vps|serveur|servers?|dedicated|d[eé]di[eé]|cloud|game|jeu|minecraft|plan)/i;
 const STORE_SUBDOMAIN = /^(shop|store|boutique|billing|order|client|clients|panel|my)$/i;
 // TLD second-level labels (co.uk, com.au, gouv.fr…) so a subdomain is matched by its
 // registrable domain, not blindly by the last two labels.

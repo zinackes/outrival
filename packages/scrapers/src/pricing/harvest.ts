@@ -92,15 +92,34 @@ const MAX_SANE_PRICE = 1_000_000;
 const TITLE_CLASS = /(title|name|plan|product|package|tier|heading|card__?title)/i;
 const PRICE_CLASS = /(price|amount|cost|pricing|montant|tarif)/i;
 
-// Period / unit vocabulary (EN + FR). Order matters: usage units win over a bare
-// period so "$0.10 / GB" is `usage`, not `monthly`.
+// A price lead-in ("À partir de", "Starting at") usually sits in its own short node
+// right above the amount, so it wins the nearest-label walk and becomes the plan's
+// name — naming a battery "A partir de", and leaking French into an English UI.
+// It qualifies the price, it never names the product: skip it and keep walking, so
+// a real card title above it can still be found (else we fall back to the band).
+// "ab" (DE) is deliberately absent: `^ab\b` would swallow a real card titled
+// "AB testing". The other tongues degrade to the previous behaviour, not worse.
+const PRICE_EYEBROW =
+  /^(from|starting\s+(at|from)|starting|as\s+low\s+as|up\s+to|only|[àa]\s+partir\s+de|d[èe]s\b|jusqu'?[àa]|desde|a\s+partire\s+da|vanaf)\b/i;
+
+// Period / unit vocabulary. Order matters: usage units win over a bare period so
+// "$0.10 / GB" is `usage`, not `monthly`. EN + FR + the EU languages Outrival
+// monitors (DE/ES/IT/NL/PT) — a German "49 € pro Monat" is as monthly as "$49/mo",
+// and reading it is what keeps the period default below honest on those pages.
+// Every non-EN form is ANCHORED to a slash or a preposition: a bare `\bmes\b` would
+// fire on the French possessive ("mes données"), `\ban(no)?\b` on ordinary prose.
+// Longer alternatives precede their prefixes ("mese" before "mes", "anno" before
+// "an"), otherwise the shorter one matches and its \b fails.
 const USAGE_UNIT =
   /\/\s?(gb|go|tb|to|request|req|api\s?call|call|lookup|credit|message|token|email|sms|minute|core|vcpu|slot|player)\b/i;
-const YEARLY = /\/\s?(yr|year|ann?[ée]e?|an)\b|per\s+year|\byearly\b|\bannual(ly)?\b|\/\s?an\b|par\s+an\b/i;
-const MONTHLY = /\/\s?(mo|month|mois)\b|per\s+month|\bmonthly\b|\/\s?mois\b|par\s+mois\b/i;
+const YEARLY =
+  /\/\s?(yr|year|ann?[ée]e?|anno|a[ñn]o|jahr|jaar|an)\b|per\s+year|\byearly\b|\bannual(ly)?\b|par\s+an\b|pro\s+jahr\b|\bj[äa]hrlich\b|al\s+a[ñn]o\b|por\s+ano\b|all'anno\b|per\s+jaar\b|\banual(mente)?\b|\bannuale\b|\bjaarlijks\b/i;
+const MONTHLY =
+  /\/\s?(mo|month|mois|monat|mese|m[eê]s|maand)\b|per\s+month|\bmonthly\b|par\s+mois\b|pro\s+monat\b|\bmonatlich\b|al\s+mes\b|al\s+mese\b|por\s+m[eê]s\b|per\s+maand\b|\bmensual(mente)?\b|\bmensile\b|\bmensal\b|\bmaandelijks\b/i;
 const ONE_TIME = /\bone[-\s]?time\b|\blifetime\b|\bune\s+fois\b|\b[àa]\s+vie\b|\bsetup\s+fee\b/i;
 // Per-seat/user is a subscription with a unit, not metered usage.
-const PER_SEAT = /\/\s?(user|seat|utilisateur|si[èe]ge|member)\b|per\s+(user|seat)\b/i;
+const PER_SEAT =
+  /\/\s?(user|seat|utilisateur|si[èe]ge|member|nutzer|usuario|utente|gebruiker)\b|per\s+(user|seat)\b|pro\s+nutzer\b|por\s+usuario\b/i;
 // "billed annually" states the COMMITMENT, not the period of the amount shown:
 // "$10/mo billed annually" is a MONTHLY rate. YEARLY is tested before MONTHLY (so
 // "/year" wins over "/mo" when both appear, as in "$1,188/year ($99/mo)"), and its
@@ -108,6 +127,49 @@ const PER_SEAT = /\/\s?(user|seat|utilisateur|si[èe]ge|member)\b|per\s+(user|se
 // 12x error. Detect the phrase so an explicit per-month token can override it.
 const ANNUAL_COMMITMENT =
   /\b(billed|paid|invoiced|charged)\s+(annually|yearly)\b|\bfactur[ée]s?\s+annuellement\b/i;
+
+// Recurring vocabulary, tested against the context of EVERY price on the page —
+// never the whole page text, where prose ("nettoyer vos panneaux 1 à 2 fois par
+// an") and specs ("4500 kWh/an") match YEARLY nowhere near an amount. When not one
+// price is explicitly recurring, the page isn't selling a subscription: it's a
+// catalog (equipment, installation, e-commerce) where a bare "€4,000" is a one-off
+// purchase, and stamping it `monthly` invents a recurring price that then feeds
+// pricing_history, trends and battle cards.
+const RECURRING_VOCAB = [MONTHLY, YEARLY, USAGE_UNIT, PER_SEAT, ANNUAL_COMMITMENT];
+
+// A pricing card can state its period several levels above the amount ("pro Monat"
+// sits 4 ancestors up on sevdesk), so the recurring probe climbs — but only while
+// the ancestor stays SMALL. Past this size an ancestor is a page section, and its
+// prose is exactly the noise the probe must not read.
+const RECURRING_CTX_MAX_CHARS = 300;
+
+/**
+ * The widest context still plausibly "about this price": the outermost ancestor
+ * whose whole text stays under the cap. Falls back to the price element itself.
+ */
+function recurringContext($: cheerio.CheerioAPI, $priceEl: CheerioSel): string {
+  let $node = $priceEl;
+  let ctx = $node.text();
+  for (let depth = 0; depth < MAX_LABEL_ANCESTORS; depth++) {
+    const $parent = $node.parent();
+    if ($parent.length === 0) break;
+    const text = $parent.text().replace(/\s+/g, " ");
+    if (text.length > RECURRING_CTX_MAX_CHARS) break;
+    ctx = text;
+    $node = $parent;
+  }
+  return ctx;
+}
+
+/**
+ * The period assumed for an amount carrying no period token of its own: `monthly`
+ * when some price on the page is explicitly recurring (the dominant SaaS case — an
+ * unlabelled amount sitting among "/mo" cards), else `one_time`.
+ */
+function defaultPeriod(priceContexts: string[]): BillingPeriodValue {
+  const recurring = priceContexts.some((ctx) => RECURRING_VOCAB.some((re) => re.test(ctx)));
+  return recurring ? "monthly" : "one_time";
+}
 
 interface Hit {
   amount: number;
@@ -141,23 +203,34 @@ export function harvestPricing(html: string): PricingHarvest {
     (el) => !matched.some((other) => other !== el && $.contains(el, other)),
   );
 
-  const hits: Hit[] = [];
-  for (const el of leaves) {
+  // Period/unit read from the price element plus its immediate parent (the "/mo"
+  // is often a sibling of the amount, e.g. `<b>29</b><small>/mo</small>`).
+  const priced = leaves.flatMap((el) => {
     const $el = $(el);
     const m = matchPrice($el.text());
-    if (!m) continue;
-    // Period/unit read from the price element plus its immediate parent (the "/mo"
-    // is often a sibling of the amount, e.g. `<b>29</b><small>/mo</small>`).
-    const ctx = `${$el.text()} ${$el.parent().text().slice(0, 120)}`;
-    const { period, unit } = detectPeriod(ctx);
-    hits.push({
+    if (!m) return [];
+    return [
+      {
+        $el,
+        m,
+        ctx: `${$el.text()} ${$el.parent().text().slice(0, 120)}`,
+        recurringCtx: recurringContext($, $el),
+      },
+    ];
+  });
+  // Decided once, across every price on the page, before resolving any single one.
+  const fallbackPeriod = defaultPeriod(priced.map((p) => p.recurringCtx));
+
+  const hits: Hit[] = priced.map(({ $el, m, ctx }) => {
+    const { period, unit } = detectPeriod(ctx, fallbackPeriod);
+    return {
       amount: m.amount,
       currency: m.currency,
       period,
       unit,
       label: findLabel($, $el),
-    });
-  }
+    };
+  });
 
   const cleaned = dedupe(hits.filter((h) => h.amount >= 0 && h.amount < MAX_SANE_PRICE));
   if (cleaned.length === 0) return { plans: [] };
@@ -248,7 +321,10 @@ export function parseAmount(raw: string): number | null {
 }
 
 /** Map period/unit vocabulary near a price to a billing_period + optional unit. */
-function detectPeriod(ctx: string): { period: BillingPeriodValue; unit: string | null } {
+function detectPeriod(
+  ctx: string,
+  fallback: BillingPeriodValue,
+): { period: BillingPeriodValue; unit: string | null } {
   const usage = USAGE_UNIT.exec(ctx);
   if (usage) return { period: "usage", unit: usage[1]!.toLowerCase() };
   const seat = PER_SEAT.exec(ctx);
@@ -260,15 +336,20 @@ function detectPeriod(ctx: string): { period: BillingPeriodValue; unit: string |
   }
   if (YEARLY.test(ctx)) return { period: "yearly", unit: seat ? "seat" : null };
   if (MONTHLY.test(ctx) || seat) return { period: "monthly", unit: seat ? "seat" : null };
-  // No period token → default to monthly (the dominant subscription case). A floor
-  // guess the user can correct; better than dropping a visible price.
-  return { period: "monthly", unit: null };
+  // No period token on this price → what the page as a whole implies (defaultPeriod).
+  // A floor guess the user can correct; better than dropping a visible price, and
+  // better than stamping "monthly" on a one-off purchase.
+  return { period: fallback, unit: null };
 }
 
 /**
  * Walk up from a price element to find its card title: the nearest ancestor's
  * heading (h1-h6) or a title-classed element whose text is short and not itself a
- * price. Null when nothing plausible is within a few levels.
+ * price. Null when nothing plausible is within a few levels — or when the nearest
+ * text is a price lead-in ("À partir de"), which marks the amount as the bottom of
+ * a range rather than a named plan. Give up there instead of walking further up:
+ * the next candidate is a section banner, and "From €4,000" beats naming a battery
+ * after a marketing strip.
  */
 function findLabel($: cheerio.CheerioAPI, $priceEl: CheerioSel): string | null {
   let $node = $priceEl;
@@ -276,8 +357,9 @@ function findLabel($: cheerio.CheerioAPI, $priceEl: CheerioSel): string | null {
     const $parent = $node.parent();
     if ($parent.length === 0) break;
     let found: string | null = null;
+    let isBand = false;
     $parent.find("h1, h2, h3, h4, h5, h6, [class]").each((_, el) => {
-      if (found) return;
+      if (found || isBand) return;
       const $el = $(el);
       const isHeading = /^h[1-6]$/i.test((el as { tagName?: string }).tagName ?? "");
       const cls = $el.attr("class") ?? "";
@@ -285,8 +367,13 @@ function findLabel($: cheerio.CheerioAPI, $priceEl: CheerioSel): string | null {
       const text = $el.text().trim().replace(/\s+/g, " ");
       if (!text || text.length > MAX_LABEL_TEXT) return;
       if (PRICE_RE.test(text)) return; // the price node itself, not a title
+      if (PRICE_EYEBROW.test(text)) {
+        isBand = true; // "À partir de" — qualifies the amount, doesn't name a plan
+        return;
+      }
       found = text;
     });
+    if (isBand) return null;
     if (found) return found;
     $node = $parent;
   }

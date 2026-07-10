@@ -9,6 +9,7 @@ import { isCloudflareChallenge } from "@outrival/scrapers/block-detection";
 import { detectDenyPage } from "@outrival/scrapers/deny-page";
 import { evaluateSignificance } from "@outrival/ai/significance";
 import { backfillQueue } from "../lib/queues";
+import { isArchiveCaptureVoid } from "../lib/backfill-guard";
 
 // L2 archive backfill (docs/post-onboarding-activation.md). Fired once, from
 // scrape-monitor, on the FIRST-ever capture of a backfillable source for a real
@@ -129,6 +130,21 @@ export const backfillHistoryJob = task({
       }
 
       const content = extractContent(page.html, monitor.sourceType);
+      // Anti-void parity (2026-07 audit, ÉTAPE 3): a near-empty Wayback
+      // reconstruction that ISN'T a deny page (a redirect stub, a partial capture)
+      // slips past the guard above. Seeded it becomes a `success` archive of
+      // essentially "" and fabricates a phantom "whole page added" change against
+      // the live content. Skip it like the deny skip — best-effort, never throw.
+      if (isArchiveCaptureVoid(content.length, currentContent.length)) {
+        logger.log("backfill: archived capture near-empty vs current, skipping", {
+          offsetDays,
+          url,
+          archiveSize: content.length,
+          currentSize: currentContent.length,
+        });
+        await sleep(1000);
+        continue;
+      }
       // R2 before DB (invariant). Keyed by the capture time so re-runs are stable.
       const r2Key = `snapshots/${competitor.id}/${monitor.sourceType}/${page.capturedAt.toISOString()}`;
       await uploadToR2(`${r2Key}.html`, page.html, "text/html; charset=utf-8", { compress: true });

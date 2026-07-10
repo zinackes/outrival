@@ -109,6 +109,25 @@ const PER_SEAT = /\/\s?(user|seat|utilisateur|si[èe]ge|member)\b|per\s+(user|se
 const ANNUAL_COMMITMENT =
   /\b(billed|paid|invoiced|charged)\s+(annually|yearly)\b|\bfactur[ée]s?\s+annuellement\b/i;
 
+// Recurring vocabulary, tested against the context of EVERY price on the page —
+// never the whole page text, where prose ("nettoyer vos panneaux 1 à 2 fois par
+// an") and specs ("4500 kWh/an") match YEARLY nowhere near an amount. When not one
+// price is explicitly recurring, the page isn't selling a subscription: it's a
+// catalog (equipment, installation, e-commerce) where a bare "€4,000" is a one-off
+// purchase, and stamping it `monthly` invents a recurring price that then feeds
+// pricing_history, trends and battle cards.
+const RECURRING_VOCAB = [MONTHLY, YEARLY, USAGE_UNIT, PER_SEAT, ANNUAL_COMMITMENT];
+
+/**
+ * The period assumed for an amount carrying no period token of its own: `monthly`
+ * when some other price on the page is explicitly recurring (the dominant SaaS case
+ * — an unlabelled amount sitting among "/mo" cards), else `one_time`.
+ */
+function defaultPeriod(priceContexts: string[]): BillingPeriodValue {
+  const recurring = priceContexts.some((ctx) => RECURRING_VOCAB.some((re) => re.test(ctx)));
+  return recurring ? "monthly" : "one_time";
+}
+
 interface Hit {
   amount: number;
   currency: string;
@@ -141,23 +160,27 @@ export function harvestPricing(html: string): PricingHarvest {
     (el) => !matched.some((other) => other !== el && $.contains(el, other)),
   );
 
-  const hits: Hit[] = [];
-  for (const el of leaves) {
+  // Period/unit read from the price element plus its immediate parent (the "/mo"
+  // is often a sibling of the amount, e.g. `<b>29</b><small>/mo</small>`).
+  const priced = leaves.flatMap((el) => {
     const $el = $(el);
     const m = matchPrice($el.text());
-    if (!m) continue;
-    // Period/unit read from the price element plus its immediate parent (the "/mo"
-    // is often a sibling of the amount, e.g. `<b>29</b><small>/mo</small>`).
-    const ctx = `${$el.text()} ${$el.parent().text().slice(0, 120)}`;
-    const { period, unit } = detectPeriod(ctx);
-    hits.push({
+    if (!m) return [];
+    return [{ $el, m, ctx: `${$el.text()} ${$el.parent().text().slice(0, 120)}` }];
+  });
+  // Decided once, across every price on the page, before resolving any single one.
+  const fallbackPeriod = defaultPeriod(priced.map((p) => p.ctx));
+
+  const hits: Hit[] = priced.map(({ $el, m, ctx }) => {
+    const { period, unit } = detectPeriod(ctx, fallbackPeriod);
+    return {
       amount: m.amount,
       currency: m.currency,
       period,
       unit,
       label: findLabel($, $el),
-    });
-  }
+    };
+  });
 
   const cleaned = dedupe(hits.filter((h) => h.amount >= 0 && h.amount < MAX_SANE_PRICE));
   if (cleaned.length === 0) return { plans: [] };
@@ -248,7 +271,10 @@ export function parseAmount(raw: string): number | null {
 }
 
 /** Map period/unit vocabulary near a price to a billing_period + optional unit. */
-function detectPeriod(ctx: string): { period: BillingPeriodValue; unit: string | null } {
+function detectPeriod(
+  ctx: string,
+  fallback: BillingPeriodValue,
+): { period: BillingPeriodValue; unit: string | null } {
   const usage = USAGE_UNIT.exec(ctx);
   if (usage) return { period: "usage", unit: usage[1]!.toLowerCase() };
   const seat = PER_SEAT.exec(ctx);
@@ -260,9 +286,10 @@ function detectPeriod(ctx: string): { period: BillingPeriodValue; unit: string |
   }
   if (YEARLY.test(ctx)) return { period: "yearly", unit: seat ? "seat" : null };
   if (MONTHLY.test(ctx) || seat) return { period: "monthly", unit: seat ? "seat" : null };
-  // No period token → default to monthly (the dominant subscription case). A floor
-  // guess the user can correct; better than dropping a visible price.
-  return { period: "monthly", unit: null };
+  // No period token on this price → what the page as a whole implies (defaultPeriod).
+  // A floor guess the user can correct; better than dropping a visible price, and
+  // better than stamping "monthly" on a one-off purchase.
+  return { period: fallback, unit: null };
 }
 
 /**

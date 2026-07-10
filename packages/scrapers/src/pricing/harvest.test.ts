@@ -159,3 +159,62 @@ describe("harvestPricing — currency + period coverage", () => {
     expect(plans[0]!.billing_period).toBe("yearly");
   });
 });
+
+describe("harvestPricing — the period default follows the page, not SaaS", () => {
+  test("catalog page with no recurring vocabulary → one_time, not monthly", () => {
+    // An installer / e-commerce page: a bare amount is a purchase, not a subscription.
+    const html = `
+      <body>
+        <div class="card"><h3>Tesla Powerwall 3</h3><span class="price">4000€</span></div>
+        <p>Livraison et pose incluses.</p>
+      </body>`;
+    const { plans } = harvestPricing(html);
+    expect(plans[0]!.price).toBe(4000);
+    expect(plans[0]!.billing_period).toBe("one_time");
+  });
+
+  test("period vocabulary in prose, far from any price, is not a subscription signal", () => {
+    // Real regression (sorelenergies.fr): a solar installer's FAQ ("1 à 2 fois par
+    // an") and a "kWh/an" spec both match YEARLY, nowhere near an amount.
+    const html = `
+      <body>
+        <div class="card"><h3>Pack Essentiel</h3><span class="price">13 000€</span></div>
+        <p>Production estimée : 4500 kWh/an.</p>
+        <p>Il est conseillé de nettoyer vos panneaux 1 à 2 fois par an.</p>
+      </body>`;
+    const { plans } = harvestPricing(html);
+    expect(plans[0]!.plan_name).toBe("Pack Essentiel");
+    expect(plans[0]!.billing_period).toBe("one_time");
+  });
+
+  test("an untokened card on a page that DOES sell subscriptions stays monthly", () => {
+    // "Pro" carries no /mo of its own, but the page is plainly a subscription grid.
+    const html = `
+      <body>
+        <div class="card"><h3>Starter</h3><span class="price">€9/mo</span></div>
+        <div class="card"><h3>Pro</h3><span class="price">€29</span></div>
+      </body>`;
+    const { plans } = harvestPricing(html);
+    expect(plans.find((p) => p.plan_name === "Pro")!.billing_period).toBe("monthly");
+  });
+
+  test("a per-seat page keeps the monthly default for its untokened prices", () => {
+    const html = `
+      <body>
+        <div class="card"><h3>Team</h3><span class="price">$12 per seat</span></div>
+        <div class="card"><h3>Add-on</h3><span class="price">$5</span></div>
+      </body>`;
+    const { plans } = harvestPricing(html);
+    expect(plans.find((p) => p.plan_name === "Add-on")!.billing_period).toBe("monthly");
+  });
+
+  test("one-off vocabulary alone does not force a monthly default", () => {
+    const html = `
+      <body>
+        <div class="card"><h3>Lifetime</h3><span>$249 one-time</span></div>
+        <div class="card"><h3>Install</h3><span>$99</span></div>
+      </body>`;
+    const { plans } = harvestPricing(html);
+    expect(plans.find((p) => p.plan_name === "Install")!.billing_period).toBe("one_time");
+  });
+});

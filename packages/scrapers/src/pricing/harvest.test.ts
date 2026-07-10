@@ -175,15 +175,54 @@ describe("harvestPricing — the period default follows the page, not SaaS", () 
 
   test("period vocabulary in prose, far from any price, is not a subscription signal", () => {
     // Real regression (sorelenergies.fr): a solar installer's FAQ ("1 à 2 fois par
-    // an") and a "kWh/an" spec both match YEARLY, nowhere near an amount.
+    // an") and a "kWh/an" spec both match YEARLY, nowhere near an amount. The probe
+    // climbs out of the price card but stops before such a section — hence the
+    // filler, which stands in for the kilobytes of copy any real page carries.
+    const filler = "Nos équipes interviennent partout en France. ".repeat(12);
     const html = `
       <body>
         <div class="card"><h3>Pack Essentiel</h3><span class="price">13 000€</span></div>
-        <p>Production estimée : 4500 kWh/an.</p>
-        <p>Il est conseillé de nettoyer vos panneaux 1 à 2 fois par an.</p>
+        <p>Production estimée : 4500 kWh/an. ${filler}</p>
+        <p>Il est conseillé de nettoyer vos panneaux 1 à 2 fois par an. ${filler}</p>
       </body>`;
     const { plans } = harvestPricing(html);
     expect(plans[0]!.plan_name).toBe("Pack Essentiel");
+    expect(plans[0]!.billing_period).toBe("one_time");
+  });
+
+  test("a German card states its period above the amount (sevdesk)", () => {
+    // "pro Monat" sits several levels up from the price, not beside it.
+    const html = `
+      <body>
+        <div class="tariff">
+          <div class="head"><h3>Rechnung</h3><small>pro Monat, zzgl. MwSt.</small></div>
+          <div class="body"><div class="price"><span>11,90 €</span></div></div>
+        </div>
+      </body>`;
+    const { plans } = harvestPricing(html);
+    expect(plans[0]!.billing_period).toBe("monthly");
+  });
+
+  test("a Spanish '/mes' is monthly, and carries the page default", () => {
+    const html = `
+      <body>
+        <div class="card"><h3>Basic</h3><span class="price">14,50 €/mes</span></div>
+        <div class="card"><h3>Extra</h3><span class="price">29,00 €</span></div>
+      </body>`;
+    const { plans } = harvestPricing(html);
+    expect(plans.find((p) => p.plan_name === "Basic")!.billing_period).toBe("monthly");
+    expect(plans.find((p) => p.plan_name === "Extra")!.billing_period).toBe("monthly");
+  });
+
+  test("a bare French 'mes' is not a Spanish month", () => {
+    // `\bmes\b` unanchored would read "mes données" as "per month".
+    const html = `
+      <body>
+        <div class="card"><h3>Installation</h3><span class="price">4000€</span>
+          <p>Toutes mes données restent en France.</p>
+        </div>
+      </body>`;
+    const { plans } = harvestPricing(html);
     expect(plans[0]!.billing_period).toBe("one_time");
   });
 

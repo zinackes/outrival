@@ -97,18 +97,29 @@ const PRICE_CLASS = /(price|amount|cost|pricing|montant|tarif)/i;
 // name — naming a battery "A partir de", and leaking French into an English UI.
 // It qualifies the price, it never names the product: skip it and keep walking, so
 // a real card title above it can still be found (else we fall back to the band).
+// "ab" (DE) is deliberately absent: `^ab\b` would swallow a real card titled
+// "AB testing". The other tongues degrade to the previous behaviour, not worse.
 const PRICE_EYEBROW =
-  /^(from|starting\s+(at|from)|starting|as\s+low\s+as|up\s+to|only|[àa]\s+partir\s+de|d[èe]s\b|jusqu'?[àa])\b/i;
+  /^(from|starting\s+(at|from)|starting|as\s+low\s+as|up\s+to|only|[àa]\s+partir\s+de|d[èe]s\b|jusqu'?[àa]|desde|a\s+partire\s+da|vanaf)\b/i;
 
-// Period / unit vocabulary (EN + FR). Order matters: usage units win over a bare
-// period so "$0.10 / GB" is `usage`, not `monthly`.
+// Period / unit vocabulary. Order matters: usage units win over a bare period so
+// "$0.10 / GB" is `usage`, not `monthly`. EN + FR + the EU languages Outrival
+// monitors (DE/ES/IT/NL/PT) — a German "49 € pro Monat" is as monthly as "$49/mo",
+// and reading it is what keeps the period default below honest on those pages.
+// Every non-EN form is ANCHORED to a slash or a preposition: a bare `\bmes\b` would
+// fire on the French possessive ("mes données"), `\ban(no)?\b` on ordinary prose.
+// Longer alternatives precede their prefixes ("mese" before "mes", "anno" before
+// "an"), otherwise the shorter one matches and its \b fails.
 const USAGE_UNIT =
   /\/\s?(gb|go|tb|to|request|req|api\s?call|call|lookup|credit|message|token|email|sms|minute|core|vcpu|slot|player)\b/i;
-const YEARLY = /\/\s?(yr|year|ann?[ée]e?|an)\b|per\s+year|\byearly\b|\bannual(ly)?\b|\/\s?an\b|par\s+an\b/i;
-const MONTHLY = /\/\s?(mo|month|mois)\b|per\s+month|\bmonthly\b|\/\s?mois\b|par\s+mois\b/i;
+const YEARLY =
+  /\/\s?(yr|year|ann?[ée]e?|anno|a[ñn]o|jahr|jaar|an)\b|per\s+year|\byearly\b|\bannual(ly)?\b|par\s+an\b|pro\s+jahr\b|\bj[äa]hrlich\b|al\s+a[ñn]o\b|por\s+ano\b|all'anno\b|per\s+jaar\b|\banual(mente)?\b|\bannuale\b|\bjaarlijks\b/i;
+const MONTHLY =
+  /\/\s?(mo|month|mois|monat|mese|m[eê]s|maand)\b|per\s+month|\bmonthly\b|par\s+mois\b|pro\s+monat\b|\bmonatlich\b|al\s+mes\b|al\s+mese\b|por\s+m[eê]s\b|per\s+maand\b|\bmensual(mente)?\b|\bmensile\b|\bmensal\b|\bmaandelijks\b/i;
 const ONE_TIME = /\bone[-\s]?time\b|\blifetime\b|\bune\s+fois\b|\b[àa]\s+vie\b|\bsetup\s+fee\b/i;
 // Per-seat/user is a subscription with a unit, not metered usage.
-const PER_SEAT = /\/\s?(user|seat|utilisateur|si[èe]ge|member)\b|per\s+(user|seat)\b/i;
+const PER_SEAT =
+  /\/\s?(user|seat|utilisateur|si[èe]ge|member|nutzer|usuario|utente|gebruiker)\b|per\s+(user|seat)\b|pro\s+nutzer\b|por\s+usuario\b/i;
 // "billed annually" states the COMMITMENT, not the period of the amount shown:
 // "$10/mo billed annually" is a MONTHLY rate. YEARLY is tested before MONTHLY (so
 // "/year" wins over "/mo" when both appear, as in "$1,188/year ($99/mo)"), and its
@@ -126,10 +137,34 @@ const ANNUAL_COMMITMENT =
 // pricing_history, trends and battle cards.
 const RECURRING_VOCAB = [MONTHLY, YEARLY, USAGE_UNIT, PER_SEAT, ANNUAL_COMMITMENT];
 
+// A pricing card can state its period several levels above the amount ("pro Monat"
+// sits 4 ancestors up on sevdesk), so the recurring probe climbs — but only while
+// the ancestor stays SMALL. Past this size an ancestor is a page section, and its
+// prose is exactly the noise the probe must not read.
+const RECURRING_CTX_MAX_CHARS = 300;
+
+/**
+ * The widest context still plausibly "about this price": the outermost ancestor
+ * whose whole text stays under the cap. Falls back to the price element itself.
+ */
+function recurringContext($: cheerio.CheerioAPI, $priceEl: CheerioSel): string {
+  let $node = $priceEl;
+  let ctx = $node.text();
+  for (let depth = 0; depth < MAX_LABEL_ANCESTORS; depth++) {
+    const $parent = $node.parent();
+    if ($parent.length === 0) break;
+    const text = $parent.text().replace(/\s+/g, " ");
+    if (text.length > RECURRING_CTX_MAX_CHARS) break;
+    ctx = text;
+    $node = $parent;
+  }
+  return ctx;
+}
+
 /**
  * The period assumed for an amount carrying no period token of its own: `monthly`
- * when some other price on the page is explicitly recurring (the dominant SaaS case
- * — an unlabelled amount sitting among "/mo" cards), else `one_time`.
+ * when some price on the page is explicitly recurring (the dominant SaaS case — an
+ * unlabelled amount sitting among "/mo" cards), else `one_time`.
  */
 function defaultPeriod(priceContexts: string[]): BillingPeriodValue {
   const recurring = priceContexts.some((ctx) => RECURRING_VOCAB.some((re) => re.test(ctx)));
@@ -174,10 +209,17 @@ export function harvestPricing(html: string): PricingHarvest {
     const $el = $(el);
     const m = matchPrice($el.text());
     if (!m) return [];
-    return [{ $el, m, ctx: `${$el.text()} ${$el.parent().text().slice(0, 120)}` }];
+    return [
+      {
+        $el,
+        m,
+        ctx: `${$el.text()} ${$el.parent().text().slice(0, 120)}`,
+        recurringCtx: recurringContext($, $el),
+      },
+    ];
   });
   // Decided once, across every price on the page, before resolving any single one.
-  const fallbackPeriod = defaultPeriod(priced.map((p) => p.ctx));
+  const fallbackPeriod = defaultPeriod(priced.map((p) => p.recurringCtx));
 
   const hits: Hit[] = priced.map(({ $el, m, ctx }) => {
     const { period, unit } = detectPeriod(ctx, fallbackPeriod);

@@ -22,6 +22,11 @@ export const DigestSchema = z.object({
   sectoralTrends: z
     .array(z.object({ title: z.string(), insight: z.string() }))
     .optional(),
+  // Standing queries (watched Ask questions) that materially changed this week.
+  // Appended deterministically by the weekly job, same pattern as sectoralTrends.
+  watchedQuestions: z
+    .array(z.object({ question: z.string(), changeSummary: z.string() }))
+    .optional(),
 });
 
 export type Digest = z.infer<typeof DigestSchema>;

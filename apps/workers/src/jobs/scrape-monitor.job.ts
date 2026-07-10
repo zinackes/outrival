@@ -1205,10 +1205,13 @@ export const scrapeMonitorJob = task({
           // Skip the classification call (Trigger run + Groq) on trivial diffs —
           // timestamps, hashes, nonces. The change row is still recorded.
           if (!pricingSignalHandled) {
-            const significance = evaluateSignificance({
-              added: diff.added.join("\n"),
-              removed: diff.removed.join("\n"),
-            });
+            const significance = evaluateSignificance(
+              {
+                added: diff.added.join("\n"),
+                removed: diff.removed.join("\n"),
+              },
+              { sourceType: monitor.sourceType },
+            );
             if (significance.worth) {
               await tasks.trigger("classify-change", { changeId });
             } else {

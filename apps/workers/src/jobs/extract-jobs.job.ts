@@ -150,18 +150,22 @@ export const extractJobsJob = task({
     // BEFORE the non-idempotent writes below, so a retried run after an AI
     // failure never leaves duplicate postings/counts behind.
     if (jobs.length > 0 || closedIds.length > 0) {
-      const summary = await loggedAi("source_summary", AI_CONFIG.classificationFast, () =>
-        summarizeSource({
-          kind: "jobs",
-          departments: Array.from(countsByDept.entries()).map(([department, count]) => ({
-            department,
-            count,
-          })),
-          total: jobs.length,
-          added: inserts.map((j) => j.title),
-          closed: closedTitles,
-          previousTotal: existing.length > 0 ? existing.length : null,
-        }),
+      const summary = await loggedAi(
+        "source_summary",
+        AI_CONFIG.classificationFast,
+        () =>
+          summarizeSource({
+            kind: "jobs",
+            departments: Array.from(countsByDept.entries()).map(([department, count]) => ({
+              department,
+              count,
+            })),
+            total: jobs.length,
+            added: inserts.map((j) => j.title),
+            closed: closedTitles,
+            previousTotal: existing.length > 0 ? existing.length : null,
+          }),
+        { competitorId: input.competitorId },
       );
       if (summary) {
         await db

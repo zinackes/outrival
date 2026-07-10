@@ -97,8 +97,11 @@ export async function stagedExtract<T>(
 
   const runFallback = async (): Promise<T | null> =>
     validateSchema(
-      await loggedAi(input.aiFallbackTask, AI_CONFIG.classification, () =>
-        input.aiFallback(input.htmlToText(input.html)),
+      await loggedAi(
+        input.aiFallbackTask,
+        AI_CONFIG.classification,
+        () => input.aiFallback(input.htmlToText(input.html)),
+        { competitorId: input.competitorId },
       ),
     );
 
@@ -163,8 +166,11 @@ export async function stagedExtract<T>(
     Date.now() - cached.lastHealAttemptAt.getTime() < HEAL_COOLDOWN_MS;
   if (!inCooldown) {
     try {
-      const spec = await loggedAi("generate_extractor", AI_CONFIG.classification, () =>
-        generateExtractor(input.kind, pruneHtmlForSelectors(input.html)),
+      const spec = await loggedAi(
+        "generate_extractor",
+        AI_CONFIG.classification,
+        () => generateExtractor(input.kind, pruneHtmlForSelectors(input.html)),
+        { competitorId: input.competitorId },
       );
       if (spec) {
         const version = (cached?.version ?? 0) + 1;

@@ -209,9 +209,18 @@ export const aiRuns = pgTable(
     promptTokens: integer("prompt_tokens").notNull().default(0),
     completionTokens: integer("completion_tokens").notNull().default(0),
     totalTokens: integer("total_tokens").notNull().default(0),
+    // Cost attribution per customer (2026-07 audit): best-effort owner of the
+    // spend. org_id when the job knows the org, competitor_id when it only knows
+    // the competitor — per-org readers resolve the rest via the competitors
+    // table. Nullable, no FK (append-only best-effort logging, like the rest).
+    orgId: text("org_id"),
+    competitorId: text("competitor_id"),
     recordedAt: timestamp("recorded_at").notNull().defaultNow(),
   },
-  (t) => [index("ai_runs_recorded_idx").on(t.recordedAt)],
+  (t) => [
+    index("ai_runs_recorded_idx").on(t.recordedAt),
+    index("ai_runs_org_recorded_idx").on(t.orgId, t.recordedAt),
+  ],
 );
 
 // Staged extraction resolution per scrape (patch-30): which tier resolved the

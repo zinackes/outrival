@@ -19,7 +19,7 @@ import {
 import { signDigestFeedbackToken, signUnsubscribeToken } from "@outrival/shared";
 import { renderDigestEmail, renderAllQuietDigest } from "../lib/digest-email";
 import { getResend, ALERT_FROM } from "../lib/resend";
-import { logAiRun } from "../lib/analytics";
+import { loggedAi } from "../lib/analytics";
 import { getAllQuietCounts } from "../lib/digest-counts";
 
 function isoDate(d: Date): string {
@@ -203,15 +203,12 @@ export const generateWeeklyDigestJob = schedules.task({
       }));
 
       // Ops quality logging (patch-02): success / parse_failed (null) / error.
-      const { provider, model } = AI_CONFIG.digest;
-      let digest;
-      try {
-        digest = await generateDigest(input, toMyProductContext(org.productProfile));
-      } catch (err) {
-        await logAiRun("digest", provider, model, "error");
-        throw err;
-      }
-      await logAiRun("digest", provider, model, digest ? "success" : "parse_failed");
+      const digest = await loggedAi(
+        "digest",
+        AI_CONFIG.digest,
+        () => generateDigest(input, toMyProductContext(org.productProfile)),
+        { orgId: org.id },
+      );
       if (!digest) {
         logger.error("Digest generation failed", { orgId: org.id });
         skipped++;

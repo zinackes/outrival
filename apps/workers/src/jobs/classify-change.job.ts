@@ -19,7 +19,7 @@ import {
 } from "@outrival/ai";
 import type { StructuredChange } from "@outrival/scrapers/homepage-diff";
 import { groqQueue } from "../lib/queues";
-import { logAiRun } from "../lib/analytics";
+import { loggedAi } from "../lib/analytics";
 import { determineSelfChangeSeverity, notifySelfChange } from "../lib/self-change";
 
 const InputSchema = z.object({
@@ -54,6 +54,8 @@ export const classifyChangeJob = task({
     if (!change.diffText) {
       throw new AbortTaskRunError(`Change ${input.changeId} has no diffText`);
     }
+    // Captured so the narrowing above survives into the loggedAi closure.
+    const diffText = change.diffText;
 
     // Resolve monitor + competitor up front: their source type and name ground
     // the classifier (a homepage tweak vs a pricing move), and they're reused for
@@ -71,34 +73,32 @@ export const classifyChangeJob = task({
     // per-change significance); everything else keeps the lexical 8b classifier.
     let classification: Classification | null;
     let perChange: PerChangeAssessment[] | null = null;
+    const attribution = { orgId: competitor?.orgId, competitorId: competitor?.id };
     if (change.diffType === "structured" && change.structuredDiff) {
       const structured = change.structuredDiff as StructuredChange[];
-      const { provider, model } = AI_CONFIG.classification;
-      let res;
-      try {
-        res = await classifyStructuredChanges(structured, {
-          sourceType: monitor?.sourceType,
-          competitorName: competitor?.name,
-        });
-      } catch (err) {
-        await logAiRun("classify_structured", provider, model, "error");
-        throw err;
-      }
-      await logAiRun("classify_structured", provider, model, res ? "success" : "parse_failed");
+      const res = await loggedAi(
+        "classify_structured",
+        AI_CONFIG.classification,
+        () =>
+          classifyStructuredChanges(structured, {
+            sourceType: monitor?.sourceType,
+            competitorName: competitor?.name,
+          }),
+        attribution,
+      );
       classification = res?.classification ?? null;
       perChange = res?.perChangeAssessment ?? null;
     } else {
-      const { provider, model } = AI_CONFIG.classificationFast;
-      try {
-        classification = await classifyChange(change.diffText, {
-          sourceType: monitor?.sourceType,
-          competitorName: competitor?.name,
-        });
-      } catch (err) {
-        await logAiRun("classify", provider, model, "error");
-        throw err;
-      }
-      await logAiRun("classify", provider, model, classification ? "success" : "parse_failed");
+      classification = await loggedAi(
+        "classify",
+        AI_CONFIG.classificationFast,
+        () =>
+          classifyChange(diffText, {
+            sourceType: monitor?.sourceType,
+            competitorName: competitor?.name,
+          }),
+        attribution,
+      );
     }
     if (!classification) {
       // A null here is a PARSE miss (malformed/empty JSON), not a thrown provider

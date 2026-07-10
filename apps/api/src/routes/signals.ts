@@ -14,7 +14,7 @@ import {
   users,
 } from "@outrival/db";
 import { computeThreatScore, getBytesFromR2 } from "@outrival/shared";
-import { complete, AI_CONFIG } from "@outrival/ai";
+import { complete, withAiContext, AI_CONFIG } from "@outrival/ai";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
@@ -394,16 +394,20 @@ Write a 2-3 sentence executive brief: the through-line across these moves, who i
 ${lines.slice(0, 6000)}
 </signals>`;
 
-  try {
-    const raw = await complete(AI_CONFIG.insights, { prompt, maxTokens: 240 });
-    const brief = raw.trim() || null;
-    await logApiAiRun("signals_brief", AI_CONFIG.insights.model, "success");
-    briefCache.set(cacheKey, { brief, count: rows.length, at: Date.now() });
-    return c.json({ brief, count: rows.length });
-  } catch {
-    await logApiAiRun("signals_brief", AI_CONFIG.insights.model, "error");
-    return c.json({ brief: null, count: rows.length });
-  }
+  // withAiContext spans the call AND its log so the tokens/model complete()
+  // marks reach the row (Bun drops the lazy child-frame enterWith).
+  return withAiContext(async () => {
+    try {
+      const raw = await complete(AI_CONFIG.insights, { prompt, maxTokens: 240 });
+      const brief = raw.trim() || null;
+      await logApiAiRun("signals_brief", AI_CONFIG.insights.model, "success", { orgId });
+      briefCache.set(cacheKey, { brief, count: rows.length, at: Date.now() });
+      return c.json({ brief, count: rows.length });
+    } catch {
+      await logApiAiRun("signals_brief", AI_CONFIG.insights.model, "error", { orgId });
+      return c.json({ brief: null, count: rows.length });
+    }
+  });
 });
 
 // Mark all read — full scope, server-side. Two paths on one endpoint:

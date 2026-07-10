@@ -225,6 +225,13 @@
       "when": 1783539663887,
       "tag": "0031_outstanding_hellion",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1783706384939,
+      "tag": "0032_luxuriant_kang",
+      "breakpoints": true
     }
   ]
 }

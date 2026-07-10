@@ -1,5 +1,6 @@
 import {
   complete,
+  withAiContext,
   AI_CONFIG,
   safeParseJson,
   AskPlanSchema,
@@ -54,7 +55,20 @@ function stripInlineIds(text: string): string {
 
 export type AskEmit = (ev: AskEvent) => Promise<void> | void;
 
-export async function runAskAgent(
+export function runAskAgent(
+  orgId: string,
+  userId: string,
+  question: string,
+  context: AskPageContext | null,
+  emit: AskEmit,
+): Promise<void> {
+  // withAiContext spans both passes AND their log sites. Bun (the API runtime)
+  // drops the lazy child-frame enterWith complete() falls back on, so without
+  // this every ask row in ai_runs carried 0 tokens and a static model label.
+  return withAiContext(() => runAsk(orgId, userId, question, context, emit));
+}
+
+async function runAsk(
   orgId: string,
   userId: string,
   question: string,
@@ -81,7 +95,9 @@ export async function runAskAgent(
       json: true,
     });
     const plan = safeParseJson(planRaw, AskPlanSchema);
-    await logAskRun(AI_CONFIG.classificationFast.model, plan.ok ? "success" : "parse_failed");
+    await logAskRun(AI_CONFIG.classificationFast.model, plan.ok ? "success" : "parse_failed", {
+      orgId,
+    });
     const calls = plan.ok ? plan.value.calls : [];
 
     await emit({ type: "status", phase: "running" });
@@ -100,7 +116,7 @@ export async function runAskAgent(
       maxTokens: 1024,
     });
     const answer = safeParseJson(synthRaw, AskAnswerSchema);
-    await logAskRun(AI_CONFIG.insights.model, answer.ok ? "success" : "parse_failed");
+    await logAskRun(AI_CONFIG.insights.model, answer.ok ? "success" : "parse_failed", { orgId });
 
     if (answer.ok) {
       // Re-validate citations server-side: the synthesis is told to cite only ids
@@ -146,7 +162,7 @@ export async function runAskAgent(
     }
     await emit({ type: "done" });
   } catch (err) {
-    await logAskRun(AI_CONFIG.insights.model, "error");
+    await logAskRun(AI_CONFIG.insights.model, "error", { orgId });
     const message =
       err instanceof AIUnavailableError
         ? "AI is temporarily unavailable. Please try again in a moment."

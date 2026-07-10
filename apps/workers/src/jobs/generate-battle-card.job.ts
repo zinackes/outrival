@@ -26,7 +26,7 @@ import {
 import { isCloudflareChallenge } from "@outrival/scrapers/block-detection";
 import { htmlToText } from "../lib/html-to-text";
 import {
-  logAiRun,
+  loggedAi,
   getLatestTrial,
   getLatestPricingTiers,
   getLatestReviewScore,
@@ -253,15 +253,13 @@ export const generateBattleCardJob = task({
     };
 
     // Ops quality logging (patch-02): success / parse_failed (null) / error.
-    const { provider, model } = AI_CONFIG.insights;
-    let content;
-    try {
-      content = await generateBattleCard(battleCardInput);
-    } catch (err) {
-      await logAiRun("battle_card", provider, model, "error");
-      throw err;
-    }
-    await logAiRun("battle_card", provider, model, content ? "success" : "parse_failed");
+    const attribution = { orgId: org.id, competitorId: competitor.id };
+    let content = await loggedAi(
+      "battle_card",
+      AI_CONFIG.insights,
+      () => generateBattleCard(battleCardInput),
+      attribution,
+    );
 
     if (!content) {
       throw new AbortTaskRunError("Battle card generation returned null");
@@ -272,13 +270,17 @@ export const generateBattleCardJob = task({
     // one-sided comparisons the self-check only used to flag). Best-effort: on a
     // parse miss we keep the grounded draft rather than lose the card.
     try {
-      const revised = await reviseBattleCard(battleCardInput, content);
-      await logAiRun("battle_card_revise", provider, model, revised ? "success" : "parse_failed");
+      const draft = content;
+      const revised = await loggedAi(
+        "battle_card_revise",
+        AI_CONFIG.insights,
+        () => reviseBattleCard(battleCardInput, draft),
+        attribution,
+      );
       if (revised) content = revised;
     } catch (err) {
       // A verification failure (rate limit / breaker) must never sink the card —
       // patch-22 graceful degradation. Keep the draft; log the miss.
-      await logAiRun("battle_card_revise", provider, model, "error");
       logger.warn("Battle card revise pass skipped", { err: String(err) });
     }
 

@@ -18,6 +18,10 @@ export const EnvSchema = z
     // this is unset — fine in dev, a silent captcha hole in prod (auth OTP + contact
     // form). Required in production via the refine below, same rationale as Upstash.
     TURNSTILE_SECRET_KEY: z.string().min(1).optional(),
+    // Shared secret for worker→API internal calls (standing-query re-evaluation).
+    // Unset → the /api/internal/* routes answer 404 and workers skip re-evaluation
+    // (the feature degrades to "saved but never re-evaluated", never a crash).
+    INTERNAL_API_SECRET: z.string().min(16).optional(),
   })
   .superRefine((e, ctx) => {
     if (e.NODE_ENV === "production" && (!e.UPSTASH_REDIS_REST_URL || !e.UPSTASH_REDIS_REST_TOKEN)) {

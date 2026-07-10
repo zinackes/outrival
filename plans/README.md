@@ -57,10 +57,25 @@ plan's drift check first. Plans are independent unless "Depends on" says otherwi
 | 026  | Tech-stack signals only on real transitions, never on baseline, never "high" | P1 | S | LOW | — | DONE — MERGED via #156 (`191ee28`) ⚠️ needs `trigger deploy` |
 | 027  | Severity rubric in prompts + deterministic critical guard + retriable insight | P1 | M | MED | — | DONE — PR #157 (open) |
 | 028  | Revive dead diff classes (section add/remove, price tweaks, og rebrand, recency) | P1 | M | MED | — | DONE — PR #159 (open) |
-| 029  | Render retry for client-rendered pricing pages (priceless L0 captures) | P1 | S | LOW–MED | — | TODO |
+| 029  | Render retry for client-rendered pricing pages (priceless L0 captures) | P1 | S | LOW–MED | — | DONE — executed & reviewed (APPROVE), branch `advisor/029-pricing-render-floor` (`ae45d68`), awaiting user PR/merge ⚠️ needs `trigger deploy` |
 | 030  | Staged-extraction heal/cache actually persists (normalize replay + cooldown stub) | P1 | M | LOW–MED | — | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (one-line reason) | REJECTED (one-line rationale)
+
+**029 — executed & reviewed 2026-07-10 (APPROVE), awaiting user PR/merge.** Re-anchored
+from `6639163` to `origin/main` `0d35d0f` before dispatch (pricing PRs #151/#152/#158 +
+plans 025–028 had landed; `pricing.scraper.ts` was byte-identical, `harvestPricing`'s
+`{plans}` contract intact, and no render-retry logic existed yet — finding confirmed
+still live). Commit `ae45d68` on `advisor/029-pricing-render-floor` (off `0d35d0f`,
+disposable worktree). New pure trigger `render-retry.ts` (`needsRenderRetry(html, level)`
+= L0 capture with zero harvestable prices) + `scrapeWithRenderRetry` helper wired into all
+three single-page return points AND the homepage-embedded path (re-renders `resolvedBase`,
+the post-redirect URL). Catalog-aggregation branch untouched; `harvest.ts`/`discover-url.ts`
+consumed, not modified. Reviewer re-verified in the worktree: scope = exactly the 5 in-scope
+files, `pnpm typecheck` 8/8, `packages/scrapers bun test src` **466 pass / 0 fail** (incl. 4
+new render-retry tests exercising all branches: no-price SSR shell → true, priced → false,
+level 1 → false, FR-format price → false). Not pushed. ⚠️ Worker-side scraper change → needs
+`trigger deploy` after merge.
 
 **001 — PR #127 (open) 2026-07-08.** Originally executed+APPROVE on `advisor/001-ai-visibility-overtaken`
 (`6f7dad0`, off old main `81c4b75`). Since main moved to `9f4afd3` (incl. #123 organic-SoM which also

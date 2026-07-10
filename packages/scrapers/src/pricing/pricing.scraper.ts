@@ -2,11 +2,32 @@ import { scrapePage } from "../lib/crawler";
 import type { ScrapeOutcome, ScrapeOptions } from "../types";
 import { discoverPricingUrl, discoverCommerceCandidates } from "./discover-url";
 import { deriveProductLine, buildAggregatedDocument } from "./product-lines";
+import { needsRenderRetry } from "./render-retry";
 
 const PRICING_KEYWORDS = ["pricing", "tarifs", "plans", "tarification", "prix"];
 // L3 cap: how many product pages a catalog contributes to the aggregated snapshot.
 const MAX_PRODUCT_LINES = 3;
 const AGGREGATE_ENABLED = process.env.PRICING_AGGREGATE_ENABLED !== "false";
+const RENDER_RETRY_ENABLED = process.env.PRICING_RENDER_RETRY_ENABLED !== "false";
+
+/**
+ * Scrape a single pricing candidate, then — when the capture never saw a browser
+ * (L0) and carries no harvestable price — re-scrape once with a browser render.
+ * Catches client-rendered pricing pages that L0 accepts as a text-rich marketing
+ * shell (see `needsRenderRetry`). If the render retry itself throws, that error
+ * propagates (same failure semantics as any `scrapePage` call) rather than being
+ * swallowed back to the L0 result, which would mask a block as a priceless success.
+ */
+async function scrapeWithRenderRetry(
+  url: string,
+  opts: ScrapeOptions,
+): Promise<ScrapeOutcome> {
+  const result = await scrapePage(url, opts);
+  if (RENDER_RETRY_ENABLED && needsRenderRetry(result.html, result.level)) {
+    return scrapePage(url, { ...opts, render: true });
+  }
+  return result;
+}
 
 export async function scrape(
   _competitorId: string,
@@ -28,7 +49,7 @@ export async function scrape(
 
   // URL already points at a pricing page → scrape it directly.
   if (PRICING_KEYWORDS.some((k) => url.toLowerCase().includes(k))) {
-    return scrapePage(url, opts);
+    return scrapeWithRenderRetry(url, opts);
   }
 
   // Otherwise scrape the homepage and locate the real pricing page from it.
@@ -45,7 +66,7 @@ export async function scrape(
   // A real convention pricing page (`/pricing`, `/tarifs`, hub-drilled child) is
   // authoritative — use it and skip the catalog probes entirely.
   if (candidate && candidate.source === "direct") {
-    return scrapePage(candidate.url, opts);
+    return scrapeWithRenderRetry(candidate.url, opts);
   }
 
   // L3 catalog aggregation: hosting/e-commerce spreads pricing across product pages
@@ -76,7 +97,12 @@ export async function scrape(
   // Single best page (nav/footer link), or the homepage when pricing is embedded /
   // nothing was found (the extract-pricing harvest floor recovers visible prices).
   if (!candidate || candidate.source === "homepage_section") {
+    // A client-rendered homepage with an embedded pricing widget is the same
+    // failure shape as a dedicated page's — reuse the already-fetched capture.
+    if (RENDER_RETRY_ENABLED && needsRenderRetry(homepage.html, homepage.level)) {
+      return scrapePage(resolvedBase, { ...opts, render: true });
+    }
     return homepage;
   }
-  return scrapePage(candidate.url, opts);
+  return scrapeWithRenderRetry(candidate.url, opts);
 }

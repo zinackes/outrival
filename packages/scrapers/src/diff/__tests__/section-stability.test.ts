@@ -23,31 +23,60 @@ const WITH = WITHOUT.replace(
 const parse = (html: string) => parseHomepageStructure(html, BASE);
 const hasRecentAdded = (changes: ReturnType<typeof diffHomepages>) =>
   changes.some((c) => c.kind === "section_added" && /recent transactions/i.test(c.after ?? ""));
+const hasRecentRemoved = (changes: ReturnType<typeof diffHomepages>) =>
+  changes.some((c) => c.kind === "section_removed" && /recent transactions/i.test(c.before ?? ""));
 
-describe("filterUnstableSections — flaky lazy section", () => {
-  it("suppresses section_added when the section flickers across the window", () => {
-    // A single 2-snapshot diff sees the section as newly added…
+describe("filterUnstableSections — production-shaped history (index[0]=current, index[1]=diff's prev)", () => {
+  it("keeps a genuine add: absent in the diff's prev, absent in the whole prior window", () => {
+    // diff: prev=WITHOUT (lacks it) → curr=WITH (has it) ⇒ section_added.
     const changes = diffHomepages(parse(WITHOUT), parse(WITH));
     expect(hasRecentAdded(changes)).toBe(true);
 
-    // …but over the window it's present/absent alternately (never stable), so the
-    // add is dropped.
-    const history = [WITH, WITHOUT, WITH, WITHOUT, WITH, WITHOUT].map(parse);
-    const filtered = filterUnstableSections(changes, history);
-    expect(hasRecentAdded(filtered)).toBe(false);
-  });
-
-  it("keeps section_added when the section is stably present", () => {
-    const changes = diffHomepages(parse(WITHOUT), parse(WITH));
-    const history = [WITH, WITH, WITH, WITHOUT, WITHOUT, WITHOUT].map(parse);
+    // history[0] = curr (WITH), history[1..3] all lack the section — the
+    // regression case that was impossible to confirm since #74.
+    const history = [WITH, WITHOUT, WITHOUT, WITHOUT].map(parse);
     const filtered = filterUnstableSections(changes, history);
     expect(hasRecentAdded(filtered)).toBe(true);
   });
 
-  it("drops add/remove with insufficient history (can't confirm stability)", () => {
+  it("suppresses a flickering add: present in the diff's prev window at some point", () => {
     const changes = diffHomepages(parse(WITHOUT), parse(WITH));
-    const filtered = filterUnstableSections(changes, [WITH, WITHOUT].map(parse));
+    // history[0] = curr (WITH); history[1] = WITHOUT (matches the diff's prev),
+    // but history[2] = WITH — the section flickered back in, so it's not
+    // confirmed absent for the whole prior window.
+    const history = [WITH, WITHOUT, WITH, WITHOUT].map(parse);
+    const filtered = filterUnstableSections(changes, history);
     expect(hasRecentAdded(filtered)).toBe(false);
+  });
+
+  it("keeps a genuine remove: present in the diff's prev, present in the whole prior window", () => {
+    // diff: prev=WITH (has it) → curr=WITHOUT (lacks it) ⇒ section_removed.
+    const changes = diffHomepages(parse(WITH), parse(WITHOUT));
+    expect(hasRecentRemoved(changes)).toBe(true);
+
+    // history[0] = curr (WITHOUT); history[1..3] all have the section.
+    const history = [WITHOUT, WITH, WITH, WITH].map(parse);
+    const filtered = filterUnstableSections(changes, history);
+    expect(hasRecentRemoved(filtered)).toBe(true);
+  });
+
+  it("suppresses a flickering remove: absent in the prior window at some point", () => {
+    const changes = diffHomepages(parse(WITH), parse(WITHOUT));
+    // history[1] = WITH (matches the diff's prev), but history[2] = WITHOUT —
+    // the section flickered out, so it's not confirmed present throughout.
+    const history = [WITHOUT, WITH, WITHOUT, WITH].map(parse);
+    const filtered = filterUnstableSections(changes, history);
+    expect(hasRecentRemoved(filtered)).toBe(false);
+  });
+
+  it("keeps a genuine add on short history (only [0] and [1] available)", () => {
+    const changes = diffHomepages(parse(WITHOUT), parse(WITH));
+    // Only the current structure and the diff's own prev are available — no
+    // flicker evidence is possible, and the sole prior structure already lacks
+    // the heading, so the add is confirmed.
+    const history = [WITH, WITHOUT].map(parse);
+    const filtered = filterUnstableSections(changes, history);
+    expect(hasRecentAdded(filtered)).toBe(true);
   });
 
   it("leaves non-section changes untouched", () => {
@@ -56,18 +85,5 @@ describe("filterUnstableSections — flaky lazy section", () => {
     const history = [afterHtml, WITHOUT].map(parse);
     const filtered = filterUnstableSections(changes, history);
     expect(filtered.some((c) => c.kind === "hero_headline_changed")).toBe(true);
-  });
-
-  it("tolerates pre-patch null structures in the window without faking a removal", () => {
-    // prev has the section, curr dropped it → 2-snapshot diff sees a removal…
-    const changes = diffHomepages(parse(WITH), parse(WITHOUT));
-    expect(changes.some((c) => c.kind === "section_removed")).toBe(true);
-    // …but a null (pre-patch) snapshot in the prior window means "not present in
-    // EVERY prior", so the removal is not confirmed.
-    const history = [WITHOUT, WITHOUT, WITHOUT, WITH, null, WITH].map((h) =>
-      h === null ? null : parse(h),
-    );
-    const filtered = filterUnstableSections(changes, history);
-    expect(filtered.some((c) => c.kind === "section_removed")).toBe(false);
   });
 });

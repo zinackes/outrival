@@ -56,7 +56,7 @@ plan's drift check first. Plans are independent unless "Depends on" says otherwi
 | 025  | Deny/soft-404/login pages can't become "success" snapshots or archive baselines | P1 | M | MED | — | DONE — MERGED via #155 (`d153e36`) ⚠️ needs `trigger deploy` |
 | 026  | Tech-stack signals only on real transitions, never on baseline, never "high" | P1 | S | LOW | — | DONE — MERGED via #156 (`191ee28`) ⚠️ needs `trigger deploy` |
 | 027  | Severity rubric in prompts + deterministic critical guard + retriable insight | P1 | M | MED | — | DONE — PR #157 (open) |
-| 028  | Revive dead diff classes (section add/remove, price tweaks, og rebrand, recency) | P1 | M | MED | — | TODO |
+| 028  | Revive dead diff classes (section add/remove, price tweaks, og rebrand, recency) | P1 | M | MED | — | DONE — PR #159 (open) |
 | 029  | Render retry for client-rendered pricing pages (priceless L0 captures) | P1 | S | LOW–MED | — | TODO |
 | 030  | Staged-extraction heal/cache actually persists (normalize replay + cooldown stub) | P1 | M | LOW–MED | — | TODO |
 
@@ -260,6 +260,37 @@ share drops), and classifications are cached 7 days keyed on input — for up to
 diffs replay pre-rubric labels. Do not bust the cache. If a false critical slips both rubric and guard,
 tighten the allowlists in `severity-guard.ts` before re-wording the prompt. Worker + AI code:
 `trigger deploy` from `main`.
+
+**028 — executed & reviewed 2026-07-09 (APPROVE, 0 revisions) → PR #159 (open).** Four independent
+fixes, one commit each (`a45ac29` A, `03f572c` B, `31b668a` C, `e61cfc7` D) on
+`advisor/028-revive-dead-diff-classes` (off `d153e36`), worktree
+`/home/tmfzi/outrival/.claude/worktrees/agent-a4dc645d039cb9d51`. Plan was **re-anchored** from
+`6639163` to `d153e36` before dispatch: PR #155 shifted `scrape-monitor.job.ts` by ~50 lines (recency
+query 1016→1066, significance call 1161→1210); `diff/`, `scoring/`, `significance.ts` were byte-identical.
+
+Reviewer re-verified in the worktree: `pnpm typecheck --force` 8/8, scrapers **451 pass / 0 fail**,
+ai **66 pass / 0 fail**, scope = 7 in-scope files, four clean per-fix commits.
+- **Fix A** correctness hinges on the invariant `sectionHistory[0]=current, [1]=diff's prev`. Confirmed
+  at the call site (`scrape-monitor.job.ts:949` reads the last 6 snapshots `desc(scrapedAt)` incl. the
+  one just inserted). Polarity confirmed: `filterUnstableSections` KEEPS a `section_added` when
+  `added.has(heading)` is true, so the `ConfirmAllSet` (has()→true) correctly makes a no-prior-history
+  capture a pass-through. The rewritten tests drive real `diffHomepages` output, not hand-built sets —
+  the genuine-add regression case actually exercises the bug that was impossible since #74.
+- **Fix D** the `{sourceType}` param is optional, so the second caller (`backfill-history.job.ts`)
+  keeps compiling untouched; the timestamps-only negative test confirms a pricing source without a
+  price token is still rejected.
+
+Judgment call (executor, accepted): dropped an old `section-stability` test case that encoded the same
+impossible index-1 state as the one the plan explicitly calls out; implemented exactly the plan's 6
+prescribed cases, no 7th.
+
+⚠️ **Expect new signal volume after deploy** (the point): section adds/removes resume (dead since
+2026-07-04), busy competitors' homepage changes stop being damped by a blog elsewhere, og rebrands and
+bare price changes now reach classification. If noise returns, the lever is the stability `window` (3)
+and per-field weights — not re-breaking the filter. Worker + scrapers + AI code: `trigger deploy`.
+
+Note on the stacked index: 025–028 all edit `plans/README.md`; the appended notes will conflict on
+sequential merge to main — resolve by keeping both. Rows themselves are already at final state here.
 
 ## Recommended sequencing
 

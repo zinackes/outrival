@@ -13,9 +13,20 @@ export interface SignificanceResult {
  * Conservative by design: when in doubt it returns `worth: true` — better to
  * classify a borderline diff than to silently drop a real signal.
  */
-export function evaluateSignificance(diff: DiffInput): SignificanceResult {
+export function evaluateSignificance(
+  diff: DiffInput,
+  context?: { sourceType?: string },
+): SignificanceResult {
   const combined = `${diff.added}\n${diff.removed}`;
   const trimmed = combined.replace(/\s+/g, "");
+
+  // 0. A pricing-page diff that contains an actual price token is ALWAYS worth
+  // classifying, however short — "$99/mo → $79/mo" is the product's core promise
+  // (audit DIF-7). Mirrors the price-token heuristic used by the severity guard.
+  const PRICE_TOKEN = /[€$£¥]\s?\d|\d\s?(€|\$|usd|eur|gbp)|\/\s?(mo|month|yr|year|an)\b/i;
+  if (context?.sourceType === "pricing" && PRICE_TOKEN.test(combined)) {
+    return { worth: true };
+  }
 
   // 1. Globally too short.
   if (trimmed.length < 50) {

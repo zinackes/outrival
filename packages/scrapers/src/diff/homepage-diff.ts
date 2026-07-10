@@ -363,34 +363,53 @@ function sectionHeadingSet(s: HomepageStructure | null): Set<string> {
 }
 
 /**
- * Sections that stably appeared / disappeared across a window of snapshots —
- * the same TWO-window guard as `diffTestimonialsStable`, applied to section
- * headings. A lazy/async section (a client-rendered data widget that fetches on
- * load, sometimes erroring) flickers in and out between scrapes; a single
- * 2-snapshot diff turns each flicker into a phantom "new section" / "section
- * removed". Given the last `2 * window` structures newest-first:
- *  - added:   present in EVERY recent scrape AND absent in EVERY prior one,
- *  - removed: absent in EVERY recent scrape AND present in EVERY prior one.
- * A flickering section is neither present nor absent for `window` consecutive
- * scrapes, so it satisfies neither — and never fires. Fewer than `2 * window`
- * structures ⇒ empty (not enough history to confirm stability). Keys are
- * normalized headings. PURE.
+ * A `Set` whose `has()` always returns true, regardless of key — used by
+ * `stableSectionTransitions` to make `filterUnstableSections` a confirm-everything
+ * pass-through when there is no prior structure at all to disprove a genuine
+ * section add/remove against.
+ */
+class ConfirmAllSet extends Set<string> {
+  override has(_key: string): boolean {
+    return true;
+  }
+}
+
+/**
+ * Sections that genuinely appeared / disappeared, confirmed against a window of
+ * prior structures so a lazy/async section (a client-rendered data widget that
+ * fetches on load, sometimes erroring) can't fake a phantom "new section" /
+ * "section removed" by flickering in and out between scrapes.
+ * `structuresNewestFirst[0]` is the CURRENT structure (the one whose diff
+ * produced the changes); `structuresNewestFirst[1]` is the structure that diff
+ * actually ran against, so a genuine add/remove is already absent/present there
+ * by construction — the confirmation below must agree with that, not contradict it:
+ *  - added:   present in the current structure AND absent from EVERY structure in
+ *             the prior window (`structuresNewestFirst[1..window]`, may be fewer).
+ *  - removed: absent from the current structure AND present in EVERY structure in
+ *             that same prior window.
+ * A flickering heading is present in some prior structures and absent in others,
+ * satisfying neither — and never fires. No prior structure available at all
+ * (only the current one was passed) ⇒ nothing to disprove the 2-snapshot diff's
+ * verdict against, so every emitted add/remove is trusted. Keys are normalized
+ * headings. PURE.
  */
 function stableSectionTransitions(
   structuresNewestFirst: (HomepageStructure | null)[],
   window: number,
 ): { added: Set<string>; removed: Set<string> } {
+  const sets = structuresNewestFirst.map(sectionHeadingSet);
+  const current = sets[0] ?? new Set<string>();
+  const priorAvailable = sets.slice(1, 1 + window);
+  if (priorAvailable.length === 0) {
+    return { added: new ConfirmAllSet(), removed: new ConfirmAllSet() };
+  }
   const added = new Set<string>();
   const removed = new Set<string>();
-  if (structuresNewestFirst.length < window * 2) return { added, removed };
-  const sets = structuresNewestFirst.map(sectionHeadingSet);
-  const recent = sets.slice(0, window);
-  const prior = sets.slice(window, window * 2);
-  for (const k of recent[0] ?? []) {
-    if (recent.every((s) => s.has(k)) && prior.every((s) => !s.has(k))) added.add(k);
+  for (const k of current) {
+    if (priorAvailable.every((s) => !s.has(k))) added.add(k);
   }
-  for (const k of prior[0] ?? []) {
-    if (recent.every((s) => !s.has(k)) && prior.every((s) => s.has(k))) removed.add(k);
+  for (const k of priorAvailable[0] ?? []) {
+    if (!current.has(k) && priorAvailable.every((s) => s.has(k))) removed.add(k);
   }
   return { added, removed };
 }

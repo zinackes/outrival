@@ -67,4 +67,31 @@ describe("evaluateSignificance", () => {
     });
     expect(r.worth).toBe(true);
   });
+
+  it("keeps a bare price-token diff on a pricing source, however short (patch-28)", () => {
+    // This exact shape was rejected as too_short before the pricing carve-out —
+    // "2,49 €per month" has no letters beyond the unit, well under 50 trimmed
+    // chars, yet it's the product's core promise (a price actually moved).
+    const r = evaluateSignificance(
+      { added: "2,49 €per month", removed: "1,99 €per month" },
+      { sourceType: "pricing" },
+    );
+    expect(r.worth).toBe(true);
+  });
+
+  it("rejects the same bare price diff without a pricing sourceType", () => {
+    const r = evaluateSignificance({ added: "2,49 €per month", removed: "1,99 €per month" });
+    expect(r.worth).toBe(false);
+  });
+
+  it("still rejects a timestamps-only diff on a pricing source with no price token", () => {
+    const r = evaluateSignificance(
+      {
+        added: "2026-06-01T10:24:00Z 2026-06-01T10:25:00Z",
+        removed: "2026-05-31T09:40:00Z 2026-05-31T09:41:00Z",
+      },
+      { sourceType: "pricing" },
+    );
+    expect(r.worth).toBe(false);
+  });
 });

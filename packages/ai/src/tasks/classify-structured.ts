@@ -3,6 +3,7 @@ import { AI_CONFIG } from "../config";
 import { groundedAiCall } from "../grounding/grounded-call";
 import { attachQuality, type WithQuality } from "../grounding/types";
 import { ClassificationSchema, type Classification } from "./classify";
+import { SEVERITY_RUBRIC, CATEGORY_RULES } from "./classify-shared";
 
 const CACHE_TTL_SECONDS = Number(process.env.AI_CACHE_TTL_CLASSIFY_DAYS ?? 7) * 86400;
 
@@ -77,6 +78,11 @@ ${renderForPrompt(changes).slice(0, 8000)}
 
 <rules>
 - Judge each change's significance as "major", "minor", or "trivial".
+- EXCEPTION FIRST: if a change's before or after side looks like an anti-bot or
+  error interstitial ("Robot Challenge Screen", "Checking the site connection
+  security", "Just a moment...", a bare domain as the headline), that change is a
+  capture artifact of our own scraper, not a competitor move — mark it "trivial"
+  and never anchor the overall severity on it.
 - A hero_headline_changed is ALWAYS at least "major".
 - A section_added whose field is sections[pricing] is ALWAYS at least "major".
 - navigation_changed alone is "minor".
@@ -94,39 +100,9 @@ ${renderForPrompt(changes).slice(0, 8000)}
 - is_significant is true if any change is "major".
 </rules>
 
-<severity-rubric>
-"critical" triggers an IMMEDIATE email to the customer, bypassing all moderation.
-Use it only when BOTH hold:
-  (a) the change is a direct threat or opening for the customer's own positioning
-      or revenue — a price undercut or pricing-structure change by a direct
-      competitor, the launch of a directly competing flagship capability, a funding
-      round >= $100M or an acquisition of a direct competitor, or entry into the
-      customer's exact segment; AND
-  (b) the useful reaction window is DAYS, not weeks.
-If unsure between "critical" and "high", choose "high".
-"high" — a material strategic move where reacting next week loses nothing: a
-notable product launch, a quantified price change, a complete repositioning of the
-hero/value proposition, a strategic hiring wave.
-"medium" — real but incremental: a new job posting, a new page section, a
-promotion, a plan-limit tweak.
-"low" — cosmetic or informational: copy polish, testimonials/logos, navigation,
-meta tags, documentation pages.
-Severity is judged on the CONTENT of the change, never on the size of the diff —
-a one-line diff can be critical; a huge redesign diff can be low.
-</severity-rubric>
+${SEVERITY_RUBRIC}
 
-<category-rules>
-Judge WHAT changed, never WHERE it appeared:
-- pricing: any price, plan, tier, trial, or gating change, on any page.
-- funding: a raise, acquisition, or valuation announcement, even on a blog post.
-- product: shipped or announced capabilities, launches, integrations.
-- hiring: job postings and team growth — even when they telegraph product direction.
-- reviews: review-platform score or review-content movements only.
-- content: messaging, positioning, or content-strategy changes (use only when none
-  of the above applies).
-When two genuinely apply, pick by this priority: pricing > funding > product >
-hiring > reviews > content.
-</category-rules>
+${CATEGORY_RULES}
 
 <task>
 Reply ONLY with a valid JSON object, no markdown and no surrounding text.

@@ -477,9 +477,14 @@ carte (état live uniquement).
        idempotent), throttlé (backfillQueue conc.2 + ~1 req/s) ; chaque issue est
        loggée dans backfill_runs (bucket outcome + detail) — plus de skip invisible
 
-[par change] classify-change (Groq llama-3.3-70b)
-  └─ lexical → classifyChange (8b) ; structuré (patch-16) → classifyStructuredChanges
-       (70b, caché) = overallSeverity + category + perChangeAssessment (significance/change)
+[par change] classify-change (pool gpt-oss)
+  └─ lexical → classifyChange (fast) ; structuré (patch-16) → classifyStructuredChanges
+       (smart, caché) = overallSeverity + category + perChangeAssessment (significance/change)
+  └─ rubrique sévérité + règles catégorie PARTAGÉES (classify-shared.ts, une seule
+       source pour les deux classifieurs) ; toute modification passe par l'éval
+       étiquetée `pnpm --filter @outrival/ai eval:severity` (golden set prod +
+       criticals synthétiques, gates : bande ≥80%, catégorie ≥85%, 0 sur-alerte
+       critical, bande critical atteignable) — audit 2026-07-10
   └─ category + severity + isSignificant ; perChange réécrit changes.structured_diff
   └─ si significant → trigger generate-signal
 

@@ -14,6 +14,7 @@ import { pruneHtmlForSelectors } from "@outrival/scrapers/prune-html";
 import { generateExtractor, AI_CONFIG, type ExtractorKind } from "@outrival/ai";
 import { logExtractionRun, loggedAi } from "./analytics";
 import { shouldTrustCachedExtractor } from "./extractor-trust";
+import { normalizeReplayOutput } from "./replay-normalize";
 
 /**
  * The staged extraction orchestrator (patch-30). Moves AI off the hot path: tries
@@ -131,7 +132,9 @@ export async function stagedExtract<T>(
       maxFailures: EXTRACTOR_MAX_FAILURES,
     });
     if (trusted) {
-      const replayed = stageOk(replayExtractor(input.html, cachedSpec.data));
+      const replayed = stageOk(
+        normalizeReplayOutput(input.kind, replayExtractor(input.html, cachedSpec.data)),
+      );
       if (replayed) {
         await db
           .update(parserExtractors)
@@ -166,16 +169,36 @@ export async function stagedExtract<T>(
       if (spec) {
         const version = (cached?.version ?? 0) + 1;
         const persisted: ExtractorSpec = { ...spec, version };
-        const healed = stageOk(replayExtractor(input.html, persisted));
+        const healed = stageOk(
+          normalizeReplayOutput(input.kind, replayExtractor(input.html, persisted)),
+        );
         if (healed) {
           await upsertExtractor(domain, input.sourceType, persisted, version, cached?.healCount ?? 0);
           return finish(healed, "heal", version);
         }
       }
-      // Generated but didn't validate → stamp the attempt to start the cooldown.
-      if (cached) {
+      // Generated but didn't validate → persist the attempt so the cooldown arms
+      // (nullable lastValidatedAt marks it never-validated) instead of re-paying the
+      // generator on every scrape of a page we can't parse.
+      if (spec) {
+        const version = (cached?.version ?? 0) + 1;
         await db
-          .update(parserExtractors)
+          .insert(parserExtractors)
+          .values({
+            domain, sourceType: input.sourceType,
+            spec: { ...spec, version }, version,
+            healCount: cached?.healCount ?? 0,
+            consecutiveFailures: (cached?.consecutiveFailures ?? 0) + 1,
+            lastValidatedAt: null,
+            lastHealAttemptAt: new Date(), updatedAt: new Date(),
+          })
+          .onConflictDoUpdate({
+            target: [parserExtractors.domain, parserExtractors.sourceType],
+            set: { lastHealAttemptAt: new Date(), consecutiveFailures: (cached?.consecutiveFailures ?? 0) + 1, updatedAt: new Date() },
+          });
+      } else if (cached) {
+        // parse-failed generation: stamp the existing row only (nothing new to store)
+        await db.update(parserExtractors)
           .set({ lastHealAttemptAt: new Date() })
           .where(eq(parserExtractors.id, cached.id));
       }

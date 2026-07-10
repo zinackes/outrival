@@ -57,8 +57,8 @@ plan's drift check first. Plans are independent unless "Depends on" says otherwi
 | 026  | Tech-stack signals only on real transitions, never on baseline, never "high" | P1 | S | LOW | — | DONE — MERGED via #156 (`191ee28`) ⚠️ needs `trigger deploy` |
 | 027  | Severity rubric in prompts + deterministic critical guard + retriable insight | P1 | M | MED | — | DONE — PR #157 (open) |
 | 028  | Revive dead diff classes (section add/remove, price tweaks, og rebrand, recency) | P1 | M | MED | — | DONE — PR #159 (open) |
-| 029  | Render retry for client-rendered pricing pages (priceless L0 captures) | P1 | S | LOW–MED | — | DONE — executed & reviewed (APPROVE), branch `advisor/029-pricing-render-floor` (`ae45d68`), awaiting user PR/merge ⚠️ needs `trigger deploy` |
-| 030  | Staged-extraction heal/cache actually persists (normalize replay + cooldown stub) | P1 | M | LOW–MED | — | TODO |
+| 029  | Render retry for client-rendered pricing pages (priceless L0 captures) | P1 | S | LOW–MED | — | DONE — MERGED via #161 (`c289c49`) ⚠️ needs `trigger deploy` |
+| 030  | Staged-extraction heal/cache actually persists (normalize replay + cooldown stub) | P1 | M | LOW–MED | — | DONE — PR #162 (open), branch `advisor/030-staged-extraction-heal-cache` (`3da0526`); re-anchored to `0d35d0f` (R8/#150 restructured `staged-extract.ts`; SCR-20 confirmed unfixed). typecheck 8/8, workers `bun test test/` 89/0 (7 new normalizer tests). ⚠️ needs `trigger deploy` + post-deploy check (`parser_extractors` non-empty, `extraction_runs` cache resolutions rising) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (one-line reason) | REJECTED (one-line rationale)
 

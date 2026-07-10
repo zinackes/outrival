@@ -7,6 +7,7 @@
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "bun test --timeout 60000 test/",
+    "eval:ask": "bun eval/ask/run-eval.ts",
     "start": "bun run src/index.ts"
   },
   "dependencies": {

@@ -131,7 +131,7 @@ async function runAsk(
           for (const s of sigs) if (typeof s.id === "string") signalIds.add(s.id);
         }
       }
-      const citations = answer.value.citations
+      let citations = answer.value.citations
         .filter((c) =>
           c.type === "competitor" ? competitorNames.has(c.id) : signalIds.has(c.id),
         )
@@ -141,6 +141,27 @@ async function runAsk(
         .map((c) =>
           c.type === "competitor" ? { ...c, label: competitorNames.get(c.id)! } : c,
         );
+      // Deterministic fallback: the synthesis regularly omits citations even when it
+      // clearly grounded on tool data (observed in prod: a tech-stack-grounded answer
+      // shipped with zero Sources chips). The plan itself knows which competitors
+      // were consulted — cite those, so the chips never come back empty when tools
+      // actually ran on someone.
+      if (citations.length === 0) {
+        const consulted = new Set<string>();
+        for (const call of calls) {
+          const cid = call.args.competitorId;
+          if (typeof cid === "string" && competitorNames.has(cid)) consulted.add(cid);
+          const ids = call.args.ids;
+          if (Array.isArray(ids)) {
+            for (const id of ids) {
+              if (typeof id === "string" && competitorNames.has(id)) consulted.add(id);
+            }
+          }
+        }
+        citations = [...consulted]
+          .slice(0, 12)
+          .map((id) => ({ type: "competitor" as const, id, label: competitorNames.get(id)! }));
+      }
       const cleanAnswer = stripInlineIds(answer.value.answer);
       await emit({ type: "answer", answer: cleanAnswer, citations });
       // Persist only real answers (best-effort) — the fallback below isn't worth logging.

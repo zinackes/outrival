@@ -100,7 +100,11 @@ const DEFAULT_SUGGESTIONS: Suggestion[] = [
 ];
 
 function citationHref(c: Citation): string {
-  return c.type === "competitor" ? `/dashboard/competitors/${c.id}` : "/dashboard/signals";
+  // ?focus= is the feed's established deep-link (overview + global search use it):
+  // it selects that signal instead of dumping the user on the unfiltered feed.
+  return c.type === "competitor"
+    ? `/dashboard/competitors/${c.id}`
+    : `/dashboard/signals?focus=${c.id}`;
 }
 
 /** Terminal-style stepper: a connected sequence of the agent's work. */

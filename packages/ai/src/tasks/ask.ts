@@ -98,9 +98,52 @@ Reply ONLY with a JSON object, no markdown, no surrounding text:
 { "calls": [ { "tool": "getSignals", "args": { "window": 30 } } ] }`;
 }
 
+export interface AskToolResult {
+  tool: string;
+  result: unknown;
+}
+
+/**
+ * Character budget for the serialized tool results in the synthesis prompt.
+ * ~6K tokens — cheap input on the pool models, roomy enough for a full
+ * compareCompetitors over several competitors.
+ */
+export const ASK_RESULTS_BUDGET = 24_000;
+
+/**
+ * Serialize tool results under a hard budget, PER RESULT. The old single
+ * `JSON.stringify(all).slice(0, 12000)` cut mid-JSON: the model saw broken data
+ * and answered "no data" for facts that HAD been fetched. Here a result either
+ * fits verbatim or is replaced by an explicit note the model can relay — never a
+ * silent truncation. An oversized early result doesn't starve later small ones.
+ */
+export function serializeAskResults(
+  results: AskToolResult[],
+  budget = ASK_RESULTS_BUDGET,
+): string {
+  const parts: string[] = [];
+  let remaining = budget;
+  for (const r of results) {
+    const s = JSON.stringify({ tool: r.tool, result: r.result }, null, 1);
+    if (s.length <= remaining) {
+      parts.push(s);
+      remaining -= s.length;
+    } else {
+      parts.push(
+        JSON.stringify({
+          tool: r.tool,
+          result:
+            "OMITTED — this result was too large to include. Tell the user part of the data could not be analysed in one pass and suggest asking about fewer competitors or one dimension at a time.",
+        }),
+      );
+    }
+  }
+  return `[\n${parts.join(",\n")}\n]`;
+}
+
 export function buildAskSynthesisPrompt(
   question: string,
-  results: unknown,
+  results: AskToolResult[],
   context?: string,
 ): string {
   return `You are "Ask Outrival", a competitive-intelligence analyst. Answer the user's
@@ -112,7 +155,7 @@ ${question}
 </question>
 ${context ? `\n<context>\n${context}\n</context>\n` : ""}
 <tool_results>
-${JSON.stringify(results, null, 2).slice(0, 12000)}
+${serializeAskResults(results)}
 </tool_results>
 
 <rules>

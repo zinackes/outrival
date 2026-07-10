@@ -54,8 +54,8 @@ plan's drift check first. Plans are independent unless "Depends on" says otherwi
 | 023  | Introduce Biome (format + conservative lint) + CI gate | P2 | M | LOW–MED | 021; land when queue clear | TODO |
 | 024  | Deliberate in-range dependency refresh (bring the stale lockfile current) | P3 | M | MED | land when queue clear | TODO |
 | 025  | Deny/soft-404/login pages can't become "success" snapshots or archive baselines | P1 | M | MED | — | DONE — MERGED via #155 (`d153e36`) ⚠️ needs `trigger deploy` |
-| 026  | Tech-stack signals only on real transitions, never on baseline, never "high" | P1 | S | LOW | — | DONE — `advisor/026-tech-stack-baseline-noise` (`2138a17`, local) |
-| 027  | Severity rubric in prompts + deterministic critical guard + retriable insight | P1 | M | MED | — | TODO |
+| 026  | Tech-stack signals only on real transitions, never on baseline, never "high" | P1 | S | LOW | — | DONE — MERGED via #156 (`191ee28`) ⚠️ needs `trigger deploy` |
+| 027  | Severity rubric in prompts + deterministic critical guard + retriable insight | P1 | M | MED | — | DONE — PR #157 (open) |
 | 028  | Revive dead diff classes (section add/remove, price tweaks, og rebrand, recency) | P1 | M | MED | — | TODO |
 | 029  | Render retry for client-rendered pricing pages (priceless L0 captures) | P1 | S | LOW–MED | — | TODO |
 | 030  | Staged-extraction heal/cache actually persists (normalize replay + cooldown stub) | P1 | M | LOW–MED | — | TODO |
@@ -214,8 +214,8 @@ also rewired `extractionAllowed` (`scrape-monitor.job.ts:~1219`) — without it 
 Coolify. Before merge, the plan's own maintenance note still applies: eyeball the deny regexes
 against a handful of real tracked competitor pages.
 
-**026 — executed & reviewed 2026-07-09 (APPROVE, 0 revision rounds); push/PR PENDING.** Commit
-`2138a17` on `advisor/026-tech-stack-baseline-noise` (off `origin/main` `d153e36`), worktree
+**026 — executed & reviewed 2026-07-09 (APPROVE, 0 revision rounds) → MERGED via #156 (`191ee28`).**
+Commit `2138a17` on `advisor/026-tech-stack-baseline-noise` (off `origin/main` `d153e36`), worktree
 `/home/tmfzi/outrival/.claude/worktrees/agent-ad0c64e2f63cc4527`. Reviewer re-verified in the
 worktree: `pnpm typecheck --force` exit 0 (8/8), workers **74 pass / 0 fail** (7 new pure tests),
 scope = the 5 in-scope files, `catalog.ts` untouched. Baseline predicate reads the in-memory
@@ -235,6 +235,31 @@ a separate decision), and the catalog-growth case — adding a detector to `TECH
 "appear" for every competitor on the next scan, which the baseline gate does not catch.
 
 ⚠️ **PENDING: workers deploy** — worker code, ships via `trigger deploy` from `main`, not Coolify.
+
+**027 — executed & reviewed 2026-07-09 (APPROVE, 0 revisions); push/PR PENDING.** Commit `c980c13` on
+`advisor/027-severity-rubric-critical-guard` (off `d153e36`), worktree
+`/home/tmfzi/outrival/.claude/worktrees/agent-a1ff3a8a9f2277c55`. Reviewer re-verified: `pnpm typecheck
+--force` 8/8 exit 0, workers **75 pass / 0 fail** (8 new guard tests), scope = 5 files,
+`notification-dispatcher.ts` untouched. Rubric sits inside the static `CLASSIFY_SYSTEM` const, so the
+free provider-side prefix cache still hits.
+
+Approved deviation: rather than the plan's `finalSeverity` + 6 renames, the executor made `severity` a
+`let` and reassigned it once, immediately after the guard, before any downstream read. Verified — the
+only read between declaration and reassignment is the value passed *into* the guard. Smaller diff, same
+invariant.
+
+Reviewer checks worth keeping: (a) the retriable throw is safe — the first DB write in the job is the
+signal insert at line 332, long after the throw at 286, so a retry replays only reads, the AI calls and
+append-only `ai_runs` rows; (b) on the structured-homepage path `changes.diff_text` is
+`renderStructuredChanges(...)`, so the guard's `PRICE_TOKEN` check has real text to match — a pricing
+critical whose rendering carries no currency token demotes to `high`, the intended conservative
+direction ("if unsure, choose high").
+
+Watch after deploy: severity distribution shifts by design (first genuine criticals appear, `medium`
+share drops), and classifications are cached 7 days keyed on input — for up to a week, previously-seen
+diffs replay pre-rubric labels. Do not bust the cache. If a false critical slips both rubric and guard,
+tighten the allowlists in `severity-guard.ts` before re-wording the prompt. Worker + AI code:
+`trigger deploy` from `main`.
 
 ## Recommended sequencing
 

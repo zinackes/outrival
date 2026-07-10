@@ -492,6 +492,10 @@ competitorsRouter.post("/", async (c) => {
       // Internal news/funding anchor (weekly). Google News RSS by brand → diff
       // surfaces company-level events (funding/M&A/leadership/press).
       { competitorId: competitor.id, sourceType: "news", frequency: "weekly", scrapeStartedAt },
+      // Internal subdomains anchor (daily). Certificate Transparency (crt.sh) → diff
+      // of the sorted live-subdomain list surfaces a brand-new one (beta./ai./
+      // {product}.) as an expansion / pre-announcement product signal.
+      { competitorId: competitor.id, sourceType: "subdomains", frequency: "daily", scrapeStartedAt },
     ])
     .returning();
 
@@ -545,9 +549,14 @@ competitorsRouter.post("/:id/monitors", async (c) => {
   if (!competitor || competitor.deletedAt) return c.json({ error: "Competitor not found" }, 404);
 
   const { sourceType } = parsed.data;
-  // tech_stack (patch-18), sitemap (patch-32) and news are internal anchor
-  // sources, not user-enableable.
-  if (sourceType === "tech_stack" || sourceType === "sitemap" || sourceType === "news") {
+  // tech_stack (patch-18), sitemap (patch-32), news and subdomains are internal
+  // anchor sources, not user-enableable.
+  if (
+    sourceType === "tech_stack" ||
+    sourceType === "sitemap" ||
+    sourceType === "news" ||
+    sourceType === "subdomains"
+  ) {
     return c.json({ error: "source_not_enableable", source: sourceType }, 400);
   }
   const plan = await getOrgPlan(orgId);
@@ -723,7 +732,7 @@ competitorsRouter.get("/", async (c) => {
         ),
         eq(monitors.isActive, true),
         eq(monitors.markedUnscrapable, false),
-        notInArray(monitors.sourceType, ["tech_stack", "sitemap", "news"]),
+        notInArray(monitors.sourceType, ["tech_stack", "sitemap", "news", "subdomains"]),
       ),
     );
 
@@ -878,7 +887,10 @@ competitorsRouter.get("/:id", async (c) => {
   // anchor whose diff feeds funding/company signals) — never a Sources row.
   const monitorList = allMonitors.filter(
     (m) =>
-      m.sourceType !== "tech_stack" && m.sourceType !== "sitemap" && m.sourceType !== "news",
+      m.sourceType !== "tech_stack" &&
+      m.sourceType !== "sitemap" &&
+      m.sourceType !== "news" &&
+      m.sourceType !== "subdomains",
   );
 
   const monitorIds = monitorList.map((m) => m.id);

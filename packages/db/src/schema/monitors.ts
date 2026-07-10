@@ -36,6 +36,11 @@ export const sourceTypeEnum = pgEnum("source_type", [
   // The capability is gated by the org-level features.aiVisibility plan flag, not
   // by allowedSources; the actual data lives in ai_visibility_prompts/_results.
   "ai_visibility",
+  // Subdomains via Certificate Transparency (crt.sh). Internal source (like
+  // sitemap/news) — never user-selectable. Seeded daily at creation, isActive=true,
+  // enqueued by schedule-scraping and scraped via getScraper; the diff of its sorted
+  // live-subdomain snapshot surfaces brand-new subdomains (expansion / pre-launch).
+  "subdomains",
 ]);
 
 export const frequencyEnum = pgEnum("frequency", ["realtime", "daily", "weekly"]);

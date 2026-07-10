@@ -9,6 +9,7 @@ import {
   scrapeRuns,
   aiRuns,
   extractionRuns,
+  backfillRuns,
   numericClaims,
   techStackHistory,
   platformDetectionRuns,
@@ -112,6 +113,36 @@ export async function logExtractionRun(row: ExtractionRunRow): Promise<void> {
       extractorVersion: row.extractor_version,
       aiUsed: row.ai_used,
       recordedAt: row.recorded_at,
+    }),
+  );
+}
+
+// Archive-backfill outcome per run (2026-07-10 audit / first-signal SLO):
+// records WHY a best-effort backfill ended — the queryable miss buckets behind
+// docs/slos/onboarding-first-signal.md. See resolveBackfillOutcome (backfill-guard).
+export interface BackfillRunRow {
+  monitor_id: string;
+  competitor_id: string;
+  source_type: string;
+  outcome: string;
+  detail: string | null;
+  archives_seeded: number;
+  change_triggered: 0 | 1;
+  duration_ms: number;
+}
+
+export async function logBackfillRun(row: BackfillRunRow): Promise<void> {
+  await bestEffort("backfill_runs insert", () =>
+    db.insert(backfillRuns).values({
+      monitorId: row.monitor_id,
+      competitorId: row.competitor_id,
+      sourceType: row.source_type,
+      outcome: row.outcome,
+      detail: row.detail,
+      archivesSeeded: row.archives_seeded,
+      changeTriggered: row.change_triggered,
+      durationMs: row.duration_ms,
+      recordedAt: new Date(),
     }),
   );
 }

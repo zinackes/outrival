@@ -117,9 +117,13 @@ Per the SRE Workbook's low-traffic guidance, alerts are event-count based:
 | weekly-degradation | trailing 7d compliance < 50% AND ≥ 5 completions | ticket | trending toward budget exhaustion with a minimum-sample guard |
 | window-exhausted | trailing 28d compliance < 70% AND ≥ 10 completions | ticket + policy kicks in | budget spent |
 
-**Implementation:** piggyback the existing `ops-health-check` cron (*/6h) —
-it already runs threshold SQL with min-sample guards and posts to
-`OPS_SLACK_WEBHOOK_URL`. Add the SLI query above with the three conditions.
+**Implementation (live since 2026-07-10):** piggybacked on the existing
+`ops-health-check` cron (*/6h) — `apps/workers/src/lib/slo-first-signal.ts`
+computes the SLI (28d + 7d + the 24h coverage companion, logged every run) and
+`evaluateFirstSignalAlerts` applies the three conditions above (unit-tested).
+Miss root-causing reads the `backfill_runs` analytics table, which records every
+backfill outcome bucket (`no_archive_capture` / `no_significant_change` /
+`change_triggered` / `error` / preconditions) with a per-cause detail tally.
 No Prometheus in this stack; no new cron needed (Trigger.dev schedule cap).
 
 ## Error budget policy

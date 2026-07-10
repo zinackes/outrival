@@ -716,6 +716,12 @@ onboardingRouter.post("/complete", async (c) => {
     await associateCompetitorWithPrimaryProduct(orgId, c.competitorId);
   }
 
+  const orgRow = await db.query.organizations.findFirst({
+    where: eq(organizations.id, orgId),
+    columns: { digestEmail: true, detectionConfig: true },
+  });
+  const detectionCfg = resolveDetectionConfig(orgRow?.detectionConfig);
+
   // Save the discovered-but-untracked competitors as candidates so they remain
   // reachable in Detections (e.g. to track after a plan upgrade). Dedup by
   // hostname against the competitors we just created and any candidate already
@@ -755,16 +761,22 @@ onboardingRouter.post("/complete", async (c) => {
       source: "onboarding",
     });
   };
-  for (const item of savedCandidates) collectCandidate(item, "new");
+  // The discover step over-fetches on purpose (30 Exa results so the best rise to
+  // the top), but saving every leftover unfiltered buried the Discovery queue in
+  // junk: 323 prod onboarding candidates averaging overlap 42 vs the weekly
+  // detection's 77 (2026-07-10 audit). Apply the SAME relevance bar the weekly
+  // detection uses (strictly above minOverlap) — one sensitivity knob, both paths.
+  // An unscored leftover (scoring failed) is skipped too: it was never really
+  // ranked, and weekly detection will re-surface it with a real score if relevant.
+  for (const item of savedCandidates) {
+    if ((item.overlapScore ?? 0) > detectionCfg.minOverlap) collectCandidate(item, "new");
+  }
+  // Dismissals are the anti-re-suggestion memory — saved regardless of score,
+  // or the weekly detection would re-propose exactly what the user trashed.
   for (const item of dismissedCandidates) collectCandidate(item, "dismissed");
   if (candidateRows.length > 0) {
     await db.insert(competitorCandidates).values(candidateRows);
   }
-
-  const orgRow = await db.query.organizations.findFirst({
-    where: eq(organizations.id, orgId),
-    columns: { digestEmail: true, detectionConfig: true },
-  });
 
   // Persist the chosen market into detectionConfig (merged over the resolved
   // current config) so later cron / on-demand discovery biases the same way.
@@ -772,7 +784,7 @@ onboardingRouter.post("/complete", async (c) => {
   if (discoveryRegion !== undefined) {
     detectionConfigUpdate = {
       detectionConfig: {
-        ...resolveDetectionConfig(orgRow?.detectionConfig),
+        ...detectionCfg,
         region: discoveryRegion,
       },
     };

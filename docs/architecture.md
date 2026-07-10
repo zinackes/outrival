@@ -309,6 +309,12 @@ platform_detection_runs  competitor_id, domain, stage (a_static|b_browser),
                     framework, cms, ats, pricing_widget, status_page, changelog,
                     techs_found, duration_ms, recorded_at — patch-31, % résolu step A
                     (sans navigateur) vs step B + connecteurs routés
+backfill_runs       monitor_id, competitor_id, source_type, outcome (self|
+                    no_live_snapshot|no_url|no_current_html|no_archive_capture|
+                    no_significant_change|change_triggered|error), detail,
+                    archives_seeded, change_triggered (0/1), duration_ms,
+                    recorded_at — audit 2026-07-10, buckets de miss du SLO
+                    first-signal (docs/slos/onboarding-first-signal.md)
 ```
 
 **Pattern d'accès** :
@@ -467,12 +473,18 @@ carte (état live uniquement).
        → classify-change (chaîne normale)
   └─ pricing : captures à 30/90/180j → snapshots archive + extract-pricing backdaté
        (seed pricing_history, skip résumé) + change au point lookback
-  └─ best-effort (pas d'archive/diff → skip silencieux), ne retry jamais (insert non
-       idempotent), throttlé (backfillQueue conc.2 + ~1 req/s)
+  └─ best-effort (pas d'archive/diff → skip), ne retry jamais (insert non
+       idempotent), throttlé (backfillQueue conc.2 + ~1 req/s) ; chaque issue est
+       loggée dans backfill_runs (bucket outcome + detail) — plus de skip invisible
 
-[par change] classify-change (Groq llama-3.3-70b)
-  └─ lexical → classifyChange (8b) ; structuré (patch-16) → classifyStructuredChanges
-       (70b, caché) = overallSeverity + category + perChangeAssessment (significance/change)
+[par change] classify-change (pool gpt-oss)
+  └─ lexical → classifyChange (fast) ; structuré (patch-16) → classifyStructuredChanges
+       (smart, caché) = overallSeverity + category + perChangeAssessment (significance/change)
+  └─ rubrique sévérité + règles catégorie PARTAGÉES (classify-shared.ts, une seule
+       source pour les deux classifieurs) ; toute modification passe par l'éval
+       étiquetée `pnpm --filter @outrival/ai eval:severity` (golden set prod +
+       criticals synthétiques, gates : bande ≥80%, catégorie ≥85%, 0 sur-alerte
+       critical, bande critical atteignable) — audit 2026-07-10
   └─ category + severity + isSignificant ; perChange réécrit changes.structured_diff
   └─ si significant → trigger generate-signal
 
@@ -543,6 +555,10 @@ carte (état live uniquement).
 [cron */6h] ops-health-check (patch-02)
   └─ seuils conservateurs sur scrape_runs / ai_runs / signal_feed (gardes
      d'échantillon min anti alert-fatigue) → 1 message OPS_SLACK_WEBHOOK_URL si dégradé
+  └─ SLO first-signal (audit 2026-07-10, docs/slos/onboarding-first-signal.md) :
+     SLI 28j/7j + coverage 24h loggés à chaque run ; alertes event-based (3 misses
+     consécutifs → page, 7j<50% n≥5 → ticket, 28j<70% n≥10 → policy). Piggyback
+     ici car le cap de 10 schedules Trigger est plein
 
 [cron */30 min] ai-capacity-check (patch-22)
   └─ usage tokens/jour cumulé du pool de providers (Redis) → Slack ops aux paliers

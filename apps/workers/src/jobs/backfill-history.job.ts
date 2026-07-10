@@ -9,7 +9,12 @@ import { isCloudflareChallenge } from "@outrival/scrapers/block-detection";
 import { detectDenyPage } from "@outrival/scrapers/deny-page";
 import { evaluateSignificance } from "@outrival/ai/significance";
 import { backfillQueue } from "../lib/queues";
-import { isArchiveCaptureVoid } from "../lib/backfill-guard";
+import {
+  isArchiveCaptureVoid,
+  resolveBackfillOutcome,
+  type BackfillSkips,
+} from "../lib/backfill-guard";
+import { logBackfillRun } from "../lib/analytics";
 
 // L2 archive backfill (docs/post-onboarding-activation.md). Fired once, from
 // scrape-monitor, on the FIRST-ever capture of a backfillable source for a real
@@ -55,6 +60,48 @@ export const backfillHistoryJob = task({
     const input = InputSchema.parse(payload);
     logger.log("Starting backfill-history", input);
 
+    // Outcome instrumentation (2026-07-10 audit / first-signal SLO): this job is
+    // best-effort with many silent exits, so every exit records WHY it ended in
+    // backfill_runs — the queryable miss buckets behind the 10-minute promise.
+    const startedAt = Date.now();
+    const logOutcome = (
+      outcome: string,
+      detail: string | null = null,
+      seeded = 0,
+      triggered = false,
+    ) =>
+      logBackfillRun({
+        monitor_id: input.monitorId,
+        competitor_id: input.competitorId,
+        source_type: input.sourceType,
+        outcome,
+        detail,
+        archives_seeded: seeded,
+        change_triggered: triggered ? 1 : 0,
+        duration_ms: Date.now() - startedAt,
+      });
+
+    try {
+      return await runBackfill(input, logOutcome);
+    } catch (err) {
+      await logOutcome("error", String(err).slice(0, 500));
+      throw err;
+    }
+  },
+});
+
+type LogOutcome = (
+  outcome: string,
+  detail?: string | null,
+  seeded?: number,
+  triggered?: boolean,
+) => Promise<void>;
+
+async function runBackfill(
+  input: z.output<typeof InputSchema>,
+  logOutcome: LogOutcome,
+): Promise<{ skipped?: string; archivesSeeded?: number; changeTriggered?: boolean }> {
+  {
     const monitor = await db.query.monitors.findFirst({ where: eq(monitors.id, input.monitorId) });
     if (!monitor) throw new AbortTaskRunError(`Monitor ${input.monitorId} not found`);
     const competitor = await db.query.competitors.findFirst({
@@ -64,6 +111,7 @@ export const backfillHistoryJob = task({
     // Self-product changes route to self_product_changes, never signals — no point
     // reconstructing the user's own past. Defensive: the trigger site already skips.
     if (competitor.type === "self") {
+      await logOutcome("self");
       return { skipped: "self" };
     }
 
@@ -75,16 +123,21 @@ export const backfillHistoryJob = task({
     if (!currentSnapshot) {
       // The live snapshot should exist (we fire after inserting it); if not, bail
       // rather than retry — a later scrape will re-establish the baseline.
+      await logOutcome("no_live_snapshot");
       return { skipped: "no_live_snapshot" };
     }
     const url = currentSnapshot.resolvedUrl ?? competitor.url;
-    if (!url) return { skipped: "no_url" };
+    if (!url) {
+      await logOutcome("no_url");
+      return { skipped: "no_url" };
+    }
 
     let currentContent: string;
     try {
       currentContent = extractContent(await getFromR2(`${currentSnapshot.r2Key}.html`), monitor.sourceType);
     } catch (err) {
       logger.warn("backfill: current snapshot HTML unavailable", { error: String(err) });
+      await logOutcome("no_current_html");
       return { skipped: "no_current_html" };
     }
 
@@ -99,17 +152,20 @@ export const backfillHistoryJob = task({
     const seen = new Set<string>();
     let seeded = 0;
     let changeTriggered = false;
+    const skips: BackfillSkips = { noCapture: 0, tooRecent: 0, challengeOrDeny: 0, voidCapture: 0 };
 
     for (const offsetDays of offsets) {
       const target = new Date(now - offsetDays * DAY_MS);
       const page = await getArchivedPage(url, target);
       if (!page) {
         logger.log("backfill: no archive near offset", { offsetDays, url });
+        skips.noCapture++;
         await sleep(1000);
         continue;
       }
       const ageDays = (now - page.capturedAt.getTime()) / DAY_MS;
       if (ageDays < MIN_ARCHIVE_AGE_DAYS || seen.has(page.waybackTimestamp)) {
+        skips.tooRecent++;
         await sleep(1000);
         continue;
       }
@@ -125,6 +181,7 @@ export const backfillHistoryJob = task({
           offsetDays,
           url,
         });
+        skips.challengeOrDeny++;
         await sleep(1000);
         continue;
       }
@@ -142,6 +199,7 @@ export const backfillHistoryJob = task({
           archiveSize: content.length,
           currentSize: currentContent.length,
         });
+        skips.voidCapture++;
         await sleep(1000);
         continue;
       }
@@ -182,6 +240,7 @@ export const backfillHistoryJob = task({
       // generate-signal marks it in-app only via snapshot.origin='archive'.
       if (offsetDays === LOOKBACK_DAYS && !changeTriggered) {
         const diff = computeTextDiff(content, currentContent);
+        if (!diff.hasChanges) skips.noDiff = true;
         if (diff.hasChanges) {
           const [newChange] = await db
             .insert(changes)
@@ -204,6 +263,7 @@ export const backfillHistoryJob = task({
               await tasks.trigger("classify-change", { changeId: newChange.id });
               changeTriggered = true;
             } else {
+              skips.trivialReason = significance.reason;
               logger.log("backfill: archive diff trivial, no signal", {
                 changeId: newChange.id,
                 reason: significance.reason,
@@ -216,12 +276,16 @@ export const backfillHistoryJob = task({
       await sleep(1000);
     }
 
+    const resolved = resolveBackfillOutcome(seeded, changeTriggered, skips);
+    await logOutcome(resolved.outcome, resolved.detail, seeded, changeTriggered);
+
     logger.log("Completed backfill-history", {
       competitorId: competitor.id,
       sourceType: monitor.sourceType,
       archivesSeeded: seeded,
       changeTriggered,
+      outcome: resolved.outcome,
     });
     return { archivesSeeded: seeded, changeTriggered };
-  },
-});
+  }
+}

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import type { Hono } from "hono";
 import { eq } from "drizzle-orm";
-import { organizations } from "@outrival/db";
+import { competitorCandidates, organizations } from "@outrival/db";
 import { makeTestDb, type TestDb } from "./db-harness";
 import { asUser, installAppMocks, mountApp, seedOrg } from "./app-harness";
 
@@ -49,6 +49,43 @@ describe("POST /onboarding/complete — digestEmail default", () => {
     });
     expect(org?.digestEmail).toBe(email);
     expect(org?.onboardingCompleted).toBe(true);
+  });
+
+  test("leftover candidates are gated on minOverlap; dismissals never are", async () => {
+    // The discover step over-fetches on purpose; unfiltered leftovers buried the
+    // Discovery queue (323 prod rows averaging overlap 42 — 2026-07-10 audit).
+    // Default detectionConfig.minOverlap = 65 (strictly above, like the weekly
+    // detection); dismissals are rejection memory and always persist.
+    const { orgId, userId, email } = await seedOrg(testDb);
+    // Distinct REGISTRABLE domains: normalizeHostname reduces subdomains to the
+    // registrable domain, so *.example.com URLs would all dedupe as one host.
+    const body = JSON.stringify({
+      selectedCompetitors: [{ name: "Rival", url: "https://rival-co.com" }],
+      monitoringPrefs: { frequency: "weekly", sources: ["homepage"] },
+      savedCandidates: [
+        { url: "https://strong-co.com", title: "Strong", overlapScore: 80 },
+        { url: "https://weak-co.com", title: "Weak", overlapScore: 40 },
+        { url: "https://unscored-co.com", title: "Unscored" },
+      ],
+      dismissedCandidates: [
+        { url: "https://trashed-co.com", title: "Trashed", overlapScore: 30 },
+      ],
+    });
+    const res = await app.request(
+      "/api/onboarding/complete",
+      asUser(userId, email, { method: "POST", body }),
+    );
+    expect(res.status).toBe(200);
+
+    const rows = await testDb.query.competitorCandidates.findMany({
+      where: eq(competitorCandidates.orgId, orgId),
+    });
+    const byUrl = new Map(rows.map((r) => [r.url, r.status]));
+    expect(byUrl.get("https://strong-co.com")).toBe("new");
+    expect(byUrl.get("https://trashed-co.com")).toBe("dismissed");
+    expect(byUrl.has("https://weak-co.com")).toBe(false);
+    expect(byUrl.has("https://unscored-co.com")).toBe(false);
+    expect(rows.length).toBe(2);
   });
 
   test("an org that already chose a digestEmail keeps it", async () => {

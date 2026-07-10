@@ -2,6 +2,7 @@ import { z } from "zod";
 import { AI_CONFIG } from "../config";
 import { groundedAiCall } from "../grounding/grounded-call";
 import { attachQuality, type WithQuality } from "../grounding/types";
+import { SEVERITY_RUBRIC, CATEGORY_RULES } from "./classify-shared";
 
 const CACHE_TTL_SECONDS = Number(process.env.AI_CACHE_TTL_CLASSIFY_DAYS ?? 7) * 86400;
 
@@ -49,43 +50,14 @@ const SOURCE_LABELS: Record<string, string> = {
 // `system` message so Groq/Cerebras auto-cache this long shared prefix for free
 // (F2). Content is unchanged from the prior single-prompt form: the only variable
 // parts (the page-type context + the diff) now live in the user message tail.
-const CLASSIFY_SYSTEM = `You are a competitive-intelligence analyst. Classify a change detected on a competitor.
+// Exported for the anti-divergence test and the eval harnesses (src/eval).
+export const CLASSIFY_SYSTEM = `You are a competitive-intelligence analyst. Classify a change detected on a competitor.
 
 Use the page type (provided with the change) to judge significance: rotating testimonials, social-proof counters, cosmetic copy/nav tweaks are usually NOT significant; pricing, plan, feature, hiring, or positioning changes are.
 
-<severity-rubric>
-"critical" triggers an IMMEDIATE email to the customer, bypassing all moderation.
-Use it only when BOTH hold:
-  (a) the change is a direct threat or opening for the customer's own positioning
-      or revenue — a price undercut or pricing-structure change by a direct
-      competitor, the launch of a directly competing flagship capability, a funding
-      round >= $100M or an acquisition of a direct competitor, or entry into the
-      customer's exact segment; AND
-  (b) the useful reaction window is DAYS, not weeks.
-If unsure between "critical" and "high", choose "high".
-"high" — a material strategic move where reacting next week loses nothing: a
-notable product launch, a quantified price change, a complete repositioning of the
-hero/value proposition, a strategic hiring wave.
-"medium" — real but incremental: a new job posting, a new page section, a
-promotion, a plan-limit tweak.
-"low" — cosmetic or informational: copy polish, testimonials/logos, navigation,
-meta tags, documentation pages.
-Severity is judged on the CONTENT of the change, never on the size of the diff —
-a one-line diff can be critical; a huge redesign diff can be low.
-</severity-rubric>
+${SEVERITY_RUBRIC}
 
-<category-rules>
-Judge WHAT changed, never WHERE it appeared:
-- pricing: any price, plan, tier, trial, or gating change, on any page.
-- funding: a raise, acquisition, or valuation announcement, even on a blog post.
-- product: shipped or announced capabilities, launches, integrations.
-- hiring: job postings and team growth — even when they telegraph product direction.
-- reviews: review-platform score or review-content movements only.
-- content: messaging, positioning, or content-strategy changes (use only when none
-  of the above applies).
-When two genuinely apply, pick by this priority: pricing > funding > product >
-hiring > reviews > content.
-</category-rules>
+${CATEGORY_RULES}
 
 Reply ONLY with a valid JSON object, no markdown and no surrounding text.
 Write all text values in English.

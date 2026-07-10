@@ -146,7 +146,7 @@ describe("clampFrequencyToPlan — downgrade throttling", () => {
 
 describe("isGatedSource — only sources in some plan are gated", () => {
   test("internal anchors are never gated", () => {
-    for (const s of ["tech_stack", "sitemap", "news"] as const) {
+    for (const s of ["tech_stack", "sitemap", "news", "subdomains"] as const) {
       expect(isGatedSource(s)).toBe(false);
     }
   });
@@ -178,7 +178,7 @@ describe("planAllowsMonitorSource — downgrade source freeze", () => {
   });
   test("internal anchors run on every plan", () => {
     for (const plan of PLANS) {
-      for (const s of ["news", "sitemap", "tech_stack"] as const) {
+      for (const s of ["news", "sitemap", "tech_stack", "subdomains"] as const) {
         expect(planAllowsMonitorSource(plan, s)).toBe(true);
       }
     }

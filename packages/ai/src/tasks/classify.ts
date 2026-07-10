@@ -42,6 +42,7 @@ const SOURCE_LABELS: Record<string, string> = {
   github_repo: "GitHub repository",
   linkedin: "LinkedIn page",
   twitter: "X / Twitter profile",
+  subdomains: "list of the competitor's live subdomains (Certificate Transparency)",
 };
 
 // Static instructions, byte-identical across EVERY classify call → sent as the

@@ -118,14 +118,14 @@ const VOLATILE_RESET = Number(process.env.ENRICHMENTS_VOLATILE_RESET ?? 10);
 const COMPLETENESS_ENABLED = process.env.SNAPSHOT_COMPLETENESS_ENABLED !== "false";
 const COMPLETENESS_MIN_RATIO = Number(process.env.SNAPSHOT_COMPLETENESS_MIN_RATIO ?? 0.5);
 const COMPLETENESS_MIN_PRIORS = 3;
-const SIZE_VARIABLE_SOURCES = new Set(["blog", "changelog", "news", "sitemap"]);
+const SIZE_VARIABLE_SOURCES = new Set(["blog", "changelog", "news", "sitemap", "subdomains"]);
 // Sources whose capture is ALWAYS a scraper-synthesized document (built from parsed
 // structured data — no HTML fetch path at all), so the deny-page copy heuristic is
 // meaningless on them: deny-shaped strings in a sitemap/feed listing are content, not
 // a block. github_repo carries no section marker (it's a <pre> dump), hence the set;
 // the feed/ATS/product-line variants of changelog/jobs/pricing DO have an HTML path
 // too, so they're excluded per-capture via isSyntheticDocument, not by source type.
-const SYNTHETIC_DOC_SOURCES = new Set(["sitemap", "news", "reddit", "github_repo"]);
+const SYNTHETIC_DOC_SOURCES = new Set(["sitemap", "news", "reddit", "github_repo", "subdomains"]);
 // R6 (2026-07 audit, T5) — sources that monitor the competitor's OWN domain, where
 // a 200 landing on a different registrable domain means the wrong target (parked
 // page, acquisition redirect, dead link), not the page. Deliberately NOT jobs or

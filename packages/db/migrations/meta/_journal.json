@@ -239,6 +239,13 @@
       "when": 1783707434379,
       "tag": "0033_old_scalphunter",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1783713556324,
+      "tag": "0034_living_thunderbolt",
+      "breakpoints": true
     }
   ]
 }

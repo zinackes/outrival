@@ -377,6 +377,9 @@ candidatesRouter.post("/:id/add", async (c) => {
       // Internal news/funding anchor (weekly) — see competitors.ts POST. Google
       // News RSS by brand → diff surfaces company-level events.
       { competitorId: competitor.id, sourceType: "news", frequency: "weekly", scrapeStartedAt },
+      // Internal subdomains anchor (daily) — see competitors.ts POST. Certificate
+      // Transparency (crt.sh) → diff surfaces new live subdomains (expansion / pre-launch).
+      { competitorId: competitor.id, sourceType: "subdomains", frequency: "daily", scrapeStartedAt },
     ])
     .returning();
 

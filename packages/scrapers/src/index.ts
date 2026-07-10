@@ -10,6 +10,7 @@ import * as github from "./github/github.scraper";
 import * as status from "./status/status.scraper";
 import * as sitemap from "./sitemap/sitemap.scraper";
 import * as news from "./news/news.scraper";
+import * as subdomains from "./subdomains/subdomains.scraper";
 import type { SourceType } from "@outrival/shared";
 import type { ScrapeOptions, ScrapeOutcome } from "./types";
 
@@ -37,6 +38,7 @@ const scrapers: Partial<Record<SourceType, ScraperFn>> = {
   status: status.scrape,
   sitemap: sitemap.scrape,
   news: news.scrape,
+  subdomains: subdomains.scrape,
 };
 
 export function getScraper(sourceType: SourceType): ScraperFn {

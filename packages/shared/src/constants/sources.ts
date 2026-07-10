@@ -36,6 +36,13 @@ export const SOURCE_TYPES = [
   // signal's snapshot→change chain; the capability is gated by features.aiVisibility,
   // and the data lives in ai_visibility_prompts/_results. Kept in sync with the DB enum.
   "ai_visibility",
+  // Subdomains via Certificate Transparency (crt.sh). Like sitemap/news, an
+  // INTERNAL source — never user-selectable (excluded from plan gating, the enable
+  // route, and the source tabs). Seeded daily at creation; the scraper emits the
+  // sorted list of LIVE subdomains → the generic diff surfaces a brand-new one
+  // (beta./ai./{product}.) as an expansion / pre-announcement product signal.
+  // Kept in sync with the DB source_type enum.
+  "subdomains",
 ] as const;
 
 export type SourceType = typeof SOURCE_TYPES[number];

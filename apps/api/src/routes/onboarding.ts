@@ -676,6 +676,14 @@ onboardingRouter.post("/complete", async (c) => {
           frequency: "weekly" as const,
           scrapeStartedAt,
         },
+        // Internal subdomains anchor (daily) — Certificate Transparency (crt.sh);
+        // its live-subdomain diff surfaces expansion / pre-launch surfaces.
+        {
+          competitorId: competitor.id,
+          sourceType: "subdomains" as const,
+          frequency: "daily" as const,
+          scrapeStartedAt,
+        },
       ])
       .returning();
 

@@ -32,6 +32,8 @@ const SOURCE_LABELS: Record<string, string> = {
   status: "Status page",
   // patch-32: internal sitemap-diff anchor (new/removed pages).
   sitemap: "Sitemap",
+  // Internal Certificate-Transparency anchor (new live subdomains).
+  subdomains: "Subdomains",
 };
 
 export function sourceLabel(sourceType: string | null | undefined): string {
@@ -64,6 +66,7 @@ export const SOURCE_SHORT_LABELS: Record<SourceType, string> = {
   sitemap: "Sitemap",
   news: "News",
   ai_visibility: "AI visibility",
+  subdomains: "Subdomains",
 };
 
 export function sourceShortLabel(sourceType: string | null | undefined): string {

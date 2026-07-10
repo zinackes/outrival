@@ -241,6 +241,32 @@ export const extractionRuns = pgTable(
   (t) => [index("extraction_runs_recorded_idx").on(t.recordedAt)],
 );
 
+// Archive-backfill outcome per run (2026-07-10 audit / first-signal SLO). The
+// backfill job is best-effort with many silent exits — this records WHY each run
+// ended (no archive, deny page, void capture, trivial diff, success…) so the
+// SLO's miss buckets are queryable instead of invisible. outcome: self |
+// no_live_snapshot | no_url | no_current_html | no_archive_capture |
+// no_significant_change | change_triggered | error.
+export const backfillRuns = pgTable(
+  "backfill_runs",
+  {
+    id: uuid(),
+    monitorId: text("monitor_id").notNull(),
+    competitorId: text("competitor_id").notNull(),
+    sourceType: text("source_type").notNull(),
+    outcome: text("outcome").notNull(),
+    detail: text("detail"),
+    archivesSeeded: integer("archives_seeded").notNull().default(0),
+    changeTriggered: integer("change_triggered").notNull().default(0), // 0/1
+    durationMs: integer("duration_ms").notNull().default(0),
+    recordedAt: timestamp("recorded_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("backfill_runs_recorded_idx").on(t.recordedAt),
+    index("backfill_runs_competitor_recorded_idx").on(t.competitorId, t.recordedAt),
+  ],
+);
+
 // Quantified homepage claims tracked over time (patch-17): "15,000 teams",
 // "99.9% uptime". The worker reads the last value per (competitor, pattern, unit,
 // context) to detect a significant variation.
@@ -304,6 +330,7 @@ export type SignalFeed = InferSelectModel<typeof signalFeed>;
 export type ScrapeRun = InferSelectModel<typeof scrapeRuns>;
 export type AiRun = InferSelectModel<typeof aiRuns>;
 export type ExtractionRun = InferSelectModel<typeof extractionRuns>;
+export type BackfillRun = InferSelectModel<typeof backfillRuns>;
 export type NumericClaim = InferSelectModel<typeof numericClaims>;
 export type TechStackHistory = InferSelectModel<typeof techStackHistory>;
 export type PlatformDetectionRun = InferSelectModel<typeof platformDetectionRuns>;

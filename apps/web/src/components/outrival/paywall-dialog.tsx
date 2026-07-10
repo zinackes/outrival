@@ -125,6 +125,14 @@ function copyFor(reason: PaywallReason): { title: string; body: string } {
         body: "This notification channel requires a higher plan.",
       };
     }
+    case "plan_limit_standing_queries": {
+      const limit = reason.limit ?? 0;
+      const planLabel = reason.plan ? PLAN_LABELS[reason.plan] : "current";
+      return {
+        title: "Watched questions limit reached",
+        body: `Your ${planLabel} plan lets you watch ${limit} question${limit > 1 ? "s" : ""}. Unwatch one, or upgrade to watch more.`,
+      };
+    }
     case "battlecard_limit_reached": {
       const limit = reason.limit ?? 0;
       const planLabel = reason.plan ? PLAN_LABELS[reason.plan] : "current";

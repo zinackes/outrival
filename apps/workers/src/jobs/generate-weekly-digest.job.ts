@@ -1,5 +1,5 @@
 import { schedules, logger } from "@trigger.dev/sdk/v3";
-import { and, desc, eq, gte, isNull, lt } from "drizzle-orm";
+import { and, desc, eq, gte, isNotNull, isNull, lt } from "drizzle-orm";
 import {
   db,
   organizations,
@@ -7,6 +7,7 @@ import {
   digests,
   competitors,
   sectoralSignals,
+  standingQueries,
   insertAiQualityCheck,
 } from "@outrival/db";
 import {
@@ -240,6 +241,32 @@ export const generateWeeklyDigestJob = schedules.task({
         .orderBy(desc(sectoralSignals.createdAt))
         .limit(10);
       if (sectoral.length > 0) digest.sectoralTrends = sectoral;
+
+      // Standing queries: watched Ask questions whose answer materially changed
+      // during the week (confirmed by the hysteresis, stamped lastAlertedAt).
+      // Attached deterministically, same pattern as sectoralTrends.
+      const watched = await db
+        .select({
+          question: standingQueries.question,
+          changeSummary: standingQueries.lastChangeSummary,
+        })
+        .from(standingQueries)
+        .where(
+          and(
+            eq(standingQueries.orgId, org.id),
+            isNotNull(standingQueries.lastAlertedAt),
+            gte(standingQueries.lastAlertedAt, weekStart),
+            lt(standingQueries.lastAlertedAt, weekEnd),
+          ),
+        )
+        .orderBy(desc(standingQueries.lastAlertedAt))
+        .limit(10);
+      if (watched.length > 0) {
+        digest.watchedQuestions = watched.map((w) => ({
+          question: w.question,
+          changeSummary: w.changeSummary ?? "The answer to this question changed this week.",
+        }));
+      }
 
       // An unsent preview (from "generate now") gets finalized in place; otherwise insert.
       const [stored] = existing

@@ -422,6 +422,28 @@ export const generateSignalJob = task({
       isBackfill,
     });
 
+    // Standing queries: this fresh signal may shift the answer to a watched Ask
+    // question — re-evaluate ONLY the queries whose watched entities it touches
+    // (targeted trigger, no cron). Never for backfill: reconstructed history isn't
+    // a live move worth re-alerting on. Fire-and-forget, never blocks the signal.
+    if (!isBackfill) {
+      try {
+        await tasks.trigger(
+          "evaluate-standing-queries",
+          {
+            orgId: competitor.orgId,
+            competitorId: competitor.id,
+            category,
+            severity,
+            signalId: newSignal.id,
+          },
+          { idempotencyKey: `sq-${newSignal.id}` },
+        );
+      } catch (err) {
+        logger.warn("standing-query trigger failed (non-fatal)", { error: String(err) });
+      }
+    }
+
     // First-change celebration (Lever 5) — "Your monitoring just paid off". The single
     // most important lifecycle email, so it's strict: fires ONCE per org, on the first
     // LIVE change only. NEVER for a backfill/archive signal (celebrating reconstructed

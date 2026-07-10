@@ -43,6 +43,15 @@ export { InsightSchema } from "./tasks/insight";
 export type { Insight, MyProductContext } from "./tasks/insight";
 export { generateBatchSummary } from "./tasks/batch-summary";
 export type { BatchSummaryInput } from "./tasks/batch-summary";
+export {
+  judgeStandingQuery,
+  buildStandingQueryJudgePrompt,
+  StandingQueryJudgeSchema,
+} from "./tasks/standing-query-judge";
+export type {
+  StandingQueryJudgement,
+  StandingQueryJudgeInput,
+} from "./tasks/standing-query-judge";
 export { generateRepositioningInsight } from "./tasks/pricing-repositioning";
 export type { RepositioningInput } from "./tasks/pricing-repositioning";
 export { generateDigest, DigestSchema } from "./tasks/digest";

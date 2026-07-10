@@ -7,6 +7,7 @@ export * from "./constants/regions";
 export * from "./constants/freshness";
 export * from "./analysis-status";
 export * from "./staleness";
+export * from "./standing-queries";
 export * from "./r2/client";
 export * from "./diff";
 export * from "./scoring/threat";

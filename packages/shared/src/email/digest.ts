@@ -16,6 +16,9 @@ export interface DigestEmailData {
     so_what: string;
   }>;
   sectoralTrends?: Array<{ title: string; insight: string }>;
+  // Standing queries (watched Ask questions) that materially changed this week.
+  // Attached deterministically by the weekly job, like sectoralTrends.
+  watchedQuestions?: Array<{ question: string; changeSummary: string }>;
 }
 
 const URGENCY_META: Record<
@@ -84,6 +87,25 @@ export function renderDigestEmail(
     .join("")}
 </div>`;
 
+  // Watched questions: standing queries whose answer materially moved this week.
+  const watched = digest.watchedQuestions ?? [];
+  const watchedHtml =
+    watched.length === 0
+      ? ""
+      : `
+<div style="margin-top:8px;margin-bottom:24px;border-top:1px solid #262626;padding-top:20px;">
+  <h3 style="font-family:Syne,sans-serif;color:#fafafa;font-size:16px;margin:0 0 12px;">👁 Your watched questions</h3>
+  ${watched
+    .map(
+      (w) => `
+  <div style="background:#171717;border:1px solid #262626;border-radius:6px;padding:16px;margin-bottom:12px;">
+    <div style="color:#fafafa;font-size:14px;font-weight:600;margin-bottom:6px;">${escapeHtml(w.question)}</div>
+    <div style="color:#a3a3a3;font-size:13px;">${escapeHtml(w.changeSummary)}</div>
+  </div>`,
+    )
+    .join("")}
+</div>`;
+
   return darkEmailShell(
     // The wordmark now lives in the shared shell's brand header, so the digest
     // opens straight on its subtitle to avoid a duplicate "Outrival".
@@ -96,6 +118,7 @@ export function renderDigestEmail(
       </div>
       ${sectionsHtml}
       ${sectoralHtml}
+      ${watchedHtml}
       ${
         feedbackLinks
           ? `<div style="margin-top:28px;border-top:1px solid #262626;padding-top:18px;text-align:center;font-size:13px;color:#a3a3a3;">

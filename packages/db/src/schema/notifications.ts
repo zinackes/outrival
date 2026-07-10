@@ -22,6 +22,10 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   // completion that lands minutes later isn't lost to a toast the user has already
   // navigated away from.
   "analysis_ready",
+  // A standing query (watched Ask question) materially changed — the cited-signal
+  // set moved and the change persisted 2 evaluations (hysteresis). Links to the
+  // Ask page where the refreshed answer lives.
+  "standing_query",
 ]);
 
 export const notifications = pgTable("notifications", {

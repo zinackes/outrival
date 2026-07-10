@@ -13,7 +13,7 @@ import {
 import type { SelfProfile, SelfProfileField } from "@outrival/db";
 import { normalizeHostname } from "@outrival/shared";
 import { quickFetch, quickFetchText } from "@outrival/scrapers/quick-fetch";
-import { discoverPricingUrl } from "@outrival/scrapers/pricing";
+import { discoverCommerceCandidates, discoverPricingUrl } from "@outrival/scrapers/pricing";
 import { fetchRepoArtifacts } from "./github";
 import { extractDocumentText } from "./extract-document";
 
@@ -67,9 +67,18 @@ export async function deriveProfileFromUrl(url: string): Promise<DeriveResult> {
 async function fetchPricingText(url: string, homepageHtml: string): Promise<string | undefined> {
   try {
     const candidate = await discoverPricingUrl(url, homepageHtml);
-    // null → no pricing page; homepage_section → prices already in the homepage text.
-    if (!candidate || candidate.source === "homepage_section") return undefined;
-    return await quickFetchText(candidate.url);
+    // homepage_section → prices already in the homepage text the profiler gets.
+    if (candidate) {
+      return candidate.source === "homepage_section" ? undefined : await quickFetchText(candidate.url);
+    }
+    // No dedicated pricing page. A catalog site — e-commerce, an equipment
+    // installer, hosting — spreads its prices across product pages instead, so the
+    // homepage carries no price at all and `pricingModel` came back empty. Reuse the
+    // same catalog discovery the pricing scraper runs, and ground the profile on the
+    // densest-priced product page. Costs a few L0 GETs, and only on this path (a
+    // homepage with < 2 commerce links probes nothing).
+    const [topProductPage] = await discoverCommerceCandidates(url, homepageHtml);
+    return topProductPage ? await quickFetchText(topProductPage.url) : undefined;
   } catch {
     return undefined;
   }

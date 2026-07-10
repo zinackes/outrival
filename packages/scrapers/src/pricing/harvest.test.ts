@@ -159,3 +159,132 @@ describe("harvestPricing — currency + period coverage", () => {
     expect(plans[0]!.billing_period).toBe("yearly");
   });
 });
+
+describe("harvestPricing — the period default follows the page, not SaaS", () => {
+  test("catalog page with no recurring vocabulary → one_time, not monthly", () => {
+    // An installer / e-commerce page: a bare amount is a purchase, not a subscription.
+    const html = `
+      <body>
+        <div class="card"><h3>Tesla Powerwall 3</h3><span class="price">4000€</span></div>
+        <p>Livraison et pose incluses.</p>
+      </body>`;
+    const { plans } = harvestPricing(html);
+    expect(plans[0]!.price).toBe(4000);
+    expect(plans[0]!.billing_period).toBe("one_time");
+  });
+
+  test("period vocabulary in prose, far from any price, is not a subscription signal", () => {
+    // Real regression (sorelenergies.fr): a solar installer's FAQ ("1 à 2 fois par
+    // an") and a "kWh/an" spec both match YEARLY, nowhere near an amount. The probe
+    // climbs out of the price card but stops before such a section — hence the
+    // filler, which stands in for the kilobytes of copy any real page carries.
+    const filler = "Nos équipes interviennent partout en France. ".repeat(12);
+    const html = `
+      <body>
+        <div class="card"><h3>Pack Essentiel</h3><span class="price">13 000€</span></div>
+        <p>Production estimée : 4500 kWh/an. ${filler}</p>
+        <p>Il est conseillé de nettoyer vos panneaux 1 à 2 fois par an. ${filler}</p>
+      </body>`;
+    const { plans } = harvestPricing(html);
+    expect(plans[0]!.plan_name).toBe("Pack Essentiel");
+    expect(plans[0]!.billing_period).toBe("one_time");
+  });
+
+  test("a German card states its period above the amount (sevdesk)", () => {
+    // "pro Monat" sits several levels up from the price, not beside it.
+    const html = `
+      <body>
+        <div class="tariff">
+          <div class="head"><h3>Rechnung</h3><small>pro Monat, zzgl. MwSt.</small></div>
+          <div class="body"><div class="price"><span>11,90 €</span></div></div>
+        </div>
+      </body>`;
+    const { plans } = harvestPricing(html);
+    expect(plans[0]!.billing_period).toBe("monthly");
+  });
+
+  test("a Spanish '/mes' is monthly, and carries the page default", () => {
+    const html = `
+      <body>
+        <div class="card"><h3>Basic</h3><span class="price">14,50 €/mes</span></div>
+        <div class="card"><h3>Extra</h3><span class="price">29,00 €</span></div>
+      </body>`;
+    const { plans } = harvestPricing(html);
+    expect(plans.find((p) => p.plan_name === "Basic")!.billing_period).toBe("monthly");
+    expect(plans.find((p) => p.plan_name === "Extra")!.billing_period).toBe("monthly");
+  });
+
+  test("a bare French 'mes' is not a Spanish month", () => {
+    // `\bmes\b` unanchored would read "mes données" as "per month".
+    const html = `
+      <body>
+        <div class="card"><h3>Installation</h3><span class="price">4000€</span>
+          <p>Toutes mes données restent en France.</p>
+        </div>
+      </body>`;
+    const { plans } = harvestPricing(html);
+    expect(plans[0]!.billing_period).toBe("one_time");
+  });
+
+  test("an untokened card on a page that DOES sell subscriptions stays monthly", () => {
+    // "Pro" carries no /mo of its own, but the page is plainly a subscription grid.
+    const html = `
+      <body>
+        <div class="card"><h3>Starter</h3><span class="price">€9/mo</span></div>
+        <div class="card"><h3>Pro</h3><span class="price">€29</span></div>
+      </body>`;
+    const { plans } = harvestPricing(html);
+    expect(plans.find((p) => p.plan_name === "Pro")!.billing_period).toBe("monthly");
+  });
+
+  test("a per-seat page keeps the monthly default for its untokened prices", () => {
+    const html = `
+      <body>
+        <div class="card"><h3>Team</h3><span class="price">$12 per seat</span></div>
+        <div class="card"><h3>Add-on</h3><span class="price">$5</span></div>
+      </body>`;
+    const { plans } = harvestPricing(html);
+    expect(plans.find((p) => p.plan_name === "Add-on")!.billing_period).toBe("monthly");
+  });
+
+  test("a price lead-in is a band, never the plan name nor a section banner", () => {
+    // Real regression: "À partir de" sat closest to the amount and was harvested as
+    // the plan's name. Skipping it must not promote the banner above it either.
+    const html = `
+      <body>
+        <section><h2>Installation partout en France</h2>
+          <div class="card"><h4>À partir de</h4><span class="price">4000€</span></div>
+        </section>
+      </body>`;
+    const { plans } = harvestPricing(html);
+    expect(plans).toHaveLength(1);
+    expect(plans[0]!.plan_name).toBe("From");
+    expect(plans[0]!.price).toBe(4000);
+  });
+
+  test("a real card title above the lead-in still wins", () => {
+    const html = `
+      <body>
+        <div class="card">
+          <h3>Tesla Powerwall 3</h3><h4>À partir de</h4><span class="price">4000€</span>
+        </div>
+      </body>`;
+    const { plans } = harvestPricing(html);
+    expect(plans[0]!.plan_name).toBe("Tesla Powerwall 3");
+  });
+
+  test("English lead-ins are treated the same", () => {
+    const html = `<body><div class="card"><h4>Starting at</h4><span class="price">$99</span></div></body>`;
+    expect(harvestPricing(html).plans[0]!.plan_name).toBe("From");
+  });
+
+  test("one-off vocabulary alone does not force a monthly default", () => {
+    const html = `
+      <body>
+        <div class="card"><h3>Lifetime</h3><span>$249 one-time</span></div>
+        <div class="card"><h3>Install</h3><span>$99</span></div>
+      </body>`;
+    const { plans } = harvestPricing(html);
+    expect(plans.find((p) => p.plan_name === "Install")!.billing_period).toBe("one_time");
+  });
+});

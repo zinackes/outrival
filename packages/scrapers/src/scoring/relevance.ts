@@ -38,6 +38,10 @@ const SECTION_WEIGHTS: Record<string, number> = {
   "meta.description": 0.6,
   "og.title": 0.4,
   "og.description": 0.4,
+  // patch-32 rebrand tells (audit DIF-4) — an og:image/og:type swap is a real
+  // brand/visual-identity or positioning signal, not incidental copy.
+  "og.image": 0.8,
+  "og.type": 0.7,
   visual_redesign: 0.7,
   numeric_claim_changed: 0.65,
   "socialProof.customerLogos": 0.6,
@@ -84,6 +88,12 @@ function computeMagnitude(change: StructuredChange): number {
       return Math.min(1, Math.abs(v) * 2); // 50% variation ⇒ max
     }
     default: {
+      // og:image / og:type are asset/type URLs, not prose — token overlap between
+      // two URLs is meaningless (they always share "https", the domain, the
+      // extension), so any actual change is a full signal (audit DIF-4).
+      if (change.field === "og.image" || change.field === "og.type") {
+        return change.before === change.after ? 0 : 1;
+      }
       const base = dissimilarity(change.before, change.after);
       if (change.kind === "section_body_changed" && change.bodyDiff) {
         const moved = change.bodyDiff.added.length + change.bodyDiff.removed.length;

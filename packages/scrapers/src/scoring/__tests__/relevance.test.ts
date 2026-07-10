@@ -71,4 +71,32 @@ describe("scoreRelevance", () => {
     );
     expect(r.score).toBeGreaterThanOrEqual(0.5);
   });
+
+  test("an og:image swap between same-domain URLs passes the threshold (patch-32)", () => {
+    const r = scoreRelevance(
+      change({
+        kind: "meta_changed",
+        field: "og.image",
+        before: "https://x.com/og-v1.png",
+        after: "https://x.com/og-v2.png",
+      }),
+      { previousChangesInLast7Days: 0 },
+    );
+    expect(r.components.magnitude).toBe(1);
+    expect(r.score).toBeGreaterThanOrEqual(0.5);
+  });
+
+  test("an unchanged og:image scores zero magnitude", () => {
+    const r = scoreRelevance(
+      change({
+        kind: "meta_changed",
+        field: "og.image",
+        before: "https://x.com/og-v1.png",
+        after: "https://x.com/og-v1.png",
+      }),
+      { previousChangesInLast7Days: 0 },
+    );
+    expect(r.components.magnitude).toBe(0);
+    expect(r.score).toBe(0);
+  });
 });

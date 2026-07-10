@@ -65,15 +65,8 @@ standingQueriesRouter.post("/", async (c) => {
   if (!parsed.success) return c.json({ error: "invalid_body" }, 400);
   const { question, answer, citations, context } = parsed.data;
 
-  // Backend plan gating — the cap bounds background AI spend per org.
-  const plan = await getOrgPlan(orgId);
-  const limit = getPlanLimits(plan).standingQueries;
-  const used = await countActiveQueries(orgId);
-  if (used >= limit) {
-    return c.json({ error: "plan_limit_standing_queries", used, limit, plan }, 403);
-  }
-
-  // Idempotent-ish: watching the same question twice returns the existing watch.
+  // Idempotent-ish: watching the same question twice returns the existing watch
+  // (checked BEFORE the cap — re-watching never needs a free slot).
   const existing = await db.query.standingQueries.findFirst({
     where: and(
       eq(standingQueries.orgId, orgId),
@@ -83,6 +76,14 @@ standingQueriesRouter.post("/", async (c) => {
     ),
   });
   if (existing) return c.json({ query: existing, existed: true });
+
+  // Backend plan gating — the cap bounds background AI spend per org.
+  const plan = await getOrgPlan(orgId);
+  const limit = getPlanLimits(plan).standingQueries;
+  const used = await countActiveQueries(orgId);
+  if (used >= limit) {
+    return c.json({ error: "plan_limit_standing_queries", used, limit, plan }, 403);
+  }
 
   // Re-validate every citation inside the org — never trust client-supplied ids.
   const competitorIds = citations.filter((x) => x.type === "competitor").map((x) => x.id);

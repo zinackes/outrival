@@ -10,16 +10,11 @@ import {
   type StandingQuery,
 } from "@outrival/db";
 import { judgeStandingQuery, AI_CONFIG } from "@outrival/ai";
-import {
-  PLAN_LIMITS,
-  hashSignalIdSet,
-  normalizeSignalIdSet,
-  signalSetsEqual,
-} from "@outrival/shared";
+import { PLAN_LIMITS, hashSignalIdSet } from "@outrival/shared";
 import { loggedAi } from "../lib/analytics";
 import { groqQueue } from "../lib/queues";
 import { decideDispatch } from "../lib/notification-dispatcher";
-import { matchesStandingQuery, nextHysteresisState } from "../lib/standing-queries";
+import { evaluateFreshAnswer, matchesStandingQuery } from "../lib/standing-queries";
 import { getResend, ALERT_FROM } from "../lib/resend";
 import { darkEmailShell } from "../lib/email-shell";
 import { escapeHtml } from "../lib/escape-html";
@@ -176,92 +171,63 @@ export const evaluateStandingQueriesJob = task({
       try {
         const fresh = await rerunAsk(query);
         if (!fresh) continue; // transient failure — leave the query untouched
-
         evaluated++;
-        const freshSignalIds = normalizeSignalIdSet(
-          fresh.citations.filter((c) => c.type === "signal").map((c) => c.id),
-        );
 
-        // Same cited-signal set → same substance by construction. A reformulated
-        // answer can NEVER alert. Also disarms a previously armed counter (the
-        // change didn't persist).
-        if (signalSetsEqual(query.currentSignalIds, freshSignalIds)) {
-          await db
-            .update(standingQueries)
-            .set({ lastEvaluatedAt: new Date(), pendingCount: 0, updatedAt: new Date() })
-            .where(eq(standingQueries.id, query.id));
-          continue;
-        }
-
-        // Different sets: the fast judge decides whether the substance moved or the
-        // synthesis just rotated its evidence.
-        const currentSet = new Set(query.currentSignalIds);
-        const freshSet = new Set(freshSignalIds);
-        const addedSignals = await fetchInsights(
-          query.orgId,
-          freshSignalIds.filter((id) => !currentSet.has(id)),
-        );
-        const removedSignals = await fetchInsights(
-          query.orgId,
-          query.currentSignalIds.filter((id) => !freshSet.has(id)),
-        );
-        const judgement = await loggedAi(
-          "standing_query_judge",
-          AI_CONFIG.classificationFast,
-          () =>
-            judgeStandingQuery({
-              question: query.question,
-              baselineAnswer: query.currentAnswer,
-              freshAnswer: fresh.answer,
-              addedSignals,
-              removedSignals,
-            }),
-          { competitorId: input.competitorId },
-        ).catch((err) => {
-          logger.warn("Standing-query judge failed (non-fatal)", { error: String(err) });
-          return null;
+        const { outcome, freshSignalIds } = await evaluateFreshAnswer(query, fresh, {
+          judge: (judgeInput) =>
+            loggedAi(
+              "standing_query_judge",
+              AI_CONFIG.classificationFast,
+              () => judgeStandingQuery(judgeInput),
+              { competitorId: input.competitorId },
+            ),
+          fetchInsights,
         });
-        if (!judgement) {
-          // Judge unavailable: stamp the evaluation but keep the hysteresis state —
-          // a transient AI failure must neither reset nor advance the counter.
-          await db
-            .update(standingQueries)
-            .set({ lastEvaluatedAt: new Date(), updatedAt: new Date() })
-            .where(eq(standingQueries.id, query.id));
-          continue;
+
+        switch (outcome.action) {
+          case "no_change":
+            await db
+              .update(standingQueries)
+              .set({ lastEvaluatedAt: new Date(), pendingCount: 0, updatedAt: new Date() })
+              .where(eq(standingQueries.id, query.id));
+            break;
+          case "judge_unavailable":
+            await db
+              .update(standingQueries)
+              .set({ lastEvaluatedAt: new Date(), updatedAt: new Date() })
+              .where(eq(standingQueries.id, query.id));
+            break;
+          case "pending":
+            await db
+              .update(standingQueries)
+              .set({
+                lastEvaluatedAt: new Date(),
+                pendingCount: outcome.pendingCount,
+                updatedAt: new Date(),
+              })
+              .where(eq(standingQueries.id, query.id));
+            break;
+          case "alert":
+            // Confirmed material change: promote the fresh answer to baseline, alert.
+            await db
+              .update(standingQueries)
+              .set({
+                currentAnswer: fresh.answer,
+                currentCitations: fresh.citations,
+                currentSignalIds: freshSignalIds,
+                currentHash: hashSignalIdSet(freshSignalIds),
+                pendingCount: 0,
+                lastEvaluatedAt: new Date(),
+                lastAlertedAt: new Date(),
+                lastChangeSummary: outcome.changeSummary || null,
+                updatedAt: new Date(),
+              })
+              .where(eq(standingQueries.id, query.id));
+            await alertStandingQuery(query, outcome.changeSummary, input);
+            alerted++;
+            logger.log("Standing query alerted", { queryId: query.id });
+            break;
         }
-
-        const { pendingCount, alert } = nextHysteresisState(
-          query.pendingCount,
-          judgement.materiallyChanged,
-        );
-
-        if (!alert) {
-          await db
-            .update(standingQueries)
-            .set({ lastEvaluatedAt: new Date(), pendingCount, updatedAt: new Date() })
-            .where(eq(standingQueries.id, query.id));
-          continue;
-        }
-
-        // Confirmed material change: promote the fresh answer to baseline and alert.
-        await db
-          .update(standingQueries)
-          .set({
-            currentAnswer: fresh.answer,
-            currentCitations: fresh.citations,
-            currentSignalIds: freshSignalIds,
-            currentHash: hashSignalIdSet(freshSignalIds),
-            pendingCount: 0,
-            lastEvaluatedAt: new Date(),
-            lastAlertedAt: new Date(),
-            lastChangeSummary: judgement.changeSummary || null,
-            updatedAt: new Date(),
-          })
-          .where(eq(standingQueries.id, query.id));
-        await alertStandingQuery(query, judgement.changeSummary, input);
-        alerted++;
-        logger.log("Standing query alerted", { queryId: query.id });
       } catch (err) {
         // One query's failure never blocks the others; the cooldown makes a
         // Trigger retry of this job cheap for already-evaluated queries.

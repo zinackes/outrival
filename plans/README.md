@@ -54,8 +54,8 @@ plan's drift check first. Plans are independent unless "Depends on" says otherwi
 | 023  | Introduce Biome (format + conservative lint) + CI gate | P2 | M | LOW–MED | 021; land when queue clear | TODO |
 | 024  | Deliberate in-range dependency refresh (bring the stale lockfile current) | P3 | M | MED | land when queue clear | TODO |
 | 025  | Deny/soft-404/login pages can't become "success" snapshots or archive baselines | P1 | M | MED | — | DONE — MERGED via #155 (`d153e36`) ⚠️ needs `trigger deploy` |
-| 026  | Tech-stack signals only on real transitions, never on baseline, never "high" | P1 | S | LOW | — | DONE — PR #156 (open) |
-| 027  | Severity rubric in prompts + deterministic critical guard + retriable insight | P1 | M | MED | — | DONE — `advisor/027-severity-rubric-critical-guard` (`c980c13`, local) |
+| 026  | Tech-stack signals only on real transitions, never on baseline, never "high" | P1 | S | LOW | — | DONE — MERGED via #156 (`191ee28`) ⚠️ needs `trigger deploy` |
+| 027  | Severity rubric in prompts + deterministic critical guard + retriable insight | P1 | M | MED | — | DONE — PR #157 (open) |
 | 028  | Revive dead diff classes (section add/remove, price tweaks, og rebrand, recency) | P1 | M | MED | — | TODO |
 | 029  | Render retry for client-rendered pricing pages (priceless L0 captures) | P1 | S | LOW–MED | — | TODO |
 | 030  | Staged-extraction heal/cache actually persists (normalize replay + cooldown stub) | P1 | M | LOW–MED | — | TODO |
@@ -214,16 +214,27 @@ also rewired `extractionAllowed` (`scrape-monitor.job.ts:~1219`) — without it 
 Coolify. Before merge, the plan's own maintenance note still applies: eyeball the deny regexes
 against a handful of real tracked competitor pages.
 
-**026 — executed & reviewed 2026-07-09 (APPROVE, 0 revisions) → PR #156 (open).** Commit `2138a17`
-on `advisor/026-tech-stack-baseline-noise` (off `d153e36`). Reviewer re-verified: typecheck 8/8,
-workers 74/0 (7 new pure tests), scope = 5 files, `catalog.ts` untouched, baseline predicate reads the
-pre-stamp `competitor` row. **Ops:** prod leaves `TECH_STACK_SIGNAL_MIN_IMPORTANCE` unset, so the
-default flips `medium → high` on deploy — hosting/marketing tells (Vercel/Netlify/Zendesk/HubSpot)
-stop signalling, payments/CRM still fire but at severity `medium`, never `high`. **Latent footgun
-(pre-existing, now pinned by a test):** the read is `process.env.X ?? "high"` and `??` does not catch
-the empty string — a var *set but empty* yields rank 0 and everything signals, including `low`.
-Not covered: existing tech-stack noise rows in prod `signals`; and catalog growth (adding a detector
-makes that tech "appear" for every competitor next scan — the baseline gate misses it).
+**026 — executed & reviewed 2026-07-09 (APPROVE, 0 revision rounds) → MERGED via #156 (`191ee28`).**
+Commit `2138a17` on `advisor/026-tech-stack-baseline-noise` (off `origin/main` `d153e36`), worktree
+`/home/tmfzi/outrival/.claude/worktrees/agent-ad0c64e2f63cc4527`. Reviewer re-verified in the
+worktree: `pnpm typecheck --force` exit 0 (8/8), workers **74 pass / 0 fail** (7 new pure tests),
+scope = the 5 in-scope files, `catalog.ts` untouched. Baseline predicate reads the in-memory
+`competitor` row loaded once at line 33, before the `techStackScrapedAt` stamp at line 174 — the DB
+write doesn't mutate the local object, so it is correctly pre-stamp.
+
+⚠️ **Ops, before deploy.** Prod leaves `TECH_STACK_SIGNAL_MIN_IMPORTANCE` unset, so the default flips
+`medium → high` on deploy: hosting/marketing-script tells (Vercel, Netlify, Zendesk, HubSpot) stop
+signalling entirely, payments/CRM tells still fire but now at severity `medium`, never `high`. That is
+the intent (31/110 of the sampled feed was this noise). Anyone wanting the old behaviour sets the var
+to `medium` explicitly. **Latent footgun (pre-existing, now pinned by a test):** the read is
+`process.env.X ?? "high"`, and `??` does not catch the empty string — a var *set but empty* (easy to do
+in Coolify) yields rank 0 and every appeared tech signals, including `low`. Leave it unset, don't blank it.
+
+Not covered, deliberately: the existing tech-stack noise rows already in prod `signals` (bulk-dismiss is
+a separate decision), and the catalog-growth case — adding a detector to `TECH_CATALOG` makes that tech
+"appear" for every competitor on the next scan, which the baseline gate does not catch.
+
+⚠️ **PENDING: workers deploy** — worker code, ships via `trigger deploy` from `main`, not Coolify.
 
 **027 — executed & reviewed 2026-07-09 (APPROVE, 0 revisions); push/PR PENDING.** Commit `c980c13` on
 `advisor/027-severity-rubric-critical-guard` (off `d153e36`), worktree

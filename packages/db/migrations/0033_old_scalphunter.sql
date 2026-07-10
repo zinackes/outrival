@@ -1,0 +1,1 @@
+ALTER TABLE "org_notification_preferences" ALTER COLUMN "channel_high" SET DEFAULT 'email_immediate';

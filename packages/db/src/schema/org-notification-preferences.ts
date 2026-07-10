@@ -34,11 +34,15 @@ export const orgNotificationPreferences = pgTable("org_notification_preferences"
     .unique()
     .references(() => organizations.id, { onDelete: "cascade" }),
 
-  // Channel per severity. Defaults encode the patch's escalation ladder:
-  // critical = instant email, high = next daily digest, medium = weekly digest,
-  // low = in-app only.
+  // Channel per severity. Defaults encode the escalation ladder: critical AND
+  // high = instant email, medium = weekly digest, low = in-app only. high was
+  // digest_daily until the 2026-07-10 audit found the landing's "high/critical
+  // ship within 5 minutes" promise had never once fired in prod (the classifier
+  // never emits critical, so nothing ever took the immediate path). Quiet hours
+  // + the daily email cap still guard the inbox. Rows created under the old
+  // default keep their stored value (Settings → Notifications changes it).
   channelCritical: channelModeEnum("channel_critical").notNull().default("email_immediate"),
-  channelHigh: channelModeEnum("channel_high").notNull().default("digest_daily"),
+  channelHigh: channelModeEnum("channel_high").notNull().default("email_immediate"),
   channelMedium: channelModeEnum("channel_medium").notNull().default("digest_weekly"),
   channelLow: channelModeEnum("channel_low").notNull().default("in_app_only"),
 

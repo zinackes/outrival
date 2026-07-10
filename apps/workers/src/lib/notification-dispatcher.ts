@@ -63,7 +63,13 @@ function envInt(name: string, fallback: number): number {
 function defaultPrefs(): EffectivePrefs {
   return {
     channelCritical: "email_immediate",
-    channelHigh: "digest_daily",
+    // "email_immediate" since the 2026-07-10 audit: with the old "digest_daily"
+    // default (and a classifier that never emits critical) the immediate-alert
+    // path had never fired once in prod, while the landing promises high/critical
+    // within 5 minutes. Layers 3-4 below still defer during quiet hours / past
+    // the daily cap. Keep in sync with the org_notification_preferences schema
+    // default.
+    channelHigh: "email_immediate",
     channelMedium: "digest_weekly",
     channelLow: "in_app_only",
     timezone: "UTC",

@@ -84,17 +84,13 @@ export function diagnoseFailure(
 
   // 2. Redirected to a different root domain (acquisition / domain change).
   const finalUrl = [...attempts].reverse().find((a) => a.finalUrl)?.finalUrl;
-  if (finalUrl) {
-    const from = safeHostname(originalUrl);
-    const to = safeHostname(finalUrl);
-    if (from && to && from !== to && !sameRootDomain(from, to)) {
-      return {
-        category: "site_redirected",
-        confidence: "high",
-        evidence: [`Redirected from ${from} to ${to}`],
-        suggestedAction: "detect_pivot",
-      };
-    }
+  if (finalUrl && isOffsiteRedirect(originalUrl, finalUrl)) {
+    return {
+      category: "site_redirected",
+      confidence: "high",
+      evidence: [`Redirected from ${safeHostname(originalUrl)} to ${safeHostname(finalUrl)}`],
+      suggestedAction: "detect_pivot",
+    };
   }
 
   // 3. Login wall — a rendered page that is essentially an auth form.
@@ -163,6 +159,22 @@ function lastHtml(attempts: AttemptInfo[]): string | undefined {
 function textLength(a: AttemptInfo): number | null {
   if (typeof a.text === "string") return a.text.length;
   return null;
+}
+
+/**
+ * True when `finalUrl` landed on a genuinely different registrable domain than
+ * `originalUrl` — a parked page, an acquisition/domain-change redirect, or a
+ * hijacked link, not the site we asked for. Conservative by construction: a
+ * locale path, a subdomain (blog.x → x), and a www toggle all share the root and
+ * return false. Unparseable input returns false — never grade a capture on a URL
+ * we can't read. Shared with the SUCCESS-path completeness grader (R6) so both
+ * paths judge "wrong target" identically.
+ */
+export function isOffsiteRedirect(originalUrl: string, finalUrl: string): boolean {
+  const from = safeHostname(originalUrl);
+  const to = safeHostname(finalUrl);
+  if (!from || !to) return false;
+  return from !== to && !sameRootDomain(from, to);
 }
 
 function safeHostname(url: string): string | null {

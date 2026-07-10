@@ -9,6 +9,7 @@ import {
   competitors,
   selfProductChanges,
 } from "@outrival/db";
+import { retriableClassifyError } from "../lib/classify-errors";
 import {
   classifyChange,
   classifyStructuredChanges,
@@ -111,7 +112,7 @@ export const classifyChangeJob = task({
       logger.error("Classification returned null (parse failed) — retrying", {
         changeId: input.changeId,
       });
-      throw new Error("Classification returned null (parse failed)");
+      throw retriableClassifyError(input.changeId);
     }
 
     logger.log("Classification result", {

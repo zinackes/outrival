@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { diagnoseFailure, type AttemptInfo } from "../diagnose-failure";
+import { diagnoseFailure, isOffsiteRedirect, type AttemptInfo } from "../diagnose-failure";
 
 const URL = "https://linear.app";
 
@@ -80,5 +80,38 @@ describe("diagnoseFailure", () => {
       URL,
     );
     expect(d.category).toBe("site_dead");
+  });
+});
+
+// R6 (2026-07 audit, T5): the same cross-root check the failure path uses, exposed
+// so the SUCCESS path can grade an offsite-redirected capture `partial`. It must
+// stay conservative — only a genuinely different registrable domain, never a
+// locale path, a subdomain, or a www toggle (those are still the right site).
+describe("isOffsiteRedirect", () => {
+  test("different registrable domain → offsite", () => {
+    expect(isOffsiteRedirect("https://acme.com", "https://acme-parked.com")).toBe(true);
+    expect(isOffsiteRedirect("https://acme.com/pricing", "https://buydomain.io/parked")).toBe(true);
+  });
+
+  test("locale path on the same host → NOT offsite", () => {
+    expect(isOffsiteRedirect("https://acme.com/pricing", "https://acme.com/fr/pricing")).toBe(false);
+  });
+
+  test("subdomain of the same root → NOT offsite", () => {
+    expect(isOffsiteRedirect("https://acme.com", "https://blog.acme.com")).toBe(false);
+  });
+
+  test("www toggle → NOT offsite", () => {
+    expect(isOffsiteRedirect("https://www.acme.com", "https://acme.com")).toBe(false);
+    expect(isOffsiteRedirect("https://acme.com", "https://www.acme.com")).toBe(false);
+  });
+
+  test("identical URL → NOT offsite", () => {
+    expect(isOffsiteRedirect("https://acme.com/x", "https://acme.com/x")).toBe(false);
+  });
+
+  test("unparseable finalUrl → NOT offsite (fail safe, never grade partial on garbage)", () => {
+    expect(isOffsiteRedirect("https://acme.com", "not a url")).toBe(false);
+    expect(isOffsiteRedirect("also not a url", "https://acme.com")).toBe(false);
   });
 });

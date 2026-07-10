@@ -93,3 +93,27 @@ n'est PAS la taille du diff ni l'empreinte technique — c'est l'importance prod
 - **Création** : item directement en `Status = Done` (pas de phase de planif),
   avec le lien `📄 docs/<fichier>.md` s'il y a un doc, après la recherche
   anti-doublon ci-dessus.
+
+## Skills tierces (dev workflow)
+
+Skills communautaires (MIT, repo `alirezarezvani/claude-skills`, PAS Anthropic)
+installés sélectivement dans `.claude/skills/`. Aucun hook, scripts stdlib-only
+(`python3`, pas de `pip install`). **Invoquer explicitement** — ne jamais les
+laisser s'auto-déclencher (les descriptions « proactive » de certains contredisent
+karpathy §2 ; ma règle prime). Deux scripts sortent de leur bac à sable :
+`aeo/aeo_audit.py` fait un `GET` réseau vers l'URL passée, `aeo/citation_tracker.py`
+écrit un ledger dans `~/.aeo-data/` — les deux sur invocation explicite seulement.
+
+- **llm-cost-optimizer** — auditer/réduire le coût du pool IA (Cerebras→Groq→
+  Hyperbolic), caching gpt-oss, routing par `tier`, logging `ai_runs` par feature.
+- **slo-architect** — transformer les promesses de la landing (onboarding ≤5 min,
+  ratio 70:1, scan horaire) en SLI/SLO/error-budget + alertes burn-rate.
+- **data-quality-auditor** — profiler la qualité des extractions (`pricing_history`,
+  `job_counts`, `review_scores`), missingness, score DQS avant de s'y fier.
+- **prompt-governance** — versioning + evals + détection de régression sur les
+  prompts de `packages/ai/src/prompts/`.
+- **aeo** — optimiser le contenu pour être cité par les LLM (sert AI Visibility +
+  les pages comparatives).
+- **competitor-alternatives** — structurer les pages GTM « alternatives à X » / « X vs Y ».
+- **programmatic-seo** — générer des pages SEO à l'échelle (templates + data).
+- **schema-markup** — poser/valider le JSON-LD structuré (rich results + visibilité IA).

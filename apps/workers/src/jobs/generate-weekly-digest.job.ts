@@ -65,6 +65,9 @@ export const generateWeeklyDigestJob = schedules.task({
     let sent = 0;
     let skipped = 0;
     let allQuiet = 0;
+    // Orgs whose generation parse-failed this attempt — rethrown at the end so the
+    // schedule retries them instead of silently skipping their week.
+    const genFailures: string[] = [];
 
     for (const org of orgs) {
       const existing = await db.query.digests.findFirst({
@@ -210,8 +213,13 @@ export const generateWeeklyDigestJob = schedules.task({
         { orgId: org.id },
       );
       if (!digest) {
-        logger.error("Digest generation failed", { orgId: org.id });
-        skipped++;
+        // A parse miss is transient on the free reasoning providers — RETRIABLE,
+        // not a silent skip (26% of prod generations failed this way and those
+        // orgs simply never got their week). Keep processing the other orgs this
+        // attempt; the throw below re-runs the job for the failed ones only
+        // (already-sent orgs skip via the sentAt idempotency check above).
+        logger.error("Digest generation failed — will retry", { orgId: org.id });
+        genFailures.push(org.id);
         continue;
       }
 
@@ -338,7 +346,18 @@ export const generateWeeklyDigestJob = schedules.task({
       }
     }
 
-    logger.log("Completed generate-weekly-digest", { sent, skipped, allQuiet });
+    logger.log("Completed generate-weekly-digest", {
+      sent,
+      skipped,
+      allQuiet,
+      genFailures: genFailures.length,
+    });
+    if (genFailures.length > 0) {
+      // Every other org was processed above; this retry only re-runs the failures.
+      throw new Error(
+        `digest_generation_failed for ${genFailures.length} org(s): ${genFailures.join(", ")}`,
+      );
+    }
     return { sent, skipped, allQuiet };
   },
 });

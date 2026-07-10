@@ -67,6 +67,7 @@ import { diagnoseFailure, type AttemptInfo, type FailureCategory } from "@outriv
 // access-denied/geo-block, login wall, worded verification interstitial) that the
 // vendor-string challenge detector misses (R1 follow-up, patch-25 audit).
 import { detectDenyPage, isSyntheticDocument } from "@outrival/scrapers/deny-page";
+import { isOffsiteRedirect } from "@outrival/scrapers/diagnose-failure";
 import { generateAlternatives } from "@outrival/scrapers/alternatives";
 import { filterRelevantApiCalls, apiCallsToHtmlDoc, toEndpoints } from "@outrival/scrapers/spa-filter";
 import type { ScrapeOutcome } from "@outrival/scrapers";
@@ -125,6 +126,13 @@ const SIZE_VARIABLE_SOURCES = new Set(["blog", "changelog", "news", "sitemap"]);
 // the feed/ATS/product-line variants of changelog/jobs/pricing DO have an HTML path
 // too, so they're excluded per-capture via isSyntheticDocument, not by source type.
 const SYNTHETIC_DOC_SOURCES = new Set(["sitemap", "news", "reddit", "github_repo"]);
+// R6 (2026-07 audit, T5) — sources that monitor the competitor's OWN domain, where
+// a 200 landing on a different registrable domain means the wrong target (parked
+// page, acquisition redirect, dead link), not the page. Deliberately NOT jobs or
+// any reviews/mentions source: those legitimately live on or 30x to third-party
+// hosts (Greenhouse/Lever/G2/Capterra/Trustpilot), so an offsite finalUrl there is
+// normal — flagging it would silence a healthy monitor.
+const OFFSITE_CHECKED_SOURCES = new Set(["homepage", "pricing", "blog", "changelog"]);
 
 // Readable "12,000 teams" / "99.9% uptime" for a claim change card.
 function formatClaim(value: number, unit: string | null, context: string): string {
@@ -763,9 +771,20 @@ export const scrapeMonitorJob = task({
       !SYNTHETIC_DOC_SOURCES.has(monitor.sourceType) &&
       !isSyntheticDocument(result.html);
     const denyKind = denyCheckable ? detectDenyPage(result.html) : null;
+    // R6 (2026-07 audit, T5): the same cross-root check diagnoseFailure runs on the
+    // failure path, applied to a 200. An own-domain source that silently resolved to
+    // a different registrable domain (parked/acquired/wrong target) is captured
+    // `partial` so it never becomes the diff baseline or feeds extraction. Scoped to
+    // OFFSITE_CHECKED_SOURCES (never jobs/reviews — they legitimately live off-domain);
+    // synthetic/api-capture docs carry finalUrl == scrapeUrl so they can't trip it.
+    const offsiteRedirect =
+      COMPLETENESS_ENABLED &&
+      OFFSITE_CHECKED_SOURCES.has(monitor.sourceType) &&
+      typeof scrapeUrl === "string" &&
+      isOffsiteRedirect(scrapeUrl, resolvedUrl);
     const graded: CompletenessVerdict =
-      completeness.complete && denyKind
-        ? { complete: false, reason: "deny_page" }
+      completeness.complete && (denyKind || offsiteRedirect)
+        ? { complete: false, reason: denyKind ? "deny_page" : "redirected_offsite" }
         : completeness;
     if (!graded.complete) {
       logger.warn("Partial capture graded", {
@@ -773,6 +792,7 @@ export const scrapeMonitorJob = task({
         sourceType: monitor.sourceType,
         reason: graded.reason,
         denyKind,
+        offsiteFinalUrl: offsiteRedirect ? resolvedUrl : undefined,
         contentSize: afterContent.length,
       });
     }

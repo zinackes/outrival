@@ -543,6 +543,46 @@ export async function getLatestReviewScore(competitorId: string): Promise<Review
   };
 }
 
+export interface ReviewThemeSeriesRow {
+  source: string;
+  themes: Array<{ theme: string; prevalence: string }>;
+  recordedAt: Date;
+}
+
+// review_scores complaint-theme series for a competitor over a lookback window,
+// oldest-first — feeds the sliding-window inflection detector (detect-review-theme-
+// shifts) and the battle-card objection injection. Best-effort ([] on error). Rows
+// with no clustered themes carry an empty array (kept — they count as scrapes in the
+// window denominator).
+export async function getReviewScoreSeries(
+  competitorId: string,
+  sinceDays: number,
+): Promise<ReviewThemeSeriesRow[]> {
+  const since = new Date(Date.now() - sinceDays * 86_400_000);
+  const rows = await bestEffortRead<{
+    source: string;
+    complaint_themes: unknown;
+    recorded_at: Date;
+  }>("getReviewScoreSeries", () =>
+    db
+      .select({
+        source: reviewScores.source,
+        complaint_themes: reviewScores.complaintThemes,
+        recorded_at: reviewScores.recordedAt,
+      })
+      .from(reviewScores)
+      .where(and(eq(reviewScores.competitorId, competitorId), gte(reviewScores.recordedAt, since)))
+      .orderBy(reviewScores.recordedAt),
+  );
+  return (rows ?? []).map((r) => ({
+    source: r.source,
+    themes: Array.isArray(r.complaint_themes)
+      ? (r.complaint_themes as Array<{ theme: string; prevalence: string }>)
+      : [],
+    recordedAt: r.recorded_at,
+  }));
+}
+
 export interface JobCountRow {
   competitor_id: string;
   department: string;

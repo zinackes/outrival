@@ -49,6 +49,12 @@ export const SOURCE_TYPES = [
   // channel from a homepage link and emits a sorted video list → the generic diff
   // surfaces a brand-new upload as a content signal. Kept in sync with the DB enum.
   "youtube",
+  // Review complaint-theme shifts. Like tech_stack / ai_visibility, an INTERNAL
+  // anchor source — never user-selectable (excluded from plan gating, the enable
+  // route, and the source tabs). It only anchors the synthetic snapshot→change
+  // chain when a recurring complaint theme inflects upward over the review_scores
+  // time-series (detect-review-theme-shifts). Kept in sync with the DB enum.
+  "review_shift",
 ] as const;
 
 export type SourceType = typeof SOURCE_TYPES[number];

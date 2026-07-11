@@ -30,7 +30,9 @@ import {
   getLatestTrial,
   getLatestPricingTiers,
   getLatestReviewScore,
+  getReviewScoreSeries,
 } from "../lib/analytics";
+import { detectThemeShifts, mergeRisingThemeObjections } from "../lib/review-theme-shift";
 import { refreshCompetitorSummaryJob } from "./refresh-competitor-summary.job";
 import { notifyJobComplete } from "../lib/job-complete";
 
@@ -282,6 +284,33 @@ export const generateBattleCardJob = task({
       // A verification failure (rate limit / breaker) must never sink the card —
       // patch-22 graceful degradation. Keep the draft; log the miss.
       logger.warn("Battle card revise pass skipped", { err: String(err) });
+    }
+
+    // Deterministic objection munition: fold the competitor's RISING complaint themes
+    // (detected over the review_scores series) into common_objections, AFTER the AI
+    // generate/revise passes so the fact-checker can't strip them. Best-effort — a
+    // read miss must never sink the card. AI-free (themes already clustered upstream).
+    try {
+      const themeSeries = await getReviewScoreSeries(
+        competitor.id,
+        Number(process.env.REVIEW_THEME_LOOKBACK_DAYS ?? 84),
+      );
+      const rising =
+        themeSeries.length >= 2
+          ? detectThemeShifts(themeSeries, {
+              now: new Date(),
+              windowDays: Number(process.env.REVIEW_THEME_WINDOW_DAYS ?? 42),
+            })
+          : [];
+      if (rising.length > 0) {
+        content = mergeRisingThemeObjections(content, rising, {
+          competitorName: competitor.name,
+          myProductName: product?.name,
+          valueProp: myValueProp,
+        });
+      }
+    } catch (err) {
+      logger.warn("Rising-theme objection injection skipped", { err: String(err) });
     }
 
     // Safety net: a grounded card with no evidence comes back with every section

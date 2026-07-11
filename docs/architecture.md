@@ -270,7 +270,9 @@ source_type       homepage | pricing | blog | changelog | jobs |
                     gate la création d'app free-tier ; réactivable quand les creds arrivent.
                   — internes, jamais user-selectable : tech_stack (patch-18, infra, tab
                     read-only), sitemap + news (patch-32, semés weekly, diff = pages/
-                    événements neufs). status : on-demand starter+ (patch-31).
+                    événements neufs), ai_visibility/subdomains/youtube (ancres
+                    synthétiques), review_shift (ancre du signal d'inflexion de thèmes
+                    de plaintes, jamais scrapée). status : on-demand starter+ (patch-31).
                     Comportement détaillé : cf. Pipeline + Décisions.
 frequency         realtime | daily | weekly
 signal_severity   low | medium | high | critical
@@ -471,6 +473,8 @@ carte (état live uniquement).
                    patch-32 : l'extraction IA renvoie en plus les sous-notes /5
                    ease_of_use/support/features/value → CH review_scores (colonnes Nullable)
                    + des THÈMES de plaintes clusterisés (IA-juge, même appel) → résumé)
+                  → à l'écriture d'une row review_scores AVEC thèmes → trigger
+                    detect-review-theme-shifts (event-driven, pas de cron)
        changelog → diff générique (patch-32 : feed-first — si la page expose un RSS/Atom,
                    on parse le feed → snapshot déterministe trié → le diff détecte les
                    nouvelles entrées de release ; sinon change-detection HTML, comportement actuel)
@@ -826,6 +830,8 @@ SNAPSHOT_COMPLETENESS_ENABLED=true      # reliability wave 1 (R1) — grade a de
 SNAPSHOT_COMPLETENESS_MIN_RATIO=0.5     # R1 — content/median ratio below which a capture is graded partial (size-stable sources only; homepage also uses isIncompleteRender)
 TECH_STACK_SCRAPE_INTERVAL_DAYS=30      # patch-18 — days between tech-stack scrapes per competitor
 TECH_STACK_SIGNAL_MIN_IMPORTANCE=high   # patch-18 — min tech importance to emit a signal on appearance (high = payments/CRM-class tells only; medium would include hosting/marketing scripts — noisy, plan-026). Baseline (first-ever) scan of a competitor never signals, whatever this value is.
+REVIEW_THEME_WINDOW_DAYS=42             # review complaint-theme shift — recent window (days) compared vs baseline for an upward inflection
+REVIEW_THEME_LOOKBACK_DAYS=84           # review complaint-theme shift — total review_scores series read (baseline = lookback − window)
 
 # AI
 ANTHROPIC_API_KEY=           # provider abstrait — Claude fallback (provider="claude")

@@ -1,4 +1,4 @@
-import { task, logger, AbortTaskRunError } from "@trigger.dev/sdk/v3";
+import { task, logger, tasks, AbortTaskRunError } from "@trigger.dev/sdk/v3";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db, snapshots, reviews, monitors } from "@outrival/db";
@@ -191,6 +191,24 @@ export const extractReviewsJob = task({
         complaint_themes: extracted.complaint_themes ?? null,
         recorded_at: now,
       });
+
+      // A fresh scored row with clustered complaint themes may reveal a rising theme
+      // (a competitive opening) — evaluate the sliding-window inflection off the
+      // pipeline (no cron slot). Fire-and-forget; keyed on the snapshot so a job retry
+      // doesn't re-trigger. Never blocks the extraction.
+      if ((extracted.complaint_themes?.length ?? 0) > 0) {
+        try {
+          await tasks.trigger(
+            "detect-review-theme-shifts",
+            { competitorId: input.competitorId },
+            { idempotencyKey: `rts-${input.competitorId}-${input.snapshotId}` },
+          );
+        } catch (err) {
+          logger.warn("detect-review-theme-shifts trigger failed (non-fatal)", {
+            error: String(err),
+          });
+        }
+      }
     }
 
     logger.log("Completed extract-reviews", {

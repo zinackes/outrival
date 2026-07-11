@@ -46,6 +46,12 @@ export const sourceTypeEnum = pgEnum("source_type", [
   // resolves the competitor's channel from a homepage link and diffs its sorted
   // video list so a brand-new upload surfaces as a content signal.
   "youtube",
+  // Review complaint-theme shifts. Infra-only anchor source (like tech_stack /
+  // ai_visibility): never scraped, never user-selectable, excluded from gating —
+  // it exists solely to anchor the snapshot → change → signal FK chain when a
+  // recurring complaint theme inflects upward over the review_scores time-series.
+  // Always isActive=false; the detect-review-theme-shifts job owns it.
+  "review_shift",
 ]);
 
 export const frequencyEnum = pgEnum("frequency", ["realtime", "daily", "weekly"]);

@@ -41,6 +41,11 @@ export const sourceTypeEnum = pgEnum("source_type", [
   // enqueued by schedule-scraping and scraped via getScraper; the diff of its sorted
   // live-subdomain snapshot surfaces brand-new subdomains (expansion / pre-launch).
   "subdomains",
+  // YouTube channel videos (official videos.xml RSS). Internal source (like
+  // sitemap/news) — never user-selectable. Seeded weekly at creation; the scraper
+  // resolves the competitor's channel from a homepage link and diffs its sorted
+  // video list so a brand-new upload surfaces as a content signal.
+  "youtube",
 ]);
 
 export const frequencyEnum = pgEnum("frequency", ["realtime", "daily", "weekly"]);

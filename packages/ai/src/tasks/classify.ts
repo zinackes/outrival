@@ -44,6 +44,7 @@ const SOURCE_LABELS: Record<string, string> = {
   linkedin: "LinkedIn page",
   twitter: "X / Twitter profile",
   subdomains: "list of the competitor's live subdomains (Certificate Transparency)",
+  youtube: "the competitor's YouTube channel — a new video it published (marketing / content)",
 };
 
 // Static instructions, byte-identical across EVERY classify call → sent as the

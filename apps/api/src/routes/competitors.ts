@@ -496,6 +496,9 @@ competitorsRouter.post("/", async (c) => {
       // of the sorted live-subdomain list surfaces a brand-new one (beta./ai./
       // {product}.) as an expansion / pre-announcement product signal.
       { competitorId: competitor.id, sourceType: "subdomains", frequency: "daily", scrapeStartedAt },
+      // Internal YouTube anchor (weekly). Resolves the channel from a homepage link
+      // → diff of the sorted video list surfaces a brand-new upload (content signal).
+      { competitorId: competitor.id, sourceType: "youtube", frequency: "weekly", scrapeStartedAt },
     ])
     .returning();
 
@@ -549,13 +552,14 @@ competitorsRouter.post("/:id/monitors", async (c) => {
   if (!competitor || competitor.deletedAt) return c.json({ error: "Competitor not found" }, 404);
 
   const { sourceType } = parsed.data;
-  // tech_stack (patch-18), sitemap (patch-32), news and subdomains are internal
-  // anchor sources, not user-enableable.
+  // tech_stack (patch-18), sitemap (patch-32), news, subdomains and youtube are
+  // internal anchor sources, not user-enableable.
   if (
     sourceType === "tech_stack" ||
     sourceType === "sitemap" ||
     sourceType === "news" ||
-    sourceType === "subdomains"
+    sourceType === "subdomains" ||
+    sourceType === "youtube"
   ) {
     return c.json({ error: "source_not_enableable", source: sourceType }, 400);
   }

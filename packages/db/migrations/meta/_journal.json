@@ -253,6 +253,13 @@
       "when": 1783714848048,
       "tag": "0035_bored_zombie",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1783795807025,
+      "tag": "0036_odd_earthquake",
+      "breakpoints": true
     }
   ]
 }

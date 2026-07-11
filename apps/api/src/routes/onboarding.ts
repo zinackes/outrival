@@ -684,6 +684,14 @@ onboardingRouter.post("/complete", async (c) => {
           frequency: "daily" as const,
           scrapeStartedAt,
         },
+        // Internal YouTube anchor (weekly) — channel resolved from a homepage link;
+        // its sorted video-list diff surfaces brand-new uploads as content signals.
+        {
+          competitorId: competitor.id,
+          sourceType: "youtube" as const,
+          frequency: "weekly" as const,
+          scrapeStartedAt,
+        },
       ])
       .returning();
 

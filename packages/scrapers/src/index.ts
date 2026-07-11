@@ -11,6 +11,7 @@ import * as status from "./status/status.scraper";
 import * as sitemap from "./sitemap/sitemap.scraper";
 import * as news from "./news/news.scraper";
 import * as subdomains from "./subdomains/subdomains.scraper";
+import * as youtube from "./youtube/youtube.scraper";
 import type { SourceType } from "@outrival/shared";
 import type { ScrapeOptions, ScrapeOutcome } from "./types";
 
@@ -39,6 +40,7 @@ const scrapers: Partial<Record<SourceType, ScraperFn>> = {
   sitemap: sitemap.scrape,
   news: news.scrape,
   subdomains: subdomains.scrape,
+  youtube: youtube.scrape,
 };
 
 export function getScraper(sourceType: SourceType): ScraperFn {

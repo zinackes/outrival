@@ -34,6 +34,8 @@ const SOURCE_LABELS: Record<string, string> = {
   sitemap: "Sitemap",
   // Internal Certificate-Transparency anchor (new live subdomains).
   subdomains: "Subdomains",
+  // Internal YouTube-channel anchor (new video uploads).
+  youtube: "YouTube",
 };
 
 export function sourceLabel(sourceType: string | null | undefined): string {
@@ -67,6 +69,7 @@ export const SOURCE_SHORT_LABELS: Record<SourceType, string> = {
   news: "News",
   ai_visibility: "AI visibility",
   subdomains: "Subdomains",
+  youtube: "YouTube",
 };
 
 export function sourceShortLabel(sourceType: string | null | undefined): string {

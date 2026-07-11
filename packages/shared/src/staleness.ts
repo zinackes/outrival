@@ -54,6 +54,7 @@ export function mapSourceTypeToCategory(sourceType: SourceType): StalenessCatego
       return "reviews";
     case "blog":
     case "changelog":
+    case "youtube":
       return "blog";
     case "github_repo":
       return "features";

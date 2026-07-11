@@ -43,6 +43,12 @@ export const SOURCE_TYPES = [
   // (beta./ai./{product}.) as an expansion / pre-announcement product signal.
   // Kept in sync with the DB source_type enum.
   "subdomains",
+  // YouTube channel videos (official videos.xml RSS). Like sitemap/news, an
+  // INTERNAL source — never user-selectable (excluded from plan gating, the enable
+  // route, and the source tabs). Seeded weekly at creation; the scraper resolves the
+  // channel from a homepage link and emits a sorted video list → the generic diff
+  // surfaces a brand-new upload as a content signal. Kept in sync with the DB enum.
+  "youtube",
 ] as const;
 
 export type SourceType = typeof SOURCE_TYPES[number];

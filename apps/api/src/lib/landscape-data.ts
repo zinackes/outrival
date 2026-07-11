@@ -18,7 +18,7 @@ import {
 // Everything is best-effort: a missing section renders empty, never throws.
 
 // Internal anchor sources — never user-meaningful as "monitored sources" lights.
-const INTERNAL_SOURCES = new Set(["tech_stack", "sitemap", "news", "ai_visibility", "subdomains"]);
+const INTERNAL_SOURCES = new Set(["tech_stack", "sitemap", "news", "ai_visibility", "subdomains", "youtube"]);
 
 const NEWS_FETCH_CAP = 10; // R2 reads per request — bounded
 const NEWS_PER_COMPETITOR = 3;

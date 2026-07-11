@@ -380,6 +380,9 @@ candidatesRouter.post("/:id/add", async (c) => {
       // Internal subdomains anchor (daily) — see competitors.ts POST. Certificate
       // Transparency (crt.sh) → diff surfaces new live subdomains (expansion / pre-launch).
       { competitorId: competitor.id, sourceType: "subdomains", frequency: "daily", scrapeStartedAt },
+      // Internal YouTube anchor (weekly) — see competitors.ts POST. Channel resolved
+      // from a homepage link → diff of the sorted video list surfaces new uploads.
+      { competitorId: competitor.id, sourceType: "youtube", frequency: "weekly", scrapeStartedAt },
     ])
     .returning();
 

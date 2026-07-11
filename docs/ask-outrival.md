@@ -99,6 +99,46 @@ shared provider layer. `POST` + SSE is read client-side via a `fetch` stream rea
   synthesis prompts (replacing the old "Regarding X:" question prefix). `competitorId`
   is only a hint — every tool still re-resolves it within the org.
 
+## Standing queries — watched questions
+
+A saved Ask answer kept under watch (`standing_queries`, migration 0036). "Watch this
+question" on any answer stores the question + its **baseline** (answer, validated
+citations, the sorted set of cited signal ids + hash) and the **watched entities**,
+extracted ONCE at creation: cited competitors (+ competitors of cited signals) and
+signal categories (cited signals' categories + deterministic keywords in the
+question). Empty lists = org-wide / any-category wildcard. Plan-capped BACKEND-side
+(`PLAN_LIMITS.standingQueries`: 3 free / 10 starter / 999 pro+, 403
+`plan_limit_standing_queries` → paywall).
+
+- **Targeted re-evaluation, no blind cron**: `generate-signal` fires
+  `evaluate-standing-queries` (fire-and-forget, never for backfill) after each fresh
+  signal; only active queries matching the signal's competitor/category above their
+  `min_severity` and outside their `cooldown_hours` (default 6) re-run.
+  `signal-batching` is NOT hooked — every batched signal already went through
+  generate-signal (hooking both would double-trigger).
+- **One Q&A path**: the worker re-runs the question through the SAME agent via
+  `POST /api/internal/ask/run` (shared secret `INTERNAL_API_SECRET`, mounted outside
+  authMiddleware; unset → 404 + workers skip). The run is headless:
+  `runAskAgent(..., { persistHistory: false })` so re-evals never pollute "Recent
+  questions"; the parse-miss fallback is marked `grounded: false` and treated as a
+  failed run (state untouched).
+- **Change = cited-signal SETS, never answer text** (the LLM rephrases freely). Same
+  set → silence, judge never consulted → a reformulation can't alert. Different set →
+  fast-tier judge (`standing_query_judge` in ai_runs) arbitrates substance over the
+  baseline vs fresh answers + added/removed signal insights. Known blind spot
+  (accepted): an answer grounded only on pricing/jobs/reviews data cites no signals,
+  so its set never moves.
+- **Hysteresis**: `pending_count` — first material eval arms (no alert), a second
+  consecutive one alerts, promotes the fresh answer to baseline and stamps
+  `last_alerted_at`/`last_change_summary`; any non-material eval disarms.
+- **Alert**: routed through `decideDispatch` (quiet hours/caps/muted consistent with
+  signals) → in-app notification `standing_query` + immediate email only for
+  realtime-alert plans (best-effort). **Digest**: queries alerted during the week land
+  in the weekly email as "Your watched questions" (`content.watchedQuestions`,
+  attached deterministically like `sectoralTrends`).
+- **UI**: watch button on the answer card (ask-panel), watched list on
+  `/dashboard/ask` (pause/resume re-enters the plan cap, delete).
+
 ## Deferred
 
 - Multi-turn conversation (`ask_conversations` parent + prior-turn prompting).

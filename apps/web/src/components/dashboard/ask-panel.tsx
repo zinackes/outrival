@@ -12,6 +12,7 @@ import {
   CornerDownLeft,
   Crosshair,
   DollarSign,
+  Eye,
   GitCompare,
   Info,
   Loader2,
@@ -28,6 +29,10 @@ import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { PageHead } from "./page-head";
+import {
+  PaywallDialog,
+  type PaywallReason,
+} from "@/components/outrival/paywall-dialog";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -165,6 +170,11 @@ export function AskPanel({
   const [isMac, setIsMac] = useState(false);
   const [suggestions, setSuggestions] = useState<Suggestion[]>(DEFAULT_SUGGESTIONS);
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  // "Watch this question" — the exact question the shown answer belongs to (the
+  // textarea may have been edited since), plus the save/watching state.
+  const [answeredQuestion, setAnsweredQuestion] = useState<string | null>(null);
+  const [watchState, setWatchState] = useState<"idle" | "saving" | "watching">("idle");
+  const [paywall, setPaywall] = useState<PaywallReason | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -197,6 +207,8 @@ export function AskPanel({
     setCitations(item.citations ?? []);
     setError(null);
     setCopied(false);
+    setAnsweredQuestion(item.question);
+    setWatchState("idle");
   }
 
   // Back to the empty state (suggestions + recent questions).
@@ -208,6 +220,50 @@ export function AskPanel({
     setAnswer(null);
     setCitations([]);
     setError(null);
+    setAnsweredQuestion(null);
+    setWatchState("idle");
+  }
+
+  // Save the shown answer as a standing query: it will be re-evaluated when new
+  // signals touch the entities it cites, and alert on a confirmed material change.
+  async function watchQuestion() {
+    if (!answer || !answeredQuestion || watchState !== "idle") return;
+    const scopedContext =
+      context && scoped ? { label: context.label, competitorId: context.competitorId } : null;
+    setWatchState("saving");
+    try {
+      const res = await fetch(`${BASE}/api/standing-queries`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: answeredQuestion,
+          answer,
+          citations,
+          context: scopedContext ?? undefined,
+        }),
+      });
+      if (res.ok) {
+        setWatchState("watching");
+        return;
+      }
+      if (res.status === 403) {
+        const body = (await res.json().catch(() => ({}))) as PaywallReason & {
+          error?: string;
+        };
+        if (body.error === "plan_limit_standing_queries") {
+          setPaywall({
+            code: body.error,
+            plan: body.plan,
+            limit: body.limit,
+            used: body.used,
+          });
+        }
+      }
+      setWatchState("idle");
+    } catch {
+      setWatchState("idle");
+    }
   }
 
   useEffect(() => {
@@ -279,6 +335,8 @@ export function AskPanel({
     setCitations([]);
     setError(null);
     setCopied(false);
+    setAnsweredQuestion(null);
+    setWatchState("idle");
 
     try {
       const res = await fetch(`${BASE}/api/ask`, {
@@ -336,6 +394,7 @@ export function AskPanel({
           createdAt: new Date().toISOString(),
         };
         setHistory((h) => [item, ...h].slice(0, 50));
+        setAnsweredQuestion(trimmed);
       }
     } catch (e) {
       if (!(e instanceof DOMException && e.name === "AbortError")) {
@@ -558,19 +617,47 @@ export function AskPanel({
                 <span className="size-1.5 rounded-full bg-[var(--link)]" aria-hidden />
                 Answer
               </span>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={copyAnswer}
-                aria-label={copied ? "Copied" : "Copy answer"}
-                title={copied ? "Copied" : "Copy answer"}
-              >
-                {copied ? (
-                  <Check className="size-3.5 text-[var(--positive)]" />
-                ) : (
-                  <Copy className="size-3.5 text-muted-foreground" />
+              <div className="flex items-center gap-1">
+                {answeredQuestion && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => void watchQuestion()}
+                    disabled={watchState !== "idle"}
+                    title="Re-check this question when new signals touch it, and alert you when the answer materially changes"
+                  >
+                    {watchState === "watching" ? (
+                      <>
+                        <Check className="size-3.5 text-[var(--positive)]" />
+                        Watching
+                      </>
+                    ) : watchState === "saving" ? (
+                      <>
+                        <Loader2 className="size-3.5 animate-spin" />
+                        Watching…
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="size-3.5 text-muted-foreground" />
+                        Watch this question
+                      </>
+                    )}
+                  </Button>
                 )}
-              </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={copyAnswer}
+                  aria-label={copied ? "Copied" : "Copy answer"}
+                  title={copied ? "Copied" : "Copy answer"}
+                >
+                  {copied ? (
+                    <Check className="size-3.5 text-[var(--positive)]" />
+                  ) : (
+                    <Copy className="size-3.5 text-muted-foreground" />
+                  )}
+                </Button>
+              </div>
             </div>
 
             <p className="text-content leading-relaxed whitespace-pre-wrap text-foreground">{answer}</p>
@@ -604,6 +691,8 @@ export function AskPanel({
           </button>
         </div>
       )}
+
+      {paywall && <PaywallDialog reason={paywall} onClose={() => setPaywall(null)} />}
     </div>
   );
 }

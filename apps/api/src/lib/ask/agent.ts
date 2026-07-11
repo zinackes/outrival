@@ -32,7 +32,9 @@ export interface AskPageContext {
 export type AskEvent =
   | { type: "status"; phase: "planning" | "running" | "synthesizing" }
   | { type: "tool"; name: string }
-  | { type: "answer"; answer: string; citations: AskCitation[] }
+  // `grounded: false` marks the parse-miss fallback copy (never persisted); the
+  // standing-query re-evaluation must not mistake it for a real empty answer.
+  | { type: "answer"; answer: string; citations: AskCitation[]; grounded?: boolean }
   | { type: "error"; message: string }
   | { type: "done" };
 
@@ -55,17 +57,24 @@ function stripInlineIds(text: string): string {
 
 export type AskEmit = (ev: AskEvent) => Promise<void> | void;
 
+export interface AskRunOptions {
+  // Standing-query re-evaluations run the same agent headlessly; they must not
+  // land in the user's "Recent questions" list. Default true (interactive path).
+  persistHistory?: boolean;
+}
+
 export function runAskAgent(
   orgId: string,
   userId: string,
   question: string,
   context: AskPageContext | null,
   emit: AskEmit,
+  options?: AskRunOptions,
 ): Promise<void> {
   // withAiContext spans both passes AND their log sites. Bun (the API runtime)
   // drops the lazy child-frame enterWith complete() falls back on, so without
   // this every ask row in ai_runs carried 0 tokens and a static model label.
-  return withAiContext(() => runAsk(orgId, userId, question, context, emit));
+  return withAiContext(() => runAsk(orgId, userId, question, context, emit, options));
 }
 
 async function runAsk(
@@ -74,6 +83,7 @@ async function runAsk(
   question: string,
   context: AskPageContext | null,
   emit: AskEmit,
+  options?: AskRunOptions,
 ): Promise<void> {
   // Flatten the page context into one line injected into both prompts.
   const contextStr = context
@@ -163,22 +173,25 @@ async function runAsk(
           .map((id) => ({ type: "competitor" as const, id, label: competitorNames.get(id)! }));
       }
       const cleanAnswer = stripInlineIds(answer.value.answer);
-      await emit({ type: "answer", answer: cleanAnswer, citations });
+      await emit({ type: "answer", answer: cleanAnswer, citations, grounded: true });
       // Persist only real answers (best-effort) — the fallback below isn't worth logging.
-      void persistAskHistory({
-        orgId,
-        userId,
-        question,
-        answer: cleanAnswer,
-        citations,
-        context,
-      });
+      if (options?.persistHistory !== false) {
+        void persistAskHistory({
+          orgId,
+          userId,
+          question,
+          answer: cleanAnswer,
+          citations,
+          context,
+        });
+      }
     } else {
       await emit({
         type: "answer",
         answer:
           "I couldn't produce a grounded answer for that. Try rephrasing, or name a specific competitor.",
         citations: [],
+        grounded: false,
       });
     }
     await emit({ type: "done" });

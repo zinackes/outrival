@@ -33,6 +33,9 @@ export interface PlanLimits {
   forcedRescansPerDay: number;
   battleCardsPerDay: number;
   discoveriesPerMonth: number;
+  // Max ACTIVE standing queries (watched Ask questions) per org. Each one costs
+  // 2-3 pool AI calls per re-evaluation, so the cap bounds background AI spend.
+  standingQueries: number;
   // Source-of-truth values whose enforcement is deferred (see docs/tier-limits.md):
   // usersPerOrg → at invitation (Phase 10 multi-user), historyRetentionDays → purge job.
   usersPerOrg: number;
@@ -63,6 +66,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     forcedRescansPerDay: 1,
     battleCardsPerDay: 1,
     discoveriesPerMonth: 3,
+    standingQueries: 3,
     usersPerOrg: 1,
     historyRetentionDays: 7,
     // Battle cards now open to every tier, governed by battleCardsPerDay (not a hard gate).
@@ -77,6 +81,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     forcedRescansPerDay: 5,
     battleCardsPerDay: 10,
     discoveriesPerMonth: 20,
+    standingQueries: 10,
     usersPerOrg: 1,
     historyRetentionDays: 30,
     features: { battleCards: true, realtimeAlerts: false, api: false, multiUser: false, fullMode: true, crmIntegrations: false, aiVisibility: false },
@@ -90,6 +95,9 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     forcedRescansPerDay: 20,
     battleCardsPerDay: 50,
     discoveriesPerMonth: 100,
+    // "Unlimited" per the spec — encoded as a real anti-abuse ceiling (house rule
+    // 2026-06-04: no literal unlimited anywhere).
+    standingQueries: 999,
     usersPerOrg: 3,
     historyRetentionDays: 365,
     features: { battleCards: true, realtimeAlerts: true, api: false, multiUser: false, fullMode: true, crmIntegrations: false, aiVisibility: true },
@@ -111,6 +119,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     forcedRescansPerDay: 100,
     battleCardsPerDay: 100,
     discoveriesPerMonth: 500,
+    standingQueries: 999,
     usersPerOrg: 10,
     historyRetentionDays: 1095,
     features: { battleCards: true, realtimeAlerts: true, api: false, multiUser: false, fullMode: true, crmIntegrations: true, aiVisibility: true },

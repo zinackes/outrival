@@ -40,6 +40,8 @@ import { recapRouter } from "./routes/recap";
 import { aiVisibilityRouter } from "./routes/ai-visibility";
 import { compareRouter } from "./routes/compare";
 import { askRouter } from "./routes/ask";
+import { standingQueriesRouter } from "./routes/standing-queries";
+import { internalRouter } from "./routes/internal";
 import { savedViewsRouter } from "./routes/saved-views";
 import { crmDestinationsRouter } from "./routes/crm-destinations";
 import { systemRouter } from "./routes/system";
@@ -118,6 +120,10 @@ app.route("/api/public/report", publicReportRouter);
 app.route("/api/ai-visibility", aiVisibilityRouter);
 app.route("/api/compare", compareRouter);
 app.route("/api/ask", askRouter);
+app.route("/api/standing-queries", standingQueriesRouter);
+// Worker→API internal calls, shared-secret authenticated (no session middleware) —
+// answers 404 across the board when INTERNAL_API_SECRET is unset.
+app.route("/api/internal", internalRouter);
 app.route("/api/saved-views", savedViewsRouter);
 app.route("/api/crm-destinations", crmDestinationsRouter);
 app.route("/api/system", systemRouter);

@@ -234,6 +234,22 @@ ask_history            id, org_id, user_id, question, answer, citations (jsonb),
                        a été posée, nullable), created_at — historique Ask Outrival
                        mono-tour, 1 ligne/échange, scopé (org, user), écrit best-effort.
                        Multi-tour (ask_conversations parent) différé. 📄 docs/ask-outrival.md
+
+standing_queries       id, org_id, user_id, question, context (jsonb),
+                       watched_competitor_ids / watched_categories (jsonb — entités
+                       extraites UNE fois à la création depuis les citations ; vides =
+                       wildcard org / toute catégorie), min_severity (seuil de
+                       matérialité), cooldown_hours (def 6), current_answer /
+                       current_citations / current_signal_ids / current_hash (baseline =
+                       ensemble trié des signaux cités — la détection de changement ne
+                       diffe JAMAIS le texte), pending_count (hystérèse : alerte à la 2e
+                       éval matérielle consécutive), last_evaluated_at, last_alerted_at,
+                       last_change_summary, is_active — question Ask sauvegardée et
+                       surveillée (migration 0036). Réévaluée en aval de generate-signal
+                       (déclenchement ciblé, pas de cron), via POST /api/internal/ask/run
+                       (même pipeline Ask, INTERNAL_API_SECRET). Cap par plan
+                       (PLAN_LIMITS.standingQueries 3/10/999/999, 403
+                       plan_limit_standing_queries). 📄 docs/ask-outrival.md
 ```
 
 ### Enums Postgres
@@ -260,9 +276,10 @@ frequency         realtime | daily | weekly
 signal_severity   low | medium | high | critical
 signal_category   pricing | product | hiring | reviews | content | funding
 notification_type signal | new_competitor | self_change | onboarding_complete |
-                  structural_change | silent_monitor
+                  structural_change | silent_monitor | analysis_ready | standing_query
                   (silent_monitor = patch-27, source sans signal depuis 60j+ ;
-                   1/org/30j via le dispatcher patch-26)
+                   1/org/30j via le dispatcher patch-26. standing_query = question
+                   surveillée dont la réponse a matériellement changé, migration 0036)
 candidate_status  new | added | dismissed
 candidate_source  detection | onboarding
 battle_card_status pending | generating | ready | failed
@@ -502,6 +519,22 @@ carte (état live uniquement).
   └─ L2 backfill : si le snapshot_before du change est origin=archive → bypass du
        dispatcher, dispatched_channel=in_app_only + filtered_reason='backfill' (jamais
        email/Slack, ne consomme pas le cap) ; badge "From archive" sur la carte signal
+  └─ STANDING QUERIES : trigger ciblé evaluate-standing-queries {orgId, competitorId,
+       category, severity, signalId} (fire-and-forget, jamais sur backfill)
+
+[par signal touchant une question surveillée] evaluate-standing-queries
+  └─ match : queries actives de l'org dont watched_competitor_ids/categories couvrent
+       le signal (vides = wildcard), severity ≥ min_severity, cooldown écoulé
+  └─ re-run de la question via POST /api/internal/ask/run (MÊME pipeline Ask, headless,
+       persistHistory:false, secret INTERNAL_API_SECRET ; absent → skip propre)
+  └─ ensembles de signaux cités égaux → silence (jamais de diff texte : une
+       reformulation ne peut pas alerter) ; différents → juge fast standing_query_judge
+       (« la substance a-t-elle changé ? », loggé ai_runs)
+  └─ hystérèse pending_count : 1re éval matérielle arme, la 2e consécutive alerte →
+       promotion de la réponse fraîche en baseline + decideDispatch → notification
+       in-app standing_query + email si email_immediate ET realtimeAlerts (best-effort)
+  └─ queue groqQueue (ne starve pas classify→signal) ; coût borné : ciblage + cooldown
+       6h + juge seulement si l'ensemble a bougé
 
 [par signal critique] send-alert
   └─ insert notification (in-app, si realtimeAlerts dans le plan)
@@ -732,6 +765,9 @@ AUTH_RATE_LIMIT_EMAIL=3      # patch-19 — max attempts per email per window (U
 AUTH_RATE_LIMIT_IP=10        # patch-19 — max attempts per IP per window
 AUTH_RATE_LIMIT_WINDOW_MIN=15 # patch-19 — window length in minutes
 RESEND_AUTH_FROM=            # patch-19 — optional, defaults to "Outrival <auth@outrival.io>"
+INTERNAL_API_SECRET=         # standing queries — shared secret worker→API (POST /api/internal/ask/run),
+                            # 16+ chars, MÊME valeur sur api ET workers. Vide → routes internes 404,
+                            # queries sauvées mais jamais réévaluées (dégradation propre)
 
 # Jobs
 TRIGGER_SECRET_KEY=          # Trigger.dev — being replaced by pg-boss (removed at migration Phase 7)

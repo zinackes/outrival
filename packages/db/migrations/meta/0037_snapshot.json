@@ -1,6 +1,6 @@
 {
-  "id": "762f48db-ff9c-4772-88b6-d68ed051a677",
-  "prevId": "438bb110-8355-479a-85f4-20bf4b9fb96d",
+  "id": "be0092b0-80ae-4c0d-8d45-28eeaf172b70",
+  "prevId": "762f48db-ff9c-4772-88b6-d68ed051a677",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -7443,7 +7443,8 @@
         "sitemap",
         "news",
         "ai_visibility",
-        "subdomains"
+        "subdomains",
+        "youtube"
       ]
     },
     "public.snapshot_status": {

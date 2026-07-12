@@ -196,10 +196,24 @@ export const auth = betterAuth({
       const maxAge = 600; // seconds — matches the plugin's twoFactorCookieMaxAge default
       const twoFactorCookie = ctx.context.createAuthCookie("two_factor", { maxAge });
       const identifier = `2fa-${crypto.randomUUID().replace(/-/g, "")}`;
+      const expiresAt = new Date(Date.now() + maxAge * 1000);
       await ctx.context.internalAdapter.createVerificationValue({
         value: data.user.id,
         identifier,
-        expiresAt: new Date(Date.now() + maxAge * 1000),
+        expiresAt,
+      });
+      // better-auth 1.6.22's /two-factor/verify-totp gates each SIGN-IN attempt behind a
+      // per-challenge budget: verifyTwoFactor().beginAttempt(5) consumes the record
+      // `2fa-attempts-<challenge>` and throws INVALID_TWO_FACTOR_COOKIE *before the code is
+      // even checked* when it's missing (two-factor/verify-two-factor.mjs). The plugin's own
+      // password sign-in seeds it alongside the challenge (two-factor/index.mjs:245), so our
+      // hand-rolled challenge for email-OTP/Google must too — otherwise every TOTP LOGIN fails
+      // with "code didn't match". Enrollment is exempt (live session → isSignIn=false → the
+      // totp route never calls beginAttempt). Value "0" = zero attempts spent, same expiry.
+      await ctx.context.internalAdapter.createVerificationValue({
+        value: "0",
+        identifier: `2fa-attempts-${identifier}`,
+        expiresAt,
       });
       await ctx.setSignedCookie(
         twoFactorCookie.name,

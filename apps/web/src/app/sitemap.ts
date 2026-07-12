@@ -21,6 +21,7 @@ const ROUTES: Array<{
   { path: "/changelog", changeFrequency: "weekly", priority: 0.6 },
   { path: "/docs", changeFrequency: "monthly", priority: 0.5 },
   { path: "/status", changeFrequency: "daily", priority: 0.4 },
+  { path: "/security", changeFrequency: "yearly", priority: 0.4 },
   { path: "/privacy", changeFrequency: "yearly", priority: 0.3 },
   { path: "/terms", changeFrequency: "yearly", priority: 0.3 },
   { path: "/dpa", changeFrequency: "yearly", priority: 0.3 },

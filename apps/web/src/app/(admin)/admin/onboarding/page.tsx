@@ -1,10 +1,29 @@
 import { AlertTriangle } from "lucide-react";
 import { adminFetch } from "../_lib/server";
 import { PageHeader, Section, Stat, Empty, durationFmt, pctFmt } from "../_components/shell";
-import type { AdminOnboardingMetrics } from "@/lib/api";
+import type { AdminFirstSignalSlo, AdminOnboardingMetrics } from "@/lib/api";
+
+// First-signal SLO status → human label + token color. Kept local so the shared
+// StatusPill sets stay untouched.
+const SLO_STATUS: Record<
+  Exclude<AdminFirstSignalSlo, { available: false }>["status"],
+  { label: string; color: string }
+> = {
+  healthy: { label: "Healthy", color: "var(--positive)" },
+  degrading: { label: "Degrading", color: "var(--accent)" },
+  budget_exhausted: { label: "Budget exhausted", color: "var(--critical)" },
+  insufficient_data: { label: "Insufficient data", color: "var(--muted-foreground)" },
+};
+
+function pctOrDash(pct: number | null): string {
+  return pct == null ? "—" : pctFmt(pct);
+}
 
 export default async function OnboardingMetricsPage() {
-  const m = await adminFetch<AdminOnboardingMetrics>("/api/admin/onboarding-metrics");
+  const [m, slo] = await Promise.all([
+    adminFetch<AdminOnboardingMetrics>("/api/admin/onboarding-metrics"),
+    adminFetch<AdminFirstSignalSlo>("/api/admin/first-signal-slo"),
+  ]);
 
   if (!m) {
     return (
@@ -25,6 +44,56 @@ export default async function OnboardingMetricsPage() {
         title="Onboarding"
         subtitle={`Funnel timing & drop-off — last ${m.windowDays} days, ${m.total} session${m.total === 1 ? "" : "s"}.`}
       />
+
+      <Section
+        title="First-signal SLO"
+        note="< 10 min · target 70% / 28d"
+        info="Share of completed onboardings whose org saw its first signal within 10 minutes — the landing's cold-start promise, measured. Only onboardings whose 10-minute window has elapsed count. Thresholds match the ops alert (docs/slos/onboarding-first-signal.md)."
+      >
+        {!slo || !slo.available ? (
+          <Empty>Not enough completed onboardings yet.</Empty>
+        ) : (
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center gap-3">
+              <span
+                className="inline-flex items-center rounded-full border px-2 py-0.5 text-meta font-medium"
+                style={{
+                  borderColor: SLO_STATUS[slo.status].color,
+                  color: SLO_STATUS[slo.status].color,
+                }}
+              >
+                {SLO_STATUS[slo.status].label}
+              </span>
+              {slo.recentAllMiss && (
+                <span
+                  className="inline-flex items-center gap-1 text-meta font-medium"
+                  style={{ color: "var(--critical)" }}
+                >
+                  <AlertTriangle className="size-3" />
+                  last 3 onboardings all missed
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-6 md:grid-cols-3">
+              <Stat
+                label="28d compliance"
+                value={pctOrDash(slo.window.pct)}
+                hint={`${slo.window.within}/${slo.window.completions} · target ${pctFmt(slo.target)}`}
+              />
+              <Stat
+                label="7d compliance"
+                value={pctOrDash(slo.week.pct)}
+                hint={`${slo.week.within}/${slo.week.completions}`}
+              />
+              <Stat
+                label="Coverage (24h)"
+                value={pctOrDash(slo.coverage24h.pct)}
+                hint={`${slo.coverage24h.within}/${slo.coverage24h.completions} within 24h`}
+              />
+            </div>
+          </div>
+        )}
+      </Section>
 
       <Section
         title="Status"

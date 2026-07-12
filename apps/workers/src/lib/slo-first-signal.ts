@@ -1,33 +1,25 @@
 import { logger } from "@trigger.dev/sdk/v3";
 import { sql } from "drizzle-orm";
 import { db } from "@outrival/db";
+import {
+  FIRST_SIGNAL_SLO_TARGET as SLO_TARGET,
+  FIRST_SIGNAL_WEEK_DEGRADED_BELOW as WEEK_DEGRADED_BELOW,
+  FIRST_SIGNAL_WEEK_MIN_SAMPLE as WEEK_MIN_SAMPLE,
+  FIRST_SIGNAL_WINDOW_MIN_SAMPLE as WINDOW_MIN_SAMPLE,
+  FIRST_SIGNAL_CONSECUTIVE_MISSES as CONSECUTIVE_MISSES,
+  type FirstSignalSloInputs,
+  type ComplianceWindow,
+} from "@outrival/shared";
 
 // First-signal SLO (docs/slos/onboarding-first-signal.md): SLI = share of
 // onboarding completions whose org saw its first signal within 10 minutes.
 // Low-traffic alerting is EVENT-based (burn rates are meaningless at 1-3
 // onboardings/day): 3 consecutive misses page, trailing-window compliance
 // tickets. Reads run against the same Neon database (onboarding_sessions ⋈
-// signals); evaluation is pure and unit-tested.
+// signals); evaluation is pure and unit-tested. Thresholds + the FirstSignalSloInputs
+// shape are the single source in @outrival/shared, shared with the /admin readout.
 
-export const SLO_TARGET = 0.7; // 70% over 28d — ratchet plan lives in the SLO doc
-export const WEEK_DEGRADED_BELOW = 0.5;
-export const WEEK_MIN_SAMPLE = 5;
-export const WINDOW_MIN_SAMPLE = 10;
-export const CONSECUTIVE_MISSES = 3;
-
-export interface ComplianceWindow {
-  completions: number;
-  within: number;
-}
-
-export interface FirstSignalSloInputs {
-  /** Hit/miss of the most recent completions whose 10-min window has elapsed, newest first. */
-  recent: boolean[];
-  week: ComplianceWindow; // trailing 7d
-  window: ComplianceWindow; // trailing 28d (the SLO window)
-  /** Companion coverage metric (≤ 24h), logged but never alerted on yet. */
-  coverage24h: ComplianceWindow;
-}
+export type { FirstSignalSloInputs, ComplianceWindow } from "@outrival/shared";
 
 /**
  * One event per completed onboarding session (the SLO doc's definition — the

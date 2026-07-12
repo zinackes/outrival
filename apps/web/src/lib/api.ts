@@ -1464,6 +1464,24 @@ export type AdminOnboardingMetrics = {
   funnel: Array<{ key: string; label: string; reached: number; dropoffPct: number | null }>;
 };
 
+export type AdminFirstSignalCompliance = {
+  completions: number;
+  within: number;
+  pct: number | null;
+};
+
+export type AdminFirstSignalSlo =
+  | { available: false }
+  | {
+      available: true;
+      target: number;
+      week: AdminFirstSignalCompliance;
+      window: AdminFirstSignalCompliance;
+      coverage24h: AdminFirstSignalCompliance;
+      status: "healthy" | "degrading" | "budget_exhausted" | "insufficient_data";
+      recentAllMiss: boolean;
+    };
+
 export type AdminUserRow = {
   userId: string;
   email: string;

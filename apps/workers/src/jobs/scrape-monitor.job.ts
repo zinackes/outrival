@@ -11,7 +11,9 @@ import {
   volatileLines,
   monitorAlternatives,
   forcedRescanLog,
+  onboardingSessions,
 } from "@outrival/db";
+import { stampFirstScrape } from "../lib/onboarding-funnel";
 import {
   clampFrequencyToPlan,
   computeHash,
@@ -815,6 +817,27 @@ export const scrapeMonitorJob = task({
       .returning();
 
     if (!newSnapshot) throw new Error("Failed to insert snapshot");
+
+    // Cold-start funnel (F2): stamp the org's first post-onboarding scrape into the
+    // latest onboarding session. Recency-gated (7d) so it can never back-stamp a
+    // historical session. Best-effort — never blocks the scrape.
+    try {
+      const session = await db.query.onboardingSessions.findFirst({
+        where: eq(onboardingSessions.orgId, competitor.orgId),
+        orderBy: (t, { desc }) => desc(t.startedAt),
+      });
+      if (session) {
+        const next = stampFirstScrape(session, Date.now(), 7 * 86_400_000);
+        if (next) {
+          await db
+            .update(onboardingSessions)
+            .set({ timings: next })
+            .where(eq(onboardingSessions.id, session.id));
+        }
+      }
+    } catch (err) {
+      logger.warn("first_scrape stamp failed (non-fatal)", { error: String(err) });
+    }
 
     // Pricing taxonomy (patch-11): analyse the page we just captured, store the
     // latest status on the competitor (unless the user took manual control), and

@@ -32,7 +32,7 @@ export function CompareFaq({
             >
               hello@outrival.app
             </a>{" "}
-            and a human answers.
+            and the founder answers.
           </p>
         </div>
         <Accordion

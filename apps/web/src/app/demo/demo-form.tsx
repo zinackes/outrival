@@ -86,8 +86,9 @@ export function DemoForm({ defaultPlan }: { defaultPlan?: string }) {
           Thanks — we&apos;ll be in touch.
         </h2>
         <p className="mt-2 text-sm leading-relaxed text-text-muted">
-          Your request landed in our inbox. Expect a reply within one business
-          day at <span className="text-foreground">{form.email}</span>.
+          Your message landed in our inbox at{" "}
+          <span className="text-foreground">{form.email}</span>. The founder
+          reads every one and will reply personally.
         </p>
       </div>
     );

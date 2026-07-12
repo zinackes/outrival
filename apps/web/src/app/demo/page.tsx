@@ -6,15 +6,15 @@ import { ProductShot } from "@/components/landing/product-shot";
 import { DemoForm } from "./demo-form";
 
 export const metadata: Metadata = {
-  title: "Request a demo",
+  title: "See Outrival",
   description:
-    "Talk to the Outrival team — book a live demo on your own market, or ask about the Business plan.",
+    "See Outrival on your own competitors — a live look at the product and a sample of the weekly digest.",
   alternates: { canonical: "/demo" },
 };
 
 const DEMO_POINTS = [
-  "A live walkthrough on your actual competitors",
-  "How the weekly digest and real-time alerts read for your market",
+  "How Outrival reads your actual competitors",
+  "What the weekly digest and real-time alerts look like for your market",
   "Answers on plans, onboarding, and EU hosting",
 ];
 
@@ -77,14 +77,14 @@ export default async function DemoPage({
         </section>
         <div>
           <span className="text-meta font-medium uppercase tracking-wider text-primary">
-            {isBusiness ? "Business plan" : "Request a demo"}
+            {isBusiness ? "Business plan" : "See the product"}
           </span>
           <h1 className="mt-3 text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">
             {isBusiness ? (
               <>
-                Let&apos;s talk
+                See Outrival
                 <br />
-                about Business.
+                for Business.
               </>
             ) : (
               <>
@@ -96,8 +96,8 @@ export default async function DemoPage({
           </h1>
           <p className="mt-5 max-w-md text-lg leading-relaxed text-text-muted">
             {isBusiness
-              ? "Business is sales-assisted so we can set up your workspace, users, and DPA. Tell us a little and we'll be in touch within one business day."
-              : "Tell us what you'd like to see. We'll get back within one business day — usually with a demo booked on your own market."}
+              ? "Business is self-serve — you can start it right from sign-up. Need SSO, a custom DPA, or a hand importing users? Tell us here and we'll get you set up."
+              : "Want a closer look before you start? Tell us your market and we'll show you what Outrival surfaces for it. You can also start free right now — no call needed."}
           </p>
           <ul className="mt-8 space-y-3">
             {points.map((p) => (
@@ -107,7 +107,18 @@ export default async function DemoPage({
               </li>
             ))}
           </ul>
-          <p className="mt-8 text-xs text-text-subtle">
+          {/* TODO: point to /sample once the standalone sample-digest page ships. */}
+          <p className="mt-8 text-sm text-text-muted">
+            Just want to see the output?{" "}
+            <a
+              href="/#digest"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              See a sample digest
+            </a>{" "}
+            on the homepage — no form needed.
+          </p>
+          <p className="mt-4 text-xs text-text-subtle">
             Prefer email? Write to{" "}
             <a
               href="mailto:hello@outrival.app"

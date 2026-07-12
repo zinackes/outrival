@@ -19,6 +19,7 @@ import { buildPricingSeries } from "./charts";
 import { PricingPlansEditor } from "./pricing-plans-editor";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatTierPrice } from "./helpers";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Empty,
   TabLoading,
@@ -347,6 +348,36 @@ function convertedLabel(
   return `≈ ${formatTierPrice({ price: rounded, currency: to, billing_period: tier.billing_period })}`;
 }
 
+type PeriodChoice = "monthly" | "yearly";
+
+// One offer billed monthly and the same offer billed yearly are the SAME plan,
+// not two tiers — but the toggle-capture scrape stores them as two rows, so
+// without this they'd rank as two separate tiers (Starter at Entry, its yearly
+// variant several rows up). Collapse tiers sharing a plan name to one row and
+// pick the variant for the active period. Period-neutral tiers (custom/one_time)
+// and plans that only exist in the other period are kept so nothing disappears
+// when the toggle flips.
+function collapseByPlan<
+  T extends { plan_name: string; price: number | null; billing_period: string },
+>(tiers: T[], period: PeriodChoice): T[] {
+  const other = period === "monthly" ? "yearly" : "monthly";
+  const groups = new Map<string, T[]>();
+  for (const t of tiers) {
+    const key = t.plan_name.trim().toLowerCase();
+    const group = groups.get(key);
+    if (group) group.push(t);
+    else groups.set(key, [t]);
+  }
+  return Array.from(groups.values(), (group) => {
+    const active = group.find((t) => t.billing_period === period);
+    if (active) return active;
+    const neutral = group.find(
+      (t) => t.billing_period !== "monthly" && t.billing_period !== "yearly",
+    );
+    return neutral ?? group.find((t) => t.billing_period === other) ?? group[0]!;
+  });
+}
+
 // Sort tiers by ascending price, pushing quote-based tiers (price null) last so
 // the entry/top ranking reads off the numeric ones.
 function byPriceAsc(a: { price: number | null }, b: { price: number | null }): number {
@@ -448,8 +479,14 @@ function PricingComparison({
 }) {
   // Called before the early return so the hook order stays stable (rules of hooks).
   const fx = useFx();
-  const oursSorted = [...ours].sort(byPriceAsc);
-  const theirsSorted = [...theirs].sort(byPriceAsc);
+  const [period, setPeriod] = useState<PeriodChoice>("monthly");
+  // A toggle only makes sense when both periods exist somewhere; otherwise the
+  // collapse falls back to whatever period each plan has and we hide the switch.
+  const bothPeriods =
+    [...ours, ...theirs].some((t) => t.billing_period === "monthly") &&
+    [...ours, ...theirs].some((t) => t.billing_period === "yearly");
+  const oursSorted = collapseByPlan(ours, period).sort(byPriceAsc);
+  const theirsSorted = collapseByPlan(theirs, period).sort(byPriceAsc);
 
   if (oursSorted.length === 0) {
     return (
@@ -516,11 +553,30 @@ function PricingComparison({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-baseline justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <p className="text-sm font-medium">Pricing comparison</p>
-        <p className="truncate text-xs text-muted-foreground">
-          You vs {competitorName}
-        </p>
+        <div className="flex items-center gap-3">
+          {bothPeriods && (
+            <ToggleGroup
+              type="single"
+              size="sm"
+              variant="outline"
+              value={period}
+              onValueChange={(v) => v && setPeriod(v as PeriodChoice)}
+              aria-label="Billing period"
+            >
+              <ToggleGroupItem value="monthly" className="text-xs">
+                Monthly
+              </ToggleGroupItem>
+              <ToggleGroupItem value="yearly" className="text-xs">
+                Yearly
+              </ToggleGroupItem>
+            </ToggleGroup>
+          )}
+          <p className="truncate text-xs text-muted-foreground">
+            You vs {competitorName}
+          </p>
+        </div>
       </div>
 
       {/* table-fixed + bounded widths so long plan names truncate instead of

@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 import { ArrowLeft, ArrowRight, CornerDownRight, Eye, EyeOff, Fingerprint, Loader2, Mail, ShieldCheck } from "lucide-react";
 import { emailSchema } from "@outrival/shared";
@@ -28,8 +27,17 @@ function validateEmailInline(email: string): string | null {
   return result.success ? null : (result.error.issues[0]?.message ?? "Invalid email");
 }
 
+// A full-page navigation (not router.push) after a successful sign-in. The auth
+// fetch we just awaited set the session cookie cross-subdomain; a soft nav can let
+// the server RSC gate (dashboard/onboarding) resolve before that fresh cookie is
+// visible to the request → the gate reads "no session" and bounces to /auth even
+// though the account is signed in. A top-level navigation always carries the cookie,
+// so the gate routes correctly (→ /onboarding for a new account, → /dashboard after).
+function goToDashboard() {
+  window.location.href = "/dashboard";
+}
+
 export function AuthForm() {
-  const router = useRouter();
   const turnstileRef = useRef<TurnstileInstance | null>(null);
   const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
@@ -154,7 +162,7 @@ export function AuthForm() {
         return;
       }
       if (data?.user?.id) identifyUser(data.user.id);
-      router.push("/dashboard");
+      goToDashboard();
     } catch {
       setStatus("error");
       setError("Couldn't reach the server. Check your connection and try again.");
@@ -171,7 +179,7 @@ export function AuthForm() {
         setError("Passkey sign-in didn't complete. Try again, or use your email.");
         return;
       }
-      router.push("/dashboard");
+      goToDashboard();
     } catch {
       setStatus("error");
       setError("Passkey sign-in didn't complete. Try again, or use your email.");
@@ -212,7 +220,7 @@ export function AuthForm() {
       return;
     }
     if (result.data?.user?.id) identifyUser(result.data.user.id);
-    router.push("/dashboard");
+    goToDashboard();
   }
 
   function togglePasswordMode() {
@@ -245,7 +253,7 @@ export function AuthForm() {
         );
         return;
       }
-      router.push("/dashboard");
+      goToDashboard();
     } catch {
       setStatus("error");
       setError("Couldn't reach the server. Check your connection and try again.");

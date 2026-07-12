@@ -9,6 +9,7 @@ export function Trust() {
             job — not yours.
           </p>
         </div>
+        <div>
         <dl className="grid grid-cols-2 gap-x-10 gap-y-7">
           <div>
             <dt className="text-2xl font-medium tracking-tight tabular-nums">
@@ -39,6 +40,10 @@ export function Trust() {
             <dd className="mt-1.5 text-xs text-text-muted">EU-hosted</dd>
           </div>
         </dl>
+          <p className="mt-5 text-xs text-text-subtle">
+            Illustrative figures based on our internal benchmarks.
+          </p>
+        </div>
       </div>
       <div className="mx-auto mt-12 w-full max-w-6xl border-t border-border px-6 pt-8">
         <p className="text-center text-sm text-text-muted">

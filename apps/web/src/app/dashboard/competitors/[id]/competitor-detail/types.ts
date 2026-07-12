@@ -6,5 +6,6 @@ export type TabKey =
   | "reviews"
   | "mentions"
   | "content"
+  | "custom"
   | "techstack"
   | "battlecard";

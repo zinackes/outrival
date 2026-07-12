@@ -46,6 +46,7 @@ import {
   Palette,
   HelpCircle,
   MessageSquare,
+  FileSearch,
 } from "lucide-react";
 import {
   Dialog,
@@ -88,6 +89,7 @@ import {
   type SourceType,
   type MonitorFrequency,
   type AnalysisStatus,
+  type CustomMonitorHint,
 } from "@outrival/shared";
 import { FreshnessDot } from "@/components/outrival/freshness-dot";
 import { AnalysisNotice, AnalysisProgress } from "@/components/outrival/analysis-status";
@@ -122,6 +124,7 @@ import { sourceShortLabel } from "@/lib/source-labels";
 import CompetitorDetailLoading from "./detail-skeleton";
 import {
   api,
+  ApiError,
   type Competitor,
   type Monitor,
   type ChangeRow,
@@ -148,6 +151,7 @@ import { MentionsTab } from "./competitor-detail/mentions-tab";
 import { OverviewTab } from "./competitor-detail/overview-tab";
 import { ActivityTab } from "./competitor-detail/activity-tab";
 import { ContentTab } from "./competitor-detail/content-tab";
+import { CustomTab, type CustomAddResult } from "./competitor-detail/custom-tab";
 import type { TabKey } from "./competitor-detail/types";
 
 const TABS: Array<{ key: TabKey; label: string; icon: typeof Activity }> = [
@@ -158,6 +162,7 @@ const TABS: Array<{ key: TabKey; label: string; icon: typeof Activity }> = [
   { key: "reviews", label: "Reviews", icon: Star },
   { key: "mentions", label: "Mentions", icon: MessageSquare },
   { key: "content", label: "Content", icon: FileText },
+  { key: "custom", label: "Custom", icon: FileSearch },
   { key: "techstack", label: "Tech stack", icon: Cpu },
   { key: "battlecard", label: "Battle Card", icon: Swords },
 ];
@@ -175,6 +180,7 @@ const TAB_SOURCES: Partial<Record<TabKey, string[]>> = {
   reviews: ["g2_reviews", "capterra_reviews", "trustpilot_reviews", "appstore_reviews"],
   mentions: ["reddit"],
   content: ["homepage", "blog", "changelog"],
+  custom: ["custom"],
 };
 
 function tabFreshness(key: TabKey, monitors: Monitor[]) {
@@ -911,6 +917,53 @@ export function CompetitorDetailView({ id }: { id: string }) {
     }
   }
 
+  // Add a custom-page monitor via the dedicated endpoint. Returns a result the
+  // dialog uses: `ok` closes it (and kicks off the first scrape), otherwise the
+  // domain-mismatch / duplicate message is shown inline so the user can fix the URL.
+  // The quota 403 (plan_limit_custom_monitors) still routes to the paywall.
+  async function addCustomMonitor(input: {
+    url: string;
+    label: string;
+    hint: CustomMonitorHint;
+  }): Promise<CustomAddResult> {
+    try {
+      const { monitor } = await api.addCustomMonitor(id, input);
+      const fresh = await refresh();
+      toast.success("Watching custom page", { description: "Starting first scrape…" });
+      await runMonitor(monitor.id, fresh?.monitors);
+      return { ok: true };
+    } catch (e) {
+      const reason = paywallFromError(e);
+      if (reason) {
+        setPaywall(reason);
+        return { ok: true };
+      }
+      if (e instanceof ApiError) {
+        if (e.code === "custom_url_domain_mismatch") {
+          return { ok: false, message: "That page isn't on this competitor's domain." };
+        }
+        if (e.code === "custom_url_duplicate") {
+          return { ok: false, message: "You're already watching that page." };
+        }
+        if (e.code === "invalid_monitor_url") {
+          return { ok: false, message: "That doesn't look like a valid https URL." };
+        }
+      }
+      toastApiError(e, { title: "Couldn't add that page" });
+      return { ok: true };
+    }
+  }
+
+  async function removeCustomMonitor(monitorId: string) {
+    try {
+      await api.deleteMonitor(monitorId);
+      await refresh();
+      toast.success("Stopped watching that page");
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't remove that page" });
+    }
+  }
+
   async function editMonitor(
     monitorId: string,
     patch: { url?: string; frequency?: MonitorFrequency },
@@ -1326,6 +1379,23 @@ export function CompetitorDetailView({ id }: { id: string }) {
                 onRun={requestRunMonitor}
                 onRefresh={refresh}
                 competitorUrl={competitor.url}
+              />
+            </TabsContent>
+            <TabsContent value="custom" className={TAB_PANEL_CLASS}>
+              <CustomTab
+                competitorUrl={competitor.url ?? ""}
+                plan={plan}
+                monitors={monitors}
+                scrapingIds={scrapingIds}
+                changes={recentChanges}
+                signals={recentSignals}
+                onRun={requestRunMonitor}
+                onRefresh={refresh}
+                onAddCustom={addCustomMonitor}
+                onDelete={removeCustomMonitor}
+                onLocked={() =>
+                  setPaywall({ code: "plan_limit_custom_monitors", plan, used: 0, limit: 0 })
+                }
               />
             </TabsContent>
             <TabsContent value="techstack" className={TAB_PANEL_CLASS}>

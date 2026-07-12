@@ -38,6 +38,10 @@ import {
   PRICING_STATUSES,
   isReviewSource,
   validateMonitorUrl,
+  validateCustomMonitorUrl,
+  normalizeCustomUrl,
+  CUSTOM_MONITOR_HINTS,
+  customMonitorLimit,
   validatePublicUrl,
   aggregateFreshness,
   deriveAnalysisStatus,
@@ -563,6 +567,13 @@ competitorsRouter.post("/:id/monitors", async (c) => {
   ) {
     return c.json({ error: "source_not_enableable", source: sourceType }, 400);
   }
+  // Custom pages are user-selectable but through their OWN flow (POST
+  // /:id/custom-monitors): they carry a {url, label, hint} config, a per-competitor
+  // quota, and allow several per competitor — none of which this single-source
+  // enable path models. Reject here so the two never overlap.
+  if (sourceType === "custom") {
+    return c.json({ error: "use_custom_monitor_endpoint", source: sourceType }, 400);
+  }
   const plan = await getOrgPlan(orgId);
   if (!isSourceAllowed(plan, sourceType)) {
     return c.json({ error: "plan_locked_source", source: sourceType, plan }, 403);
@@ -617,6 +628,93 @@ competitorsRouter.post("/:id/monitors", async (c) => {
   void captureServerEvent(user.id, "monitor_enabled", {
     competitorId,
     sourceType,
+    frequency,
+    orgId,
+  });
+
+  return c.json({ monitor, created: true }, 201);
+});
+
+// Dedicated "Watch a custom page" flow — a source for the long tail (any /about,
+// ToS, /security, /enterprise or docs page on the competitor's own domain) that
+// the single-source enable route above doesn't model: it carries a {url,label,hint}
+// config, a per-competitor quota, and allows several customs per competitor.
+const AddCustomMonitorSchema = z.object({
+  url: z.string(),
+  // Short display label for the page (shown in the source tabs).
+  label: z.string().trim().min(1).max(60),
+  // Page-type hint → grounds classify ("this page is the competitor's {hint} page").
+  hint: z.enum(CUSTOM_MONITOR_HINTS),
+  frequency: z.enum(MONITOR_FREQUENCIES).optional(),
+});
+
+competitorsRouter.post("/:id/custom-monitors", async (c) => {
+  const competitorId = c.req.param("id");
+  const body = await c.req.json().catch(() => null);
+  const parsed = AddCustomMonitorSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
+
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const competitor = await assertOwnedCompetitor(competitorId, orgId);
+  if (!competitor || competitor.deletedAt) return c.json({ error: "Competitor not found" }, 404);
+
+  // Domain lock (eTLD+1 of the competitor's own site, subdomains OK) + syntactic
+  // SSRF guard. custom_url_domain_mismatch is the structured rejection.
+  const valid = validateCustomMonitorUrl(parsed.data.url, competitor.url);
+  if (!valid.ok) {
+    if (valid.error === "custom_url_domain_mismatch") {
+      return c.json({ error: "custom_url_domain_mismatch", competitorUrl: competitor.url }, 400);
+    }
+    return c.json({ error: "invalid_monitor_url", reason: valid.error }, 400);
+  }
+
+  // All existing customs on this competitor — powers BOTH the dedup and the quota
+  // count from a single read.
+  const existingCustoms = await db.query.monitors.findMany({
+    where: and(eq(monitors.competitorId, competitorId), eq(monitors.sourceType, "custom")),
+    columns: { id: true, config: true },
+  });
+
+  // Applicative uniqueness on the NORMALIZED url. The (competitor, sourceType)
+  // uniqueness the standard route leans on can't apply — several customs coexist —
+  // so we dedupe on the canonical url so the same page isn't watched twice. Runs
+  // BEFORE the quota gate: re-submitting a page already watched isn't a new slot.
+  const normalized = normalizeCustomUrl(valid.url);
+  const dup = existingCustoms.find((m) => {
+    const u = (m.config as { url?: string } | null)?.url;
+    return u ? normalizeCustomUrl(u) === normalized : false;
+  });
+  if (dup) return c.json({ error: "custom_url_duplicate", monitorId: dup.id }, 409);
+
+  // Per-competitor quota — BACKEND gate. free's limit is 0, so the feature is fully
+  // locked there (plan_limit_custom_monitors, limit 0). paywallFromError parses any
+  // `plan_` 403.
+  const plan = await getOrgPlan(orgId);
+  const limit = customMonitorLimit(plan);
+  const used = existingCustoms.length;
+  if (used >= limit) {
+    return c.json({ error: "plan_limit_custom_monitors", plan, used, limit }, 403);
+  }
+
+  const desired = parsed.data.frequency ?? "weekly";
+  const frequency: MonitorFrequency = isFrequencyAllowed(plan, desired) ? desired : "weekly";
+
+  const [monitor] = await db
+    .insert(monitors)
+    .values({
+      competitorId,
+      sourceType: "custom",
+      frequency,
+      config: { url: valid.url, label: parsed.data.label.trim(), hint: parsed.data.hint },
+    })
+    .returning();
+  if (!monitor) return c.json({ error: "Failed to create monitor" }, 500);
+
+  void captureServerEvent(user.id, "custom_monitor_enabled", {
+    competitorId,
+    hint: parsed.data.hint,
     frequency,
     orgId,
   });

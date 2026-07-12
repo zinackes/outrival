@@ -55,6 +55,15 @@ export const SOURCE_TYPES = [
   // chain when a recurring complaint theme inflects upward over the review_scores
   // time-series (detect-review-theme-shifts). Kept in sync with the DB enum.
   "review_shift",
+  // Custom page. User-selectable, but via a DEDICATED flow ("Watch a custom page")
+  // — NOT the standard enable list (rejected on POST /:id/monitors). Watches ANY
+  // page on the competitor's own registrable domain (/about, ToS, /security,
+  // /enterprise, a docs page) through the full snapshot → lexical diff → classify →
+  // signal pipeline. config = { url, label, hint }; the hint (legal|team|product|
+  // security|docs|other) grounds classify. Per-competitor quota
+  // (PLAN_LIMITS.customMonitorsPerCompetitor), NOT the single (competitor,sourceType)
+  // uniqueness — several customs coexist per competitor. Kept in sync with the DB enum.
+  "custom",
 ] as const;
 
 export type SourceType = typeof SOURCE_TYPES[number];

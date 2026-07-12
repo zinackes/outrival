@@ -38,6 +38,8 @@ const SOURCE_LABELS: Record<string, string> = {
   youtube: "YouTube",
   // Internal anchor for rising review complaint-theme signals (no page scraped).
   review_shift: "Review trends",
+  // User-watched arbitrary page on the competitor's domain ("Watch a custom page").
+  custom: "Custom page",
 };
 
 export function sourceLabel(sourceType: string | null | undefined): string {
@@ -73,6 +75,7 @@ export const SOURCE_SHORT_LABELS: Record<SourceType, string> = {
   subdomains: "Subdomains",
   youtube: "YouTube",
   review_shift: "Review trends",
+  custom: "Custom page",
 };
 
 export function sourceShortLabel(sourceType: string | null | undefined): string {

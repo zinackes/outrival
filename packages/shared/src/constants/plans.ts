@@ -36,6 +36,11 @@ export interface PlanLimits {
   // Max ACTIVE standing queries (watched Ask questions) per org. Each one costs
   // 2-3 pool AI calls per re-evaluation, so the cap bounds background AI spend.
   standingQueries: number;
+  // Max custom-page monitors ("Watch a custom page") per COMPETITOR. free=0 fully
+  // locks the feature; the gate is enforced backend on POST /:id/custom-monitors
+  // (plan_limit_custom_monitors). Per-competitor, not per-org: a custom page is
+  // cheap (one lexical-diffed page) but unbounded fan-out would be abusable.
+  customMonitorsPerCompetitor: number;
   // Source-of-truth values whose enforcement is deferred (see docs/tier-limits.md):
   // usersPerOrg → at invitation (Phase 10 multi-user), historyRetentionDays → purge job.
   usersPerOrg: number;
@@ -67,6 +72,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     battleCardsPerDay: 1,
     discoveriesPerMonth: 3,
     standingQueries: 3,
+    customMonitorsPerCompetitor: 0,
     usersPerOrg: 1,
     historyRetentionDays: 7,
     // Battle cards now open to every tier, governed by battleCardsPerDay (not a hard gate).
@@ -82,6 +88,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     battleCardsPerDay: 10,
     discoveriesPerMonth: 20,
     standingQueries: 10,
+    customMonitorsPerCompetitor: 2,
     usersPerOrg: 1,
     historyRetentionDays: 30,
     features: { battleCards: true, realtimeAlerts: false, api: false, multiUser: false, fullMode: true, crmIntegrations: false, aiVisibility: false },
@@ -98,6 +105,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     // "Unlimited" per the spec — encoded as a real anti-abuse ceiling (house rule
     // 2026-06-04: no literal unlimited anywhere).
     standingQueries: 999,
+    customMonitorsPerCompetitor: 5,
     usersPerOrg: 3,
     historyRetentionDays: 365,
     features: { battleCards: true, realtimeAlerts: true, api: false, multiUser: false, fullMode: true, crmIntegrations: false, aiVisibility: true },
@@ -120,6 +128,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     battleCardsPerDay: 100,
     discoveriesPerMonth: 500,
     standingQueries: 999,
+    customMonitorsPerCompetitor: 10,
     usersPerOrg: 10,
     historyRetentionDays: 1095,
     features: { battleCards: true, realtimeAlerts: true, api: false, multiUser: false, fullMode: true, crmIntegrations: true, aiVisibility: true },
@@ -149,6 +158,16 @@ export function planIncludesSource(plan: Plan, source: SourceType): boolean {
 /** Cheapest plan whose allowed sources include `source` — drives badges/upsell copy. */
 export function minPlanForSource(source: SourceType): Plan {
   return PLANS.find((p) => PLAN_LIMITS[p].allowedSources.includes(source)) ?? "business";
+}
+
+/** Max custom-page monitors per competitor for `plan` (free=0 locks the feature). */
+export function customMonitorLimit(plan: Plan): number {
+  return PLAN_LIMITS[plan].customMonitorsPerCompetitor;
+}
+
+/** Cheapest plan that allows at least one custom-page monitor — drives upsell copy. */
+export function minPlanForCustomMonitors(): Plan {
+  return PLANS.find((p) => PLAN_LIMITS[p].customMonitorsPerCompetitor > 0) ?? "business";
 }
 
 /**

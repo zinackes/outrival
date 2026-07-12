@@ -260,7 +260,7 @@ source_type       homepage | pricing | blog | changelog | jobs |
                   g2_reviews | capterra_reviews | appstore_reviews |
                   trustpilot_reviews | trustradius_reviews | gartner_reviews |
                   playstore_reviews | reddit | linkedin | twitter | github_repo |
-                  tech_stack | status | sitemap | news
+                  tech_stack | status | sitemap | news | custom
                   — reviews+ (trustpilot/trustradius/gartner/playstore) : patch-32, enable
                     on-demand pro+, même chemin que g2/capterra. reddit : patch-32,
                     mention-tracking (pas de page notée → pas de ligne review_scores) ;
@@ -273,6 +273,14 @@ source_type       homepage | pricing | blog | changelog | jobs |
                     événements neufs), ai_visibility/subdomains/youtube (ancres
                     synthétiques), review_shift (ancre du signal d'inflexion de thèmes
                     de plaintes, jamais scrapée). status : on-demand starter+ (patch-31).
+                  — custom : page arbitraire du domaine enregistrable (eTLD+1) du
+                    concurrent, user-selectable via un flow DÉDIÉ (« Watch a custom page »,
+                    POST /:id/custom-monitors — pas la liste standard d'enable). config =
+                    {url, label, hint} ; pipeline générique snapshot → diff lexical →
+                    classify → signal (le hint grounde classify). Plusieurs customs par
+                    concurrent (quota PLAN_LIMITS.customMonitorsPerCompetitor 0/2/5/10,
+                    gate backend plan_limit_custom_monitors ; unicité applicative sur l'URL
+                    normalisée, PAS (competitor,sourceType)).
                     Comportement détaillé : cf. Pipeline + Décisions.
 frequency         realtime | daily | weekly
 signal_severity   low | medium | high | critical
@@ -386,7 +394,16 @@ Un competitor n'a pas automatiquement un monitor par source. Trois chemins de cr
   (`jobs`, `g2_reviews`, `capterra_reviews`, …) à un competitor existant. Gated par
   plan (sinon `plan_locked_source` → paywall), idempotent (1 monitor par
   `(competitor, sourceType)`), fréquence par défaut `weekly` pour les reviews /
-  `daily` sinon, clampée à une fréquence autorisée par le plan.
+  `daily` sinon, clampée à une fréquence autorisée par le plan. `custom` y est
+  refusé (`use_custom_monitor_endpoint`) → passer par le flow dédié ci-dessous.
+- **Custom page** (`POST /api/competitors/:id/custom-monitors`) → surveille une page
+  arbitraire du domaine enregistrable (eTLD+1) du concurrent, sous-domaines OK
+  (`custom_url_domain_mismatch` sinon). `config = {url, label, hint}`. Quota
+  **par competitor** `PLAN_LIMITS.customMonitorsPerCompetitor` (0/2/5/10 —
+  `plan_limit_custom_monitors`, free = 0 = feature verrouillée), unicité
+  **applicative** sur l'URL normalisée (`custom_url_duplicate`) — pas
+  `(competitor, sourceType)`, donc plusieurs customs coexistent. `weekly` par défaut,
+  clampée par plan.
 
 ### Self-product (« My Product ») — patch-15
 

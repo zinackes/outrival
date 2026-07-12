@@ -125,6 +125,17 @@ function copyFor(reason: PaywallReason): { title: string; body: string } {
         body: "This notification channel requires a higher plan.",
       };
     }
+    case "plan_limit_custom_monitors": {
+      const limit = reason.limit ?? 0;
+      const planLabel = reason.plan ? PLAN_LABELS[reason.plan] : "current";
+      return {
+        title: "Custom page limit reached",
+        body:
+          limit === 0
+            ? `Watching custom pages isn't included in your ${planLabel} plan. Upgrade to watch specific pages (ToS, security, /enterprise…).`
+            : `Your ${planLabel} plan lets you watch ${limit} custom page${limit > 1 ? "s" : ""} per competitor. Upgrade to watch more.`,
+      };
+    }
     case "plan_limit_standing_queries": {
       const limit = reason.limit ?? 0;
       const planLabel = reason.plan ? PLAN_LABELS[reason.plan] : "current";

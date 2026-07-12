@@ -8,6 +8,7 @@ import type {
   PricingTier,
   PricingPlanOverride,
   ResolvedPricingTier,
+  CustomMonitorHint,
 } from "@outrival/shared";
 
 export type { DetectionConfig, AnalysisStatus } from "@outrival/shared";
@@ -315,7 +316,8 @@ export interface Monitor {
   competitorId: string;
   sourceType: SourceType;
   frequency: string;
-  config: { url?: string } | null;
+  // Custom-page monitors also carry a short display label + a page-type hint.
+  config: { url?: string; label?: string; hint?: CustomMonitorHint } | null;
   lastRunAt: string | null;
   // When the scheduler will next check this source. Null (or past) = due on the
   // next hourly cron tick, not a stale timestamp — never render it as a past date.
@@ -2109,6 +2111,17 @@ export const api = {
     request<{ monitor: Monitor; created: boolean }>(`/api/competitors/${id}/monitors`, {
       method: "POST",
       body: JSON.stringify({ sourceType, frequency: opts?.frequency, url: opts?.url }),
+    }),
+  // Dedicated "Watch a custom page" flow (POST /:id/custom-monitors). Rejections:
+  // custom_url_domain_mismatch (off-domain), custom_url_duplicate (409), and
+  // plan_limit_custom_monitors (403, per-competitor quota).
+  addCustomMonitor: (
+    id: string,
+    input: { url: string; label: string; hint: CustomMonitorHint; frequency?: MonitorFrequency },
+  ) =>
+    request<{ monitor: Monitor; created: boolean }>(`/api/competitors/${id}/custom-monitors`, {
+      method: "POST",
+      body: JSON.stringify(input),
     }),
   classifyChange: (id: string) =>
     request<{ runId: string }>(`/api/changes/${id}/classify`, { method: "POST" }),

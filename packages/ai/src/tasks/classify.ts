@@ -26,6 +26,13 @@ export interface ClassifyContext {
   /** Monitor source type, e.g. "homepage" | "pricing" | "blog". */
   sourceType?: string;
   competitorName?: string;
+  /**
+   * Page-type hint for a custom-page monitor (config.hint: legal|team|product|
+   * security|docs|other). Adds one prompt line ("this page is the competitor's
+   * {hint} page") so the model weighs a diff on, say, a /security or ToS page
+   * correctly — a big relevance win for the custom long-tail source.
+   */
+  hint?: string;
 }
 
 // Human-readable page type for the prompt. Lets the model weigh significance by
@@ -45,7 +52,28 @@ const SOURCE_LABELS: Record<string, string> = {
   twitter: "X / Twitter profile",
   subdomains: "list of the competitor's live subdomains (Certificate Transparency)",
   youtube: "the competitor's YouTube channel — a new video it published (marketing / content)",
+  custom: "a specific page on the competitor's site",
 };
+
+/**
+ * Build the `<context>` block prepended to the diff. Pure + exported so the hint
+ * grounding (custom-page monitors) is unit-testable without a network call. Empty
+ * string when there's nothing to say (no competitor / source / hint).
+ */
+export function buildClassifyContextBlock(context: ClassifyContext): string {
+  const sourceLabel = context.sourceType
+    ? (SOURCE_LABELS[context.sourceType] ?? context.sourceType)
+    : null;
+  const where = [context.competitorName, sourceLabel].filter(Boolean).join(" — ");
+  const lines: string[] = [];
+  if (where) lines.push(`This change was detected on: ${where}.`);
+  if (context.hint) lines.push(`This page is the competitor's ${context.hint} page.`);
+  if (lines.length === 0) return "";
+  return `<context>
+${lines.join("\n")}
+</context>
+`;
+}
 
 // Static instructions, byte-identical across EVERY classify call → sent as the
 // `system` message so Groq/Cerebras auto-cache this long shared prefix for free
@@ -85,16 +113,7 @@ export async function classifyChange(
   diffText: string,
   context: ClassifyContext = {},
 ): Promise<WithQuality<Classification> | null> {
-  const sourceLabel = context.sourceType
-    ? (SOURCE_LABELS[context.sourceType] ?? context.sourceType)
-    : null;
-  const where = [context.competitorName, sourceLabel].filter(Boolean).join(" — ");
-  const contextBlock = where
-    ? `<context>
-This change was detected on: ${where}.
-</context>
-`
-    : "";
+  const contextBlock = buildClassifyContextBlock(context);
 
   // Variable payload only (context + diff) — the static instructions ride in
   // CLASSIFY_SYSTEM so the cacheable prefix stays byte-identical (F2).
@@ -102,9 +121,14 @@ This change was detected on: ${where}.
 ${diffText.slice(0, 8000)}
 </change>`;
 
-  // Key on the context too: the same diff on different page types / competitors
-  // now yields a different prompt, so it must not share a cache entry.
-  const cacheKey = [context.sourceType ?? "", context.competitorName ?? "", diffText].join("\n");
+  // Key on the context too: the same diff on different page types / competitors /
+  // hints now yields a different prompt, so it must not share a cache entry.
+  const cacheKey = [
+    context.sourceType ?? "",
+    context.competitorName ?? "",
+    context.hint ?? "",
+    diffText,
+  ].join("\n");
   const result = await groundedAiCall({
     taskName: "classify_change",
     config: AI_CONFIG.classificationFast,

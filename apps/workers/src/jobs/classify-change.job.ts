@@ -96,6 +96,9 @@ export const classifyChangeJob = task({
           classifyChange(diffText, {
             sourceType: monitor?.sourceType,
             competitorName: competitor?.name,
+            // Custom-page monitors carry a page-type hint in config — grounds the
+            // classifier ("this page is the competitor's {hint} page").
+            hint: (monitor?.config as { hint?: string } | null)?.hint,
           }),
         attribution,
       );

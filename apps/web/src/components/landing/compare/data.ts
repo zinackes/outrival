@@ -8,6 +8,10 @@
 // own prices are its published list. Keep PRICE_AS_OF in step with any refresh.
 
 export const PRICE_AS_OF = "July 2026";
+// Visible freshness stamp on every comparison page. Precise to the day because
+// competitor pricing moves and a dated review is the reliability signal readers
+// (and LLMs) look for. Bump this whenever the copy or figures are re-checked.
+export const LAST_REVIEWED = "July 12, 2026";
 export const SITE_URL = "https://outrival.app";
 
 export type CompetitorKey = "crayon" | "klue";
@@ -23,7 +27,7 @@ export const OUTRIVAL = {
   setup: "~3 minutes",
   aiInsight: "AI writes the insight: what changed, the so-what, the action",
   digest: "Weekly brief + real-time Slack alerts",
-  hosting: "100% EU (France)",
+  hosting: "EU data storage",
   commitment: "Monthly, cancel in one click",
   g2: "New — no G2 profile yet",
   plans: [
@@ -54,7 +58,7 @@ export const OUTRIVAL_WINS: { title: string; body: string }[] = [
   },
   {
     title: "EU hosting and monthly terms matter to you",
-    body: "Data stays in the EU (France), GDPR-first by default, and you can cancel in one click. No annual lock-in to leave.",
+    body: "Your data is stored in the EU (France), GDPR-first by default, and you can cancel in one click. No annual lock-in to leave.",
   },
 ];
 
@@ -150,7 +154,7 @@ export const COMPETITORS: Record<CompetitorKey, {
       },
       {
         q: "Where is my data hosted?",
-        a: "Outrival hosts entirely in the EU: application server in France, database and storage in the EU. Crayon is a US-based vendor. If EU data residency is a requirement, that difference matters.",
+        a: "Outrival stores your data in the EU: database and file storage in an EU region, application and workers in France. AI inference can use non-EU model providers under a DPA — that's why we say EU data storage, not EU processing. Crayon is a US-based vendor. If EU data residency is a requirement, that difference matters.",
       },
       {
         q: "Can Outrival produce battle cards like Crayon?",
@@ -229,7 +233,7 @@ export const COMPETITORS: Record<CompetitorKey, {
       },
       {
         q: "Where is my data hosted?",
-        a: "Outrival hosts entirely in the EU (France). Klue is a Canada-based vendor. If EU data residency is a requirement for you, that difference matters.",
+        a: "Outrival stores your data in the EU: database and file storage in an EU region, application and workers in France. AI inference can use non-EU model providers under a DPA — that's why we say EU data storage, not EU processing. Klue is a Canada-based vendor. If EU data residency is a requirement for you, that difference matters.",
       },
     ],
     sources: [
@@ -302,6 +306,15 @@ const ALT_CONTIFY: Alternative = {
   tradeoff: "Demo-led with no public self-serve pricing; built for a program owner, not a solo operator.",
 };
 
+const ALT_VISUALPING: Alternative = {
+  name: "Visualping",
+  bestFor: "Lightweight page-change alerts",
+  entryPrice: "Free, then $10–100/mo",
+  selfServe: "Yes, instant",
+  body: "Visualping is a self-serve website-change monitor with an AI summary and an “is this important?” flag on every plan, free included. It's the easiest way to watch a specific page — a pricing page, a careers page — and get pinged when it moves.",
+  tradeoff: "It watches the pages you point it at; it doesn't map a competitor across pricing, product, hiring and reviews, or write the strategic so-what and battle cards. A monitor, not an analyst.",
+};
+
 export const ALTERNATIVES: Record<CompetitorKey, {
   subjectName: string;
   intro: string;
@@ -329,7 +342,7 @@ export const ALTERNATIVES: Record<CompetitorKey, {
       },
       {
         q: "Which alternative is hosted in the EU?",
-        a: "Outrival hosts entirely in the EU (France). The other tools here are non-EU vendors (Crayon and Kompyte in the US, Klue in Canada). If EU data residency is a requirement, Outrival is the clear pick.",
+        a: "Outrival stores your data in the EU (France) — EU data storage, with AI inference under a DPA. The other tools here are non-EU vendors (Crayon and Kompyte in the US, Klue in Canada). If EU data residency is a requirement, Outrival is the clear pick.",
       },
       {
         q: "Can any of these track my own product too?",
@@ -366,7 +379,7 @@ export const ALTERNATIVES: Record<CompetitorKey, {
       },
       {
         q: "Which alternative is hosted in the EU?",
-        a: "Outrival hosts entirely in the EU (France). The other tools here are non-EU vendors (Klue in Canada, Crayon and Kompyte in the US). If EU data residency matters, Outrival is the clear pick.",
+        a: "Outrival stores your data in the EU (France) — EU data storage, with AI inference under a DPA. The other tools here are non-EU vendors (Klue in Canada, Crayon and Kompyte in the US). If EU data residency matters, Outrival is the clear pick.",
       },
     ],
     sources: [
@@ -375,4 +388,167 @@ export const ALTERNATIVES: Record<CompetitorKey, {
       { label: "Contify — Kompyte review & pricing", href: "https://www.contify.com/resources/blog/kompyte-review-pricing-alternatives/" },
     ],
   },
+};
+
+// ---- "Outrival vs doing it yourself" (/vs/diy) ------------------------------
+//
+// The real day-to-day competitor for the ICP: the free/near-free DIY stack.
+// Steelmanned honestly — the tools named are genuinely good at their job. Every
+// DIY price is the vendor's own public figure, dated and sourced (they DO
+// publish, unlike Crayon/Klue), so this stays as verifiable as the /vs pages.
+
+export const DIY = {
+  verdict: [
+    "The tool you actually compete with isn't Crayon or Klue — it's the DIY stack you've half-built already: a change-detection script, ChatGPT to summarise the diff, Google Alerts for mentions, and a Notion page or spreadsheet to keep track.",
+    "That stack works, and for a while it's free or nearly free. What it won't do is decide for you: it hands you raw diffs and links, and you still do the reading, the ranking and the “so what” — every week, forever.",
+    "Outrival is that stack collapsed into one product that writes the conclusion. Here's the honest comparison, including when rolling your own is genuinely the right call.",
+  ],
+  // The three DIY approaches, named and steelmanned. does/breaks/cost, sourced.
+  approaches: [
+    {
+      name: "ChangeDetection.io + ChatGPT",
+      role: "Watch pages, summarise the diff",
+      doesWell:
+        "ChangeDetection.io is a genuinely good open-source page monitor — CSS/XPath selectors, five-minute rechecks, a real Chrome for JavaScript pages. Paste a diff into ChatGPT and you get a readable summary in seconds.",
+      breaks:
+        "You own the selectors: when a competitor reships their pricing page, the watch silently breaks or floods you with noise. ChatGPT summarises one diff at a time, with no memory of last week, no severity, and no recommended action.",
+      cost: "Free self-hosted, or $8.99/mo hosted (5,000 watches). ChatGPT Plus $20/mo.",
+    },
+    {
+      name: "Google Alerts",
+      role: "Catch mentions across the web",
+      doesWell:
+        "Free, zero setup, and fine for a rough pulse on brand and competitor mentions in news and blogs.",
+      breaks:
+        "It only sees what Google indexes and misses most on-site changes — pricing, product, hiring. Coverage is erratic, there's no severity and no structure: just a list of links in your inbox.",
+      cost: "Free.",
+    },
+    {
+      name: "Notion or a spreadsheet",
+      role: "Keep track of what you found",
+      doesWell:
+        "A flexible home for a competitor grid you fill in by hand. Everyone knows how to use it, and it's cheap.",
+      breaks:
+        "It's a static store, not a monitor — nothing updates itself. The grid is only as current as the last time someone remembered to touch it, which on a busy week is never.",
+      cost: "Free personal; Notion Plus $10/user/mo. Spreadsheet free.",
+    },
+  ],
+  // Head-to-head capability rows: the DIY stack vs Outrival.
+  table: [
+    { label: "What it watches", diy: "Pages you script, one at a time", outrival: "Pricing, product, hiring, reviews, content — per competitor" },
+    { label: "Who writes the insight", diy: "You (or a raw ChatGPT summary)", outrival: "AI writes the takeaway: what changed, the so-what, the action" },
+    { label: "Prioritised by severity", diy: "No — every diff looks the same", outrival: "Yes — low → critical, filtered for relevance" },
+    { label: "Battle cards & history", diy: "None — each week is a blank page", outrival: "AI battle cards + a durable competitor history" },
+    { label: "Setup", diy: "An afternoon of watches, alerts and glue", outrival: "~3 minutes, self-serve" },
+    { label: "Ongoing maintenance", diy: "You fix selectors on every redesign", outrival: "Maintained for you; auto-heals broken sources" },
+    { label: "Cost", diy: "$0–30/mo + your time", outrival: "€0 free, then €29–199/mo" },
+  ],
+  whenDiyWins: [
+    {
+      title: "You track one or two competitors",
+      body: "If you watch a couple of pages and you'd notice a big move anyway, a free page-monitor plus a spreadsheet is genuinely enough. Don't pay for a product to solve a problem you don't have yet.",
+    },
+    {
+      title: "Your budget is truly zero",
+      body: "Self-hosted ChangeDetection.io and Google Alerts cost nothing but your time. If time is the resource you have most of, the DIY stack is a legitimate starting point.",
+    },
+    {
+      title: "It's a one-off, not an ongoing job",
+      body: "Doing a single competitive teardown for a board deck? You don't need a subscription — spend an afternoon with the free tools and move on.",
+    },
+  ],
+  hiddenCosts: [
+    {
+      title: "Setup and glue",
+      body: "Standing up the watches, wiring the alerts, and building the tracking doc is an afternoon or two — before you've read a single insight.",
+    },
+    {
+      title: "Selector maintenance",
+      body: "Every redesign breaks your watches. You either fix them or quietly stop trusting them. This is the tax nobody prices in.",
+    },
+    {
+      title: "Noise, unfiltered",
+      body: "Raw diffs fire on cookie banners, A/B tests and copy tweaks. With no relevance filter, you learn to ignore the alerts — including the one that mattered.",
+    },
+    {
+      title: "No severity, no so-what",
+      body: "A diff tells you something changed. It doesn't tell you it's a 30% price cut to react to today versus a footer typo. You supply that judgement, every time.",
+    },
+    {
+      title: "No battle cards, no history",
+      body: "Nothing turns six months of moves into a competitor narrative or a sales-ready battle card. Each week starts from scratch.",
+    },
+  ],
+  faqs: [
+    {
+      q: "Is Outrival worth it if I already use ChangeDetection.io?",
+      a: "If one or two watches cover your needs, ChangeDetection.io is great and free to self-host. Outrival earns its keep when you're tracking several competitors across pricing, product, hiring and reviews, and you want the change read, ranked by severity, and written up with a recommended action — instead of maintaining selectors and reading raw diffs yourself.",
+    },
+    {
+      q: "Can't I just use ChatGPT to track competitors?",
+      a: "ChatGPT can summarise a diff you paste in, but it doesn't watch anything on a schedule, remember last week, prioritise, or send alerts. You'd be the pipeline: capturing pages, feeding them in, and deciding what matters. Outrival is that pipeline, running continuously.",
+    },
+    {
+      q: "Is Google Alerts enough for competitive monitoring?",
+      a: "Google Alerts is a fine free pulse on mentions in news and blogs, but it only sees what Google indexes and misses most on-site changes — pricing, product, hiring. It's a complement to real monitoring, not a substitute.",
+    },
+    {
+      q: "How much does the DIY stack really cost?",
+      a: "In cash, little: ChangeDetection.io is free self-hosted or $8.99/mo, Google Alerts is free, a spreadsheet is free, Notion Plus is $10/user/mo, ChatGPT Plus $20/mo (all as of July 2026). The real cost is time — setup, selector maintenance, and the weekly reading and judgement the tools don't do for you.",
+    },
+    {
+      q: "When should I not pay for a tool like Outrival?",
+      a: "When you track one or two competitors, your budget is truly zero, or it's a one-off teardown rather than an ongoing job. In those cases the free DIY tools are the honest answer — we'd rather tell you that than sell you a subscription you don't need yet.",
+    },
+  ],
+  sources: [
+    { label: "ChangeDetection.io — pricing", href: "https://changedetection.io/" },
+    { label: "Visualping — pricing", href: "https://visualping.io/pricing" },
+    { label: "Notion — pricing", href: "https://www.notion.com/pricing" },
+    { label: "Google Alerts", href: "https://www.google.com/alerts" },
+  ],
+};
+
+// ---- Category hub: "Best competitive intelligence tools (2026)" -------------
+//
+// A neutral survey of the category, NOT a ranking with Outrival forced to #1.
+// A direct answer opens the list (GEO: the paragraph an LLM can lift), then each
+// tool gets an honest "best for", a real limitation, and dated/sourced pricing.
+// Outrival appears in its rightful place, flagged as the founder/self-serve pick.
+
+export const BEST_TOOLS = {
+  intro:
+    "Searching for the best competitive-intelligence tools in 2026? The honest answer is there's no single winner — the right tool depends on whether you're a staffed CI team, a sales org, or a founder who just needs to stay ahead. Below are six worth knowing, each with what it's genuinely best for, its real limitations, and dated, sourced pricing. (Full disclosure: Outrival makes this page. We've stayed honest about where each tool wins, including where it isn't us.)",
+  directAnswer:
+    "In short: Crayon and Klue lead the enterprise end — Crayon for broad, staffed CI programs, Klue for arming a sales org. Kompyte suits Semrush-stack teams and Contify mid-market CI feeds. For founders and small teams who want public pricing and a self-serve start, Outrival and Visualping are the lightweight picks — Outrival writes the strategic takeaway across a competitor's whole public surface, Visualping watches individual pages you choose.",
+  // Ordered by category breadth, not endorsement — this is not a strict 1→N rank.
+  items: [ALT_CRAYON, ALT_KLUE, ALT_KOMPYTE, ALT_CONTIFY, ALT_VISUALPING, ALT_OUTRIVAL],
+  faqs: [
+    {
+      q: "What is the best competitive intelligence tool in 2026?",
+      a: "There isn't one best tool — it depends on who you are. For a broad, staffed CI program: Crayon. For arming a sales org with battlecards and win-loss: Klue. For a Semrush-stack team: Kompyte. For a mid-market CI feed: Contify. For founders and small teams who want public pricing and a self-serve start: Outrival, with Visualping as a lightweight page-watcher.",
+    },
+    {
+      q: "What's the best free or cheap competitive intelligence tool?",
+      a: "The enterprise suites (Crayon, Klue, Kompyte, Contify) have no free tier and are priced in the five figures a year. For free or low cost: Outrival is free forever on two competitors then €29–199/mo, Visualping has a free tier and paid plans from $10/mo, and ChangeDetection.io is free self-hosted or $8.99/mo. Google Alerts is free for mentions. (Prices as of July 2026.)",
+    },
+    {
+      q: "Which competitive intelligence tools are self-serve, with no demo?",
+      a: "Outrival and Visualping are self-serve with public pricing — sign up and start in minutes. Crayon, Klue, Kompyte and Contify are demo-led with custom quotes.",
+    },
+    {
+      q: "Which competitive intelligence tool is best for a founder or small team?",
+      a: "Outrival is built for exactly that buyer: it monitors every public surface a competitor has and writes the takeaway — what changed, why it matters, what to do — self-serve, live in about three minutes, and billed monthly from €0. The enterprise suites reward a dedicated CI or sales-enablement owner most small teams don't have.",
+    },
+    {
+      q: "Which of these tools is hosted in the EU?",
+      a: "Outrival offers EU data storage (database and file storage in an EU region, application in France; AI inference can use non-EU providers under a DPA). Crayon and Kompyte are US-based, Klue is Canada-based, Contify is India/US-based, and Visualping is Canada-based. If EU data residency matters, Outrival is the clear pick here.",
+    },
+  ],
+  sources: [
+    { label: "Vendr — CI software marketplace", href: "https://www.vendr.com/marketplace/crayon" },
+    { label: "G2 — Competitive Intelligence category", href: "https://www.g2.com/categories/competitive-intelligence" },
+    { label: "Contify — Kompyte review & pricing", href: "https://www.contify.com/resources/blog/kompyte-review-pricing-alternatives/" },
+    { label: "Visualping — pricing", href: "https://visualping.io/pricing" },
+  ],
 };

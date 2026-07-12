@@ -5,8 +5,10 @@ import { Breadcrumbs, CompareShell } from "./compare-shell";
 import { CompareTable } from "./compare-table";
 import { PricingFaceOff } from "./pricing-face-off";
 import { CompareFaq } from "./compare-faq";
+import { ProductProof } from "./product-proof";
 import {
   COMPETITORS,
+  LAST_REVIEWED,
   OUTRIVAL_WINS,
   PRICE_AS_OF,
   type CompetitorKey,
@@ -67,7 +69,8 @@ export function VsPage({ competitorKey }: { competitorKey: CompetitorKey }) {
             Outrival vs {c.name}
           </h1>
           <p className="mt-4 text-dense text-text-subtle">
-            Updated {PRICE_AS_OF} · compared on publicly available information
+            Last reviewed {LAST_REVIEWED} · compared on publicly available
+            information
           </p>
           <div className="mt-7 max-w-2xl space-y-3.5 text-lead leading-relaxed text-text-muted text-pretty">
             {c.verdict.map((line, i) => (
@@ -97,6 +100,11 @@ export function VsPage({ competitorKey }: { competitorKey: CompetitorKey }) {
           <CompareTable competitorKey={c.key} />
         </div>
       </section>
+
+      {/* Product proof — the real dashboard, so this isn't just claims */}
+      <div className="border-t border-border bg-background-2">
+        <ProductProof />
+      </div>
 
       {/* Pricing */}
       <section className="border-y border-border bg-background-2 py-16 sm:py-20">
@@ -218,6 +226,20 @@ export function VsPage({ competitorKey }: { competitorKey: CompetitorKey }) {
               Best {otherName} alternatives
               <ArrowRight size={13} aria-hidden />
             </Link>
+            <Link
+              href="/vs/diy"
+              className="inline-flex items-center gap-1.5 text-text-muted transition-colors hover:text-foreground"
+            >
+              Outrival vs doing it yourself
+              <ArrowRight size={13} aria-hidden />
+            </Link>
+            <Link
+              href="/alternatives/best-competitive-intelligence-tools"
+              className="inline-flex items-center gap-1.5 text-text-muted transition-colors hover:text-foreground"
+            >
+              Best competitive-intelligence tools
+              <ArrowRight size={13} aria-hidden />
+            </Link>
           </div>
 
           {/* Sources + legal disclaimer */}
@@ -228,6 +250,16 @@ export function VsPage({ competitorKey }: { competitorKey: CompetitorKey }) {
               are third-party estimates and vary by seats, competitors tracked
               and contract terms. Outrival is independent and not affiliated
               with {c.name}; all trademarks belong to their respective owners.
+            </p>
+            <p className="mt-2">
+              Outrival offers EU data storage — see our{" "}
+              <Link
+                href="/security"
+                className="underline-offset-2 hover:text-foreground hover:underline"
+              >
+                security overview
+              </Link>{" "}
+              for specifics.
             </p>
             <p className="mt-2">
               Sources:{" "}

@@ -5,28 +5,22 @@ import { Breadcrumbs, CompareShell } from "./compare-shell";
 import { CompareFaq } from "./compare-faq";
 import { ProductProof } from "./product-proof";
 import { ItemListJsonLd } from "./structured-data";
-import {
-  ALTERNATIVES,
-  LAST_REVIEWED,
-  PRICE_AS_OF,
-  type CompetitorKey,
-} from "./data";
+import { BEST_TOOLS, LAST_REVIEWED, PRICE_AS_OF } from "./data";
+
+// Category hub: "Best competitive intelligence tools (2026)". A neutral survey,
+// not a ranking with Outrival forced to #1 — the cards carry no ranking numerals,
+// only an honest "best for". A direct-answer block opens the list (the paragraph
+// an LLM can lift verbatim). Reuses CompareShell / CompareFaq / ProductProof /
+// ItemList JSON-LD from the /vs + /alternatives system.
 
 const GLANCE_ROW = "grid grid-cols-[1.4fr_1.2fr_1fr_0.9fr]";
 
-export function AlternativesPage({
-  competitorKey,
-}: {
-  competitorKey: CompetitorKey;
-}) {
-  const data = ALTERNATIVES[competitorKey];
-  const subject = data.subjectName;
-
+export function BestToolsPage() {
   return (
     <CompareShell>
       <ItemListJsonLd
-        name={`Best ${subject} alternatives (${PRICE_AS_OF})`}
-        items={data.items.map((it) => it.name)}
+        name={`Best competitive intelligence tools (${PRICE_AS_OF})`}
+        items={BEST_TOOLS.items.map((it) => it.name)}
       />
 
       {/* Hero */}
@@ -45,27 +39,27 @@ export function AlternativesPage({
             items={[
               { name: "Home", path: "/" },
               {
-                name: `${subject} alternatives`,
-                path: `/alternatives/${competitorKey}`,
+                name: "Best competitive intelligence tools",
+                path: "/alternatives/best-competitive-intelligence-tools",
               },
             ]}
           />
           <h1 className="mt-8 max-w-3xl text-[clamp(2.4rem,5vw,3.6rem)] font-semibold leading-[1.05] tracking-[-0.02em] text-balance">
-            Best {subject} alternatives in 2026
+            Best competitive intelligence tools in 2026
           </h1>
           <p className="mt-4 text-dense text-text-subtle">
             Last reviewed {LAST_REVIEWED} · compared on publicly available
             information
           </p>
           <p className="mt-7 max-w-2xl text-lead leading-relaxed text-text-muted text-pretty">
-            {data.intro}
+            {BEST_TOOLS.intro}
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-3">
             <Button asChild size="lg">
               <Link href="/auth">Start free</Link>
             </Button>
             <Button asChild size="lg" variant="outline">
-              <Link href={`/vs/${competitorKey}`}>Outrival vs {subject}</Link>
+              <Link href="/#pricing">See pricing</Link>
             </Button>
           </div>
         </div>
@@ -86,7 +80,7 @@ export function AlternativesPage({
               <div className="px-4 py-3">Entry price</div>
               <div className="px-4 py-3">Self-serve</div>
             </div>
-            {data.items.map((it) => (
+            {BEST_TOOLS.items.map((it) => (
               <div
                 key={it.name}
                 className={`${GLANCE_ROW} border-b border-border text-sm last:border-b-0 ${
@@ -106,7 +100,9 @@ export function AlternativesPage({
                 </div>
                 <div
                   className={`px-4 py-3.5 ${
-                    it.self ? "text-positive" : "text-text-subtle"
+                    it.selfServe.startsWith("Yes")
+                      ? "text-positive"
+                      : "text-text-subtle"
                   }`}
                 >
                   {it.selfServe}
@@ -116,16 +112,29 @@ export function AlternativesPage({
           </div>
         </div>
         <p className="mt-3 text-dense text-text-subtle">
-          Prices for the sales-led tools are third-party estimates; those
-          vendors do not publish public pricing. As of {PRICE_AS_OF}.
+          Prices for the sales-led tools are third-party estimates; those vendors
+          do not publish public pricing. Self-serve prices are the vendors' own
+          list. As of {PRICE_AS_OF}.
         </p>
       </section>
 
-      {/* The ranked list */}
+      {/* Direct answer + the honest list */}
       <section className="border-y border-border bg-background-2 py-16 sm:py-20">
         <div className="mx-auto w-full max-w-4xl px-6">
-          <ol className="flex flex-col gap-4">
-            {data.items.map((it, i) => (
+          <div className="rounded-xl border border-border bg-surface p-6 sm:p-7">
+            <div className="text-dense font-medium text-primary">
+              The short answer
+            </div>
+            <p className="mt-2 leading-relaxed text-text-muted text-pretty">
+              {BEST_TOOLS.directAnswer}
+            </p>
+          </div>
+          <p className="mt-8 text-dense text-text-subtle">
+            This isn't a strict 1-to-6 ranking — the right tool depends on who you
+            are. Here's each, honestly.
+          </p>
+          <ol className="mt-4 flex flex-col gap-4">
+            {BEST_TOOLS.items.map((it) => (
               <li
                 key={it.name}
                 className={`rounded-xl border p-6 sm:p-8 ${
@@ -135,17 +144,10 @@ export function AlternativesPage({
                 }`}
               >
                 <div className="flex flex-wrap items-center gap-3">
-                  <span
-                    className={`text-lg font-semibold tabular-nums ${
-                      it.self ? "text-primary" : "text-text-subtle"
-                    }`}
-                  >
-                    {String(i + 1).padStart(2, "0")}
-                  </span>
                   <h3 className="text-xl font-semibold">{it.name}</h3>
                   {it.self && (
                     <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-meta font-medium text-primary">
-                      Our pick for small teams
+                      Our pick for founders &amp; small teams
                     </span>
                   )}
                   <span className="ml-auto text-dense text-text-subtle">
@@ -189,22 +191,26 @@ export function AlternativesPage({
         </div>
       </section>
 
-      {/* Product proof — the real dashboard behind the recommendation */}
+      {/* Product proof */}
       <ProductProof />
 
       {/* FAQ */}
-      <CompareFaq heading={`${subject} alternatives, answered`} faqs={data.faqs} />
+      <CompareFaq
+        heading="Choosing a CI tool, answered"
+        faqs={BEST_TOOLS.faqs}
+      />
 
       {/* CTA + cross-links + sources */}
       <section className="border-t border-border bg-background-2 py-16 sm:py-20">
         <div className="mx-auto w-full max-w-6xl px-6">
           <div className="rounded-2xl border border-border bg-surface p-8 sm:p-10">
             <h2 className="max-w-xl text-2xl font-semibold leading-tight tracking-tight sm:text-3xl">
-              The self-serve alternative, free to try.
+              The self-serve pick, free to try.
             </h2>
             <p className="mt-4 max-w-xl leading-relaxed text-text-muted">
-              Skip the demo. Add two competitors on the free plan and read your
-              first AI-written brief this week.
+              If you're a founder or small team, skip the demos. Add two
+              competitors on the free plan and read your first AI-written brief
+              this week.
             </p>
             <div className="mt-7 flex flex-wrap items-center gap-3">
               <Button asChild size="lg">
@@ -218,24 +224,17 @@ export function AlternativesPage({
 
           <div className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm">
             <Link
-              href={`/vs/${competitorKey}`}
+              href="/vs/crayon"
               className="inline-flex items-center gap-1.5 text-text-muted transition-colors hover:text-foreground"
             >
-              Outrival vs {subject}
+              Outrival vs Crayon
               <ArrowRight size={13} aria-hidden />
             </Link>
             <Link
-              href={`/alternatives/${competitorKey === "crayon" ? "klue" : "crayon"}`}
+              href="/vs/klue"
               className="inline-flex items-center gap-1.5 text-text-muted transition-colors hover:text-foreground"
             >
-              Best {competitorKey === "crayon" ? "Klue" : "Crayon"} alternatives
-              <ArrowRight size={13} aria-hidden />
-            </Link>
-            <Link
-              href="/alternatives/best-competitive-intelligence-tools"
-              className="inline-flex items-center gap-1.5 text-text-muted transition-colors hover:text-foreground"
-            >
-              Best competitive-intelligence tools
+              Outrival vs Klue
               <ArrowRight size={13} aria-hidden />
             </Link>
             <Link
@@ -250,25 +249,16 @@ export function AlternativesPage({
           <div className="mt-10 border-t border-border pt-6 text-dense leading-relaxed text-text-subtle">
             <p>
               Comparison based on publicly available information as of{" "}
-              {PRICE_AS_OF}. The sales-led tools listed do not publish public
-              pricing; figures are dated third-party estimates and vary by
-              seats, competitors tracked and contract terms. Outrival is
-              independent and not affiliated with the vendors named; all
-              trademarks belong to their respective owners.
-            </p>
-            <p className="mt-2">
-              Outrival offers EU data storage — see our{" "}
-              <Link
-                href="/security"
-                className="underline-offset-2 hover:text-foreground hover:underline"
-              >
-                security overview
-              </Link>{" "}
-              for specifics.
+              {PRICE_AS_OF}. The sales-led tools do not publish public pricing;
+              their figures are dated third-party estimates and vary by seats,
+              competitors tracked and contract terms. Self-serve prices are the
+              vendors' own published list. Outrival is independent and not
+              affiliated with the vendors named; all trademarks belong to their
+              respective owners.
             </p>
             <p className="mt-2">
               Sources:{" "}
-              {data.sources.map((s, i) => (
+              {BEST_TOOLS.sources.map((s, i) => (
                 <span key={s.href}>
                   {i > 0 && " · "}
                   <a
@@ -282,6 +272,16 @@ export function AlternativesPage({
                 </span>
               ))}
               .
+            </p>
+            <p className="mt-2">
+              Outrival offers EU data storage — see our{" "}
+              <Link
+                href="/security"
+                className="underline-offset-2 hover:text-foreground hover:underline"
+              >
+                security overview
+              </Link>{" "}
+              for specifics.
             </p>
           </div>
         </div>

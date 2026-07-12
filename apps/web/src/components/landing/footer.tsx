@@ -64,6 +64,11 @@ export function Footer() {
               links={[
                 { label: "vs Crayon", href: "/vs/crayon" },
                 { label: "vs Klue", href: "/vs/klue" },
+                { label: "vs Doing it yourself", href: "/vs/diy" },
+                {
+                  label: "Best CI tools",
+                  href: "/alternatives/best-competitive-intelligence-tools",
+                },
                 { label: "Crayon alternatives", href: "/alternatives/crayon" },
                 { label: "Klue alternatives", href: "/alternatives/klue" },
               ]}

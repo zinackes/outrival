@@ -4,7 +4,7 @@ import { ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/dashboard/theme-toggle";
 import { Footer } from "../footer";
-import { BreadcrumbJsonLd } from "./structured-data";
+import { BreadcrumbJsonLd, SoftwareAppJsonLd } from "./structured-data";
 
 // Brand shell for the comparison / alternatives pages. Same register as the
 // landing (.landing-canvas → Zodiak headings, deep dark canvas) but a static,
@@ -13,6 +13,7 @@ import { BreadcrumbJsonLd } from "./structured-data";
 export function CompareShell({ children }: { children: ReactNode }) {
   return (
     <div className="landing-canvas min-h-dvh bg-background font-sans text-foreground antialiased">
+      <SoftwareAppJsonLd />
       <header className="sticky top-0 z-40 border-b border-border/60 bg-background/85 backdrop-blur-sm">
         <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-6">
           <Link href="/" className="text-lg font-semibold tracking-tight">

@@ -11,6 +11,7 @@ import {
   competitorCandidates,
   discoveryRuns,
 } from "@outrival/db";
+import { summarizeFirstSignalSlo, type FirstSignalSloInputs } from "@outrival/shared";
 import { analyticsQuery } from "../../lib/analytics-safe";
 import { num, rate, type AdminVariables } from "./shared";
 
@@ -102,6 +103,70 @@ productRouter.get("/onboarding-metrics", async (c) => {
   });
 
   return c.json({ windowDays, total, byStatus, modeSplit, segments, funnel });
+});
+
+// First-signal SLO (docs/slos/onboarding-first-signal.md) — the landing's
+// "<10 min to first signal" promise, MEASURED not assumed. Same query the ops
+// alert runs (workers getFirstSignalSloInputs); surfaced here so the compliance %
+// is a live number in /admin. Only completions whose 10-min window has ELAPSED
+// count. Best-effort: a read error returns { available: false }, never throws.
+productRouter.get("/first-signal-slo", async (c) => {
+  const recentRows = await analyticsQuery<{ hit: boolean }>(sql`
+    SELECT (fs.first_signal_at IS NOT NULL
+            AND fs.first_signal_at <= os.completed_at + interval '10 minutes') AS hit
+    FROM onboarding_sessions os
+    LEFT JOIN LATERAL (
+      SELECT min(s.created_at) AS first_signal_at FROM signals s WHERE s.org_id = os.org_id
+    ) fs ON true
+    WHERE os.stage = 'completed' AND os.completed_at IS NOT NULL
+      AND os.completed_at <= now() - interval '10 minutes'
+    ORDER BY os.completed_at DESC
+    LIMIT 3
+  `);
+
+  const aggRows = await analyticsQuery<{
+    week_n: number;
+    week_within: number;
+    window_n: number;
+    window_within: number;
+    cov_n: number;
+    cov_within: number;
+  }>(sql`
+    WITH completions AS (
+      SELECT os.org_id, os.completed_at
+      FROM onboarding_sessions os
+      WHERE os.stage = 'completed' AND os.completed_at IS NOT NULL
+        AND os.completed_at >= now() - interval '28 days'
+        AND os.completed_at <= now() - interval '10 minutes'
+    ),
+    fs AS (
+      SELECT c.completed_at,
+             (SELECT min(s.created_at) FROM signals s WHERE s.org_id = c.org_id) AS first_signal_at
+      FROM completions c
+    )
+    SELECT
+      count(*) FILTER (WHERE completed_at >= now() - interval '7 days')::int AS week_n,
+      count(*) FILTER (WHERE completed_at >= now() - interval '7 days'
+        AND first_signal_at <= completed_at + interval '10 minutes')::int AS week_within,
+      count(*)::int AS window_n,
+      count(*) FILTER (
+        WHERE first_signal_at <= completed_at + interval '10 minutes')::int AS window_within,
+      count(*) FILTER (WHERE completed_at <= now() - interval '24 hours')::int AS cov_n,
+      count(*) FILTER (WHERE completed_at <= now() - interval '24 hours'
+        AND first_signal_at <= completed_at + interval '24 hours')::int AS cov_within
+    FROM fs
+  `);
+
+  const agg = aggRows[0];
+  if (!agg) return c.json({ available: false });
+
+  const inputs: FirstSignalSloInputs = {
+    recent: recentRows.map((r) => r.hit === true),
+    week: { completions: num(agg.week_n), within: num(agg.week_within) },
+    window: { completions: num(agg.window_n), within: num(agg.window_within) },
+    coverage24h: { completions: num(agg.cov_n), within: num(agg.cov_within) },
+  };
+  return c.json({ available: true, ...summarizeFirstSignalSlo(inputs) });
 });
 
 // patch-28 — multi-product adoption: how many orgs run >1 SKU, the shared-vs-

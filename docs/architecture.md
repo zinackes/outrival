@@ -809,6 +809,11 @@ SCRAPING_LEVEL_1_ENABLED=true  # kill-switch L2 (datacenter)
 SCRAPING_LEVEL_2_ENABLED=true  # kill-switch L3 (residential)
 SCRAPING_LEVEL_3_ENABLED=true  # kill-switch L4 (camoufox)
 EXA_API_KEY=
+DETECT_COOLDOWN_SEC=90       # cooldown anti-double-clic (s) entre 2 runs Exa on-demand pour
+                            # la MÊME cible (org+product) — PAS un cap d'usage (borné par le quota
+                            # mensuel discoveriesPerMonth + le 10/h aiIntensiveRateLimit). Clé
+                            # `orgId:productId` (ou `:all`) : ajouter un 2e produit ne se heurte plus
+                            # au cooldown d'un autre. Avant = blocage per-org 30 min (cassait le wizard)
 GITHUB_TOKEN=                # optionnel — source github_repo (self-product developing). Sans
                             # token : REST public 60 req/h partagé (rate-limit sur burst) ; avec : 5000
 REDDIT_CLIENT_ID=            # reddit source — OAuth app-only (client_credentials) creds

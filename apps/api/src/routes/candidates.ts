@@ -36,10 +36,16 @@ export const candidatesRouter = new Hono<{ Variables: Variables }>();
 
 candidatesRouter.use("*", authMiddleware);
 
-// Per-org 30-min cooldown on the paid Exa discovery call. NOTE: lastDetectAt below is
-// an in-memory Map, so this cooldown is single-instance only (multi-replica TODO).
+// Anti-double-run cooldown on the paid Exa discovery call, keyed per discovery TARGET
+// (`orgId:productId`, or `orgId:all` for an all-products refresh) — NOT per org. A
+// per-org cooldown blocked the "add product" wizard: creating a second SKU (or the
+// wizard re-running discovery for a freshly created one) was refused for 30 min because
+// an unrelated product had just run. The real Exa-cost guards live elsewhere (per-tier
+// monthly `discoveriesPerMonth` quota + the 10/h aiIntensiveRateLimit), so this is only
+// a short guard against double-clicks, not a usage cap. In-memory Map → single-instance
+// only (multi-replica TODO).
 const DETECT_RATE_LIMIT_ENABLED = true;
-const DETECT_COOLDOWN_MS = 30 * 60 * 1000;
+const DETECT_COOLDOWN_MS = (Number(process.env.DETECT_COOLDOWN_SEC ?? 90) || 90) * 1000;
 const lastDetectAt = new Map<string, number>();
 
 const ConfigBodySchema = DetectionConfigSchema.extend({
@@ -406,14 +412,9 @@ candidatesRouter.post("/detect", aiIntensiveRateLimit, async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
 
-  const last = lastDetectAt.get(orgId);
-  if (DETECT_RATE_LIMIT_ENABLED && last && Date.now() - last < DETECT_COOLDOWN_MS) {
-    const retryInSec = Math.ceil((DETECT_COOLDOWN_MS - (Date.now() - last)) / 1000);
-    return c.json({ error: "cooldown", retryInSec }, 429);
-  }
-
   // patch-28 — discovery targets a product's self-profile. "All products" refreshes every
-  // non-archived SKU (bounded by the monthly quota), not just the primary.
+  // non-archived SKU (bounded by the monthly quota), not just the primary. Resolve the
+  // scope first so the cooldown can be keyed to this specific target.
   const scopeSel = await resolveScope(orgId, c.req.query("productId"));
   const productIds =
     scopeSel.kind === "product"
@@ -421,7 +422,14 @@ candidatesRouter.post("/detect", aiIntensiveRateLimit, async (c) => {
       : await nonArchivedProductIds(orgId);
   if (productIds.length === 0) return c.json({ error: "missing_profile" }, 400);
 
-  lastDetectAt.set(orgId, Date.now());
+  const cooldownKey = `${orgId}:${scopeSel.kind === "product" ? scopeSel.productId : "all"}`;
+  const last = lastDetectAt.get(cooldownKey);
+  if (DETECT_RATE_LIMIT_ENABLED && last && Date.now() - last < DETECT_COOLDOWN_MS) {
+    const retryInSec = Math.ceil((DETECT_COOLDOWN_MS - (Date.now() - last)) / 1000);
+    return c.json({ error: "cooldown", retryInSec }, 429);
+  }
+
+  lastDetectAt.set(cooldownKey, Date.now());
 
   let totalDetected = 0;
   let ranAny = false;
@@ -440,7 +448,7 @@ candidatesRouter.post("/detect", aiIntensiveRateLimit, async (c) => {
       if (!result.ok) {
         // A single profileless SKU shouldn't abort an all-products refresh.
         if (scopeSel.kind === "product") {
-          lastDetectAt.delete(orgId);
+          lastDetectAt.delete(cooldownKey);
           return c.json({ error: result.error }, 400);
         }
         continue;
@@ -453,12 +461,12 @@ candidatesRouter.post("/detect", aiIntensiveRateLimit, async (c) => {
     }
 
     if (!ranAny) {
-      lastDetectAt.delete(orgId);
+      lastDetectAt.delete(cooldownKey);
       return c.json({ error: "missing_profile" }, 400);
     }
     return c.json({ detected: totalDetected });
   } catch (e) {
-    lastDetectAt.delete(orgId);
+    lastDetectAt.delete(cooldownKey);
     console.error("detect-candidates failed", { orgId, error: String(e) });
     return c.json({ error: "detection_failed" }, 500);
   }

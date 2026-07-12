@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
-  ArrowRight,
   Download,
   Loader2,
   Mail,
@@ -18,9 +17,8 @@ import { toast } from "sonner";
 import { api, ApiError, type Digest } from "@/lib/api";
 import { digestDetailQuery, digestsQuery } from "@/lib/queries";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { EmptyState } from "./empty-state";
-import { CatPill } from "./cat-pill";
+import { DigestView } from "./digest-view";
 
 const TEMP_MAP: Record<
   string,
@@ -43,16 +41,6 @@ export function TempIcon({ level }: { level: string }) {
       {m.label}
     </span>
   );
-}
-
-function urgencyMeta(urgency: string) {
-  if (urgency === "action_required") {
-    return { title: "Action required", color: "var(--critical)" };
-  }
-  if (urgency === "watch") {
-    return { title: "Watch", color: "var(--accent)" };
-  }
-  return { title: "FYI", color: "var(--muted)" };
 }
 
 function fmtWeek(start: string, end: string) {
@@ -140,10 +128,7 @@ export function DigestReader({ id }: { id: string }) {
   }
 
   const sections = d.content?.sections ?? [];
-  const tldr = d.content?.tldr ?? [];
   const crit = sections.filter((s) => s.urgency === "action_required");
-  const watch = sections.filter((s) => s.urgency === "watch");
-  const fyi = sections.filter((s) => s.urgency === "fyi");
   const periodWord = d.period === "daily" ? "Daily digest" : "Digest";
 
   return (
@@ -194,73 +179,7 @@ export function DigestReader({ id }: { id: string }) {
         </div>
       </div>
 
-      {tldr.length > 0 && (
-        <Card className="px-5 py-5">
-          <div className="text-xs font-semibold text-primary mb-3">TL;DR</div>
-          <ul className="m-0 pl-5 text-content leading-relaxed">
-            {tldr.map((t, i) => (
-              <li key={i}>{t}</li>
-            ))}
-          </ul>
-        </Card>
-      )}
-
-      {[crit, watch, fyi].map((items, idx) => {
-        if (items.length === 0) return null;
-        const meta = urgencyMeta(items[0]!.urgency);
-        return <DigestSection key={idx} meta={meta} items={items} />;
-      })}
+      {d.content && <DigestView content={d.content} />}
     </div>
-  );
-}
-
-function DigestSection({
-  meta,
-  items,
-}: {
-  meta: { title: string; color: string };
-  items: Array<{
-    urgency: string;
-    competitor: string;
-    category: string;
-    insight: string;
-    so_what: string;
-  }>;
-}) {
-  return (
-    <Card>
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <span
-            className="size-2 shrink-0 rounded-sm"
-            style={{ background: meta.color }}
-            aria-hidden
-          />
-          <div className="font-semibold text-sm tracking-tight">{meta.title}</div>
-        </div>
-        <span className="text-muted-foreground tabular-nums font-mono text-xs">
-          {items.length} signals
-        </span>
-      </div>
-      <div>
-        {items.map((s, i) => (
-          <div key={i} className="p-5 border-b border-border last:border-b-0">
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <CatPill>{s.category}</CatPill>
-              <span className="font-semibold text-sm">{s.competitor}</span>
-            </div>
-            <p className="m-0 mb-1.5 text-content leading-snug font-medium">
-              {s.insight}
-            </p>
-            {s.so_what && (
-              <p className="m-0 flex gap-1 text-muted-foreground text-sm leading-snug">
-                <ArrowRight className="size-3.5 mt-0.5 shrink-0" />
-                {s.so_what}
-              </p>
-            )}
-          </div>
-        ))}
-      </div>
-    </Card>
   );
 }

@@ -37,7 +37,14 @@ export function Trust() {
             <dt className="text-2xl font-medium tracking-tight tabular-nums">
               100<span className="text-base text-text-subtle">%</span>
             </dt>
-            <dd className="mt-1.5 text-xs text-text-muted">EU-hosted</dd>
+            <dd className="mt-1.5 text-xs text-text-muted">
+              <a
+                href="/security"
+                className="underline-offset-2 transition-colors hover:text-foreground hover:underline"
+              >
+                EU-hosted
+              </a>
+            </dd>
           </div>
         </dl>
           <p className="mt-5 text-xs text-text-subtle">

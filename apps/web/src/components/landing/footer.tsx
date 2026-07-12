@@ -72,6 +72,7 @@ export function Footer() {
               head="Company"
               links={[
                 { label: "About", href: "/about" },
+                { label: "Security", href: "/security" },
                 { label: "Contact", href: "mailto:hello@outrival.app" },
               ]}
             />

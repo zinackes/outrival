@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { validatePublicUrl } from "./monitor-url";
+import { validatePublicUrl, validateCustomMonitorUrl, normalizeCustomUrl } from "./monitor-url";
 
 // validatePublicUrl is the SSRF guard reused by the API (competitor / product
 // URLs) and as a defense-in-depth net in the scraper layer (crawler.ts,
@@ -57,5 +57,65 @@ describe("validatePublicUrl", () => {
     const r = validatePublicUrl("not a url");
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toBe("invalid_url");
+  });
+});
+
+// validateCustomMonitorUrl locks a "Watch a custom page" URL to the competitor's
+// exact registrable domain (eTLD+1). Unlike validateMonitorUrl (brand-by-label,
+// cross-TLD), a different registrable domain is rejected; subdomains are fine.
+describe("validateCustomMonitorUrl", () => {
+  const competitor = "https://acme.example";
+
+  test("accepts a page on the competitor's own domain", () => {
+    const r = validateCustomMonitorUrl("https://acme.example/security", competitor);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.url).toBe("https://acme.example/security");
+  });
+
+  test("accepts a subdomain of the competitor's registrable domain", () => {
+    expect(validateCustomMonitorUrl("https://docs.acme.example/legal/tos", competitor).ok).toBe(true);
+  });
+
+  test("rejects a different registrable domain (eTLD+1 mismatch)", () => {
+    const r = validateCustomMonitorUrl("https://not-acme.example/security", competitor);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toBe("custom_url_domain_mismatch");
+  });
+
+  test("rejects a same-label but different-TLD domain (stricter than brand match)", () => {
+    // validateMonitorUrl would accept acme.io for acme.example (same "acme" label);
+    // the custom domain lock requires the full eTLD+1 to match.
+    const r = validateCustomMonitorUrl("https://acme.io/security", competitor);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toBe("custom_url_domain_mismatch");
+  });
+
+  test("rejects when the competitor has no url to lock against", () => {
+    const r = validateCustomMonitorUrl("https://acme.example/security", null);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toBe("custom_url_domain_mismatch");
+  });
+
+  test("requires https and blocks SSRF hosts even on the same-domain path", () => {
+    expect(validateCustomMonitorUrl("http://acme.example/x", competitor).ok).toBe(false);
+    const ip = validateCustomMonitorUrl("https://169.254.169.254/", competitor);
+    expect(ip.ok).toBe(false);
+  });
+});
+
+describe("normalizeCustomUrl", () => {
+  test("collapses trailing slash and fragment so the same page dedupes", () => {
+    expect(normalizeCustomUrl("https://acme.example/enterprise/")).toBe(
+      normalizeCustomUrl("https://acme.example/enterprise"),
+    );
+    expect(normalizeCustomUrl("https://acme.example/enterprise#top")).toBe(
+      normalizeCustomUrl("https://acme.example/enterprise"),
+    );
+  });
+
+  test("keeps distinct query strings distinct", () => {
+    expect(normalizeCustomUrl("https://acme.example/docs?tab=security")).not.toBe(
+      normalizeCustomUrl("https://acme.example/docs?tab=billing"),
+    );
   });
 });

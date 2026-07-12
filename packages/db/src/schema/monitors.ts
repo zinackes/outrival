@@ -52,6 +52,13 @@ export const sourceTypeEnum = pgEnum("source_type", [
   // recurring complaint theme inflects upward over the review_scores time-series.
   // Always isActive=false; the detect-review-theme-shifts job owns it.
   "review_shift",
+  // Custom page (user-selectable via the dedicated "Watch a custom page" flow, not
+  // the standard enable list). Watches an arbitrary page on the competitor's own
+  // registrable domain via the generic snapshot → lexical diff → classify pipeline;
+  // config = { url, label, hint }. Several customs coexist per competitor (quota'd
+  // by PLAN_LIMITS.customMonitorsPerCompetitor, not the (competitor,sourceType)
+  // uniqueness). Kept in sync with shared SOURCE_TYPES.
+  "custom",
 ]);
 
 export const frequencyEnum = pgEnum("frequency", ["realtime", "daily", "weekly"]);

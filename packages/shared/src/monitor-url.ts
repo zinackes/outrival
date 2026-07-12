@@ -1,6 +1,15 @@
-import { extractBrand } from "./url";
+import { extractBrand, normalizeHostname } from "./url";
 import { isReviewSource, validateReviewUrl } from "./reviews";
 import type { SourceType } from "./constants/sources";
+
+/**
+ * Page-type hint for a custom monitor (config.hint). Grounds the classifier
+ * ("this page is the competitor's {hint} page") so a diff on an /about, ToS,
+ * /security or /enterprise page is weighed correctly. Kept small on purpose —
+ * finer typing lives in the diff text, not the taxonomy.
+ */
+export const CUSTOM_MONITOR_HINTS = ["legal", "team", "product", "security", "docs", "other"] as const;
+export type CustomMonitorHint = (typeof CUSTOM_MONITOR_HINTS)[number];
 
 /**
  * Registrable brands of third-party ATS / job boards where a competitor
@@ -102,6 +111,65 @@ export function validateMonitorUrl(
   const sameBrand = competitorBrand !== null && urlBrand === competitorBrand;
   const atsAllowed = sourceType === "jobs" && ATS_BRANDS.has(urlBrand);
   if (!sameBrand && !atsAllowed) return { ok: false, error: "host_not_allowed" };
+
+  return { ok: true, url: parsed.toString() };
+}
+
+/**
+ * Canonical form of a custom-monitor URL, used ONLY to dedupe two customs on the
+ * same competitor (host lowercased, trailing slash on the path dropped, fragment
+ * removed). Query strings are kept — a `?tab=security` is a genuinely different
+ * page. Returns null on an unparseable input. Not a security check (that's
+ * {@link validateCustomMonitorUrl}); just a stable equality key.
+ */
+export function normalizeCustomUrl(raw: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw.trim());
+  } catch {
+    return null;
+  }
+  parsed.hash = "";
+  parsed.hostname = parsed.hostname.toLowerCase();
+  if (parsed.pathname.length > 1 && parsed.pathname.endsWith("/")) {
+    parsed.pathname = parsed.pathname.replace(/\/+$/, "");
+  }
+  return parsed.toString();
+}
+
+/**
+ * Validate the URL of a CUSTOM page monitor. Unlike {@link validateMonitorUrl}
+ * (which brand-matches by TLD-stripped label, so stripe.com ≈ stripe.io), a custom
+ * page must live on the competitor's exact registrable domain (eTLD+1) — subdomains
+ * are fine (docs.stripe.com for stripe.com), a different registrable domain is not.
+ * Same syntactic SSRF guard as the other monitor URLs (https, no creds, standard
+ * port, no IP literal, no internal host). `custom_url_domain_mismatch` is the
+ * structured rejection the API surfaces.
+ */
+export function validateCustomMonitorUrl(
+  raw: string,
+  competitorUrl: string | null,
+): MonitorUrlValidation {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw.trim());
+  } catch {
+    return { ok: false, error: "invalid_url" };
+  }
+  if (parsed.protocol !== "https:") return { ok: false, error: "must_be_https" };
+  if (parsed.username || parsed.password) return { ok: false, error: "credentials_not_allowed" };
+  if (parsed.port && parsed.port !== "443") return { ok: false, error: "port_not_allowed" };
+  if (isIpLiteral(parsed.hostname)) return { ok: false, error: "host_not_allowed" };
+  if (isUnsafeHost(parsed.hostname)) return { ok: false, error: "host_not_allowed" };
+
+  // eTLD+1 equality (subdomains collapse to the registrable domain) — the domain
+  // lock AND the SSRF guard: an internal host never shares a registrable domain
+  // with a real competitor site.
+  const urlDomain = normalizeHostname(parsed.hostname);
+  const competitorDomain = normalizeHostname(competitorUrl);
+  if (!urlDomain || !competitorDomain || urlDomain !== competitorDomain) {
+    return { ok: false, error: "custom_url_domain_mismatch" };
+  }
 
   return { ok: true, url: parsed.toString() };
 }

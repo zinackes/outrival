@@ -81,7 +81,7 @@ export function Footer() {
                 { label: "Blog", href: "/blog" },
                 { label: "FAQ", href: "/#faq" },
                 { label: "Changelog", href: "/changelog" },
-                { label: "API docs", href: "/docs" },
+                { label: "API (coming soon)", href: "/docs" },
               ]}
             />
             <FooterCol

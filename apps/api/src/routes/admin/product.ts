@@ -36,6 +36,11 @@ const ONBOARDING_SEGMENTS: Array<{ key: string; label: string; from: string; to:
   { key: "first_signal", label: "Finalized → First signal", from: "competitors_finalized", to: "first_signal_received" },
   { key: "aha", label: "Signup → First signal", from: "started", to: "first_signal_received" },
   { key: "full", label: "Signup → Analysis completed", from: "started", to: "analysis_completed" },
+  // Cold-start activation tail (F2) — populate for sessions started after the
+  // milestones shipped, so counts fill in over the window.
+  { key: "first_scrape", label: "Signup → First scrape", from: "started", to: "first_scrape" },
+  { key: "scrape_to_signal", label: "First scrape → First signal", from: "first_scrape", to: "first_real_signal" },
+  { key: "digest_sample", label: "Signup → Digest sample", from: "started", to: "digest_sample" },
 ];
 
 // Funnel stages by milestone key, in order — drop-off is measured between them.

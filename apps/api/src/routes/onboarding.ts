@@ -22,11 +22,9 @@ import {
   fromDescription,
   fromDocument,
   fromRepo,
-  fromUrl,
   type ProductProfile,
 } from "@outrival/ai";
 import { findSimilarCompanies } from "@outrival/scrapers/discovery";
-import { quickFetchText } from "@outrival/scrapers/quick-fetch";
 import { tasks } from "@trigger.dev/sdk/v3";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
@@ -39,7 +37,7 @@ import {
 } from "../lib/products";
 import { fetchRepoArtifacts } from "../lib/github";
 import { extractDocumentText } from "../lib/extract-document";
-import { productProfileToSelfProfile } from "../lib/profile-derivation";
+import { deriveProfileFromUrl, productProfileToSelfProfile } from "../lib/profile-derivation";
 import {
   checkCompetitorQuota,
   getOrgPlan,
@@ -246,21 +244,21 @@ onboardingRouter.post("/analyze-url", aiIntensiveRateLimit, async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
 
-  let text: string;
-  try {
-    text = await quickFetchText(parsed.data.productUrl);
-  } catch (e) {
-    return c.json({ error: `Fetch failed: ${String(e)}`, fallback: "description" }, 422);
+  // Grounded live-URL derivation (same path the add-product wizard uses): resolves
+  // the competitor's dedicated pricing page (or, for catalog sites, its densest-priced
+  // product page) and feeds it to the profiler so `pricingModel` is filled from a real
+  // price grid instead of a homepage that rarely shows prices (it came back "" here).
+  const result = await deriveProfileFromUrl(parsed.data.productUrl);
+  if (!result.ok) {
+    const error =
+      result.reason === "fetch_failed"
+        ? `Fetch failed: ${result.detail ?? "could not load the page"}`
+        : result.reason === "too_short"
+          ? "Page content too short to analyse"
+          : "Could not derive a product profile";
+    return c.json({ error, fallback: "description" }, 422);
   }
-
-  if (text.length < 100) {
-    return c.json({ error: "Page content too short to analyse", fallback: "description" }, 422);
-  }
-
-  const profile = await deriveProfile(() => fromUrl(text));
-  if (!profile) {
-    return c.json({ error: "Could not derive a product profile", fallback: "description" }, 422);
-  }
+  const profile = result.profile;
 
   await db
     .update(organizations)

@@ -107,16 +107,15 @@ export default async function DemoPage({
               </li>
             ))}
           </ul>
-          {/* TODO: point to /sample once the standalone sample-digest page ships. */}
           <p className="mt-8 text-sm text-text-muted">
             Just want to see the output?{" "}
             <a
-              href="/#digest"
+              href="/sample"
               className="text-primary underline-offset-2 hover:underline"
             >
               See a sample digest
             </a>{" "}
-            on the homepage — no form needed.
+            — a real one, no form needed.
           </p>
           <p className="mt-4 text-xs text-text-subtle">
             Prefer email? Write to{" "}

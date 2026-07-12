@@ -1,4 +1,5 @@
-import { Activity, Layers, Zap } from "lucide-react";
+import { Activity, ArrowRight, Layers, Zap } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { DigestMockup } from "./digest-mockup";
 
 function FeatureItem({
@@ -62,6 +63,13 @@ export function DigestFeature() {
                 title="Critical → real time"
                 desc="High/critical signals don't wait until Monday — they ship to Slack or email within 5 minutes."
               />
+            </div>
+            <div className="mt-8">
+              <Button asChild variant="outline">
+                <a href="/sample">
+                  See the full sample digest <ArrowRight size={14} />
+                </a>
+              </Button>
             </div>
           </div>
         </div>

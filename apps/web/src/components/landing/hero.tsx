@@ -53,7 +53,7 @@ export function Hero() {
             <a href="/auth">Start monitoring free</a>
           </Button>
           <Button asChild size="lg" variant="outline">
-            <a href="#digest">See a sample digest</a>
+            <a href="/sample">See a sample digest</a>
           </Button>
         </div>
       </div>

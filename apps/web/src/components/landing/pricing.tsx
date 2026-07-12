@@ -13,6 +13,7 @@ type Plan = {
   featured: boolean;
   includes?: string;
   features: string[];
+  note?: { label: string; href: string };
 };
 
 const PLANS: Plan[] = [
@@ -71,8 +72,8 @@ const PLANS: Plan[] = [
     price: "199",
     suffix: "€ / month",
     desc: "50 competitors, every review source, and the highest usage limits.",
-    cta: "Talk to sales",
-    href: "/demo?plan=business",
+    cta: "Start Business",
+    href: "/auth",
     featured: false,
     includes: "Everything in Pro, plus:",
     features: [
@@ -82,6 +83,10 @@ const PLANS: Plan[] = [
       "Higher re-scan & discovery limits",
       "DPA · security review",
     ],
+    note: {
+      label: "Need SSO or a custom DPA? Contact us",
+      href: "mailto:hello@outrival.app",
+    },
   },
 ];
 
@@ -162,6 +167,14 @@ export function Pricing() {
               >
                 <Link href={p.href}>{p.cta}</Link>
               </Button>
+              {p.note && (
+                <a
+                  href={p.note.href}
+                  className="mt-3 block text-center text-xs text-text-subtle underline-offset-2 hover:text-foreground hover:underline"
+                >
+                  {p.note.label}
+                </a>
+              )}
             </div>
           ))}
         </div>

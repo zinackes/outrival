@@ -26,7 +26,7 @@ export function CTA() {
               </Link>
             </Button>
             <Button asChild variant="outline">
-              <Link href="/demo">Request a demo</Link>
+              <Link href="/demo">See the product</Link>
             </Button>
             <div className="text-xs text-text-subtle">
               Your data stays in the EU ·{" "}

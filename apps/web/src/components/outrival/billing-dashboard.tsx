@@ -629,16 +629,6 @@ export function BillingDashboard() {
                   >
                     Current plan
                   </Button>
-                ) : plan === "business" ? (
-                  // Business is sales-assisted (workspace setup, users, DPA) — not
-                  // self-serve checkout. Mirrors the landing "Talk to sales" CTA.
-                  <Button
-                    asChild
-                    variant={isUpgrade ? "default" : "outline"}
-                    className="mt-6 w-full"
-                  >
-                    <Link href="/demo?plan=business">Talk to sales</Link>
-                  </Button>
                 ) : isPaid ? (
                   <Button
                     variant={isUpgrade ? "default" : "outline"}

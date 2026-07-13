@@ -389,6 +389,9 @@ candidatesRouter.post("/:id/add", async (c) => {
       // Internal YouTube anchor (weekly) — see competitors.ts POST. Channel resolved
       // from a homepage link → diff of the sorted video list surfaces new uploads.
       { competitorId: competitor.id, sourceType: "youtube", frequency: "weekly", scrapeStartedAt },
+      // Internal Hacker News anchor (weekly) — see competitors.ts POST. HN Algolia by
+      // brand → objectID-set diff surfaces Show HN launches / traction mentions.
+      { competitorId: competitor.id, sourceType: "hackernews", frequency: "weekly", scrapeStartedAt },
     ])
     .returning();
 

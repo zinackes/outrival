@@ -47,6 +47,13 @@ import {
   renderStructuredChanges,
   filterUnstableSections,
 } from "@outrival/scrapers/homepage-diff";
+// Pure subpath — @outrival/shared only. HN snapshot dedup + strategic diff line for
+// the hackernews branch (deterministic per-hit severity, no classifier).
+import {
+  parseDocHits,
+  newQualifyingHits,
+  annotateLine,
+} from "@outrival/scrapers/hackernews";
 // Pure subpath — sharp only. Perceptual hash for visual-redesign detection (patch-17).
 import {
   computePerceptualHash,
@@ -120,14 +127,14 @@ const VOLATILE_RESET = Number(process.env.ENRICHMENTS_VOLATILE_RESET ?? 10);
 const COMPLETENESS_ENABLED = process.env.SNAPSHOT_COMPLETENESS_ENABLED !== "false";
 const COMPLETENESS_MIN_RATIO = Number(process.env.SNAPSHOT_COMPLETENESS_MIN_RATIO ?? 0.5);
 const COMPLETENESS_MIN_PRIORS = 3;
-const SIZE_VARIABLE_SOURCES = new Set(["blog", "changelog", "news", "sitemap", "subdomains", "youtube"]);
+const SIZE_VARIABLE_SOURCES = new Set(["blog", "changelog", "news", "sitemap", "subdomains", "youtube", "hackernews"]);
 // Sources whose capture is ALWAYS a scraper-synthesized document (built from parsed
 // structured data — no HTML fetch path at all), so the deny-page copy heuristic is
 // meaningless on them: deny-shaped strings in a sitemap/feed listing are content, not
 // a block. github_repo carries no section marker (it's a <pre> dump), hence the set;
 // the feed/ATS/product-line variants of changelog/jobs/pricing DO have an HTML path
 // too, so they're excluded per-capture via isSyntheticDocument, not by source type.
-const SYNTHETIC_DOC_SOURCES = new Set(["sitemap", "news", "reddit", "github_repo", "subdomains", "youtube"]);
+const SYNTHETIC_DOC_SOURCES = new Set(["sitemap", "news", "reddit", "github_repo", "subdomains", "youtube", "hackernews"]);
 // R6 (2026-07 audit, T5) — sources that monitor the competitor's OWN domain, where
 // a 200 landing on a different registrable domain means the wrong target (parked
 // page, acquisition redirect, dead link), not the page. Deliberately NOT jobs or
@@ -552,6 +559,11 @@ export const scrapeMonitorJob = task({
           // patch-31 — lets a scraper route via a structured connector (e.g. jobs →
           // ATS API). Null when never detected / detection disabled ⇒ today's path.
           platformProfile: competitor.platformProfile,
+          // hackernews source — the DB-free scraper needs the real competitor name
+          // (title matching) + the ambiguity flag (strict vs lenient guard).
+          competitorName: competitor.name,
+          ambiguousName:
+            (competitor.metadata as { ambiguousName?: boolean } | null)?.ambiguousName,
         });
       }
     } catch (err) {
@@ -1179,6 +1191,59 @@ export const scrapeMonitorJob = task({
           // The structured diff + relevance filter already dropped cosmetic churn,
           // so always classify — no lexical significance gate needed here.
           await tasks.trigger("classify-change", { changeId });
+        }
+      }
+    } else if (monitor.sourceType === "hackernews" && lastSnapshot) {
+      // Hacker News: dedup by STORED objectID rather than lexical diff, and force the
+      // severity per hit (Show HN → product/high, traction → content/medium) instead
+      // of the AI classifier — so the premium Show HN can never be silently dropped
+      // as "not significant". Each genuinely-new qualifying hit becomes its own
+      // change (signals.changeId is unique → exactly one signal per post) fed
+      // straight to generate-signal with a synthesized deterministic classification.
+      const beforeHtml = await getFromR2(`${lastSnapshot.r2Key}.html`).catch(() => null);
+      if (beforeHtml !== null) {
+        const priorHits = parseDocHits(beforeHtml);
+        const currentHits = parseDocHits(result.html);
+        const fresh = newQualifyingHits(priorHits, currentHits);
+        for (const hit of fresh) {
+          const line = annotateLine(competitor.name, hit);
+          const [newChange] = await db
+            .insert(changes)
+            .values({
+              monitorId: monitor.id,
+              snapshotBeforeId: lastSnapshot.id,
+              snapshotAfterId: newSnapshot.id,
+              diffText: line.slice(0, 50000),
+              diffType: "text",
+              rawDiff: { added: [line], removed: [], threadUrl: hit.threadUrl, objectID: hit.objectID },
+              detectedAt: new Date(),
+            })
+            .returning();
+          if (!newChange) continue;
+          changeId = newChange.id;
+          changedAt = new Date();
+          // Synthesized classification: forces the deterministic category/severity
+          // via generate-signal's existing `classification` input (same shape the AI
+          // returns), so no change to generate-signal / no new prompt. The thread URL
+          // rides in humanChangeAfter → shown on the signal card as its proof link,
+          // and in diffText → grounds the insight.
+          await tasks.trigger("generate-signal", {
+            changeId: newChange.id,
+            classification: {
+              category: hit.category,
+              severity: hit.severity,
+              is_significant: true,
+              reason: line,
+              humanChangeBefore: null,
+              humanChangeAfter: `${hit.title} — ${hit.threadUrl}`,
+            },
+          });
+        }
+        if (changeId) {
+          await db
+            .update(monitors)
+            .set({ lastChangedAt: changedAt ?? new Date() })
+            .where(eq(monitors.id, monitor.id));
         }
       }
     } else if (lastSnapshot) {

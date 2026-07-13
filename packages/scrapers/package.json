@@ -39,6 +39,10 @@
       "types": "./src/diff/homepage-diff.ts",
       "default": "./src/diff/homepage-diff.ts"
     },
+    "./hackernews": {
+      "types": "./src/hackernews/hackernews.ts",
+      "default": "./src/hackernews/hackernews.ts"
+    },
     "./phash": {
       "types": "./src/lib/phash.ts",
       "default": "./src/lib/phash.ts"

@@ -66,6 +66,20 @@ export interface ScrapeOptions {
    * exactly today's behaviour (the profile only ever optimises).
    */
   platformProfile?: PlatformProfile | null;
+  /**
+   * Competitor display name (hackernews source). The HN scraper is DB-free, so
+   * scrape-monitor threads the real competitor name through — the anti-homonym
+   * guard matches it against story titles. Falls back to the URL brand when absent.
+   */
+  competitorName?: string;
+  /**
+   * Whether the competitor name is a common word (hackernews source). Default
+   * (undefined/true) = STRICT: an HN hit must carry the competitor domain in its
+   * url. Only `false` — an explicit user confirmation on competitor.metadata that
+   * the name is unambiguous — unlocks the name-in-title match. Ignored by every
+   * other scraper.
+   */
+  ambiguousName?: boolean;
 }
 
 export interface ScrapeOutcome extends ScraperResult {

@@ -61,6 +61,14 @@ export const SOURCE_TYPES = [
   // synthetic snapshot→change chain when a department's open-role count inflects up
   // over hiring_metrics (detect-hiring-velocity-shifts). Kept in sync with the DB enum.
   "hiring_shift",
+  // Hacker News mention + Show HN tracking. Like sitemap/news/youtube, an INTERNAL
+  // source — never user-selectable (excluded from plan gating, the enable route, and
+  // the source tabs). Seeded weekly at creation; the scraper queries HN's public
+  // Algolia search by brand, applies a strict anti-homonym guard (domain-in-url), and
+  // the scrape-monitor hackernews branch diffs objectID sets to emit a Show HN launch
+  // (product/high) or a traction mention (content/medium) with a forced severity.
+  // Kept in sync with the DB source_type enum.
+  "hackernews",
   // Custom page. User-selectable, but via a DEDICATED flow ("Watch a custom page")
   // — NOT the standard enable list (rejected on POST /:id/monitors). Watches ANY
   // page on the competitor's own registrable domain (/about, ToS, /security,

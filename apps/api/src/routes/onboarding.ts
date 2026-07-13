@@ -690,6 +690,14 @@ onboardingRouter.post("/complete", async (c) => {
           frequency: "weekly" as const,
           scrapeStartedAt,
         },
+        // Internal Hacker News anchor (weekly) — HN Algolia by brand; its objectID-set
+        // diff surfaces Show HN launches (product/high) / traction mentions (content/medium).
+        {
+          competitorId: competitor.id,
+          sourceType: "hackernews" as const,
+          frequency: "weekly" as const,
+          scrapeStartedAt,
+        },
       ])
       .returning();
 

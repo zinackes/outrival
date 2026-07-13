@@ -506,6 +506,9 @@ competitorsRouter.post("/", async (c) => {
       // Internal YouTube anchor (weekly). Resolves the channel from a homepage link
       // → diff of the sorted video list surfaces a brand-new upload (content signal).
       { competitorId: competitor.id, sourceType: "youtube", frequency: "weekly", scrapeStartedAt },
+      // Internal Hacker News anchor (weekly). HN Algolia by brand → objectID-set diff
+      // surfaces a Show HN launch (product/high) or a traction mention (content/medium).
+      { competitorId: competitor.id, sourceType: "hackernews", frequency: "weekly", scrapeStartedAt },
     ])
     .returning();
 
@@ -559,14 +562,15 @@ competitorsRouter.post("/:id/monitors", async (c) => {
   if (!competitor || competitor.deletedAt) return c.json({ error: "Competitor not found" }, 404);
 
   const { sourceType } = parsed.data;
-  // tech_stack (patch-18), sitemap (patch-32), news, subdomains and youtube are
-  // internal anchor sources, not user-enableable.
+  // tech_stack (patch-18), sitemap (patch-32), news, subdomains, youtube and
+  // hackernews are internal anchor sources, not user-enableable.
   if (
     sourceType === "tech_stack" ||
     sourceType === "sitemap" ||
     sourceType === "news" ||
     sourceType === "subdomains" ||
-    sourceType === "youtube"
+    sourceType === "youtube" ||
+    sourceType === "hackernews"
   ) {
     return c.json({ error: "source_not_enableable", source: sourceType }, 400);
   }

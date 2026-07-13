@@ -274,7 +274,13 @@ source_type       homepage | pricing | blog | changelog | jobs |
                     synthétiques), review_shift (ancre du signal d'inflexion de thèmes
                     de plaintes, jamais scrapée), hiring_shift (ancre du signal
                     d'inflexion de vélocité de recrutement par département, jamais
-                    scrapée). status : on-demand starter+ (patch-31).
+                    scrapée), hackernews (mention-tracking HN via l'Algolia public,
+                    semé weekly ; garde anti-homonyme STRICTE = domaine obligatoire sauf
+                    competitor.metadata.ambiguousName===false ; Show HN+domaine →
+                    product/high, mention > HN_POINTS_THRESHOLD → content/medium, en
+                    dessous stocké sans signal ; sévérité FORCÉE par-hit — branche dédiée
+                    scrape-monitor, dédup par objectID, pas de classifieur, lien thread
+                    toujours attaché). status : on-demand starter+ (patch-31).
                   — custom : page arbitraire du domaine enregistrable (eTLD+1) du
                     concurrent, user-selectable via un flow DÉDIÉ (« Watch a custom page »,
                     POST /:id/custom-monitors — pas la liste standard d'enable). config =
@@ -511,6 +517,17 @@ carte (état live uniquement).
        sitemap → diff générique (patch-32 : scraper résout robots.txt Sitemap:/paths
                    conventionnels, walk index + .gz, émet la liste d'URLs triée → le diff
                    surface les pages neuves/retirées ; catégorisation par path. Interne, weekly)
+       hackernews → BRANCHE DÉDIÉE (pas le diff générique) : le scraper query l'Algolia
+                   public HN par brand (search_by_date, fenêtre roulante HN_WINDOW_DAYS,
+                   sans clé), applique la garde anti-homonyme puis rend un snapshot dont le
+                   JSON island porte tous les hits guard-passing. scrape-monitor diffe les
+                   sets d'objectID (snapshot courant vs précédent) → pour chaque hit neuf
+                   qualifiant : 1 change + generate-signal avec une classification
+                   SYNTHÉTISÉE (severity/category forcées, bypass classify-change) →
+                   Show HN+domaine = product/high, mention > HN_POINTS_THRESHOLD =
+                   content/medium, en dessous = stocké sans signal. Lien thread (item?id=)
+                   dans humanChangeAfter + diffText. Empty = état valide (pas de throw →
+                   pas de markedUnscrapable de masse). Interne, weekly)
   └─ reschedule : computeNextRun(frequency, lastChangedAt, createdAt)
        (multiplicateur ×1 / ×2 / ×3 / ×4 selon staleness — plafond MAX_INTERVAL)
   └─ L2 backfill : au 1er snapshot d'une source BACKFILL_SOURCES (competitor non-self)
@@ -868,6 +885,8 @@ TECH_STACK_SIGNAL_MIN_IMPORTANCE=high   # patch-18 — min tech importance to em
 REVIEW_THEME_WINDOW_DAYS=42             # review complaint-theme shift — recent window (days) compared vs baseline for an upward inflection
 REVIEW_THEME_LOOKBACK_DAYS=84           # review complaint-theme shift — total review_scores series read (baseline = lookback − window)
 HIRING_SPIKE_THRESHOLD=0.5              # hiring-velocity — a department's weekly open-role count must exceed (1 + this) × its trailing 4-week average (≥4 weeks history) to emit a "hiring" inflection signal; high severity for engineering/sales, medium otherwise. Event-driven off extract-jobs (no cron slot)
+HN_POINTS_THRESHOLD=50                  # hackernews source — a mention (non-Show-HN, guard-passing) must EXCEED this many points to emit a content/medium traction signal; below it the hit is stored in the snapshot JSON island but never signalled. Show HN + matching domain always signals product/high regardless.
+HN_WINDOW_DAYS=30                       # hackernews source — recency window (days) bounding the HN Algolia search_by_date fetch (created_at_i > now − window), so a heavily-mentioned competitor never hits the hard 1000-hit ceiling
 
 # AI
 ANTHROPIC_API_KEY=           # provider abstrait — Claude fallback (provider="claude")

@@ -311,7 +311,7 @@ export function BattleCardTab({ competitorId }: Props) {
   return (
     <Reveal token={card.generatedAt}>
     <TabCard>
-      <div className="flex items-center justify-between gap-3 px-5 py-4">
+      <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-2.5">
           <h2 className="flex items-center gap-2 text-content font-semibold tracking-tight leading-tight">
             <Swords size={14} className="text-muted-foreground shrink-0" />
@@ -319,7 +319,7 @@ export function BattleCardTab({ competitorId }: Props) {
           </h2>
           {!editing && evidence && <BattleCardProvenance evidence={evidence} />}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {editing ? (
           <>
             <Button

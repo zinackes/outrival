@@ -13,6 +13,7 @@ import {
   Crosshair,
   DollarSign,
   Eye,
+  EyeOff,
   GitCompare,
   Info,
   Loader2,
@@ -27,6 +28,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { PageHead } from "./page-head";
 import {
@@ -171,9 +178,13 @@ export function AskPanel({
   const [suggestions, setSuggestions] = useState<Suggestion[]>(DEFAULT_SUGGESTIONS);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   // "Watch this question" — the exact question the shown answer belongs to (the
-  // textarea may have been edited since), plus the save/watching state.
+  // textarea may have been edited since), plus the save/watching state and the id
+  // of the created standing query (so the same button can un-watch it).
   const [answeredQuestion, setAnsweredQuestion] = useState<string | null>(null);
-  const [watchState, setWatchState] = useState<"idle" | "saving" | "watching">("idle");
+  const [watchState, setWatchState] = useState<
+    "idle" | "saving" | "watching" | "removing"
+  >("idle");
+  const [watchedId, setWatchedId] = useState<string | null>(null);
   const [paywall, setPaywall] = useState<PaywallReason | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -209,6 +220,7 @@ export function AskPanel({
     setCopied(false);
     setAnsweredQuestion(item.question);
     setWatchState("idle");
+    setWatchedId(null);
   }
 
   // Back to the empty state (suggestions + recent questions).
@@ -222,6 +234,7 @@ export function AskPanel({
     setError(null);
     setAnsweredQuestion(null);
     setWatchState("idle");
+    setWatchedId(null);
   }
 
   // Save the shown answer as a standing query: it will be re-evaluated when new
@@ -244,6 +257,11 @@ export function AskPanel({
         }),
       });
       if (res.ok) {
+        // Keep the created (or already-existing) id so the button can un-watch it.
+        const body = (await res.json().catch(() => null)) as {
+          query?: { id?: string };
+        } | null;
+        setWatchedId(body?.query?.id ?? null);
         setWatchState("watching");
         return;
       }
@@ -263,6 +281,27 @@ export function AskPanel({
       setWatchState("idle");
     } catch {
       setWatchState("idle");
+    }
+  }
+
+  // Stop watching from the same button (delete the standing query we just created).
+  // A 404 means it's already gone — treat that as un-watched too.
+  async function unwatchQuestion() {
+    if (watchState !== "watching" || !watchedId) return;
+    setWatchState("removing");
+    try {
+      const res = await fetch(`${BASE}/api/standing-queries/${watchedId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (res.ok || res.status === 404) {
+        setWatchedId(null);
+        setWatchState("idle");
+        return;
+      }
+      setWatchState("watching");
+    } catch {
+      setWatchState("watching");
     }
   }
 
@@ -337,6 +376,7 @@ export function AskPanel({
     setCopied(false);
     setAnsweredQuestion(null);
     setWatchState("idle");
+    setWatchedId(null);
 
     try {
       const res = await fetch(`${BASE}/api/ask`, {
@@ -619,30 +659,60 @@ export function AskPanel({
               </span>
               <div className="flex items-center gap-1">
                 {answeredQuestion && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => void watchQuestion()}
-                    disabled={watchState !== "idle"}
-                    title="Re-check this question when new signals touch it, and alert you when the answer materially changes"
-                  >
-                    {watchState === "watching" ? (
-                      <>
-                        <Check className="size-3.5 text-[var(--positive)]" />
-                        Watching
-                      </>
-                    ) : watchState === "saving" ? (
-                      <>
-                        <Loader2 className="size-3.5 animate-spin" />
-                        Watching…
-                      </>
-                    ) : (
-                      <>
-                        <Eye className="size-3.5 text-muted-foreground" />
-                        Watch this question
-                      </>
-                    )}
-                  </Button>
+                  <TooltipProvider delayDuration={200}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="group"
+                          onClick={() => {
+                            if (watchState === "idle") void watchQuestion();
+                            else if (watchState === "watching") void unwatchQuestion();
+                          }}
+                          disabled={watchState === "saving" || watchState === "removing"}
+                          aria-pressed={watchState === "watching"}
+                        >
+                          {watchState === "watching" ? (
+                            <>
+                              {/* Default label; swaps to the un-watch affordance on hover/focus. */}
+                              <span className="inline-flex items-center gap-1.5 group-hover:hidden group-focus-visible:hidden">
+                                <Check className="size-3.5 text-[var(--positive)]" />
+                                Watching
+                              </span>
+                              <span className="hidden items-center gap-1.5 group-hover:inline-flex group-focus-visible:inline-flex">
+                                <EyeOff className="size-3.5 text-muted-foreground" />
+                                Unwatch
+                              </span>
+                            </>
+                          ) : watchState === "saving" ? (
+                            <>
+                              <Loader2 className="size-3.5 animate-spin" />
+                              Watching…
+                            </>
+                          ) : watchState === "removing" ? (
+                            <>
+                              <Loader2 className="size-3.5 animate-spin" />
+                              Unwatching…
+                            </>
+                          ) : (
+                            <>
+                              <Eye className="size-3.5 text-muted-foreground" />
+                              Watch this question
+                            </>
+                          )}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent
+                        side="top"
+                        className="max-w-xs text-xs leading-relaxed font-normal"
+                      >
+                        {watchState === "watching"
+                          ? "You'll be alerted when this answer materially changes, and it lands in your weekly digest. Click to stop watching."
+                          : "Outrival re-checks this question whenever new signals touch the competitors and topics it cites, and alerts you when the answer materially changes."}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 )}
                 <Button
                   variant="ghost"

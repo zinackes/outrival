@@ -55,6 +55,12 @@ export const SOURCE_TYPES = [
   // chain when a recurring complaint theme inflects upward over the review_scores
   // time-series (detect-review-theme-shifts). Kept in sync with the DB enum.
   "review_shift",
+  // Hiring velocity inflections (hiring-velocity feature). Like review_shift /
+  // tech_stack, an INTERNAL anchor source — never user-selectable (excluded from
+  // plan gating, the enable route, and the source tabs). It only anchors the
+  // synthetic snapshot→change chain when a department's open-role count inflects up
+  // over hiring_metrics (detect-hiring-velocity-shifts). Kept in sync with the DB enum.
+  "hiring_shift",
   // Custom page. User-selectable, but via a DEDICATED flow ("Watch a custom page")
   // — NOT the standard enable list (rejected on POST /:id/monitors). Watches ANY
   // page on the competitor's own registrable domain (/about, ToS, /security,

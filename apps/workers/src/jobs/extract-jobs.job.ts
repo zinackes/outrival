@@ -1,4 +1,4 @@
-import { task, logger, AbortTaskRunError } from "@trigger.dev/sdk/v3";
+import { task, logger, tasks, AbortTaskRunError } from "@trigger.dev/sdk/v3";
 import { z } from "zod";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db, snapshots, jobPostings, monitors } from "@outrival/db";
@@ -11,9 +11,10 @@ import {
 } from "@outrival/ai";
 import { getFromR2, normalizeDomain } from "@outrival/shared";
 import { parseAtsJobsFromHtml } from "@outrival/scrapers/jobs-ats";
+import { bucketJobCounts, isoWeekStart } from "@outrival/scrapers/jobs-hiring";
 import { jobsFromStructured } from "@outrival/scrapers/structured-data";
 import { htmlToText } from "../lib/html-to-text";
-import { insertJobCounts, loggedAi, logExtractionRun } from "../lib/analytics";
+import { insertJobCounts, upsertHiringMetrics, loggedAi, logExtractionRun } from "../lib/analytics";
 import { stagedExtract } from "../lib/staged-extract";
 import { computeJobsDelta } from "../lib/jobs-delta";
 
@@ -209,6 +210,35 @@ export const extractJobsJob = task({
         recorded_at: now,
       })),
     );
+
+    // Hiring velocity (hiring-velocity feature): only an authoritative ATS board
+    // gives a trustworthy per-week open-count (the LLM/careers fallback can be
+    // partial). Bucket the postings into canonical departments and upsert one row
+    // per (competitor, bucket, ISO week) — a re-scan the same week overwrites rather
+    // than doubles — then fire the inflection detector. job_counts above is left
+    // untouched (raw department, per-scrape) so nothing existing regresses.
+    if (authoritative && jobs.length > 0) {
+      const bucketCounts = bucketJobCounts(jobs);
+      const weekStart = isoWeekStart(now);
+      const unknown = bucketCounts.get("unknown") ?? 0;
+      if (unknown / jobs.length > 0.2) {
+        logger.warn("High share of unbucketed hiring departments — mapping may need tuning", {
+          competitorId: input.competitorId,
+          unknown,
+          total: jobs.length,
+        });
+      }
+      await upsertHiringMetrics(
+        Array.from(bucketCounts.entries()).map(([bucket, count]) => ({
+          competitor_id: input.competitorId,
+          department_bucket: bucket,
+          open_count: count,
+          week_start: weekStart,
+          recorded_at: now,
+        })),
+      );
+      await tasks.trigger("detect-hiring-velocity-shifts", { competitorId: input.competitorId });
+    }
 
     logger.log("Completed extract-jobs", {
       competitorId: input.competitorId,

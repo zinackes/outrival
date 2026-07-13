@@ -519,6 +519,13 @@ async function fetchJson(
       },
     });
     if (!res.ok) return null;
+    // Lever's `mode=json` endpoint returns an HTML page (still HTTP 200) when the
+    // board token is malformed/unknown — the content-type gives it away. Reject it
+    // explicitly so the caller fails cleanly to the link-follow fallback instead of
+    // throwing deep inside JSON.parse. Only reject when the header is PRESENT and
+    // non-JSON; if it's absent we still attempt the parse (caught below).
+    const contentType = (res.headers.get("content-type") ?? "").toLowerCase();
+    if (contentType && !contentType.includes("json")) return null;
     return await res.json();
   } catch {
     return null;

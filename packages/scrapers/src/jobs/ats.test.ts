@@ -1,7 +1,8 @@
-import { test, expect } from "bun:test";
+import { test, expect, afterEach } from "bun:test";
 import {
   atsBoardFromKey,
   detectAtsBoard,
+  fetchAtsJobs,
   normalizeSalary,
   normalizeSeniority,
   parseAtsResponse,
@@ -322,4 +323,46 @@ test("returns null for a malformed key", () => {
   expect(atsBoardFromKey("greenhouse")).toBeNull();
   expect(atsBoardFromKey(":airbnb")).toBeNull();
   expect(atsBoardFromKey("greenhouse:")).toBeNull();
+});
+
+// ─── Lever mode=json HTML trap ───────────────────────────────────────────────
+// A malformed/unknown Lever token makes `?mode=json` return an HTML page with a
+// 200 status. It must be detected and fail cleanly (null → link-follow fallback),
+// never be treated as a successful snapshot.
+
+const realFetch = globalThis.fetch;
+afterEach(() => {
+  globalThis.fetch = realFetch;
+});
+
+function stubFetch(body: string, contentType: string, status = 200) {
+  globalThis.fetch = (async () =>
+    new Response(body, { status, headers: { "content-type": contentType } })) as typeof fetch;
+}
+
+test("Lever mode=json returning HTML (200) fails cleanly to null", async () => {
+  stubFetch("<!doctype html><html><body>Not found</body></html>", "text/html; charset=utf-8");
+  const jobs = await fetchAtsJobs({
+    provider: "lever",
+    token: "does-not-exist",
+    boardUrl: "https://jobs.lever.co/does-not-exist",
+  });
+  expect(jobs).toBeNull();
+});
+
+test("Lever mode=json returning real JSON is parsed", async () => {
+  stubFetch(
+    JSON.stringify([
+      { text: "Staff Engineer", categories: { team: "Engineering", location: "Remote" }, hostedUrl: "https://jobs.lever.co/acme/1" },
+    ]),
+    "application/json",
+  );
+  const jobs = await fetchAtsJobs({
+    provider: "lever",
+    token: "acme",
+    boardUrl: "https://jobs.lever.co/acme",
+  });
+  expect(jobs).not.toBeNull();
+  expect(jobs).toHaveLength(1);
+  expect(jobs![0]!.title).toBe("Staff Engineer");
 });

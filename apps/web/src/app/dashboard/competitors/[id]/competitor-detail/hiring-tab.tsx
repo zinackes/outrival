@@ -2,9 +2,10 @@
 
 import dynamic from "next/dynamic";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { Briefcase, Activity, ArrowUp, ArrowDown, ExternalLink } from "lucide-react";
+import { Briefcase, Activity, ArrowUp, ArrowDown, ExternalLink, TrendingUp } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { Sparkline } from "@/components/dashboard/sparkline";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
 import { buildJobTrend, mergeTrendsByDate } from "./charts";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -50,9 +51,18 @@ export function HiringTab({
     queryFn: () => api.getCompetitorJobTrends(competitorId).then((t) => t.trends),
     placeholderData: keepPreviousData,
   });
+  // Per-department weekly velocity (sparklines). Secondary enrichment — the tab
+  // never blocks or errors on it; it just doesn't render when there's no series.
+  const velocityQuery = useQuery({
+    queryKey: ["competitor", competitorId, "hiringVelocity"],
+    queryFn: () => api.getCompetitorHiringVelocity(competitorId).then((v) => v.velocity),
+    placeholderData: keepPreviousData,
+  });
 
   const jobs = jobsQuery.data ?? null;
   const trends = trendsQuery.data ?? null;
+  // Need ≥2 weeks for a sparkline to mean anything.
+  const velocity = (velocityQuery.data ?? []).filter((v) => v.series.length >= 2);
 
   if (jobsQuery.isError || trendsQuery.isError)
     return <Empty text="Couldn't load this data right now — try again in a moment." />;
@@ -187,6 +197,33 @@ export function HiringTab({
         </div>
       ) : (
         deptTable
+      )}
+
+      {velocity.length > 0 && (
+        <TabSection title="Velocity by department" icon={TrendingUp}>
+          <p className="text-sm text-muted-foreground">
+            Open roles per week by department — an accelerating team shows where budget is going.
+          </p>
+          <ul className="mt-2 divide-y divide-border">
+            {velocity.map((v) => (
+              <li key={v.bucket} className="flex items-center justify-between gap-4 py-2">
+                <span className="text-sm">{v.label}</span>
+                <div className="flex items-center gap-3">
+                  <Sparkline
+                    data={v.series}
+                    w={96}
+                    h={24}
+                    color="var(--link)"
+                    fill
+                    interactive
+                    valueLabel="roles"
+                  />
+                  <span className="w-8 text-right font-mono text-sm tabular-nums">{v.current}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </TabSection>
       )}
 
       <TabSection title="Roles" icon={Briefcase}>

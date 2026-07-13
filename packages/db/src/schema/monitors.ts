@@ -52,6 +52,12 @@ export const sourceTypeEnum = pgEnum("source_type", [
   // recurring complaint theme inflects upward over the review_scores time-series.
   // Always isActive=false; the detect-review-theme-shifts job owns it.
   "review_shift",
+  // Hiring velocity inflections (hiring-velocity feature). Infra-only anchor source
+  // (like review_shift / tech_stack): never scraped, never user-selectable, excluded
+  // from gating — it exists solely to anchor the snapshot → change → signal FK chain
+  // when a department's open-role count inflects up over hiring_metrics. Always
+  // isActive=false; the detect-hiring-velocity-shifts job owns it.
+  "hiring_shift",
   // Custom page (user-selectable via the dedicated "Watch a custom page" flow, not
   // the standard enable list). Watches an arbitrary page on the competitor's own
   // registrable domain via the generic snapshot → lexical diff → classify pipeline;

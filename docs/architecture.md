@@ -272,7 +272,9 @@ source_type       homepage | pricing | blog | changelog | jobs |
                     read-only), sitemap + news (patch-32, semés weekly, diff = pages/
                     événements neufs), ai_visibility/subdomains/youtube (ancres
                     synthétiques), review_shift (ancre du signal d'inflexion de thèmes
-                    de plaintes, jamais scrapée). status : on-demand starter+ (patch-31).
+                    de plaintes, jamais scrapée), hiring_shift (ancre du signal
+                    d'inflexion de vélocité de recrutement par département, jamais
+                    scrapée). status : on-demand starter+ (patch-31).
                   — custom : page arbitraire du domaine enregistrable (eTLD+1) du
                     concurrent, user-selectable via un flow DÉDIÉ (« Watch a custom page »,
                     POST /:id/custom-monitors — pas la liste standard d'enable). config =
@@ -312,6 +314,12 @@ pricing_history     competitor_id, plan_name, price, currency, billing_period,
                     facts, AI-free regex on the page text, stamped page-level per row,
                     Nullable = pre-detection), recorded_at
 job_counts          competitor_id, department, count, recorded_at
+hiring_metrics      competitor_id, department_bucket, open_count, week_start,
+                    recorded_at — hiring-velocity : open-role count PAR bucket
+                    canonique (8 buckets + unknown) et PAR semaine ISO. Unique
+                    (competitor, bucket, week_start) → UPSERT (un re-scrape la même
+                    semaine écrase, jamais de doublon). Écrit seulement sur run ATS
+                    autoritatif ; alimente les sparklines Hiring + le détecteur d'inflexion
 review_scores       competitor_id, source, score, review_count, sentiment_score,
                     sub_ease_of_use, sub_support, sub_features, sub_value (Nullable —
                     patch-32 sous-notes /5), recorded_at
@@ -485,6 +493,11 @@ carte (état live uniquement).
                    les hops off-site sont rendus au navigateur (L1) + scroll, sinon les offres injectées
                    côté client — placeholder SSR « Loading positions… » — restent invisibles ; le
                    probing des paths reste en L0. Sans ça : chemin L0-only précédent)
+                  (hiring-velocity : sur un run ATS AUTORITATIF, extract-jobs bucketise
+                   les offres en 8 départements canoniques — normalizeDepartment pur,
+                   map déterministe + fallback titre, unknown compté — et UPSERT
+                   hiring_metrics (competitor, bucket, semaine ISO) ; job_counts brut
+                   inchangé. Puis trigger detect-hiring-velocity-shifts, event-driven)
        g2/capt → extract-reviews → praises/complaints + Postgres review_scores
                   (structured-first scores via AggregateRating ; résumé qualitatif reste IA.
                    patch-32 : l'extraction IA renvoie en plus les sous-notes /5
@@ -854,6 +867,7 @@ TECH_STACK_SCRAPE_INTERVAL_DAYS=30      # patch-18 — days between tech-stack s
 TECH_STACK_SIGNAL_MIN_IMPORTANCE=high   # patch-18 — min tech importance to emit a signal on appearance (high = payments/CRM-class tells only; medium would include hosting/marketing scripts — noisy, plan-026). Baseline (first-ever) scan of a competitor never signals, whatever this value is.
 REVIEW_THEME_WINDOW_DAYS=42             # review complaint-theme shift — recent window (days) compared vs baseline for an upward inflection
 REVIEW_THEME_LOOKBACK_DAYS=84           # review complaint-theme shift — total review_scores series read (baseline = lookback − window)
+HIRING_SPIKE_THRESHOLD=0.5              # hiring-velocity — a department's weekly open-role count must exceed (1 + this) × its trailing 4-week average (≥4 weeks history) to emit a "hiring" inflection signal; high severity for engineering/sales, medium otherwise. Event-driven off extract-jobs (no cron slot)
 
 # AI
 ANTHROPIC_API_KEY=           # provider abstrait — Claude fallback (provider="claude")

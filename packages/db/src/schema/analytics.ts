@@ -5,6 +5,7 @@ import {
   doublePrecision,
   timestamp,
   index,
+  uniqueIndex,
   jsonb,
 } from "drizzle-orm/pg-core";
 import type { InferSelectModel } from "drizzle-orm";
@@ -73,6 +74,36 @@ export const jobCounts = pgTable(
   },
   (t) => [index("job_counts_competitor_recorded_idx").on(t.competitorId, t.recordedAt)],
 );
+
+// Hiring velocity per canonical department bucket (hiring-velocity feature). Unlike
+// job_counts (raw ATS department label, appended once per scrape), this is keyed by
+// (competitor, bucket, ISO week) with an UPSERT: every scrape in the same week
+// overwrites the row so the series carries one authoritative open-count per week —
+// the input the inflection detector needs, and the source of the per-bucket
+// sparklines. Written only on authoritative ATS runs.
+export const hiringMetrics = pgTable(
+  "hiring_metrics",
+  {
+    id: uuid(),
+    competitorId: text("competitor_id").notNull(),
+    // One of DEPARTMENT_BUCKETS (@outrival/scrapers/jobs-hiring).
+    departmentBucket: text("department_bucket").notNull(),
+    openCount: integer("open_count").notNull(),
+    // ISO-week key "YYYY-MM-DD" (Monday, UTC) — the weekly idempotency bucket.
+    weekStart: text("week_start").notNull(),
+    recordedAt: timestamp("recorded_at").notNull().defaultNow(),
+  },
+  (t) => [
+    // Idempotency: one row per (competitor, bucket, ISO week) — the upsert target.
+    uniqueIndex("hiring_metrics_competitor_bucket_week_uk").on(
+      t.competitorId,
+      t.departmentBucket,
+      t.weekStart,
+    ),
+    index("hiring_metrics_competitor_recorded_idx").on(t.competitorId, t.recordedAt),
+  ],
+);
+export type HiringMetric = InferSelectModel<typeof hiringMetrics>;
 
 export const reviewScores = pgTable(
   "review_scores",

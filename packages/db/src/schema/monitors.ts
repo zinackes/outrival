@@ -58,6 +58,12 @@ export const sourceTypeEnum = pgEnum("source_type", [
   // when a department's open-role count inflects up over hiring_metrics. Always
   // isActive=false; the detect-hiring-velocity-shifts job owns it.
   "hiring_shift",
+  // Hacker News mention + Show HN tracking. Internal source (like news/youtube) —
+  // never user-selectable. Seeded weekly at creation, isActive=true, enqueued by
+  // schedule-scraping and scraped via getScraper (HN Algolia by brand); the
+  // scrape-monitor hackernews branch diffs objectID sets across snapshots and forces
+  // the signal severity (Show HN → product/high, traction → content/medium).
+  "hackernews",
   // Custom page (user-selectable via the dedicated "Watch a custom page" flow, not
   // the standard enable list). Watches an arbitrary page on the competitor's own
   // registrable domain via the generic snapshot → lexical diff → classify pipeline;

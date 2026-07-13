@@ -4,6 +4,7 @@ import {
   db,
   pricingHistory,
   jobCounts,
+  hiringMetrics,
   reviewScores,
   signalFeed,
   scrapeRuns,
@@ -602,6 +603,78 @@ export async function insertJobCounts(rows: JobCountRow[]): Promise<void> {
       })),
     ),
   );
+}
+
+export interface HiringMetricRow {
+  competitor_id: string;
+  department_bucket: string;
+  open_count: number;
+  /** ISO-week key "YYYY-MM-DD" (Monday, UTC) — the weekly idempotency bucket. */
+  week_start: string;
+  recorded_at: Date;
+}
+
+/**
+ * Upsert weekly per-bucket hiring velocity. Idempotent by (competitor, bucket,
+ * ISO week): a second scrape in the same week overwrites the row instead of
+ * appending, so the series carries one authoritative open-count per week and a
+ * re-run never doubles a data point.
+ */
+export async function upsertHiringMetrics(rows: HiringMetricRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  await bestEffort("hiring_metrics upsert", () =>
+    db
+      .insert(hiringMetrics)
+      .values(
+        rows.map((r) => ({
+          competitorId: r.competitor_id,
+          departmentBucket: r.department_bucket,
+          openCount: r.open_count,
+          weekStart: r.week_start,
+          recordedAt: r.recorded_at,
+        })),
+      )
+      .onConflictDoUpdate({
+        target: [
+          hiringMetrics.competitorId,
+          hiringMetrics.departmentBucket,
+          hiringMetrics.weekStart,
+        ],
+        set: {
+          openCount: sql`excluded.open_count`,
+          recordedAt: sql`excluded.recorded_at`,
+        },
+      }),
+  );
+}
+
+export interface HiringMetricSeriesRow {
+  department_bucket: string;
+  open_count: number;
+  week_start: string;
+}
+
+/**
+ * Read a competitor's weekly hiring velocity for the last `weeks` ISO weeks,
+ * ordered by week ascending — the input the inflection detector consumes.
+ */
+export async function getHiringMetricsSeries(
+  competitorId: string,
+  weeks: number,
+): Promise<HiringMetricSeriesRow[]> {
+  const since = new Date(Date.now() - weeks * 7 * 86_400_000);
+  const rows = await bestEffortRead<HiringMetricSeriesRow>("getHiringMetricsSeries", () =>
+    db
+      .select({
+        department_bucket: hiringMetrics.departmentBucket,
+        open_count: hiringMetrics.openCount,
+        week_start: hiringMetrics.weekStart,
+      })
+      .from(hiringMetrics)
+      .where(and(eq(hiringMetrics.competitorId, competitorId), gte(hiringMetrics.recordedAt, since)))
+      .orderBy(hiringMetrics.weekStart),
+  );
+  return rows ?? [];
 }
 
 export interface ReviewScoreRow {

@@ -38,6 +38,8 @@ const SOURCE_LABELS: Record<string, string> = {
   youtube: "YouTube",
   // Internal anchor for rising review complaint-theme signals (no page scraped).
   review_shift: "Review trends",
+  // Internal anchor for hiring velocity inflections (no page scraped).
+  hiring_shift: "Hiring trends",
   // User-watched arbitrary page on the competitor's domain ("Watch a custom page").
   custom: "Custom page",
 };
@@ -75,6 +77,7 @@ export const SOURCE_SHORT_LABELS: Record<SourceType, string> = {
   subdomains: "Subdomains",
   youtube: "YouTube",
   review_shift: "Review trends",
+  hiring_shift: "Hiring trends",
   custom: "Custom page",
 };
 

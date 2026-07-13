@@ -91,6 +91,10 @@
       "types": "./src/jobs/careers-link.ts",
       "default": "./src/jobs/careers-link.ts"
     },
+    "./jobs-hiring": {
+      "types": "./src/jobs/hiring.ts",
+      "default": "./src/jobs/hiring.ts"
+    },
     "./structured-data": {
       "types": "./src/structured-data/index.ts",
       "default": "./src/structured-data/index.ts"

@@ -206,6 +206,15 @@ export interface JobTrendPoint {
   recorded_at: string;
 }
 
+// Weekly open-role velocity for one canonical department bucket (hiring-velocity
+// feature) — `series` is ascending by ISO week, for a sparkline.
+export interface HiringVelocityBucket {
+  bucket: string;
+  label: string;
+  series: number[];
+  current: number;
+}
+
 export interface PricingHistoryPoint {
   plan_name: string;
   // null for quote-based tiers (Enterprise / "Contact sales" / Custom).
@@ -1965,6 +1974,8 @@ export const api = {
     request<JobsByDepartment>(`/api/competitors/${id}/jobs`),
   getCompetitorJobTrends: (id: string) =>
     request<{ trends: JobTrendPoint[] }>(`/api/competitors/${id}/job-trends`),
+  getCompetitorHiringVelocity: (id: string) =>
+    request<{ velocity: HiringVelocityBucket[] }>(`/api/competitors/${id}/hiring-velocity`),
   getCompetitorReviews: (id: string) =>
     request<ReviewsData>(`/api/competitors/${id}/reviews`),
   getCompetitorMentions: (id: string) =>

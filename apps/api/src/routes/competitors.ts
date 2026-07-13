@@ -56,12 +56,15 @@ import {
   normalizePlanKey,
   getFromR2,
   parseRedditSnapshotHtml,
+  DEPARTMENT_BUCKETS,
+  DEPARTMENT_BUCKET_LABELS,
   type SourceType,
   type MonitorFrequency,
   type PricingTier,
   type PricingPlanOverride,
   type CompetitorOverrides,
   type RedditMentionData,
+  type DepartmentBucket,
 } from "@outrival/shared";
 
 type Variables = { user: { id: string } };
@@ -1137,6 +1140,53 @@ competitorsRouter.get("/:id/job-trends", async (c) => {
   `);
 
   return c.json({ trends: rows });
+});
+
+// Hiring velocity per canonical department bucket (hiring-velocity feature): the
+// per-week open-role count that powers the Hiring tab sparklines. Read from
+// hiring_metrics (one authoritative row per bucket per ISO week), pivoted into a
+// per-bucket ascending series. `unknown` is omitted — it's a data-quality bucket,
+// not a department. Best-effort: empty series on any analytics failure.
+competitorsRouter.get("/:id/hiring-velocity", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor) return c.json({ error: "Not found" }, 404);
+
+  const rows = await analyticsQuery<{
+    department_bucket: string;
+    open_count: number;
+    week_start: string;
+  }>(sql`
+    SELECT department_bucket, open_count, week_start
+    FROM hiring_metrics
+    WHERE competitor_id = ${competitor.id}
+      AND recorded_at >= now() - make_interval(days => 112)
+    ORDER BY week_start ASC
+  `);
+
+  const byBucket = new Map<string, Array<{ week_start: string; open_count: number }>>();
+  for (const r of rows) {
+    const arr = byBucket.get(r.department_bucket) ?? [];
+    arr.push({ week_start: r.week_start, open_count: r.open_count });
+    byBucket.set(r.department_bucket, arr);
+  }
+
+  // Stable order (DEPARTMENT_BUCKETS), only buckets with data, `unknown` dropped.
+  const velocity = DEPARTMENT_BUCKETS.filter(
+    (b): b is Exclude<DepartmentBucket, "unknown"> => b !== "unknown" && byBucket.has(b),
+  ).map((bucket) => {
+    const points = byBucket.get(bucket)!;
+    return {
+      bucket,
+      label: DEPARTMENT_BUCKET_LABELS[bucket],
+      series: points.map((p) => p.open_count),
+      current: points[points.length - 1]?.open_count ?? 0,
+    };
+  });
+
+  return c.json({ velocity });
 });
 
 competitorsRouter.get("/:id/reviews", async (c) => {

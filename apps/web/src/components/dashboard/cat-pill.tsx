@@ -12,6 +12,8 @@ const CAT_CLASS: Record<string, string> = {
   reviews: "bg-cat-reviews/12 text-cat-reviews border-cat-reviews/30 hover:bg-cat-reviews/12",
   content: "bg-cat-content/12 text-cat-content border-cat-content/30 hover:bg-cat-content/12",
   funding: "bg-cat-funding/12 text-cat-funding border-cat-funding/30 hover:bg-cat-funding/12",
+  api_developer:
+    "bg-cat-api-developer/12 text-cat-api-developer border-cat-api-developer/30 hover:bg-cat-api-developer/12",
 };
 
 export function CatPill({

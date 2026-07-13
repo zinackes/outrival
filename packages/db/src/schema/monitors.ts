@@ -64,6 +64,16 @@ export const sourceTypeEnum = pgEnum("source_type", [
   // scrape-monitor hackernews branch diffs objectID sets across snapshots and forces
   // the signal severity (Show HN → product/high, traction → content/medium).
   "hackernews",
+  // Well-known / public domain fingerprint. Internal source (like sitemap/news) —
+  // never user-selectable. Seeded weekly, isActive=true, scraped via getScraper
+  // (/.well-known/* + /llms.txt at L0); the scrape-monitor wellknown branch diffs the
+  // fingerprint to emit mobile-app-launch (product) / llms.txt (api_developer) signals.
+  "wellknown",
+  // Comparison-page anchor (sitemap v2). Internal, never seeded/scraped/user-
+  // selectable — anchors the deterministic change→signal chain when the sitemap branch
+  // finds a new competitor comparison page. Dedicated source_type so applySeverityGuard
+  // can allow its deterministic critical. isActive=false; lazy-created by the branch.
+  "comparison_page",
   // Custom page (user-selectable via the dedicated "Watch a custom page" flow, not
   // the standard enable list). Watches an arbitrary page on the competitor's own
   // registrable domain via the generic snapshot → lexical diff → classify pipeline;

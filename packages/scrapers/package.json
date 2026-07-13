@@ -43,6 +43,10 @@
       "types": "./src/hackernews/hackernews.ts",
       "default": "./src/hackernews/hackernews.ts"
     },
+    "./wellknown": {
+      "types": "./src/wellknown/wellknown.ts",
+      "default": "./src/wellknown/wellknown.ts"
+    },
     "./phash": {
       "types": "./src/lib/phash.ts",
       "default": "./src/lib/phash.ts"

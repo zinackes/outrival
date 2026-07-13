@@ -77,6 +77,38 @@ describe("applySeverityGuard — critical demotion", () => {
   });
 });
 
+describe("applySeverityGuard — comparison_page carve-out (sitemap v2)", () => {
+  test("critical + content + source comparison_page → stays critical (org attack)", () => {
+    const result = applySeverityGuard({
+      severity: "critical",
+      category: "content",
+      sourceType: "comparison_page",
+      diffText: "Rival published /vs/outrival targeting you by name",
+    });
+    expect(result).toEqual({ severity: "critical", demoted: false, reason: null });
+  });
+
+  test("the carve-out is narrow: content critical from sitemap itself still demotes", () => {
+    const result = applySeverityGuard({
+      severity: "critical",
+      category: "content",
+      sourceType: "sitemap",
+      diffText: "many new pages",
+    });
+    expect(result).toEqual({ severity: "high", demoted: true, reason: "category_content" });
+  });
+
+  test("a NON-content critical from comparison_page still demotes (only content is carved out)", () => {
+    const result = applySeverityGuard({
+      severity: "critical",
+      category: "reviews",
+      sourceType: "comparison_page",
+      diffText: "x",
+    });
+    expect(result).toEqual({ severity: "high", demoted: true, reason: "category_reviews" });
+  });
+});
+
 describe("applySeverityGuard — invariants", () => {
   test("never returns a severity above the input, never upgrades", () => {
     const inputs = [

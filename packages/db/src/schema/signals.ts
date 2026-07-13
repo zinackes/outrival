@@ -9,6 +9,9 @@ import { signalBatches } from "./signal-batches";
 export const severityEnum = pgEnum("severity", ["low", "medium", "high", "critical"]);
 export const categoryEnum = pgEnum("category", [
   "pricing", "product", "hiring", "reviews", "content", "funding",
+  // Developer / AI-agent surface — set deterministically only (llms.txt appearance).
+  // Kept in sync with shared SIGNAL_CATEGORIES + the AI ClassificationSchema enum.
+  "api_developer",
 ]);
 
 export const signals = pgTable("signals", {

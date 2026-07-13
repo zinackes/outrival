@@ -392,6 +392,9 @@ candidatesRouter.post("/:id/add", async (c) => {
       // Internal Hacker News anchor (weekly) — see competitors.ts POST. HN Algolia by
       // brand → objectID-set diff surfaces Show HN launches / traction mentions.
       { competitorId: competitor.id, sourceType: "hackernews", frequency: "weekly", scrapeStartedAt },
+      // Internal well-known anchor (weekly) — see competitors.ts POST. /.well-known +
+      // llms.txt fingerprint diff surfaces a mobile-app launch / an llms.txt manifest.
+      { competitorId: competitor.id, sourceType: "wellknown", frequency: "weekly", scrapeStartedAt },
     ])
     .returning();
 

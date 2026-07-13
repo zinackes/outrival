@@ -13,6 +13,7 @@ import * as news from "./news/news.scraper";
 import * as subdomains from "./subdomains/subdomains.scraper";
 import * as youtube from "./youtube/youtube.scraper";
 import * as hackernews from "./hackernews/hackernews.scraper";
+import * as wellknown from "./wellknown/wellknown.scraper";
 import * as custom from "./custom/custom.scraper";
 import type { SourceType } from "@outrival/shared";
 import type { ScrapeOptions, ScrapeOutcome } from "./types";
@@ -44,6 +45,7 @@ const scrapers: Partial<Record<SourceType, ScraperFn>> = {
   subdomains: subdomains.scrape,
   youtube: youtube.scrape,
   hackernews: hackernews.scrape,
+  wellknown: wellknown.scrape,
   custom: custom.scrape,
 };
 

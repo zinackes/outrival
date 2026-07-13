@@ -7,7 +7,10 @@ import { SEVERITY_RUBRIC, CATEGORY_RULES } from "./classify-shared";
 const CACHE_TTL_SECONDS = Number(process.env.AI_CACHE_TTL_CLASSIFY_DAYS ?? 7) * 86400;
 
 export const ClassificationSchema = z.object({
-  category: z.enum(["pricing", "product", "hiring", "reviews", "content", "funding"]),
+  // "api_developer" is accepted so a DETERMINISTIC synthesized classification (the
+  // wellknown llms.txt signal) validates; it is deliberately absent from the classify
+  // prompt (line ~103), so the model itself only ever picks the six above.
+  category: z.enum(["pricing", "product", "hiring", "reviews", "content", "funding", "api_developer"]),
   severity: z.enum(["low", "medium", "high", "critical"]),
   is_significant: z.boolean(),
   reason: z.string(),

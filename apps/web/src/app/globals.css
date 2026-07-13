@@ -461,10 +461,48 @@
   /* Tap feedback (mobile). iOS Safari only fires :active on an element that has
      cursor:pointer (or a touch listener) — Tailwind v4 dropped the default pointer
      on <button>, so without this the button variants' active: styles stay dead on
-     iPhone. Also restores the pointer on desktop for interactive elements. */
+     iPhone. Also restores the pointer on desktop for interactive elements. The
+     role list extends the enabler to the custom (div/li) controls below so their
+     :active press state fires on touch too. */
   button:not(:disabled),
-  [role="button"]:not([aria-disabled="true"]) {
+  summary,
+  [role="button"]:not([aria-disabled="true"]),
+  [role="menuitem"]:not([data-disabled]),
+  [role="menuitemcheckbox"]:not([data-disabled]),
+  [role="menuitemradio"]:not([data-disabled]),
+  [role="option"]:not([data-disabled]),
+  [role="tab"]:not([data-disabled]),
+  [role="switch"],
+  [role="checkbox"],
+  [role="radio"] {
     cursor: pointer;
+  }
+
+  /* Press feedback on touch. The hover override (top of file) makes hover: styles
+     fire on tap, but Radix triggers/items and many custom controls express their
+     state only via focus-visible (keyboard-only) or data-attrs — so a tap felt
+     dead (selects, tabs, menu/nav rows, dropdowns). On touch, momentarily dim any
+     interactive element while it's pressed; :active fires reliably on touchstart,
+     unlike the flaky tap-:hover. Scoped to (hover: none) so pointer devices are
+     untouched. Buttons (data-slot="button") already own a richer scale+tint
+     active: state — excluded so a press doesn't double-dim them. */
+  @media (hover: none) {
+    a[href]:active,
+    button:not([data-slot="button"]):not(:disabled):active,
+    summary:active,
+    [role="button"]:not([data-slot="button"]):not([aria-disabled="true"]):active,
+    [role="link"]:active,
+    [role="menuitem"]:not([data-disabled]):active,
+    [role="menuitemcheckbox"]:not([data-disabled]):active,
+    [role="menuitemradio"]:not([data-disabled]):active,
+    [role="option"]:not([data-disabled]):active,
+    [role="tab"]:not([data-disabled]):active,
+    [role="switch"]:active,
+    [role="checkbox"]:active,
+    [role="radio"]:active {
+      opacity: 0.6;
+      transition: opacity 60ms ease-out;
+    }
   }
 
   /* Real headings run on the display grotesque (Space Grotesk); everything else

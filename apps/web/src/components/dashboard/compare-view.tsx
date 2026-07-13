@@ -194,6 +194,13 @@ const detailKey = "text-muted-foreground text-xs";
 // frozen column never shows the scrolling content bleeding through underneath it.
 const YOU_STICKY_BG = "bg-[color-mix(in_oklch,var(--primary)_5%,var(--background))]";
 
+// Freeze the label + "you" columns only on md+. On a phone viewport those two
+// pinned columns eat ~300px and the competitor columns scroll underneath them —
+// which, compounded by an iOS Safari sticky-table-cell repaint bug, renders as
+// overlapping/illegible text. Below md the whole table just scrolls as one block.
+const STICKY_LABEL = "md:sticky md:left-0 md:z-20";
+const STICKY_YOU = "md:sticky md:left-36 md:z-10";
+
 const ROWS: Row[] = [
   {
     key: "positioning",
@@ -1213,7 +1220,7 @@ export function CompareView() {
                 <table className="w-full border-separate border-spacing-0 text-sm">
                   <thead>
                     <tr>
-                      <th className="bg-background sticky left-0 z-20 w-36 min-w-36 max-w-36 border-b border-r border-border px-3 py-2.5 text-left" />
+                      <th className={cn("bg-background w-36 min-w-36 max-w-36 border-b border-r border-border px-3 py-2.5 text-left", STICKY_LABEL)} />
                       {displayCols.map((d) => {
                         const stuck = d.id === stickyYouId;
                         return (
@@ -1222,7 +1229,7 @@ export function CompareView() {
                             className={cn(
                               "group/col min-w-[10rem] border-b border-border px-3 py-2.5 text-left font-semibold tracking-tight",
                               d.mine && !stuck && "bg-primary/5",
-                              stuck && cn(YOU_STICKY_BG, "sticky left-36 z-10 border-r border-border"),
+                              stuck && cn(YOU_STICKY_BG, STICKY_YOU, "border-r border-border"),
                               colAnimClass(d),
                             )}
                           >
@@ -1272,13 +1279,13 @@ export function CompareView() {
                             // uniform bg-background-2 fill, so it reads as a header band
                             // breaking the column grid, not as a data row with empty cells.
                             <tr key={`grp-${group}`}>
-                              <td className="bg-background-2 sticky left-0 z-20 w-36 min-w-36 max-w-36 whitespace-nowrap border-b border-border px-3 pb-1.5 pt-4">
+                              <td className={cn("bg-background-2 w-36 min-w-36 max-w-36 whitespace-nowrap border-b border-border px-3 pb-1.5 pt-4", STICKY_LABEL)}>
                                 <span className="text-muted-foreground text-meta font-semibold">
                                   {group}
                                 </span>
                               </td>
                               {stickyYouId && (
-                                <td className="bg-background-2 sticky left-36 z-10 border-b border-border" />
+                                <td className={cn("bg-background-2 border-b border-border", STICKY_YOU)} />
                               )}
                               {restCols > 0 && (
                                 <td
@@ -1294,7 +1301,7 @@ export function CompareView() {
                         const winners = winnersByRow.get(r.key);
                         out.push(
                           <tr key={r.key} className="last:[&>td]:border-b-0">
-                            <td className="bg-background sticky left-0 z-20 w-36 min-w-36 max-w-36 whitespace-nowrap border-b border-r border-border px-3 py-2.5 align-top">
+                            <td className={cn("bg-background w-36 min-w-36 max-w-36 whitespace-nowrap border-b border-r border-border px-3 py-2.5 align-top", STICKY_LABEL)}>
                               {r.detail ? (
                                 <button
                                   type="button"
@@ -1328,7 +1335,7 @@ export function CompareView() {
                                     "border-b border-border px-3 py-2.5 align-top",
                                     d.mine && !stuck && "bg-primary/[0.03]",
                                     stuck &&
-                                      cn(YOU_STICKY_BG, "sticky left-36 z-10 border-r border-border"),
+                                      cn(YOU_STICKY_BG, STICKY_YOU, "border-r border-border"),
                                     colAnimClass(d),
                                   )}
                                 >

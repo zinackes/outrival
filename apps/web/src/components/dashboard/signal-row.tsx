@@ -87,7 +87,10 @@ export function SignalRow({
       <Icon
         size={15}
         className={cn(
-          "mt-0.5 shrink-0 transition-opacity group-hover/row:opacity-0",
+          // Fade out only on hover-capable devices — paired with the checkbox
+          // reveal, which is gated the same way (see signals-view renderRow). On
+          // touch the icon must stay, since no checkbox slides in to replace it.
+          "mt-0.5 shrink-0 transition-opacity [@media(hover:hover)]:group-hover/row:opacity-0",
           selecting && "opacity-0",
           SEV_TEXT[sev],
         )}

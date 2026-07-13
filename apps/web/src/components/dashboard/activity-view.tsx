@@ -615,6 +615,117 @@ function RunDetail({ event }: { event: ActivityEvent }) {
   return <QuietRunDetail outcome={outcome} event={event} />;
 }
 
+// Mobile (<sm) equivalent of one table row: the 8-column grid can't fit a phone
+// (table-fixed just crushes the columns until the text overlaps), so it collapses
+// into a stacked card. Same expand/modal behavior as the desktop row; drops the
+// Duration column (low-value ops detail) to stay scannable.
+function MobileRunCard({
+  event,
+  isOpen,
+  onToggle,
+  onView,
+}: {
+  event: ActivityEvent;
+  isOpen: boolean;
+  onToggle: (() => void) | null;
+  onView: () => void;
+}) {
+  const outcome = eventOutcome(event);
+  const meta = OUTCOME_META[outcome];
+  const expandable = onToggle !== null;
+  const changedText =
+    outcome === "change"
+      ? event.changeSummary
+      : outcome === "first_capture"
+        ? "Baseline snapshot saved"
+        : null;
+  const hasCaptured = Boolean(event.captured || event.capturedDelta);
+
+  return (
+    <div
+      className={cn(
+        "rounded-lg border border-border p-3",
+        isOpen && "bg-muted/40",
+      )}
+    >
+      <div
+        className={cn("flex flex-col gap-2", expandable && "cursor-pointer")}
+        onClick={onToggle ?? undefined}
+        onKeyDown={
+          onToggle
+            ? (ev) => {
+                if (ev.key === "Enter" || ev.key === " ") {
+                  ev.preventDefault();
+                  onToggle();
+                }
+              }
+            : undefined
+        }
+        role={expandable ? "button" : undefined}
+        tabIndex={expandable ? 0 : undefined}
+        aria-expanded={expandable ? isOpen : undefined}
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 text-sm">
+            <Link
+              href={entityHref(event.competitorId, event.isSelf)}
+              className="font-medium hover:underline"
+              style={competitorNameColor(event.competitorColor)}
+              onClick={(ev) => ev.stopPropagation()}
+            >
+              {event.competitorName}
+            </Link>
+            {event.isSelf && <SelfBadge />}
+            <span className="text-muted-foreground">
+              {" · "}
+              {sourceLabel(event.sourceType)}
+            </span>
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {rel(event.recordedAt)}
+            </span>
+            {expandable && (
+              <ChevronRight
+                className={cn(
+                  "size-3.5 text-muted-foreground transition-transform",
+                  isOpen && "rotate-90",
+                )}
+                aria-hidden
+              />
+            )}
+          </div>
+        </div>
+
+        <span className="inline-flex items-center gap-1.5 text-sm">
+          <Dot color={meta.color} />
+          <span className="text-muted-foreground">{meta.label}</span>
+        </span>
+
+        {changedText && (
+          <p className="text-sm text-muted-foreground">{changedText}</p>
+        )}
+
+        {hasCaptured && (
+          <div className="text-sm text-muted-foreground">
+            <CapturedCell
+              captured={event.captured}
+              delta={event.capturedDelta}
+              onView={onView}
+            />
+          </div>
+        )}
+      </div>
+
+      {isOpen && (
+        <div className="mt-3 border-t border-border pt-3">
+          <RunDetail event={event} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // User-facing activity: every scrape Outrival ran for the org — including the
 // no-change runs and failures the Signals feed never surfaces, and what each
 // "change detected" run actually found. Filterable by competitor, source, status.
@@ -890,9 +1001,32 @@ export function ActivityView() {
             </p>
           ) : (
             <>
+              {/* Mobile: the table collapses into a stacked card list. */}
               <div
                 className={cn(
-                  "overflow-hidden rounded-lg border border-border transition-opacity",
+                  "flex flex-col gap-2 transition-opacity sm:hidden",
+                  loading && "opacity-60",
+                )}
+                aria-busy={loading}
+              >
+                {events.map((e, i) => {
+                  const key = `${e.competitorId}-${e.recordedAt}-${i}`;
+                  const expandable = isExpandable(e);
+                  return (
+                    <MobileRunCard
+                      key={key}
+                      event={e}
+                      isOpen={expanded.has(key)}
+                      onToggle={expandable ? () => toggleRow(key) : null}
+                      onView={() => setDetailEvent(e)}
+                    />
+                  );
+                })}
+              </div>
+
+              <div
+                className={cn(
+                  "hidden overflow-hidden rounded-lg border border-border transition-opacity sm:block",
                   loading && "opacity-60",
                 )}
                 aria-busy={loading}

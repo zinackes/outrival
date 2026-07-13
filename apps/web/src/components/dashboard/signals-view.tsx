@@ -998,9 +998,15 @@ export function SignalsView() {
             <div
               className={cn(
                 "absolute left-3 top-3 z-10 transition-opacity",
+                // Reveal-on-hover is gated to hover-capable devices. globals.css drops
+                // the `@media (hover: hover)` gate from `hover:` project-wide (tap
+                // feedback), but on touch that makes a tap reveal this interactive
+                // overlay — which mobile WebKit consumes as the first tap (swallowing
+                // the click that opens + marks the signal read). Selection lives on
+                // hover (desktop) or an active selection; on touch a tap just opens.
                 selectionActive || isChecked
                   ? "opacity-100"
-                  : "pointer-events-none opacity-0 group-hover/row:pointer-events-auto group-hover/row:opacity-100",
+                  : "pointer-events-none opacity-0 [@media(hover:hover)]:group-hover/row:pointer-events-auto [@media(hover:hover)]:group-hover/row:opacity-100",
               )}
             >
               <SelectCheckbox

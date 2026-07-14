@@ -68,9 +68,12 @@ export interface ScrapeRunRow {
   competitor_id: string;
   source_type: string;
   status: "success" | "no_change" | "failed";
-  level: number; // patch-20 cascade level: 0/1 free, 2/3/4 paid
+  level: number; // cascade level: 0/1 free, 2 datacenter egress
   attempts: number;
   failure_reason: string;
+  // Collection doctrine: the site refused us (block/challenge/robots) and we stopped.
+  refused?: boolean;
+  refusal_reason?: string;
   duration_ms: number;
   recorded_at: Date;
 }
@@ -85,6 +88,8 @@ export async function logScrapeRun(row: ScrapeRunRow): Promise<void> {
       level: row.level,
       attempts: row.attempts,
       failureReason: row.failure_reason,
+      refused: row.refused ?? false,
+      refusalReason: row.refusal_reason ?? "",
       durationMs: row.duration_ms,
       recordedAt: row.recorded_at,
     }),

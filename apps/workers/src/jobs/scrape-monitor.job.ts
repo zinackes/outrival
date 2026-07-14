@@ -205,6 +205,60 @@ async function diagnoseAndPersistFailure(
   }
 }
 
+// Collection doctrine: an explicit refusal (block / challenge / robots Disallow) is
+// carried on the thrown ScrapeFailedError's cascadeOutcome. Read it structurally so
+// the worker isn't coupled to the scrapers' error class.
+function refusalFrom(err: unknown): { reason: string } | null {
+  if (err && typeof err === "object" && "cascadeOutcome" in err) {
+    const co = (err as { cascadeOutcome?: { refused?: boolean; failureReason?: string } })
+      .cascadeOutcome;
+    if (co?.refused) return { reason: co.failureReason ?? "refused" };
+  }
+  return null;
+}
+
+// A refusal is terminal: mark the source unscrapable immediately (no 3-strike
+// backoff, no escalation, never a retry), record WHY + WHEN, and log the run as
+// refused. It never produces a snapshot, so nothing downstream runs. The scheduler's
+// re-arm still gives a refused source a polite periodic re-probe (robots is re-checked
+// every time), so a site that changes its stance can recover on its own terms.
+async function handleRefusal(
+  monitor: { id: string; competitorId: string; sourceType: string; requiresLevel: number | null },
+  refusal: { reason: string },
+  durationMs: number,
+): Promise<void> {
+  await db
+    .update(monitors)
+    .set({
+      scrapeStartedAt: null,
+      isActive: false,
+      markedUnscrapable: true,
+      refusedAt: new Date(),
+      refusalReason: refusal.reason,
+      lastFailedAt: new Date(),
+      lastError: `refused: ${refusal.reason}`,
+      nextRunAt: null,
+    })
+    .where(eq(monitors.id, monitor.id));
+  await logScrapeRun({
+    monitor_id: monitor.id,
+    competitor_id: monitor.competitorId,
+    source_type: monitor.sourceType,
+    status: "failed",
+    level: monitor.requiresLevel ?? 0,
+    attempts: 1,
+    failure_reason: refusal.reason,
+    refused: true,
+    refusal_reason: refusal.reason,
+    duration_ms: durationMs,
+    recorded_at: new Date(),
+  });
+  logger.warn("Source refused — marked unscrapable, no escalation", {
+    monitorId: monitor.id,
+    reason: refusal.reason,
+  });
+}
+
 // patch-23 — when a monitor first becomes unscrapable, propose 1-3 alternatives
 // (always manual + pause, plus a URL/replace hint from the diagnosis) so the user
 // has something to act on instead of a flat "unavailable". Idempotent: skips if
@@ -569,6 +623,10 @@ export const scrapeMonitorJob = task({
         const scraper = getScraper(monitor.sourceType);
         result = await scraper(competitor.id, scrapeUrl, {
           knownLevel: startLevel,
+          // Egress chosen upstream on the monitor (stability / geolocation), never a
+          // reaction to a block. Defaults to direct; the cascade degrades to direct
+          // when the datacenter proxy is unconfigured.
+          egressTier: monitor.egressTier === "datacenter" ? "datacenter" : "direct",
           // patch-31 — lets a scraper route via a structured connector (e.g. jobs →
           // ATS API). Null when never detected / detection disabled ⇒ today's path.
           platformProfile: competitor.platformProfile,
@@ -580,9 +638,17 @@ export const scrapeMonitorJob = task({
         });
       }
     } catch (err) {
-      // Diagnose before rethrowing so the failure category is persisted from the
-      // attempt that actually carried the cascade data (patch-23). Trigger.dev
-      // retries / onFailure then handles consecutiveFailures + markedUnscrapable.
+      // Collection doctrine: an explicit refusal (block / challenge / robots) is not
+      // a transient failure to retry. Mark the source refused + unscrapable now and
+      // stop — no escalation, no 3-strike backoff, no snapshot.
+      const refusal = refusalFrom(err);
+      if (refusal) {
+        await handleRefusal(monitor, refusal, Date.now() - startedAt);
+        return { changed: false, refused: true };
+      }
+      // Otherwise: diagnose before rethrowing so the failure category is persisted
+      // from the attempt that carried the cascade data (patch-23). Trigger.dev
+      // retries / onFailure then handle consecutiveFailures + markedUnscrapable.
       await diagnoseAndPersistFailure(monitor.id, scrapeUrl, err);
       throw err;
     } finally {

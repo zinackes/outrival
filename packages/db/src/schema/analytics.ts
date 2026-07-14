@@ -7,6 +7,7 @@ import {
   index,
   uniqueIndex,
   jsonb,
+  boolean,
 } from "drizzle-orm/pg-core";
 import type { InferSelectModel } from "drizzle-orm";
 
@@ -208,9 +209,14 @@ export const scrapeRuns = pgTable(
     competitorId: text("competitor_id").notNull(),
     sourceType: text("source_type").notNull(),
     status: text("status").notNull(), // success | no_change | failed
-    level: integer("level").notNull().default(0), // patch-20 cascade level: 0/1 free, 2/3/4 paid
+    level: integer("level").notNull().default(0), // cascade level: 0/1 free, 2 datacenter egress
     attempts: integer("attempts").notNull().default(1),
     failureReason: text("failure_reason").notNull().default(""),
+    // Collection doctrine: a run where the site explicitly refused us (block /
+    // challenge / robots Disallow) and we stopped — distinct from a transient
+    // failure, so refusal rate is queryable separately in /admin.
+    refused: boolean("refused").notNull().default(false),
+    refusalReason: text("refusal_reason").notNull().default(""),
     durationMs: integer("duration_ms").notNull(),
     recordedAt: timestamp("recorded_at").notNull().defaultNow(),
   },

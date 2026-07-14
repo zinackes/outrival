@@ -90,10 +90,21 @@ export const monitors = pgTable("monitors", {
   frequency: frequencyEnum("frequency").notNull().default("daily"),
   config: jsonb("config"),
   isActive: boolean("is_active").notNull().default(true),
-  // Scraping cascade level this monitor needs (patch-20): 0/1 free (direct /
-  // Patchright no-proxy), 2 datacenter, 3 residential, 4 Camoufox. null = not yet
-  // learned / free → start the cascade at L0. Only paid levels (>=2) are pinned.
+  // Scraping cascade level this monitor needs: 0 (direct fetch) / 1 (browser
+  // render) / 2 (browser render via datacenter egress). null = not yet learned →
+  // start the cascade at L0. The residential (3) and Camoufox (4) levels were
+  // retired with the collection doctrine.
   requiresLevel: integer("requires_level"),
+  // Egress IP chosen UPSTREAM (stability / geolocation), NEVER learned from a
+  // block: "direct" (server IP) or "datacenter" (configured proxy). Reacting to a
+  // block by switching IPs is circumvention, which the doctrine forbids — so this
+  // is deliberate config, not learned cascade state.
+  egressTier: text("egress_tier").notNull().default("direct"),
+  // When a site explicitly refused us (block / challenge / robots Disallow) and we
+  // stopped — distinct from a transient failure. Drives the honest "refused" UI and
+  // is never overwritten by escalation (there is none).
+  refusedAt: timestamp("refused_at"),
+  refusalReason: text("refusal_reason"),
   // When requiresLevel was last (re)confirmed — set when the learned level moves.
   requiresLevelSince: timestamp("requires_level_since"),
   // Last time we re-probed a pinned (>=2) monitor from the bottom of the cascade,

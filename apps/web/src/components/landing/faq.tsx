@@ -10,7 +10,7 @@ type Faq = { q: string; a: string };
 const FAQS: Faq[] = [
   {
     q: "How do you monitor sites with anti-bot protection?",
-    a: "A stealth browser handles the majority of sources directly. For protected sites it escalates through a datacenter-to-residential proxy cascade, only paying for the heavier path when a site actually blocks us. No source needs manual setup on your side.",
+    a: "A browser renders the majority of sources directly. We respect robots.txt, identify our crawler (OutrivalBot), and collect only what a site publishes openly — we never bypass a block, login, or paywall. If a site declines automated access we stop and tell you honestly. No source needs manual setup on your side.",
   },
   {
     q: "What qualifies a change as a signal?",

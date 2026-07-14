@@ -24,6 +24,7 @@ import {
   supportsConditionalFetch,
   detectPricingRepositioning,
   isReviewSource,
+  extractBrand,
   type PricingStatus,
   type PricingRepositioning,
   type PlatformProfile,
@@ -54,6 +55,15 @@ import {
   newQualifyingHits,
   annotateLine,
 } from "@outrival/scrapers/hackernews";
+// Pure subpath — @outrival/shared only. Sitemap v2: loc-only URL-set diff +
+// competitor-comparison-page detection for the sitemap branch.
+import {
+  parseSitemapDoc,
+  isComparisonUrl,
+  classifyComparisonUrl,
+} from "@outrival/scrapers/sitemap";
+// Pure subpath — no deps. Wellknown v2: /.well-known + llms.txt fingerprint diff.
+import { parseWellKnownDoc, wellKnownDelta } from "@outrival/scrapers/wellknown";
 // Pure subpath — sharp only. Perceptual hash for visual-redesign detection (patch-17).
 import {
   computePerceptualHash,
@@ -127,14 +137,14 @@ const VOLATILE_RESET = Number(process.env.ENRICHMENTS_VOLATILE_RESET ?? 10);
 const COMPLETENESS_ENABLED = process.env.SNAPSHOT_COMPLETENESS_ENABLED !== "false";
 const COMPLETENESS_MIN_RATIO = Number(process.env.SNAPSHOT_COMPLETENESS_MIN_RATIO ?? 0.5);
 const COMPLETENESS_MIN_PRIORS = 3;
-const SIZE_VARIABLE_SOURCES = new Set(["blog", "changelog", "news", "sitemap", "subdomains", "youtube", "hackernews"]);
+const SIZE_VARIABLE_SOURCES = new Set(["blog", "changelog", "news", "sitemap", "subdomains", "youtube", "hackernews", "wellknown"]);
 // Sources whose capture is ALWAYS a scraper-synthesized document (built from parsed
 // structured data — no HTML fetch path at all), so the deny-page copy heuristic is
 // meaningless on them: deny-shaped strings in a sitemap/feed listing are content, not
 // a block. github_repo carries no section marker (it's a <pre> dump), hence the set;
 // the feed/ATS/product-line variants of changelog/jobs/pricing DO have an HTML path
 // too, so they're excluded per-capture via isSyntheticDocument, not by source type.
-const SYNTHETIC_DOC_SOURCES = new Set(["sitemap", "news", "reddit", "github_repo", "subdomains", "youtube", "hackernews"]);
+const SYNTHETIC_DOC_SOURCES = new Set(["sitemap", "news", "reddit", "github_repo", "subdomains", "youtube", "hackernews", "wellknown"]);
 // R6 (2026-07 audit, T5) — sources that monitor the competitor's OWN domain, where
 // a 200 landing on a different registrable domain means the wrong target (parked
 // page, acquisition redirect, dead link), not the page. Deliberately NOT jobs or
@@ -1244,6 +1254,191 @@ export const scrapeMonitorJob = task({
             .update(monitors)
             .set({ lastChangedAt: changedAt ?? new Date() })
             .where(eq(monitors.id, monitor.id));
+        }
+      }
+    } else if (monitor.sourceType === "sitemap" && lastSnapshot) {
+      // Sitemap v2: diff URL SETS (loc only — lastmod is never trusted). A new
+      // competitor comparison page (/vs/, /alternatives/, {name}-alternative) gets a
+      // deterministic content/HIGH signal — escalated to content/CRITICAL + realtime
+      // when the slug names the user's own org (a competitor attacking you by name in
+      // SEO is an immediate commercial action, not a Monday-digest line). Comparison
+      // signals anchor on the dedicated comparison_page monitor so applySeverityGuard
+      // can allow their critical. The rest of the URL delta flows through the normal
+      // AI classifier exactly as the generic sitemap diff did before.
+      const beforeHtml = await getFromR2(`${lastSnapshot.r2Key}.html`).catch(() => null);
+      if (beforeHtml !== null) {
+        const prevUrls = new Set(parseSitemapDoc(beforeHtml));
+        const currentUrls = parseSitemapDoc(result.html);
+        const currentSet = new Set(currentUrls);
+        const added = currentUrls.filter((u) => !prevUrls.has(u));
+        const removed = [...prevUrls].filter((u) => !currentSet.has(u));
+        const comparisonAdded = added.filter(isComparisonUrl);
+        const otherAdded = added.filter((u) => !isComparisonUrl(u));
+
+        if (comparisonAdded.length > 0) {
+          // Resolve the user's own org brand(s) for the CRITICAL escalation. Fetched
+          // lazily (rare path) since the top-of-run org select only carries `plan`.
+          const fullOrg = await db.query.organizations.findFirst({
+            where: eq(organizations.id, competitor.orgId),
+            columns: { name: true, productUrl: true },
+          });
+          const orgBrands = [fullOrg?.name, extractBrand(fullOrg?.productUrl ?? null)];
+
+          // Ensure the per-competitor comparison_page anchor (isActive=false → never
+          // scheduled/scraped; exists only to carry the change→signal FK + its distinct
+          // sourceType for the severity guard). Mirrors the review_shift anchor.
+          let anchor = await db.query.monitors.findFirst({
+            where: and(
+              eq(monitors.competitorId, competitor.id),
+              eq(monitors.sourceType, "comparison_page"),
+            ),
+          });
+          if (!anchor) {
+            [anchor] = await db
+              .insert(monitors)
+              .values({
+                competitorId: competitor.id,
+                sourceType: "comparison_page",
+                frequency: "weekly", // unused — never scheduled
+                isActive: false,
+                config: {},
+              })
+              .returning();
+          }
+          if (anchor) {
+            for (const url of comparisonAdded) {
+              const decision = classifyComparisonUrl(url, orgBrands);
+              if (!decision) continue;
+              const line = decision.targetsOrg
+                ? `${competitor.name} published a comparison page targeting you BY NAME: ${url} — a competitor is attacking your product directly in SEO. Immediate competitive action.`
+                : `${competitor.name} published a new comparison / alternative page: ${url} — a deliberate GTM/SEO move positioning against a rival.`;
+              const [cmpChange] = await db
+                .insert(changes)
+                .values({
+                  monitorId: anchor.id,
+                  snapshotBeforeId: lastSnapshot.id,
+                  snapshotAfterId: newSnapshot.id,
+                  diffText: line.slice(0, 50000),
+                  diffType: "text",
+                  rawDiff: { added: [url], removed: [], comparisonUrl: url, targetsOrg: decision.targetsOrg },
+                  detectedAt: new Date(),
+                })
+                .returning();
+              if (!cmpChange) continue;
+              changeId = cmpChange.id;
+              changedAt = new Date();
+              await tasks.trigger("generate-signal", {
+                changeId: cmpChange.id,
+                classification: {
+                  category: decision.category,
+                  severity: decision.severity,
+                  is_significant: true,
+                  reason: line,
+                  humanChangeBefore: null,
+                  humanChangeAfter: url,
+                },
+              });
+            }
+          }
+        }
+
+        // General expansion (non-comparison adds + removes) → one lumped change → the
+        // normal AI classifier, exactly as the generic sitemap diff did before.
+        if (otherAdded.length > 0 || removed.length > 0) {
+          const diffText = [...otherAdded.map((u) => `+ ${u}`), ...removed.map((u) => `- ${u}`)]
+            .join("\n")
+            .slice(0, 50000);
+          const [expansionChange] = await db
+            .insert(changes)
+            .values({
+              monitorId: monitor.id,
+              snapshotBeforeId: lastSnapshot.id,
+              snapshotAfterId: newSnapshot.id,
+              diffText,
+              diffType: "text",
+              rawDiff: { added: otherAdded, removed },
+              detectedAt: new Date(),
+            })
+            .returning();
+          if (expansionChange) {
+            changeId = expansionChange.id;
+            changedAt = new Date();
+            await tasks.trigger("classify-change", { changeId: expansionChange.id });
+          }
+        }
+
+        if (changedAt) {
+          await db
+            .update(monitors)
+            .set({ lastChangedAt: changedAt })
+            .where(eq(monitors.id, monitor.id));
+        }
+      }
+    } else if (monitor.sourceType === "wellknown" && lastSnapshot) {
+      // Wellknown v2: diff the public-domain fingerprint (app-association files +
+      // llms.txt). A new consumer iOS appID / Android package (identity-provider
+      // bundles were already filtered by the scraper) = a MOBILE APP LAUNCH →
+      // product/high. A first-time llms.txt = an AI/devtools positioning tell →
+      // api_developer/low. Forced severity (deterministic), never the AI classifier;
+      // dedup via the stored fingerprint (a tell already present never re-signals).
+      const beforeHtml = await getFromR2(`${lastSnapshot.r2Key}.html`).catch(() => null);
+      if (beforeHtml !== null) {
+        const current = parseWellKnownDoc(result.html);
+        if (current) {
+          const delta = wellKnownDelta(parseWellKnownDoc(beforeHtml), current);
+          const emissions: {
+            line: string;
+            category: "product" | "api_developer";
+            severity: "high" | "low";
+          }[] = [];
+          for (const app of delta.newApps) {
+            emissions.push({
+              line: `${competitor.name} published a mobile-app association for "${app}" on its domain — a mobile app launch (the .well-known app-links file appeared, typically before any press).`,
+              category: "product",
+              severity: "high",
+            });
+          }
+          if (delta.llmsAppeared) {
+            emissions.push({
+              line: `${competitor.name} published an llms.txt manifest on its domain — an AI/devtools positioning move exposing curated pages to LLMs.`,
+              category: "api_developer",
+              severity: "low",
+            });
+          }
+          for (const e of emissions) {
+            const [wkChange] = await db
+              .insert(changes)
+              .values({
+                monitorId: monitor.id,
+                snapshotBeforeId: lastSnapshot.id,
+                snapshotAfterId: newSnapshot.id,
+                diffText: e.line.slice(0, 50000),
+                diffType: "text",
+                rawDiff: { added: [e.line], removed: [] },
+                detectedAt: new Date(),
+              })
+              .returning();
+            if (!wkChange) continue;
+            changeId = wkChange.id;
+            changedAt = new Date();
+            await tasks.trigger("generate-signal", {
+              changeId: wkChange.id,
+              classification: {
+                category: e.category,
+                severity: e.severity,
+                is_significant: true,
+                reason: e.line,
+                humanChangeBefore: null,
+                humanChangeAfter: null,
+              },
+            });
+          }
+          if (changedAt) {
+            await db
+              .update(monitors)
+              .set({ lastChangedAt: changedAt })
+              .where(eq(monitors.id, monitor.id));
+          }
         }
       }
     } else if (lastSnapshot) {

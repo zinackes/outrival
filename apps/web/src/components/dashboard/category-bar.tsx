@@ -8,6 +8,7 @@ const CAT_COLOR: Record<string, string> = {
   reviews: "var(--cat-reviews)",
   content: "var(--cat-content)",
   funding: "var(--cat-funding)",
+  api_developer: "var(--cat-api-developer)",
 };
 
 const FALLBACK = "var(--muted-2)";

@@ -18,6 +18,11 @@ const CRITICAL_SOURCE_ALLOWLIST = new Set([
   "blog",
   "changelog",
   "status",
+  // sitemap v2: a competitor publishing a /vs/{your-brand} comparison page is a
+  // page-worthy, DETERMINISTIC critical (regex slug match on the user's own org, not
+  // a model guess). It only ever originates from this dedicated anchor, so allowing
+  // it here does NOT open critical for AI-classified sitemap changes.
+  "comparison_page",
 ]);
 
 const CRITICAL_CATEGORY_ALLOWLIST = new Set(["pricing", "product", "funding"]);
@@ -44,7 +49,12 @@ export function applySeverityGuard(input: SeverityGuardInput): SeverityGuardResu
     return { severity: input.severity, demoted: false, reason: null };
   }
   if (!CRITICAL_CATEGORY_ALLOWLIST.has(input.category)) {
-    return { severity: "high", demoted: true, reason: `category_${input.category}` };
+    // Narrow carve-out: the deterministic comparison-page attack (content category,
+    // from the comparison_page anchor) is page-worthy. Every other content/reviews/
+    // hiring critical still demotes.
+    if (!(input.category === "content" && input.sourceType === "comparison_page")) {
+      return { severity: "high", demoted: true, reason: `category_${input.category}` };
+    }
   }
   if (!CRITICAL_SOURCE_ALLOWLIST.has(input.sourceType)) {
     return { severity: "high", demoted: true, reason: `source_${input.sourceType}` };

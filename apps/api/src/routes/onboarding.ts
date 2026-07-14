@@ -698,6 +698,14 @@ onboardingRouter.post("/complete", async (c) => {
           frequency: "weekly" as const,
           scrapeStartedAt,
         },
+        // Internal well-known anchor (weekly) — /.well-known app-association files +
+        // llms.txt; its fingerprint diff surfaces a mobile-app launch / an llms.txt manifest.
+        {
+          competitorId: competitor.id,
+          sourceType: "wellknown" as const,
+          frequency: "weekly" as const,
+          scrapeStartedAt,
+        },
       ])
       .returning();
 

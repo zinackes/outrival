@@ -28,6 +28,7 @@ const FIELD_LABELS: Record<string, string> = {
   reviews: "Reviews",
   content: "Content / messaging",
   funding: "Funding",
+  api_developer: "Developer / API",
   category: "Category",
   audience: "Audience",
   valueProp: "Value proposition",

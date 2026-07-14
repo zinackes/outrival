@@ -509,6 +509,9 @@ competitorsRouter.post("/", async (c) => {
       // Internal Hacker News anchor (weekly). HN Algolia by brand → objectID-set diff
       // surfaces a Show HN launch (product/high) or a traction mention (content/medium).
       { competitorId: competitor.id, sourceType: "hackernews", frequency: "weekly", scrapeStartedAt },
+      // Internal well-known anchor (weekly). /.well-known app-association files +
+      // llms.txt fingerprint → diff surfaces a mobile-app launch / an llms.txt manifest.
+      { competitorId: competitor.id, sourceType: "wellknown", frequency: "weekly", scrapeStartedAt },
     ])
     .returning();
 
@@ -570,7 +573,9 @@ competitorsRouter.post("/:id/monitors", async (c) => {
     sourceType === "news" ||
     sourceType === "subdomains" ||
     sourceType === "youtube" ||
-    sourceType === "hackernews"
+    sourceType === "hackernews" ||
+    sourceType === "wellknown" ||
+    sourceType === "comparison_page"
   ) {
     return c.json({ error: "source_not_enableable", source: sourceType }, 400);
   }

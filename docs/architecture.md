@@ -280,7 +280,14 @@ source_type       homepage | pricing | blog | changelog | jobs |
                     product/high, mention > HN_POINTS_THRESHOLD → content/medium, en
                     dessous stocké sans signal ; sévérité FORCÉE par-hit — branche dédiée
                     scrape-monitor, dédup par objectID, pas de classifieur, lien thread
-                    toujours attaché). status : on-demand starter+ (patch-31).
+                    toujours attaché), wellknown (empreinte publique du domaine racine,
+                    semé weekly ; /.well-known/apple-app-site-association + assetlinks.json
+                    → app mobile launch product/high, filtre IdP anti-faux-positif ;
+                    /llms.txt → api_developer/low ; branche dédiée, sévérité forcée,
+                    empty=valide), comparison_page (ANCRE interne de sitemap v2, jamais
+                    semée/scrapée — porte le change→signal déterministe d'une page /vs/ +
+                    source dédiée pour le carve-out du garde critical). status : on-demand
+                    starter+ (patch-31).
                   — custom : page arbitraire du domaine enregistrable (eTLD+1) du
                     concurrent, user-selectable via un flow DÉDIÉ (« Watch a custom page »,
                     POST /:id/custom-monitors — pas la liste standard d'enable). config =
@@ -292,7 +299,11 @@ source_type       homepage | pricing | blog | changelog | jobs |
                     Comportement détaillé : cf. Pipeline + Décisions.
 frequency         realtime | daily | weekly
 signal_severity   low | medium | high | critical
-signal_category   pricing | product | hiring | reviews | content | funding
+signal_category   pricing | product | hiring | reviews | content | funding | api_developer
+                  — api_developer (sitemap v2 / wellknown) : surface developer/AI-agent.
+                    Émis UNIQUEMENT de façon déterministe (llms.txt d'un concurrent) ;
+                    absent du prompt classify → le modèle ne le choisit jamais (zéro
+                    perturbation de l'éval catégorie). Couleur --cat-api-developer (web)
 notification_type signal | new_competitor | self_change | onboarding_complete |
                   structural_change | silent_monitor | analysis_ready | standing_query
                   (silent_monitor = patch-27, source sans signal depuis 60j+ ;
@@ -514,9 +525,20 @@ carte (état live uniquement).
        changelog → diff générique (patch-32 : feed-first — si la page expose un RSS/Atom,
                    on parse le feed → snapshot déterministe trié → le diff détecte les
                    nouvelles entrées de release ; sinon change-detection HTML, comportement actuel)
-       sitemap → diff générique (patch-32 : scraper résout robots.txt Sitemap:/paths
-                   conventionnels, walk index + .gz, émet la liste d'URLs triée → le diff
-                   surface les pages neuves/retirées ; catégorisation par path. Interne, weekly)
+       sitemap → BRANCHE DÉDIÉE (sitemap v2, plus le diff générique) : le scraper walk
+                   robots.txt Sitemap:/paths conventionnels + index multi-niveaux + .gz →
+                   liste d'URLs triée (JSON island). scrape-monitor DIFFE LES SETS D'URLS
+                   (loc seul — lastmod JAMAIS consulté). Nouvelle page comparative (/vs/,
+                   /alternatives/, {nom}-alternative) → signal FORCÉ content/high, escaladé
+                   content/CRITICAL + realtime si le slug nomme l'ORG du user (ancré sur
+                   comparison_page → survit au garde). Le reste du delta d'URLs → 1 change
+                   groupé → classify-change générique (comportement d'avant). Interne, weekly
+       wellknown → BRANCHE DÉDIÉE : le scraper GET /.well-known/apple-app-site-association
+                   + assetlinks.json + /llms.txt (L0, sans clé), filtre les bundles/packages
+                   de providers d'identité (Okta/Auth0/…) et rend un fingerprint (JSON island).
+                   scrape-monitor diffe le fingerprint → nouveau appID/package non-IdP = app
+                   mobile launch product/high ; llms.txt apparu = api_developer/low. Sévérité
+                   forcée. Empty = état valide (jamais de throw). Interne, weekly
        hackernews → BRANCHE DÉDIÉE (pas le diff générique) : le scraper query l'Algolia
                    public HN par brand (search_by_date, fenêtre roulante HN_WINDOW_DAYS,
                    sans clé), applique la garde anti-homonyme puis rend un snapshot dont le

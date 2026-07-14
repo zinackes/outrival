@@ -69,6 +69,20 @@ export const SOURCE_TYPES = [
   // (product/high) or a traction mention (content/medium) with a forced severity.
   // Kept in sync with the DB source_type enum.
   "hackernews",
+  // Well-known / public domain fingerprint. Like sitemap/news, an INTERNAL source —
+  // never user-selectable. Seeded weekly at creation; the scraper GETs the root
+  // domain's /.well-known/apple-app-site-association + /assetlinks.json (mobile-app
+  // launch tells) + /llms.txt (AI/devtools positioning) at L0, filters identity-
+  // provider bundles, and the scrape-monitor wellknown branch diffs the fingerprint
+  // to emit a mobile-app-launch (product) or an llms.txt (api_developer) signal.
+  "wellknown",
+  // Comparison-page anchor (sitemap v2). INTERNAL, never seeded/scraped/user-
+  // selectable — it exists solely to anchor the deterministic snapshot → change →
+  // signal FK chain when the sitemap branch detects a new competitor comparison page
+  // (/vs/, /alternatives/, *-alternative). A dedicated source_type (not "sitemap") so
+  // applySeverityGuard can allow its deterministic "critical" (a competitor attacking
+  // the user by name) without opening critical for AI-classified sitemap changes.
+  "comparison_page",
   // Custom page. User-selectable, but via a DEDICATED flow ("Watch a custom page")
   // — NOT the standard enable list (rejected on POST /:id/monitors). Watches ANY
   // page on the competitor's own registrable domain (/about, ToS, /security,
@@ -115,5 +129,10 @@ export type SignalSeverity = typeof SIGNAL_SEVERITIES[number];
 
 export const SIGNAL_CATEGORIES = [
   "pricing", "product", "hiring", "reviews", "content", "funding",
+  // Developer / AI-agent surface (sitemap v2 / wellknown card). Set ONLY
+  // deterministically (an llms.txt manifest appearing on a competitor's domain) —
+  // the AI classifier is never asked to emit it (kept out of the classify prompt),
+  // so it never perturbs the six model-chosen categories.
+  "api_developer",
 ] as const;
 export type SignalCategory = typeof SIGNAL_CATEGORIES[number];

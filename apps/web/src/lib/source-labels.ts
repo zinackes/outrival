@@ -42,6 +42,10 @@ const SOURCE_LABELS: Record<string, string> = {
   hiring_shift: "Hiring trends",
   // Internal Hacker News anchor (Show HN launches + traction mentions).
   hackernews: "Hacker News",
+  // Internal well-known / domain-fingerprint anchor (mobile-app launch, llms.txt).
+  wellknown: "App & AI footprint",
+  // Internal comparison-page anchor (competitor /vs/ + alternative pages).
+  comparison_page: "Comparison page",
   // User-watched arbitrary page on the competitor's domain ("Watch a custom page").
   custom: "Custom page",
 };
@@ -81,6 +85,8 @@ export const SOURCE_SHORT_LABELS: Record<SourceType, string> = {
   review_shift: "Review trends",
   hiring_shift: "Hiring trends",
   hackernews: "Hacker News",
+  wellknown: "App & AI footprint",
+  comparison_page: "Comparison page",
   custom: "Custom page",
 };
 

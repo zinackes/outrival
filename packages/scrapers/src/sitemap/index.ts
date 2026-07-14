@@ -5,7 +5,14 @@ export {
   collectSitemapUrls,
   categorizeUrl,
   sitemapBytesToText,
+  // sitemap v2 — JSON-island round-trip + competitor comparison-page detection.
+  parseSitemapDoc,
+  isComparisonUrl,
+  slugMentionsBrand,
+  classifyComparisonUrl,
+  SITEMAP_DOC_MARKER,
   type ParsedSitemap,
   type UrlCategory,
   type CollectOptions,
+  type ComparisonSignal,
 } from "./parse";

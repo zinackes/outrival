@@ -282,30 +282,6 @@ export interface ReviewsData {
   recent: ReviewVerbatim[];
 }
 
-// Reddit mention (patch-32) — one discussion post referencing the competitor, read
-// back from the latest Reddit snapshot on R2. Star-less: reach is `score` (upvotes).
-export interface RedditMentionPost {
-  id: string;
-  title: string;
-  subreddit: string;
-  score: number;
-  numComments: number;
-  permalink: string;
-  createdUtc: number;
-  body: string;
-}
-
-export interface MentionsData {
-  // False when the competitor has no Reddit monitor yet (empty state → enable).
-  enabled: boolean;
-  summary: string | null;
-  summaryUpdatedAt: string | null;
-  praises: string[];
-  complaints: string[];
-  posts: RedditMentionPost[];
-  lastScrapedAt: string | null;
-}
-
 export interface CompetitorSignal {
   id: string;
   severity: "low" | "medium" | "high" | "critical";
@@ -1978,8 +1954,6 @@ export const api = {
     request<{ velocity: HiringVelocityBucket[] }>(`/api/competitors/${id}/hiring-velocity`),
   getCompetitorReviews: (id: string) =>
     request<ReviewsData>(`/api/competitors/${id}/reviews`),
-  getCompetitorMentions: (id: string) =>
-    request<MentionsData>(`/api/competitors/${id}/mentions`),
   getCompetitorReviewScores: (id: string) =>
     request<{ scores: ReviewScorePoint[] }>(`/api/competitors/${id}/review-scores`),
   getCompetitorPricingHistory: (id: string) =>

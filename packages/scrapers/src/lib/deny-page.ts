@@ -29,7 +29,7 @@ export type DenyPageKind = "soft_404" | "access_denied" | "login_wall" | "verifi
 const VISIBLE_TEXT_LIMIT = 3000;
 
 // Our own scrapers synthesize an HTML document out of ALREADY-parsed structured data
-// (a sitemap URL list, a Reddit/News mention feed, a changelog RSS feed, an ATS job
+// (a sitemap URL list, a News mention feed, a changelog RSS feed, an ATS job
 // island, aggregated pricing product-lines). detectDenyPage must never run on those:
 // a synthesized doc listing `/404` or `/sign-in`, or quoting deny copy from a feed
 // item, is legitimate CONTENT — grading it a deny page would silence the monitor
@@ -40,7 +40,7 @@ const VISIBLE_TEXT_LIMIT = 3000;
 // (scrape-patchright.ts) marks the pricing-toggle block APPENDED to a REAL fetched
 // page, not a synthesized document — that capture is a genuine page and must stay
 // deny-checked.
-const SYNTHETIC_DOC_MARKER_RE = /<section\s+data-outrival-(sitemap|news|reddit|changelog|ats|line)\b/i;
+const SYNTHETIC_DOC_MARKER_RE = /<section\s+data-outrival-(sitemap|news|changelog|ats|line)\b/i;
 
 export function isSyntheticDocument(html: string): boolean {
   return SYNTHETIC_DOC_MARKER_RE.test(html);

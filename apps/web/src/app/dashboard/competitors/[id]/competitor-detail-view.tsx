@@ -45,7 +45,6 @@ import {
   Crosshair,
   Palette,
   HelpCircle,
-  MessageSquare,
   FileSearch,
 } from "lucide-react";
 import {
@@ -80,7 +79,6 @@ import {
   PLAN_LABELS,
   minPlanForSource,
   planIncludesSource,
-  isRedditEnabled,
   minPlanForFrequency,
   planIncludesFrequency,
   aggregateFreshness,
@@ -147,7 +145,6 @@ import {
 import { PricingTab } from "./competitor-detail/pricing-tab";
 import { HiringTab } from "./competitor-detail/hiring-tab";
 import { ReviewsTab } from "./competitor-detail/reviews-tab";
-import { MentionsTab } from "./competitor-detail/mentions-tab";
 import { OverviewTab } from "./competitor-detail/overview-tab";
 import { ActivityTab } from "./competitor-detail/activity-tab";
 import { ContentTab } from "./competitor-detail/content-tab";
@@ -160,16 +157,13 @@ const TABS: Array<{ key: TabKey; label: string; icon: typeof Activity }> = [
   { key: "pricing", label: "Pricing", icon: DollarSign },
   { key: "hiring", label: "Hiring", icon: Briefcase },
   { key: "reviews", label: "Reviews", icon: Star },
-  { key: "mentions", label: "Mentions", icon: MessageSquare },
   { key: "content", label: "Content", icon: FileText },
   { key: "custom", label: "Custom", icon: FileSearch },
   { key: "techstack", label: "Tech stack", icon: Cpu },
   { key: "battlecard", label: "Battle Card", icon: Swords },
 ];
 
-// Reddit (Mentions tab) is hidden entirely while the source is runtime-disabled —
-// without global OAuth creds it can't be enabled, so we don't dangle a dead tab.
-const VISIBLE_TABS = TABS.filter((t) => t.key !== "mentions" || isRedditEnabled());
+const VISIBLE_TABS = TABS;
 
 // Per-tab freshness dot (patch-14): tabs backed by monitored sources show how
 // recent that section's data is. Activity (signal feed) and Battle Card have no
@@ -178,7 +172,6 @@ const TAB_SOURCES: Partial<Record<TabKey, string[]>> = {
   pricing: ["pricing"],
   hiring: ["jobs"],
   reviews: ["g2_reviews", "capterra_reviews", "trustpilot_reviews", "appstore_reviews"],
-  mentions: ["reddit"],
   content: ["homepage", "blog", "changelog"],
   custom: ["custom"],
 };
@@ -210,12 +203,6 @@ function tabLock(key: TabKey, plan: Plan): { reason: PaywallReason; minPlan: Pla
         reason: { code: "plan_locked_source", source: "g2_reviews", plan },
         minPlan: minPlanForSource("g2_reviews"),
       };
-    case "mentions":
-      if (planIncludesSource(plan, "reddit")) return null;
-      return {
-        reason: { code: "plan_locked_source", source: "reddit", plan },
-        minPlan: minPlanForSource("reddit"),
-      };
     default:
       return null;
   }
@@ -244,7 +231,6 @@ const EXTRACTION_BACKED_SOURCES = new Set<string>([
   "trustradius_reviews",
   "gartner_reviews",
   "playstore_reviews",
-  "reddit",
 ]);
 
 // Extraction-backed tab data (jobs/pricing/reviews) is written by a downstream job
@@ -1355,21 +1341,6 @@ export function CompetitorDetailView({ id }: { id: string }) {
                 }
               />
             </TabsContent>
-            {isRedditEnabled() && (
-              <TabsContent value="mentions" className={TAB_PANEL_CLASS}>
-                <MentionsTab
-                  competitorId={id}
-                  monitors={monitors}
-                  scrapingIds={scrapingIds}
-                  onRun={requestRunMonitor}
-                  onEnable={enableMonitor}
-                  plan={plan}
-                  onLockedSource={(source) =>
-                    setPaywall({ code: "plan_locked_source", source, plan })
-                  }
-                />
-              </TabsContent>
-            )}
             <TabsContent value="content" className={TAB_PANEL_CLASS}>
               <ContentTab
                 changes={recentChanges}

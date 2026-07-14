@@ -3,8 +3,8 @@ import { competitors } from "./competitors";
 
 export const reviewSourceEnum = pgEnum("review_source", [
   "g2", "capterra", "appstore", "playstore",
-  // patch-32 — multi-platform review coverage (+ Reddit mention sentiment).
-  "trustpilot", "trustradius", "gartner", "reddit",
+  // patch-32 — multi-platform review coverage.
+  "trustpilot", "trustradius", "gartner",
 ]);
 
 export const reviews = pgTable("reviews", {

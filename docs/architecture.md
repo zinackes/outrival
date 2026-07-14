@@ -259,15 +259,14 @@ billing_period    monthly | yearly
 source_type       homepage | pricing | blog | changelog | jobs |
                   g2_reviews | capterra_reviews | appstore_reviews |
                   trustpilot_reviews | trustradius_reviews | gartner_reviews |
-                  playstore_reviews | reddit | linkedin | twitter | github_repo |
+                  playstore_reviews | linkedin | twitter | github_repo |
                   tech_stack | status | sitemap | news | custom
                   — reviews+ (trustpilot/trustradius/gartner/playstore) : patch-32, enable
-                    on-demand pro+, même chemin que g2/capterra. reddit : patch-32,
-                    mention-tracking (pas de page notée → pas de ligne review_scores) ;
-                    accès migré du path www.reddit.com/*.json (403 datacenter) vers l'API
-                    OAuth (oauth.reddit.com, app-only). DISABLED par défaut (kill-switch
-                    NEXT_PUBLIC_REDDIT_ENABLED) — la Responsible Builder Policy (2026-06)
-                    gate la création d'app free-tier ; réactivable quand les creds arrivent.
+                    on-demand pro+, même chemin que g2/capterra. reddit : RETIRÉ (2026-07-14,
+                    migration 0043) — Public Content Policy Reddit (usage commercial sans licence
+                    interdit) + creds free-tier non obtenables (Responsible Builder Policy). Valeur
+                    retirée des enums source_type + review_source ; couverture communautaire de
+                    l'ICP founders/dev assurée par hackernews.
                   — internes, jamais user-selectable : tech_stack (patch-18, infra, tab
                     read-only), sitemap + news (patch-32, semés weekly, diff = pages/
                     événements neufs), ai_visibility/subdomains/youtube (ancres
@@ -280,7 +279,14 @@ source_type       homepage | pricing | blog | changelog | jobs |
                     product/high, mention > HN_POINTS_THRESHOLD → content/medium, en
                     dessous stocké sans signal ; sévérité FORCÉE par-hit — branche dédiée
                     scrape-monitor, dédup par objectID, pas de classifieur, lien thread
-                    toujours attaché). status : on-demand starter+ (patch-31).
+                    toujours attaché), wellknown (empreinte publique du domaine racine,
+                    semé weekly ; /.well-known/apple-app-site-association + assetlinks.json
+                    → app mobile launch product/high, filtre IdP anti-faux-positif ;
+                    /llms.txt → api_developer/low ; branche dédiée, sévérité forcée,
+                    empty=valide), comparison_page (ANCRE interne de sitemap v2, jamais
+                    semée/scrapée — porte le change→signal déterministe d'une page /vs/ +
+                    source dédiée pour le carve-out du garde critical). status : on-demand
+                    starter+ (patch-31).
                   — custom : page arbitraire du domaine enregistrable (eTLD+1) du
                     concurrent, user-selectable via un flow DÉDIÉ (« Watch a custom page »,
                     POST /:id/custom-monitors — pas la liste standard d'enable). config =
@@ -292,7 +298,11 @@ source_type       homepage | pricing | blog | changelog | jobs |
                     Comportement détaillé : cf. Pipeline + Décisions.
 frequency         realtime | daily | weekly
 signal_severity   low | medium | high | critical
-signal_category   pricing | product | hiring | reviews | content | funding
+signal_category   pricing | product | hiring | reviews | content | funding | api_developer
+                  — api_developer (sitemap v2 / wellknown) : surface developer/AI-agent.
+                    Émis UNIQUEMENT de façon déterministe (llms.txt d'un concurrent) ;
+                    absent du prompt classify → le modèle ne le choisit jamais (zéro
+                    perturbation de l'éval catégorie). Couleur --cat-api-developer (web)
 notification_type signal | new_competitor | self_change | onboarding_complete |
                   structural_change | silent_monitor | analysis_ready | standing_query
                   (silent_monitor = patch-27, source sans signal depuis 60j+ ;
@@ -514,9 +524,20 @@ carte (état live uniquement).
        changelog → diff générique (patch-32 : feed-first — si la page expose un RSS/Atom,
                    on parse le feed → snapshot déterministe trié → le diff détecte les
                    nouvelles entrées de release ; sinon change-detection HTML, comportement actuel)
-       sitemap → diff générique (patch-32 : scraper résout robots.txt Sitemap:/paths
-                   conventionnels, walk index + .gz, émet la liste d'URLs triée → le diff
-                   surface les pages neuves/retirées ; catégorisation par path. Interne, weekly)
+       sitemap → BRANCHE DÉDIÉE (sitemap v2, plus le diff générique) : le scraper walk
+                   robots.txt Sitemap:/paths conventionnels + index multi-niveaux + .gz →
+                   liste d'URLs triée (JSON island). scrape-monitor DIFFE LES SETS D'URLS
+                   (loc seul — lastmod JAMAIS consulté). Nouvelle page comparative (/vs/,
+                   /alternatives/, {nom}-alternative) → signal FORCÉ content/high, escaladé
+                   content/CRITICAL + realtime si le slug nomme l'ORG du user (ancré sur
+                   comparison_page → survit au garde). Le reste du delta d'URLs → 1 change
+                   groupé → classify-change générique (comportement d'avant). Interne, weekly
+       wellknown → BRANCHE DÉDIÉE : le scraper GET /.well-known/apple-app-site-association
+                   + assetlinks.json + /llms.txt (L0, sans clé), filtre les bundles/packages
+                   de providers d'identité (Okta/Auth0/…) et rend un fingerprint (JSON island).
+                   scrape-monitor diffe le fingerprint → nouveau appID/package non-IdP = app
+                   mobile launch product/high ; llms.txt apparu = api_developer/low. Sévérité
+                   forcée. Empty = état valide (jamais de throw). Interne, weekly
        hackernews → BRANCHE DÉDIÉE (pas le diff générique) : le scraper query l'Algolia
                    public HN par brand (search_by_date, fenêtre roulante HN_WINDOW_DAYS,
                    sans clé), applique la garde anti-homonyme puis rend un snapshot dont le
@@ -846,14 +867,6 @@ DETECT_COOLDOWN_SEC=90       # cooldown anti-double-clic (s) entre 2 runs Exa on
                             # au cooldown d'un autre. Avant = blocage per-org 30 min (cassait le wizard)
 GITHUB_TOKEN=                # optionnel — source github_repo (self-product developing). Sans
                             # token : REST public 60 req/h partagé (rate-limit sur burst) ; avec : 5000
-REDDIT_CLIENT_ID=            # reddit source — OAuth app-only (client_credentials) creds
-REDDIT_CLIENT_SECRET=       # register at reddit.com/prefs/apps. Auth'd → oauth.reddit.com
-                            # (server-IP-friendly, free tier 100 QPM). Empty → reddit source fails.
-                            # NOTE 2026-07: Reddit's Responsible Builder Policy gates NEW app
-                            # creation behind manual approval (silent-fails), so free-tier creds
-                            # aren't obtainable now → source ships DISABLED via the flag below.
-NEXT_PUBLIC_REDDIT_ENABLED=false  # reddit kill-switch (default OFF): hides the Mentions tab (web)
-                            # + rejects enabling reddit (API/onboarding). Flip "true" once creds land.
 # Onboarding (patch-25)
 NEXT_PUBLIC_ONBOARDING_PARALLEL_DISCOVERY=true   # prefetch discovery during profile edit
 NEXT_PUBLIC_ONBOARDING_DISCOVERY_DEBOUNCE_MS=3000 # debounce before prefetch (limits Exa spend)
@@ -1059,8 +1072,8 @@ BUILD_TIME=                  # build timestamp → GET /api/version. In Coolify:
   + nouvelle source interne **sitemap** (diff = pages neuves/retirées). **REVIEWS** : sous-notes
   /5 (ease_of_use/support/features/value → review_scores Nullable) + thèmes de plaintes
   (IA-juge, même appel) ; **multi-plateforme** — 4 sources (trustpilot/trustradius/gartner/
-  playstore, enable on-demand pro+, URL brand-locked) + **reddit** (mention-tracking, pas de
-  score → skip review_scores). **HOMEPAGE** : `og:image`/`og:type` → `meta_changed` (rebrand).
+  playstore, enable on-demand pro+, URL brand-locked). **HOMEPAGE** : `og:image`/`og:type` →
+  `meta_changed` (rebrand).
   Parsers purs AI-free dans `scrapers` (`/feeds`, `/sitemap`, `/pricing`). 117 tests.
 - **Pipeline d'extraction étagé (patch-30)** — l'IA quitte le chemin chaud (chaque scrape)
   pour le froid (création/réparation rare d'un extracteur). 4 étages cheap→cher, le dernier =

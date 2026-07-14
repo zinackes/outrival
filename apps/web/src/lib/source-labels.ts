@@ -22,12 +22,11 @@ const SOURCE_LABELS: Record<string, string> = {
   tech_stack: "Tech stack",
   // Company-level events from the Google News RSS anchor (funding/M&A/press).
   news: "News",
-  // patch-32: additional review platforms + Reddit mentions (enable-on-demand).
+  // patch-32: additional review platforms (enable-on-demand).
   trustpilot_reviews: "Trustpilot reviews",
   trustradius_reviews: "TrustRadius reviews",
   gartner_reviews: "Gartner reviews",
   playstore_reviews: "Play Store reviews",
-  reddit: "Reddit mentions",
   // patch-31: competitor status page (incidents / uptime).
   status: "Status page",
   // patch-32: internal sitemap-diff anchor (new/removed pages).
@@ -42,6 +41,10 @@ const SOURCE_LABELS: Record<string, string> = {
   hiring_shift: "Hiring trends",
   // Internal Hacker News anchor (Show HN launches + traction mentions).
   hackernews: "Hacker News",
+  // Internal well-known / domain-fingerprint anchor (mobile-app launch, llms.txt).
+  wellknown: "App & AI footprint",
+  // Internal comparison-page anchor (competitor /vs/ + alternative pages).
+  comparison_page: "Comparison page",
   // User-watched arbitrary page on the competitor's domain ("Watch a custom page").
   custom: "Custom page",
 };
@@ -67,7 +70,6 @@ export const SOURCE_SHORT_LABELS: Record<SourceType, string> = {
   trustradius_reviews: "TrustRadius reviews",
   gartner_reviews: "Gartner reviews",
   playstore_reviews: "Play Store reviews",
-  reddit: "Reddit mentions",
   linkedin: "LinkedIn",
   twitter: "Twitter / X",
   github_repo: "GitHub repo",
@@ -81,6 +83,8 @@ export const SOURCE_SHORT_LABELS: Record<SourceType, string> = {
   review_shift: "Review trends",
   hiring_shift: "Hiring trends",
   hackernews: "Hacker News",
+  wellknown: "App & AI footprint",
+  comparison_page: "Comparison page",
   custom: "Custom page",
 };
 

@@ -5,7 +5,6 @@ import * as changelog from "./changelog/changelog.scraper";
 import * as jobs from "./jobs/jobs.scraper";
 import * as appstoreReviews from "./appstore-reviews/appstore-reviews.scraper";
 import * as extraReviews from "./reviews/extra-platforms.scraper";
-import * as reddit from "./reddit/reddit.scraper";
 import * as github from "./github/github.scraper";
 import * as status from "./status/status.scraper";
 import * as sitemap from "./sitemap/sitemap.scraper";
@@ -13,6 +12,7 @@ import * as news from "./news/news.scraper";
 import * as subdomains from "./subdomains/subdomains.scraper";
 import * as youtube from "./youtube/youtube.scraper";
 import * as hackernews from "./hackernews/hackernews.scraper";
+import * as wellknown from "./wellknown/wellknown.scraper";
 import * as custom from "./custom/custom.scraper";
 import type { SourceType } from "@outrival/shared";
 import type { ScrapeOptions, ScrapeOutcome } from "./types";
@@ -36,7 +36,6 @@ const scrapers: Partial<Record<SourceType, ScraperFn>> = {
   trustradius_reviews: extraReviews.trustradius,
   gartner_reviews: extraReviews.gartner,
   playstore_reviews: extraReviews.playstore,
-  reddit: reddit.scrape,
   github_repo: github.scrape,
   status: status.scrape,
   sitemap: sitemap.scrape,
@@ -44,6 +43,7 @@ const scrapers: Partial<Record<SourceType, ScraperFn>> = {
   subdomains: subdomains.scrape,
   youtube: youtube.scrape,
   hackernews: hackernews.scrape,
+  wellknown: wellknown.scrape,
   custom: custom.scrape,
 };
 

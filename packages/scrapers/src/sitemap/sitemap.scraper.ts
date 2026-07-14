@@ -1,6 +1,6 @@
 import type { ScrapeOutcome, ScrapeOptions } from "../types";
 import { safeFetch } from "../lib/guarded-fetch";
-import { collectSitemapUrls, categorizeUrl, type UrlCategory } from "./parse";
+import { collectSitemapUrls, categorizeUrl, SITEMAP_DOC_MARKER, type UrlCategory } from "./parse";
 
 /**
  * Sitemap scraper (patch-32, sitemap-diff signal). Resolves a competitor's root
@@ -11,8 +11,16 @@ import { collectSitemapUrls, categorizeUrl, type UrlCategory } from "./parse";
  * Pure `fetch` (no browser, no cascade) — sitemaps are plain XML.
  */
 
-const ROOT_PATHS = ["/sitemap.xml", "/sitemap_index.xml", "/sitemap-index.xml", "/sitemap.xml.gz"];
-const MARKER = "outrival-sitemap";
+// Conventional roots across CMSes (robots.txt Sitemap: is tried first): plain,
+// WordPress/Yoast index, Next.js numbered, Shopify/older index, gzipped.
+const ROOT_PATHS = [
+  "/sitemap.xml",
+  "/sitemap_index.xml",
+  "/sitemap-index.xml",
+  "/sitemap-0.xml",
+  "/sitemap.xml.gz",
+];
+const MARKER = SITEMAP_DOC_MARKER;
 
 async function fetchBytes(url: string): Promise<Uint8Array | null> {
   try {

@@ -295,6 +295,20 @@
       "when": 1783966551669,
       "tag": "0041_previous_kang",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1783970823928,
+      "tag": "0042_bright_thundra",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1784050114377,
+      "tag": "0043_retire_reddit_source",
+      "breakpoints": true
     }
   ]
 }

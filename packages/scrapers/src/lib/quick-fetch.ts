@@ -1,5 +1,5 @@
 import { validatePublicUrl } from "@outrival/shared";
-import { realisticHeaders, realisticUserAgent } from "./fingerprint";
+import { realisticHeaders, OUTRIVAL_UA } from "./fingerprint";
 
 const MIN_USABLE_LENGTH = 100;
 
@@ -39,7 +39,7 @@ export async function quickFetch(url: string): Promise<QuickFetchResult> {
     const safe = validatePublicUrl(target);
     if (!safe.ok) throw new Error(`quickFetch: unsafe_url (${safe.error})`);
     res = await fetch(target, {
-      headers: { ...realisticHeaders(), "User-Agent": realisticUserAgent() },
+      headers: { ...realisticHeaders(), "User-Agent": OUTRIVAL_UA },
       redirect: "manual",
       signal: AbortSignal.timeout(15_000),
     });

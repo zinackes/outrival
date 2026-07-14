@@ -4,7 +4,7 @@
 // reference it explicitly — the root tsconfig is ES2022 only.
 import { chromium, type Browser, type Page, type Response } from "patchright"; // drop-in stealth Playwright
 import { patchrightLaunchOptions, type ProxyTier } from "./proxy";
-import { realisticHeaders, realisticUserAgent } from "./fingerprint";
+import { realisticHeaders, OUTRIVAL_UA } from "./fingerprint";
 import { navWaitUntil, settleAfterNav } from "./nav-strategy";
 import { isCloudflareChallenge } from "./block-detection";
 import { collapseAnimatedCounters } from "./normalize-text";
@@ -121,7 +121,7 @@ export async function scrapeWithPatchright(
   const browser = await getBrowser(tier);
 
   const context = await browser.newContext({
-    userAgent: realisticUserAgent(),
+    userAgent: OUTRIVAL_UA,
     locale: "en-US",
     timezoneId: "America/New_York",
     viewport: { width: 1920, height: 1080 },

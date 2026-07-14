@@ -1,5 +1,6 @@
 import { redis } from "@outrival/shared";
 import { safeFetch } from "./guarded-fetch";
+import { OUTRIVAL_UA } from "./fingerprint";
 
 // The collection doctrine promises we respect robots.txt. This module fetches and
 // caches robots.txt per origin (24h) and answers isAllowed(url) BEFORE any request
@@ -64,9 +65,7 @@ function looksLikeHtml(body: string): boolean {
 async function fetchRobotsBody(origin: string): Promise<{ body: string; cacheable: boolean }> {
   try {
     const res = await safeFetch(`${origin}/robots.txt`, {
-      headers: {
-        "User-Agent": `Mozilla/5.0 (compatible; ${OUTRIVAL_BOT_NAME}/1.0; +https://outrival.app/bot)`,
-      },
+      headers: { "User-Agent": OUTRIVAL_UA },
       timeoutMs: FETCH_TIMEOUT_MS,
     });
     // Any non-2xx (404/410/5xx) → no usable robots.txt → allow all. Stable → cache.

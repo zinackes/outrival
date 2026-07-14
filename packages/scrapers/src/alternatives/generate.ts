@@ -1,5 +1,5 @@
 import type { FailureCategory } from "../lib/diagnose-failure";
-import { realisticHeaders, realisticUserAgent } from "../lib/fingerprint";
+import { realisticHeaders, OUTRIVAL_UA } from "../lib/fingerprint";
 import { safeFetch } from "../lib/guarded-fetch";
 
 /**
@@ -111,7 +111,7 @@ async function isQuicklyReachable(url: string): Promise<boolean> {
   try {
     const res = await safeFetch(url, {
       method: "GET",
-      headers: { ...realisticHeaders(), "User-Agent": realisticUserAgent() },
+      headers: { ...realisticHeaders(), "User-Agent": OUTRIVAL_UA },
       timeoutMs: 6000,
     });
     return res.status < 400;

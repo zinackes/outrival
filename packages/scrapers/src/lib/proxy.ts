@@ -1,12 +1,13 @@
-// Proxy abstraction for the scraping cascade (patch-20). Two independent axes:
-// browser fingerprint (Patchright/Camoufox) vs IP reputation (these tiers). The
-// cascade escalates the IP tier separately from the browser, cheapest first.
+// Proxy abstraction for the scraping cascade. The egress IP is chosen UPSTREAM by
+// the monitor (stability / geolocation), NOT in reaction to a block — a proxy
+// triggered by a block would be an evasion tool, which the collection doctrine
+// forbids. Two tiers only:
 //
-//   "direct"      → no proxy, the server's own IP            (L1, free)
-//   "datacenter"  → ProxyScrape dedicated datacenter pool    (L2, ~fixed/mo)
-//   "residential" → ProxyScrape residential pay-per-GB       (L3 + L4 fallback)
+//   "direct"      → no proxy, the server's own IP            (L0/L1, free)
+//   "datacenter"  → ProxyScrape dedicated datacenter pool    (L2, ~fixed/mo egress)
 //
-// ScrapingBee + Webshare were removed in patch-20: no per-request paid path.
+// The residential tier was removed with the doctrine: rotating residential IPs to
+// defeat IP reputation is circumvention, not routing.
 
 export interface ProxyConfig {
   server: string;
@@ -14,31 +15,30 @@ export interface ProxyConfig {
   password: string;
 }
 
-export type ProxyTier = "direct" | "datacenter" | "residential";
+export type ProxyTier = "direct" | "datacenter";
 
 /**
- * Resolve the ProxyScrape credentials for a tier from the environment. Returns
- * null for "direct" (Patchright then exits via the server IP) and also when a
- * paid tier is unconfigured — the caller falls back to the direct IP for that
- * tier instead of throwing, so a missing proxy degrades gracefully (best-effort)
+ * Resolve the ProxyScrape datacenter credentials from the environment. Returns
+ * null for "direct" (the browser exits via the server IP) and also when the
+ * datacenter tier is unconfigured — the caller falls back to the direct IP
+ * instead of throwing, so a missing proxy degrades gracefully (best-effort)
  * rather than breaking every scrape.
  */
 export function getProxyConfig(tier: ProxyTier): ProxyConfig | null {
   if (tier === "direct") return null;
 
-  const prefix = tier === "datacenter" ? "PROXYSCRAPE_DC" : "PROXYSCRAPE_RESI";
-  const endpoint = process.env[`${prefix}_ENDPOINT`];
-  const username = process.env[`${prefix}_USERNAME`];
-  const password = process.env[`${prefix}_PASSWORD`];
+  const endpoint = process.env.PROXYSCRAPE_DC_ENDPOINT;
+  const username = process.env.PROXYSCRAPE_DC_USERNAME;
+  const password = process.env.PROXYSCRAPE_DC_PASSWORD;
 
   if (!endpoint || !username || !password) {
-    console.warn(`[proxy] ${tier} config missing — falling back to direct IP for this tier`);
+    console.warn(`[proxy] datacenter config missing — falling back to direct IP`);
     return null;
   }
   return { server: `http://${endpoint}`, username, password };
 }
 
-/** Launch options for a Patchright Chromium bound to the given proxy tier. */
+/** Launch options for a Patchright Chromium bound to the given egress tier. */
 export function patchrightLaunchOptions(tier: ProxyTier) {
   const proxy = getProxyConfig(tier);
   return {

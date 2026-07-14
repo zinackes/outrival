@@ -7,16 +7,15 @@ import {
   type ScrapeResult,
 } from "./scrape-patchright";
 import { scrapeDirect } from "./scrape-direct";
-import { scrapeWithCamoufox, closeCamoufoxBrowser } from "./scrape-camoufox";
 import { getProxyConfig } from "./proxy";
 
 /**
- * Tear down every pooled scraper browser (Chromium tiers + Camoufox). A run that
- * may have rendered must call this in a finally so a long-lived worker process
- * (pg-boss) doesn't leak browsers across jobs. No-op when nothing was launched.
+ * Tear down every pooled render browser (Chromium tiers). A run that may have
+ * rendered must call this in a finally so a long-lived worker process (pg-boss)
+ * doesn't leak browsers across jobs. No-op when nothing was launched.
  */
 export async function closeScraperBrowsers(): Promise<void> {
-  await Promise.all([closePatchrightPool(), closeCamoufoxBrowser()]);
+  await closePatchrightPool();
 }
 
 // Failures that justify escalating to a more expensive level. A timeout /
@@ -64,22 +63,20 @@ function lastFailureNeedsBrowserNotProxy(attempts: CascadeAttempt[]): boolean {
   return reason === "needs_render" || reason === "soft_block";
 }
 
-// A paid/experimental level is only useful if it changes the egress IP. Without
-// the proxy configured it would just repeat the direct attempt, so skip it.
-function levelEnabled(envFlag: string, requiresResidential = false, requiresDatacenter = false): boolean {
+// The datacenter egress is only useful if it's actually configured; without the
+// proxy it would just repeat the direct attempt, so skip it.
+function levelEnabled(envFlag: string, requiresDatacenter = false): boolean {
   if (process.env[envFlag] === "false") return false;
   if (requiresDatacenter && getProxyConfig("datacenter") === null) return false;
-  if (requiresResidential && getProxyConfig("residential") === null) return false;
   return true;
 }
 
 /**
- * Decoupled 5-level scraping cascade (patch-20). Fingerprint and IP reputation
- * are escalated separately, cheapest first:
- *   L0 fetch direct · L1 Patchright direct · L2 Patchright+datacenter ·
- *   L3 Patchright+residential · L4 Camoufox+residential.
- * Escalates only on a blocking failure (not on timeout). `knownLevel` lets a
- * monitor that already learned its level skip the cheaper attempts.
+ * 3-level scraping cascade (collection doctrine):
+ *   L0 fetch direct · L1 browser render direct · L2 browser + datacenter egress.
+ * L1 escalates only when the page needs a JS render (needs_render). The datacenter
+ * egress (L2) is chosen upstream by the monitor, never in reaction to a block.
+ * `knownLevel` lets a monitor that already learned its level skip cheaper attempts.
  */
 export async function scrapePage(url: string, options: CascadeOptions = {}): Promise<CascadeOutcome> {
   const startedAt = Date.now();
@@ -145,29 +142,13 @@ export async function scrapePage(url: string, options: CascadeOptions = {}): Pro
     if (!ESCALATING_FAILURES.has(r.failureReason ?? "")) return fail();
   }
 
-  // L2 — Patchright + datacenter.
-  if (start <= 2 && levelEnabled("SCRAPING_LEVEL_1_ENABLED", false, true)) {
+  // L2 — browser + datacenter egress.
+  if (start <= 2 && levelEnabled("SCRAPING_LEVEL_1_ENABLED", true)) {
     const r = await scrapeWithPatchright(url, "datacenter", browserOpts);
     attempts.push({ level: 2, result: r });
     if (r.ok) return done(r, 2);
     await closeTierBrowser("datacenter");
     if (!ESCALATING_FAILURES.has(r.failureReason ?? "")) return fail();
-  }
-
-  // L3 — Patchright + residential.
-  if (start <= 3 && levelEnabled("SCRAPING_LEVEL_2_ENABLED", true)) {
-    const r = await scrapeWithPatchright(url, "residential", browserOpts);
-    attempts.push({ level: 3, result: r });
-    if (r.ok) return done(r, 3);
-    await closeTierBrowser("residential");
-    if (!ESCALATING_FAILURES.has(r.failureReason ?? "")) return fail();
-  }
-
-  // L4 — Camoufox + residential (Chromium fingerprint detected, rare).
-  if (levelEnabled("SCRAPING_LEVEL_3_ENABLED", true)) {
-    const r = await scrapeWithCamoufox(url, browserOpts);
-    attempts.push({ level: 4, result: r });
-    if (r.ok) return done(r, 4);
   }
 
   return fail();

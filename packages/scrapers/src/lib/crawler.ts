@@ -1,8 +1,9 @@
-// Thin adapter over the patch-20 scraping cascade. Preserves the public surface
-// the source scrapers depend on — scrapePage / scrapeStatic / scrapeFirstSuccess
-// returning a ScrapeOutcome (or throwing on total failure) — while delegating the
-// actual fetch to the decoupled L0→L4 cascade in scrape-page.ts. Crawlee and
-// ScrapingBee are gone; the browser is Patchright (stealth Chromium).
+// Thin adapter over the scraping cascade. Preserves the public surface the source
+// scrapers depend on — scrapePage / scrapeStatic / scrapeFirstSuccess returning a
+// ScrapeOutcome (or throwing on total failure) — while delegating the actual fetch
+// to the L0→L2 cascade in scrape-page.ts (L0 fetch · L1 browser render · L2 browser
+// + datacenter egress). An explicit refusal (403/503/challenge/robots) is surfaced
+// distinctly, never escalated.
 import { validatePublicUrl } from "@outrival/shared";
 import { scrapePage as cascadeScrape, type CascadeOutcome } from "./scrape-page";
 import { scrapeDirect } from "./scrape-direct";
@@ -40,10 +41,8 @@ export class ScrapeFailedError extends Error {
 
 const LEVEL_NAME: Record<ScrapeLevel, string> = {
   0: "direct",
-  1: "patchright",
-  2: "patchright-datacenter",
-  3: "patchright-residential",
-  4: "camoufox",
+  1: "browser",
+  2: "browser-datacenter",
 };
 
 function stripHtml(html: string): string {
@@ -56,9 +55,9 @@ function stripHtml(html: string): string {
 }
 
 /**
- * Scrape a page through the full L0→L4 cascade. Throws (with the failure reason
- * as the message) when every enabled level was blocked, so existing scraper
- * error handling + friendlyScrapeError keep working.
+ * Scrape a page through the L0→L2 cascade. Throws (with the failure reason as the
+ * message) when every enabled level was exhausted or the site refused us, so
+ * existing scraper error handling + friendlyScrapeError keep working.
  */
 export async function scrapePage(
   url: string,

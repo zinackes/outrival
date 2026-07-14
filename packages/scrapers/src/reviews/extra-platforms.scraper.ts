@@ -22,17 +22,17 @@ function reviewScraper(source: string, minLevel: ScrapeLevel) {
   };
 }
 
-// G2 / Capterra: protected, never start below datacenter (L2); a learned higher
-// level (residential/Camoufox) is honored.
+// G2 / Capterra: protected, so use the datacenter egress (L2) — the cascade
+// ceiling. If the site still refuses us, that's honoured as a refusal (the source
+// is marked unscrapable), never worked around.
 export const g2 = reviewScraper("g2", 2);
 export const capterra = reviewScraper("capterra", 2);
-// Trustpilot / TrustRadius: public but bot-aware → start at datacenter (L2), like
-// g2/capterra; a learned higher level (residential/Camoufox) is honored.
+// Trustpilot / TrustRadius: public but bot-aware → datacenter egress (L2), like g2.
 export const trustpilot = reviewScraper("trustpilot", 2);
 export const trustradius = reviewScraper("trustradius", 2);
-// Gartner Peer Insights: heavily protected, frequently login-walled → start at
-// residential (L3). Best-effort: a hard block escalates to L4 then marks the
-// monitor unscrapable (fail-soft — never worse than not having the source).
-export const gartner = reviewScraper("gartner", 3);
+// Gartner Peer Insights: heavily protected, frequently login-walled → datacenter
+// egress (L2). A hard block or login wall is a refusal → the monitor is marked
+// unscrapable (fail-soft — never worse than not having the source, never bypassed).
+export const gartner = reviewScraper("gartner", 2);
 // Play Store: JS-rendered but not IP-blocked → needs a browser (L1), no proxy.
 export const playstore = reviewScraper("playstore", 1);

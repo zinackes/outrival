@@ -359,8 +359,9 @@ const IDEMPOTENCE_WINDOW_MS = 60 * 60 * 1000;
 // drops back to a cheaper level instead of paying datacenter/residential forever.
 const LEVEL_REPROBE_INTERVAL_MS = 14 * 24 * 60 * 60 * 1000;
 
-// After this many consecutive run failures (incl. the final Camoufox level) a
-// source is marked unscrapable so the UI can show a clear "unavailable" state.
+// After this many consecutive run failures a source is marked unscrapable so the
+// UI can show a clear "unavailable" state. (An explicit refusal short-circuits to
+// unscrapable immediately — see the refusal handling in the run body.)
 const UNSCRAPABLE_FAILURE_THRESHOLD = 3;
 
 // Min gap between two competitor-summary re-triggers when the summary exists but
@@ -537,8 +538,10 @@ export const scrapeMonitorJob = task({
       (!monitor.requiresLevelLastReprobe ||
         Date.now() - monitor.requiresLevelLastReprobe.getTime() > LEVEL_REPROBE_INTERVAL_MS);
     // Where the cascade starts: from the learned level normally, from L0 on a
-    // re-probe so a cheaper level can win. Clamped to the valid 0..4 range.
-    const startLevel = (shouldReprobe ? 0 : (pinnedLevel ?? 0)) as 0 | 1 | 2 | 3 | 4;
+    // re-probe so a cheaper level can win. Clamped to the valid 0..2 range so a
+    // stale 3/4 (from before the doctrine, pre data-migration) can't wedge the
+    // cascade into an all-branches-skipped fail.
+    const startLevel = (shouldReprobe ? 0 : Math.min(pinnedLevel ?? 0, 2)) as 0 | 1 | 2;
 
     // Lazy-import to avoid loading Patchright (Chromium) at module parse time
     // (trigger.dev warns on >1 s import).
@@ -584,7 +587,7 @@ export const scrapeMonitorJob = task({
       throw err;
     } finally {
       // Free any pooled browsers the cascade launched now that html/text/screenshot
-      // already live in `result` — holding Chromium/Camoufox through the downstream
+      // already live in `result` — holding Chromium through the downstream
       // diff/AI/DB work just wastes RAM (and leaks on a long-lived pg-boss worker).
       // No-op for L0-only / api-capture scrapes (api-capture closes its own browser).
       const { closeScraperBrowsers } = await import("@outrival/scrapers");
@@ -1669,9 +1672,9 @@ export const scrapeMonitorJob = task({
     const monitor = await db.query.monitors.findFirst({
       where: eq(monitors.id, parsed.data.monitorId),
     });
-    // Mark the source unscrapable after enough consecutive failures (incl. the
-    // final Camoufox level) so the UI can show a clear "unavailable" state. A
-    // later success resets both on the success/no_change paths above.
+    // Mark the source unscrapable after enough consecutive failures so the UI can
+    // show a clear "unavailable" state. A later success resets both on the
+    // success/no_change paths above.
     const consecutiveFailures = (monitor?.consecutiveFailures ?? 0) + 1;
     const atThreshold = consecutiveFailures === UNSCRAPABLE_FAILURE_THRESHOLD;
     // patch-23 — on the unscrapable transition for a pure SPA, try to recover via

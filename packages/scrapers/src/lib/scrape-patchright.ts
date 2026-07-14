@@ -10,9 +10,9 @@ import { isCloudflareChallenge } from "./block-detection";
 import { collapseAnimatedCounters } from "./normalize-text";
 import { extractContent, isContentCollapsed } from "./extract-content";
 
-// Cascade level a scrape was served from (patch-20). 0/1 are free (no proxy),
-// 2/3/4 cost money. Stored per monitor as `requiresLevel` once learned.
-export type ScrapeLevel = 0 | 1 | 2 | 3 | 4;
+// Cascade level a scrape was served from. 0/1 are free (no proxy); 2 uses the
+// configured datacenter egress. Stored per monitor as `requiresLevel` once learned.
+export type ScrapeLevel = 0 | 1 | 2;
 
 export type FailureReason =
   | "blocked_403"
@@ -68,9 +68,9 @@ function blockedResourceTypes(options: PatchrightOptions): Set<string> {
   return types;
 }
 
-// One browser per proxy tier: datacenter and residential launch with different
-// proxy configs, so they cannot share a single Chromium. Lazily launched, reused
-// across scrapes within a worker run (the run is an isolated machine).
+// One browser per egress tier: direct and datacenter launch with different proxy
+// configs, so they cannot share a single Chromium. Lazily launched, reused across
+// scrapes within a worker run (the run is an isolated machine).
 const browserByTier: Partial<Record<ProxyTier, Browser>> = {};
 
 async function getBrowser(tier: ProxyTier): Promise<Browser> {
@@ -106,11 +106,10 @@ export async function closePatchrightPool(): Promise<void> {
 }
 
 /**
- * Scrape a page with Patchright (stealth Chromium) through the given proxy tier.
+ * Scrape a page with a rendered browser through the given egress tier.
  *   "direct"      → L1 (no proxy, server IP)
- *   "datacenter"  → L2
- *   "residential" → L3
- * The browser fingerprint is identical across tiers — only the egress IP changes.
+ *   "datacenter"  → L2 (configured datacenter egress)
+ * The render is identical across tiers — only the egress IP changes.
  */
 export async function scrapeWithPatchright(
   url: string,
@@ -162,10 +161,9 @@ export async function scrapeWithPatchright(
 }
 
 /**
- * Shared capture sequence for a navigated Patchright page: status guards,
- * Cloudflare-challenge + soft-block detection, optional progressive scroll, then
- * HTML/text/screenshot. Exported for the Camoufox (L4) path, whose page is API-
- * compatible. Closing the context is the caller's responsibility.
+ * Shared capture sequence for a navigated page: status guards, Cloudflare-
+ * challenge + soft-block detection, optional progressive scroll, then
+ * HTML/text/screenshot. Closing the context is the caller's responsibility.
  */
 export async function capturePage(
   page: Page,

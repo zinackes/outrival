@@ -53,17 +53,13 @@ export type BackfillHistoryPayload = {
 export type OrgRefPayload = { orgId: string };
 export type Empty = Record<string, never>;
 
-// ── Pipeline / on-demand worker jobs (14) ─────────────────────────────────────
-// scrape-monitor runs on two bounded lanes (same handler, two queue names) so
-// learned-slow scrapes can't starve fast ones — the patch-20 two-lane split.
+// ── Pipeline / on-demand worker jobs ──────────────────────────────────────────
+// scrape-monitor runs on a single bounded lane. The collection doctrine caps the
+// cascade at L2 (datacenter egress, flat-cost and fast), so there is no slow paid
+// level left to isolate — the previous two-lane split was retired with L3/L4.
 export const scrapeMonitor = defineJob<ScrapeMonitorPayload>("scrape-monitor", {
   expireInSeconds: 300,
   concurrency: Number(process.env.SCRAPE_CONCURRENCY ?? 5),
-  deadLetter: PIPELINE_DLQ,
-});
-export const scrapeMonitorSlow = defineJob<ScrapeMonitorPayload>("scrape-monitor-slow", {
-  expireInSeconds: 300,
-  concurrency: Number(process.env.SCRAPE_SLOW_CONCURRENCY ?? 2),
   deadLetter: PIPELINE_DLQ,
 });
 

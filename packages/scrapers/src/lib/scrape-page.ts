@@ -8,6 +8,7 @@ import {
 } from "./scrape-patchright";
 import { scrapeDirect } from "./scrape-direct";
 import { getProxyConfig } from "./proxy";
+import { isAllowed } from "./robots";
 
 /**
  * Tear down every pooled render browser (Chromium tiers). A run that may have
@@ -81,6 +82,20 @@ function levelEnabled(envFlag: string, requiresDatacenter = false): boolean {
 export async function scrapePage(url: string, options: CascadeOptions = {}): Promise<CascadeOutcome> {
   const startedAt = Date.now();
   const attempts: CascadeAttempt[] = [];
+
+  // Collection doctrine: honour robots.txt BEFORE emitting any request on the page.
+  // A Disallow is a refusal (surfaced distinctly in scrape-monitor), never escalated.
+  if (!(await isAllowed(url))) {
+    return {
+      ok: false,
+      failureReason: "robots_disallowed",
+      durationMs: 0,
+      level: null,
+      learnedLevel: null,
+      attempts,
+      totalDurationMs: Date.now() - startedAt,
+    };
+  }
   // A screenshot can only come from a rendered page — L0 (direct fetch) never
   // produces one. When the caller asks for a screenshot (homepage, for the pHash
   // visual-redesign detector AND the before/after visual diff), floor the cascade

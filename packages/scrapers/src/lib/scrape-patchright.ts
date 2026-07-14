@@ -19,6 +19,7 @@ export type FailureReason =
   | "blocked_503"
   | "cloudflare_challenge"
   | "soft_block"
+  | "robots_disallowed" // robots.txt Disallows this path for OutrivalBot — a refusal
   | "needs_render" // HTML fetched but too little content → needs a browser (L0 → L1)
   | "http_error" // 4xx/5xx (not 403/503) — dead/invalid target, no render will fix it
   | "network_error"

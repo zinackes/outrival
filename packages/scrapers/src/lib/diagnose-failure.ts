@@ -25,11 +25,10 @@ export type FailureCategory =
 export type DiagnosisConfidence = "high" | "medium" | "low";
 
 export type SuggestedAction =
-  | "retry_camoufox" // patch-20 already escalates; nothing new to do
   | "propose_alternative" // surface user-facing alternatives (different URL / manual / pause)
   | "detect_pivot" // could be temporary or a real death/acquisition → structural detection
   | "capture_api" // try runtime XHR/fetch capture for a pure SPA
-  | "mark_unscrapable"; // no automated recovery — investigate in ops
+  | "mark_unscrapable"; // no automated recovery — the site refused us / ops investigates
 
 export interface FailureDiagnosis {
   category: FailureCategory;
@@ -129,7 +128,10 @@ export function diagnoseFailure(
     };
   }
 
-  // 6. Anti-bot — patch-20 already escalates through proxies/Camoufox.
+  // 6. Anti-bot — the site refused us (block / challenge). The collection doctrine
+  // does NOT bypass a refusal: there is no heavier tier to retry. (Refusals are
+  // normally handled up front in scrape-monitor and never reach here; this branch
+  // covers a block surfaced via a raw error message.)
   if (
     last?.failureReason === "cloudflare_challenge" ||
     last?.failureReason === "blocked_403" ||
@@ -139,8 +141,8 @@ export function diagnoseFailure(
     return {
       category: "anti_bot",
       confidence: "high",
-      evidence: [`Failure reason: ${last.failureReason}`],
-      suggestedAction: "retry_camoufox",
+      evidence: [`Failure reason: ${last.failureReason}`, "Blocked — no bypass"],
+      suggestedAction: "mark_unscrapable",
     };
   }
 

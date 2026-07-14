@@ -59,10 +59,10 @@ describe("diagnoseFailure", () => {
     expect(d.category).toBe("geo_blocked");
   });
 
-  test("cloudflare challenge → anti_bot (retry_camoufox)", () => {
+  test("cloudflare challenge → anti_bot (mark_unscrapable, no bypass)", () => {
     const d = diagnoseFailure([{ ok: false, failureReason: "cloudflare_challenge" }], URL);
     expect(d.category).toBe("anti_bot");
-    expect(d.suggestedAction).toBe("retry_camoufox");
+    expect(d.suggestedAction).toBe("mark_unscrapable");
   });
 
   test("no clear pattern → unknown (mark_unscrapable)", () => {

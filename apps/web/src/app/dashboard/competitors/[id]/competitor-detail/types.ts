@@ -4,7 +4,6 @@ export type TabKey =
   | "pricing"
   | "hiring"
   | "reviews"
-  | "mentions"
   | "content"
   | "custom"
   | "techstack"

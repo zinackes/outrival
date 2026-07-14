@@ -48,7 +48,6 @@ const SOURCE_LABELS: Record<string, string> = {
   trustpilot_reviews: "Trustpilot reviews",
   trustradius_reviews: "TrustRadius reviews",
   gartner_reviews: "Gartner reviews",
-  reddit: "Reddit",
   github_repo: "GitHub repo",
   status: "Status page",
   linkedin: "LinkedIn",

@@ -13,8 +13,6 @@ const SourceEnum = z.enum([
   "g2", "capterra", "appstore", "playstore",
   // patch-32 — additional review platforms (web pages, structured-first score path).
   "trustpilot", "trustradius", "gartner",
-  // patch-32 — Reddit mentions: sentiment + themes, no star score (skips CH score row).
-  "reddit",
 ]);
 type ReviewSource = z.infer<typeof SourceEnum>;
 
@@ -174,9 +172,9 @@ export const extractReviewsJob = task({
       await db.insert(reviews).values(verbatims);
     }
 
-    // Only record a star-score time-series point when there IS a rating. Reddit
-    // (mentions, no AggregateRating) carries sentiment + themes via the verbatims +
-    // summary instead — writing a 0/5 would pollute the score trend (patch-32).
+    // Only record a star-score time-series point when there IS a rating — a scrape
+    // that found verbatims but no AggregateRating would pollute the score trend with
+    // a 0/5, so it carries sentiment + themes via the verbatims + summary instead.
     if (extracted.average_score != null) {
       await insertReviewScore({
         competitor_id: input.competitorId,

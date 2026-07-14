@@ -4,10 +4,6 @@ export const SOURCE_TYPES = [
   // patch-32: additional review platforms (enable-on-demand, explicit URL, pro+).
   // Structured-first AggregateRating + AI verbatims, same path as g2/capterra.
   "trustpilot_reviews", "trustradius_reviews", "gartner_reviews", "playstore_reviews",
-  // patch-32: Reddit mention tracking. NOT a `_reviews` source (no per-competitor
-  // review URL / star rating) — searched by brand, judged for sentiment + complaint
-  // themes by extract-reviews. Enable on-demand pro+.
-  "reddit",
   "linkedin", "twitter", "github_repo",
   // patch-18: infra-only anchor source for tech-stack signals. Never user-
   // selectable (excluded from plan gating, monitor creation routes, and the
@@ -95,19 +91,6 @@ export const SOURCE_TYPES = [
 ] as const;
 
 export type SourceType = typeof SOURCE_TYPES[number];
-
-/**
- * Reddit source kill-switch (default OFF). Reddit's free-tier app creation is gated
- * behind the Responsible Builder Policy approval (June 2026), so without approved
- * GLOBAL OAuth creds (REDDIT_CLIENT_ID/SECRET) the source can't be enabled for anyone
- * — every scrape would just fail. Disabled → hidden from the source picker (web) and
- * rejected by the enable endpoint (API/onboarding). Flip NEXT_PUBLIC_REDDIT_ENABLED
- * to "true" once creds are provisioned. Public flag so the web client can read it too;
- * the API/workers read the same name at runtime.
- */
-export function isRedditEnabled(): boolean {
-  return process.env.NEXT_PUBLIC_REDDIT_ENABLED === "true";
-}
 
 const CONDITIONAL_FETCH_SOURCES: readonly SourceType[] = ["blog", "changelog"];
 

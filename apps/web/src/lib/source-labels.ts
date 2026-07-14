@@ -22,12 +22,11 @@ const SOURCE_LABELS: Record<string, string> = {
   tech_stack: "Tech stack",
   // Company-level events from the Google News RSS anchor (funding/M&A/press).
   news: "News",
-  // patch-32: additional review platforms + Reddit mentions (enable-on-demand).
+  // patch-32: additional review platforms (enable-on-demand).
   trustpilot_reviews: "Trustpilot reviews",
   trustradius_reviews: "TrustRadius reviews",
   gartner_reviews: "Gartner reviews",
   playstore_reviews: "Play Store reviews",
-  reddit: "Reddit mentions",
   // patch-31: competitor status page (incidents / uptime).
   status: "Status page",
   // patch-32: internal sitemap-diff anchor (new/removed pages).
@@ -71,7 +70,6 @@ export const SOURCE_SHORT_LABELS: Record<SourceType, string> = {
   trustradius_reviews: "TrustRadius reviews",
   gartner_reviews: "Gartner reviews",
   playstore_reviews: "Play Store reviews",
-  reddit: "Reddit mentions",
   linkedin: "LinkedIn",
   twitter: "Twitter / X",
   github_repo: "GitHub repo",

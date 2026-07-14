@@ -50,7 +50,6 @@ export function mapSourceTypeToCategory(sourceType: SourceType): StalenessCatego
     case "trustradius_reviews":
     case "gartner_reviews":
     case "playstore_reviews":
-    case "reddit":
       return "reviews";
     case "blog":
     case "changelog":

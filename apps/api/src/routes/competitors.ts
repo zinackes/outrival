@@ -54,8 +54,6 @@ import {
   isLanguageFlagSrc,
   resolveCurrentPricing,
   normalizePlanKey,
-  getFromR2,
-  parseRedditSnapshotHtml,
   DEPARTMENT_BUCKETS,
   DEPARTMENT_BUCKET_LABELS,
   type SourceType,
@@ -63,7 +61,6 @@ import {
   type PricingTier,
   type PricingPlanOverride,
   type CompetitorOverrides,
-  type RedditMentionData,
   type DepartmentBucket,
 } from "@outrival/shared";
 
@@ -546,9 +543,6 @@ const AddMonitorSchema = z.object({
 // Slow-changing review sources default to weekly; everything else daily.
 // Clamped to a plan-allowed frequency below (weekly is allowed on every plan).
 function defaultFrequencyFor(source: SourceType): MonitorFrequency {
-  // Reddit's public API rate-limits datacenter IPs and discussion moves slowly —
-  // default to weekly like the review sources rather than hammering it daily.
-  if (source === "reddit") return "weekly";
   return source.endsWith("_reviews") ? "weekly" : "daily";
 }
 
@@ -1205,10 +1199,8 @@ competitorsRouter.get("/:id/reviews", async (c) => {
   const competitor = await assertOwnedCompetitor(id, orgId);
   if (!competitor) return c.json({ error: "Not found" }, 404);
 
-  // Reddit is a discussion source (star-less mentions) surfaced in its own Mentions
-  // tab — exclude it here so its verbatims never bleed into the review-site summary.
   const rows = await db.query.reviews.findMany({
-    where: and(eq(reviews.competitorId, competitor.id), ne(reviews.source, "reddit")),
+    where: eq(reviews.competitorId, competitor.id),
     orderBy: desc(reviews.detectedAt),
     limit: 60,
   });
@@ -1267,70 +1259,6 @@ competitorsRouter.get("/:id/reviews", async (c) => {
   });
 });
 
-// Reddit mentions (patch-32): the competitor's own Mentions tab. Posts are read back
-// from the latest Reddit snapshot on R2 (the scraper embeds them as a JSON island —
-// no separate table), and the sentiment digest (praises/complaints/summary) comes
-// from what extract-reviews already persisted for source="reddit".
-competitorsRouter.get("/:id/mentions", async (c) => {
-  const id = c.req.param("id");
-  const user = c.get("user");
-  const orgId = await ensureUserOrg(user.id);
-  const competitor = await assertOwnedCompetitor(id, orgId);
-  if (!competitor) return c.json({ error: "Not found" }, 404);
-
-  const monitor = await db.query.monitors.findFirst({
-    where: and(eq(monitors.competitorId, competitor.id), eq(monitors.sourceType, "reddit")),
-  });
-  if (!monitor) {
-    return c.json({
-      enabled: false,
-      summary: null,
-      summaryUpdatedAt: null,
-      praises: [],
-      complaints: [],
-      posts: [],
-      lastScrapedAt: null,
-    });
-  }
-
-  const snapshot = await db.query.snapshots.findFirst({
-    where: and(eq(snapshots.monitorId, monitor.id), eq(snapshots.status, "success")),
-    orderBy: desc(snapshots.scrapedAt),
-  });
-
-  let posts: RedditMentionData[] = [];
-  if (snapshot) {
-    try {
-      const html = await getFromR2(`${snapshot.r2Key}.html`);
-      const parsed = parseRedditSnapshotHtml(html);
-      if (parsed) {
-        // Highest-reach mentions first — the ones that matter for monitoring.
-        posts = parsed.mentions.sort((a, b) => b.score - a.score).slice(0, 30);
-      }
-    } catch {
-      // best-effort: a missing/unreadable snapshot just yields no posts.
-    }
-  }
-
-  const verbatimRows = await db.query.reviews.findMany({
-    where: and(eq(reviews.competitorId, competitor.id), eq(reviews.source, "reddit")),
-    orderBy: desc(reviews.detectedAt),
-    limit: 30,
-  });
-
-  return c.json({
-    enabled: true,
-    summary: monitor.aiSummary,
-    summaryUpdatedAt: monitor.aiSummaryUpdatedAt,
-    praises: verbatimRows.filter((r) => r.author === "praise").slice(0, 5).map((r) => r.content),
-    complaints: verbatimRows
-      .filter((r) => r.author === "complaint")
-      .slice(0, 5)
-      .map((r) => r.content),
-    posts,
-    lastScrapedAt: snapshot?.scrapedAt ?? null,
-  });
-});
 
 competitorsRouter.get("/:id/review-scores", async (c) => {
   const id = c.req.param("id");

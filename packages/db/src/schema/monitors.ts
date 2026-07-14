@@ -8,8 +8,6 @@ export const sourceTypeEnum = pgEnum("source_type", [
   // patch-32: additional review platforms (enable-on-demand, pro+). Kept in sync
   // with shared SOURCE_TYPES + reviewSourceEnum.
   "trustpilot_reviews", "trustradius_reviews", "gartner_reviews", "playstore_reviews",
-  // patch-32: Reddit mention tracking (brand search → sentiment/themes, no star score).
-  "reddit",
   "linkedin", "twitter", "github_repo",
   // patch-18: anchor monitor for tech-stack signals only. Always isActive=false,
   // never enqueued by schedule-scraping / handled by getScraper — it exists solely

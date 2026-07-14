@@ -144,7 +144,7 @@ const SIZE_VARIABLE_SOURCES = new Set(["blog", "changelog", "news", "sitemap", "
 // a block. github_repo carries no section marker (it's a <pre> dump), hence the set;
 // the feed/ATS/product-line variants of changelog/jobs/pricing DO have an HTML path
 // too, so they're excluded per-capture via isSyntheticDocument, not by source type.
-const SYNTHETIC_DOC_SOURCES = new Set(["sitemap", "news", "reddit", "github_repo", "subdomains", "youtube", "hackernews", "wellknown"]);
+const SYNTHETIC_DOC_SOURCES = new Set(["sitemap", "news", "github_repo", "subdomains", "youtube", "hackernews", "wellknown"]);
 // R6 (2026-07 audit, T5) — sources that monitor the competitor's OWN domain, where
 // a 200 landing on a different registrable domain means the wrong target (parked
 // page, acquisition redirect, dead link), not the page. Deliberately NOT jobs or
@@ -1581,14 +1581,6 @@ export const scrapeMonitorJob = task({
         snapshotId: newSnapshot.id,
         competitorId: competitor.id,
         source: reviewSource,
-      });
-    } else if (extractionAllowed && competitor.type !== "self" && monitor.sourceType === "reddit") {
-      // patch-32 — Reddit mentions go through extract-reviews for sentiment +
-      // complaint themes (no AggregateRating → null star score, no CH score row).
-      await tasks.trigger("extract-reviews", {
-        snapshotId: newSnapshot.id,
-        competitorId: competitor.id,
-        source: "reddit",
       });
     }
 

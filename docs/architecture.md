@@ -259,15 +259,14 @@ billing_period    monthly | yearly
 source_type       homepage | pricing | blog | changelog | jobs |
                   g2_reviews | capterra_reviews | appstore_reviews |
                   trustpilot_reviews | trustradius_reviews | gartner_reviews |
-                  playstore_reviews | reddit | linkedin | twitter | github_repo |
+                  playstore_reviews | linkedin | twitter | github_repo |
                   tech_stack | status | sitemap | news | custom
                   — reviews+ (trustpilot/trustradius/gartner/playstore) : patch-32, enable
-                    on-demand pro+, même chemin que g2/capterra. reddit : patch-32,
-                    mention-tracking (pas de page notée → pas de ligne review_scores) ;
-                    accès migré du path www.reddit.com/*.json (403 datacenter) vers l'API
-                    OAuth (oauth.reddit.com, app-only). DISABLED par défaut (kill-switch
-                    NEXT_PUBLIC_REDDIT_ENABLED) — la Responsible Builder Policy (2026-06)
-                    gate la création d'app free-tier ; réactivable quand les creds arrivent.
+                    on-demand pro+, même chemin que g2/capterra. reddit : RETIRÉ (2026-07-14,
+                    migration 0043) — Public Content Policy Reddit (usage commercial sans licence
+                    interdit) + creds free-tier non obtenables (Responsible Builder Policy). Valeur
+                    retirée des enums source_type + review_source ; couverture communautaire de
+                    l'ICP founders/dev assurée par hackernews.
                   — internes, jamais user-selectable : tech_stack (patch-18, infra, tab
                     read-only), sitemap + news (patch-32, semés weekly, diff = pages/
                     événements neufs), ai_visibility/subdomains/youtube (ancres
@@ -868,14 +867,6 @@ DETECT_COOLDOWN_SEC=90       # cooldown anti-double-clic (s) entre 2 runs Exa on
                             # au cooldown d'un autre. Avant = blocage per-org 30 min (cassait le wizard)
 GITHUB_TOKEN=                # optionnel — source github_repo (self-product developing). Sans
                             # token : REST public 60 req/h partagé (rate-limit sur burst) ; avec : 5000
-REDDIT_CLIENT_ID=            # reddit source — OAuth app-only (client_credentials) creds
-REDDIT_CLIENT_SECRET=       # register at reddit.com/prefs/apps. Auth'd → oauth.reddit.com
-                            # (server-IP-friendly, free tier 100 QPM). Empty → reddit source fails.
-                            # NOTE 2026-07: Reddit's Responsible Builder Policy gates NEW app
-                            # creation behind manual approval (silent-fails), so free-tier creds
-                            # aren't obtainable now → source ships DISABLED via the flag below.
-NEXT_PUBLIC_REDDIT_ENABLED=false  # reddit kill-switch (default OFF): hides the Mentions tab (web)
-                            # + rejects enabling reddit (API/onboarding). Flip "true" once creds land.
 # Onboarding (patch-25)
 NEXT_PUBLIC_ONBOARDING_PARALLEL_DISCOVERY=true   # prefetch discovery during profile edit
 NEXT_PUBLIC_ONBOARDING_DISCOVERY_DEBOUNCE_MS=3000 # debounce before prefetch (limits Exa spend)
@@ -1081,8 +1072,8 @@ BUILD_TIME=                  # build timestamp → GET /api/version. In Coolify:
   + nouvelle source interne **sitemap** (diff = pages neuves/retirées). **REVIEWS** : sous-notes
   /5 (ease_of_use/support/features/value → review_scores Nullable) + thèmes de plaintes
   (IA-juge, même appel) ; **multi-plateforme** — 4 sources (trustpilot/trustradius/gartner/
-  playstore, enable on-demand pro+, URL brand-locked) + **reddit** (mention-tracking, pas de
-  score → skip review_scores). **HOMEPAGE** : `og:image`/`og:type` → `meta_changed` (rebrand).
+  playstore, enable on-demand pro+, URL brand-locked). **HOMEPAGE** : `og:image`/`og:type` →
+  `meta_changed` (rebrand).
   Parsers purs AI-free dans `scrapers` (`/feeds`, `/sitemap`, `/pricing`). 117 tests.
 - **Pipeline d'extraction étagé (patch-30)** — l'IA quitte le chemin chaud (chaque scrape)
   pour le froid (création/réparation rare d'un extracteur). 4 étages cheap→cher, le dernier =

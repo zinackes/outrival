@@ -97,7 +97,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     maxCompetitors: 15,
     allowedFrequencies: ["realtime", "daily", "weekly"],
     allowedChannels: ["email", "slack", "webhook"],
-    allowedSources: ["homepage", "pricing", "blog", "jobs", "g2_reviews", "capterra_reviews", "trustpilot_reviews", "trustradius_reviews", "reddit", "status"],
+    allowedSources: ["homepage", "pricing", "blog", "jobs", "g2_reviews", "capterra_reviews", "trustpilot_reviews", "trustradius_reviews", "status"],
     scrapeFrequency: "daily_adaptive",
     forcedRescansPerDay: 20,
     battleCardsPerDay: 50,
@@ -119,7 +119,6 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
       "homepage", "pricing", "blog", "jobs",
       "g2_reviews", "capterra_reviews", "appstore_reviews", "status",
       "trustpilot_reviews", "trustradius_reviews", "gartner_reviews", "playstore_reviews",
-      "reddit",
     ],
     scrapeFrequency: "daily_priority",
     // Anti-abuse ceilings, far above normal use; a fair-use clause (TOS) covers the

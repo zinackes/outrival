@@ -4,7 +4,6 @@ import {
   PLAN_LIMITS,
   PLANS,
   isWithinLimit,
-  isRedditEnabled,
   productLimit,
   forcedRescansPerDay,
   type Plan,
@@ -92,10 +91,6 @@ export function isFeatureAllowed(plan: Plan, feature: PlanFeature): boolean {
 }
 
 export function isSourceAllowed(plan: Plan, source: SourceType): boolean {
-  // Reddit is plan-gated AND runtime-gated: without approved global OAuth creds the
-  // source can't work for anyone, so the kill-switch (default OFF) blocks enabling it
-  // here — covers both the on-demand enable route and onboarding.
-  if (source === "reddit" && !isRedditEnabled()) return false;
   return PLAN_LIMITS[plan].allowedSources.includes(source);
 }
 

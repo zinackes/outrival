@@ -35,6 +35,7 @@ const EnvSchema = z.object({
   PROXYSCRAPE_DC_USERNAME: z.string().optional(),
   PROXYSCRAPE_DC_PASSWORD: z.string().optional(),
   SCRAPING_LEVEL_1_ENABLED: z.string().optional(),
+  SCRAPE_MIN_DOMAIN_GAP_MS: z.coerce.number().int().positive().optional(),
 
   // Sectoral analysis (patch-13). Runtime knobs with sane defaults so a missing
   // env never breaks the weekly job. The cron itself is static (Mon 07:00 UTC).

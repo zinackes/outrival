@@ -8,7 +8,8 @@ import {
 } from "./scrape-patchright";
 import { scrapeDirect } from "./scrape-direct";
 import { getProxyConfig } from "./proxy";
-import { isAllowed } from "./robots";
+import { isAllowed, getCrawlDelayMs } from "./robots";
+import { awaitDomainSlot } from "./rate-limit";
 
 /**
  * Tear down every pooled render browser (Chromium tiers). A run that may have
@@ -96,6 +97,11 @@ export async function scrapePage(url: string, options: CascadeOptions = {}): Pro
       totalDurationMs: Date.now() - startedAt,
     };
   }
+
+  // Per-domain rate limit (courtesy): space out requests to the same registrable
+  // domain, honouring a robots Crawl-delay when it's longer. One slot per logical
+  // page visit — the cascade's L0→L2 escalation is a single visit, not three hits.
+  await awaitDomainSlot(url, await getCrawlDelayMs(url));
   // A screenshot can only come from a rendered page — L0 (direct fetch) never
   // produces one. When the caller asks for a screenshot (homepage, for the pHash
   // visual-redesign detector AND the before/after visual diff), floor the cascade

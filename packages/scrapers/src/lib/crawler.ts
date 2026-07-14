@@ -7,7 +7,8 @@
 import { validatePublicUrl } from "@outrival/shared";
 import { scrapePage as cascadeScrape, type CascadeOutcome } from "./scrape-page";
 import { scrapeDirect } from "./scrape-direct";
-import { isAllowed } from "./robots";
+import { isAllowed, getCrawlDelayMs } from "./robots";
+import { awaitDomainSlot } from "./rate-limit";
 import type { ScrapeLevel } from "./scrape-patchright";
 import type { ScrapeOptions, ScrapeOutcome } from "../types";
 
@@ -100,8 +101,9 @@ export async function scrapePage(
 export async function scrapeStatic(url: string): Promise<ScrapeOutcome> {
   assertScrapableUrl(url);
   // Collection doctrine: robots.txt is honoured on the static (L0) path too, before
-  // any request touches the page.
+  // any request touches the page, then the per-domain rate limit applies.
   if (!(await isAllowed(url))) throw new Error("robots_disallowed");
+  await awaitDomainSlot(url, await getCrawlDelayMs(url));
   const r = await scrapeDirect(url);
   if (!r.ok || !r.html) throw new Error(r.failureReason ?? "static_scraping_failed");
   return {

@@ -68,6 +68,7 @@ export async function scrapePage(
   assertScrapableUrl(url);
   const outcome = await cascadeScrape(url, {
     knownLevel: options.knownLevel,
+    egressTier: options.egressTier,
     fullPage: options.fullPage,
     waitForSelector: options.waitForSelector,
     progressiveScroll: options.progressiveScroll,

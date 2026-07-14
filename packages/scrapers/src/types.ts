@@ -1,4 +1,5 @@
 import type { ScrapeLevel } from "./lib/scrape-patchright";
+import type { ProxyTier } from "./lib/proxy";
 import type { PlatformProfile } from "@outrival/shared";
 
 export type { ScrapeLevel };
@@ -59,6 +60,12 @@ export interface ScrapeOptions {
    * cheaper attempt. Levels 0/1 are free; L2 uses the configured datacenter egress.
    */
   knownLevel?: ScrapeLevel;
+  /**
+   * Egress IP chosen UPSTREAM by the monitor (stability / geolocation), never a
+   * reaction to a block. "datacenter" routes the render through the datacenter
+   * proxy (reported as L2); "direct" (default) uses the server IP.
+   */
+  egressTier?: ProxyTier;
   /**
    * Cached platform profile (patch-31). When present, a scraper can route to a
    * structured connector — e.g. the jobs scraper hits the ATS API directly from

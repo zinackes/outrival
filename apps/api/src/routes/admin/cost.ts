@@ -7,11 +7,10 @@ import { num, type AdminVariables } from "./shared";
 
 // --- Cost estimation constants. TRENDS, not accounting. Documented in
 //     findings.md § Patch-02/20. Tune as real invoices come in. ---
-// Patch-20 proxy model: datacenter is a FIXED monthly cost (flat, bandwidth
-// unlimited), residential is pay-per-GB. We don't meter GB, so we surface the
-// fixed datacenter line plus a rough per-residential-scrape estimate as a trend.
+// Proxy model (collection doctrine): the datacenter egress is a FIXED monthly cost
+// (flat, bandwidth unlimited) and the only paid tier — the pay-per-GB residential
+// tier was retired. Cost is just the flat datacenter line.
 const DATACENTER_FIXED_USD_PER_MONTH = 10;
-const USD_PER_RESIDENTIAL_SCRAPE = 0.05; // ~a few hundred KB/page at ~$4.7/GB
 // Groq llama-3.x blended per-call estimate (~1.5k in + ~0.5k out, mixed 8b/70b).
 // Legacy fallback only — superseded by the real token-based cost below for any run
 // logged after token attribution shipped (ai_runs.total_tokens > 0).
@@ -40,13 +39,9 @@ costRouter.get("/cost", async (c) => {
   const proxyRows = await analyticsQuery<{
     paid_24h: string;
     paid_30d: string;
-    resi_24h: string;
-    resi_30d: string;
   }>(sql`
     SELECT count(*) filter (where level >= 2 AND recorded_at >= now() - make_interval(hours => 24)) AS paid_24h,
-           count(*) filter (where level >= 2 AND recorded_at >= now() - make_interval(days => 30)) AS paid_30d,
-           count(*) filter (where level >= 3 AND recorded_at >= now() - make_interval(hours => 24)) AS resi_24h,
-           count(*) filter (where level >= 3 AND recorded_at >= now() - make_interval(days => 30)) AS resi_30d
+           count(*) filter (where level >= 2 AND recorded_at >= now() - make_interval(days => 30)) AS paid_30d
     FROM scrape_runs
   `);
   const aiRows = await analyticsQuery<{ ai_24h: string; ai_30d: string }>(sql`
@@ -123,20 +118,19 @@ costRouter.get("/cost", async (c) => {
 
   const paid24h = num(proxyRows[0]?.paid_24h);
   const paid30d = num(proxyRows[0]?.paid_30d);
-  const resi24h = num(proxyRows[0]?.resi_24h);
-  const resi30d = num(proxyRows[0]?.resi_30d);
   const ai24h = num(aiRows[0]?.ai_24h);
   const ai30d = num(aiRows[0]?.ai_30d);
 
   return c.json({
     estimated: true,
     proxy: {
-      // paid (level >= 2) scrapes; residential (>= 3) drives the variable cost.
+      // Paid (level >= 2) scrapes use the datacenter egress — a flat monthly cost,
+      // no per-scrape variable now that the residential tier is gone.
       scrapes24h: paid24h,
       scrapes30d: paid30d,
       fixedUsdPerMonth: DATACENTER_FIXED_USD_PER_MONTH,
-      estUsd24h: DATACENTER_FIXED_USD_PER_MONTH / 30 + resi24h * USD_PER_RESIDENTIAL_SCRAPE,
-      estUsd30d: DATACENTER_FIXED_USD_PER_MONTH + resi30d * USD_PER_RESIDENTIAL_SCRAPE,
+      estUsd24h: DATACENTER_FIXED_USD_PER_MONTH / 30,
+      estUsd30d: DATACENTER_FIXED_USD_PER_MONTH,
     },
     ai: {
       calls24h: ai24h,

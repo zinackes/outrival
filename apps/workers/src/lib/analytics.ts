@@ -275,8 +275,8 @@ export async function loggedAi<T>(
 export interface ScrapeHealthWindow {
   total: number;
   failed: number;
-  proxy: number; // paid scrapes (level >= 2: datacenter/residential/camoufox)
-  residential: number; // level >= 3 (residential + camoufox) — the expensive tier
+  proxy: number; // paid scrapes (level >= 2: datacenter egress)
+  refused: number; // collection doctrine: the site refused us (block/challenge/robots)
 }
 
 export async function getScrapeHealth(hours: number): Promise<ScrapeHealthWindow | null> {
@@ -286,7 +286,7 @@ export async function getScrapeHealth(hours: number): Promise<ScrapeHealthWindow
         total: sql<string>`count(*)`,
         failed: sql<string>`count(*) filter (where ${scrapeRuns.status} = 'failed')`,
         proxy: sql<string>`count(*) filter (where ${scrapeRuns.level} >= 2)`,
-        residential: sql<string>`count(*) filter (where ${scrapeRuns.level} >= 3)`,
+        refused: sql<string>`count(*) filter (where ${scrapeRuns.refused} = true)`,
       })
       .from(scrapeRuns)
       .where(gte(scrapeRuns.recordedAt, sql`now() - make_interval(hours => ${hours})`)),
@@ -296,7 +296,7 @@ export async function getScrapeHealth(hours: number): Promise<ScrapeHealthWindow
     total: Number(rows[0].total),
     failed: Number(rows[0].failed),
     proxy: Number(rows[0].proxy),
-    residential: Number(rows[0].residential),
+    refused: Number(rows[0].refused),
   };
 }
 

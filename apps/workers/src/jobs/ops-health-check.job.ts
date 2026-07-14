@@ -23,12 +23,13 @@ const AI_MIN_SAMPLE = 10;
 const SIGNAL_WINDOW_HOURS = 24;
 const SIGNAL_MIN_ACTIVITY = 20; // scrape runs in 24h before 0-signals is suspicious
 
-// Cascade-level cost trend alarms over 24h (patch-20). Escalating to paid levels
-// is normal in moderation; these fire when the mix shifts too far up the cascade.
-// Gated by a minimum sample so we don't alert on a handful of runs.
+// Cascade cost + doctrine trend alarms over 24h. Gated by a minimum sample so we
+// don't alert on a handful of runs.
 const CASCADE_MIN_SAMPLE = 20;
-const DATACENTER_RATE_THRESHOLD = 0.25; // >25% of scrapes need datacenter (L2+)
-const RESIDENTIAL_RATE_THRESHOLD = 0.05; // >5% need residential/camoufox (L3+)
+const DATACENTER_RATE_THRESHOLD = 0.25; // >25% of scrapes use the datacenter egress (L2)
+// Collection doctrine: a high refusal rate means the doctrine is costing us too much
+// coverage — a product call (find another source / accept the gap), not a bug.
+const REFUSAL_RATE_THRESHOLD = 0.15; // >15% of scrapes refused
 
 // Anti-hallucination (patch-24): a task whose confirmed-hallucination rate over the
 // last 7 days crosses the configured threshold, gated by a min number of self-checks.
@@ -82,20 +83,21 @@ export const opsHealthCheckJob = task({
       );
     }
 
-    // Cascade cost mix: too many scrapes escalating to paid datacenter (L2+) or
-    // expensive residential/Camoufox (L3+) means a fingerprint/IP regression.
+    // Doctrine + cost mix: a high refusal rate (the doctrine costing coverage) or
+    // too many scrapes on the paid datacenter egress each warrant ops attention.
     if (scrape24h && scrape24h.total >= CASCADE_MIN_SAMPLE) {
       const datacenterRate = scrape24h.proxy / scrape24h.total;
-      const residentialRate = scrape24h.residential / scrape24h.total;
-      if (residentialRate > RESIDENTIAL_RATE_THRESHOLD) {
+      const refusalRate = scrape24h.refused / scrape24h.total;
+      if (refusalRate > REFUSAL_RATE_THRESHOLD) {
         alerts.push(
-          `💸 Residential/Camoufox usage high: ${pct(scrape24h.residential, scrape24h.total)} ` +
-            `of scrapes (${scrape24h.residential}/${scrape24h.total}, last ${SIGNAL_WINDOW_HOURS}h)`,
+          `🚫 Refusal rate high: ${pct(scrape24h.refused, scrape24h.total)} of scrapes refused ` +
+            `(${scrape24h.refused}/${scrape24h.total}, last ${SIGNAL_WINDOW_HOURS}h) — the doctrine may be costing too much coverage`,
         );
-      } else if (datacenterRate > DATACENTER_RATE_THRESHOLD) {
+      }
+      if (datacenterRate > DATACENTER_RATE_THRESHOLD) {
         alerts.push(
-          `💸 Datacenter proxy usage high: ${pct(scrape24h.proxy, scrape24h.total)} ` +
-            `of scrapes need a paid level (${scrape24h.proxy}/${scrape24h.total}, last ${SIGNAL_WINDOW_HOURS}h)`,
+          `💸 Datacenter egress usage high: ${pct(scrape24h.proxy, scrape24h.total)} ` +
+            `of scrapes on the datacenter egress (${scrape24h.proxy}/${scrape24h.total}, last ${SIGNAL_WINDOW_HOURS}h)`,
         );
       }
     }

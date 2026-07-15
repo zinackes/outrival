@@ -132,7 +132,7 @@ citation check by default).
 - **Hybrid heuristics→LLM fallback**: deterministic selectors first, schema-driven LLM when they break — our staged architecture — but SOTA adds **confidence routing** and **HTML→Markdown** before the LLM (−70% tokens).
 - **Structured outputs / constrained decoding**: JSON Schema compiled to an FSM, invalid tokens at −∞ → mathematical guarantee of valid JSON. GA at OpenAI/Gemini/Anthropic early 2026; XGrammar default backend vLLM/SGLang <40µs/token. PARSE-style refinement: valid JSON 82%→99%.
 - **Field-level confidence scoring**: verifier-based per-field, field-level override vs instance rejection; **heuristic eval on 100% of traffic + LLM-judge on 5-10%** + drift detection.
-- **Anti-bot 2026**: Cloudflare blocks AI scraping by default since Jul 2025; JA4/TLS + behavioral ML. Residential + patched stealth browser (Patchright/Camoufox = our cascade) stays the right base; the add = **behavioral simulation** (mouse/scroll/timing) for invisible Turnstile-style challenges.
+- **Anti-bot 2026**: Cloudflare blocks AI scraping by default since Jul 2025; JA4/TLS + behavioral ML. A patched stealth browser (Patchright = our cascade base; the upper proxy + browser tiers since retired) stays the right base; the add = **behavioral simulation** (mouse/scroll/timing) for invisible Turnstile-style challenges.
 - **LLM cost**: prompt caching −45-80%, semantic cache + budget-aware routing −47%, **confidence-gated cheap→frontier cascade = 95% of quality at −75-85% cost**, batch API −50%.
 
 Sources: context.dev, bytetunnels.com, 47billion.com, letsdatascience.com, collinwilkins.com,

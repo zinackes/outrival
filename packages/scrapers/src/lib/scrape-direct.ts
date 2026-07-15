@@ -1,4 +1,4 @@
-import { realisticHeaders, realisticUserAgent } from "./fingerprint";
+import { realisticHeaders, OUTRIVAL_UA } from "./fingerprint";
 import { safeFetch } from "./guarded-fetch";
 import { type ScrapeResult } from "./scrape-patchright";
 import { isCloudflareChallenge } from "./block-detection";
@@ -11,7 +11,7 @@ export async function scrapeDirect(url: string): Promise<ScrapeResult> {
   const startedAt = Date.now();
   try {
     const res = await safeFetch(url, {
-      headers: { ...realisticHeaders(), "User-Agent": realisticUserAgent() },
+      headers: { ...realisticHeaders(), "User-Agent": OUTRIVAL_UA },
       timeoutMs: 15000,
     });
     const html = await res.text();

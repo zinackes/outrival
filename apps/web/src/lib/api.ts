@@ -1280,9 +1280,18 @@ export type AdminSourceHealth = {
   sourceType: string;
   total: number;
   failed: number;
+  refused: number;
   failureRate: number;
+  refusalRate: number;
   proxyRate: number;
   avgMs: number;
+};
+
+export type AdminRefusedDomain = {
+  competitorId: string;
+  competitorName: string | null;
+  refused: number;
+  reason: string;
 };
 
 export type AdminDeadMonitor = {
@@ -1296,11 +1305,14 @@ export type AdminDeadMonitor = {
 export type AdminScrapingHealth = {
   window: string;
   sources: AdminSourceHealth[];
-  // Patch-20 cascade-level distribution over the window (counts per level).
-  levels: { l0: number; l1: number; l2: number; l3: number; l4: number };
+  // Cascade-level distribution over the window (counts per level). L2 = datacenter
+  // egress; the former upper levels (L3/L4) were retired by the collection doctrine.
+  levels: { l0: number; l1: number; l2: number };
   // Patch-30 staged-extraction resolution distribution over the window (counts).
   extraction: { structured: number; cache: number; heal: number; aiFallback: number };
   deadMonitors: AdminDeadMonitor[];
+  // Collection doctrine: top competitors that refused us over 7 days, and why.
+  refusedDomains: AdminRefusedDomain[];
 };
 
 export type AdminTaskHealth = {

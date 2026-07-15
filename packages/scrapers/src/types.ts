@@ -1,4 +1,5 @@
 import type { ScrapeLevel } from "./lib/scrape-patchright";
+import type { ProxyTier } from "./lib/proxy";
 import type { PlatformProfile } from "@outrival/shared";
 
 export type { ScrapeLevel };
@@ -25,7 +26,7 @@ export interface ScrapeOptions {
   screenshot?: boolean;
   /**
    * Abort heavy, never-parsed subresources (video/audio media + fonts) during the
-   * browser scrape. Cuts residential proxy bandwidth (pay-per-GB) and load time.
+   * browser scrape. Cuts datacenter proxy bandwidth and load time.
    * Conservative subset — images/CSS are kept (anti-bot canaries + needed for the
    * homepage screenshot). Default off; enabled for data sources without a screenshot.
    */
@@ -54,11 +55,17 @@ export interface ScrapeOptions {
    */
   render?: boolean;
   /**
-   * Start the scraping cascade at this level instead of L0 (patch-20). Set from
-   * the monitor's learned `requiresLevel` so a site known to need a proxy skips
-   * the cheaper attempts. Levels 0/1 are free, 2/3/4 cost money.
+   * Start the scraping cascade at this level instead of L0. Set from the monitor's
+   * learned `requiresLevel` so a site known to need a browser render skips the
+   * cheaper attempt. Levels 0/1 are free; L2 uses the configured datacenter egress.
    */
   knownLevel?: ScrapeLevel;
+  /**
+   * Egress IP chosen UPSTREAM by the monitor (stability / geolocation), never a
+   * reaction to a block. "datacenter" routes the render through the datacenter
+   * proxy (reported as L2); "direct" (default) uses the server IP.
+   */
+  egressTier?: ProxyTier;
   /**
    * Cached platform profile (patch-31). When present, a scraper can route to a
    * structured connector — e.g. the jobs scraper hits the ATS API directly from

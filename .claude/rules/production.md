@@ -37,7 +37,7 @@ partagé, changement Stripe/webhook. Il propose, l'utilisateur valide.
   (`apps/api/src/index.ts`) = toute origine web prod incluse.
 - `/health` reste sans auth (sonde Coolify).
 - Routes SSE gardent `X-Accel-Buffering: no`.
-- Cascade scraping : binaires browser (patchright/camoufox) vérifiés sur le
+- Cascade scraping : binaire browser (Playwright Chromium) vérifié sur le
   runtime jobs après chaque `trigger deploy`.
 
 ## 6. Avant un go-live

@@ -1,17 +1,12 @@
-// Realistic browser headers + user agents shared by every scrape level (L0
-// fetch, L1/L2/L3 Patchright, L4 Camoufox). Kept deliberately small and static —
-// Patchright/Camoufox patch the deep fingerprint (CDP leaks, navigator.webdriver,
-// canvas/WebGL); this layer only needs the request to look like a real Chrome.
+// Request headers + User-Agent shared by every scrape level (L0 fetch, L1/L2
+// browser render). The collection doctrine renders in the open: a single,
+// identifiable User-Agent that names us and links to /bot (how to block us). No
+// rotation, no browser impersonation — usurping a real browser's identity is
+// exactly the behaviour we abandoned. realisticHeaders() stays: Accept /
+// Accept-Language are ordinary request headers, not an impersonation.
 
-const REALISTIC_USER_AGENTS = [
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
-];
-
-export function realisticUserAgent(): string {
-  return REALISTIC_USER_AGENTS[Math.floor(Math.random() * REALISTIC_USER_AGENTS.length)]!;
-}
+export const OUTRIVAL_UA =
+  "Mozilla/5.0 (compatible; OutrivalBot/1.0; +https://outrival.app/bot)";
 
 export function realisticHeaders(): Record<string, string> {
   return {

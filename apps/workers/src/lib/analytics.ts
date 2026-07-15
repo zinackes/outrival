@@ -68,9 +68,12 @@ export interface ScrapeRunRow {
   competitor_id: string;
   source_type: string;
   status: "success" | "no_change" | "failed";
-  level: number; // patch-20 cascade level: 0/1 free, 2/3/4 paid
+  level: number; // cascade level: 0/1 free, 2 datacenter egress
   attempts: number;
   failure_reason: string;
+  // Collection doctrine: the site refused us (block/challenge/robots) and we stopped.
+  refused?: boolean;
+  refusal_reason?: string;
   duration_ms: number;
   recorded_at: Date;
 }
@@ -85,6 +88,8 @@ export async function logScrapeRun(row: ScrapeRunRow): Promise<void> {
       level: row.level,
       attempts: row.attempts,
       failureReason: row.failure_reason,
+      refused: row.refused ?? false,
+      refusalReason: row.refusal_reason ?? "",
       durationMs: row.duration_ms,
       recordedAt: row.recorded_at,
     }),
@@ -270,8 +275,8 @@ export async function loggedAi<T>(
 export interface ScrapeHealthWindow {
   total: number;
   failed: number;
-  proxy: number; // paid scrapes (level >= 2: datacenter/residential/camoufox)
-  residential: number; // level >= 3 (residential + camoufox) — the expensive tier
+  proxy: number; // paid scrapes (level >= 2: datacenter egress)
+  refused: number; // collection doctrine: the site refused us (block/challenge/robots)
 }
 
 export async function getScrapeHealth(hours: number): Promise<ScrapeHealthWindow | null> {
@@ -281,7 +286,7 @@ export async function getScrapeHealth(hours: number): Promise<ScrapeHealthWindow
         total: sql<string>`count(*)`,
         failed: sql<string>`count(*) filter (where ${scrapeRuns.status} = 'failed')`,
         proxy: sql<string>`count(*) filter (where ${scrapeRuns.level} >= 2)`,
-        residential: sql<string>`count(*) filter (where ${scrapeRuns.level} >= 3)`,
+        refused: sql<string>`count(*) filter (where ${scrapeRuns.refused} = true)`,
       })
       .from(scrapeRuns)
       .where(gte(scrapeRuns.recordedAt, sql`now() - make_interval(hours => ${hours})`)),
@@ -291,7 +296,7 @@ export async function getScrapeHealth(hours: number): Promise<ScrapeHealthWindow
     total: Number(rows[0].total),
     failed: Number(rows[0].failed),
     proxy: Number(rows[0].proxy),
-    residential: Number(rows[0].residential),
+    refused: Number(rows[0].refused),
   };
 }
 

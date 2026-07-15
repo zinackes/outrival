@@ -37,8 +37,8 @@ Mise à jour à chaque phase / patch.
 | DB                | PostgreSQL (Neon)                        | Serverless, scale-to-zero, branching ; relationnel + time-series/analytics dans une seule base |
 | Stockage binaire  | Cloudflare R2                            | Quasi-gratuit pour snapshots HTML/screenshots/PDFs |
 | Jobs              | **Trigger.dev v4** (`task()`) — exécution en migration vers pg-boss self-hosted | Durable execution, retries, dashboard, schedules ; migration en cours, cf. `docs/trigger-to-pgboss-migration.md` |
-| Scraping          | Patchright (stealth Chromium) + fetch    | Drop-in Playwright, patches CDP/webdriver — passe Cloudflare au niveau navigateur (patch-20) |
-| Proxy cascade     | ProxyScrape (datacenter→residential) + Camoufox | Cascade 5 niveaux découplée (fingerprint vs IP), pas de coût par requête (patch-20) |
+| Scraping          | Playwright (Chromium) + fetch            | Rendu honnête : UA OutrivalBot identifiable, pas de spoofing d'automatisation, respect robots.txt (collection doctrine) |
+| Egress proxy      | ProxyScrape datacenter (egress amont)    | Cascade 3 niveaux (L0 fetch · L1 render · L2 datacenter). Collection doctrine : arrêt sur refus, jamais d'escalade IP/fingerprint |
 | Discovery         | Exa.ai (`exa-js`)                        | Recherche sémantique de concurrents similaires |
 | Email             | Resend                                   | Alerts + digests transactionnels |
 | Paiements         | Stripe (SDK v22)                         | Checkout + Customer Portal + webhooks |
@@ -73,7 +73,7 @@ Trigger.dev Cloud — €0 free → Hobby €20/mois (50k runs) → Pro €100
 └── Orchestration jobs (scraping, classify, insight, digest, alerts, battle cards) ;
     exécution migrant progressivement vers les workers pg-boss ci-dessus
 
-ProxyScrape — datacenter ~$10/mois (flat, BW illimitée) + residential pay-per-GB (~$15-30/mois total, patch-20)
+ProxyScrape — datacenter ~$10/mois (flat, BW illimitée, egress amont — collection doctrine)
 Resend — $20/mois Pro (50k emails/mois)
 Stripe — % par transaction
 Exa.ai — pay-per-search (discovery hebdomadaire)
@@ -468,10 +468,11 @@ carte (état live uniquement).
   └─ enqueue monitors où isActive && (nextRunAt null || nextRunAt <= now)
 
 [par monitor] scrape-monitor
-  └─ cascade 5 niveaux (patch-20) via scrapePage : L0 fetch direct → L1 Patchright
-       sans proxy → L2 Patchright+datacenter → L3 Patchright+residential → L4 Camoufox
-       └─ escalade UNIQUEMENT sur blocage (403/503/challenge/soft_block/needs_render),
-          pas sur timeout ; routage par type d'échec (IP→proxy, render→navigateur)
+  └─ cascade 3 niveaux (collection doctrine) via scrapePage : L0 fetch direct → L1 render
+       navigateur (sans proxy) → L2 render via egress datacenter (choisi EN AMONT)
+       └─ garde robots.txt AVANT toute requête ; UA OutrivalBot identifiable ; rate-limit
+          par domaine (Crawl-delay honoré). SEUL needs_render escalade L0→L1 ; tout REFUS
+          (403/503/challenge/soft_block/robots) = markedUnscrapable immédiat, ZÉRO escalade
        └─ apprentissage monitor.requiresLevel (0-4|null) + re-probe depuis L0 à 14j ;
           3 échecs consécutifs (jusqu'à L4) → monitor.markedUnscrapable
        └─ homepage (patch-16) : scroll progressif (path direct) → lazy content sous la fold
@@ -847,18 +848,12 @@ TRIGGER_PROJECT_ID=
 QUEUE_DATABASE_URL=          # pg-boss queue — DEDICATED always-on Postgres, NEVER Neon (cf. docs/trigger-to-pgboss-migration.md)
 WORKER_ROLE=                 # browser | light — which queues a worker process handles
 
-# Scraping & discovery (patch-20 — ScrapingBee/Webshare supprimés)
-PROXYSCRAPE_DC_ENDPOINT=     # datacenter host:port (L2) — optionnel
+# Scraping & discovery (collection doctrine — cascade L0/L1/L2, egress amont)
+PROXYSCRAPE_DC_ENDPOINT=     # datacenter host:port (L2 egress amont) — optionnel
 PROXYSCRAPE_DC_USERNAME=
 PROXYSCRAPE_DC_PASSWORD=
-PROXYSCRAPE_RESI_ENDPOINT=   # residential host:port (L3/L4) — optionnel, PAS l'Unlimited enterprise
-PROXYSCRAPE_RESI_USERNAME=
-PROXYSCRAPE_RESI_PASSWORD=
-CAMOUFOX_HEADLESS=true       # L4 dernier recours
-CAMOUFOX_TIMEOUT_MS=60000
-SCRAPING_LEVEL_1_ENABLED=true  # kill-switch L2 (datacenter)
-SCRAPING_LEVEL_2_ENABLED=true  # kill-switch L3 (residential)
-SCRAPING_LEVEL_3_ENABLED=true  # kill-switch L4 (camoufox)
+SCRAPING_LEVEL_1_ENABLED=true  # kill-switch L2 (datacenter egress)
+SCRAPE_MIN_DOMAIN_GAP_MS=2000  # rate-limit par domaine (défaut 2s, ou Crawl-delay robots.txt)
 EXA_API_KEY=
 DETECT_COOLDOWN_SEC=90       # cooldown anti-double-clic (s) entre 2 runs Exa on-demand pour
                             # la MÊME cible (org+product) — PAS un cap d'usage (borné par le quota
@@ -1123,12 +1118,15 @@ BUILD_TIME=                  # build timestamp → GET /api/version. In Coolify:
   sur 429/5xx. Sans Upstash : « 1er provider, pas de tracking ». Claude = fallback
   `provider="claude"` (swap 1 ligne). Breaker ouvert → banner ai-status, scrapes continuent.
   Rate limit intelligent (staleness) + dur (10/h/user). `ai-capacity-check` alerte ops 80/90%.
-- **Cascade scraping découplée (patch-20)** : fingerprint navigateur (Patchright/
-  Camoufox) et réputation IP (datacenter/residential) escaladés séparément, du gratuit
-  (L0 fetch, L1 Patchright sans proxy) au payant (L2 datacenter, L3 residential, L4
-  Camoufox). Escalade routée par type d'échec. Apprentissage `monitor.requiresLevel`
-  pour démarrer la cascade au bon niveau ; re-probe 14j pour redescendre. Pas de coût
-  par requête (ScrapingBee/Webshare supprimés).
+- **Collection doctrine — arrêt sur refus explicite (2026-07-14)** : corrige patch-20.
+  Cascade réduite à 3 niveaux — L0 fetch, L1 render navigateur (sans proxy), L2 render
+  via egress datacenter (choisi EN AMONT sur le monitor `egressTier`, jamais en réaction
+  à un blocage). Tout refus du site (403/503/challenge/soft_block/robots Disallow) =
+  `markedUnscrapable` immédiat, ZÉRO escalade, ZÉRO retry. robots.txt respecté avant
+  toute requête, UA OutrivalBot identifiable (plus de spoofing d'automatisation),
+  rate-limit par domaine. Le tier IP résidentiel et le fallback navigateur
+  anti-fingerprint ont été supprimés (contournement caractérisé). Page publique `/bot`.
+  Apprentissage `monitor.requiresLevel` (0/1/2) ; re-probe 14j.
 - **Reschedule adaptatif** : `computeNextRun()` dans `@outrival/shared` ralentit
   les monitors stables (×4 max). La fréquence utilisateur = plafond, pas valeur fixe.
 - **Analytics best-effort** : les tables time-series (ex-ClickHouse) vivent dans la

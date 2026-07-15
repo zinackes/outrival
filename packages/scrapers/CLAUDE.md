@@ -1,7 +1,8 @@
 # @outrival/scrapers — Sources de données
 
-Stack : Patchright (stealth Chromium) + ProxyScrape (datacenter→residential) +
-Camoufox (dernier recours), Exa.ai — cascade 5 niveaux, cf. .claude/rules/scraping.md (patch-20)
+Stack : Playwright (Chromium, rendu honnête — UA OutrivalBot, respect robots.txt) +
+ProxyScrape datacenter (egress amont), Exa.ai — cascade 3 niveaux (L0/L1/L2), collection
+doctrine (arrêt sur refus). Cf. .claude/rules/scraping.md
 
 ## Conventions
 - Lire .claude/rules/scraping.md avant toute modification (cascade Patchright,

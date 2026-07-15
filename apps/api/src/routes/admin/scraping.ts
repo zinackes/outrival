@@ -31,12 +31,14 @@ scrapingRouter.get("/scraping-health", async (c) => {
     source_type: string;
     total: string;
     failed: string;
+    refused: string;
     proxy: string;
     avg_ms: number;
   }>(sql`
     SELECT source_type,
            count(*) AS total,
            count(*) filter (where status = 'failed') AS failed,
+           count(*) filter (where refused) AS refused,
            count(*) filter (where level >= 2) AS proxy,
            round(avg(duration_ms))::int AS avg_ms
     FROM scrape_runs
@@ -45,8 +47,27 @@ scrapingRouter.get("/scraping-health", async (c) => {
     ORDER BY total DESC
   `);
 
-  // Cascade-level distribution (patch-20): what % of scrapes stay free (L0/L1)
-  // vs escalate to paid datacenter (L2) / residential (L3) / Camoufox (L4).
+  // Collection doctrine: which registrable domains refuse us most (block / challenge
+  // / robots Disallow). A high global refusal rate is a product signal — the doctrine
+  // is trading coverage for compliance — surfaced here + alerted in ops-health-check.
+  const refusedByDomain = await analyticsQuery<{
+    competitor_id: string;
+    refused: string;
+    reason: string;
+  }>(sql`
+    SELECT competitor_id,
+           count(*) AS refused,
+           mode() within group (order by refusal_reason) AS reason
+    FROM scrape_runs
+    WHERE refused AND recorded_at >= now() - make_interval(days => 7)
+    GROUP BY competitor_id
+    ORDER BY refused DESC
+    LIMIT 20
+  `);
+
+  // Cascade-level distribution: what % of scrapes stay free (L0 fetch / L1 render)
+  // vs use the paid datacenter egress (L2). The former upper levels (L3
+  // IP-reputation proxy / L4 anti-fingerprint browser) were retired.
   const levelRows = await analyticsQuery<{ level: number; c: string }>(sql`
     SELECT level, count(*) AS c
     FROM scrape_runs
@@ -58,8 +79,6 @@ scrapingRouter.get("/scraping-health", async (c) => {
     l0: levelCount(0),
     l1: levelCount(1),
     l2: levelCount(2),
-    l3: levelCount(3),
-    l4: levelCount(4),
   };
 
   const sources = bySource.map((r) => {
@@ -68,7 +87,9 @@ scrapingRouter.get("/scraping-health", async (c) => {
       sourceType: r.source_type,
       total,
       failed: num(r.failed),
+      refused: num(r.refused),
       failureRate: rate(num(r.failed), total),
+      refusalRate: rate(num(r.refused), total),
       proxyRate: rate(num(r.proxy), total),
       avgMs: num(r.avg_ms),
     };
@@ -100,8 +121,13 @@ scrapingRouter.get("/scraping-health", async (c) => {
       r.statuses.slice(0, DEAD_RUN_THRESHOLD).every((s) => s === "failed"),
   );
 
-  // Enrich the (small) dead set with competitor names from Postgres.
-  const compIds = [...new Set(deadRaw.map((d) => d.competitor_id))].filter(Boolean);
+  // Enrich the (small) dead + refused sets with competitor names from Postgres.
+  const compIds = [
+    ...new Set([
+      ...deadRaw.map((d) => d.competitor_id),
+      ...refusedByDomain.map((r) => r.competitor_id),
+    ]),
+  ].filter(Boolean);
   const comps = compIds.length
     ? await db
         .select({ id: competitors.id, name: competitors.name })
@@ -116,6 +142,14 @@ scrapingRouter.get("/scraping-health", async (c) => {
     competitorName: nameById.get(d.competitor_id) ?? null,
     sourceType: d.source_type,
     recentStatuses: d.statuses,
+  }));
+
+  // Collection doctrine: which competitors refused us most over 7 days, and why.
+  const refusedDomains = refusedByDomain.map((r) => ({
+    competitorId: r.competitor_id,
+    competitorName: nameById.get(r.competitor_id) ?? null,
+    refused: num(r.refused),
+    reason: r.reason,
   }));
 
   // Staged extraction resolution (patch-30): how extractions resolved — structured
@@ -136,7 +170,7 @@ scrapingRouter.get("/scraping-health", async (c) => {
     aiFallback: resCount("ai_fallback"),
   };
 
-  return c.json({ window: "24h", sources, levels, extraction, deadMonitors });
+  return c.json({ window: "24h", sources, levels, extraction, deadMonitors, refusedDomains });
 });
 
 // patch-23 — scraping edge cases overview: failure categories (latest diagnosis

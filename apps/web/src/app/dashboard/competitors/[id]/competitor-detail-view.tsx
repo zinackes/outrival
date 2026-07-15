@@ -2137,13 +2137,21 @@ function MonitorSources({
                       <PowerOff size={13} />
                     </Button>
                   )}
-                  {status === "failed" && m.lastError && (
+                  {(status === "failed" || status === "disabled") && m.lastError && (
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <button
                           type="button"
-                          className="text-critical/70 hover:text-critical transition-colors"
-                          aria-label="Scrape error detail"
+                          className={
+                            status === "failed"
+                              ? "text-critical/70 hover:text-critical transition-colors"
+                              : "text-text-subtle hover:text-text-muted transition-colors"
+                          }
+                          aria-label={
+                            status === "failed"
+                              ? "Scrape error detail"
+                              : "Why this source isn't collected"
+                          }
                         >
                           <Info size={13} />
                         </button>

@@ -132,7 +132,7 @@ comme rubrique de prompt.
 | CAS-3 | 403 à L0 saute le L1 gratuit → paie du datacenter pour des blocks fingerprint qu'un navigateur same-IP résout | med (coût) | S |
 | CAS-4 | Mort silencieuse d'un monitor invisible ≤60 j sauf à ouvrir Activity ; le dot de fraîcheur de la liste EXCLUT les unscrapables → un concurrent tout-mort affiche "Stale" pas "failed" | med | M |
 | CAS-5 | requiresLevel ratchet : un site re-devenu accessible paie du résidentiel ≤14 j (homepage realtime ≈ 336 renders résidentiels avant re-probe) ; échec du re-probe repousse de 14 j | med (coût) | S/M |
-| CAS-6 | Kill-switches décalés d'un niveau (`SCRAPING_LEVEL_3_ENABLED` coupe L4 pas L3) → l'opérateur qui veut couper le résidentiel coupe Camoufox | low | S |
+| CAS-6 | Kill-switches décalés d'un niveau (`SCRAPING_LEVEL_3_ENABLED` coupe L4 pas L3) → l'opérateur qui veut couper un tier supérieur en coupe un autre (tiers supérieurs L3/L4 depuis retirés par la doctrine de collecte) | low | S |
 | CAS-7 | Page légitimement rétrécie <600 chars = piégée unscrapable à vie (anti-void throw avant commit → la petite taille n'entre jamais dans la médiane) | low | S |
 | CAS-8 | Les runs échoués loggent `level = requiresLevel ?? 0` → la dépense proxy des ÉCHECS est invisible de l'alarme de coût | low | S |
 

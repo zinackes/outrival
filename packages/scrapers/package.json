@@ -143,10 +143,9 @@
   },
   "dependencies": {
     "@outrival/shared": "workspace:*",
-    "camoufox-js": "^0.10.2",
     "cheerio": "^1.2.0",
     "exa-js": "^2.13.0",
-    "patchright": "^1.60.2",
+    "playwright": "^1.60.0",
     "sharp": "^0.34.5",
     "tinyld": "^1.3.4"
   }

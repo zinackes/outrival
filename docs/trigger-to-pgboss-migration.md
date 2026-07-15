@@ -206,7 +206,7 @@ back-of-envelope because it now includes the API surface + admin observability.
 - **Coolify:** 1 Postgres service (queue), 2 worker services (browser 8 GB / light 1 GB),
   dashboard (mount in api under admin auth or a tiny sidecar).
 - **Dockerfile (browser):** the `installBrowsers()` build-extension becomes plain
-  `RUN` layers (playwright+patchright chromium + camoufox fetch) — same commands, now under
+  `RUN` layers (playwright + patchright chromium install) — same commands, now under
   your control, no extension bug surface.
 
 ## 9. Risk register

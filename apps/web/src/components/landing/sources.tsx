@@ -64,10 +64,11 @@ export function Sources() {
             Everything a competitor publishes.
           </h2>
           <p className="mt-5 max-w-2xl leading-relaxed text-text-muted">
-            Every public surface a competitor has, grouped into families. Each is
-            scraped by a stealth browser that escalates through a
-            datacenter-to-residential proxy cascade only when a site blocks us,
-            stored in the EU, and diffed against its previous state.
+            Every public surface a competitor has, grouped into families. We
+            respect robots.txt, identify our crawler on every request, and collect
+            only what a site publishes openly — never bypassing a block, login, or
+            paywall. Everything is stored in the EU and diffed against its previous
+            state.
           </p>
         </div>
 

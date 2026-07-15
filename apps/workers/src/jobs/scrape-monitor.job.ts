@@ -205,6 +205,60 @@ async function diagnoseAndPersistFailure(
   }
 }
 
+// Collection doctrine: an explicit refusal (block / challenge / robots Disallow) is
+// carried on the thrown ScrapeFailedError's cascadeOutcome. Read it structurally so
+// the worker isn't coupled to the scrapers' error class.
+function refusalFrom(err: unknown): { reason: string } | null {
+  if (err && typeof err === "object" && "cascadeOutcome" in err) {
+    const co = (err as { cascadeOutcome?: { refused?: boolean; failureReason?: string } })
+      .cascadeOutcome;
+    if (co?.refused) return { reason: co.failureReason ?? "refused" };
+  }
+  return null;
+}
+
+// A refusal is terminal: mark the source unscrapable immediately (no 3-strike
+// backoff, no escalation, never a retry), record WHY + WHEN, and log the run as
+// refused. It never produces a snapshot, so nothing downstream runs. The scheduler's
+// re-arm still gives a refused source a polite periodic re-probe (robots is re-checked
+// every time), so a site that changes its stance can recover on its own terms.
+async function handleRefusal(
+  monitor: { id: string; competitorId: string; sourceType: string; requiresLevel: number | null },
+  refusal: { reason: string },
+  durationMs: number,
+): Promise<void> {
+  await db
+    .update(monitors)
+    .set({
+      scrapeStartedAt: null,
+      isActive: false,
+      markedUnscrapable: true,
+      refusedAt: new Date(),
+      refusalReason: refusal.reason,
+      lastFailedAt: new Date(),
+      lastError: `refused: ${refusal.reason}`,
+      nextRunAt: null,
+    })
+    .where(eq(monitors.id, monitor.id));
+  await logScrapeRun({
+    monitor_id: monitor.id,
+    competitor_id: monitor.competitorId,
+    source_type: monitor.sourceType,
+    status: "failed",
+    level: monitor.requiresLevel ?? 0,
+    attempts: 1,
+    failure_reason: refusal.reason,
+    refused: true,
+    refusal_reason: refusal.reason,
+    duration_ms: durationMs,
+    recorded_at: new Date(),
+  });
+  logger.warn("Source refused — marked unscrapable, no escalation", {
+    monitorId: monitor.id,
+    reason: refusal.reason,
+  });
+}
+
 // patch-23 — when a monitor first becomes unscrapable, propose 1-3 alternatives
 // (always manual + pause, plus a URL/replace hint from the diagnosis) so the user
 // has something to act on instead of a flat "unavailable". Idempotent: skips if
@@ -356,11 +410,12 @@ const IDEMPOTENCE_WINDOW_MS = 60 * 60 * 1000;
 
 // How long a monitor stays pinned to a paid cascade level (>=2) before we
 // re-probe from the bottom of the cascade. A site that stopped blocking us then
-// drops back to a cheaper level instead of paying datacenter/residential forever.
+// drops back to a cheaper level instead of paying the datacenter egress forever.
 const LEVEL_REPROBE_INTERVAL_MS = 14 * 24 * 60 * 60 * 1000;
 
-// After this many consecutive run failures (incl. the final Camoufox level) a
-// source is marked unscrapable so the UI can show a clear "unavailable" state.
+// After this many consecutive run failures a source is marked unscrapable so the
+// UI can show a clear "unavailable" state. (An explicit refusal short-circuits to
+// unscrapable immediately — see the refusal handling in the run body.)
 const UNSCRAPABLE_FAILURE_THRESHOLD = 3;
 
 // Min gap between two competitor-summary re-triggers when the summary exists but
@@ -529,7 +584,7 @@ export const scrapeMonitorJob = task({
 
     // Re-probe a monitor pinned to a paid level (>=2) from the bottom of the
     // cascade periodically: if the site stopped blocking us, we drop to a cheaper
-    // (free) level instead of paying datacenter/residential forever.
+    // (free) level instead of paying the datacenter egress forever.
     const pinnedLevel = monitor.requiresLevel;
     const shouldReprobe =
       pinnedLevel != null &&
@@ -537,8 +592,10 @@ export const scrapeMonitorJob = task({
       (!monitor.requiresLevelLastReprobe ||
         Date.now() - monitor.requiresLevelLastReprobe.getTime() > LEVEL_REPROBE_INTERVAL_MS);
     // Where the cascade starts: from the learned level normally, from L0 on a
-    // re-probe so a cheaper level can win. Clamped to the valid 0..4 range.
-    const startLevel = (shouldReprobe ? 0 : (pinnedLevel ?? 0)) as 0 | 1 | 2 | 3 | 4;
+    // re-probe so a cheaper level can win. Clamped to the valid 0..2 range so a
+    // stale 3/4 (from before the doctrine, pre data-migration) can't wedge the
+    // cascade into an all-branches-skipped fail.
+    const startLevel = (shouldReprobe ? 0 : Math.min(pinnedLevel ?? 0, 2)) as 0 | 1 | 2;
 
     // Lazy-import to avoid loading Patchright (Chromium) at module parse time
     // (trigger.dev warns on >1 s import).
@@ -566,6 +623,10 @@ export const scrapeMonitorJob = task({
         const scraper = getScraper(monitor.sourceType);
         result = await scraper(competitor.id, scrapeUrl, {
           knownLevel: startLevel,
+          // Egress chosen upstream on the monitor (stability / geolocation), never a
+          // reaction to a block. Defaults to direct; the cascade degrades to direct
+          // when the datacenter proxy is unconfigured.
+          egressTier: monitor.egressTier === "datacenter" ? "datacenter" : "direct",
           // patch-31 — lets a scraper route via a structured connector (e.g. jobs →
           // ATS API). Null when never detected / detection disabled ⇒ today's path.
           platformProfile: competitor.platformProfile,
@@ -577,14 +638,22 @@ export const scrapeMonitorJob = task({
         });
       }
     } catch (err) {
-      // Diagnose before rethrowing so the failure category is persisted from the
-      // attempt that actually carried the cascade data (patch-23). Trigger.dev
-      // retries / onFailure then handles consecutiveFailures + markedUnscrapable.
+      // Collection doctrine: an explicit refusal (block / challenge / robots) is not
+      // a transient failure to retry. Mark the source refused + unscrapable now and
+      // stop — no escalation, no 3-strike backoff, no snapshot.
+      const refusal = refusalFrom(err);
+      if (refusal) {
+        await handleRefusal(monitor, refusal, Date.now() - startedAt);
+        return { changed: false, refused: true };
+      }
+      // Otherwise: diagnose before rethrowing so the failure category is persisted
+      // from the attempt that carried the cascade data (patch-23). Trigger.dev
+      // retries / onFailure then handle consecutiveFailures + markedUnscrapable.
       await diagnoseAndPersistFailure(monitor.id, scrapeUrl, err);
       throw err;
     } finally {
       // Free any pooled browsers the cascade launched now that html/text/screenshot
-      // already live in `result` — holding Chromium/Camoufox through the downstream
+      // already live in `result` — holding Chromium through the downstream
       // diff/AI/DB work just wastes RAM (and leaks on a long-lived pg-boss worker).
       // No-op for L0-only / api-capture scrapes (api-capture closes its own browser).
       const { closeScraperBrowsers } = await import("@outrival/scrapers");
@@ -1669,9 +1738,9 @@ export const scrapeMonitorJob = task({
     const monitor = await db.query.monitors.findFirst({
       where: eq(monitors.id, parsed.data.monitorId),
     });
-    // Mark the source unscrapable after enough consecutive failures (incl. the
-    // final Camoufox level) so the UI can show a clear "unavailable" state. A
-    // later success resets both on the success/no_change paths above.
+    // Mark the source unscrapable after enough consecutive failures so the UI can
+    // show a clear "unavailable" state. A later success resets both on the
+    // success/no_change paths above.
     const consecutiveFailures = (monitor?.consecutiveFailures ?? 0) + 1;
     const atThreshold = consecutiveFailures === UNSCRAPABLE_FAILURE_THRESHOLD;
     // patch-23 — on the unscrapable transition for a pure SPA, try to recover via

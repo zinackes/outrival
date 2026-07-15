@@ -1,6 +1,6 @@
-import { chromium } from "patchright";
-import { patchrightLaunchOptions } from "../lib/proxy";
-import { realisticHeaders, realisticUserAgent } from "../lib/fingerprint";
+import { chromium } from "playwright";
+import { browserLaunchOptions } from "../lib/proxy";
+import { realisticHeaders, OUTRIVAL_UA } from "../lib/fingerprint";
 import { collapseAnimatedCounters } from "../lib/normalize-text";
 import type { CapturedApiCall } from "./filter";
 
@@ -27,10 +27,10 @@ export async function scrapeWithApiCapture(url: string): Promise<SpaCaptureResul
   const timeout = Number(process.env.SPA_API_CAPTURE_TIMEOUT_MS ?? 15_000);
   // Discovery runs on the server IP (no proxy): a pure SPA returned a 200 shell,
   // so it isn't IP-blocked — it just needs its API observed.
-  const browser = await chromium.launch(patchrightLaunchOptions("direct"));
+  const browser = await chromium.launch(browserLaunchOptions("direct"));
   try {
     const context = await browser.newContext({
-      userAgent: realisticUserAgent(),
+      userAgent: OUTRIVAL_UA,
       locale: "en-US",
       timezoneId: "America/New_York",
       viewport: { width: 1920, height: 1080 },

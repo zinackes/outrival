@@ -1,24 +1,30 @@
 /// <reference lib="dom" />
 // page.evaluate() callbacks below run in the browser context (document/window).
-// Patchright's types don't pull in the DOM lib the way Playwright's did, so we
-// reference it explicitly — the root tsconfig is ES2022 only.
-import { chromium, type Browser, type Page, type Response } from "patchright"; // drop-in stealth Playwright
-import { patchrightLaunchOptions, type ProxyTier } from "./proxy";
-import { realisticHeaders, realisticUserAgent } from "./fingerprint";
+// The root tsconfig is ES2022 only, so reference the DOM lib explicitly.
+//
+// Collection doctrine: the render browser is VANILLA Playwright Chromium — NOT a
+// stealth fork. We render the JS a site serves us while announcing ourselves (the
+// OutrivalBot User-Agent, navigator.webdriver left true); we do not disguise the
+// crawler as a human. (Module + symbol names keep the historical "patchright"
+// spelling to avoid a churny rename; the import below is the source of truth.)
+import { chromium, type Browser, type Page, type Response } from "playwright";
+import { browserLaunchOptions, type ProxyTier } from "./proxy";
+import { realisticHeaders, OUTRIVAL_UA } from "./fingerprint";
 import { navWaitUntil, settleAfterNav } from "./nav-strategy";
 import { isCloudflareChallenge } from "./block-detection";
 import { collapseAnimatedCounters } from "./normalize-text";
 import { extractContent, isContentCollapsed } from "./extract-content";
 
-// Cascade level a scrape was served from (patch-20). 0/1 are free (no proxy),
-// 2/3/4 cost money. Stored per monitor as `requiresLevel` once learned.
-export type ScrapeLevel = 0 | 1 | 2 | 3 | 4;
+// Cascade level a scrape was served from. 0/1 are free (no proxy); 2 uses the
+// configured datacenter egress. Stored per monitor as `requiresLevel` once learned.
+export type ScrapeLevel = 0 | 1 | 2;
 
 export type FailureReason =
   | "blocked_403"
   | "blocked_503"
   | "cloudflare_challenge"
   | "soft_block"
+  | "robots_disallowed" // robots.txt Disallows this path for OutrivalBot — a refusal
   | "needs_render" // HTML fetched but too little content → needs a browser (L0 → L1)
   | "http_error" // 4xx/5xx (not 403/503) — dead/invalid target, no render will fix it
   | "network_error"
@@ -68,15 +74,15 @@ function blockedResourceTypes(options: PatchrightOptions): Set<string> {
   return types;
 }
 
-// One browser per proxy tier: datacenter and residential launch with different
-// proxy configs, so they cannot share a single Chromium. Lazily launched, reused
-// across scrapes within a worker run (the run is an isolated machine).
+// One browser per egress tier: direct and datacenter launch with different proxy
+// configs, so they cannot share a single Chromium. Lazily launched, reused across
+// scrapes within a worker run (the run is an isolated machine).
 const browserByTier: Partial<Record<ProxyTier, Browser>> = {};
 
 async function getBrowser(tier: ProxyTier): Promise<Browser> {
   const existing = browserByTier[tier];
   if (existing && existing.isConnected()) return existing;
-  const browser = await chromium.launch(patchrightLaunchOptions(tier));
+  const browser = await chromium.launch(browserLaunchOptions(tier));
   browserByTier[tier] = browser;
   return browser;
 }
@@ -106,11 +112,10 @@ export async function closePatchrightPool(): Promise<void> {
 }
 
 /**
- * Scrape a page with Patchright (stealth Chromium) through the given proxy tier.
+ * Scrape a page with a rendered browser through the given egress tier.
  *   "direct"      → L1 (no proxy, server IP)
- *   "datacenter"  → L2
- *   "residential" → L3
- * The browser fingerprint is identical across tiers — only the egress IP changes.
+ *   "datacenter"  → L2 (configured datacenter egress)
+ * The render is identical across tiers — only the egress IP changes.
  */
 export async function scrapeWithPatchright(
   url: string,
@@ -121,7 +126,7 @@ export async function scrapeWithPatchright(
   const browser = await getBrowser(tier);
 
   const context = await browser.newContext({
-    userAgent: realisticUserAgent(),
+    userAgent: OUTRIVAL_UA,
     locale: "en-US",
     timezoneId: "America/New_York",
     viewport: { width: 1920, height: 1080 },
@@ -162,10 +167,9 @@ export async function scrapeWithPatchright(
 }
 
 /**
- * Shared capture sequence for a navigated Patchright page: status guards,
- * Cloudflare-challenge + soft-block detection, optional progressive scroll, then
- * HTML/text/screenshot. Exported for the Camoufox (L4) path, whose page is API-
- * compatible. Closing the context is the caller's responsibility.
+ * Shared capture sequence for a navigated page: status guards, Cloudflare-
+ * challenge + soft-block detection, optional progressive scroll, then
+ * HTML/text/screenshot. Closing the context is the caller's responsibility.
  */
 export async function capturePage(
   page: Page,

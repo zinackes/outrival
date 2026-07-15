@@ -25,36 +25,33 @@ runbook does not: the app-specific config that breaks a deploy if missed.**
   `QUEUE_DATABASE_URL` pg-boss queue (never the Neon serverless branch), Upstash
   (Redis), Cloudflare R2.
 
-> The runbook's *"App 2 — Workers"* Dockerfile (Playwright image + `patchright
-> install` + `camoufox fetch`) assumed **self-hosted** scraping ahead of this
-> migration. On Trigger Cloud the browsers run on Trigger's machines; on the
-> pg-boss `browser` worker they run on the VPS, so that Dockerfile's
-> browser-binary install step applies there. The browser-binary problem it
-> anticipates still exists on both paths (see *Browser binaries* below).
+> The runbook's *"App 2 — Workers"* Dockerfile installs **Playwright Chromium**
+> (used for both the battle-card PDF and the L1/L2 scrape render). On Trigger Cloud
+> the browser runs on Trigger's machines; on the pg-boss `browser` worker it runs on
+> the VPS, so that Dockerfile's browser-binary install step applies there. The
+> browser-binary check it anticipates still applies on both paths (see *Browser
+> binaries* below).
 
-## ⚠️ Pre-launch blocker #1 — browser binaries on Trigger Cloud
+## ⚠️ Pre-launch check #1 — browser binaries on Trigger Cloud
 
-The patch-20 cascade launches **patchright** (L1–L3, its own patched Chromium)
-and **camoufox-js** (L4, a custom Firefox). Neither sets `executablePath`, and
-**nothing in the repo installs those binaries for the Trigger deploy** — the
-`playwright` build extension in `trigger.config.ts` installs *Playwright's*
-Chromium only.
+The collection-doctrine cascade launches a single **Playwright Chromium** for the
+L1/L2 render (there is no separate scrape browser anymore). The `installBrowsers()`
+build extension in `trigger.config.ts` installs exactly that Chromium into the
+shared `/ms-playwright` store, so PDF rendering and scraping share one binary.
 
-- **L4 Camoufox**: certainly absent (no `camoufox-js fetch` step anywhere).
-- **L1–L3 patchright**: at risk (depends on whether patchright's postinstall ran
-  and wasn't skipped during Trigger's build).
 - **L0 fetch**: fine (no browser).
+- **L1/L2 render**: depends on the Playwright Chromium install layer having run at
+  deploy build (it's the same one the battle-card PDF already relies on).
 
-**Test before launch**: `trigger deploy`, then force a scrape on a JS/protected
-site that escalates past L0 and watch `scrape_runs.level` + the run logs. If the
-browsers are missing:
+**Test before launch**: `trigger deploy`, then force a scrape on a JS site that
+needs a render and watch `scrape_runs.level` + the run logs. If the browser is
+missing:
 
-1. **Custom Trigger build extension** that runs `npx patchright install chromium`
-   + `npx camoufox-js fetch` at deploy build and sets `CAMOUFOX_EXECUTABLE`
-   (keeps Trigger Cloud — preferred).
+1. Confirm the `installBrowsers()` layer ran (`playwright install --with-deps
+   chromium`) and `PLAYWRIGHT_BROWSERS_PATH=/ms-playwright` is set at runtime.
 2. Self-host the scraping jobs (runbook's App 2 Dockerfile) — hybrid, heavier.
 3. Launch **L0-only** first (many sites scrape fine via direct fetch) and wire the
-   browsers right after.
+   render right after.
 
 ## Code changes made for prod (this branch)
 
@@ -154,7 +151,7 @@ SENTRY_DSN=                           # optional
 
 ### Trigger.dev Cloud (set in the Trigger dashboard, NOT Coolify)
 `DATABASE_URL`, `R2_*`, `GROQ_API_KEY`/`AI_PROVIDER_*`, `ANTHROPIC_API_KEY`,
-`RESEND_API_KEY`, `EXA_API_KEY`, `PROXYSCRAPE_*`, `CAMOUFOX_*`, `POSTHOG_API_KEY`,
+`RESEND_API_KEY`, `EXA_API_KEY`, `PROXYSCRAPE_DC_*`, `POSTHOG_API_KEY`,
 `SENTRY_*`, and the patch tuning knobs (see `.env.example`).
 
 ### `workers` (pg-boss, Coolify runtime — target of the migration)

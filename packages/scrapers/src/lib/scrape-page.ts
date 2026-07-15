@@ -7,31 +7,45 @@ import {
   type ScrapeResult,
 } from "./scrape-patchright";
 import { scrapeDirect } from "./scrape-direct";
-import { scrapeWithCamoufox, closeCamoufoxBrowser } from "./scrape-camoufox";
-import { getProxyConfig } from "./proxy";
+import { getProxyConfig, type ProxyTier } from "./proxy";
+import { isAllowed, getCrawlDelayMs } from "./robots";
+import { awaitDomainSlot } from "./rate-limit";
 
 /**
- * Tear down every pooled scraper browser (Chromium tiers + Camoufox). A run that
- * may have rendered must call this in a finally so a long-lived worker process
- * (pg-boss) doesn't leak browsers across jobs. No-op when nothing was launched.
+ * Tear down every pooled render browser (Chromium tiers). A run that may have
+ * rendered must call this in a finally so a long-lived worker process (pg-boss)
+ * doesn't leak browsers across jobs. No-op when nothing was launched.
  */
 export async function closeScraperBrowsers(): Promise<void> {
-  await Promise.all([closePatchrightPool(), closeCamoufoxBrowser()]);
+  await closePatchrightPool();
 }
 
-// Failures that justify escalating to a more expensive level. A timeout /
-// network error is NOT here: it's a transient/site problem, not a "this level is
-// too weak" signal, so we let Trigger.dev retry the same level instead of burning
-// proxy budget. needs_render means "L0 got HTML but no content" → go to L1.
-// `http_error` (4xx/5xx that isn't a 403/503 block) is deliberately absent: a 404
-// won't become a 200 at a higher tier, so the cascade fails fast instead.
-const ESCALATING_FAILURES = new Set<string>([
+// A site that answers with any of these is REFUSING us. The collection doctrine
+// stops there — a refusal is never escalated to a different IP or fingerprint.
+// (needs_render is deliberately NOT here: it means "this page needs a JS render",
+// not "you're not welcome", so it's the one thing that still escalates L0 → L1.)
+const REFUSAL = new Set<string>([
   "blocked_403",
   "blocked_503",
   "cloudflare_challenge",
   "soft_block",
-  "needs_render",
+  "robots_disallowed",
 ]);
+
+/** What the cascade does with one attempt's result (collection doctrine):
+ *   done     — captured, stop.
+ *   refused  — the site refused us (block/challenge/robots) → stop, no escalation.
+ *   escalate — the page needs a JS render (needs_render) → try the render step.
+ *   fail     — a transient/dead-target failure (http_error/network/timeout) → stop
+ *              without escalating (a heavier tier won't fix it).
+ * Exported so the doctrine's branching is unit-tested without touching the network. */
+export type AttemptVerdict = "done" | "refused" | "escalate" | "fail";
+export function verdictFor(r: { ok: boolean; failureReason?: string }): AttemptVerdict {
+  if (r.ok) return "done";
+  if (REFUSAL.has(r.failureReason ?? "")) return "refused";
+  if (r.failureReason === "needs_render") return "escalate";
+  return "fail";
+}
 
 export interface CascadeAttempt {
   level: ScrapeLevel;
@@ -41,6 +55,10 @@ export interface CascadeAttempt {
 export type CascadeOutcome = ScrapeResult & {
   level: ScrapeLevel | null;
   learnedLevel: ScrapeLevel | null;
+  /** True when the site explicitly refused us (block/challenge/robots). Distinct
+   * from a transient failure: a refusal marks the source, it is never retried or
+   * escalated. */
+  refused?: boolean;
   attempts: CascadeAttempt[];
   totalDurationMs: number;
 };
@@ -49,66 +67,48 @@ export interface CascadeOptions extends PatchrightOptions {
   /** Start the cascade at this level (learned per monitor). Defaults to 0 (L0). */
   knownLevel?: ScrapeLevel;
   /**
-   * Floor the cascade at L1 (browser render) without capturing a screenshot —
-   * for pages whose L0 HTML can't be trusted (client-rendered listings). Like the
+   * Egress IP for this run, chosen UPSTREAM by the monitor (stability /
+   * geolocation), never in reaction to a block. "datacenter" routes the render
+   * through the configured datacenter proxy (reported as L2); "direct" (default)
+   * uses the server IP. Degrades to direct when the datacenter proxy is
+   * unconfigured or its kill-switch is off.
+   */
+  egressTier?: ProxyTier;
+  /**
+   * Floor the cascade at the render level without capturing a screenshot — for
+   * pages whose L0 HTML can't be trusted (client-rendered listings). Like the
    * `screenshot` floor, but no PNG. See ScrapeOptions.render.
    */
   render?: boolean;
 }
 
-// The L0 failure was "needs a browser, not a different IP" (SPA shell / soft
-// block) → L1 (Patchright, server IP). An IP/challenge failure instead means a
-// reputation problem → skip L1 and go straight to the proxy levels.
-function lastFailureNeedsBrowserNotProxy(attempts: CascadeAttempt[]): boolean {
-  const reason = attempts[attempts.length - 1]?.result.failureReason;
-  return reason === "needs_render" || reason === "soft_block";
-}
-
-// A paid/experimental level is only useful if it changes the egress IP. Without
-// the proxy configured it would just repeat the direct attempt, so skip it.
-function levelEnabled(envFlag: string, requiresResidential = false, requiresDatacenter = false): boolean {
-  if (process.env[envFlag] === "false") return false;
-  if (requiresDatacenter && getProxyConfig("datacenter") === null) return false;
-  if (requiresResidential && getProxyConfig("residential") === null) return false;
-  return true;
-}
-
 /**
- * Decoupled 5-level scraping cascade (patch-20). Fingerprint and IP reputation
- * are escalated separately, cheapest first:
- *   L0 fetch direct · L1 Patchright direct · L2 Patchright+datacenter ·
- *   L3 Patchright+residential · L4 Camoufox+residential.
- * Escalates only on a blocking failure (not on timeout). `knownLevel` lets a
- * monitor that already learned its level skip the cheaper attempts.
+ * Scraping cascade (collection doctrine):
+ *   L0 fetch direct · L1 browser render (direct) · L2 browser render (datacenter).
+ * Only "needs a JS render" (needs_render) escalates L0 → the render step. A block,
+ * challenge, or robots Disallow is a REFUSAL: the cascade stops and reports it,
+ * never escalating to a different IP or fingerprint. The datacenter egress (L2) is
+ * an upstream choice on the monitor, not a reaction to being blocked.
  */
 export async function scrapePage(url: string, options: CascadeOptions = {}): Promise<CascadeOutcome> {
   const startedAt = Date.now();
   const attempts: CascadeAttempt[] = [];
-  // A screenshot can only come from a rendered page — L0 (direct fetch) never
-  // produces one. When the caller asks for a screenshot (homepage, for the pHash
-  // visual-redesign detector AND the before/after visual diff), floor the cascade
-  // at L1 so a homepage that would otherwise win at L0 still gets a browser-
-  // rendered capture. Homepage is not conditional-GET'd (it's a SPA, excluded from
-  // CONDITIONAL_FETCH_SOURCES), so this browser render is paid on every homepage
-  // scrape — which is exactly why it sits behind the HOMEPAGE_SCREENSHOT_ENABLED
-  // kill-switch.
-  const start = Math.max(
-    options.knownLevel ?? 0,
-    options.screenshot || options.render ? 1 : 0,
-  ) as ScrapeLevel;
-  const browserOpts: PatchrightOptions = {
-    fullPage: options.fullPage,
-    waitForSelector: options.waitForSelector,
-    progressiveScroll: options.progressiveScroll,
-    screenshot: options.screenshot,
-    blockResources: options.blockResources,
-    captureBillingToggle: options.captureBillingToggle,
-  };
 
   const done = (r: ScrapeResult, level: ScrapeLevel): CascadeOutcome => ({
     ...r,
     level,
     learnedLevel: level,
+    attempts,
+    totalDurationMs: Date.now() - startedAt,
+  });
+  const refused = (r: ScrapeResult): CascadeOutcome => ({
+    ok: false,
+    refused: true,
+    failureReason: r.failureReason,
+    statusCode: r.statusCode,
+    durationMs: r.durationMs ?? 0,
+    level: null,
+    learnedLevel: null,
     attempts,
     totalDurationMs: Date.now() - startedAt,
   });
@@ -126,48 +126,70 @@ export async function scrapePage(url: string, options: CascadeOptions = {}): Pro
     };
   };
 
-  // L0 — fetch HTTP direct, no proxy.
+  // Collection doctrine: honour robots.txt BEFORE emitting any request on the page.
+  // A Disallow is a refusal (surfaced distinctly in scrape-monitor), never escalated.
+  if (!(await isAllowed(url))) {
+    return refused({ ok: false, failureReason: "robots_disallowed", durationMs: 0 });
+  }
+
+  // Per-domain rate limit (courtesy): space out requests to the same registrable
+  // domain, honouring a robots Crawl-delay when it's longer. One slot per logical
+  // page visit — the L0→render escalation of one page is a single visit, not two hits.
+  await awaitDomainSlot(url, await getCrawlDelayMs(url));
+
+  // Egress is decided upstream, not by a block. Fall back to direct when the
+  // datacenter proxy is unconfigured or killed, so a missing proxy degrades cleanly.
+  const datacenterAvailable =
+    process.env.SCRAPING_LEVEL_1_ENABLED !== "false" && getProxyConfig("datacenter") !== null;
+  const effectiveEgress: ProxyTier =
+    options.egressTier === "datacenter" && datacenterAvailable ? "datacenter" : "direct";
+  const renderLevel: ScrapeLevel = effectiveEgress === "datacenter" ? 2 : 1;
+
+  // A screenshot or a `render` request needs a rendered page — L0 (direct fetch)
+  // never produces one, so floor at the render level. Datacenter egress always
+  // renders (a plain fetch can't be routed through the proxy), so its floor is the
+  // render level too. `start` is clamped to renderLevel so a stale knownLevel can't
+  // skip past the only render step.
+  const needsRenderFloor = !!(options.screenshot || options.render);
+  const renderFloor: ScrapeLevel =
+    effectiveEgress === "datacenter" ? renderLevel : needsRenderFloor ? 1 : 0;
+  const start = Math.min(
+    Math.max(options.knownLevel ?? 0, renderFloor),
+    renderLevel,
+  ) as ScrapeLevel;
+
+  const browserOpts: PatchrightOptions = {
+    fullPage: options.fullPage,
+    waitForSelector: options.waitForSelector,
+    progressiveScroll: options.progressiveScroll,
+    screenshot: options.screenshot,
+    blockResources: options.blockResources,
+    captureBillingToggle: options.captureBillingToggle,
+  };
+
+  // L0 — fetch HTTP direct (direct egress only; datacenter egress starts at the
+  // render because a plain fetch can't be routed through the proxy).
   if (start <= 0) {
     const r = await scrapeDirect(url);
     attempts.push({ level: 0, result: r });
-    if (r.ok) return done(r, 0);
-    if (!ESCALATING_FAILURES.has(r.failureReason ?? "")) return fail();
+    const v = verdictFor(r);
+    if (v === "done") return done(r, 0);
+    if (v === "refused") return refused(r);
+    if (v === "fail") return fail();
+    // v === "escalate" (needs_render) → fall through to the render step.
   }
 
-  // L1 — Patchright, no proxy (server IP). Only when the prior failure means
-  // "needs a browser", not an IP block (which would skip straight to proxies).
-  if (start <= 1 && (start === 1 || attempts.length === 0 || lastFailureNeedsBrowserNotProxy(attempts))) {
-    const r = await scrapeWithPatchright(url, "direct", browserOpts);
-    attempts.push({ level: 1, result: r });
-    if (r.ok) return done(r, 1);
-    // Escalating past this tier — free its browser before the next one launches.
-    await closeTierBrowser("direct");
-    if (!ESCALATING_FAILURES.has(r.failureReason ?? "")) return fail();
-  }
-
-  // L2 — Patchright + datacenter.
-  if (start <= 2 && levelEnabled("SCRAPING_LEVEL_1_ENABLED", false, true)) {
-    const r = await scrapeWithPatchright(url, "datacenter", browserOpts);
-    attempts.push({ level: 2, result: r });
-    if (r.ok) return done(r, 2);
-    await closeTierBrowser("datacenter");
-    if (!ESCALATING_FAILURES.has(r.failureReason ?? "")) return fail();
-  }
-
-  // L3 — Patchright + residential.
-  if (start <= 3 && levelEnabled("SCRAPING_LEVEL_2_ENABLED", true)) {
-    const r = await scrapeWithPatchright(url, "residential", browserOpts);
-    attempts.push({ level: 3, result: r });
-    if (r.ok) return done(r, 3);
-    await closeTierBrowser("residential");
-    if (!ESCALATING_FAILURES.has(r.failureReason ?? "")) return fail();
-  }
-
-  // L4 — Camoufox + residential (Chromium fingerprint detected, rare).
-  if (levelEnabled("SCRAPING_LEVEL_3_ENABLED", true)) {
-    const r = await scrapeWithCamoufox(url, browserOpts);
-    attempts.push({ level: 4, result: r });
-    if (r.ok) return done(r, 4);
+  // Render step — L1 (direct) or L2 (datacenter egress). Reached from an L0
+  // needs_render, a screenshot/render floor, or a datacenter egress. A block here is
+  // a refusal, not a reason to try a heavier tier (there is none).
+  if (start <= renderLevel) {
+    const r = await scrapeWithPatchright(url, effectiveEgress, browserOpts);
+    attempts.push({ level: renderLevel, result: r });
+    const v = verdictFor(r);
+    if (v === "done") return done(r, renderLevel);
+    await closeTierBrowser(effectiveEgress);
+    if (v === "refused") return refused(r);
+    return fail(); // escalate/fail are both terminal here — nothing above the render.
   }
 
   return fail();

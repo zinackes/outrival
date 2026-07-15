@@ -42,9 +42,9 @@ export default async function CostPage() {
       <PageHeader title="Cost" subtitle="Estimates — trends, not accounting. Tune the constants as real invoices land." />
 
       <Section
-        title="Proxy — ProxyScrape (datacenter + residential)"
+        title="Proxy — ProxyScrape (datacenter egress)"
         note="estimate"
-        info="Estimated proxy cost. Paid scrapes (cascade L2+) carry a fixed monthly datacenter fee; residential (L3+) adds a variable per-scrape cost. Trends, not invoices."
+        info="Estimated proxy cost. Paid scrapes (cascade L2) use the datacenter egress — a flat monthly fee, no per-scrape variable. Trends, not invoices."
       >
         <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
           <Stat label="Paid scrapes (24h)" value={cost.proxy.scrapes24h} />

@@ -23,6 +23,7 @@ const FailureBarChart = dynamic(() => import("./scraping-chart"), {
 export function ScrapingView({ data }: { data: AdminScrapingHealth | null }) {
   const sources = data?.sources ?? [];
   const dead = data?.deadMonitors ?? [];
+  const refused = data?.refusedDomains ?? [];
   const failureData = sources.map((s) => ({
     name: s.sourceType,
     failure: Math.round(s.failureRate * 100),
@@ -83,11 +84,11 @@ export function ScrapingView({ data }: { data: AdminScrapingHealth | null }) {
       <Section
         title="Cascade levels"
         note={data?.window ?? "24h"}
-        info="Distribution of scrapes across the 5-level anti-bot cascade. L0 direct fetch and L1 browser are free; L2 datacenter, L3 residential and L4 Camoufox are paid. Most traffic should stay on L0/L1."
+        info="Distribution of scrapes across the cascade. L0 direct fetch and L1 browser render are free; L2 uses the paid datacenter egress. Most traffic should stay on L0/L1."
       >
         {(() => {
           const lv = data?.levels;
-          const total = lv ? lv.l0 + lv.l1 + lv.l2 + lv.l3 + lv.l4 : 0;
+          const total = lv ? lv.l0 + lv.l1 + lv.l2 : 0;
           if (!lv || total === 0) {
             return <Empty>No scrape runs in the window.</Empty>;
           }
@@ -95,11 +96,9 @@ export function ScrapingView({ data }: { data: AdminScrapingHealth | null }) {
             { label: "L0 direct", n: lv.l0 },
             { label: "L1 browser", n: lv.l1 },
             { label: "L2 datacenter", n: lv.l2 },
-            { label: "L3 residential", n: lv.l3 },
-            { label: "L4 camoufox", n: lv.l4 },
           ];
           return (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
               {cells.map((c) => (
                 <div key={c.label} className="flex flex-col gap-1">
                   <span className="text-xs text-muted-foreground">{c.label}</span>
@@ -112,6 +111,37 @@ export function ScrapingView({ data }: { data: AdminScrapingHealth | null }) {
             </div>
           );
         })()}
+      </Section>
+
+      <Section
+        title="Refused sources"
+        note="7d"
+        info="Competitors whose sites refused us (block / challenge / robots Disallow). Under the collection doctrine we stop — we don't bypass. A high refusal rate is a product signal (find another source / accept the gap), not a bug."
+      >
+        {refused.length === 0 ? (
+          <Empty>None — no source has refused us in the last 7 days.</Empty>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Competitor</TableHead>
+                <TableHead>Reason</TableHead>
+                <TableHead className="text-right">Refused</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {refused.map((r) => (
+                <TableRow key={r.competitorId}>
+                  <TableCell>{r.competitorName ?? r.competitorId}</TableCell>
+                  <TableCell style={mono}>{r.reason}</TableCell>
+                  <TableCell className="text-right" style={mono}>
+                    {r.refused}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
       </Section>
 
       <Section

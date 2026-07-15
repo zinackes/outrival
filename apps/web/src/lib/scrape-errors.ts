@@ -35,8 +35,19 @@ export function friendlyScrapeError(
     return "This URL doesn't look right for this source — double-check it in the monitor settings.";
   }
 
-  // Anti-bot protection — the scraping cascade (patch-20) exhausted every level
-  // (direct → Patchright → datacenter → residential → Camoufox) and stayed blocked.
+  // Collection doctrine: the site explicitly refused us (block / challenge / robots
+  // Disallow) and we STOPPED — we don't bypass a refusal. robots.txt gets its own
+  // honest message; any other refusal shares one. handleRefusal stores
+  // "refused: <reason>", so these match first.
+  if (e.includes("robots_disallowed")) {
+    return `This site's robots.txt asks automated crawlers not to collect this ${page}, so we don't.`;
+  }
+  if (e.includes("refused")) {
+    return "This site doesn't allow automated collection, so we don't monitor this source.";
+  }
+
+  // Anti-bot protection — the site served a block/challenge. Under the doctrine we
+  // treat that as a refusal and don't work around it, so the source isn't collected.
   if (
     e.includes("cloudflare") ||
     e.includes("cloudflare_challenge") ||
@@ -47,7 +58,7 @@ export function friendlyScrapeError(
     e.includes("soft_block") ||
     e.includes("403")
   ) {
-    return "The site is blocking automated access, so we couldn't read the page.";
+    return "This site doesn't allow automated access, so we don't collect this page.";
   }
 
   // L0 fetched HTML but the page needs a browser to render and the cascade still

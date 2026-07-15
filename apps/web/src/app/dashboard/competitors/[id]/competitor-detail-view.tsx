@@ -171,7 +171,7 @@ const VISIBLE_TABS = TABS;
 const TAB_SOURCES: Partial<Record<TabKey, string[]>> = {
   pricing: ["pricing"],
   hiring: ["jobs"],
-  reviews: ["g2_reviews", "capterra_reviews", "trustpilot_reviews", "appstore_reviews"],
+  reviews: ["appstore_reviews", "trustpilot_public"],
   content: ["homepage", "blog", "changelog"],
   custom: ["custom"],
 };
@@ -198,10 +198,13 @@ function tabLock(key: TabKey, plan: Plan): { reason: PaywallReason; minPlan: Pla
         minPlan: minPlanForSource("jobs"),
       };
     case "reviews":
-      if (planIncludesSource(plan, "g2_reviews")) return null;
+      // Reviews v2: App Store (public RSS) is the cheapest live review source (pro+);
+      // gate the tab on it rather than the retired g2_reviews (now ungated → its
+      // planIncludesSource is false on every plan, which would lock the tab for all).
+      if (planIncludesSource(plan, "appstore_reviews")) return null;
       return {
-        reason: { code: "plan_locked_source", source: "g2_reviews", plan },
-        minPlan: minPlanForSource("g2_reviews"),
+        reason: { code: "plan_locked_source", source: "appstore_reviews", plan },
+        minPlan: minPlanForSource("appstore_reviews"),
       };
     default:
       return null;
@@ -224,13 +227,9 @@ const POLL_INTERVAL_MS = 3000;
 const EXTRACTION_BACKED_SOURCES = new Set<string>([
   "pricing",
   "jobs",
-  "g2_reviews",
-  "capterra_reviews",
+  // Reviews v2: App Store (RSS) + Trustpilot surface are the live review sources.
   "appstore_reviews",
-  "trustpilot_reviews",
-  "trustradius_reviews",
-  "gartner_reviews",
-  "playstore_reviews",
+  "trustpilot_public",
 ]);
 
 // Extraction-backed tab data (jobs/pricing/reviews) is written by a downstream job

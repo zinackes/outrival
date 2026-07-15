@@ -97,7 +97,10 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     maxCompetitors: 15,
     allowedFrequencies: ["realtime", "daily", "weekly"],
     allowedChannels: ["email", "slack", "webhook"],
-    allowedSources: ["homepage", "pricing", "blog", "jobs", "g2_reviews", "capterra_reviews", "trustpilot_reviews", "trustradius_reviews", "status"],
+    // Reviews v2 (2026-07-15): scraped aggregators retired; App Store (public RSS)
+    // is the review source here, Trustpilot (`trustpilot_public`, official-API
+    // surface) is added by the step-3 wiring alongside its scraper.
+    allowedSources: ["homepage", "pricing", "blog", "jobs", "appstore_reviews", "status"],
     scrapeFrequency: "daily_adaptive",
     forcedRescansPerDay: 20,
     battleCardsPerDay: 50,
@@ -115,10 +118,12 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     maxCompetitors: 50,
     allowedFrequencies: ["realtime", "daily", "weekly"],
     allowedChannels: ["email", "slack", "webhook"],
+    // Reviews v2 (2026-07-15): scraped aggregators (g2/capterra/trustradius/gartner/
+    // playstore) retired for legal reasons. App Store (public RSS) stays; Trustpilot
+    // (`trustpilot_public`, official-API surface) is added by the step-3 wiring.
     allowedSources: [
       "homepage", "pricing", "blog", "jobs",
-      "g2_reviews", "capterra_reviews", "appstore_reviews", "status",
-      "trustpilot_reviews", "trustradius_reviews", "gartner_reviews", "playstore_reviews",
+      "appstore_reviews", "status",
     ],
     scrapeFrequency: "daily_priority",
     // Anti-abuse ceilings, far above normal use; a fair-use clause (TOS) covers the

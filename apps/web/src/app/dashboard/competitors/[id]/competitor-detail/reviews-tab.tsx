@@ -55,30 +55,17 @@ const MultiLineChart = dynamic(() => import("./chart-line"), {
   loading: () => <Skeleton className="h-[220px] w-full" />,
 });
 
+// Reviews v2 (2026-07-15): the scraped aggregators (G2/Capterra/Trustpilot) are
+// retired for legal reasons. App Store (Apple's public RSS feed) is the only
+// URL-based review source. Trustpilot survives as the surface-only
+// `trustpilot_public` (official-API score/trend, no user URL) with its own enable
+// UX — it is intentionally NOT in this "paste a review-page URL" picker.
 const REVIEW_SOURCE_OPTIONS: {
   value: ReviewSourceType;
   label: string;
   host: string;
   placeholder: string;
 }[] = [
-  {
-    value: "g2_reviews",
-    label: "G2",
-    host: "g2.com",
-    placeholder: "https://www.g2.com/products/<slug>/reviews",
-  },
-  {
-    value: "capterra_reviews",
-    label: "Capterra",
-    host: "capterra.com",
-    placeholder: "https://www.capterra.com/p/<id>/<slug>/reviews/",
-  },
-  {
-    value: "trustpilot_reviews",
-    label: "Trustpilot",
-    host: "trustpilot.com",
-    placeholder: "https://www.trustpilot.com/review/<domain>",
-  },
   {
     value: "appstore_reviews",
     label: "App Store",

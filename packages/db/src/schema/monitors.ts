@@ -4,9 +4,19 @@ import { competitors } from "./competitors";
 
 export const sourceTypeEnum = pgEnum("source_type", [
   "homepage", "pricing", "blog", "changelog", "jobs",
-  "g2_reviews", "capterra_reviews", "appstore_reviews",
-  // patch-32: additional review platforms (enable-on-demand, pro+). Kept in sync
-  // with shared SOURCE_TYPES + reviewSourceEnum.
+  // App Store customer reviews via Apple's public RSS JSON feed (kept in sync with
+  // shared SOURCE_TYPES). The one review platform read directly.
+  "appstore_reviews",
+  // Trustpilot public surface (Reviews v2) — score/count/distribution/trend via the
+  // OFFICIAL Trustpilot API, never scraped verbatims. Kept in sync with SOURCE_TYPES.
+  "trustpilot_public",
+  // RETIRED for legal reasons (Reviews v2, migration below). Aggregators whose ToS
+  // forbid scraping + commercial use and who license the data as a product. Enum
+  // values KEPT (never dropped) so existing rows stay valid — the migration marks
+  // those monitors marked_unscrapable + refusal_reason='source_retired_legal' instead
+  // of cascade-deleting history. No scraper, ungated, not user-selectable. Kept in
+  // sync with shared SOURCE_TYPES + reviewSourceEnum.
+  "g2_reviews", "capterra_reviews",
   "trustpilot_reviews", "trustradius_reviews", "gartner_reviews", "playstore_reviews",
   "linkedin", "twitter", "github_repo",
   // patch-18: anchor monitor for tech-stack signals only. Always isActive=false,

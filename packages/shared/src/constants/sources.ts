@@ -1,8 +1,25 @@
 export const SOURCE_TYPES = [
   "homepage", "pricing", "blog", "changelog", "jobs",
-  "g2_reviews", "capterra_reviews", "appstore_reviews",
-  // patch-32: additional review platforms (enable-on-demand, explicit URL, pro+).
-  // Structured-first AggregateRating + AI verbatims, same path as g2/capterra.
+  // App Store customer reviews via Apple's official public RSS JSON feed (Cas B
+  // "propre" — competitor data, keyless, no scraping). The one review platform we
+  // read directly. See appstore-reviews.scraper.ts.
+  "appstore_reviews",
+  // Trustpilot public SURFACE (Reviews v2, 2026-07-15): score, review count, star
+  // distribution, trend via Trustpilot's OFFICIAL API (TRUSTPILOT_API_KEY) — never
+  // third-party verbatims, never scraped (their ToS targets screen scrapers). The
+  // useful "score of X slips 4.4 → 4.2" signal survives without the verbatims.
+  "trustpilot_public",
+  // RETIRED for legal reasons (Reviews v2, 2026-07-15 — "⚖️ Collection doctrine").
+  // These review aggregators forbid scraping AND commercial use in their ToS, and
+  // license their data as a product (G2 sells review syndication; Crayon/Klue pay
+  // for it). Scraping them is unfair competition + a sui-generis DB right breach.
+  // The enum values are KEPT (never dropped) so existing monitor rows stay valid and
+  // are marked `marked_unscrapable` + refusal_reason='source_retired_legal' by the
+  // migration rather than cascade-deleted (history preserved). No scraper, not in any
+  // plan's allowedSources, not user-selectable. `g2_reviews` may return LATER via the
+  // customer's own connected G2 vendor account (deferred, pending its ToS review) —
+  // never via scraping. `trustpilot_reviews` is superseded by `trustpilot_public`.
+  "g2_reviews", "capterra_reviews",
   "trustpilot_reviews", "trustradius_reviews", "gartner_reviews", "playstore_reviews",
   "linkedin", "twitter", "github_repo",
   // patch-18: infra-only anchor source for tech-stack signals. Never user-

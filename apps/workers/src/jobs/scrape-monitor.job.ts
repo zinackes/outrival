@@ -410,7 +410,7 @@ const IDEMPOTENCE_WINDOW_MS = 60 * 60 * 1000;
 
 // How long a monitor stays pinned to a paid cascade level (>=2) before we
 // re-probe from the bottom of the cascade. A site that stopped blocking us then
-// drops back to a cheaper level instead of paying datacenter/residential forever.
+// drops back to a cheaper level instead of paying the datacenter egress forever.
 const LEVEL_REPROBE_INTERVAL_MS = 14 * 24 * 60 * 60 * 1000;
 
 // After this many consecutive run failures a source is marked unscrapable so the
@@ -584,7 +584,7 @@ export const scrapeMonitorJob = task({
 
     // Re-probe a monitor pinned to a paid level (>=2) from the bottom of the
     // cascade periodically: if the site stopped blocking us, we drop to a cheaper
-    // (free) level instead of paying datacenter/residential forever.
+    // (free) level instead of paying the datacenter egress forever.
     const pinnedLevel = monitor.requiresLevel;
     const shouldReprobe =
       pinnedLevel != null &&

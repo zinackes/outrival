@@ -23,7 +23,7 @@ Branch **`fix/scraper-critical`** (off `main`). Typecheck green across
 `@outrival/scrapers` + `@outrival/workers`; workers tests 30/30; scrapers 358
 pass (the only 2 failures are the pre-existing `scrapeFirstSuccess` network
 flakes, unrelated). The browser-path changes (M1/M2) are typecheck-verified but
-**not runtime-verified** here (no browsers/proxies/residential creds locally) —
+**not runtime-verified** here (no browsers/proxies/upper-tier creds locally) —
 validate on staging before prod.
 
 **Done — all P0 + every named P1:**
@@ -85,7 +85,7 @@ snapshot → diff → change → classify → signal.
 | changelog | `changelog/changelog.scraper.ts` | `/changelog` page or RSS/Atom feed | L0 fetch + native feed fetch | no | weekly | auto-seeded by platform-detect only (never user-selectable) |
 | jobs | `jobs/jobs.scraper.ts` + `ats.ts` + `careers-link.ts` | careers page / ATS board | **ATS API** when `platformProfile.ats` known; else L0 path probing + **floor L1** render (`JOBS_RENDER_ENABLED`) | partial | daily / weekly | opt-in starter+ |
 | g2 / capterra / trustpilot / trustradius | `g2-reviews/`, `capterra-reviews/`, `reviews/extra-platforms.scraper.ts` | review product pages | browser, **floor L2** | yes | weekly | opt-in pro+ |
-| gartner_reviews | `reviews/extra-platforms.scraper.ts:31` | Gartner Peer Insights | browser, **floor L3 residential** | yes | weekly | opt-in business |
+| gartner_reviews | `reviews/extra-platforms.scraper.ts:31` | Gartner Peer Insights | browser, **floor L3 (retired upper-tier proxy)** | yes | weekly | opt-in business |
 | playstore_reviews | idem `:33` | Play Store | browser, floor L1 | yes | weekly | opt-in business |
 | appstore_reviews | `appstore-reviews/appstore-reviews.scraper.ts` | Apple iTunes RSS JSON | **third-party API**, level 0 | no | weekly | opt-in business |
 | reddit | `reddit/` | brand mentions | **OAuth API** (`oauth.reddit.com`, app-only) | no | weekly | opt-in pro+, global kill-switch off |
@@ -118,8 +118,8 @@ snapshot → diff → change → classify → signal.
 | L0 | `scrape-direct.ts` — native fetch | free | `blocked_403/503`, `cloudflare_challenge` → proxies; `needs_render` → L1. Other `http_error` = fail-fast |
 | L1 | `scrape-patchright.ts` — stealth Chromium, no proxy | compute only | `ESCALATING_FAILURES` |
 | L2 | Patchright + ProxyScrape datacenter | flat monthly | idem |
-| L3 | Patchright + ProxyScrape residential | pay-per-GB | idem |
-| L4 | `scrape-camoufox.ts` — Camoufox + residential | last resort, 60s timeout | none — final `fail()` |
+| L3 | Patchright + ProxyScrape upper-tier proxy (retired) | pay-per-GB | idem |
+| L4 | retired upper-tier stealth browser + proxy | last resort, 60s timeout | none — final `fail()` |
 
 Entry level = `max(requiresLevel ?? 0, (screenshot || render) ? 1 : 0)`.
 `requiresLevel` is persisted only when ≥ 2, re-probed from L0 every 14 days.
@@ -197,7 +197,7 @@ competitor's site is down ~42h → monitor silently disabled → site comes back
 
 | # | Finding | Location | Effort | Gain |
 |---|---|---|---|---|
-| M1 | `BLOCKED_RESOURCE_TYPES` = media+font only → images+stylesheets downloaded through **residential pay-per-GB** on data scrapes (jobs/pricing/reviews pass `blockResources:true` but still load all images) | `scrape-patchright.ts:61` | **S** | −30-70% proxy bandwidth, ~€5-15/mo |
+| M1 | `BLOCKED_RESOURCE_TYPES` = media+font only → images+stylesheets downloaded through the **retired upper-tier pay-per-GB proxy** on data scrapes (jobs/pricing/reviews pass `blockResources:true` but still load all images) | `scrape-patchright.ts:61` | **S** | −30-70% proxy bandwidth, ~€5-15/mo |
 | M2 | Browsers are never `close()`d — only contexts are. A full L1→L4 escalation keeps 3 Chromium + 1 Firefox resident until machine teardown; on a warm reused machine they leak across runs. **Blocking for the pg-boss migration** (long-lived worker processes) | `scrape-patchright.ts:66-74` | **S** | −400-800 MB peak on escalated scrapes |
 | M3 | `source_summary` (70b) fires on **every** content-hash change with no materiality gate — review pages churn constantly | `extract-pricing.job.ts:148`, `extract-jobs.job.ts:193`, `extract-reviews.job.ts:150` | M | −1 AI call on most re-scrapes; AI-quota pressure + €5-20/mo |
 | M4 | `block-detection` covers Cloudflare only — blind to Akamai ("Access Denied", "Reference #"), DataDome (`captcha-delivery.com`), PerimeterX (`px-captcha`), Imperva ("Pardon our interruption"), Kasada, hCaptcha. A 200 challenge page is accepted as content → rotten snapshot, diff/AI on garbage | `block-detection.ts:17-36` | **S** | fewer poisoned baselines / false diffs |
@@ -273,7 +273,7 @@ Cost drivers, in order:
    runs/mo. At ~50 active orgs this crosses the Hobby 50k-runs cap → Pro
    €100/mo. **The in-flight pg-boss migration neutralizes this entire cost
    axis** — but makes M2 (browser leak) mandatory first.
-2. **Residential GB (L3/L4)** — bounded to monitors that learned
+2. **Upper-tier proxy GB (L3/L4, since retired)** — bounded to monitors that learned
    `requiresLevel ≥ 3` (Gartner floor + hard-blocked homepages), but inflated
    by M1 (images/CSS not blocked).
 3. **AI quota** — €-cheap while Cerebras free tier (1M tok/day) holds, but
@@ -324,7 +324,7 @@ pricing pages) on 2026-07-06.
 |---|---|---|
 | 5-level cascade (escalate on block signal) | **Still current** | mirrors Crawlee's AdaptivePlaywrightCrawler philosophy; 2026 practitioner consensus |
 | Patchright (L1-L3) | **Still current** | v1.61.1 (2026-06-23), lock-step with Playwright, near-weekly cadence; strong Cloudflare results in independent benchmarks |
-| Camoufox (L4) | **Current, watch** | creator stepped down 2026-01-10 after a 10-month release gap; taken over by Clover Labs, active again (v152 alpha 2026-07-06). Document a fallback plan |
+| Upper-tier stealth browser (L4, since retired) | **Current, watch** | creator stepped down 2026-01-10 after a 10-month release gap; taken over by Clover Labs, active again (v152 alpha 2026-07-06). Document a fallback plan |
 | L0 native fetch | **Identified gap** | JA3/JA4 + HTTP/2 fingerprinting flags a non-impersonated client before any JS challenge. Cheapest fix: a TLS-impersonation rung (`got-scraping` 4.2.1 or Apify `impit` 0.14.2 — both Node-native, verified) between L0 and L1 |
 | cheerio | Still current | no credible TS-native challenger |
 | Structured-first (JSON-LD/OG) | Still current | validated by the 2026 "per-page AI tax" cost argument (Kadoa) |
@@ -342,7 +342,7 @@ Landscape notes:
   Collection" bucket (outside the AI taxonomy), but standard Bot Management
   (JA4, behavioral scoring) stays fully active — verify our traffic doesn't
   get misclassified as "Agent".
-- Residential proxy market 2026: $1.75-6/GB (Bright Data $2.50-4, Oxylabs
+- Upper-tier proxy market 2026: $1.75-6/GB (Bright Data $2.50-4, Oxylabs
   $2.50-6, ProxyScrape ~$3.55, IPRoyal from $1.75) — current ProxyScrape setup
   is at the low end.
 - `Bun.WebView` (Bun 1.3.12, 2026-04) — native headless automation with
@@ -366,7 +366,7 @@ Landscape notes:
 ### P1 — Quick wins (all S, ~1 day total)
 
 3. **M1** — add `image` (+`stylesheet`) to `BLOCKED_RESOURCE_TYPES` for
-   non-screenshot scrapes → immediate residential savings.
+   non-screenshot scrapes → immediate upper-tier proxy-bandwidth savings.
 4. **M2** — close the previous tier's browser on escalation (+ teardown
    `finally`) → **prerequisite for pg-boss long-lived workers**.
 5. **M4** — extend `CHALLENGE_MARKERS` to Akamai/DataDome/PerimeterX/Imperva/
@@ -400,7 +400,7 @@ Landscape notes:
 17. Per-source registry (before LinkedIn/Twitter).
 18. Evaluate an HTTP-impersonation rung "L0.5" (`got-scraping` / `impit`).
 19. Add Gemini Flash/Flash-Lite to the AI provider pool.
-20. Watch list: Camoufox maintenance cadence (3-6 months), Cloudflare
+20. Watch list: upper-tier stealth-browser cadence (3-6 months; tier since retired), Cloudflare
     2026-09-15 taxonomy, embeddings pre-filter before classify-change
     (differentiation opportunity — nobody does embeddings+LLM-judge pairing
     publicly), structural-fingerprint validation for cached extractors.

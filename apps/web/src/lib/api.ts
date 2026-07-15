@@ -1306,7 +1306,7 @@ export type AdminScrapingHealth = {
   window: string;
   sources: AdminSourceHealth[];
   // Cascade-level distribution over the window (counts per level). L2 = datacenter
-  // egress; the residential (3) + Camoufox (4) levels were retired.
+  // egress; the former upper levels (L3/L4) were retired by the collection doctrine.
   levels: { l0: number; l1: number; l2: number };
   // Patch-30 staged-extraction resolution distribution over the window (counts).
   extraction: { structured: number; cache: number; heal: number; aiFallback: number };

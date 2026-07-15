@@ -40,11 +40,11 @@ it reuses the existing pool. *(Not yet wired as an engine — small follow-up: a
 **Our structural advantage.** There is **no public API for Google AI Overviews**; the
 only way to see what a user sees is to capture the whole SERP surface, and Google runs
 the most aggressive anti-automation on the public web. SERP vendors (SerpApi, AWR) sell
-exactly this. **Outrival already owns that stack** — the 5-level Patchright + Camoufox +
-residential-proxy cascade (patch-20) is built for exactly this adversary. Reusing it to
-scrape AIO / AI Mode gives **higher fidelity than any API** (it's the real consumer
-surface — resolving the "API ≠ what a human sees" risk in the main spec) at **zero
-per-query fee** (only incremental proxy bandwidth, already a flat/pay-per-GB sunk cost).
+exactly this. **But the collection doctrine (2026-07-14) rules out scraping Google's
+SERP directly**: Google disallows `/search` in robots.txt and challenges bots, which we
+now treat as a **refusal** — we stop, we don't bypass it. So the doctrine-compatible path
+is the free grounded-model route below (Gemini), **not** SERP scraping. A browser render
+only helps where a surface is served openly; it is no longer an anti-automation tool.
 
 Caveats, stated honestly: scraping Google SERP is **ToS-gray** and operationally the
 hardest target (Google's anti-bot > any competitor site). Treat it as the ambitious

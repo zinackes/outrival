@@ -37,7 +37,7 @@ free. This is the "own PR" plan 008's notes called for.
   ai, web) green on `HEAD`. `pnpm typecheck` = 8/8. These are the refresh's pass/fail oracle.
 - Known-sensitive deps to watch in the diff (behavior-bearing): `drizzle-orm`/`drizzle-kit`
   (+ its `@electric-sql/pglite` peer — the documented fork point), `better-auth`, `stripe`,
-  `next`/`react`/`react-dom`, `patchright`/`camoufox-js`/`playwright` (scraping cascade),
+  `next`/`react`/`react-dom`, `playwright` (scraping cascade render),
   `@trigger.dev/sdk`, `resend`, `hono`.
 - WSL2 dev host OOMs on `next build`; do NOT run it. `pnpm typecheck` + `pnpm test` (bun/tsc,
   no browser) are the gates and run fine.
@@ -110,7 +110,7 @@ bumps pnpm recorded), nothing else.
 - The full existing suite IS the test plan: `pnpm typecheck` (8/8) + `pnpm test` (12/12) must be
   green after the refresh. That's the behavior-preservation oracle for a version-only change.
 - **Residual risk the suite can't cover** (flag in the PR body, for the operator's post-deploy
-  smoke test): the browser scraping cascade (patchright/camoufox), real email rendering
+  smoke test): the browser scraping cascade (Playwright render), real email rendering
   (resend), and Stripe live webhooks aren't exercised by `bun test`. The operator should run the
   deployment smoke test (`docs/deployment.md`) after this lands.
 

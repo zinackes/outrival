@@ -92,8 +92,8 @@ export const monitors = pgTable("monitors", {
   isActive: boolean("is_active").notNull().default(true),
   // Scraping cascade level this monitor needs: 0 (direct fetch) / 1 (browser
   // render) / 2 (browser render via datacenter egress). null = not yet learned →
-  // start the cascade at L0. The residential (3) and Camoufox (4) levels were
-  // retired with the collection doctrine.
+  // start the cascade at L0. The former upper levels — L3 (IP-reputation proxy)
+  // and L4 (anti-fingerprint browser) — were retired with the collection doctrine.
   requiresLevel: integer("requires_level"),
   // Egress IP chosen UPSTREAM (stability / geolocation), NEVER learned from a
   // block: "direct" (server IP) or "datacenter" (configured proxy). Reacting to a

@@ -7,7 +7,7 @@ import { queue } from "@trigger.dev/sdk/v3";
 // and Trigger cost. The collection doctrine caps the cascade at L2 (datacenter
 // egress, flat-cost and fast), so there is no slow, variable-cost paid level left
 // to isolate: the previous two-lane split (fast vs learned-slow L3/L4) was retired
-// with the residential + Camoufox tiers.
+// with the former upper tiers (IP-reputation proxy + anti-fingerprint browser).
 //
 // Env-tunable so concurrency can be scaled with the Trigger plan + proxy budget
 // without a code change. Default preserves the previous fast-lane cap (5).

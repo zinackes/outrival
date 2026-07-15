@@ -31,7 +31,7 @@ docs are worse than missing ones — and these are the load-bearing ones.
 1. **`apps/workers/CLAUDE.md`** header: *"# @outrival/workers — Crawlee + Trigger.dev v3 /
    Stack : Trigger.dev v3, Crawlee, Bun"*, and instructs *"Lire crawlee-patterns skill
    avant de créer un scraper"*. **Crawlee is not a dependency of any package** (0 hits for
-   `"crawlee"` across all `package.json`); scrapers use `patchright`/`camoufox-js`/`cheerio`.
+   `"crawlee"` across all `package.json`); scrapers use a Playwright browser render + `cheerio`.
    The Trigger SDK is v4 (`@trigger.dev/sdk@^4.4.6`), not v3.
 
 2. **`packages/scrapers/CLAUDE.md`**: *"Lire @.claude/skills/crawlee-patterns/SKILL.md avant
@@ -43,7 +43,7 @@ docs are worse than missing ones — and these are the load-bearing ones.
    Trigger.dev)"* — Crawlee reference.
 
 4. **`.claude/rules/scraping.md`**: references the Crawlee-era workflow in places (verify
-   and correct any "Crawlee" mention; the cascade is Patchright/Camoufox per the file's own
+   and correct any "Crawlee" mention; the cascade is a browser render per the file's own
    later content — reconcile the header/intro with the body).
 
 5. **`docs/deployment.md:8-22`** ("Topology (decided)") states *"Jobs run on Trigger.dev v4
@@ -64,8 +64,8 @@ migration history ("was ClickHouse"), not instructions — fine as-is.
 
 ## Ground truth to write toward (verify before asserting)
 
-- Scraping stack = Patchright cascade (L0 fetch → L1 Patchright → L2 datacenter → L3
-  residential → L4 Camoufox) + Camoufox last resort. No Crawlee.
+- Scraping stack = 3-level cascade (L0 fetch → L1 browser render → L2 datacenter egress;
+  the upper tiers L3/L4 were retired by the collection doctrine). No Crawlee.
 - Trigger SDK = **v4** (`@trigger.dev/sdk@^4.4.6`). Jobs are authored as Trigger `task()`.
 - Job **execution** is mid-migration to pg-boss (`packages/queue`, `apps/workers/src/queue/`,
   the two `Dockerfile.queue-*`). The exact live-runner state should be stated as

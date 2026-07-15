@@ -31,7 +31,7 @@ Highest-leverage gaps found:
    8B model. This is the biggest recurring cost leak. → **F1**
 2. **Browser scrapes load every resource and always take a full-page
    screenshot**, even for non-visual sources (pricing/jobs/reviews) where the
-   screenshot is never used — wasted residential GB (pay-per-GB) + Trigger
+   screenshot is never used — wasted upper-tier proxy GB (pay-per-GB) + Trigger
    machine CPU. → **F4 / F5**
 3. **Prompt caching is left on the table** — Groq/Cerebras cache common prefixes
    automatically and for free, but prompts concatenate static+variable into one
@@ -122,7 +122,7 @@ self-check for hallucinations (patch-24), `ai_runs` logging. These match the
 
 ## Domain 2 — Scraping (cost + robustness)
 
-### F4 — Browser scrapes load every resource (residential is pay-per-GB) 🟢 / ⚠️
+### F4 — Browser scrapes load every resource (upper-tier proxy is pay-per-GB) 🟢 / ⚠️
 
 **Best practice.** Block images/fonts/media/stylesheets you don't need. Measured
 impact: **1.9 MB → 8.7 KB bandwidth (−99.5%) and −87% load time** by blocking
@@ -132,7 +132,7 @@ images/CSS/fonts/media.
 
 **What we do.** `scrapeWithPatchright`/`capturePage` (`scrape-patchright.ts`)
 never route/abort requests — every image, font, video and stylesheet downloads
-on L1–L4. **L3/L4 use residential ProxyScrape billed per GB**, so this is a
+on L1–L4. **L3/L4 use the upper-tier ProxyScrape (since retired) billed per GB**, so this is a
 direct line-item cost, plus slower scrapes = more Trigger machine-seconds.
 
 **Risk to respect.** Aggressive blocking (especially CSS/images) can itself be an
@@ -179,7 +179,7 @@ validate per source before flipping globally — not auto-applied here.
 
 **Implemented.** `packages/scrapers/src/lib/nav-strategy.ts` (`navWaitUntil` +
 bounded `settleAfterNav`), wired into `scrapeWithPatchright` (L1–L3) and
-`scrapeWithCamoufox` (L4) via the shared `capturePage`. Default is
+the retired L4 upper-tier capture via the shared `capturePage`. Default is
 `domcontentloaded` + a bounded `networkidle` settle capped at `SCRAPE_SETTLE_MS`
 (2.5 s) — it captures late content when a page settles quickly but can never hang.
 The settle runs only after the 403/503 guards, so a hard block never pays the wait.
@@ -344,7 +344,7 @@ Verified: `@outrival/ai` + `@outrival/scrapers` + `@outrival/workers` typecheck;
 - **F4 — heavy subresources blocked on data scrapes** (`packages/scrapers`). New
   `ScrapeOptions.blockResources` aborts `media`+`font` (conservative subset — CSS/
   images kept) on the Patchright context; enabled for the non-screenshot data
-  sources, cutting residential pay-per-GB bandwidth + load time.
+  sources, cutting upper-tier proxy pay-per-GB bandwidth + load time.
 
 Second pass (2026-06-13), verified: `@outrival/web` + `@outrival/api` +
 `@outrival/ai` + `@outrival/workers` typecheck; 44/44 ai + 260/260 scrapers tests.

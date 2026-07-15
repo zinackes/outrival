@@ -8,8 +8,8 @@ import { num, type AdminVariables } from "./shared";
 // --- Cost estimation constants. TRENDS, not accounting. Documented in
 //     findings.md § Patch-02/20. Tune as real invoices come in. ---
 // Proxy model (collection doctrine): the datacenter egress is a FIXED monthly cost
-// (flat, bandwidth unlimited) and the only paid tier — the pay-per-GB residential
-// tier was retired. Cost is just the flat datacenter line.
+// (flat, bandwidth unlimited) and the only paid tier — the pay-per-GB upper tier
+// (former L3) was retired. Cost is just the flat datacenter line.
 const DATACENTER_FIXED_USD_PER_MONTH = 10;
 // Groq llama-3.x blended per-call estimate (~1.5k in + ~0.5k out, mixed 8b/70b).
 // Legacy fallback only — superseded by the real token-based cost below for any run
@@ -125,7 +125,7 @@ costRouter.get("/cost", async (c) => {
     estimated: true,
     proxy: {
       // Paid (level >= 2) scrapes use the datacenter egress — a flat monthly cost,
-      // no per-scrape variable now that the residential tier is gone.
+      // no per-scrape variable now that the former L3 upper tier is gone.
       scrapes24h: paid24h,
       scrapes30d: paid30d,
       fixedUsdPerMonth: DATACENTER_FIXED_USD_PER_MONTH,

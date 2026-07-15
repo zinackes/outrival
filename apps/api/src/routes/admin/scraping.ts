@@ -66,8 +66,8 @@ scrapingRouter.get("/scraping-health", async (c) => {
   `);
 
   // Cascade-level distribution: what % of scrapes stay free (L0 fetch / L1 render)
-  // vs use the paid datacenter egress (L2). The residential (3) and Camoufox (4)
-  // levels were retired with the collection doctrine.
+  // vs use the paid datacenter egress (L2). The former upper levels (L3
+  // IP-reputation proxy / L4 anti-fingerprint browser) were retired.
   const levelRows = await analyticsQuery<{ level: number; c: string }>(sql`
     SELECT level, count(*) AS c
     FROM scrape_runs

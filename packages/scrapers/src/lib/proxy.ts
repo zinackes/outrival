@@ -6,8 +6,8 @@
 //   "direct"      → no proxy, the server's own IP            (L0/L1, free)
 //   "datacenter"  → ProxyScrape dedicated datacenter pool    (L2, ~fixed/mo egress)
 //
-// The residential tier was removed with the doctrine: rotating residential IPs to
-// defeat IP reputation is circumvention, not routing.
+// The former L3 upper IP-reputation proxy tier was removed with the doctrine:
+// rotating IPs to defeat a site's reputation checks is circumvention, not routing.
 
 export interface ProxyConfig {
   server: string;
@@ -38,15 +38,20 @@ export function getProxyConfig(tier: ProxyTier): ProxyConfig | null {
   return { server: `http://${endpoint}`, username, password };
 }
 
-/** Launch options for a Patchright Chromium bound to the given egress tier. */
-export function patchrightLaunchOptions(tier: ProxyTier) {
+/**
+ * Launch options for the render browser (vanilla Playwright Chromium) bound to the
+ * given egress tier. NO automation-fingerprint spoofing: the collection doctrine
+ * renders in the open — the honest OutrivalBot User-Agent identifies us and
+ * navigator.webdriver stays true. The args here are infra-only (sandbox,
+ * shared-memory, GPU), never a stealth flag such as
+ * `--disable-blink-features=AutomationControlled`.
+ */
+export function browserLaunchOptions(tier: ProxyTier) {
   const proxy = getProxyConfig(tier);
   return {
     headless: true,
     proxy: proxy ?? undefined,
     args: [
-      "--disable-blink-features=AutomationControlled",
-      "--disable-features=IsolateOrigins,site-per-process",
       "--disable-dev-shm-usage", // /dev/shm is tiny under WSL → otherwise swap/crash
       "--disable-gpu",
       "--no-sandbox",

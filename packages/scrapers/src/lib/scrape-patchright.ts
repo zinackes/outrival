@@ -1,9 +1,14 @@
 /// <reference lib="dom" />
 // page.evaluate() callbacks below run in the browser context (document/window).
-// Patchright's types don't pull in the DOM lib the way Playwright's did, so we
-// reference it explicitly — the root tsconfig is ES2022 only.
-import { chromium, type Browser, type Page, type Response } from "patchright"; // drop-in stealth Playwright
-import { patchrightLaunchOptions, type ProxyTier } from "./proxy";
+// The root tsconfig is ES2022 only, so reference the DOM lib explicitly.
+//
+// Collection doctrine: the render browser is VANILLA Playwright Chromium — NOT a
+// stealth fork. We render the JS a site serves us while announcing ourselves (the
+// OutrivalBot User-Agent, navigator.webdriver left true); we do not disguise the
+// crawler as a human. (Module + symbol names keep the historical "patchright"
+// spelling to avoid a churny rename; the import below is the source of truth.)
+import { chromium, type Browser, type Page, type Response } from "playwright";
+import { browserLaunchOptions, type ProxyTier } from "./proxy";
 import { realisticHeaders, OUTRIVAL_UA } from "./fingerprint";
 import { navWaitUntil, settleAfterNav } from "./nav-strategy";
 import { isCloudflareChallenge } from "./block-detection";
@@ -77,7 +82,7 @@ const browserByTier: Partial<Record<ProxyTier, Browser>> = {};
 async function getBrowser(tier: ProxyTier): Promise<Browser> {
   const existing = browserByTier[tier];
   if (existing && existing.isConnected()) return existing;
-  const browser = await chromium.launch(patchrightLaunchOptions(tier));
+  const browser = await chromium.launch(browserLaunchOptions(tier));
   browserByTier[tier] = browser;
   return browser;
 }

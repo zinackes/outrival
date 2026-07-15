@@ -10,8 +10,8 @@
 FROM node:22-bookworm-slim AS build
 ENV PNPM_HOME="/pnpm" PATH="/pnpm:$PATH"
 # The API only uses @outrival/scrapers' discovery/quick-fetch subpaths — never a
-# browser. Block the heavy patchright/camoufox/playwright browser downloads.
-ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 PATCHRIGHT_SKIP_BROWSER_DOWNLOAD=1 PUPPETEER_SKIP_DOWNLOAD=1
+# browser. Block the heavy Playwright browser download.
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 PUPPETEER_SKIP_DOWNLOAD=1
 RUN corepack enable
 WORKDIR /repo
 # Copy package.json too (not just the lockfile) so corepack reads its

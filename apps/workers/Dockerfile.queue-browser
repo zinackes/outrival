@@ -20,34 +20,24 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm install --offline --frozen-lockfile --filter @outrival/workers...
 RUN pnpm --filter=@outrival/workers --prod deploy --legacy /app
 
-# --- runtime: the 3-browser layer, ported COMMAND-FOR-COMMAND from the proven
+# --- runtime: the browser layer, ported COMMAND-FOR-COMMAND from the proven
 #     trigger.config.ts installBrowsers() extension (same pins, same env):
-#       Playwright Chromium → battle-card PDF        (`playwright`)
-#       Patchright Chromium → L1-L3 stealth scrape   (`patchright`)
-#       Camoufox (Firefox)  → L4 last resort         (`camoufox-js`, best-effort)
+#       Playwright Chromium → battle-card PDF AND the L1/L2 scrape render (`playwright`)
 #     node:22 base = installer CLIs need Node; Bun is copied in for the runtime.
 #     Runs as ROOT for parity with the Trigger runners (Chromium sandbox flags
-#     are handled by the scrapers; Camoufox caches under /root/.cache).
+#     are handled by the scrapers).
 FROM node:22-bookworm-slim AS runtime
 ENV NODE_ENV=production WORKER_ROLE=browser
 RUN apt-get update && apt-get install -y --no-install-recommends curl unzip ca-certificates \
     && rm -rf /var/lib/apt/lists/*
-# --ignore-scripts: these packages ship an `only-allow pnpm` preinstall guard
-# that aborts a plain `npm install`; we only need their CLIs, browser downloads
-# are triggered explicitly below. Versions pinned to the workspace's resolved
-# ones so the installed binary matches the revision each launcher expects.
-RUN npm install -g --ignore-scripts playwright@1.60.0 patchright@1.60.2 camoufox-js@0.10.2
+# --ignore-scripts: playwright ships an `only-allow pnpm` preinstall guard that
+# aborts a plain `npm install`; we only need its CLI, the browser download is
+# triggered explicitly below. Version pinned to the workspace's resolved one.
+RUN npm install -g --ignore-scripts playwright@1.60.0
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN mkdir -p /ms-playwright
-# Chromium + its apt deps (battle-card PDF via `playwright`).
+# Chromium + its apt deps — battle-card PDF AND the L1/L2 scrape render (`playwright`).
 RUN playwright install --with-deps chromium
-# Firefox runtime libs for Camoufox (a Firefox fork).
-RUN playwright install-deps firefox
-# Patchright's Chromium into the same store (L1-L3 stealth).
-RUN patchright install chromium
-# Camoufox browser binary (L4). Best-effort: a fetch hiccup must not fail the
-# whole build — L1-L3 already cover the bulk of blocks.
-RUN camoufox-js fetch || echo 'camoufox fetch failed — L4 unavailable until fixed'
 # Browsers are baked into the image; never re-download or re-validate at runtime.
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 PLAYWRIGHT_SKIP_BROWSER_VALIDATION=1
 

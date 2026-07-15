@@ -20,8 +20,7 @@ const enableSentrySourceMaps = Boolean(
 // the deploy image. The built-in playwright() extension installs only Playwright
 // Chromium AND currently fails on a `chromium-headless-shell` grep bug, so we
 // drive all installs ourselves into a shared, fixed browsers path:
-//   - Playwright Chromium → battle-card PDF (`playwright`)
-//   - Patchright Chromium → L1/L2 render scrape (`patchright`)
+//   - Playwright Chromium → battle-card PDF AND the L1/L2 scrape render (`playwright`)
 // Versions pinned to the workspace's resolved ones so the installed binary
 // matches the revision each launcher expects at runtime.
 const BROWSERS_PATH = "/ms-playwright";
@@ -39,12 +38,10 @@ function installBrowsers(): BuildExtension {
             // --ignore-scripts: these packages ship an `only-allow pnpm`
             // preinstall guard that aborts a plain `npm install`; we just need
             // their bins, the browser downloads are triggered explicitly below.
-            "RUN npm install -g --ignore-scripts playwright@1.60.0 patchright@1.60.2",
+            "RUN npm install -g --ignore-scripts playwright@1.60.0",
             `RUN mkdir -p ${BROWSERS_PATH}`,
-            // Chromium + its apt deps (battle-card PDF via `playwright`).
+            // Chromium + its apt deps — battle-card PDF AND the L1/L2 scrape render.
             `RUN PLAYWRIGHT_BROWSERS_PATH=${BROWSERS_PATH} playwright install --with-deps chromium`,
-            // Patchright's Chromium into the same store (L1/L2 render).
-            `RUN PLAYWRIGHT_BROWSERS_PATH=${BROWSERS_PATH} patchright install chromium`,
           ],
         },
         deploy: {
@@ -94,13 +91,8 @@ export default defineConfig({
       "crawlee",
       "playwright",
       "playwright-core",
-      // Cascade render browser must not be bundled (like playwright above).
-      // patchright-core lazy-requires chromium-bidi; bun:sqlite is likewise
-      // unresolvable at bundle time — keep both external.
-      "patchright",
-      "patchright-core",
+      // playwright-core lazy-requires chromium-bidi, unresolvable at bundle time.
       "chromium-bidi",
-      "bun:sqlite",
       "jsdom",
       "pino",
       "pino-pretty",

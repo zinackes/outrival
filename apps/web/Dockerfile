@@ -6,9 +6,9 @@
 
 FROM node:22-bookworm-slim AS base
 ENV PNPM_HOME="/pnpm" PATH="/pnpm:$PATH" NEXT_TELEMETRY_DISABLED=1
-# The web build never launches a browser; stop the workspace's playwright /
-# patchright / camoufox postinstall from downloading ~400MB of browser binaries.
-ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 PATCHRIGHT_SKIP_BROWSER_DOWNLOAD=1 PUPPETEER_SKIP_DOWNLOAD=1
+# The web build never launches a browser; stop the workspace's Playwright
+# postinstall from downloading ~400MB of browser binaries.
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 PUPPETEER_SKIP_DOWNLOAD=1
 RUN corepack enable
 WORKDIR /repo
 

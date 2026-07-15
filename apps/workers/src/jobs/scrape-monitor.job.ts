@@ -635,6 +635,16 @@ export const scrapeMonitorJob = task({
           competitorName: competitor.name,
           ambiguousName:
             (competitor.metadata as { ambiguousName?: boolean } | null)?.ambiguousName,
+          // App Store reviews — the storefronts to iterate (monitor.config.countries);
+          // the scraper defaults to the app URL's country when unset. Ignored elsewhere.
+          countries:
+            monitor.config &&
+            typeof monitor.config === "object" &&
+            Array.isArray((monitor.config as { countries?: unknown }).countries)
+              ? ((monitor.config as { countries?: unknown[] }).countries ?? []).filter(
+                  (c): c is string => typeof c === "string",
+                )
+              : undefined,
         });
       }
     } catch (err) {

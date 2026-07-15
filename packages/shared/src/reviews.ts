@@ -79,6 +79,12 @@ export function appStoreReviewsRssUrl(ref: AppStoreRef, page = 1): string {
 }
 
 export interface AppStoreReview {
+  /**
+   * Apple's stable per-review id (`entry.id.label`, verified present 2026-07-15).
+   * The dedup key across paginated pages and configured storefronts, and the sort
+   * key for the deterministic snapshot.
+   */
+  id: string;
   rating: number;
   title: string;
   content: string;
@@ -89,12 +95,14 @@ export interface AppStoreReview {
 /**
  * Normalized App Store snapshot stored as the snapshot content. Deliberately
  * carries no timestamp so the content hash stays stable across scrapes when the
- * reviews are unchanged (drives scrape-monitor's no-change short-circuit).
+ * reviews are unchanged (drives scrape-monitor's no-change short-circuit). Reviews
+ * are deduped by id and sorted, so the generic diff maps +/- lines to added/removed
+ * reviews. `countries` is the (sorted) set of storefronts the scrape iterated.
  */
 export interface AppStoreSnapshot {
   source: "appstore";
   appId: string;
-  country: string;
+  countries: string[];
   reviews: AppStoreReview[];
 }
 

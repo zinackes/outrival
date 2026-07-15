@@ -134,3 +134,51 @@ export function parseAppStoreSnapshot(json: string): AppStoreSummary | null {
   const text = reviews.map((r) => `[${r.rating}/5] ${r.title}\n${r.content}`).join("\n\n");
   return { averageScore, reviewCount: reviews.length, text };
 }
+
+// ─── Trustpilot public surface (Reviews v2, 2026-07-15) ──────────────────────
+// Trustpilot's ToS explicitly forbids scraping (they target "AI agents or screen
+// scrapers") and there is NO keyless public endpoint (verified 2026-07-15: the
+// official API and the review page both return 403 without a key). So Trustpilot is
+// SURFACE ONLY, via the OFFICIAL API (TRUSTPILOT_API_KEY): trust score, review count
+// and star distribution — never third-party verbatims. The useful "score of X slips
+// 4.4 → 4.2" signal survives; the verbatims (which they license as a product) do not.
+
+/**
+ * Normalized Trustpilot snapshot stored as the snapshot content. Like the App Store
+ * snapshot it deliberately carries no timestamp, so the content hash is stable when
+ * the score/count/distribution are unchanged and the generic diff surfaces a real
+ * movement. `distribution` is sorted by star (deterministic).
+ */
+export interface TrustpilotSnapshot {
+  source: "trustpilot";
+  domain: string;
+  businessUnitId: string;
+  /** TrustScore 1.0–5.0, or null when the API did not return one. */
+  trustScore: number | null;
+  /** Rounded 1–5 stars, or null. */
+  stars: number | null;
+  reviewCount: number;
+  distribution: { stars: number; count: number }[];
+}
+
+export interface TrustpilotSummary {
+  trustScore: number | null;
+  reviewCount: number;
+}
+
+/** Parse a stored Trustpilot snapshot into the score/count point for review_scores. */
+export function parseTrustpilotSnapshot(json: string): TrustpilotSummary | null {
+  let data: unknown;
+  try {
+    data = JSON.parse(json);
+  } catch {
+    return null;
+  }
+  if (!data || typeof data !== "object") return null;
+  const snap = data as Partial<TrustpilotSnapshot>;
+  if (snap.source !== "trustpilot") return null;
+  const trustScore =
+    typeof snap.trustScore === "number" && snap.trustScore > 0 ? snap.trustScore : null;
+  const reviewCount = typeof snap.reviewCount === "number" ? snap.reviewCount : 0;
+  return { trustScore, reviewCount };
+}

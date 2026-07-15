@@ -854,6 +854,15 @@ PROXYSCRAPE_DC_USERNAME=
 PROXYSCRAPE_DC_PASSWORD=
 SCRAPING_LEVEL_1_ENABLED=true  # kill-switch L2 (datacenter egress)
 SCRAPE_MIN_DOMAIN_GAP_MS=2000  # rate-limit par domaine (défaut 2s, ou Crawl-delay robots.txt)
+# Reviews v2 (2026-07-15) — Trustpilot public SURFACE (score + review count + star
+# distribution) via l'API OFFICIELLE Trustpilot. Pas de surface anonyme (find + page
+# publique = 403 sans clé, vérifié curl), donc la source trustpilot_public exige cette
+# clé ; sans elle la route enable refuse trustpilot_public (dégradation propre) et le
+# scraper throw — JAMAIS de fallback scraping (leurs CGU visent les screen scrapers).
+# À poser sur api ET workers. Les agrégateurs scrapés (g2/capterra/gartner/trustradius/
+# playstore) sont retirés (collection doctrine) ; g2 pourra revenir via un compte
+# vendeur connecté du client (différé). Verbatims tiers jamais scrapés.
+TRUSTPILOT_API_KEY=
 EXA_API_KEY=
 DETECT_COOLDOWN_SEC=90       # cooldown anti-double-clic (s) entre 2 runs Exa on-demand pour
                             # la MÊME cible (org+product) — PAS un cap d'usage (borné par le quota

@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { validateReviewUrl, isReviewSource } from "./reviews";
+import { validateReviewUrl, isReviewSource, parseTrustpilotSnapshot } from "./reviews";
 
 // ─── Reviews v2 (2026-07-15) ─────────────────────────────────────────────────
 // Scraped aggregators (g2/capterra/trustpilot/trustradius/gartner/playstore) are
@@ -21,6 +21,22 @@ test("appstore: brand mismatch and missing app id are rejected (SSRF / wrong-sit
 
 test("non-https review URLs are rejected", () => {
   expect(validateReviewUrl("appstore_reviews", "http://apps.apple.com/us/app/slack/id618783545").ok).toBe(false);
+});
+
+test("parseTrustpilotSnapshot extracts the score + count, rejects the wrong shape", () => {
+  const snap = JSON.stringify({
+    source: "trustpilot",
+    domain: "acme.com",
+    businessUnitId: "bu-1",
+    trustScore: 4.2,
+    stars: 4,
+    reviewCount: 512,
+    distribution: [],
+  });
+  expect(parseTrustpilotSnapshot(snap)).toEqual({ trustScore: 4.2, reviewCount: 512 });
+  // an App Store snapshot (different source) is not a Trustpilot snapshot
+  expect(parseTrustpilotSnapshot(JSON.stringify({ source: "appstore", reviews: [] }))).toBeNull();
+  expect(parseTrustpilotSnapshot("not json")).toBeNull();
 });
 
 test("isReviewSource: App Store is a review source, retired aggregators are not", () => {

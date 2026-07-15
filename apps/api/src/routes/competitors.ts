@@ -543,7 +543,7 @@ const AddMonitorSchema = z.object({
 // Slow-changing review sources default to weekly; everything else daily.
 // Clamped to a plan-allowed frequency below (weekly is allowed on every plan).
 function defaultFrequencyFor(source: SourceType): MonitorFrequency {
-  return source.endsWith("_reviews") ? "weekly" : "daily";
+  return source.endsWith("_reviews") || source === "trustpilot_public" ? "weekly" : "daily";
 }
 
 competitorsRouter.post("/:id/monitors", async (c) => {
@@ -583,6 +583,12 @@ competitorsRouter.post("/:id/monitors", async (c) => {
   const plan = await getOrgPlan(orgId);
   if (!isSourceAllowed(plan, sourceType)) {
     return c.json({ error: "plan_locked_source", source: sourceType, plan }, 403);
+  }
+  // Trustpilot public surface (Reviews v2) reads the official API — with no key it can
+  // only fail. Refuse to create a doomed monitor (clean degradation, not a retry
+  // loop). The domain is derived from the competitor URL, so no review URL is needed.
+  if (sourceType === "trustpilot_public" && !process.env.TRUSTPILOT_API_KEY) {
+    return c.json({ error: "trustpilot_key_missing", source: sourceType }, 400);
   }
 
   // Review sources scrape a specific review page (not the homepage), so they

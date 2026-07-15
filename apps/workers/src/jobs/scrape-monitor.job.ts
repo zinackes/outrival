@@ -1661,6 +1661,19 @@ export const scrapeMonitorJob = task({
         competitorId: competitor.id,
         source: reviewSource,
       });
+    } else if (
+      // Trustpilot public surface (Reviews v2): a structured score/count snapshot, not
+      // a verbatim review page. It routes to extract-reviews under source "trustpilot",
+      // which writes a review_scores point WITHOUT any AI verbatim extraction.
+      extractionAllowed &&
+      competitor.type !== "self" &&
+      monitor.sourceType === "trustpilot_public"
+    ) {
+      await tasks.trigger("extract-reviews", {
+        snapshotId: newSnapshot.id,
+        competitorId: competitor.id,
+        source: "trustpilot",
+      });
     }
 
     // L2 archive backfill — fire once, on the first-ever capture of a backfillable

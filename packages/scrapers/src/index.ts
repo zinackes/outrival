@@ -4,6 +4,7 @@ import * as blog from "./blog/blog.scraper";
 import * as changelog from "./changelog/changelog.scraper";
 import * as jobs from "./jobs/jobs.scraper";
 import * as appstoreReviews from "./appstore-reviews/appstore-reviews.scraper";
+import * as trustpilot from "./trustpilot/trustpilot.scraper";
 import * as github from "./github/github.scraper";
 import * as status from "./status/status.scraper";
 import * as sitemap from "./sitemap/sitemap.scraper";
@@ -29,11 +30,13 @@ const scrapers: Partial<Record<SourceType, ScraperFn>> = {
   changelog: changelog.scrape,
   jobs: jobs.scrape,
   // Reviews v2 (2026-07-15): App Store (public RSS) is the only directly-read review
-  // source. The scraped aggregators (g2/capterra/trustpilot/trustradius/gartner/
-  // playstore) are retired — no scraper binding, so getScraper throws if a dormant,
-  // marked_unscrapable monitor were ever scheduled (it never is). trustpilot_public
-  // (official-API surface) is bound by the step-3 wiring.
+  // source with verbatims. The scraped aggregators (g2/capterra/trustpilot_reviews/
+  // trustradius/gartner/playstore) are retired — no scraper binding, so getScraper
+  // throws if a dormant, marked_unscrapable monitor were ever scheduled (it never is).
   appstore_reviews: appstoreReviews.scrape,
+  // Trustpilot public surface — official API (TRUSTPILOT_API_KEY): score + count +
+  // distribution only, never scraped verbatims. Throws cleanly if the key is unset.
+  trustpilot_public: trustpilot.scrape,
   github_repo: github.scrape,
   status: status.scrape,
   sitemap: sitemap.scrape,

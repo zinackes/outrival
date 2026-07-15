@@ -81,7 +81,7 @@ export const WHATS_NEW: WhatsNewEntry[] = [
       },
       {
         kind: "new",
-        text: "More review sources — Trustpilot, TrustRadius, Gartner and the Play Store join G2 and Capterra, plus Reddit mention tracking.",
+        text: "Review coverage, rebuilt on open sources — App Store reviews via Apple's public feed and Trustpilot score tracking via their official API, with complaint-theme and score-drop signals.",
       },
       {
         kind: "new",

@@ -65,7 +65,7 @@ export function JsonLd() {
       applicationCategory: "BusinessApplication",
       operatingSystem: "Web",
       description:
-        "Automated competitive intelligence platform. Continuously monitors pricing, product, hiring, and G2 reviews across your competitors. AI filters out 99% of noise and produces a weekly strategic brief.",
+        "Automated competitive intelligence platform. Continuously monitors pricing, product, hiring, and review sentiment across your competitors. AI filters out 99% of noise and produces a weekly strategic brief.",
       offers: [
         {
           "@type": "Offer",

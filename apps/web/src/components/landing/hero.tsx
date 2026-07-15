@@ -16,7 +16,7 @@ const SIGNALS: Record<
 > = {
   13: { competitor: "Lumen", category: "hiring", detail: "opens 3 AI Research roles — first EU team" },
   15: { competitor: "Vantage", category: "pricing", detail: "Business plan $16 → $14/seat" },
-  24: { competitor: "Cobalt", category: "reviews", detail: "G2 score slips 4.4 → 4.2" },
+  24: { competitor: "Cobalt", category: "reviews", detail: "Trustpilot score slips 4.4 → 4.2" },
   28: { competitor: "Meridian", category: "product", detail: "launches usage-based billing" },
   31: { competitor: "Beacon", category: "funding", detail: "raises Series E, $200M" },
 };

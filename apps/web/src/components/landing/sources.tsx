@@ -35,12 +35,11 @@ const FAMILIES: {
   },
   {
     title: "The users",
-    stat: "3 platforms",
-    desc: "What their actual customers say — score, volume, sentiment, sub-ratings.",
+    stat: "2 platforms",
+    desc: "What their actual customers say — score, volume, and how it's trending.",
     sources: [
-      { icon: Star, label: "G2 · Capterra", meta: "sentiment" },
-      { icon: Star, label: "Trustpilot · Gartner", meta: "verified" },
-      { icon: Star, label: "App Store · Play", meta: "rating" },
+      { icon: Star, label: "App Store", meta: "reviews" },
+      { icon: Star, label: "Trustpilot", meta: "score · trend" },
     ],
   },
   {

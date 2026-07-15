@@ -62,7 +62,7 @@ export const metadata: Metadata = {
     template: "%s — Outrival",
   },
   description:
-    "Outrival monitors your competitors continuously — pricing, product, hiring, G2 reviews. AI filters out 99% of noise and ships a strategic digest every Monday. Hosted in the EU.",
+    "Outrival monitors your competitors continuously — pricing, product, hiring, review sentiment. AI filters out 99% of noise and ships a strategic digest every Monday. Hosted in the EU.",
   keywords: [
     "competitive intelligence",
     "competitor monitoring",

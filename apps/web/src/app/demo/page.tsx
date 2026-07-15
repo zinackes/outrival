@@ -19,7 +19,7 @@ const DEMO_POINTS = [
 ];
 
 const BUSINESS_POINTS = [
-  "50 competitors and every review source",
+  "50 competitors and the highest usage limits",
   "Priority monitoring cadence",
   "DPA, security review, and procurement support",
 ];

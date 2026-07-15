@@ -417,9 +417,10 @@ function ReviewSourceToolbar({
   );
 }
 
-// Edit the active review monitor: change the page URL / frequency in place, or
-// switch the review source entirely (G2 ↔ Capterra ↔ App Store). Switching
-// replaces the monitor — handled by onSwitch (delete old + enable new).
+// Edit the active review monitor: change the page URL / frequency in place. Since
+// Reviews v2 retired the scraped aggregators, App Store is the only URL-based review
+// source, so the source picker below is effectively a single option; onSwitch is kept
+// for when another URL-based review source returns (e.g. a connected G2 vendor account).
 function ReviewSourceDialog({
   open,
   monitor,

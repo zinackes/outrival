@@ -34,7 +34,7 @@ export const OUTRIVAL = {
     { name: "Free", price: "€0", note: "2 competitors, weekly digest" },
     { name: "Starter", price: "€29", note: "5 competitors, daily scans, Slack" },
     { name: "Pro", price: "€79", note: "15 competitors, real-time alerts, battle cards" },
-    { name: "Business", price: "€199", note: "50 competitors, every review source" },
+    { name: "Business", price: "€199", note: "50 competitors, highest limits" },
   ],
 } as const;
 

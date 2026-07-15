@@ -967,9 +967,11 @@ export function CompetitorDetailView({ id }: { id: string }) {
     }
   }
 
-  // Switch a competitor's review source (e.g. G2 → Capterra). Enable the new
-  // source FIRST so a plan/URL rejection surfaces the paywall without losing the
-  // existing monitor; only then delete the old one and kick off the first scrape.
+  // Switch a competitor's URL-based review source. Reviews v2 leaves App Store as the
+  // only such source, so this is effectively inert today, but kept for when another
+  // URL-based review source returns. Enable the new source FIRST so a plan/URL
+  // rejection surfaces the paywall without losing the existing monitor; only then
+  // delete the old one and kick off the first scrape.
   async function switchReviewSource(oldMonitorId: string, source: SourceType, url: string) {
     try {
       const { monitor } = await api.addCompetitorMonitor(id, source, { url });

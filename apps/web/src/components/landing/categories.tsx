@@ -26,7 +26,7 @@ const CATEGORIES: { name: string; sev: Sev; desc: string }[] = [
   {
     name: "Reviews",
     sev: "medium",
-    desc: "Drop in G2 / Capterra score, negative sentiment at scale.",
+    desc: "Drop in Trustpilot / App Store score, negative sentiment at scale.",
   },
   {
     name: "Content",

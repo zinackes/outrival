@@ -82,6 +82,21 @@ export const extractReviewsJob = task({
         complaint_themes: null,
         recorded_at: new Date(),
       });
+      // Evaluate the aggregate-score inflection off the pipeline (Reviews v2): a
+      // sustained Trustpilot score drop is a "reviews" signal even without verbatims.
+      // Fire-and-forget, keyed on the snapshot so a retry doesn't re-trigger.
+      try {
+        await tasks.trigger(
+          "detect-review-theme-shifts",
+          { competitorId: input.competitorId },
+          { idempotencyKey: `rts-${input.competitorId}-${input.snapshotId}` },
+        );
+      } catch (err) {
+        logger.warn("detect-review-theme-shifts trigger failed (non-fatal)", {
+          error: String(err),
+        });
+      }
+
       logger.log("Completed extract-reviews (trustpilot surface)", {
         competitorId: input.competitorId,
         score: summary.trustScore,

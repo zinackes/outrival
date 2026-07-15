@@ -12,7 +12,13 @@ import {
 } from "@outrival/db";
 import { computeHash, uploadToR2 } from "@outrival/shared";
 import { getReviewScoreSeries } from "../lib/analytics";
-import { detectThemeShifts, planThemeShiftEmissions } from "../lib/review-theme-shift";
+import {
+  detectThemeShifts,
+  planThemeShiftEmissions,
+  detectScoreDrop,
+  planScoreDropEmission,
+  type ThemeShiftEmission,
+} from "../lib/review-theme-shift";
 
 // Triggered off extract-reviews (per competitor) when a fresh scored review row with
 // clustered complaint themes lands — NOT a cron (the Trigger schedule cap is full).
@@ -47,36 +53,54 @@ export const detectReviewThemeShiftsJob = task({
     if (series.length < 2) return { skipped: true, reason: "insufficient_series" };
 
     const now = new Date();
+
+    // 1. Complaint-theme inflection (verbatim sources — App Store carries themes).
     const rising = detectThemeShifts(series, { now, windowDays, lookbackDays });
-    if (rising.length === 0) {
-      logger.log("No rising complaint themes", { competitorId });
-      return { rising: 0, emitted: 0 };
+    let emission: ThemeShiftEmission | null = null;
+    let shouldFlagBattleCards = false;
+
+    if (rising.length > 0) {
+      // Bonus causality: a recent pricing/product move by the same competitor the
+      // complaint rise may be reacting to. Appended to the grounded diffText.
+      const windowStart = new Date(now.getTime() - windowDays * 86_400_000);
+      const causalityRows = await db.query.signals.findMany({
+        where: and(
+          eq(signals.competitorId, competitorId),
+          gte(signals.createdAt, windowStart),
+          inArray(signals.category, ["pricing", "product"]),
+        ),
+        orderBy: desc(signals.createdAt),
+        limit: 3,
+        columns: { category: true, insight: true, createdAt: true },
+      });
+      const plan = planThemeShiftEmissions(rising, {
+        competitorName: competitor.name,
+        windowDays,
+        causalitySignals: causalityRows.map((s) => ({
+          category: s.category,
+          insight: s.insight,
+          createdAt: s.createdAt,
+        })),
+      });
+      emission = plan.emission;
+      shouldFlagBattleCards = plan.shouldFlagBattleCards;
     }
 
-    // Bonus causality: a recent pricing/product move by the same competitor the
-    // complaint rise may be reacting to. Appended to the grounded diffText.
-    const windowStart = new Date(now.getTime() - windowDays * 86_400_000);
-    const causalityRows = await db.query.signals.findMany({
-      where: and(
-        eq(signals.competitorId, competitorId),
-        gte(signals.createdAt, windowStart),
-        inArray(signals.category, ["pricing", "product"]),
-      ),
-      orderBy: desc(signals.createdAt),
-      limit: 3,
-      columns: { category: true, insight: true, createdAt: true },
-    });
+    // 2. Fallback: aggregate-score inflection (Reviews v2). Surface sources like
+    // Trustpilot public carry a score but no verbatims/themes, so nothing rises above
+    // — a sustained score drop IS the reviews signal, quantified, no verbatims needed.
+    if (!emission) {
+      const dropThreshold = Number(process.env.REVIEW_SCORE_DROP_THRESHOLD ?? 0.2);
+      const drop = detectScoreDrop(series, { now, windowDays, lookbackDays, dropThreshold });
+      const plan = planScoreDropEmission(drop, { competitorName: competitor.name, windowDays });
+      emission = plan.emission;
+      shouldFlagBattleCards = plan.shouldFlagBattleCards;
+    }
 
-    const { emission, shouldFlagBattleCards } = planThemeShiftEmissions(rising, {
-      competitorName: competitor.name,
-      windowDays,
-      causalitySignals: causalityRows.map((s) => ({
-        category: s.category,
-        insight: s.insight,
-        createdAt: s.createdAt,
-      })),
-    });
-    if (!emission) return { rising: rising.length, emitted: 0 };
+    if (!emission) {
+      logger.log("No rising complaint theme and no score drop", { competitorId });
+      return { rising: rising.length, emitted: 0 };
+    }
 
     // Ensure the per-competitor anchor monitor (isActive=false → never scheduled,
     // never scraped; exists only to satisfy the changes → snapshot FK chain).

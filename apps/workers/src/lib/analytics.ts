@@ -551,6 +551,10 @@ export async function getLatestReviewScore(competitorId: string): Promise<Review
 
 export interface ReviewThemeSeriesRow {
   source: string;
+  /** Star/trust score (1–5), notNull on every review_scores row. */
+  score: number;
+  /** Total review count at capture time, notNull. */
+  reviewCount: number;
   themes: Array<{ theme: string; prevalence: string }>;
   recordedAt: Date;
 }
@@ -567,12 +571,16 @@ export async function getReviewScoreSeries(
   const since = new Date(Date.now() - sinceDays * 86_400_000);
   const rows = await bestEffortRead<{
     source: string;
+    score: number;
+    review_count: number;
     complaint_themes: unknown;
     recorded_at: Date;
   }>("getReviewScoreSeries", () =>
     db
       .select({
         source: reviewScores.source,
+        score: reviewScores.score,
+        review_count: reviewScores.reviewCount,
         complaint_themes: reviewScores.complaintThemes,
         recorded_at: reviewScores.recordedAt,
       })
@@ -582,6 +590,8 @@ export async function getReviewScoreSeries(
   );
   return (rows ?? []).map((r) => ({
     source: r.source,
+    score: r.score,
+    reviewCount: r.review_count,
     themes: Array.isArray(r.complaint_themes)
       ? (r.complaint_themes as Array<{ theme: string; prevalence: string }>)
       : [],

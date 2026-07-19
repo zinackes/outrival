@@ -1,0 +1,79 @@
+name: Deploy workers
+
+# Runs AFTER CI succeeds on main rather than directly on push. `main` is the source
+# of production (a Coolify push deploys web + api from it), so a commit whose
+# typecheck or tests failed must never reach the worker box — and re-running the
+# same checks inside this workflow would just pay for them twice.
+#
+# The cost of workflow_run is that the checkout defaults to the default branch's
+# tip, not the commit CI actually validated; every ref below is pinned to
+# head_sha so the image, its tag, and the deploy all describe the same commit.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  # Manual re-deploy without a new commit (rolling a worker after a VPS reboot,
+  # or re-pushing an image the registry lost).
+  workflow_dispatch:
+
+concurrency:
+  # A second merge while the first is still deploying would race two `compose up`
+  # runs on the same box. Queue them instead of cancelling: an interrupted deploy
+  # leaves the VPS on a half-pulled image.
+  group: deploy-workers
+  cancel-in-progress: false
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    permissions:
+      contents: read
+      packages: write
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.worker
+          push: true
+          # `latest` is what the VPS compose pulls; the sha tag is what makes a
+          # rollback possible (pin the previous sha in compose and `up -d`).
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/outrival-worker:latest
+            ghcr.io/${{ github.repository_owner }}/outrival-worker:${{ env.SHA }}
+          # The image is ~2.3 GB and most of it is an unchanged dependency layer.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: deploy
+          key: ${{ secrets.VPS_SSH_KEY }}
+          # Both worker services run the SAME image and differ only by WORKER_ROLE,
+          # so they are pulled once and restarted together. Named explicitly rather
+          # than bare `docker compose up -d`, which would also cycle Postgres.
+          script: |
+            set -euo pipefail
+            cd /opt/outrival
+            docker compose pull worker-light worker-browser
+            docker compose up -d worker-light worker-browser
+            docker image prune -f
+            docker compose ps

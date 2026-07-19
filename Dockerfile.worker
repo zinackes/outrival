@@ -1,0 +1,55 @@
+# pg-boss worker image, built by CI and pulled by the VPS — never built on the box
+# itself (8 GB of RAM shared with Postgres and Chromium: a build there is an OOM
+# waiting for a busy day).
+#
+# One image serves BOTH roles. `WORKER_ROLE=light` and `WORKER_ROLE=browser` differ
+# only by which queues they consume (apps/workers/src/queue/handlers.ts), so a single
+# build, tag and pull is simpler than two, and the light worker simply never launches
+# the Chromium it carries.
+
+# ---- deps: resolve the pnpm workspace -------------------------------------
+# Node, not bun: the lockfile is pnpm's, and pnpm is a Node CLI — bun's `node`
+# shim is a run wrapper, not a Node runtime, and the image ships no corepack.
+FROM node:22-bookworm-slim AS deps
+WORKDIR /app
+ENV PNPM_HOME=/pnpm
+ENV PATH=$PNPM_HOME:$PATH
+RUN corepack enable && corepack prepare pnpm@10.11.0 --activate
+
+# Browsers are fetched in the runtime stage instead: this stage is discarded, and
+# downloading ~150 MB of Chromium twice would be paid on every build.
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+
+COPY . .
+# Only the workers' own dependency closure, production entries only. The default
+# install pulls the whole workspace — Next.js, React and the web UI toolchain the
+# worker never loads — for about 1.5 GB of image the box has better uses for.
+RUN pnpm install --frozen-lockfile --prod --filter @outrival/workers...
+
+# ---- runtime --------------------------------------------------------------
+FROM oven/bun:1-slim
+WORKDIR /app
+
+ENV NODE_ENV=production
+# Fixed, root-owned browser path — outside the bun user's home, so the runtime user
+# never needs write access to it.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
+COPY --from=deps /app /app
+
+# Chromium + the system libraries it needs (WORKER_ROLE=browser). Must run before
+# USER: --with-deps is an apt-get install.
+#
+# Invoked through the workspace's OWN binary, never `bunx playwright`: bunx resolves
+# from npm, which installs whatever build the latest playwright wants (1228) while
+# the lockfile pins playwright-core 1.60.0, which looks for build 1223. The image
+# builds and boots either way — it is the first real scrape that dies, with
+# "Executable doesn't exist at /ms-playwright/chromium_headless_shell-1223".
+RUN apps/workers/node_modules/.bin/playwright install --with-deps chromium \
+ && rm -rf /var/lib/apt/lists/*
+
+USER bun
+
+# The entry reads WORKER_ROLE itself and refuses to boot without it, so the role is
+# a compose/env concern rather than a second image.
+CMD ["bun", "run", "apps/workers/src/queue/worker.ts"]

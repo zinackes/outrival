@@ -28,6 +28,7 @@ import {
   ClassificationSchema,
   AI_CONFIG,
   toMyProductContext,
+  toMaterialityScores,
 } from "@outrival/ai";
 import type { StructuredChange } from "@outrival/scrapers/homepage-diff";
 import {
@@ -39,7 +40,6 @@ import {
 import { insertSignalFeed, loggedAi } from "../lib/analytics";
 import { captureWorkerEvent, shutdownPostHog } from "../lib/posthog";
 import { getResend, ALERT_FROM } from "../lib/resend";
-import { groqQueue } from "../lib/queues";
 import { decideDispatch } from "../lib/notification-dispatcher";
 import { applySeverityGuard } from "../lib/severity-guard";
 
@@ -348,6 +348,12 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
         // the per-org threshold layer and the weekly recalc can reason about it.
         // Null for non-homepage / lexical changes → layer 1 simply skips them.
         relevanceScore: change.relevanceScore,
+        // The materiality sub-scores the severity above was computed from. Null on
+        // the synthesized paths (pricing transitions, Hacker News, wellknown,
+        // comparison pages) — those force a severity without scoring materiality.
+        materiality: input.classification?.materiality
+          ? toMaterialityScores(input.classification.materiality)
+          : null,
       })
       .onConflictDoNothing({ target: signals.changeId })
       .returning();

@@ -1310,6 +1310,11 @@ export type AdminScrapingHealth = {
   levels: { l0: number; l1: number; l2: number };
   // Patch-30 staged-extraction resolution distribution over the window (counts).
   extraction: { structured: number; cache: number; heal: number; aiFallback: number };
+  // Semantic gate (materiality taxonomy): changes recorded but never classified
+  // because the gate judged them pure rewrites. Suppression is invisible to the
+  // customer by construction, so this ratio is the only way to notice the gate has
+  // drifted from "drops copy passes" to "eats real signal".
+  cosmeticGate: { suppressed: number; totalChanges: number };
   deadMonitors: AdminDeadMonitor[];
   // Collection doctrine: top competitors that refused us over 7 days, and why.
   refusedDomains: AdminRefusedDomain[];

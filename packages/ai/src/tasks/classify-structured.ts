@@ -2,8 +2,8 @@ import { z } from "zod";
 import { AI_CONFIG } from "../config";
 import { groundedAiCall } from "../grounding/grounded-call";
 import { attachQuality, type WithQuality } from "../grounding/types";
-import { ClassificationSchema, type Classification } from "./classify";
-import { SEVERITY_RUBRIC, CATEGORY_RULES } from "./classify-shared";
+import { ModelClassificationSchema, resolveClassification, type Classification } from "./classify";
+import { MATERIALITY_RUBRIC, CATEGORY_RULES } from "./classify-shared";
 
 const CACHE_TTL_SECONDS = Number(process.env.AI_CACHE_TTL_CLASSIFY_DAYS ?? 7) * 86400;
 
@@ -34,13 +34,15 @@ export interface StructuredClassification {
 // The model returns the overall classification plus a significance per change,
 // in the SAME ORDER as the input list (zipped back by index below). Exported so
 // the model-eval harness (src/eval) can validate candidate models against it.
-export const StructuredOutputSchema = ClassificationSchema.extend({
+export const StructuredOutputSchema = ModelClassificationSchema.extend({
   assessments: z.array(z.enum(["major", "minor", "trivial"])),
 });
 
 export interface ClassifyStructuredContext {
   sourceType?: string;
   competitorName?: string;
+  /** Other surfaces for the corroboration axis — see ClassifyContext.recentSignals. */
+  recentSignals?: string[];
 }
 
 function renderForPrompt(changes: StructuredChangeInput[]): string {
@@ -68,7 +70,16 @@ export function buildStructuredClassifyPrompt(
   const where = [context.competitorName, context.sourceType === "homepage" ? "homepage" : context.sourceType]
     .filter(Boolean)
     .join(" — ");
-  const contextBlock = where ? `\nThese changes were detected on: ${where}.\n` : "";
+  const recent = (context.recentSignals ?? []).slice(0, 5).map((s) => `- ${s.slice(0, 160)}`);
+  const recentBlock = recent.length
+    ? `\n<recent-signals>
+These moves were already recorded for this competitor recently — use them, and
+only them, as the other independent surfaces for the corroboration score:
+${recent.join("\n")}
+</recent-signals>\n`
+    : "";
+  const contextBlock =
+    (where ? `\nThese changes were detected on: ${where}.\n` : "") + recentBlock;
 
   return `You are a competitive-intelligence analyst. Below is a list of STRUCTURAL changes detected on a competitor's homepage, already parsed by section and field (not a raw diff).
 ${contextBlock}
@@ -93,14 +104,12 @@ ${renderForPrompt(changes).slice(0, 8000)}
 - customer_logo_added / customer_logo_removed is "minor" alone (a marquee customer won or churned).
 - testimonial_added / testimonial_removed alone is "minor".
 - visual_redesign alone is "minor" (a redesign with no copy move is noteworthy, not a positioning change).
-- Set the OVERALL severity from the rubric below, anchored on the most
-  significant change: a single "major" change is usually "medium" or "high";
-  reserve "critical" strictly for the rubric's critical test. Only minor/trivial
-  changes ⇒ "low".
-- is_significant is true if any change is "major".
+- Score the OVERALL materiality with the rubric below, anchored on the MOST
+  significant change in the list — never on the number of changes. If every change
+  is minor or trivial, decision_impact is 0.
 </rules>
 
-${SEVERITY_RUBRIC}
+${MATERIALITY_RUBRIC}
 
 ${CATEGORY_RULES}
 
@@ -121,9 +130,8 @@ SAME ORDER as the numbered list above.
 
 <format>
 {
-  "category": "pricing|product|hiring|reviews|content|funding",
-  "severity": "low|medium|high|critical",
-  "is_significant": true|false,
+  "category": "pricing|ma|funding|security_compliance|product|partnerships|leadership|hiring|reviews|ads|content",
+  "materiality": { "decision_impact": 0-3, "urgency": 0-3, "corroboration": 0-3 },
   "reason": "one short sentence",
   "humanChangeBefore": "Project management for teams" or null,
   "humanChangeAfter": "AI-powered project intelligence" or null,
@@ -150,6 +158,7 @@ export async function classifyStructuredChanges(
   const cacheKey = [
     context.sourceType ?? "",
     context.competitorName ?? "",
+    (context.recentSignals ?? []).slice(0, 5).join("|"),
     JSON.stringify(changes),
   ].join("\n");
 
@@ -159,11 +168,17 @@ export async function classifyStructuredChanges(
     prompt,
     sourceText: renderForPrompt(changes).slice(0, 8000),
     schema: StructuredOutputSchema,
-    cache: { input: cacheKey, namespace: "classify-structured", ttlSeconds: CACHE_TTL_SECONDS },
+    // Namespace bumped alongside the lexical classifier — see classify.ts.
+    cache: {
+      input: cacheKey,
+      namespace: "classify-structured-materiality",
+      ttlSeconds: CACHE_TTL_SECONDS,
+    },
   });
   if (!result) return null;
 
-  const { assessments, ...classification } = result.output;
+  const { assessments, ...model } = result.output;
+  const classification = resolveClassification(model, renderForPrompt(changes));
   // Zip the model's significances back onto the input changes by index. If the
   // model returned a mismatched length, default to "minor" — never crash.
   const perChangeAssessment: PerChangeAssessment[] = changes.map((c, i) => ({

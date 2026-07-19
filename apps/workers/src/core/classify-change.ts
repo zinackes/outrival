@@ -1,7 +1,7 @@
 import { logger } from "../lib/job-logger";
 import { NonRetriable as AbortTaskRunError, generateSignal } from "@outrival/queue";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
+import { and, desc, eq, gte, isNotNull } from "drizzle-orm";
 import {
   db,
   changes,
@@ -14,12 +14,14 @@ import { retriableClassifyError } from "../lib/classify-errors";
 import {
   classifyChange,
   classifyStructuredChanges,
+  isSubstantiveChange,
+  gateAppliesTo,
+  suppressesAsCosmetic,
   AI_CONFIG,
   type Classification,
   type PerChangeAssessment,
 } from "@outrival/ai";
 import type { StructuredChange } from "@outrival/scrapers/homepage-diff";
-import { groqQueue } from "../lib/queues";
 import { loggedAi } from "../lib/analytics";
 import { determineSelfChangeSeverity, notifySelfChange } from "../lib/self-change";
 
@@ -65,14 +67,72 @@ export async function runClassifyChange(payload: z.input<typeof InputSchema>) {
       ? await db.query.competitors.findFirst({ where: eq(competitors.id, monitor.competitorId) })
       : null;
 
+    const attribution = { orgId: competitor?.orgId, competitorId: competitor?.id };
+    const isStructured = change.diffType === "structured" && !!change.structuredDiff;
+
+    // Semantic gate — ahead of classification, on the generic content path only.
+    // The structured homepage path is exempt: relevance scoring + volatile-line
+    // learning already drop cosmetic churn before a change row is even written.
+    // List-shaped sources (sitemap, subdomains, youtube…) are exempt in
+    // gateAppliesTo — a new entry there is new by construction. The specialized
+    // branches (Hacker News, wellknown, comparison pages, pricing transitions)
+    // never reach this job at all: they trigger generate-signal directly.
+    if (!isStructured && gateAppliesTo(monitor?.sourceType)) {
+      const gate = await loggedAi(
+        "cosmetic_gate",
+        AI_CONFIG.classificationFast,
+        () =>
+          isSubstantiveChange(diffText, {
+            sourceType: monitor?.sourceType,
+            competitorName: competitor?.name,
+          }),
+        attribution,
+      );
+      // FAIL OPEN: a null (parse miss / provider down) must never suppress a real
+      // change — only an explicit "substantive: false" does. The predicate is pure
+      // and unit-tested (cosmetic-gate.test.ts).
+      if (suppressesAsCosmetic(gate, { isStructured, sourceType: monitor?.sourceType })) {
+        await db
+          .update(changes)
+          .set({ summary: gate.reason, suppressionReason: "cosmetic" })
+          .where(eq(changes.id, input.changeId));
+        logger.log("Change suppressed as cosmetic — no classification, no signal", {
+          changeId: input.changeId,
+          sourceType: monitor?.sourceType,
+          reason: gate.reason,
+        });
+        return { suppressed: "cosmetic" as const, reason: gate.reason };
+      }
+    }
+
+    // Recent moves for this competitor = the other independent surfaces the
+    // corroboration axis scores against. Without them the model cannot tell a
+    // pricing change it already saw on the pricing page this week from a fresh
+    // one, so it would score every change as a single uncorroborated surface.
+    const recentSignals = competitor
+      ? (
+          await db.query.signals.findMany({
+            where: and(
+              eq(signals.competitorId, competitor.id),
+              gte(signals.createdAt, new Date(Date.now() - 14 * 86400_000)),
+              isNotNull(signals.insight),
+            ),
+            orderBy: [desc(signals.createdAt)],
+            limit: 5,
+            columns: { category: true, severity: true, humanChangeAfter: true, insight: true },
+          })
+        ).map(
+          (s) => `[${s.severity}] ${s.category} — ${s.humanChangeAfter ?? s.insight}`,
+        )
+      : [];
+
     // Ops quality logging (patch-02): success / parse_failed (null) / error
     // (thrown). The classify task itself stays DB-free — the job logs it.
     // Homepage structured changes (patch-16) take the structured classifier (70b,
-    // per-change significance); everything else keeps the lexical 8b classifier.
+    // per-change significance); everything else keeps the lexical fast classifier.
     let classification: Classification | null;
     let perChange: PerChangeAssessment[] | null = null;
-    const attribution = { orgId: competitor?.orgId, competitorId: competitor?.id };
-    if (change.diffType === "structured" && change.structuredDiff) {
+    if (isStructured) {
       const structured = change.structuredDiff as StructuredChange[];
       const res = await loggedAi(
         "classify_structured",
@@ -81,6 +141,7 @@ export async function runClassifyChange(payload: z.input<typeof InputSchema>) {
           classifyStructuredChanges(structured, {
             sourceType: monitor?.sourceType,
             competitorName: competitor?.name,
+            recentSignals,
           }),
         attribution,
       );
@@ -97,6 +158,7 @@ export async function runClassifyChange(payload: z.input<typeof InputSchema>) {
             // Custom-page monitors carry a page-type hint in config — grounds the
             // classifier ("this page is the competitor's {hint} page").
             hint: (monitor?.config as { hint?: string } | null)?.hint,
+            recentSignals,
           }),
         attribution,
       );
@@ -121,6 +183,9 @@ export async function runClassifyChange(payload: z.input<typeof InputSchema>) {
       category: classification.category,
       severity: classification.severity,
       is_significant: classification.is_significant,
+      // The sub-scores the severity was derived from — without them a surprising
+      // band in the logs is unexplainable after the fact.
+      materiality: classification.materiality,
     });
 
     // Persist the one-line reason on the change so the UI's change cards
@@ -188,5 +253,3 @@ export async function runClassifyChange(payload: z.input<typeof InputSchema>) {
 
     return { significant: true, classification };
 }
-
-export type { Classification };

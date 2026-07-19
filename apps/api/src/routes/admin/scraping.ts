@@ -170,7 +170,31 @@ scrapingRouter.get("/scraping-health", async (c) => {
     aiFallback: resCount("ai_fallback"),
   };
 
-  return c.json({ window: "24h", sources, levels, extraction, deadMonitors, refusedDomains });
+  // Semantic gate (materiality wave): changes recorded but never classified because
+  // the gate judged them pure rewrites. Suppressing a change is invisible by
+  // construction — the customer sees nothing — so the ratio is the only way to
+  // notice the gate has gone from "drops copy passes" to "eats real signal".
+  const [gateRow] = await db
+    .select({
+      suppressed: sql<number>`count(*) filter (where ${changes.suppressionReason} = 'cosmetic')::int`,
+      total: sql<number>`count(*)::int`,
+    })
+    .from(changes)
+    .where(gte(changes.detectedAt, new Date(Date.now() - 24 * 60 * 60 * 1000)));
+  const cosmeticGate = {
+    suppressed: gateRow?.suppressed ?? 0,
+    totalChanges: gateRow?.total ?? 0,
+  };
+
+  return c.json({
+    window: "24h",
+    sources,
+    levels,
+    extraction,
+    cosmeticGate,
+    deadMonitors,
+    refusedDomains,
+  });
 });
 
 // patch-23 — scraping edge cases overview: failure categories (latest diagnosis

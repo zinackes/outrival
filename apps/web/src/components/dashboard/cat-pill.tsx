@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
-/* The six signal categories carry a wayfinding hue (a system separate from
+/* The twelve signal categories carry a wayfinding hue (a system separate from
    severity and from brand cyan). Any other value — e.g. a competitor's
    freeform industry category — falls back to the neutral chip. Class strings
    are spelled out in full so Tailwind keeps them in the build. */
@@ -14,6 +14,22 @@ const CAT_CLASS: Record<string, string> = {
   funding: "bg-cat-funding/12 text-cat-funding border-cat-funding/30 hover:bg-cat-funding/12",
   api_developer:
     "bg-cat-api-developer/12 text-cat-api-developer border-cat-api-developer/30 hover:bg-cat-api-developer/12",
+  ma: "bg-cat-ma/12 text-cat-ma border-cat-ma/30 hover:bg-cat-ma/12",
+  security_compliance:
+    "bg-cat-security-compliance/12 text-cat-security-compliance border-cat-security-compliance/30 hover:bg-cat-security-compliance/12",
+  ads: "bg-cat-ads/12 text-cat-ads border-cat-ads/30 hover:bg-cat-ads/12",
+  partnerships:
+    "bg-cat-partnerships/12 text-cat-partnerships border-cat-partnerships/30 hover:bg-cat-partnerships/12",
+  leadership:
+    "bg-cat-leadership/12 text-cat-leadership border-cat-leadership/30 hover:bg-cat-leadership/12",
+};
+
+/* Enum values are snake_case; a chip must not read "SECURITY_COMPLIANCE". Only
+   the values that don't survive uppercasing are listed — the rest render as-is. */
+const CAT_LABEL: Record<string, string> = {
+  ma: "M&A",
+  security_compliance: "Security",
+  api_developer: "Developer",
 };
 
 export function CatPill({
@@ -27,6 +43,7 @@ export function CatPill({
 }) {
   const key = typeof children === "string" ? children.toLowerCase().trim() : "";
   const cat = CAT_CLASS[key];
+  const label = CAT_LABEL[key] ?? children;
 
   return (
     <Badge
@@ -39,7 +56,7 @@ export function CatPill({
         cat,
       )}
     >
-      {children}
+      {label}
     </Badge>
   );
 }

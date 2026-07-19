@@ -12,6 +12,9 @@ export const categoryEnum = pgEnum("category", [
   // Developer / AI-agent surface — set deterministically only (llms.txt appearance).
   // Kept in sync with shared SIGNAL_CATEGORIES + the AI ClassificationSchema enum.
   "api_developer",
+  // Taxonomy wave 2 (materiality) — company-level moves carved out of "content".
+  // Model-chosen, on already-scraped sources (blog/news/changelog).
+  "partnerships", "ma", "leadership", "security_compliance", "ads",
 ]);
 
 export const signals = pgTable("signals", {
@@ -47,6 +50,17 @@ export const signals = pgTable("signals", {
   // persisted here so the per-org threshold (layer 1) and the weekly recalc can
   // reason about it. Null for non-homepage / lexical signals → layer 1 skipped.
   relevanceScore: real("relevance_score"),
+  // Materiality sub-scores (0-3 each) the classifier assigned BEFORE any severity
+  // was chosen: { decisionImpact, urgency, corroboration }. `severity` above is a
+  // deterministic function of these (severityFromMateriality, @outrival/ai) — the
+  // model never picks a band itself. Null for signals whose classification was
+  // synthesized deterministically (Hacker News, wellknown, sitemap comparison
+  // pages, pricing transitions) and for every pre-materiality signal.
+  materiality: jsonb("materiality").$type<{
+    decisionImpact: number;
+    urgency: number;
+    corroboration: number;
+  }>(),
   // The dispatcher's decision for this signal: the channel it routed to, and —
   // when it was held back from an immediate email — why. The signal feed reads
   // filteredReason to show "N less relevant signals hidden". Both null until the

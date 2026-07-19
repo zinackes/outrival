@@ -42,6 +42,37 @@ describe("applySeverityGuard — critical demotion", () => {
     expect(result).toEqual({ severity: "critical", demoted: false, reason: null });
   });
 
+  test("critical + ma + source blog → stays critical (acquisition)", () => {
+    // The "ma" category carries a deterministic critical FLOOR (materiality.ts).
+    // Without its entry in the guard's allowlist that floor would be demoted to
+    // "high" on every acquisition — the floor would never reach a customer.
+    const result = applySeverityGuard({
+      severity: "critical",
+      category: "ma",
+      sourceType: "blog",
+      diffText: "Acme announces it has acquired Beacon Analytics",
+    });
+    expect(result).toEqual({ severity: "critical", demoted: false, reason: null });
+  });
+
+  test("the other wave-2 categories are NOT allowed to page", () => {
+    // Only "ma" joined the allowlist. A model that somehow emitted critical on a
+    // partnership or a leadership change must still be demoted.
+    for (const category of ["partnerships", "leadership", "security_compliance", "ads"]) {
+      const result = applySeverityGuard({
+        severity: "critical",
+        category,
+        sourceType: "news",
+        diffText: "announcement",
+      });
+      expect(result).toEqual({
+        severity: "high",
+        demoted: true,
+        reason: `category_${category}`,
+      });
+    }
+  });
+
   test("critical + product + source jobs → demoted, reason source_jobs", () => {
     const result = applySeverityGuard({
       severity: "critical",

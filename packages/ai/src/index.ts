@@ -28,8 +28,31 @@ export type {
   SelfCheckTrigger,
   WithQuality,
 } from "./grounding/types";
-export { classifyChange, ClassificationSchema } from "./tasks/classify";
+export {
+  classifyChange,
+  ClassificationSchema,
+  ModelClassificationSchema,
+  resolveClassification,
+  toMaterialityScores,
+} from "./tasks/classify";
 export type { Classification } from "./tasks/classify";
+// Materiality → severity: the deterministic table that replaced the model's own
+// severity judgement.
+export {
+  MaterialitySchema,
+  severityFromMateriality,
+  isSignificantFromMateriality,
+  applyCategoryFloor,
+  resolveSeverity,
+} from "./tasks/materiality";
+export type { Materiality, MaterialityScores } from "./tasks/materiality";
+// Semantic gate — drops pure rewrites before they reach the classifier.
+export {
+  isSubstantiveChange,
+  gateAppliesTo,
+  suppressesAsCosmetic,
+} from "./tasks/cosmetic-gate";
+export type { CosmeticGateResult } from "./tasks/cosmetic-gate";
 export { classifyStructuredChanges } from "./tasks/classify-structured";
 export type {
   StructuredChangeInput,

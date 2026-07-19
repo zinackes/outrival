@@ -208,8 +208,16 @@ signals                + relevance_score (patch-17 persisté patch-26), dispatch
                        batched_into_id (→ signal_batches), daily_digest_sent_at — patch-26,
                        + product_ids (jsonb — patch-28, products affectés, taggés
                        déterministe via product_competitors ; feed filtre `@> [id]`)
+                       + materiality (jsonb {decisionImpact, urgency, corroboration},
+                       0-3 chacun — taxonomie v2 : les sous-scores dont `severity`
+                       est la fonction déterministe. Null sur les classifications
+                       SYNTHÉTISÉES (HN, wellknown, comparison_page, pricing
+                       transition) et sur tout signal antérieur)
 changes                + relevance_score (real, nullable — max des changes significatifs,
                        structured homepage only) — patch-26
+                       + suppression_reason (text, nullable — taxonomie v2 :
+                       'cosmetic' = le gate sémantique a jugé le fait inchangé, le
+                       change est gardé pour l'audit mais n'a jamais été classifié)
 forced_rescan_log      id, user_id, org_id, monitor_id, task_id, triggered_at,
                        result_captured_at, had_new_signal — patch-27, audit/analytics des
                        re-scans forcés user. Limite/jour/tier comptée ici (par user) ;
@@ -299,10 +307,23 @@ source_type       homepage | pricing | blog | changelog | jobs |
 frequency         realtime | daily | weekly
 signal_severity   low | medium | high | critical
 signal_category   pricing | product | hiring | reviews | content | funding | api_developer
+                  | partnerships | ma | leadership | security_compliance | ads
                   — api_developer (sitemap v2 / wellknown) : surface developer/AI-agent.
                     Émis UNIQUEMENT de façon déterministe (llms.txt d'un concurrent) ;
                     absent du prompt classify → le modèle ne le choisit jamais (zéro
                     perturbation de l'éval catégorie). Couleur --cat-api-developer (web)
+                  — taxonomie v2 (matérialité) : partnerships / ma / leadership /
+                    security_compliance / ads sont CHOISIES PAR LE MODÈLE (dans le
+                    prompt classify, contrairement à api_developer). Elles découpent
+                    le fourre-tout « content » en mouvements company-level, détectés
+                    sur les sources DÉJÀ scrapées (blog / news / changelog) — aucune
+                    source nouvelle. Chacune porte un PLANCHER de sévérité
+                    déterministe (applyCategoryFloor, packages/ai/src/tasks/
+                    materiality.ts) : ma→critical, security_compliance→high,
+                    partnerships→high si intégration produit sinon medium,
+                    leadership→high si C-level sinon medium, ads→medium. `ma` est la
+                    seule ajoutée à CRITICAL_CATEGORY_ALLOWLIST (severity-guard) —
+                    sans ça son plancher critical serait démoté systématiquement
 notification_type signal | new_competitor | self_change | onboarding_complete |
                   structural_change | silent_monitor | analysis_ready | standing_query
                   (silent_monitor = patch-27, source sans signal depuis 60j+ ;
@@ -568,13 +589,36 @@ carte (état live uniquement).
        loggée dans backfill_runs (bucket outcome + detail) — plus de skip invisible
 
 [par change] classify-change (pool gpt-oss)
+  └─ GATE SÉMANTIQUE (taxonomie v2) — AVANT toute classification, sur le chemin
+       lexical GÉNÉRIQUE seulement : 1 appel FAST structuré (isSubstantiveChange,
+       task ai_runs `cosmetic_gate`) → « le fait a-t-il changé de substance, ou
+       est-ce une reformulation / réorganisation ? ». Cosmétique → aucun classify,
+       aucun signal, `changes.suppression_reason='cosmetic'` (audit + compteur
+       /admin/scraping `cosmeticGate`). FAIL OPEN : null (parse miss / provider
+       down / breaker) ne supprime JAMAIS. Exempts : le chemin structuré (relevance
+       + volatile-lines filtrent déjà en amont), les sources en forme de LISTE
+       (sitemap/subdomains/youtube/news/hackernews/wellknown/comparison_page —
+       une entrée neuve est neuve par construction), et toutes les branches
+       spécialisées (HN, sitemap, wellknown, pricing transition) qui appellent
+       generate-signal en direct sans passer par ce job
   └─ lexical → classifyChange (fast) ; structuré (patch-16) → classifyStructuredChanges
-       (smart, caché) = overallSeverity + category + perChangeAssessment (significance/change)
-  └─ rubrique sévérité + règles catégorie PARTAGÉES (classify-shared.ts, une seule
-       source pour les deux classifieurs) ; toute modification passe par l'éval
-       étiquetée `pnpm --filter @outrival/ai eval:severity` (golden set prod +
-       criticals synthétiques, gates : bande ≥80%, catégorie ≥85%, 0 sur-alerte
-       critical, bande critical atteignable) — audit 2026-07-10
+       (smart, caché) = materiality + category + perChangeAssessment (significance/change)
+  └─ rubrique MATÉRIALITÉ + règles catégorie PARTAGÉES (classify-shared.ts, une
+       seule source pour les deux classifieurs). Le modèle N'ASSIGNE PLUS DE
+       SÉVÉRITÉ : il score 3 axes 0-3 — decision_impact (ça change une décision
+       d'achat / une action ?), urgency (interrompre vs digest du lundi),
+       corroboration (combien de surfaces indépendantes — les 5 derniers signals du
+       concurrent sont injectés en contexte). severity = f(sous-scores) via une
+       TABLE DÉTERMINISTE TS (materiality.ts) : critical exige d=3 ET u=3 ;
+       corroboration=0 démote d'une bande, ≥2 promeut d'une bande mais JAMAIS
+       jusqu'à critical (pas de 2e route vers le paging). is_significant = d≥1.
+       Les sous-scores sont persistés sur signals.materiality (jsonb) pour l'audit.
+       Toute modif passe par l'éval étiquetée
+       `pnpm --filter @outrival/ai eval:severity` (golden set prod + criticals
+       synthétiques, gates : bande ≥80%, catégorie ≥85%, 0 sur-alerte critical,
+       bande critical atteignable) — audit 2026-07-10 ; le rapport affiche
+       désormais [d/u/c] par cas pour distinguer un mauvais scoring modèle d'une
+       table mal calibrée
   └─ category + severity + isSignificant ; perChange réécrit changes.structured_diff
   └─ si significant → trigger generate-signal
 
@@ -1028,6 +1072,38 @@ BUILD_TIME=                  # build timestamp → GET /api/version. In Coolify:
 
 ## Décisions architecturales clés
 
+- **La sévérité quitte le modèle (taxonomie v2 — matérialité)** — le classifieur
+  choisissait librement une bande à partir d'une rubrique en prose, ce qui faisait
+  de la sortie la plus lourde de conséquences du pipeline (un `critical` bypasse
+  toute la modération et envoie un email en minutes) un jugement qui dérive avec le
+  provider et la formulation du diff. Le modèle score maintenant **3 axes
+  observables 0-3** (decision_impact / urgency / corroboration) et ne nomme jamais
+  de bande ; `severity` est une **fonction TS déterministe** de ces scores
+  (`packages/ai/src/tasks/materiality.ts`), donc reproductible, testée à ses bords
+  et relisible en diff. Trois garde-fous : la seule route vers `critical` reste
+  d=3 ∧ u=3 (la corroboration promeut au plus jusqu'à `high`) ; `is_significant`
+  dérive du même chiffre (d≥1) au lieu d'être un 2e jugement qui pouvait
+  contredire la sévérité ; les sous-scores sont persistés (`signals.materiality`)
+  pour que la bande soit explicable après coup. Le modèle garde la **catégorie**
+  (un appel sémantique où il est bon). UN SEUL classifieur : la rubrique remplace
+  l'ancienne dans `classify-shared.ts`, partagée lexical + structuré. Cache
+  invalidé par bump de namespace (`withAiCache` ne re-valide pas une entrée
+  stockée, les anciennes n'ont pas de sous-scores). 12 catégories : 5 ajouts
+  company-level (partnerships / ma / leadership / security_compliance / ads) sur
+  les sources déjà scrapées, chacune avec un plancher de sévérité déterministe.
+- **Gate sémantique avant classification (taxonomie v2)** — `evaluateSignificance`
+  ne sait éliminer que les diffs SANS contenu (hashes, timestamps, nonces) ; il ne
+  peut rien contre un diff plein de vraie prose qui ne dit rien de neuf — la passe
+  de copy d'une équipe marketing, que le classifieur appelle fidèlement un
+  « repositionnement ». Un appel FAST structuré s'insère donc dans
+  `classify-change` (le seul goulot du chemin générique — les branches
+  spécialisées appellent `generate-signal` en direct et sont exemptées gratuitement)
+  et tranche : substance changée, ou reformulation ? Cosmétique → le change est
+  gardé avec `suppression_reason='cosmetic'` (jamais supprimé : une suppression
+  invisible est indétectable, le compteur `/admin/scraping` la rend auditable),
+  aucun signal. **Fail open** par construction (prompt biaisé « substantive » +
+  null ⇒ on classifie) : rater une reformulation coûte un signal bruyant, en
+  supprimer une vraie la perd en silence.
 - **Ask Outrival — intelligence conversationnelle (feature ad-hoc)** — NL → réponse
   anglaise groundée sur la donnée Postgres **déjà** trackée (pas de RAG, pas d'ingestion).
   **Agent à OUTILS** org-scopés (`lib/ask/tools.ts`, jamais de SQL LLM) en **boucle 2

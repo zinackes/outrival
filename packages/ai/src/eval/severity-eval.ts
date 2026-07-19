@@ -62,8 +62,15 @@ for (const c of SEVERITY_GOLDEN) {
   if (c.synthetic && res.severity === "critical") criticalReached++;
 
   const mark = sevOk && catOk ? "PASS" : "MISS";
+  // The severity is now DERIVED from the sub-scores (materiality.ts), so a band
+  // miss is only actionable with the scores that produced it: d/u/c tells you
+  // whether the model mis-read the impact or the mapping table is mis-tuned.
+  const m = res.materiality;
+  const scores = m
+    ? ` [d${m.decision_impact} u${m.urgency} c${m.corroboration}]`
+    : " [no materiality]";
   lines.push(
-    `${mark} ${c.id}: got ${res.severity}/${res.category} — expected [${c.expectSeverity}]/[${c.expectCategory}]${
+    `${mark} ${c.id}: got ${res.severity}/${res.category}${scores} — expected [${c.expectSeverity}]/[${c.expectCategory}]${
       sevOk ? "" : " ← severity"
     }${catOk ? "" : " ← category"}`,
   );

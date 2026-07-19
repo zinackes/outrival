@@ -3,6 +3,7 @@ import { competitors, signals, reviews, techStackEntries } from "@outrival/db";
 import type { AskToolSpec } from "@outrival/ai";
 import {
   resolveCurrentPricing,
+  SIGNAL_CATEGORIES,
   type PricingTier,
   type CompetitorOverrides,
 } from "@outrival/shared";
@@ -21,7 +22,7 @@ export interface AskTool extends AskToolSpec {
   run(orgId: string, args: Record<string, unknown>): Promise<unknown>;
 }
 
-const SIG_CATEGORIES = ["pricing", "product", "hiring", "reviews", "content", "funding"] as const;
+const SIG_CATEGORIES = SIGNAL_CATEGORIES;
 const SIG_SEVERITIES = ["low", "medium", "high", "critical"] as const;
 
 function asString(v: unknown): string | undefined {
@@ -98,7 +99,7 @@ const getSignals: AskTool = {
   name: "getSignals",
   description: "Recent strategic signals — detected competitor changes with AI insight.",
   args:
-    "competitorId (optional), window (days, default 30), category (optional: pricing|product|hiring|reviews|content|funding), severity (optional: low|medium|high|critical)",
+    `competitorId (optional), window (days, default 30), category (optional: ${SIGNAL_CATEGORIES.join("|")}), severity (optional: low|medium|high|critical)`,
   async run(orgId, args) {
     const competitorId = asString(args.competitorId);
     if (competitorId && !(await ownedCompetitor(orgId, competitorId))) return { signals: [] };

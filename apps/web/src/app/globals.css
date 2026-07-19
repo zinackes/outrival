@@ -98,6 +98,14 @@
   --cat-hiring: oklch(0.5 0.15 319);
   --cat-funding: oklch(0.52 0.15 355);
   --cat-api-developer: oklch(0.5 0.13 145);
+  /* Taxonomy wave 2 — continues the same ramp through the arc left free between
+     funding (355) and api-developer (145), at the same L/C so the twelve chips
+     read as one system. */
+  --cat-ma: oklch(0.51 0.15 25);
+  --cat-security-compliance: oklch(0.5 0.14 52);
+  --cat-ads: oklch(0.5 0.13 80);
+  --cat-partnerships: oklch(0.5 0.13 108);
+  --cat-leadership: oklch(0.5 0.13 130);
 
   /* Data-viz line palette — same six hues, tuned a touch brighter/more saturated
      so thin strokes read on the card surface. Theme-split so one series color
@@ -210,6 +218,11 @@
   --cat-hiring: oklch(0.74 0.12 319);
   --cat-funding: oklch(0.74 0.12 355);
   --cat-api-developer: oklch(0.73 0.11 145);
+  --cat-ma: oklch(0.74 0.12 25);
+  --cat-security-compliance: oklch(0.75 0.11 52);
+  --cat-ads: oklch(0.76 0.1 80);
+  --cat-partnerships: oklch(0.75 0.11 108);
+  --cat-leadership: oklch(0.74 0.11 130);
 
   /* Data-viz line palette — brightened so thin strokes read on the dark surface. */
   --chart-1: oklch(0.82 0.12 175);
@@ -313,6 +326,11 @@
   --color-cat-content: var(--cat-content);
   --color-cat-funding: var(--cat-funding);
   --color-cat-api-developer: var(--cat-api-developer);
+  --color-cat-ma: var(--cat-ma);
+  --color-cat-security-compliance: var(--cat-security-compliance);
+  --color-cat-ads: var(--cat-ads);
+  --color-cat-partnerships: var(--cat-partnerships);
+  --color-cat-leadership: var(--cat-leadership);
 
   /* Data-viz → stroke="var(--chart-N)" on recharts series. */
   --color-chart-1: var(--chart-1);

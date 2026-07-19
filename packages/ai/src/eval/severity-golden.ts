@@ -13,7 +13,12 @@ import type { StructuredChangeInput } from "../tasks/classify-structured";
 // ("documentation pages" → low, "a promotion" → medium) are enforced strictly.
 
 export type Severity = "low" | "medium" | "high" | "critical";
-export type Category = "pricing" | "product" | "hiring" | "reviews" | "content" | "funding";
+// Mirrors SIGNAL_CATEGORIES minus api_developer (deterministic-only, never model-
+// chosen). The wave-2 categories are labellable here so a case can accept e.g.
+// ["ma", "funding"] as its defensible set.
+export type Category =
+  | "pricing" | "product" | "hiring" | "reviews" | "content" | "funding"
+  | "partnerships" | "ma" | "leadership" | "security_compliance" | "ads";
 
 interface BaseCase {
   id: string;

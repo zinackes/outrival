@@ -187,6 +187,45 @@ export function ScrapingView({ data }: { data: AdminScrapingHealth | null }) {
       </Section>
 
       <Section
+        title="Cosmetic gate"
+        note={data?.window ?? "24h"}
+        info="Changes recorded but never classified: the semantic gate judged the underlying fact unchanged (a rewording or reordering). Suppression is invisible to the customer, so this share is the only way to catch the gate drifting from dropping copy passes to eating real signal."
+      >
+        {(() => {
+          const g = data?.cosmeticGate;
+          if (!g || g.totalChanges === 0) {
+            return <Empty>No changes in the window.</Empty>;
+          }
+          return (
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+              <div className="flex flex-col gap-1">
+                <span className="text-xs text-muted-foreground">Suppressed</span>
+                <span style={{ ...mono, color: "var(--accent)" }}>
+                  {pctFmt(g.suppressed / g.totalChanges)}
+                </span>
+                <span className="text-xs text-muted-foreground" style={mono}>
+                  {g.suppressed}
+                </span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs text-muted-foreground">Classified</span>
+                <span style={mono}>
+                  {pctFmt((g.totalChanges - g.suppressed) / g.totalChanges)}
+                </span>
+                <span className="text-xs text-muted-foreground" style={mono}>
+                  {g.totalChanges - g.suppressed}
+                </span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs text-muted-foreground">Changes</span>
+                <span style={mono}>{g.totalChanges}</span>
+              </div>
+            </div>
+          );
+        })()}
+      </Section>
+
+      <Section
         title="Dead monitors"
         info="Monitors whose last few scrape runs were all failures — likely permanently broken. Force a scrape to retry one now."
       >

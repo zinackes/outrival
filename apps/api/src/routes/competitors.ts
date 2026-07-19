@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { and, asc, desc, eq, gte, isNull, isNotNull, ne, inArray, notInArray, sql } from "drizzle-orm";
 import { captureServerEvent } from "../lib/posthog";
-import { tasks } from "@trigger.dev/sdk/v3";
+import { detectPlatform, scrapeMonitor, refreshCompetitorSummary } from "@outrival/queue";
 import {
   competitors,
   monitors,
@@ -21,6 +21,7 @@ import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
+import { enqueueJob } from "../lib/queue";
 import { associateCompetitorWithPrimaryProduct, productCompetitorIds } from "../lib/products";
 import { analyticsQuery } from "../lib/analytics-safe";
 import { translateToEnglish } from "../lib/translate";
@@ -441,7 +442,7 @@ competitorsRouter.post("/", async (c) => {
   // patch-31 — detect the platform profile (fire-and-forget) so the first scrapes
   // can route via structured connectors. Never blocks the create.
   try {
-    await tasks.trigger("detect-platform", { competitorId: competitor.id });
+    await enqueueJob(detectPlatform, { competitorId: competitor.id });
   } catch (e) {
     console.error("Failed to trigger platform detection", {
       competitorId: competitor.id,
@@ -517,7 +518,7 @@ competitorsRouter.post("/", async (c) => {
   // immediately. Best-effort: a trigger miss just falls back to the cron.
   for (const m of createdMonitors) {
     try {
-      await tasks.trigger("scrape-monitor", { monitorId: m.id, force: true });
+      await enqueueJob(scrapeMonitor, { monitorId: m.id, force: true });
     } catch (e) {
       console.error("Failed to trigger initial scrape", { monitorId: m.id, error: String(e) });
     }
@@ -1371,7 +1372,7 @@ competitorsRouter.post("/:id/pricing/redetect", async (c) => {
     where: and(eq(monitors.competitorId, id), eq(monitors.sourceType, "pricing")),
   });
   if (pricingMonitor) {
-    await tasks.trigger("scrape-monitor", { monitorId: pricingMonitor.id, force: true });
+    await enqueueJob(scrapeMonitor, { monitorId: pricingMonitor.id, force: true });
   }
   return c.json({ ok: true, rescraped: Boolean(pricingMonitor) });
 });
@@ -1500,14 +1501,14 @@ competitorsRouter.post("/:id/refresh-summary", aiIntensiveRateLimit, async (c) =
   const competitor = await assertOwnedCompetitor(id, orgId);
   if (!competitor) return c.json({ error: "Not found" }, 404);
 
-  const handle = await tasks.trigger("refresh-competitor-summary", {
+  const jobId = await enqueueJob(refreshCompetitorSummary, {
     competitorId: id,
     // User-initiated refresh → drop a durable "summary ready" notification when it
     // lands, so leaving the page doesn't lose the result. Automated refreshes
     // (post-scrape, onboarding, battle-card) omit the flag and stay silent.
     notifyOnComplete: true,
   });
-  return c.json({ runId: handle.id });
+  return c.json({ runId: jobId });
 });
 
 // On-demand English translation of the homepage fact sheet (headline, subheadline,

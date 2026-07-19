@@ -1,12 +1,13 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { tasks } from "@trigger.dev/sdk/v3";
+import { scrapeMonitor } from "@outrival/queue";
 import { monitorAlternatives, monitors, competitors } from "@outrival/db";
 import { validateMonitorUrl, computeNextRun } from "@outrival/shared";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
+import { enqueueJob } from "../lib/queue";
 
 type Variables = { user: { id: string } };
 
@@ -88,8 +89,7 @@ monitorAlternativesRouter.post("/:id/accept", async (c) => {
         nextRunAt: computeNextRun(monitor.frequency, monitor.lastChangedAt, monitor.createdAt),
       })
       .where(eq(monitors.id, monitor.id));
-    const handle = await tasks.trigger("scrape-monitor", { monitorId: monitor.id, force: true });
-    runId = handle.id;
+    runId = await enqueueJob(scrapeMonitor, { monitorId: monitor.id, force: true });
     await db
       .update(monitors)
       .set({ scrapeStartedAt: new Date(), lastFailedAt: null, lastError: null })
@@ -144,8 +144,8 @@ monitorAlternativesRouter.post("/:monitorId/resume", async (c) => {
       ),
     );
 
-  const handle = await tasks.trigger("scrape-monitor", { monitorId: monitor.id, force: true });
-  return c.json({ ok: true, runId: handle.id });
+  const jobId = await enqueueJob(scrapeMonitor, { monitorId: monitor.id, force: true });
+  return c.json({ ok: true, runId: jobId });
 });
 
 // Manually point a paused source at the right URL. Unlike accepting a
@@ -197,8 +197,8 @@ monitorAlternativesRouter.post("/:monitorId/set-url", async (c) => {
       ),
     );
 
-  const handle = await tasks.trigger("scrape-monitor", { monitorId: monitor.id, force: true });
-  return c.json({ ok: true, runId: handle.id });
+  const jobId = await enqueueJob(scrapeMonitor, { monitorId: monitor.id, force: true });
+  return c.json({ ok: true, runId: jobId });
 });
 
 // Dismiss the paused panel without acting on it: reject every proposed

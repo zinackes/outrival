@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
+import { resolve } from "node:path";
 import type { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import { competitors, monitors, forcedRescanLog } from "@outrival/db";
@@ -23,9 +24,11 @@ afterAll(() => closeDb());
 beforeAll(async () => {
   ({ db: testDb, close: closeDb } = await makeTestDb());
   await installAppMocks(testDb);
-  // Keep Trigger.dev out of the test: a fixed handle, never a network call.
-  mock.module("@trigger.dev/sdk/v3", () => ({
-    tasks: { trigger: async () => ({ id: "run_test" }) },
+  // Keep the job queue out of the test: a fixed job id, never a queue connection.
+  mock.module(resolve(import.meta.dir, "../src/lib/queue"), () => ({
+    enqueueJob: async () => "run_test",
+    enqueueByName: async () => "run_test",
+    ensureQueue: async () => {},
   }));
   const { monitorsRouter } = await import("../src/routes/monitors");
   app = mountApp("/api/monitors", monitorsRouter);

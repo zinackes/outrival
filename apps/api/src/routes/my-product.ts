@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { tasks } from "@trigger.dev/sdk/v3";
+import { scrapeMonitor } from "@outrival/queue";
 import {
   competitors,
   monitors,
@@ -21,6 +21,7 @@ import {
   deriveAnalysisStatus,
 } from "@outrival/shared";
 import { db } from "../lib/db";
+import { enqueueJob } from "../lib/queue";
 import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
@@ -404,7 +405,7 @@ myProductRouter.post("/site", async (c) => {
     : seeded;
   for (const m of toScrape) {
     try {
-      await tasks.trigger("scrape-monitor", { monitorId: m.id, force: true });
+      await enqueueJob(scrapeMonitor, { monitorId: m.id, force: true });
     } catch (e) {
       console.error("Failed to trigger self scrape", { monitorId: m.id, error: String(e) });
     }
@@ -476,7 +477,7 @@ myProductRouter.post("/repo", async (c) => {
   }
 
   try {
-    await tasks.trigger("scrape-monitor", { monitorId, force: true });
+    await enqueueJob(scrapeMonitor, { monitorId, force: true });
   } catch (e) {
     console.error("Failed to trigger self repo scrape", { monitorId, error: String(e) });
   }
@@ -569,7 +570,7 @@ myProductRouter.post("/rescan", aiIntensiveRateLimit, async (c) => {
       usageToday++;
     }
     try {
-      const handle = await tasks.trigger("scrape-monitor", {
+      const jobId = await enqueueJob(scrapeMonitor, {
         monitorId: m.id,
         force: true,
         ...(logId
@@ -577,7 +578,7 @@ myProductRouter.post("/rescan", aiIntensiveRateLimit, async (c) => {
           : {}),
       });
       if (logId) {
-        await db.update(forcedRescanLog).set({ taskId: handle.id }).where(eq(forcedRescanLog.id, logId));
+        await db.update(forcedRescanLog).set({ taskId: jobId }).where(eq(forcedRescanLog.id, logId));
       }
       scrapedIds.push(m.id);
     } catch (e) {

@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { and, asc, count, eq, isNull, ne } from "drizzle-orm";
-import { tasks } from "@trigger.dev/sdk/v3";
+import { scrapeMonitor } from "@outrival/queue";
 import { products, productCompetitors, competitors, monitors } from "@outrival/db";
 import { productLimit, minPlanForProductCount, validatePublicUrl } from "@outrival/shared";
 import { ProductProfileSchema } from "@outrival/ai";
@@ -10,6 +10,7 @@ import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
+import { enqueueJob } from "../lib/queue";
 import { getOrgPlan } from "../lib/plan";
 import {
   deriveProfileFromUrl,
@@ -300,7 +301,7 @@ productsRouter.post("/", async (c) => {
     const seeded = await db.insert(monitors).values(monitorRows).returning();
     for (const m of seeded) {
       try {
-        await tasks.trigger("scrape-monitor", { monitorId: m.id, force: true });
+        await enqueueJob(scrapeMonitor, { monitorId: m.id, force: true });
       } catch (e) {
         console.error("Failed to trigger product scrape", { monitorId: m.id, error: String(e) });
       }

@@ -1,10 +1,11 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { tasks } from "@trigger.dev/sdk/v3";
+import { scrapeAiVisibility } from "@outrival/queue";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { db, competitors, aiVisibilityPrompts, aiVisibilityTeasers } from "@outrival/db";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
+import { enqueueJob } from "../lib/queue";
 import { getOrgPlan, isFeatureAllowed } from "../lib/plan";
 import { primaryProductId, productSelfCompetitorId, productCompetitorIds } from "../lib/products";
 import { analyticsQueryResult, sql } from "../lib/analytics-safe";
@@ -358,6 +359,6 @@ aiVisibilityRouter.post("/run", async (c) => {
   // notifyOnComplete → the worker drops a durable "run complete" notification when it
   // lands (~a minute later, off the page); the weekly scheduler omits it so automated
   // runs stay silent.
-  const handle = await tasks.trigger("scrape-ai-visibility", { orgId, notifyOnComplete: true });
-  return c.json({ runId: handle.id });
+  const jobId = await enqueueJob(scrapeAiVisibility, { orgId, notifyOnComplete: true });
+  return c.json({ runId: jobId });
 });

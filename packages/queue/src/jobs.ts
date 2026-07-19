@@ -18,10 +18,14 @@ const PIPELINE_DLQ = "outrival-dlq";
 export const deadLetterQueue = defineJob<Record<string, never>>(PIPELINE_DLQ);
 
 // ── Payload types (exported so handlers + API routes share them) ──────────────
+// Payload types mirror each job's zod InputSchema in apps/workers/src/core/*.
+// They are the contract the API enqueues against, so a drift here is a runtime
+// parse error on the worker — keep them in sync when a schema changes.
 export type ScrapeMonitorPayload = {
   monitorId: string;
   force?: boolean;
-  triggeredBy?: string;
+  triggeredBy?: "user_forced_rescan";
+  userId?: string;
   forcedRescanLogId?: string;
 };
 export type ClassifyChangePayload = { changeId: string };
@@ -37,14 +41,26 @@ export type ExtractPricingPayload = {
   snapshotId: string;
   competitorId: string;
   status?: string;
-  promotional?: unknown;
+  promotional?: boolean;
   observedRegion?: string;
+  /** L2 archive backfill: backdate the pricing_history rows to the capture time. */
+  recordedAt?: string;
 };
 export type ExtractJobsPayload = { snapshotId: string; competitorId: string };
 export type ExtractReviewsPayload = { snapshotId: string; competitorId: string; source: string };
-export type ScrapeAiVisibilityPayload = { orgId: string };
-export type GenerateBattleCardPayload = { competitorId: string; productId?: string }; // refine in Phase 2
-export type NotifyOnboardingPayload = { orgId: string; sessionId?: string }; // refine in Phase 2
+export type ScrapeAiVisibilityPayload = { orgId: string; notifyOnComplete?: boolean };
+export type RefreshCompetitorSummaryPayload = {
+  competitorId: string;
+  /** On-demand refresh route only → drop a durable "summary ready" notification. */
+  notifyOnComplete?: boolean;
+};
+export type GenerateBattleCardPayload = {
+  competitorId: string;
+  orgId: string;
+  productId?: string;
+  notifyOnComplete?: boolean;
+};
+export type NotifyOnboardingPayload = { orgId: string; competitorIds: string[] };
 export type BackfillHistoryPayload = {
   monitorId: string;
   competitorId: string;
@@ -85,7 +101,7 @@ export const sendAlert = defineJob<SendAlertPayload>("send-alert", {
   deadLetter: PIPELINE_DLQ,
   // API/handler dedup: pass `{ singletonKey: signalId }` (was Trigger idempotencyKey).
 });
-export const refreshCompetitorSummary = defineJob<CompetitorRefPayload>(
+export const refreshCompetitorSummary = defineJob<RefreshCompetitorSummaryPayload>(
   "refresh-competitor-summary",
   { expireInSeconds: 120, concurrency: Number(process.env.SUMMARY_CONCURRENCY ?? 1) },
 );

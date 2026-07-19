@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { monitors, competitors, changes, signals, alerts, forcedRescanLog } from "@outrival/db";
-import { tasks } from "@trigger.dev/sdk/v3";
+import { scrapeMonitor } from "@outrival/queue";
 import {
   MONITOR_FREQUENCIES,
   validateMonitorUrl,
@@ -15,6 +15,7 @@ import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
+import { enqueueJob } from "../lib/queue";
 import {
   getOrgPlan,
   isFrequencyAllowed,
@@ -258,7 +259,7 @@ monitorsRouter.post("/:id/run", aiIntensiveRateLimit, async (c) => {
     logId = log!.id;
   }
 
-  const handle = await tasks.trigger("scrape-monitor", {
+  const jobId = await enqueueJob(scrapeMonitor, {
     monitorId: monitor.id,
     force: true,
     // When metered, pass the log id so the worker stamps the outcome (useful/wasted ratio).
@@ -268,7 +269,7 @@ monitorsRouter.post("/:id/run", aiIntensiveRateLimit, async (c) => {
   });
 
   if (logId) {
-    await db.update(forcedRescanLog).set({ taskId: handle.id }).where(eq(forcedRescanLog.id, logId));
+    await db.update(forcedRescanLog).set({ taskId: jobId }).where(eq(forcedRescanLog.id, logId));
   }
 
   // Mark the monitor as scraping so the in-progress state survives a page
@@ -279,7 +280,7 @@ monitorsRouter.post("/:id/run", aiIntensiveRateLimit, async (c) => {
     .set({ scrapeStartedAt: new Date(), lastFailedAt: null, lastError: null })
     .where(eq(monitors.id, monitor.id));
 
-  return c.json({ runId: handle.id, monitorId: monitor.id });
+  return c.json({ runId: jobId, monitorId: monitor.id });
 });
 
 // Patch-27 — user-forced re-scan from the stale-data "Re-scan" affordance. Like
@@ -333,7 +334,7 @@ monitorsRouter.post("/:id/force-rescan", async (c) => {
     logId = log!.id;
   }
 
-  const handle = await tasks.trigger("scrape-monitor", {
+  const jobId = await enqueueJob(scrapeMonitor, {
     monitorId: monitor.id,
     force: true,
     ...(logId
@@ -342,7 +343,7 @@ monitorsRouter.post("/:id/force-rescan", async (c) => {
   });
 
   if (logId) {
-    await db.update(forcedRescanLog).set({ taskId: handle.id }).where(eq(forcedRescanLog.id, logId));
+    await db.update(forcedRescanLog).set({ taskId: jobId }).where(eq(forcedRescanLog.id, logId));
   }
   await db
     .update(monitors)
@@ -351,7 +352,7 @@ monitorsRouter.post("/:id/force-rescan", async (c) => {
 
   return c.json({
     ok: true,
-    runId: handle.id,
+    runId: jobId,
     // null when unmetered (first scrape): there's no log row to poll — the client
     // falls back to its own scrape-progress polling.
     rescanLogId: logId,

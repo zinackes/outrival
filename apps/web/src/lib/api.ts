@@ -1557,41 +1557,47 @@ export type AdminAuditEntry = {
   createdAt: string;
 };
 
+// pg-boss job states (replaces Trigger.dev's uppercase run statuses).
+export type AdminJobStatus = "created" | "active" | "completed" | "cancelled" | "failed";
+
 export type AdminJobRun = {
   id: string;
   taskIdentifier: string;
   status: string;
-  isTest: boolean;
-  version: string | null;
   createdAt: string;
   startedAt: string | null;
   finishedAt: string | null;
   durationMs: number | null;
-  costInCents: number | null;
+  retryCount: number;
 };
 
 export type AdminJobDetail = AdminJobRun & {
-  attemptCount: number | null;
+  retryLimit: number;
   error: string | null;
   payload: unknown;
 };
 
-// System health — Trigger.dev queue + cron aggregate (admin-v2 B2). The real
-// scraping-capacity signal: scraping runs on Trigger.dev Cloud, not the VPS.
+export type AdminDeadLetterRow = AdminJobRun & {
+  sourceQueue: string | null;
+  payload: unknown;
+};
+
+// System health — pg-boss queue + cron aggregate (admin-v2 B2, migrated off the
+// Trigger.dev management API). The real scraping-capacity signal: the queue lives
+// on its own dedicated Postgres, not the VPS.
 export type AdminQueueHealth = {
   configured: boolean;
   queues: {
     available: boolean;
     totalQueued: number;
     totalRunning: number;
-    pausedCount: number;
+    totalFailed: number;
     rows: {
       name: string;
-      type: string;
       queued: number;
       running: number;
-      paused: boolean;
-      concurrencyLimit: number | null;
+      failed: number;
+      deferred: number;
     }[];
   };
   failures24h: {
@@ -1605,20 +1611,23 @@ export type AdminQueueHealth = {
     avgDurationMs: number | null;
     sampled: number;
   };
+  // pg-boss stores no next-run time — schedules are cron + when they last actually
+  // fired, not "active"/"overdue" (those required a next-run to compare against).
   schedules: {
     available: boolean;
     activeCount: number;
-    overdueCount: number;
     rows: {
-      id: string;
-      task: string;
+      name: string;
       cron: string;
-      description: string;
       timezone: string;
-      nextRun: string | null;
-      active: boolean;
-      overdue: boolean;
+      lastFiredAt: string | null;
     }[];
+  };
+  // Jobs that exhausted their retries. Empty is the healthy state.
+  deadLetter: {
+    available: boolean;
+    count: number;
+    rows: AdminDeadLetterRow[];
   };
 };
 
@@ -2875,17 +2884,19 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ status }),
     }),
-  adminListJobs: (params?: { status?: string; task?: string; after?: string }) => {
+  adminListJobs: (params?: { status?: string; task?: string; before?: string }) => {
     const q = new URLSearchParams();
     if (params?.status) q.set("status", params.status);
     if (params?.task) q.set("task", params.task);
-    if (params?.after) q.set("after", params.after);
+    if (params?.before) q.set("before", params.before);
     const qs = q.toString();
     return request<{ runs: AdminJobRun[]; nextCursor: string | null; error?: string }>(
       `/api/admin/jobs${qs ? `?${qs}` : ""}`,
     );
   },
   adminGetJob: (id: string) => request<{ run: AdminJobDetail }>(`/api/admin/jobs/${id}`),
+  adminRedriveDlq: () =>
+    request<{ moved: number }>(`/api/admin/jobs/dlq/redrive`, { method: "POST" }),
 
   // --- Quality feedback (patch-21) ---
   submitQualityFeedback: (input: QualityFeedbackInput) =>

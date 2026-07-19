@@ -80,9 +80,13 @@ export type Empty = Record<string, never>;
 // scrape-monitor runs on a single bounded lane. The collection doctrine caps the
 // cascade at L2 (datacenter egress, flat-cost and fast), so there is no slow paid
 // level left to isolate — the previous two-lane split was retired with L3/L4.
+// Default 3, not 5: on the target VPS (8 GB) the browser worker shares the box with
+// the light worker and the queue Postgres, and each in-flight scrape can hold a
+// Chromium. There is no second lane to tune — the slow lane was retired with L3/L4
+// (see above), so this single number is the whole scrape concurrency budget.
 export const scrapeMonitor = defineJob<ScrapeMonitorPayload>("scrape-monitor", {
   expireInSeconds: 300,
-  concurrency: Number(process.env.SCRAPE_CONCURRENCY ?? 5),
+  concurrency: Number(process.env.SCRAPE_CONCURRENCY ?? 3),
   deadLetter: PIPELINE_DLQ,
 });
 
@@ -215,6 +219,14 @@ export const detectSilentMonitors = defineJob<Empty>("detect-silent-monitors", {
   expireInSeconds: 300,
 });
 
+// Dead-man's switch: pings an external heartbeat monitor every few minutes so the
+// alert fires from OUTSIDE when this system stops running. Never retried — a
+// missed ping is the signal, and a retry storm would just spam the DLQ.
+export const heartbeat = defineJob<Empty>("heartbeat", {
+  retryLimit: 0,
+  expireInSeconds: 30,
+});
+
 // End-to-end liveness probe: enqueue from anywhere, a worker completes it.
 // Used by the post-deploy smoke test ("is the worker consuming?").
 export const queueHealth = defineJob<{ note?: string }>("queue-health", {
@@ -227,6 +239,9 @@ export const queueHealth = defineJob<{ note?: string }>("queue-health", {
  * No 10-schedule cap — the five previously-capped crons are all present.
  */
 export const CRON_SCHEDULES: Record<string, string> = {
+  // Every 5 min: the external monitor's "no ping for N minutes" alert is the only
+  // thing that can page when the whole worker fleet is down.
+  heartbeat: "*/5 * * * *",
   "schedule-scraping": "0 * * * *",
   "generate-daily-digest": "0 * * * *",
   "schedule-tech-stack": "0 6 * * *",

@@ -316,6 +316,134 @@ export function planThemeShiftEmissions(
   };
 }
 
+// ── Aggregate-score inflection (Reviews v2) ──────────────────────────────────────
+// Surface-only review sources (Trustpilot public) carry a score + count but NO
+// verbatims, so the theme detector above never fires for them. This detects a
+// sustained DROP in the aggregate score over the same sliding window — the "score of
+// X slips 4.4 → 4.2" signal the Mining-reviews card wanted — and packages it as the
+// SAME emission shape so the job's snapshot→change→signal chain is reused verbatim.
+
+export interface ScoreSeriesRow {
+  source: string;
+  score: number;
+  reviewCount: number;
+  recordedAt: Date;
+}
+
+export interface ScoreDrop {
+  recentAvg: number;
+  baselineAvg: number;
+  /** baselineAvg − recentAvg (positive = a drop). */
+  delta: number;
+  sources: string[];
+  recentDates: Date[];
+  latestScore: number;
+  latestReviewCount: number;
+}
+
+export interface ScoreDropOptions {
+  now?: Date;
+  windowDays?: number;
+  lookbackDays?: number;
+  /** Minimum baseline−recent drop (in score points) to flag. Default 0.2. */
+  dropThreshold?: number;
+  /** Minimum recent-window points required. Default 2. */
+  minRecentPoints?: number;
+}
+
+const SCORE_DEFAULTS = { windowDays: 42, lookbackDays: 84, dropThreshold: 0.2, minRecentPoints: 2 };
+
+/**
+ * A sustained drop in the aggregate review score from the baseline window to the
+ * recent window. Returns null when the drop is below threshold or the recent window
+ * is too thin to be meaningful. Input is oldest-first (getReviewScoreSeries order).
+ */
+export function detectScoreDrop(rows: ScoreSeriesRow[], opts: ScoreDropOptions = {}): ScoreDrop | null {
+  const now = opts.now ?? new Date();
+  const windowDays = opts.windowDays ?? SCORE_DEFAULTS.windowDays;
+  const lookbackDays = opts.lookbackDays ?? SCORE_DEFAULTS.lookbackDays;
+  const dropThreshold = opts.dropThreshold ?? SCORE_DEFAULTS.dropThreshold;
+  const minRecentPoints = opts.minRecentPoints ?? SCORE_DEFAULTS.minRecentPoints;
+
+  const recentStart = now.getTime() - windowDays * 86_400_000;
+  const lookbackStart = now.getTime() - lookbackDays * 86_400_000;
+
+  const recent: ScoreSeriesRow[] = [];
+  const baseline: ScoreSeriesRow[] = [];
+  for (const r of rows) {
+    const t = r.recordedAt.getTime();
+    if (t >= recentStart && t <= now.getTime()) recent.push(r);
+    else if (t >= lookbackStart && t < recentStart) baseline.push(r);
+  }
+  if (recent.length < minRecentPoints || baseline.length === 0) return null;
+
+  const avg = (xs: ScoreSeriesRow[]): number => xs.reduce((s, r) => s + r.score, 0) / xs.length;
+  const recentAvg = avg(recent);
+  const baselineAvg = avg(baseline);
+  const delta = baselineAvg - recentAvg;
+  if (delta < dropThreshold) return null;
+
+  const latest = recent[recent.length - 1]!; // oldest-first input → last is latest
+  return {
+    recentAvg,
+    baselineAvg,
+    delta,
+    sources: [...new Set(recent.map((r) => r.source))].sort(),
+    recentDates: recent.map((r) => r.recordedAt).sort((a, b) => a.getTime() - b.getTime()),
+    latestScore: latest.score,
+    latestReviewCount: latest.reviewCount,
+  };
+}
+
+// Score drift is opinion movement, not a paged-outage event: cap at "high".
+function severityForScoreDrop(drop: ScoreDrop): "low" | "medium" | "high" {
+  if (drop.delta >= 0.5) return "high";
+  if (drop.delta >= 0.3) return "medium";
+  return "low";
+}
+
+/**
+ * Package a score drop into the SAME emission shape as a theme shift so the job emits
+ * it through one code path. The dedup key is rounded to 1 decimal, so a continued
+ * slide within the same rounded band won't re-emit but a further drop will.
+ */
+export function planScoreDropEmission(
+  drop: ScoreDrop | null,
+  ctx: { competitorName: string; windowDays: number },
+): { emission: ThemeShiftEmission | null; shouldFlagBattleCards: boolean } {
+  if (!drop) return { emission: null, shouldFlagBattleCards: false };
+
+  const severity = severityForScoreDrop(drop);
+  const before = drop.baselineAvg.toFixed(1);
+  const after = drop.recentAvg.toFixed(1);
+  const dates = drop.recentDates.map(isoDate).join(", ");
+
+  const diffText =
+    `The aggregate customer rating for ${ctx.competitorName} is sliding across its ` +
+    `review sources (${drop.sources.join("/")}): average score ${before} → ${after} over ` +
+    `the last ${ctx.windowDays} days (latest ${drop.latestScore.toFixed(1)}/5 on ` +
+    `${drop.latestReviewCount} reviews). Recent captures: ${dates || "n/a"}.`;
+
+  const classification: Classification = {
+    category: "reviews",
+    severity,
+    is_significant: true,
+    reason: `Aggregate review score for ${ctx.competitorName} dropped ${before} → ${after} over the review time-series`,
+    humanChangeBefore: `${before}/5`,
+    humanChangeAfter: `${after}/5`,
+  };
+
+  return {
+    emission: {
+      diffText,
+      classification,
+      risingLabels: [`score ${before} → ${after}`],
+      risingKeys: [`score-drop:${before}->${after}`],
+    },
+    shouldFlagBattleCards: true,
+  };
+}
+
 // ── Battle-card objection injection ──────────────────────────────────────────────
 
 export interface ObjectionContext {

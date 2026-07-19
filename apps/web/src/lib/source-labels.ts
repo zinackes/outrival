@@ -14,6 +14,9 @@ const SOURCE_LABELS: Record<string, string> = {
   g2_reviews: "G2 reviews",
   capterra_reviews: "Capterra reviews",
   appstore_reviews: "App Store page",
+  // Reviews v2: Trustpilot public surface (score + trend via the official API, no
+  // scraped verbatims).
+  trustpilot_public: "Trustpilot rating",
   // Self-product "developing" stage watches its GitHub repo (surfaces in Activity).
   github_repo: "GitHub repo",
   linkedin: "LinkedIn",
@@ -66,6 +69,7 @@ export const SOURCE_SHORT_LABELS: Record<SourceType, string> = {
   g2_reviews: "G2 reviews",
   capterra_reviews: "Capterra reviews",
   appstore_reviews: "App Store reviews",
+  trustpilot_public: "Trustpilot rating",
   trustpilot_reviews: "Trustpilot reviews",
   trustradius_reviews: "TrustRadius reviews",
   gartner_reviews: "Gartner reviews",

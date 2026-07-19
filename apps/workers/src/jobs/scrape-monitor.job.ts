@@ -635,6 +635,16 @@ export const scrapeMonitorJob = task({
           competitorName: competitor.name,
           ambiguousName:
             (competitor.metadata as { ambiguousName?: boolean } | null)?.ambiguousName,
+          // App Store reviews — the storefronts to iterate (monitor.config.countries);
+          // the scraper defaults to the app URL's country when unset. Ignored elsewhere.
+          countries:
+            monitor.config &&
+            typeof monitor.config === "object" &&
+            Array.isArray((monitor.config as { countries?: unknown }).countries)
+              ? ((monitor.config as { countries?: unknown[] }).countries ?? []).filter(
+                  (c): c is string => typeof c === "string",
+                )
+              : undefined,
         });
       }
     } catch (err) {
@@ -1650,6 +1660,19 @@ export const scrapeMonitorJob = task({
         snapshotId: newSnapshot.id,
         competitorId: competitor.id,
         source: reviewSource,
+      });
+    } else if (
+      // Trustpilot public surface (Reviews v2): a structured score/count snapshot, not
+      // a verbatim review page. It routes to extract-reviews under source "trustpilot",
+      // which writes a review_scores point WITHOUT any AI verbatim extraction.
+      extractionAllowed &&
+      competitor.type !== "self" &&
+      monitor.sourceType === "trustpilot_public"
+    ) {
+      await tasks.trigger("extract-reviews", {
+        snapshotId: newSnapshot.id,
+        competitorId: competitor.id,
+        source: "trustpilot",
       });
     }
 

@@ -156,8 +156,16 @@ describe("isGatedSource — only sources in some plan are gated", () => {
     }
   });
   test("free + premium sources are gated", () => {
-    for (const s of ["homepage", "pricing", "blog", "jobs", "status", "g2_reviews", "appstore_reviews"] as const) {
+    for (const s of ["homepage", "pricing", "blog", "jobs", "status", "appstore_reviews"] as const) {
       expect(isGatedSource(s)).toBe(true);
+    }
+  });
+  test("retired review aggregators are ungated (removed from every plan, Reviews v2)", () => {
+    for (const s of [
+      "g2_reviews", "capterra_reviews", "trustpilot_reviews",
+      "trustradius_reviews", "gartner_reviews", "playstore_reviews",
+    ] as const) {
+      expect(isGatedSource(s)).toBe(false);
     }
   });
 });
@@ -167,14 +175,20 @@ describe("planAllowsMonitorSource — downgrade source freeze", () => {
     for (const s of ["homepage", "pricing", "blog"] as const) {
       expect(planAllowsMonitorSource("free", s)).toBe(true);
     }
-    for (const s of ["jobs", "status", "g2_reviews", "appstore_reviews"] as const) {
+    for (const s of ["jobs", "status", "appstore_reviews"] as const) {
       expect(planAllowsMonitorSource("free", s)).toBe(false);
     }
   });
-  test("pro keeps jobs + g2, freezes appstore (business-only)", () => {
+  test("pro keeps jobs + App Store reviews (Reviews v2 moves App Store to pro)", () => {
     expect(planAllowsMonitorSource("pro", "jobs")).toBe(true);
-    expect(planAllowsMonitorSource("pro", "g2_reviews")).toBe(true);
-    expect(planAllowsMonitorSource("pro", "appstore_reviews")).toBe(false);
+    expect(planAllowsMonitorSource("pro", "appstore_reviews")).toBe(true);
+  });
+  test("retired review aggregators are ungated → never frozen by a downgrade", () => {
+    // They have no scraper and are marked_unscrapable, so "allowed to run" is moot,
+    // but being ungated they must not report as frozen on any plan.
+    for (const plan of PLANS) {
+      expect(planAllowsMonitorSource(plan, "g2_reviews")).toBe(true);
+    }
   });
   test("internal anchors run on every plan", () => {
     for (const plan of PLANS) {

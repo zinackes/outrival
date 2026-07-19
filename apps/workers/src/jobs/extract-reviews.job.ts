@@ -3,7 +3,7 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db, snapshots, reviews, monitors } from "@outrival/db";
 import { extractReviews, summarizeSource, AI_CONFIG } from "@outrival/ai";
-import { getFromR2, parseAppStoreSnapshot } from "@outrival/shared";
+import { getFromR2, parseAppStoreSnapshot, parseTrustpilotSnapshot } from "@outrival/shared";
 import { reviewScoresFromStructured } from "@outrival/scrapers/structured-data";
 import { isCloudflareChallenge } from "@outrival/scrapers/block-detection";
 import { htmlToText } from "../lib/html-to-text";
@@ -50,6 +50,59 @@ export const extractReviewsJob = task({
         snapshotId: input.snapshotId,
       });
       return { ok: false, reason: "blocked_challenge" };
+    }
+
+    // Trustpilot public surface (Reviews v2): a structured score/count snapshot with
+    // NO verbatims (their ToS forbids scraping them). Write the review_scores point
+    // directly — no AI, no `reviews` rows, no complaint-theme shift (there are no
+    // themes without verbatims; the Trustpilot signal rides the score-drop inflection
+    // detector instead). Short-circuit before the AI verbatim path below.
+    if (input.source === "trustpilot") {
+      const summary = parseTrustpilotSnapshot(html);
+      if (!summary) {
+        logger.warn("Trustpilot snapshot parse failed");
+        return { ok: false, reason: "parse_failed" };
+      }
+      if (summary.trustScore == null) {
+        logger.warn("Trustpilot snapshot has no score");
+        return { ok: false, reason: "no_score" };
+      }
+      // No verbatims ⇒ no AI-judged sentiment; derive a proxy from the 1–5 trust
+      // score onto the 0–100 sentiment scale so the not-null column stays meaningful.
+      const sentimentFromScore = Math.max(
+        0,
+        Math.min(100, Math.round(((summary.trustScore - 1) / 4) * 100)),
+      );
+      await insertReviewScore({
+        competitor_id: input.competitorId,
+        source: "trustpilot",
+        score: summary.trustScore,
+        review_count: summary.reviewCount,
+        sentiment_score: sentimentFromScore,
+        complaint_themes: null,
+        recorded_at: new Date(),
+      });
+      // Evaluate the aggregate-score inflection off the pipeline (Reviews v2): a
+      // sustained Trustpilot score drop is a "reviews" signal even without verbatims.
+      // Fire-and-forget, keyed on the snapshot so a retry doesn't re-trigger.
+      try {
+        await tasks.trigger(
+          "detect-review-theme-shifts",
+          { competitorId: input.competitorId },
+          { idempotencyKey: `rts-${input.competitorId}-${input.snapshotId}` },
+        );
+      } catch (err) {
+        logger.warn("detect-review-theme-shifts trigger failed (non-fatal)", {
+          error: String(err),
+        });
+      }
+
+      logger.log("Completed extract-reviews (trustpilot surface)", {
+        competitorId: input.competitorId,
+        score: summary.trustScore,
+        reviewCount: summary.reviewCount,
+      });
+      return { ok: true, verbatimsInserted: 0 };
     }
 
     // App Store snapshots are our normalized JSON (Apple RSS), not HTML. Score

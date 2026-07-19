@@ -43,9 +43,12 @@ export function mapSourceTypeToCategory(sourceType: SourceType): StalenessCatego
       return "pricing";
     case "jobs":
       return "jobs";
+    case "appstore_reviews":
+    case "trustpilot_public":
+    // Retired aggregators (Reviews v2) — dormant, but the enum values persist so the
+    // switch must still map them somewhere; reviews is the honest bucket.
     case "g2_reviews":
     case "capterra_reviews":
-    case "appstore_reviews":
     case "trustpilot_reviews":
     case "trustradius_reviews":
     case "gartner_reviews":

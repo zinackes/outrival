@@ -27,6 +27,10 @@ const EnvSchema = z.object({
   RESEND_API_KEY: z.string().optional(),
   EXA_API_KEY: z.string().optional(),
   POSTHOG_API_KEY: z.string().optional(),
+  // Trustpilot official API key (Reviews v2). The trustpilot_public scraper reads the
+  // surface (score/count/distribution) via the official API — there is no keyless
+  // public endpoint and no scraping fallback. Unset → the scraper throws cleanly.
+  TRUSTPILOT_API_KEY: z.string().optional(),
 
   // Scraping cascade egress (collection doctrine). Optional: a missing datacenter
   // tier degrades to the direct IP (best-effort), so the worker still boots without

@@ -22,6 +22,11 @@ export const EnvSchema = z
     // Unset → the /api/internal/* routes answer 404 and workers skip re-evaluation
     // (the feature degrades to "saved but never re-evaluated", never a crash).
     INTERNAL_API_SECRET: z.string().min(16).optional(),
+    // Trustpilot official API key (Reviews v2). The trustpilot_public source reads the
+    // surface (score/count/distribution) via the official API — there is no keyless
+    // public endpoint. Unset → the enable route refuses trustpilot_public (clean
+    // degradation) and the scraper throws; never a scraping fallback.
+    TRUSTPILOT_API_KEY: z.string().min(1).optional(),
   })
   .superRefine((e, ctx) => {
     if (e.NODE_ENV === "production" && (!e.UPSTASH_REDIS_REST_URL || !e.UPSTASH_REDIS_REST_TOKEN)) {

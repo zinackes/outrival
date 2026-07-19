@@ -63,7 +63,7 @@ const PLANS: Plan[] = [
       "15 competitors",
       "Real-time Slack/email alerts",
       "AI-generated battle cards",
-      "G2, Capterra & Trustpilot reviews",
+      "Trustpilot & App Store reviews",
     ],
   },
   {
@@ -71,16 +71,15 @@ const PLANS: Plan[] = [
     name: "Business",
     price: "199",
     suffix: "€ / month",
-    desc: "50 competitors, every review source, and the highest usage limits.",
+    desc: "50 competitors, the highest usage limits, and priority support.",
     cta: "Start Business",
     href: "/auth",
     featured: false,
     includes: "Everything in Pro, plus:",
     features: [
       "50 competitors",
-      "Every review source (+ Gartner, TrustRadius)",
-      "App Store + Play Store reviews",
       "Higher re-scan & discovery limits",
+      "Priority monitoring cadence",
       "DPA · security review",
     ],
     note: {

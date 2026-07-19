@@ -87,6 +87,14 @@ export interface ScrapeOptions {
    * other scraper.
    */
   ambiguousName?: boolean;
+  /**
+   * App Store reviews source only: the storefronts to iterate (2-letter country
+   * codes). Set from `monitor.config.countries`; defaults to the country in the app
+   * URL (or "us") when unset. Reviews from every listed storefront are merged,
+   * deduped by id and sorted into one deterministic snapshot. Ignored by every
+   * other scraper.
+   */
+  countries?: string[];
 }
 
 export interface ScrapeOutcome extends ScraperResult {

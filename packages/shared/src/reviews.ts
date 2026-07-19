@@ -1,19 +1,13 @@
 import { extractBrand } from "./url";
 import type { SourceType } from "./constants/sources";
 
-export const REVIEW_SOURCE_TYPES = [
-  "g2_reviews",
-  "capterra_reviews",
-  "appstore_reviews",
-  // patch-32 — multi-platform review coverage. All web review sites with a
-  // schema.org AggregateRating (structured-first score) + AI verbatims, scraped
-  // like g2/capterra via the cascade. Play Store has no Apple-style RSS, so it
-  // goes through the same generic page path (not the appstore RSS path).
-  "trustpilot_reviews",
-  "trustradius_reviews",
-  "gartner_reviews",
-  "playstore_reviews",
-] as const;
+// Reviews v2 (2026-07-15): the ONLY user-selectable review source read directly is
+// App Store, via Apple's public RSS feed (competitor data, keyless, no scraping).
+// The scraped aggregators (g2/capterra/trustpilot/trustradius/gartner/playstore) are
+// RETIRED for legal reasons — see sources.ts. Trustpilot survives as `trustpilot_public`
+// (official-API surface: score + trend, no verbatims), which is NOT a REVIEW_SOURCE_TYPE:
+// it needs no user URL (derived from the competitor domain) and no verbatim extraction.
+export const REVIEW_SOURCE_TYPES = ["appstore_reviews"] as const;
 export type ReviewSourceType = (typeof REVIEW_SOURCE_TYPES)[number];
 
 export function isReviewSource(source: SourceType): source is ReviewSourceType {
@@ -27,13 +21,7 @@ export function isReviewSource(source: SourceType): source is ReviewSourceType {
  * its brand would not match the expected review site.
  */
 const REVIEW_SOURCE_BRAND: Record<ReviewSourceType, string> = {
-  g2_reviews: "g2",
-  capterra_reviews: "capterra",
   appstore_reviews: "apple",
-  trustpilot_reviews: "trustpilot",
-  trustradius_reviews: "trustradius",
-  gartner_reviews: "gartner",
-  playstore_reviews: "google", // play.google.com → registrable brand "google"
 };
 
 export type ReviewUrlValidation =
@@ -62,22 +50,7 @@ export function validateReviewUrl(source: ReviewSourceType, raw: string): Review
   if (source === "appstore_reviews" && !parseAppStoreUrl(parsed.toString())) {
     return { ok: false, error: "appstore_id_missing" };
   }
-  if (source === "playstore_reviews" && !parsePlayStoreUrl(parsed.toString())) {
-    return { ok: false, error: "playstore_id_missing" };
-  }
   return { ok: true, url: parsed.toString() };
-}
-
-/** Extract the package id from a play.google.com app URL (?id=com.acme.app). */
-export function parsePlayStoreUrl(raw: string): { appId: string } | null {
-  let u: URL;
-  try {
-    u = new URL(raw);
-  } catch {
-    return null;
-  }
-  const id = u.searchParams.get("id");
-  return id && /^[a-zA-Z0-9._]+$/.test(id) ? { appId: id } : null;
 }
 
 export interface AppStoreRef {
@@ -106,6 +79,12 @@ export function appStoreReviewsRssUrl(ref: AppStoreRef, page = 1): string {
 }
 
 export interface AppStoreReview {
+  /**
+   * Apple's stable per-review id (`entry.id.label`, verified present 2026-07-15).
+   * The dedup key across paginated pages and configured storefronts, and the sort
+   * key for the deterministic snapshot.
+   */
+  id: string;
   rating: number;
   title: string;
   content: string;
@@ -116,12 +95,14 @@ export interface AppStoreReview {
 /**
  * Normalized App Store snapshot stored as the snapshot content. Deliberately
  * carries no timestamp so the content hash stays stable across scrapes when the
- * reviews are unchanged (drives scrape-monitor's no-change short-circuit).
+ * reviews are unchanged (drives scrape-monitor's no-change short-circuit). Reviews
+ * are deduped by id and sorted, so the generic diff maps +/- lines to added/removed
+ * reviews. `countries` is the (sorted) set of storefronts the scrape iterated.
  */
 export interface AppStoreSnapshot {
   source: "appstore";
   appId: string;
-  country: string;
+  countries: string[];
   reviews: AppStoreReview[];
 }
 
@@ -152,4 +133,52 @@ export function parseAppStoreSnapshot(json: string): AppStoreSummary | null {
     : null;
   const text = reviews.map((r) => `[${r.rating}/5] ${r.title}\n${r.content}`).join("\n\n");
   return { averageScore, reviewCount: reviews.length, text };
+}
+
+// ─── Trustpilot public surface (Reviews v2, 2026-07-15) ──────────────────────
+// Trustpilot's ToS explicitly forbids scraping (they target "AI agents or screen
+// scrapers") and there is NO keyless public endpoint (verified 2026-07-15: the
+// official API and the review page both return 403 without a key). So Trustpilot is
+// SURFACE ONLY, via the OFFICIAL API (TRUSTPILOT_API_KEY): trust score, review count
+// and star distribution — never third-party verbatims. The useful "score of X slips
+// 4.4 → 4.2" signal survives; the verbatims (which they license as a product) do not.
+
+/**
+ * Normalized Trustpilot snapshot stored as the snapshot content. Like the App Store
+ * snapshot it deliberately carries no timestamp, so the content hash is stable when
+ * the score/count/distribution are unchanged and the generic diff surfaces a real
+ * movement. `distribution` is sorted by star (deterministic).
+ */
+export interface TrustpilotSnapshot {
+  source: "trustpilot";
+  domain: string;
+  businessUnitId: string;
+  /** TrustScore 1.0–5.0, or null when the API did not return one. */
+  trustScore: number | null;
+  /** Rounded 1–5 stars, or null. */
+  stars: number | null;
+  reviewCount: number;
+  distribution: { stars: number; count: number }[];
+}
+
+export interface TrustpilotSummary {
+  trustScore: number | null;
+  reviewCount: number;
+}
+
+/** Parse a stored Trustpilot snapshot into the score/count point for review_scores. */
+export function parseTrustpilotSnapshot(json: string): TrustpilotSummary | null {
+  let data: unknown;
+  try {
+    data = JSON.parse(json);
+  } catch {
+    return null;
+  }
+  if (!data || typeof data !== "object") return null;
+  const snap = data as Partial<TrustpilotSnapshot>;
+  if (snap.source !== "trustpilot") return null;
+  const trustScore =
+    typeof snap.trustScore === "number" && snap.trustScore > 0 ? snap.trustScore : null;
+  const reviewCount = typeof snap.reviewCount === "number" ? snap.reviewCount : 0;
+  return { trustScore, reviewCount };
 }

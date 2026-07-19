@@ -854,6 +854,15 @@ PROXYSCRAPE_DC_USERNAME=
 PROXYSCRAPE_DC_PASSWORD=
 SCRAPING_LEVEL_1_ENABLED=true  # kill-switch L2 (datacenter egress)
 SCRAPE_MIN_DOMAIN_GAP_MS=2000  # rate-limit par domaine (défaut 2s, ou Crawl-delay robots.txt)
+# Reviews v2 (2026-07-15) — Trustpilot public SURFACE (score + review count + star
+# distribution) via l'API OFFICIELLE Trustpilot. Pas de surface anonyme (find + page
+# publique = 403 sans clé, vérifié curl), donc la source trustpilot_public exige cette
+# clé ; sans elle la route enable refuse trustpilot_public (dégradation propre) et le
+# scraper throw — JAMAIS de fallback scraping (leurs CGU visent les screen scrapers).
+# À poser sur api ET workers. Les agrégateurs scrapés (g2/capterra/gartner/trustradius/
+# playstore) sont retirés (collection doctrine) ; g2 pourra revenir via un compte
+# vendeur connecté du client (différé). Verbatims tiers jamais scrapés.
+TRUSTPILOT_API_KEY=
 EXA_API_KEY=
 DETECT_COOLDOWN_SEC=90       # cooldown anti-double-clic (s) entre 2 runs Exa on-demand pour
                             # la MÊME cible (org+product) — PAS un cap d'usage (borné par le quota
@@ -892,6 +901,7 @@ TECH_STACK_SCRAPE_INTERVAL_DAYS=30      # patch-18 — days between tech-stack s
 TECH_STACK_SIGNAL_MIN_IMPORTANCE=high   # patch-18 — min tech importance to emit a signal on appearance (high = payments/CRM-class tells only; medium would include hosting/marketing scripts — noisy, plan-026). Baseline (first-ever) scan of a competitor never signals, whatever this value is.
 REVIEW_THEME_WINDOW_DAYS=42             # review complaint-theme shift — recent window (days) compared vs baseline for an upward inflection
 REVIEW_THEME_LOOKBACK_DAYS=84           # review complaint-theme shift — total review_scores series read (baseline = lookback − window)
+REVIEW_SCORE_DROP_THRESHOLD=0.2         # Reviews v2 — aggregate-score inflection fallback for surface sources (Trustpilot public: score, no verbatims/themes). When no complaint theme rises, a sustained drop of the average review score by ≥ this many points (baseline → recent window, same windows as the theme detector) emits one "reviews" signal via the detect-review-theme-shifts anchor
 HIRING_SPIKE_THRESHOLD=0.5              # hiring-velocity — a department's weekly open-role count must exceed (1 + this) × its trailing 4-week average (≥4 weeks history) to emit a "hiring" inflection signal; high severity for engineering/sales, medium otherwise. Event-driven off extract-jobs (no cron slot)
 HN_POINTS_THRESHOLD=50                  # hackernews source — a mention (non-Show-HN, guard-passing) must EXCEED this many points to emit a content/medium traction signal; below it the hit is stored in the snapshot JSON island but never signalled. Show HN + matching domain always signals product/high regardless.
 HN_WINDOW_DAYS=30                       # hackernews source — recency window (days) bounding the HN Algolia search_by_date fetch (created_at_i > now − window), so a heavily-mentioned competitor never hits the hard 1000-hit ceiling

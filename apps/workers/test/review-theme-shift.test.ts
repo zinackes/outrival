@@ -4,8 +4,11 @@ import {
   detectThemeShifts,
   planThemeShiftEmissions,
   mergeRisingThemeObjections,
+  detectScoreDrop,
+  planScoreDropEmission,
   type ThemeSeriesRow,
   type RisingTheme,
+  type ScoreSeriesRow,
 } from "../src/lib/review-theme-shift";
 
 // Review complaint-theme inflection detection (feature 2026-07-11). The themes are
@@ -201,5 +204,82 @@ describe("mergeRisingThemeObjections — (c) injects the rising complaint", () =
   test("no rising themes → card unchanged", () => {
     const card = emptyCard([{ objection: "a", response: "b" }]);
     expect(mergeRisingThemeObjections(card, [], { competitorName: "Acme" })).toEqual(card);
+  });
+});
+
+// ── (d) aggregate-score inflection (Reviews v2) ──────────────────────────────────
+// Surface sources (Trustpilot) carry a score but no verbatims; a sustained score
+// drop is the reviews signal. detectScoreDrop compares recent vs baseline windows.
+
+function srow(source: string, offset: number, score: number, reviewCount = 100): ScoreSeriesRow {
+  return { source, recordedAt: day(offset), score, reviewCount };
+}
+
+describe("detectScoreDrop", () => {
+  const opts = { now: NOW, windowDays: 42, lookbackDays: 84 };
+
+  test("a sustained drop is detected with the right delta", () => {
+    const rows = [
+      srow("trustpilot", 70, 4.5),
+      srow("trustpilot", 55, 4.5),
+      srow("trustpilot", 12, 4.2),
+      srow("trustpilot", 4, 4.2),
+    ];
+    const drop = detectScoreDrop(rows, opts);
+    expect(drop).not.toBeNull();
+    expect(drop!.baselineAvg).toBeCloseTo(4.5, 5);
+    expect(drop!.recentAvg).toBeCloseTo(4.2, 5);
+    expect(drop!.delta).toBeCloseTo(0.3, 5);
+    expect(drop!.latestScore).toBe(4.2); // oldest-first input → latest is the newest recent row
+  });
+
+  test("a stable score returns null (no drop)", () => {
+    const rows = [srow("trustpilot", 70, 4.5), srow("trustpilot", 12, 4.5), srow("trustpilot", 4, 4.5)];
+    expect(detectScoreDrop(rows, opts)).toBeNull();
+  });
+
+  test("a rising score returns null", () => {
+    const rows = [srow("trustpilot", 70, 4.2), srow("trustpilot", 12, 4.6), srow("trustpilot", 4, 4.6)];
+    expect(detectScoreDrop(rows, opts)).toBeNull();
+  });
+
+  test("too few recent points returns null", () => {
+    const rows = [srow("trustpilot", 70, 4.5), srow("trustpilot", 55, 4.5), srow("trustpilot", 4, 4.0)];
+    expect(detectScoreDrop(rows, opts)).toBeNull(); // only 1 recent point (minRecentPoints=2)
+  });
+
+  test("a drop below threshold returns null", () => {
+    const rows = [
+      srow("trustpilot", 70, 4.5),
+      srow("trustpilot", 12, 4.45),
+      srow("trustpilot", 4, 4.45),
+    ];
+    expect(detectScoreDrop(rows, { ...opts, dropThreshold: 0.2 })).toBeNull(); // 0.05 < 0.2
+  });
+});
+
+describe("planScoreDropEmission", () => {
+  test("packages a drop as a reviews emission with a rounded dedup key", () => {
+    const drop = detectScoreDrop(
+      [srow("trustpilot", 70, 4.5), srow("trustpilot", 55, 4.5), srow("trustpilot", 12, 4.0), srow("trustpilot", 4, 4.0)],
+      { now: NOW, windowDays: 42, lookbackDays: 84 },
+    );
+    const { emission, shouldFlagBattleCards } = planScoreDropEmission(drop, {
+      competitorName: "Acme",
+      windowDays: 42,
+    });
+    expect(emission).not.toBeNull();
+    expect(emission!.classification.category).toBe("reviews");
+    expect(emission!.classification.severity).toBe("high"); // delta 0.5 → high
+    expect(emission!.risingKeys).toEqual(["score-drop:4.5->4.0"]);
+    expect(emission!.diffText).toContain("4.5 → 4.0");
+    expect(shouldFlagBattleCards).toBe(true);
+  });
+
+  test("null drop → no emission", () => {
+    expect(planScoreDropEmission(null, { competitorName: "Acme", windowDays: 42 })).toEqual({
+      emission: null,
+      shouldFlagBattleCards: false,
+    });
   });
 });

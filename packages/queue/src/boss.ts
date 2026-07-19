@@ -1,5 +1,6 @@
 import { PgBoss } from "pg-boss";
 import type { Job, Queue, SendOptions, WorkOptions } from "pg-boss";
+import { sendSlackMessage } from "@outrival/shared";
 
 // ---------------------------------------------------------------------------
 // @outrival/queue — pg-boss v12 foundation shared by @outrival/api (send-only)
@@ -19,6 +20,30 @@ type ErrorReporter = (err: unknown, ctx: { job: string; id: string }) => void;
 
 let _boss: PgBoss | null = null;
 let _reportError: ErrorReporter = () => {};
+
+// pg-boss emits `error` per failed operation, so a queue-Postgres outage fires it
+// on every poll of every worker. Unthrottled that is hundreds of Slack messages an
+// hour — the alert becomes the outage. One message per window is enough to say
+// "the queue is unhealthy"; the details are in Sentry via _reportError.
+const SLACK_ERROR_THROTTLE_MS = 5 * 60_000;
+let _lastSlackErrorAt = 0;
+
+/**
+ * Best-effort ops alert on a queue-level failure. Never awaited by the caller and
+ * never throws: an alerting failure must not add a second fault to the first one.
+ */
+function alertQueueError(err: unknown): void {
+  const webhook = process.env.OPS_SLACK_WEBHOOK_URL;
+  if (!webhook) return;
+  const now = Date.now();
+  if (now - _lastSlackErrorAt < SLACK_ERROR_THROTTLE_MS) return;
+  _lastSlackErrorAt = now;
+  const message = err instanceof Error ? err.message : String(err);
+  void sendSlackMessage(
+    webhook,
+    `:rotating_light: pg-boss queue error on \`${process.env.WORKER_ROLE ?? "api"}\`: ${message}`,
+  );
+}
 
 function requireQueueUrl(): string {
   const url = process.env.QUEUE_DATABASE_URL;
@@ -53,13 +78,31 @@ export async function startQueue(opts: {
   const boss = new PgBoss({
     connectionString: requireQueueUrl(),
     schema: "pgboss",
+    // Pool dedicated to pg-boss (fetch + maintenance). The queue Postgres also
+    // serves each worker's own app pool; 5 here keeps the total (~15 across the
+    // fleet) far under the default max_connections=100, so no PgBouncer is needed
+    // — and PgBouncer in transaction pooling would break LISTEN/NOTIFY anyway.
+    max: 5,
+    // Wake workers the moment a job is created instead of waiting out the poll.
+    // Holds one dedicated session-pinned connection; falls back to polling with a
+    // `warning` if the listener can't be established. NOT sufficient on its own:
+    // each queue must also opt in via its `notify` option (see defineJob).
+    useListenNotify: true,
     supervise: opts.supervise ?? isWorker,
+    // Expired-job / retry sweep. Only runs where supervise is on (the light worker).
+    superviseIntervalSeconds: 60,
+    // queue_stats sampling. 120 over the default 60 halves the maintenance write
+    // churn on a box whose whole job is to keep the job table small.
+    monitorIntervalSeconds: 120,
     schedule: opts.schedule ?? isWorker,
     // Migration is advisory-locked in pg-boss, so it's safe on every worker —
     // whichever boots first on a fresh DB installs the schema.
     migrate: isWorker,
   });
-  boss.on("error", (err) => _reportError(err, { job: "pgboss", id: "internal" }));
+  boss.on("error", (err) => {
+    _reportError(err, { job: "pgboss", id: "internal" });
+    alertQueueError(err);
+  });
 
   await boss.start();
   _boss = boss;
@@ -96,6 +139,13 @@ export interface JobConfig {
   retryDelayMax?: number;
   /** was Trigger `maxDuration` (seconds). Job is retried/failed if it runs longer. */
   expireInSeconds?: number;
+  /**
+   * How long a COMPLETED job is kept before deletion. Set explicitly rather than
+   * left to pg-boss's default (which happens to be the same 7 days today) because
+   * this is the knob that bounds the job table's size, and a silent upstream
+   * default change would show up as unexplained disk growth on the queue box.
+   */
+  deleteAfterSeconds?: number;
   policy?: Queue["policy"];
   deadLetter?: string;
   /** rolling worker concurrency for this queue (was `queue({concurrencyLimit})`). */
@@ -127,6 +177,13 @@ export function defineJob<P extends object>(name: string, config: JobConfig = {}
     retryBackoff: config.retryBackoff ?? true,
     retryDelayMax: config.retryDelayMax ?? 10,
     expireInSeconds: config.expireInSeconds ?? 300,
+    deleteAfterSeconds: config.deleteAfterSeconds ?? 7 * 24 * 3600,
+    // The per-queue half of LISTEN/NOTIFY. The instance-level `useListenNotify`
+    // only starts the listener; without this flag the queue never emits the NOTIFY,
+    // so workers would keep waiting out their polling interval and the whole
+    // latency win of v12 would be silently inert. On for every queue: the cost is
+    // one NOTIFY per job creation, the gain is sub-100ms pickup instead of seconds.
+    notify: true,
     ...(config.deadLetter ? { deadLetter: config.deadLetter } : {}),
   };
   const workOptions: WorkOptions = {

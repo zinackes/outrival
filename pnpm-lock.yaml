@@ -328,6 +328,9 @@ importers:
 
   packages/queue:
     dependencies:
+      '@outrival/shared':
+        specifier: workspace:*
+        version: link:../shared
       pg-boss:
         specifier: ^12.26.1
         version: 12.26.1

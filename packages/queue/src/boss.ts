@@ -188,6 +188,18 @@ export function defineJob<P extends object>(name: string, config: JobConfig = {}
   };
   const workOptions: WorkOptions = {
     batchSize: 1, // one job per fetch; parallelism comes from localConcurrency
+    // Turning `notify` on above silently moves a worker's polling backstop from
+    // `pollingIntervalSeconds` (default 2) to `notifyPollingIntervalSeconds`
+    // (default 30). That is right for live traffic — NOTIFY does the waking — but
+    // wrong for a BACKLOG, where no new NOTIFY is coming: workers take what they
+    // can hold, finish, then sleep out the backstop. The smoke test measures the
+    // gap at 22 jobs/s versus 6,700, and our worst case is exactly a backlog —
+    // schedule-scraping fans hundreds of monitors out on the hour.
+    //
+    // Pinned back to the pre-notify cadence so enabling NOTIFY is a pure gain:
+    // instant pickup for live jobs, unchanged catch-up for a queue that is behind.
+    // (burstWhenBatchFull is the documented cure but is ignored at batchSize 1.)
+    notifyPollingIntervalSeconds: config.pollingIntervalSeconds ?? 2,
     ...(config.concurrency ? { localConcurrency: config.concurrency } : {}),
     ...(config.pollingIntervalSeconds ? { pollingIntervalSeconds: config.pollingIntervalSeconds } : {}),
   };

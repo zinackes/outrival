@@ -43,6 +43,12 @@ const PASSED_GROUNDING: GroundingValidation = {
 const DEFAULT_GROUNDING_POLICY = { grounding: true, confidence: true } as const;
 const GROUNDING_POLICY: Record<string, { grounding: boolean; confidence: boolean }> = {
   classify_change: { grounding: false, confidence: false },
+  // The semantic gate returns two fields and runs on EVERY generic content change,
+  // just ahead of classify_change. Same reasoning as classify_change: there is
+  // nothing to cite in a boolean, and the citation envelope on a fast model is the
+  // documented cause of parse misses (see summarize_competitor below) — a parse
+  // miss here fails open, but it would pay for a call and gain nothing.
+  cosmetic_gate: { grounding: false, confidence: false },
   generate_signal: { grounding: false, confidence: true },
   // The competitor summary is an internal 2-3 sentence blurb (never surfaces
   // citations to the user). With grounding ON, the model must emit a verbatim

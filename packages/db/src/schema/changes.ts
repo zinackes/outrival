@@ -22,6 +22,12 @@ export const changes = pgTable("changes", {
   // on the structured homepage path; null for lexical/other-source changes.
   relevanceScore: real("relevance_score"),
   summary: text("summary"),
+  // Set when the change was recorded but deliberately NOT classified. Currently a
+  // single value, "cosmetic": the semantic gate judged the extracted fact
+  // unchanged (a rewording / reordering of the same substance), so no signal was
+  // generated. Kept on the row rather than dropped so the suppression is auditable
+  // (admin counter) instead of an invisible silence. Null = classified normally.
+  suppressionReason: text("suppression_reason"),
   detectedAt: timestamp("detected_at").notNull().defaultNow(),
 }, (t) => [
   // Changes feed + monitor teardown both walk changes by monitor, newest first.

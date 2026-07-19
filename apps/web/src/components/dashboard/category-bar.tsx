@@ -9,6 +9,11 @@ const CAT_COLOR: Record<string, string> = {
   content: "var(--cat-content)",
   funding: "var(--cat-funding)",
   api_developer: "var(--cat-api-developer)",
+  ma: "var(--cat-ma)",
+  security_compliance: "var(--cat-security-compliance)",
+  ads: "var(--cat-ads)",
+  partnerships: "var(--cat-partnerships)",
+  leadership: "var(--cat-leadership)",
 };
 
 const FALLBACK = "var(--muted-2)";

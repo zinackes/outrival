@@ -24,6 +24,7 @@
 import OpenAI from "openai";
 import { safeParseJson } from "../lib/parse";
 import { InsightSchema, buildInsightPrompt } from "../tasks/insight";
+import { resolveClassification } from "../tasks/classify";
 import {
   buildStructuredClassifyPrompt,
   StructuredOutputSchema,
@@ -221,11 +222,18 @@ async function runCase(c: OpenAI, spec: ModelSpec, ev: EvalCase): Promise<CallRe
     promptTokens,
     completionTokens,
     latencyMs,
-    fields: {
-      category: parsed.value.category,
-      severity: parsed.value.severity,
-      is_significant: parsed.value.is_significant,
-    },
+    // The model no longer returns a severity/is_significant — it scores materiality
+    // and the band is derived (resolveClassification). Report the DERIVED values so
+    // the comparison across candidate models stays apples-to-apples with what the
+    // pipeline would actually persist.
+    fields: (() => {
+      const resolved = resolveClassification(parsed.value, "");
+      return {
+        category: resolved.category,
+        severity: resolved.severity,
+        is_significant: resolved.is_significant,
+      };
+    })(),
   };
 }
 

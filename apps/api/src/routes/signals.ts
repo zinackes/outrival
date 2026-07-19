@@ -13,7 +13,7 @@ import {
   signalBatches,
   users,
 } from "@outrival/db";
-import { computeThreatScore, getBytesFromR2 } from "@outrival/shared";
+import { computeThreatScore, getBytesFromR2, SIGNAL_CATEGORIES } from "@outrival/shared";
 import { complete, withAiContext, AI_CONFIG } from "@outrival/ai";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../lib/db";
@@ -31,7 +31,7 @@ signalsRouter.use("*", authMiddleware);
 // Intel → action loop (Phase B). Triage statuses a user can set on a signal.
 const ACTION_STATUSES = ["todo", "doing", "done", "dismissed"] as const;
 const SEVERITIES = ["low", "medium", "high", "critical"] as const;
-const CATEGORIES = ["pricing", "product", "hiring", "reviews", "content", "funding"] as const;
+const CATEGORIES = SIGNAL_CATEGORIES;
 
 // The full set of feed filters, parsed from the query string. Shared by the list,
 // facets, mark-all-read and export handlers so they always agree on "the current

@@ -25,7 +25,12 @@ const CRITICAL_SOURCE_ALLOWLIST = new Set([
   "comparison_page",
 ]);
 
-const CRITICAL_CATEGORY_ALLOWLIST = new Set(["pricing", "product", "funding"]);
+// "ma" joins the allowlist with the wave-2 taxonomy: an acquisition of, or by, a
+// tracked competitor carries a deterministic "critical" floor (materiality.ts's
+// applyCategoryFloor), and without this entry the guard would demote every one of
+// them to "high" — the floor would be dead on arrival. It is the only wave-2
+// category allowed to page; its sources (news, blog) are already allowlisted below.
+const CRITICAL_CATEGORY_ALLOWLIST = new Set(["pricing", "product", "funding", "ma"]);
 
 /** A pricing-critical must be anchored on an actual number/price token in the diff
  * — a wording-only pricing change is never page-worthy. */

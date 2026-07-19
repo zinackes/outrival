@@ -132,7 +132,18 @@ export const SIGNAL_CATEGORIES = [
   // Developer / AI-agent surface (sitemap v2 / wellknown card). Set ONLY
   // deterministically (an llms.txt manifest appearing on a competitor's domain) —
   // the AI classifier is never asked to emit it (kept out of the classify prompt),
-  // so it never perturbs the six model-chosen categories.
+  // so it never perturbs the model-chosen categories.
   "api_developer",
+  // Taxonomy wave 2 (materiality). These five ARE model-chosen (unlike
+  // api_developer): they carve company-level moves out of the "content" bucket,
+  // where a partnership, an acquisition, a CISO hire and a SOC 2 badge all used to
+  // land indistinguishably. They are detected on sources we ALREADY scrape
+  // (blog / news / changelog) — no new source. Each carries a deterministic
+  // severity floor, see packages/ai/src/tasks/materiality.ts.
+  "partnerships",       // an alliance, integration or reseller/OEM deal
+  "ma",                 // merger, acquisition, divestiture (severity floor: critical)
+  "leadership",         // exec hires/departures/board changes
+  "security_compliance",// SOC 2 / ISO / HIPAA / GDPR posture, breach disclosures
+  "ads",                // paid-acquisition posture: campaigns, landing pages, offers
 ] as const;
 export type SignalCategory = typeof SIGNAL_CATEGORIES[number];

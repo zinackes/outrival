@@ -1,10 +1,11 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { and, desc, eq, isNull, ne, or } from "drizzle-orm";
-import { tasks } from "@trigger.dev/sdk/v3";
+import { generateBattleCard } from "@outrival/queue";
 import { battleCards, competitors, products, signals, selfProfileLastEditedAt } from "@outrival/db";
 import { getBytesFromR2 } from "@outrival/shared";
 import { db } from "../lib/db";
+import { enqueueJob } from "../lib/queue";
 import { analyticsQuery, sql } from "../lib/analytics-safe";
 import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
@@ -245,7 +246,7 @@ battleCardsRouter.post("/:id/battle-card/generate", aiIntensiveRateLimit, async 
   if (!competitor) return c.json({ error: "Not found" }, 404);
 
   const product = await resolveProduct(orgId, c.req.query("productId"));
-  const handle = await tasks.trigger("generate-battle-card", {
+  const jobId = await enqueueJob(generateBattleCard, {
     competitorId: competitor.id,
     orgId,
     productId: product?.id,
@@ -261,7 +262,7 @@ battleCardsRouter.post("/:id/battle-card/generate", aiIntensiveRateLimit, async 
     orgId,
   });
 
-  return c.json({ status: "generating", runId: handle.id });
+  return c.json({ status: "generating", runId: jobId });
 });
 
 battleCardsRouter.patch("/:id/battle-card", async (c) => {

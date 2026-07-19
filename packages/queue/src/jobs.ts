@@ -18,10 +18,14 @@ const PIPELINE_DLQ = "outrival-dlq";
 export const deadLetterQueue = defineJob<Record<string, never>>(PIPELINE_DLQ);
 
 // ── Payload types (exported so handlers + API routes share them) ──────────────
+// Payload types mirror each job's zod InputSchema in apps/workers/src/core/*.
+// They are the contract the API enqueues against, so a drift here is a runtime
+// parse error on the worker — keep them in sync when a schema changes.
 export type ScrapeMonitorPayload = {
   monitorId: string;
   force?: boolean;
-  triggeredBy?: string;
+  triggeredBy?: "user_forced_rescan";
+  userId?: string;
   forcedRescanLogId?: string;
 };
 export type ClassifyChangePayload = { changeId: string };
@@ -37,29 +41,52 @@ export type ExtractPricingPayload = {
   snapshotId: string;
   competitorId: string;
   status?: string;
-  promotional?: unknown;
+  promotional?: boolean;
   observedRegion?: string;
+  /** L2 archive backfill: backdate the pricing_history rows to the capture time. */
+  recordedAt?: string;
 };
 export type ExtractJobsPayload = { snapshotId: string; competitorId: string };
 export type ExtractReviewsPayload = { snapshotId: string; competitorId: string; source: string };
-export type ScrapeAiVisibilityPayload = { orgId: string };
-export type GenerateBattleCardPayload = { competitorId: string; productId?: string }; // refine in Phase 2
-export type NotifyOnboardingPayload = { orgId: string; sessionId?: string }; // refine in Phase 2
+export type ScrapeAiVisibilityPayload = { orgId: string; notifyOnComplete?: boolean };
+export type RefreshCompetitorSummaryPayload = {
+  competitorId: string;
+  /** On-demand refresh route only → drop a durable "summary ready" notification. */
+  notifyOnComplete?: boolean;
+};
+export type GenerateBattleCardPayload = {
+  competitorId: string;
+  orgId: string;
+  productId?: string;
+  notifyOnComplete?: boolean;
+};
+export type NotifyOnboardingPayload = { orgId: string; competitorIds: string[] };
 export type BackfillHistoryPayload = {
   monitorId: string;
   competitorId: string;
   sourceType: string;
 };
 export type OrgRefPayload = { orgId: string };
+export type EvaluateStandingQueriesPayload = {
+  orgId: string;
+  competitorId: string;
+  category: string;
+  severity: "low" | "medium" | "high" | "critical";
+  signalId: string;
+};
 export type Empty = Record<string, never>;
 
 // ── Pipeline / on-demand worker jobs ──────────────────────────────────────────
 // scrape-monitor runs on a single bounded lane. The collection doctrine caps the
 // cascade at L2 (datacenter egress, flat-cost and fast), so there is no slow paid
 // level left to isolate — the previous two-lane split was retired with L3/L4.
+// Default 3, not 5: on the target VPS (8 GB) the browser worker shares the box with
+// the light worker and the queue Postgres, and each in-flight scrape can hold a
+// Chromium. There is no second lane to tune — the slow lane was retired with L3/L4
+// (see above), so this single number is the whole scrape concurrency budget.
 export const scrapeMonitor = defineJob<ScrapeMonitorPayload>("scrape-monitor", {
   expireInSeconds: 300,
-  concurrency: Number(process.env.SCRAPE_CONCURRENCY ?? 5),
+  concurrency: Number(process.env.SCRAPE_CONCURRENCY ?? 3),
   deadLetter: PIPELINE_DLQ,
 });
 
@@ -78,7 +105,7 @@ export const sendAlert = defineJob<SendAlertPayload>("send-alert", {
   deadLetter: PIPELINE_DLQ,
   // API/handler dedup: pass `{ singletonKey: signalId }` (was Trigger idempotencyKey).
 });
-export const refreshCompetitorSummary = defineJob<CompetitorRefPayload>(
+export const refreshCompetitorSummary = defineJob<RefreshCompetitorSummaryPayload>(
   "refresh-competitor-summary",
   { expireInSeconds: 120, concurrency: Number(process.env.SUMMARY_CONCURRENCY ?? 1) },
 );
@@ -135,6 +162,24 @@ export const backfillHistory = defineJob<BackfillHistoryPayload>("backfill-histo
   expireInSeconds: 300,
 });
 
+// Complaint-theme / hiring-velocity inflection detectors. Event-triggered per
+// competitor off extract-reviews / extract-jobs (never a cron), each emitting one
+// grounded signal through the synthetic anchor→snapshot→change chain.
+export const detectReviewThemeShifts = defineJob<CompetitorRefPayload>(
+  "detect-review-theme-shifts",
+  { expireInSeconds: 60 },
+);
+export const detectHiringVelocityShifts = defineJob<CompetitorRefPayload>(
+  "detect-hiring-velocity-shifts",
+  { expireInSeconds: 60 },
+);
+// Standing-query re-evaluation, targeted off generate-signal. Shares the groq lane
+// (concurrency 1) so the judge + internal Ask run never starve classify→signal.
+export const evaluateStandingQueries = defineJob<EvaluateStandingQueriesPayload>(
+  "evaluate-standing-queries",
+  { expireInSeconds: 300, concurrency: 1 },
+);
+
 // ── Scheduled / cron jobs (16 → all become boss.schedule(), no 10-cron cap) ───
 export const scheduleScraping = defineJob<Empty>("schedule-scraping", { expireInSeconds: 120 });
 export const scheduleTechStack = defineJob<Empty>("schedule-tech-stack", { expireInSeconds: 120 });
@@ -174,6 +219,14 @@ export const detectSilentMonitors = defineJob<Empty>("detect-silent-monitors", {
   expireInSeconds: 300,
 });
 
+// Dead-man's switch: pings an external heartbeat monitor every few minutes so the
+// alert fires from OUTSIDE when this system stops running. Never retried — a
+// missed ping is the signal, and a retry storm would just spam the DLQ.
+export const heartbeat = defineJob<Empty>("heartbeat", {
+  retryLimit: 0,
+  expireInSeconds: 30,
+});
+
 // End-to-end liveness probe: enqueue from anywhere, a worker completes it.
 // Used by the post-deploy smoke test ("is the worker consuming?").
 export const queueHealth = defineJob<{ note?: string }>("queue-health", {
@@ -186,6 +239,9 @@ export const queueHealth = defineJob<{ note?: string }>("queue-health", {
  * No 10-schedule cap — the five previously-capped crons are all present.
  */
 export const CRON_SCHEDULES: Record<string, string> = {
+  // Every 5 min: the external monitor's "no ping for N minutes" alert is the only
+  // thing that can page when the whole worker fleet is down.
+  heartbeat: "*/5 * * * *",
   "schedule-scraping": "0 * * * *",
   "generate-daily-digest": "0 * * * *",
   "schedule-tech-stack": "0 6 * * *",

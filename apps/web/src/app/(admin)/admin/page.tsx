@@ -79,7 +79,7 @@ export default async function OverviewPage() {
         ? `${depsDegraded} degraded`
         : "All OK";
   const backlog = queue?.queues.totalQueued ?? null;
-  const overdueCrons = queue?.schedules.overdueCount ?? 0;
+  const deadLetterCount = queue?.deadLetter.count ?? 0;
 
   return (
     <div className="flex flex-col gap-5">
@@ -118,7 +118,7 @@ export default async function OverviewPage() {
 
       <Section
         title="System"
-        info="Infrastructure health rollup — external dependencies, Trigger.dev queue backlog and overdue crons. Click through for the full breakdown on the System page."
+        info="Infrastructure health rollup — external dependencies, pg-boss job queue backlog and the dead-letter queue. Click through for the full breakdown on the System page."
       >
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
           <HealthTile
@@ -133,14 +133,14 @@ export default async function OverviewPage() {
             label="Queue backlog"
             value={backlog == null ? "—" : String(backlog)}
             tone={backlog == null ? "neutral" : backlog > 50 ? "bad" : "ok"}
-            hint="runs queued"
+            hint="jobs queued"
           />
           <HealthTile
             href="/admin/system"
-            label="Overdue crons"
-            value={queue ? String(overdueCrons) : "—"}
-            tone={overdueCrons > 0 ? "bad" : queue ? "ok" : "neutral"}
-            hint="schedules past due"
+            label="Dead letter"
+            value={queue ? String(deadLetterCount) : "—"}
+            tone={deadLetterCount > 0 ? "bad" : queue ? "ok" : "neutral"}
+            hint="jobs exhausted retries"
           />
         </div>
       </Section>

@@ -110,11 +110,23 @@ export function PageHeader({ title, subtitle }: { title: string; subtitle?: stri
   );
 }
 
-// Color a status label by family (Trigger.dev run statuses + scrape/feedback).
-const GREEN = new Set(["COMPLETED", "success", "resolved", "added"]);
+// Color a status label by family (pg-boss job states + scrape/feedback). pg-boss
+// states are created | active | completed | cancelled | failed.
+const GREEN = new Set(["COMPLETED", "completed", "success", "resolved", "added"]);
 const RED = new Set(["FAILED", "CRASHED", "SYSTEM_FAILURE", "TIMED_OUT", "failed"]);
-const AMBER = new Set(["EXECUTING", "REATTEMPTING", "no_change", "reviewed", "parse_failed"]);
-const MUTED = new Set(["QUEUED", "WAITING", "DELAYED", "PENDING", "CANCELED", "CANCELLED", "EXPIRED", "new"]);
+const AMBER = new Set(["EXECUTING", "REATTEMPTING", "active", "no_change", "reviewed", "parse_failed"]);
+const MUTED = new Set([
+  "QUEUED",
+  "WAITING",
+  "DELAYED",
+  "PENDING",
+  "CANCELED",
+  "CANCELLED",
+  "EXPIRED",
+  "created",
+  "cancelled",
+  "new",
+]);
 
 export function StatusPill({ status }: { status: string }) {
   const color = GREEN.has(status)

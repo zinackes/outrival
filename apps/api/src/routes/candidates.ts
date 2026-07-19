@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
-import { tasks } from "@trigger.dev/sdk/v3";
+import { detectPlatform, scrapeMonitor } from "@outrival/queue";
 import {
   competitorCandidates,
   competitors,
@@ -16,6 +16,7 @@ import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
+import { enqueueJob } from "../lib/queue";
 import {
   associateCompetitorWithProduct,
   primaryProductId,
@@ -362,7 +363,7 @@ candidatesRouter.post("/:id/add", async (c) => {
   // patch-31 — detect the platform profile (fire-and-forget) so the first scrapes
   // can route via structured connectors. Never blocks the add.
   try {
-    await tasks.trigger("detect-platform", { competitorId: competitor.id });
+    await enqueueJob(detectPlatform, { competitorId: competitor.id });
   } catch (e) {
     console.error("Failed to trigger platform detection", {
       competitorId: competitor.id,
@@ -405,7 +406,7 @@ candidatesRouter.post("/:id/add", async (c) => {
 
   for (const m of monitorRows) {
     try {
-      await tasks.trigger("scrape-monitor", { monitorId: m.id, force: true });
+      await enqueueJob(scrapeMonitor, { monitorId: m.id, force: true });
     } catch (e) {
       console.error("Failed to trigger initial scrape", { monitorId: m.id, error: String(e) });
     }

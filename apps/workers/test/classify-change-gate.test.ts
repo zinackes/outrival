@@ -52,6 +52,9 @@ beforeAll(async () => {
   // later `import` would hand back the mock and the real gateAppliesTo /
   // suppressesAsCosmetic (which we deliberately keep live) would be lost.
   const realAi = await import("@outrival/ai");
+  // Same reason, for the queue: NonRetriable must stay the REAL class or
+  // asTriggerRun's `instanceof` check silently stops recognising an abort.
+  const realQueue = await import("@outrival/queue");
 
   const harness = await makeTestDb();
   testDb = harness.db;
@@ -64,13 +67,22 @@ beforeAll(async () => {
     task: (cfg: unknown) => cfg,
     queue: (cfg: unknown) => cfg,
     logger: { log: () => {}, warn: () => {}, error: () => {}, info: () => {} },
-    tasks: {
-      trigger: async (id: string, payload: unknown) => {
-        triggered.push({ id, payload });
-        return { id: "run-stub" };
+    AbortTaskRunError: class AbortTaskRunError extends Error {},
+  }));
+
+  // The job body now fans out through the typed pg-boss registry, not the Trigger
+  // SDK, so the capture lives here. Without a started queue `enqueue` would throw
+  // "Queue not started" and every substantive-path assertion would fail on the
+  // fan-out instead of on what it means to test.
+  mock.module("@outrival/queue", () => ({
+    ...realQueue,
+    generateSignal: {
+      ...realQueue.generateSignal,
+      enqueue: async (payload: unknown) => {
+        triggered.push({ id: "generate-signal", payload });
+        return "job-stub";
       },
     },
-    AbortTaskRunError: class AbortTaskRunError extends Error {},
   }));
 
   // lib/analytics is deliberately NOT mocked. Replacing it wholesale broke

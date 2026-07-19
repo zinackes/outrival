@@ -33,23 +33,14 @@ import {
   StatusPill,
   mono,
   durationFmt,
-  centsFmt,
   relativeFmt,
   dateFmt,
 } from "../_components/shell";
 import { api } from "@/lib/api";
 import type { AdminJobRun, AdminJobDetail } from "@/lib/api";
 
-const STATUSES = [
-  "COMPLETED",
-  "FAILED",
-  "CRASHED",
-  "EXECUTING",
-  "QUEUED",
-  "WAITING",
-  "CANCELED",
-  "TIMED_OUT",
-];
+// pg-boss job states.
+const STATUSES = ["created", "active", "completed", "cancelled", "failed"];
 
 export function JobsView({
   initialRuns,
@@ -73,9 +64,9 @@ export function JobsView({
       const res = await api.adminListJobs({
         status: status === "all" ? undefined : status,
         task: task.trim() || undefined,
-        after: opts?.append ? cursor ?? undefined : undefined,
+        before: opts?.append ? cursor ?? undefined : undefined,
       });
-      if (res.error) toast.error("Trigger.dev unavailable");
+      if (res.error) toast.error("Queue unavailable");
       setRuns((prev) => (opts?.append ? [...prev, ...res.runs] : res.runs));
       setCursor(res.nextCursor);
     } catch {
@@ -96,11 +87,11 @@ export function JobsView({
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader title="Jobs" subtitle="Trigger.dev runs — every task, live from the run history." />
+      <PageHeader title="Jobs" subtitle="Queue runs — every job, live from the pg-boss job history." />
 
       <Section
         title="Runs"
-        info="Live Trigger.dev run history — every background task with its status, duration and timestamps. Filter by status and refresh to poll the latest runs."
+        info="Live pg-boss job history — every background job with its status, duration and timestamps. Filter by status and refresh to poll the latest runs."
         action={
           <Button variant="ghost" size="sm" disabled={busy} onClick={() => reload()}>
             <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
@@ -123,7 +114,7 @@ export function JobsView({
             </SelectContent>
           </Select>
           <Input
-            placeholder="task identifier (e.g. scrape-monitor)"
+            placeholder="queue name (e.g. scrape-monitor)"
             value={task}
             onChange={(e) => setTask(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && reload()}
@@ -135,7 +126,7 @@ export function JobsView({
         </div>
 
         {unavailable && runs.length === 0 ? (
-          <Empty>Trigger.dev run history unavailable (check TRIGGER_SECRET_KEY).</Empty>
+          <Empty>Job history unavailable (check QUEUE_DATABASE_URL).</Empty>
         ) : runs.length === 0 ? (
           <Empty>No runs match.</Empty>
         ) : (
@@ -143,21 +134,18 @@ export function JobsView({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Task</TableHead>
+                  <TableHead>Queue</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Started</TableHead>
                   <TableHead className="text-right">Duration</TableHead>
-                  <TableHead className="text-right">Cost</TableHead>
+                  <TableHead className="text-right">Retries</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {runs.map((r) => (
                   <TableRow key={r.id}>
-                    <TableCell style={mono}>
-                      {r.taskIdentifier}
-                      {r.isTest ? <span className="ml-1 text-meta text-muted-foreground">(test)</span> : null}
-                    </TableCell>
+                    <TableCell style={mono}>{r.taskIdentifier}</TableCell>
                     <TableCell>
                       <StatusPill status={r.status} />
                     </TableCell>
@@ -168,7 +156,7 @@ export function JobsView({
                       {durationFmt(r.durationMs)}
                     </TableCell>
                     <TableCell className="text-right" style={mono}>
-                      {centsFmt(r.costInCents)}
+                      {r.retryCount}
                     </TableCell>
                     <TableCell className="text-right">
                       <Button variant="ghost" size="sm" onClick={() => openDetail(r.id)}>
@@ -206,8 +194,10 @@ export function JobsView({
                   <p style={mono}>{detail.id}</p>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Attempts</span>
-                  <p style={mono}>{detail.attemptCount ?? "—"}</p>
+                  <span className="text-muted-foreground">Retries</span>
+                  <p style={mono}>
+                    {detail.retryCount} / {detail.retryLimit}
+                  </p>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Started</span>

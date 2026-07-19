@@ -25,11 +25,12 @@ import {
   type ProductProfile,
 } from "@outrival/ai";
 import { findSimilarCompanies } from "@outrival/scrapers/discovery";
-import { tasks } from "@trigger.dev/sdk/v3";
+import { scrapeMonitor, notifyOnboardingAnalysis, aiVisibilityTeaser, sendWelcomeDigest } from "@outrival/queue";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
+import { enqueueJob } from "../lib/queue";
 import {
   ensurePrimaryProductForSelf,
   associateCompetitorWithPrimaryProduct,
@@ -159,7 +160,7 @@ async function createSelfCompetitor(orgId: string) {
   const selfMonitorRows = await db.insert(monitors).values(monitorRows).returning();
   for (const m of selfMonitorRows) {
     try {
-      await tasks.trigger("scrape-monitor", { monitorId: m.id, force: true });
+      await enqueueJob(scrapeMonitor, { monitorId: m.id, force: true });
     } catch (e) {
       console.error("Failed to trigger self scrape", { monitorId: m.id, error: String(e) });
     }
@@ -716,7 +717,7 @@ onboardingRouter.post("/complete", async (c) => {
 
     for (const m of monitorRows) {
       try {
-        await tasks.trigger("scrape-monitor", { monitorId: m.id, force: true });
+        await enqueueJob(scrapeMonitor, { monitorId: m.id, force: true });
       } catch (e) {
         console.error("Failed to trigger initial scrape", { monitorId: m.id, error: String(e) });
       }
@@ -847,10 +848,10 @@ onboardingRouter.post("/complete", async (c) => {
   // re-run of /complete doesn't spawn a second watcher.
   if (created.length > 0) {
     try {
-      await tasks.trigger(
-        "notify-onboarding-analysis",
+      await enqueueJob(
+        notifyOnboardingAnalysis,
         { orgId, competitorIds: created.map((c) => c.competitorId) },
-        { idempotencyKey: `onboarding-analysis-${orgId}` },
+        { singletonKey: `onboarding-analysis-${orgId}` },
       );
     } catch (e) {
       console.error("Failed to trigger onboarding analysis watcher", {
@@ -865,10 +866,10 @@ onboardingRouter.post("/complete", async (c) => {
   // and forget. Needs competitors for the comparative framing.
   if (created.length > 0) {
     try {
-      await tasks.trigger(
-        "ai-visibility-teaser",
+      await enqueueJob(
+        aiVisibilityTeaser,
         { orgId },
-        { idempotencyKey: `ai-visibility-teaser-${orgId}` },
+        { singletonKey: `ai-visibility-teaser-${orgId}` },
       );
     } catch (e) {
       console.error("Failed to trigger ai-visibility teaser", { orgId, error: String(e) });
@@ -878,10 +879,10 @@ onboardingRouter.post("/complete", async (c) => {
   // Welcome digest (Lever 5 brick 1): "here's your starting position". Idempotency-keyed
   // per org so a re-run of /complete doesn't double-send. Best-effort.
   try {
-    await tasks.trigger(
-      "send-welcome-digest",
+    await enqueueJob(
+      sendWelcomeDigest,
       { orgId },
-      { idempotencyKey: `welcome-digest-${orgId}` },
+      { singletonKey: `welcome-digest-${orgId}` },
     );
   } catch (e) {
     console.error("Failed to trigger welcome digest", { orgId, error: String(e) });

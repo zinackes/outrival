@@ -3,10 +3,12 @@
 // It turns scheduled jobs into on-demand triggers, so delete this file and its
 // mount before shipping to production.
 import { Hono } from "hono";
-import { tasks, runs } from "@trigger.dev/sdk/v3";
 import { and, eq, isNull } from "drizzle-orm";
 import { competitors } from "@outrival/db";
 import { authMiddleware } from "../middleware/auth";
+import { scrapeTechStack } from "@outrival/queue";
+import { enqueueByName, enqueueJob } from "../lib/queue";
+import { getJob } from "../lib/queue-admin";
 import { db } from "../lib/db";
 import { ensureUserOrg } from "../lib/org";
 
@@ -64,8 +66,8 @@ devRouter.post("/crons/:id/trigger", async (c) => {
 
   // Scheduled tasks ignore the payload here — every job's run() reads none, so
   // an empty object is enough to fire a manual run.
-  const handle = await tasks.trigger(id, {});
-  return c.json({ runId: handle.id });
+  const jobId = await enqueueByName(id);
+  return c.json({ runId: jobId });
 });
 
 // Force a tech-stack scan for one competitor. Tech stack runs on its own monthly
@@ -86,21 +88,24 @@ devRouter.post("/competitors/:id/scrape-tech-stack", async (c) => {
   });
   if (!competitor) return c.json({ error: "Competitor not found" }, 404);
 
-  const handle = await tasks.trigger("scrape-tech-stack", { competitorId: id });
-  return c.json({ runId: handle.id });
+  const jobId = await enqueueJob(scrapeTechStack, { competitorId: id });
+  return c.json({ runId: jobId });
 });
 
+// pg-boss has no run-status API, so the console polls the job row directly.
+// States: created | active | completed | cancelled | failed.
 devRouter.get("/runs/:runId", async (c) => {
-  const runId = c.req.param("runId");
-  const run = await runs.retrieve(runId);
+  const job = await getJob(c.req.param("runId"));
+  if (!job) return c.json({ error: "not_found" }, 404);
+  const terminal = ["completed", "cancelled", "failed"].includes(job.status);
   return c.json({
-    id: run.id,
-    status: run.status,
-    isCompleted: run.isCompleted,
-    isSuccess: run.isSuccess,
-    isFailed: run.isFailed,
-    durationMs: run.durationMs,
-    output: run.output ?? null,
-    error: run.error ?? null,
+    id: job.id,
+    status: job.status,
+    isCompleted: terminal,
+    isSuccess: job.status === "completed",
+    isFailed: job.status === "failed" || job.status === "cancelled",
+    durationMs: job.durationMs,
+    output: null,
+    error: job.error,
   });
 });

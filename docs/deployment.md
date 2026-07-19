@@ -160,8 +160,37 @@ Two services, both built from `apps/workers` (`Dockerfile.queue-light` /
 ```
 WORKER_ROLE=light                     # or browser — one value per service, not both
 QUEUE_DATABASE_URL=                   # DEDICATED always-on Postgres, NEVER the Neon serverless branch
+SCRAPE_CONCURRENCY=3                  # browser service only
+HEARTBEAT_URL=                        # light service only (it owns cron)
 ```
+`QUEUE_DATABASE_URL` also goes on the **`api`** service — it enqueues (send-only:
+never a handler, never cron). Without it, every route that fires a job 500s while
+the rest of the API keeps serving.
+
 See `docs/trigger-to-pgboss-migration.md` for cutover state.
+
+#### Sizing on the Netcup RS 1000 (8 GB shared by all three)
+
+The queue Postgres, the light worker and the browser worker share one box, so the
+limits are what stop a Chromium spike from taking down the queue everything else
+depends on. Set them in Coolify → service → Resources:
+
+| Service | Memory limit | Notes |
+|---|---|---|
+| `queue-postgres` | 512 MB | Tiny working set (job rows only), but it must never be the one that gets OOM-killed — everything else is idle without it. |
+| `workers-light` | 1 GB | Crons, AI lane, extracts, digests, alerts. No browser. |
+| `workers-browser` | 4–5 GB | Chromium is out-of-process per page; `SCRAPE_CONCURRENCY=3` is sized for this ceiling. |
+
+Also on the **browser** service:
+- **`--shm-size=1g`** (Docker Options). Chromium's default 64 MB `/dev/shm` causes
+  renderer crashes that surface as random scrape failures, not as OOM.
+- **Stop grace period ≥ 60 s**, so a redeploy mid-scrape drains through pg-boss's
+  graceful stop instead of leaving jobs stuck `active` until `expireInSeconds`.
+
+If real load OOMs the browser worker, the fix is a bigger box (RS 2000, 16 GB —
+in-place upgrade at Netcup, no migration), NOT raising concurrency on this one.
+Watch `/admin` → queue backlog: a growing `scrape-monitor` queue with no failures
+means the concurrency is the bottleneck; failures with no backlog means memory is.
 
 ## Stripe webhook
 
@@ -187,3 +216,16 @@ signature). The `stripe listen` in `pnpm dev` is dev-only.
 - [ ] Add a competitor → scrape → signal appears (proves the pipeline + browsers).
 - [ ] A Stripe test webhook hits `/api/stripe/webhook`.
 - [ ] Sentry + uptime (BetterStack) receiving events.
+
+### pg-boss additions to the smoke test
+
+- [ ] `/admin` → queue health lists the queues with live counts (proves the API's
+      send-only client reaches the queue Postgres).
+- [ ] Force a re-scan from the UI → the job appears in `/admin/jobs` and completes
+      (proves API-enqueue → browser-worker execution end to end).
+- [ ] Weekly digest + an alert email actually send (light worker).
+- [ ] **Dead-letter queue is empty** (`/admin` → queue health).
+- [ ] The heartbeat monitor has received a ping in the last 5 min.
+- [ ] The five previously cron-less jobs each ran at least once: `ai-capacity-check`,
+      `ops-health-check`, `feedback-pattern-detection`, `purge-retention`,
+      `detect-silent-monitors` (check `/admin/jobs` filtered by queue name).

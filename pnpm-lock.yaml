@@ -29,6 +29,9 @@ importers:
       '@outrival/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@outrival/queue':
+        specifier: workspace:*
+        version: link:../../packages/queue
       '@outrival/scrapers':
         specifier: workspace:*
         version: link:../../packages/scrapers

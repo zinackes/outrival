@@ -10,9 +10,10 @@ import {
   user as authUser,
   session as authSession,
 } from "@outrival/db";
-import { tasks } from "@trigger.dev/sdk/v3";
+import { scrapeMonitor } from "@outrival/queue";
 import { auth } from "../../lib/auth";
 import { eraseOrg } from "../../lib/erase-org";
+import { enqueueJob } from "../../lib/queue";
 import { logAudit, type AdminVariables } from "./shared";
 
 export const usersRouter = new Hono<{ Variables: AdminVariables }>();
@@ -135,13 +136,13 @@ usersRouter.post("/monitors/:id/force-scrape", async (c) => {
   const monitor = await db.query.monitors.findFirst({ where: eq(monitors.id, id) });
   if (!monitor) return c.json({ error: "Not found" }, 404);
 
-  const handle = await tasks.trigger("scrape-monitor", { monitorId: id, force: true });
+  const jobId = await enqueueJob(scrapeMonitor, { monitorId: id, force: true });
   await logAudit(c.get("user").email, "force_scrape", "monitor", id, {
     competitorId: monitor.competitorId,
     sourceType: monitor.sourceType,
   });
 
-  return c.json({ ok: true, runId: handle.id });
+  return c.json({ ok: true, runId: jobId });
 });
 
 // --- Set a user's org plan (operator grant — does NOT touch Stripe) ---

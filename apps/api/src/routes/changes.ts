@@ -1,11 +1,12 @@
 import { Hono } from "hono";
 import { and, desc, eq, isNull, ne, sql } from "drizzle-orm";
-import { tasks } from "@trigger.dev/sdk/v3";
+import { classifyChange } from "@outrival/queue";
 import { changes, monitors, competitors } from "@outrival/db";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
+import { enqueueJob } from "../lib/queue";
 
 type Variables = { user: { id: string } };
 
@@ -74,6 +75,6 @@ changesRouter.post("/:id/classify", aiIntensiveRateLimit, async (c) => {
     return c.json({ error: "Not found" }, 404);
   }
 
-  const handle = await tasks.trigger("classify-change", { changeId: id });
-  return c.json({ runId: handle.id });
+  const jobId = await enqueueJob(classifyChange, { changeId: id });
+  return c.json({ runId: jobId });
 });

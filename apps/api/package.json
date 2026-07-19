@@ -14,6 +14,7 @@
     "@better-auth/passkey": "^1.6.22",
     "@outrival/ai": "workspace:*",
     "@outrival/db": "workspace:*",
+    "@outrival/queue": "workspace:*",
     "@outrival/scrapers": "workspace:*",
     "@outrival/shared": "workspace:*",
     "@sentry/node": "^10.54.0",

@@ -36,7 +36,7 @@ Mise à jour à chaque phase / patch.
 | ORM               | Drizzle ORM                              | Type-safe, léger, Postgres |
 | DB                | PostgreSQL (Neon)                        | Serverless, scale-to-zero, branching ; relationnel + time-series/analytics dans une seule base |
 | Stockage binaire  | Cloudflare R2                            | Quasi-gratuit pour snapshots HTML/screenshots/PDFs |
-| Jobs              | **Trigger.dev v4** (`task()`) — exécution en migration vers pg-boss self-hosted | Durable execution, retries, dashboard, schedules ; migration en cours, cf. `docs/trigger-to-pgboss-migration.md` |
+| Jobs              | **pg-boss v12** self-hosted (`@outrival/queue`)     | Postgres-natif : 0 € de logiciel, pas de compteur par run, pas de cap à 10 crons, pas de risque roadmap vendeur. Les wrappers Trigger.dev survivent une semaine après le cutover comme rollback, cf. `docs/trigger-to-pgboss-migration.md` |
 | Scraping          | Playwright (Chromium) + fetch            | Rendu honnête : UA OutrivalBot identifiable, pas de spoofing d'automatisation, respect robots.txt (collection doctrine) |
 | Egress proxy      | ProxyScrape datacenter (egress amont)    | Cascade 3 niveaux (L0 fetch · L1 render · L2 datacenter). Collection doctrine : arrêt sur refus, jamais d'escalade IP/fingerprint |
 | Discovery         | Exa.ai (`exa-js`)                        | Recherche sémantique de concurrents similaires |
@@ -56,9 +56,12 @@ OVH VPS (4 vCPU / 8GB RAM / 80GB SSD) — €8/mois
 └── Coolify (PaaS self-hosted)
     ├── @outrival/web     → outrival.io        (:3000) Next.js 16
     ├── @outrival/api     → api.outrival.io    (:3001) Hono + Bun
-    └── @outrival/workers → pg-boss (migration en cours depuis Trigger.dev Cloud,
-        cf. docs/trigger-to-pgboss-migration.md) : 2 services, WORKER_ROLE=light
-        (crons/IA/extracts/alerts) et WORKER_ROLE=browser (scrapes/platform/PDF)
+    ├── @outrival/workers → pg-boss : 2 services, WORKER_ROLE=light (crons/IA/
+    │   extracts/alerts, ~1 Go) et WORKER_ROLE=browser (scrapes/platform/PDF,
+    │   4-5 Go, shm-size 1g). Le light possède seul cron + maintenance.
+    └── queue-postgres    → Postgres dédié always-on (~512 Mo) — schéma `pgboss`
+        UNIQUEMENT (QUEUE_DATABASE_URL). JAMAIS Neon : un poller sub-2s défait le
+        scale-to-zero et facture des compute-hours. Créé par boss.start().
 
 Neon (EU) — €0 free tier → ~$19/mois (Launch) à l'échelle
 └── PostgreSQL — relationnel + time-series/analytics (ex-ClickHouse) dans une
@@ -69,9 +72,9 @@ Neon (EU) — €0 free tier → ~$19/mois (Launch) à l'échelle
 Cloudflare R2 — ~€1/mois
 └── Snapshots HTML, screenshots, PDFs battle cards
 
-Trigger.dev Cloud — €0 free → Hobby €20/mois (50k runs) → Pro €100
-└── Orchestration jobs (scraping, classify, insight, digest, alerts, battle cards) ;
-    exécution migrant progressivement vers les workers pg-boss ci-dessus
+Heartbeat externe (Better Stack / UptimeRobot) — €0
+└── Le worker light ping HEARTBEAT_URL toutes les 5 min ; le monitor alerte quand
+    les pings S'ARRÊTENT. Seule alerte qui survit à la mort du VPS ou de la queue.
 
 ProxyScrape — datacenter ~$10/mois (flat, BW illimitée, egress amont — collection doctrine)
 Resend — $20/mois Pro (50k emails/mois)
@@ -891,6 +894,16 @@ TRIGGER_SECRET_KEY=          # Trigger.dev — being replaced by pg-boss (remove
 TRIGGER_PROJECT_ID=
 QUEUE_DATABASE_URL=          # pg-boss queue — DEDICATED always-on Postgres, NEVER Neon (cf. docs/trigger-to-pgboss-migration.md)
 WORKER_ROLE=                 # browser | light — which queues a worker process handles
+                            # QUEUE_DATABASE_URL is ALSO required on the api service (send-only:
+                            # it enqueues, never executes a handler, never owns cron)
+SCRAPE_CONCURRENCY=3         # scrape-monitor jobs in flight per browser worker (was 5 on Trigger's
+                            # per-run machines; 3 on the shared 8 GB VPS). The slow lane no longer
+                            # exists — it was retired with the L3/L4 cascade tiers
+SUMMARY_CONCURRENCY=1        # competitor-summary lane (onboarding burst stays on the free AI tier)
+HEARTBEAT_URL=               # dead-man's switch: the light worker GETs this every 5 min. Point it at
+                            # a Better Stack / UptimeRobot heartbeat monitor that alerts when the pings
+                            # STOP — the only alert that still fires if the VPS or the fleet dies.
+                            # Empty → the job no-ops silently
 
 # Scraping & discovery (collection doctrine — cascade L0/L1/L2, egress amont)
 PROXYSCRAPE_DC_ENDPOINT=     # datacenter host:port (L2 egress amont) — optionnel

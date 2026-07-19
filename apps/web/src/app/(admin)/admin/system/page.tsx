@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { adminFetch } from "../_lib/server";
+import { DeadLetterSection } from "./dead-letter";
 import {
   PageHeader,
   Section,
@@ -20,7 +21,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import type {
   AdminQueueHealth,
   AdminDependencies,
@@ -84,7 +84,7 @@ function HostSection({ host }: { host: AdminHostHealth }) {
     <Section
       title="Host (web + API)"
       note={host.memory.usedPct >= 85 ? "memory high" : undefined}
-      info="Resources of the VPS running Next.js (web) and Hono (API). This is NOT scraping — browsers run on Trigger.dev Cloud, so a high backlog is a queue concern, not host RAM. Load is the OS run-queue average; >100% of cores means tasks are waiting on CPU."
+      info="Resources of the VPS running Next.js (web) and Hono (API). Scraping browsers now run on the same box, in the separate browser-worker service with its own memory limit — so a high queue backlog can mean either concurrency or host RAM. Load is the OS run-queue average; >100% of cores means tasks are waiting on CPU."
     >
       <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
         <Stat
@@ -165,20 +165,22 @@ function ErrorsSection({ rates }: { rates: AdminErrorRates }) {
   );
 }
 
-function TriggerSections({ health }: { health: AdminQueueHealth }) {
-  const { queues, failures24h, throughput24h, schedules } = health;
-  const activeQueues = queues.rows.filter((q) => q.queued > 0 || q.running > 0 || q.paused);
+function QueueSections({ health }: { health: AdminQueueHealth }) {
+  const { queues, failures24h, throughput24h, schedules, deadLetter } = health;
+  const activeQueues = queues.rows.filter(
+    (q) => q.queued > 0 || q.running > 0 || q.failed > 0 || q.deferred > 0,
+  );
   const backlogWarn = queues.totalQueued > BACKLOG_WARN;
 
   return (
     <>
       <Section
-        title="Trigger.dev queue"
+        title="Job queue"
         note={backlogWarn ? "backlog" : undefined}
-        info="Aggregate queue state from Trigger.dev Cloud. Backlog (queued) is the real 'scale me' signal — a standing backlog means jobs are waiting for a worker slot. Running = currently executing. Avg run / failures are over the last 24h."
+        info="Aggregate pg-boss queue state (its own dedicated Postgres, not this VPS). Backlog (queued) is the real 'scale me' signal — a standing backlog means jobs are waiting for a worker slot. Running = currently executing. Failed = jobs currently sitting in a failed state; failures (24h) / avg run are windowed."
       >
         {queues.available || throughput24h.available || failures24h.available ? (
-          <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
+          <div className="grid grid-cols-2 gap-6 md:grid-cols-5">
             <Stat
               label="Queued"
               value={
@@ -190,13 +192,22 @@ function TriggerSections({ health }: { health: AdminQueueHealth }) {
             />
             <Stat label="Running" value={queues.available ? queues.totalRunning : "—"} hint="executing now" />
             <Stat
+              label="Failed"
+              value={
+                <span style={emphasize(queues.totalFailed, queues.totalFailed > 0)}>
+                  {queues.available ? queues.totalFailed : "—"}
+                </span>
+              }
+              hint="across all queues"
+            />
+            <Stat
               label="Failures (24h)"
               value={
                 <span style={emphasize(failures24h.count, failures24h.count > 0)}>
                   {failures24h.available ? `${failures24h.count}${failures24h.capped ? "+" : ""}` : "—"}
                 </span>
               }
-              hint="failed / crashed runs"
+              hint="failed runs"
             />
             <Stat
               label="Avg run (24h)"
@@ -211,7 +222,7 @@ function TriggerSections({ health }: { health: AdminQueueHealth }) {
 
       <Section
         title="Queues"
-        info="Per-queue backlog and concurrency. A queue whose running count sits at its concurrency limit while queued grows is the bottleneck — raise its concurrency or the worker capacity."
+        info="Per-queue backlog. A queue whose queued count keeps growing while running stays flat is the bottleneck — raise the worker capacity for it."
       >
         {!queues.available ? (
           <Empty>Queue list unavailable.</Empty>
@@ -224,42 +235,28 @@ function TriggerSections({ health }: { health: AdminQueueHealth }) {
                 <TableHead>Queue</TableHead>
                 <TableHead className="text-right">Queued</TableHead>
                 <TableHead className="text-right">Running</TableHead>
-                <TableHead className="text-right">Concurrency</TableHead>
-                <TableHead></TableHead>
+                <TableHead className="text-right">Failed</TableHead>
+                <TableHead className="text-right">Deferred</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {activeQueues.map((q) => {
-                const saturated =
-                  q.concurrencyLimit != null && q.running >= q.concurrencyLimit && q.queued > 0;
-                return (
-                  <TableRow key={`${q.type}/${q.name}`}>
-                    <TableCell style={mono}>
-                      {q.name}
-                      <span className="ml-1 text-meta text-muted-foreground">({q.type})</span>
-                    </TableCell>
-                    <TableCell className="text-right" style={emphasize(q.queued, q.queued > 0)}>
-                      {q.queued}
-                    </TableCell>
-                    <TableCell className="text-right" style={mono}>
-                      {q.running}
-                    </TableCell>
-                    <TableCell
-                      className="text-right"
-                      style={{ ...mono, color: saturated ? "var(--accent)" : undefined }}
-                    >
-                      {q.concurrencyLimit ?? "∞"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {q.paused ? (
-                        <Badge variant="outline" className="text-meta text-muted-foreground">
-                          paused
-                        </Badge>
-                      ) : null}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+              {activeQueues.map((q) => (
+                <TableRow key={q.name}>
+                  <TableCell style={mono}>{q.name}</TableCell>
+                  <TableCell className="text-right" style={emphasize(q.queued, q.queued > 0)}>
+                    {q.queued}
+                  </TableCell>
+                  <TableCell className="text-right" style={mono}>
+                    {q.running}
+                  </TableCell>
+                  <TableCell className="text-right" style={emphasize(q.failed, q.failed > 0)}>
+                    {q.failed}
+                  </TableCell>
+                  <TableCell className="text-right" style={mono}>
+                    {q.deferred}
+                  </TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
         )}
@@ -267,8 +264,7 @@ function TriggerSections({ health }: { health: AdminQueueHealth }) {
 
       <Section
         title="Scheduled jobs"
-        note={schedules.overdueCount > 0 ? `${schedules.overdueCount} overdue` : undefined}
-        info="Registered Trigger.dev cron schedules with their next fire time. An inactive schedule that should be running, or one whose next run is already in the past, is a silent scheduler stall."
+        info="Registered pg-boss cron schedules. pg-boss keeps no next-run time, so 'last fired' — how long since a job for this schedule last landed — is the stall signal instead: a schedule silent far longer than its cron period means the scheduler stopped firing it."
       >
         {!schedules.available ? (
           <Empty>Schedule list unavailable.</Empty>
@@ -278,41 +274,21 @@ function TriggerSections({ health }: { health: AdminQueueHealth }) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Task</TableHead>
+                <TableHead>Name</TableHead>
                 <TableHead>Cron</TableHead>
-                <TableHead>Next run</TableHead>
-                <TableHead></TableHead>
+                <TableHead>Last fired</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {schedules.rows.map((s) => (
-                <TableRow key={s.id}>
-                  <TableCell style={mono}>{s.task}</TableCell>
+                <TableRow key={s.name}>
+                  <TableCell style={mono}>{s.name}</TableCell>
                   <TableCell className="text-xs text-muted-foreground" style={mono}>
                     {s.cron}
                     <span className="ml-1 text-meta">{s.timezone}</span>
                   </TableCell>
-                  <TableCell
-                    className="text-xs"
-                    title={dateFmt(s.nextRun)}
-                    style={{ color: s.overdue ? "var(--critical)" : "var(--muted-foreground)" }}
-                  >
-                    {s.active ? relativeFmt(s.nextRun) : "—"}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {!s.active ? (
-                      <Badge variant="outline" className="text-meta text-muted-foreground">
-                        inactive
-                      </Badge>
-                    ) : s.overdue ? (
-                      <Badge
-                        variant="outline"
-                        className="text-meta"
-                        style={{ color: "var(--critical)", borderColor: "var(--critical)" }}
-                      >
-                        overdue
-                      </Badge>
-                    ) : null}
+                  <TableCell className="text-xs text-muted-foreground" title={dateFmt(s.lastFiredAt)}>
+                    {relativeFmt(s.lastFiredAt)}
                   </TableCell>
                 </TableRow>
               ))}
@@ -323,7 +299,7 @@ function TriggerSections({ health }: { health: AdminQueueHealth }) {
 
       <Section
         title="Recent failures (24h)"
-        info="The latest failed, crashed, timed-out or system-failure runs. Inspect a run on the Jobs page for its error and payload."
+        info="The latest jobs that failed, across every queue. Inspect a run on the Jobs page for its error and payload."
         action={
           <Link
             href="/admin/jobs"
@@ -341,7 +317,7 @@ function TriggerSections({ health }: { health: AdminQueueHealth }) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Task</TableHead>
+                <TableHead>Queue</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>When</TableHead>
               </TableRow>
@@ -362,6 +338,8 @@ function TriggerSections({ health }: { health: AdminQueueHealth }) {
           </Table>
         )}
       </Section>
+
+      <DeadLetterSection deadLetter={deadLetter} />
     </>
   );
 }
@@ -378,7 +356,7 @@ export default async function SystemPage() {
     <div className="flex flex-col gap-5">
       <PageHeader
         title="System"
-        subtitle="Infrastructure health — external dependencies, Trigger.dev queue & cron. The real scraping capacity lives on Trigger.dev Cloud, not the VPS."
+        subtitle="Infrastructure health — external dependencies, pg-boss job queue & cron schedules."
       />
 
       <Section
@@ -402,15 +380,15 @@ export default async function SystemPage() {
       {rates ? <ErrorsSection rates={rates} /> : null}
 
       {!health ? (
-        <Section title="Trigger.dev">
-          <Empty>Trigger.dev queue & cron health unavailable.</Empty>
+        <Section title="Job queue">
+          <Empty>Job queue & cron health unavailable.</Empty>
         </Section>
       ) : !health.configured ? (
-        <Section title="Trigger.dev">
-          <Empty>Trigger.dev not configured (TRIGGER_SECRET_KEY missing).</Empty>
+        <Section title="Job queue">
+          <Empty>Job queue not configured (QUEUE_DATABASE_URL missing).</Empty>
         </Section>
       ) : (
-        <TriggerSections health={health} />
+        <QueueSections health={health} />
       )}
     </div>
   );

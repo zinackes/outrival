@@ -16,3 +16,16 @@ export const backfillQueue: Queue = queue({
   name: "backfill",
   concurrencyLimit: 2,
 });
+
+// Onboarding /complete fires every competitor's homepage scrape at once, so this
+// job fans out N-wide within seconds. Hitting the free AI provider tier all at
+// once throttles it (429) → slow failover to the PAID tier: those runs take ~1-2min
+// (near maxDuration) and cost ~40× the ~3s/$0.0001 happy path. Serialising the
+// burst (limit 1) keeps each call alone on the fast free tier. This is a cost/
+// latency mitigation — NOT the "1/N stuck" fix (that was parse_failed → null →
+// no-retry, handled in refresh-competitor-summary's core body + grounding dropped
+// for summarize_competitor). Env-tunable up for paid AI tiers.
+export const summaryQueue: Queue = queue({
+  name: "competitor-summary",
+  concurrencyLimit: Number(process.env.SUMMARY_CONCURRENCY ?? 1),
+});

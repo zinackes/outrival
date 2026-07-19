@@ -1,6 +1,39 @@
 # Migration plan — Trigger.dev → pg-boss (`@outrival/workers` + `@outrival/api`)
 
-Status: **Phase 1 done** — Phases 0+1 built & live-verified (2026-07-01):
+Status: **Phases 0–6 done, code-complete — cutover pending** (2026-07-19). All 37
+job bodies live in `apps/workers/src/core/` (runtime-neutral), consumed by the
+pg-boss handlers AND by thin Trigger wrappers that stay deployable as the rollback
+for one week after cutover. The API enqueues through the typed registry on a
+send-only client; `/admin` reads job state from the `pgboss` schema. 17 crons
+registered (the 5 the Trigger cap had blocked, plus the new heartbeat).
+typecheck 8/8 + tests 12/12 green. **Not runtime-verified** — the staging gates
+below need a provisioned queue Postgres, which does not exist yet. See
+§11 (cutover checklist) and §12 (what is blocked).
+
+> **Re-extraction, not rebase (2026-07-19).** The first attempt extracted job
+> bodies on 2026-07-03; `main` then rewrote most of them (`scrape-monitor` alone
+> +643/−42: sitemap v2, HN, wellknown, collection doctrine) and shipped 11 new
+> jobs. Those `core/*` files were new files, so a merge would have kept the stale
+> copies silently — no conflict, no signal, two-week-old logic in production. The
+> extraction was redone from main's current bodies instead, byte-identical.
+>
+> The check that made that provable — and re-runnable if a core is ever suspected
+> of drifting — is a full-file diff of the pre-migration job against its core:
+>
+> ```bash
+> diff -u <(git show <ref>:apps/workers/src/jobs/<job>.job.ts) \
+>         apps/workers/src/core/<job>.ts | grep -v '^ '
+> ```
+>
+> The only legal hunks are: the `@trigger.dev` import line, the `task({… async run(`
+> header → `export async function runX(`, the trailing `  },\n});` → `}`, and (for
+> fan-out jobs) `tasks.trigger/batchTrigger` → registry `enqueue/enqueueMany`.
+> Anything else is drift. Bodies keep their original 4-space indentation on purpose:
+> a reindent would drown that signal in whitespace.
+
+<details><summary>Earlier status (Phase 1, 2026-07-01)</summary>
+
+Phases 0+1 built & live-verified (2026-07-01):
 `@outrival/queue` on pg-boss **v12.24.1** (typed registry, all 30 job defs,
 `CRON_SCHEDULES`, `syncSchedules`, `queue-health` probe); worker entry
 `apps/workers/src/queue/worker.ts` (WORKER_ROLE browser|light, light owns
@@ -8,7 +41,10 @@ cron+maintenance, Sentry, graceful drain) + `Dockerfile.queue-{light,browser}`
 (browser layer ported command-for-command from `installBrowsers()`). Verified
 live under Bun vs the compose PG: 16 crons synced, cross-process sender→worker
 `queue-health` round-trip, SIGTERM drain on both roles. Docker image builds not
-yet run (WSL2 RAM) — build once on the VPS/staging. Next: Phase 2.
+yet run (WSL2 RAM) — build once on the VPS/staging.
+
+</details>
+
 Goal: replace Trigger.dev Cloud with a self-owned, Postgres-native job runner
 (**pg-boss v10**) — the long-term keeper: 0 € software, no per-run meter, no
 10-cron cap, no vendor roadmap risk. Continues the "one-Postgres, rip-out-managed-
@@ -226,6 +262,125 @@ Until Phase 7 completes, Trigger stays fully deployable. Cutover is: (1) stop Tr
 schedules, (2) start pg-boss workers, (3) flip API `enqueue`. Rollback = reverse (3)→(1);
 in-flight pg-boss jobs drain via graceful stop. Only after a clean week do we delete the
 Trigger project + deps.
+
+## 11. Cutover checklist (run by hand — the assistant never touches prod)
+
+Order matters: schedules stop **before** the workers start, so the two runners can
+never fire the same cron in the same minute. Enqueue flips **last**, because it is
+the only step users can feel.
+
+### 11.0 — Prerequisites (before any of this)
+
+```bash
+# Coolify: create the queue Postgres service (512 MB), then grab its internal URL.
+# It must NOT be the Neon branch — a sub-2s poller defeats scale-to-zero.
+# pg-boss creates its own `pgboss` schema on first worker boot: NO drizzle migration,
+# nothing to run against Neon.
+
+# Set on BOTH worker services + the api service:
+QUEUE_DATABASE_URL=postgres://…      # the new service's internal URL
+# Set on workers-light only:
+HEARTBEAT_URL=https://uptime.betterstack.com/api/v1/heartbeat/…
+# Set on workers-browser only:
+WORKER_ROLE=browser  SCRAPE_CONCURRENCY=3
+# Set on workers-light only:
+WORKER_ROLE=light
+```
+
+Browser service Docker options: `--shm-size=1g`; stop grace period ≥ 60 s.
+
+### 11.1 — Staging rehearsal (the gates that still need a box)
+
+```bash
+# 1. Both images build on the VPS (never built — WSL2 has no RAM for it)
+docker build -f apps/workers/Dockerfile.queue-light  -t outrival-light .
+docker build -f apps/workers/Dockerfile.queue-browser -t outrival-browser .
+
+# 2. Boot both, then prove the round-trip from a third process:
+#    enqueue queue-health → a worker completes it.
+# 3. Watch one full hour: schedule-scraping fires, scrapes run, signals appear.
+# 4. Parity: leave Trigger running alongside for one cron cycle and diff the
+#    outcomes (scrapes, signals, digests). The existing idempotence keys are what
+#    make the double-run safe — signals.changeId, snapshot content-hash,
+#    daily_email_sent_at, (orgId, weekStart), (product_id, competitor_id).
+#    Do NOT add new guards; verify these hold.
+```
+
+### 11.2 — Prod cutover
+
+```bash
+# 1. STOP Trigger's schedules (Trigger dashboard → Schedules → disable all).
+#    Nothing is deleted: the project stays deployable as the rollback.
+
+# 2. Start the two pg-boss services in Coolify (light first — it owns cron and
+#    creates the schema; then browser).
+#    Verify: /admin → queue health lists the queues; the heartbeat monitor is green.
+
+# 3. Deploy the api with QUEUE_DATABASE_URL set — this is the enqueue flip.
+#    Verify: force a re-scan from the UI → the job appears in /admin/jobs and completes.
+
+# 4. Run the smoke test in docs/deployment.md (incl. the pg-boss section).
+```
+
+### 11.3 — Rollback (any time during the first week)
+
+Reverse order: redeploy the api without `QUEUE_DATABASE_URL` (routes fall back to
+nothing — so in practice, redeploy the previous api image), stop the pg-boss
+services (SIGTERM drains in-flight jobs gracefully, ≥60 s grace), re-enable the
+Trigger schedules. The Trigger wrappers were never deleted, so `trigger deploy`
+still works untouched.
+
+### 11.4 — After one clean week (NOT before)
+
+- Delete `apps/workers/src/jobs/*.job.ts` (the wrappers) + the 4 `cron-*.job.ts`
+  dispatchers + `hello-world.job.ts` + `trigger.config.ts`.
+- Delete `apps/workers/src/lib/trigger-adapter.ts` (the `asTriggerRun` shim).
+  **`lib/job-logger.ts` and `lib/job-wait.ts` STAY** — the core bodies import them.
+- Drop `@trigger.dev/*` from `apps/workers/package.json` and `apps/api/package.json`,
+  and `trigger.dev` from devDependencies.
+- Remove `TRIGGER_SECRET_KEY` / `TRIGGER_PROJECT_ID` from `.env.example`,
+  `docs/architecture.md`, `docs/deployment.md`, and the Coolify env.
+- Add the CI guard so an import cannot creep back:
+
+```yaml
+# .github/workflows/ci.yml
+- name: No Trigger.dev imports
+  run: |
+    if grep -rn "@trigger.dev" apps packages --include=*.ts --include=*.json; then
+      echo "::error::@trigger.dev is retired — enqueue via @outrival/queue"; exit 1
+    fi
+```
+
+- Delete the Trigger.dev project.
+
+## 12. Blocked on infrastructure
+
+Everything below needs hardware that does not exist yet; the code is done and green.
+
+| Gate | Needs |
+|---|---|
+| Docker images build | The VPS (WSL2 lacks the RAM) |
+| queue-health round-trip, cron firing, drain | `QUEUE_DATABASE_URL` + both services on staging |
+| Parity run vs Trigger | Staging with both runners live for one cron cycle |
+| Heartbeat received | `HEARTBEAT_URL` from Better Stack / UptimeRobot |
+| The 5 ex-capped crons each fired | Staging, one 24 h window |
+
+## 13. Known semantic gap — `idempotencyKey` → `singletonKey`
+
+Trigger's `idempotencyKey` dedups against **completed** runs too; pg-boss's
+`singletonKey` only against jobs that have not completed. Four call sites use it:
+
+| Site | Own guard | Verdict |
+|---|---|---|
+| `generate-signal` → `send-alert` | prior `alerts` rows (`alreadyProcessed`) | safe |
+| `generate-signal` → `evaluate-standing-queries` | cooldown + hysteresis | safe (costs one extra eval at worst) |
+| `extract-reviews` → `detect-review-theme-shifts` | one emission per episode | safe |
+| `generate-daily-digest` → `send-monthly-recap` | **none found** | ⚠️ a duplicate recap email is possible if the digest fires twice in the org's local first-of-month morning hour AND the first recap job already completed |
+
+The recap case is the only real exposure. If it shows up, the faithful pg-boss
+primitive is `sendThrottled(name, data, opts, seconds, key)` with a ~35-day window
+— not a new DB guard. Left as-is for now rather than adding a mechanism nobody has
+measured needing.
 
 ---
 *Companion POC (translated code + primitive mapping): `scratchpad/pgboss-poc/`

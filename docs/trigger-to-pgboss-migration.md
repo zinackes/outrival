@@ -15,8 +15,21 @@ below need a provisioned queue Postgres, which does not exist yet. See
 > +643/−42: sitemap v2, HN, wellknown, collection doctrine) and shipped 11 new
 > jobs. Those `core/*` files were new files, so a merge would have kept the stale
 > copies silently — no conflict, no signal, two-week-old logic in production. The
-> extraction was redone from main's current bodies instead, byte-identical
-> (`review-core.sh` diffs show only the import/signature/fan-out hunks).
+> extraction was redone from main's current bodies instead, byte-identical.
+>
+> The check that made that provable — and re-runnable if a core is ever suspected
+> of drifting — is a full-file diff of the pre-migration job against its core:
+>
+> ```bash
+> diff -u <(git show <ref>:apps/workers/src/jobs/<job>.job.ts) \
+>         apps/workers/src/core/<job>.ts | grep -v '^ '
+> ```
+>
+> The only legal hunks are: the `@trigger.dev` import line, the `task({… async run(`
+> header → `export async function runX(`, the trailing `  },\n});` → `}`, and (for
+> fan-out jobs) `tasks.trigger/batchTrigger` → registry `enqueue/enqueueMany`.
+> Anything else is drift. Bodies keep their original 4-space indentation on purpose:
+> a reindent would drown that signal in whitespace.
 
 <details><summary>Earlier status (Phase 1, 2026-07-01)</summary>
 

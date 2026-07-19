@@ -602,3 +602,40 @@ deep-link tab battle-card depuis la liste (linke la fiche).
 1. Validation visuelle : `pnpm dev --filter @outrival/web` (WSL ne tient pas le dev complet).
    Checklist A–I de la carte Notion. Le `.next` périmé déplacé en `/tmp` (régénéré au dev).
 2. Item Notion patch-29 → Done.
+
+---
+
+## 2026-07-19 — Runbook RS 1000 G12, Phases 5-6 (branche `feat/worker-deploy`, depuis `main`)
+
+7 commits atomiques. `pnpm typecheck` + `pnpm test` (1171 pass / 0 fail, 12/12 tasks)
+verts à chaque étape ; `docker build` OK ; smoke test exécuté pour de vrai contre un
+Postgres 17 local.
+
+- `dca1151` Étape 0 — pg-boss 12.24.1 → 12.26.1. Seul retrait de type : `JobOptions.keepUntil`
+  (jamais utilisé ici). Reste additif (update/upsert, detectSchemaDrift). Lockfile scope-guardé :
+  pg-boss + cron-parser uniquement, aucun fork de peer.
+- `cbf9d0c` Étape 1 — options constructeur (`max:5`, `useListenNotify`, `superviseIntervalSeconds:60`,
+  `monitorIntervalSeconds:120`) + `deleteAfterSeconds`/`notify` par queue + Slack sur `boss.on('error')`
+  (throttle 5 min).
+- `6829fd6` Étape 2 — heartbeat : alerte Slack après 3 échecs consécutifs, warning si `HEARTBEAT_URL`
+  absent. Le dead-man switch reste le monitor externe.
+- `9e2cf7e` Étape 3 — `Dockerfile.worker` (deps Node/pnpm → runtime bun, install scopé workers,
+  Chromium via le binaire épinglé du workspace). 2,26 Go, USER bun, Chromium se lance.
+- `af0dc8f` Étape 4 — `.github/workflows/deploy.yml`, déclenché sur succès de CI sur main.
+- `a5f1e48` Étape 5 — `scripts/pgboss-smoke.ts`, exécuté : pickup médian 8 ms, drain 6 761 jobs/s.
+- `acdf211` fix révélé par le smoke test — voir findings.md.
+
+### Mesures réelles (Postgres 17 en conteneur local, pas le VPS)
+| Mesure | Valeur |
+|---|---|
+| Pickup latency médiane (NOTIFY, backstop 30 s) | **8 ms** (p95 50 ms) |
+| Insert 10 000 jobs | 541 ms (18 484 jobs/s) |
+| Drain 10 000 (batch 50 + burst) | 1 479 ms (**6 761 jobs/s**) |
+| Drain forme prod (batch 1, backstop 2 s) | ~5 jobs/s |
+| Drain forme prod (batch 1, backstop 30 s — avant fix) | ~0,4 jobs/s |
+
+### Reste à faire côté humain
+- Créer les 2 secrets GitHub (`VPS_HOST`, `VPS_SSH_KEY`) + `docker login ghcr.io` sur le VPS.
+- Écrire `/opt/outrival/docker-compose.yml` avec les services `worker-light` / `worker-browser`
+  (noms attendus par deploy.yml) + `.env.worker`.
+- Re-jouer le smoke test sur le VPS (Phase 9) pour obtenir les vrais chiffres de la box.

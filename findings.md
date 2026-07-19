@@ -2031,3 +2031,34 @@ MaintenanceOptions expose aussi : `maintenanceIntervalSeconds`, `queueCacheInter
   et `apps/workers/src/lib/slack.ts`. Webhook = `OPS_SLACK_WEBHOOK_URL` (5 call sites).
   `packages/queue` ne dépend aujourd'hui QUE de `pg-boss` → une notif Slack dedans
   ajoute une dépendance (ou passe par un callback injecté, comme `reportError`).
+
+## Découvertes d'exécution (2026-07-19)
+
+### `notify: true` déplace le backstop de polling — régression introduite puis corrigée
+Activer `notify` par queue fait passer le filet de sécurité d'un worker de
+`pollingIntervalSeconds` (défaut 2 s) à `notifyPollingIntervalSeconds` (défaut **30 s**).
+Correct pour du trafic live (NOTIFY réveille), piège pour un **backlog** : aucun nouveau
+NOTIFY n'arrive, donc le worker prend ce qu'il peut, termine, puis dort 30 s.
+Mesuré à la forme prod (batchSize 1, concurrency 10) : **0,4 jobs/s** contre **5 jobs/s**
+avec le backstop à 2 s. Notre pire cas est exactement un backlog (`schedule-scraping`
+éventaille des centaines de monitors à l'heure pile). Corrigé dans `defineJob`.
+`burstWhenBatchFull` est le remède documenté mais est **ignoré quand batchSize vaut 1**.
+
+### `bunx playwright install` installe le mauvais build de Chromium
+`bunx` résout playwright depuis npm (dernière version → build 1228) alors que le lockfile
+épingle playwright-core 1.60.0 (build 1223). L'image build, boote et passe tous les checks
+sauf le seul qui compte : le premier vrai scrape (`Executable doesn't exist at
+/ms-playwright/chromium_headless_shell-1223`). Toujours passer par
+`apps/workers/node_modules/.bin/playwright`.
+
+### `oven/bun:1` n'a pas de Node
+Bun fournit un *shim* `node` (wrapper d'exécution), pas un runtime Node, et l'image n'a
+pas corepack. pnpm étant une CLI Node, l'install doit se faire dans un étage `node:22`.
+
+### Contrainte pg-boss : `notifyPollingIntervalSeconds >= pollingIntervalSeconds`
+Assertion au runtime dans `work()` (attorney.js), pas au typecheck.
+
+### `scripts/` n'est couvert par aucun tsconfig
+Le tsconfig racine n'a pas d'`include` et `pnpm typecheck` tourne par package : un typo
+d'option dans `scripts/pgboss-smoke.ts` ne serait pas attrapé. Vérifié à la main via un
+`tsc --noEmit` ad hoc (propre). À arbitrer si on veut l'ajouter à la CI.

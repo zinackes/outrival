@@ -1903,12 +1903,12 @@ Post-migration pg-boss (phases 0-6 du plan `docs/trigger-to-pgboss-migration.md`
 déjà MERGÉES dans main). Reste : cutover Trigger.dev (autre carte).
 
 ## Étapes
-- [ ] Étape 0 — bump pg-boss 12.24.1 → 12.26.1 + breaking changes sur NOTRE code — pending
-- [ ] Étape 1 — options du constructeur dans `packages/queue/src/boss.ts` + Slack sur error — pending
-- [ ] Étape 2 — heartbeat (déjà existant : arbitrage Slack vs HEARTBEAT_URL) — pending
-- [ ] Étape 3 — Dockerfile.worker (pnpm + Chromium) + .dockerignore — pending
-- [ ] Étape 4 — .github/workflows/deploy.yml + liste des secrets — pending
-- [ ] Étape 5 — scripts/pgboss-smoke.ts (Phase 9 du runbook) — pending
+- [x] Étape 0 — bump pg-boss 12.24.1 → 12.26.1 + breaking changes sur NOTRE code — pending
+- [x] Étape 1 — options du constructeur dans `packages/queue/src/boss.ts` + Slack sur error — pending
+- [x] Étape 2 — heartbeat (déjà existant : arbitrage Slack vs HEARTBEAT_URL) — pending
+- [x] Étape 3 — Dockerfile.worker (pnpm + Chromium) + .dockerignore — pending
+- [x] Étape 4 — .github/workflows/deploy.yml + liste des secrets — pending
+- [x] Étape 5 — scripts/pgboss-smoke.ts (Phase 9 du runbook) — pending
 
 ## Décisions à arbitrer AVANT exécution
 1. Branche de travail : le runbook dit `feat/pgboss-migration` — 144 commits

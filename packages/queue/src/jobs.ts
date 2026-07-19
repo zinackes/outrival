@@ -51,6 +51,13 @@ export type BackfillHistoryPayload = {
   sourceType: string;
 };
 export type OrgRefPayload = { orgId: string };
+export type EvaluateStandingQueriesPayload = {
+  orgId: string;
+  competitorId: string;
+  category: string;
+  severity: "low" | "medium" | "high" | "critical";
+  signalId: string;
+};
 export type Empty = Record<string, never>;
 
 // ── Pipeline / on-demand worker jobs ──────────────────────────────────────────
@@ -134,6 +141,24 @@ export const backfillHistory = defineJob<BackfillHistoryPayload>("backfill-histo
   retryLimit: 0,
   expireInSeconds: 300,
 });
+
+// Complaint-theme / hiring-velocity inflection detectors. Event-triggered per
+// competitor off extract-reviews / extract-jobs (never a cron), each emitting one
+// grounded signal through the synthetic anchor→snapshot→change chain.
+export const detectReviewThemeShifts = defineJob<CompetitorRefPayload>(
+  "detect-review-theme-shifts",
+  { expireInSeconds: 60 },
+);
+export const detectHiringVelocityShifts = defineJob<CompetitorRefPayload>(
+  "detect-hiring-velocity-shifts",
+  { expireInSeconds: 60 },
+);
+// Standing-query re-evaluation, targeted off generate-signal. Shares the groq lane
+// (concurrency 1) so the judge + internal Ask run never starve classify→signal.
+export const evaluateStandingQueries = defineJob<EvaluateStandingQueriesPayload>(
+  "evaluate-standing-queries",
+  { expireInSeconds: 300, concurrency: 1 },
+);
 
 // ── Scheduled / cron jobs (16 → all become boss.schedule(), no 10-cron cap) ───
 export const scheduleScraping = defineJob<Empty>("schedule-scraping", { expireInSeconds: 120 });

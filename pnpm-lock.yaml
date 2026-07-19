@@ -328,9 +328,12 @@ importers:
 
   packages/queue:
     dependencies:
+      '@outrival/shared':
+        specifier: workspace:*
+        version: link:../shared
       pg-boss:
-        specifier: ^12.24.1
-        version: 12.24.1
+        specifier: ^12.26.1
+        version: 12.26.1
     devDependencies:
       '@types/node':
         specifier: ^25.9.1
@@ -4168,8 +4171,8 @@ packages:
     resolution: {integrity: sha512-tJtZBBHA6vjIAaF6EnIaq6laBBP9aq/Y3ouVJjEfoHbRBcHBAHYcMh/w8LDrk2PvIMMq8gmopa5D4V8RmbrxGw==}
     engines: {node: '>= 0.10'}
 
-  cron-parser@5.6.1:
-    resolution: {integrity: sha512-QBm4o1PwZiuY7KFbVvW7FLC8bozy7YWzv+Fz6KRS7sQghzcbDZCGxr/Bc5b6TQreAoSwuWVP491dIcK0THCX6A==}
+  cron-parser@5.6.2:
+    resolution: {integrity: sha512-yJ/G1LVir6CnlkLI40CsampPLKl1SprGGlUagWtGJxewytRVYezv5xVyzzbT+Pvzx+VIRvZVF7/a0eEMTxdnTA==}
     engines: {node: '>=18'}
 
   cronstrue@2.59.0:
@@ -5750,8 +5753,8 @@ packages:
   perfect-debounce@1.0.0:
     resolution: {integrity: sha512-xCy9V055GLEqoFaHoC1SoLIaLmWctgCUaBaWxDZ7/Zx4CTyX7cJQLJOok/orfjZAh9kEYpjJa4d0KcJmCbctZA==}
 
-  pg-boss@12.24.1:
-    resolution: {integrity: sha512-6RQp84/jLOXRP3xAIxupGFOzJXSd3WIBdlWDLkGpV/M5TDQUA/T9DDxHKvLgCCnSn35zBqMkHZFGlMcHifDvNw==}
+  pg-boss@12.26.1:
+    resolution: {integrity: sha512-Naj3pwc0CFKZJ77v24m6oAYRf3w22pGdfIT3bjC0YZU4yszRGPJ+XyAssYA+EbyxmniJzCFLZWcL9OEqnJWmuQ==}
     engines: {node: '>=22.12.0'}
     hasBin: true
 
@@ -10609,7 +10612,7 @@ snapshots:
       object-assign: 4.1.1
       vary: 1.1.2
 
-  cron-parser@5.6.1:
+  cron-parser@5.6.2:
     dependencies:
       luxon: 3.7.2
 
@@ -12386,9 +12389,9 @@ snapshots:
 
   perfect-debounce@1.0.0: {}
 
-  pg-boss@12.24.1:
+  pg-boss@12.26.1:
     dependencies:
-      cron-parser: 5.6.1
+      cron-parser: 5.6.2
       pg: 8.22.0
       serialize-error: 13.0.1
     transitivePeerDependencies:

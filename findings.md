@@ -1978,3 +1978,87 @@ pivot/mort/rachat (structurel + IA), capture API runtime pour SPA pures. Tout us
   hors scope — confirmé seule erreur via grep `error TS | grep -v TS6059`.
 - **Branche** : créée par erreur depuis `main` (34 commits en retard, version Crawlee/ScrapingBee) ;
   `main...patch-26` = `0 34` → patch-26 est le vrai tip. Rebranché depuis `patch-26-notification-moderation`.
+
+---
+
+# 2026-07-19 — Prépa déploiement workers pg-boss (runbook RS 1000 G12)
+
+## État réel du repo vs runbook
+
+| Sujet | Runbook | Réel (vérifié) |
+|---|---|---|
+| Branche | `feat/pgboss-migration` | 144 commits DERRIÈRE main, 8 devant. `feat/pgboss-migration-v2` = 1 derrière / 0 devant. **`packages/queue` est sur main** (6 fichiers) → phases 0-6 mergées |
+| pg-boss | analysé en v12.26.1 | déclaré `^12.24.1`, installé 12.24.1. Dernière 12.x = **12.26.1** |
+| Package manager | `bun install`, `COPY bun.lock` | **pnpm-lock.yaml**, pas de bun.lock. Turbo + pnpm workspaces |
+| Module boss | « ex. src/queue/boss.ts » à créer | **existe déjà** : `packages/queue/src/boss.ts` (`startQueue`, `getBoss`, `stopQueue`, `defineJob`, `work`, `registerQueues`) |
+| Entrypoint worker | `src/workers/index.ts` (supposé) | **`apps/workers/src/queue/worker.ts`**, piloté par `WORKER_ROLE=light\|browser` |
+| Heartbeat | à créer, ping Slack | **existe** : `packages/queue/src/jobs.ts:225` + cron `*/5 * * * *`, handler `apps/workers/src/core/heartbeat.ts` → ping `HEARTBEAT_URL` (monitor externe) |
+| Dockerfile | à créer | aucun Dockerfile dans le repo ; **`.dockerignore` existe déjà** (290B, correct) |
+| Workflows | deploy.yml à créer | `.github/workflows/ci.yml` existe (typecheck+test) |
+| scripts/ | `scripts/pgboss-smoke.ts` | dossier `scripts/` **inexistant** |
+
+## Options du constructeur PgBoss — vérifiées contre 12.24.1 (`dist/types.d.ts`)
+
+`ConstructorOptions extends DatabaseOptions, SchedulingOptions, MaintenanceOptions, BackendOptions`
++ `useListenNotify`.
+
+- `connectionString` → DatabaseOptions ✅
+- `schema` → DatabaseOptions ✅
+- `max` → DatabaseOptions:43 ✅
+- `useListenNotify` → ConstructorOptions:174 ✅ (défaut false)
+- `superviseIntervalSeconds` → MaintenanceOptions ✅
+- `monitorIntervalSeconds` → MaintenanceOptions ✅
+- `deleteAfterSeconds` → ❌ **PAS dans ConstructorOptions**. Vit dans `QueueOptions`
+  (types.d.ts:198), donc PAR QUEUE. Défaut documenté = **604800 (7 j)** — exactement
+  la valeur que le runbook veut poser. La passer au constructeur = erreur TS.
+
+MaintenanceOptions expose aussi : `maintenanceIntervalSeconds`, `queueCacheIntervalSeconds`,
+`persistQueueStats`, `queueStatRetentionDays`, `warningQueueSize`, `warningSlowQuerySeconds`.
+
+## Ce qu'il NE FAUT PAS faire
+- Ne JAMAIS repartir de `feat/pgboss-migration` (144 derrière main = cores métier stales
+  qui écraseraient silencieusement du travail mergé).
+- Ne pas remplacer le heartbeat HEARTBEAT_URL par un ping Slack : un canal silencieux
+  n'alerte personne automatiquement (l'inverse d'un dead-man switch), et 288 msgs/jour
+  noieraient les alertes `boss.on('error')`.
+- Ne pas builder l'image worker sur `oven/bun:1-slim` seule : le rôle `browser` lance
+  Playwright/Chromium (`playwright ^1.60.0`) et a besoin des libs système.
+- Ne pas utiliser `pnpm update pg-boss` pour le bump (forke le peer drizzle) :
+  éditer la range → `pnpm install --lockfile-only` → vérifier le diff du lockfile.
+
+## Helpers réutilisables
+- `sendSlackMessage(webhookUrl, text)` — DEUX copies : `packages/shared/src/notify.ts`
+  et `apps/workers/src/lib/slack.ts`. Webhook = `OPS_SLACK_WEBHOOK_URL` (5 call sites).
+  `packages/queue` ne dépend aujourd'hui QUE de `pg-boss` → une notif Slack dedans
+  ajoute une dépendance (ou passe par un callback injecté, comme `reportError`).
+
+## Découvertes d'exécution (2026-07-19)
+
+### `notify: true` déplace le backstop de polling — régression introduite puis corrigée
+Activer `notify` par queue fait passer le filet de sécurité d'un worker de
+`pollingIntervalSeconds` (défaut 2 s) à `notifyPollingIntervalSeconds` (défaut **30 s**).
+Correct pour du trafic live (NOTIFY réveille), piège pour un **backlog** : aucun nouveau
+NOTIFY n'arrive, donc le worker prend ce qu'il peut, termine, puis dort 30 s.
+Mesuré à la forme prod (batchSize 1, concurrency 10) : **0,4 jobs/s** contre **5 jobs/s**
+avec le backstop à 2 s. Notre pire cas est exactement un backlog (`schedule-scraping`
+éventaille des centaines de monitors à l'heure pile). Corrigé dans `defineJob`.
+`burstWhenBatchFull` est le remède documenté mais est **ignoré quand batchSize vaut 1**.
+
+### `bunx playwright install` installe le mauvais build de Chromium
+`bunx` résout playwright depuis npm (dernière version → build 1228) alors que le lockfile
+épingle playwright-core 1.60.0 (build 1223). L'image build, boote et passe tous les checks
+sauf le seul qui compte : le premier vrai scrape (`Executable doesn't exist at
+/ms-playwright/chromium_headless_shell-1223`). Toujours passer par
+`apps/workers/node_modules/.bin/playwright`.
+
+### `oven/bun:1` n'a pas de Node
+Bun fournit un *shim* `node` (wrapper d'exécution), pas un runtime Node, et l'image n'a
+pas corepack. pnpm étant une CLI Node, l'install doit se faire dans un étage `node:22`.
+
+### Contrainte pg-boss : `notifyPollingIntervalSeconds >= pollingIntervalSeconds`
+Assertion au runtime dans `work()` (attorney.js), pas au typecheck.
+
+### `scripts/` n'est couvert par aucun tsconfig
+Le tsconfig racine n'a pas d'`include` et `pnpm typecheck` tourne par package : un typo
+d'option dans `scripts/pgboss-smoke.ts` ne serait pas attrapé. Vérifié à la main via un
+`tsc --noEmit` ad hoc (propre). À arbitrer si on veut l'ajouter à la CI.

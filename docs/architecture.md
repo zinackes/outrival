@@ -903,7 +903,10 @@ SUMMARY_CONCURRENCY=1        # competitor-summary lane (onboarding burst stays o
 HEARTBEAT_URL=               # dead-man's switch: the light worker GETs this every 5 min. Point it at
                             # a Better Stack / UptimeRobot heartbeat monitor that alerts when the pings
                             # STOP — the only alert that still fires if the VPS or the fleet dies.
-                            # Empty → the job no-ops silently
+                            # Empty → the job no-ops, logging a warning once per process (no dead-man switch is
+                            # then active at all — a state that must not look healthy). Three
+                            # consecutive failed pings also raise one Slack ops message, to tell
+                            # "monitor unreachable" apart from "fleet dead"
 
 # Scraping & discovery (collection doctrine — cascade L0/L1/L2, egress amont)
 PROXYSCRAPE_DC_ENDPOINT=     # datacenter host:port (L2 egress amont) — optionnel

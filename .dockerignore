@@ -9,8 +9,12 @@ dist
 .turbo
 **/.turbo
 .git
-.env
-.env.local
-**/.env.local
+# Every .env flavour, not just the two named ones — a stray .env.production in the
+# build context would be baked into a layer and shipped to the registry.
+.env*
+**/.env*
 apps/workers/.trigger
 *.log
+# Local agent tooling: worktrees alone are whole extra checkouts of the repo.
+.claude
+.codegraph

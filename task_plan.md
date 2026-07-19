@@ -1887,3 +1887,38 @@ config (→ Notifications). RÉEL :
   /tmp pour éviter le faux positif validator.ts rootDir).
 - 3 erreurs typecheck web PRÉ-EXISTANTES (héritées patch-25/28), pas les miennes :
   onboarding-form.tsx(284), competitors/[id]/page.tsx(986), products-settings.tsx(126).
+
+---
+
+# Session 2026-07-19 — Runbook RS 1000 G12, Phases 5-6 (prépa déploiement workers)
+
+## Objectif
+Préparer le repo pour déployer les workers pg-boss sur `outrival-queue-01`
+(Netcup RS 1000 G12, Postgres 17 local + queue pgboss). Source : runbook Notion
+« RS 1000 G12 : setup complet prod », Phases 5-6. Un commit atomique par étape,
+zéro scope creep, aucune logique métier de handler touchée.
+
+## Phase du projet
+Post-migration pg-boss (phases 0-6 du plan `docs/trigger-to-pgboss-migration.md`
+déjà MERGÉES dans main). Reste : cutover Trigger.dev (autre carte).
+
+## Étapes
+- [x] Étape 0 — bump pg-boss 12.24.1 → 12.26.1 + breaking changes sur NOTRE code — pending
+- [x] Étape 1 — options du constructeur dans `packages/queue/src/boss.ts` + Slack sur error — pending
+- [x] Étape 2 — heartbeat (déjà existant : arbitrage Slack vs HEARTBEAT_URL) — pending
+- [x] Étape 3 — Dockerfile.worker (pnpm + Chromium) + .dockerignore — pending
+- [x] Étape 4 — .github/workflows/deploy.yml + liste des secrets — pending
+- [x] Étape 5 — scripts/pgboss-smoke.ts (Phase 9 du runbook) — pending
+
+## Décisions à arbitrer AVANT exécution
+1. Branche de travail : le runbook dit `feat/pgboss-migration` — 144 commits
+   derrière main, et `packages/queue` est DÉJÀ sur main. → travailler depuis main.
+2. `deleteAfterSeconds` n'est pas une ConstructorOption en v12 (c'est QueueOptions,
+   défaut déjà 604800). → par queue, ou no-op assumé.
+3. Heartbeat : Slack (runbook) vs HEARTBEAT_URL externe (code actuel + archi doc).
+4. Image Docker : le runbook suppose bun+bun.lock ; le repo est pnpm workspaces,
+   et le rôle `browser` exige Chromium (Playwright).
+5. deploy.yml sur push:main pendant que Trigger.dev tourne encore.
+
+## Blockers
+- Aucun bloquant technique. Les 5 points ci-dessus attendent validation utilisateur.

@@ -4,10 +4,11 @@ import { scoreClaims, verbatimRatio } from "./score-claims";
 import { decideGate, faithfulnessMinRatio } from "./gate";
 import type { ClaimVerdict, FaithfulnessReport } from "./types";
 
-// The chain: extract atomic claims → verify each against its cited source with the
-// EXISTING fuzzy validator → hand the undecided ones to the binary judge → ratio +
-// verdict. Cheap→expensive: the fuzzy pass is free and settles most claims, the
-// judge only pays for what it couldn't.
+// The chain: extract atomic claims (FAST model) → verify each against its cited
+// source with the EXISTING fuzzy validator (free) → hand the undecided ones to the
+// binary judge (SMART model — the fast one misjudges absence-of-data claims, see
+// judge-claim.ts) → ratio + verdict. Cheap→expensive: the fuzzy pass is free and
+// settles most claims, the judge only pays for what it couldn't.
 //
 // This never throws. Every failure mode (parse miss, rate limit, open breaker)
 // degrades to verdict "skipped", which the gate reads as "publish" — an AI outage

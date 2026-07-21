@@ -61,7 +61,15 @@ export async function judgeClaim(
   claim: Claim,
   sourceText: string,
 ): Promise<ClaimJudgement | null> {
-  const raw = await complete(AI_CONFIG.classificationFast, {
+  // SMART tier, not fast — measured, not assumed. On the pool's fast model
+  // (gpt-oss-20b) the judge accepted a claim built on the ABSENCE of data ("their
+  // enterprise pricing is not publicly available") by reading "Enterprise — contact
+  // sales" as support for it: 5/6 inventions rejected, i.e. exactly the failure this
+  // gate exists to stop, and one the prompt already names explicitly. The 120b model
+  // rejects it (6/6). The judge is the low-volume half of the chain — it only runs on
+  // claims the free fuzzy pass could not settle — so the tier costs little here,
+  // while claim extraction (one call per gated output) stays on fast.
+  const raw = await complete(AI_CONFIG.classification, {
     system: JUDGE_SYSTEM,
     prompt: buildJudgePrompt(claim, sourceText),
     json: true,

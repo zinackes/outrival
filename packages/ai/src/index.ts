@@ -53,6 +53,22 @@ export {
   suppressesAsCosmetic,
 } from "./tasks/cosmetic-gate";
 export type { CosmeticGateResult } from "./tasks/cosmetic-gate";
+// Claim-level faithfulness: the publication gate for the high-stakes outputs
+// (battle cards, digests, critical/high signal insights). Built ON the existing
+// fuzzy citation validator, called one claim at a time.
+export { verifyFaithfulness } from "./faithfulness/verify";
+export type { VerifyFaithfulnessParams, FaithfulnessDeps } from "./faithfulness/verify";
+export { decideGate, faithfulnessMinRatio, faithfulnessGateEnabled } from "./faithfulness/gate";
+export { isClaimSupported, scoreClaims, verbatimRatio } from "./faithfulness/score-claims";
+export { extractClaims } from "./faithfulness/extract-claims";
+export { judgeClaim, JudgeSchema, buildJudgePrompt } from "./faithfulness/judge-claim";
+export type {
+  Claim,
+  ClaimStatus,
+  ClaimVerdict,
+  FaithfulnessReport,
+  FaithfulnessVerdict,
+} from "./faithfulness/types";
 export { classifyStructuredChanges } from "./tasks/classify-structured";
 export type {
   StructuredChangeInput,
@@ -77,7 +93,7 @@ export type {
 } from "./tasks/standing-query-judge";
 export { generateRepositioningInsight } from "./tasks/pricing-repositioning";
 export type { RepositioningInput } from "./tasks/pricing-repositioning";
-export { generateDigest, DigestSchema } from "./tasks/digest";
+export { generateDigest, digestSourceText, DigestSchema } from "./tasks/digest";
 export type { Digest, DigestInputSignal } from "./tasks/digest";
 export {
   analyzeProduct,
@@ -111,7 +127,12 @@ export { generateCompetitorSummary, SummarySchema } from "./tasks/competitor-sum
 export type { CompetitorSummary, CompetitorSummaryInput } from "./tasks/competitor-summary";
 export { summarizeSource, SourceSummarySchema } from "./tasks/summarize-source";
 export type { SourceSummary, SourceSummaryInput } from "./tasks/summarize-source";
-export { generateBattleCard, reviseBattleCard, BattleCardSchema } from "./tasks/battle-card";
+export {
+  generateBattleCard,
+  reviseBattleCard,
+  battleCardEvidence,
+  BattleCardSchema,
+} from "./tasks/battle-card";
 export type { BattleCardContent, BattleCardInput } from "./tasks/battle-card";
 // Ask Outrival — conversational intelligence (tool-agent planner + grounded synthesis)
 export {

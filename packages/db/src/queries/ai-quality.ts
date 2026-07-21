@@ -23,6 +23,13 @@ export interface QualityCheckInput {
   targetId?: string | null;
   orgId?: string | null;
   quality: QualityEnvelope;
+  /**
+   * The claim-level FaithfulnessReport, when the publication gate ran on this
+   * output. Structurally typed for the same reason as QualityEnvelope — a
+   * FaithfulnessReport is assignable to it. Carries the failing claims a blocked
+   * output was stopped on, which is what the reviewer needs to see.
+   */
+  faithfulness?: unknown;
 }
 
 /**
@@ -47,6 +54,7 @@ export async function insertAiQualityCheck(input: QualityCheckInput): Promise<st
         groundingScore: typeof gv?.score === "number" ? gv.score : null,
         selfCheckResult: (input.quality.selfCheck as object) ?? null,
         selfCheckTriggeredBy: input.quality.selfCheckTriggeredBy ?? null,
+        faithfulness: (input.faithfulness as object) ?? null,
         flaggedForHumanReview: flagged,
         flaggedAt: flagged ? new Date() : null,
       })
@@ -101,6 +109,7 @@ export async function listFlaggedQualityChecks(limit = 100) {
       groundingValidation: aiQualityChecks.groundingValidation,
       selfCheckResult: aiQualityChecks.selfCheckResult,
       selfCheckTriggeredBy: aiQualityChecks.selfCheckTriggeredBy,
+      faithfulness: aiQualityChecks.faithfulness,
       flaggedAt: aiQualityChecks.flaggedAt,
       createdAt: aiQualityChecks.createdAt,
     })

@@ -15,6 +15,19 @@ export interface ReviewCitation {
   sourceQuote: string;
 }
 
+export interface ReviewClaim {
+  claim: { text: string; citedQuote: string };
+  status: string;
+  reason: string | null;
+}
+
+export interface ReviewFaithfulness {
+  verdict: "pass" | "blocked" | "skipped";
+  ratio: number;
+  unfaithfulClaims: ReviewClaim[];
+  reason: string | null;
+}
+
 export interface ReviewItem {
   id: string;
   aiTask: string;
@@ -26,6 +39,7 @@ export interface ReviewItem {
   groundingValidation: { score?: number; failedCitations?: ReviewCitation[] } | null;
   selfCheckResult: { passed?: boolean; issues?: ReviewIssue[]; reviewerConfidence?: string } | null;
   selfCheckTriggeredBy: string | null;
+  faithfulness: ReviewFaithfulness | null;
   flaggedAt: string | null;
   createdAt: string;
 }
@@ -56,6 +70,7 @@ export function ReviewQueueView({ items }: { items: ReviewItem[] }) {
       {list.map((it) => {
         const issues = it.selfCheckResult?.issues ?? [];
         const failed = it.groundingValidation?.failedCitations ?? [];
+        const blocked = it.faithfulness?.verdict === "blocked" ? it.faithfulness : null;
         return (
           <div key={it.id} className="rounded-md border border-border p-4">
             <div className="flex flex-wrap items-center gap-2">
@@ -72,10 +87,31 @@ export function ReviewQueueView({ items }: { items: ReviewItem[] }) {
               {it.selfCheckTriggeredBy && (
                 <span className="text-meta text-text-subtle">via {it.selfCheckTriggeredBy}</span>
               )}
+              {blocked && (
+                <span
+                  className="rounded-full border px-2 py-0.5 text-meta"
+                  style={{ borderColor: "var(--critical)", color: "var(--critical)" }}
+                >
+                  Not published · <span className="font-mono">{blocked.ratio.toFixed(2)}</span>{" "}
+                  supported
+                </span>
+              )}
               <span className="ml-auto text-meta text-text-subtle">
                 {it.flaggedAt ? new Date(it.flaggedAt).toLocaleString() : ""}
               </span>
             </div>
+
+            {blocked && blocked.unfaithfulClaims.length > 0 && (
+              <ul className="mt-2.5 space-y-1.5">
+                {blocked.unfaithfulClaims.map((c, i) => (
+                  <li key={i} className="text-dense">
+                    <span className="font-medium text-medium">unsupported claim</span>
+                    {c.reason && <span className="text-muted-foreground"> — {c.reason}</span>}
+                    <span className="block text-xs text-text-subtle">“{c.claim.text}”</span>
+                  </li>
+                ))}
+              </ul>
+            )}
 
             {issues.length > 0 && (
               <ul className="mt-2.5 space-y-1.5">

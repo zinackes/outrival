@@ -16,6 +16,11 @@ export const battleCards = pgTable("battle_cards", {
     .notNull()
     .references(() => organizations.id, { onDelete: "cascade" }),
   content: jsonb("content").notNull(),
+  // Claim-level faithfulness report (FaithfulnessReport) for the content above.
+  // A card whose report was `blocked` is never written, so a stored card always
+  // carries a passing (or skipped) report — this column is the audit trail of
+  // what was verified. Null on cards generated before the gate existed.
+  faithfulness: jsonb("faithfulness"),
   pdfR2Key: text("pdf_r2_key"),
   // Set when a user marks the card "not useful" (patch-21): flags it for
   // regeneration. Cleared on the next successful regeneration.

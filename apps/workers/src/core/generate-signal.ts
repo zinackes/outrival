@@ -42,6 +42,7 @@ import { captureWorkerEvent, shutdownPostHog } from "../lib/posthog";
 import { getResend, ALERT_FROM } from "../lib/resend";
 import { decideDispatch } from "../lib/notification-dispatcher";
 import { applySeverityGuard } from "../lib/severity-guard";
+import { checkFaithfulness, isBlocked, blockedReviewEntry } from "../lib/faithfulness-gate";
 
 // A pricing status transition (patch-11) carries its own severity and replaces
 // the generic diff classification for that change.
@@ -312,6 +313,28 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
       }
     }
 
+    // Claim-level faithfulness gate — critical/high only. Those are the insights
+    // that leave the product as an immediate email/Slack page; medium/low are digest
+    // material and the chain costs two FAST calls per signal. The signal row is
+    // still written whatever the verdict: idempotency by changeId is load-bearing,
+    // and a reviewer has to be able to read what was stopped. What a blocked verdict
+    // withholds is the OUTWARD publication — the alert and the celebration email.
+    //
+    // Verified against the FULL diff, not the 8000-char slice the generator saw: a
+    // wider source can only ever make a claim easier to support, so it removes false
+    // blocks without letting an invented one through.
+    const faithfulness =
+      severity === "critical" || severity === "high"
+        ? await checkFaithfulness({
+            output: insight,
+            sourceText: diffText,
+            outputKind: "competitive intelligence signal insight",
+            context: { changeId: input.changeId, competitorId: competitor.id, severity },
+            attribution,
+          })
+        : null;
+    const faithfulnessBlocked = isBlocked(faithfulness);
+
     // patch-28 — deterministically tag the products (SKUs) this signal affects:
     // every non-archived product of the org whose competitor set includes this
     // competitor (via product_competitors). A competitor shared by two products
@@ -354,6 +377,7 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
         materiality: input.classification?.materiality
           ? toMaterialityScores(input.classification.materiality)
           : null,
+        faithfulness,
       })
       .onConflictDoNothing({ target: signals.changeId })
       .returning();
@@ -370,13 +394,18 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
     // Anti-hallucination (patch-24): persist the grounding + self-check envelope for
     // this signal so the UI can surface a ConfidenceDot / flagged warning and the ops
     // review queue + metrics can see it. Best-effort — never blocks the signal.
-    await insertAiQualityCheck({
+    const qualityCheck = {
       aiTask: input.pricingTransition ? "detect_pricing_strategy" : "generate_signal",
       targetType: "signal",
       targetId: newSignal.id,
       orgId: competitor.orgId,
       quality: insight._quality,
-    });
+    };
+    await insertAiQualityCheck(
+      faithfulnessBlocked && faithfulness
+        ? blockedReviewEntry({ ...qualityCheck, report: faithfulness })
+        : { ...qualityCheck, faithfulness },
+    );
 
     await insertSignalFeed({
       org_id: competitor.orgId,
@@ -420,15 +449,34 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
     // the digest jobs, and the ops metrics can read it. Backfill signals skip the
     // dispatcher outright (in-app only, see above). Shared with the retry
     // re-dispatch path via dispatchSignal.
-    await dispatchSignal({
-      signalId: newSignal.id,
-      severity,
-      category,
-      relevanceScore: newSignal.relevanceScore,
-      competitor,
-      org,
-      isBackfill,
-    });
+    if (faithfulnessBlocked) {
+      // The insight carries at least one claim the source doesn't support: it stays
+      // in-app (visible, reviewable) but never pages anyone. Same stamping shape as
+      // the dispatcher's own decisions, so the feed and the ops metrics read it the
+      // way they read any other filtered signal.
+      await db
+        .update(signals)
+        .set({
+          dispatchedChannel: "in_app_only",
+          filteredReason: "faithfulness_blocked",
+          filteredAt: new Date(),
+        })
+        .where(eq(signals.id, newSignal.id));
+      logger.warn("Signal alert withheld by the faithfulness gate", {
+        signalId: newSignal.id,
+        reason: faithfulness?.reason ?? null,
+      });
+    } else {
+      await dispatchSignal({
+        signalId: newSignal.id,
+        severity,
+        category,
+        relevanceScore: newSignal.relevanceScore,
+        competitor,
+        org,
+        isBackfill,
+      });
+    }
 
     // Standing queries: this fresh signal may shift the answer to a watched Ask
     // question — re-evaluate ONLY the queries whose watched entities it touches
@@ -455,7 +503,8 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
     // most important lifecycle email, so it's strict: fires ONCE per org, on the first
     // LIVE change only. NEVER for a backfill/archive signal (celebrating reconstructed
     // history is hollow — the monitoring didn't catch anything live). Best-effort.
-    if (!isBackfill && org?.digestEmail) {
+    // A blocked insight never leaves the product, and this email quotes it verbatim.
+    if (!isBackfill && !faithfulnessBlocked && org?.digestEmail) {
       try {
         const priorLive = await db.query.signals.findFirst({
           where: and(

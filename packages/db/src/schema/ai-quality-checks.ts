@@ -52,6 +52,13 @@ export const aiQualityChecks = pgTable(
     // Why the self-check ran: "systematic_battle_card" | "sampling" | "low_confidence".
     selfCheckTriggeredBy: text("self_check_triggered_by"),
 
+    // Claim-level faithfulness report when the publication gate ran on this output
+    // (FaithfulnessReport: verdict, ratio, per-claim verdicts, timings). This is
+    // where a BLOCKED output's failing claims live — the review queue reads it to
+    // show the reviewer exactly which sentences stopped the publication. Null for
+    // outputs the gate doesn't cover (medium/low signals, summaries, extractions).
+    faithfulness: jsonb("faithfulness"),
+
     // True when the self-check failed → surfaced to the user (transparent warning,
     // content preserved) and queued for human review in /admin/ai-review-queue.
     flaggedForHumanReview: boolean("flagged_for_human_review").notNull().default(false),

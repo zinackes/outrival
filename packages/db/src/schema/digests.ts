@@ -13,6 +13,10 @@ export const digests = pgTable("digests", {
   // idempotency/finalize queries MUST scope to period="weekly" so a daily row that
   // happens to share a Monday date can't be mistaken for the week's digest.
   period: text("period").notNull().default("weekly"),
+  // Claim-level faithfulness report (FaithfulnessReport) computed before the send.
+  // `verdict: "blocked"` → the digest is stored but the email was NOT sent
+  // (sentAt stays null) and the failing claims are in the review queue.
+  faithfulness: jsonb("faithfulness"),
   sentAt: timestamp("sent_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (t) => [

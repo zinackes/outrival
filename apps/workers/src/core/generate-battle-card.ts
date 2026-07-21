@@ -17,7 +17,8 @@ import {
   insertAiQualityCheck,
   type SelfProfile,
 } from "@outrival/db";
-import { generateBattleCard, reviseBattleCard, AI_CONFIG } from "@outrival/ai";
+import { generateBattleCard, reviseBattleCard, battleCardEvidence, AI_CONFIG } from "@outrival/ai";
+import { checkFaithfulness, isBlocked, blockedReviewEntry } from "../lib/faithfulness-gate";
 import {
   uploadToR2,
   getFromR2,
@@ -359,12 +360,41 @@ export async function runGenerateBattleCard(payload: z.input<typeof InputSchema>
           where: eq(battleCards.competitorId, competitor.id),
         });
 
+    // Claim-level faithfulness gate: decompose the card into atomic claims, verify
+    // each against the SAME evidence with the fuzzy citation validator, and let the
+    // binary judge settle the ones a quote can't. A blocked card is never written —
+    // the previous card (if any) stays untouched rather than being overwritten by an
+    // unfaithful one — and its failing claims land in the review queue.
+    const faithfulness = await checkFaithfulness({
+      output: content,
+      sourceText: battleCardEvidence(battleCardInput),
+      outputKind: "sales battle card",
+      context: { competitorId: competitor.id, productId: product?.id ?? null },
+      attribution,
+    });
+    if (isBlocked(faithfulness) && faithfulness) {
+      await insertAiQualityCheck(
+        blockedReviewEntry({
+          aiTask: "generate_battle_card",
+          targetType: "battle_card",
+          targetId: existing?.id ?? null,
+          orgId: org.id,
+          quality: content._quality,
+          report: faithfulness,
+        }),
+      );
+      throw new AbortTaskRunError(
+        `Battle card blocked by the faithfulness gate: ${faithfulness.reason ?? "unsupported claims"}`,
+      );
+    }
+
     let battleCardId: string;
     if (existing) {
       await db
         .update(battleCards)
         .set({
           content,
+          faithfulness,
           generatedAt,
           updatedAt: generatedAt,
           basedOnUserUpdateAt,
@@ -381,6 +411,7 @@ export async function runGenerateBattleCard(payload: z.input<typeof InputSchema>
           productId: product?.id ?? null,
           orgId: org.id,
           content,
+          faithfulness,
           generatedAt,
           updatedAt: generatedAt,
           basedOnUserUpdateAt,
@@ -400,6 +431,7 @@ export async function runGenerateBattleCard(payload: z.input<typeof InputSchema>
       targetId: battleCardId,
       orgId: org.id,
       quality: content._quality,
+      faithfulness,
     });
 
     // Lazy-import to avoid loading playwright/Chromium bindings at module parse

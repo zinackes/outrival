@@ -289,6 +289,15 @@ export function evidenceSourceText(input: BattleCardInput, b: EvidenceBlocks): s
     .join("\n\n");
 }
 
+/**
+ * The evidence a card must be traceable to — byte-identical to what the generation
+ * prompt, the grounding validator and the revise pass reason over. Exported so the
+ * publication gate verifies claims against exactly that, and cannot drift from it.
+ */
+export function battleCardEvidence(input: BattleCardInput): string {
+  return evidenceSourceText(input, computeBlocks(input));
+}
+
 export async function generateBattleCard(
   input: BattleCardInput,
 ): Promise<WithQuality<BattleCardContent> | null> {

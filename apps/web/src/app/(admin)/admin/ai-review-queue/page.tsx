@@ -30,7 +30,7 @@ export default async function AiReviewQueuePage() {
     <div className="flex flex-col gap-5">
       <PageHeader
         title="AI review queue"
-        subtitle="Outputs that failed their self-check. Resolve each as a confirmed hallucination or a false positive — the content stays live for the user either way."
+        subtitle="Outputs that failed their self-check, plus the ones the faithfulness gate refused to publish. Resolve each as a confirmed hallucination or a false positive. A self-check failure stays live for the user; an item marked “Not published” was withheld — no email, no Slack, no battle card written."
       />
 
       <Section
@@ -62,7 +62,7 @@ export default async function AiReviewQueuePage() {
       <Section
         title="To review"
         note={`${items.length} flagged`}
-        info="AI outputs that failed their self-check and await triage. Mark each as a confirmed hallucination or a false positive — the content stays live for the user either way."
+        info="AI outputs awaiting triage: a failed self-check (content stays live) or a claim the faithfulness gate could not trace to the source (publication withheld). Mark each as a confirmed hallucination or a false positive."
       >
         <ReviewQueueView items={items} />
       </Section>

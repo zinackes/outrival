@@ -330,6 +330,13 @@
       "when": 1784464918614,
       "tag": "0046_cheerful_zuras",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1784657291852,
+      "tag": "0047_pretty_whiplash",
+      "breakpoints": true
     }
   ]
 }

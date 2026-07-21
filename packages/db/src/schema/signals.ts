@@ -61,6 +61,12 @@ export const signals = pgTable("signals", {
     urgency: number;
     corroboration: number;
   }>(),
+  // Claim-level faithfulness report for the insight (critical/high only): the
+  // FaithfulnessReport produced before dispatch — { verdict, ratio, claims,
+  // unfaithfulClaims, timings }. `verdict: "blocked"` means the insight was kept
+  // in-app but NEVER emailed/Slacked, and the claims are in the review queue.
+  // Null for medium/low signals (out of scope) and when the gate is off.
+  faithfulness: jsonb("faithfulness"),
   // The dispatcher's decision for this signal: the channel it routed to, and —
   // when it was held back from an immediate email — why. The signal feed reads
   // filteredReason to show "N less relevant signals hidden". Both null until the

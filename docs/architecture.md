@@ -136,7 +136,9 @@ signals                id, change_id (unique), org_id, competitor_id,
                        narrative (patch-16), is_read, created_at
 
 digests                id, org_id, week_start, week_end, content (jsonb),
-                       temperature, sent_at, created_at
+                       temperature, sent_at, created_at,
+                       faithfulness (jsonb — rapport claim-level ; verdict='blocked'
+                       = digest stocké mais email JAMAIS envoyé, sent_at null)
 
 alerts                 id, signal_id, org_id, channel (email|slack|webhook),
                        sent_at, error
@@ -155,7 +157,10 @@ reviews                id, competitor_id, source (g2|capterra|appstore|playstore
                        detected_at
 
 battle_cards           id, competitor_id, org_id, content (jsonb — 6 sections
-                       editables), pdf_r2_key, flagged_for_regeneration_at (patch-21),
+                       editables), faithfulness (jsonb — rapport claim-level ; une
+                       carte bloquée n'est jamais écrite, donc une carte stockée
+                       porte toujours un rapport pass|skipped), pdf_r2_key,
+                       flagged_for_regeneration_at (patch-21),
                        based_on_user_update_at, based_on_competitor_signal_at (patch-22 —
                        staleness : inputs au moment de générer), product_id (patch-28),
                        generated_at, updated_at
@@ -216,6 +221,11 @@ signals                + relevance_score (patch-17 persisté patch-26), dispatch
                        est la fonction déterministe. Null sur les classifications
                        SYNTHÉTISÉES (HN, wellknown, comparison_page, pricing
                        transition) et sur tout signal antérieur)
+                       + faithfulness (jsonb — rapport claim-level du gate de
+                       publication : {verdict, ratio, claims[], unfaithfulClaims[],
+                       durationMs}. Rempli sur les insights critical|high seulement ;
+                       verdict='blocked' ⇒ filtered_reason='faithfulness_blocked',
+                       jamais d'email/Slack)
 changes                + relevance_score (real, nullable — max des changes significatifs,
                        structured homepage only) — patch-26
                        + suppression_reason (text, nullable — taxonomie v2 :
@@ -629,6 +639,13 @@ carte (état live uniquement).
   └─ insight + so_what + recommended_action
   └─ patch-16 : si change structuré + severity ≥ HOMEPAGE_NARRATIVE_MIN_SEVERITY (medium)
        → narrate_change (70b, non caché, best-effort) → signals.narrative
+  └─ GATE DE FIDÉLITÉ (critical|high seulement, après applySeverityGuard) :
+       verifyFaithfulness(insight, diffText COMPLET) → claims atomiques → fuzzy par
+       claim → juge binaire sur les indécis → ratio + verdict, stocké sur
+       signals.faithfulness. `blocked` → le signal EST inséré (idempotence changeId)
+       mais N'EST JAMAIS dispatché : dispatched_channel=in_app_only +
+       filtered_reason='faithfulness_blocked', pas d'alerte, pas d'email de
+       célébration (il cite l'insight mot pour mot) → review queue flaggée
   └─ insert signal (idempotent par changeId) + copie change.relevance_score (patch-26)
   └─ insert Postgres signal_feed (best-effort)
   └─ MODÉRATION (patch-26) : decideDispatch(orgId, {severity, relevanceScore, …}) applique
@@ -665,6 +682,10 @@ carte (état live uniquement).
 [cron lundi 8h UTC] generate-weekly-digest
   └─ idempotent par (orgId, weekStart)
   └─ skip orgs sans signal de la semaine
+  └─ GATE DE FIDÉLITÉ sur la sortie du MODÈLE (avant l'ajout déterministe des
+       sectoralTrends / watchedQuestions, copiés verbatim d'un texte déjà formulé) :
+       `blocked` → le digest est stocké avec son rapport (digests.faithfulness) mais
+       l'EMAIL ne part pas (sent_at reste null) → review queue flaggée
   └─ Groq insight global → HTML inline → Resend
 
 [cron horaire] generate-daily-digest (patch-26)
@@ -702,7 +723,12 @@ carte (état live uniquement).
 
 [on-demand] generate-battle-card
   └─ gather context (productProfile, aiSummary, top reviews, recent signals)
-  └─ Groq battle card 6 sections → upsert content
+  └─ Groq battle card 6 sections → passe de révision (reviseBattleCard)
+  └─ GATE DE FIDÉLITÉ : verifyFaithfulness(carte, battleCardEvidence(input)) —
+       la MÊME évidence que la génération et la révision. `blocked` → la carte
+       n'est PAS écrite (celle qui existe reste intacte), AbortTaskRunError +
+       review queue flaggée avec les claims fautifs. Sinon upsert content +
+       battle_cards.faithfulness
   └─ Playwright headless → page.pdf({format:"A4"}) → R2
 
 [cron */6h] ops-health-check (patch-02)
@@ -989,6 +1015,23 @@ AI_CIRCUIT_BREAKER_RESET_MIN=10    # minutes avant retry (breaker provider ET gl
 AI_INTENSIVE_RATE_LIMIT=10         # actions IA-intensives par user par fenêtre (rate limit dur)
 AI_INTENSIVE_WINDOW_SEC=3600       # fenêtre 1h
 
+# Gate de fidélité claim-level — les sorties à enjeu (battle cards, digests hebdo,
+# insights de signaux critical/high) sont décomposées en affirmations atomiques,
+# chacune vérifiée contre sa citation par le MÊME validateur fuzzy que l'enveloppe
+# de citations (GROUNDING_FUZZY_MATCH_THRESHOLD, inchangé), les indécises tranchées
+# par un juge BINAIRE (extraction + juge = modèle FAST du pool). Sous le ratio, ou
+# sur un claim jugé infidèle → la sortie n'est PAS publiée (pas d'email, pas de
+# Slack, pas de carte écrite) et part en review queue (/admin/ai-review-queue) avec
+# les claims fautifs. FAIL OPEN : parse miss / rate limit / breaker → publication
+# non vérifiée (une panne IA ne doit pas faire taire tout le produit).
+# OPT-IN : tout sauf "true" → la chaîne ne tourne pas, rien n'est bloqué, zéro appel
+# IA ajouté (comportement pré-gate exact). À activer seulement là où le pool est sain
+# ET où `eval:faithfulness` est passé — le taux de faux blocs du juge est une propriété
+# du MODÈLE, pas du code, donc il se mesure avant de mettre le gate entre une alerte
+# critique et son destinataire.
+FAITHFULNESS_GATE_ENABLED=false
+FAITHFULNESS_MIN_RATIO=0.9         # ratio min supported/total pour publier
+
 # Notifications
 RESEND_API_KEY=
 CONTACT_EMAIL=               # inbox for the public landing /demo lead form (default hello@outrival.app)
@@ -1120,6 +1163,31 @@ BUILD_TIME=                  # build timestamp → GET /api/version. In Coolify:
   aucun signal. **Fail open** par construction (prompt biaisé « substantive » +
   null ⇒ on classifie) : rater une reformulation coûte un signal bruyant, en
   supprimer une vraie la perd en silence.
+- **Vérification claim-level + gate binaire avant publication** — le grounding
+  existant (patch-24) NOTE la qualité d'une sortie (score de citations, confidence,
+  self-check) mais ne l'arrête jamais : une carte avec une phrase inventée partait
+  quand même, avec un point de confiance. Le score est aussi agrégé — un ratio de
+  0.8 ne dit pas QUELLE phrase est fausse, donc personne ne peut agir dessus. La
+  chaîne ajoutée décompose chaque sortie à enjeu en **affirmations atomiques** (1
+  appel FAST structuré), vérifie chacune **avec le validateur fuzzy existant appelé
+  claim par claim** (même seuil, même algo — la granularité change, pas la règle),
+  et confie les indécises à un **juge BINAIRE** (fidèle / infidèle + une ligne de
+  raison ; le schéma refuse une échelle, sinon la décision retombe sur le lecteur
+  du chiffre). Le verdict est un **gate** : sous `FAITHFULNESS_MIN_RATIO` ou sur un
+  claim infidèle, la sortie ne part pas — pas d'email, pas de Slack, pas de carte
+  écrite — et atterrit dans la review queue EXISTANTE (`ai_quality_checks`,
+  colonne `faithfulness`) **avec les phrases fautives nommées**. Le blocage vise la
+  frontière SORTANTE, jamais la génération : le signal est inséré (l'idempotence
+  par `changeId` est porteuse) et reste lisible in-app, seul l'envoi est retenu.
+  **Fail open** par construction (parse miss / rate limit / breaker ⇒ verdict
+  `skipped` ⇒ publication) : une panne IA ne doit pas faire taire tout le produit.
+  Périmètre = ce qui a un coût de faux : battle cards, digests hebdo, insights
+  critical/high — pas medium/low (coût), pas Ask (déjà grounded en two-pass). V1
+  mono-échantillon ; le multi-sampling type SelfCheckGPT est noté en option future
+  dans `faithfulness/verify.ts`, à décider sur le taux de faux blocs mesuré dans la
+  review queue. Comportement du juge mesuré hors CI par
+  `pnpm --filter @outrival/ai eval:faithfulness` (paires étiquetées : 100% des
+  inventions rejetées, ≥80% des paraphrases gardées).
 - **Ask Outrival — intelligence conversationnelle (feature ad-hoc)** — NL → réponse
   anglaise groundée sur la donnée Postgres **déjà** trackée (pas de RAG, pas d'ingestion).
   **Agent à OUTILS** org-scopés (`lib/ask/tools.ts`, jamais de SQL LLM) en **boucle 2

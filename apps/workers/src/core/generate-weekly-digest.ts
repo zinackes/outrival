@@ -1,5 +1,5 @@
 import { logger } from "../lib/job-logger";
-import { and, desc, eq, gte, isNotNull, isNull, lt } from "drizzle-orm";
+import { and, desc, eq, gte, isNotNull, isNull, lt, ne, or } from "drizzle-orm";
 import {
   db,
   organizations,
@@ -12,11 +12,13 @@ import {
 } from "@outrival/db";
 import {
   generateDigest,
+  digestSourceText,
   toMyProductContext,
   AI_CONFIG,
   checkGlobalBreaker,
   type DigestInputSignal,
 } from "@outrival/ai";
+import { checkFaithfulness, isBlocked, blockedReviewEntry } from "../lib/faithfulness-gate";
 import { signDigestFeedbackToken, signUnsubscribeToken } from "@outrival/shared";
 import { renderDigestEmail, renderAllQuietDigest } from "../lib/digest-email";
 import { getResend, ALERT_FROM } from "../lib/resend";
@@ -97,6 +99,15 @@ export async function runGenerateWeeklyDigest(payload: { timestamp?: Date }) {
             eq(signals.orgId, org.id),
             gte(signals.createdAt, weekStart),
             lt(signals.createdAt, weekEnd),
+            // A signal whose insight the faithfulness gate refused to publish must
+            // not reach an inbox through the digest either — the weekly email would
+            // otherwise be the back door around the gate. It stays visible in-app.
+            // (isNull kept: filteredReason is null for every normally-sent signal
+            // and a bare `ne` would drop them all.)
+            or(
+              isNull(signals.filteredReason),
+              ne(signals.filteredReason, "faithfulness_blocked"),
+            ),
           ),
         );
 
@@ -218,6 +229,20 @@ export async function runGenerateWeeklyDigest(payload: { timestamp?: Date }) {
         continue;
       }
 
+      // Claim-level faithfulness gate, on the MODEL's output only — run before the
+      // sectoral trends and watched questions are appended, since those are copied
+      // verbatim from already-formulated text and are not grounded on this week's
+      // signals. A blocked digest is still stored (the reviewer needs to read it,
+      // and the row is this org's idempotency marker) but the EMAIL never goes out:
+      // sentAt stays null and the failing claims land in the review queue.
+      const faithfulness = await checkFaithfulness({
+        output: digest,
+        sourceText: digestSourceText(input),
+        outputKind: "weekly competitive-intelligence digest",
+        context: { orgId: org.id, weekStart: isoDate(weekStart) },
+        attribution: { orgId: org.id },
+      });
+
       // Sector trends (patch-13): unread + non-dismissed sectoral_signals, attached
       // verbatim (already AI-formulated) as a distinct digest section. Absent → no
       // section. analyze-sectoral runs at 07:00 UTC, this at 08:00, so the week's
@@ -270,6 +295,7 @@ export async function runGenerateWeeklyDigest(payload: { timestamp?: Date }) {
               weekEnd: isoDate(weekEnd),
               content: digest,
               temperature: digest.temperature,
+              faithfulness,
             })
             .where(eq(digests.id, existing.id))
             .returning()
@@ -281,6 +307,7 @@ export async function runGenerateWeeklyDigest(payload: { timestamp?: Date }) {
               weekEnd: isoDate(weekEnd),
               content: digest,
               temperature: digest.temperature,
+              faithfulness,
               period: "weekly",
             })
             .returning();
@@ -293,13 +320,38 @@ export async function runGenerateWeeklyDigest(payload: { timestamp?: Date }) {
       // Anti-hallucination (patch-24): persist the digest's grounding + self-check
       // envelope (grounded against the week's signals) for the ConfidenceDot and the
       // ops metrics. Best-effort.
-      await insertAiQualityCheck({
-        aiTask: "generate_digest",
-        targetType: "digest",
-        targetId: stored.id,
-        orgId: org.id,
-        quality: digest._quality,
-      });
+      await insertAiQualityCheck(
+        isBlocked(faithfulness) && faithfulness
+          ? blockedReviewEntry({
+              aiTask: "generate_digest",
+              targetType: "digest",
+              targetId: stored.id,
+              orgId: org.id,
+              quality: digest._quality,
+              report: faithfulness,
+            })
+          : {
+              aiTask: "generate_digest",
+              targetType: "digest",
+              targetId: stored.id,
+              orgId: org.id,
+              quality: digest._quality,
+              faithfulness,
+            },
+      );
+
+      if (isBlocked(faithfulness)) {
+        // Stored, never sent: the email is the outward publication and it is what
+        // the gate withholds. sentAt stays null, so a reviewer clearing the flag can
+        // still send it from the digests UI.
+        logger.warn("Digest email withheld by the faithfulness gate", {
+          orgId: org.id,
+          digestId: stored.id,
+          reason: faithfulness?.reason ?? null,
+        });
+        skipped++;
+        continue;
+      }
 
       if (org.digestEmail) {
         try {

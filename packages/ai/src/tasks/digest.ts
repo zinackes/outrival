@@ -70,6 +70,19 @@ export function capDigestSignals(signals: DigestInputSignal[]): {
   return { kept, omitted: signals.length - kept.length };
 }
 
+function formatSignals(signals: DigestInputSignal[]): string {
+  return JSON.stringify(signals, null, 2);
+}
+
+/**
+ * The week's signals as the digest is grounded on them — same cap, same formatting
+ * as the generation call. Exported so the publication gate verifies the digest's
+ * claims against byte-identical source.
+ */
+export function digestSourceText(allSignals: DigestInputSignal[]): string {
+  return formatSignals(capDigestSignals(allSignals).kept);
+}
+
 export async function generateDigest(
   allSignals: DigestInputSignal[],
   myProduct?: MyProductContext,
@@ -120,7 +133,7 @@ Reply ONLY with valid JSON, no markdown.
     taskName: "generate_digest",
     config: AI_CONFIG.digest,
     prompt,
-    sourceText: JSON.stringify(signals, null, 2),
+    sourceText: formatSignals(signals),
     schema: DigestSchema,
     // Room for one section per capped signal plus the TL;DR — 2048 truncated the
     // JSON on busy weeks (only pay for tokens actually generated).

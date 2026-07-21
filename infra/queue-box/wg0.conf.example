@@ -1,0 +1,53 @@
+# WireGuard point-to-point link between the OVH app VPS and the queue box.
+#
+# Why a tunnel at all: OVH and Netcup share no private network, and the queue
+# Postgres serves no TLS (postgres:17 default). Publishing 5432 with a source-IP
+# allowlist would still put the password and every job payload in clear on the
+# public internet. WireGuard keeps `ufw` honest — the only internet-facing rules
+# stay 22/tcp (LIMIT) and 51820/udp restricted to the peer.
+#
+# Private keys are NEVER written into these files: `PostUp` loads them from a
+# 0600 file at interface start, so the .conf itself carries no secret.
+#
+#   queue box → /etc/wireguard/queue.key   (pubkey in queue.pub)
+#   OVH box   → /etc/wireguard/ovh.key     (pubkey in ovh.pub)
+#
+# Generate on each box:
+#   umask 077
+#   wg genkey | sudo tee /etc/wireguard/<name>.key >/dev/null
+#   sudo sh -c 'wg pubkey < /etc/wireguard/<name>.key > /etc/wireguard/<name>.pub'
+#
+# Each box's [Peer] PublicKey is the OTHER box's .pub — crossing them is the
+# usual cause of a handshake that never completes.
+
+# ---------------------------------------------------------------------------
+# /etc/wireguard/wg0.conf  ON THE QUEUE BOX (outrival-queue-01, 152.53.113.71)
+# ---------------------------------------------------------------------------
+# [Interface]
+# Address = 10.10.0.1/24
+# ListenPort = 51820
+# PostUp = wg set %i private-key /etc/wireguard/queue.key
+#
+# [Peer]
+# # OVH app VPS
+# PublicKey = <contents of ovh.pub>
+# AllowedIPs = 10.10.0.2/32
+
+# ---------------------------------------------------------------------------
+# /etc/wireguard/wg0.conf  ON THE OVH APP VPS (151.80.58.65)
+# ---------------------------------------------------------------------------
+# [Interface]
+# Address = 10.10.0.2/24
+# PostUp = wg set %i private-key /etc/wireguard/ovh.key
+#
+# [Peer]
+# # queue box
+# PublicKey = <contents of queue.pub>
+# Endpoint = 152.53.113.71:51820
+# AllowedIPs = 10.10.0.1/32
+# PersistentKeepalive = 25
+#
+# AllowedIPs MUST stay 10.10.0.1/32. A 0.0.0.0/0 here routes the whole app VPS
+# egress through the tunnel — every scrape and API call would exit via the queue
+# box. PersistentKeepalive keeps the NAT path warm so the queue box can reach
+# back without waiting for the app side to speak first.

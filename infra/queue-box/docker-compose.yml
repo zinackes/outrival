@@ -1,0 +1,78 @@
+name: outrival
+services:
+  postgres:
+    image: postgres:17
+    container_name: outrival-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: outrival
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: outrival_queue
+      POSTGRES_INITDB_ARGS: "--data-checksums --locale=C"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks: [internal]
+    # Bound to the WireGuard address, NOT 0.0.0.0 and no longer 127.0.0.1: the API
+    # lives on the OVH app VPS and reaches the queue only through the tunnel. A
+    # loopback bind would lock it out; a public bind would put job payloads (org ids,
+    # competitor urls, signal bodies) on the open internet, since postgres:17 serves
+    # no TLS by default. Requires wg0 to exist before docker starts — see
+    # docker-wait-for-wg.conf.
+    ports:
+      - "10.10.0.1:5432:5432"
+    shm_size: 256mb
+    command:
+      - postgres
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - effective_cache_size=1GB
+      - -c
+      - work_mem=16MB
+      - -c
+      - maintenance_work_mem=128MB
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - effective_io_concurrency=200
+      - -c
+      - wal_compression=on
+      - -c
+      - max_wal_size=1GB
+      - -c
+      - checkpoint_completion_target=0.9
+      # The queue is a work ledger, not a system of record: a job lost to a crash is
+      # re-enqueued by its cron or its parent. Trading durability for write latency is
+      # the right call here and is what keeps the box quiet under a scrape fan-out.
+      - -c
+      - synchronous_commit=off
+      # pg-boss churns rows fast; the stock 60s nap lets dead tuples pile up between
+      # passes on a table whose whole job is to stay small.
+      - -c
+      - autovacuum_naptime=15s
+      - -c
+      - autovacuum_vacuum_scale_factor=0.05
+      - -c
+      - autovacuum_vacuum_cost_limit=1000
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - track_io_timing=on
+      - -c
+      - log_min_duration_statement=250
+      - -c
+      - log_autovacuum_min_duration=1000
+    deploy:
+      resources:
+        limits:
+          memory: 1536M
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U outrival -d outrival_queue"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+networks:
+  internal:
+    driver: bridge
+volumes:
+  pgdata:

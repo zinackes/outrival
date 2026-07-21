@@ -1,0 +1,41 @@
+services:
+  worker-light:
+    image: ghcr.io/zinackes/outrival-worker:latest
+    container_name: outrival-worker-light
+    restart: unless-stopped
+    env_file: .env.worker
+    environment:
+      # pg-boss cutover done 2026-07-21: this worker owns cron + maintenance
+      # (ownsScheduling = role === "light" in apps/workers/src/queue/worker.ts).
+      # Exactly ONE process may own it — flipping this to "light" on the browser
+      # worker too would double-fire every schedule.
+      WORKER_ROLE: light
+    networks: [internal]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    init: true
+
+  worker-browser:
+    image: ghcr.io/zinackes/outrival-worker:latest
+    container_name: outrival-worker-browser
+    restart: unless-stopped
+    env_file: .env.worker
+    environment:
+      WORKER_ROLE: browser
+    networks: [internal]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Chromium writes its shared memory here; the 64m default makes tabs crash
+    # mid-scrape under concurrency.
+    shm_size: 1g
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+    init: true

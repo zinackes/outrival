@@ -28,6 +28,9 @@ services:
     environment:
       WORKER_ROLE: browser
     networks: [internal]
+    depends_on:
+      postgres:
+        condition: service_healthy
     # Chromium writes its shared memory here; the 64m default makes tabs crash
     # mid-scrape under concurrency.
     shm_size: 1g

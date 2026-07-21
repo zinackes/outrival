@@ -1,14 +1,50 @@
 # Migration plan — Trigger.dev → pg-boss (`@outrival/workers` + `@outrival/api`)
 
-Status: **Phases 0–6 done, code-complete — cutover pending** (2026-07-19). All 37
-job bodies live in `apps/workers/src/core/` (runtime-neutral), consumed by the
-pg-boss handlers AND by thin Trigger wrappers that stay deployable as the rollback
-for one week after cutover. The API enqueues through the typed registry on a
-send-only client; `/admin` reads job state from the `pgboss` schema. 17 crons
-registered (the 5 the Trigger cap had blocked, plus the new heartbeat).
-typecheck 8/8 + tests 12/12 green. **Not runtime-verified** — the staging gates
-below need a provisioned queue Postgres, which does not exist yet. See
-§11 (cutover checklist) and §12 (what is blocked).
+Status: **CUTOVER DONE — pg-boss is production (2026-07-21).** All 37 job bodies
+live in `apps/workers/src/core/` (runtime-neutral), consumed by the pg-boss
+handlers AND by thin Trigger wrappers that stay deployable as the rollback for
+one week (delete them on/after **2026-07-28**). The API enqueues through the
+typed registry on a send-only client; `/admin` reads job state from the `pgboss`
+schema. 17 crons registered (the 5 the Trigger cap had blocked, plus the new
+heartbeat). See §0 (cutover record), §11 (checklist), §12 (what was blocked).
+
+## 0. Cutover record — 2026-07-21
+
+Trigger.dev schedules are **disabled, not deleted** — that is the rollback. Do
+not re-enable them while a `light` worker runs: both would fire every schedule.
+
+What was done on the infrastructure (mirrored in `infra/queue-box/`):
+
+| # | Change | Verification that closed it |
+|---|---|---|
+| 1 | WireGuard `10.10.0.0/24` between the OVH app VPS and the queue box | handshake < 1 min, 0% loss, RTT ~20 ms |
+| 2 | Postgres rebound `127.0.0.1:5432` → `10.10.0.1:5432` | `ss -tlnp` shows only the wg address |
+| 3 | `docker.service` ordered after `wg-quick@wg0` | `systemctl show docker -p After` contains it |
+| 4 | Queue password rotated (role + `.env.worker` + Coolify) | 0 × `28P01` after realignment |
+| 5 | `HEARTBEAT_URL` set on the light worker | pings at `:15:20` / `:20:20`, 0 warnings |
+| 6 | Trigger.dev schedules disabled | 0 active in the dashboard |
+| 7 | `worker-light` flipped to `WORKER_ROLE=light` | `ownsScheduling:true`, 36 handlers, `pgboss.schedule` = 17 |
+| 8 | API redeployed | first `10.10.0.2` connection in `pg_stat_activity` |
+
+End-to-end proof — one manual re-scan from the dashboard:
+
+```
+17:24:57.211  scrape-monitor   created    (API enqueued over the tunnel)
+17:24:57.216  scrape-monitor   started    (browser worker, 5 ms pickup — NOTIFY works)
+17:25:24.067  scrape-monitor   completed  (26.9 s)
+17:25:23.962  classify-change  created
+17:25:25.405  classify-change  completed
+```
+
+Why the queue Postgres is not reachable without the tunnel: it serves no TLS
+(`postgres:17` default), so a source-IP-allowlisted public 5432 would still put
+the password and every job payload in clear on the internet. WireGuard keeps the
+only internet-facing rules at `22/tcp` (LIMIT) and `51820/udp` (peer-restricted).
+
+**Landmine hit during the cutover, worth remembering:** `docker compose up -d`
+did **not** recreate the workers after an `env_file` edit — they ran for hours
+with a stale password and crash-looped on `28P01`. Always `--force-recreate` and
+confirm with `docker ps --format '{{.Names}} | created={{.CreatedAt}}'`.
 
 > **Re-extraction, not rebase (2026-07-19).** The first attempt extracted job
 > bodies on 2026-07-03; `main` then rewrote most of them (`scrape-monitor` alone

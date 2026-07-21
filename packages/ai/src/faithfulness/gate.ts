@@ -13,9 +13,16 @@ export function faithfulnessMinRatio(): number {
   return Number.isFinite(raw) && raw >= 0 && raw <= 1 ? raw : DEFAULT_MIN_RATIO;
 }
 
-/** Kill-switch. `false` → verification never runs and nothing is ever blocked. */
+/**
+ * OPT-IN, not opt-out. Withholding a customer-facing output is the most
+ * consequential thing this code does, and the judge's false-block rate on real
+ * prose is a MODEL property — unknown until `eval:faithfulness` has run against a
+ * healthy pool. So the gate ships inert: it costs nothing and blocks nothing until
+ * someone sets the flag deliberately, on a box where the AI pool is known good.
+ * (Same safe-by-default posture as the passkeys flag.)
+ */
 export function faithfulnessGateEnabled(): boolean {
-  return process.env.FAITHFULNESS_GATE_ENABLED !== "false";
+  return process.env.FAITHFULNESS_GATE_ENABLED === "true";
 }
 
 export interface GateDecision {

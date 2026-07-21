@@ -62,9 +62,13 @@ describe("configuration", () => {
     expect(faithfulnessMinRatio()).toBe(0.9);
   });
 
-  test("the gate is on by default and only 'false' disables it", () => {
-    expect(faithfulnessGateEnabled()).toBe(true);
+  test("the gate is OPT-IN: inert until explicitly enabled", () => {
+    // Shipping it enabled would put an unmeasured judge between a real critical
+    // alert and its customer on the first deploy.
+    expect(faithfulnessGateEnabled()).toBe(false);
     process.env.FAITHFULNESS_GATE_ENABLED = "false";
     expect(faithfulnessGateEnabled()).toBe(false);
+    process.env.FAITHFULNESS_GATE_ENABLED = "true";
+    expect(faithfulnessGateEnabled()).toBe(true);
   });
 });

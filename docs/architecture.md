@@ -1024,7 +1024,12 @@ AI_INTENSIVE_WINDOW_SEC=3600       # fenêtre 1h
 # Slack, pas de carte écrite) et part en review queue (/admin/ai-review-queue) avec
 # les claims fautifs. FAIL OPEN : parse miss / rate limit / breaker → publication
 # non vérifiée (une panne IA ne doit pas faire taire tout le produit).
-FAITHFULNESS_GATE_ENABLED=true     # false → comportement pré-gate exact, rien n'est jamais bloqué
+# OPT-IN : tout sauf "true" → la chaîne ne tourne pas, rien n'est bloqué, zéro appel
+# IA ajouté (comportement pré-gate exact). À activer seulement là où le pool est sain
+# ET où `eval:faithfulness` est passé — le taux de faux blocs du juge est une propriété
+# du MODÈLE, pas du code, donc il se mesure avant de mettre le gate entre une alerte
+# critique et son destinataire.
+FAITHFULNESS_GATE_ENABLED=false
 FAITHFULNESS_MIN_RATIO=0.9         # ratio min supported/total pour publier
 
 # Notifications

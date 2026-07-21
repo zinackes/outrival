@@ -174,9 +174,13 @@ describe("cost and latency are recorded (d)", () => {
     expect(report.judgeCalls).toBe(1);
   });
 
-  test("the chain runs on the pool's FAST model", () => {
-    // Both calls take AI_CONFIG.classificationFast — `tier` is what actually routes
-    // on the pool path (AI_CONFIG.model is ignored there).
+  test("extraction runs fast, the judge runs smart", () => {
+    // `tier` is what actually routes on the pool path (AI_CONFIG.model is ignored
+    // there). The split is measured, not stylistic: the fast model accepts claims
+    // built on absent data (5/6 on the labelled eval), the smart one rejects them
+    // (6/6). Extraction is one call per gated output; the judge only fires on what
+    // the free fuzzy pass could not settle.
     expect(AI_CONFIG.classificationFast.tier).toBe("fast");
+    expect(AI_CONFIG.classification.tier).toBeUndefined(); // undefined = "smart"
   });
 });

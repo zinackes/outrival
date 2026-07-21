@@ -10,8 +10,13 @@
 //   1. inventions REJECTED   — the gate's reason to exist          (gate: 100%)
 //   2. paraphrases ACCEPTED  — a false block silences a real alert (gate: >= 80%)
 //
+// This is the eval that moved the judge off the fast tier: on gpt-oss-20b it scored
+// 5/6, accepting "their enterprise pricing is not publicly available" as supported
+// by "Enterprise — contact sales". Re-run it against the model the target box will
+// actually route to — a judge measured on one tier says nothing about another.
+//
 // Manual, NOT CI (live LLM calls): run before shipping any change to the judge
-// prompt, the extractor prompt, or the pool's fast model.
+// prompt, the extractor prompt, or the pool's models.
 //
 //   set -a && . ./.env.local && set +a && pnpm --filter @outrival/ai eval:faithfulness
 

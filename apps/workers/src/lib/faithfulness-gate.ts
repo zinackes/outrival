@@ -17,6 +17,11 @@ import { logger } from "./job-logger";
 // single ai_runs row carries the full cost of extraction + all judge calls. The
 // latency breakdown (extraction vs judge) has no column in ai_runs, so it travels
 // in the report (stored as jsonb with the output) and in the log line below.
+//
+// The config passed below is only the FALLBACK label for that row — the pool's real
+// provider/model is read back by logAiRun from the async context. It names the fast
+// tier because extraction (one call, always) runs there; the judge runs smart and
+// fires only on claims the fuzzy pass could not settle.
 
 /** ai_runs task label for the extraction + judge chain. */
 export const FAITHFULNESS_AI_TASK = "faithfulness_check";

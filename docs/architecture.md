@@ -1019,7 +1019,10 @@ AI_INTENSIVE_WINDOW_SEC=3600       # fenêtre 1h
 # insights de signaux critical/high) sont décomposées en affirmations atomiques,
 # chacune vérifiée contre sa citation par le MÊME validateur fuzzy que l'enveloppe
 # de citations (GROUNDING_FUZZY_MATCH_THRESHOLD, inchangé), les indécises tranchées
-# par un juge BINAIRE (extraction + juge = modèle FAST du pool). Sous le ratio, ou
+# par un juge BINAIRE. Extraction = modèle FAST (1 appel/sortie), juge = modèle SMART
+# (mesuré : le 20b accepte les claims construits sur l'ABSENCE de donnée, 5/6 sur
+# l'eval étiqueté ; le 120b les rejette, 6/6 — et le juge ne tourne que sur ce que le
+# fuzzy n'a pas tranché, donc le tier coûte peu là). Sous le ratio, ou
 # sur un claim jugé infidèle → la sortie n'est PAS publiée (pas d'email, pas de
 # Slack, pas de carte écrite) et part en review queue (/admin/ai-review-queue) avec
 # les claims fautifs. FAIL OPEN : parse miss / rate limit / breaker → publication

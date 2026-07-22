@@ -77,19 +77,27 @@ jobs:
             decide true "Empty diff — cannot scope, so deploying."
           fi
 
-          # What Dockerfile.worker actually ships and runs: the worker app, the
-          # packages it imports, and the manifests that pin their dependencies.
-          # apps/web, apps/api, infra/, docs/ are copied by `COPY . .` but never
-          # executed by a worker, so a change there cannot alter its behaviour.
-          if echo "$changed" | grep -qE \
-            -e '^apps/workers/' \
-            -e '^packages/(db|ai|scrapers|shared|queue)/' \
-            -e '^(pnpm-lock\.yaml|pnpm-workspace\.yaml|package\.json|turbo\.json)$' \
-            -e '^tsconfig.*\.json$' \
-            -e '^Dockerfile\.worker$' \
-            -e '^\.github/workflows/deploy\.yml$'
+          # Deny-list, NOT an allow-list, and the direction is the whole point. An
+          # allow-list enumerating the packages a worker imports goes stale silently:
+          # add packages/foo, import it from a worker, and no pattern matches it —
+          # so the deploy is skipped and prod quietly runs yesterday's code. Listing
+          # what provably CANNOT reach a worker instead means anything new or
+          # unrecognised deploys by default, and a mistake here costs a restart
+          # rather than an invisible staleness.
+          #
+          # apps/web and apps/api are copied into the image by `COPY . .` but no
+          # worker imports them; docs/, plans/, infra/ and .claude/ ship no code at
+          # all (infra/ is the queue box's own config, applied on the box, not from
+          # the image). deploy.yml is deliberately absent — a change to this workflow
+          # should exercise itself.
+          if echo "$changed" | grep -qvE \
+            -e '^apps/(web|api)/' \
+            -e '^(docs|plans|infra)/' \
+            -e '^\.claude/' \
+            -e '^\.github/workflows/ci\.yml$' \
+            -e '^[^/]*\.md$'
           then
-            decide true "Worker code, one of its packages, or the build itself changed."
+            decide true "Changes reach the worker image."
           fi
 
           decide false "$(echo "$changed" | wc -l) file(s) changed, none of them reachable from a worker:

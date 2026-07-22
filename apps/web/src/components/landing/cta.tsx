@@ -25,8 +25,11 @@ export function CTA() {
                 Start monitoring free <ArrowRight size={14} />
               </Link>
             </Button>
+            {/* The sample IS the product, readable without an account. Pointing
+                "see the product" at the /demo contact form would sell the exact
+                friction the rest of the site holds against Crayon and Klue. */}
             <Button asChild variant="outline">
-              <Link href="/demo">See the product</Link>
+              <Link href="/sample">See a real digest</Link>
             </Button>
             <div className="text-xs text-text-subtle">
               Your data stays in the EU ·{" "}

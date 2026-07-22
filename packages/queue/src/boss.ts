@@ -222,6 +222,19 @@ export async function registerQueues(): Promise<void> {
 }
 
 /**
+ * pg-boss stores `null` as the payload of a job sent without data — which is EVERY
+ * cron fire, since `syncSchedules()` calls `boss.schedule(name, cron)` with no data
+ * argument. Handlers are typed `(data: P)` and `defineJob<Empty>` promises an
+ * object, so that null reaches the body as a lie about its own type and blows up on
+ * the first property access (it took out generate-daily-digest for a full day after
+ * the cutover). Normalise at the boundary: the contract says "an object", so deliver
+ * one. Exported for the unit test.
+ */
+export function jobData<P extends object>(data: P | null | undefined): P {
+  return data ?? ({} as P);
+}
+
+/**
  * Register a worker handler for a job. Adapts pg-boss's `(Job[]) => Promise`
  * batch signature to a single-job handler, routes NonRetriable to a clean
  * completion, and reports every other throw to Sentry before letting pg-boss
@@ -236,7 +249,7 @@ export function work<P extends object>(
   return getBoss().work<P>(def.name, options, async (jobs) => {
     for (const job of jobs) {
       try {
-        await handler(job.data, job);
+        await handler(jobData(job.data), job);
       } catch (err) {
         if (err instanceof NonRetriable) continue; // terminal + expected → complete
         _reportError(err, { job: def.name, id: job.id });

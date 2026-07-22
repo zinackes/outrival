@@ -79,6 +79,40 @@ export function isConfigError(err: unknown): boolean {
   return s === 401 || s === 403 || s === 404;
 }
 
+// How long to park a RATE-LIMITED provider, as opposed to a broken one. The breaker
+// used to apply AI_CIRCUIT_BREAKER_RESET_MIN (10 min) to both, which is the wrong
+// order of magnitude for a quota that refills continuously: Groq's own 429 says
+// "Please try again in 5.91s", so we were parking it ~100x longer than it asked. The
+// cost is not the wasted provider — it is that ALL traffic shifts onto the other one
+// for ten minutes, which is exactly how it saturates and gets parked too, leaving
+// pickProvider with nothing (no_providers_available). Prefer what the provider tells
+// us, in its own words; the ceiling keeps a hostile/garbled value from recreating the
+// long park by accident.
+const RATE_LIMIT_BACKOFF_FALLBACK_SEC = 30;
+const RATE_LIMIT_BACKOFF_MAX_SEC = 120;
+
+export function rateLimitBackoffSec(
+  err: unknown,
+  fallbackSec = RATE_LIMIT_BACKOFF_FALLBACK_SEC,
+): number {
+  const clamp = (n: number): number =>
+    Math.min(RATE_LIMIT_BACKOFF_MAX_SEC, Math.max(1, Math.ceil(n)));
+
+  if (err instanceof OpenAI.APIError) {
+    // Standard, and what most providers send.
+    const retryAfter = Number(err.headers?.get("retry-after"));
+    if (Number.isFinite(retryAfter) && retryAfter > 0) return clamp(retryAfter);
+    // Groq puts the wait in prose on the TPM 429s we actually see in production,
+    // with no retry-after header alongside it.
+    const stated = /try again in ([\d.]+)\s*s/i.exec(err.message ?? "")?.[1];
+    if (stated !== undefined) {
+      const secs = Number(stated);
+      if (Number.isFinite(secs) && secs > 0) return clamp(secs);
+    }
+  }
+  return clamp(fallbackSec);
+}
+
 // gpt-oss models on Groq are reasoning models: without `reasoning_effort` they
 // default to "medium", which roughly DOUBLES the completion tokens (hidden
 // reasoning) for no quality/agreement gain on our extraction & classification
@@ -190,7 +224,11 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
         // global counter and trip a 10-min workspace-wide blackout while every task was
         // actually succeeding via failover. The global breaker is fed once per TASK, at
         // the exhaustion path below.
-        await tripBreaker(provider.id, rateLimited ? "rate_limited" : "provider_error");
+        await tripBreaker(
+          provider.id,
+          rateLimited ? "rate_limited" : "provider_error",
+          rateLimited ? rateLimitBackoffSec(err) : undefined,
+        );
         lastErr = err;
         continue;
       }

@@ -68,6 +68,16 @@ monitorsRouter.patch("/:id", async (c) => {
     lastChangedAt?: Date | null;
     lastFailedAt?: Date | null;
     lastError?: string | null;
+    markedUnscrapable?: boolean;
+    consecutiveFailures?: number;
+    requiresLevel?: number | null;
+    requiresLevelSince?: Date | null;
+    refusedAt?: Date | null;
+    refusalReason?: string | null;
+    lastFailureCategory?: string | null;
+    lastFailureConfidence?: string | null;
+    lastFailureEvidence?: null;
+    lastFailureDiagnosedAt?: Date | null;
   } = {};
 
   if (parsed.data.url !== undefined) {
@@ -86,6 +96,33 @@ monitorsRouter.patch("/:id", async (c) => {
       updates.lastChangedAt = null;
       updates.lastFailedAt = null;
       updates.lastError = null;
+      // Everything below diagnoses the OLD url. Keeping any of it would judge the
+      // new page on the previous one's record: a source auto-paused after three
+      // failures (or refused outright) would stay dead, and the learned cascade
+      // level would pin the first scrape at the tier the old host forced.
+      //
+      // requiresLevel = null re-learns from the bottom, and the cascade only has
+      // L0/L1/L2 now (collection doctrine) — there is no L3/L4 to fall back into.
+      // Note this deliberately does NOT clear refusal on its own: a NEW url earns
+      // a clean slate, which is exactly what a redirected/dead site needs.
+      updates.markedUnscrapable = false;
+      updates.consecutiveFailures = 0;
+      updates.requiresLevel = null;
+      updates.requiresLevelSince = null;
+      updates.refusedAt = null;
+      updates.refusalReason = null;
+      updates.lastFailureCategory = null;
+      updates.lastFailureConfidence = null;
+      updates.lastFailureEvidence = null;
+      updates.lastFailureDiagnosedAt = null;
+      // Hand it straight back to the hourly scheduler (null = due next tick) so the
+      // fix is verified soon without spending the user's forced-rescan budget. An
+      // explicit "scan now" stays available and is unmetered, since lastRunAt is
+      // now null and both run routes treat that as a first scrape.
+      updates.nextRunAt = null;
+      // Retargeting an auto-paused source is the user telling us to try again.
+      // Only lift OUR pause: a source the user paused by hand stays paused.
+      if (monitor.markedUnscrapable && monitor.isActive === false) updates.isActive = true;
     }
   }
 
@@ -96,12 +133,16 @@ monitorsRouter.patch("/:id", async (c) => {
     }
     updates.frequency = parsed.data.frequency;
     // Frequency is the next-run cap; recompute so a tighter cadence takes effect
-    // immediately rather than after the previously-scheduled run.
-    updates.nextRunAt = computeNextRun(
-      parsed.data.frequency,
-      monitor.lastChangedAt,
-      monitor.createdAt,
-    );
+    // immediately rather than after the previously-scheduled run. Skipped when this
+    // same PATCH retargeted the URL: computeNextRun would push the first scrape of a
+    // page we have never seen out by the OLD page's staleness multiplier.
+    if (updates.lastRunAt === undefined) {
+      updates.nextRunAt = computeNextRun(
+        parsed.data.frequency,
+        monitor.lastChangedAt,
+        monitor.createdAt,
+      );
+    }
   }
 
   if (parsed.data.isActive !== undefined) {

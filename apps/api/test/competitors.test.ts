@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Hono } from "hono";
 import { and, eq } from "drizzle-orm";
 import { competitors, monitors } from "@outrival/db";
+import { SOURCE_TYPES, isConfigurableSource } from "@outrival/shared";
 import { makeTestDb, type TestDb } from "./db-harness";
 import { asUser, installAppMocks, mountApp, seedOrg } from "./app-harness";
 
@@ -109,6 +110,55 @@ describe("competitors enable-monitor gating", () => {
     const res = await enable(A.userId, A.email, "comp-a", "custom");
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe("use_custom_monitor_endpoint");
+  });
+
+  test("no source outside the catalog's configurable list is enableable", async () => {
+    // Exhaustive over the enum: automatic sources, never-scraped anchors, the
+    // retired review aggregators and the scraper-less linkedin/twitter must all be
+    // refused. Guards against a new source_type silently becoming enableable.
+    const refusable = SOURCE_TYPES.filter((s) => !isConfigurableSource(s) && s !== "custom");
+    for (const source of refusable) {
+      const res = await enable(A.userId, A.email, "comp-a", source);
+      expect({ source, status: res.status }).toEqual({ source, status: 400 });
+      expect((await res.json()).error).toBe("source_not_enableable");
+    }
+  });
+
+  test("a retired review aggregator can never come back through this route", async () => {
+    const res = await enable(A.userId, A.email, "comp-a", "g2_reviews");
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("source_not_enableable");
+  });
+
+  test("an UNGATED source (changelog) is enableable on the free plan", async () => {
+    // Regression: the route gated on the strict allowlist, and changelog belongs to
+    // no plan's allowedSources — so it 403'd on every tier, business included, even
+    // though the scheduler (planAllowsMonitorSource) would have run it.
+    const res = await enable(A.userId, A.email, "comp-a", "changelog");
+    expect(res.status).toBe(201);
+    const rows = await testDb
+      .select()
+      .from(monitors)
+      .where(and(eq(monitors.competitorId, "comp-a"), eq(monitors.sourceType, "changelog")));
+    expect(rows).toHaveLength(1);
+  });
+
+  test("github_repo needs an explicit repo URL, and accepts github.com", async () => {
+    // Nothing discovers a competitor's repo, so without a URL the scraper can only
+    // throw; and the repo lives off the competitor's own domain by definition.
+    const missing = await enable(A.userId, A.email, "comp-a", "github_repo");
+    expect(missing.status).toBe(400);
+    expect((await missing.json()).error).toBe("repo_url_required");
+
+    const res = await app.request(
+      `/api/competitors/comp-a/monitors`,
+      asUser(A.userId, A.email, {
+        method: "POST",
+        body: JSON.stringify({ sourceType: "github_repo", url: "https://github.com/acme/api" }),
+      }),
+    );
+    expect(res.status).toBe(201);
+    expect((await res.json()).monitor.config).toEqual({ url: "https://github.com/acme/api" });
   });
 });
 

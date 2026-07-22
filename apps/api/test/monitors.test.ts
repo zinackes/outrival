@@ -75,6 +75,37 @@ beforeAll(async () => {
       config: { url: "https://rival-d.com/pricing" },
       lastRunAt: new Date(Date.now() - 60_000),
     },
+    // Auto-paused after a refusal, with a learned cascade level: retargeting its URL
+    // must clear the whole diagnosis of the OLD page, not just the freshness stamps.
+    {
+      id: "m-d-broken",
+      competitorId: "c-d",
+      sourceType: "blog",
+      config: { url: "https://rival-d.com/old-blog" },
+      lastRunAt: new Date(Date.now() - 60_000),
+      isActive: false,
+      markedUnscrapable: true,
+      consecutiveFailures: 3,
+      requiresLevel: 2,
+      requiresLevelSince: new Date(Date.now() - 86_400_000),
+      refusedAt: new Date(Date.now() - 60_000),
+      refusalReason: "blocked_403",
+      lastFailureCategory: "anti_bot",
+      lastFailureConfidence: "high",
+      lastFailureEvidence: ["http:403"],
+      lastFailureDiagnosedAt: new Date(Date.now() - 60_000),
+      nextRunAt: new Date(Date.now() + 7 * 86_400_000),
+    },
+    // Paused BY THE USER (never auto-paused): retargeting must not silently
+    // re-enable a source someone deliberately turned off.
+    {
+      id: "m-d-userpaused",
+      competitorId: "c-d",
+      sourceType: "changelog",
+      config: { url: "https://rival-d.com/old-changelog" },
+      lastRunAt: new Date(Date.now() - 60_000),
+      isActive: false,
+    },
     // Manual pause / enable target (starts active, with a far-future nextRunAt so
     // re-enabling can be seen to reset it to "due next tick").
     {
@@ -242,6 +273,57 @@ describe("PATCH url change resets freshness so the next run is a first scrape", 
       .from(forcedRescanLog)
       .where(eq(forcedRescanLog.monitorId, "m-d-same"));
     expect(logs).toHaveLength(1);
+  });
+});
+
+describe("PATCH url change clears the OLD page's failure state", () => {
+  test("a refused, auto-paused source comes back on a new URL", async () => {
+    const res = await patchMonitor(C, "m-d-broken", { url: "https://rival-d.com/blog" });
+    expect(res.status).toBe(200);
+    const [m] = await testDb.select().from(monitors).where(eq(monitors.id, "m-d-broken"));
+
+    // Every judgement below was about the URL that just got replaced.
+    expect(m?.markedUnscrapable).toBe(false);
+    expect(m?.consecutiveFailures).toBe(0);
+    expect(m?.refusedAt).toBeNull();
+    expect(m?.refusalReason).toBeNull();
+    expect(m?.lastFailureCategory).toBeNull();
+    expect(m?.lastFailureConfidence).toBeNull();
+    expect(m?.lastFailureEvidence).toBeNull();
+    expect(m?.lastFailureDiagnosedAt).toBeNull();
+    // Re-learn the cascade from the bottom. The doctrine's cascade is L0/L1/L2 only
+    // — null restarts at L0 and can never land on a retired L3/L4 tier.
+    expect(m?.requiresLevel).toBeNull();
+    expect(m?.requiresLevelSince).toBeNull();
+    // Our auto-pause is lifted, and the source is due on the next hourly tick —
+    // no forced-rescan budget spent to verify the fix.
+    expect(m?.isActive).toBe(true);
+    expect(m?.nextRunAt).toBeNull();
+  });
+
+  test("the next scrape targets the new URL", async () => {
+    const [m] = await testDb.select().from(monitors).where(eq(monitors.id, "m-d-broken"));
+    expect(m?.config).toEqual({ url: "https://rival-d.com/blog" });
+  });
+
+  test("a source the USER paused stays paused after a retarget", async () => {
+    const res = await patchMonitor(C, "m-d-userpaused", { url: "https://rival-d.com/changelog" });
+    expect(res.status).toBe(200);
+    const [m] = await testDb.select().from(monitors).where(eq(monitors.id, "m-d-userpaused"));
+    expect(m?.config).toEqual({ url: "https://rival-d.com/changelog" });
+    expect(m?.isActive).toBe(false);
+  });
+
+  test("a frequency change in the same PATCH doesn't defer the first scrape", async () => {
+    // computeNextRun would push it out by the OLD page's staleness multiplier.
+    const res = await patchMonitor(C, "m-d-broken", {
+      url: "https://rival-d.com/blog-v2",
+      frequency: "weekly",
+    });
+    expect(res.status).toBe(200);
+    const [m] = await testDb.select().from(monitors).where(eq(monitors.id, "m-d-broken"));
+    expect(m?.frequency).toBe("weekly");
+    expect(m?.nextRunAt).toBeNull();
   });
 });
 

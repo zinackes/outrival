@@ -29,7 +29,6 @@ import { detectContentLanguage } from "../lib/detect-language";
 import {
   checkCompetitorQuota,
   getOrgPlan,
-  isSourceAllowed,
   isFrequencyAllowed,
   pausedByPlanCap,
 } from "../lib/plan";
@@ -57,6 +56,10 @@ import {
   normalizePlanKey,
   DEPARTMENT_BUCKETS,
   DEPARTMENT_BUCKET_LABELS,
+  isHiddenSource,
+  isAutomaticSource,
+  isConfigurableSource,
+  planAllowsMonitorSource,
   type SourceType,
   type MonitorFrequency,
   type PricingTier,
@@ -560,20 +563,6 @@ competitorsRouter.post("/:id/monitors", async (c) => {
   if (!competitor || competitor.deletedAt) return c.json({ error: "Competitor not found" }, 404);
 
   const { sourceType } = parsed.data;
-  // tech_stack (patch-18), sitemap (patch-32), news, subdomains, youtube and
-  // hackernews are internal anchor sources, not user-enableable.
-  if (
-    sourceType === "tech_stack" ||
-    sourceType === "sitemap" ||
-    sourceType === "news" ||
-    sourceType === "subdomains" ||
-    sourceType === "youtube" ||
-    sourceType === "hackernews" ||
-    sourceType === "wellknown" ||
-    sourceType === "comparison_page"
-  ) {
-    return c.json({ error: "source_not_enableable", source: sourceType }, 400);
-  }
   // Custom pages are user-selectable but through their OWN flow (POST
   // /:id/custom-monitors): they carry a {url, label, hint} config, a per-competitor
   // quota, and allow several per competitor — none of which this single-source
@@ -581,8 +570,18 @@ competitorsRouter.post("/:id/monitors", async (c) => {
   if (sourceType === "custom") {
     return c.json({ error: "use_custom_monitor_endpoint", source: sourceType }, 400);
   }
+  // Everything else is enableable iff the shared catalog says it gets a user row —
+  // one list instead of a hand-maintained exclusion chain that drifted every time a
+  // source was added (it was still missing wellknown's siblings and the anchors).
+  if (!isConfigurableSource(sourceType)) {
+    return c.json({ error: "source_not_enableable", source: sourceType }, 400);
+  }
   const plan = await getOrgPlan(orgId);
-  if (!isSourceAllowed(plan, sourceType)) {
+  // Mirrors the scheduler's gate (planAllowsMonitorSource) rather than the strict
+  // allowlist: an UNGATED source (changelog, github_repo) belongs to no plan's
+  // allowedSources, so isSourceAllowed rejected it on every tier — including
+  // business — even though the scheduler would have happily run it.
+  if (!planAllowsMonitorSource(plan, sourceType)) {
     return c.json({ error: "plan_locked_source", source: sourceType, plan }, 403);
   }
   // Trustpilot public surface (Reviews v2) reads the official API — with no key it can
@@ -599,6 +598,11 @@ competitorsRouter.post("/:id/monitors", async (c) => {
   let config: { url: string } | undefined;
   if (isReviewSource(sourceType) && !parsed.data.url) {
     return c.json({ error: "review_url_required", source: sourceType }, 400);
+  }
+  // A repo can't be derived from the competitor's site (nothing discovers it), so
+  // without an explicit github.com/owner/repo the scraper would only ever throw.
+  if (sourceType === "github_repo" && !parsed.data.url) {
+    return c.json({ error: "repo_url_required", source: sourceType }, 400);
   }
   if (parsed.data.url) {
     const valid = validateMonitorUrl(sourceType, parsed.data.url, competitor.url);
@@ -996,19 +1000,23 @@ competitorsRouter.get("/:id", async (c) => {
       ),
     }),
   ]);
-  // Hide internal anchor monitors — they're infra, not user-facing sources:
-  // tech_stack (patch-18, surfaced as its own read-only tab), sitemap (patch-32,
-  // a discovery anchor whose URL-diff feeds signals) and news (Google News RSS
-  // anchor whose diff feeds funding/company signals) — never a Sources row.
+  // Split by what the user can act on, per the shared source catalog:
+  //   monitorList       — configurable + custom: toggle, frequency, URL.
+  //   automaticMonitors — seeded and scraped on their own cadence, read-only.
+  //   (hidden)          — infra anchors that are never scraped (tech_stack,
+  //                       ai_visibility, review_shift, hiring_shift,
+  //                       comparison_page) and the retired review aggregators.
+  // The previous hand-written exclusion list only covered four of those, so
+  // youtube/hackernews/wellknown and the dormant anchors leaked into the Sources UI.
   const monitorList = allMonitors.filter(
-    (m) =>
-      m.sourceType !== "tech_stack" &&
-      m.sourceType !== "sitemap" &&
-      m.sourceType !== "news" &&
-      m.sourceType !== "subdomains",
+    (m) => !isHiddenSource(m.sourceType) && !isAutomaticSource(m.sourceType),
   );
+  const automaticMonitors = allMonitors.filter((m) => isAutomaticSource(m.sourceType));
 
-  const monitorIds = monitorList.map((m) => m.id);
+  // Changes span BOTH lists: an automatic source is read-only to configure but its
+  // findings (a new sitemap page, a Show HN launch, a funding item) are exactly what
+  // the Product & Positioning feed is made of. Only the never-scraped anchors drop out.
+  const monitorIds = [...monitorList, ...automaticMonitors].map((m) => m.id);
   const recentChanges = monitorIds.length
     ? await db
         .select({
@@ -1064,6 +1072,8 @@ competitorsRouter.get("/:id", async (c) => {
   return c.json({
     competitor,
     monitors: monitorList,
+    // Read-only on the Sources page: freshness only, no toggle / frequency / URL.
+    automaticMonitors,
     recentChanges,
     recentSignals,
     techStack,

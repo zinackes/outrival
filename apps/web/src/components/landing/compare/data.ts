@@ -58,7 +58,7 @@ export const OUTRIVAL_WINS: { title: string; body: string }[] = [
   },
   {
     title: "EU hosting and monthly terms matter to you",
-    body: "Your data is stored in the EU (France), GDPR-first by default, and you can cancel in one click. No annual lock-in to leave.",
+    body: "Your data is stored in the EU, GDPR-first by default, and you can cancel in one click. No annual lock-in to leave.",
   },
 ];
 
@@ -154,7 +154,7 @@ export const COMPETITORS: Record<CompetitorKey, {
       },
       {
         q: "Where is my data hosted?",
-        a: "Outrival stores your data in the EU: database and file storage in an EU region, application and workers in France. AI inference can use non-EU model providers under a DPA — that's why we say EU data storage, not EU processing. Crayon is a US-based vendor. If EU data residency is a requirement, that difference matters.",
+        a: "Outrival stores your data in the EU: database and file storage in an EU region, application and workers on EU infrastructure. AI inference can use non-EU model providers under a DPA — that's why we say EU data storage, not EU processing. Crayon is a US-based vendor. If EU data residency is a requirement, that difference matters.",
       },
       {
         q: "Can Outrival produce battle cards like Crayon?",
@@ -233,7 +233,7 @@ export const COMPETITORS: Record<CompetitorKey, {
       },
       {
         q: "Where is my data hosted?",
-        a: "Outrival stores your data in the EU: database and file storage in an EU region, application and workers in France. AI inference can use non-EU model providers under a DPA — that's why we say EU data storage, not EU processing. Klue is a Canada-based vendor. If EU data residency is a requirement for you, that difference matters.",
+        a: "Outrival stores your data in the EU: database and file storage in an EU region, application and workers on EU infrastructure. AI inference can use non-EU model providers under a DPA — that's why we say EU data storage, not EU processing. Klue is a Canada-based vendor. If EU data residency is a requirement for you, that difference matters.",
       },
     ],
     sources: [
@@ -342,7 +342,7 @@ export const ALTERNATIVES: Record<CompetitorKey, {
       },
       {
         q: "Which alternative is hosted in the EU?",
-        a: "Outrival stores your data in the EU (France) — EU data storage, with AI inference under a DPA. The other tools here are non-EU vendors (Crayon and Kompyte in the US, Klue in Canada). If EU data residency is a requirement, Outrival is the clear pick.",
+        a: "Outrival stores your data in the EU — EU data storage, with AI inference under a DPA. The other tools here are non-EU vendors (Crayon and Kompyte in the US, Klue in Canada). If EU data residency is a requirement, Outrival is the clear pick.",
       },
       {
         q: "Can any of these track my own product too?",
@@ -379,7 +379,7 @@ export const ALTERNATIVES: Record<CompetitorKey, {
       },
       {
         q: "Which alternative is hosted in the EU?",
-        a: "Outrival stores your data in the EU (France) — EU data storage, with AI inference under a DPA. The other tools here are non-EU vendors (Klue in Canada, Crayon and Kompyte in the US). If EU data residency matters, Outrival is the clear pick.",
+        a: "Outrival stores your data in the EU — EU data storage, with AI inference under a DPA. The other tools here are non-EU vendors (Klue in Canada, Crayon and Kompyte in the US). If EU data residency matters, Outrival is the clear pick.",
       },
     ],
     sources: [
@@ -542,7 +542,7 @@ export const BEST_TOOLS = {
     },
     {
       q: "Which of these tools is hosted in the EU?",
-      a: "Outrival offers EU data storage (database and file storage in an EU region, application in France; AI inference can use non-EU providers under a DPA). Crayon and Kompyte are US-based, Klue is Canada-based, Contify is India/US-based, and Visualping is Canada-based. If EU data residency matters, Outrival is the clear pick here.",
+      a: "Outrival offers EU data storage (database and file storage in an EU region, application and workers on EU infrastructure; AI inference can use non-EU providers under a DPA). Crayon and Kompyte are US-based, Klue is Canada-based, Contify is India/US-based, and Visualping is Canada-based. If EU data residency matters, Outrival is the clear pick here.",
     },
   ],
   sources: [

@@ -18,7 +18,7 @@ const FAQS: Faq[] = [
   },
   {
     q: "Where is the data stored?",
-    a: "All in the EU. Application server on OVH (France), PostgreSQL on Neon (EU), HTML snapshots and screenshots on Cloudflare R2 — your stored data never leaves the EU.",
+    a: "All in the EU. Application server on OVHcloud in France, background workers and job queue on netcup in Austria, PostgreSQL on Neon (EU region), HTML snapshots and screenshots on Cloudflare R2 — your stored data never leaves the EU.",
   },
   {
     q: "Can I track my own product too?",

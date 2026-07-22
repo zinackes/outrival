@@ -55,7 +55,9 @@ export default function LegalNoticePage() {
             </li>
           </ul>
           <p className="fine">
-            Application data is stored on EU infrastructure. The full list of
+            Application data is stored on EU infrastructure. Background
+            processing (job queue and scraping workers) runs on infrastructure
+            provided by netcup GmbH in Austria (EU). The full list of
             infrastructure and processing providers is available on our{" "}
             <a href="/subprocessors">subprocessors page</a>.
           </p>
@@ -142,9 +144,11 @@ export default function LegalNoticePage() {
           </ul>
           <p className="fine">
             Les données applicatives sont stockées sur une infrastructure située
-            dans l'Union européenne. La liste complète des prestataires
-            d'infrastructure et de traitement est disponible sur notre{" "}
-            <a href="/subprocessors">page sous-traitants</a>.
+            dans l'Union européenne. Les traitements en arrière-plan (file de
+            jobs et workers de scraping) s'exécutent sur une infrastructure
+            fournie par netcup GmbH en Autriche (UE). La liste complète des
+            prestataires d'infrastructure et de traitement est disponible sur
+            notre <a href="/subprocessors">page sous-traitants</a>.
           </p>
 
           <h2>4. Contact</h2>

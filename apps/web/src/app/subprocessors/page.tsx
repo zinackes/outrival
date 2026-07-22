@@ -67,6 +67,11 @@ export default function SubprocessorsPage() {
             reasonable data-protection grounds, contact{" "}
             <a href={`mailto:${CONTACT.privacy}`}>{CONTACT.privacy}</a>.
           </p>
+          <p className="fine">
+            v1.1 (July 22, 2026) — Trigger.dev removed and netcup GmbH added:
+            background job orchestration moved from the United States to the EU
+            (Austria). No other change.
+          </p>
         </>
       }
       fr={
@@ -87,6 +92,11 @@ export default function SubprocessorsPage() {
             tout ajout ou remplacement. Pour être informé des changements, ou vous y
             opposer pour des motifs raisonnables, écrivez à{" "}
             <a href={`mailto:${CONTACT.privacy}`}>{CONTACT.privacy}</a>.
+          </p>
+          <p className="fine">
+            v1.1 (22 juillet 2026) — Trigger.dev retiré et netcup GmbH ajouté :
+            l'orchestration des jobs est passée des États-Unis à l'UE (Autriche).
+            Aucun autre changement.
           </p>
         </>
       }

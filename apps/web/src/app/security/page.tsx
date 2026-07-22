@@ -37,8 +37,9 @@ export default function SecurityPage() {
           workspace configuration, signals and digests live in a managed
           PostgreSQL database (Neon) in an EU region. Page snapshots,
           screenshots and generated PDFs live in object storage (Cloudflare R2).
-          The application and background workers run on infrastructure in France
-          (OVHcloud).
+          The application runs on infrastructure in the EU (OVHcloud), and the
+          background workers and job queue on EU infrastructure too (netcup, in
+          Austria).
         </p>
         <p>
           Data is <strong>encrypted in transit</strong> with TLS. Our database

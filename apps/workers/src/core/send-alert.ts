@@ -30,6 +30,15 @@ const SEVERITY_EMOJI: Record<string, string> = {
   low: "🟢",
 };
 
+// In-app notifications carry no emoji (product rule): the severity is spelled out
+// instead, so the bell/toast title stays readable text.
+const SEVERITY_LABEL: Record<string, string> = {
+  critical: "Critical",
+  high: "High",
+  medium: "Medium",
+  low: "Low",
+};
+
 // Runtime-neutral job body: shared verbatim by the pg-boss handler and the thin
 // Trigger.dev wrapper in ../jobs/send-alert.job.ts (deleted at the cutover). The
 // body is byte-identical to the pre-migration job — only the header and the
@@ -87,7 +96,7 @@ export async function runSendAlert(payload: z.input<typeof InputSchema>) {
       await db.insert(notifications).values({
         orgId: org.id,
         type: "signal",
-        title: `${emoji} ${competitor.name} — ${signal.category}`,
+        title: `${SEVERITY_LABEL[signal.severity] ?? "Signal"} · ${competitor.name} — ${signal.category}`,
         body: signal.insight,
         linkUrl: `/dashboard/competitors/${competitor.id}`,
       });

@@ -82,10 +82,11 @@ export default function SamplePage() {
       >
         {/* Contextual banner — factual, not marketing. */}
         <div className="rounded-lg border border-border bg-background-2 px-4 py-3 text-sm leading-relaxed text-text-muted">
-          This is a real Outrival weekly digest{SAMPLE_DIGEST_READY ? `, ${weekLabel}` : ""}. The client
-          organization is anonymized; the competitors named are real, public
-          companies. It renders with the same component clients read in the app —
-          nothing here is a marketing mock-up.
+          This is a real Outrival weekly digest{SAMPLE_DIGEST_READY ? `, ${weekLabel}` : ""} — {sections.length}{" "}
+          of its signals, unedited. The client organization is anonymized; the
+          competitors named are real, public companies. It renders with the same
+          component clients read in the app — nothing here is a marketing
+          mock-up.
         </div>
 
         <header className="mt-10">

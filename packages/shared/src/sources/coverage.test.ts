@@ -227,7 +227,7 @@ describe("coverage summary", () => {
   test("not-applicable sources never enter the denominator", () => {
     expect(coverage.notApplicable).toEqual(["youtube", "github_repo"]);
     expect(coverage.tracked).not.toContain("youtube");
-    expect(coverage.tracked).not.toContain("github_repo");
+    expect(coverage.pending).not.toContain("github_repo");
   });
 
   test("the headline is positive and carries no ratio", () => {
@@ -256,5 +256,40 @@ describe("coverage summary", () => {
       "status",
       "appstore_reviews",
     ]);
+  });
+});
+
+describe("a competitor added moments ago", () => {
+  const label = (s: SourceType) => s.replace(/_/g, " ");
+
+  // Every source enabled at creation, every first scrape still in flight.
+  const justAdded = buildCoverage(
+    (["homepage", "pricing", "blog", "changelog"] as SourceType[]).map((sourceType) => ({
+      sourceType,
+      state: "pending" as const,
+    })),
+  );
+
+  test("says it is checking, rather than asserting unverified coverage", () => {
+    expect(coverageHeadline(justAdded, label)).toBe("Checking 4 sources…");
+  });
+
+  test("pending sources still count as covered, never as gaps", () => {
+    expect(justAdded.pending).toHaveLength(4);
+    expect(justAdded.notApplicable).toEqual([]);
+    expect(justAdded.blocked).toEqual([]);
+  });
+
+  test("as soon as one capture lands, the line flips to Tracking", () => {
+    const partly = buildCoverage([
+      { sourceType: "homepage", state: "blocked" },
+      { sourceType: "pricing", state: "tracking" },
+      { sourceType: "blog", state: "pending" },
+      { sourceType: "status", state: "not_available" },
+    ]);
+    // The blocked homepage is named at once — and the still-unverified blog counts
+    // as covered, so the pre-check never reads worse than reality.
+    expect(coverageHeadline(partly, label)).toBe("Tracking 2 sources · 1 blocked (homepage)");
+    expect(fallbackSources(partly, "homepage")).toEqual(["pricing", "blog"]);
   });
 });

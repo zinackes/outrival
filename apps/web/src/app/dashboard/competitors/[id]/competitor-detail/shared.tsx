@@ -23,6 +23,9 @@ import { TabSection } from "@/components/outrival/tab-shell";
 // scrapeStartedAt as "in progress".
 export const POLL_TIMEOUT_MS = 300_000;
 
+// How often an in-flight job (scrape, AI summary) is re-checked.
+export const POLL_INTERVAL_MS = 3000;
+
 // A monitor is "running" from the server's point of view when its scrape was
 // started after the last terminal event (success or failure) and hasn't blown
 // past the poll timeout. This lets the in-progress state survive a page refresh

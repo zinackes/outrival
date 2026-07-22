@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import {
   Activity,
   ChevronRight,
+  Cpu,
   FileText,
   Users,
   LayoutGrid,
@@ -16,7 +17,13 @@ import {
   Play,
   Languages,
 } from "lucide-react";
-import { api, type CompetitorOverview, type Monitor, type PricingStatus } from "@/lib/api";
+import {
+  api,
+  type CompetitorOverview,
+  type Monitor,
+  type PricingStatus,
+  type TechStackData,
+} from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,7 +32,15 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { EmptyState } from "@/components/dashboard/empty-state";
+import { CompetitorTechStack } from "@/components/outrival/competitor-tech-stack";
 import { Eyebrow } from "@/components/outrival/eyebrow";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
 import { formatTierPrice, logoLabel, isRenderableLogoSrc } from "./helpers";
@@ -192,10 +207,12 @@ export function OverviewTab({
   pricingNote,
   onRun,
   onOpenTab,
+  techStack,
 }: {
   competitorId: string;
   overview: CompetitorOverview;
   monitors: Monitor[];
+  techStack: TechStackData;
   scrapingIds: Set<string>;
   // Where the first analysis is (queued → scraping → summarizing). Drives the
   // empty state so a freshly added competitor reads as "in progress" rather than
@@ -514,6 +531,65 @@ export function OverviewTab({
       </div>
 
       </TabSection>
+
+      <TechStackCard techStack={techStack} />
     </TabCard>
   );
 }
+
+// Tech stack lost its tab: it is reference material, not a lens you flip to every
+// visit. The headline tells you the commercially interesting part (who they pay for
+// payments, CRM, analytics) and the full catalogue opens in a sheet on demand.
+function TechStackCard({ techStack }: { techStack: TechStackData }) {
+  const [open, setOpen] = useState(false);
+  const entries = techStack.entries;
+  if (entries.length === 0 && !techStack.platformProfile) return null;
+
+  // Strategic tells first — a payment provider or CRM says more about how they sell
+  // than the CDN in front of their marketing site.
+  const headline = [...entries]
+    .sort((a, b) => IMPORTANCE_RANK.indexOf(a.importance) - IMPORTANCE_RANK.indexOf(b.importance))
+    .slice(0, 4);
+
+  return (
+    <>
+      <TabSection title="Tech stack" icon={Cpu}>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="flex w-full flex-wrap items-center gap-1.5 rounded-md text-left transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {headline.map((t) => (
+            <Badge key={t.techId} variant="secondary" className="text-xs font-normal">
+              {t.name}
+            </Badge>
+          ))}
+          <span className="text-dense text-muted-foreground">
+            {entries.length === 0
+              ? "Platform detected"
+              : entries.length > headline.length
+                ? `+${entries.length - headline.length} more`
+                : `${entries.length} detected`}
+          </span>
+          <ChevronRight size={13} className="ml-auto shrink-0 text-muted-foreground" />
+        </button>
+      </TabSection>
+
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl">
+          <SheetHeader>
+            <SheetTitle>Tech stack</SheetTitle>
+            <SheetDescription>
+              Third-party technology detected on this competitor&apos;s site, scanned monthly.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="px-4 pb-6">
+            <CompetitorTechStack techStack={techStack} />
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
+  );
+}
+
+const IMPORTANCE_RANK = ["high", "medium", "low"];

@@ -4,7 +4,5 @@ export type TabKey =
   | "pricing"
   | "hiring"
   | "reviews"
-  | "content"
-  | "custom"
-  | "techstack"
-  | "battlecard";
+  /** "Product & Positioning" — the narrative / product / social change feed. */
+  | "product";

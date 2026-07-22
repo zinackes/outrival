@@ -141,8 +141,14 @@ export function sourceState(args: {
 
 /** Buckets of a competitor's sources by what the user needs to know about them. */
 export interface SourceCoverage {
-  /** Collecting or about to — what the product actually watches. */
+  /** Collecting — what the product actually watches. */
   tracked: SourceType[];
+  /**
+   * Enabled, first scrape still in flight. Counted as covered (they are not gaps),
+   * but tracked separately so a competitor added seconds ago can say "checking"
+   * instead of asserting coverage it hasn't verified yet.
+   */
+  pending: SourceType[];
   /** The surface exists and refuses us. Named explicitly, never hidden. */
   blocked: SourceType[];
   /** Reachable in principle but not right now (login / geo / broken URL). */
@@ -159,6 +165,7 @@ export interface SourceCoverage {
 
 const EMPTY_COVERAGE = (): SourceCoverage => ({
   tracked: [],
+  pending: [],
   blocked: [],
   unreachable: [],
   paused: [],
@@ -169,7 +176,7 @@ const EMPTY_COVERAGE = (): SourceCoverage => ({
 
 const BUCKET_OF: Record<SourceState, keyof SourceCoverage> = {
   tracking: "tracked",
-  pending: "tracked",
+  pending: "pending",
   blocked: "blocked",
   login_required: "unreachable",
   geo_blocked: "unreachable",
@@ -198,8 +205,17 @@ export function coverageHeadline(
   cov: SourceCoverage,
   label: (s: SourceType) => string,
 ): string {
-  const n = cov.tracked.length;
-  const head = n === 0 ? "No sources tracked yet" : `Tracking ${n} source${n === 1 ? "" : "s"}`;
+  const n = cov.tracked.length + cov.pending.length;
+  const plural = (k: number) => (k === 1 ? "" : "s");
+  // A competitor added moments ago has enabled sources but no capture yet. Claiming
+  // "tracking 6 sources" there would assert coverage we haven't verified — the first
+  // scrapes may still come back blocked or find no such surface.
+  const head =
+    n === 0
+      ? "No sources tracked yet"
+      : cov.tracked.length === 0
+        ? `Checking ${n} source${plural(n)}…`
+        : `Tracking ${n} source${plural(n)}`;
   const parts = [head];
   if (cov.blocked.length > 0) {
     parts.push(`${cov.blocked.length} blocked (${cov.blocked.map(label).join(", ")})`);
@@ -214,5 +230,5 @@ export function coverageHeadline(
  * this is the difference between "we're stuck" and "we route around it".
  */
 export function fallbackSources(cov: SourceCoverage, exclude: SourceType): SourceType[] {
-  return cov.tracked.filter((s) => s !== exclude);
+  return [...cov.tracked, ...cov.pending].filter((s) => s !== exclude);
 }

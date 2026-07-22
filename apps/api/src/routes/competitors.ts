@@ -1013,10 +1013,13 @@ competitorsRouter.get("/:id", async (c) => {
   );
   const automaticMonitors = allMonitors.filter((m) => isAutomaticSource(m.sourceType));
 
-  // Changes span BOTH lists: an automatic source is read-only to configure but its
-  // findings (a new sitemap page, a Show HN launch, a funding item) are exactly what
-  // the Product & Positioning feed is made of. Only the never-scraped anchors drop out.
-  const monitorIds = [...monitorList, ...automaticMonitors].map((m) => m.id);
+  // Changes are read-only data, so they are NOT filtered by the configurable/
+  // automatic split: an automatic source can't be turned off, but a Show HN launch
+  // or a funding item is exactly what the Product & Positioning feed is made of,
+  // and the never-scraped anchors (comparison_page, review_shift, hiring_shift,
+  // ai_visibility) are pure carriers of synthetic signals. Only tech_stack stays
+  // out — it has its own card, and its churn drowned the feed.
+  const monitorIds = allMonitors.filter((m) => m.sourceType !== "tech_stack").map((m) => m.id);
   const recentChanges = monitorIds.length
     ? await db
         .select({

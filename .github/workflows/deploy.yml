@@ -37,10 +37,77 @@ jobs:
       - uses: actions/checkout@v5
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          # Need the first parent to diff this merge against.
+          fetch-depth: 2
+
+      # `workflow_run` does not accept a `paths:` filter, so the scoping decision has
+      # to happen here. Without it EVERY merge to main rebuilds a 2.3 GB image and
+      # recycles both workers — including the 4 GB browser one, mid-scrape — even for
+      # a commit that only touches the landing page.
+      #
+      # The bias is deliberate and one-directional: deploying when we did not need to
+      # costs one restart, whereas SKIPPING a deploy that was needed leaves prod on
+      # stale code with nothing to indicate it. That failure is silent, and silent
+      # staleness is what cost us a day of dead AI and two days of undelivered
+      # digests. So every uncertainty below resolves to "deploy", and the decision is
+      # written to the job summary either way — a skip must be readable after the
+      # fact, never inferred from an absence.
+      - name: Scope — does this commit change what the image runs?
+        id: scope
+        run: |
+          set -uo pipefail
+          decide() { # $1 = true|false, $2 = reason
+            echo "deploy=$1" >> "$GITHUB_OUTPUT"
+            echo "### Worker deploy: $([ "$1" = true ] && echo RUNNING || echo SKIPPED)" >> "$GITHUB_STEP_SUMMARY"
+            echo "$2" >> "$GITHUB_STEP_SUMMARY"
+            echo "decision=$1 ($2)"
+            exit 0
+          }
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            decide true "Manual dispatch — always deploys."
+          fi
+          if ! git rev-parse --verify -q 'HEAD^1' >/dev/null; then
+            decide true "No first parent available (shallow or root commit) — cannot scope, so deploying."
+          fi
+
+          changed="$(git diff --name-only 'HEAD^1' HEAD)" || \
+            decide true "git diff failed — cannot scope, so deploying."
+          if [ -z "$changed" ]; then
+            decide true "Empty diff — cannot scope, so deploying."
+          fi
+
+          # Deny-list, NOT an allow-list, and the direction is the whole point. An
+          # allow-list enumerating the packages a worker imports goes stale silently:
+          # add packages/foo, import it from a worker, and no pattern matches it —
+          # so the deploy is skipped and prod quietly runs yesterday's code. Listing
+          # what provably CANNOT reach a worker instead means anything new or
+          # unrecognised deploys by default, and a mistake here costs a restart
+          # rather than an invisible staleness.
+          #
+          # apps/web and apps/api are copied into the image by `COPY . .` but no
+          # worker imports them; docs/, plans/, infra/ and .claude/ ship no code at
+          # all (infra/ is the queue box's own config, applied on the box, not from
+          # the image). deploy.yml is deliberately absent — a change to this workflow
+          # should exercise itself.
+          if echo "$changed" | grep -qvE \
+            -e '^apps/(web|api)/' \
+            -e '^(docs|plans|infra)/' \
+            -e '^\.claude/' \
+            -e '^\.github/workflows/ci\.yml$' \
+            -e '^[^/]*\.md$'
+          then
+            decide true "Changes reach the worker image."
+          fi
+
+          decide false "$(echo "$changed" | wc -l) file(s) changed, none of them reachable from a worker:
+          $(echo "$changed" | sed 's/^/- /')"
 
       - uses: docker/setup-buildx-action@v3
+        if: steps.scope.outputs.deploy == 'true'
 
       - uses: docker/login-action@v3
+        if: steps.scope.outputs.deploy == 'true'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -48,6 +115,7 @@ jobs:
 
       - name: Build and push
         uses: docker/build-push-action@v6
+        if: steps.scope.outputs.deploy == 'true'
         with:
           context: .
           file: Dockerfile.worker
@@ -63,6 +131,7 @@ jobs:
 
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1
+        if: steps.scope.outputs.deploy == 'true'
         with:
           host: ${{ secrets.VPS_HOST }}
           username: deploy

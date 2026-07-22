@@ -10,8 +10,8 @@ export {
 } from "./provider/provider-context";
 export type { TokenUsage } from "./provider/provider-context";
 export { AIUnavailableError, checkGlobalBreaker } from "./provider/circuit-breaker";
-export { loadProviders } from "./provider/provider-pool";
-export type { Provider } from "./provider/provider-pool";
+export { loadProviders, checkProviderModels } from "./provider/provider-pool";
+export type { Provider, ProviderCheck } from "./provider/provider-pool";
 export { safeParseJson } from "./lib/parse";
 // Anti-hallucination: grounding + self-check (patch-24)
 export { groundedAiCall } from "./grounding/grounded-call";

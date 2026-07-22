@@ -4,7 +4,8 @@
 // Sentry MUST init before any handler code runs. Side-effect import.
 import "../lib/sentry";
 import { Sentry } from "../lib/sentry";
-import { logger } from "@outrival/shared";
+import { logger, sendSlackMessage } from "@outrival/shared";
+import { checkProviderModels } from "@outrival/ai";
 import { startQueue, stopQueue, registerQueues, syncSchedules } from "@outrival/queue";
 import { validateWorkerEnv } from "../env";
 import { registerHandlers, type WorkerRole } from "./handlers";
@@ -40,6 +41,40 @@ async function main() {
 
   const handlers = await registerHandlers(role as WorkerRole);
   logger.info({ role, ownsScheduling, handlers }, "queue worker ready");
+
+  // Fire-and-forget, AFTER the worker is consuming: a misconfigured AI pool must be
+  // loud, but it must not delay picking jobs back up, and it must never keep a worker
+  // from scraping. The pool's own boot log only prints on the first AI call — and not
+  // even then while the global breaker is open (callLLM checks it before loading
+  // providers), which is precisely when you most want to know what the pool holds.
+  void verifyAiPool();
+}
+
+async function verifyAiPool(): Promise<void> {
+  try {
+    const checks = await checkProviderModels();
+    if (checks.length === 0) {
+      logger.warn("AI provider pool is EMPTY — every AI task will fail");
+      return;
+    }
+    for (const c of checks) {
+      if (c.ok) logger.info({ provider: c.id, detail: c.detail }, "AI provider model check ok");
+      else logger.error({ provider: c.id, detail: c.detail }, "AI provider model MISCONFIGURED");
+    }
+    const broken = checks.filter((c) => !c.ok);
+    const webhook = process.env.OPS_SLACK_WEBHOOK_URL;
+    if (broken.length > 0 && webhook) {
+      await sendSlackMessage(
+        webhook,
+        `:warning: AI pool misconfigured on \`${role}\` — ` +
+          broken.map((c) => `\`${c.id}\`: ${c.detail}`).join(" · ") +
+          `\nFix AI_PROVIDER_*_MODEL in /opt/outrival/.env.worker, then \`docker compose up -d --force-recreate\`.`,
+      );
+    }
+  } catch (err) {
+    // Diagnostics must never be the thing that breaks the process they diagnose.
+    logger.warn({ err }, "AI provider model check failed to run");
+  }
 }
 
 // Graceful drain on Coolify redeploy/stop: wait for in-flight handlers instead

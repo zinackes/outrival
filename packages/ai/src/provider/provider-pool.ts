@@ -97,6 +97,67 @@ export function loadProviders(): Provider[] {
   return sorted;
 }
 
+export type ProviderCheck = { id: string; ok: boolean; detail: string };
+
+/**
+ * Boot-time sanity check: does each provider actually serve the model we configured?
+ *
+ * This is the one question no env validation can answer, and it is the question that
+ * mattered — on 2026-07-22 the pool loaded two healthy-looking providers and every p1
+ * call 404'd because AI_PROVIDER_1_MODEL named a model Cerebras does not serve. That
+ * is invisible until the first AI task fails, and the failure surfaces as a global
+ * breaker trip rather than as "fix this variable", so it cost a day of dead AI.
+ *
+ * Reads /models (no tokens, no generation) and reports; the caller decides what to do
+ * with the verdict. Deliberately NOT fatal: a worker with a broken pool must still
+ * scrape, per the existing choice in apps/workers/src/env.ts. `fetchImpl` is injected
+ * for the unit test.
+ */
+export async function checkProviderModels(
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = 10_000,
+): Promise<ProviderCheck[]> {
+  const results: ProviderCheck[] = [];
+  for (const p of loadProviders()) {
+    const wanted = [p.model, ...(p.fastModel ? [p.fastModel] : [])];
+    try {
+      const res = await fetchImpl(`${p.baseUrl}/models`, {
+        headers: { Authorization: `Bearer ${p.apiKey}` },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!res.ok) {
+        // An unreachable /models says nothing about the models themselves — a
+        // provider may not implement it. Never report that as a config fault.
+        results.push({ id: p.id, ok: true, detail: `/models unavailable (${res.status}), skipped` });
+        continue;
+      }
+      const json = (await res.json()) as { data?: { id?: string }[] };
+      const served = new Set((json.data ?? []).map((m) => m.id).filter(Boolean));
+      if (served.size === 0) {
+        results.push({ id: p.id, ok: true, detail: "/models returned nothing, skipped" });
+        continue;
+      }
+      const missing = wanted.filter((m) => !served.has(m));
+      results.push(
+        missing.length === 0
+          ? { id: p.id, ok: true, detail: wanted.join(", ") }
+          : {
+              id: p.id,
+              ok: false,
+              detail: `does not serve ${missing.join(", ")} — available: ${[...served].sort().join(", ")}`,
+            },
+      );
+    } catch (err) {
+      results.push({
+        id: p.id,
+        ok: true,
+        detail: `unreachable (${err instanceof Error ? err.message : String(err)}), skipped`,
+      });
+    }
+  }
+  return results;
+}
+
 function todayKey(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -140,8 +201,17 @@ export async function trackUsage(providerId: string, tokens: number): Promise<vo
   await redis.expire(key, 86400 * 2); // keep 2 days for debugging
 }
 
-/** Put a provider in its circuit breaker for AI_CIRCUIT_BREAKER_RESET_MIN minutes. */
-export async function tripBreaker(providerId: string, reason: string): Promise<void> {
+/**
+ * Put a provider in its circuit breaker. Defaults to AI_CIRCUIT_BREAKER_RESET_MIN
+ * minutes — the right scale for a provider that is broken (bad key, wrong model) and
+ * will not fix itself by being retried. `ttlSec` overrides it for a fault that DOES
+ * self-heal on its own clock, namely a rate limit: see rateLimitBackoffSec.
+ */
+export async function tripBreaker(
+  providerId: string,
+  reason: string,
+  ttlSec?: number,
+): Promise<void> {
   const resetMin = Number(process.env.AI_CIRCUIT_BREAKER_RESET_MIN ?? 10);
-  await redis.set(`ai:breaker:${providerId}`, reason, { ex: resetMin * 60 });
+  await redis.set(`ai:breaker:${providerId}`, reason, { ex: ttlSec ?? resetMin * 60 });
 }

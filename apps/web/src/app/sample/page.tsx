@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/metadata";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Nav } from "@/components/landing/nav";
@@ -11,17 +12,16 @@ const TITLE = "A real Outrival weekly digest — sample";
 const DESCRIPTION =
   "See an actual Outrival competitive-intelligence digest: the strategic brief a client receives every Monday. Real competitor moves, prioritized by AI. Client organization anonymized — no sign-up needed.";
 
-export const metadata: Metadata = {
-  title: { absolute: TITLE },
+// ownImage: this segment has its own app/sample/opengraph-image.tsx, so the OG
+// card is the sample-specific art rather than the generic site image.
+export const metadata: Metadata = pageMetadata({
+  path: "/sample",
+  title: TITLE,
+  titleAbsolute: true,
   description: DESCRIPTION,
-  alternates: { canonical: "/sample" },
-  openGraph: {
-    title: TITLE,
-    description: DESCRIPTION,
-    url: "/sample",
-    type: "article",
-  },
-};
+  type: "article",
+  ownImage: true,
+});
 
 function SampleJsonLd() {
   const data = [

@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/metadata";
 import { LegalDoc } from "@/components/legal/legal-doc";
 import { ENTITY, CONTACT, HOST, DOMAINS } from "@/lib/legal/entity";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
+  path: "/legal-notice",
   title: "Legal Notice",
-  description: "Publisher and hosting information for Outrival (LCEN).",
-  alternates: { canonical: "/legal-notice" },
-};
+  description:
+    "Publisher and hosting information for Outrival (LCEN).",
+});
 
 export default function LegalNoticePage() {
   return (

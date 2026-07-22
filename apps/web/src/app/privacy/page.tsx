@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/metadata";
 import { LegalDoc } from "@/components/legal/legal-doc";
 import { ENTITY, CONTACT } from "@/lib/legal/entity";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
+  path: "/privacy",
   title: "Privacy Policy",
   description:
     "How Outrival collects, uses, shares and protects personal data under the GDPR.",
-  alternates: { canonical: "/privacy" },
-};
+});
 
 export default function PrivacyPage() {
   return (

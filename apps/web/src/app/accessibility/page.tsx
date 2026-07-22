@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/metadata";
 import { LegalDoc } from "@/components/legal/legal-doc";
 import { CONTACT, LEGAL_VERSION } from "@/lib/legal/entity";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
+  path: "/accessibility",
   title: "Accessibility Statement",
   description:
     "Outrival's commitment to digital accessibility under the European Accessibility Act.",
-  alternates: { canonical: "/accessibility" },
-};
+});
 
 export default function AccessibilityPage() {
   return (

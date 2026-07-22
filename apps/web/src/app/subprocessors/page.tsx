@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/metadata";
 import { LegalDoc } from "@/components/legal/legal-doc";
 import { CONTACT, SUBPROCESSORS } from "@/lib/legal/entity";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
+  path: "/subprocessors",
   title: "Subprocessors",
   description:
     "The third-party subprocessors Outrival uses to deliver the service, with purpose, location and transfer safeguards.",
-  alternates: { canonical: "/subprocessors" },
-};
+});
 
 function Table({ lang }: { lang: "en" | "fr" }) {
   const h =

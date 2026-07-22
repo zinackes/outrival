@@ -1,16 +1,17 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/metadata";
 import Link from "next/link";
 import { ArrowLeft, Check } from "lucide-react";
 import { Footer } from "@/components/landing/footer";
 import { ProductShot } from "@/components/landing/product-shot";
 import { DemoForm } from "./demo-form";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
+  path: "/demo",
   title: "See Outrival",
   description:
     "See Outrival on your own competitors — a live look at the product and a sample of the weekly digest.",
-  alternates: { canonical: "/demo" },
-};
+});
 
 const DEMO_POINTS = [
   "How Outrival reads your actual competitors",

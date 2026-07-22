@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/metadata";
 import Link from "next/link";
 import { LegalDoc } from "@/components/legal/legal-doc";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
+  path: "/legal",
   title: "Legal Center",
-  description: "All of Outrival's legal, privacy and compliance documents.",
-  alternates: { canonical: "/legal" },
-};
+  description:
+    "All of Outrival's legal, privacy and compliance documents.",
+});
 
 const DOCS: {
   href: string;

@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/metadata";
 import { DocPage } from "@/components/landing/doc-page";
 import { CONTACT, LEGAL_VERSION } from "@/lib/legal/entity";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
+  path: "/bot",
   title: "OutrivalBot — our crawler",
   description:
     "What OutrivalBot is, what it collects, how often, and exactly how to block it. Outrival collects only what is openly published and never bypasses a site's controls.",
-  alternates: { canonical: "/bot" },
-};
+});
 
 // English-only, matching the trust hub (/security) prose so /bot reads as one
 // system with the legal + security pages, without the bilingual client shell.

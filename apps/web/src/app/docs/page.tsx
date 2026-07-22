@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/metadata";
 import { DocPage } from "@/components/landing/doc-page";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
+  path: "/docs",
   title: "API (coming soon)",
-  description: "The Outrival API is in development and not yet available.",
-  alternates: { canonical: "/docs" },
-};
+  description:
+    "The Outrival API is in development and not yet available.",
+});
 
 export default function DocsPage() {
   return (

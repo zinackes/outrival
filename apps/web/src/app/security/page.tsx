@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/metadata";
 import { DocPage } from "@/components/landing/doc-page";
 import { CONTACT, LEGAL_VERSION } from "@/lib/legal/entity";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
+  path: "/security",
   title: "Security & Trust",
   description:
     "How Outrival stores your data in the EU, keeps AI outputs grounded and verifiable, and scrapes responsibly. A factual trust overview.",
-  alternates: { canonical: "/security" },
-};
+});
 
 // Prose styling matching the legal pages (see legal-doc.tsx PROSE) so the trust
 // hub reads as one system with /privacy, /terms, /subprocessors — without pulling

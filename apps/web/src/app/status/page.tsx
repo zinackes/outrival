@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/metadata";
 import { DocPage } from "@/components/landing/doc-page";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
+  path: "/status",
   title: "System Status",
-  description: "Current operational status of Outrival.",
-  alternates: { canonical: "/status" },
-};
+  description:
+    "Current operational status of Outrival.",
+});
 
 const SYSTEMS = [
   { name: "Dashboard & API", state: "Monitored" },

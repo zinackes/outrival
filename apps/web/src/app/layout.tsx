@@ -63,15 +63,10 @@ export const metadata: Metadata = {
   },
   description:
     "Outrival monitors your competitors continuously — pricing, product, hiring, review sentiment. AI filters out 99% of noise and ships a strategic digest every Monday. Hosted in the EU.",
-  keywords: [
-    "competitive intelligence",
-    "competitor monitoring",
-    "AI battle cards",
-    "B2B SaaS",
-    "strategic intelligence",
-    "competitor tracking",
-    "GDPR",
-  ],
+  // No `keywords`: search engines have ignored the tag for over a decade, and a
+  // single list stamped on every page said the legal notice and the blog were
+  // about the same seven things. Per-page relevance comes from the title and
+  // description that `lib/metadata.ts` sets.
   authors: [{ name: "Outrival" }],
   creator: "Outrival",
   publisher: "Outrival",

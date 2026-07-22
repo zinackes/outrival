@@ -1,27 +1,18 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/metadata";
 import { DocPage } from "@/components/landing/doc-page";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
+  path: "/about",
   title: "About",
   description:
     "Why Outrival exists, who builds it, and the principles behind it — competitive intelligence written by AI, from a solo founder in Paris.",
-  alternates: { canonical: "/about" },
-  openGraph: {
-    type: "website",
-    url: "/about",
-    title: "About Outrival",
-    description:
-      "Why Outrival exists, who builds it, and the principles behind it — from a solo founder in Paris, self-funded and EU-hosted.",
-    // og:image comes from the root app/opengraph-image.tsx file convention — leave
-    // openGraph.images unset so Next merges the shared card rather than overriding it.
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "About Outrival",
-    description:
-      "Competitive intelligence written by AI — from a solo founder in Paris, self-funded and EU-hosted.",
-  },
-};
+  socialTitle: "About Outrival",
+  socialDescription:
+    "Why Outrival exists, who builds it, and the principles behind it — from a solo founder in Paris, self-funded and EU-hosted.",
+  twitterDescription:
+    "Competitive intelligence written by AI — from a solo founder in Paris, self-funded and EU-hosted.",
+});
 
 const PRINCIPLES = [
   {

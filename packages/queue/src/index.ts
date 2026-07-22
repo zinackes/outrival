@@ -6,6 +6,7 @@ export {
   registerQueues,
   defineJob,
   work,
+  jobData,
   NonRetriable,
   type QueueMode,
   type JobConfig,

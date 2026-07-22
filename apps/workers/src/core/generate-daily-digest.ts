@@ -72,8 +72,8 @@ function buildDailyDigestContent(deferred: DeferredSignal[]) {
 // Runtime-neutral job body: shared verbatim by the pg-boss handler and the thin
 // Trigger.dev wrapper in ../jobs/generate-daily-digest.job.ts (deleted at the
 // cutover). Only the header, the signature and the fan-out call change.
-export async function runGenerateDailyDigest(payload: { timestamp?: Date }) {
-    const now = payload.timestamp ?? new Date();
+export async function runGenerateDailyDigest(payload?: { timestamp?: Date }) {
+    const now = payload?.timestamp ?? new Date();
     const defaultEnd = Number(process.env.QUIET_HOURS_DEFAULT_END ?? 8);
 
     const orgs = await db.query.organizations.findMany({

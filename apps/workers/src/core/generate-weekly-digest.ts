@@ -33,8 +33,8 @@ function isoDate(d: Date): string {
 // Trigger.dev wrapper in ../jobs/generate-weekly-digest.job.ts (deleted at the
 // cutover). The body is byte-identical to the pre-migration job — only the header
 // and the signature change, so the two runtimes cannot drift.
-export async function runGenerateWeeklyDigest(payload: { timestamp?: Date }) {
-    const now = payload.timestamp ?? new Date();
+export async function runGenerateWeeklyDigest(payload?: { timestamp?: Date }) {
+    const now = payload?.timestamp ?? new Date();
     const weekEnd = new Date(now);
     weekEnd.setUTCHours(0, 0, 0, 0);
     const weekStart = new Date(weekEnd);

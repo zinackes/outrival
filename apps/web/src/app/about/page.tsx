@@ -6,12 +6,12 @@ export const metadata: Metadata = pageMetadata({
   path: "/about",
   title: "About",
   description:
-    "Why Outrival exists, who builds it, and the principles behind it — competitive intelligence written by AI, from a solo founder in Paris.",
+    "Why Outrival exists, who builds it, and the principles behind it — competitive intelligence written by AI, from a solo founder in France.",
   socialTitle: "About Outrival",
   socialDescription:
-    "Why Outrival exists, who builds it, and the principles behind it — from a solo founder in Paris, self-funded and EU-hosted.",
+    "Why Outrival exists, who builds it, and the principles behind it — from a solo founder in France, self-funded and EU-hosted.",
   twitterDescription:
-    "Competitive intelligence written by AI — from a solo founder in Paris, self-funded and EU-hosted.",
+    "Competitive intelligence written by AI — from a solo founder in France, self-funded and EU-hosted.",
 });
 
 const PRINCIPLES = [
@@ -69,7 +69,7 @@ export default function AboutPage() {
         <section className="flex flex-col gap-3">
           <h2 className="!mt-0 text-foreground">Who is building this</h2>
           <p>
-            I&apos;m Mathys — one person, in Paris, building Outrival and
+            I&apos;m Mathys — one person, in France, building Outrival and
             funding it entirely from the people who pay for it. There are no
             investors to return capital to and no sales team to keep busy.
             That&apos;s not a story about hustle; it&apos;s structural. It&apos;s

@@ -22,12 +22,17 @@ export const ENTITY = {
   capital: TODO,
   /** SIREN / SIRET. TODO. */
   siret: TODO,
-  /** RCS registration + city, e.g. "RCS Paris 000 000 000". TODO. */
+  /** RCS registration + city, e.g. "RCS <city> 000 000 000". TODO. */
   rcs: TODO,
   /** Intra-EU VAT number, e.g. "FR00 000000000". TODO. */
   vat: TODO,
-  /** Registered office address. TODO — keep the city if known. */
-  address: `${TODO}, Paris, France`,
+  /**
+   * Registered office address. TODO — fill from the registration, city
+   * included. Deliberately NOT pre-filled with a city: for a micro-entreprise
+   * this is the founder's actual address, and the marketing pages say only
+   * "France" so that nothing can contradict this line once it is filled.
+   */
+  address: TODO,
   /** Named individual responsible for publication (LCEN). TODO. */
   publicationDirector: TODO,
   /** Country of establishment / applicable law. */

@@ -52,9 +52,10 @@ export function JsonLd() {
         areaServed: "EU",
         availableLanguage: ["English"],
       },
+      // Country only: a machine-readable locality is an address claim, and the
+      // registered office is the one on /legal-notice — nowhere else.
       address: {
         "@type": "PostalAddress",
-        addressLocality: "Paris",
         addressCountry: "FR",
       },
     },

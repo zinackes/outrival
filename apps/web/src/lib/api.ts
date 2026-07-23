@@ -303,6 +303,9 @@ export interface Monitor {
   frequency: string;
   // Custom-page monitors also carry a short display label + a page-type hint.
   config: { url?: string; label?: string; hint?: CustomMonitorHint } | null;
+  // The exact page this source last scraped (resolved_url ?? config.url). Null when
+  // nothing was captured yet or the source has no single page (HN, subdomains).
+  pageUrl?: string | null;
   lastRunAt: string | null;
   // When the scheduler will next check this source. Null (or past) = due on the
   // next hourly cron tick, not a stale timestamp — never render it as a past date.

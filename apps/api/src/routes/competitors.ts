@@ -1008,10 +1008,37 @@ competitorsRouter.get("/:id", async (c) => {
   //                       comparison_page) and the retired review aggregators.
   // The previous hand-written exclusion list only covered four of those, so
   // youtube/hackernews/wellknown and the dormant anchors leaked into the Sources UI.
-  const monitorList = allMonitors.filter(
-    (m) => !isHiddenSource(m.sourceType) && !isAutomaticSource(m.sourceType),
-  );
-  const automaticMonitors = allMonitors.filter((m) => isAutomaticSource(m.sourceType));
+  // The exact page each source last landed on: resolved_url is where the scraper
+  // actually went (it discovers /pricing, /careers… from the homepage), config.url
+  // only when the user pinned one. Lets the Sources page link each source to its
+  // page. We deliberately do NOT fall back to the competitor's homepage here — an
+  // anchor source with no real page (Hacker News, subdomains) must stay unlinked.
+  const resolvedByMonitor = new Map<string, string | null>();
+  const allMonitorIds = allMonitors.map((m) => m.id);
+  if (allMonitorIds.length) {
+    const urlRows = await db
+      .select({
+        monitorId: snapshots.monitorId,
+        resolvedUrl: sql<
+          string | null
+        >`(array_agg(${snapshots.resolvedUrl} ORDER BY ${snapshots.scrapedAt} DESC) FILTER (WHERE ${snapshots.resolvedUrl} IS NOT NULL))[1]`,
+      })
+      .from(snapshots)
+      .where(inArray(snapshots.monitorId, allMonitorIds))
+      .groupBy(snapshots.monitorId);
+    for (const r of urlRows) resolvedByMonitor.set(r.monitorId, r.resolvedUrl);
+  }
+  const withPageUrl = <T extends { id: string; config: unknown }>(m: T) => ({
+    ...m,
+    pageUrl: resolvedByMonitor.get(m.id) ?? (m.config as { url?: string } | null)?.url ?? null,
+  });
+
+  const monitorList = allMonitors
+    .filter((m) => !isHiddenSource(m.sourceType) && !isAutomaticSource(m.sourceType))
+    .map(withPageUrl);
+  const automaticMonitors = allMonitors
+    .filter((m) => isAutomaticSource(m.sourceType))
+    .map(withPageUrl);
 
   // Changes are read-only data, so they are NOT filtered by the configurable/
   // automatic split: an automatic source can't be turned off, but a Show HN launch

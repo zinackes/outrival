@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Link2, Loader2, Lock, Play, Plus } from "lucide-react";
+import { ExternalLink, Link2, Loader2, Lock, Play, Plus } from "lucide-react";
 import {
   MONITOR_FREQUENCIES,
   PLAN_LABELS,
@@ -82,6 +82,34 @@ function urlErrorMessage(sourceType: SourceType, code: string): string {
     default:
       return "That URL can't be used for this source.";
   }
+}
+
+/**
+ * The source's name, made a link to the exact page we scrape when we know it
+ * (resolved URL / pinned URL). The URL shows on hover (title) and opens in a new
+ * tab; the external-link glyph only appears on hover so the row stays calm. Sources
+ * with no single page (or nothing captured yet) fall back to plain text.
+ */
+export function SourceName({ label, url }: { label: string; url: string | null }) {
+  if (!url) {
+    return <span className="w-[132px] shrink-0 truncate text-sm font-medium">{label}</span>;
+  }
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={url}
+      onClick={(e) => e.stopPropagation()}
+      className="group/src flex w-[132px] shrink-0 items-center gap-1 text-sm font-medium hover:underline focus-visible:outline-none focus-visible:underline"
+    >
+      <span className="truncate">{label}</span>
+      <ExternalLink
+        size={11}
+        className="shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/src:opacity-100"
+      />
+    </a>
+  );
 }
 
 /**
@@ -185,9 +213,7 @@ export function SourceRow({
         ) : (
           <span className="h-2 w-2 shrink-0 rounded-full border border-muted-foreground/40" />
         )}
-        <span className="w-[132px] shrink-0 truncate text-sm font-medium">
-          {sourceShortLabel(sourceType)}
-        </span>
+        <SourceName label={sourceShortLabel(sourceType)} url={monitor?.pageUrl ?? null} />
 
         <span className={cn("min-w-0 flex-1 text-sm", TONE_CLASS[copy.tone])}>
           {copy.message}

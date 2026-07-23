@@ -72,7 +72,7 @@ export function DashboardShell({
                   className={cn(
                     "flex-1 min-w-0 w-full outline-none",
                     fullBleed
-                      ? "min-h-0 overflow-hidden"
+                      ? "flex min-h-0 flex-col overflow-hidden"
                       : "px-4 pt-5 pb-12 md:px-5 md:pt-6 lg:px-8 lg:pt-7 lg:pb-16",
                   )}
                 >

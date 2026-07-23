@@ -12,33 +12,8 @@ import { signalsFeedQuery, signalsFacetsQuery } from "@/lib/queries";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
-import {
-  Download,
-  Check,
-  Search,
-  SlidersHorizontal,
-  X,
-  ChevronDown,
-  ArrowUpDown,
-  Keyboard,
-  Inbox,
-  FlaskConical,
-  ArrowLeft,
-  ArrowUpRight,
-  Radar,
-  Rows3,
-  ListTodo,
-  EyeOff,
-  Clock,
-} from "lucide-react";
-import {
-  startOfWeek,
-  endOfWeek,
-  formatDistanceToNow,
-  format,
-  isToday,
-  isYesterday,
-} from "date-fns";
+import { Check, ChevronDown, Inbox, FlaskConical, Radar } from "lucide-react";
+import { startOfWeek, endOfWeek, format, isToday, isYesterday } from "date-fns";
 import { toast } from "sonner";
 import { AnimatePresence, motion } from "motion/react";
 import {
@@ -51,28 +26,26 @@ import {
 } from "@/lib/api";
 import { toCsv, downloadCsv } from "@/lib/csv";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { SavedViewsMenu } from "./saved-views-menu";
 import { useSetAskContext, type AskEntity } from "./ask-context";
-import { Input } from "@/components/ui/input";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuCheckboxItem,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { feedItemMotion } from "@/lib/motion";
-import { PageHead } from "./page-head";
-import { SignalsBrief } from "./signals-brief";
-import { SignalCard, SNOOZE_PRESETS } from "./signal-card";
-import { SignalEvidence } from "@/components/outrival/signal-evidence";
-import { SignalRow, BatchRow } from "./signal-row";
-import { SeverityBadge } from "./severity-pill";
+import {
+  SignalsListHeader,
+  QUICK_VIEWS,
+  GROUP_MODES,
+  type FilterKey,
+  type GroupMode,
+  type QuickView,
+  type Sev,
+} from "./signals-list-header";
+import { SignalsListFooter } from "./signals-list-footer";
+import { SignalDetailPanel } from "./signal-detail-panel";
+import {
+  useSignalsBrief,
+  SignalsBriefRow,
+  SignalsBriefPanel,
+} from "./signals-brief";
+import { SignalRow } from "./signal-row";
 import { EmptyState } from "./empty-state";
 import { SampleBanner } from "./sample-banner";
 import { ShortcutsHelp } from "./shortcuts-help";
@@ -82,48 +55,9 @@ import { useListKeyboardNav } from "@/hooks/use-list-keyboard-nav";
 import { useSampleMode } from "@/hooks/use-sample-mode";
 import { getSampleData, getSampleSignalDetail } from "@/lib/sample-data";
 
-type Sev = Signal["severity"];
-type QuickView = "all" | "alerts" | "unread" | "week" | "critical" | "actions";
-
-// patch-29 — "Alerts" surfaces the urgent feed (critical + high) as a first-class
-// tab, replacing the standalone /dashboard/alerts page in the navigation.
-// The intel→action board still lives per-card (Track); it's no longer a feed tab.
-const QUICK_VIEWS: { value: QuickView; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "alerts", label: "Alerts" },
-  { value: "unread", label: "Unread" },
-  { value: "week", label: "This week" },
-  { value: "critical", label: "Critical" },
-];
-
-const SEVERITIES: Sev[] = ["critical", "high", "medium", "low"];
-
-const SEV_DOT: Record<Sev, string> = {
-  critical: "bg-critical",
-  high: "bg-high",
-  medium: "bg-medium",
-  low: "bg-muted-foreground/45",
-};
-
-const SEV_RANK: Record<Sev, number> = { critical: 4, high: 3, medium: 2, low: 1 };
-
-// Master-list grouping (client-only — pure presentation, never touches feedParams
-// so it costs no refetch). Persisted in ?group= so a refresh keeps the view.
-const GROUP_MODES = ["none", "competitor", "day"] as const;
-type GroupMode = (typeof GROUP_MODES)[number];
-const GROUP_LABEL: Record<GroupMode, string> = {
-  none: "No grouping",
-  competitor: "By competitor",
-  day: "By day",
-};
-
-// Bulk "Track" targets — mirrors SignalCard's ACTION_OPTIONS, applied to a selection.
-const TRACK_OPTIONS: { value: ActionStatus; label: string }[] = [
-  { value: "todo", label: "To do" },
-  { value: "doing", label: "In progress" },
-  { value: "done", label: "Done" },
-  { value: "dismissed", label: "Dismissed" },
-];
+// The synthetic list row for the AI brief. It sits above the feed and opens in
+// the detail pane, so it needs an id in the keyboard-nav order like any row.
+const BRIEF_ID = "brief";
 
 // Day bucket for the "By day" grouping — a stable key + a human label.
 function dayGroup(iso: string): { key: string; label: string } {
@@ -133,12 +67,6 @@ function dayGroup(iso: string): { key: string; label: string } {
     label: isToday(d) ? "Today" : isYesterday(d) ? "Yesterday" : format(d, "MMM d"),
   };
 }
-
-// A feed row is either a standalone signal or a batch of similar ones (patch-26)
-// collapsed under a single summary card.
-type FeedItem =
-  | { kind: "single"; signal: Signal }
-  | { kind: "batch"; batchId: string; summary: string | null; count: number; signals: Signal[] };
 
 function parseSet(s: string | null): Set<string> {
   if (!s) return new Set();
@@ -271,6 +199,11 @@ export function SignalsView() {
     : (loadedPages?.[0]?.total ?? signals?.length ?? 0);
   const err = feedQ.error;
 
+  // The AI brief of the current feed — a pinned row above the list, read in the
+  // detail pane. Best-effort: no brief, no row.
+  const briefState = useSignalsBrief(productId ?? undefined, !sample && total >= 3);
+  const brief = briefState.brief;
+
   // Optimistic write-through to the loaded pages (mark-read/unread, action status).
   // The updaters are id-keyed, so applying per page == applying to the flat list.
   function mutateSignals(updater: (prev: Signal[]) => Signal[]) {
@@ -341,8 +274,8 @@ export function SignalsView() {
     }
   }
 
-  // Intel → action loop (Phase B): SignalCard persists the status; keep the local
-  // array in sync so the "Actions" tab and its count update immediately.
+  // Intel → action loop (Phase B): the detail panel persists the status; keep the
+  // local array in sync so the "Actions" tab and its count update immediately.
   function onActionChange(id: string, status: ActionStatus | null) {
     mutateSignals((prev) => prev.map((s) => (s.id === id ? { ...s, actionStatus: status } : s)));
   }
@@ -387,25 +320,16 @@ export function SignalsView() {
     });
   }, [signals, sample, sev, cat, comp, quickView, query]);
 
-  // One signal per row and exactly ONE card in the detail — batch collapsing is
+  // One signal per row and exactly ONE signal in the detail — batch collapsing is
   // intentionally disabled. It grouped signals by `batchedIntoId`, which could pile
-  // several (even unrelated, cross-competitor) cards into the detail pane; the feed
-  // must always open a single signal. Every row is its own single-card detail, so
-  // the batch render branches below never fire.
-  const feedItems = useMemo<FeedItem[]>(
-    () => filtered.map((signal) => ({ kind: "single", signal })),
-    [filtered],
-  );
-
-  // Grouped view of the feed (client-only). group="none" → a single implicit group
-  // holding every item (same order as the flat feed). Groups keep first-appearance
-  // order so the server's threat/recent ranking still drives the top of the list.
-  const groups = useMemo<{ key: string; label: string; items: FeedItem[] }[]>(() => {
-    if (group === "none") return [{ key: "__all", label: "", items: feedItems }];
-    const map = new Map<string, { key: string; label: string; items: FeedItem[] }>();
+  // several (even unrelated, cross-competitor) signals into the detail pane; the feed
+  // must always open a single signal. `BatchRow` stays in signal-row.tsx for the day
+  // batching is re-enabled, but nothing renders it today.
+  const groups = useMemo<{ key: string; label: string; items: Signal[] }[]>(() => {
+    if (group === "none") return [{ key: "__all", label: "", items: filtered }];
+    const map = new Map<string, { key: string; label: string; items: Signal[] }>();
     const order: string[] = [];
-    for (const it of feedItems) {
-      const sig = it.kind === "single" ? it.signal : it.signals[0]!;
+    for (const sig of filtered) {
       const { key, label } =
         group === "competitor"
           ? { key: sig.competitorId, label: sig.competitorName }
@@ -416,28 +340,27 @@ export function SignalsView() {
         map.set(key, g);
         order.push(key);
       }
-      g.items.push(it);
+      g.items.push(sig);
     }
     return order.map((k) => map.get(k)!);
-  }, [feedItems, group]);
+  }, [filtered, group]);
 
-  // Master-detail nav: one id per feed item — a batch is a single selectable row
-  // whose members render together in the detail pane. Selection (j/k or click)
-  // drives the right pane; no inline expansion to traverse. Runs over the VISIBLE
-  // rows only, so j/k skips rows hidden inside a collapsed group.
+  // Master-detail nav order. Selection (j/k or click) drives the right pane; no
+  // inline expansion to traverse. Runs over the VISIBLE rows only, so j/k skips
+  // rows hidden inside a collapsed group. The brief leads when there is one.
   const navIds = useMemo(() => {
     const out: string[] = [];
+    if (brief) out.push(BRIEF_ID);
     for (const g of groups) {
       if (group !== "none" && collapsed.has(g.key)) continue;
-      for (const it of g.items)
-        out.push(it.kind === "single" ? it.signal.id : `batch:${it.batchId}`);
+      for (const sig of g.items) out.push(sig.id);
     }
     return out;
-  }, [groups, collapsed, group]);
+  }, [groups, collapsed, group, brief]);
 
-  // Selectable ids = visible single-signal rows (batches aren't individually selectable).
+  // Selectable ids = visible signal rows (the brief isn't a signal to act on).
   const selectableIds = useMemo(
-    () => navIds.filter((id) => !id.startsWith("batch:")),
+    () => navIds.filter((id) => id !== BRIEF_ID),
     [navIds],
   );
 
@@ -674,8 +597,7 @@ export function SignalsView() {
   }
 
   const elementId = useCallback(
-    (id: string) =>
-      id.startsWith("batch:") ? `row-batch-${id.slice(6)}` : `row-${id}`,
+    (id: string) => (id === BRIEF_ID ? "row-brief" : `row-${id}`),
     [],
   );
 
@@ -695,7 +617,7 @@ export function SignalsView() {
       if (v) setParam({ view: v.value === "all" ? null : v.value });
       return true;
     }
-    if (!fid || fid.startsWith("batch:")) return false;
+    if (!fid || fid === BRIEF_ID) return false;
     const sig = (signals ?? []).find((s) => s.id === fid);
     if (!sig) return false;
     switch (key) {
@@ -709,6 +631,16 @@ export function SignalsView() {
         return true;
       case "x":
         toggleSelectId(fid, false);
+        return true;
+      // The open signal's own controls live in the detail panel, which listens
+      // for these — the shortcuts help has always advertised them.
+      case "t":
+      case "c":
+        document.dispatchEvent(
+          new CustomEvent("signal-detail-action", {
+            detail: key === "t" ? "track" : "discuss",
+          }),
+        );
         return true;
     }
     return false;
@@ -729,7 +661,7 @@ export function SignalsView() {
   const selectRow = useCallback(
     (id: string) => {
       setFocusedId(id);
-      if (!id.startsWith("batch:")) {
+      if (id !== BRIEF_ID) {
         const s = (signals ?? []).find((x) => x.id === id);
         if (s && !s.isRead) markRead(id);
       }
@@ -799,21 +731,12 @@ export function SignalsView() {
     }
   }, [focusedId, navIds, focusId, selectRow]);
 
-  // The feed item backing the detail pane (a single signal or a batch group).
-  const selectedItem = useMemo<FeedItem | null>(() => {
-    if (!selectedId) return null;
-    if (selectedId.startsWith("batch:")) {
-      const bid = selectedId.slice(6);
-      return (
-        feedItems.find((it) => it.kind === "batch" && it.batchId === bid) ?? null
-      );
-    }
-    return (
-      feedItems.find(
-        (it) => it.kind === "single" && it.signal.id === selectedId,
-      ) ?? null
-    );
-  }, [selectedId, feedItems]);
+  // The signal backing the detail pane (null when the brief is open, or nothing is).
+  const selectedSignal = useMemo<Signal | null>(() => {
+    if (!selectedId || selectedId === BRIEF_ID) return null;
+    return filtered.find((s) => s.id === selectedId) ?? null;
+  }, [selectedId, filtered]);
+  const briefOpen = selectedId === BRIEF_ID && Boolean(brief);
 
   // Mobile: the detail renders as a full-screen sheet, which reads as its own
   // screen — so the OS/browser back button and iOS edge-swipe must dismiss it
@@ -822,7 +745,7 @@ export function SignalsView() {
   // resulting popstate; dismissed another way (the in-app back button, a filter
   // dropping the row) we pop our own entry so history stays balanced. Body scroll
   // is locked underneath so the list can't scroll behind the sheet.
-  const sheetOpen = Boolean(selectedItem);
+  const sheetOpen = Boolean(selectedSignal) || briefOpen;
   useEffect(() => {
     if (!sheetOpen) return;
     if (window.matchMedia("(min-width: 1024px)").matches) return;
@@ -848,11 +771,22 @@ export function SignalsView() {
     };
   }, [sheetOpen, setFocusedId]);
 
+  // Mirror the OS back button: pop our history sentinel so both paths converge on
+  // the same popstate → close. Fallback for the rare case the sentinel isn't
+  // there (opened before a resize).
+  function closeSheet() {
+    if (window.history.state?.__signalSheet) window.history.back();
+    else setFocusedId(null);
+  }
+
   // Scope Ask to the open signal, else to the single filtered competitor, else the feed.
   const askContext = useMemo<AskEntity | null>(() => {
-    if (selectedItem?.kind === "single") {
-      const s = selectedItem.signal;
-      return { kind: "signal", label: s.insight.slice(0, 60), competitorId: s.competitorId };
+    if (selectedSignal) {
+      return {
+        kind: "signal",
+        label: selectedSignal.insight.slice(0, 60),
+        competitorId: selectedSignal.competitorId,
+      };
     }
     if (comp.size === 1) {
       return {
@@ -862,7 +796,7 @@ export function SignalsView() {
       };
     }
     return { kind: "view", label: "Signals feed" };
-  }, [selectedItem, comp]);
+  }, [selectedSignal, comp]);
   useSetAskContext(askContext);
 
   // Tab counts come from facets (whole set, server-side) so they're right at any scale;
@@ -916,7 +850,7 @@ export function SignalsView() {
 
   const activeFilterCount = sev.size + cat.size + comp.size;
 
-  function toggleInSet(key: "severity" | "category" | "competitor", value: string) {
+  function toggleInSet(key: FilterKey, value: string) {
     const current = key === "severity" ? sev : key === "category" ? cat : comp;
     const next = new Set(current);
     if (next.has(value)) next.delete(value);
@@ -988,359 +922,72 @@ export function SignalsView() {
   // out underneath (SignalRow `selecting`), so the list is a clean single column at
   // rest and the box appears on row hover — or on every row once a selection is
   // live. The checkbox is a SIBLING of the row button (never nested — invalid HTML).
-  const renderRow = (item: FeedItem) => {
-    if (item.kind === "single") {
-      const id = item.signal.id;
-      const isChecked = selected.has(id);
-      return (
-        <motion.div key={id} role="presentation" {...feedItemMotion}>
-          <div className="group/row relative">
-            <div
-              className={cn(
-                "absolute left-3 top-3 z-10 transition-opacity",
-                // Reveal-on-hover is gated to hover-capable devices. globals.css drops
-                // the `@media (hover: hover)` gate from `hover:` project-wide (tap
-                // feedback), but on touch that makes a tap reveal this interactive
-                // overlay — which mobile WebKit consumes as the first tap (swallowing
-                // the click that opens + marks the signal read). Selection lives on
-                // hover (desktop) or an active selection; on touch a tap just opens.
-                selectionActive || isChecked
-                  ? "opacity-100"
-                  : "pointer-events-none opacity-0 [@media(hover:hover)]:group-hover/row:pointer-events-auto [@media(hover:hover)]:group-hover/row:opacity-100",
-              )}
-            >
-              <SelectCheckbox
-                active={selectionActive}
-                checked={isChecked}
-                onToggle={(e) => {
-                  e.stopPropagation();
-                  toggleSelectId(id, e.shiftKey);
-                }}
-              />
-            </div>
-            <SignalRow
-              signal={item.signal}
-              selecting={selectionActive || isChecked}
-              selected={selectedId === id}
-              tabStop={tabStopId === id}
-              onFocus={() => setFocusedId(id)}
-              onSelect={() => selectRow(id)}
+  const renderRow = (signal: Signal) => {
+    const id = signal.id;
+    const isChecked = selected.has(id);
+    return (
+      <motion.div key={id} role="presentation" {...feedItemMotion}>
+        <div className="group/row relative">
+          <div
+            className={cn(
+              "absolute left-3 top-3 z-10 transition-opacity",
+              // Reveal-on-hover is gated to hover-capable devices. globals.css drops
+              // the `@media (hover: hover)` gate from `hover:` project-wide (tap
+              // feedback), but on touch that makes a tap reveal this interactive
+              // overlay — which mobile WebKit consumes as the first tap (swallowing
+              // the click that opens + marks the signal read). Selection lives on
+              // hover (desktop) or an active selection; on touch a tap just opens.
+              selectionActive || isChecked
+                ? "opacity-100"
+                : "pointer-events-none opacity-0 [@media(hover:hover)]:group-hover/row:pointer-events-auto [@media(hover:hover)]:group-hover/row:opacity-100",
+            )}
+          >
+            <SelectCheckbox
+              active={selectionActive}
+              checked={isChecked}
+              onToggle={(e) => {
+                e.stopPropagation();
+                toggleSelectId(id, e.shiftKey);
+              }}
             />
           </div>
-        </motion.div>
-      );
-    }
-    const bid = `batch:${item.batchId}`;
-    return (
-      <motion.div key={item.batchId} role="presentation" {...feedItemMotion}>
-        {/* Batches aren't individually selectable — no checkbox. Their Layers icon
-            keeps the same left slot, so they stay aligned with the single rows. */}
-        <BatchRow
-          batchId={item.batchId}
-          signals={item.signals}
-          summary={item.summary}
-          selected={selectedId === bid}
-          tabStop={tabStopId === bid}
-          onFocus={() => setFocusedId(bid)}
-          onSelect={() => selectRow(bid)}
-        />
+          <SignalRow
+            signal={signal}
+            selecting={selectionActive || isChecked}
+            selected={selectedId === id}
+            tabStop={tabStopId === id}
+            onFocus={() => setFocusedId(id)}
+            onSelect={() => selectRow(id)}
+          />
+        </div>
       </motion.div>
     );
   };
 
+  // Cold start and hard failure are page-level states — the workspace frame would
+  // only add two empty columns around them.
   if (err && signals === null) {
     return (
-      <div className="space-y-6">
-        <PageHead title="Signals" sub="Classified by AI." />
+      <div className="h-full overflow-y-auto px-4 py-8 lg:px-8">
         <ListError error={err} onRetry={() => feedQ.refetch()} />
       </div>
     );
   }
 
-  return (
-    <div className="space-y-6">
-      <SampleBanner />
-      <PageHead
-        title="Signals"
-        sub={
-          signals
-            ? `Classified by AI · ${total} signal${total === 1 ? "" : "s"}.`
-            : "Loading…"
-        }
-        actions={
-          <>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={exportCsv}
-              disabled={!signals || total === 0}
-            >
-              <Download size={13} /> CSV
-            </Button>
-            <Button
-              size="sm"
-              onClick={markAllRead}
-              disabled={!signals || quickCounts.unread === 0}
-            >
-              <Check size={13} /> Mark all read
-            </Button>
-          </>
-        }
-      />
+  // Cold start = the workspace has never produced a signal. An empty tab or an
+  // over-narrow filter is a different state (the feed exists, this slice of it
+  // doesn't) and must keep the filters reachable, so it renders inside the list.
+  const coldStart =
+    signals !== null &&
+    signals.length === 0 &&
+    quickCounts.all === 0 &&
+    quickView === "all" &&
+    activeFilterCount === 0 &&
+    !query;
 
-      {/* AI executive brief of the week's signals — renders only when there's enough
-          to summarize; the server caches it, so mounting it here is cheap. */}
-      {!sample && (
-        <SignalsBrief productId={productId ?? undefined} enabled={total >= 3} />
-      )}
-
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-2">
-        <Tabs
-          className="min-w-0"
-          value={quickView}
-          onValueChange={(v) => setParam({ view: v === "all" ? null : v })}
-        >
-          {/* Scrolls horizontally rather than wrapping when desktop space is
-              tight, so the tabs + controls stay on a single row. */}
-          <TabsList className="max-w-full overflow-x-auto">
-            {QUICK_VIEWS.map((v) => (
-              <TabsTrigger key={v.value} value={v.value}>
-                {v.label}
-                <span className="ml-1.5 tabular-nums font-mono text-meta text-muted-foreground">
-                  {quickCounts[v.value]}
-                </span>
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
-
-        <div className="hidden lg:block lg:flex-1" />
-
-        {/* One row on desktop (lg:flex-nowrap) — the search box shrinks to keep
-            everything on a single line; on mobile it wraps under the tabs. */}
-        <div className="flex flex-wrap items-center gap-2 lg:flex-nowrap">
-        <SavedViewsMenu current={currentFilters} onApply={applyView} />
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              className="shrink-0"
-              aria-label={`Sort: ${sort === "recent" ? "Most recent" : "Most relevant"}`}
-            >
-              <ArrowUpDown size={13} />
-              <span className="hidden xl:inline">
-                {sort === "recent" ? "Most recent" : "Most relevant"}
-              </span>
-              <ChevronDown size={11} className="opacity-60" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Sort by</DropdownMenuLabel>
-            <DropdownMenuCheckboxItem
-              checked={sort === "threat"}
-              onCheckedChange={() => setParam({ sort: null })}
-            >
-              Most relevant
-            </DropdownMenuCheckboxItem>
-            <DropdownMenuCheckboxItem
-              checked={sort === "recent"}
-              onCheckedChange={() => setParam({ sort: "recent" })}
-            >
-              Most recent
-            </DropdownMenuCheckboxItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              className="shrink-0"
-              aria-label={`Group: ${GROUP_LABEL[group]}`}
-            >
-              <Rows3 size={13} />
-              <span className="hidden xl:inline">{GROUP_LABEL[group]}</span>
-              <ChevronDown size={11} className="opacity-60" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Group by</DropdownMenuLabel>
-            {GROUP_MODES.map((m) => (
-              <DropdownMenuCheckboxItem
-                key={m}
-                checked={group === m}
-                onCheckedChange={() =>
-                  setParam({ group: m === "none" ? null : m })
-                }
-              >
-                {GROUP_LABEL[m]}
-              </DropdownMenuCheckboxItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="shrink-0">
-              <SlidersHorizontal size={13} />
-              Filters
-              {activeFilterCount > 0 && (
-                <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-[16px] px-1 rounded-full bg-primary text-primary-foreground text-meta font-mono tabular-nums">
-                  {activeFilterCount}
-                </span>
-              )}
-              <ChevronDown size={11} className="opacity-60" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-64 max-h-[480px] overflow-y-auto" align="end">
-            <DropdownMenuLabel>Severity</DropdownMenuLabel>
-            {SEVERITIES.map((s) => (
-              <DropdownMenuCheckboxItem
-                key={s}
-                checked={sev.has(s)}
-                onSelect={(e) => e.preventDefault()}
-                onCheckedChange={() => toggleInSet("severity", s)}
-              >
-                <span className="flex items-center gap-2 capitalize">
-                  <span
-                    className={cn(
-                      "w-2 h-2 rounded-full inline-block",
-                      SEV_DOT[s],
-                    )}
-                  />
-                  {s}
-                </span>
-              </DropdownMenuCheckboxItem>
-            ))}
-
-            {allCategories.length > 0 && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel>Category</DropdownMenuLabel>
-                {allCategories.map((c) => (
-                  <DropdownMenuCheckboxItem
-                    key={c}
-                    checked={cat.has(c)}
-                    onSelect={(e) => e.preventDefault()}
-                    onCheckedChange={() => toggleInSet("category", c)}
-                  >
-                    <span className="capitalize">{c}</span>
-                  </DropdownMenuCheckboxItem>
-                ))}
-              </>
-            )}
-
-            {allCompetitors.length > 0 && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel>Competitor</DropdownMenuLabel>
-                {allCompetitors.map((c) => (
-                  <DropdownMenuCheckboxItem
-                    key={c.id}
-                    checked={comp.has(c.id)}
-                    onSelect={(e) => e.preventDefault()}
-                    onCheckedChange={() => toggleInSet("competitor", c.id)}
-                  >
-                    {c.name}
-                  </DropdownMenuCheckboxItem>
-                ))}
-              </>
-            )}
-
-            {activeFilterCount > 0 && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onSelect={clearFilters}
-                  className="text-xs text-muted-foreground"
-                >
-                  Reset filters
-                </DropdownMenuItem>
-              </>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <div className="relative w-full min-w-0 lg:w-40 lg:shrink-0 xl:w-52">
-          <Search
-            size={14}
-            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
-          />
-          <Input
-            id="signals-search"
-            aria-label="Search signals"
-            placeholder="Search…"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            className="h-8 w-full pl-8 text-sm"
-          />
-        </div>
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="hidden shrink-0 lg:inline-flex"
-              aria-label="Keyboard shortcuts"
-              onClick={() => setHelpOpen(true)}
-            >
-              <Keyboard size={15} />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            Keyboard shortcuts ·{" "}
-            <kbd className="font-mono">?</kbd>
-          </TooltipContent>
-        </Tooltip>
-        </div>
-      </div>
-
-      {activeFilterCount > 0 && (
-        <div className="flex items-center gap-1.5 flex-wrap -mt-2">
-          {Array.from(sev).map((s) => (
-            <FilterChip key={`s-${s}`} onRemove={() => toggleInSet("severity", s)}>
-              <span
-                className={cn(
-                  "w-2 h-2 rounded-full inline-block",
-                  SEV_DOT[s as Sev],
-                )}
-              />
-              <span className="capitalize">{s}</span>
-            </FilterChip>
-          ))}
-          {Array.from(cat).map((c) => (
-            <FilterChip key={`c-${c}`} onRemove={() => toggleInSet("category", c)}>
-              <span className="capitalize">{c}</span>
-            </FilterChip>
-          ))}
-          {Array.from(comp).map((c) => {
-            const name = allCompetitors.find((x) => x.id === c)?.name ?? c;
-            return (
-              <FilterChip
-                key={`comp-${c}`}
-                onRemove={() => toggleInSet("competitor", c)}
-              >
-                {name}
-              </FilterChip>
-            );
-          })}
-          <button
-            onClick={clearFilters}
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2"
-          >
-            Clear all
-          </button>
-        </div>
-      )}
-
-      {signals === null ? (
-        <ListRowsSkeleton rows={6} />
-      ) : signals.length === 0 ? (
-        // Cold start — no signals exist yet for this workspace.
+  if (coldStart) {
+    return (
+      <div className="flex h-full items-center justify-center overflow-y-auto px-4 py-8">
         <EmptyState
           icon={Radar}
           title="No signals yet"
@@ -1358,263 +1005,183 @@ export function SignalsView() {
             </>
           }
         />
-      ) : feedItems.length === 0 ? (
-        // No-results — filters/search exclude every signal (distinct from cold start).
-        <EmptyState
-          icon={Inbox}
-          title="No matching signals"
-          description="Your current filters exclude every signal. Reset them to see the full feed."
-          actions={
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                clearFilters();
-                setParam({ view: null, q: null });
-              }}
-            >
-              Reset filters
-            </Button>
-          }
-        />
-      ) : (
-        <>
-          {/* Bulk selection bar — appears once ≥1 row is checked. Actions run over
-              the selection (setSignalsRead in one call; setSignalAction fanned out). */}
-          {selectionActive && (
-            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 shadow-sm">
-              <span className="text-dense font-medium">
-                {selected.size} selected
-              </span>
-              <span className="h-4 w-px bg-border" />
-              <Button variant="ghost" size="sm" onClick={() => bulkMarkRead(true)}>
-                <Check size={13} /> Mark read
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => bulkMarkRead(false)}>
-                Mark unread
-              </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm">
-                    <ListTodo size={13} /> Track
-                    <ChevronDown size={11} className="opacity-60" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  {TRACK_OPTIONS.map((o) => (
-                    <DropdownMenuItem
-                      key={o.value}
-                      onSelect={() => bulkSetAction(o.value)}
-                    >
-                      {o.label}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-muted-foreground"
-                  >
-                    <Clock size={13} /> Snooze
-                    <ChevronDown size={11} className="opacity-60" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  {SNOOZE_PRESETS.map((p) => (
-                    <DropdownMenuItem
-                      key={p.label}
-                      onSelect={() => snoozeSignals([...selected], p.ms)}
-                    >
-                      {p.label}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-muted-foreground"
-                onClick={() => dismissSignals([...selected])}
-              >
-                <EyeOff size={13} /> Dismiss as noise
-              </Button>
-              <span className="flex-1" />
-              <Button variant="ghost" size="sm" onClick={clearSelection}>
-                Clear
-              </Button>
-            </div>
-          )}
-          <div className="lg:grid lg:grid-cols-[minmax(0,270px)_minmax(0,1fr)] lg:items-start lg:gap-5 xl:grid-cols-[minmax(0,320px)_minmax(0,1fr)] xl:gap-6">
-          {/* Master list — compact, scannable rows; the detail lives on the right. */}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      {/* Flatten the banner's card into a full-width strip — in a workspace a
+          floating rounded box at the top edge reads as a stray element. */}
+      <div className="shrink-0 [&>*]:rounded-none [&>*]:border-x-0 [&>*]:border-t-0">
+        <SampleBanner />
+      </div>
+
+      <div className="flex min-h-0 flex-1">
+        {/* Master list — its own column, its own scroll, its own chrome. */}
+        <div className="flex w-full min-w-0 flex-col border-border lg:w-[400px] lg:shrink-0 lg:border-r">
+          <SignalsListHeader
+            loading={signals === null}
+            total={total}
+            unreadCount={quickCounts.unread}
+            quickView={quickView}
+            quickCounts={quickCounts}
+            sort={sort}
+            group={group}
+            sev={sev}
+            cat={cat}
+            comp={comp}
+            allCategories={allCategories}
+            allCompetitors={allCompetitors}
+            searchInput={searchInput}
+            onSearchInput={setSearchInput}
+            setParam={setParam}
+            onToggleFilter={toggleInSet}
+            onClearFilters={clearFilters}
+            currentFilters={currentFilters}
+            onApplyView={applyView}
+            onExportCsv={exportCsv}
+            onMarkAllRead={markAllRead}
+            onShowShortcuts={() => setHelpOpen(true)}
+          />
+
           <div
             role="listbox"
             aria-label="Signals"
-            className="flex flex-col gap-0.5 rounded-lg border border-border p-1.5 lg:max-h-[calc(100dvh-220px)] lg:overflow-y-auto"
+            className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto p-1.5"
           >
-            {group === "none" ? (
-              <AnimatePresence initial={false} mode="popLayout">
-                {groups[0]?.items.map(renderRow)}
-              </AnimatePresence>
+            {signals === null ? (
+              <ListRowsSkeleton rows={8} />
+            ) : filtered.length === 0 ? (
+              <div className="px-3 py-10">
+                <EmptyState
+                  icon={Inbox}
+                  title="No matching signals"
+                  description="Your filters exclude every signal in the feed."
+                  actions={
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        clearFilters();
+                        setParam({ view: null, q: null });
+                      }}
+                    >
+                      Reset filters
+                    </Button>
+                  }
+                />
+              </div>
             ) : (
-              groups.map((g) => (
-                <div key={g.key} className="mb-1 last:mb-0">
-                  <GroupHeader
-                    label={g.label}
-                    count={g.items.length}
-                    collapsed={collapsed.has(g.key)}
-                    onToggle={() => toggleCollapsed(g.key)}
+              <>
+                {brief && (
+                  <SignalsBriefRow
+                    count={briefState.count}
+                    selected={selectedId === BRIEF_ID}
+                    tabStop={tabStopId === BRIEF_ID}
+                    onFocus={() => setFocusedId(BRIEF_ID)}
+                    onSelect={() => selectRow(BRIEF_ID)}
                   />
-                  {!collapsed.has(g.key) && (
-                    <AnimatePresence initial={false} mode="popLayout">
-                      {g.items.map(renderRow)}
-                    </AnimatePresence>
-                  )}
-                </div>
-              ))
-            )}
-            {!sample && feedQ.hasNextPage && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="mt-1 w-full text-muted-foreground"
-                onClick={() => feedQ.fetchNextPage()}
-                disabled={feedQ.isFetchingNextPage}
-              >
-                {feedQ.isFetchingNextPage
-                  ? "Loading…"
-                  : `Load more · ${total - signals.length} left`}
-              </Button>
+                )}
+                {group === "none" ? (
+                  <AnimatePresence initial={false} mode="popLayout">
+                    {groups[0]?.items.map(renderRow)}
+                  </AnimatePresence>
+                ) : (
+                  groups.map((g) => (
+                    <div key={g.key} className="mb-1 last:mb-0">
+                      <GroupHeader
+                        label={g.label}
+                        count={g.items.length}
+                        collapsed={collapsed.has(g.key)}
+                        onToggle={() => toggleCollapsed(g.key)}
+                      />
+                      {!collapsed.has(g.key) && (
+                        <AnimatePresence initial={false} mode="popLayout">
+                          {g.items.map(renderRow)}
+                        </AnimatePresence>
+                      )}
+                    </div>
+                  ))
+                )}
+                {!sample && feedQ.hasNextPage && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mt-1 w-full text-muted-foreground"
+                    onClick={() => feedQ.fetchNextPage()}
+                    disabled={feedQ.isFetchingNextPage}
+                  >
+                    {feedQ.isFetchingNextPage
+                      ? "Loading…"
+                      : `Load more · ${total - signals.length} left`}
+                  </Button>
+                )}
+              </>
             )}
           </div>
 
-          {/* Detail pane — sticky right column on desktop; a full-screen sheet on
-              mobile when a row is selected. Rendered once (no duplicate ids). */}
-          <div
-            className={cn(
-              "lg:sticky lg:top-4",
-              selectedItem
-                ? "fixed inset-0 z-50 overflow-y-auto bg-background p-4 animate-in fade-in slide-in-from-bottom-2 duration-200 lg:static lg:inset-auto lg:z-auto lg:overflow-visible lg:bg-transparent lg:p-0 lg:animate-none"
-                : "hidden lg:block",
-            )}
-          >
-            {selectedItem ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    // Mirror the OS back button: pop our history sentinel so both
-                    // paths converge on the same popstate → close. Fallback for the
-                    // rare case the sentinel isn't there (opened before a resize).
-                    if (window.history.state?.__signalSheet) window.history.back();
-                    else setFocusedId(null);
-                  }}
-                  className="mb-3 inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground lg:hidden"
-                >
-                  <ArrowLeft size={14} /> Back to signals
-                </button>
-                {selectedItem.kind === "single" ? (
-                  // Single-signal detail. Container-query driven: when the detail
-                  // pane itself is wide enough (not the viewport — the pane width
-                  // varies with the master list), "More from" moves into a side
-                  // rail next to the card+evidence column instead of stacking
-                  // below. Narrow pane → single readable column, capped at 820.
-                  // The whole thing caps so it never pins to the far edge.
-                  <div className="@container/detail w-full">
-                    <div className="grid max-w-[820px] grid-cols-1 items-start gap-4 @4xl/detail:max-w-[1148px] @4xl/detail:grid-cols-[minmax(0,820px)_300px] @4xl/detail:gap-6">
-                      <div className="min-w-0 space-y-4">
-                        <SignalCard
-                          // Distinct key prefixes: SignalCard and SignalEvidence are
-                          // siblings and MUST NOT share a key, or React's reconciliation
-                          // breaks (silently in prod) and the card stacks on focus change.
-                          key={`card-${selectedItem.signal.id}`}
-                          signal={selectedItem.signal}
-                          interactive={!sample}
-                          onMarkRead={!sample ? markRead : undefined}
-                          onMarkUnread={!sample ? markUnread : undefined}
-                          onActionChange={onActionChange}
-                          onDismiss={(id) => dismissSignals([id])}
-                          onSnooze={(id, ms) => snoozeSignals([id], ms)}
-                        />
-                        {/* Evidence dossier — best-effort; renders nothing without
-                            structured evidence. In sample mode it reads the fixture
-                            dossier instead of the backend, so the demo shows the same
-                            before/after the real app would. */}
-                        {sample ? (
-                          <SignalEvidence
-                            key={`evidence-${selectedItem.signal.id}`}
-                            signalId={selectedItem.signal.id}
-                            detail={getSampleSignalDetail(selectedItem.signal.id)}
-                          />
-                        ) : (
-                          <SignalEvidence
-                            key={`evidence-${selectedItem.signal.id}`}
-                            signalId={selectedItem.signal.id}
-                          />
-                        )}
-                      </div>
-                      <MoreFromCompetitor
-                        signal={selectedItem.signal}
-                        all={signals ?? []}
-                        onSelect={selectRow}
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-3 lg:max-w-[760px]">
-                    <div className="rounded-lg border border-border bg-card px-5 py-4">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <SeverityBadge
-                          severity={selectedItem.signals.reduce<Sev>(
-                            (m, s) =>
-                              SEV_RANK[s.severity] > SEV_RANK[m]
-                                ? s.severity
-                                : m,
-                            "low",
-                          )}
-                        />
-                        <span className="text-base font-semibold">
-                          {selectedItem.signals[0]!.competitorName}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {selectedItem.signals.length} similar{" "}
-                          {selectedItem.signals[0]!.category} signals
-                        </span>
-                      </div>
-                      {selectedItem.summary && (
-                        <p className="mt-2 text-content leading-relaxed text-foreground/85">
-                          {selectedItem.summary}
-                        </p>
-                      )}
-                    </div>
-                    {selectedItem.signals.map((s) => (
-                      <SignalCard
-                        key={s.id}
-                        signal={s}
-                        interactive={!sample}
-                        onMarkRead={!sample ? markRead : undefined}
-                        onMarkUnread={!sample ? markUnread : undefined}
-                        onActionChange={onActionChange}
-                        onDismiss={(id) => dismissSignals([id])}
-                        onSnooze={(id, ms) => snoozeSignals([id], ms)}
-                      />
-                    ))}
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="hidden min-h-[320px] items-center justify-center rounded-lg border border-dashed border-border lg:flex">
-                <p className="text-sm text-muted-foreground">
-                  Select a signal to see the full detail.
-                </p>
-              </div>
-            )}
-          </div>
+          <SignalsListFooter
+            selectedCount={selected.size}
+            onBulkMarkRead={bulkMarkRead}
+            onBulkTrack={bulkSetAction}
+            onBulkSnooze={(ms) => snoozeSignals([...selected], ms)}
+            onBulkDismiss={() => dismissSignals([...selected])}
+            onClearSelection={clearSelection}
+            onShowShortcuts={() => setHelpOpen(true)}
+          />
         </div>
-        </>
-      )}
+
+        {/* Detail — the right column on desktop, a full-screen sheet on mobile.
+            Rendered once (no duplicate ids, no double fetch). */}
+        <div
+          className={cn(
+            "min-w-0",
+            sheetOpen
+              ? "fixed inset-0 z-50 bg-background lg:static lg:z-auto lg:block lg:flex-1"
+              : "hidden lg:block lg:flex-1",
+          )}
+        >
+          {briefOpen && brief ? (
+            <SignalsBriefPanel
+              brief={brief}
+              count={briefState.count}
+              refresh={briefState.refresh}
+              refreshing={briefState.refreshing}
+              onBack={closeSheet}
+            />
+          ) : selectedSignal ? (
+            <SignalDetailPanel
+              // Keyed on the signal: every disclosure and the scroll position
+              // reset with it, which is what opening the next one should mean.
+              key={selectedSignal.id}
+              signal={selectedSignal}
+              interactive={!sample}
+              detail={
+                sample ? getSampleSignalDetail(selectedSignal.id) : undefined
+              }
+              related={(signals ?? []).filter(
+                (s) =>
+                  s.competitorId === selectedSignal.competitorId &&
+                  s.id !== selectedSignal.id,
+              )}
+              onSelectRelated={selectRow}
+              onBack={closeSheet}
+              onMarkRead={!sample ? markRead : undefined}
+              onMarkUnread={!sample ? markUnread : undefined}
+              onActionChange={onActionChange}
+              onDismiss={(id) => dismissSignals([id])}
+              onSnooze={(id, ms) => snoozeSignals([id], ms)}
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center p-8">
+              <p className="text-sm text-muted-foreground">
+                Select a signal to see the full detail.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
 
       <ShortcutsHelp open={helpOpen} onOpenChange={setHelpOpen} />
     </div>
@@ -1690,92 +1257,5 @@ function GroupHeader({
         {count}
       </span>
     </button>
-  );
-}
-
-// Cross-links to the selected competitor's other signals, from the already-loaded
-// feed (no extra fetch). Turns the detail pane into a small competitor hub and
-// gives the master-detail a reason to exist beyond a single card.
-function MoreFromCompetitor({
-  signal,
-  all,
-  onSelect,
-}: {
-  signal: Signal;
-  all: Signal[];
-  onSelect: (id: string) => void;
-}) {
-  const related = all
-    .filter((s) => s.competitorId === signal.competitorId && s.id !== signal.id)
-    .slice(0, 6);
-  return (
-    <div className="rounded-md border border-border bg-card p-5">
-      <div className="mb-3 text-dense font-medium text-muted-foreground">
-        More from {signal.competitorName}
-      </div>
-      {related.length > 0 ? (
-        <ul className="-mx-2">
-          {related.map((s) => (
-            <li key={s.id}>
-              <button
-                type="button"
-                onClick={() => onSelect(s.id)}
-                className="group flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent/40"
-              >
-                <span
-                  className={cn(
-                    "size-1.5 shrink-0 rounded-full",
-                    SEV_DOT[s.severityOverride ?? s.severity],
-                  )}
-                />
-                <span className="min-w-0 flex-1 truncate text-dense text-foreground/90 group-hover:text-foreground">
-                  {s.insight}
-                </span>
-                <time className="shrink-0 text-meta text-muted-foreground tabular-nums">
-                  {formatDistanceToNow(new Date(s.createdAt), { addSuffix: false })}
-                </time>
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="text-dense text-muted-foreground">
-          No other signals from this competitor yet.
-        </p>
-      )}
-      <Link
-        href={`/dashboard/competitors/${signal.competitorId}`}
-        className="mt-3 inline-flex items-center gap-1 text-dense text-muted-foreground transition-colors hover:text-foreground"
-      >
-        View {signal.competitorName} profile
-        <ArrowUpRight size={13} />
-      </Link>
-    </div>
-  );
-}
-
-function FilterChip({
-  children,
-  onRemove,
-}: {
-  children: React.ReactNode;
-  onRemove: () => void;
-}) {
-  return (
-    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border border-border bg-card text-xs">
-      {children}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            onClick={onRemove}
-            className="ml-0.5 text-muted-foreground hover:text-foreground transition-colors"
-            aria-label="Remove filter"
-          >
-            <X size={11} />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent>Remove filter</TooltipContent>
-      </Tooltip>
-    </span>
   );
 }

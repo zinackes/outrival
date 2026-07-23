@@ -14,6 +14,12 @@ import {
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { api, type Signal, type ActionStatus } from "@/lib/api";
+import {
+  ACTION_OPTIONS,
+  ACTION_LABEL,
+  SNOOZE_PRESETS,
+  FILTERED_REASON_LABEL,
+} from "@/lib/signal-actions";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -34,6 +40,7 @@ import { SignalComments } from "./signal-comments";
 import { SignalSourceLine } from "@/components/outrival/signal-source-line";
 import { FeedbackButtons } from "@/components/outrival/feedback-buttons";
 import { ConfidenceDot } from "@/components/outrival/confidence-dot";
+import { ThreatMeter } from "@/components/outrival/threat-meter";
 import { AiOutputWarning } from "@/components/outrival/ai-output-warning";
 
 interface SignalCardProps {
@@ -62,69 +69,6 @@ interface SignalCardProps {
 // A dwell gate — not first-pixel visibility — so a fast scroll-through doesn't
 // bulk-mark everything read (the well-documented "scroll = read" misread trap).
 const AUTO_READ_DWELL_MS = 1500;
-
-const ACTION_OPTIONS: { value: ActionStatus; label: string }[] = [
-  { value: "todo", label: "To do" },
-  { value: "doing", label: "In progress" },
-  { value: "done", label: "Done" },
-  { value: "dismissed", label: "Dismissed" },
-];
-const ACTION_LABEL: Record<ActionStatus, string> = {
-  todo: "To do",
-  doing: "In progress",
-  done: "Done",
-  dismissed: "Dismissed",
-};
-
-// Snooze durations (the client computes the absolute `until` from `ms`). Exported so
-// the feed's bulk bar reuses the same set — single source of truth, no drift.
-export const SNOOZE_PRESETS: { label: string; ms: number }[] = [
-  { label: "Later today", ms: 4 * 60 * 60 * 1000 },
-  { label: "Tomorrow", ms: 24 * 60 * 60 * 1000 },
-  { label: "Next week", ms: 7 * 24 * 60 * 60 * 1000 },
-];
-
-// patch-26 moderation transparency (gap-E): why a signal wasn't sent as an alert.
-const FILTERED_REASON_LABEL: Record<string, string> = {
-  below_threshold: "below your relevance threshold",
-  channel_muted: "channel muted for this severity",
-  quiet_hours: "held during quiet hours",
-  frequency_cap: "daily email limit reached",
-};
-
-// Threat level (gap-F): bucket the composite threat score (severity × overlap ×
-// relevance) into a 3-bar meter so the feed order is legible per-card.
-function threatBars(score: number): number {
-  if (score >= 0.4) return 3;
-  if (score >= 0.2) return 2;
-  return 1;
-}
-
-// The 3-bar threat meter — lives in the quiet footer meta line now, not the loud
-// header. Muted-foreground bars so it stays discreet next to the source label.
-function ThreatMeter({ score }: { score: number }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="flex items-end gap-px" aria-label="Threat level">
-          {[0, 1, 2].map((i) => (
-            <span
-              key={i}
-              className={cn(
-                "w-[3px] rounded-sm",
-                i === 0 ? "h-1.5" : i === 1 ? "h-2" : "h-2.5",
-                i < threatBars(score) ? "bg-muted-foreground" : "bg-border",
-              )}
-            />
-          ))}
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>
-        Threat level — severity × competitor overlap × relevance
-      </TooltipContent>
-    </Tooltip>
-  );
-}
 
 export function SignalCard({
   signal,

@@ -48,9 +48,13 @@ function filtersEqual(a: SavedViewFilters, b: SavedViewFilters): boolean {
 export function SavedViewsMenu({
   current,
   onApply,
+  compact = false,
 }: {
   current: SavedViewFilters;
   onApply: (filters: SavedViewFilters) => void;
+  // Icon-only trigger for the signals list header, where the column is 400px
+  // wide and the label doesn't earn its width. The menu itself is unchanged.
+  compact?: boolean;
 }) {
   const queryClient = useQueryClient();
   const viewsQ = useQuery({
@@ -154,15 +158,26 @@ export function SavedViewsMenu({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant={activeView ? "secondary" : "outline"} size="sm">
-            <Bookmark size={13} className={cn(activeView && "fill-current")} />
-            {activeView ? (
-              <span className="max-w-[140px] truncate">{activeView.name}</span>
-            ) : (
-              "Views"
-            )}
-            <ChevronDown size={11} className="opacity-60" />
-          </Button>
+          {compact ? (
+            <Button
+              variant={activeView ? "secondary" : "outline"}
+              size="icon-sm"
+              aria-label={activeView ? `Saved view: ${activeView.name}` : "Saved views"}
+              title={activeView ? `Saved view: ${activeView.name}` : "Saved views"}
+            >
+              <Bookmark size={14} className={cn(activeView && "fill-current")} />
+            </Button>
+          ) : (
+            <Button variant={activeView ? "secondary" : "outline"} size="sm">
+              <Bookmark size={13} className={cn(activeView && "fill-current")} />
+              {activeView ? (
+                <span className="max-w-[140px] truncate">{activeView.name}</span>
+              ) : (
+                "Views"
+              )}
+              <ChevronDown size={11} className="opacity-60" />
+            </Button>
+          )}
         </DropdownMenuTrigger>
         <DropdownMenuContent className="w-64" align="end">
           <DropdownMenuLabel>Saved views</DropdownMenuLabel>

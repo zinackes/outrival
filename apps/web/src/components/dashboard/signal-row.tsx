@@ -12,6 +12,8 @@ import {
 import { formatDistanceToNow } from "date-fns";
 import type { Signal } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { sourceLabel } from "@/lib/source-labels";
+import { competitorNameColor } from "@/lib/competitor-color";
 import { CatPill } from "./cat-pill";
 
 type Sev = Signal["severity"];
@@ -36,8 +38,8 @@ const SEV_RANK: Record<Sev, number> = { critical: 4, high: 3, medium: 2, low: 1 
 
 /**
  * One compact row in the Signals master list (Linear/Sentry inbox register). The
- * detail lives in the right pane; this stays scannable — a severity icon, who
- * moved, the category, the one-line finding, and the age. Read rows dim; unread
+ * detail lives in the right pane; this stays scannable — the finding leads, and
+ * who moved / from where sits under it as attribution. Read rows dim; unread
  * carry a left accent rail + dot. Selection is a background tint (no bar).
  */
 export function SignalRow({
@@ -98,32 +100,36 @@ export function SignalRow({
       />
 
       <span className="min-w-0">
-        <span className="flex items-center gap-1.5">
+        {/* The finding leads: it's what the reader is scanning for. */}
+        <span
+          className={cn(
+            "block truncate text-dense leading-snug",
+            unread
+              ? "font-semibold text-foreground"
+              : "font-medium text-muted-foreground",
+          )}
+        >
+          {signal.insight}
+        </span>
+        {/* Attribution: who moved, and on which surface we caught it. */}
+        <span className="mt-1 flex min-w-0 items-center gap-1.5 text-meta text-muted-foreground">
           <span
-            className={cn(
-              "truncate text-dense font-semibold",
-              unread ? "text-foreground" : "text-muted-foreground",
-            )}
+            className="truncate font-medium"
+            style={competitorNameColor(signal.competitorColor)}
           >
             {signal.competitorName}
           </span>
+          <span aria-hidden>·</span>
+          <span className="truncate">{sourceLabel(signal.sourceType)}</span>
           <CatPill size="compact">{signal.category}</CatPill>
           {/* L2 provenance marker — this row was reconstructed from the web archive. */}
           {signal.filteredReason === "backfill" && (
             <Archive
               size={12}
-              className="shrink-0 text-muted-foreground"
+              className="shrink-0"
               aria-label="From archive"
             />
           )}
-        </span>
-        <span
-          className={cn(
-            "mt-1 block truncate text-dense leading-snug",
-            unread ? "text-foreground/90" : "text-muted-foreground",
-          )}
-        >
-          {signal.insight}
         </span>
       </span>
 
@@ -197,21 +203,28 @@ export function BatchRow({
         aria-label={`${maxSev} severity batch`}
       />
       <span className="min-w-0">
-        <span className="flex items-center gap-1.5">
+        <span
+          className={cn(
+            "block truncate text-dense leading-snug",
+            unread
+              ? "font-semibold text-foreground"
+              : "font-medium text-muted-foreground",
+          )}
+        >
+          {summary ?? `${signals.length} similar ${first.category} signals`}
+        </span>
+        <span className="mt-1 flex min-w-0 items-center gap-1.5 text-meta text-muted-foreground">
           <span
-            className={cn(
-              "truncate text-dense font-semibold",
-              unread ? "text-foreground" : "text-muted-foreground",
-            )}
+            className="truncate font-medium"
+            style={competitorNameColor(first.competitorColor)}
           >
             {first.competitorName}
           </span>
-          <span className="shrink-0 rounded-sm bg-surface-2 px-1.5 font-mono text-meta text-muted-foreground tabular-nums">
+          <span aria-hidden>·</span>
+          <span className="shrink-0 rounded-sm bg-surface-2 px-1.5 font-mono tabular-nums">
             {signals.length}
           </span>
-        </span>
-        <span className="mt-1 block truncate text-dense leading-snug text-muted-foreground">
-          {summary ?? `${signals.length} similar ${first.category} signals`}
+          <span className="truncate">grouped</span>
         </span>
       </span>
       <span className="flex shrink-0 items-center gap-2 pt-0.5">

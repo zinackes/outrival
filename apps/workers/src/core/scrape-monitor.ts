@@ -40,6 +40,7 @@ import {
   type PricingStatus,
   type PricingRepositioning,
   type PlatformProfile,
+  type MonitorFrequency,
 } from "@outrival/shared";
 // Pure subpath — pulls only the heuristic, never the groq/anthropic SDKs.
 import { evaluateSignificance } from "@outrival/ai/significance";
@@ -228,6 +229,31 @@ function refusalFrom(err: unknown): { reason: string } | null {
   return null;
 }
 
+// Some internal sources throw for reasons that are NOT the competitor being
+// unscrapable, and must not consume the 3-strike budget or churn to markedUnscrapable:
+//   - youtube `no_channel`: the competitor simply links no YouTube channel. A stable
+//     absence, not a transient error — retrying/marking unscrapable just spins.
+//   - subdomains crt.sh unavailable / no live host: crt.sh (our Certificate
+//     Transparency provider) routinely 502s / 429s / times out, and "no live
+//     subdomain" is a benign empty state. Neither is the competitor's fault.
+// A benign skip reschedules on the normal cadence WITHOUT a snapshot, without bumping
+// consecutiveFailures, logged as `skipped` (not `failed`). It never writes an (empty)
+// snapshot, so the "empty baseline read as everything-added" risk the scrapers
+// fail-loud against does not apply. Genuinely transient states where the target
+// EXISTS (youtube feed_unreachable/empty_feed — channel resolved but RSS down) stay
+// fail-loud so Trigger retries them.
+function benignSkipFrom(err: unknown, sourceType: string): { reason: string } | null {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (sourceType === "youtube" && msg.includes("youtube: no_channel")) {
+    return { reason: "no_channel" };
+  }
+  if (sourceType === "subdomains") {
+    if (msg.includes("crt.sh:")) return { reason: "crtsh_unavailable" };
+    if (msg.includes("no_live_subdomains")) return { reason: "no_live_subdomains" };
+  }
+  return null;
+}
+
 // A refusal is terminal: mark the source unscrapable immediately (no 3-strike
 // backoff, no escalation, never a retry), record WHY + WHEN, and log the run as
 // refused. It never produces a snapshot, so nothing downstream runs. The scheduler's
@@ -267,6 +293,54 @@ async function handleRefusal(
   logger.warn("Source refused — marked unscrapable, no escalation", {
     monitorId: monitor.id,
     reason: refusal.reason,
+  });
+}
+
+// A benign skip (see benignSkipFrom): the source is healthy from the pipeline's POV,
+// there is just nothing to record this cycle. Reschedule on the normal cadence, clear
+// any stale failure state, and NEVER mark unscrapable — the opposite of handleRefusal.
+// Logged as `skipped` so it drops out of the /admin failure rate and stops tripping the
+// dead-run detector, while the real duration keeps avg_ms honest.
+async function handleBenignSkip(
+  monitor: {
+    id: string;
+    competitorId: string;
+    sourceType: string;
+    requiresLevel: number | null;
+    lastChangedAt: Date | null;
+    createdAt: Date;
+  },
+  reason: string,
+  durationMs: number,
+  frequency: MonitorFrequency,
+): Promise<void> {
+  await db
+    .update(monitors)
+    .set({
+      scrapeStartedAt: null,
+      lastRunAt: new Date(),
+      nextRunAt: computeNextRun(frequency, monitor.lastChangedAt, monitor.createdAt),
+      consecutiveFailures: 0,
+      markedUnscrapable: false,
+      lastFailedAt: null,
+      lastError: null,
+    })
+    .where(eq(monitors.id, monitor.id));
+  await logScrapeRun({
+    monitor_id: monitor.id,
+    competitor_id: monitor.competitorId,
+    source_type: monitor.sourceType,
+    status: "skipped",
+    level: monitor.requiresLevel ?? 0,
+    attempts: 1,
+    failure_reason: reason,
+    duration_ms: durationMs,
+    recorded_at: new Date(),
+  });
+  logger.log("Source benign-skip — rescheduled, no failure counted", {
+    monitorId: monitor.id,
+    sourceType: monitor.sourceType,
+    reason,
   });
 }
 
@@ -657,6 +731,13 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
       if (refusal) {
         await handleRefusal(monitor, refusal, Date.now() - startedAt);
         return { changed: false, refused: true };
+      }
+      // Not the competitor's fault (no youtube channel, crt.sh down): reschedule
+      // without a strike so it stops churning to markedUnscrapable / spamming failures.
+      const benign = benignSkipFrom(err, monitor.sourceType);
+      if (benign) {
+        await handleBenignSkip(monitor, benign.reason, Date.now() - startedAt, effectiveFrequency);
+        return { changed: false, skipped: true };
       }
       // Otherwise: diagnose before rethrowing so the failure category is persisted
       // from the attempt that carried the cascade data (patch-23). Trigger.dev

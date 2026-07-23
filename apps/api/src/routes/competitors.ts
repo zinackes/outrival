@@ -500,10 +500,12 @@ competitorsRouter.post("/", async (c) => {
       // Internal news/funding anchor (weekly). Google News RSS by brand → diff
       // surfaces company-level events (funding/M&A/leadership/press).
       { competitorId: competitor.id, sourceType: "news", frequency: "weekly", scrapeStartedAt },
-      // Internal subdomains anchor (daily). Certificate Transparency (crt.sh) → diff
+      // Internal subdomains anchor (weekly). Certificate Transparency (crt.sh) → diff
       // of the sorted live-subdomain list surfaces a brand-new one (beta./ai./
-      // {product}.) as an expansion / pre-announcement product signal.
-      { competitorId: competitor.id, sourceType: "subdomains", frequency: "daily", scrapeStartedAt },
+      // {product}.) as an expansion / pre-announcement product signal. Weekly (not
+      // daily): CT logs move slowly and daily × every competitor self-inflicts crt.sh
+      // 429s — one shared, flaky public provider.
+      { competitorId: competitor.id, sourceType: "subdomains", frequency: "weekly", scrapeStartedAt },
       // Internal YouTube anchor (weekly). Resolves the channel from a homepage link
       // → diff of the sorted video list surfaces a brand-new upload (content signal).
       { competitorId: competitor.id, sourceType: "youtube", frequency: "weekly", scrapeStartedAt },

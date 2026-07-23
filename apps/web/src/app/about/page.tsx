@@ -32,11 +32,15 @@ const PRINCIPLES = [
     body: "You read the conclusion — what changed and why it matters. You don’t dig through diffs to find it.",
   },
   {
-    title: "Ship weekly.",
+    // Deliberately not a cadence promise. Shipping really is continuous, but
+    // the changelog is a curated release log, not a weekly obligation — and a
+    // principle whose proof link can contradict it in one click is worth less
+    // than no principle at all.
+    title: "Ship constantly.",
     body: (
       <>
-        Small, real improvements land every week — you can see them in the{" "}
-        <a href="/changelog">changelog</a>.
+        Small, real improvements land all the time — the notable ones show up
+        in the <a href="/changelog">changelog</a>.
       </>
     ),
   },

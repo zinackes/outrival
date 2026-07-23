@@ -1,58 +1,28 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Sparkles, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
+import { ArrowLeft, RefreshCw, Sparkles } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
-// Persist the collapsed state so hiding the brief sticks across reloads (session
-// state alone re-expanded it on every navigation). One flag for the whole workspace.
-const COLLAPSE_KEY = "outrival.signalsBrief.collapsed";
-
-// AI executive brief of the current feed (the org's last week of signals). Best-effort:
-// renders nothing while it loads, below the server's threshold, on any AI failure, or
-// once dismissed for the session. The server caches ~30 min per org, so mounting this on
-// the page is cheap — it turns the feed into an answer ("who moved, what to watch") the
-// moment the user lands, instead of a list to read top to bottom.
-export function SignalsBrief({
-  productId,
-  enabled = true,
-}: {
-  productId?: string;
-  enabled?: boolean;
-}) {
-  // Collapsed = hidden to a slim, re-openable bar. Hydrated from localStorage after
-  // mount (guarded so SSR and first client render agree, no hydration mismatch).
-  const [collapsed, setCollapsed] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
+/**
+ * The AI executive brief of the current feed — "who moved, what to watch" — so
+ * landing on Signals gives an answer before it gives a list.
+ *
+ * In the workspace it is a pinned row at the top of the list that opens in the
+ * detail pane, where a paragraph has the width to be read. Best-effort: below
+ * the server's threshold, or on any AI failure, there is no brief and no row.
+ */
+export function useSignalsBrief(productId?: string, enabled = true) {
   const queryClient = useQueryClient();
   const queryKey = ["signals", "brief", productId ?? null];
-
-  useEffect(() => {
-    try {
-      setCollapsed(localStorage.getItem(COLLAPSE_KEY) === "1");
-    } catch {
-      // localStorage blocked (private mode) — stay expanded.
-    }
-  }, []);
-
-  function setCollapsedPersisted(next: boolean) {
-    setCollapsed(next);
-    try {
-      localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0");
-    } catch {
-      // Best-effort — the in-session state still applies.
-    }
-  }
+  const [refreshing, setRefreshing] = useState(false);
 
   const q = useQuery({
     queryKey,
     queryFn: () => api.getSignalsBrief(productId),
-    // Keep fetching even when collapsed so re-opening is instant (and the collapsed
-    // bar only renders when there's actually a brief to show).
     enabled,
     staleTime: 30 * 60 * 1000,
     gcTime: 60 * 60 * 1000,
@@ -71,68 +41,114 @@ export function SignalsBrief({
     }
   }
 
-  const brief = q.data?.brief;
-  // Quiet by default: no skeleton flash — the brief just appears once ready, and stays
-  // absent when there's nothing worth summarizing.
-  if (!brief) return null;
+  return {
+    brief: q.data?.brief ?? null,
+    count: q.data?.count ?? 0,
+    refresh,
+    refreshing,
+  };
+}
 
-  // Hidden → a slim bar that keeps the brief one click away instead of gone.
-  if (collapsed) {
-    return (
-      <button
-        type="button"
-        onClick={() => setCollapsedPersisted(false)}
-        aria-label="Show AI brief"
-        className="flex w-full items-center gap-2 rounded-lg border border-border bg-surface-2 px-4 py-2 text-left text-sm text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-      >
-        <Sparkles size={14} className="shrink-0" aria-hidden />
-        <span className="flex-1 truncate">AI brief</span>
-        <ChevronDown size={14} className="shrink-0" aria-hidden />
-      </button>
-    );
-  }
-
+/** The pinned list row. Selecting it opens the brief in the detail pane. */
+export function SignalsBriefRow({
+  count,
+  selected,
+  onSelect,
+  onFocus,
+  tabStop = false,
+}: {
+  count: number;
+  selected: boolean;
+  onSelect: () => void;
+  onFocus?: () => void;
+  tabStop?: boolean;
+}) {
   return (
-    <div className="flex items-start gap-3 rounded-lg border border-border bg-surface-2 px-4 py-3">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden>
-            <Sparkles size={16} />
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>AI brief, generated from your signals</TooltipContent>
-      </Tooltip>
-      <p className="min-w-0 flex-1 text-sm leading-relaxed text-foreground/90">
-        {brief}
-      </p>
-      <div className="flex shrink-0 items-center gap-0.5">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Refresh brief"
-              onClick={refresh}
-              disabled={refreshing}
-            >
-              <RefreshCw size={14} className={cn(refreshing && "animate-spin")} />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Refresh</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Hide AI brief"
-              onClick={() => setCollapsedPersisted(true)}
-            >
-              <ChevronUp size={14} />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Hide</TooltipContent>
-        </Tooltip>
+    <button
+      type="button"
+      id="row-brief"
+      role="option"
+      aria-selected={selected}
+      tabIndex={tabStop ? 0 : -1}
+      onFocus={onFocus}
+      onClick={onSelect}
+      className={cn(
+        "group grid w-full grid-cols-[auto_1fr] items-start gap-x-2.5 rounded-md px-3 py-2.5 text-left outline-none transition-colors",
+        selected ? "bg-accent" : "hover:bg-accent/50 focus-visible:bg-accent/50",
+      )}
+    >
+      <Sparkles size={15} className="mt-0.5 shrink-0 text-link" aria-hidden />
+      <span className="min-w-0">
+        <span className="block truncate text-dense font-semibold text-foreground">
+          Brief of the week
+        </span>
+        <span className="mt-1 block truncate text-meta text-muted-foreground">
+          What moved, in one read
+          {count > 0 && (
+            <>
+              {" · "}
+              <span className="tabular-nums">{count}</span> signal
+              {count === 1 ? "" : "s"}
+            </>
+          )}
+        </span>
+      </span>
+    </button>
+  );
+}
+
+/** The brief itself, in the detail column. */
+export function SignalsBriefPanel({
+  brief,
+  count,
+  refresh,
+  refreshing,
+  onBack,
+}: {
+  brief: string;
+  count: number;
+  refresh: () => void;
+  refreshing: boolean;
+  onBack?: () => void;
+}) {
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-center gap-2 border-b border-border bg-background/85 px-4 py-2.5 backdrop-blur-md lg:px-6">
+        {onBack && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="lg:hidden"
+            aria-label="Back to signals"
+            onClick={onBack}
+          >
+            <ArrowLeft size={16} />
+          </Button>
+        )}
+        <Sparkles size={15} className="shrink-0 text-link" aria-hidden />
+        <span className="text-dense font-semibold">Brief of the week</span>
+        <span className="flex-1" />
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8"
+          onClick={refresh}
+          disabled={refreshing}
+        >
+          <RefreshCw size={13} className={cn(refreshing && "animate-spin")} />
+          <span className="hidden xl:inline">Regenerate</span>
+        </Button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-[820px] px-5 py-6 lg:px-8">
+          <p className="text-lead leading-relaxed text-foreground/90">{brief}</p>
+          <p className="mt-5 border-t border-border pt-4 text-dense text-muted-foreground">
+            Written by Outrival from{" "}
+            <span className="tabular-nums">{count}</span> signal
+            {count === 1 ? "" : "s"} in your feed. Open any signal on the left for the
+            evidence behind it.
+          </p>
+        </div>
       </div>
     </div>
   );

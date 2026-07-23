@@ -10,6 +10,7 @@ import { Topbar } from "@/components/dashboard/topbar";
 import { AskContextProvider } from "@/components/dashboard/ask-context";
 import { AskDock } from "@/components/dashboard/ask-dock";
 import { ProductScopeProvider } from "@/components/dashboard/product-scope-provider";
+import { cn } from "@/lib/utils";
 
 interface User {
   name: string | null;
@@ -40,6 +41,10 @@ export function DashboardShell({
   // on /dashboard/settings/* instead of stacking a second nav next to the content.
   const pathname = usePathname();
   const inSettings = pathname.startsWith("/dashboard/settings");
+  // Signals is a workspace, not a document: it owns the viewport under the topbar
+  // and scrolls inside its own columns, so the page padding and page scroll are
+  // handed back to it. Every other route keeps the padded, scrolling shell.
+  const fullBleed = pathname === "/dashboard/signals";
 
   return (
     // reducedMotion="user" — every motion component in the dashboard (filtered
@@ -54,12 +59,22 @@ export function DashboardShell({
               <AppSidebar org={org} user={user} />
             )}
             <SidebarInset>
-              <div className="flex min-h-full w-full flex-col text-sm min-w-0">
+              <div
+                className={cn(
+                  "flex w-full flex-col text-sm min-w-0",
+                  fullBleed ? "h-dvh" : "min-h-full",
+                )}
+              >
                 <Topbar user={user} />
                 <div
                   id="main-content"
                   tabIndex={-1}
-                  className="flex-1 min-w-0 w-full px-4 pt-5 pb-12 outline-none md:px-5 md:pt-6 lg:px-8 lg:pt-7 lg:pb-16"
+                  className={cn(
+                    "flex-1 min-w-0 w-full outline-none",
+                    fullBleed
+                      ? "min-h-0 overflow-hidden"
+                      : "px-4 pt-5 pb-12 md:px-5 md:pt-6 lg:px-8 lg:pt-7 lg:pb-16",
+                  )}
                 >
                   {children}
                 </div>

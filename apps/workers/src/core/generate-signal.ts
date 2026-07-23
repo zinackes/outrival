@@ -5,9 +5,10 @@ import {
   evaluateStandingQueries,
 } from "@outrival/queue";
 import { z } from "zod";
-import { and, eq, ne, or, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, ne, or, isNull } from "drizzle-orm";
 import {
   db,
+  type SelfProfile,
   changes,
   snapshots,
   monitors,
@@ -203,12 +204,69 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
     });
     if (!competitor) throw new AbortTaskRunError(`Competitor ${monitor.competitorId} not found`);
 
-    // Load the org once: its productProfile makes the insight/narrative user-aware
-    // (P0), and the same row is reused for the alert-gating check below (no re-fetch).
+    // Load the org once: its productProfile is the legacy/fallback "my product"
+    // context, and the same row is reused for the alert-gating check below.
     const org = await db.query.organizations.findFirst({
       where: eq(organizations.id, competitor.orgId),
     });
-    const myProduct = toMyProductContext(org?.productProfile);
+
+    // patch-28 — deterministically tag the products (SKUs) this signal affects:
+    // every non-archived product of the org whose competitor set includes this
+    // competitor (via product_competitors). A competitor shared by two products
+    // tags its signals into both feeds. Empty when the org has no product yet.
+    // Resolved BEFORE the insight because it also decides WHOSE product the
+    // insight is written from — see myProduct below.
+    const associatedProducts = await db
+      .select({
+        productId: productCompetitors.productId,
+        selfCompetitorId: products.selfCompetitorId,
+      })
+      .from(productCompetitors)
+      .innerJoin(products, eq(products.id, productCompetitors.productId))
+      .where(
+        and(
+          eq(productCompetitors.competitorId, competitor.id),
+          eq(products.orgId, competitor.orgId),
+          ne(products.status, "archived"),
+        ),
+      )
+      // Anchor priority: a product this competitor is SPECIFICALLY assigned to
+      // (isSpecific) outranks a shared link, then the primary, then order. Every
+      // competitor is auto-linked to the primary as shared, so without the
+      // isSpecific tie-break a competitor tracked specifically for a non-primary
+      // SKU would still be judged from the primary product's perspective.
+      .orderBy(
+        desc(productCompetitors.isSpecific),
+        desc(products.isPrimary),
+        asc(products.position),
+        asc(products.createdAt),
+      );
+    const productIds = associatedProducts.map((p) => p.productId);
+
+    // Whose product the insight speaks for. `organizations.productProfile` is
+    // org-level — on a multi-SKU org it is the PRIMARY product's profile, so a
+    // competitor tracked for another SKU used to get "our <primary product> does
+    // not compete on <what the competitor actually does>". Source it from the
+    // product this competitor is actually tracked for (its self-competitor's
+    // selfProfile, the per-product source of truth), and for a self-change from
+    // the product itself. Multiple products → the primary among them (first row,
+    // ordered above). No product row (legacy org) → the org profile, unchanged.
+    const anchorSelfId =
+      competitor.type === "self"
+        ? competitor.id
+        : (associatedProducts[0]?.selfCompetitorId ?? null);
+    const anchorSelf = anchorSelfId
+      ? await db.query.competitors.findFirst({
+          where: eq(competitors.id, anchorSelfId),
+          columns: { selfProfile: true },
+        })
+      : null;
+    const sp = (anchorSelf?.selfProfile ?? null) as SelfProfile | null;
+    const myProduct = toMyProductContext({
+      category: sp?.category?.value ?? org?.productProfile?.category ?? "",
+      audience: sp?.audience?.value ?? org?.productProfile?.audience ?? "",
+      valueProp: sp?.valueProp?.value ?? org?.productProfile?.valueProp ?? "",
+    });
 
     // A pricing repositioning replaces the generic classification: it sets the
     // category to "pricing", takes its severity from the transition, and gets a
@@ -334,23 +392,6 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
           })
         : null;
     const faithfulnessBlocked = isBlocked(faithfulness);
-
-    // patch-28 — deterministically tag the products (SKUs) this signal affects:
-    // every non-archived product of the org whose competitor set includes this
-    // competitor (via product_competitors). A competitor shared by two products
-    // tags its signals into both feeds. Empty when the org has no product yet.
-    const associatedProducts = await db
-      .select({ productId: productCompetitors.productId })
-      .from(productCompetitors)
-      .innerJoin(products, eq(products.id, productCompetitors.productId))
-      .where(
-        and(
-          eq(productCompetitors.competitorId, competitor.id),
-          eq(products.orgId, competitor.orgId),
-          ne(products.status, "archived"),
-        ),
-      );
-    const productIds = associatedProducts.map((p) => p.productId);
 
     const [newSignal] = await db
       .insert(signals)

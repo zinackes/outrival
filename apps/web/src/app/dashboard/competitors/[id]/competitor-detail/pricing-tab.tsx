@@ -14,7 +14,9 @@ import {
 import { cn } from "@/lib/utils";
 import { eyebrowClass } from "@/components/outrival/eyebrow";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
+import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { CompetitorPricingCard } from "@/components/outrival/competitor-pricing-card";
+import { myProductQuery } from "@/lib/queries";
 import { buildPricingSeries } from "./charts";
 import { PricingPlansEditor } from "./pricing-plans-editor";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -58,9 +60,13 @@ export function PricingTab({
   });
   // Our own product, for the You-vs-them pricing comparison (best-effort — its
   // absence just hides the comparison, it never blocks the competitor's pricing).
-  const myProductQuery = useQuery({
-    queryKey: ["myProduct"],
-    queryFn: () => api.getMyProduct().then((r) => r.product),
+  // Scoped to the active product (patch-28): without it the comparison always shows
+  // the PRIMARY SKU's pricing, even while viewing a competitor of another product.
+  // Reuses the shared myProductQuery factory so the cache key matches the rest of
+  // the app (["myProduct"] primary / ["myProduct", productId] scoped).
+  const productScope = useProductScope() ?? undefined;
+  const myProductQ = useQuery({
+    ...myProductQuery(productScope),
     placeholderData: keepPreviousData,
     retry: false,
   });
@@ -79,7 +85,7 @@ export function PricingTab({
   });
 
   const history = historyQuery.data ?? null;
-  const myProduct = myProductQuery.data ?? null;
+  const myProduct = myProductQ.data ?? null;
   const resolvedTiers = pricingPlansQuery.data?.resolved ?? null;
   // The competitor's plans in the comparison's PricingHistoryPoint shape, sourced
   // from the overlay when loaded (falls back to the raw latest batch while loading).

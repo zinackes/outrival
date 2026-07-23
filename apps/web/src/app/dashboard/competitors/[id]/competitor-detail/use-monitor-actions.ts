@@ -396,17 +396,9 @@ export function useMonitorActions(id: string) {
       );
     flip(active);
     try {
+      // The row's toggle flips optimistically, so the new state is already visible —
+      // a success toast would just be noise. Errors still surface below.
       await api.updateMonitor(monitorId, { isActive: active });
-      toast.success(
-        active
-          ? `${sourceShortLabel(monitor.sourceType)} enabled`
-          : `${sourceShortLabel(monitor.sourceType)} paused`,
-        {
-          description: active
-            ? "It will scrape again on its normal schedule."
-            : "This source is frozen — no scheduled scrapes until you enable it.",
-        },
-      );
     } catch (e) {
       flip(!active);
       toastApiError(e, { title: "Couldn't update the source" });
@@ -443,9 +435,10 @@ export function useMonitorActions(id: string) {
     try {
       await api.updateMonitor(monitorId, patch);
       await refresh();
-      // Retargeting clears the previous page's failure verdict server-side, so a
-      // source that was blocked or auto-paused is live again on the next tick.
-      toast.success(patch.url ? "Source repointed — we'll scan it shortly" : "Monitor updated");
+      // A frequency-only change is reflected instantly by the selected segment, so it
+      // needs no toast. Retargeting is async (the source re-scans) and clears the
+      // previous page's failure verdict server-side — that one's worth confirming.
+      if (patch.url) toast.success("Source repointed — we'll scan it shortly");
     } catch (e) {
       const reason = paywallFromError(e);
       if (reason) {

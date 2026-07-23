@@ -393,12 +393,9 @@ export function CompetitorDetailView({ id }: { id: string }) {
     const next = !data.competitor.monitoringPaused;
     try {
       await api.setCompetitorMonitoring(id, next);
+      // The paused state flips visibly (header banner + kebab label), so skip the
+      // confirmation toast; only errors need surfacing.
       setData((d) => (d ? { ...d, competitor: { ...d.competitor, monitoringPaused: next } } : d));
-      toast.success(next ? "Monitoring paused" : "Monitoring resumed", {
-        description: next
-          ? "All sources frozen — no scheduled scrapes until you resume."
-          : "Sources will scrape on their normal schedule again.",
-      });
     } catch (e) {
       toastApiError(e, { title: "Couldn't update monitoring" });
     }
@@ -411,12 +408,9 @@ export function CompetitorDetailView({ id }: { id: string }) {
     const next = !data.competitor.alertsMuted;
     try {
       await api.setCompetitorAlerts(id, next);
+      // The muted state flips visibly (header banner + kebab label), so skip the
+      // confirmation toast; only errors need surfacing.
       setData((d) => (d ? { ...d, competitor: { ...d.competitor, alertsMuted: next } } : d));
-      toast.success(next ? "Alerts muted" : "Alerts unmuted", {
-        description: next
-          ? "Signals are still tracked — you just won't get real-time alerts."
-          : "Real-time alerts re-enabled for this competitor.",
-      });
     } catch (e) {
       toastApiError(e, { title: "Couldn't update alerts" });
     }

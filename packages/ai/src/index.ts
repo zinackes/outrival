@@ -106,6 +106,8 @@ export { fromDescription, fromDocument, fromRepo, fromUrl } from "./profile";
 export type { FromDescriptionInput, RepoArtifacts } from "./profile";
 export { scoreOverlap } from "./tasks/score-overlap";
 export type { Candidate, ScoredCandidate } from "./tasks/score-overlap";
+export { nameKnownCompetitors } from "./tasks/name-competitors";
+export type { NamedCompetitor } from "./tasks/name-competitors";
 export { extractPricing, PricingSchema, PricingPlanSchema } from "./tasks/extract-pricing";
 export type { PricingExtraction, PricingPlan } from "./tasks/extract-pricing";
 export { extractJobs, JobsSchema, JobPostingSchema } from "./tasks/extract-jobs";

@@ -17,6 +17,7 @@ import {
 import { normalizeHostname, validatePublicUrl, resolveDetectionConfig } from "@outrival/shared";
 import {
   scoreOverlap,
+  nameKnownCompetitors,
   ProductProfileSchema,
   buildDiscoveryQuery,
   fromDescription,
@@ -403,6 +404,16 @@ onboardingRouter.post("/discover", async (c) => {
     return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
   }
 
+  // Recall source #3 (Exa search + findSimilar are the other two, inside
+  // findSimilarCompanies): the model names the rivals it already knows. Exa's
+  // semantic reads systematically miss the market leaders for a well-known
+  // product, which is what made onboarding report "no obvious competitors".
+  // Best-effort — a miss just narrows the pool.
+  const namedSeeds = await nameKnownCompetitors(
+    parsed.data.profile,
+    parsed.data.productUrl ?? null,
+  ).catch(() => []);
+
   let candidates: Awaited<ReturnType<typeof findSimilarCompanies>>;
   try {
     candidates = await findSimilarCompanies(
@@ -415,6 +426,7 @@ onboardingRouter.post("/discover", async (c) => {
       30,
       [],
       parsed.data.region ?? null,
+      namedSeeds,
     );
   } catch (e) {
     return c.json({ error: `Discovery failed: ${String(e)}` }, 502);

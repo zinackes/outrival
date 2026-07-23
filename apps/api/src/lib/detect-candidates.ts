@@ -7,7 +7,12 @@ import {
   insertAiQualityCheck,
 } from "@outrival/db";
 import { findSimilarCompanies } from "@outrival/scrapers/discovery";
-import { scoreOverlap, buildDiscoveryQuery, selfProfileToDiscoveryProfile } from "@outrival/ai";
+import {
+  scoreOverlap,
+  nameKnownCompetitors,
+  buildDiscoveryQuery,
+  selfProfileToDiscoveryProfile,
+} from "@outrival/ai";
 import {
   buildDetectionBody,
   buildDetectionTitle,
@@ -93,12 +98,17 @@ export async function detectCandidatesForProduct(
     if (h) seenHosts.add(h);
   }
 
+  // Third recall source alongside Exa's two reads — see nameKnownCompetitors.
+  // Best-effort: a miss just narrows the pool.
+  const namedSeeds = await nameKnownCompetitors(profile, productUrl).catch(() => []);
+
   const discovered = await findSimilarCompanies(
     productUrl,
     buildDiscoveryQuery(profile, cfg.keywords),
     CANDIDATES_PER_ORG,
     cfg.excludedDomains,
     cfg.region,
+    namedSeeds,
   );
   const fresh = discovered.filter((d) => {
     if (seenUrls.has(d.url)) return false;

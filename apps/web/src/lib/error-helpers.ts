@@ -45,6 +45,17 @@ const ERROR_CONFIGS: Record<string, ErrorConfig> = {
     title: "A review-page URL is required",
     description: "Paste the competitor's review page URL to enable this source.",
   },
+  repo_url_required: {
+    title: "A repository URL is required",
+    description:
+      "Nothing on their site points to their repo, so paste the github.com/owner/repo URL to enable it.",
+  },
+  // The Trustpilot surface reads their official API; with no key configured the
+  // monitor could only ever fail, so the API refuses to create it.
+  trustpilot_key_missing: {
+    title: "Trustpilot isn't available right now",
+    description: "This source needs a Trustpilot API key on our side. We've been notified.",
+  },
   invalid_monitor_url: {
     title: "That URL doesn't look right",
     description: "Double-check the address for this source, then try again.",

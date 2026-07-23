@@ -1,6 +1,7 @@
 import {
   parseAppStoreUrl,
   appStoreReviewsRssUrl,
+  appStoreLookupUrl,
   type AppStoreRef,
   type AppStoreReview,
   type AppStoreSnapshot,
@@ -34,6 +35,13 @@ interface RssEntry {
  * review id and sorted, and carries no timestamp — so the content hash is stable when
  * the reviews are unchanged and the generic diff maps +/- lines to added/removed
  * reviews. Multiple storefronts (`options.countries`) are merged into one snapshot.
+ *
+ * The SCORE + COUNT do NOT come from these recent reviews — their mean skews low (the
+ * `sortby=mostrecent` window is dominated by post-update complainers, e.g. 4.06 vs the
+ * 4.8 shown on the store). They come from the store-wide aggregate (Apple Lookup API,
+ * `averageUserRating` / `userRatingCount`) captured for the primary storefront and
+ * stored alongside the verbatims; the recent reviews stay only for the AI qualitative
+ * praise/complaint extraction. Best-effort: a lookup failure falls back to the sample.
  *
  * appstore is deliberately NOT in scrape-monitor's SIZE_VARIABLE_SOURCES: the review
  * window is bounded (not append-only), so a sudden collapse to near-empty must be
@@ -110,11 +118,43 @@ export async function scrape(
     );
   }
 
+  // Store-wide aggregate rating for the primary storefront (Apple Lookup API) — the
+  // number shown on the product page. The RSS reviews above are only the most-recent
+  // verbatim sample and their mean skews low, so the SCORE + COUNT ride this instead
+  // (mirrors the Trustpilot surface snapshot: an aggregate movement IS the change).
+  // Best-effort: a failure leaves both null and parseAppStoreSnapshot falls back to
+  // the sample mean, so the scrape never fails over a missing aggregate.
+  const [primaryCountry] = countries;
+  let averageUserRating: number | null = null;
+  let userRatingCount: number | null = null;
+  if (primaryCountry) {
+    try {
+      const res = await fetch(appStoreLookupUrl({ appId: ref.appId, country: primaryCountry }), {
+        headers: { accept: "application/json" },
+      });
+      if (res.ok) {
+        const json = (await res.json()) as {
+          results?: Array<{ averageUserRating?: number; userRatingCount?: number }>;
+        };
+        const app = json.results?.[0];
+        if (app) {
+          averageUserRating =
+            typeof app.averageUserRating === "number" ? app.averageUserRating : null;
+          userRatingCount = typeof app.userRatingCount === "number" ? app.userRatingCount : null;
+        }
+      }
+    } catch {
+      // best-effort — keep nulls, the parser falls back to the recent-sample mean.
+    }
+  }
+
   const reviews = [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
   const snapshot: AppStoreSnapshot = {
     source: "appstore",
     appId: ref.appId,
     countries: [...countries].sort(),
+    averageUserRating,
+    userRatingCount,
     reviews,
   };
   const html = JSON.stringify(snapshot);

@@ -78,6 +78,16 @@ export function appStoreReviewsRssUrl(ref: AppStoreRef, page = 1): string {
   return `https://itunes.apple.com/${ref.country}/rss/customerreviews/page=${page}/id=${ref.appId}/sortby=mostrecent/json`;
 }
 
+/**
+ * Official Apple Lookup endpoint (no proxy, no auth). Returns the STORE-WIDE
+ * aggregate — `averageUserRating` + `userRatingCount`, the numbers shown on the
+ * product page — per storefront. This is where the real rating lives; the RSS feed
+ * above only carries the most-recent verbatim sample (≤500), whose mean skews low.
+ */
+export function appStoreLookupUrl(ref: AppStoreRef): string {
+  return `https://itunes.apple.com/${ref.country}/lookup?id=${ref.appId}`;
+}
+
 export interface AppStoreReview {
   /**
    * Apple's stable per-review id (`entry.id.label`, verified present 2026-07-15).
@@ -103,6 +113,15 @@ export interface AppStoreSnapshot {
   source: "appstore";
   appId: string;
   countries: string[];
+  /**
+   * Store-wide aggregate rating for the primary storefront (Apple Lookup API) — the
+   * number a visitor sees on the product page. Deliberately NOT the mean of `reviews`
+   * (that is only the recent verbatim sample and skews low). Null when the lookup
+   * failed. Optional so snapshots stored before this field existed still parse.
+   */
+  averageUserRating?: number | null;
+  /** Total rating count (all ratings incl. star-only) from the Lookup API; null on failure. */
+  userRatingCount?: number | null;
   reviews: AppStoreReview[];
 }
 
@@ -121,18 +140,38 @@ export function parseAppStoreSnapshot(json: string): AppStoreSummary | null {
     return null;
   }
   if (!data || typeof data !== "object") return null;
-  const reviews = (data as Partial<AppStoreSnapshot>).reviews;
+  const snap = data as Partial<AppStoreSnapshot>;
+  const reviews = snap.reviews;
   if (!Array.isArray(reviews)) return null;
-  if (reviews.length === 0) return { averageScore: null, reviewCount: 0, text: "" };
+
+  // Score + count come from Apple's store-wide aggregate (Lookup API) when present,
+  // NOT the mean of the recent verbatim sample: `sortby=mostrecent` returns the last
+  // ≤500 reviews, dominated by post-update complainers, so its mean reads far below
+  // the rating shown on the store (e.g. 4.06 vs 4.8). Fall back to the sample only
+  // for pre-aggregate snapshots or when the lookup failed.
+  const aggScore =
+    typeof snap.averageUserRating === "number" && snap.averageUserRating > 0
+      ? Math.round(snap.averageUserRating * 100) / 100
+      : null;
+  const aggCount =
+    typeof snap.userRatingCount === "number" && snap.userRatingCount >= 0
+      ? snap.userRatingCount
+      : null;
+
+  if (reviews.length === 0) return { averageScore: aggScore, reviewCount: aggCount ?? 0, text: "" };
 
   const ratings = reviews
     .map((r) => r.rating)
     .filter((n): n is number => typeof n === "number" && n > 0);
-  const averageScore = ratings.length
+  const sampleAverage = ratings.length
     ? Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 100) / 100
     : null;
   const text = reviews.map((r) => `[${r.rating}/5] ${r.title}\n${r.content}`).join("\n\n");
-  return { averageScore, reviewCount: reviews.length, text };
+  return {
+    averageScore: aggScore ?? sampleAverage,
+    reviewCount: aggCount ?? reviews.length,
+    text,
+  };
 }
 
 // ─── Trustpilot public surface (Reviews v2, 2026-07-15) ──────────────────────

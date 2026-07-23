@@ -30,6 +30,7 @@ import {
   ChevronRight,
   Pencil,
   Pause,
+  PauseCircle,
   Bell,
   BellOff,
   Download,
@@ -627,9 +628,13 @@ export function CompetitorDetailView({ id }: { id: string }) {
           onExport={exportSignals}
         />
 
-        {competitor.monitoringPaused && (
+        {/* Plan cap first: when both are true, upgrading is the blocking action —
+            resuming alone would leave the scheduler skipping this competitor. */}
+        {competitor.pausedByPlan ? (
+          <PlanCapPausedBanner />
+        ) : competitor.monitoringPaused ? (
           <MonitoringPausedBanner onResume={toggleMonitoringPaused} />
-        )}
+        ) : null}
 
         {/* Where the first analysis is — a prominent stepper for a freshly added
             competitor so the empty tabs below read as "in progress", not broken.
@@ -653,7 +658,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
           targets={detectedTargets}
           scrapingIds={scrapingIds}
           runningAll={runningAll}
-          monitoringPaused={competitor.monitoringPaused}
+          monitoringPaused={competitor.monitoringPaused || Boolean(competitor.pausedByPlan)}
           onRun={requestRunMonitor}
           onRunAll={runAllMonitors}
           onResume={resumeMonitor}
@@ -904,14 +909,21 @@ function Header({
                 {competitor.category}
               </Badge>
             )}
-            {competitor.monitoringPaused && (
+            {competitor.pausedByPlan ? (
+              <Badge
+                variant="outline"
+                className="gap-1 text-meta uppercase tracking-wide font-medium border-high/40 text-medium"
+              >
+                <PauseCircle size={11} /> Paused · plan limit
+              </Badge>
+            ) : competitor.monitoringPaused ? (
               <Badge
                 variant="outline"
                 className="gap-1 text-meta uppercase tracking-wide font-medium text-muted-foreground"
               >
                 <Pause size={11} /> Paused
               </Badge>
-            )}
+            ) : null}
             {competitor.alertsMuted && (
               <Badge
                 variant="outline"
@@ -1385,6 +1397,29 @@ function MonitoringPausedBanner({ onResume }: { onResume: () => void }) {
       </div>
       <Button size="sm" onClick={onResume} className="shrink-0">
         <Play size={13} /> Resume monitoring
+      </Button>
+    </div>
+  );
+}
+
+// Same blind spot as above, but the user can't resume this one: the org is over its
+// plan's competitor cap, so the scheduler freezes the newest competitors until it
+// upgrades. Without this the tabs read as broken rather than capped.
+function PlanCapPausedBanner() {
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-high/40 bg-high/[0.06] px-4 py-3">
+      <PauseCircle className="h-4 w-4 shrink-0 text-medium" />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-foreground">
+          Monitoring is paused — over your plan limit
+        </p>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          This competitor is above your plan&apos;s competitor cap, so none of its
+          sources are being scraped. Upgrade to resume.
+        </p>
+      </div>
+      <Button size="sm" asChild className="shrink-0">
+        <Link href="/dashboard/settings/billing">Upgrade plan</Link>
       </Button>
     </div>
   );

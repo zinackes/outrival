@@ -1070,10 +1070,17 @@ competitorsRouter.get("/:id", async (c) => {
     platformProfile: competitor.platformProfile,
   };
 
-  const overview = await buildOverview(competitor.id);
+  // Frozen by the plan cap (over-cap after a downgrade): the scheduler skips it
+  // exactly like a user pause, so the detail page has to say so too — the list
+  // already did, and a competitor that reads "active" here would never scrape.
+  const [overview, overCap] = await Promise.all([
+    buildOverview(competitor.id),
+    pausedByPlanCap(orgId, plan),
+  ]);
+  const pausedByPlan = overCap.some((p) => p.id === competitor.id);
 
   return c.json({
-    competitor,
+    competitor: { ...competitor, pausedByPlan },
     monitors: monitorList,
     // Read-only on the Sources page: freshness only, no toggle / frequency / URL.
     automaticMonitors,

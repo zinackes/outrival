@@ -170,7 +170,9 @@ export function SourcesView({ id }: { id: string }) {
                     competitorUrl={competitor.url}
                     fallbacks={fallbacks.filter((f) => f !== label(sourceType))}
                     running={monitor ? isRunning(monitor) : false}
-                    monitoringPaused={competitor.monitoringPaused}
+                    monitoringPaused={
+                      competitor.monitoringPaused || Boolean(competitor.pausedByPlan)
+                    }
                     onRun={requestRunMonitor}
                     onEnable={enableMonitor}
                     onEdit={editMonitor}

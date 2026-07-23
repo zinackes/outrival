@@ -33,6 +33,7 @@ import { lastScanLabel, monitorStatus } from "../competitor-detail/monitor-statu
 import { useMonitorActions } from "../competitor-detail/use-monitor-actions";
 import { CustomSources } from "./custom-sources";
 import { SourceRow } from "./source-row";
+import { sourceCopy } from "./source-copy";
 
 const label = (s: SourceType) => sourceShortLabel(s).toLowerCase();
 
@@ -212,6 +213,16 @@ export function SourcesView({ id }: { id: string }) {
           <ul className="divide-y divide-border">
             {AUTOMATIC_SOURCES.map((sourceType) => {
               const monitor = automaticMonitors.find((m) => m.sourceType === sourceType) ?? null;
+              // An automatic source can also be "not applicable" — a competitor with
+              // no YouTube channel. Report that neutrally here too, so the read-only
+              // list never blames a failure the classifier calls a non-event.
+              const state = sourceState({ sourceType, plan, monitor, targets });
+              const message =
+                state === "not_available"
+                  ? sourceCopy({ state, sourceType }).message
+                  : monitor
+                    ? lastScanLabel(monitor, monitorStatus(monitor, isRunning(monitor)))
+                    : "Not seeded yet";
               return (
                 <li
                   key={sourceType}
@@ -220,11 +231,7 @@ export function SourcesView({ id }: { id: string }) {
                   <span className="w-[132px] shrink-0 truncate text-sm font-medium">
                     {sourceShortLabel(sourceType)}
                   </span>
-                  <span className="text-sm text-muted-foreground">
-                    {monitor
-                      ? lastScanLabel(monitor, monitorStatus(monitor, isRunning(monitor)))
-                      : "Not seeded yet"}
-                  </span>
+                  <span className="text-sm text-muted-foreground">{message}</span>
                 </li>
               );
             })}

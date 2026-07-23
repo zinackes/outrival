@@ -32,7 +32,7 @@ import { isServerScraping } from "../competitor-detail/shared";
 import { lastScanLabel, monitorStatus } from "../competitor-detail/monitor-status";
 import { useMonitorActions } from "../competitor-detail/use-monitor-actions";
 import { CustomSources } from "./custom-sources";
-import { SourceRow } from "./source-row";
+import { SourceRow, SourceName } from "./source-row";
 import { sourceCopy } from "./source-copy";
 
 const label = (s: SourceType) => sourceShortLabel(s).toLowerCase();
@@ -231,9 +231,10 @@ export function SourcesView({ id }: { id: string }) {
                   key={sourceType}
                   className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5"
                 >
-                  <span className="w-[132px] shrink-0 truncate text-sm font-medium">
-                    {sourceShortLabel(sourceType)}
-                  </span>
+                  <SourceName
+                    label={sourceShortLabel(sourceType)}
+                    url={monitor?.pageUrl ?? null}
+                  />
                   <span className="text-sm text-muted-foreground">{message}</span>
                 </li>
               );

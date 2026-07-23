@@ -32,15 +32,30 @@ function feed(reviews: Review[]) {
   };
 }
 
-/** Mock global fetch keyed by storefront; page 1 → body, page ≥ 2 → empty feed. */
-function mockByCountry(map: Record<string, { status: number; reviews?: Review[] }>) {
+type CountryEntry = {
+  status: number;
+  reviews?: Review[];
+  aggregate?: { averageUserRating?: number; userRatingCount?: number };
+};
+
+/**
+ * Mock global fetch keyed by storefront. Both endpoints carry the country as the
+ * first path segment (`/{country}/rss/...` and `/{country}/lookup?...`): RSS page 1 →
+ * body, page ≥ 2 → empty feed; the Lookup endpoint → the storefront's aggregate.
+ */
+function mockByCountry(map: Record<string, CountryEntry>) {
   globalThis.fetch = mock(async (input: string | URL) => {
     const url = typeof input === "string" ? input : input.toString();
-    const country = new URL(url).pathname.split("/")[1] ?? "";
-    const page = Number(url.match(/\/page=(\d+)\//)?.[1] ?? 1);
+    const { pathname } = new URL(url);
+    const country = pathname.split("/")[1] ?? "";
     const entry = map[country];
     if (!entry) return new Response("", { status: 404 });
     if (entry.status !== 200) return new Response("", { status: entry.status });
+    if (pathname.includes("/lookup")) {
+      const app = entry.aggregate ?? {};
+      return new Response(JSON.stringify({ resultCount: 1, results: [app] }), { status: 200 });
+    }
+    const page = Number(url.match(/\/page=(\d+)\//)?.[1] ?? 1);
     if (page >= 2) return new Response(JSON.stringify({ feed: {} }), { status: 200 });
     return new Response(JSON.stringify(feed(entry.reviews ?? [])), { status: 200 });
   }) as typeof fetch;
@@ -52,7 +67,11 @@ function parse(html: string): AppStoreSnapshot {
 
 test("merges configured storefronts, dedups by id, sorts, drops app metadata", async () => {
   mockByCountry({
-    us: { status: 200, reviews: [{ id: "2", rating: 5 }, { id: "10", rating: 4 }] },
+    us: {
+      status: 200,
+      reviews: [{ id: "2", rating: 5 }, { id: "10", rating: 4 }],
+      aggregate: { averageUserRating: 4.77055, userRatingCount: 6302 },
+    },
     fr: { status: 200, reviews: [{ id: "3", rating: 3 }, { id: "10", rating: 4 }] },
   });
 
@@ -66,6 +85,21 @@ test("merges configured storefronts, dedups by id, sorts, drops app metadata", a
   expect(out.metadata.reviewCount).toBe(3);
   // the app-metadata entry (no im:rating) never becomes a review
   expect(snap.reviews.every((r) => r.rating > 0)).toBe(true);
+  // Score + count ride the primary storefront's store-wide aggregate (Lookup API),
+  // NOT the mean of these three recent reviews (which would read ~4.33).
+  expect(snap.averageUserRating).toBe(4.77055);
+  expect(snap.userRatingCount).toBe(6302);
+});
+
+test("aggregate falls back to null when the Lookup endpoint fails (no crash)", async () => {
+  // Reviews succeed but the storefront returns no aggregate → nulls, and the scrape
+  // still succeeds (parseAppStoreSnapshot then falls back to the recent-sample mean).
+  mockByCountry({ us: { status: 200, reviews: [{ id: "1", rating: 5 }] } });
+  const out = await scrape("c1", APP_URL);
+  const snap = parse(out.html);
+  expect(snap.averageUserRating).toBeNull();
+  expect(snap.userRatingCount).toBeNull();
+  expect(snap.reviews.map((r) => r.id)).toEqual(["1"]);
 });
 
 test("defaults to the app URL's storefront when no countries configured", async () => {

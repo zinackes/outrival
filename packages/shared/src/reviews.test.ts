@@ -1,5 +1,10 @@
 import { test, expect } from "bun:test";
-import { validateReviewUrl, isReviewSource, parseTrustpilotSnapshot } from "./reviews";
+import {
+  validateReviewUrl,
+  isReviewSource,
+  parseTrustpilotSnapshot,
+  parseAppStoreSnapshot,
+} from "./reviews";
 
 // ─── Reviews v2 (2026-07-15) ─────────────────────────────────────────────────
 // Scraped aggregators (g2/capterra/trustpilot/trustradius/gartner/playstore) are
@@ -37,6 +42,41 @@ test("parseTrustpilotSnapshot extracts the score + count, rejects the wrong shap
   // an App Store snapshot (different source) is not a Trustpilot snapshot
   expect(parseTrustpilotSnapshot(JSON.stringify({ source: "appstore", reviews: [] }))).toBeNull();
   expect(parseTrustpilotSnapshot("not json")).toBeNull();
+});
+
+test("parseAppStoreSnapshot: score + count come from the store-wide aggregate, not the recent sample", () => {
+  // Recent reviews mean 2.0 (post-update complainers), but the store shows 4.77 / 6302.
+  const snap = JSON.stringify({
+    source: "appstore",
+    appId: "618783545",
+    countries: ["us"],
+    averageUserRating: 4.77055,
+    userRatingCount: 6302,
+    reviews: [
+      { id: "a", rating: 1, title: "bug", content: "broke after update", author: "x", updated: "" },
+      { id: "b", rating: 3, title: "meh", content: "ok", author: "y", updated: "" },
+    ],
+  });
+  const out = parseAppStoreSnapshot(snap)!;
+  expect(out.averageScore).toBe(4.77); // aggregate, rounded to 2dp — NOT the 2.0 sample mean
+  expect(out.reviewCount).toBe(6302); // total ratings — NOT the 2 verbatims fetched
+  expect(out.text).toContain("broke after update"); // verbatims still drive AI extraction
+});
+
+test("parseAppStoreSnapshot: falls back to the recent-sample mean when the aggregate is absent", () => {
+  // Pre-aggregate snapshot (or a failed lookup) → the old behaviour: mean of the sample.
+  const snap = JSON.stringify({
+    source: "appstore",
+    appId: "1",
+    countries: ["us"],
+    reviews: [
+      { id: "a", rating: 5, title: "", content: "great", author: "x", updated: "" },
+      { id: "b", rating: 4, title: "", content: "good", author: "y", updated: "" },
+    ],
+  });
+  const out = parseAppStoreSnapshot(snap)!;
+  expect(out.averageScore).toBe(4.5);
+  expect(out.reviewCount).toBe(2);
 });
 
 test("isReviewSource: App Store is a review source, retired aggregators are not", () => {

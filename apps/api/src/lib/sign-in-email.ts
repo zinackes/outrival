@@ -1,10 +1,12 @@
 import { Resend } from "resend";
+import { emailShell, e } from "@outrival/shared";
 
 // Sign-in email — sent from the API process (Better Auth's emailOTP
 // sendVerificationOTP runs here, not in the workers). One email carries BOTH a
 // 6-digit code (type it, works cross-device) and a one-click link (same token).
 // Inline HTML to match the existing digest/alert pattern (no React Email dep).
-// Dark + amber, English-only (language.md).
+// English-only (language.md). Renders through the shared light/dark shell —
+// these used to carry a second, hand-maintained copy of it that only did dark.
 
 let client: Resend | null = null;
 
@@ -18,52 +20,14 @@ function getResend(): Resend | null {
 
 const AUTH_FROM = process.env.RESEND_AUTH_FROM ?? "Outrival <auth@outrival.io>";
 
-// Bulletproof dark shell. Many webmail clients (Gmail, the temp-mail viewer, …)
-// drop a `background` set on <body> and render the message on a white canvas —
-// which turned our light text invisible (white-on-white). A full-width table with
-// the `bgcolor` attribute (honored far more reliably than CSS background) carries
-// the dark surface; the color-scheme meta keeps supporting clients from inverting
-// colors in light mode. All auth emails share this shell.
-// alt="" so an image-blocking client falls back to the wordmark text, not a
-// duplicated "Outrival". Hosted from the deployed web app (canonical domain).
-const BRAND = `<div style="margin-bottom:40px;">
-        <img src="https://outrival.app/logo-light.png" width="26" height="26" alt="" style="vertical-align:middle;border:0;outline:none;" />
-        <span style="font-size:22px;font-weight:700;letter-spacing:-0.02em;color:#fafafa;vertical-align:middle;padding-left:8px;">Outrival</span>
-      </div>`;
-
-function renderShell(inner: string): string {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <meta name="color-scheme" content="dark" />
-  <meta name="supported-color-schemes" content="dark" />
-</head>
-<body style="margin:0;padding:0;background-color:#0b0b0d;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0b0b0d" style="background-color:#0b0b0d;">
-    <tr>
-      <td align="center" style="padding:0;">
-        <table role="presentation" width="440" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:440px;">
-          <tr>
-            <td style="padding:48px 24px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-              ${BRAND}
-              ${inner}
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
-}
+// Auth emails are narrower than a digest — a code and one sentence.
+const renderShell = (inner: string): string => emailShell(inner, 440);
 
 // Solid surface/border colors (not rgba-on-transparent) so the code box reads even
 // if a client ignores the wrapper background.
 function renderCodeBox(code: string): string {
-  return `<div style="background-color:#16161a;border:1px solid #2a2a2e;border-radius:10px;padding:20px;text-align:center;margin:0 0 28px;">
-        <div style="color:#fafafa;font-size:34px;font-weight:700;letter-spacing:0.35em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">${code}</div>
+  return `<div ${e("card", "border-radius:10px;padding:20px;text-align:center;margin:0 0 28px;")}>
+        <div ${e("text", "font-size:34px;font-weight:700;letter-spacing:0.35em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;")}>${code}</div>
       </div>`;
 }
 
@@ -72,57 +36,57 @@ function renderSignInEmail(
   linkUrl: string,
   expiresInMinutes: number,
 ): string {
-  return renderShell(`<h1 style="color:#fafafa;font-size:20px;font-weight:600;margin:0 0 12px;">Sign in to Outrival</h1>
+  return renderShell(`<h1 ${e("text", "font-size:20px;font-weight:600;margin:0 0 12px;")}>Sign in to Outrival</h1>
 
-      <p style="color:#a1a1aa;font-size:14px;line-height:1.6;margin:0 0 28px;">
+      <p ${e("muted", "font-size:14px;line-height:1.6;margin:0 0 28px;")}>
         Enter this code to finish signing in. It expires in ${expiresInMinutes} minutes
         and can only be used once.
       </p>
 
       ${renderCodeBox(code)}
 
-      <p style="color:#a1a1aa;font-size:14px;line-height:1.6;margin:0 0 16px;">
+      <p ${e("muted", "font-size:14px;line-height:1.6;margin:0 0 16px;")}>
         Or just click the button to sign in on this device:
       </p>
 
-      <a href="${linkUrl}" style="display:inline-block;background-color:#6366f1;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;padding:12px 24px;border-radius:6px;">
+      <a href="${linkUrl}" ${e("btn", "display:inline-block;font-size:14px;font-weight:600;text-decoration:none;padding:12px 24px;border-radius:6px;")}>
         Sign in to Outrival →
       </a>
 
-      <hr style="border:none;border-top:1px solid #2a2a2e;margin:28px 0 20px;" />
+      <hr ${e("rule", "border-width:0;border-top-width:1px;border-top-style:solid;margin:28px 0 20px;")} />
 
-      <p style="color:#71717a;font-size:12px;line-height:1.6;margin:0;">
+      <p ${e("faint", "font-size:12px;line-height:1.6;margin:0;")}>
         If you didn't request this, you can ignore this email — your account stays secure.
       </p>`);
 }
 
 function renderEmailChangeEmail(code: string, expiresInMinutes: number): string {
-  return renderShell(`<h1 style="color:#fafafa;font-size:20px;font-weight:600;margin:0 0 12px;">Confirm your new email</h1>
+  return renderShell(`<h1 ${e("text", "font-size:20px;font-weight:600;margin:0 0 12px;")}>Confirm your new email</h1>
 
-      <p style="color:#a1a1aa;font-size:14px;line-height:1.6;margin:0 0 28px;">
+      <p ${e("muted", "font-size:14px;line-height:1.6;margin:0 0 28px;")}>
         Enter this code in Outrival to set this address as your new sign-in email.
         It expires in ${expiresInMinutes} minutes and can only be used once.
       </p>
 
       ${renderCodeBox(code)}
 
-      <p style="color:#71717a;font-size:12px;line-height:1.6;margin:0;">
+      <p ${e("faint", "font-size:12px;line-height:1.6;margin:0;")}>
         If you didn't request this change, you can ignore this email — your account
         email stays the same.
       </p>`);
 }
 
 function renderReauthEmail(code: string, expiresInMinutes: number): string {
-  return renderShell(`<h1 style="color:#fafafa;font-size:20px;font-weight:600;margin:0 0 12px;">Confirm a sensitive action</h1>
+  return renderShell(`<h1 ${e("text", "font-size:20px;font-weight:600;margin:0 0 12px;")}>Confirm a sensitive action</h1>
 
-      <p style="color:#a1a1aa;font-size:14px;line-height:1.6;margin:0 0 28px;">
+      <p ${e("muted", "font-size:14px;line-height:1.6;margin:0 0 28px;")}>
         Enter this code to confirm a destructive action on your account (such as
         deleting your workspace). It expires in ${expiresInMinutes} minutes.
       </p>
 
       ${renderCodeBox(code)}
 
-      <p style="color:#71717a;font-size:12px;line-height:1.6;margin:0;">
+      <p ${e("faint", "font-size:12px;line-height:1.6;margin:0;")}>
         If you didn't start this, ignore this email and consider changing how you sign in —
         nothing has been deleted.
       </p>`);
@@ -159,16 +123,16 @@ export async function sendReauthCodeEmail({
 }
 
 function renderSetPasswordEmail(code: string, expiresInMinutes: number): string {
-  return renderShell(`<h1 style="color:#fafafa;font-size:20px;font-weight:600;margin:0 0 12px;">Confirm your new password</h1>
+  return renderShell(`<h1 ${e("text", "font-size:20px;font-weight:600;margin:0 0 12px;")}>Confirm your new password</h1>
 
-      <p style="color:#a1a1aa;font-size:14px;line-height:1.6;margin:0 0 28px;">
+      <p ${e("muted", "font-size:14px;line-height:1.6;margin:0 0 28px;")}>
         Enter this code in Outrival to save your new account password. It expires in
         ${expiresInMinutes} minutes and can only be used once.
       </p>
 
       ${renderCodeBox(code)}
 
-      <p style="color:#71717a;font-size:12px;line-height:1.6;margin:0;">
+      <p ${e("faint", "font-size:12px;line-height:1.6;margin:0;")}>
         If you didn't request this, ignore this email — your password stays unchanged.
       </p>`);
 }

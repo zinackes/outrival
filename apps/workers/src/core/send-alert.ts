@@ -17,7 +17,7 @@ import { sendWebhook } from "../lib/webhook";
 import { pushWebhook } from "../lib/crm-webhook";
 import { getResend, ALERT_FROM } from "../lib/resend";
 import { escapeHtml } from "../lib/escape-html";
-import { darkEmailShell } from "../lib/email-shell";
+import { emailShell, e } from "../lib/email-shell";
 
 const InputSchema = z.object({
   signalId: z.string(),
@@ -169,12 +169,12 @@ export async function runSendAlert(payload: z.input<typeof InputSchema>) {
 
     if (org.digestEmail && !sentChannels.has("email")) {
       try {
-        const html = darkEmailShell(
-          `<p style="font-size: 12px; color: #a3a3a3; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 8px;">${signal.severity.toUpperCase()} · ${signal.category}</p>
-  <h2 style="margin: 0 0 12px; font-family: Syne, sans-serif; color: #fafafa;">${escapeHtml(competitor.name)}</h2>
-  <p style="margin: 0 0 12px;">${escapeHtml(signal.insight)}</p>
-  ${signal.soWhat ? `<p style="color: #818cf8; margin: 0 0 12px;">→ ${escapeHtml(signal.soWhat)}</p>` : ""}
-  ${signal.recommendedAction ? `<p style="margin: 0; color: #d4d4d4;"><strong>Action:</strong> ${escapeHtml(signal.recommendedAction)}</p>` : ""}`,
+        const html = emailShell(
+          `<p ${e("muted", "font-size:12px;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 8px;")}>${signal.severity.toUpperCase()} · ${signal.category}</p>
+  <h2 ${e("text", "margin:0 0 12px;")}>${escapeHtml(competitor.name)}</h2>
+  <p ${e("text", "margin:0 0 12px;")}>${escapeHtml(signal.insight)}</p>
+  ${signal.soWhat ? `<p ${e("accent", "margin:0 0 12px;")}>→ ${escapeHtml(signal.soWhat)}</p>` : ""}
+  ${signal.recommendedAction ? `<p ${e("muted", "margin:0;")}><strong>Action:</strong> ${escapeHtml(signal.recommendedAction)}</p>` : ""}`,
         );
         await getResend().emails.send({
           from: ALERT_FROM,

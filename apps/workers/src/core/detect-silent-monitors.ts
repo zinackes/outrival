@@ -11,7 +11,7 @@ import {
 } from "@outrival/db";
 import { sendSlackMessage } from "@outrival/shared";
 import { decideDispatch } from "../lib/notification-dispatcher";
-import { darkEmailShell } from "../lib/email-shell";
+import { emailShell, e } from "../lib/email-shell";
 import { getResend, ALERT_FROM } from "../lib/resend";
 
 // Patch-27 — daily sweep for monitors that have produced nothing for a long time.
@@ -202,9 +202,9 @@ async function notifyOrg(orgId: string, list: SilentMonitor[]): Promise<void> {
 }
 
 function silentEmailHtml(title: string, body: string, href: string): string {
-  return darkEmailShell(
-    `<h1 style="font-size:18px;color:#fff;margin:0 0 12px">${title}</h1>
-      <p style="font-size:14px;line-height:1.6;color:#a3a3a3;margin:0 0 24px">${body}</p>
-      <a href="${href}" style="display:inline-block;background-color:#6366f1;color:#ffffff;font-weight:600;font-size:14px;text-decoration:none;padding:10px 18px;border-radius:8px">Review the source</a>`,
+  return emailShell(
+    `<h1 ${e("text", "font-size:18px;margin:0 0 12px;")}>${title}</h1>
+      <p ${e("muted", "font-size:14px;line-height:1.6;margin:0 0 24px;")}>${body}</p>
+      <a href="${href}" ${e("btn", "display:inline-block;font-weight:600;font-size:14px;text-decoration:none;padding:10px 18px;border-radius:8px;")}>Review the source</a>`,
   );
 }

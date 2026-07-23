@@ -34,6 +34,7 @@ export * from "./platform/profile";
 export * from "./platform/labels";
 export * from "./social-proof/logo-name";
 export * from "./email/escape-html";
+export * from "./email/theme";
 export * from "./email/shell";
 export * from "./email/digest";
 export * from "./email/lifecycle";

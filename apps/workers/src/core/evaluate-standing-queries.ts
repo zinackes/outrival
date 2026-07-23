@@ -15,7 +15,7 @@ import { loggedAi } from "../lib/analytics";
 import { decideDispatch } from "../lib/notification-dispatcher";
 import { evaluateFreshAnswer, matchesStandingQuery } from "../lib/standing-queries";
 import { getResend, ALERT_FROM } from "../lib/resend";
-import { darkEmailShell } from "../lib/email-shell";
+import { emailShell, e } from "../lib/email-shell";
 import { escapeHtml } from "../lib/escape-html";
 
 // Standing-query re-evaluation (docs/ask-outrival.md). Event-triggered from
@@ -113,11 +113,11 @@ async function alertStandingQuery(
     if (!org?.alertsEnabled || !org.digestEmail) return;
     if (!PLAN_LIMITS[org.plan].features.realtimeAlerts) return;
     try {
-      const html = darkEmailShell(
-        `<p style="font-size: 12px; color: #a3a3a3; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 8px;">Watched question update</p>
-  <h2 style="margin: 0 0 12px; font-family: Syne, sans-serif; color: #fafafa;">${escapeHtml(query.question)}</h2>
-  ${changeSummary ? `<p style="color: #d4d4d4; margin: 0 0 16px;">${escapeHtml(changeSummary)}</p>` : ""}
-  <a href="${WEB_URL}/dashboard/ask" style="color: #818cf8;">See the updated answer →</a>`,
+      const html = emailShell(
+        `<p ${e("muted", "font-size:12px;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 8px;")}>Watched question update</p>
+  <h2 ${e("text", "margin:0 0 12px;")}>${escapeHtml(query.question)}</h2>
+  ${changeSummary ? `<p ${e("muted", "margin:0 0 16px;")}>${escapeHtml(changeSummary)}</p>` : ""}
+  <a href="${WEB_URL}/dashboard/ask" ${e("accent")}>See the updated answer →</a>`,
       );
       await getResend().emails.send({
         from: ALERT_FROM,

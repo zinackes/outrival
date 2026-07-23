@@ -1909,6 +1909,10 @@ export interface AiVisibilityPrompt {
 export interface AiVisibilityData {
   enabled: boolean;
   lastRunAt: string | null;
+  // Newest run's timestamp regardless of mentions (lastRunAt tracks the DISPLAYED run,
+  // which can lag on a zero-mention run). Advancing past a pre-run baseline is the
+  // "this run wrote rows" signal the Run-now poller uses.
+  latestRunAt: string | null;
   leaderboard: AiVisibilityLeaderboard[];
   breakdown: AiVisibilityBreakdownRow[];
   trendKeys: string[];
@@ -2426,7 +2430,11 @@ export const api = {
   deleteAiVisibilityPrompt: (id: string) =>
     request<{ ok: true }>(`/api/ai-visibility/prompts/${id}`, { method: "DELETE" }),
   runAiVisibility: () =>
-    request<{ runId: string }>("/api/ai-visibility/run", { method: "POST" }),
+    request<{ runId: string | null }>("/api/ai-visibility/run", { method: "POST" }),
+  // Lifecycle of a "Run now" job — lets the page settle a finished-but-empty run
+  // (engine unreachable) fast instead of spinning out a blind deadline.
+  aiVisibilityRunStatus: (runId: string) =>
+    request<{ state: string; done: boolean }>(`/api/ai-visibility/run/${runId}`),
   compareCompetitors: (ids: string[]) =>
     request<{ competitors: CompareColumn[] }>(
       `/api/compare?competitorIds=${ids.map(encodeURIComponent).join(",")}`,

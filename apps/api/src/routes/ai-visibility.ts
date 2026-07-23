@@ -7,6 +7,7 @@ import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
 import { enqueueJob } from "../lib/queue";
 import { getOrgPlan, isFeatureAllowed } from "../lib/plan";
+import { getJobState } from "../lib/queue-admin";
 import { primaryProductId, productSelfCompetitorId, productCompetitorIds } from "../lib/products";
 import { analyticsQueryResult, sql } from "../lib/analytics-safe";
 
@@ -129,6 +130,11 @@ aiVisibilityRouter.get("/", async (c) => {
   const displayRun = runsMeta.find((r) => num(r.mentions) > 0) ?? runsMeta[0];
   const latestRunId = displayRun?.runId ?? null;
   const lastRunAt = displayRun?.recordedAt ?? null;
+  // Newest run overall (runsMeta is ordered by recorded_at desc), regardless of
+  // mentions — the "Run now" poller compares this against its pre-run baseline to know
+  // a fresh run actually wrote rows, which lastRunAt can't tell when a zero-mention run
+  // leaves an older mentioned run as the one on display.
+  const latestRunAt = runsMeta[0]?.recordedAt ?? null;
 
   type LbRow = { engine: string; competitorId: string; mentions: number; total: number; avgRank: number | null };
   type RawRow = { promptId: string; engine: string; competitorId: string; mentioned: number; promptNamed: number; rank: number | null; answerExcerpt: string | null };
@@ -279,6 +285,7 @@ aiVisibilityRouter.get("/", async (c) => {
   return c.json({
     enabled,
     lastRunAt,
+    latestRunAt,
     leaderboard,
     breakdown,
     trendKeys,
@@ -361,4 +368,21 @@ aiVisibilityRouter.post("/run", async (c) => {
   // runs stay silent.
   const jobId = await enqueueJob(scrapeAiVisibility, { orgId, notifyOnComplete: true });
   return c.json({ runId: jobId });
+});
+
+// Poll one "Run now" job's lifecycle so the page can tell a finished-but-empty run
+// (answer engine unreachable → zero rows) from one still in flight, instead of
+// waiting out a blind client deadline. pg-boss keeps `state` even though it drops the
+// handler's return value, so the page pairs `done` with whether the board has rows.
+aiVisibilityRouter.get("/run/:id", async (c) => {
+  const orgId = await ensureUserOrg(c.get("user").id);
+  const id = c.req.param("id");
+  // Job ids are pg-boss UUIDs. A malformed id (or a null runId echoed back after a
+  // singleton dedup) can't map to a job → tell the page to fall back to its deadline.
+  if (!/^[0-9a-fA-F-]{36}$/.test(id)) return c.json({ state: "unknown", done: false });
+  const job = await getJobState(id);
+  // Not found (already pruned) or another org's job → never leak cross-tenant state.
+  if (!job || (job.orgId && job.orgId !== orgId)) return c.json({ state: "unknown", done: false });
+  const done = job.state === "completed" || job.state === "failed" || job.state === "cancelled";
+  return c.json({ state: job.state, done });
 });

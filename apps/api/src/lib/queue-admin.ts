@@ -67,6 +67,26 @@ export async function getQueueRows(): Promise<QueueRow[] | null> {
   }
 }
 
+/**
+ * Coarse lifecycle state of ONE job by id — for the AI-Visibility "Run now" poller,
+ * which needs to tell a finished-but-empty run from one still in flight. pg-boss
+ * drops the handler's return value (see @outrival/queue `work`), so state is all we
+ * can read here; the page pairs `done` with whether the board gained rows. Returns
+ * the enqueuing org (from the payload) too, so the caller can tenant-guard by id.
+ */
+export async function getJobState(
+  id: string,
+): Promise<{ state: string; orgId: string | null } | null> {
+  const rows = await sql<{ state: string; orgId: string | null }>(
+    `select state, data->>'orgId' as "orgId"
+       from pgboss.job
+      where id = $1::uuid
+      limit 1`,
+    [id],
+  );
+  return rows?.[0] ?? null;
+}
+
 /** Recent failures across every queue, newest first. */
 export async function getRecentFailures(limit = 25): Promise<(JobRow & { error: string | null })[] | null> {
   return sql(

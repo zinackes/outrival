@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Eye, Play, Plus, Trash2, Pencil, Check, X, ChevronRight, Lock, Loader2, Box } from "lucide-react";
+import { Eye, Play, Plus, Trash2, Pencil, Check, X, ChevronRight, Lock, Loader2, Box, AlertTriangle } from "lucide-react";
 import { aiVisibilityQuery, productsListQuery } from "@/lib/queries";
 import {
   api,
@@ -60,6 +60,10 @@ export function AiVisibilityView({ locked = false }: { locked?: boolean }) {
   const primaryProduct = activeProducts.find((p) => p.isPrimary) ?? null;
   const scopedToPrimary = productId === undefined && activeProducts.length > 1 && !!primaryProduct;
   const [running, setRunning] = useState(false);
+  const [runId, setRunId] = useState<string | null>(null);
+  // Set when a finished run produced no rows (engine unreachable / quota) so the page
+  // says so plainly instead of silently reverting to the empty state.
+  const [emptyRun, setEmptyRun] = useState(false);
   const [draft, setDraft] = useState("");
   const [engine, setEngine] = useState<string | null>(null);
 
@@ -72,19 +76,33 @@ export function AiVisibilityView({ locked = false }: { locked?: boolean }) {
     refetchInterval: running ? 5_000 : false,
   });
 
+  // Poll the job's lifecycle so we can settle the moment the worker finishes, rather
+  // than waiting out a blind deadline. pg-boss drops the handler's return value, so
+  // `done` only says "finished" — we pair it with whether the board gained rows to
+  // tell a real run from an engine-unreachable one.
+  const statusQ = useQuery({
+    queryKey: ["ai-visibility-run", runId],
+    queryFn: () => api.aiVisibilityRunStatus(runId as string),
+    enabled: running && !!runId,
+    refetchInterval: running && !!runId ? 3_000 : false,
+  });
+
   const baselineRunAt = useRef<string | null>(null);
   const runDeadline = useRef(0);
-  const landedAt = useRef(0);
+  const jobDoneAt = useRef(0);
 
   const refresh = () => qc.invalidateQueries({ queryKey: ["ai-visibility"] });
 
   async function runNow() {
-    baselineRunAt.current = q.data?.lastRunAt ?? null;
+    baselineRunAt.current = q.data?.latestRunAt ?? null;
     runDeadline.current = Date.now() + 180_000;
-    landedAt.current = 0;
+    jobDoneAt.current = 0;
+    setEmptyRun(false);
+    setRunId(null);
     setRunning(true);
     try {
-      await api.runAiVisibility();
+      const { runId: id } = await api.runAiVisibility();
+      setRunId(id);
       toast.success("Visibility check started — results appear as engines respond.");
     } catch {
       setRunning(false);
@@ -92,22 +110,36 @@ export function AiVisibilityView({ locked = false }: { locked?: boolean }) {
     }
   }
 
-  // Settle the run once fresh rows land (plus a short tail so the leaderboard fills), or
-  // after a hard deadline if nothing shows (the notification bell still fires on true
-  // completion). Re-checked on every poll via q.dataUpdatedAt.
+  // Settle the run into ONE of two outcomes: updated (the run wrote fresh rows) or empty
+  // (the worker finished but wrote nothing — the answer engine didn't respond). The
+  // "wrote rows" signal is `latestRunAt` advancing past the pre-run baseline (the newest
+  // run regardless of mentions; the data read is `cache:"no-store"`, so a 5s poll sees
+  // it fresh). We learn the job finished from the status poll, then give an ~8s grace
+  // for that next poll before declaring the run empty. The hard deadline is a backstop
+  // for when the status endpoint can't see the job (already pruned / dedup).
   useEffect(() => {
     if (!running) return;
     const now = Date.now();
-    const advanced = !!q.data?.lastRunAt && q.data.lastRunAt !== baselineRunAt.current;
-    if (advanced && landedAt.current === 0) landedAt.current = now;
-    if ((landedAt.current > 0 && now - landedAt.current > 20_000) || now > runDeadline.current) {
+    const advanced = !!q.data?.latestRunAt && q.data.latestRunAt !== baselineRunAt.current;
+    if (statusQ.data?.done && jobDoneAt.current === 0) jobDoneAt.current = now;
+
+    const graceElapsed = jobDoneAt.current > 0 && now - jobDoneAt.current > 8_000;
+    const deadlineHit = now > runDeadline.current;
+
+    if (advanced) {
       setRunning(false);
-      if (landedAt.current > 0) toast.success("AI Visibility results updated.");
+      toast.success("AI Visibility results updated.");
+    } else if (graceElapsed || deadlineHit) {
+      setRunning(false);
+      setEmptyRun(true);
+      toast.error(
+        "The run finished but no results came back — the answer engine may be temporarily unavailable.",
+      );
     }
-  }, [q.dataUpdatedAt, q.errorUpdatedAt, q.data?.lastRunAt, running]);
+  }, [q.dataUpdatedAt, q.errorUpdatedAt, q.data?.latestRunAt, statusQ.data?.done, running]);
 
   const runLanding =
-    running && !!q.data?.lastRunAt && q.data.lastRunAt !== baselineRunAt.current;
+    running && !!q.data?.latestRunAt && q.data.latestRunAt !== baselineRunAt.current;
   async function addPrompt() {
     const p = draft.trim();
     if (p.length < 3) return;
@@ -243,6 +275,8 @@ export function AiVisibilityView({ locked = false }: { locked?: boolean }) {
       )}
 
       {running && <RunProgressBanner landing={runLanding} />}
+
+      {emptyRun && !running && <EngineUnreachableBanner onRetry={runNow} />}
 
       {!hasData ? (
         <EmptyState onRun={runNow} running={running} />
@@ -723,6 +757,33 @@ function RunProgressBanner({ landing }: { landing: boolean }) {
             : "We're asking Gemini and Perplexity your tracked prompts. This usually takes about a minute."}
         </p>
       </div>
+    </div>
+  );
+}
+
+// Shown after a run finishes having reached no answer engine (missing key / quota /
+// outage) — the honest counterpart to the completion toast, so an empty board reads as
+// "the engine didn't respond", not "you're invisible everywhere".
+function EngineUnreachableBanner({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div
+      role="status"
+      className="flex items-start gap-3 rounded-md border border-border bg-card px-4 py-3"
+    >
+      <AlertTriangle className="mt-0.5 size-4 shrink-0 text-critical" aria-hidden />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-foreground">
+          The last run couldn&apos;t reach the answer engine
+        </p>
+        <p className="text-dense text-muted-foreground">
+          No results came back, so the numbers below are unchanged. This is usually a
+          temporary engine or quota issue — try again in a moment.
+        </p>
+      </div>
+      <Button onClick={onRetry} size="sm" variant="outline" className="shrink-0">
+        <Play className="size-4" />
+        Retry
+      </Button>
     </div>
   );
 }

@@ -233,6 +233,13 @@ export async function runScrapeAiVisibility(payload: z.input<typeof InputSchema>
       }
     }
 
+    // A run is DEGRADED when no engine ever answered (totalQueries === 0): a missing
+    // engine key, an API error, or an exhausted quota makes queryEngine return null
+    // for every prompt, so nothing is written and the board stays empty. Don't let
+    // that masquerade as a successful, populated run — it's the difference between
+    // "your latest results are ready" and "we couldn't reach the answer engine".
+    const engineReached = totalQueries > 0;
+
     logger.log("Completed scrape-ai-visibility", {
       orgId,
       products: productList.length,
@@ -240,15 +247,25 @@ export async function runScrapeAiVisibility(payload: z.input<typeof InputSchema>
       queries: totalQueries,
       rowsWritten: totalRows,
       signalled,
+      degraded: !engineReached,
     });
 
     if (notifyOnComplete) {
-      await notifyJobComplete({
-        orgId,
-        title: "AI Visibility run complete",
-        body: `We checked ${totalPrompts} prompt${totalPrompts === 1 ? "" : "s"} across ${productList.length} product${productList.length === 1 ? "" : "s"}. Your latest results are ready to view.`,
-        linkUrl: "/dashboard/ai-visibility",
-      });
+      await notifyJobComplete(
+        engineReached
+          ? {
+              orgId,
+              title: "AI Visibility run complete",
+              body: `We checked ${totalPrompts} prompt${totalPrompts === 1 ? "" : "s"} across ${productList.length} product${productList.length === 1 ? "" : "s"}. Your latest results are ready to view.`,
+              linkUrl: "/dashboard/ai-visibility",
+            }
+          : {
+              orgId,
+              title: "AI Visibility run couldn't reach the answer engine",
+              body: "The AI answer engine didn't respond, so this run produced no results. This is usually a temporary engine or quota issue — try again shortly.",
+              linkUrl: "/dashboard/ai-visibility",
+            },
+      );
     }
 
     return {
@@ -257,6 +274,7 @@ export async function runScrapeAiVisibility(payload: z.input<typeof InputSchema>
       queries: totalQueries,
       rowsWritten: totalRows,
       signalled,
+      degraded: !engineReached,
       runId,
     };
 }

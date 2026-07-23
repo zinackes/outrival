@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/metadata";
 import { LegalDoc } from "@/components/legal/legal-doc";
 import { CONTACT } from "@/lib/legal/entity";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
+  path: "/acceptable-use",
   title: "Acceptable Use Policy",
-  description: "What you may and may not do with Outrival.",
-  alternates: { canonical: "/acceptable-use" },
-};
+  description:
+    "What you may and may not do with Outrival.",
+});
 
 export default function AcceptableUsePage() {
   return (

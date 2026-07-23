@@ -1,27 +1,18 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/metadata";
 import { DocPage } from "@/components/landing/doc-page";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
+  path: "/about",
   title: "About",
   description:
-    "Why Outrival exists, who builds it, and the principles behind it — competitive intelligence written by AI, from a solo founder in Paris.",
-  alternates: { canonical: "/about" },
-  openGraph: {
-    type: "website",
-    url: "/about",
-    title: "About Outrival",
-    description:
-      "Why Outrival exists, who builds it, and the principles behind it — from a solo founder in Paris, self-funded and EU-hosted.",
-    // og:image comes from the root app/opengraph-image.tsx file convention — leave
-    // openGraph.images unset so Next merges the shared card rather than overriding it.
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "About Outrival",
-    description:
-      "Competitive intelligence written by AI — from a solo founder in Paris, self-funded and EU-hosted.",
-  },
-};
+    "Why Outrival exists, who builds it, and the principles behind it — competitive intelligence written by AI, from a solo founder in France.",
+  socialTitle: "About Outrival",
+  socialDescription:
+    "Why Outrival exists, who builds it, and the principles behind it — from a solo founder in France, self-funded and EU-hosted.",
+  twitterDescription:
+    "Competitive intelligence written by AI — from a solo founder in France, self-funded and EU-hosted.",
+});
 
 const PRINCIPLES = [
   {
@@ -41,11 +32,15 @@ const PRINCIPLES = [
     body: "You read the conclusion — what changed and why it matters. You don’t dig through diffs to find it.",
   },
   {
-    title: "Ship weekly.",
+    // Deliberately not a cadence promise. Shipping really is continuous, but
+    // the changelog is a curated release log, not a weekly obligation — and a
+    // principle whose proof link can contradict it in one click is worth less
+    // than no principle at all.
+    title: "Ship constantly.",
     body: (
       <>
-        Small, real improvements land every week — you can see them in the{" "}
-        <a href="/changelog">changelog</a>.
+        Small, real improvements land all the time — the notable ones show up
+        in the <a href="/changelog">changelog</a>.
       </>
     ),
   },
@@ -74,7 +69,7 @@ export default function AboutPage() {
         <section className="flex flex-col gap-3">
           <h2 className="!mt-0 text-foreground">Who is building this</h2>
           <p>
-            I&apos;m Mathys — one person, in Paris, building Outrival and
+            I&apos;m Mathys — one person, in France, building Outrival and
             funding it entirely from the people who pay for it. There are no
             investors to return capital to and no sales team to keep busy.
             That&apos;s not a story about hustle; it&apos;s structural. It&apos;s

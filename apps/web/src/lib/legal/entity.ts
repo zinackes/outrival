@@ -22,12 +22,17 @@ export const ENTITY = {
   capital: TODO,
   /** SIREN / SIRET. TODO. */
   siret: TODO,
-  /** RCS registration + city, e.g. "RCS Paris 000 000 000". TODO. */
+  /** RCS registration + city, e.g. "RCS <city> 000 000 000". TODO. */
   rcs: TODO,
   /** Intra-EU VAT number, e.g. "FR00 000000000". TODO. */
   vat: TODO,
-  /** Registered office address. TODO — keep the city if known. */
-  address: `${TODO}, Paris, France`,
+  /**
+   * Registered office address. TODO — fill from the registration, city
+   * included. Deliberately NOT pre-filled with a city: for a micro-entreprise
+   * this is the founder's actual address, and the marketing pages say only
+   * "France" so that nothing can contradict this line once it is filled.
+   */
+  address: TODO,
   /** Named individual responsible for publication (LCEN). TODO. */
   publicationDirector: TODO,
   /** Country of establishment / applicable law. */
@@ -74,10 +79,10 @@ export const HOST = {
 
 /** Document version + last-updated date, shown on every legal page. */
 export const LEGAL_VERSION = {
-  version: "1.0",
-  updatedIso: "2026-07-04",
-  updatedEn: "July 4, 2026",
-  updatedFr: "4 juillet 2026",
+  version: "1.1",
+  updatedIso: "2026-07-22",
+  updatedEn: "July 22, 2026",
+  updatedFr: "22 juillet 2026",
 } as const;
 
 export type Subprocessor = {
@@ -108,6 +113,13 @@ export const SUBPROCESSORS: Subprocessor[] = [
     outsideEea: false,
   },
   {
+    name: "netcup GmbH",
+    purpose: { en: "Background job orchestration & scraping workers (pg-boss queue)", fr: "Orchestration des jobs & workers de scraping (file pg-boss)" },
+    data: { en: "Job payloads (competitor & workspace identifiers)", fr: "Charges des jobs (identifiants concurrents & workspace)" },
+    location: "Austria (EU)",
+    outsideEea: false,
+  },
+  {
     name: "Neon",
     purpose: { en: "Managed PostgreSQL database (relational + analytics)", fr: "Base PostgreSQL managée (relationnel + analytics)" },
     data: { en: "Account, workspace config, signals, contact-form data", fr: "Compte, configuration, signaux, données du formulaire de contact" },
@@ -129,14 +141,6 @@ export const SUBPROCESSORS: Subprocessor[] = [
     location: "Global (Cloudflare)",
     outsideEea: true,
     transfer: "EU SCC (Cloudflare DPA)",
-  },
-  {
-    name: "Trigger.dev",
-    purpose: { en: "Background job orchestration (scraping, AI, digests)", fr: "Orchestration des jobs (scraping, IA, digests)" },
-    data: { en: "Job payloads (competitor & workspace identifiers)", fr: "Charges des jobs (identifiants concurrents & workspace)" },
-    location: "United States",
-    outsideEea: true,
-    transfer: "EU SCC",
   },
   {
     name: "Resend",

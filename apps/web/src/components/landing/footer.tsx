@@ -45,7 +45,7 @@ export function Footer() {
             </p>
             <div className="mt-4 inline-flex items-center gap-2 text-xs text-text-subtle">
               <span className="size-1.5 rounded-full bg-positive" /> Made in
-              Paris · hosted in EU
+              France · hosted in EU
             </div>
           </div>
           <div className="grid grid-cols-2 gap-8 sm:grid-cols-3 lg:grid-cols-5">

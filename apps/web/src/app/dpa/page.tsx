@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/metadata";
 import { LegalDoc } from "@/components/legal/legal-doc";
 import { ENTITY, CONTACT } from "@/lib/legal/entity";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
+  path: "/dpa",
   title: "Data Processing Agreement",
   description:
     "Outrival's GDPR Article 28 Data Processing Agreement for business customers.",
-  alternates: { canonical: "/dpa" },
-};
+});
 
 export default function DpaPage() {
   return (

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/metadata";
 import Link from "next/link";
 import { Rss } from "lucide-react";
 import { getAllPosts, formatPostDate } from "@/lib/blog";
@@ -7,18 +8,13 @@ import { BlogShell } from "@/components/blog/blog-shell";
 const DESCRIPTION =
   "Field notes on competitive intelligence — how competitors move, what the tools really cost, and how Outrival is built. Quality over volume, roughly one a month.";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
+  path: "/blog",
   title: "Blog",
   description: DESCRIPTION,
-  alternates: { canonical: "/blog", types: { "application/rss+xml": "/blog/rss.xml" } },
-  openGraph: {
-    type: "website",
-    url: "/blog",
-    title: "Outrival Blog",
-    description: DESCRIPTION,
-  },
-  twitter: { card: "summary_large_image", title: "Outrival Blog", description: DESCRIPTION },
-};
+  socialTitle: "Outrival Blog",
+  alternateTypes: { "application/rss+xml": "/blog/rss.xml" },
+});
 
 export default function BlogIndexPage() {
   const posts = getAllPosts();

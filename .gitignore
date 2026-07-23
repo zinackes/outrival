@@ -27,3 +27,6 @@ PRODUCT.md
 
 # Local git worktrees created by Claude Code agents
 .claude/worktrees/
+
+# Audit mailbox credentials are env-only (scripts/poll-inbox.ts reads AUDIT_IMAP_*).
+audit/**/*.local

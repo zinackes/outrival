@@ -1,14 +1,15 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/metadata";
 import { LegalDoc } from "@/components/legal/legal-doc";
 import { CookiePreferencesButton } from "@/components/legal/cookie-preferences-button";
 import { CONTACT } from "@/lib/legal/entity";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
+  path: "/cookies",
   title: "Cookie Policy",
   description:
     "The cookies and similar technologies Outrival uses, and how to control them.",
-  alternates: { canonical: "/cookies" },
-};
+});
 
 const manageClass = "text-primary underline underline-offset-2 hover:opacity-80";
 

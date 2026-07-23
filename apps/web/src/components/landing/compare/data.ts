@@ -6,12 +6,19 @@
 // and Klue do NOT publish public pricing, so all competitor figures are dated,
 // third-party estimates attributed to their source — never invented. Outrival's
 // own prices are its published list. Keep PRICE_AS_OF in step with any refresh.
+//
+// PROCESS: the third-party figures here (Vendr's Crayon marketplace aggregate)
+// move as new purchases land, even while Vendr's own "last updated" stamp sits
+// still. Re-read the source every time LAST_REVIEWED is bumped, and align all
+// three surfaces that quote it: this file, /vs/crayon's meta description, and
+// content/blog/what-crayon-actually-costs-in-2026.mdx. A stale number one click
+// from its own source is worse here than no number.
 
 export const PRICE_AS_OF = "July 2026";
 // Visible freshness stamp on every comparison page. Precise to the day because
 // competitor pricing moves and a dated review is the reliability signal readers
 // (and LLMs) look for. Bump this whenever the copy or figures are re-checked.
-export const LAST_REVIEWED = "July 12, 2026";
+export const LAST_REVIEWED = "July 22, 2026";
 export const SITE_URL = "https://outrival.app";
 
 export type CompetitorKey = "crayon" | "klue";
@@ -58,7 +65,7 @@ export const OUTRIVAL_WINS: { title: string; body: string }[] = [
   },
   {
     title: "EU hosting and monthly terms matter to you",
-    body: "Your data is stored in the EU (France), GDPR-first by default, and you can cancel in one click. No annual lock-in to leave.",
+    body: "Your data is stored in the EU, GDPR-first by default, and you can cancel in one click. No annual lock-in to leave.",
   },
 ];
 
@@ -116,9 +123,9 @@ export const COMPETITORS: Record<CompetitorKey, {
     },
     pricing: {
       headline: "Custom quote, sales-led",
-      estimate: "≈ $28,750 / year median",
+      estimate: "≈ $29,500 / year median",
       detail:
-        "Crayon does not publish public pricing. Vendr reports a median annual cost of $28,750 across 90 purchases, ranging $12,450 to $47,100. Battlecards, integrations and services can add to the base.",
+        "Crayon does not publish public pricing. Vendr reports a median annual cost of $29,500 across 92 purchases, ranging $12,600 to $46,500 (Vendr, last updated February 2026). Battlecards, integrations and services can add to the base.",
       source: "Vendr marketplace + G2",
     },
     betterWhen: [
@@ -146,7 +153,7 @@ export const COMPETITORS: Record<CompetitorKey, {
       },
       {
         q: "How much does Crayon cost compared to Outrival?",
-        a: "Crayon is sales-led with no public pricing. Vendr reports a median of about $28,750 per year (range $12,450 to $47,100) as of July 2026. Outrival is published: free on 2 competitors, then €29, €79 or €199 per month, billed monthly.",
+        a: "Crayon is sales-led with no public pricing. Vendr reports a median of about $29,500 per year (range $12,600 to $46,500), on a page last updated February 2026. Outrival is published: free on 2 competitors, then €29, €79 or €199 per month, billed monthly.",
       },
       {
         q: "Does Crayon have a free trial or self-serve plan?",
@@ -154,7 +161,7 @@ export const COMPETITORS: Record<CompetitorKey, {
       },
       {
         q: "Where is my data hosted?",
-        a: "Outrival stores your data in the EU: database and file storage in an EU region, application and workers in France. AI inference can use non-EU model providers under a DPA — that's why we say EU data storage, not EU processing. Crayon is a US-based vendor. If EU data residency is a requirement, that difference matters.",
+        a: "Outrival stores your data in the EU: database and file storage in an EU region, application and workers on EU infrastructure. AI inference can use non-EU model providers under a DPA — that's why we say EU data storage, not EU processing. Crayon is a US-based vendor. If EU data residency is a requirement, that difference matters.",
       },
       {
         q: "Can Outrival produce battle cards like Crayon?",
@@ -233,7 +240,7 @@ export const COMPETITORS: Record<CompetitorKey, {
       },
       {
         q: "Where is my data hosted?",
-        a: "Outrival stores your data in the EU: database and file storage in an EU region, application and workers in France. AI inference can use non-EU model providers under a DPA — that's why we say EU data storage, not EU processing. Klue is a Canada-based vendor. If EU data residency is a requirement for you, that difference matters.",
+        a: "Outrival stores your data in the EU: database and file storage in an EU region, application and workers on EU infrastructure. AI inference can use non-EU model providers under a DPA — that's why we say EU data storage, not EU processing. Klue is a Canada-based vendor. If EU data residency is a requirement for you, that difference matters.",
       },
     ],
     sources: [
@@ -281,9 +288,9 @@ const ALT_KLUE: Alternative = {
 const ALT_CRAYON: Alternative = {
   name: "Crayon",
   bestFor: "Staffed CI / PMM teams",
-  entryPrice: "~$28.7k/yr median (est.)",
+  entryPrice: "~$29.5k/yr median (est.)",
   selfServe: "No, demo required",
-  body: "Crayon is a broad CI suite: web-change capture, hiring and exec moves, 100+ data types, and enterprise battlecard programs. Vendr's median sits near $28,750/year. It rewards a dedicated intelligence function tracking many competitors at depth.",
+  body: "Crayon is a broad CI suite: web-change capture, hiring and exec moves, 100+ data types, and enterprise battlecard programs. Vendr's median sits near $29,500/year. It rewards a dedicated intelligence function tracking many competitors at depth.",
   tradeoff: "No public pricing or self-serve; overkill (and over-budget) without a CI analyst to work it daily.",
   href: "/vs/crayon",
 };
@@ -342,7 +349,7 @@ export const ALTERNATIVES: Record<CompetitorKey, {
       },
       {
         q: "Which alternative is hosted in the EU?",
-        a: "Outrival stores your data in the EU (France) — EU data storage, with AI inference under a DPA. The other tools here are non-EU vendors (Crayon and Kompyte in the US, Klue in Canada). If EU data residency is a requirement, Outrival is the clear pick.",
+        a: "Outrival stores your data in the EU — EU data storage, with AI inference under a DPA. The other tools here are non-EU vendors (Crayon and Kompyte in the US, Klue in Canada). If EU data residency is a requirement, Outrival is the clear pick.",
       },
       {
         q: "Can any of these track my own product too?",
@@ -379,7 +386,7 @@ export const ALTERNATIVES: Record<CompetitorKey, {
       },
       {
         q: "Which alternative is hosted in the EU?",
-        a: "Outrival stores your data in the EU (France) — EU data storage, with AI inference under a DPA. The other tools here are non-EU vendors (Klue in Canada, Crayon and Kompyte in the US). If EU data residency matters, Outrival is the clear pick.",
+        a: "Outrival stores your data in the EU — EU data storage, with AI inference under a DPA. The other tools here are non-EU vendors (Klue in Canada, Crayon and Kompyte in the US). If EU data residency matters, Outrival is the clear pick.",
       },
     ],
     sources: [
@@ -399,7 +406,7 @@ export const ALTERNATIVES: Record<CompetitorKey, {
 
 export const DIY = {
   verdict: [
-    "The tool you actually compete with isn't Crayon or Klue — it's the DIY stack you've half-built already: a change-detection script, ChatGPT to summarise the diff, Google Alerts for mentions, and a Notion page or spreadsheet to keep track.",
+    "The tool you actually compete with isn't Crayon or Klue — it's the DIY stack you've half-built already: a change-detection script, ChatGPT to summarize the diff, Google Alerts for mentions, and a Notion page or spreadsheet to keep track.",
     "That stack works, and for a while it's free or nearly free. What it won't do is decide for you: it hands you raw diffs and links, and you still do the reading, the ranking and the “so what” — every week, forever.",
     "Outrival is that stack collapsed into one product that writes the conclusion. Here's the honest comparison, including when rolling your own is genuinely the right call.",
   ],
@@ -407,11 +414,16 @@ export const DIY = {
   approaches: [
     {
       name: "ChangeDetection.io + ChatGPT",
-      role: "Watch pages, summarise the diff",
+      role: "Watch pages, summarize the diff",
       doesWell:
         "ChangeDetection.io is a genuinely good open-source page monitor — CSS/XPath selectors, five-minute rechecks, a real Chrome for JavaScript pages. Paste a diff into ChatGPT and you get a readable summary in seconds.",
       breaks:
-        "You own the selectors: when a competitor reships their pricing page, the watch silently breaks or floods you with noise. ChatGPT summarises one diff at a time, with no memory of last week, no severity, and no recommended action.",
+        "You own the selectors: when a competitor reships their pricing page, the watch silently breaks or floods you with noise. ChatGPT summarizes one diff at a time, with no memory of last week, no severity, and no recommended action.",
+      // Named here so the Visualping source at the foot of the page supports
+      // something in the body. It is also the honest hosted answer to "I don't
+      // want to run a container", and /alternatives already profiles it.
+      alternative:
+        "Prefer not to self-host? Visualping is the hosted equivalent — a free tier, AI summaries and an “is this important?” flag on every plan. It watches individual pages you pick, rather than a competitor's whole public surface.",
       cost: "Free self-hosted, or $8.99/mo hosted (5,000 watches). ChatGPT Plus $20/mo.",
     },
     {
@@ -437,7 +449,7 @@ export const DIY = {
   table: [
     { label: "What it watches", diy: "Pages you script, one at a time", outrival: "Pricing, product, hiring, reviews, content — per competitor" },
     { label: "Who writes the insight", diy: "You (or a raw ChatGPT summary)", outrival: "AI writes the takeaway: what changed, the so-what, the action" },
-    { label: "Prioritised by severity", diy: "No — every diff looks the same", outrival: "Yes — low → critical, filtered for relevance" },
+    { label: "Prioritized by severity", diy: "No — every diff looks the same", outrival: "Yes — low → critical, filtered for relevance" },
     { label: "Battle cards & history", diy: "None — each week is a blank page", outrival: "AI battle cards + a durable competitor history" },
     { label: "Setup", diy: "An afternoon of watches, alerts and glue", outrival: "~3 minutes, self-serve" },
     { label: "Ongoing maintenance", diy: "You fix selectors on every redesign", outrival: "Maintained for you; auto-heals broken sources" },
@@ -486,7 +498,7 @@ export const DIY = {
     },
     {
       q: "Can't I just use ChatGPT to track competitors?",
-      a: "ChatGPT can summarise a diff you paste in, but it doesn't watch anything on a schedule, remember last week, prioritise, or send alerts. You'd be the pipeline: capturing pages, feeding them in, and deciding what matters. Outrival is that pipeline, running continuously.",
+      a: "ChatGPT can summarize a diff you paste in, but it doesn't watch anything on a schedule, remember last week, prioritize, or send alerts. You'd be the pipeline: capturing pages, feeding them in, and deciding what matters. Outrival is that pipeline, running continuously.",
     },
     {
       q: "Is Google Alerts enough for competitive monitoring?",
@@ -542,7 +554,7 @@ export const BEST_TOOLS = {
     },
     {
       q: "Which of these tools is hosted in the EU?",
-      a: "Outrival offers EU data storage (database and file storage in an EU region, application in France; AI inference can use non-EU providers under a DPA). Crayon and Kompyte are US-based, Klue is Canada-based, Contify is India/US-based, and Visualping is Canada-based. If EU data residency matters, Outrival is the clear pick here.",
+      a: "Outrival offers EU data storage (database and file storage in an EU region, application and workers on EU infrastructure; AI inference can use non-EU providers under a DPA). Crayon and Kompyte are US-based, Klue is Canada-based, Contify is India/US-based, and Visualping is Canada-based. If EU data residency matters, Outrival is the clear pick here.",
     },
   ],
   sources: [

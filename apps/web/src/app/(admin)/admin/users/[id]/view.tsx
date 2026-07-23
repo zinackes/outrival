@@ -37,7 +37,7 @@ export function UserDetailView({ detail }: { detail: AdminUserDetail }) {
 
       <Section
         title="Account"
-        info="Core account and organisation details for this user: role, org, plan and billing period, and signup date."
+        info="Core account and organization details for this user: role, org, plan and billing period, and signup date."
       >
         <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
           <div>

@@ -1,16 +1,17 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/metadata";
 import Link from "next/link";
 import { ArrowLeft, Check } from "lucide-react";
 import { Footer } from "@/components/landing/footer";
 import { ProductShot } from "@/components/landing/product-shot";
 import { DemoForm } from "./demo-form";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
+  path: "/demo",
   title: "See Outrival",
   description:
     "See Outrival on your own competitors — a live look at the product and a sample of the weekly digest.",
-  alternates: { canonical: "/demo" },
-};
+});
 
 const DEMO_POINTS = [
   "How Outrival reads your actual competitors",
@@ -24,14 +25,28 @@ const BUSINESS_POINTS = [
   "DPA, security review, and procurement support",
 ];
 
+// ?intent=sample — the offer the blog posts close with. It promises a specific
+// deliverable, so the page has to repeat it exactly: the visitor who clicked
+// "Get a sample digest" must land on a form that says the same thing back.
+const SAMPLE_POINTS = [
+  "A real brief on your market — not a generic example",
+  "Built from your product and two competitors you name",
+  "Delivered by email; no account, no card, no call",
+];
+
 export default async function DemoPage({
   searchParams,
 }: {
-  searchParams: Promise<{ plan?: string }>;
+  searchParams: Promise<{ plan?: string; intent?: string }>;
 }) {
-  const { plan } = await searchParams;
+  const { plan, intent } = await searchParams;
   const isBusiness = plan === "business";
-  const points = isBusiness ? BUSINESS_POINTS : DEMO_POINTS;
+  const isSample = intent === "sample" && !isBusiness;
+  const points = isBusiness
+    ? BUSINESS_POINTS
+    : isSample
+      ? SAMPLE_POINTS
+      : DEMO_POINTS;
 
   return (
     <div className="landing-canvas min-h-dvh bg-background font-sans text-foreground antialiased">
@@ -77,7 +92,11 @@ export default async function DemoPage({
         </section>
         <div>
           <span className="text-meta font-medium uppercase tracking-wider text-primary">
-            {isBusiness ? "Business plan" : "See the product"}
+            {isBusiness
+              ? "Business plan"
+              : isSample
+                ? "Sample digest"
+                : "See the product"}
           </span>
           <h1 className="mt-3 text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">
             {isBusiness ? (
@@ -85,6 +104,12 @@ export default async function DemoPage({
                 See Outrival
                 <br />
                 for Business.
+              </>
+            ) : isSample ? (
+              <>
+                A sample digest
+                <br />
+                for your market.
               </>
             ) : (
               <>
@@ -97,8 +122,18 @@ export default async function DemoPage({
           <p className="mt-5 max-w-md text-lg leading-relaxed text-text-muted">
             {isBusiness
               ? "Business is self-serve — you can start it right from sign-up. Need SSO, a custom DPA, or a hand importing users? Tell us here and we'll get you set up."
-              : "Want a closer look before you start? Tell us your market and we'll show you what Outrival surfaces for it. You can also start free right now — no call needed."}
+              : isSample
+                ? "Tell us your product and two competitors. We'll scrape them and send you a real Outrival brief — the same one you'd get every Monday — so you can see the signal before you sign up for anything."
+                : "Want a closer look before you start? Tell us your market and we'll show you what Outrival surfaces for it. You can also start free right now — no call needed."}
           </p>
+          {isSample && (
+            // Capacity guard: these are produced by hand today. Saying so in the
+            // offer is cheaper than owing briefs we cannot deliver.
+            <p className="mt-3 max-w-md text-sm text-text-subtle">
+              We put these together by hand, so we take on a few each week.
+              You&apos;ll hear back either way.
+            </p>
+          )}
           <ul className="mt-8 space-y-3">
             {points.map((p) => (
               <li key={p} className="flex items-start gap-2.5 text-sm text-text-muted">
@@ -129,7 +164,10 @@ export default async function DemoPage({
           </p>
         </div>
 
-        <DemoForm defaultPlan={isBusiness ? "business" : undefined} />
+        <DemoForm
+          defaultPlan={isBusiness ? "business" : isSample ? "sample-digest" : undefined}
+          intent={isSample ? "sample" : undefined}
+        />
       </main>
 
       <Footer />

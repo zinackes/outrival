@@ -22,7 +22,15 @@ const TEAM_SIZES = ["Just me", "2–10", "11–50", "51–200", "200+"];
 
 type Status = "idle" | "submitting" | "success" | "error";
 
-export function DemoForm({ defaultPlan }: { defaultPlan?: string }) {
+export function DemoForm({
+  defaultPlan,
+  intent,
+}: {
+  defaultPlan?: string;
+  /** "sample" asks for the two things the sample-digest offer needs. */
+  intent?: "sample";
+}) {
+  const isSample = intent === "sample";
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const turnstileRef = useRef<TurnstileInstance | null>(null);
@@ -83,12 +91,23 @@ export function DemoForm({ defaultPlan }: { defaultPlan?: string }) {
       >
         <CheckCircle2 className="text-primary" size={28} />
         <h2 className="mt-4 text-xl font-semibold tracking-tight">
-          Thanks — we&apos;ll be in touch.
+          {isSample ? "Thanks — your brief is queued." : "Thanks — we'll be in touch."}
         </h2>
         <p className="mt-2 text-sm leading-relaxed text-text-muted">
-          Your message landed in our inbox at{" "}
-          <span className="text-foreground">{form.email}</span>. The founder
-          reads every one and will reply personally.
+          {isSample ? (
+            <>
+              We&apos;ll scrape the three sites you named and send the brief to{" "}
+              <span className="text-foreground">{form.email}</span>. These are
+              written by hand, so give us a few days — and you&apos;ll hear back
+              either way.
+            </>
+          ) : (
+            <>
+              Your message landed in our inbox at{" "}
+              <span className="text-foreground">{form.email}</span>. The founder
+              reads every one and will reply personally.
+            </>
+          )}
         </p>
       </div>
     );
@@ -151,13 +170,28 @@ export function DemoForm({ defaultPlan }: { defaultPlan?: string }) {
           </div>
         </div>
         <div className="grid gap-1.5">
-          <Label htmlFor="message">What would you like to see?</Label>
+          <Label htmlFor="message">
+            {isSample
+              ? "Your product and two competitors"
+              : "What would you like to see?"}
+          </Label>
           <Textarea
             id="message"
             rows={4}
+            required={isSample}
+            placeholder={
+              isSample
+                ? "Your site, then two competitors — URLs are ideal."
+                : undefined
+            }
             value={form.message}
             onChange={(e) => set("message", e.target.value)}
           />
+          {isSample && (
+            <p className="text-xs text-text-subtle">
+              We scrape these three and write the brief from what we find.
+            </p>
+          )}
         </div>
 
         {/* Honeypot — hidden from humans, catches bots. */}
@@ -195,6 +229,8 @@ export function DemoForm({ defaultPlan }: { defaultPlan?: string }) {
             <>
               <Loader2 className="animate-spin" size={16} /> Sending…
             </>
+          ) : isSample ? (
+            "Get my sample digest"
           ) : (
             "Send request"
           )}

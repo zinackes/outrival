@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/metadata";
 import { DocPage } from "@/components/landing/doc-page";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
+  path: "/changelog",
   title: "Changelog",
-  description: "What's new in Outrival.",
-  alternates: { canonical: "/changelog" },
-};
+  description:
+    "What's new in Outrival.",
+});
 
 const ENTRIES = [
   {

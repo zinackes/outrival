@@ -134,6 +134,11 @@ export function DiyPage() {
                   />
                   <span>{a.breaks}</span>
                 </p>
+                {"alternative" in a && a.alternative && (
+                  <p className="mt-3 border-t border-border pt-3 text-dense leading-relaxed text-text-subtle">
+                    {a.alternative}
+                  </p>
+                )}
                 <div className="mt-auto pt-5 text-meta text-text-subtle">
                   {a.cost}
                 </div>

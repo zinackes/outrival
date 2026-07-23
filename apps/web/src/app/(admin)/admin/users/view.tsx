@@ -41,7 +41,7 @@ export function UsersView({ initial }: { initial: AdminUserRow[] }) {
 
       <Section
         title={`Users (${rows.length})`}
-        info="All users with their organisation and plan. Search by email or org name; click a row to inspect the account."
+        info="All users with their organization and plan. Search by email or org name; click a row to inspect the account."
       >
         <form
           className="mb-3 flex gap-2"

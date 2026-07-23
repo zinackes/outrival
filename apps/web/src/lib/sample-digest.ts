@@ -13,76 +13,77 @@ export interface SampleDigest {
   content: DigestContent;
 }
 
-// A REAL production weekly digest (week of June 22–29, 2026). The client
+// A REAL production weekly digest (week of July 6–13, 2026). The client
 // organization is anonymized — it never appears by name; the brief is written in
 // the first person ("our" / "we"), exactly as the client received it. The
-// competitors named are the real companies that client tracks. Only word-internal
-// non-breaking hyphens from the raw scrape were normalized to plain hyphens; no
-// wording was changed.
+// competitors named are the real companies that client tracks.
+//
+// Curation rule for this fixture: signals may be REMOVED, never reworded. Every
+// line below is verbatim model output; only word-internal non-breaking hyphens
+// from the raw scrape were normalized to plain hyphens. Two of the source
+// digest's seven signals were dropped — a duplicate partnerships-hiring signal,
+// and an "Executive Assistant to the CEO" hiring signal whose own so_what said
+// it "does not directly overlap with our positioning". The TL;DR is untouched:
+// its three bullets map to the three lead signals kept.
+//
+// The two lead claims are independently verifiable against public sources:
+// Supabase's $500M Series F at a $10.5B valuation, and its searchable
+// field-level encryption launch with CipherStash.
 export const SAMPLE_DIGEST: SampleDigest = {
-  weekLabel: "June 22–29, 2026",
-  competitorCount: 4,
+  weekLabel: "July 6–13, 2026",
+  competitorCount: 2,
   content: {
     temperature: "high",
     tldr: [
-      "High-severity moves by JobTetris (HubSpot CRM) and SeekLab (premium pricing & elite positioning) could erode our AI-driven matching advantage in the upper-segment market — action required.",
-      "Medium-severity adoption of Vercel by Startify and Clikhire improves their performance, modestly narrowing our speed differentiation — watch.",
-      "SeekLab's refreshed branding and Clikhire's job-volume emphasis add competitive narrative pressure, but also give us an opportunity to highlight our deeper company insights and fairness controls — watch.",
+      "Supabase's $500M Series F funding intensifies competitive pressure on our serverless Postgres offering.",
+      "Supabase's new searchable field-level encryption narrows our security advantage.",
+      "Citus's low-cost Azure pricing underscores the need to highlight our cost-efficiency and differentiation.",
     ],
     sections: [
       {
         urgency: "action_required",
-        category: "product",
-        competitor: "JobTetris",
+        category: "funding",
+        competitor: "Supabase",
         insight:
-          "JobTetris has added a HubSpot CRM integration, as indicated by the embedded script https://js.hsforms.net/forms/embed/v2.js.",
+          "Supabase announced a $500 million Series F funding round that valued the company at $10.5 billion.",
         so_what:
-          "This integration could enhance JobTetris's ability to capture and nurture leads, potentially narrowing the advantage of our AI-driven matching by offering smoother recruiter workflows.",
+          "The large raise underscores Supabase's focus on AI-driven backend services, increasing competitive pressure on our serverless PostgreSQL offering which targets the same developer audience.",
       },
       {
         urgency: "action_required",
-        category: "pricing",
-        competitor: "SeekLab",
+        category: "product",
+        competitor: "Supabase",
         insight:
-          "SeekLab updated its hero messaging to emphasize targeting companies that pursue world-class talent and added new pricing sections labeled Marcus and Jordan, while introducing CTA buttons for a demo and open jobs.",
+          "Supabase announced searchable field-level encryption using CipherStash.",
         so_what:
-          "The new messaging reinforces a premium positioning focused on elite talent acquisition, which could encroach on our AI-driven matching value proposition for high-growth firms.",
+          "This adds encrypted search capability to Supabase's Postgres offering, potentially narrowing the gap with our serverless Postgres service on security features.",
       },
       {
         urgency: "watch",
         category: "product",
-        competitor: "Startify",
+        competitor: "Supabase",
         insight:
-          "Startify has adopted Vercel as its hosting platform, as indicated by response headers showing server=Vercel and related Vercel identifiers.",
+          "Supabase expanded its documentation, adding many new Dart SDK reference pages and updating its sitemap to include more URLs and new customer case studies.",
         so_what:
-          "This shift to a modern serverless hosting solution could improve Startify's performance and scalability, potentially challenging our differentiation based on AI-driven matching speed and user experience.",
-      },
-      {
-        urgency: "watch",
-        category: "product",
-        competitor: "Clikhire",
-        insight:
-          "Clikhire is now using Vercel for hosting, as indicated by response headers showing server=Vercel and related Vercel identifiers.",
-        so_what:
-          "This signals a potential improvement in site performance and scalability for Clikhire, which could narrow the speed advantage we claim for our platform.",
-      },
-      {
-        urgency: "watch",
-        category: "content",
-        competitor: "SeekLab",
-        insight:
-          "SeekLab refreshed its branding with a 'SeekLab × Pin Live' banner and introduced a new AI-powered marketplace narrative, highlighting a network of 1000+ expert recruiters, 70% faster hiring and a 25-day average time to hire.",
-        so_what:
-          "The updated positioning overlaps with our AI-driven matching value proposition and adds a recruiter bounty model that could erode our differentiation, but the focus on a marketplace and speed creates an opportunity to emphasize our deeper company insights and fairness controls.",
+          "The added SDK coverage and new customer pages strengthen Supabase's developer-first positioning, increasing competition in the niche of managed PostgreSQL backends that emphasize easy integration and documentation.",
       },
       {
         urgency: "watch",
         category: "hiring",
-        competitor: "Clikhire",
+        competitor: "Supabase",
         insight:
-          "Clikhire updated its site to display a sign-in prompt and a count of 2657 active positions, listing numerous job openings across multiple cities and categories.",
+          "Supabase announced hiring for roles such as Product Manager - AI and Partnerships Manager, Ecosystem.",
         so_what:
-          "By emphasizing sheer job volume and broad coverage, Clikhire challenges our value proposition of AI-driven matching and detailed company insights, potentially diluting our differentiation on quality over quantity.",
+          "This signals Supabase is expanding AI product focus and ecosystem partnerships, which could erode our differentiation among developers seeking AI-ready Postgres services; we should accelerate our AI feature roadmap.",
+      },
+      {
+        urgency: "watch",
+        category: "pricing",
+        competitor: "Citus Data",
+        insight:
+          "Citus announced pricing details for its managed Azure service, starting at approximately $0.27 per hour, and reiterated that its open-source extension remains free.",
+        so_what:
+          "This highlights a low-cost, pay-as-you-go option that directly competes with our serverless pricing model, potentially eroding our cost advantage for developers seeking inexpensive scaling.",
       },
     ],
   },

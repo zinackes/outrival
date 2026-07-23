@@ -36,6 +36,7 @@ import { trendsRouter } from "./routes/trends";
 import { landscapeRouter } from "./routes/landscape";
 import { shareRouter } from "./routes/share";
 import { publicReportRouter } from "./routes/public-report";
+import { publicStatusRouter } from "./routes/public-status";
 import { recapRouter } from "./routes/recap";
 import { aiVisibilityRouter } from "./routes/ai-visibility";
 import { compareRouter } from "./routes/compare";
@@ -117,6 +118,8 @@ app.route("/api/share", shareRouter);
 app.route("/api/recap", recapRouter);
 // Public, unauthed — a share token is the only capability (see routes/public-report.ts).
 app.route("/api/public/report", publicReportRouter);
+// Public, unauthed — coarse platform health for /status (see routes/public-status.ts).
+app.route("/api/public/status", publicStatusRouter);
 app.route("/api/ai-visibility", aiVisibilityRouter);
 app.route("/api/compare", compareRouter);
 app.route("/api/ask", askRouter);

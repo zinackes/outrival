@@ -14,11 +14,11 @@ const FAQS: Faq[] = [
   },
   {
     q: "What qualifies a change as a signal?",
-    a: "A fast AI classifier runs on every diff and tags category, severity, and a 'significant' boolean. Only significant changes go on to a second AI pass that writes the strategic insight. On average we surface 1 signal for every 70 changes scanned.",
+    a: "A fast AI classifier runs on every diff and tags category, severity, and a 'significant' boolean. Only significant changes go on to a second AI pass that writes the strategic insight. Measured on production in July 2026: about 1 action-grade signal (high or critical) for every 12 changes detected.",
   },
   {
     q: "Where is the data stored?",
-    a: "All in the EU. Application server on OVH (France), PostgreSQL on Neon (EU), HTML snapshots and screenshots on Cloudflare R2 — your stored data never leaves the EU.",
+    a: "All in the EU. Application server on OVHcloud in France, background workers and job queue on netcup in Austria, PostgreSQL on Neon (EU region), HTML snapshots and screenshots on Cloudflare R2 — your stored data never leaves the EU.",
   },
   {
     q: "Can I track my own product too?",

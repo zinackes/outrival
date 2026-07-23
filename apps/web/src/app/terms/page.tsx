@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/metadata";
 import { LegalDoc } from "@/components/legal/legal-doc";
 import { ENTITY, CONTACT } from "@/lib/legal/entity";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
+  path: "/terms",
   title: "Terms of Service",
-  description: "The terms governing your use of Outrival.",
-  alternates: { canonical: "/terms" },
-};
+  description:
+    "The terms governing your use of Outrival.",
+});
 
 export default function TermsPage() {
   return (

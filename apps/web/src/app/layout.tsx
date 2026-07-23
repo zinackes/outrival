@@ -62,7 +62,7 @@ export const metadata: Metadata = {
     template: "%s — Outrival",
   },
   description:
-    "Outrival monitors your competitors continuously — pricing, product, hiring, review sentiment. AI filters out 99% of noise and ships a strategic digest every Monday. Hosted in the EU.",
+    "Outrival monitors your competitors continuously — pricing, product, hiring, review sentiment. AI reads every change and ships only what's worth a decision, in a strategic digest every Monday. EU data storage.",
   // No `keywords`: search engines have ignored the tag for over a decade, and a
   // single list stamped on every page said the legal notice and the blog were
   // about the same seven things. Per-page relevance comes from the title and
@@ -77,7 +77,7 @@ export const metadata: Metadata = {
     siteName: "Outrival",
     title: "Outrival — Automated competitive intelligence, written by AI",
     description:
-      "Monitor 15 competitors continuously. AI filters out 99% of noise. Strategic digest every Monday, real-time Slack alerts on critical signals. Hosted in the EU.",
+      "Monitor 15 competitors continuously. AI surfaces only the changes worth a decision. Strategic digest every Monday, real-time Slack alerts on critical signals. EU data storage.",
     // og:image is supplied by the app/opengraph-image.tsx file convention. Do NOT
     // set openGraph.images here: an explicit value overrides the file convention
     // (Next merges the file only when openGraph has no own `images` key).
@@ -86,7 +86,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Outrival — Automated competitive intelligence, written by AI",
     description:
-      "AI filters out 99% of noise. Strategic digest every Monday. Hosted in the EU.",
+      "AI surfaces only the changes worth a decision. Strategic digest every Monday. EU data storage.",
     // twitter image is supplied by app/twitter-image.tsx (file convention).
   },
   robots: {

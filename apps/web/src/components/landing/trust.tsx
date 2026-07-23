@@ -4,22 +4,24 @@ export function Trust() {
       <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-10 px-6 lg:grid-cols-[1.1fr_1fr] lg:items-center">
         <div>
           <p className="text-xl font-medium leading-snug sm:text-2xl">
-            Monday morning, you read <b>12 signals that matter</b> instead of
-            scrolling through <b>847 changes</b>. The triage is the AI&apos;s
-            job — not yours.
+            Monday morning, you read <b>the handful that matter</b> instead of
+            scrolling through <b>everything that moved</b>. The triage is the
+            AI&apos;s job — not yours.
           </p>
         </div>
         <div>
         <dl className="grid grid-cols-2 gap-x-10 gap-y-7">
           <div>
             <dt className="text-2xl font-medium tracking-tight tabular-nums">
-              70:1
+              12:1
             </dt>
-            <dd className="mt-1.5 text-xs text-text-muted">noise to signal</dd>
+            <dd className="mt-1.5 text-xs text-text-muted">
+              changes per signal that needs action
+            </dd>
           </div>
           <div>
             <dt className="text-2xl font-medium tracking-tight tabular-nums">
-              15<span className="text-base text-text-subtle">+</span>
+              17
             </dt>
             <dd className="mt-1.5 text-xs text-text-muted">
               source types tracked
@@ -34,21 +36,23 @@ export function Trust() {
             </dd>
           </div>
           <div>
-            <dt className="text-2xl font-medium tracking-tight tabular-nums">
-              100<span className="text-base text-text-subtle">%</span>
-            </dt>
+            <dt className="text-2xl font-medium tracking-tight">EU</dt>
             <dd className="mt-1.5 text-xs text-text-muted">
               <a
                 href="/security"
                 className="underline-offset-2 transition-colors hover:text-foreground hover:underline"
               >
-                EU-hosted
+                data storage
               </a>
             </dd>
           </div>
         </dl>
+          {/* Every figure above is measured, so it is dated rather than
+              disclaimed. "EU data storage" is /security's exact wording: AI
+              inference still runs through non-EU providers, so "EU-hosted"
+              would overclaim. Re-measure before changing any number. */}
           <p className="mt-5 text-xs text-text-subtle">
-            Illustrative figures based on our internal benchmarks.
+            Measured on production, July 2026.
           </p>
         </div>
       </div>

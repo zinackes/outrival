@@ -7,7 +7,7 @@ const FAQS = [
   },
   {
     q: "What qualifies a change as a signal?",
-    a: "A fast AI classifier runs on every diff and tags category, severity, and a 'significant' boolean. Only significant changes go on to a second AI pass that writes the strategic insight. On average we surface 1 signal for every 70 changes scanned.",
+    a: "A fast AI classifier runs on every diff and tags category, severity, and a 'significant' boolean. Only significant changes go on to a second AI pass that writes the strategic insight. Measured on production in July 2026: about 1 action-grade signal (high or critical) for every 12 changes detected.",
   },
   {
     q: "Where is the data stored?",
@@ -66,7 +66,7 @@ export function JsonLd() {
       applicationCategory: "BusinessApplication",
       operatingSystem: "Web",
       description:
-        "Automated competitive intelligence platform. Continuously monitors pricing, product, hiring, and review sentiment across your competitors. AI filters out 99% of noise and produces a weekly strategic brief.",
+        "Automated competitive intelligence platform. Continuously monitors pricing, product, hiring, and review sentiment across your competitors. AI reads every change and surfaces only the ones worth a decision, in a weekly strategic brief.",
       offers: [
         {
           "@type": "Offer",

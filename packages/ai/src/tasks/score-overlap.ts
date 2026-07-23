@@ -72,7 +72,10 @@ Write the "reason" in English.
     prompt,
     sourceText: cacheInput,
     schema: ScoredSchema,
-    maxTokens: 2048,
+    // One { url, score, reason } row per candidate: the pool now unions three
+    // recall sources, so budget for the widened list instead of truncating the
+    // JSON (a truncated reply parses to null → every candidate scored 0).
+    maxTokens: 4096,
     cache: { input: cacheInput, namespace: "score-overlap", ttlSeconds: CACHE_TTL_SECONDS },
   });
 

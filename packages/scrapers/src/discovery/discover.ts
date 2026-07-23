@@ -1,5 +1,5 @@
 import Exa from "exa-js";
-import { extractBrand, extractHostname } from "@outrival/shared";
+import { extractBrand, extractHostname, normalizeDomain } from "@outrival/shared";
 import { safeFetch } from "../lib/guarded-fetch";
 
 // Free-hosting / website-builder / preview platforms. Exa surfaces these for
@@ -192,6 +192,43 @@ export interface DiscoveredCompany {
   snippet: string;
 }
 
+/**
+ * Collapses the unioned recall sources to one entry per company. The same
+ * competitor routinely comes back as https://x.com/, https://www.x.com/pricing
+ * and (from the named seeds) https://x.com — three rows that would each pay a
+ * reachability fetch and a line in the scoring prompt.
+ *
+ * First occurrence wins, so the caller's ordering is the priority order; a later
+ * duplicate only replaces it when the kept one has no snippet (a bare seed
+ * upgraded by Exa's page text). `excluded` holds already-normalized domains.
+ * Pure — exported for tests.
+ */
+export function dedupeByDomain(
+  items: DiscoveredCompany[],
+  excluded: Set<string>,
+): DiscoveredCompany[] {
+  const byDomain = new Map<string, DiscoveredCompany>();
+  for (const r of items) {
+    const domain = normalizeDomain(r.url);
+    if (!domain || excluded.has(domain)) continue;
+    const prev = byDomain.get(domain);
+    if (!prev) byDomain.set(domain, r);
+    else if (!prev.snippet.trim() && r.snippet.trim()) {
+      byDomain.set(domain, { ...prev, snippet: r.snippet });
+    }
+  }
+  return [...byDomain.values()];
+}
+
+// Upper bound on the pool handed to the overlap scorer. Every candidate past it
+// costs a reachability fetch and a row in the scoring prompt, and the three recall
+// sources overlap heavily, so the tail is mostly duplicates and noise.
+const MAX_POOL = 45;
+// findSimilar's own slice of the pool — enough to carry the market leaders it
+// surfaces without letting brand-lookalikes (linear.fi for linear.app) crowd out
+// the descriptive search.
+const SIMILAR_COUNT = 15;
+
 export async function findSimilarCompanies(
   // Null for onboarding modes without a live product site (idea / document /
   // developing). Only used to exclude the user's own domain/brand from results;
@@ -204,27 +241,72 @@ export async function findSimilarCompanies(
   // biases results toward that region. null = global (no bias). It only reorders
   // toward the market — strong off-region competitors still surface.
   region: string | null = null,
+  // Competitors a model named from the product profile (@outrival/ai
+  // nameKnownCompetitors, resolved by the caller — this package never imports the
+  // AI package). Pure recall: they go through the same filters, liveness check and
+  // overlap scoring as anything Exa returns, so an invented domain dies here.
+  namedSeeds: { name: string; domain: string; why: string }[] = [],
 ): Promise<DiscoveredCompany[]> {
   const hostname = productUrl ? new URL(productUrl).hostname : null;
   const ownBrand = productUrl ? extractBrand(productUrl) : null;
+  const excluded = new Set(
+    [...(hostname ? [hostname] : []), ...excludeDomains]
+      .map((d) => normalizeDomain(d))
+      .filter((d): d is string => d !== null),
+  );
 
-  // Semantic search on what the product DOES (the query), restricted to
-  // company entities. findSimilar(url) was anchored on the page itself, so it
-  // surfaced clones/templates that *look like* the product; a descriptive
-  // query + category:"company" finds companies that do the same thing.
-  const results = await getExa().search(query, {
-    numResults: count,
-    excludeDomains: [...(hostname ? [hostname] : []), ...excludeDomains],
-    category: "company",
-    contents: { text: { maxCharacters: 500 } },
-    ...(region ? { userLocation: region } : {}),
-  });
+  // Two Exa reads with complementary blind spots, unioned:
+  //  - search(query, category:"company") answers "whose company page reads like
+  //    this description?" — good on long-tail/niche products, but it misses the
+  //    market leaders, whose pages don't paraphrase a descriptive query (a
+  //    Vercel-shaped profile returned neither Netlify's peers nor Cloudflare).
+  //  - findSimilar(productUrl, category:"company") answers "who is adjacent to
+  //    this company?" — the leaders' lane. Its old failure (clones, GitHub and
+  //    LinkedIn pages of the product itself) came from running it WITHOUT the
+  //    company category; with it, that noise is gone.
+  // Neither is allowed to sink the other: a findSimilar miss (URL unknown to Exa,
+  // rate limit) must still return the search results, so they settle independently.
+  const [searchRes, similarRes] = await Promise.allSettled([
+    getExa().search(query, {
+      numResults: count,
+      excludeDomains: [...(hostname ? [hostname] : []), ...excludeDomains],
+      category: "company",
+      contents: { text: { maxCharacters: 500 } },
+      ...(region ? { userLocation: region } : {}),
+    }),
+    productUrl
+      ? getExa().findSimilar(productUrl, {
+          numResults: SIMILAR_COUNT,
+          excludeSourceDomain: true,
+          excludeDomains,
+          category: "company",
+          contents: { text: { maxCharacters: 500 } },
+        })
+      : Promise.resolve(null),
+  ]);
 
-  const mapped = results.results.map((r) => ({
+  if (searchRes.status === "rejected" && similarRes.status === "rejected") {
+    // Both reads failed → Exa is down / misconfigured. Surface it like before
+    // (the route turns it into a 502) instead of reporting "no competitors".
+    throw searchRes.reason;
+  }
+
+  const fromExa = [
+    ...(searchRes.status === "fulfilled" ? searchRes.value.results : []),
+    ...(similarRes.status === "fulfilled" && similarRes.value ? similarRes.value.results : []),
+  ].map((r) => ({
     url: r.url,
     title: r.title ?? new URL(r.url).hostname,
     snippet: r.text ?? "",
   }));
+
+  const fromSeeds = namedSeeds.map((s) => ({
+    url: `https://${s.domain}`,
+    title: s.name,
+    snippet: s.why,
+  }));
+
+  const mapped = dedupeByDomain([...fromExa, ...fromSeeds], excluded);
 
   const filtered = mapped.filter((r) => {
     const host = extractHostname(r.url);
@@ -248,7 +330,7 @@ export async function findSimilarCompanies(
   // Drop dead / parked domains (parallel; network-error = dead, for-sale landing =
   // not a product). Junk hosts are already gone, so we only ping plausible candidates.
   const reachability = await Promise.all(
-    filtered.map(async (r) => ({ r, alive: await isLiveProduct(r.url) })),
+    filtered.slice(0, MAX_POOL).map(async (r) => ({ r, alive: await isLiveProduct(r.url) })),
   );
   const live = reachability.filter((x) => x.alive).map((x) => x.r);
 

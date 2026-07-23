@@ -69,6 +69,17 @@ const GROUNDING_POLICY: Record<string, { grounding: boolean; confidence: boolean
   // those orgs silently skipped their week (2026-07-10 audit). Keep confidence
   // (drives the ConfidenceDot + self-check trigger), drop the citation envelope.
   generate_digest: { grounding: false, confidence: true },
+  // Overlap scoring returns one number + one sentence per candidate, over a
+  // machine-built candidate list — there is no prose to hallucinate and nothing
+  // meaningful to quote, while a verbatim citation per candidate multiplies the
+  // output by the pool size and pushes it past maxTokens (the summarize_competitor
+  // failure mode). Dropping the envelope keeps a 40-candidate score in budget.
+  score_overlap: { grounding: false, confidence: false },
+  // The model names competitors from what it already knows — there is no source
+  // text to cite (the "source" is the product profile, not evidence about the
+  // rivals). The domains are validated downstream by the liveness check, so the
+  // citation envelope would only cost output tokens.
+  name_competitors: { grounding: false, confidence: false },
 };
 
 /**

@@ -13,7 +13,7 @@ import { signUnsubscribeToken } from "@outrival/shared";
 import { getResend, ALERT_FROM } from "../lib/resend";
 import { localHour } from "../lib/notification-dispatcher";
 import { escapeHtml } from "../lib/escape-html";
-import { darkEmailShell } from "../lib/email-shell";
+import { emailShell, e } from "../lib/email-shell";
 
 const SEVERITY_EMOJI: Record<string, string> = {
   critical: "🚨",
@@ -155,10 +155,10 @@ export async function runGenerateDailyDigest(payload?: { timestamp?: Date }) {
         .map((s) => {
           const emoji = SEVERITY_EMOJI[s.severity] ?? "🔔";
           return `
-  <div style="background:#171717;border:1px solid #262626;border-radius:6px;padding:16px;margin-bottom:12px;">
-    <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#a3a3a3;margin-bottom:6px;">${emoji} ${escapeHtml(s.competitorName)} · ${s.category}</div>
-    <div style="color:#fafafa;font-size:14px;margin-bottom:8px;">${escapeHtml(s.insight)}</div>
-    ${s.soWhat ? `<div style="color:#818cf8;font-size:13px;">→ ${escapeHtml(s.soWhat)}</div>` : ""}
+  <div ${e("card", "border-radius:6px;padding:16px;margin-bottom:12px;")}>
+    <div ${e("muted", "font-size:11px;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;")}>${emoji} ${escapeHtml(s.competitorName)} · ${s.category}</div>
+    <div ${e("text", "font-size:14px;margin-bottom:8px;")}>${escapeHtml(s.insight)}</div>
+    ${s.soWhat ? `<div ${e("accent", "font-size:13px;")}>→ ${escapeHtml(s.soWhat)}</div>` : ""}
   </div>`;
         })
         .join("");
@@ -170,11 +170,11 @@ export async function runGenerateDailyDigest(payload?: { timestamp?: Date }) {
           ? `${apiBase}/api/digest-feedback/unsubscribe?token=${signUnsubscribeToken(org.id, secret)}`
           : undefined;
 
-      const html = darkEmailShell(
-        `<p style="font-size:12px;color:#a3a3a3;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 4px;">Daily briefing</p>
-  <h2 style="font-family:Syne,sans-serif;margin:0 0 16px;color:#fafafa;">${deferred.length} update${deferred.length > 1 ? "s" : ""} since yesterday</h2>
+      const html = emailShell(
+        `<p ${e("muted", "font-size:12px;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 4px;")}>Daily briefing</p>
+  <h2 ${e("text", "margin:0 0 16px;")}>${deferred.length} update${deferred.length > 1 ? "s" : ""} since yesterday</h2>
   ${rows}
-  ${unsubscribeUrl ? `<div style="margin-top:24px;font-size:11px;color:#525252;text-align:center;"><a href="${unsubscribeUrl}" style="color:#525252;text-decoration:underline;">Unsubscribe</a></div>` : ""}`,
+  ${unsubscribeUrl ? `<div ${e("faint", "margin-top:24px;font-size:11px;text-align:center;")}><a href="${unsubscribeUrl}" ${e("faint", "text-decoration:underline;")}>Unsubscribe</a></div>` : ""}`,
       );
 
       try {

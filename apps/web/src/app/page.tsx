@@ -12,6 +12,7 @@ import { JsonLd } from "@/components/landing/json-ld";
 import { Nav } from "@/components/landing/nav";
 import { Pricing } from "@/components/landing/pricing";
 import { ProductShowcase } from "@/components/landing/product-showcase";
+import { SampleOffer } from "@/components/landing/sample-offer";
 import { ScrollReveal } from "@/components/landing/scroll-reveal";
 import { Sources } from "@/components/landing/sources";
 import { Trust } from "@/components/landing/trust";
@@ -40,6 +41,7 @@ export default function HomePage() {
         <DigestFeature />
         <Capabilities />
         <Comparison />
+        <SampleOffer />
         <Pricing />
         <FAQ />
         <FounderNote />

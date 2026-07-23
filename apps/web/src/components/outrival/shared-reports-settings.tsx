@@ -8,9 +8,9 @@ import { api } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
-// Shared reports (Lever 8) — the revocable list required by the security note: every
-// active public "Competitive Snapshot" link, with copy + revoke. Links are created
-// from the Overview's "Share snapshot"; here the user can kill them.
+// Shared reports (Lever 8) — the home for public "Competitive Snapshot" links: create
+// one, copy it, and revoke it. This is the single place links live (the revocable list
+// the security note requires); every active link is listed with copy + revoke.
 export function SharedReportsSettings() {
   const qc = useQueryClient();
   const [creating, setCreating] = useState(false);
@@ -72,8 +72,8 @@ export function SharedReportsSettings() {
       {links.length === 0 ? (
         <Card className="px-5 py-4">
           <div className="text-dense text-muted-foreground">
-            No shared reports yet. Create one here, or from the Overview with “Share
-            snapshot”.
+            No shared reports yet. Create a link to share a read-only Competitive
+            Snapshot of your landscape with anyone.
           </div>
         </Card>
       ) : (

@@ -244,6 +244,9 @@ export function CompetitorDetailView({ id }: { id: string }) {
     setData,
     refresh,
     requestRunMonitor,
+    runAllMonitors,
+    resumeMonitor,
+    setMonitorActive,
     enableMonitor,
     editMonitor,
     switchReviewSource,
@@ -640,13 +643,25 @@ export function CompetitorDetailView({ id }: { id: string }) {
           }}
         />
 
-        {/* What we cover on this competitor, framed by what IS tracked. The per-
-            source configuration it replaced now lives on the Sources sub-page. */}
+        {/* What we cover on this competitor, framed by what IS tracked, plus a chip
+            per configured source (status, freshness, run/pause/cadence). Everything
+            heavier — URLs, enabling a source, custom pages — lives on /sources. */}
         <CompetitorCoverage
           competitorId={competitor.id}
           monitors={monitors}
           plan={plan}
           targets={detectedTargets}
+          scrapingIds={scrapingIds}
+          runningAll={runningAll}
+          monitoringPaused={competitor.monitoringPaused}
+          onRun={requestRunMonitor}
+          onRunAll={runAllMonitors}
+          onResume={resumeMonitor}
+          onSetActive={setMonitorActive}
+          onEdit={editMonitor}
+          onLockedFrequency={(frequency) =>
+            setPaywall({ code: "plan_locked_frequency", frequency, plan })
+          }
         />
 
         <AiSummary

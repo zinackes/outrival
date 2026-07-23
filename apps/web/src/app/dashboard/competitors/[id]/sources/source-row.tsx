@@ -5,10 +5,12 @@ import { Link2, Loader2, Lock, Play, Plus } from "lucide-react";
 import {
   MONITOR_FREQUENCIES,
   PLAN_LABELS,
+  isReviewSource,
   minPlanForSource,
   planIncludesFrequency,
   minPlanForFrequency,
   sourceState,
+  validateMonitorUrl,
   type DetectedTargets,
   type MonitorFrequency,
   type Plan,
@@ -37,6 +39,52 @@ const TONE_CLASS = {
 } as const;
 
 /**
+ * What a URL means for this source. Most take a page on the competitor's own
+ * domain and are auto-discovered, so the field is an override. The two that live
+ * on a fixed third-party host (App Store listing, GitHub repo) can't be derived
+ * from the site at all — they say what they need, since a blank field there is the
+ * difference between enabling the source and a rejected request.
+ */
+const URL_GUIDANCE: Partial<Record<SourceType, { placeholder: string; help: string }>> = {
+  appstore_reviews: {
+    placeholder: "https://apps.apple.com/us/app/name/id123456789",
+    help: "Their App Store listing — the link has to carry the numeric app id (…/id123456789).",
+  },
+  github_repo: {
+    placeholder: "https://github.com/owner/repo",
+    help: "The public repository. Nothing on their site points to it, so we can't find it on our own.",
+  },
+  jobs: {
+    placeholder: "https://example.com/careers",
+    help: "Their careers page, or the board that hosts it (Greenhouse, Lever, Ashby…).",
+  },
+};
+
+/** The same rejections the API would return, said before the round-trip. */
+function urlErrorMessage(sourceType: SourceType, code: string): string {
+  switch (code) {
+    case "invalid_url":
+      return "That doesn't look like a URL.";
+    case "must_be_https":
+      return "The URL has to start with https://.";
+    case "credentials_not_allowed":
+      return "Remove the username and password from the URL.";
+    case "port_not_allowed":
+      return "A custom port isn't allowed.";
+    case "appstore_id_missing":
+      return "That App Store link is missing its app id (…/id123456789).";
+    case "host_not_allowed":
+      if (sourceType === "appstore_reviews") return "That has to be an apps.apple.com link.";
+      if (sourceType === "github_repo") return "That has to be a github.com repository.";
+      if (sourceType === "jobs")
+        return "That has to be on their domain, or on a job board we support.";
+      return "That page has to be on this competitor's domain.";
+    default:
+      return "That URL can't be used for this source.";
+  }
+}
+
+/**
  * One configurable source. The row always exists, whether or not a monitor does —
  * that is what lets it say "this competitor has no such surface" instead of simply
  * omitting the line and leaving the user to wonder.
@@ -46,6 +94,7 @@ export function SourceRow({
   monitor,
   plan,
   targets,
+  competitorUrl,
   fallbacks,
   running,
   monitoringPaused,
@@ -60,6 +109,8 @@ export function SourceRow({
   monitor: Monitor | null;
   plan: Plan;
   targets: DetectedTargets | null;
+  /** The competitor's own site — what a same-domain URL is checked against. */
+  competitorUrl: string | null;
   /** Other sources we ARE collecting — quoted in the blocked message. */
   fallbacks: string[];
   running: boolean;
@@ -73,6 +124,7 @@ export function SourceRow({
 }) {
   const [urlOpen, setUrlOpen] = useState(false);
   const [urlValue, setUrlValue] = useState("");
+  const [urlError, setUrlError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [enabling, setEnabling] = useState(false);
 
@@ -91,23 +143,35 @@ export function SourceRow({
       ? nextScanLabel(monitor, status, monitoringPaused)
       : null;
   const currentUrl = monitor?.config?.url ?? "";
-  // A repo lives on github.com and can't be derived from the competitor's site, so
-  // enabling it needs the URL up front rather than after the fact.
-  const needsUrlToEnable = sourceType === "github_repo";
+  // Sources that live on a fixed third-party host can't be derived from the
+  // competitor's site, so the API rejects an enable with no URL (`repo_url_required`
+  // / `review_url_required`). Ask for it here instead of firing a doomed request and
+  // reporting the requirement in a toast the user can't act on.
+  const needsUrlToEnable = sourceType === "github_repo" || isReviewSource(sourceType);
+  const guidance = URL_GUIDANCE[sourceType];
 
   function openUrlPanel() {
     setUrlValue(currentUrl);
+    setUrlError(null);
     setUrlOpen((v) => !v);
   }
 
   async function saveUrl() {
     const url = urlValue.trim();
     if (!url) return;
+    // Same rule the API enforces (host lock + https + app id), applied before the
+    // request so a typo answers inline instead of as a rejection toast.
+    const valid = validateMonitorUrl(sourceType, url, competitorUrl);
+    if (!valid.ok) {
+      setUrlError(urlErrorMessage(sourceType, valid.error));
+      return;
+    }
     setSaving(true);
     try {
-      if (monitor) await onEdit(monitor.id, { url });
-      else await onEnable(sourceType, url);
+      if (monitor) await onEdit(monitor.id, { url: valid.url });
+      else await onEnable(sourceType, valid.url);
       setUrlOpen(false);
+      setUrlError(null);
     } finally {
       setSaving(false);
     }
@@ -234,34 +298,41 @@ export function SourceRow({
       )}
 
       {urlOpen && (
-        <div className="mt-3 flex flex-col gap-1.5 rounded-md border border-border bg-background p-3">
+        <div className="mt-3 flex flex-col gap-1.5 rounded-md border border-border bg-background p-3 duration-200 ease-out animate-in fade-in-0 slide-in-from-top-1">
           <Label htmlFor={`url-${sourceType}`} className="text-xs">
-            Page URL
+            {monitor ? "Page URL" : `${sourceShortLabel(sourceType)} URL`}
           </Label>
           <p className="text-xs text-muted-foreground">
+            {guidance?.help ?? "Must be on this competitor's domain."}{" "}
             {/* Retargeting clears the previous page's failure record server-side, so
                 a source that was blocked or auto-paused comes back on its own. */}
-            Must be on this competitor&apos;s domain. Saving clears this source&apos;s
-            failure history and schedules a fresh scan — past snapshots are kept.
+            {monitor &&
+              "Saving clears this source's failure history and schedules a fresh scan — past snapshots are kept."}
           </p>
           <div className="flex flex-wrap gap-2">
             <Input
               id={`url-${sourceType}`}
               value={urlValue}
-              placeholder="https://…"
-              onChange={(e) => setUrlValue(e.target.value)}
+              autoFocus
+              aria-invalid={!!urlError}
+              placeholder={guidance?.placeholder ?? "https://…"}
+              onChange={(e) => {
+                setUrlValue(e.target.value);
+                if (urlError) setUrlError(null);
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !saving) void saveUrl();
               }}
               className="min-w-[240px] flex-1"
             />
             <Button size="sm" onClick={saveUrl} disabled={saving || !urlValue.trim()}>
-              {saving ? "Saving…" : "Save"}
+              {saving ? "Saving…" : monitor ? "Save" : "Enable"}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setUrlOpen(false)} disabled={saving}>
               Cancel
             </Button>
           </div>
+          {urlError && <p className="text-xs text-critical">{urlError}</p>}
         </div>
       )}
     </div>

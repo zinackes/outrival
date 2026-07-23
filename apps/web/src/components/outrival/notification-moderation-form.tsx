@@ -280,7 +280,7 @@ export function NotificationModerationForm() {
           Group similar signals (recommended)
         </label>
         <p className="text-xs text-muted-foreground">
-          Several minor changes from the same competitor are summarised into one item.
+          Several minor changes from the same competitor are summarized into one item.
         </p>
       </fieldset>
 

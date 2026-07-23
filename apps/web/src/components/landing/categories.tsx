@@ -31,7 +31,7 @@ const CATEGORIES: { name: string; sev: Sev; desc: string }[] = [
   {
     name: "Content",
     sev: "medium",
-    desc: "Editorial post signalling repositioning, a public manifesto.",
+    desc: "Editorial post signaling repositioning, a public manifesto.",
   },
   {
     name: "Funding",

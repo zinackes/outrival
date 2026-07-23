@@ -406,7 +406,7 @@ export const ALTERNATIVES: Record<CompetitorKey, {
 
 export const DIY = {
   verdict: [
-    "The tool you actually compete with isn't Crayon or Klue — it's the DIY stack you've half-built already: a change-detection script, ChatGPT to summarise the diff, Google Alerts for mentions, and a Notion page or spreadsheet to keep track.",
+    "The tool you actually compete with isn't Crayon or Klue — it's the DIY stack you've half-built already: a change-detection script, ChatGPT to summarize the diff, Google Alerts for mentions, and a Notion page or spreadsheet to keep track.",
     "That stack works, and for a while it's free or nearly free. What it won't do is decide for you: it hands you raw diffs and links, and you still do the reading, the ranking and the “so what” — every week, forever.",
     "Outrival is that stack collapsed into one product that writes the conclusion. Here's the honest comparison, including when rolling your own is genuinely the right call.",
   ],
@@ -414,11 +414,11 @@ export const DIY = {
   approaches: [
     {
       name: "ChangeDetection.io + ChatGPT",
-      role: "Watch pages, summarise the diff",
+      role: "Watch pages, summarize the diff",
       doesWell:
         "ChangeDetection.io is a genuinely good open-source page monitor — CSS/XPath selectors, five-minute rechecks, a real Chrome for JavaScript pages. Paste a diff into ChatGPT and you get a readable summary in seconds.",
       breaks:
-        "You own the selectors: when a competitor reships their pricing page, the watch silently breaks or floods you with noise. ChatGPT summarises one diff at a time, with no memory of last week, no severity, and no recommended action.",
+        "You own the selectors: when a competitor reships their pricing page, the watch silently breaks or floods you with noise. ChatGPT summarizes one diff at a time, with no memory of last week, no severity, and no recommended action.",
       // Named here so the Visualping source at the foot of the page supports
       // something in the body. It is also the honest hosted answer to "I don't
       // want to run a container", and /alternatives already profiles it.
@@ -449,7 +449,7 @@ export const DIY = {
   table: [
     { label: "What it watches", diy: "Pages you script, one at a time", outrival: "Pricing, product, hiring, reviews, content — per competitor" },
     { label: "Who writes the insight", diy: "You (or a raw ChatGPT summary)", outrival: "AI writes the takeaway: what changed, the so-what, the action" },
-    { label: "Prioritised by severity", diy: "No — every diff looks the same", outrival: "Yes — low → critical, filtered for relevance" },
+    { label: "Prioritized by severity", diy: "No — every diff looks the same", outrival: "Yes — low → critical, filtered for relevance" },
     { label: "Battle cards & history", diy: "None — each week is a blank page", outrival: "AI battle cards + a durable competitor history" },
     { label: "Setup", diy: "An afternoon of watches, alerts and glue", outrival: "~3 minutes, self-serve" },
     { label: "Ongoing maintenance", diy: "You fix selectors on every redesign", outrival: "Maintained for you; auto-heals broken sources" },
@@ -498,7 +498,7 @@ export const DIY = {
     },
     {
       q: "Can't I just use ChatGPT to track competitors?",
-      a: "ChatGPT can summarise a diff you paste in, but it doesn't watch anything on a schedule, remember last week, prioritise, or send alerts. You'd be the pipeline: capturing pages, feeding them in, and deciding what matters. Outrival is that pipeline, running continuously.",
+      a: "ChatGPT can summarize a diff you paste in, but it doesn't watch anything on a schedule, remember last week, prioritize, or send alerts. You'd be the pipeline: capturing pages, feeding them in, and deciding what matters. Outrival is that pipeline, running continuously.",
     },
     {
       q: "Is Google Alerts enough for competitive monitoring?",

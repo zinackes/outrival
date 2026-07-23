@@ -129,7 +129,7 @@ export default async function NotificationModerationPage() {
       <Section
         title="Org configuration"
         note={`${m.orgConfig.total} configured`}
-        info="How organisations have configured notifications: timezone source (auto-detected vs manual), whether batching is on, and whether they kept the default quiet hours."
+        info="How organizations have configured notifications: timezone source (auto-detected vs manual), whether batching is on, and whether they kept the default quiet hours."
       >
         {m.orgConfig.total === 0 ? (
           <Empty>No org has saved notification preferences yet.</Empty>

@@ -55,7 +55,7 @@ export default function BotPage() {
         <p>
           Only content that is <strong>openly published</strong> on the page:
           visible text and its structure, publicly served images and scripts, and
-          standard HTTP response headers. We use this to detect and summarise
+          standard HTTP response headers. We use this to detect and summarize
           changes for the customer monitoring that site.
         </p>
         <ul>

@@ -44,7 +44,7 @@ export default function PrivacyPage() {
 
           <h2>3. What we process and why</h2>
           <p>
-            We only process data we need. The table below summarises each
+            We only process data we need. The table below summarizes each
             processing activity, the data involved, the legal basis under Article
             6 GDPR, and how long we keep it.
           </p>

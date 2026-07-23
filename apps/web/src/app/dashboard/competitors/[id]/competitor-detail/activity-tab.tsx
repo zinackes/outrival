@@ -5,20 +5,13 @@ import { formatDistanceToNow } from "date-fns";
 import { Activity, ExternalLink, ArrowRight } from "lucide-react";
 import type { CompetitorSignal, ChangeRow } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/dashboard/empty-state";
-import { Eyebrow } from "@/components/outrival/eyebrow";
+import { SeverityBadge } from "@/components/dashboard/severity-pill";
+import { CatPill } from "@/components/dashboard/cat-pill";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
 import { SignalSourceLine } from "@/components/outrival/signal-source-line";
 import { useLastVisit } from "@/hooks/use-last-visit";
 import { ChangeCard } from "./changes";
-
-const SEVERITY_CLASS: Record<string, string> = {
-  low: "bg-low text-background",
-  medium: "bg-medium text-background",
-  high: "bg-high text-background",
-  critical: "bg-critical text-background",
-};
 
 export function ActivityTab({
   competitorId,
@@ -81,16 +74,18 @@ export function ActivityTab({
   return (
     <TabCard>
       {signals.length > 0 && (
-        <TabSection title="Recent activity" icon={Activity}>
-        {newCount > 0 && (
-          <div className="mb-1 flex items-center gap-2 text-dense text-muted-foreground">
-            <span className="size-1.5 rounded-full bg-primary" aria-hidden />
-            <span>
-              <span className="font-medium text-foreground">{newCount}</span> new
-              since your last visit
-            </span>
-          </div>
-        )}
+        <TabSection
+          title="Recent activity"
+          icon={Activity}
+          action={
+            newCount > 0 && (
+              <span className="flex shrink-0 items-center gap-1.5 text-sm text-muted-foreground">
+                <span className="size-1.5 rounded-full bg-primary" aria-hidden />
+                {newCount} new since your last visit
+              </span>
+            )
+          }
+        >
         <ul className="flex flex-col divide-y divide-border">
           {signals.map((s) => {
             const pageUrl = s.monitorUrl ?? competitorUrl;
@@ -99,27 +94,19 @@ export function ActivityTab({
               <li
                 key={s.id}
                 className={cn(
-                  "flex flex-col py-3.5 first:pt-0 last:pb-0",
-                  fresh && "border-l-2 border-primary pl-3.5",
+                  "relative flex flex-col py-3.5 first:pt-0 last:pb-0",
+                  // "New since your last visit" as an inset rail in the section's
+                  // own gutter — same cue as the signals feed, and unlike a
+                  // border-l it neither indents the row nor touches the dividers.
+                  fresh &&
+                    "before:absolute before:inset-y-1.5 before:-left-2.5 before:w-0.5 before:rounded-full before:bg-primary before:content-['']",
                 )}
               >
                 <div className="flex items-center gap-2 mb-1.5 text-xs flex-wrap">
-                  <Badge
-                    className={cn(
-                      "uppercase tracking-wide text-meta font-bold px-2 py-0",
-                      SEVERITY_CLASS[s.severity],
-                    )}
-                  >
-                    {s.severity}
-                  </Badge>
-                  {fresh && (
-                    <span className="rounded-sm bg-primary/15 px-1.5 py-0 text-meta font-medium uppercase tracking-wide text-primary">
-                      New
-                    </span>
-                  )}
-                  <Eyebrow size="micro">{s.category}</Eyebrow>
+                  <SeverityBadge severity={s.severity} />
+                  <CatPill size="compact">{s.category}</CatPill>
                   <span className="text-muted-foreground text-meta">
-                    · {formatDistanceToNow(new Date(s.createdAt), { addSuffix: true })}
+                    {formatDistanceToNow(new Date(s.createdAt), { addSuffix: true })}
                   </span>
                   <a
                     href={pageUrl}

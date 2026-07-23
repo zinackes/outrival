@@ -419,6 +419,11 @@ export const DIY = {
         "ChangeDetection.io is a genuinely good open-source page monitor — CSS/XPath selectors, five-minute rechecks, a real Chrome for JavaScript pages. Paste a diff into ChatGPT and you get a readable summary in seconds.",
       breaks:
         "You own the selectors: when a competitor reships their pricing page, the watch silently breaks or floods you with noise. ChatGPT summarises one diff at a time, with no memory of last week, no severity, and no recommended action.",
+      // Named here so the Visualping source at the foot of the page supports
+      // something in the body. It is also the honest hosted answer to "I don't
+      // want to run a container", and /alternatives already profiles it.
+      alternative:
+        "Prefer not to self-host? Visualping is the hosted equivalent — a free tier, AI summaries and an “is this important?” flag on every plan. It watches individual pages you pick, rather than a competitor's whole public surface.",
       cost: "Free self-hosted, or $8.99/mo hosted (5,000 watches). ChatGPT Plus $20/mo.",
     },
     {

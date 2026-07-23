@@ -62,6 +62,11 @@ const PLANS: Plan[] = [
     features: [
       "15 competitors",
       "Real-time Slack/email alerts",
+      // Shipped and gated here (PLAN_LIMITS.allowedChannels), but it was listed
+      // nowhere a buyer looks. The public API is NOT on this page: features.api
+      // is false on every plan and /docs says there are no endpoints or keys
+      // today — selling it would break one click away.
+      "Outbound webhooks",
       "AI-generated battle cards",
       "Trustpilot & App Store reviews",
     ],

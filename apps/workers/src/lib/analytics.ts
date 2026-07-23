@@ -67,7 +67,9 @@ export interface ScrapeRunRow {
   monitor_id: string;
   competitor_id: string;
   source_type: string;
-  status: "success" | "no_change" | "failed";
+  // `skipped` = a benign non-outcome that must NOT count as a failure: the source is
+  // healthy but had nothing to record this cycle (no youtube channel, crt.sh down).
+  status: "success" | "no_change" | "failed" | "skipped";
   level: number; // cascade level: 0/1 free, 2 datacenter egress
   attempts: number;
   failure_reason: string;

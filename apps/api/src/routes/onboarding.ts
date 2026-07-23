@@ -687,12 +687,14 @@ onboardingRouter.post("/complete", async (c) => {
           frequency: "weekly" as const,
           scrapeStartedAt,
         },
-        // Internal subdomains anchor (daily) — Certificate Transparency (crt.sh);
-        // its live-subdomain diff surfaces expansion / pre-launch surfaces.
+        // Internal subdomains anchor (weekly) — Certificate Transparency (crt.sh);
+        // its live-subdomain diff surfaces expansion / pre-launch surfaces. Weekly
+        // (not daily) — see competitors.ts POST: CT logs are slow + crt.sh is a
+        // shared, flaky provider that 429s under a daily × N-competitor load.
         {
           competitorId: competitor.id,
           sourceType: "subdomains" as const,
-          frequency: "daily" as const,
+          frequency: "weekly" as const,
           scrapeStartedAt,
         },
         // Internal YouTube anchor (weekly) — channel resolved from a homepage link;

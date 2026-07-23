@@ -34,12 +34,15 @@ function delay(ms: number): Promise<void> {
  * scraper turns that throw into a Trigger retry rather than an empty snapshot.
  */
 export async function fetchCrtSh(domain: string, opts: CrtShOptions = {}): Promise<CrtShEntry[]> {
-  const { fetchFn = fetch, timeoutMs = 20_000, retries = 3 } = opts;
+  const { fetchFn = fetch, timeoutMs = 20_000, retries = 4 } = opts;
   const url = `${BASE}/?q=${encodeURIComponent(`%.${domain}`)}&output=json`;
 
   let lastErr: unknown = null;
   for (let attempt = 0; attempt <= retries; attempt++) {
-    if (attempt > 0) await delay(500 * 2 ** (attempt - 1)); // 0.5s, 1s, 2s
+    // Exponential backoff with full jitter. crt.sh 502s/429s cluster under load, so a
+    // fixed schedule makes every retry land in the same congested window; the random
+    // spread (1-2s, 2-4s, 4-8s, 8-16s) both waits longer and de-synchronises retries.
+    if (attempt > 0) await delay(1000 * 2 ** (attempt - 1) * (1 + Math.random()));
     try {
       const res = await fetchFn(url, {
         signal: AbortSignal.timeout(timeoutMs),

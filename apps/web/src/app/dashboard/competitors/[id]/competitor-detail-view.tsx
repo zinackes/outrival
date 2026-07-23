@@ -20,23 +20,16 @@ import {
   Sparkles,
   Swords,
   Loader2,
-  Info,
-  ChevronDown,
-  AlertCircle,
   Trash2,
   RefreshCw,
   MoreHorizontal,
   Plus,
-  Settings2,
   Lock,
   LayoutGrid,
   ChevronLeft,
   ChevronRight,
-  Cpu,
   Pencil,
   Pause,
-  Power,
-  PowerOff,
   Bell,
   BellOff,
   Download,
@@ -44,8 +37,6 @@ import {
   Boxes,
   Crosshair,
   Palette,
-  HelpCircle,
-  FileSearch,
 } from "lucide-react";
 import {
   Dialog,
@@ -59,14 +50,12 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { BattleCardTab } from "@/components/outrival/battle-card-tab";
 import {
   PaywallDialog,
   paywallFromError,
@@ -74,8 +63,6 @@ import {
 } from "@/components/outrival/paywall-dialog";
 import { track } from "@/lib/posthog/events";
 import {
-  validateMonitorUrl,
-  MONITOR_FREQUENCIES,
   PLAN_LABELS,
   minPlanForSource,
   planIncludesSource,
@@ -84,17 +71,11 @@ import {
   aggregateFreshness,
   deriveAnalysisStatus,
   type Plan,
-  type SourceType,
-  type MonitorFrequency,
   type AnalysisStatus,
-  type CustomMonitorHint,
+  type DetectedTargets,
 } from "@outrival/shared";
 import { FreshnessDot } from "@/components/outrival/freshness-dot";
 import { AnalysisNotice, AnalysisProgress } from "@/components/outrival/analysis-status";
-import { MonitorFreshnessAction } from "@/components/outrival/monitor-freshness";
-import { PausedMonitors } from "@/components/outrival/monitor-alternatives";
-import { CompetitorTechStack } from "@/components/outrival/competitor-tech-stack";
-import { Eyebrow } from "@/components/outrival/eyebrow";
 import { CompetitorColorPicker } from "@/components/dashboard/competitor-color-picker";
 import { competitorNameColor } from "@/lib/competitor-color";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
@@ -103,7 +84,6 @@ import { ListError } from "@/components/outrival/list-error";
 import { toastApiError, toastRescanLimit } from "@/lib/error-helpers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -122,7 +102,6 @@ import { sourceShortLabel } from "@/lib/source-labels";
 import CompetitorDetailLoading from "./detail-skeleton";
 import {
   api,
-  ApiError,
   type Competitor,
   type Monitor,
   type ChangeRow,
@@ -135,45 +114,46 @@ import { useSetAskContext } from "@/components/dashboard/ask-context";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import {
   POLL_TIMEOUT_MS,
+  POLL_INTERVAL_MS,
   isServerScraping,
   MonitorEmptyState,
   Empty,
   TabLoading,
   SourceSummary,
-  type MonitorSourceProps,
 } from "./competitor-detail/shared";
 import { PricingTab } from "./competitor-detail/pricing-tab";
 import { HiringTab } from "./competitor-detail/hiring-tab";
 import { ReviewsTab } from "./competitor-detail/reviews-tab";
 import { OverviewTab } from "./competitor-detail/overview-tab";
 import { ActivityTab } from "./competitor-detail/activity-tab";
-import { ContentTab } from "./competitor-detail/content-tab";
-import { CustomTab, type CustomAddResult } from "./competitor-detail/custom-tab";
+import { ProductTab } from "./competitor-detail/product-tab";
+import { PRODUCT_SOURCES } from "./competitor-detail/product-lenses";
+import { useMonitorActions } from "./competitor-detail/use-monitor-actions";
+import { resolveTabParam } from "./competitor-detail/tab-migration";
+import { CompetitorCoverage } from "./competitor-detail/competitor-coverage";
 import type { TabKey } from "./competitor-detail/types";
 
+// Six reading tabs, grouped by the question they answer. Configuration does not
+// live here any more — it moved to the Sources sub-page, so a tab is only ever a
+// lens on data. Tech stack became an Overview card, battle cards their own page.
 const TABS: Array<{ key: TabKey; label: string; icon: typeof Activity }> = [
   { key: "overview", label: "Overview", icon: LayoutGrid },
   { key: "activity", label: "Activity", icon: Activity },
   { key: "pricing", label: "Pricing", icon: DollarSign },
   { key: "hiring", label: "Hiring", icon: Briefcase },
   { key: "reviews", label: "Reviews", icon: Star },
-  { key: "content", label: "Content", icon: FileText },
-  { key: "custom", label: "Custom", icon: FileSearch },
-  { key: "techstack", label: "Tech stack", icon: Cpu },
-  { key: "battlecard", label: "Battle Card", icon: Swords },
+  { key: "product", label: "Product & Positioning", icon: FileText },
 ];
 
 const VISIBLE_TABS = TABS;
 
 // Per-tab freshness dot (patch-14): tabs backed by monitored sources show how
-// recent that section's data is. Activity (signal feed) and Battle Card have no
-// single source → no dot.
+// recent that section's data is. Activity (signal feed) has no single source → no dot.
 const TAB_SOURCES: Partial<Record<TabKey, string[]>> = {
   pricing: ["pricing"],
   hiring: ["jobs"],
   reviews: ["appstore_reviews", "trustpilot_public"],
-  content: ["homepage", "blog", "changelog"],
-  custom: ["custom"],
+  product: [...PRODUCT_SOURCES],
 };
 
 function tabFreshness(key: TabKey, monitors: Monitor[]) {
@@ -186,11 +166,9 @@ function tabFreshness(key: TabKey, monitors: Monitor[]) {
 // the trigger (lock icon + min-plan tooltip) and opens the paywall on click
 // instead of switching. Mirrors the API source gates — the jobs source (hiring)
 // and the cheapest review source (reviews). Tabs without a plan requirement
-// (overview/activity/pricing/content/techstack/battlecard) return null.
+// (overview/activity/pricing/product) return null.
 function tabLock(key: TabKey, plan: Plan): { reason: PaywallReason; minPlan: Plan } | null {
   switch (key) {
-    // Battle cards are open to every tier now (governed by the daily-generation cap,
-    // enforced at generate time inside BattleCardTab) — the tab itself is never locked.
     case "hiring":
       if (planIncludesSource(plan, "jobs")) return null;
       return {
@@ -217,31 +195,6 @@ function tabLock(key: TabKey, plan: Plan): { reason: PaywallReason; minPlan: Pla
 // every tab fades/slides in identically instead of some animating and some snapping.
 const TAB_PANEL_CLASS = "animate-in fade-in slide-in-from-bottom-1 duration-300";
 
-const POLL_INTERVAL_MS = 3000;
-
-// Sources whose tab data is written by an async DOWNSTREAM extraction job
-// (extract-pricing / extract-jobs / extract-reviews), not by the scrape itself.
-// Their per-tab query (["competitor", id, "pricingHistory"|"jobs"|…]) has nothing
-// new to show at the instant the scrape's lastRunAt moves — the extraction lands
-// seconds-to-minutes later. See the re-invalidation loop in the scrape poller.
-const EXTRACTION_BACKED_SOURCES = new Set<string>([
-  "pricing",
-  "jobs",
-  // Reviews v2: App Store (RSS) + Trustpilot surface are the live review sources.
-  "appstore_reviews",
-  "trustpilot_public",
-]);
-
-// Extraction-backed tab data (jobs/pricing/reviews) is written by a downstream job
-// that finishes AFTER the scrape's lastRunAt moves, and stamps the source monitor's
-// aiSummaryUpdatedAt when it lands. Rather than guess the delay with fixed timers
-// (the old scheme gave up at 70s and left slow extractions stuck until a hard
-// refresh), we poll the detail until that timestamp advances past the pre-scrape
-// baseline, then invalidate the tab query — bounded by a hard deadline for the rare
-// case where extraction never stamps (no data, or the summary AI failed).
-const EXTRACTION_WATCH_INTERVAL_MS = 5000;
-const EXTRACTION_WATCH_TIMEOUT_MS = 210_000;
-
 // AI-summary generation is a fire-and-trigger job (refresh-competitor-summary) that
 // can take well beyond a single tick — queued behind other summaries (concurrency 1),
 // slow AI failover, retries. We persist the in-progress marker per competitor so the
@@ -250,28 +203,11 @@ const EXTRACTION_WATCH_TIMEOUT_MS = 210_000;
 const summaryGenKey = (competitorId: string) => `outrival:summary-gen:${competitorId}`;
 type SummaryGenMeta = { startedAt: number; baseline: string | null };
 
-type MonitorStatus = "running" | "failed" | "disabled" | "paused" | "ok" | "idle";
-
-function monitorStatus(m: Monitor, running: boolean): MonitorStatus {
-  if (running) return "running";
-  // Auto-paused after repeated failures (markedUnscrapable + isActive=false). A
-  // distinct, muted state — not the loud "failed" hue — so the strip shows the
-  // source is intentionally off and won't retry on its own, not mid-retry.
-  if (m.markedUnscrapable) return "disabled";
-  // Manually paused by the user (isActive=false, no auto-pause flag): a deliberate
-  // off state, re-enabled from the source menu. Kept separate from "disabled" so the
-  // copy says "you paused this" rather than "we stopped after failures".
-  if (m.isActive === false) return "paused";
-  const lastRun = m.lastRunAt ? new Date(m.lastRunAt).getTime() : 0;
-  const lastFailed = m.lastFailedAt ? new Date(m.lastFailedAt).getTime() : 0;
-  if (lastFailed > 0 && lastFailed > lastRun) return "failed";
-  if (lastRun > 0) return "ok";
-  return "idle";
-}
-
 export type CompetitorData = {
   competitor: Competitor;
   monitors: Monitor[];
+  /** Seeded and scraped on their own cadence — read-only on the Sources page. */
+  automaticMonitors: Monitor[];
   recentChanges: ChangeRow[];
   recentSignals: CompetitorSignal[];
   techStack: TechStackData;
@@ -279,50 +215,42 @@ export type CompetitorData = {
   plan: Plan;
 };
 
+/**
+ * What platform detection actually resolved for this competitor. Null when it has
+ * never run: without evidence, an absent source is only "not turned on", never
+ * "this competitor has no such surface" — we don't claim absence we didn't look for.
+ */
+function detectedTargetsOf(techStack: TechStackData): DetectedTargets | null {
+  const profile = techStack.platformProfile;
+  if (!profile) return null;
+  return {
+    statusPage: !!profile.statusPage?.value,
+    changelog: !!profile.changelog?.value,
+  };
+}
+
 export function CompetitorDetailView({ id }: { id: string }) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  // Server-seeded on first paint (page.tsx). Keyed on id, so prev/next navigation
-  // refetches automatically.
-  const competitorQ = useQuery(competitorDetailQuery(id));
-  const data = competitorQ.data ?? null;
-  const error = competitorQ.error;
-  // Optimistic write-through to the competitor cache (the kebab mutations call this);
-  // the setData(updater) call-sites stay unchanged.
-  function setData(updater: (prev: CompetitorData | null) => CompetitorData | null) {
-    queryClient.setQueryData<CompetitorData>(competitorDetailQuery(id).queryKey, (prev) =>
-      updater(prev ?? null) ?? undefined,
-    );
-  }
-  const [scrapingIds, setScrapingIds] = useState<Set<string>>(new Set());
-  const [runningAll, setRunningAll] = useState(false);
-  const [techScraping, setTechScraping] = useState(false);
+  // Every monitor write + the scrape-progress poller. Shared with the Sources page,
+  // which performs the same mutations against the same cached detail query.
+  const {
+    data,
+    error,
+    scrapingIds,
+    runningAll,
+    paywall,
+    setPaywall,
+    setData,
+    refresh,
+    requestRunMonitor,
+    enableMonitor,
+    editMonitor,
+    switchReviewSource,
+  } = useMonitorActions(id);
   const [tab, setTab] = useState<TabKey>("overview");
   const [showDelete, setShowDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [paywall, setPaywall] = useState<PaywallReason | null>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Watches downstream extraction results (pricing/jobs/reviews land after the
-  // scrape's lastRunAt moves). Holds the poll interval + the monitors we're waiting
-  // on (baseline aiSummaryUpdatedAt at scrape-finish + a hard deadline). Cleared on
-  // unmount / competitor switch — it targets this id's queries.
-  const extractionWatchRef = useRef<{
-    interval: ReturnType<typeof setInterval> | null;
-    monitors: Map<string, { baseline: string | null; deadline: number }>;
-  }>({ interval: null, monitors: new Map() });
-  const scrapingStartRef = useRef<
-    Map<
-      string,
-      {
-        startedAt: number;
-        lastRunAt: string | null;
-        lastFailedAt: string | null;
-        lastChangedAt: string | null;
-        aiSummaryUpdatedAt: string | null;
-      }
-    >
-  >(new Map());
-  const seededRef = useRef(false);
   // AI-summary generation poll (persisted across navigation, see summaryGenKey).
   const [summaryGenerating, setSummaryGenerating] = useState(false);
   const summaryStartRef = useRef<SummaryGenMeta | null>(null);
@@ -406,59 +334,17 @@ export function CompetitorDetailView({ id }: { id: string }) {
     return () => document.removeEventListener("keydown", onKey);
   }, [prevId, nextId, router]);
 
-  // Refetch the competitor detail and return the fresh data (the scrape poller and
-  // several mutations await it). useQuery (keyed on id) handles the initial load.
-  async function refresh() {
-    const r = await competitorQ.refetch();
-    return r.data ?? null;
-  }
-
-  // Broad-invalidate every per-tab query for this competitor (not the heavy detail,
-  // refreshed separately by the pollers) so whichever tab is active refetches.
-  function invalidateExtractionTabs() {
-    void queryClient.invalidateQueries({
-      queryKey: ["competitor", id],
-      predicate: (q) => q.queryKey[2] !== "detail",
-    });
-  }
-
-  // Poll the detail until each pending source's aiSummaryUpdatedAt advances past the
-  // baseline captured at scrape-finish (= its downstream extraction landed), then
-  // invalidate the tab queries. A per-monitor deadline bounds the wait so a scrape
-  // whose extraction never stamps (no data / summary AI failed) still gets one final
-  // refresh instead of polling forever.
-  function watchExtraction(pending: { id: string; baseline: string | null }[]) {
-    const ref = extractionWatchRef.current;
-    const deadline = Date.now() + EXTRACTION_WATCH_TIMEOUT_MS;
-    for (const p of pending) ref.monitors.set(p.id, { baseline: p.baseline, deadline });
-    if (ref.interval) return;
-    ref.interval = setInterval(async () => {
-      const fresh = await refresh();
-      const now = Date.now();
-      let touched = false;
-      for (const [mid, meta] of ref.monitors) {
-        const updated = fresh?.monitors.find((x) => x.id === mid)?.aiSummaryUpdatedAt ?? null;
-        // Extraction stamped a fresh summary → its tab data has landed. Or the
-        // deadline passed → give up and refresh once regardless.
-        if ((updated !== null && updated !== meta.baseline) || now > meta.deadline) {
-          ref.monitors.delete(mid);
-          touched = true;
-        }
-      }
-      if (touched) invalidateExtractionTabs();
-      if (ref.monitors.size === 0 && ref.interval) {
-        clearInterval(ref.interval);
-        ref.interval = null;
-      }
-    }, EXTRACTION_WATCH_INTERVAL_MS);
-  }
-
   // Restore the active tab from the URL (?tab=) so a refresh stays on the same
   // tab. Runs once on mount, before the Tabs render (data is still loading).
+  // Retired keys are remapped rather than ignored: ?tab=battlecard is written into
+  // notifications.link_url by generate-battle-card, so links already in the
+  // database point at tabs this page no longer has.
   useEffect(() => {
-    const t = new URLSearchParams(window.location.search).get("tab");
-    if (t && VISIBLE_TABS.some((x) => x.key === t)) setTab(t as TabKey);
-  }, []);
+    const target = resolveTabParam(new URLSearchParams(window.location.search).get("tab"));
+    if (!target) return;
+    if (target.kind === "route") router.replace(`/dashboard/competitors/${id}/${target.segment}`);
+    else setTab(target.tab);
+  }, [id, router]);
 
   // Switch tab and mirror it into the URL so it survives a reload (replaceState,
   // no history entry per tab click).
@@ -467,187 +353,6 @@ export function CompetitorDetailView({ id }: { id: string }) {
     const params = new URLSearchParams(window.location.search);
     params.set("tab", key);
     window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
-  }
-
-  // Restore the in-progress state after a refresh: any monitor the server still
-  // reports as scraping is re-tracked so the existing poll resumes and reports
-  // its completion/failure. Runs once, after the first successful load.
-  useEffect(() => {
-    if (!data || seededRef.current) return;
-    seededRef.current = true;
-    const running = data.monitors.filter(isServerScraping);
-    if (running.length === 0) return;
-    for (const m of running) {
-      scrapingStartRef.current.set(m.id, {
-        startedAt: m.scrapeStartedAt ? new Date(m.scrapeStartedAt).getTime() : Date.now(),
-        lastRunAt: m.lastRunAt,
-        lastFailedAt: m.lastFailedAt,
-        lastChangedAt: m.lastChangedAt,
-        aiSummaryUpdatedAt: m.aiSummaryUpdatedAt,
-      });
-    }
-    setScrapingIds(new Set(running.map((m) => m.id)));
-  }, [data]);
-
-  useEffect(() => {
-    if (scrapingIds.size === 0) {
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
-      return;
-    }
-    if (pollRef.current) return;
-
-    pollRef.current = setInterval(async () => {
-      const fresh = await refresh();
-      if (!fresh) return;
-      const finished: string[] = [];
-      // Subset of `finished` whose lastChangedAt moved during the run — i.e. the
-      // scrape produced a real diff, not just a no-op re-fetch of identical content.
-      const changed: string[] = [];
-      const failed: string[] = [];
-      const timedOut: string[] = [];
-      // Pre-scrape aiSummaryUpdatedAt per finished extraction-backed source, so the
-      // watcher can tell when the downstream extraction has stamped a fresh one.
-      const extractionBaselines = new Map<string, string | null>();
-      const now = Date.now();
-      for (const monitorId of scrapingIds) {
-        const tracker = scrapingStartRef.current.get(monitorId);
-        if (!tracker) continue;
-        const updated = fresh.monitors.find((m) => m.id === monitorId);
-        const updatedRun = updated?.lastRunAt ?? null;
-        const updatedFailed = updated?.lastFailedAt ?? null;
-        if (updatedRun !== null && updatedRun !== tracker.lastRunAt) {
-          finished.push(monitorId);
-          if (updated && EXTRACTION_BACKED_SOURCES.has(updated.sourceType)) {
-            extractionBaselines.set(monitorId, tracker.aiSummaryUpdatedAt);
-          }
-          const updatedChanged = updated?.lastChangedAt ?? null;
-          if (updatedChanged !== null && updatedChanged !== tracker.lastChangedAt) {
-            changed.push(monitorId);
-          }
-        } else if (updatedFailed !== null && updatedFailed !== tracker.lastFailedAt) {
-          failed.push(monitorId);
-        } else if (now - tracker.startedAt > POLL_TIMEOUT_MS) {
-          timedOut.push(monitorId);
-        }
-      }
-      if (finished.length === 0 && failed.length === 0 && timedOut.length === 0) return;
-
-      setScrapingIds((prev) => {
-        const next = new Set(prev);
-        for (const fid of [...finished, ...failed, ...timedOut]) {
-          next.delete(fid);
-          scrapingStartRef.current.delete(fid);
-        }
-        return next;
-      });
-
-      if (finished.length > 0) {
-        const changedSet = new Set(changed);
-        const label = (mid: string) =>
-          fresh.monitors.find((m) => m.id === mid)?.sourceType ?? mid;
-        const changedLabels = finished.filter((mid) => changedSet.has(mid)).map(label);
-        const unchangedLabels = finished.filter((mid) => !changedSet.has(mid)).map(label);
-        if (changedLabels.length > 0) {
-          toast.success("Change detected", {
-            description: `${changedLabels.join(", ")} — new snapshot captured`,
-          });
-        }
-        if (unchangedLabels.length > 0) {
-          toast.info("Scrape complete · no change", { description: unchangedLabels.join(", ") });
-        }
-        void queryClient.invalidateQueries({ queryKey: ["competitor", id] });
-
-        // Extraction-backed sources write their tab data in a downstream job that
-        // finishes AFTER lastRunAt moves — the invalidate above refetches data that
-        // isn't there yet. Watch each such source until its extraction stamps a fresh
-        // aiSummaryUpdatedAt, unless it already landed within this tick (the
-        // invalidate above caught it — skip the wait).
-        const pending = finished
-          .filter((mid) => extractionBaselines.has(mid))
-          .filter((mid) => {
-            const current = fresh.monitors.find((x) => x.id === mid)?.aiSummaryUpdatedAt ?? null;
-            return current === (extractionBaselines.get(mid) ?? null);
-          })
-          .map((mid) => ({ id: mid, baseline: extractionBaselines.get(mid) ?? null }));
-        if (pending.length > 0) watchExtraction(pending);
-      }
-      if (failed.length > 0) {
-        for (const mid of failed) {
-          const m = fresh.monitors.find((x) => x.id === mid);
-          toast.error(`Scrape failed · ${m?.sourceType ?? mid}`, {
-            description: friendlyScrapeError(m?.lastError, m?.sourceType),
-          });
-        }
-        void queryClient.invalidateQueries({ queryKey: ["competitor", id] });
-      }
-      if (timedOut.length > 0) {
-        const labels = timedOut
-          .map((mid) => fresh.monitors.find((m) => m.id === mid)?.sourceType ?? mid)
-          .join(", ");
-        toast.warning("Scrape still running", {
-          description: `${labels} — still in progress after 5 min, will continue in background. Refresh the page later to see results.`,
-        });
-      }
-    }, POLL_INTERVAL_MS);
-
-    return () => {
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
-    };
-  }, [scrapingIds, id]);
-
-  // Tear down the extraction watch when switching competitor or unmounting (it
-  // invalidates this id's queries).
-  useEffect(() => {
-    const ref = extractionWatchRef.current;
-    return () => {
-      if (ref.interval) clearInterval(ref.interval);
-      ref.interval = null;
-      ref.monitors.clear();
-    };
-  }, [id]);
-
-  async function runAllMonitors() {
-    if (!data) return;
-    // Skip paused sources — "Scrape all" shouldn't wake a source the user turned off.
-    const idle = data.monitors.filter((m) => !scrapingIds.has(m.id) && m.isActive !== false);
-    if (idle.length === 0) return;
-    setRunningAll(true);
-    try {
-      // Each re-scan counts against the daily cap; stop at the first limit hit so
-      // we don't fire one 429 toast per remaining source.
-      for (const m of idle) {
-        const result = await runMonitor(m.id);
-        if (result === "limit") break;
-      }
-    } finally {
-      setRunningAll(false);
-    }
-  }
-
-  // Dev-only: force a tech-stack scan. The job (scrape-tech-stack) updates
-  // techStackScrapedAt + entries, so a timed refresh surfaces the result — no
-  // monitor-keyed polling like the normal sources.
-  async function scrapeTechStack() {
-    setTechScraping(true);
-    try {
-      await api.scrapeTechStack(id);
-      toast.info("Tech-stack scan triggered", {
-        description: "Detecting third-party tech… refreshing shortly.",
-      });
-      setTimeout(() => {
-        refresh();
-        setTechScraping(false);
-      }, 8000);
-    } catch (e) {
-      toastApiError(e, { title: "Couldn't trigger the tech-stack scan" });
-      setTechScraping(false);
-    }
   }
 
   async function confirmDelete() {
@@ -879,258 +584,6 @@ export function CompetitorDetailView({ id }: { id: string }) {
     }
   }
 
-  async function enableMonitor(sourceType: SourceType, url?: string) {
-    try {
-      await api.addCompetitorMonitor(id, sourceType, url ? { url } : undefined);
-      const fresh = await refresh();
-      const created = fresh?.monitors.find((m) => m.sourceType === sourceType);
-      if (created && fresh) {
-        toast.success(`${sourceType} monitoring enabled`, {
-          description: "Starting first scrape…",
-        });
-        await runMonitor(created.id, fresh.monitors);
-      } else {
-        toast.success(`${sourceType} monitoring enabled`);
-      }
-    } catch (e) {
-      const reason = paywallFromError(e);
-      if (reason) {
-        setPaywall(reason);
-        return;
-      }
-      toastApiError(e, { title: "Couldn't enable that source" });
-    }
-  }
-
-  // Add a custom-page monitor via the dedicated endpoint. Returns a result the
-  // dialog uses: `ok` closes it (and kicks off the first scrape), otherwise the
-  // domain-mismatch / duplicate message is shown inline so the user can fix the URL.
-  // The quota 403 (plan_limit_custom_monitors) still routes to the paywall.
-  async function addCustomMonitor(input: {
-    url: string;
-    label: string;
-    hint: CustomMonitorHint;
-  }): Promise<CustomAddResult> {
-    try {
-      const { monitor } = await api.addCustomMonitor(id, input);
-      const fresh = await refresh();
-      toast.success("Watching custom page", { description: "Starting first scrape…" });
-      await runMonitor(monitor.id, fresh?.monitors);
-      return { ok: true };
-    } catch (e) {
-      const reason = paywallFromError(e);
-      if (reason) {
-        setPaywall(reason);
-        return { ok: true };
-      }
-      if (e instanceof ApiError) {
-        if (e.code === "custom_url_domain_mismatch") {
-          return { ok: false, message: "That page isn't on this competitor's domain." };
-        }
-        if (e.code === "custom_url_duplicate") {
-          return { ok: false, message: "You're already watching that page." };
-        }
-        if (e.code === "invalid_monitor_url") {
-          return { ok: false, message: "That doesn't look like a valid https URL." };
-        }
-      }
-      toastApiError(e, { title: "Couldn't add that page" });
-      return { ok: true };
-    }
-  }
-
-  async function removeCustomMonitor(monitorId: string) {
-    try {
-      await api.deleteMonitor(monitorId);
-      await refresh();
-      toast.success("Stopped watching that page");
-    } catch (e) {
-      toastApiError(e, { title: "Couldn't remove that page" });
-    }
-  }
-
-  async function editMonitor(
-    monitorId: string,
-    patch: { url?: string; frequency?: MonitorFrequency },
-  ) {
-    try {
-      await api.updateMonitor(monitorId, patch);
-      await refresh();
-      toast.success("Monitor updated");
-    } catch (e) {
-      const reason = paywallFromError(e);
-      if (reason) {
-        setPaywall(reason);
-        return;
-      }
-      toastApiError(e, { title: "Couldn't update the monitor" });
-    }
-  }
-
-  // Switch a competitor's URL-based review source. Reviews v2 leaves App Store as the
-  // only such source, so this is effectively inert today, but kept for when another
-  // URL-based review source returns. Enable the new source FIRST so a plan/URL
-  // rejection surfaces the paywall without losing the existing monitor; only then
-  // delete the old one and kick off the first scrape.
-  async function switchReviewSource(oldMonitorId: string, source: SourceType, url: string) {
-    try {
-      const { monitor } = await api.addCompetitorMonitor(id, source, { url });
-      await api.deleteMonitor(oldMonitorId);
-      const fresh = await refresh();
-      toast.success(`Switched to ${source}`, { description: "Starting first scrape…" });
-      await runMonitor(monitor.id, fresh?.monitors);
-    } catch (e) {
-      const reason = paywallFromError(e);
-      if (reason) {
-        setPaywall(reason);
-        return;
-      }
-      toastApiError(e, { title: "Couldn't switch the review source" });
-    }
-  }
-
-  async function runMonitor(
-    monitorId: string,
-    list?: Monitor[],
-  ): Promise<"ok" | "limit" | "error"> {
-    const available = list ?? data?.monitors;
-    if (!available) return "error";
-    const monitor = available.find((m) => m.id === monitorId);
-    if (!monitor) return "error";
-    scrapingStartRef.current.set(monitorId, {
-      startedAt: Date.now(),
-      lastRunAt: monitor.lastRunAt,
-      lastFailedAt: monitor.lastFailedAt,
-      lastChangedAt: monitor.lastChangedAt,
-      aiSummaryUpdatedAt: monitor.aiSummaryUpdatedAt,
-    });
-    setScrapingIds((prev) => new Set(prev).add(monitorId));
-    try {
-      await api.runMonitor(monitorId);
-      track("scrape_triggered", { sourceType: monitor.sourceType });
-      toast.info(`Scrape started · ${monitor.sourceType}`, {
-        description: "Polling for completion…",
-      });
-      return "ok";
-    } catch (e) {
-      scrapingStartRef.current.delete(monitorId);
-      setScrapingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(monitorId);
-        return next;
-      });
-      // A re-scan past the daily cap (patch-27) → friendly limit toast + upgrade nudge.
-      if (toastRescanLimit(e)) return "limit";
-      toastApiError(e, { title: "Couldn't start the scrape" });
-      return "error";
-    }
-  }
-
-  // Re-activate an auto-paused source (markedUnscrapable): the resume endpoint
-  // clears the failure state, re-enables scheduling, and kicks a fresh scrape.
-  // Mirrors runMonitor's optimistic tracking so the chip flips to the spinner and
-  // the existing poll reports completion.
-  async function resumeMonitor(monitorId: string) {
-    const monitor = data?.monitors.find((m) => m.id === monitorId);
-    if (!monitor) return;
-    scrapingStartRef.current.set(monitorId, {
-      startedAt: Date.now(),
-      lastRunAt: monitor.lastRunAt,
-      lastFailedAt: monitor.lastFailedAt,
-      lastChangedAt: monitor.lastChangedAt,
-      aiSummaryUpdatedAt: monitor.aiSummaryUpdatedAt,
-    });
-    setScrapingIds((prev) => new Set(prev).add(monitorId));
-    try {
-      await api.resumeMonitor(monitorId);
-      toast.success(`${sourceShortLabel(monitor.sourceType)} resumed`, {
-        description: "A fresh scrape is on its way.",
-      });
-      await refresh();
-    } catch (e) {
-      scrapingStartRef.current.delete(monitorId);
-      setScrapingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(monitorId);
-        return next;
-      });
-      toastApiError(e, { title: "Couldn't resume this source" });
-    }
-  }
-
-  // Manually pause / enable a single source (distinct from the competitor-wide
-  // monitoringPaused and from the auto-pause after repeated failures). A paused source
-  // keeps its data + config; the scheduler simply skips it until re-enabled. Optimistic
-  // flip so the chip updates immediately; revert on failure.
-  async function setMonitorActive(monitorId: string, active: boolean) {
-    const monitor = data?.monitors.find((m) => m.id === monitorId);
-    if (!monitor) return;
-    const flip = (value: boolean) =>
-      setData((d) =>
-        d
-          ? {
-              ...d,
-              monitors: d.monitors.map((m) =>
-                m.id === monitorId ? { ...m, isActive: value } : m,
-              ),
-            }
-          : d,
-      );
-    flip(active);
-    try {
-      await api.updateMonitor(monitorId, { isActive: active });
-      toast.success(
-        active
-          ? `${sourceShortLabel(monitor.sourceType)} enabled`
-          : `${sourceShortLabel(monitor.sourceType)} paused`,
-        {
-          description: active
-            ? "It will scrape again on its normal schedule."
-            : "This source is frozen — no scheduled scrapes until you enable it.",
-        },
-      );
-    } catch (e) {
-      flip(!active);
-      toastApiError(e, { title: "Couldn't update the source" });
-    }
-  }
-
-  // Intelligent rate limiting (patch-22): a manual re-scrape of a source that was
-  // checked recently with no change is friction, not blocked. Mirrors the server
-  // GET /monitors/:id/staleness thresholds, computed client-side from data we already
-  // have. The user can always force it. Only gates explicit per-source "Run" — first
-  // scrapes (enable/switch) and "Run all" still scrape unconditionally.
-  function monitorStaleness(m: Monitor): "very_recent" | "fresh" | "outdated" {
-    const minutesSince = m.lastRunAt
-      ? (Date.now() - new Date(m.lastRunAt).getTime()) / 60000
-      : Infinity;
-    const changedSinceRun =
-      !!m.lastChangedAt &&
-      !!m.lastRunAt &&
-      new Date(m.lastChangedAt).getTime() >= new Date(m.lastRunAt).getTime();
-    if (minutesSince < 30) return "very_recent";
-    if (minutesSince < 1440 && !changedSinceRun) return "fresh";
-    return "outdated";
-  }
-
-  function requestRunMonitor(monitorId: string, list?: Monitor[]) {
-    const monitor = (list ?? data?.monitors)?.find((m) => m.id === monitorId);
-    if (monitor) {
-      const s = monitorStaleness(monitor);
-      if (s !== "outdated") {
-        toast.info(s === "very_recent" ? "Scraped just now" : "No changes since last scrape", {
-          description:
-            s === "very_recent"
-              ? "This source was checked in the last 30 minutes."
-              : "Nothing has changed since the last scrape — re-scanning will likely find nothing new.",
-          action: { label: "Re-scan anyway", onClick: () => void runMonitor(monitorId) },
-        });
-        return;
-      }
-    }
-    void runMonitor(monitorId);
-  }
-
   // Scope the Ask dock to this competitor while its page is open.
   useSetAskContext(
     data ? { kind: "competitor", label: data.competitor.name, competitorId: id } : null,
@@ -1146,6 +599,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
   if (!data) return <CompetitorDetailLoading />;
 
   const { competitor, monitors, recentChanges, recentSignals, techStack, overview, plan } = data;
+  const detectedTargets = detectedTargetsOf(techStack);
   const lastRunMs = monitors
     .map((m) => (m.lastRunAt ? new Date(m.lastRunAt).getTime() : 0))
     .reduce((a, b) => Math.max(a, b), 0);
@@ -1186,38 +640,13 @@ export function CompetitorDetailView({ id }: { id: string }) {
           }}
         />
 
-        <MonitorSources
+        {/* What we cover on this competitor, framed by what IS tracked. The per-
+            source configuration it replaced now lives on the Sources sub-page. */}
+        <CompetitorCoverage
+          competitorId={competitor.id}
           monitors={monitors}
-          scrapingIds={scrapingIds}
-          onRun={requestRunMonitor}
-          onResume={resumeMonitor}
-          onSetActive={setMonitorActive}
-          onForceRescanStarted={(mid) =>
-            setScrapingIds((prev) => new Set(prev).add(mid))
-          }
-          onRunAll={runAllMonitors}
-          onEdit={editMonitor}
-          competitorUrl={competitor.url}
-          runningAll={runningAll}
-          disabled={
-            runningAll ||
-            monitors.every(
-              (m) => scrapingIds.has(m.id) || isServerScraping(m) || m.isActive === false,
-            )
-          }
-          monitoringPaused={competitor.monitoringPaused}
           plan={plan}
-          onLockedFrequency={(freq) =>
-            setPaywall({ code: "plan_locked_frequency", frequency: freq, plan })
-          }
-          techLastScrapedAt={techStack.lastScrapedAt}
-          onScrapeTech={scrapeTechStack}
-          techScraping={techScraping}
-        />
-
-        <PausedMonitors
-          monitors={monitors.filter((m) => m.markedUnscrapable)}
-          onResolved={refresh}
+          targets={detectedTargets}
         />
 
         <AiSummary
@@ -1243,15 +672,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
             {VISIBLE_TABS.map((t) => {
               const Icon = t.icon;
               const lock = tabLock(t.key, plan);
-              // Tech stack isn't monitor-backed (its own monthly cron), so its
-              // freshness comes from techStackScrapedAt rather than TAB_SOURCES.
-              const fresh = lock
-                ? null
-                : t.key === "techstack"
-                  ? techStack.lastScrapedAt
-                    ? { lastScrapedAt: techStack.lastScrapedAt, status: "success" as const }
-                    : null
-                  : tabFreshness(t.key, monitors);
+              const fresh = lock ? null : tabFreshness(t.key, monitors);
               const trigger = (
                 <TabsTrigger
                   key={t.key}
@@ -1263,7 +684,6 @@ export function CompetitorDetailView({ id }: { id: string }) {
                     <FreshnessDot
                       lastScrapedAt={fresh.lastScrapedAt}
                       status={fresh.status}
-                      nextRunAt={t.key === "techstack" ? techStack.nextScanAt : undefined}
                       className="ml-1.5"
                     />
                   )}
@@ -1295,6 +715,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
                 pricingNote={competitor.pricingNote}
                 onRun={requestRunMonitor}
                 onOpenTab={selectTab}
+                techStack={techStack}
               />
             </TabsContent>
             <TabsContent value="activity" className={TAB_PANEL_CLASS}>
@@ -1342,8 +763,8 @@ export function CompetitorDetailView({ id }: { id: string }) {
                 }
               />
             </TabsContent>
-            <TabsContent value="content" className={TAB_PANEL_CLASS}>
-              <ContentTab
+            <TabsContent value="product" className={TAB_PANEL_CLASS}>
+              <ProductTab
                 changes={recentChanges}
                 signals={recentSignals}
                 monitors={monitors}
@@ -1352,29 +773,6 @@ export function CompetitorDetailView({ id }: { id: string }) {
                 onRefresh={refresh}
                 competitorUrl={competitor.url}
               />
-            </TabsContent>
-            <TabsContent value="custom" className={TAB_PANEL_CLASS}>
-              <CustomTab
-                competitorUrl={competitor.url ?? ""}
-                plan={plan}
-                monitors={monitors}
-                scrapingIds={scrapingIds}
-                changes={recentChanges}
-                signals={recentSignals}
-                onRun={requestRunMonitor}
-                onRefresh={refresh}
-                onAddCustom={addCustomMonitor}
-                onDelete={removeCustomMonitor}
-                onLocked={() =>
-                  setPaywall({ code: "plan_limit_custom_monitors", plan, used: 0, limit: 0 })
-                }
-              />
-            </TabsContent>
-            <TabsContent value="techstack" className={TAB_PANEL_CLASS}>
-              <CompetitorTechStack techStack={techStack} />
-            </TabsContent>
-            <TabsContent value="battlecard" className={TAB_PANEL_CLASS}>
-              <BattleCardTab competitorId={id} />
             </TabsContent>
           </div>
         </Tabs>
@@ -1554,6 +952,14 @@ function Header({
         </div>
       </div>
       <div className="flex items-center gap-2 shrink-0">
+        {/* Battle cards left the tab strip: they're an artefact you go and make,
+            not a lens you flip to. The daily generation cap still applies where it
+            always did — at generate time, inside the card view. */}
+        <Button asChild size="sm" variant="outline" className="h-9">
+          <Link href={`/dashboard/competitors/${competitor.id}/battle-card`}>
+            <Swords size={14} /> Battle card
+          </Link>
+        </Button>
         {total > 1 && index >= 0 && (
           <div className="flex items-center gap-1">
             <Tooltip>
@@ -1948,22 +1354,6 @@ function AssignProductsDialog({
   );
 }
 
-function SourceStatusIcon({ status }: { status: MonitorStatus }) {
-  if (status === "running")
-    return <Loader2 size={13} className="animate-spin text-muted-foreground shrink-0" />;
-  if (status === "failed") return <AlertCircle size={13} className="text-critical shrink-0" />;
-  if (status === "disabled" || status === "paused")
-    return <PowerOff size={13} className="text-muted-foreground shrink-0" />;
-  return (
-    <span
-      className={cn(
-        "h-2 w-2 rounded-full shrink-0",
-        status === "ok" ? "bg-positive" : "border border-muted-foreground/40",
-      )}
-    />
-  );
-}
-
 // A paused competitor is a deliberate, easily-missed state — the header carries only
 // a compact badge. This full-width banner makes it unmistakable and puts Resume one
 // click away, so the empty / stale tabs below read as "paused", not broken.
@@ -1982,642 +1372,6 @@ function MonitoringPausedBanner({ onResume }: { onResume: () => void }) {
         <Play size={13} /> Resume monitoring
       </Button>
     </div>
-  );
-}
-
-function MonitorSources({
-  monitors,
-  scrapingIds,
-  onRun,
-  onResume,
-  onSetActive,
-  onForceRescanStarted,
-  onRunAll,
-  onEdit,
-  competitorUrl,
-  runningAll,
-  disabled,
-  monitoringPaused,
-  plan,
-  onLockedFrequency,
-  techLastScrapedAt,
-  onScrapeTech,
-  techScraping,
-}: {
-  monitors: Monitor[];
-  scrapingIds: Set<string>;
-  onRun: (id: string) => void;
-  onResume: (id: string) => void;
-  onSetActive: (id: string, active: boolean) => void;
-  onForceRescanStarted?: (id: string) => void;
-  onRunAll: () => void;
-  onEdit: (id: string, patch: { url?: string; frequency?: MonitorFrequency }) => Promise<void>;
-  competitorUrl: string;
-  runningAll: boolean;
-  disabled: boolean;
-  monitoringPaused: boolean;
-  plan: Plan;
-  onLockedFrequency: (freq: MonitorFrequency) => void;
-  techLastScrapedAt: string | null;
-  onScrapeTech: () => void;
-  techScraping: boolean;
-}) {
-  const [editing, setEditing] = useState<Monitor | null>(null);
-  const [expanded, setExpanded] = useState(false);
-  if (monitors.length === 0) return null;
-  return (
-    <Card className="overflow-hidden">
-      <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-border">
-        <h3 className="text-sm font-semibold tracking-tight">Sources</h3>
-        <Button
-          size="sm"
-          variant="default"
-          onClick={onRunAll}
-          disabled={disabled}
-          className="h-7 text-xs"
-        >
-          {runningAll ? (
-            <Loader2 size={12} className="animate-spin" />
-          ) : (
-            <Play size={12} />
-          )}
-          Scrape all
-        </Button>
-      </div>
-
-      {/* Compact default: one chip per source (status + name + age at a glance);
-          the per-source actions (Run, Configure) live in the chip's dropdown. The
-          full detail rows — including force-rescan and the error tooltip — fold
-          behind "Details". */}
-      <div className="flex flex-wrap items-center gap-1.5 px-4 py-3">
-        {monitors.map((m) => {
-          const running = scrapingIds.has(m.id) || isServerScraping(m);
-          return (
-            <SourceChip
-              key={m.id}
-              monitor={m}
-              running={running}
-              status={monitorStatus(m, running)}
-              monitoringPaused={monitoringPaused}
-              onRun={onRun}
-              onResume={onResume}
-              onSetActive={onSetActive}
-              onConfigure={() => setEditing(m)}
-            />
-          );
-        })}
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          onClick={() => setExpanded((v) => !v)}
-          aria-expanded={expanded}
-          className="ml-auto h-7 gap-1 text-xs text-muted-foreground"
-        >
-          {expanded ? "Hide details" : "Details"}
-          <ChevronDown size={12} className={cn("transition-transform", expanded && "rotate-180")} />
-        </Button>
-      </div>
-
-      {expanded && (
-        <div className="divide-y divide-border border-t border-border">
-          {monitors.map((m) => {
-            const running = scrapingIds.has(m.id) || isServerScraping(m);
-            const status = monitorStatus(m, running);
-            const ageText =
-              status === "running"
-                ? "scraping…"
-                : status === "paused"
-                  ? "Paused — not scraping"
-                  : status === "disabled"
-                  ? "Paused after repeated failures"
-                  : status === "failed" && m.lastFailedAt
-                    ? `Failed ${formatDistanceToNow(new Date(m.lastFailedAt), { addSuffix: true })}`
-                    : status === "ok" && m.lastRunAt
-                      ? formatDistanceToNow(new Date(m.lastRunAt), { addSuffix: true })
-                      : "never scraped";
-            const nextText = nextScanLabel(m, status, monitoringPaused);
-            return (
-              <div key={m.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5">
-                <SourceStatusIcon status={status} />
-                <span className="font-medium text-sm w-[104px] truncate">{sourceShortLabel(m.sourceType)}</span>
-                <Eyebrow size="micro" className="w-12">
-                  {m.frequency}
-                </Eyebrow>
-                <span
-                  className={cn(
-                    "text-xs",
-                    status === "failed" ? "text-critical/80" : "text-muted-foreground",
-                  )}
-                >
-                  {ageText}
-                </span>
-                {nextText && (
-                  <span className="text-xs text-muted-foreground">· {nextText}</span>
-                )}
-                <div className="ml-auto flex items-center gap-1.5">
-                  {status !== "paused" && (
-                    <MonitorFreshnessAction
-                      monitorId={m.id}
-                      sourceType={m.sourceType}
-                      lastScrapedAt={m.lastRunAt}
-                      status={status === "failed" ? "failed" : "success"}
-                      canForceRescan={!running}
-                      onStarted={() => onForceRescanStarted?.(m.id)}
-                    />
-                  )}
-                  {/* Pause an active source. Paused sources re-enable via the primary
-                      button below; running / auto-paused have their own affordances. */}
-                  {(status === "ok" || status === "idle" || status === "failed") && (
-                    <Button
-                      size="icon-sm"
-                      variant="ghost"
-                      onClick={() => onSetActive(m.id, false)}
-                      aria-label="Pause source"
-                    >
-                      <PowerOff size={13} />
-                    </Button>
-                  )}
-                  {(status === "failed" || status === "disabled") && m.lastError && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          className={
-                            status === "failed"
-                              ? "text-critical/70 hover:text-critical transition-colors"
-                              : "text-text-subtle hover:text-text-muted transition-colors"
-                          }
-                          aria-label={
-                            status === "failed"
-                              ? "Scrape error detail"
-                              : "Why this source isn't collected"
-                          }
-                        >
-                          <Info size={13} />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent
-                        side="top"
-                        className="max-w-[280px] text-xs leading-relaxed text-pretty break-words"
-                      >
-                        {friendlyScrapeError(m.lastError, m.sourceType)}
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
-                  <Button
-                    size="icon-sm"
-                    variant="ghost"
-                    onClick={() => setEditing(m)}
-                    aria-label="Configure source"
-                  >
-                    <Settings2 size={13} />
-                  </Button>
-                  {status === "disabled" ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => onResume(m.id)}
-                      disabled={running}
-                      className="h-7 text-xs min-w-[84px]"
-                    >
-                      {running ? (
-                        <>
-                          <Loader2 size={11} className="animate-spin" /> Resuming…
-                        </>
-                      ) : (
-                        <>
-                          <RefreshCw size={11} /> Resume
-                        </>
-                      )}
-                    </Button>
-                  ) : status === "paused" ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => onSetActive(m.id, true)}
-                      className="h-7 text-xs min-w-[84px]"
-                    >
-                      <Power size={11} /> Enable
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => onRun(m.id)}
-                      disabled={running}
-                      className="h-7 text-xs min-w-[84px]"
-                    >
-                      {running ? (
-                        <>
-                          <Loader2 size={11} className="animate-spin" /> Scraping…
-                        </>
-                      ) : (
-                        <>
-                          <Play size={11} /> Run
-                        </>
-                      )}
-                    </Button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-          {/* Dev-only: tech stack runs on its own monthly cron (no user-facing Run).
-              This synthetic row lets the operator force a scan on demand. Stripped
-              from production bundles via NODE_ENV; the /api/dev endpoint is likewise
-              unmounted in prod. Non-configurable (weekly, no gear). */}
-          {process.env.NODE_ENV !== "production" && (
-            <div className="flex items-center gap-3 px-4 py-2.5">
-              <SourceStatusIcon
-                status={techScraping ? "running" : techLastScrapedAt ? "ok" : "idle"}
-              />
-              <span className="font-medium text-sm w-[104px] truncate">tech_stack</span>
-              <Eyebrow size="micro" className="w-12">
-                weekly
-              </Eyebrow>
-              <span className="text-xs text-muted-foreground">
-                {techScraping
-                  ? "scanning…"
-                  : techLastScrapedAt
-                    ? formatDistanceToNow(new Date(techLastScrapedAt), { addSuffix: true })
-                    : "never scanned"}
-              </span>
-              <Badge
-                variant="outline"
-                className="text-meta uppercase tracking-wide font-medium px-1 py-0 text-muted-foreground"
-              >
-                dev
-              </Badge>
-              <div className="ml-auto flex items-center gap-1.5">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={onScrapeTech}
-                  disabled={techScraping}
-                  className="h-7 text-xs min-w-[84px]"
-                >
-                  {techScraping ? (
-                    <>
-                      <Loader2 size={11} className="animate-spin" /> Scanning…
-                    </>
-                  ) : (
-                    <>
-                      <Play size={11} /> Run
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-      <MonitorEditDialog
-        monitor={editing}
-        competitorUrl={competitorUrl}
-        plan={plan}
-        onClose={() => setEditing(null)}
-        onSave={onEdit}
-        onLockedFrequency={onLockedFrequency}
-      />
-    </Card>
-  );
-}
-
-// When the scheduler will next check this source. The hourly cron scrapes any
-// active monitor whose nextRunAt is null or already past, so a null/overdue value
-// means "on the next hourly run" — we never surface it as a stale past date.
-// Returns null when there's nothing meaningful to show (currently scraping, or
-// paused after repeated failures — neither is on a schedule).
-function nextScanLabel(
-  m: Monitor,
-  status: MonitorStatus,
-  monitoringPaused: boolean,
-): string | null {
-  if (monitoringPaused) return "Monitoring paused";
-  if (status === "running" || status === "disabled") return null;
-  if (m.isActive === false) return null;
-  const next = m.nextRunAt ? new Date(m.nextRunAt).getTime() : 0;
-  if (!next || next <= Date.now()) return "Next scan within the hour";
-  return `Next scan ${formatDistanceToNow(new Date(next), { addSuffix: true })}`;
-}
-
-// Compact relative age for the source chips ("2m" / "5h" / "3d") — the long
-// "about 2 hours ago" reads fine in a row but is too wide for a dense chip strip.
-function shortAge(d: Date): string {
-  const mins = Math.max(0, Math.floor((Date.now() - d.getTime()) / 60000));
-  if (mins < 60) return `${mins}m`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h`;
-  return `${Math.floor(hours / 24)}d`;
-}
-
-// One source as a chip: status + name + age at a glance, with Run / Configure in
-// a dropdown. A failed source carries the critical hue so it stays loud in the
-// strip. Force-rescan and the full error live in the expanded "Details" rows.
-function SourceChip({
-  monitor: m,
-  running,
-  status,
-  monitoringPaused,
-  onRun,
-  onResume,
-  onSetActive,
-  onConfigure,
-}: {
-  monitor: Monitor;
-  running: boolean;
-  status: MonitorStatus;
-  monitoringPaused: boolean;
-  onRun: (id: string) => void;
-  onResume: (id: string) => void;
-  onSetActive: (id: string, active: boolean) => void;
-  onConfigure: () => void;
-}) {
-  const failed = status === "failed";
-  const isDisabled = status === "disabled";
-  const isPaused = status === "paused";
-  // Both the auto-pause and the manual pause read as a muted "off" chip.
-  const off = isDisabled || isPaused;
-  const ageLabel =
-    status === "running"
-      ? "…"
-      : failed
-        ? null
-        : off
-          ? "off"
-          : status === "ok" && m.lastRunAt
-            ? shortAge(new Date(m.lastRunAt))
-            : "never";
-  const ageText =
-    status === "running"
-      ? "scraping…"
-      : isPaused
-        ? "Paused — not scraping"
-        : isDisabled
-        ? "Paused after repeated failures"
-        : failed && m.lastFailedAt
-          ? `Failed ${formatDistanceToNow(new Date(m.lastFailedAt), { addSuffix: true })}`
-          : status === "ok" && m.lastRunAt
-            ? formatDistanceToNow(new Date(m.lastRunAt), { addSuffix: true })
-            : "never scraped";
-  const nextText = nextScanLabel(m, status, monitoringPaused);
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className={cn(
-            "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-dense transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            failed
-              ? "border-critical/40 text-critical hover:bg-critical/10"
-              : off
-                ? "border-border text-muted-foreground hover:bg-accent"
-                : "border-border text-foreground hover:bg-accent",
-          )}
-        >
-          <SourceStatusIcon status={status} />
-          <span className="font-medium">{sourceShortLabel(m.sourceType)}</span>
-          {ageLabel && (
-            <span
-              className={cn(
-                "text-meta",
-                failed ? "text-critical/70" : "text-muted-foreground",
-              )}
-            >
-              {ageLabel}
-            </span>
-          )}
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-56">
-        <DropdownMenuLabel className="flex items-center justify-between gap-2 text-sm font-semibold normal-case tracking-normal text-foreground">
-          <span className="truncate">{sourceShortLabel(m.sourceType)}</span>
-          <span className="shrink-0 text-meta font-medium uppercase tracking-wide text-muted-foreground">
-            {m.frequency}
-          </span>
-        </DropdownMenuLabel>
-        <p
-          className={cn(
-            "px-2 pb-1 text-xs",
-            failed ? "font-medium text-critical" : "text-muted-foreground",
-          )}
-        >
-          {ageText}
-        </p>
-        {nextText && (
-          <p className="px-2 pb-1 text-xs text-muted-foreground">{nextText}</p>
-        )}
-        {failed && m.lastError && (
-          <p className="px-2 pb-1.5 text-sm leading-relaxed text-muted-foreground break-words">
-            {friendlyScrapeError(m.lastError, m.sourceType)}
-          </p>
-        )}
-        {isDisabled && (
-          <p className="px-2 pb-1.5 text-sm leading-relaxed text-muted-foreground break-words">
-            We stopped scraping this source after repeated failures. Resume to try again.
-          </p>
-        )}
-        {isPaused && (
-          <p className="px-2 pb-1.5 text-sm leading-relaxed text-muted-foreground break-words">
-            Paused — this source won&apos;t be scraped until you enable it.
-          </p>
-        )}
-        <DropdownMenuSeparator />
-        {isDisabled ? (
-          <DropdownMenuItem onClick={() => onResume(m.id)} disabled={running}>
-            {running ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-            {running ? "Resuming…" : "Resume monitoring"}
-          </DropdownMenuItem>
-        ) : isPaused ? (
-          <DropdownMenuItem onClick={() => onSetActive(m.id, true)}>
-            <Power size={13} /> Enable monitoring
-          </DropdownMenuItem>
-        ) : (
-          <>
-            <DropdownMenuItem onClick={() => onRun(m.id)} disabled={running}>
-              {running ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
-              {running ? "Scraping…" : "Run now"}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onSetActive(m.id, false)} disabled={running}>
-              <PowerOff size={13} /> Pause monitoring
-            </DropdownMenuItem>
-          </>
-        )}
-        <DropdownMenuItem onClick={onConfigure}>
-          <Settings2 size={13} /> Configure
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-const EDITABLE_FREQUENCIES: MonitorFrequency[] = [...MONITOR_FREQUENCIES];
-
-// A single frequency choice, plan-gated like ReviewSourceButton: a frequency the
-// plan doesn't allow shows a lock + min-plan badge and routes to the paywall on
-// click instead of selecting (which would only fail server-side on save).
-// Per-monitor config: override the auto-detected page URL and the check cadence.
-// Frequency is the upper bound (the scheduler backs off when a source is stable),
-// gated by plan — an over-plan choice is locked in the picker and routes to the paywall.
-function MonitorEditDialog({
-  monitor,
-  competitorUrl,
-  plan,
-  onClose,
-  onSave,
-  onLockedFrequency,
-}: {
-  monitor: Monitor | null;
-  competitorUrl: string;
-  plan: Plan;
-  onClose: () => void;
-  onSave: (id: string, patch: { url?: string; frequency?: MonitorFrequency }) => Promise<void>;
-  onLockedFrequency: (freq: MonitorFrequency) => void;
-}) {
-  const [frequency, setFrequency] = useState<MonitorFrequency>("daily");
-  const [url, setUrl] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    if (monitor) {
-      setFrequency(monitor.frequency as MonitorFrequency);
-      setUrl(monitor.config?.url ?? "");
-    }
-  }, [monitor]);
-
-  if (!monitor) return null;
-
-  const trimmed = url.trim();
-  const currentUrl = monitor.config?.url ?? "";
-  const urlChanged = trimmed !== currentUrl;
-  const urlValid =
-    trimmed === "" ||
-    validateMonitorUrl(monitor.sourceType as SourceType, trimmed, competitorUrl).ok;
-  const freqChanged = frequency !== monitor.frequency;
-  const canSave = (urlChanged || freqChanged) && urlValid && !busy;
-
-  async function save() {
-    if (!monitor) return;
-    const patch: { url?: string; frequency?: MonitorFrequency } = {};
-    if (urlChanged && trimmed !== "") patch.url = trimmed;
-    if (freqChanged) patch.frequency = frequency;
-    if (Object.keys(patch).length === 0) {
-      onClose();
-      return;
-    }
-    setBusy(true);
-    try {
-      await onSave(monitor.id, patch);
-      onClose();
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Dialog open={!!monitor} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Configure {sourceShortLabel(monitor.sourceType)}</DialogTitle>
-          <DialogDescription>
-            Pin the exact page to watch and how often it is checked.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-5">
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-1.5">
-              <p className="text-xs font-medium text-foreground">Check frequency</p>
-              <TooltipProvider delayDuration={150}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      aria-label="What does check frequency mean?"
-                      className="text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground"
-                    >
-                      <HelpCircle size={13} />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="max-w-56">
-                    An upper bound — stable sources are checked less often automatically.
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-            <ToggleGroup
-              type="single"
-              value={frequency}
-              onValueChange={(v) => {
-                if (!v) return;
-                const next = v as MonitorFrequency;
-                if (!planIncludesFrequency(plan, next)) {
-                  onClose();
-                  onLockedFrequency(next);
-                  return;
-                }
-                setFrequency(next);
-              }}
-              variant="outline"
-              size="sm"
-              className="w-full"
-            >
-              {EDITABLE_FREQUENCIES.map((f) => {
-                const locked = !planIncludesFrequency(plan, f);
-                return (
-                  <ToggleGroupItem
-                    key={f}
-                    value={f}
-                    className="grow basis-0 gap-1.5 capitalize hover:bg-muted hover:text-foreground data-[state=on]:font-semibold data-[state=on]:hover:bg-accent data-[state=on]:hover:text-accent-foreground"
-                    title={
-                      locked
-                        ? `Requires ${PLAN_LABELS[minPlanForFrequency(f)]}`
-                        : undefined
-                    }
-                  >
-                    {locked && <Lock size={11} className="opacity-70" />}
-                    {f}
-                  </ToggleGroupItem>
-                );
-              })}
-            </ToggleGroup>
-          </div>
-          <div className="space-y-1.5">
-            <p className="text-xs font-medium text-foreground">Page URL</p>
-            <div className="relative">
-              <Link2
-                size={14}
-                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-              />
-              <Input
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder="Leave empty to auto-detect"
-                className="pl-8"
-                aria-invalid={trimmed !== "" && !urlValid}
-              />
-            </div>
-            {trimmed !== "" && !urlValid ? (
-              <p className="text-xs text-critical">
-                This URL isn&apos;t allowed for this source.
-              </p>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                Override the page we picked, or leave blank to auto-detect.
-              </p>
-            )}
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" size="sm" onClick={onClose} disabled={busy}>
-            Cancel
-          </Button>
-          <Button size="sm" onClick={save} disabled={!canSave}>
-            {busy && <Loader2 size={12} className="animate-spin" />} Save
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
 

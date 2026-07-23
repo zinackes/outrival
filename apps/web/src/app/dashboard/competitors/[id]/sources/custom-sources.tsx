@@ -22,7 +22,7 @@ import {
   type Plan,
   type CustomMonitorHint,
 } from "@outrival/shared";
-import type { ChangeRow, CompetitorSignal, Monitor } from "@/lib/api";
+import type { Monitor } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -43,22 +43,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
-import { ChangeCard } from "./changes";
+import type { CustomAddResult } from "../competitor-detail/use-monitor-actions";
 
-// Result of an add attempt: `ok` closes the dialog, otherwise the message is
-// shown inline so the user can fix the URL without losing what they typed.
-export type CustomAddResult = { ok: true } | { ok: false; message: string };
-
-export interface CustomTabProps {
+export interface CustomSourcesProps {
   competitorUrl: string;
   plan: Plan;
   monitors: Monitor[];
   scrapingIds: Set<string>;
-  changes: ChangeRow[];
-  signals: CompetitorSignal[];
   onRun: (id: string) => void;
-  onRefresh?: () => void;
-  onAddCustom: (input: {
+  onAdd: (input: {
     url: string;
     label: string;
     hint: CustomMonitorHint;
@@ -77,19 +70,22 @@ const HINT_LABELS: Record<CustomMonitorHint, string> = {
   other: "Other",
 };
 
-export function CustomTab({
+/**
+ * The "Watch a custom page" management surface: which arbitrary pages of this
+ * competitor's own domain we track, and the per-plan quota on them. The changes
+ * these pages produce are read in the Product & Positioning feed, not here — this
+ * page decides WHAT we collect, the tabs show what we found.
+ */
+export function CustomSources({
   competitorUrl,
   plan,
   monitors,
   scrapingIds,
-  changes,
-  signals,
   onRun,
-  onRefresh,
-  onAddCustom,
+  onAdd,
   onDelete,
   onLocked,
-}: CustomTabProps) {
+}: CustomSourcesProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const customMonitors = monitors.filter((m) => m.sourceType === "custom");
@@ -97,12 +93,6 @@ export function CustomTab({
   const used = customMonitors.length;
   const locked = limit === 0;
   const atLimit = used >= limit;
-
-  const customChanges = changes.filter((c) => c.sourceType === "custom");
-  const insightByChangeId = new Map<string, string>();
-  for (const s of signals) {
-    if (s.changeId) insightByChangeId.set(s.changeId, s.insight);
-  }
 
   // Free plan: no list, just the upsell.
   if (locked && customMonitors.length === 0) {
@@ -192,30 +182,11 @@ export function CustomTab({
         )}
       </TabCard>
 
-      {customChanges.length > 0 && (
-        <TabCard>
-          <TabSection title="Recent changes" icon={FileSearch}>
-            <ul className="flex flex-col divide-y divide-border">
-              {customChanges.map((c) => (
-                <li key={c.id} className="py-3.5 first:pt-0 last:pb-0">
-                  <ChangeCard
-                    change={c}
-                    onRefresh={onRefresh}
-                    fallbackUrl={competitorUrl}
-                    insight={insightByChangeId.get(c.id)}
-                  />
-                </li>
-              ))}
-            </ul>
-          </TabSection>
-        </TabCard>
-      )}
-
       <AddCustomDialog
         open={dialogOpen}
         competitorUrl={competitorUrl}
         onClose={() => setDialogOpen(false)}
-        onAddCustom={onAddCustom}
+        onAdd={onAdd}
       />
     </div>
   );
@@ -329,12 +300,12 @@ function AddCustomDialog({
   open,
   competitorUrl,
   onClose,
-  onAddCustom,
+  onAdd,
 }: {
   open: boolean;
   competitorUrl: string;
   onClose: () => void;
-  onAddCustom: CustomTabProps["onAddCustom"];
+  onAdd: CustomSourcesProps["onAdd"];
 }) {
   const [label, setLabel] = useState("");
   const [url, setUrl] = useState("");
@@ -362,7 +333,7 @@ function AddCustomDialog({
     setBusy(true);
     setServerError(null);
     try {
-      const res = await onAddCustom({ url: trimmedUrl, label: trimmedLabel, hint });
+      const res = await onAdd({ url: trimmedUrl, label: trimmedLabel, hint });
       if (res.ok) {
         onClose();
       } else {

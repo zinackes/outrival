@@ -110,7 +110,11 @@ export function validateMonitorUrl(
   const competitorBrand = extractBrand(competitorUrl);
   const sameBrand = competitorBrand !== null && urlBrand === competitorBrand;
   const atsAllowed = sourceType === "jobs" && ATS_BRANDS.has(urlBrand);
-  if (!sameBrand && !atsAllowed) return { ok: false, error: "host_not_allowed" };
+  // A repo lives on github.com by definition, never on the competitor's own domain
+  // — the same off-domain exception the ATS hosts get for `jobs`, and just as
+  // SSRF-safe (one fixed, public host).
+  const repoAllowed = sourceType === "github_repo" && urlBrand === "github";
+  if (!sameBrand && !atsAllowed && !repoAllowed) return { ok: false, error: "host_not_allowed" };
 
   return { ok: true, url: parsed.toString() };
 }

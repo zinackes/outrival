@@ -469,11 +469,13 @@ export async function runGenerateBattleCard(payload: z.input<typeof InputSchema>
       .where(eq(battleCards.id, battleCardId));
 
     if (input.notifyOnComplete) {
-      // Deep-link to the competitor's Battle Card tab, scoped to this SKU when the
+      // Deep-link to the competitor's battle card page, scoped to this SKU when the
       // request named one (the web product scope defaults to primary otherwise).
+      // Notifications written before this page existed carry `?tab=battlecard`; the
+      // competitor view still remaps that key, so old rows keep working.
       const linkUrl =
-        `/dashboard/competitors/${competitor.id}?tab=battlecard` +
-        (input.productId ? `&product=${input.productId}` : "");
+        `/dashboard/competitors/${competitor.id}/battle-card` +
+        (input.productId ? `?product=${input.productId}` : "");
       await notifyJobComplete({
         orgId: org.id,
         title: `Battle card vs ${competitor.name} is ready`,

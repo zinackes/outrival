@@ -318,6 +318,15 @@ export interface Monitor {
   markedUnscrapable?: boolean;
   lastFailureCategory?: string | null;
   apiCaptureEnabled?: boolean;
+  // Collection doctrine: set when the site REFUSED us (block / challenge / robots
+  // Disallow) and we stopped, as opposed to a transient failure. Drives the honest
+  // "we don't bypass this" state instead of an escalation promise we no longer keep.
+  refusedAt?: string | null;
+  refusalReason?: string | null;
+  // How many runs have failed in a row, and the cascade level learned so far
+  // (0/1/2). Both are cleared when the monitor's URL is retargeted.
+  consecutiveFailures?: number;
+  requiresLevel?: number | null;
 }
 
 export interface ChangeRow {
@@ -1966,6 +1975,10 @@ export const api = {
     request<{
       competitor: Competitor;
       monitors: Monitor[];
+      // Seeded and scraped on their own cadence (sitemap, news, subdomains,
+      // YouTube, Hacker News, the domain fingerprint) — read-only on the Sources
+      // page, so they're kept apart from the configurable ones.
+      automaticMonitors: Monitor[];
       recentChanges: ChangeRow[];
       recentSignals: CompetitorSignal[];
       techStack: TechStackData;

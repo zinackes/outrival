@@ -1,5 +1,7 @@
 export * from "./types/result";
 export * from "./constants/sources";
+export * from "./sources/catalog";
+export * from "./sources/coverage";
 export * from "./constants/departments";
 export * from "./constants/plans";
 export * from "./constants/detection";

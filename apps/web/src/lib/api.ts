@@ -159,8 +159,8 @@ export interface Competitor {
   monitoringPaused: boolean;
   alertsMuted: boolean;
   // Frozen by the plan's competitor cap (over-cap after a downgrade) — the scheduler
-  // skips it non-destructively until the org upgrades. List endpoint only; distinct
-  // from the user-driven monitoringPaused. Absent/false = within cap.
+  // skips it non-destructively until the org upgrades. Distinct from the user-driven
+  // monitoringPaused. Absent/false = within cap.
   pausedByPlan?: boolean;
   createdAt: string;
   updatedAt: string;

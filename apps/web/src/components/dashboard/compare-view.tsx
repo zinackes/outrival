@@ -643,10 +643,20 @@ function buildPickList(
   products: ProductSummary[],
   competitors: Competitor[],
   dataScore: Record<string, number>,
+  // Active product scope (product id). When set, its self-competitor is the "you"
+  // column the table opens on — otherwise a scoped org silently compares against the
+  // primary product, which is a different SKU than the one on screen.
+  scopedProductId?: string,
 ): { entities: PickEntity[]; selected: string[] } {
-  const you: PickEntity[] = products
-    .filter((pr) => pr.status !== "archived")
-    .map((pr): PickEntity => ({ id: pr.selfCompetitorId, name: pr.name, kind: "you" }));
+  const activeProducts = products.filter((pr) => pr.status !== "archived");
+  const you: PickEntity[] = activeProducts.map(
+    (pr): PickEntity => ({ id: pr.selfCompetitorId, name: pr.name, kind: "you" }),
+  );
+  // The self-competitor to pin left by default: the scoped product's, else the first
+  // (primary) — `products` arrives ordered primary-first from the API.
+  const scopedSelf = scopedProductId
+    ? activeProducts.find((pr) => pr.id === scopedProductId)?.selfCompetitorId
+    : undefined;
   // Stable sort: ties keep the incoming createdAt-desc order.
   const ranked = [...competitors].sort((a, b) => {
     const sa = dataScore[a.id] ?? 0;
@@ -659,11 +669,10 @@ function buildPickList(
   const comps: PickEntity[] = ranked.map(
     (co): PickEntity => ({ id: co.id, name: co.name, kind: "competitor" }),
   );
-  // Fill the table by default: your first product pinned, then as many
+  // Fill the table by default: the product on screen pinned, then as many
   // competitors as fit up to MAX (richest + best-overlap first).
-  const seed = you.length
-    ? [...you.slice(0, 1), ...comps.slice(0, MAX - 1)]
-    : comps.slice(0, MAX);
+  const pinned = you.find((e) => e.id === scopedSelf) ?? you[0];
+  const seed = pinned ? [pinned, ...comps.slice(0, MAX - 1)] : comps.slice(0, MAX);
   return { entities: [...you, ...comps], selected: seed.map((e) => e.id) };
 }
 
@@ -680,12 +689,12 @@ export function CompareView() {
   const rankingQ = useQuery(compareRankingQuery());
   const [entities, setEntities] = useState<PickEntity[] | null>(() =>
     productsQ.data && competitorsQ.data
-      ? buildPickList(productsQ.data, competitorsQ.data, rankingQ.data ?? {}).entities
+      ? buildPickList(productsQ.data, competitorsQ.data, rankingQ.data ?? {}, productId).entities
       : null,
   );
   const [selected, setSelected] = useState<string[]>(() =>
     productsQ.data && competitorsQ.data
-      ? buildPickList(productsQ.data, competitorsQ.data, rankingQ.data ?? {}).selected
+      ? buildPickList(productsQ.data, competitorsQ.data, rankingQ.data ?? {}, productId).selected
       : [],
   );
   // True once the picker has been built, so a later refetch can't clobber the
@@ -781,10 +790,11 @@ export function CompareView() {
       productsQ.data,
       competitorsQ.data,
       rankingQ.data ?? {},
+      productId,
     );
     setEntities(entities);
     setSelected(selected);
-  }, [productsQ.data, competitorsQ.data, rankingQ.isLoading, rankingQ.data]);
+  }, [productsQ.data, competitorsQ.data, rankingQ.isLoading, rankingQ.data, productId]);
 
   useEffect(() => {
     if (selected.length === 0) {

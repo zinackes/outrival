@@ -51,7 +51,7 @@ export function PlatformDetectionView({ data }: { data: AdminPlatformDetection |
       <Section
         title="Detection stage"
         note={window}
-        info="Step A runs without a browser (cheap); step B falls back to the api-capture browser only when step A is too thin. The browser-free share is the cost arbiter — higher is cheaper, mirror of staged extraction."
+        info="Step A runs without a browser (cheap); step B falls back to the api-capture browser only when step A is too thin. The browser-free share is the cost arbiter: higher is cheaper, mirror of staged extraction."
       >
         {total === 0 ? (
           <Empty>No detection runs in the window.</Empty>
@@ -84,7 +84,7 @@ export function PlatformDetectionView({ data }: { data: AdminPlatformDetection |
       <Section
         title="Connectors detected"
         note={window}
-        info="Runs that surfaced a business-ID-bearing connector — these route a source to its structured connector (ATS API, status page, changelog feed, pricing widget) instead of generic scraping."
+        info="Runs that surfaced a business-ID-bearing connector. These route a source to its structured connector (ATS API, status page, changelog feed, pricing widget) instead of generic scraping."
       >
         {!conn || conn.total === 0 ? (
           <Empty>No detection runs in the window.</Empty>

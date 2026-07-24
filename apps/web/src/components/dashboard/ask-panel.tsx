@@ -438,7 +438,7 @@ export function AskPanel({
       }
     } catch (e) {
       if (!(e instanceof DOMException && e.name === "AbortError")) {
-        setError("Network error — could not reach the assistant. Check your connection.");
+        setError("Network error. Could not reach the assistant. Check your connection.");
       }
     } finally {
       setLoading(false);
@@ -476,7 +476,7 @@ export function AskPanel({
         <PageHead
           title="Ask"
           icon={<Sparkles className="size-5 text-[var(--link)]" />}
-          sub="Ask anything about your tracked competitors — answered from your own data."
+          sub="Ask anything about your tracked competitors, answered from your own data."
         />
       )}
 
@@ -509,7 +509,7 @@ export function AskPanel({
         <Info className="mt-0.5 size-3 shrink-0" aria-hidden />
         <span>
           You&apos;re interacting with AI. Ask Outrival generates answers from
-          your workspace data and can be inaccurate — verify important details.
+          your workspace data and can be inaccurate, so verify important details.
         </span>
       </p>
 

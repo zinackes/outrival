@@ -46,7 +46,7 @@ export function Topbar({ user }: { user: User }) {
             </Link>
           </Button>
         </TooltipTrigger>
-        <TooltipContent>Ask Outrival — answers from your data</TooltipContent>
+        <TooltipContent>Ask Outrival: answers from your data</TooltipContent>
       </Tooltip>
       <div className="hidden items-center gap-2 sm:flex lg:gap-3">
         <Tooltip>

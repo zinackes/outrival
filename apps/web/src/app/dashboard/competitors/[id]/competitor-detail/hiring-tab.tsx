@@ -65,7 +65,7 @@ export function HiringTab({
   const velocity = (velocityQuery.data ?? []).filter((v) => v.series.length >= 2);
 
   if (jobsQuery.isError || trendsQuery.isError)
-    return <Empty text="Couldn't load this data right now — try again in a moment." />;
+    return <Empty text="Couldn't load this data right now. Try again in a moment." />;
   if (!jobs || !trends) return <TabLoading />;
   if (jobs.total === 0) {
     return (
@@ -202,7 +202,7 @@ export function HiringTab({
       {velocity.length > 0 && (
         <TabSection title="Velocity by department" icon={TrendingUp}>
           <p className="text-sm text-muted-foreground">
-            Open roles per week by department — an accelerating team shows where budget is going.
+            Open roles per week by department. An accelerating team shows where budget is going.
           </p>
           <ul className="mt-2 divide-y divide-border">
             {velocity.map((v) => (

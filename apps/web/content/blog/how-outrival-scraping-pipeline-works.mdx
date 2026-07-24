@@ -1,21 +1,21 @@
 ---
 title: How Outrival's scraping pipeline works
-description: A tour of the pipeline that turns a competitor's public web surface into a two-line insight — tiered fetching, HTML diffing, relevance scoring, and AI classification, at the architecture level.
+description: A tour of the pipeline that turns a competitor's public web surface into a two-line insight: tiered fetching, HTML diffing, relevance scoring, and AI classification, at the architecture level.
 date: "2026-07-05"
 tags: ["Engineering", "Pipeline"]
 author: "Mathys"
 ---
 
-Every competitive-intelligence tool has the same job: watch what your competitors do in public and tell you the parts that matter. The hard part isn't watching. It's the ratio. A competitor's public surface — homepage, pricing, changelog, careers, review profiles — changes constantly, and the overwhelming majority of those changes are noise: a rotated testimonial, a reworded hero, an analytics tag swap, a job that closed.
+Every competitive-intelligence tool has the same job: watch what your competitors do in public and tell you the parts that matter. The hard part isn't watching. It's the ratio. A competitor's public surface (homepage, pricing, changelog, careers, review profiles) changes constantly, and the overwhelming majority of those changes are noise: a rotated testimonial, a reworded hero, an analytics tag swap, a job that closed.
 
-Outrival is a pipeline built to survive that ratio. It reads a lot and speaks rarely. This is a tour of how it's put together, from a raw page fetch to the two-line insight that lands in your Monday brief. I'll stay at the architecture level — enough to judge whether the thing is sound, without publishing a recipe for evading the sites we read.
+Outrival is a pipeline built to survive that ratio. It reads a lot and speaks rarely. This is a tour of how it's put together, from a raw page fetch to the two-line insight that lands in your Monday brief. I'll stay at the architecture level, enough to judge whether the thing is sound, without publishing a recipe for evading the sites we read.
 
 ## The shape of the problem
 
 A single competitor might expose a dozen monitored sources. Multiply that by every competitor in every customer's workspace and you're fetching thousands of pages on a schedule. Two constraints shape every decision downstream:
 
 - **Fetching is the expensive, fragile step.** Pages are heavy, some need a real browser to render, and some actively resist being read by anything that isn't a human. You want to spend the least effort that still gets a faithful copy.
-- **Change is cheap; *meaning* is scarce.** Detecting that bytes changed is trivial. Deciding that a change matters — and why — is the actual product. So the pipeline is shaped like a funnel: wide and cheap at the top, narrow and AI-powered at the bottom.
+- **Change is cheap; *meaning* is scarce.** Detecting that bytes changed is trivial. Deciding that a change matters, and why, is the actual product. So the pipeline is shaped like a funnel: wide and cheap at the top, narrow and AI-powered at the bottom.
 
 Here's the whole thing on one screen:
 
@@ -30,46 +30,46 @@ Here's the whole thing on one screen:
 
 Each stage exists to kill work before it reaches the next one.
 
-## Stage 1 — Tiered fetching
+## Stage 1: Tiered fetching
 
-The fetcher is a cascade, cheapest first. A plain HTTP request handles most server-rendered pages for essentially nothing. Only when that comes back unrenderable or blocked do we escalate to progressively more capable — and more expensive — ways of loading the page, ending with a full real browser for the sites that need one.
+The fetcher is a cascade, cheapest first. A plain HTTP request handles most server-rendered pages for essentially nothing. Only when that comes back unrenderable or blocked do we escalate to progressively more capable (and more expensive) ways of loading the page, ending with a full real browser for the sites that need one.
 
-The key design choice is that we **escalate only on a genuine block**, never on a timeout or a flaky network. A slow response is a retry, not a reason to burn a costlier tier. And two things people usually conflate — *how a page is rendered* and *where the request appears to come from* — are treated as independent axes, escalated separately based on the specific failure. A page that just needs JavaScript to render is a different problem from a page that doesn't want to be read at all.
+The key design choice is that we **escalate only on a genuine block**, never on a timeout or a flaky network. A slow response is a retry, not a reason to burn a costlier tier. And two things people usually conflate, *how a page is rendered* and *where the request appears to come from*, are treated as independent axes, escalated separately based on the specific failure. A page that just needs JavaScript to render is a different problem from a page that doesn't want to be read at all.
 
-The pipeline also **learns per source**. Once it discovers that a given page reliably needs tier N, it starts there next time instead of walking the whole ladder — and periodically re-probes from the bottom in case the site got easier. That memory is where most of the cost savings live: the common case becomes one cheap request.
+The pipeline also **learns per source**. Once it discovers that a given page reliably needs tier N, it starts there next time instead of walking the whole ladder, and periodically re-probes from the bottom in case the site got easier. That memory is where most of the cost savings live: the common case becomes one cheap request.
 
 I'm deliberately not detailing the upper tiers. The honest reason is that a step-by-step of what defeats a given protection is a gift to the wrong audience, and it ages badly the moment a site changes its defenses. The architecture is the interesting part; the evasion isn't.
 
-## Stage 2 — Snapshot and store
+## Stage 2: Snapshot and store
 
 A successful fetch produces a snapshot: the rendered content, and for visual sources a screenshot. Two rules govern what happens next.
 
-First, **binary artifacts never go in the database.** The HTML and screenshots are uploaded to object storage (Cloudflare R2), and only a small row — a storage key, a content hash, timestamps, some structured metadata — lands in Postgres. The database stays lean and fast; the heavy stuff lives where heavy stuff belongs.
+First, **binary artifacts never go in the database.** The HTML and screenshots are uploaded to object storage (Cloudflare R2), and only a small row (a storage key, a content hash, timestamps, some structured metadata) lands in Postgres. The database stays lean and fast; the heavy stuff lives where heavy stuff belongs.
 
 Second, **storage happens before the database write, always.** If the upload fails, we throw and let the job retry rather than write a database row that points at a file that doesn't exist. A row that references a missing artifact is a landmine you defuse months later; it's cheaper to never create it.
 
-The content hash is the first noise filter. If the new snapshot hashes identically to the last one, nothing changed and the pipeline stops right here — no diff, no AI, no cost. A large fraction of scheduled fetches end at this line, which is exactly what you want.
+The content hash is the first noise filter. If the new snapshot hashes identically to the last one, nothing changed and the pipeline stops right here: no diff, no AI, no cost. A large fraction of scheduled fetches end at this line, which is exactly what you want.
 
-## Stage 3 — Diffing, structurally
+## Stage 3: Diffing, structurally
 
-When bytes *do* change, the question becomes *what* changed. A naive line-by-line text diff of two HTML pages is nearly useless — it lights up on every re-ordered attribute and every dynamically injected timestamp. So the diff is structure-aware where it can be.
+When bytes *do* change, the question becomes *what* changed. A naive line-by-line text diff of two HTML pages is nearly useless: it lights up on every re-ordered attribute and every dynamically injected timestamp. So the diff is structure-aware where it can be.
 
-For a homepage, we extract a structured representation — the hero, the sections, the pricing hints, customer logos, testimonials, numeric claims — and diff *those* rather than raw markup. That turns "40,000 characters changed" into "the headline changed and one customer logo was added." Where we don't have a prior structured snapshot, we fall back to a cleaned lexical diff.
+For a homepage, we extract a structured representation (the hero, the sections, the pricing hints, customer logos, testimonials, numeric claims) and diff *those* rather than raw markup. That turns "40,000 characters changed" into "the headline changed and one customer logo was added." Where we don't have a prior structured snapshot, we fall back to a cleaned lexical diff.
 
 Two ideas do the heavy lifting here:
 
-- **Volatility learning.** Some parts of a page churn on every load — a rotating quote, a carousel, an A/B slot. The pipeline tracks which line signatures flip repeatedly and marks them volatile, so a carousel doesn't masquerade as news. A section has to be *stable* for several fetches before a change to it counts.
-- **A relevance score.** Every candidate change gets a score, and anything below a threshold is silently dropped. If a diff produces nothing above the line, the whole thing stops — no change record, no signal. This is the single most important filter in the product. It's the difference between a tool you trust and a tool you mute.
+- **Volatility learning.** Some parts of a page churn on every load: a rotating quote, a carousel, an A/B slot. The pipeline tracks which line signatures flip repeatedly and marks them volatile, so a carousel doesn't masquerade as news. A section has to be *stable* for several fetches before a change to it counts.
+- **A relevance score.** Every candidate change gets a score, and anything below a threshold is silently dropped. If a diff produces nothing above the line, the whole thing stops: no change record, no signal. This is the single most important filter in the product. It's the difference between a tool you trust and a tool you mute.
 
 Only changes that clear relevance become a `change` record and move on.
 
-## Stage 4 — Classification
+## Stage 4: Classification
 
-Now — and only now, on the small slice of changes that survived — we spend AI. A change is handed to a model with a tight, structured task: assign a **severity** (low → critical) and a **category** (pricing, product, hiring, reviews, content, funding), and judge whether each individual sub-change is actually significant.
+Now, and only now, on the small slice of changes that survived, we spend AI. A change is handed to a model with a tight, structured task: assign a **severity** (low → critical) and a **category** (pricing, product, hiring, reviews, content, funding), and judge whether each individual sub-change is actually significant.
 
 Keeping this step structured matters. The model isn't asked to write prose here; it's asked to fill in a small, validated schema. That makes the output cheap, cacheable, and hard to derail. Changes that come back insignificant die here. The ones that matter get promoted to a **signal**.
 
-## Stage 5 — The insight
+## Stage 5: The insight
 
 The last stage is the only one whose entire job is words. For a signal worth surfacing, a model writes the three things a human actually reads:
 
@@ -78,7 +78,7 @@ The last stage is the only one whose entire job is words. For a signal worth sur
   "severity": "high",
   "category": "pricing",
   "insight": "Competitor removed their free tier and raised the entry plan 20%.",
-  "so_what": "Their cheapest paid plan is now above yours — a wedge for price-sensitive buyers.",
+  "so_what": "Their cheapest paid plan is now above yours, a wedge for price-sensitive buyers.",
   "recommended_action": "Brief sales on the delta; consider a comparison landing page."
 }
 ```
@@ -90,9 +90,9 @@ That's the payoff of the whole funnel. Everything upstream exists so this paragr
 Three principles fell out of building this, and they're the ones I'd defend:
 
 1. **Push cost down the funnel.** The cheapest possible check runs on every fetch; the most expensive (AI) runs on a tiny minority. Content hashing and relevance scoring exist so the model almost never sees noise.
-2. **Best-effort everything that isn't the core.** Analytics logging, screenshots, enrichments — none of it can break a fetch. A logging error must never lose a signal.
+2. **Best-effort everything that isn't the core.** Analytics logging, screenshots, enrichments: none of it can break a fetch. A logging error must never lose a signal.
 3. **Store before you commit.** The artifact-before-database rule has saved more debugging hours than any clever optimization.
 
-None of this is exotic. It's a funnel with a strong filter in the middle and a small, structured AI task at the end. The craft is in the ratio — reading enough to miss nothing, speaking little enough to be worth reading.
+None of this is exotic. It's a funnel with a strong filter in the middle and a small, structured AI task at the end. The craft is in the ratio: reading enough to miss nothing, speaking little enough to be worth reading.
 
 If you want to see the output without wiring any of it up, the fastest path is to let it run on your actual market for a week.

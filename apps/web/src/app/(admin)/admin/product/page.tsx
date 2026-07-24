@@ -21,12 +21,12 @@ export default async function ProductPage() {
     <div className="flex flex-col gap-5">
       <PageHeader
         title="Product"
-        subtitle="Top-line product KPIs — the deep analytics live in PostHog."
+        subtitle="Top-line product KPIs. The deep analytics live in PostHog."
       />
 
       <Section
         title="Adoption & engagement"
-        info="A handful of product signals from Postgres: new signups, onboarding adoption & completion, and signals delivered. Funnels, retention and event analysis stay in PostHog — this is the at-a-glance layer, not a reconstruction."
+        info="A handful of product signals from Postgres: new signups, onboarding adoption & completion, and signals delivered. Funnels, retention and event analysis stay in PostHog. This is the at-a-glance layer, not a reconstruction."
         action={
           posthog ? (
             <Link

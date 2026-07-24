@@ -42,13 +42,13 @@ export default async function OnboardingMetricsPage() {
     <div className="flex flex-col gap-5">
       <PageHeader
         title="Onboarding"
-        subtitle={`Funnel timing & drop-off — last ${m.windowDays} days, ${m.total} session${m.total === 1 ? "" : "s"}.`}
+        subtitle={`Funnel timing & drop-off over the last ${m.windowDays} days, ${m.total} session${m.total === 1 ? "" : "s"}.`}
       />
 
       <Section
         title="First-signal SLO"
         note="< 10 min · target 70% / 28d"
-        info="Share of completed onboardings whose org saw its first signal within 10 minutes — the landing's cold-start promise, measured. Only onboardings whose 10-minute window has elapsed count. Thresholds match the ops alert (docs/slos/onboarding-first-signal.md)."
+        info="Share of completed onboardings whose org saw its first signal within 10 minutes: the landing's cold-start promise, measured. Only onboardings whose 10-minute window has elapsed count. Thresholds match the ops alert (docs/slos/onboarding-first-signal.md)."
       >
         {!slo || !slo.available ? (
           <Empty>Not enough completed onboardings yet.</Empty>

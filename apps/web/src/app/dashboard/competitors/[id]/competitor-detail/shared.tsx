@@ -67,7 +67,7 @@ export function MonitorEmptyState({
         </p>
         <p className="text-sm text-muted-foreground max-w-md">
           This competitor isn&apos;t tracking {label} yet. Enable it to start
-          capturing {label} data — we&apos;ll run the first scrape right away.
+          capturing {label} data, and we&apos;ll run the first scrape right away.
           Requires a plan that includes this source.
         </p>
         {onEnable && (

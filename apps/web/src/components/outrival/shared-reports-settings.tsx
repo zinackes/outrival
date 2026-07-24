@@ -42,7 +42,7 @@ export function SharedReportsSettings() {
     try {
       await api.revokeShareLink(id);
       await qc.invalidateQueries({ queryKey: ["share-links"] });
-      toast.success("Link revoked — it no longer opens.");
+      toast.success("Link revoked. It no longer opens.");
     } catch {
       toast.error("Couldn’t revoke the link. Please try again.");
     }
@@ -60,7 +60,7 @@ export function SharedReportsSettings() {
           <h2 className="font-semibold text-base tracking-tight">Shared reports</h2>
           <p className="text-muted-foreground text-sm mt-1">
             Public read-only links to your Competitive Snapshot. Anyone with a link can view
-            it — revoke anytime.
+            it. Revoke anytime.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={create} disabled={creating}>

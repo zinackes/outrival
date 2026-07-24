@@ -84,7 +84,7 @@ function HostSection({ host }: { host: AdminHostHealth }) {
     <Section
       title="Host (web + API)"
       note={host.memory.usedPct >= 85 ? "memory high" : undefined}
-      info="Resources of the VPS running Next.js (web) and Hono (API). Scraping browsers now run on the same box, in the separate browser-worker service with its own memory limit — so a high queue backlog can mean either concurrency or host RAM. Load is the OS run-queue average; >100% of cores means tasks are waiting on CPU."
+      info="Resources of the VPS running Next.js (web) and Hono (API). Scraping browsers now run on the same box, in the separate browser-worker service with its own memory limit, so a high queue backlog can mean either concurrency or host RAM. Load is the OS run-queue average; >100% of cores means tasks are waiting on CPU."
     >
       <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
         <Stat
@@ -129,7 +129,7 @@ function ErrorsSection({ rates }: { rates: AdminErrorRates }) {
     <Section
       title="Errors"
       note={aiSpike || scrapeSpike ? "spike" : undefined}
-      info="Failure rate over the last hour next to the 24h baseline — a 1h rate well above baseline is a spike. AI = error + parse_failed over ai_runs; scrape = failed runs. Exceptions themselves are captured in Sentry (prod); see the AI / Scraping pages for the per-task breakdown."
+      info="Failure rate over the last hour next to the 24h baseline. A 1h rate well above baseline is a spike. AI = error + parse_failed over ai_runs; scrape = failed runs. Exceptions themselves are captured in Sentry (prod); see the AI / Scraping pages for the per-task breakdown."
       action={
         <Link
           href="/admin/ai"
@@ -177,7 +177,7 @@ function QueueSections({ health }: { health: AdminQueueHealth }) {
       <Section
         title="Job queue"
         note={backlogWarn ? "backlog" : undefined}
-        info="Aggregate pg-boss queue state (its own dedicated Postgres, not this VPS). Backlog (queued) is the real 'scale me' signal — a standing backlog means jobs are waiting for a worker slot. Running = currently executing. Failed = jobs currently sitting in a failed state; failures (24h) / avg run are windowed."
+        info="Aggregate pg-boss queue state (its own dedicated Postgres, not this VPS). Backlog (queued) is the real 'scale me' signal: a standing backlog means jobs are waiting for a worker slot. Running = currently executing. Failed = jobs currently sitting in a failed state; failures (24h) / avg run are windowed."
       >
         {queues.available || throughput24h.available || failures24h.available ? (
           <div className="grid grid-cols-2 gap-6 md:grid-cols-5">
@@ -222,7 +222,7 @@ function QueueSections({ health }: { health: AdminQueueHealth }) {
 
       <Section
         title="Queues"
-        info="Per-queue backlog. A queue whose queued count keeps growing while running stays flat is the bottleneck — raise the worker capacity for it."
+        info="Per-queue backlog. A queue whose queued count keeps growing while running stays flat is the bottleneck: raise the worker capacity for it."
       >
         {!queues.available ? (
           <Empty>Queue list unavailable.</Empty>
@@ -264,7 +264,7 @@ function QueueSections({ health }: { health: AdminQueueHealth }) {
 
       <Section
         title="Scheduled jobs"
-        info="Registered pg-boss cron schedules. pg-boss keeps no next-run time, so 'last fired' — how long since a job for this schedule last landed — is the stall signal instead: a schedule silent far longer than its cron period means the scheduler stopped firing it."
+        info="Registered pg-boss cron schedules. pg-boss keeps no next-run time, so 'last fired' (how long since a job for this schedule last landed) is the stall signal instead: a schedule silent far longer than its cron period means the scheduler stopped firing it."
       >
         {!schedules.available ? (
           <Empty>Schedule list unavailable.</Empty>
@@ -356,7 +356,7 @@ export default async function SystemPage() {
     <div className="flex flex-col gap-5">
       <PageHeader
         title="System"
-        subtitle="Infrastructure health — external dependencies, pg-boss job queue & cron schedules."
+        subtitle="Infrastructure health: external dependencies, pg-boss job queue & cron schedules."
       />
 
       <Section

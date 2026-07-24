@@ -115,7 +115,7 @@ export function NotificationSettingsForm() {
               <TooltipTrigger asChild>
                 <span
                   className="inline-flex cursor-help"
-                  aria-label="Locked — requires a higher plan"
+                  aria-label="Locked, requires a higher plan"
                 >
                   <Lock size={12} className="text-muted-foreground" />
                 </span>
@@ -168,7 +168,7 @@ export function NotificationSettingsForm() {
               <TooltipTrigger asChild>
                 <span
                   className="inline-flex cursor-help"
-                  aria-label="Locked — requires a higher plan"
+                  aria-label="Locked, requires a higher plan"
                 >
                   <Lock size={12} className="text-muted-foreground" />
                 </span>

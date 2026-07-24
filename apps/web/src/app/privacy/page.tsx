@@ -80,7 +80,7 @@ export default function PrivacyPage() {
                 <tr>
                   <td>Security & anti-abuse</td>
                   <td>IP address, request logs, captcha & rate-limit signals</td>
-                  <td>Legitimate interest — securing the service (6.1.f)</td>
+                  <td>Legitimate interest in securing the service (6.1.f)</td>
                   <td>Up to 12 months</td>
                 </tr>
                 <tr>
@@ -98,7 +98,7 @@ export default function PrivacyPage() {
                 <tr>
                   <td>Competitive monitoring</td>
                   <td>Public competitor pages; may incidentally include personal data (e.g. names in job posts or reviews)</td>
-                  <td>Legitimate interest — competitive intelligence (6.1.f)</td>
+                  <td>Legitimate interest in competitive intelligence (6.1.f)</td>
                   <td>Per your plan’s retention window</td>
                 </tr>
               </tbody>
@@ -116,9 +116,9 @@ export default function PrivacyPage() {
           </p>
           <p>To keep this proportionate, we:</p>
           <ul>
-            <li>collect only publicly available content — we do not bypass logins or paywalls;</li>
+            <li>collect only publicly available content, without bypassing logins or paywalls;</li>
             <li>respect <code>robots.txt</code> and reasonable rate limits;</li>
-            <li>focus on companies and products, not individuals — we do not build profiles of natural persons;</li>
+            <li>focus on companies and products rather than individuals, and do not build profiles of natural persons;</li>
             <li>minimise incidental personal data and do not use it to contact or evaluate individuals;</li>
             <li>never scrape special-category data.</li>
           </ul>
@@ -150,8 +150,8 @@ export default function PrivacyPage() {
           <p>
             We do not sell personal data. We share it only with processors acting
             on our instructions (hosting, database, email, payments, AI
-            inference, analytics). The complete, current list — with purpose,
-            location and transfer safeguards — is on our{" "}
+            inference, analytics). The complete, current list, with purpose,
+            location and transfer safeguards, is on our{" "}
             <a href="/subprocessors">subprocessors page</a>. We may also disclose
             data where required by law.
           </p>
@@ -185,7 +185,7 @@ export default function PrivacyPage() {
             </li>
             <li>
               exercise any other right by emailing{" "}
-              <a href={`mailto:${CONTACT.privacy}`}>{CONTACT.privacy}</a> — we
+              <a href={`mailto:${CONTACT.privacy}`}>{CONTACT.privacy}</a>. We
               respond within one month.
             </li>
           </ul>
@@ -215,7 +215,7 @@ export default function PrivacyPage() {
           <p>
             You can lodge a complaint with the CNIL: Commission Nationale de
             l’Informatique et des Libertés, 3 Place de Fontenoy, TSA 80715, 75334
-            Paris Cedex 07 — <a href="https://www.cnil.fr">www.cnil.fr</a>.
+            Paris Cedex 07, <a href="https://www.cnil.fr">www.cnil.fr</a>.
           </p>
         </>
       }
@@ -282,7 +282,7 @@ export default function PrivacyPage() {
                 <tr>
                   <td>Sécurité & anti-abus</td>
                   <td>Adresse IP, journaux de requêtes, signaux captcha & rate-limit</td>
-                  <td>Intérêt légitime — sécurisation du service (6.1.f)</td>
+                  <td>Intérêt légitime à sécuriser le service (6.1.f)</td>
                   <td>Jusqu'à 12 mois</td>
                 </tr>
                 <tr>
@@ -300,7 +300,7 @@ export default function PrivacyPage() {
                 <tr>
                   <td>Veille concurrentielle</td>
                   <td>Pages concurrentes publiques ; peut inclure incidemment des données personnelles (ex. noms dans des offres d'emploi ou avis)</td>
-                  <td>Intérêt légitime — veille concurrentielle (6.1.f)</td>
+                  <td>Intérêt légitime lié à la veille concurrentielle (6.1.f)</td>
                   <td>Selon la fenêtre de rétention du plan</td>
                 </tr>
               </tbody>
@@ -319,9 +319,9 @@ export default function PrivacyPage() {
           </p>
           <p>Pour rester proportionnés, nous :</p>
           <ul>
-            <li>ne collectons que du contenu public — sans contourner d'identification ni de paywall ;</li>
+            <li>ne collectons que du contenu public, sans contourner d'identification ni de paywall ;</li>
             <li>respectons <code>robots.txt</code> et des limites de débit raisonnables ;</li>
-            <li>ciblons les entreprises et les produits, pas les individus — nous ne profilons pas de personnes physiques ;</li>
+            <li>ciblons les entreprises et les produits plutôt que les individus, et ne profilons pas de personnes physiques ;</li>
             <li>minimisons les données personnelles incidentes et ne les utilisons pas pour contacter ou évaluer des individus ;</li>
             <li>ne collectons jamais de données sensibles.</li>
           </ul>
@@ -356,8 +356,8 @@ export default function PrivacyPage() {
             Nous ne vendons pas de données personnelles. Nous ne les partageons
             qu'avec des sous-traitants agissant sur nos instructions (hébergement,
             base de données, email, paiements, inférence IA, analytics). La liste
-            complète et à jour — avec finalité, localisation et garanties de
-            transfert — figure sur notre{" "}
+            complète et à jour, avec finalité, localisation et garanties de
+            transfert, figure sur notre{" "}
             <a href="/subprocessors">page sous-traitants</a>. Nous pouvons aussi
             communiquer des données lorsque la loi l'exige.
           </p>
@@ -392,7 +392,7 @@ export default function PrivacyPage() {
             </li>
             <li>
               exercer tout autre droit en écrivant à{" "}
-              <a href={`mailto:${CONTACT.privacy}`}>{CONTACT.privacy}</a> — nous
+              <a href={`mailto:${CONTACT.privacy}`}>{CONTACT.privacy}</a>. Nous
               répondons sous un mois.
             </li>
           </ul>
@@ -424,7 +424,7 @@ export default function PrivacyPage() {
           <p>
             Vous pouvez introduire une réclamation auprès de la CNIL : Commission
             Nationale de l'Informatique et des Libertés, 3 Place de Fontenoy, TSA
-            80715, 75334 Paris Cedex 07 —{" "}
+            80715, 75334 Paris Cedex 07,{" "}
             <a href="https://www.cnil.fr">www.cnil.fr</a>.
           </p>
         </>

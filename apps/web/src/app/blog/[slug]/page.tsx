@@ -26,7 +26,7 @@ export async function generateMetadata({
   if (!post) return {};
   const url = `/blog/${slug}`;
   return {
-    title: { absolute: `${post.title} — Outrival Blog` },
+    title: { absolute: `${post.title} | Outrival Blog` },
     description: post.description,
     alternates: { canonical: url },
     openGraph: {

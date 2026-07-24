@@ -78,7 +78,7 @@ export default function OgImage() {
               marginBottom: 24,
             }}
           >
-            A real weekly brief — see the output before you sign up
+            A real weekly brief. See the output before you sign up
           </div>
           <div style={{ fontSize: 30, color: "#a1a1aa", maxWidth: 860, lineHeight: 1.3 }}>
             Real competitor moves, prioritized by AI. Client organization

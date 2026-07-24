@@ -61,7 +61,7 @@ export function FeedbackView({ initial }: { initial: AdminFeedbackRow[] }) {
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader title="Feedback" subtitle="User reports — triage, screenshots, console errors." />
+      <PageHeader title="Feedback" subtitle="User reports: triage, screenshots, console errors." />
 
       <Section
         title={`Feedback (${visible.length})`}

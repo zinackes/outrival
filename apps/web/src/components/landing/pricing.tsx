@@ -110,7 +110,7 @@ export function Pricing() {
           </h2>
           <p className="text-text-muted leading-relaxed">
             You pay by user and by number of competitors. Every AI cost is baked
-            into the price — no usage-based billing. Each plan builds on the one
+            into the price, with no usage-based billing. Each plan builds on the one
             before it.
           </p>
         </div>

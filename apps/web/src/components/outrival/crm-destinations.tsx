@@ -126,7 +126,7 @@ export function CrmDestinations() {
       <div>
         <h3 className="text-dense font-semibold tracking-tight">CRM &amp; webhooks</h3>
         <p className="text-muted-foreground mt-0.5 text-xs">
-          Push every alerted signal to a URL — Zapier, Make, n8n or your CRM. Signed with
+          Push every alerted signal to a URL: Zapier, Make, n8n or your CRM. Signed with
           <span className="font-mono"> X-Outrival-Signature</span> when a secret is set.
         </p>
       </div>

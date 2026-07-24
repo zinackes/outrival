@@ -19,10 +19,10 @@ import { Trust } from "@/components/landing/trust";
 
 export const metadata: Metadata = {
   title: {
-    absolute: "Outrival — Automated competitive intelligence, written by AI",
+    absolute: "Outrival: Automated competitive intelligence, written by AI",
   },
   description:
-    "Outrival monitors every public surface a competitor has — pricing, product, hiring, reviews. AI reads every change and surfaces only the ones worth a decision, in a strategic digest every Monday, with Slack alerts on critical signals. EU data storage.",
+    "Outrival monitors every public surface a competitor has: pricing, product, hiring, reviews. AI reads every change and surfaces only the ones worth a decision, in a strategic digest every Monday, with Slack alerts on critical signals. EU data storage.",
   alternates: { canonical: "/" },
 };
 

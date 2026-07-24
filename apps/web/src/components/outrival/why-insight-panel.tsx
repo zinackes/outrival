@@ -109,7 +109,7 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  Detail unavailable for this signal — open the live page to see
+                  Detail unavailable for this signal. Open the live page to see
                   the current state.
                 </p>
               )}

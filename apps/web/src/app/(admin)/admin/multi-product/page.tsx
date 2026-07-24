@@ -34,7 +34,7 @@ export default async function MultiProductMetricsPage() {
     <div className="flex flex-col gap-5">
       <PageHeader
         title="Products"
-        subtitle={`Multi-SKU adoption — ${m.orgsWithProducts} org${m.orgsWithProducts === 1 ? "" : "s"} with products, ${m.multiProductOrgs} multi-product.`}
+        subtitle={`Multi-SKU adoption: ${m.orgsWithProducts} org${m.orgsWithProducts === 1 ? "" : "s"} with products, ${m.multiProductOrgs} multi-product.`}
       />
 
       <Section
@@ -51,7 +51,7 @@ export default async function MultiProductMetricsPage() {
 
       <Section
         title="Orgs by product count"
-        info="Distribution of orgs by how many active products (SKUs) they manage — shows how widely the multi-product capability is used."
+        info="Distribution of orgs by how many active products (SKUs) they manage. Shows how widely the multi-product capability is used."
       >
         <div className="flex flex-col">
           {dist.map((d) => (
@@ -70,7 +70,7 @@ export default async function MultiProductMetricsPage() {
 
       <Section
         title="Shared vs specific competitors"
-        note="hybrid model — most should be shared"
+        note="hybrid model, most should be shared"
         info="Product↔competitor associations split between shared (org-wide, tracked for every product) and product-specific links. Most should be shared."
       >
         {assocTotal === 0 ? (

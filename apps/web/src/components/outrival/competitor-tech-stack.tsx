@@ -136,7 +136,7 @@ export function CompetitorTechStack({ techStack }: { techStack: TechStackData })
           <p className="text-dense text-muted-foreground">
             {lastScrapedAt
               ? "No recognizable third-party tech detected yet."
-              : "Tech stack is scanned monthly — the first scan runs within a day, then results appear here."}
+              : "Tech stack is scanned monthly. The first scan runs within a day, then results appear here."}
           </p>
         ) : (
           <div className="space-y-3">

@@ -66,7 +66,7 @@ export function UserDetailView({ detail }: { detail: AdminUserDetail }) {
 
       <Section
         title={`Competitors & monitors (${detail.competitors.length})`}
-        info="Competitors this org tracks and the monitors configured on each — the sources being scraped and their state."
+        info="Competitors this org tracks and the monitors configured on each: the sources being scraped and their state."
       >
         {detail.competitors.length === 0 ? (
           <Empty>No competitors.</Empty>

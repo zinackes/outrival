@@ -103,7 +103,7 @@ export default function TermsOfSalePage() {
 
           <h3>Model withdrawal form</h3>
           <p className="fine">
-            To the attention of {ENTITY.legalName}, {CONTACT.general} — I/we hereby
+            To the attention of {ENTITY.legalName}, {CONTACT.general}. I/we hereby
             notify you of my/our withdrawal from the contract for the following
             service: [plan]. Ordered on [date]. Name of consumer(s). Address of
             consumer(s). Date. (Signature if paper form.)
@@ -235,7 +235,7 @@ export default function TermsOfSalePage() {
 
           <h3>Formulaire type de rétractation</h3>
           <p className="fine">
-            À l'attention de {ENTITY.legalName}, {CONTACT.general} — Je/nous vous
+            À l'attention de {ENTITY.legalName}, {CONTACT.general}. Je/nous vous
             notifie/notifions ma/notre rétractation du contrat portant sur le
             service suivant : [plan]. Commandé le [date]. Nom du/des
             consommateur(s). Adresse du/des consommateur(s). Date. (Signature en

@@ -20,7 +20,7 @@ export function SampleBanner() {
         <span className="size-1.5 shrink-0 rounded-full bg-primary" aria-hidden />
         <span className="text-sm text-muted-foreground">
           <span className="font-medium text-foreground">Sample data.</span> A
-          fictional workspace for exploring — your real data is untouched.
+          fictional workspace for exploring, and your real data is untouched.
         </span>
       </div>
       <Button variant="ghost" size="sm" onClick={() => setSample(false)}>

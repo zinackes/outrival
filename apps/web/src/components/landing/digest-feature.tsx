@@ -51,7 +51,7 @@ export function DigestFeature() {
               <FeatureItem
                 icon={<Layers size={16} />}
                 title="Smart aggregation"
-                desc="Related changes get grouped into a single coherent insight — not 4 separate alerts about the same pricing overhaul."
+                desc="Related changes get grouped into a single coherent insight, not 4 separate alerts about the same pricing overhaul."
               />
               <FeatureItem
                 icon={<Activity size={16} />}
@@ -61,7 +61,7 @@ export function DigestFeature() {
               <FeatureItem
                 icon={<Zap size={16} />}
                 title="Critical → real time"
-                desc="High/critical signals don't wait until Monday — they ship to Slack or email within 5 minutes."
+                desc="High/critical signals don't wait until Monday. They ship to Slack or email within 5 minutes."
               />
             </div>
             <div className="mt-8">

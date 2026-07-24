@@ -201,7 +201,7 @@ export function useMonitorActions(id: string) {
         const unchangedLabels = finished.filter((mid) => !changedSet.has(mid)).map(label);
         if (changedLabels.length > 0) {
           toast.success("Change detected", {
-            description: `${changedLabels.join(", ")} — new snapshot captured`,
+            description: `${changedLabels.join(", ")}: new snapshot captured`,
           });
         }
         if (unchangedLabels.length > 0) {
@@ -236,7 +236,7 @@ export function useMonitorActions(id: string) {
           .map((mid) => fresh.monitors.find((m) => m.id === mid)?.sourceType ?? mid)
           .join(", ");
         toast.warning("Scrape still running", {
-          description: `${labels} — still in progress after 5 min, will continue in background. Refresh the page later to see results.`,
+          description: `${labels}: still in progress after 5 min, will continue in background. Refresh the page later to see results.`,
         });
       }
     }, POLL_INTERVAL_MS);
@@ -331,7 +331,7 @@ export function useMonitorActions(id: string) {
           description:
             s === "very_recent"
               ? "This source was checked in the last 30 minutes."
-              : "Nothing has changed since the last scrape — re-scanning will likely find nothing new.",
+              : "Nothing has changed since the last scrape, so re-scanning will likely find nothing new.",
           action: { label: "Re-scan anyway", onClick: () => void runMonitor(monitorId) },
         });
         return;
@@ -438,7 +438,7 @@ export function useMonitorActions(id: string) {
       // A frequency-only change is reflected instantly by the selected segment, so it
       // needs no toast. Retargeting is async (the source re-scans) and clears the
       // previous page's failure verdict server-side — that one's worth confirming.
-      if (patch.url) toast.success("Source repointed — we'll scan it shortly");
+      if (patch.url) toast.success("Source repointed, we'll scan it shortly");
     } catch (e) {
       const reason = paywallFromError(e);
       if (reason) {

@@ -583,7 +583,7 @@ function ReviewBody({
           // Same items on both sides — content was reordered or lightly reworded.
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">
-              No items were added or removed — the existing content was reordered.
+              No items were added or removed. The existing content was reordered.
             </p>
             <ul className="space-y-1.5">
               {net.added.map((it, i) => (

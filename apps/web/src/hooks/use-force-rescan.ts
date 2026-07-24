@@ -47,7 +47,7 @@ export function useForceRescan(monitorId: string, options?: Options) {
       // polling (kicked off by onStarted) refreshes the row when it lands, so just
       // confirm it started rather than polling a log id that doesn't exist.
       if (!res.rescanLogId) {
-        toast.success("Re-scan started — the data will refresh here shortly.");
+        toast.success("Re-scan started. The data will refresh here shortly.");
         return;
       }
 
@@ -67,20 +67,20 @@ export function useForceRescan(monitorId: string, options?: Options) {
 
       if (!outcome) {
         toast.info(
-          "Re-scan started — it's taking a little longer than usual. The data will refresh shortly.",
+          "Re-scan started. It's taking a little longer than usual. The data will refresh shortly.",
           { id: toastId },
         );
       } else if (outcome.failed) {
-        toast.error("Re-scan failed — we couldn't reach the source. It'll retry automatically.", {
+        toast.error("Re-scan failed: we couldn't reach the source. It'll retry automatically.", {
           id: toastId,
         });
       } else if (outcome.hadNewSignal) {
-        toast.success("Re-scan complete — we found an update. It's in your latest signals.", {
+        toast.success("Re-scan complete. We found an update and it's in your latest signals.", {
           id: toastId,
         });
       } else {
         toast.info(
-          `Re-scan complete — nothing new. Next automatic check around ${formatDay(outcome.nextRunAt)}.`,
+          `Re-scan complete, nothing new. Next automatic check around ${formatDay(outcome.nextRunAt)}.`,
           { id: toastId },
         );
       }

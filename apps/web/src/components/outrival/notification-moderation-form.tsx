@@ -29,7 +29,7 @@ import { toastApiError } from "@/lib/error-helpers";
 import { ListError } from "@/components/outrival/list-error";
 
 const CHANNEL_OPTIONS: { value: ChannelMode; label: string }[] = [
-  { value: "email_immediate", label: "Email — immediate" },
+  { value: "email_immediate", label: "Email (immediate)" },
   { value: "digest_daily", label: "Daily briefing" },
   { value: "digest_weekly", label: "Weekly briefing" },
   { value: "in_app_only", label: "In-app only" },
@@ -41,7 +41,7 @@ const SEVERITY_ROWS: {
   label: string;
   hint?: string;
 }[] = [
-  { key: "channelCritical", label: "Critical", hint: "Always delivered — bypasses every filter." },
+  { key: "channelCritical", label: "Critical", hint: "Always delivered, bypasses every filter." },
   { key: "channelHigh", label: "High" },
   { key: "channelMedium", label: "Medium" },
   { key: "channelLow", label: "Low" },
@@ -147,7 +147,7 @@ export function NotificationModerationForm() {
       <fieldset className="flex flex-col gap-3">
         <legend className="text-sm font-medium mb-1">Briefing cadence</legend>
         <p className="text-xs text-muted-foreground -mt-1">
-          How each severity reaches you — in your daily or weekly briefing, as an
+          How each severity reaches you: in your daily or weekly briefing, as an
           immediate email, or in-app only. Critical always comes through immediately.
         </p>
         {SEVERITY_ROWS.map((row) => (
@@ -243,7 +243,7 @@ export function NotificationModerationForm() {
           No notifications on weekends
         </label>
         <p className="text-xs text-muted-foreground">
-          Quiet hours only hold back immediate emails — in-app updates stay current,
+          Quiet hours only hold back immediate emails; in-app updates stay current,
           and critical alerts always come through.
         </p>
       </fieldset>
@@ -292,12 +292,12 @@ export function NotificationModerationForm() {
           {!threshold.feedback || threshold.feedback.total === 0 ? (
             <p className="text-sm text-muted-foreground">
               Rate signals as useful or not useful and Outrival learns what&apos;s
-              relevant to you — the relevance threshold auto-adjusts from your
+              relevant to you, and the relevance threshold auto-adjusts from your
               feedback.
             </p>
           ) : (
             <p className="text-sm text-muted-foreground">
-              Learning from your feedback —{" "}
+              Learning from your feedback:{" "}
               <span className="text-foreground">
                 {threshold.feedback.useful} of {threshold.feedback.total}
               </span>{" "}
@@ -311,7 +311,7 @@ export function NotificationModerationForm() {
           )}
           <p className="text-sm text-muted-foreground">
             Relevance threshold:{" "}
-            <span className="text-foreground">{threshold.threshold.toFixed(2)}</span> —{" "}
+            <span className="text-foreground">{threshold.threshold.toFixed(2)}</span>,{" "}
             {THRESHOLD_SOURCE_LABEL[threshold.source]}
           </p>
           <p className="text-xs text-muted-foreground">

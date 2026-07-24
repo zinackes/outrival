@@ -106,7 +106,7 @@ export function ReviewQueueView({ items }: { items: ReviewItem[] }) {
                 {blocked.unfaithfulClaims.map((c, i) => (
                   <li key={i} className="text-dense">
                     <span className="font-medium text-medium">unsupported claim</span>
-                    {c.reason && <span className="text-muted-foreground"> — {c.reason}</span>}
+                    {c.reason && <span className="text-muted-foreground">: {c.reason}</span>}
                     <span className="block text-xs text-text-subtle">“{c.claim.text}”</span>
                   </li>
                 ))}
@@ -118,7 +118,7 @@ export function ReviewQueueView({ items }: { items: ReviewItem[] }) {
                 {issues.map((iss, i) => (
                   <li key={i} className="text-dense">
                     <span className="font-medium text-medium">{iss.type}</span>
-                    <span className="text-muted-foreground"> — {iss.description}</span>
+                    <span className="text-muted-foreground">: {iss.description}</span>
                     {iss.affectedAssertion && (
                       <span className="block text-xs text-text-subtle">
                         “{iss.affectedAssertion}”

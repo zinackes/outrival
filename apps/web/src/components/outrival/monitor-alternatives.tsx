@@ -116,8 +116,8 @@ export function MonitorAlternatives({
   // and fail on anti-bot, not a wrong URL — so a URL override wouldn't help there.
   const canSetUrl = !isReviewSource(sourceType as SourceType);
   const recoveryHint = canSetUrl
-    ? "Bring it back any time — give us the right URL, enter the data yourself, or resume scraping and we'll try again."
-    : "Bring it back any time — enter the data yourself, or resume scraping and we'll try again.";
+    ? "Bring it back any time: give us the right URL, enter the data yourself, or resume scraping and we'll try again."
+    : "Bring it back any time: enter the data yourself, or resume scraping and we'll try again.";
   // Only diagnosis-specific suggestions render as their own rows; pause_source
   // (legacy rows) and manual_data_entry are handled by the card actions.
   const suggestions = alternatives.filter(
@@ -128,7 +128,7 @@ export function MonitorAlternatives({
     setResuming(true);
     try {
       await api.resumeMonitor(monitorId);
-      toast.success(`${label} resumed — a fresh scrape is on its way.`);
+      toast.success(`${label} resumed. A fresh scrape is on its way.`);
       setAlternatives([]);
       onResolved?.();
     } catch {
@@ -157,7 +157,7 @@ export function MonitorAlternatives({
     setSavingUrl(true);
     try {
       await api.setMonitorUrl(monitorId, url);
-      toast.success(`${label} repointed — a fresh scrape is on its way.`);
+      toast.success(`${label} repointed. A fresh scrape is on its way.`);
       setUrlOpen(false);
       setAlternatives([]);
       onResolved?.();
@@ -174,7 +174,7 @@ export function MonitorAlternatives({
       await api.acceptAlternative(alt.id);
       toast.success(
         alt.type === "different_url"
-          ? "Following the new URL — a fresh scrape is on its way."
+          ? "Following the new URL. A fresh scrape is on its way."
           : "Done.",
       );
       setAlternatives((prev) => prev?.filter((a) => a.id !== alt.id) ?? null);
@@ -272,7 +272,7 @@ export function MonitorAlternatives({
             <DialogTitle>Point us at the right page</DialogTitle>
             <DialogDescription>
               The {label.toLowerCase()} page exists but we reached the wrong place. Paste the URL
-              you know works — it must be on this competitor&apos;s domain — and we&apos;ll resume
+              you know works (it must be on this competitor&apos;s domain) and we&apos;ll resume
               scraping it.
             </DialogDescription>
           </DialogHeader>
@@ -406,7 +406,7 @@ export function PausedMonitors({ monitors, onResolved }: PausedMonitorsProps) {
         <div className="text-sm">
           <p className="font-medium text-foreground">{active.length} sources paused</p>
           <p className="mt-0.5 text-muted-foreground">
-            Set a URL, enter the data yourself, or resume — we&apos;ll try again.
+            Set a URL, enter the data yourself, or resume, and we&apos;ll try again.
           </p>
         </div>
       </div>

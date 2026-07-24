@@ -26,7 +26,7 @@ export default async function EnrichmentCompletenessPage() {
     <div className="flex flex-col gap-5">
       <PageHeader
         title="Enrichment"
-        subtitle="How much of the structured enrichment actually lands per source — the arbiter for whether it's worth surfacing, or the extraction needs work."
+        subtitle="How much of the structured enrichment actually lands per source: the arbiter for whether it's worth surfacing, or the extraction needs work."
       />
 
       <Section

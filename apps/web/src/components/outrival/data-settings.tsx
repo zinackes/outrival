@@ -63,8 +63,8 @@ export function DataSettings() {
         <div className="flex-1">
           <div className="text-dense font-medium">Export</div>
           <div className="text-dense text-muted-foreground mt-1">
-            Download everything in your workspace — competitors, signals, digests,
-            products, battle cards and more — as JSON.
+            Download everything in your workspace (competitors, signals, digests,
+            products, battle cards and more) as JSON.
           </div>
         </div>
         <Button variant="outline" size="sm" onClick={exportData} disabled={busy}>

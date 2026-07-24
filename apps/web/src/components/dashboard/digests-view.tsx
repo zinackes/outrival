@@ -80,7 +80,7 @@ export function DigestsView() {
       if (!digest) {
         toast.info(
           reason === "no_signals"
-            ? "No signals in this range yet — nothing to summarize."
+            ? "No signals in this range yet, nothing to summarize."
             : "Could not generate a digest.",
         );
         return;

@@ -54,7 +54,7 @@ export default async function MonitorsHealthPage() {
       <Section
         title="Freshness distribution"
         note={`${m.total} active sources`}
-        info="Active sources by freshness — the colored dots users see. Fresh, then yellow/orange/red as data ages past per-source-type staleness thresholds."
+        info="Active sources by freshness: the colored dots users see. Fresh, then yellow/orange/red as data ages past per-source-type staleness thresholds."
       >
         <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
           <Stat label="Fresh" value={m.distribution.fresh} hint={pct(m.distribution.fresh, m.total)} />
@@ -66,7 +66,7 @@ export default async function MonitorsHealthPage() {
 
       <Section
         title="Red by source category"
-        info="The stalest (red) sources broken down by source type — shows which categories are falling behind their freshness threshold."
+        info="The stalest (red) sources broken down by source type. Shows which categories are falling behind their freshness threshold."
       >
         {redCats.length === 0 ? (
           <Empty>No source is red right now.</Empty>
@@ -119,7 +119,7 @@ export default async function MonitorsHealthPage() {
             </div>
             {m.rescans.usefulRate < 0.4 && m.rescans.useful + m.rescans.wasted >= 20 && (
               <p className="mt-4 text-xs text-muted-foreground">
-                Most forced re-scans found nothing — consider communicating the automatic
+                Most forced re-scans found nothing. Consider communicating the automatic
                 cadence more clearly so users don&apos;t re-scan unnecessarily.
               </p>
             )}

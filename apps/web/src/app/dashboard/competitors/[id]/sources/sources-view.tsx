@@ -209,7 +209,7 @@ export function SourcesView({ id }: { id: string }) {
               <Radio size={13} className="text-muted-foreground" /> Automatic sources
             </h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Monitored automatically — can&apos;t be turned off. They cost you nothing
+              Monitored automatically and can&apos;t be turned off. They cost you nothing
               and need no configuration.
             </p>
           </div>

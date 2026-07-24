@@ -48,7 +48,7 @@ const TONE_CLASS = {
 const URL_GUIDANCE: Partial<Record<SourceType, { placeholder: string; help: string }>> = {
   appstore_reviews: {
     placeholder: "https://apps.apple.com/us/app/name/id123456789",
-    help: "Their App Store listing — the link has to carry the numeric app id (…/id123456789).",
+    help: "Their App Store listing. The link has to carry the numeric app id (…/id123456789).",
   },
   github_repo: {
     placeholder: "https://github.com/owner/repo",
@@ -333,7 +333,7 @@ export function SourceRow({
             {/* Retargeting clears the previous page's failure record server-side, so
                 a source that was blocked or auto-paused comes back on its own. */}
             {monitor &&
-              "Saving clears this source's failure history and schedules a fresh scan — past snapshots are kept."}
+              "Saving clears this source's failure history and schedules a fresh scan, and past snapshots are kept."}
           </p>
           <div className="flex flex-wrap gap-2">
             <Input

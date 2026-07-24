@@ -115,13 +115,13 @@ function RecoveryCodes({
       await navigator.clipboard.writeText(codes.join("\n"));
       toast.success("Recovery codes copied.");
     } catch {
-      toast.error("Couldn't copy — select the codes and copy them by hand.");
+      toast.error("Couldn't copy. Select the codes and copy them by hand.");
     }
   }
 
   function download() {
     const text =
-      "Outrival — two-factor recovery codes\n" +
+      "Outrival two-factor recovery codes\n" +
       "Each code works once if you lose your authenticator app.\n\n" +
       codes.join("\n") +
       "\n";
@@ -286,7 +286,7 @@ function TwoFactorDialog({
     try {
       const res = await api.regenerateBackupCodes({ code: regenCode });
       setNewCodes(res.backupCodes);
-      toast.success("New recovery codes generated — the old ones no longer work.");
+      toast.success("New recovery codes generated. The old ones no longer work.");
     } catch (e) {
       setError(
         e instanceof ApiError && typeof e.data.message === "string"
@@ -316,10 +316,10 @@ function TwoFactorDialog({
           </DialogTitle>
           <DialogDescription>
             {step === "scan"
-              ? "Use Google Authenticator, 1Password, Authy, or similar — scan the code or enter the key by hand."
+              ? "Use Google Authenticator, 1Password, Authy, or similar. Scan the code or enter the key by hand."
               : step === "verify"
                 ? "Open your authenticator app and type the current code to confirm the setup."
-                : "Each code works once if you lose your device. Store them somewhere safe — they won't be shown again."}
+                : "Each code works once if you lose your device. Store them somewhere safe: they won't be shown again."}
           </DialogDescription>
         </DialogHeader>
 
@@ -584,7 +584,7 @@ function TwoFactorRow({ initialEnabled }: { initialEnabled: boolean }) {
         description={
           enabled
             ? "A one-time code is required on every sign-in."
-            : "Add a one-time code to every sign-in — email code, Google, and password alike."
+            : "Add a one-time code to every sign-in: email code, Google, and password alike."
         }
       >
         {enabled ? (
@@ -675,7 +675,7 @@ function PasskeysDialog({
         <DialogHeader>
           <DialogTitle>Passkeys</DialogTitle>
           <DialogDescription>
-            Sign in with Face ID, Touch ID, or a security key — phishing-resistant, no code to type.
+            Sign in with Face ID, Touch ID, or a security key. Phishing-resistant, no code to type.
           </DialogDescription>
         </DialogHeader>
 
@@ -746,7 +746,7 @@ function PasskeysRow() {
         title="Passkeys"
         description={
           count > 0
-            ? "Face ID, Touch ID, or a security key — no code to type."
+            ? "Face ID, Touch ID, or a security key, no code to type."
             : "Sign in with Face ID, Touch ID, or a security key."
         }
       >
@@ -822,7 +822,7 @@ function ConnectedAccountRows() {
           key={a.providerId}
           icon={<Link2 size={16} />}
           title={PROVIDER_LABELS[a.providerId] ?? a.providerId}
-          description="Connected — use it to sign in."
+          description="Connected, use it to sign in."
         >
           <Button
             variant="ghost"
@@ -934,7 +934,7 @@ function PasswordDialog({
       // Changing a password revokes other sessions server-side — refresh the list.
       if (r.changed) void queryClient.invalidateQueries({ queryKey: ["authSessions"] });
       toast.success(
-        r.changed ? "Password changed — other sessions signed out." : "Password set.",
+        r.changed ? "Password changed. Other sessions signed out." : "Password set.",
       );
       onOpenChange(false);
     } catch (e) {

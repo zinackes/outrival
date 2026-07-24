@@ -98,7 +98,7 @@ export function AuthForm() {
       return;
     }
     if (!tokenReady) {
-      setError("Verifying you're human — one moment, then try again.");
+      setError("Verifying you're human. One moment, then try again.");
       setStatus("error");
       return;
     }
@@ -325,7 +325,7 @@ export function AuthForm() {
                   Sign in or create your account
                 </h1>
                 <p className="mt-1.5 text-sm text-muted-foreground">
-                  One step — we'll email you a code, no password to remember.
+                  One step. We'll email you a code, no password to remember.
                 </p>
                 <div className="mx-auto mt-3 h-0.5 w-8 bg-primary" />
               </div>

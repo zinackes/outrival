@@ -221,7 +221,7 @@ export function SignalCard({
               </span>
             </TooltipTrigger>
             <TooltipContent>
-              Reconstructed from the web archive — this change happened before we
+              Reconstructed from the web archive. This change happened before we
               started monitoring, so it wasn&apos;t sent as an alert.
             </TooltipContent>
           </Tooltip>
@@ -402,7 +402,7 @@ export function SignalCard({
                 <span className="shrink-0 text-xs text-muted-foreground">· Held back</span>
               </TooltipTrigger>
               <TooltipContent>
-                Not sent as an alert —{" "}
+                Not sent as an alert:{" "}
                 {FILTERED_REASON_LABEL[signal.filteredReason] ??
                   signal.filteredReason.replace(/_/g, " ")}
               </TooltipContent>

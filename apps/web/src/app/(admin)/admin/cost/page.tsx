@@ -27,7 +27,7 @@ export default async function CostPage() {
   if (!cost) {
     return (
       <div className="flex flex-col gap-5">
-        <PageHeader title="Cost" subtitle="Estimates — trends, not accounting." />
+        <PageHeader title="Cost" subtitle="Estimates: trends, not accounting." />
         <Section title="Cost">
           <Empty>Cost data unavailable.</Empty>
         </Section>
@@ -39,12 +39,12 @@ export default async function CostPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader title="Cost" subtitle="Estimates — trends, not accounting. Tune the constants as real invoices land." />
+      <PageHeader title="Cost" subtitle="Estimates: trends, not accounting. Tune the constants as real invoices land." />
 
       <Section
-        title="Proxy — ProxyScrape (datacenter egress)"
+        title="Proxy: ProxyScrape (datacenter egress)"
         note="estimate"
-        info="Estimated proxy cost. Paid scrapes (cascade L2) use the datacenter egress — a flat monthly fee, no per-scrape variable. Trends, not invoices."
+        info="Estimated proxy cost. Paid scrapes (cascade L2) use the datacenter egress, a flat monthly fee with no per-scrape variable. Trends, not invoices."
       >
         <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
           <Stat label="Paid scrapes (24h)" value={cost.proxy.scrapes24h} />
@@ -59,7 +59,7 @@ export default async function CostPage() {
       </Section>
 
       <Section
-        title="AI — token cost"
+        title="AI token cost"
         note={hasTokens ? "real tokens" : "estimate"}
         info="Cost from actual token usage (ai_runs) × per-model list prices. total_tokens is 0 for runs logged before token attribution shipped, so the dollar figures fill in as new runs accumulate. Calls = volume."
       >
@@ -81,7 +81,7 @@ export default async function CostPage() {
       >
         {!hasTokens ? (
           <Empty>
-            No token data yet — attribution just shipped. This fills in as runs accumulate.
+            No token data yet, attribution just shipped. This fills in as runs accumulate.
           </Empty>
         ) : (
           <Table>

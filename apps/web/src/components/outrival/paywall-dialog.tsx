@@ -102,14 +102,14 @@ function copyFor(reason: PaywallReason): { title: string; body: string } {
     case "plan_locked_feature": {
       const label = reason.feature ? FEATURE_LABEL[reason.feature] ?? reason.feature : "This feature";
       return {
-        title: `${label} — upgrade required`,
+        title: `${label}: upgrade required`,
         body: "This feature is available starting with the Pro plan. Upgrade to unlock it.",
       };
     }
     case "plan_locked_source": {
       const label = reason.source ? SOURCE_LABEL[reason.source] ?? reason.source : "This source";
       return {
-        title: `${label} — upgrade required`,
+        title: `${label}: upgrade required`,
         body: "This monitoring source requires a higher plan. Upgrade to unlock it.",
       };
     }
@@ -121,7 +121,7 @@ function copyFor(reason: PaywallReason): { title: string; body: string } {
     case "plan_locked_channel": {
       const label = reason.channel ? CHANNEL_LABEL[reason.channel] ?? reason.channel : "This channel";
       return {
-        title: `${label} — upgrade required`,
+        title: `${label}: upgrade required`,
         body: "This notification channel requires a higher plan.",
       };
     }
@@ -149,7 +149,7 @@ function copyFor(reason: PaywallReason): { title: string; body: string } {
       const planLabel = reason.plan ? PLAN_LABELS[reason.plan] : "current";
       return {
         title: "Daily battle card limit reached",
-        body: `Your ${planLabel} plan generates ${limit} battle card${limit > 1 ? "s" : ""} per day. It resets tomorrow${reason.upgradeHint ? " — or upgrade for a higher daily limit." : "."}`,
+        body: `Your ${planLabel} plan generates ${limit} battle card${limit > 1 ? "s" : ""} per day. It resets tomorrow${reason.upgradeHint ? ", or upgrade for a higher daily limit." : "."}`,
       };
     }
     case "discovery_limit_reached": {
@@ -157,7 +157,7 @@ function copyFor(reason: PaywallReason): { title: string; body: string } {
       const planLabel = reason.plan ? PLAN_LABELS[reason.plan] : "current";
       return {
         title: "Monthly discovery limit reached",
-        body: `Your ${planLabel} plan includes ${limit} competitor discover${limit === 1 ? "y" : "ies"} per month. It resets next month${reason.upgradeHint ? " — or upgrade to discover more." : "."}`,
+        body: `Your ${planLabel} plan includes ${limit} competitor discover${limit === 1 ? "y" : "ies"} per month. It resets next month${reason.upgradeHint ? ", or upgrade to discover more." : "."}`,
       };
     }
     default:

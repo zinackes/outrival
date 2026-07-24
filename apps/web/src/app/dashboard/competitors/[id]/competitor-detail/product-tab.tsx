@@ -74,7 +74,7 @@ export function ProductTab({
         title="No changes yet"
         description={
           preferred.lastRunAt
-            ? `The ${preferred.sourceType} monitor was scraped ${formatDistanceToNow(new Date(preferred.lastRunAt), { addSuffix: true })} — no change since.`
+            ? `The ${preferred.sourceType} monitor was scraped ${formatDistanceToNow(new Date(preferred.lastRunAt), { addSuffix: true })}, with no change since.`
             : `The ${preferred.sourceType} monitor has never been scraped. Run it now.`
         }
         actions={

@@ -115,7 +115,7 @@ function PausedByPlanBadge({ className }: { className?: string }) {
         </Link>
       </TooltipTrigger>
       <TooltipContent>
-        Over your plan&apos;s competitor limit — monitoring is paused. Upgrade to
+        Over your plan&apos;s competitor limit, so monitoring is paused. Upgrade to
         resume.
       </TooltipContent>
     </Tooltip>
@@ -140,7 +140,7 @@ function MonitoringPausedBadge({ className }: { className?: string }) {
         </span>
       </TooltipTrigger>
       <TooltipContent>
-        Monitoring is paused — no sources are being scraped. Resume it from the
+        Monitoring is paused, so no sources are being scraped. Resume it from the
         competitor&apos;s page.
       </TooltipContent>
     </Tooltip>
@@ -1081,7 +1081,7 @@ function AddCompetitorDialog({
         <DialogHeader>
           <DialogTitle>Add a competitor</DialogTitle>
           <DialogDescription>
-            Enter the name and URL — monitoring starts as soon as it&apos;s created.
+            Enter the name and URL. Monitoring starts as soon as it&apos;s created.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="flex flex-col gap-4">

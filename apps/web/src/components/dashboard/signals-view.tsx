@@ -536,7 +536,7 @@ export function SignalsView() {
       return;
     }
     toast.success(
-      `${n} signal${n > 1 ? "s" : ""} dismissed — Outrival will show fewer like ${
+      `${n} signal${n > 1 ? "s" : ""} dismissed. Outrival will show fewer like ${
         n > 1 ? "these" : "this"
       }`,
       {
@@ -991,7 +991,7 @@ export function SignalsView() {
         <EmptyState
           icon={Radar}
           title="No signals yet"
-          description="Outrival turns every competitor move into a signal — what changed, why it matters, and what to do. Add a competitor to start, or explore with sample data first."
+          description="Outrival turns every competitor move into a signal: what changed, why it matters, and what to do. Add a competitor to start, or explore with sample data first."
           actions={
             <>
               <Button asChild size="sm">

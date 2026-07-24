@@ -724,7 +724,7 @@ export function MyProductView({
     // few seconds AFTER scrapeStartedAt clears — or the extraction may have silently
     // failed (parse miss → empty profile). Poll for the late write, then tell the
     // truth instead of claiming "up to date" over a blank profile.
-    const toastId = toast.loading("Scan complete — reading your profile…");
+    const toastId = toast.loading("Scan complete, reading your profile…");
     let n = 0;
     const t = setInterval(async () => {
       await load();
@@ -735,7 +735,7 @@ export function MyProductView({
       if (populated) {
         toast.success("Scan complete", { id: toastId, description: "Your profile is up to date." });
       } else {
-        toast.warning("Scan complete — couldn't read your profile", {
+        toast.warning("Scan complete, couldn't read your profile", {
           id: toastId,
           description:
             "We scanned your site but couldn't extract the profile automatically. Add it manually, or try another re-scan.",
@@ -789,7 +789,7 @@ export function MyProductView({
       const res = await api.rescanMyProduct(categories, productId);
       if (res.limitReached) {
         // Some sources ran, then the daily re-scan cap (patch-27) was hit.
-        toast.warning("Re-scan partially started — daily re-scan limit reached.", {
+        toast.warning("Re-scan partially started, daily re-scan limit reached.", {
           description: `Scanning ${res.monitors} source${res.monitors === 1 ? "" : "s"}; the rest resume on the next automatic check. The limit resets tomorrow.`,
           action: {
             label: "View plans",
@@ -869,8 +869,8 @@ export function MyProductView({
             error
               ? "We couldn't load your product."
               : isPrimary
-                ? "Add a product URL to track your own site like a competitor — pricing, features and changes."
-                : "Add a product URL to track this product's site — pricing, features and changes."
+                ? "Add a product URL to track your own site like a competitor: pricing, features and changes."
+                : "Add a product URL to track this product's site: pricing, features and changes."
           }
           actions={
             <Button onClick={() => setChangeUrlOpen(true)}>Set a product URL</Button>
@@ -987,7 +987,7 @@ export function MyProductView({
                 {friendlyScrapeError(p.scanError, p.scanErrorSource ?? undefined)}
               </p>
               <p className="text-dense text-muted-foreground mt-1.5 max-w-prose">
-                It&apos;s your own product — you can fill in the details below by hand (your edits
+                It&apos;s your own product, so you can fill in the details below by hand (your edits
                 stick and won&apos;t be overwritten), or try the scan again.
               </p>
               {(p.url || p.repoUrl) && (
@@ -1029,7 +1029,7 @@ export function MyProductView({
           {notLiveOpen && (
             <div className="mt-2.5">
               <p className="text-sm text-muted-foreground mb-2.5 max-w-prose">
-                Add a public site URL to monitor pricing, features and changes — or track its GitHub
+                Add a public site URL to monitor pricing, features and changes, or track its GitHub
                 repo while you build. The profile below stays editable by hand.
               </p>
               <form
@@ -1175,7 +1175,7 @@ export function MyProductView({
           </DialogHeader>
           <p className="text-dense text-muted-foreground">
             Some of your current competitors may be less relevant, and new ones could appear. Your
-            existing competitors are kept — nothing is removed automatically.
+            existing competitors are kept, and nothing is removed automatically.
           </p>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setRediscover(null)} disabled={discovering}>

@@ -276,7 +276,7 @@ export function TrendsView() {
             Trends temporarily unavailable
           </div>
           <div className="mx-auto max-w-[400px] text-sm">
-            We couldn&apos;t read the trend data just now — this is usually brief. Refresh in a
+            We couldn&apos;t read the trend data just now. This is usually brief. Refresh in a
             moment.
           </div>
         </div>

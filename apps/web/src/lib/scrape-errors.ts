@@ -21,18 +21,18 @@ export function friendlyScrapeError(
   sourceType?: string,
 ): string {
   const page = (sourceType && PAGE_LABEL[sourceType]) ?? "page";
-  if (!raw) return "The scrape failed after several retries — we'll try again automatically.";
+  if (!raw) return "The scrape failed after several retries. We'll try again automatically.";
 
   const e = raw.toLowerCase();
 
   // The crawler walked a list of known paths (e.g. /pricing, /tarifs, /plans) and none worked.
   if (e.includes("no candidate path succeeded")) {
-    return `Couldn't find a ${page} on this site — none of the usual URLs responded.`;
+    return `Couldn't find a ${page} on this site. None of the usual URLs responded.`;
   }
 
   // A URL that doesn't match the expected shape (e.g. App Store links).
   if (e.includes("not a valid")) {
-    return "This URL doesn't look right for this source — double-check it in the monitor settings.";
+    return "This URL doesn't look right for this source. Double-check it in the monitor settings.";
   }
 
   // Collection doctrine: the site explicitly refused us (block / challenge / robots
@@ -64,14 +64,14 @@ export function friendlyScrapeError(
   // L0 fetched HTML but the page needs a browser to render and the cascade still
   // couldn't capture usable content.
   if (e.includes("needs_render")) {
-    return `Couldn't load the ${page} — it needs a browser to render and we couldn't capture it.`;
+    return `Couldn't load the ${page}: it needs a browser to render and we couldn't capture it.`;
   }
 
   // The URL returned an HTTP error (404 not found, 410 gone, 401/451 gated, 5xx) —
   // the page doesn't exist at this address, as opposed to an anti-bot block. Common
   // when a URL lost its `www` (an apex host that 404s sub-paths) or the page moved.
   if (e.includes("http_error")) {
-    return `The ${page} URL returned an error — it may have moved or no longer exists. Check the URL in the monitor settings.`;
+    return `The ${page} URL returned an error. It may have moved or no longer exists. Check the URL in the monitor settings.`;
   }
 
   // Domain unreachable / DNS.
@@ -81,7 +81,7 @@ export function friendlyScrapeError(
     e.includes("getaddrinfo") ||
     e.includes("dns")
   ) {
-    return "Couldn't reach the site — the domain may be down or misconfigured.";
+    return "Couldn't reach the site. The domain may be down or misconfigured.";
   }
 
   // Connection refused / reset mid-request, or a generic network failure from the
@@ -111,5 +111,5 @@ export function friendlyScrapeError(
   }
 
   // Unknown — show a clean fallback rather than a raw URL/stack dump.
-  return "The scrape failed unexpectedly — we'll try again automatically.";
+  return "The scrape failed unexpectedly. We'll try again automatically.";
 }

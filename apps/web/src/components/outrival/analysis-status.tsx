@@ -32,7 +32,7 @@ type StageMeta = {
 // the in-flight + stuck stages get an entry.
 const STAGE_META: Partial<Record<AnalysisStage, StageMeta>> = {
   queued: {
-    label: "Queued — first scan starts soon",
+    label: "Queued, first scan starts soon",
     short: "Queued",
     Icon: Clock,
     spin: false,
@@ -129,7 +129,7 @@ const PHASE_ORDER: Phase[] = ["scan", "summary", "ready"];
 
 // One line under the headline describing what's happening right now.
 const PROGRESS_SUB: Partial<Record<AnalysisStage, string>> = {
-  queued: "Queued — the first scan starts in a moment.",
+  queued: "Queued, the first scan starts in a moment.",
   scraping: "Scanning the site for positioning, pricing, hiring and more.",
   summarizing: "Site scanned. Writing the AI summary now.",
 };
@@ -172,7 +172,7 @@ export function AnalysisProgress({
               This competitor needs attention
             </p>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              We couldn&apos;t finish the first analysis — the site may be blocking scans
+              We couldn&apos;t finish the first analysis. The site may be blocking scans
               or the summary stalled. Retry, or check the sources below.
             </p>
             {onRetry && (
@@ -200,7 +200,7 @@ export function AnalysisProgress({
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-foreground">Setting up this competitor</p>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            {PROGRESS_SUB[stage] ?? "Analyzing…"} This page updates on its own — no need
+            {PROGRESS_SUB[stage] ?? "Analyzing…"} This page updates on its own, no need
             to refresh.
           </p>
           <ol className="mt-3 flex flex-wrap items-center gap-y-2">

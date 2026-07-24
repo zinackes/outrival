@@ -4,7 +4,7 @@ const FEATURES = [
   {
     icon: MessageSquare,
     title: "Ask Outrival",
-    desc: "Ask in plain English — “how did Vantage's pricing move this quarter?” — and get an answer grounded on the data we already track, deep-linked back to the signal it came from.",
+    desc: "Ask in plain English, like “how did Vantage's pricing move this quarter?”, and get an answer grounded on the data we already track, deep-linked back to the signal it came from.",
   },
   {
     icon: Swords,
@@ -14,7 +14,7 @@ const FEATURES = [
   {
     icon: Radar,
     title: "Competitor discovery",
-    desc: "Every week we surface look-alike competitors you aren't tracking yet — semantic search across the market, scored by overlap. Add one in a click.",
+    desc: "Every week we surface look-alike competitors you aren't tracking yet: semantic search across the market, scored by overlap. Add one in a click.",
   },
 ] as const;
 
@@ -29,7 +29,7 @@ export function Capabilities() {
           </h2>
           <p className="leading-relaxed text-text-muted">
             The digest is the heartbeat. Around it, the dashboard does the work a
-            competitive-intelligence analyst would — on every signal, every week.
+            competitive-intelligence analyst would, on every signal, every week.
           </p>
         </div>
 

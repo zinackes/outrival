@@ -15,7 +15,7 @@ export function CTA() {
             </h2>
             <p className="mt-4 text-text-muted leading-relaxed">
               Add 2 competitors. We scrape them immediately. You get a digest
-              sample the same day — no credit card, no sales call, cancel in one
+              sample the same day. No credit card, no sales call, cancel in one
               click.
             </p>
           </div>

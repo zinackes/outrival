@@ -257,7 +257,7 @@ export function AlternativesPage({
               trademarks belong to their respective owners.
             </p>
             <p className="mt-2">
-              Outrival offers EU data storage — see our{" "}
+              Outrival offers EU data storage, see our{" "}
               <Link
                 href="/security"
                 className="underline-offset-2 hover:text-foreground hover:underline"

@@ -52,7 +52,7 @@ export function ActivityTab({
         title={hasScraped ? "No changes yet" : "No activity yet"}
         description={
           hasScraped
-            ? "Monitoring is active — we've been checking this competitor's sources and nothing has changed yet."
+            ? "Monitoring is active. We've been checking this competitor's sources and nothing has changed yet."
             : "Scrape from the Sources section above to start tracking."
         }
         actions={

@@ -10,7 +10,7 @@ export const metadata: Metadata = pageMetadata({
   path: "/demo",
   title: "See Outrival",
   description:
-    "See Outrival on your own competitors — a live look at the product and a sample of the weekly digest.",
+    "See Outrival on your own competitors: a live look at the product and a sample of the weekly digest.",
 });
 
 const DEMO_POINTS = [
@@ -29,7 +29,7 @@ const BUSINESS_POINTS = [
 // deliverable, so the page has to repeat it exactly: the visitor who clicked
 // "Get a sample digest" must land on a form that says the same thing back.
 const SAMPLE_POINTS = [
-  "A real brief on your market — not a generic example",
+  "A real brief on your market, not a generic example",
   "Built from your product and two competitors you name",
   "Delivered by email; no account, no card, no call",
 ];
@@ -78,7 +78,7 @@ export default async function DemoPage({
               width={2240}
               height={1626}
               sizes="(min-width: 640px) 400px, 100vw"
-              caption="Your overview — every competitor, ranked by what moved."
+              caption="Your overview: every competitor, ranked by what moved."
             />
             <ProductShot
               src="/product/signal-detail.webp"
@@ -86,7 +86,7 @@ export default async function DemoPage({
               width={1720}
               height={886}
               sizes="(min-width: 640px) 400px, 100vw"
-              caption="One signal, in full — what changed, why, and what to do."
+              caption="One signal, in full: what changed, why, and what to do."
             />
           </div>
         </section>
@@ -121,10 +121,10 @@ export default async function DemoPage({
           </h1>
           <p className="mt-5 max-w-md text-lg leading-relaxed text-text-muted">
             {isBusiness
-              ? "Business is self-serve — you can start it right from sign-up. Need SSO, a custom DPA, or a hand importing users? Tell us here and we'll get you set up."
+              ? "Business is self-serve: you can start it right from sign-up. Need SSO, a custom DPA, or a hand importing users? Tell us here and we'll get you set up."
               : isSample
-                ? "Tell us your product and two competitors. We'll scrape them and send you a real Outrival brief — the same one you'd get every Monday — so you can see the signal before you sign up for anything."
-                : "Want a closer look before you start? Tell us your market and we'll show you what Outrival surfaces for it. You can also start free right now — no call needed."}
+                ? "Tell us your product and two competitors. We'll scrape them and send you a real Outrival brief (the same one you'd get every Monday) so you can see the signal before you sign up for anything."
+                : "Want a closer look before you start? Tell us your market and we'll show you what Outrival surfaces for it. You can also start free right now, no call needed."}
           </p>
           {isSample && (
             // Capacity guard: these are produced by hand today. Saying so in the
@@ -150,7 +150,7 @@ export default async function DemoPage({
             >
               See a sample digest
             </a>{" "}
-            — a real one, no form needed.
+            (a real one, no form needed).
           </p>
           <p className="mt-4 text-xs text-text-subtle">
             Prefer email? Write to{" "}

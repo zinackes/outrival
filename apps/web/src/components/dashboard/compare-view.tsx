@@ -225,7 +225,7 @@ const ROWS: Row[] = [
       </div>
     ),
     csv: (c) =>
-      [c.positioning.category, c.positioning.summary].filter(Boolean).join(" — ") || "—",
+      [c.positioning.category, c.positioning.summary].filter(Boolean).join(" · ") || "—",
   },
   {
     key: "pricing",
@@ -1274,7 +1274,7 @@ export function CompareView() {
                               colSpan={displayCols.length + 1}
                               className="bg-background px-3 py-6 text-center text-sm text-muted-foreground"
                             >
-                              No differences across the tracked fields — these
+                              No differences across the tracked fields. These
                               competitors match on everything compared.
                             </td>
                           </tr>,

@@ -29,7 +29,7 @@ export default function SecurityPage() {
     <DocPage
       title="Security & trust"
       updated={LEGAL_VERSION.updatedEn}
-      intro="How we store your data, how we keep AI outputs grounded and verifiable, and how we scrape responsibly. This page describes what Outrival does today — not aspirations."
+      intro="How we store your data, how we keep AI outputs grounded and verifiable, and how we scrape responsibly. This page describes what Outrival does today, not aspirations."
     >
       <div className={PROSE}>
         <h2>Where your data lives</h2>
@@ -54,7 +54,7 @@ export default function SecurityPage() {
         <p>
           We want to be exact here rather than flattering. Generating insights
           requires AI inference, and today that inference runs through
-          third-party model providers — some of them located outside the EU
+          third-party model providers, some of them located outside the EU
           (notably in the United States). Those providers act as subprocessors
           under a Data Processing Agreement, and transfers rely on the EU
           Standard Contractual Clauses.
@@ -71,8 +71,8 @@ export default function SecurityPage() {
         <h2>Subprocessors &amp; DPA</h2>
         <p>
           The authoritative, current list of third-party providers that may
-          process data on our behalf — with purpose, location and transfer
-          safeguard for each — is our{" "}
+          process data on our behalf (with purpose, location and transfer
+          safeguard for each) is our{" "}
           <a href="/subprocessors">subprocessors page</a>. Business customers can
           enter our{" "}
           <a href="/dpa">Data Processing Agreement</a> (GDPR Article 28), which
@@ -106,7 +106,7 @@ export default function SecurityPage() {
           </li>
           <li>
             To exercise any other GDPR right, email{" "}
-            <a href={`mailto:${CONTACT.privacy}`}>{CONTACT.privacy}</a> — we
+            <a href={`mailto:${CONTACT.privacy}`}>{CONTACT.privacy}</a>. We
             respond within one month.
           </li>
         </ul>
@@ -118,7 +118,7 @@ export default function SecurityPage() {
         <h2>AI reliability</h2>
         <p>
           This is the part we care about most. Competitive intelligence is only
-          useful if you can trust it — <strong>an AI that invents competitor
+          useful if you can trust it. <strong>An AI that invents competitor
           moves is worse than no AI at all</strong>, because you act on it. So we
           treat hallucination as a security problem, not a cosmetic one, and the
           pipeline is built to catch it. What runs today:
@@ -138,8 +138,8 @@ export default function SecurityPage() {
           </li>
           <li>
             <strong>Invented numbers are caught deterministically.</strong> A
-            separate check scans generated prose for significant numbers — prices,
-            percentages, counts, ratings — that never appeared in the source, the
+            separate check scans generated prose for significant numbers (prices,
+            percentages, counts, ratings) that never appeared in the source, the
             most damaging kind of hallucination.
           </li>
           <li>
@@ -152,7 +152,7 @@ export default function SecurityPage() {
           <li>
             <strong>Every output carries a confidence level.</strong> Outputs are
             marked low, medium or high confidence, and that marker is shown on the
-            signal — so an uncertain call reads as uncertain.
+            signal, so an uncertain call reads as uncertain.
           </li>
           <li>
             <strong>Doubtful outputs are flagged, not passed off as fact.</strong>{" "}
@@ -165,12 +165,12 @@ export default function SecurityPage() {
         <h2>Responsible scraping</h2>
         <p>
           Outrival only monitors <strong>publicly accessible</strong> pages that
-          you configure — the same pages a person could open in a browser. In
+          you configure, the same pages a person could open in a browser. In
           practice that means we:
         </p>
         <ul>
           <li>
-            collect only publicly available content — we do not bypass logins or
+            collect only publicly available content, without bypassing logins or
             paywalls;
           </li>
           <li>
@@ -182,7 +182,7 @@ export default function SecurityPage() {
             and stop monitoring a source that stays unreachable;
           </li>
           <li>
-            focus on companies and products, not individuals — we do not build
+            focus on companies and products rather than individuals, and do not build
             profiles of natural persons or scrape special-category data.
           </li>
         </ul>

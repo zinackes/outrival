@@ -13,7 +13,7 @@ export function FounderNote() {
             I built Outrival because I was tired of competitive-intelligence
             tools that cost more than a salary, hid their price behind a sales
             call, and shipped dashboards nobody read. It&apos;s one person in
-            France, funded by the people who use it — which is exactly why the
+            France, funded by the people who use it, which is exactly why the
             price is public, the product is self-serve, and I answer the support
             email myself. If that&apos;s the tool you always wanted, you&apos;re
             in the right place.

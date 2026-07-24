@@ -74,7 +74,7 @@ export function DeliveryView({ data }: { data: AdminDelivery | null }) {
         info="The 20 most recent alerts whose send threw an error. Empty is the healthy state."
       >
         {failures.length === 0 ? (
-          <Empty>None — every alert in the window sent cleanly.</Empty>
+          <Empty>None. Every alert in the window sent cleanly.</Empty>
         ) : (
           <Table>
             <TableHeader>

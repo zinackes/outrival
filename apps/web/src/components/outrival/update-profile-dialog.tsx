@@ -58,10 +58,10 @@ type ProfileTextKey = "category" | "audience" | "whatItDoes" | "valueProp" | "pr
 const REQUIRED_FIELDS: ProfileTextKey[] = ["category", "audience", "valueProp"];
 
 const STAGES: { key: ProjectStage; label: string; hint: string; icon: typeof Globe }[] = [
-  { key: "idea", label: "Idea", hint: "Describe it in a few words — no site yet.", icon: Lightbulb },
-  { key: "document", label: "Pitch / brief", hint: "A spec or deck — read in memory, never stored.", icon: FileText },
+  { key: "idea", label: "Idea", hint: "Describe it in a few words, no site yet.", icon: Lightbulb },
+  { key: "document", label: "Pitch / brief", hint: "A spec or deck, read in memory and never stored.", icon: FileText },
   { key: "developing", label: "Building", hint: "A public GitHub repo we can read for a profile.", icon: GitBranch },
-  { key: "live", label: "Live", hint: "It has a public website — we analyze and monitor it.", icon: Globe },
+  { key: "live", label: "Live", hint: "It has a public website. We analyze and monitor it.", icon: Globe },
 ];
 
 const PROFILE_FIELDS: Array<{
@@ -75,13 +75,13 @@ const PROFILE_FIELDS: Array<{
   {
     key: "whatItDoes",
     label: "What it does",
-    placeholder: "Concretely, what the product does — its real capabilities",
+    placeholder: "Concretely, what the product does and its real capabilities",
     multiline: true,
   },
   {
     key: "valueProp",
     label: "Value proposition",
-    placeholder: "The concrete job it does and the outcome — no filler",
+    placeholder: "The concrete job it does and the outcome, no filler",
     multiline: true,
   },
   { key: "pricingModel", label: "Pricing model", placeholder: "e.g. Freemium + Pro at $20/mo" },
@@ -231,7 +231,7 @@ export function UpdateProfileDialog({
       // still refreshes what discovery searches on.
       setWorking((w) => ({ ...w, keywords: res.profile.keywords ?? w.keywords }));
       setManual(new Set());
-      toast.success("Re-analyzed — review the proposed changes below");
+      toast.success("Re-analyzed. Review the proposed changes below");
     } catch (e) {
       toastApiError(e, { title: "Re-analysis failed" });
     } finally {
@@ -278,7 +278,7 @@ export function UpdateProfileDialog({
 
       toast.success(
         wentLive
-          ? "Saved — scanning your site now…"
+          ? "Saved, scanning your site now…"
           : mode === "setup"
             ? "Profile saved"
             : "Profile updated",
@@ -312,7 +312,7 @@ export function UpdateProfileDialog({
           <DialogDescription>
             {step === "stage"
               ? "First, tell us where your product is in its lifecycle."
-              : "Edit the profile directly, or re-analyze your source when it has changed — we'll show you exactly what moved."}
+              : "Edit the profile directly, or re-analyze your source when it has changed, and we'll show you exactly what moved."}
           </DialogDescription>
         </DialogHeader>
 

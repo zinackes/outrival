@@ -67,8 +67,8 @@ export function AiStatusBanner() {
       <AlertTriangle size={16} className="text-critical shrink-0" />
       <p className="flex-1 text-sm text-foreground">
         {down
-          ? `AI is temporarily unavailable — all providers are catching up. Monitoring continues; new insights are paused and will resume automatically.${recoveryText}`
-          : "AI insights are delayed — the model is rate-limited right now. Summaries and signals will catch up automatically once it clears."}
+          ? `AI is temporarily unavailable: all providers are catching up. Monitoring continues; new insights are paused and will resume automatically.${recoveryText}`
+          : "AI insights are delayed: the model is rate-limited right now. Summaries and signals will catch up automatically once it clears."}
       </p>
       <button
         type="button"

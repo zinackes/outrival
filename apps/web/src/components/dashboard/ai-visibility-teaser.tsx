@@ -42,7 +42,7 @@ export function AiVisibilityTeaser() {
   let headline: string;
   let tone: "warn" | "good" | "neutral";
   if (leader === "rival" && !selfMentioned && topRival) {
-    headline = `${engineLabel} recommend ${topRival.name} — ${self.name} isn’t showing up yet.`;
+    headline = `${engineLabel} recommend ${topRival.name}, and ${self.name} isn’t showing up yet.`;
     tone = "warn";
   } else if (leader === "rival" && topRival && ratio) {
     headline = `${topRival.name} shows up ${ratio}× more often than ${self.name} in ${engineLabel}.`;
@@ -51,7 +51,7 @@ export function AiVisibilityTeaser() {
     headline = `${self.name} leads your market in ${engineLabel}.`;
     tone = "good";
   } else {
-    headline = `No one owns ${engineLabel} in your space yet — an opening for ${self.name}.`;
+    headline = `No one owns ${engineLabel} in your space yet, an opening for ${self.name}.`;
     tone = "neutral";
   }
 
@@ -71,7 +71,7 @@ export function AiVisibilityTeaser() {
         <p className={`text-lead font-medium ${accent}`}>{headline}</p>
         <p className="text-sm text-muted-foreground">
           We asked {engineLabel} the questions your buyers ask before choosing a tool, and
-          counted who gets named. This is a one-time snapshot — the tracked version watches
+          counted who gets named. This is a one-time snapshot. The tracked version watches
           it across every engine, week over week.
         </p>
         <Button asChild variant="link" size="sm" className="h-auto px-0">

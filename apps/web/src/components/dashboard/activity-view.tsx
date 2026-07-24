@@ -318,8 +318,8 @@ function QuietRunDetail({
     <div className="flex flex-col gap-2 text-sm">
       <p className="text-muted-foreground">
         {outcome === "first_capture"
-          ? "First time we captured this page. We saved it as the baseline — every future check is compared against it, and anything that changes shows up here."
-          : "We checked this page and it matches our last capture — nothing changed."}
+          ? "First time we captured this page. We saved it as the baseline: every future check is compared against it, and anything that changes shows up here."
+          : "We checked this page and it matches our last capture, so nothing changed."}
       </p>
       {outcome === "no_change" && event.lastChangedAt && (
         <p className="text-muted-foreground">
@@ -834,7 +834,7 @@ export function ActivityView() {
         flush
         icon={<Activity size={18} className="text-muted-foreground" aria-hidden />}
         title="Activity"
-        sub="What Outrival has been doing for you — every source we check, kept fresh in the background."
+        sub="What Outrival has been doing for you: every source we check, kept fresh in the background."
       />
 
       {sources && sources.length === 0 ? (

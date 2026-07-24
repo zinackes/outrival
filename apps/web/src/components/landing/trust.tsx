@@ -6,7 +6,7 @@ export function Trust() {
           <p className="text-xl font-medium leading-snug sm:text-2xl">
             Monday morning, you read <b>the handful that matter</b> instead of
             scrolling through <b>everything that moved</b>. The triage is the
-            AI&apos;s job — not yours.
+            AI&apos;s job, not yours.
           </p>
         </div>
         <div>
@@ -58,7 +58,7 @@ export function Trust() {
       </div>
       <div className="mx-auto mt-12 w-full max-w-6xl border-t border-border px-6 pt-8">
         <p className="text-center text-sm text-text-muted">
-          Point Outrival at any public SaaS — set up in minutes
+          Point Outrival at any public SaaS, set up in minutes
         </p>
       </div>
     </section>

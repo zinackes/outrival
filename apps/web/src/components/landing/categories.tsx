@@ -52,7 +52,7 @@ export function Categories() {
           </h2>
           <p className="leading-relaxed text-text-muted">
             Every signal carries a category and a severity. You filter on what
-            matters for your role — pricing for the CFO, hiring for talent,
+            matters for your role: pricing for the CFO, hiring for talent,
             reviews for product.
           </p>
         </div>

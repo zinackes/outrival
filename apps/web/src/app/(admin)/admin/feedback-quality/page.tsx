@@ -87,7 +87,7 @@ export default async function FeedbackQualityPage({
     <div className="flex flex-col gap-5">
       <PageHeader
         title="Feedback quality"
-        subtitle="User verdicts on AI output. Signals for tuning prompts & thresholds — never auto-applied."
+        subtitle="User verdicts on AI output. Signals for tuning prompts & thresholds, never auto-applied."
       />
 
       <div className="flex items-center gap-2">
@@ -98,7 +98,7 @@ export default async function FeedbackQualityPage({
       <Section
         title="Patterns to review"
         note={patterns ? `${patterns.windowDays}d · min ${patterns.minCount}` : undefined}
-        info="AI output types where users overwhelmingly voted 'not useful' (above the min feedback count). Signals worth a prompt or threshold review — never auto-applied."
+        info="AI output types where users overwhelmingly voted 'not useful' (above the min feedback count). Signals worth a prompt or threshold review, never auto-applied."
       >
         {!patterns || patterns.patterns.length === 0 ? (
           <Empty>
@@ -133,7 +133,7 @@ export default async function FeedbackQualityPage({
 
       <Section
         title={`By AI output · last ${p === "30d" ? "30" : "7"} days`}
-        info="User verdicts (useful / not useful) grouped by the type of AI output — insights, summaries, battle cards, etc. — over the selected window."
+        info="User verdicts (useful / not useful) grouped by the type of AI output (insights, summaries, battle cards, etc.) over the selected window."
       >
         {!stats || Object.keys(stats.byType).length === 0 ? (
           <Empty>No feedback recorded in this window.</Empty>

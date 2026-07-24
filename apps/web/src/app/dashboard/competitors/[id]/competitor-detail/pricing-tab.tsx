@@ -120,7 +120,7 @@ export function PricingTab({
   const hasCapturedTiers = (history?.length ?? 0) > 0;
 
   if (historyQuery.isError)
-    return <Empty text="Couldn't load this data right now — try again in a moment." />;
+    return <Empty text="Couldn't load this data right now. Try again in a moment." />;
   if (history === null) return <TabLoading />;
   if (history.length === 0 || !series) {
     return (
@@ -405,7 +405,7 @@ function compareTiers(
 ): TierCmp {
   // A quote-based tier on either side has no number to compute a % against.
   if (mine.price == null || theirs.price == null) {
-    return { pct: null, reason: "Quote-based tier — no public price to compare" };
+    return { pct: null, reason: "Quote-based tier, no public price to compare" };
   }
   if (mine.billing_period !== theirs.billing_period) {
     return {
@@ -414,7 +414,7 @@ function compareTiers(
     };
   }
   if (theirs.price <= 0) {
-    return { pct: null, reason: "Their tier is free — no baseline to compute a %" };
+    return { pct: null, reason: "Their tier is free, no baseline to compute a %" };
   }
   const sameCurrency = mine.currency === theirs.currency;
   const theirInOurs = sameCurrency
@@ -423,7 +423,7 @@ function compareTiers(
   if (theirInOurs === null) {
     return {
       pct: null,
-      reason: `Different currency (theirs ${theirs.currency}, yours ${mine.currency}) — no exchange rate available`,
+      reason: `Different currency (theirs ${theirs.currency}, yours ${mine.currency}), no exchange rate available`,
     };
   }
   return { pct: ((mine.price - theirInOurs) / theirInOurs) * 100, converted: !sameCurrency };
@@ -444,7 +444,7 @@ function DeltaCell({ cmp, from, to }: { cmp: TierCmp | null; from?: string; to?:
     return (
       <span
         className="cursor-help text-muted-foreground/40"
-        title="Within 1% — effectively the same"
+        title="Within 1%, effectively the same"
       >
         —
       </span>
@@ -545,16 +545,16 @@ function PricingComparison({
   const theyHaveFree = theirEntry.price === 0 || theirs.some((t) => t.has_free_plan === true);
   const weHaveFree = ourEntry.price === 0;
   if (theyHaveFree && !weHaveFree) {
-    lines.push(`${competitorName} offers a free tier — you don't.`);
+    lines.push(`${competitorName} offers a free tier and you don't.`);
   } else if (weHaveFree && !theyHaveFree) {
-    lines.push(`You offer a free tier — ${competitorName} doesn't.`);
+    lines.push(`You offer a free tier and ${competitorName} doesn't.`);
   }
   if (
     competitorPricingStatus === "public_partial" ||
     competitorPricingStatus === "gated_demo" ||
     competitorPricingStatus === "gated_signup"
   ) {
-    lines.push(`${competitorName}'s top tier is sales-gated — not every price is public.`);
+    lines.push(`${competitorName}'s top tier is sales-gated, so not every price is public.`);
   }
 
   return (

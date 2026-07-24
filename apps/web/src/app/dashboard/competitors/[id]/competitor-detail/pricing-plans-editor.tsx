@@ -241,7 +241,7 @@ export function PricingPlansEditor({
         </div>
       ) : resolved.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No plans captured yet. Add them by hand — useful when pricing is gated or behind a demo.
+          No plans captured yet. Add them by hand, useful when pricing is gated or behind a demo.
         </p>
       ) : (
         <ul className="flex flex-col divide-y divide-border">

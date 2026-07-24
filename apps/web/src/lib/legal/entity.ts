@@ -160,7 +160,7 @@ export const SUBPROCESSORS: Subprocessor[] = [
   },
   {
     name: "Groq",
-    purpose: { en: "AI inference — insights pipeline", fr: "Inférence IA — pipeline d'insights" },
+    purpose: { en: "AI inference (insights pipeline)", fr: "Inférence IA (pipeline d'insights)" },
     data: { en: "Prompts derived from monitored public data", fr: "Prompts dérivés des données publiques surveillées" },
     location: "United States",
     outsideEea: true,
@@ -168,7 +168,7 @@ export const SUBPROCESSORS: Subprocessor[] = [
   },
   {
     name: "Cerebras",
-    purpose: { en: "AI inference — provider pool (primary)", fr: "Inférence IA — pool de providers (principal)" },
+    purpose: { en: "AI inference (provider pool, primary)", fr: "Inférence IA (pool de providers, principal)" },
     data: { en: "Prompts derived from monitored public data", fr: "Prompts dérivés des données publiques surveillées" },
     location: "United States",
     outsideEea: true,
@@ -176,7 +176,7 @@ export const SUBPROCESSORS: Subprocessor[] = [
   },
   {
     name: "Hyperbolic",
-    purpose: { en: "AI inference — provider pool (paid fallback)", fr: "Inférence IA — pool de providers (secours payant)" },
+    purpose: { en: "AI inference (provider pool, paid fallback)", fr: "Inférence IA (pool de providers, secours payant)" },
     data: { en: "Prompts derived from monitored public data", fr: "Prompts dérivés des données publiques surveillées" },
     location: "United States",
     outsideEea: true,
@@ -184,7 +184,7 @@ export const SUBPROCESSORS: Subprocessor[] = [
   },
   {
     name: "Anthropic",
-    purpose: { en: "AI inference — Claude fallback", fr: "Inférence IA — secours Claude" },
+    purpose: { en: "AI inference (Claude fallback)", fr: "Inférence IA (secours Claude)" },
     data: { en: "Prompts derived from monitored public data", fr: "Prompts dérivés des données publiques surveillées" },
     location: "United States",
     outsideEea: true,
@@ -208,7 +208,7 @@ export const SUBPROCESSORS: Subprocessor[] = [
   },
   {
     name: "Upstash",
-    purpose: { en: "Redis — rate-limiting & AI capacity metering", fr: "Redis — limitation de débit & mesure de capacité IA" },
+    purpose: { en: "Redis (rate-limiting & AI capacity metering)", fr: "Redis (limitation de débit & mesure de capacité IA)" },
     data: { en: "IP address, request counters", fr: "Adresse IP, compteurs de requêtes" },
     location: "United States / EU",
     outsideEea: true,

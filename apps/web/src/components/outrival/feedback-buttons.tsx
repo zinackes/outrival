@@ -130,10 +130,10 @@ export function FeedbackButtons({
         res.immediateAction?.description ??
           (next === "useful"
             ? targetType === "signal"
-              ? "Thanks — Outrival learns what's relevant to you from this."
-              : "Thanks — marked as useful."
+              ? "Thanks. Outrival learns what's relevant to you from this."
+              : "Thanks, marked as useful."
             : targetType === "signal"
-              ? "Noted — Outrival will tune what it sends you."
+              ? "Noted. Outrival will tune what it sends you."
               : "Thanks for the feedback."),
       );
     } catch {
@@ -157,7 +157,7 @@ export function FeedbackButtons({
       setFeedbackId(res.feedbackId);
       setReason(next);
       setShowReasons(false);
-      toast(`Noted — “${REASON_LABELS[next]}”. Thanks.`);
+      toast(`Noted: “${REASON_LABELS[next]}”. Thanks.`);
     } catch {
       toast.error("Couldn't save your feedback. Try again.");
     } finally {

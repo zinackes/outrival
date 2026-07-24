@@ -66,7 +66,7 @@ export function SoftwareAppJsonLd() {
         operatingSystem: "Web",
         url: SITE_URL,
         description:
-          "AI competitive intelligence for founders and small teams: Outrival monitors every public surface a competitor has (pricing, product, hiring, reviews, content) and writes the takeaway — what changed, why it matters, and what to do.",
+          "AI competitive intelligence for founders and small teams: Outrival monitors every public surface a competitor has (pricing, product, hiring, reviews, content) and writes the takeaway, what changed, why it matters, and what to do.",
         offers: {
           "@type": "AggregateOffer",
           priceCurrency: "EUR",

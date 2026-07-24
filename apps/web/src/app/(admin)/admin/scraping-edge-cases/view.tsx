@@ -73,7 +73,7 @@ export function EdgeCasesView({ data }: { data: AdminEdgeCases | null }) {
 
         <Section
           title="SPA API capture"
-          info="Monitors with SPA/XHR API capture enabled — used when a page renders entirely client-side and the content lives in a background API call."
+          info="Monitors with SPA/XHR API capture enabled, used when a page renders entirely client-side and the content lives in a background API call."
         >
           <Stat label="Monitors with capture enabled" value={data.apiCaptureEnabledMonitors} />
         </Section>

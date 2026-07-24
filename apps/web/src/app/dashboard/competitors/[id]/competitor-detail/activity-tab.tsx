@@ -355,7 +355,7 @@ function SignalRow({
       >
         <span className="col-start-1 flex min-w-0 flex-col gap-1.5">
           <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
-            <SeverityScale severity={s.severity} />
+            <SeverityScale severity={s.severity} size="compact" />
             {sourceLabel && <span>{sourceLabel}</span>}
           </span>
           <span className="text-content leading-snug">{s.insight}</span>

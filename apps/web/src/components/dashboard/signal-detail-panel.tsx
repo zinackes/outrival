@@ -76,6 +76,9 @@ import { ChangeBreakdown } from "@/components/outrival/change-breakdown";
 const RAIL = "@2xl:flex @2xl:gap-6";
 const RAIL_GUTTER = "shrink-0 @2xl:w-28 @2xl:text-right";
 const RAIL_BODY = "min-w-0 flex-1";
+// The reading measure. The container is wide so captures and lists can use the
+// pane; prose has to stay a column, so it carries its own cap.
+const PROSE = "max-w-[42rem]";
 
 const CONFIDENCE_COPY: Record<
   "low" | "medium" | "high",
@@ -366,17 +369,17 @@ export function SignalDetailPanel({
         )}
       </div>
 
-      {/* Left-anchored, not centred: centring a capped measure inside a very wide
-          pane pushes the margin rail toward the middle of the screen and opens a
-          dead band to its left. Anchoring keeps the reading spine where the eye
-          already is — right after the list — and lets the slack fall on the
-          right, where a document margin belongs. */}
+      {/* Wide and centred, with the measure held by the prose itself (PROSE)
+          rather than by the container. Capping the container was what left a
+          dead band down the side of a large pane; capping the text instead
+          keeps lines readable while the width goes to what actually wants it —
+          the before/after captures and the related list. */}
       <div className="min-h-0 flex-1 overflow-y-auto">
         <motion.article
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.16, ease: "easeOut" }}
-          className="@container max-w-[840px] px-5 py-6 lg:px-8"
+          className="@container mx-auto max-w-[960px] px-5 py-6 lg:px-8"
         >
           {/* Masthead — the verdict, the finding, and the machine's own facts. */}
           <header className={RAIL}>
@@ -417,17 +420,26 @@ export function SignalDetailPanel({
                 )}
               </div>
 
-              {/* text-lead, not text-xl: 20px over a 15px body opened a cliff
-                  between the masthead and everything under it, and `lead` is the
-                  scale's own token for this role. */}
-              <h2 className="mt-2.5 text-lead font-semibold leading-snug tracking-tight text-balance text-foreground">
-                {signal.insight}
-              </h2>
+              {/* Finding on the left, the machine's own facts in a column on the
+                  right: stacked, the readout made the masthead read narrower
+                  than every section under it. Side by side the block spans the
+                  full measure and the two voices — the sentence and the data —
+                  stop competing for the same line. */}
+              <div className="mt-3 @4xl:flex @4xl:items-start @4xl:gap-8">
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-lead font-semibold leading-snug tracking-tight text-foreground">
+                    {signal.insight}
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setShowWhy(true)}
+                    className="mt-3 rounded-sm text-dense text-muted-foreground underline underline-offset-2 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+                  >
+                    Why this insight?
+                  </button>
+                </div>
 
-              {/* Capped: spread across the full measure the three cells stop
-                  reading as one instrument and drift into three lost labels. */}
-              <div className="mt-5 border-t border-border pt-4">
-                <dl className="grid max-w-md grid-cols-3 gap-x-4 @md:gap-x-6">
+                <dl className="mt-5 grid grid-cols-3 gap-x-4 border-t border-border pt-4 @md:gap-x-6 @4xl:mt-0 @4xl:w-44 @4xl:shrink-0 @4xl:grid-cols-1 @4xl:gap-y-3.5 @4xl:border-t-0 @4xl:border-l @4xl:pt-0 @4xl:pl-6">
                   <Stat
                     label="Detected"
                     sub={formatDistanceToNow(created, { addSuffix: true })}
@@ -448,13 +460,6 @@ export function SignalDetailPanel({
                 </dl>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setShowWhy(true)}
-                className="mt-3 rounded-sm text-dense text-muted-foreground underline underline-offset-2 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-              >
-                Why this insight?
-              </button>
               <WhyInsightPanel
                 signalId={signal.id}
                 open={showWhy}
@@ -490,7 +495,7 @@ export function SignalDetailPanel({
           {(signal.soWhat || signal.narrative) && (
             <Section label="Why it matters">
               {signal.soWhat && (
-                <p className="text-content leading-relaxed text-foreground">
+                <p className={cn(PROSE, "text-content leading-relaxed text-foreground")}>
                   {signal.soWhat}
                 </p>
               )}
@@ -513,7 +518,7 @@ export function SignalDetailPanel({
                     />
                   </button>
                   {showContext && (
-                    <p className="mt-2.5 text-content leading-relaxed text-foreground">
+                    <p className={cn(PROSE, "mt-2.5 text-content leading-relaxed text-foreground")}>
                       {signal.narrative}
                     </p>
                   )}
@@ -526,7 +531,7 @@ export function SignalDetailPanel({
             // The document's single fill and single accent, shared with the Track
             // button in the bar above: in this pane the accent means "act".
             <Section label="What to do" tone="action">
-              <p className="rounded-md bg-surface-2 px-4 py-3.5 text-content leading-relaxed text-foreground">
+              <p className={cn(PROSE, "rounded-md bg-surface-2 px-4 py-3.5 text-content leading-relaxed text-foreground")}>
                 {signal.recommendedAction}
               </p>
             </Section>

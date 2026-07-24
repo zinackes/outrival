@@ -213,7 +213,7 @@ export function HiringTab({
             const delta = last - first;
             const spark = velocityByLabel.get(d.department.toLowerCase());
             return (
-              <details key={d.department} className="group border-t border-border first:border-t-0">
+              <details key={d.department} className="details-smooth group border-t border-border first:border-t-0">
                 <summary
                   className={cn(
                     "flex cursor-pointer list-none items-center gap-3 px-1 py-2.5",

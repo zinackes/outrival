@@ -171,6 +171,24 @@ function formatClaim(value: number, unit: string | null, context: string): strin
   return `${value.toLocaleString("en-US")} ${context}`;
 }
 
+// Everything a successful capture disproves. The failure DIAGNOSIS (patch-23) and
+// the refusal verdict are sticky columns — only the next failure ever overwrote
+// them — so a source that recovered kept reporting the old verdict on the Sources
+// page ("This page appears to be down or gone." under a green last-scan). A capture
+// is the strongest possible evidence against every one of them, so clear them all.
+const SCRAPE_SUCCESS_RESET = {
+  lastFailedAt: null,
+  lastError: null,
+  consecutiveFailures: 0,
+  markedUnscrapable: false,
+  refusedAt: null,
+  refusalReason: null,
+  lastFailureCategory: null,
+  lastFailureConfidence: null,
+  lastFailureEvidence: null,
+  lastFailureDiagnosedAt: null,
+};
+
 // patch-23 — fine-grained failure diagnosis. Runs in the body's catch (same
 // invocation as the throw) so the rich cascade attempts ride along on the
 // ScrapeFailedError; Trigger's onFailure only sees the message. Best-effort:
@@ -637,10 +655,7 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
             lastRunAt: new Date(),
             nextRunAt,
             scrapeStartedAt: null,
-            lastFailedAt: null,
-            lastError: null,
-            consecutiveFailures: 0,
-            markedUnscrapable: false,
+            ...SCRAPE_SUCCESS_RESET,
           })
           .where(eq(monitors.id, monitor.id));
         await logScrapeRun({
@@ -799,10 +814,7 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
           lastRunAt: new Date(),
           nextRunAt,
           scrapeStartedAt: null,
-          lastFailedAt: null,
-          lastError: null,
-          consecutiveFailures: 0,
-          markedUnscrapable: false,
+          ...SCRAPE_SUCCESS_RESET,
         })
         .where(eq(monitors.id, monitor.id));
       await logScrapeRun({
@@ -1788,10 +1800,7 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
         lastRunAt: new Date(),
         nextRunAt,
         scrapeStartedAt: null,
-        lastFailedAt: null,
-        lastError: null,
-        consecutiveFailures: 0,
-        markedUnscrapable: false,
+        ...SCRAPE_SUCCESS_RESET,
       })
       .where(eq(monitors.id, monitor.id));
 

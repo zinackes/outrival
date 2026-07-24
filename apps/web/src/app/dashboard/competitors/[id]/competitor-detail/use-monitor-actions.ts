@@ -78,6 +78,15 @@ export function useMonitorActions(id: string) {
     );
   }
 
+  /** Patch one monitor in the cached detail — for optimistic writes. */
+  function patchMonitor(monitorId: string, patch: Partial<Monitor>) {
+    setData((d) =>
+      d
+        ? { ...d, monitors: d.monitors.map((m) => (m.id === monitorId ? { ...m, ...patch } : m)) }
+        : d,
+    );
+  }
+
   /** Refetch the detail and return the fresh data (the poller + mutations await it). */
   async function refresh() {
     const r = await competitorQ.refetch();
@@ -432,6 +441,11 @@ export function useMonitorActions(id: string) {
     monitorId: string,
     patch: { url?: string; frequency?: MonitorFrequency },
   ) {
+    // The selected segment renders off monitor.frequency, so without this it only
+    // moved once the PATCH *and* the heavy detail refetch had both landed — a full
+    // second of a click that looks like it did nothing. Flip it now, revert on error.
+    const previousFrequency = data?.monitors.find((m) => m.id === monitorId)?.frequency;
+    if (patch.frequency) patchMonitor(monitorId, { frequency: patch.frequency });
     try {
       await api.updateMonitor(monitorId, patch);
       await refresh();
@@ -440,6 +454,9 @@ export function useMonitorActions(id: string) {
       // previous page's failure verdict server-side — that one's worth confirming.
       if (patch.url) toast.success("Source repointed, we'll scan it shortly");
     } catch (e) {
+      if (patch.frequency && previousFrequency) {
+        patchMonitor(monitorId, { frequency: previousFrequency });
+      }
       const reason = paywallFromError(e);
       if (reason) {
         setPaywall(reason);

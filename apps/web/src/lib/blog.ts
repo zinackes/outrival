@@ -33,9 +33,21 @@ function readingMinutes(body: string): number {
   return Math.max(1, Math.round(words / WORDS_PER_MINUTE));
 }
 
+// gray-matter's YAML errors name neither the file nor the fix, and a throw here
+// kills the whole prerender — so re-throw with the slug and the usual culprit.
+function readFrontmatter(slug: string, raw: string) {
+  try {
+    return matter(raw);
+  } catch (err) {
+    throw new Error(
+      `Blog post "${slug}" has invalid frontmatter YAML — an unquoted ": " inside a value is the usual cause. ${(err as Error).message}`,
+    );
+  }
+}
+
 function parseFile(slug: string): Post {
   const raw = readFileSync(join(BLOG_DIR, `${slug}.mdx`), "utf8");
-  const { data, content } = matter(raw);
+  const { data, content } = readFrontmatter(slug, raw);
   const fm = data as Partial<PostFrontmatter>;
   if (!fm.title || !fm.description || !fm.date) {
     throw new Error(

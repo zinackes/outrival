@@ -299,7 +299,7 @@ function SourceChip({
         )}
         {isPaused && (
           <p className="break-words px-2 pb-1.5 text-sm leading-relaxed text-muted-foreground">
-            Paused — this source won&apos;t be scraped until you enable it.
+            Paused. This source won&apos;t be scraped until you enable it.
           </p>
         )}
 

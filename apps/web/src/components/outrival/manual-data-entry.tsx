@@ -28,7 +28,7 @@ interface FieldDef {
 const FIELDS_BY_SOURCE: Record<string, FieldDef[]> = {
   pricing: [
     { key: "status", label: "Pricing status", type: "text", placeholder: "public / gated / contact sales" },
-    { key: "tiers", label: "Tiers (one per line: name — price)", type: "textarea", placeholder: "Starter — $19/mo\nPro — $49/mo" },
+    { key: "tiers", label: "Tiers (one per line, name then price)", type: "textarea", placeholder: "Starter: $19/mo\nPro: $49/mo" },
     { key: "notes", label: "Notes", type: "textarea" },
   ],
   jobs: [
@@ -98,7 +98,7 @@ export function ManualDataEntry({ monitorId, sourceType, open, onOpenChange, onS
         <DialogHeader>
           <DialogTitle>Enter information manually</DialogTitle>
           <DialogDescription>
-            We couldn&apos;t scrape this source. Add what you can see so it stays tracked — it will
+            We couldn&apos;t scrape this source. Add what you can see so it stays tracked. It will
             be clearly marked as entered manually.
           </DialogDescription>
         </DialogHeader>

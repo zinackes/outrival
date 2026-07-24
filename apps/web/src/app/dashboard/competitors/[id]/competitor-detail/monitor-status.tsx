@@ -61,7 +61,7 @@ export function nextScanLabel(
 /** How long ago this source last produced a capture, phrased for a dense row. */
 export function lastScanLabel(m: Monitor, status: MonitorStatus): string {
   if (status === "running") return "scraping…";
-  if (status === "paused") return "Paused — not scraping";
+  if (status === "paused") return "Paused, not scraping";
   if (status === "disabled") return "Paused after repeated failures";
   if (status === "failed" && m.lastFailedAt) {
     return `Failed ${formatDistanceToNow(new Date(m.lastFailedAt), { addSuffix: true })}`;

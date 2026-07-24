@@ -110,7 +110,7 @@ export function sourceCopy(args: {
       };
 
     case "off":
-      return { tone: "neutral", message: "Paused — not scraping.", action: "resume" };
+      return { tone: "neutral", message: "Paused, not scraping.", action: "resume" };
 
     case "locked":
       return {

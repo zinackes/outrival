@@ -103,7 +103,7 @@ export function AiVisibilityView({ locked = false }: { locked?: boolean }) {
     try {
       const { runId: id } = await api.runAiVisibility();
       setRunId(id);
-      toast.success("Visibility check started — results appear as engines respond.");
+      toast.success("Visibility check started. Results appear as engines respond.");
     } catch {
       setRunning(false);
       toast.error("Couldn't start the run.");
@@ -133,7 +133,7 @@ export function AiVisibilityView({ locked = false }: { locked?: boolean }) {
       setRunning(false);
       setEmptyRun(true);
       toast.error(
-        "The run finished but no results came back — the answer engine may be temporarily unavailable.",
+        "The run finished but no results came back. The answer engine may be temporarily unavailable.",
       );
     }
   }, [q.dataUpdatedAt, q.errorUpdatedAt, q.data?.latestRunAt, statusQ.data?.done, running]);
@@ -267,7 +267,7 @@ export function AiVisibilityView({ locked = false }: { locked?: boolean }) {
         <div className="flex items-center gap-2.5 rounded-md border border-border bg-muted/30 px-3 py-2">
           <Box className="size-4 shrink-0 text-[var(--link)]" aria-hidden />
           <p className="text-sm text-muted-foreground">
-            Tracked per product — showing{" "}
+            Tracked per product, showing{" "}
             <span className="font-medium text-foreground">{primaryProduct?.name}</span>. Pick
             another from the product menu, top-left.
           </p>
@@ -597,7 +597,7 @@ function PromptManager({
       </div>
       {prompts.length === 0 ? (
         <p className="mt-4 text-sm text-muted-foreground">
-          No prompts yet — add one, or run a check to seed defaults.
+          No prompts yet. Add one, or run a check to seed defaults.
         </p>
       ) : (
         <ul className="mt-3 divide-y divide-border">
@@ -725,7 +725,7 @@ function EmptyState({ onRun, running }: { onRun: () => void; running: boolean })
       </div>
       <h2 className="mt-4 text-lg font-semibold tracking-tight">No visibility data yet</h2>
       <p className="mt-1.5 max-w-md text-sm text-muted-foreground">
-        Run a check to see whether ChatGPT, Perplexity &amp; co. mention your product — and
+        Run a check to see whether ChatGPT, Perplexity &amp; co. mention your product, and
         which competitors show up instead.
       </p>
       <Button onClick={onRun} disabled={running} size="sm" className="mt-5">
@@ -777,7 +777,7 @@ function EngineUnreachableBanner({ onRetry }: { onRetry: () => void }) {
         </p>
         <p className="text-dense text-muted-foreground">
           No results came back, so the numbers below are unchanged. This is usually a
-          temporary engine or quota issue — try again in a moment.
+          temporary engine or quota issue, so try again in a moment.
         </p>
       </div>
       <Button onClick={onRetry} size="sm" variant="outline" className="shrink-0">
@@ -812,7 +812,7 @@ function LockedState() {
         <h1 className="mt-4 text-lg font-semibold tracking-tight">AI Visibility</h1>
         <p className="mt-1.5 text-sm text-muted-foreground">
           Track whether ChatGPT, Perplexity and other AI answer engines mention your product
-          — and which competitors show up instead. Available on Pro and Business.
+          and which competitors show up instead. Available on Pro and Business.
         </p>
         <Button asChild size="sm" className="mt-5">
           <Link href="/dashboard/settings/billing">Upgrade</Link>

@@ -93,7 +93,7 @@ export default async function NotificationModerationPage() {
 
       <Section
         title="Filtered per layer"
-        info="Signals suppressed before delivery, grouped by which moderation layer caught them — relevance threshold, per-severity channel, quiet hours, or daily frequency cap. Critical signals bypass every layer."
+        info="Signals suppressed before delivery, grouped by which moderation layer caught them: relevance threshold, per-severity channel, quiet hours, or daily frequency cap. Critical signals bypass every layer."
       >
         {Object.keys(m.volume.filteredByReason).length === 0 ? (
           <Empty>Nothing filtered in this window.</Empty>
@@ -161,10 +161,10 @@ export default async function NotificationModerationPage() {
 
       <Section
         title="Relevance thresholds"
-        info="Per-org relevance threshold and where it came from — the 0.5 default, a user-set value, or one auto-adjusted from feedback. Signals scoring below it are suppressed."
+        info="Per-org relevance threshold and where it came from: the 0.5 default, a user-set value, or one auto-adjusted from feedback. Signals scoring below it are suppressed."
       >
         {m.thresholds.length === 0 ? (
-          <Empty>No org has a stored threshold — all running the default 0.5.</Empty>
+          <Empty>No org has a stored threshold. They all run the default 0.5.</Empty>
         ) : (
           <div className="grid grid-cols-2 gap-6 md:grid-cols-3">
             {m.thresholds.map((t) => (

@@ -12,8 +12,8 @@ export const metadata: Metadata = pageMetadata({
 export default function DocsPage() {
   return (
     <DocPage
-      title="API — coming soon"
-      intro="The Outrival API isn't available yet — it's still in development, and there are no live endpoints or keys today. Here's what it will do, and how to hear when it ships."
+      title="API (coming soon)"
+      intro="The Outrival API isn't available yet. It's still in development, and there are no live endpoints or keys today. Here's what it will do, and how to hear when it ships."
     >
       <h2>What it will do</h2>
       <p>

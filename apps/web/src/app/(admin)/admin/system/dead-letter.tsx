@@ -62,7 +62,7 @@ export function DeadLetterSection({ deadLetter }: { deadLetter: AdminQueueHealth
       {!deadLetter.available ? (
         <Empty>Dead-letter queue unavailable.</Empty>
       ) : deadLetter.rows.length === 0 ? (
-        <Empty>Empty — no job has exhausted its retries.</Empty>
+        <Empty>Empty. No job has exhausted its retries.</Empty>
       ) : (
         <Table>
           <TableHeader>

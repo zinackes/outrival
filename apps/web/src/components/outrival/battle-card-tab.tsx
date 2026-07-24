@@ -648,7 +648,7 @@ function ObjectionsSection({
               <HelpCircle size={13} className="text-muted-foreground cursor-help" />
             </TooltipTrigger>
             <TooltipContent className="max-w-xs">
-              Objections a prospect might raise to pick this competitor over you —
+              Objections a prospect might raise to pick this competitor over you,
               each paired with a sales response to counter it.
             </TooltipContent>
           </Tooltip>
@@ -879,10 +879,10 @@ function GeneratingState({ startedAt, firstTime }: { startedAt: number; firstTim
 
       <p className="text-sm text-muted-foreground">
         {slow
-          ? "Still working — this one's taking a little longer than usual. You can leave this page; we'll drop a notification in the bell when it's ready."
+          ? "Still working. This one's taking a little longer than usual. You can leave this page; we'll drop a notification in the bell when it's ready."
           : firstTime
-            ? "The first card for a competitor takes longer — it builds the AI summary first. You can safely leave this page and we'll notify you."
-            : "You can leave this page — we'll notify you in the bell when it's ready."}
+            ? "The first card for a competitor takes longer because it builds the AI summary first. You can safely leave this page and we'll notify you."
+            : "You can leave this page and we'll notify you in the bell when it's ready."}
       </p>
     </Card>
   );

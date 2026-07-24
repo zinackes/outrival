@@ -39,7 +39,7 @@ const SAMPLES: Array<{ name: string; html: string }> = [
             competitor: "Linear",
             category: "pricing",
             insight: "Business tier moved from $16 to $20 per seat, with AI credits bundled.",
-            so_what: "Your $18 tier is no longer the mid-market anchor — revisit before renewals.",
+            so_what: "Your $18 tier is no longer the mid-market anchor. Revisit before renewals.",
           },
           {
             urgency: "watch",
@@ -143,7 +143,7 @@ export default function EmailPreviewPage() {
                   {mode}
                 </div>
                 <iframe
-                  title={`${sample.name} — ${mode}`}
+                  title={`${sample.name} (${mode})`}
                   srcDoc={mode === "Dark" ? forceDark(sample.html) : sample.html}
                   className="border-border h-[720px] w-full rounded-lg border"
                 />

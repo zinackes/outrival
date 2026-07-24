@@ -4,7 +4,7 @@ import { ImageResponse } from "next/og";
 // asset to maintain). Root-level file convention → default og:image for every
 // route that doesn't declare its own. Uses the built-in default font; the brand
 // Zodiak serif is intentionally not loaded here to keep this dependency-free.
-export const alt = "Outrival — Automated competitive intelligence, written by AI";
+export const alt = "Outrival: Automated competitive intelligence, written by AI";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -73,7 +73,7 @@ export default function OgImage() {
             Automated competitive intelligence, written by AI
           </div>
           <div style={{ fontSize: 30, color: "#a1a1aa", maxWidth: 860, lineHeight: 1.3 }}>
-            Monitor every competitor move — pricing, product, hiring, reviews. One
+            Monitor every competitor move: pricing, product, hiring, reviews. One
             strategic brief a week.
           </div>
         </div>

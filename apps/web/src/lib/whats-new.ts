@@ -23,19 +23,19 @@ export const WHATS_NEW: WhatsNewEntry[] = [
     changes: [
       {
         kind: "improved",
-        text: "Signals is now a master-detail view — scan the list on the left and read the full signal, with its insight, evidence and recommended action, on the right without losing your place.",
+        text: "Signals is now a master-detail view. Scan the list on the left and read the full signal, with its insight, evidence and recommended action, on the right without losing your place.",
       },
       {
         kind: "new",
-        text: "See what actually changed — many signals now show their evidence inline, including before/after homepage screenshots, right in the detail pane.",
+        text: "See what actually changed. Many signals now show their evidence inline, including before/after homepage screenshots, right in the detail pane.",
       },
       {
         kind: "new",
-        text: "Command palette — press ⌘K to jump to any competitor, page or setting from anywhere.",
+        text: "Command palette: press ⌘K to jump to any competitor, page or setting from anywhere.",
       },
       {
         kind: "improved",
-        text: "Ask Outrival, everywhere — open it with ⌘J from any page. It now remembers your recent questions and is aware of the page you're on, so answers stay scoped to what you're looking at.",
+        text: "Ask Outrival, everywhere. Open it with ⌘J from any page. It now remembers your recent questions and is aware of the page you're on, so answers stay scoped to what you're looking at.",
       },
       {
         kind: "improved",
@@ -59,7 +59,7 @@ export const WHATS_NEW: WhatsNewEntry[] = [
     changes: [
       {
         kind: "new",
-        text: "Ask Outrival — ask a question in plain English and get an answer grounded in the data we already track for you, with links straight to the source.",
+        text: "Ask Outrival: ask a question in plain English and get an answer grounded in the data we already track for you, with links straight to the source.",
       },
       {
         kind: "new",
@@ -77,15 +77,15 @@ export const WHATS_NEW: WhatsNewEntry[] = [
     changes: [
       {
         kind: "new",
-        text: "Products — track several products or SKUs from one workspace. Signals are tagged to the products they affect, and you can switch products from the top bar.",
+        text: "Products: track several products or SKUs from one workspace. Signals are tagged to the products they affect, and you can switch products from the top bar.",
       },
       {
         kind: "new",
-        text: "Review coverage, rebuilt on open sources — App Store reviews via Apple's public feed and Trustpilot score tracking via their official API, with complaint-theme and score-drop signals.",
+        text: "Review coverage, rebuilt on open sources: App Store reviews via Apple's public feed and Trustpilot score tracking via their official API, with complaint-theme and score-drop signals.",
       },
       {
         kind: "new",
-        text: "More hiring coverage — job tracking now reads more applicant-tracking systems, with seniority and salary captured when available.",
+        text: "More hiring coverage: job tracking now reads more applicant-tracking systems, with seniority and salary captured when available.",
       },
       {
         kind: "new",
@@ -97,15 +97,15 @@ export const WHATS_NEW: WhatsNewEntry[] = [
       },
       {
         kind: "new",
-        text: "Activity — a page that shows the scraping work happening behind the scenes for your workspace.",
+        text: "Activity: a page that shows the scraping work happening behind the scenes for your workspace.",
       },
       {
         kind: "improved",
-        text: "Notification controls — quiet hours, weekend mute, a daily email cap, and similar-signal batching so you only get alerted on what matters.",
+        text: "Notification controls: quiet hours, weekend mute, a daily email cap, and similar-signal batching so you only get alerted on what matters.",
       },
       {
         kind: "improved",
-        text: "Navigation refresh — Settings now has its own sidebar and the main rail is streamlined.",
+        text: "Navigation refresh: Settings now has its own sidebar and the main rail is streamlined.",
       },
     ],
   },
@@ -115,15 +115,15 @@ export const WHATS_NEW: WhatsNewEntry[] = [
     changes: [
       {
         kind: "new",
-        text: "Trends — pricing, hiring, review and tech trends across your competitors, with drill-down charts.",
+        text: "Trends: pricing, hiring, review and tech trends across your competitors, with drill-down charts.",
       },
       {
         kind: "new",
-        text: "Compare — put competitors side by side on positioning, pricing, hiring, reviews and tech, and copy the table.",
+        text: "Compare: put competitors side by side on positioning, pricing, hiring, reviews and tech, and copy the table.",
       },
       {
         kind: "new",
-        text: "Usage — see where you stand against your plan limits, in Settings.",
+        text: "Usage: see where you stand against your plan limits, in Settings.",
       },
       {
         kind: "improved",

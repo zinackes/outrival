@@ -6,12 +6,12 @@ export const metadata: Metadata = pageMetadata({
   path: "/about",
   title: "About",
   description:
-    "Why Outrival exists, who builds it, and the principles behind it — competitive intelligence written by AI, from a solo founder in France.",
+    "Why Outrival exists, who builds it, and the principles behind it: competitive intelligence written by AI, from a solo founder in France.",
   socialTitle: "About Outrival",
   socialDescription:
-    "Why Outrival exists, who builds it, and the principles behind it — from a solo founder in France, self-funded and EU-hosted.",
+    "Why Outrival exists, who builds it, and the principles behind it, from a solo founder in France, self-funded and EU-hosted.",
   twitterDescription:
-    "Competitive intelligence written by AI — from a solo founder in France, self-funded and EU-hosted.",
+    "Competitive intelligence written by AI, from a solo founder in France, self-funded and EU-hosted.",
 });
 
 const PRINCIPLES = [
@@ -21,7 +21,7 @@ const PRINCIPLES = [
   },
   {
     title: "Self-serve, end to end.",
-    body: "Sign up, add competitors, get your first brief — no demo, no onboarding call, cancel in one click.",
+    body: "Sign up, add competitors, get your first brief. No demo, no onboarding call, cancel in one click.",
   },
   {
     title: "EU-hosted, GDPR-first.",
@@ -29,7 +29,7 @@ const PRINCIPLES = [
   },
   {
     title: "The AI writes the insight.",
-    body: "You read the conclusion — what changed and why it matters. You don’t dig through diffs to find it.",
+    body: "You read the conclusion: what changed and why it matters. You don’t dig through diffs to find it.",
   },
   {
     // Deliberately not a cadence promise. Shipping really is continuous, but
@@ -39,7 +39,7 @@ const PRINCIPLES = [
     title: "Ship constantly.",
     body: (
       <>
-        Small, real improvements land all the time — the notable ones show up
+        Small, real improvements land all the time, and the notable ones show up
         in the <a href="/changelog">changelog</a>.
       </>
     ),
@@ -50,7 +50,7 @@ export default function AboutPage() {
   return (
     <DocPage
       title="About Outrival"
-      intro="Competitive intelligence that reads the noise so you don't have to. Here's why it exists, who's behind it, and what it will — and won't — do."
+      intro="Competitive intelligence that reads the noise so you don't have to. Here's why it exists, who's behind it, and what it will and won't do."
     >
       <div className="flex flex-col gap-10">
         <section className="flex flex-col gap-3">
@@ -69,12 +69,12 @@ export default function AboutPage() {
         <section className="flex flex-col gap-3">
           <h2 className="!mt-0 text-foreground">Who is building this</h2>
           <p>
-            I&apos;m Mathys — one person, in France, building Outrival and
+            I&apos;m Mathys, one person in France, building Outrival and
             funding it entirely from the people who pay for it. There are no
             investors to return capital to and no sales team to keep busy.
             That&apos;s not a story about hustle; it&apos;s structural. It&apos;s
             the reason a plan is €29 and not a quote, and the reason everything
-            is self-serve instead of gated behind a call — there&apos;s simply no
+            is self-serve instead of gated behind a call. There&apos;s simply no
             enterprise motion here to protect. The full legal entity details
             live in the <a href="/legal-notice">legal notice</a>.
           </p>
@@ -105,7 +105,7 @@ export default function AboutPage() {
             straight to me, and I&apos;m the one who answers.
           </p>
           <p className="mt-2 font-[var(--font-display)] text-lg text-foreground">
-            — Mathys
+            Mathys
           </p>
         </section>
       </div>

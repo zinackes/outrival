@@ -3,7 +3,7 @@ const SITE_URL = "https://outrival.app";
 const FAQS = [
   {
     q: "How do you monitor sites with anti-bot protection?",
-    a: "A browser renders the majority of sources directly. We respect robots.txt, identify our crawler (OutrivalBot), and collect only what a site publishes openly — we never bypass a block, login, or paywall. If a site declines automated access we stop and tell you honestly. No source needs manual setup on your side.",
+    a: "A browser renders the majority of sources directly. We respect robots.txt, identify our crawler (OutrivalBot), and collect only what a site publishes openly. We never bypass a block, login, or paywall. If a site declines automated access we stop and tell you honestly. No source needs manual setup on your side.",
   },
   {
     q: "What qualifies a change as a signal?",
@@ -11,19 +11,19 @@ const FAQS = [
   },
   {
     q: "Where is the data stored?",
-    a: "All in the EU. Application server on OVHcloud in France, background workers and job queue on netcup in Austria, PostgreSQL on Neon (EU region), HTML snapshots and screenshots on Cloudflare R2 — your stored data never leaves the EU.",
+    a: "All in the EU. Application server on OVHcloud in France, background workers and job queue on netcup in Austria, PostgreSQL on Neon (EU region), HTML snapshots and screenshots on Cloudflare R2, so your stored data never leaves the EU.",
   },
   {
     q: "Can I track my own product too?",
-    a: "Yes, on every plan. Point Outrival at your live site and pricing — or a GitHub repo while you're still building — and your own changes run through the same classification pipeline, so the digest reads your moves alongside your competitors'.",
+    a: "Yes, on every plan. Point Outrival at your live site and pricing (or a GitHub repo while you're still building) and your own changes run through the same classification pipeline, so the digest reads your moves alongside your competitors'.",
   },
   {
     q: "How often is a competitor scanned?",
-    a: "Defaults: homepage and pricing daily, blog and changelog weekly, jobs daily, reviews weekly. Your plan sets the floor — weekly on Free, daily on Starter, real-time on Pro and up — and stable monitors automatically slow down to save scrapes.",
+    a: "Defaults: homepage and pricing daily, blog and changelog weekly, jobs daily, reviews weekly. Your plan sets the floor (weekly on Free, daily on Starter, real-time on Pro and up) and stable monitors automatically slow down to save scrapes.",
   },
   {
     q: "How do I cancel?",
-    a: "One click from your dashboard — no sales call. No penalty, no forced annual commitment.",
+    a: "One click from your dashboard, no sales call. No penalty, no forced annual commitment.",
   },
 ];
 

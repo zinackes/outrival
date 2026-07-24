@@ -18,7 +18,7 @@ export interface ErrorConfig {
 const ERROR_CONFIGS: Record<string, ErrorConfig> = {
   network_error: {
     title: "Couldn't reach the server",
-    description: "Check your connection — nothing was lost. Try again in a moment.",
+    description: "Check your connection, nothing was lost. Try again in a moment.",
     action: { label: "Retry", type: "retry" },
   },
   timeout: {
@@ -33,7 +33,7 @@ const ERROR_CONFIGS: Record<string, ErrorConfig> = {
   },
   monitor_unreachable: {
     title: "Couldn't reach the site",
-    description: "We retry automatically within the hour — no action needed.",
+    description: "We retry automatically within the hour, no action needed.",
     action: { label: "Retry now", type: "retry" },
   },
   ai_failed: {

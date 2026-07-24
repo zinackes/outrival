@@ -19,7 +19,7 @@ import type { MonthlyRecap } from "@/lib/api";
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 export const metadata: Metadata = {
-  title: "Competitive Snapshot — Outrival",
+  title: "Competitive Snapshot | Outrival",
   robots: { index: false, follow: false },
 };
 
@@ -156,7 +156,7 @@ function PoweredBy() {
         <ArrowUpRight className="size-3.5" />
       </Link>
       <p className="mt-2 text-meta text-muted-foreground">
-        Automated competitive intelligence — monitor competitors, get strategic insights.
+        Automated competitive intelligence: monitor competitors, get strategic insights.
       </p>
     </footer>
   );
@@ -269,7 +269,7 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
       {competitors.length === 0 ? (
         <div className="rounded-xl border border-border bg-card px-6 py-14 text-center">
           <p className="text-sm text-muted-foreground">
-            This snapshot is still being assembled — check back shortly.
+            This snapshot is still being assembled. Check back shortly.
           </p>
         </div>
       ) : (

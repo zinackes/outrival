@@ -69,7 +69,7 @@ export function ConsentBanner() {
             <div>
               <div className="font-medium">Strictly necessary</div>
               <p className="text-xs text-[var(--foreground)]/70">
-                Sign-in, security and preferences. Always active — required for
+                Sign-in, security and preferences. Always active, required for
                 the service to work.
               </p>
             </div>

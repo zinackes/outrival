@@ -130,7 +130,7 @@ export function BestToolsPage() {
             </p>
           </div>
           <p className="mt-8 text-dense text-text-subtle">
-            This isn't a strict 1-to-6 ranking — the right tool depends on who you
+            This isn't a strict 1-to-6 ranking, because the right tool depends on who you
             are. Here's each, honestly.
           </p>
           <ol className="mt-4 flex flex-col gap-4">
@@ -274,7 +274,7 @@ export function BestToolsPage() {
               .
             </p>
             <p className="mt-2">
-              Outrival offers EU data storage — see our{" "}
+              Outrival offers EU data storage, see our{" "}
               <Link
                 href="/security"
                 className="underline-offset-2 hover:text-foreground hover:underline"

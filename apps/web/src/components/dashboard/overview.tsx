@@ -237,12 +237,12 @@ export function OverviewView() {
         <OnboardingChecklistCard />
         <PageHead
           title="Overview"
-          sub="Track every competitor move — pricing, hiring, product, content — as it happens."
+          sub="Track every competitor move (pricing, hiring, product, content) as it happens."
         />
         <EmptyState
           icon={Radar}
           title="Start tracking your first competitor"
-          description="Outrival watches competitor pricing, hiring, product and content, then turns each change into a signal with the context to act on it. Add a competitor to begin — or explore the interface with sample data first."
+          description="Outrival watches competitor pricing, hiring, product and content, then turns each change into a signal with the context to act on it. Add a competitor to begin, or explore the interface with sample data first."
           actions={
             <>
               <Button asChild size="sm">

@@ -103,7 +103,7 @@ function ReviewEnableState({
         <p className="text-sm font-semibold text-foreground">Track reviews</p>
         <p className="text-sm text-muted-foreground max-w-md">
           Pick a review source and paste this competitor&apos;s review-page URL. We&apos;ll
-          capture ratings, praises and complaints — and run the first scrape right away.
+          capture ratings, praises and complaints, and run the first scrape right away.
         </p>
       </div>
 
@@ -242,7 +242,7 @@ export function ReviewsTab({
   const scores = scoresQuery.data ?? null;
 
   if (reviewsQuery.isError || scoresQuery.isError)
-    return <Empty text="Couldn't load this data right now — try again in a moment." />;
+    return <Empty text="Couldn't load this data right now. Try again in a moment." />;
   if (!reviews || !scores) return <TabLoading />;
 
   // Detection stays aligned with what the picker actually exposes — a source added
@@ -337,7 +337,7 @@ export function ReviewsTab({
             {reviews.summary.complaintThemes.length > 0 && (
               <TabSection title="Recurring complaints" icon={Star}>
                 <p className="mb-3 text-xs text-muted-foreground">
-                  Repeated grievances across reviews — each is an angle you can lead with.
+                  Repeated grievances across reviews. Each is an angle you can lead with.
                 </p>
                 <ul className="space-y-2">
                   {reviews.summary.complaintThemes.map((t, i) => (
@@ -544,7 +544,7 @@ function ReviewSourceDialog({
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side="top" className="max-w-56">
-                    An upper bound — stable sources are checked less often automatically.
+                    An upper bound. Stable sources are checked less often automatically.
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>

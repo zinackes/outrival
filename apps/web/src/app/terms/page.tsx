@@ -157,7 +157,7 @@ export default function TermsPage() {
             mandatory provisions of their country of residence and may use
             consumer mediation before going to court; business disputes are
             subject to the competent French courts. Contact us first at{" "}
-            <a href={`mailto:${CONTACT.general}`}>{CONTACT.general}</a> — we try to
+            <a href={`mailto:${CONTACT.general}`}>{CONTACT.general}</a>. We try to
             resolve issues amicably.
           </p>
         </>
@@ -311,7 +311,7 @@ export default function TermsPage() {
             peuvent recourir à la médiation de la consommation avant toute action
             judiciaire ; les litiges entre professionnels relèvent des tribunaux
             français compétents. Contactez-nous d'abord à{" "}
-            <a href={`mailto:${CONTACT.general}`}>{CONTACT.general}</a> — nous
+            <a href={`mailto:${CONTACT.general}`}>{CONTACT.general}</a>. Nous
             cherchons une résolution amiable.
           </p>
         </>

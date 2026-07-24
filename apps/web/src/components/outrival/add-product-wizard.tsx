@@ -46,10 +46,10 @@ const STAGES: {
   hint: string;
   icon: typeof Globe;
 }[] = [
-  { key: "live", label: "Live site", hint: "It has a public website — we'll analyze and monitor it.", icon: Globe },
+  { key: "live", label: "Live site", hint: "It has a public website. We'll analyze and monitor it.", icon: Globe },
   { key: "developing", label: "In development", hint: "A public GitHub repo we can read for a profile.", icon: GitBranch },
-  { key: "idea", label: "Idea", hint: "Describe it in a few words — no site yet.", icon: Lightbulb },
-  { key: "document", label: "Document", hint: "Upload a spec or deck — read in memory, never stored.", icon: FileText },
+  { key: "idea", label: "Idea", hint: "Describe it in a few words, no site yet.", icon: Lightbulb },
+  { key: "document", label: "Document", hint: "Upload a spec or deck, read in memory and never stored.", icon: FileText },
 ];
 
 function blankProfile(seedCategory = ""): ProductProfile {
@@ -143,13 +143,13 @@ export function AddProductWizard({
         // envelope that lives on e.message.
         const reason =
           e instanceof ApiError && typeof e.data.error === "string" ? e.data.error : undefined;
-        toast.info("Automatic analysis didn't work — fill the profile in manually.", {
+        toast.info("Automatic analysis didn't work. Fill the profile in manually.", {
           description: reason,
         });
         setProfile(blankProfile(category.trim()));
         setScreen("profile");
       } else if (e instanceof ApiError && e.status === 429) {
-        toast.error("Analysis is rate-limited — try again in a moment.");
+        toast.error("Analysis is rate-limited. Try again in a moment.");
       } else {
         toastApiError(e, { title: "Analysis failed" });
       }
@@ -213,12 +213,12 @@ export function AddProductWizard({
       // failure — that would contradict the notification toast that follows.
       if (e instanceof ApiError && e.data?.error === "timeout") {
         setDiscoverError(
-          "Still searching for competitors — they'll appear on the Discovery page and in your notifications shortly.",
+          "Still searching for competitors. They'll appear on the Discovery page and in your notifications shortly.",
         );
       } else if (e instanceof ApiError && e.status === 429) {
-        setDiscoverError("Discovery is rate-limited right now — you can run it later from the Discovery page.");
+        setDiscoverError("Discovery is rate-limited right now. You can run it later from the Discovery page.");
       } else {
-        setDiscoverError("Couldn't run discovery now — you can run it later from the Discovery page.");
+        setDiscoverError("Couldn't run discovery now. You can run it later from the Discovery page.");
       }
     } finally {
       setBusy(null);
@@ -260,7 +260,7 @@ export function AddProductWizard({
             <DialogHeader>
               <DialogTitle>Add a product</DialogTitle>
               <DialogDescription>
-                We&apos;ll analyze it, build a profile, and find its competitors — like onboarding, for this SKU.
+                We&apos;ll analyze it, build a profile, and find its competitors, like onboarding but for this SKU.
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-2 py-2 sm:grid-cols-2">
@@ -379,7 +379,7 @@ export function AddProductWizard({
                     className="justify-start font-normal"
                   >
                     <Upload size={14} className="mr-2" />
-                    {file ? file.name : "Choose a file (PDF, DOCX, TXT, MD — max 10MB)"}
+                    {file ? file.name : "Choose a file (PDF, DOCX, TXT, MD, max 10MB)"}
                   </Button>
                   <p className="text-xs text-muted-foreground">
                     Read in memory to build the profile, never stored.
@@ -492,7 +492,7 @@ export function AddProductWizard({
                   <p className="text-sm text-muted-foreground">
                     {detected && detected > 0
                       ? "Review and add the ones that matter to this product."
-                      : "We'll keep looking — you can run discovery again anytime."}
+                      : "We'll keep looking. You can run discovery again anytime."}
                   </p>
                 </>
               )}

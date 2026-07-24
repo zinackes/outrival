@@ -89,7 +89,7 @@ function buildSlides(r: MonthlyRecap, publicMode: boolean): React.ReactNode[] {
     <Slide accent={a(0)}>
       <Eyebrow>{r.month.label}</Eyebrow>
       <Big>Your month in competitive intel</Big>
-      <Lead>A quick recap of what your competitors did — and what you caught.</Lead>
+      <Lead>A quick recap of what your competitors did, and what you caught.</Lead>
     </Slide>,
   );
 
@@ -100,8 +100,8 @@ function buildSlides(r: MonthlyRecap, publicMode: boolean): React.ReactNode[] {
         <Big>No major moves</Big>
         <Lead>
           {r.pagesChecked != null
-            ? `We checked ${r.pagesChecked.toLocaleString("en-US")} pages across ${r.competitorsTracked} competitor${r.competitorsTracked === 1 ? "" : "s"} — they held steady.`
-            : `We watched ${r.competitorsTracked} competitor${r.competitorsTracked === 1 ? "" : "s"} — they held steady.`}
+            ? `We checked ${r.pagesChecked.toLocaleString("en-US")} pages across ${r.competitorsTracked} competitor${r.competitorsTracked === 1 ? "" : "s"}. They held steady.`
+            : `We watched ${r.competitorsTracked} competitor${r.competitorsTracked === 1 ? "" : "s"}. They held steady.`}
         </Lead>
       </Slide>,
     );
@@ -125,7 +125,7 @@ function buildSlides(r: MonthlyRecap, publicMode: boolean): React.ReactNode[] {
           <Eyebrow>Most active</Eyebrow>
           <Big>{r.busiest.name}</Big>
           <Lead>
-            moved <Counter to={r.busiest.count} />× — your busiest competitor this month.
+            moved <Counter to={r.busiest.count} />×, your busiest competitor this month.
           </Lead>
         </Slide>,
       );
@@ -136,7 +136,7 @@ function buildSlides(r: MonthlyRecap, publicMode: boolean): React.ReactNode[] {
         <Slide accent={a(3)}>
           <Eyebrow>Radio silence</Eyebrow>
           <Big>{r.quietest.name}</Big>
-          <Lead>stayed quiet — no moves we could see.</Lead>
+          <Lead>stayed quiet, no moves we could see.</Lead>
         </Slide>,
       );
     }
@@ -194,7 +194,7 @@ function buildSlides(r: MonthlyRecap, publicMode: boolean): React.ReactNode[] {
           <Eyebrow>Your watch-out</Eyebrow>
           <Big className="capitalize">{r.topExposure.category}</Big>
           <Lead>
-            drove the most high-severity moves — where you&apos;re most exposed heading into next month.
+            drove the most high-severity moves, where you&apos;re most exposed heading into next month.
           </Lead>
         </Slide>,
       );

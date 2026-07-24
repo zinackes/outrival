@@ -55,7 +55,7 @@ export function TwoFactorNudgeBanner({
     <div className="mb-4 flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3">
       <ShieldCheck size={16} className="shrink-0 text-link" />
       <p className="flex-1 text-sm text-foreground">
-        Add an extra layer of security — turn on two-factor authentication so a
+        Add an extra layer of security: turn on two-factor authentication so a
         stolen email or password isn&apos;t enough to sign in.
       </p>
       <Button asChild size="sm" variant="outline" className="shrink-0">

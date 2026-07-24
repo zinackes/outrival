@@ -101,7 +101,7 @@ export function CustomSources({
         <FileSearch size={20} className="text-muted-foreground" />
         <p className="text-sm font-semibold text-foreground">Watch a custom page</p>
         <p className="max-w-md text-sm text-muted-foreground">
-          Track any page on this competitor&apos;s site — pricing FAQs, a security or
+          Track any page on this competitor&apos;s site: pricing FAQs, a security or
           trust page, terms of service, a specific docs page. Available from the{" "}
           {PLAN_LABELS[minPlanForCustomMonitors()]} plan.
         </p>
@@ -350,7 +350,7 @@ function AddCustomDialog({
         <DialogHeader>
           <DialogTitle>Watch a custom page</DialogTitle>
           <DialogDescription>
-            Track any page on {domain ?? "this competitor's domain"} — we&apos;ll capture
+            Track any page on {domain ?? "this competitor's domain"}, and we&apos;ll capture
             changes and surface them as signals. Subdomains are fine.
           </DialogDescription>
         </DialogHeader>

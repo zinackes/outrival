@@ -46,7 +46,7 @@ export function AiView({ data }: { data: AdminAiHealth | null }) {
           <AlertCircle className="mt-0.5 size-4 shrink-0 text-critical" />
           <span>
             Global circuit breaker OPEN ({breaker.reason ?? "unknown"})
-            {breaker.resetInSec != null && ` — resets in ~${Math.ceil(breaker.resetInSec / 60)}min`}. AI generation is paused; scrapes continue.
+            {breaker.resetInSec != null && `, resets in ~${Math.ceil(breaker.resetInSec / 60)}min`}. AI generation is paused; scrapes continue.
           </span>
         </div>
       )}

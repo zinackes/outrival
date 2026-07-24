@@ -36,7 +36,7 @@ export function ProductShowcase() {
             This is the product.
           </h2>
           <p className="mt-5 max-w-2xl leading-relaxed text-text-muted">
-            No mockups. Every competitor move — pricing, product, hiring — lands in
+            No mockups. Every competitor move (pricing, product, hiring) lands in
             one place: scored by severity, explained in plain English, and ready to
             act on.
           </p>
@@ -56,7 +56,7 @@ export function ProductShowcase() {
             width={2240}
             height={1626}
             sizes="(min-width: 1024px) 540px, 100vw"
-            caption="Your overview — every competitor, ranked by what moved."
+            caption="Your overview: every competitor, ranked by what moved."
           />
 
           <ProductShot
@@ -65,7 +65,7 @@ export function ProductShowcase() {
             width={1720}
             height={886}
             sizes="(min-width: 1024px) 540px, 100vw"
-            caption="One signal, in full — what changed, why, and what to do."
+            caption="One signal, in full: what changed, why, and what to do."
           />
         </div>
       </div>

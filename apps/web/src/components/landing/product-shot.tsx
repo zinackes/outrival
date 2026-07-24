@@ -34,7 +34,7 @@ export function ProductShot({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label={`Enlarge screenshot — ${caption}`}
+        aria-label={`Enlarge screenshot: ${caption}`}
         className="group relative block w-full cursor-zoom-in overflow-hidden rounded-xl border border-border bg-surface shadow-lg shadow-black/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       >
         <Image

@@ -9,7 +9,7 @@ export const metadata: Metadata = pageMetadata({
   description:
     "The best competitive intelligence tools in 2026, honestly compared: Crayon, Klue, Kompyte, Contify, Visualping and Outrival. Real strengths, dated pricing, and which fits founders vs CI teams.",
   socialDescription:
-    "Crayon, Klue, Kompyte, Contify, Visualping and Outrival — real strengths and dated pricing. The self-serve, EU-hosted pick starts free.",
+    "Crayon, Klue, Kompyte, Contify, Visualping and Outrival: real strengths and dated pricing. The self-serve, EU-hosted pick starts free.",
   twitterTitle: "Best Competitive Intelligence Tools (2026)",
   twitterDescription:
     "Six CI tools compared honestly, with dated, sourced pricing and who each is genuinely for.",

@@ -89,7 +89,7 @@ export function WatchedQuestions() {
         Watched questions
       </p>
       <p className="mt-1 text-meta text-muted-foreground">
-        Re-checked when new signals touch them — you&apos;re alerted when an answer
+        Re-checked when new signals touch them, and you&apos;re alerted when an answer
         materially changes.
       </p>
       <div className="mt-3 overflow-hidden rounded-md border border-border">

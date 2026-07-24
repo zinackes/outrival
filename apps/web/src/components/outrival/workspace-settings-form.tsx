@@ -259,14 +259,14 @@ export function WorkspaceSettingsForm() {
             variant="outline"
             size="sm"
             onClick={() => setUpdateOpen(true)}
-            title="Refine your profile or re-analyze your source — your competitors stay"
+            title="Refine your profile or re-analyze your source. Your competitors stay"
           >
             <RefreshCw size={13} />
             Update my product profile
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          Edit the profile or re-analyze your source — your tracked competitors stay.
+          Edit the profile or re-analyze your source. Your tracked competitors stay.
         </p>
       </div>
 

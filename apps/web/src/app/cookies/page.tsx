@@ -93,7 +93,7 @@ export default function CookiesPage() {
                 </tr>
                 <tr>
                   <td>PostHog (ph_*, distinct_id)</td>
-                  <td>Analytics — consent</td>
+                  <td>Analytics (consent)</td>
                   <td>Pseudonymised product usage to improve Outrival (EU)</td>
                   <td>Up to 12 months</td>
                 </tr>
@@ -187,7 +187,7 @@ export default function CookiesPage() {
                 </tr>
                 <tr>
                   <td>PostHog (ph_*, distinct_id)</td>
-                  <td>Analytics — consentement</td>
+                  <td>Analytics (consentement)</td>
                   <td>Usage produit pseudonymisé pour améliorer Outrival (UE)</td>
                   <td>Jusqu'à 12 mois</td>
                 </tr>

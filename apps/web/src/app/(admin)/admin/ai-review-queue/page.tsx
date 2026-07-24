@@ -30,7 +30,7 @@ export default async function AiReviewQueuePage() {
     <div className="flex flex-col gap-5">
       <PageHeader
         title="AI review queue"
-        subtitle="Outputs that failed their self-check, plus the ones the faithfulness gate refused to publish. Resolve each as a confirmed hallucination or a false positive. A self-check failure stays live for the user; an item marked “Not published” was withheld — no email, no Slack, no battle card written."
+        subtitle="Outputs that failed their self-check, plus the ones the faithfulness gate refused to publish. Resolve each as a confirmed hallucination or a false positive. A self-check failure stays live for the user; an item marked “Not published” was withheld: no email, no Slack, no battle card written."
       />
 
       <Section

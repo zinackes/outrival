@@ -89,7 +89,7 @@ export function PaymentMethodDialog({
         <DialogHeader>
           <DialogTitle>Update payment method</DialogTitle>
           <DialogDescription>
-            Your card is sent straight to Stripe — it never touches our servers. The
+            Your card is sent straight to Stripe and never touches our servers. The
             new card is charged on your next invoice.
           </DialogDescription>
         </DialogHeader>

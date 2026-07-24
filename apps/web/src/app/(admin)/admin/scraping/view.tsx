@@ -116,10 +116,10 @@ export function ScrapingView({ data }: { data: AdminScrapingHealth | null }) {
       <Section
         title="Refused sources"
         note="7d"
-        info="Competitors whose sites refused us (block / challenge / robots Disallow). Under the collection doctrine we stop — we don't bypass. A high refusal rate is a product signal (find another source / accept the gap), not a bug."
+        info="Competitors whose sites refused us (block / challenge / robots Disallow). Under the collection doctrine we stop instead of bypassing. A high refusal rate is a product signal (find another source / accept the gap), not a bug."
       >
         {refused.length === 0 ? (
-          <Empty>None — no source has refused us in the last 7 days.</Empty>
+          <Empty>None. No source has refused us in the last 7 days.</Empty>
         ) : (
           <Table>
             <TableHeader>
@@ -147,7 +147,7 @@ export function ScrapingView({ data }: { data: AdminScrapingHealth | null }) {
       <Section
         title="Extraction resolution"
         note={data?.window ?? "24h"}
-        info="How pricing/jobs extractions resolved (patch-30). Structured (schema.org) and cached parser are free; self-heal and AI fallback spend an LLM call. The AI-free share is the direct arbiter of extraction cost — higher is cheaper."
+        info="How pricing/jobs extractions resolved (patch-30). Structured (schema.org) and cached parser are free; self-heal and AI fallback spend an LLM call. The AI-free share is the direct arbiter of extraction cost: higher is cheaper."
       >
         {(() => {
           const ex = data?.extraction;
@@ -227,10 +227,10 @@ export function ScrapingView({ data }: { data: AdminScrapingHealth | null }) {
 
       <Section
         title="Dead monitors"
-        info="Monitors whose last few scrape runs were all failures — likely permanently broken. Force a scrape to retry one now."
+        info="Monitors whose last few scrape runs were all failures, so they're likely permanently broken. Force a scrape to retry one now."
       >
         {dead.length === 0 ? (
-          <Empty>None — every monitor has a recent success.</Empty>
+          <Empty>None. Every monitor has a recent success.</Empty>
         ) : (
           <Table>
             <TableHeader>

@@ -514,7 +514,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
         } catch {}
         setSummaryGenerating(false);
         toast.error("Summary is taking longer than usual", {
-          description: "It may still finish in the background — check back in a moment.",
+          description: "It may still finish in the background. Check back in a moment.",
         });
         return;
       }
@@ -1385,7 +1385,7 @@ function MonitoringPausedBanner({ onResume }: { onResume: () => void }) {
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-foreground">Monitoring is paused</p>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          No sources are being scraped — the data below won&apos;t update until you
+          No sources are being scraped, so the data below won&apos;t update until you
           resume.
         </p>
       </div>
@@ -1405,7 +1405,7 @@ function PlanCapPausedBanner() {
       <PauseCircle className="h-4 w-4 shrink-0 text-medium" />
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-foreground">
-          Monitoring is paused — over your plan limit
+          Monitoring is paused, over your plan limit
         </p>
         <p className="mt-0.5 text-sm text-muted-foreground">
           This competitor is above your plan&apos;s competitor cap, so none of its

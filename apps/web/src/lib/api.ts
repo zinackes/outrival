@@ -77,8 +77,8 @@ async function safeFetch(url: string, init: RequestInit): Promise<Response> {
       0,
       { error: timedOut ? "timeout" : "network_error" },
       timedOut
-        ? "Request timed out — the server took too long to respond. Try again."
-        : "Network error — could not reach the API. Check your connection and retry.",
+        ? "Request timed out. The server took too long to respond. Try again."
+        : "Network error. Could not reach the API. Check your connection and retry.",
     );
   }
 }

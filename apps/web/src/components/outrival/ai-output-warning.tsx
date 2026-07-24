@@ -35,7 +35,7 @@ export function AiOutputWarning({ targetType, targetId, onResolved, className }:
     try {
       await api.submitQualityFeedback({ targetType, targetId, verdict: "not_useful", reason: "incorrect" });
       setDone("reported");
-      toast("Thanks — flagged as inaccurate. We'll review it.");
+      toast("Thanks, flagged as inaccurate. We'll review it.");
     } catch {
       toast.error("Couldn't save that. Try again.");
     } finally {
@@ -52,7 +52,7 @@ export function AiOutputWarning({ targetType, targetId, onResolved, className }:
         api.acknowledgeAiQuality(targetType, targetId),
       ]);
       setDone("confirmed");
-      toast("Thanks — marked as verified.");
+      toast("Thanks, marked as verified.");
       onResolved?.();
     } catch {
       toast.error("Couldn't save that. Try again.");
@@ -79,7 +79,7 @@ export function AiOutputWarning({ targetType, targetId, onResolved, className }:
           </p>
           <p className="text-muted-foreground">
             Our automatic check found parts that may not be fully supported by the source, so we
-            flagged it for review. The content is shown below — use it with care.
+            flagged it for review. The content is shown below, so use it with care.
           </p>
           {done === "reported" ? (
             <p className="text-text-subtle">Reported. Thanks for helping us improve.</p>

@@ -36,7 +36,7 @@ export function DiscoveryView({ data }: { data: AdminDiscovery | null }) {
       <Section
         title="Candidates"
         note={`${days}d`}
-        info="Competitor candidates first seen in the window. Acceptance = added / (added + dismissed) — the quality of the Exa + overlap-scoring suggestions. Avg overlap is the mean 0–100 overlap score."
+        info="Competitor candidates first seen in the window. Acceptance = added / (added + dismissed): the quality of the Exa + overlap-scoring suggestions. Avg overlap is the mean 0–100 overlap score."
       >
         {!c || c.total === 0 ? (
           <Empty>No candidates in the window.</Empty>

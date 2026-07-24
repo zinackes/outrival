@@ -140,7 +140,7 @@ export function DiscoveryView() {
     if (discoveryFresh) {
       toast.info("Already up to date", {
         description:
-          "No profile changes since the last search — new suggestions are unlikely. Edit your product profile for fresh matches.",
+          "No profile changes since the last search, so new suggestions are unlikely. Edit your product profile for fresh matches.",
         action: { label: "Search anyway", onClick: () => void runDetection() },
       });
       return;
@@ -361,7 +361,7 @@ export function DiscoveryView() {
         title="Discovery"
         sub={
           tab === "dismissed"
-            ? "Dismissed suggestions — restore any to send it back to review."
+            ? "Dismissed suggestions. Restore any to send it back to review."
             : items && items.length > 0
               ? `${items.length} new competitor${items.length > 1 ? "s" : ""} identified by Exa.ai.`
               : "Automatic detection of similar competitors by AI."

@@ -171,7 +171,7 @@ function fallbackFromError(err: unknown): boolean {
 // path instead of re-uploading the same file; null → generic fallback message.
 function unreadableDocumentMessage(err: unknown): string | null {
   if (err instanceof ApiError && (err.data as { reason?: unknown }).reason === "unreadable_document") {
-    return "We couldn't find any selectable text in that file — it looks scanned or image-based. Paste a short description instead, or upload a PDF with selectable text, a .docx, .md, or .txt.";
+    return "We couldn't find any selectable text in that file. It looks scanned or image-based. Paste a short description instead, or upload a PDF with selectable text, a .docx, .md, or .txt.";
   }
   return null;
 }
@@ -1166,7 +1166,7 @@ function ModeForm({
               <span className="text-sm text-foreground">
                 {file ? file.name : "Drop or select a file"}
               </span>
-              <span className="text-xs text-muted-foreground">PDF, DOCX, MD, TXT — max 10MB</span>
+              <span className="text-xs text-muted-foreground">PDF, DOCX, MD, TXT (max 10MB)</span>
               <input
                 id="doc-file"
                 type="file"
@@ -1264,13 +1264,13 @@ const PROFILE_FIELDS: Array<{
   {
     key: "whatItDoes",
     label: "What it does",
-    placeholder: "Concretely, what the product does — its real capabilities",
+    placeholder: "Concretely, what the product does and its real capabilities",
     multiline: true,
   },
   {
     key: "valueProp",
     label: "Value proposition",
-    placeholder: "The concrete job it does and the outcome — no filler",
+    placeholder: "The concrete job it does and the outcome, no filler",
     multiline: true,
   },
   { key: "pricingModel", label: "Pricing model", placeholder: "e.g. Freemium + Pro at $20/mo" },
@@ -1299,7 +1299,7 @@ function ProfileForm({
         Did we get your product right?
       </h1>
       <p className="text-sm text-muted-foreground mt-3">
-        Fix anything that's off — it directly improves competitor relevance.
+        Fix anything that's off. It directly improves competitor relevance.
       </p>
 
       <div className="flex items-center gap-1.5 mt-6 mb-3 text-xs text-muted-foreground">
@@ -1424,7 +1424,7 @@ function DiscoverStep({
         Your competitors
       </h1>
       <p className="text-sm text-muted-foreground mt-3">
-        Check the ones that really matter — you can add or remove more later.
+        Check the ones that really matter. You can add or remove more later.
       </p>
 
       <div className="mt-5 flex flex-wrap items-center gap-2">
@@ -1449,7 +1449,7 @@ function DiscoverStep({
           </SelectContent>
         </Select>
         <span className="text-meta text-muted-foreground w-full sm:w-auto">
-          Biases results toward a market — global players still show up.
+          Biases results toward a market. Global players still show up.
         </span>
       </div>
 
@@ -1533,7 +1533,7 @@ function DiscoverStep({
       {competitors.length > 0 && (
         <p className="mt-4 text-xs text-muted-foreground leading-relaxed">
           Competitors we found but you didn't select stay available in{" "}
-          <span className="text-foreground">Detections</span> — you can track them later
+          <span className="text-foreground">Detections</span>, and you can track them later
           (for example after a plan change).
         </p>
       )}
@@ -1569,7 +1569,7 @@ function CompetitorRow({
         disabled && "opacity-50",
       )}
       onClick={onToggle}
-      title={disabled ? "Limit reached — upgrade to add more" : competitor.reason}
+      title={disabled ? "Limit reached, upgrade to add more" : competitor.reason}
     >
       <Checkbox
         checked={competitor.selected}
@@ -1722,7 +1722,7 @@ function DoneStep({
       </h1>
       <p className="text-sm text-muted-foreground mt-3 max-w-md">
         Your competitors are being analyzed in the background. You can head to your dashboard
-        now — we'll send you a notification the moment the first analysis is ready.
+        now. We'll send you a notification the moment the first analysis is ready.
       </p>
 
       <Popover>

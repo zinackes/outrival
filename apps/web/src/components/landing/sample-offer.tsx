@@ -20,8 +20,8 @@ export function SampleOffer() {
             </h2>
             <p className="mt-3 leading-relaxed text-text-muted">
               Tell us your product and two competitors. We&apos;ll scrape them
-              and send you a real brief — the same one you&apos;d get every
-              Monday — so you can judge the signal before signing up for
+              and send you a real brief (the same one you&apos;d get every
+              Monday) so you can judge the signal before signing up for
               anything.
             </p>
             <p className="mt-2 text-sm text-text-subtle">

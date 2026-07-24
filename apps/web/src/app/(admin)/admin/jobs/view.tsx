@@ -87,11 +87,11 @@ export function JobsView({
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader title="Jobs" subtitle="Queue runs — every job, live from the pg-boss job history." />
+      <PageHeader title="Jobs" subtitle="Queue runs: every job, live from the pg-boss job history." />
 
       <Section
         title="Runs"
-        info="Live pg-boss job history — every background job with its status, duration and timestamps. Filter by status and refresh to poll the latest runs."
+        info="Live pg-boss job history: every background job with its status, duration and timestamps. Filter by status and refresh to poll the latest runs."
         action={
           <Button variant="ghost" size="sm" disabled={busy} onClick={() => reload()}>
             <RefreshCw className="mr-1.5 h-3.5 w-3.5" />

@@ -91,14 +91,14 @@ export function DemoForm({
       >
         <CheckCircle2 className="text-primary" size={28} />
         <h2 className="mt-4 text-xl font-semibold tracking-tight">
-          {isSample ? "Thanks — your brief is queued." : "Thanks — we'll be in touch."}
+          {isSample ? "Thanks, your brief is queued." : "Thanks, we'll be in touch."}
         </h2>
         <p className="mt-2 text-sm leading-relaxed text-text-muted">
           {isSample ? (
             <>
               We&apos;ll scrape the three sites you named and send the brief to{" "}
               <span className="text-foreground">{form.email}</span>. These are
-              written by hand, so give us a few days — and you&apos;ll hear back
+              written by hand, so give us a few days, and you&apos;ll hear back
               either way.
             </>
           ) : (
@@ -181,7 +181,7 @@ export function DemoForm({
             required={isSample}
             placeholder={
               isSample
-                ? "Your site, then two competitors — URLs are ideal."
+                ? "Your site, then two competitors. URLs are ideal."
                 : undefined
             }
             value={form.message}

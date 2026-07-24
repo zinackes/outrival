@@ -6,7 +6,7 @@ import type { MetadataRoute } from "next";
 // no background); the apple touch icon stays the dynamic app/apple-icon route.
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Outrival — Automated competitive intelligence",
+    name: "Outrival: Automated competitive intelligence",
     short_name: "Outrival",
     description:
       "Outrival monitors your competitors continuously and ships a strategic AI digest every week. Hosted in the EU.",

@@ -5,7 +5,7 @@ import { CONTACT, LEGAL_VERSION } from "@/lib/legal/entity";
 
 export const metadata: Metadata = pageMetadata({
   path: "/bot",
-  title: "OutrivalBot — our crawler",
+  title: "OutrivalBot, our crawler",
   description:
     "What OutrivalBot is, what it collects, how often, and exactly how to block it. Outrival collects only what is openly published and never bypasses a site's controls.",
 });
@@ -36,8 +36,8 @@ export default function BotPage() {
         <p>
           OutrivalBot is the automated crawler operated by Outrival, a
           competitive-intelligence service. It visits public web pages our
-          customers ask us to monitor — a competitor's homepage, pricing,
-          changelog, careers page, and similar — to detect changes over time.
+          customers ask us to monitor (a competitor's homepage, pricing,
+          changelog, careers page, and similar) to detect changes over time.
         </p>
         <p>
           Every request we send carries this identifiable User-Agent, which links
@@ -67,7 +67,7 @@ export default function BotPage() {
           <li>
             We <strong>do not bypass logins, paywalls, or access controls</strong>.
             If a page requires authentication or serves an anti-bot challenge, we
-            treat that as a refusal and stop — we do not attempt to work around it.
+            treat that as a refusal and stop. We do not attempt to work around it.
           </li>
           <li>
             We <strong>rate-limit</strong> ourselves per domain and honour any{" "}

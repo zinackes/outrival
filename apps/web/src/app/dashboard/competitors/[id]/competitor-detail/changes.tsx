@@ -80,7 +80,7 @@ export function ChangeCard({
       ) : (
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <p className="text-dense text-muted-foreground italic">
-            No AI summary yet — classification was never run for this change.
+            No AI summary yet. Classification was never run for this change.
           </p>
           <Button
             size="sm"
@@ -128,7 +128,7 @@ function DiffPreview({ diffText }: { diffText: string }) {
   if (lines.length === 0) {
     return (
       <p className="text-xs text-muted-foreground italic">
-        Only HTML/markup differences — nothing meaningful to display.
+        Only HTML/markup differences, nothing meaningful to display.
       </p>
     );
   }

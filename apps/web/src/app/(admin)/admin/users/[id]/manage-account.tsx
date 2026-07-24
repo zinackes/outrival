@@ -102,7 +102,7 @@ export function ManageAccount({ detail }: { detail: AdminUserDetail }) {
   return (
     <Section
       title="Manage"
-      info="Operator actions on this account: change the plan (a manual grant — does not touch Stripe), resend a sign-in link, suspend access, or permanently delete the workspace."
+      info="Operator actions on this account: change the plan (a manual grant that does not touch Stripe), resend a sign-in link, suspend access, or permanently delete the workspace."
     >
       <div className="flex flex-col gap-5">
         <div className="flex flex-col gap-2">
@@ -142,7 +142,7 @@ export function ManageAccount({ detail }: { detail: AdminUserDetail }) {
               {detail.org.hasActiveStripeSub ? (
                 <p className="flex items-start gap-1.5 text-sm text-muted-foreground">
                   <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  This org has an active Stripe subscription — a manual change is an operator
+                  This org has an active Stripe subscription, so a manual change is an operator
                   grant and may be overwritten by the next Stripe webhook.
                 </p>
               ) : null}

@@ -343,7 +343,7 @@ export function OverviewTab({
         <EmptyState
           icon={LayoutGrid}
           title="Analyzing this competitor…"
-          description="We're scanning the homepage and generating the first insights. This tab fills in automatically once it's done — no need to refresh."
+          description="We're scanning the homepage and generating the first insights. This tab fills in automatically once it's done, no need to refresh."
         />
       );
     }
@@ -351,7 +351,7 @@ export function OverviewTab({
       <EmptyState
         icon={LayoutGrid}
         title="Nothing captured yet"
-        description="Once the homepage is scraped, this is where you'll see what this competitor says about itself — positioning, value props, customers and pricing — at a glance."
+        description="Once the homepage is scraped, this is where you'll see what this competitor says about itself (positioning, value props, customers and pricing) at a glance."
         actions={
           homepageMonitor && (
             <Button size="sm" disabled={running} onClick={() => onRun(homepageMonitor.id)}>
@@ -453,7 +453,7 @@ export function OverviewTab({
                   <p className="text-content italic leading-relaxed">“{t.quote}”</p>
                   {t.author && (
                     <p className="text-xs text-muted-foreground mt-1">
-                      — {t.author}
+                      {t.author}
                     </p>
                   )}
                 </li>

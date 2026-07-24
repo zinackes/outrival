@@ -81,7 +81,7 @@ export function FeedbackWidget() {
       setOpen(false);
       reset();
     } catch {
-      toast.error("Send failed — try again in a moment");
+      toast.error("Send failed, try again in a moment");
     } finally {
       setSubmitting(false);
     }
@@ -109,7 +109,7 @@ export function FeedbackWidget() {
           <DialogHeader>
             <DialogTitle>Send feedback</DialogTitle>
             <DialogDescription>
-              Bug, idea or note — a few words is enough.
+              Bug, idea or note. A few words is enough.
             </DialogDescription>
           </DialogHeader>
 

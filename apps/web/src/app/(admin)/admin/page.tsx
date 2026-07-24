@@ -83,7 +83,7 @@ export default async function OverviewPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader title="Overview" subtitle="Internal control tower — operator allowlist only." />
+      <PageHeader title="Overview" subtitle="Internal control tower. Operator allowlist only." />
 
       <Section
         title="Platform"
@@ -118,7 +118,7 @@ export default async function OverviewPage() {
 
       <Section
         title="System"
-        info="Infrastructure health rollup — external dependencies, pg-boss job queue backlog and the dead-letter queue. Click through for the full breakdown on the System page."
+        info="Infrastructure health rollup: external dependencies, pg-boss job queue backlog and the dead-letter queue. Click through for the full breakdown on the System page."
       >
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
           <HealthTile

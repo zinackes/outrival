@@ -6,7 +6,7 @@ import { getAllPosts, formatPostDate } from "@/lib/blog";
 import { BlogShell } from "@/components/blog/blog-shell";
 
 const DESCRIPTION =
-  "Field notes on competitive intelligence — how competitors move, what the tools really cost, and how Outrival is built. Quality over volume, roughly one a month.";
+  "Field notes on competitive intelligence: how competitors move, what the tools really cost, and how Outrival is built. Quality over volume, roughly one a month.";
 
 export const metadata: Metadata = pageMetadata({
   path: "/blog",

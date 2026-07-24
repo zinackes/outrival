@@ -124,7 +124,7 @@ export function SectoralFeed({
           flush
           icon={<Globe size={18} className="text-muted-foreground" aria-hidden />}
           title="Sector trends"
-          sub="Patterns across your competitors — not single-competitor signals."
+          sub="Patterns across your competitors, not single-competitor signals."
         />
         <EmptyState
           icon={Lock}
@@ -132,7 +132,7 @@ export function SectoralFeed({
           description={
             <>
               They compare patterns across at least {eligibility.minCompetitors}{" "}
-              competitors — more than your current plan can monitor. Upgrade to{" "}
+              competitors, more than your current plan can monitor. Upgrade to{" "}
               {planLabel} to track a wider set and unlock cross-competitor trends.
             </>
           }
@@ -161,7 +161,7 @@ export function SectoralFeed({
         flush
         icon={<Globe size={18} className="text-muted-foreground" aria-hidden />}
         title="Sector trends"
-        sub="Patterns across your competitors — not single-competitor signals."
+        sub="Patterns across your competitors, not single-competitor signals."
       />
 
       <div className="flex items-center gap-2 flex-wrap">
@@ -212,7 +212,7 @@ export function SectoralFeed({
               : category !== null
                 ? "Try another category or clear the filter to see all trends."
                 : belowFloor
-                  ? `Sector trends compare patterns across your competitors — they turn on at ${floorTarget}. You're tracking ${trackedCount}.`
+                  ? `Sector trends compare patterns across your competitors, and they turn on at ${floorTarget}. You're tracking ${trackedCount}.`
                   : "Sector trends surface as patterns build across your competitors. Add more competitors to spot them sooner."
           }
           actions={

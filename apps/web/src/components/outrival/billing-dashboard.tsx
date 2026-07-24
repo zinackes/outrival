@@ -188,7 +188,7 @@ export function BillingDashboard() {
       if (plan === "free") {
         await api.downgradeToFree();
         setToast(
-          "Your plan switches to Free at the end of the billing cycle — you keep full access until then.",
+          "Your plan switches to Free at the end of the billing cycle, and you keep full access until then.",
         );
       } else {
         const res = await api.changePlan(plan as PaidPlan, period);
@@ -228,7 +228,7 @@ export function BillingDashboard() {
     setError(null);
     try {
       await api.resumeSubscription();
-      setToast("Cancellation reverted — your plan stays active.");
+      setToast("Cancellation reverted. Your plan stays active.");
       setTimeout(
         () => queryClient.invalidateQueries({ queryKey: billingQuery().queryKey }),
         1500,
@@ -302,7 +302,7 @@ export function BillingDashboard() {
             <span className="text-foreground">
               {overBy} competitor{overBy > 1 ? "s" : ""} over your{" "}
               {PLAN_LABELS[billing.plan]} limit{" "}
-              {overBy > 1 ? "are" : "is"} paused. Nothing was deleted — upgrade to
+              {overBy > 1 ? "are" : "is"} paused. Nothing was deleted. Upgrade to
               resume monitoring{overBy > 1 ? " them" : " it"}.
             </span>
             {pausedCompetitors.length > 0 && (
@@ -509,7 +509,7 @@ export function BillingDashboard() {
               Compare plans
             </h3>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              AI cost included — no usage-based billing. Yearly billing saves 17%.
+              AI cost included, no usage-based billing. Yearly billing saves 17%.
             </p>
           </div>
           <ToggleGroup
@@ -698,7 +698,7 @@ export function BillingDashboard() {
             <p className="rounded-md border border-high/40 bg-high/[0.06] px-3 py-2.5 text-sm text-foreground">
               {confirmPaused} of your {used} competitors will be paused to fit the{" "}
               {confirm ? PLAN_LABELS[confirm] : ""} limit of {confirmLimit}. Nothing
-              is deleted — they’re restored automatically if you upgrade again.
+              is deleted, and they’re restored automatically if you upgrade again.
             </p>
           )}
 

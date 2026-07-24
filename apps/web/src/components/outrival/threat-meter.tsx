@@ -30,7 +30,7 @@ export function ThreatMeter({ score }: { score: number }) {
         </span>
       </TooltipTrigger>
       <TooltipContent>
-        Threat level — severity × competitor overlap × relevance
+        Threat level: severity × competitor overlap × relevance
       </TooltipContent>
     </Tooltip>
   );

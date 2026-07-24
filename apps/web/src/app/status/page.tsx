@@ -109,7 +109,7 @@ export default async function StatusPage() {
             <time dateTime={status.checkedAt}>
               {new Date(status.checkedAt).toISOString().replace("T", " ").slice(0, 16)} UTC
             </time>
-            . &ldquo;Unknown&rdquo; means nothing was due in the last hour — not
+            . &ldquo;Unknown&rdquo; means nothing was due in the last hour, not
             that something is wrong.
           </>
         ) : (

@@ -33,7 +33,7 @@ const STATUS_META: Record<PricingStatus, { label: string; blurb: string }> = {
     label: "Partially public",
     blurb: "Some tiers are public; the top tier is sales-gated.",
   },
-  gated_demo: { label: "Demo-gated", blurb: "No public prices — sales/demo required." },
+  gated_demo: { label: "Demo-gated", blurb: "No public prices, sales/demo required." },
   gated_signup: { label: "Signup-gated", blurb: "Pricing is hidden behind an account." },
   dynamic: { label: "Usage-based", blurb: "Interactive calculator / usage-based pricing." },
   unknown: { label: "Unknown", blurb: "Automatic detection was inconclusive." },
@@ -91,7 +91,7 @@ export function CompetitorPricingCard({
   const blurb = tiersMissing
     ? isCapturing
       ? null
-      : "We couldn't capture structured tiers from this page automatically — add them with Edit."
+      : "We couldn't capture structured tiers from this page automatically. Add them with Edit."
     : (competitor.pricingNote ?? (status === "public" ? null : meta.blurb));
 
   async function redetect() {

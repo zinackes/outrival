@@ -14,7 +14,7 @@ const ENTRIES = [
     version: "v0.7.0",
     date: "June 2026",
     items: [
-      "Staged extraction pipeline — structured-first parsing keeps AI on the cold path.",
+      "Staged extraction pipeline: structured-first parsing keeps AI on the cold path.",
       "Automatic platform detection routes each source to its structured connector.",
       "Expanded source coverage: more ATS connectors, multi-platform reviews, Reddit mentions.",
     ],
@@ -23,7 +23,7 @@ const ENTRIES = [
     version: "v0.6.0",
     date: "May 2026",
     items: [
-      "Ask Outrival — query your competitive data in natural language.",
+      "Ask Outrival: query your competitive data in natural language.",
       "Multi-product workspaces for teams tracking several SKUs.",
       "Notification moderation: relevance threshold, quiet hours, batching.",
     ],

@@ -24,7 +24,7 @@ const FAMILIES: {
   {
     title: "The public product",
     stat: "≈60% of signals",
-    desc: "Everything they show their own prospects — the densest layer.",
+    desc: "Everything they show their own prospects, the densest layer.",
     sources: [
       { icon: Globe, label: "Homepage", meta: "positioning" },
       { icon: Tag, label: "Pricing page", meta: "plans · prices" },
@@ -36,7 +36,7 @@ const FAMILIES: {
   {
     title: "The users",
     stat: "2 platforms",
-    desc: "What their actual customers say — score, volume, and how it's trending.",
+    desc: "What their actual customers say: score, volume, and how it's trending.",
     sources: [
       { icon: Star, label: "App Store", meta: "reviews" },
       { icon: Star, label: "Trustpilot", meta: "score · trend" },
@@ -45,7 +45,7 @@ const FAMILIES: {
   {
     title: "Hiring & momentum",
     stat: "weeks of lead",
-    desc: "The earliest indicators of strategic moves — often before the announcement.",
+    desc: "The earliest indicators of strategic moves, often before the announcement.",
     sources: [
       { icon: Briefcase, label: "Job postings", meta: "roles" },
       { icon: Cpu, label: "Tech stack", meta: "payments · CRM" },
@@ -65,7 +65,7 @@ export function Sources() {
           <p className="mt-5 max-w-2xl leading-relaxed text-text-muted">
             Every public surface a competitor has, grouped into families. We
             respect robots.txt, identify our crawler on every request, and collect
-            only what a site publishes openly — never bypassing a block, login, or
+            only what a site publishes openly, never bypassing a block, login, or
             paywall. Everything is stored in the EU and diffed against its previous
             state.
           </p>

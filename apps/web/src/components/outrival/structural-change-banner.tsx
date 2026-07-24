@@ -75,7 +75,7 @@ export function StructuralChangeBanner() {
                     onClick={() => resolve(change, "confirmed_paused")}
                     disabled={busyId === change.id}
                   >
-                    Correct — pause monitoring
+                    Correct, pause monitoring
                   </Button>
                   <Button
                     size="sm"
@@ -83,7 +83,7 @@ export function StructuralChangeBanner() {
                     onClick={() => resolve(change, "false_positive")}
                     disabled={busyId === change.id}
                   >
-                    False positive — keep watching
+                    False positive, keep watching
                   </Button>
                   <Button asChild size="sm" variant="ghost">
                     <Link href={`/dashboard/competitors/${change.competitorId}`}>Open competitor</Link>

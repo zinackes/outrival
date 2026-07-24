@@ -74,7 +74,7 @@ export function ChangeProductUrlDialog({
           <DialogTitle>Change product URL</DialogTitle>
           <DialogDescription>
             Update the site we monitor for your product. We&apos;ll re-scan it and refresh your
-            profile automatically — your competitors and tracked data are kept.
+            profile automatically, and your competitors and tracked data are kept.
           </DialogDescription>
         </DialogHeader>
         <form

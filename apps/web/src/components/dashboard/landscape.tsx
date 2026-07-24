@@ -143,7 +143,7 @@ function WaitEmptyState({ competitorCount }: { competitorCount: number }) {
     <EmptyState
       icon={Radar}
       title={`Outrival is watching ${competitorCount} competitor${competitorCount > 1 ? "s" : ""}`}
-      description="Scans run continuously. Your first signals — pricing, hiring, product and content moves — land here the moment something changes."
+      description="Scans run continuously. Your first signals (pricing, hiring, product and content moves) land here the moment something changes."
       actions={
         <Button asChild size="sm" variant="outline">
           <Link href="/dashboard/competitors">
@@ -286,7 +286,7 @@ function SourcesCoverage({
                 {competitor.name}
               </span>
               <span className="text-muted-foreground">
-                · {SOURCE_LABELS[sourceType] ?? sourceType.replace(/_/g, " ")} —
+                · {SOURCE_LABELS[sourceType] ?? sourceType.replace(/_/g, " ")}:
                 couldn&apos;t reach it
               </span>
             </div>
@@ -334,7 +334,7 @@ function SourcesCoverage({
           })}
           <p className="border-t border-border px-4 py-3 text-sm text-muted-foreground">
             A signal appears when something actually changes on one of these
-            sources — we can&apos;t predict when a competitor moves, only that
+            sources. We can&apos;t predict when a competitor moves, only that
             we&apos;ll catch it.
           </p>
         </div>

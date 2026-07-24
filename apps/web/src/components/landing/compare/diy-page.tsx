@@ -156,7 +156,7 @@ export function DiyPage() {
       <section className="mx-auto w-full max-w-6xl px-6 py-16 sm:py-20">
         <SectionHead
           title="The hidden costs of rolling your own"
-          lead="The cash cost of the DIY stack is low. The real bill is time and judgement — the work the tools hand back to you."
+          lead="The cash cost of the DIY stack is low. The real bill is time and judgement: the work the tools hand back to you."
         />
         <div className="mt-10 grid gap-4 sm:grid-cols-2">
           {DIY.hiddenCosts.map((h) => (
@@ -178,7 +178,7 @@ export function DiyPage() {
         <div className="mx-auto w-full max-w-6xl px-6">
           <SectionHead
             title="When doing it yourself is the right call"
-            lead="We'd rather tell you than sell you. In these cases the free DIY tools are the honest answer — don't buy a subscription you don't need yet."
+            lead="We'd rather tell you than sell you. In these cases the free DIY tools are the honest answer. Don't buy a subscription you don't need yet."
           />
           <ul className="mt-10 grid gap-4 lg:grid-cols-3">
             {DIY.whenDiyWins.map((w) => (
@@ -211,7 +211,7 @@ export function DiyPage() {
             </h2>
             <p className="mt-4 max-w-xl leading-relaxed text-text-muted">
               Add two competitors on the free plan and get your first AI-written
-              brief this week — no selectors to maintain, no diffs to read.
+              brief this week, with no selectors to maintain and no diffs to read.
             </p>
             <div className="mt-7 flex flex-wrap items-center gap-3">
               <Button asChild size="lg">
@@ -273,7 +273,7 @@ export function DiyPage() {
               .
             </p>
             <p className="mt-2">
-              Outrival offers EU data storage — see our{" "}
+              Outrival offers EU data storage, see our{" "}
               <Link
                 href="/security"
                 className="underline-offset-2 hover:text-foreground hover:underline"

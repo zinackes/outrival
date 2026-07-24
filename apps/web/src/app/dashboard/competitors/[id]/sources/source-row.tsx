@@ -27,6 +27,7 @@ import {
   SourceStatusIcon,
   monitorStatus,
   nextScanLabel,
+  nextScanIn,
   lastScanLabel,
 } from "../competitor-detail/monitor-status";
 import { sourceCopy, isConcerning } from "./source-copy";
@@ -223,10 +224,6 @@ export function SourceRow({
     minPlanLabel: PLAN_LABELS[minPlanForSource(sourceType)],
     freshness: monitor ? lastScanLabel(monitor, status) : undefined,
   });
-  const nextScan =
-    monitor && (state === "tracking" || state === "pending")
-      ? nextScanLabel(monitor, status, monitoringPaused)
-      : null;
   const currentUrl = monitor?.config?.url ?? "";
   // Sources that live on a fixed third-party host can't be derived from the
   // competitor's site, so the API rejects an enable with no URL (`repo_url_required`
@@ -242,6 +239,11 @@ export function SourceRow({
   // What the drawer can actually show. A source with no monitor row has no cadence
   // and no on/off — only the question of which page to watch.
   const canSchedule = !!monitor && (state === "tracking" || state === "pending");
+  // "Weekly" alone doesn't answer the question the user actually has, which is when
+  // we look next. The long form goes in the drawer beside the cadence buttons; the
+  // bare phrase rides next to the cadence word on the closed row.
+  const nextScan = canSchedule ? nextScanLabel(monitor, status, monitoringPaused) : null;
+  const nextScanShort = canSchedule ? nextScanIn(monitor, status, monitoringPaused) : null;
   const canToggle = !!monitor && state !== "not_available";
   const showUrlField = copy.action !== "upgrade";
   // "Point us at one" and "Turn on" both submit the same thing, but only the first
@@ -296,7 +298,12 @@ export function SourceRow({
   return (
     <div
       data-open={open || undefined}
-      className={cn("group/row transition-colors", open && "bg-surface-2")}
+      className={cn(
+        "group/row transition-colors",
+        // A row is a disclosure, so it answers the pointer with a lighter wash of
+        // the surface it will settle on once open.
+        open ? "bg-surface-2" : expandable && "hover:bg-surface-2/50",
+      )}
     >
       <div className="flex items-center gap-3 px-4 py-2">
         <button
@@ -317,7 +324,16 @@ export function SourceRow({
             <span className="h-2 w-2 shrink-0 rounded-full border border-muted-foreground/40" />
           )}
           <span className="w-[132px] shrink-0 truncate text-sm font-medium">{label}</span>
-          <span className={cn("min-w-0 flex-1 truncate text-sm", TONE_CLASS[copy.tone])}>
+          {/* "Scanned 2 days ago" is a status stamp, not prose: it sits a step below
+              the messages that ask something of the user (blocked, broken, locked),
+              which stay at reading size. */}
+          <span
+            className={cn(
+              "min-w-0 flex-1 truncate",
+              canSchedule ? "text-xs" : "text-sm",
+              TONE_CLASS[copy.tone],
+            )}
+          >
             {copy.message}
           </span>
         </button>
@@ -386,6 +402,9 @@ export function SourceRow({
           {canSchedule && (
             <span className="hidden text-xs capitalize tabular-nums text-muted-foreground sm:inline">
               {monitor.frequency}
+              {nextScanShort && (
+                <span className="normal-case text-muted-foreground"> · {nextScanShort}</span>
+              )}
             </span>
           )}
 
@@ -456,8 +475,19 @@ export function SourceRow({
                         </Button>
                       );
                     })}
+
+                    {/* Keyed on its own text, so picking another cadence replays the
+                        fade: the answer to "and when next?" arrives one refetch after
+                        the click, and this is what tells the user it landed. */}
+                    {nextScan && (
+                      <span
+                        key={nextScan}
+                        className="ml-2 text-xs text-muted-foreground duration-300 ease-out animate-in fade-in-0 slide-in-from-right-1 motion-reduce:animate-none"
+                      >
+                        {nextScan}
+                      </span>
+                    )}
                   </div>
-                  {nextScan && <p className="mt-1.5 text-xs text-muted-foreground">{nextScan}</p>}
                 </div>
               )}
 

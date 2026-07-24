@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { formatDistanceToNow } from "date-fns";
 import { classifyLogoName, type AnalysisStatus } from "@outrival/shared";
 import { toast } from "sonner";
 import {
@@ -10,8 +11,7 @@ import {
   FileText,
   Users,
   LayoutGrid,
-  DollarSign,
-  Briefcase,
+  Megaphone,
   Star,
   Loader2,
   Play,
@@ -19,12 +19,14 @@ import {
 } from "lucide-react";
 import {
   api,
+  type CompetitorSignal,
   type CompetitorOverview,
   type Monitor,
   type PricingStatus,
   type TechStackData,
 } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -41,34 +43,55 @@ import {
 } from "@/components/ui/sheet";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { CompetitorTechStack } from "@/components/outrival/competitor-tech-stack";
-import { Eyebrow } from "@/components/outrival/eyebrow";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
 import { formatTierPrice, logoLabel, isRenderableLogoSrc } from "./helpers";
 import type { TabKey } from "./types";
 
-function OverviewStat({
-  icon: Icon,
+/**
+ * One cell of the headline strip. The old "At a glance" spread three items across
+ * the full page width, so a four-line price list floated alone in a dark field and
+ * two of the three cells read "Not captured". These are dense, evenly divided, and
+ * every one of them is a link into the tab that owns the number.
+ */
+function Metric({
   label,
   onClick,
   children,
+  foot,
 }: {
-  icon: typeof Activity;
   label: string;
   onClick: () => void;
   children: React.ReactNode;
+  foot?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-2">
-      <button
-        type="button"
-        onClick={onClick}
-        className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors w-fit"
-      >
-        <Icon size={11} /> {label} <ChevronRight size={11} />
-      </button>
-      <div>{children}</div>
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex flex-col gap-1.5 border-border p-4 text-left transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset [&:not(:nth-child(2n+1))]:border-l sm:border-l sm:first:border-l-0"
+    >
+      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+        {label}
+        <ChevronRight size={11} className="opacity-60" aria-hidden />
+      </span>
+      <span className="block">{children}</span>
+      {foot && <span className="flex min-h-4 items-center gap-1.5 text-xs">{foot}</span>}
+    </button>
   );
+}
+
+/** A number that carries the reading, in the data voice. */
+function Big({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="font-mono text-2xl font-semibold leading-none tracking-tight tabular-nums">
+      {children}
+    </span>
+  );
+}
+
+/** An absence. Never a bare "Not captured", which reads as a scrape failure. */
+function Absent({ children }: { children: React.ReactNode }) {
+  return <span className="text-sm text-muted-foreground">{children}</span>;
 }
 
 function LogoChip({ logo }: { logo: { name: string | null; src: string | null } }) {
@@ -200,6 +223,7 @@ type PersistedTranslation = { translated: TranslatedFacts; showOriginal: boolean
 export function OverviewTab({
   competitorId,
   overview,
+  signals,
   monitors,
   scrapingIds,
   analysis,
@@ -211,6 +235,8 @@ export function OverviewTab({
 }: {
   competitorId: string;
   overview: CompetitorOverview;
+  /** Already loaded by the page; the 30-day count costs no extra query. */
+  signals: CompetitorSignal[];
   monitors: Monitor[];
   techStack: TechStackData;
   scrapingIds: Set<string>;
@@ -225,7 +251,32 @@ export function OverviewTab({
   onRun: (id: string) => void;
   onOpenTab: (tab: TabKey) => void;
 }) {
-  const { homepage, numericClaims, pricingNow, reviews, hiring } = overview;
+  const { homepage, numericClaims, pricingNow, reviews, hiring, capturedAt } = overview;
+
+  // Entry price = the cheapest captured tier with a real number. Quote-based tiers
+  // carry no figure, so they never win the "entry" slot.
+  const entryTier = pricingNow
+    .filter((p) => p.price != null && p.price > 0)
+    .sort((a, b) => (a.price ?? 0) - (b.price ?? 0))[0];
+
+  // Signals are already in the page payload, so the 30-day count and its severity
+  // split cost no extra query. This is the one cell that shows a rate rather than a
+  // level, which is what a monitoring product is actually selling.
+  const recent = signals.filter(
+    (sig) => Date.now() - new Date(sig.createdAt).getTime() < 30 * 86_400_000,
+  );
+  const bands = { critical: 0, high: 0, medium: 0, low: 0 };
+  for (const sig of recent) bands[sig.severity] += 1;
+  const worstBand =
+    bands.critical > 0
+      ? { n: bands.critical, label: "critical", cls: "bg-critical" }
+      : bands.high > 0
+        ? { n: bands.high, label: "high", cls: "bg-high" }
+        : bands.medium > 0
+          ? { n: bands.medium, label: "medium", cls: "bg-medium" }
+          : null;
+
+  const topReview = reviews[0];
 
   // When no price tier is captured but the page does state its pricing model — a
   // usage-based calculator or a sales-gated wall — surface that note rather than
@@ -373,6 +424,81 @@ export function OverviewTab({
 
   return (
     <TabCard>
+      {/* The headline numbers, evenly divided and each one a way into its tab. */}
+      <div className="grid grid-cols-2 sm:grid-cols-4">
+        <Metric
+          label="Entry price"
+          onClick={() => onOpenTab("pricing")}
+          foot={
+            pricingNow.length > 1 ? (
+              <span className="text-muted-foreground">
+                {pricingNow.length} tiers captured
+              </span>
+            ) : undefined
+          }
+        >
+          {entryTier ? (
+            <Big>{formatTierPrice(entryTier)}</Big>
+          ) : pricingModelNote ? (
+            <Absent>{pricingModelNote}</Absent>
+          ) : (
+            <Absent>No public price</Absent>
+          )}
+        </Metric>
+
+        <Metric
+          label="Open roles"
+          onClick={() => onOpenTab("hiring")}
+          foot={
+            hiring.openRoles > 0 ? (
+              <span className="text-muted-foreground">across their board</span>
+            ) : undefined
+          }
+        >
+          {hiring.openRoles > 0 ? <Big>{hiring.openRoles}</Big> : <Absent>None open</Absent>}
+        </Metric>
+
+        <Metric
+          label={topReview ? `${topReview.source} rating` : "Reviews"}
+          onClick={() => onOpenTab("reviews")}
+          foot={
+            topReview ? (
+              <span className="font-mono tabular-nums text-muted-foreground">
+                {topReview.review_count} reviews
+              </span>
+            ) : undefined
+          }
+        >
+          {topReview ? (
+            <span className="inline-flex items-baseline gap-1">
+              <Big>{topReview.score.toFixed(1)}</Big>
+              <Star className="size-3.5 translate-y-px fill-current text-muted-foreground" />
+            </span>
+          ) : (
+            <Absent>Not tracked yet</Absent>
+          )}
+        </Metric>
+
+        <Metric
+          label="Signals, 30 days"
+          onClick={() => onOpenTab("activity")}
+          foot={
+            worstBand ? (
+              <>
+                <span aria-hidden className={cn("size-1.5 rounded-full", worstBand.cls)} />
+                <span className="text-muted-foreground">
+                  {worstBand.n} {worstBand.label}
+                </span>
+              </>
+            ) : recent.length > 0 ? (
+              <span className="text-muted-foreground">all low</span>
+            ) : undefined
+          }
+        >
+          {recent.length > 0 ? <Big>{recent.length}</Big> : <Absent>Nothing moved</Absent>}
+        </Metric>
+      </div>
+
       {isForeign && (
         <div className="flex items-center gap-2 px-5 py-1.5">
           <Badge variant="outline" className="uppercase">
@@ -408,9 +534,23 @@ export function OverviewTab({
       )}
 
       {homepage && (dHeadline || dSubheadline) && (
-        <TabSection>
+        <TabSection
+          title="How they position"
+          icon={Megaphone}
+          action={
+            capturedAt && (
+              <span className="shrink-0 text-xs text-muted-foreground">
+                Homepage, captured{" "}
+                {formatDistanceToNow(new Date(capturedAt), { addSuffix: true })}
+              </span>
+            )
+          }
+        >
+          {/* Attributed and set as quoted material. Rendered bare at 17px in the
+              competitor's own casing, a scraped headline read as an Outrival
+              section title rather than as something they wrote. */}
           {dHeadline && (
-            <p className="text-lead font-semibold leading-snug tracking-tight text-balance">
+            <p className="text-xl font-semibold leading-snug tracking-tight text-balance">
               {dHeadline}
             </p>
           )}
@@ -474,63 +614,6 @@ export function OverviewTab({
           </div>
         </TabSection>
       )}
-
-      <TabSection title="At a glance" icon={LayoutGrid}>
-      <div className="grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-3">
-        <OverviewStat icon={DollarSign} label="Pricing now" onClick={() => onOpenTab("pricing")}>
-          {pricingNow.length > 0 ? (
-            <ul className="flex flex-col gap-0.5">
-              {pricingNow.slice(0, 4).map((p, i) => (
-                <li
-                  key={i}
-                  className="text-dense flex items-baseline justify-between gap-2"
-                >
-                  <span className="truncate">{p.plan_name}</span>
-                  <span className="font-mono tabular-nums shrink-0">{formatTierPrice(p)}</span>
-                </li>
-              ))}
-            </ul>
-          ) : pricingModelNote ? (
-            <span className="text-dense text-muted-foreground">{pricingModelNote}</span>
-          ) : (
-            <span className="text-dense text-muted-foreground">Not captured</span>
-          )}
-        </OverviewStat>
-
-        <OverviewStat icon={Briefcase} label="Open roles" onClick={() => onOpenTab("hiring")}>
-          {hiring.openRoles > 0 ? (
-            <span className="text-title-lg font-bold font-mono tabular-nums leading-none">
-              {hiring.openRoles}
-            </span>
-          ) : (
-            <span className="text-dense text-muted-foreground">None tracked</span>
-          )}
-        </OverviewStat>
-
-        <OverviewStat icon={Star} label="Reviews" onClick={() => onOpenTab("reviews")}>
-          {reviews.length > 0 ? (
-            <div className="flex flex-col gap-0.5">
-              {reviews.slice(0, 2).map((r, i) => (
-                <div
-                  key={i}
-                  className="text-dense flex items-baseline justify-between gap-2"
-                >
-                  <Eyebrow size="micro">{r.source}</Eyebrow>
-                  <span className="inline-flex items-center gap-0.5 font-mono tabular-nums">
-                    {r.score.toFixed(1)}
-                    <Star className="size-3 fill-current" />
-                    <span className="text-muted-foreground">({r.review_count})</span>
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <span className="text-dense text-muted-foreground">Not captured</span>
-          )}
-        </OverviewStat>
-      </div>
-
-      </TabSection>
 
       <TechStackCard techStack={techStack} />
     </TabCard>

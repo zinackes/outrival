@@ -725,6 +725,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
               <OverviewTab
                 competitorId={competitor.id}
                 overview={overview}
+                signals={recentSignals}
                 monitors={monitors}
                 scrapingIds={scrapingIds}
                 analysis={analysis}

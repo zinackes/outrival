@@ -52,6 +52,8 @@ const SOURCE_LABELS: Record<string, string> = {
   docs: "Developer docs",
   // User-watched arbitrary page on the competitor's domain ("Watch a custom page").
   custom: "Custom page",
+  // Public roadmap / feedback portal (pro+): Canny or ProductBoard.
+  roadmap: "Roadmap portal",
 };
 
 export function sourceLabel(sourceType: string | null | undefined): string {
@@ -93,6 +95,7 @@ export const SOURCE_SHORT_LABELS: Record<SourceType, string> = {
   comparison_page: "Comparison page",
   docs: "Developer docs",
   custom: "Custom page",
+  roadmap: "Roadmap portal",
 };
 
 export function sourceShortLabel(sourceType: string | null | undefined): string {

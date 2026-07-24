@@ -15,6 +15,7 @@ import * as hackernews from "./hackernews/hackernews.scraper";
 import * as wellknown from "./wellknown/wellknown.scraper";
 import * as docs from "./docs/docs.scraper";
 import * as custom from "./custom/custom.scraper";
+import * as roadmap from "./roadmap/roadmap.scraper";
 import type { SourceType } from "@outrival/shared";
 import type { ScrapeOptions, ScrapeOutcome } from "./types";
 
@@ -50,6 +51,10 @@ const scrapers: Partial<Record<SourceType, ScraperFn>> = {
   // the docs sitemap's page list. Pure fetch, no browser cascade, no AI.
   docs: docs.scrape,
   custom: custom.scrape,
+  // Public roadmap / feedback portal (pro+): Canny's SSR'd state island or
+  // ProductBoard's unauthenticated portal API → a listing sorted by stable entry id.
+  // Pure fetch, no browser cascade, no AI.
+  roadmap: roadmap.scrape,
 };
 
 export function getScraper(sourceType: SourceType): ScraperFn {

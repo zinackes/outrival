@@ -29,6 +29,19 @@ const ATS_BRANDS = new Set([
   "workday", // myworkdayjobs.com
 ]);
 
+/**
+ * Registrable brands of the roadmap/feedback portal vendors. A competitor's public
+ * roadmap legitimately lives off their own domain (`acme.canny.io`,
+ * `portal.productboard.com/pb/acme`) — the same off-domain exception the ATS hosts
+ * get for `jobs`, and just as SSRF-safe (a fixed, public host list). A portal on the
+ * competitor's OWN domain (feedback.acme.com, a Canny custom domain) still passes
+ * through the normal same-brand check.
+ */
+const ROADMAP_BRANDS = new Set([
+  "canny", // {brand}.canny.io
+  "productboard", // portal.productboard.com/{path}
+]);
+
 export type MonitorUrlValidation =
   | { ok: true; url: string }
   | { ok: false; error: string };
@@ -114,7 +127,10 @@ export function validateMonitorUrl(
   // — the same off-domain exception the ATS hosts get for `jobs`, and just as
   // SSRF-safe (one fixed, public host).
   const repoAllowed = sourceType === "github_repo" && urlBrand === "github";
-  if (!sameBrand && !atsAllowed && !repoAllowed) return { ok: false, error: "host_not_allowed" };
+  const roadmapAllowed = sourceType === "roadmap" && ROADMAP_BRANDS.has(urlBrand);
+  if (!sameBrand && !atsAllowed && !repoAllowed && !roadmapAllowed) {
+    return { ok: false, error: "host_not_allowed" };
+  }
 
   return { ok: true, url: parsed.toString() };
 }

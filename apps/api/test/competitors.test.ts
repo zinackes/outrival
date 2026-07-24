@@ -143,6 +143,53 @@ describe("competitors enable-monitor gating", () => {
     expect(rows).toHaveLength(1);
   });
 
+  test("roadmap is pro+, and its URL override may point at the portal vendor's host", async () => {
+    // The portal is off-domain by construction (acme.canny.io,
+    // portal.productboard.com/…), so validateMonitorUrl grants `roadmap` a brand
+    // exception — the same one `jobs` gets for ATS hosts. Without it the override
+    // every user would paste is rejected as host_not_allowed.
+    const locked = await enable(A.userId, A.email, "comp-a", "roadmap");
+    expect(locked.status).toBe(403);
+    expect((await locked.json()).error).toBe("plan_locked_source");
+
+    const P = await seedOrg(testDb, { plan: "pro" });
+    await testDb
+      .insert(competitors)
+      .values({ id: "comp-p", orgId: P.orgId, name: "Acme Pro", url: "https://acme.example" });
+
+    const withPortal = await app.request(
+      `/api/competitors/comp-p/monitors`,
+      asUser(P.userId, P.email, {
+        method: "POST",
+        body: JSON.stringify({ sourceType: "roadmap", url: "https://acme.canny.io/" }),
+      }),
+    );
+    expect(withPortal.status).toBe(201);
+    const created = (await withPortal.json()).monitor as {
+      config: { url: string };
+      frequency: string;
+    };
+    expect(created.config).toEqual({ url: "https://acme.canny.io/" });
+    // Portal statuses move on sprint cadence and the vote bands ignore drift, so a
+    // daily read would spend requests to observe nothing.
+    expect(created.frequency).toBe("weekly");
+
+    // The exception is scoped to the two vendors — any other off-domain host is still
+    // refused, so `roadmap` cannot become a general-purpose off-domain fetcher.
+    await testDb
+      .insert(competitors)
+      .values({ id: "comp-p2", orgId: P.orgId, name: "Acme Pro 2", url: "https://acme.example" });
+    const foreign = await app.request(
+      `/api/competitors/comp-p2/monitors`,
+      asUser(P.userId, P.email, {
+        method: "POST",
+        body: JSON.stringify({ sourceType: "roadmap", url: "https://evil.example/roadmap" }),
+      }),
+    );
+    expect(foreign.status).toBe(400);
+    expect((await foreign.json()).error).toBe("invalid_monitor_url");
+  });
+
   test("github_repo needs an explicit repo URL, and accepts github.com", async () => {
     // Nothing discovers a competitor's repo, so without a URL the scraper can only
     // throw; and the repo lives off the competitor's own domain by definition.

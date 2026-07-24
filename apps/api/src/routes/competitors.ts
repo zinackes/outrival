@@ -550,8 +550,13 @@ const AddMonitorSchema = z.object({
 // Clamped to a plan-allowed frequency below (weekly is allowed on every plan).
 function defaultFrequencyFor(source: SourceType): MonitorFrequency {
   // `docs` joins the weekly set: documentation moves on release cycles, and a run
-  // costs a sitemap walk plus a capped batch of page fetches.
-  return source.endsWith("_reviews") || source === "trustpilot_public" || source === "docs"
+  // costs a sitemap walk plus a capped batch of page fetches. `roadmap` too — a
+  // portal's statuses move on sprint cadence, and the vote bands are built to ignore
+  // day-to-day drift, so a daily read would spend requests to observe nothing.
+  return source.endsWith("_reviews") ||
+    source === "trustpilot_public" ||
+    source === "docs" ||
+    source === "roadmap"
     ? "weekly"
     : "daily";
 }

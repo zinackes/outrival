@@ -23,7 +23,9 @@ export function ChangeLedger({
   const delta = parseDelta(before, after);
 
   return (
-    <div className="rounded-md border border-border bg-surface-2 px-5 py-4">
+    // Boxless: the detail pane's margin rail already frames this beat, and the
+    // action block below is meant to be the one filled object in the document.
+    <div>
       {delta ? (
         <>
           <div className="flex flex-wrap items-end gap-x-5 gap-y-3">

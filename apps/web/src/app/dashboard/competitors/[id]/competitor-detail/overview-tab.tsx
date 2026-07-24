@@ -26,6 +26,7 @@ import {
   type TechStackData,
 } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -423,9 +424,11 @@ export function OverviewTab({
   }
 
   return (
-    <TabCard>
-      {/* The headline numbers, evenly divided and each one a way into its tab. */}
-      <div className="grid grid-cols-2 sm:grid-cols-4">
+    <div className="flex flex-col gap-4">
+      {/* The headline numbers, evenly divided and each one a way into its tab.
+          Their own card: they answer "how are they doing", the sheet below
+          answers "who are they", and merging the two lost that seam. */}
+      <Card className="grid grid-cols-2 overflow-hidden rounded-lg sm:grid-cols-4">
         <Metric
           label="Entry price"
           onClick={() => onOpenTab("pricing")}
@@ -497,8 +500,9 @@ export function OverviewTab({
         >
           {recent.length > 0 ? <Big>{recent.length}</Big> : <Absent>Nothing moved</Absent>}
         </Metric>
-      </div>
+      </Card>
 
+      <TabCard>
       {isForeign && (
         <div className="flex items-center gap-2 px-5 py-1.5">
           <Badge variant="outline" className="uppercase">
@@ -616,7 +620,8 @@ export function OverviewTab({
       )}
 
       <TechStackCard techStack={techStack} />
-    </TabCard>
+      </TabCard>
+    </div>
   );
 }
 

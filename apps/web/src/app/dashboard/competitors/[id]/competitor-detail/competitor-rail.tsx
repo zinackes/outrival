@@ -119,9 +119,11 @@ export function CompetitorRail({
   // minute ago shouldn't read as "blocked, and nothing else".
   const fallbacks = [...coverage.tracked, ...coverage.pending];
 
+  // `top` clears the 52px sticky topbar plus the page gutter, so a pinned card
+  // parks below the header instead of sliding under its blur.
   return (
-    <aside className="flex flex-col gap-4 lg:sticky lg:top-4">
-      <Card className="overflow-hidden">
+    <aside className="flex flex-col gap-4 lg:sticky lg:top-[4.25rem]">
+      <Card className="overflow-hidden rounded-lg">
         <div className="flex items-center justify-between gap-2 px-4 pt-3.5 pb-2">
           <h3 className="text-content font-semibold leading-tight tracking-tight">Sources</h3>
           {monitors.length > 0 && (
@@ -223,7 +225,7 @@ function RailSummary({
 
   if (!competitor.aiSummary) {
     return (
-      <Card className="flex flex-col gap-2.5 border-dashed px-4 py-3.5">
+      <Card className="flex flex-col gap-2.5 rounded-lg border-dashed px-4 py-3.5">
         <div className="flex items-start gap-2 text-sm text-muted-foreground">
           <Sparkles size={13} className="mt-0.5 shrink-0" />
           <span>No summary yet.</span>
@@ -243,7 +245,7 @@ function RailSummary({
   }
 
   return (
-    <Card className="flex flex-col gap-2.5 px-4 py-3.5">
+    <Card className="flex flex-col gap-2.5 rounded-lg px-4 py-3.5">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-content font-semibold leading-tight tracking-tight">Summary</h3>
         {updatedAt && (

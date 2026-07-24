@@ -2,8 +2,8 @@
 
 import {
   ResponsiveContainer,
-  LineChart,
-  Line,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   Tooltip as ChartTooltip,
@@ -20,10 +20,21 @@ const TOOLTIP_STYLE = {
 } as const;
 
 /**
- * Shared multi-series line chart for the pricing / reviews / hiring tabs (all
- * plot one or more series over a "date" X axis). Isolated in its own module so
- * the tabs can lazy-load it with `next/dynamic` and keep recharts (~heavy,
- * client-only) off each route's first-load bundle (F7).
+ * Shared multi-series chart for the pricing / reviews / hiring tabs (all plot one
+ * or more series over a "date" X axis). Isolated in its own module so the tabs can
+ * lazy-load it with `next/dynamic` and keep recharts (heavy, client-only) off each
+ * route's first-load bundle (F7).
+ *
+ * It was a bare LineChart: a full dotted grid boxing the plot in both directions,
+ * a flat stroke with nothing under it, and no way to tell the latest capture from
+ * the rest of the series. Three changes, no new dependency:
+ *
+ *   - a faint gradient under each series, so the shape reads as a quantity rather
+ *     than as a wire, and a single series stops looking like a stray line;
+ *   - horizontal rules only, since vertical ones fence the data without helping
+ *     anyone read a value off it;
+ *   - an emphasised endpoint, because on a monitoring chart the newest capture is
+ *     the one the reader came for.
  */
 export function MultiLineChart({
   data,
@@ -40,30 +51,72 @@ export function MultiLineChart({
   yAllowDecimals?: boolean;
   dot?: boolean;
 }) {
+  const lastIndex = data.length - 1;
+
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <LineChart data={data}>
-        <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
-        <XAxis dataKey="date" stroke="var(--muted)" fontSize={11} />
+      <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+        <defs>
+          {seriesKeys.map((k, i) => (
+            <linearGradient key={k} id={`fill-${i}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={lineColor(i)} stopOpacity={0.18} />
+              <stop offset="100%" stopColor={lineColor(i)} stopOpacity={0} />
+            </linearGradient>
+          ))}
+        </defs>
+        {/* Horizontal only: a vertical rule per capture fences the plot without
+            helping anyone read a value off it. */}
+        <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
+        <XAxis
+          dataKey="date"
+          stroke="var(--muted)"
+          fontSize={11}
+          tickLine={false}
+          axisLine={false}
+        />
         <YAxis
           stroke="var(--muted)"
           fontSize={11}
+          tickLine={false}
+          axisLine={false}
           allowDecimals={yAllowDecimals}
+          width={44}
           {...(yDomain ? { domain: yDomain } : {})}
         />
         <ChartTooltip contentStyle={TOOLTIP_STYLE} />
-        <Legend wrapperStyle={{ fontSize: 11 }} />
+        {seriesKeys.length > 1 && <Legend wrapperStyle={{ fontSize: 11 }} />}
         {seriesKeys.map((k, i) => (
-          <Line
+          <Area
             key={k}
             type="monotone"
             dataKey={k}
             stroke={lineColor(i)}
             strokeWidth={2}
-            dot={dot}
+            fill={`url(#fill-${i})`}
+            // Every point when the caller asked for dots (reviews plots sparse
+            // captures); otherwise only the newest one, which is what a monitoring
+            // reader is looking for.
+            dot={
+              dot
+                ? { r: 2.5, fill: lineColor(i), strokeWidth: 0 }
+                : (props) =>
+                    props.index === lastIndex ? (
+                      <circle
+                        key={`${k}-end`}
+                        cx={props.cx}
+                        cy={props.cy}
+                        r={3.5}
+                        fill={lineColor(i)}
+                      />
+                    ) : (
+                      <g key={`${k}-${props.index}`} />
+                    )
+            }
+            activeDot={{ r: 4, strokeWidth: 0 }}
+            isAnimationActive={false}
           />
         ))}
-      </LineChart>
+      </AreaChart>
     </ResponsiveContainer>
   );
 }

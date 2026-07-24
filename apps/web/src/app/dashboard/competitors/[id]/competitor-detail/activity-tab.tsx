@@ -154,7 +154,7 @@ export function ActivityTab({
   const filtered = severity !== null || category !== null;
 
   return (
-    <Card className="overflow-hidden">
+    <Card className="overflow-hidden rounded-lg">
       {/* Severity and category were on every row and filterable by neither. */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
         <div className="inline-flex overflow-hidden rounded-md border border-border">
@@ -227,6 +227,7 @@ export function ActivityTab({
         )}
       </div>
 
+      <div key={`${severity ?? "all"}-${category ?? "all"}`} className="animate-in fade-in duration-200">
       {days.length === 0 ? (
         <p className="border-t border-border px-4 py-8 text-center text-sm text-muted-foreground">
           Nothing matches those filters.
@@ -267,6 +268,7 @@ export function ActivityTab({
           </div>
         ))
       )}
+      </div>
 
       {/* This tab shows signals and classified changes. The full run history,
           including every no-change and baseline check, lives on the Activity page. */}
@@ -342,7 +344,7 @@ function SignalRow({
   const sourceLabel = s.sourceType ? sourceShortLabel(s.sourceType as SourceType) : null;
 
   return (
-    <details className="group border-t border-border">
+    <details className="details-smooth group border-t border-border">
       <summary
         className={cn(
           "grid cursor-pointer list-none grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-1 px-5 py-3",
@@ -428,7 +430,7 @@ function OtherChanges({
 }) {
   const sources = [...new Set(changes.map((c) => sourceShortLabel(c.sourceType as SourceType)))];
   return (
-    <details className="group border-t border-border">
+    <details className="details-smooth group border-t border-border">
       <summary
         className={cn(
           "flex cursor-pointer list-none items-center gap-2 px-5 py-2.5 text-dense text-muted-foreground",

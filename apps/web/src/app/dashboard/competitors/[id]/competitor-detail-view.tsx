@@ -671,8 +671,6 @@ export function CompetitorDetailView({ id }: { id: string }) {
             OUTSIDE the tab panels on purpose, so it is identical on all six tabs,
             and it is deliberately the shorter column: when it outgrows the reading
             column its overhang reads as a hole under the content. */}
-        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
-          <div className="min-w-0">
         <Tabs
           value={tab}
           onValueChange={(v) => {
@@ -718,9 +716,12 @@ export function CompetitorDetailView({ id }: { id: string }) {
             })}
           </TabsList>
 
-          {/* min-height floor so a sparse tab (e.g. tech stack) doesn't collapse the
-              page after a dense one (activity) — switching tabs no longer jumps. */}
-          <div className="mt-6 min-h-[280px]">
+          {/* The strip spans the page; the two columns start below it, so the rail's
+              first card is level with the tab content, not with the strip. The
+              min-height floor keeps a sparse tab from collapsing the page after a
+              dense one, so switching tabs never jumps. */}
+          <div className="mt-4 grid min-h-[280px] items-start gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+            <div className="min-w-0">
             <TabsContent value="overview" className={TAB_PANEL_CLASS}>
               <OverviewTab
                 competitorId={competitor.id}
@@ -793,9 +794,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
                 competitorUrl={competitor.url}
               />
             </TabsContent>
-          </div>
-        </Tabs>
-          </div>
+            </div>
 
           <CompetitorRail
             competitor={competitor}
@@ -816,7 +815,8 @@ export function CompetitorDetailView({ id }: { id: string }) {
             }
             onGenerateSummary={startSummaryGeneration}
           />
-        </div>
+          </div>
+        </Tabs>
 
         <Dialog open={showDelete} onOpenChange={setShowDelete}>
           <DialogContent>

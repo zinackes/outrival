@@ -580,6 +580,29 @@
 }
 
 @layer components {
+  /* Disclosure rows (competitor Activity signals, Hiring departments) open and
+     close instantly: a native <details> snaps its content in with no in-between.
+     `::details-content` + `interpolate-size` animates block-size from 0 to auto
+     where it exists (Chromium 131+), and the @supports gate means every other
+     engine keeps exactly today's instant toggle rather than a broken half-state.
+     The easing is spelled out because the system curve lives in `@theme inline`
+     and is not emitted as a runtime custom property (same reason as .skeleton). */
+  @supports (interpolate-size: allow-keywords) {
+    .details-smooth {
+      interpolate-size: allow-keywords;
+    }
+    .details-smooth::details-content {
+      block-size: 0;
+      overflow: clip;
+      transition:
+        block-size var(--duration-standard) cubic-bezier(0.2, 0.7, 0.3, 1),
+        content-visibility var(--duration-standard) allow-discrete;
+    }
+    .details-smooth[open]::details-content {
+      block-size: auto;
+    }
+  }
+
   .skeleton {
     background-color: var(--skeleton-base);
     background-image: linear-gradient(

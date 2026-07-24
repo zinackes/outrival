@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { Activity, ArrowUp, ArrowDown } from "lucide-react";
+import { ArrowUp, ArrowDown } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { PRICING_STATUS_LABELS } from "@outrival/shared";
 import { Fact, FactStrip } from "@/components/outrival/data-marks";
@@ -255,7 +255,7 @@ export function PricingTab({
       {/* Analysis and editing are different modes and no longer share a row: the
           chart takes the full width it needs, the form follows it. */}
       {hasTrend && (
-        <TabSection title="Price over time" icon={Activity}>
+        <TabSection title="Price over time">
           <MultiLineChart data={series.points} seriesKeys={numericPlans} height={260} />
         </TabSection>
       )}
@@ -527,17 +527,10 @@ function PricingComparison({
   const ourEntry = oursSorted[0]!;
   const theirEntry = theirsSorted[0]!;
 
-  // Honest summary lines for what the captured data actually supports.
+  // Honest summary lines for what the captured data actually supports. The entry
+  // comparison itself is no longer one of them: it is the headline above.
   const lines: string[] = [];
   const entryCmp = compareTiers(ourEntry, theirEntry, rates);
-  if (entryCmp.pct !== null && Math.abs(entryCmp.pct) >= 1) {
-    const theirConv = entryCmp.converted ? convertedLabel(theirEntry, ourCurrency, rates) : null;
-    lines.push(
-      `Your entry tier (${formatTierPrice(ourEntry)}) is ${Math.abs(entryCmp.pct).toFixed(0)}% ${
-        entryCmp.pct < 0 ? "below" : "above"
-      } theirs (${formatTierPrice(theirEntry)}${theirConv ? ` ${theirConv}` : ""}).`,
-    );
-  }
   // Their free tier = a captured $0 plan OR a free plan detected on the page but not
   // priced as a card (detect-free-plan) — otherwise a "Free" comparison column the
   // extractor skipped would make us wrongly claim they have no free tier.
@@ -556,8 +549,33 @@ function PricingComparison({
     lines.push(`${competitorName}'s top tier is sales-gated, so not every price is public.`);
   }
 
+  // The headline: how their entry tier sits against yours, stated rather than
+  // left for the reader to compute off two columns.
+  const entryPct = entryCmp.pct;
+  const headline =
+    entryPct !== null && Math.abs(entryPct) >= 1 ? (
+      entryPct < 0 ? (
+        <>
+          You undercut their entry tier by{" "}
+          <span className="font-mono tabular-nums">{Math.abs(entryPct).toFixed(0)}%</span>.
+        </>
+      ) : (
+        <>
+          They undercut your entry tier by{" "}
+          <span className="font-mono tabular-nums">{entryPct.toFixed(0)}%</span>.
+        </>
+      )
+    ) : entryPct !== null ? (
+      <>Your entry tiers are priced within a percent of each other.</>
+    ) : null;
+
   return (
     <div className="flex flex-col gap-3">
+      {headline && (
+        <h3 className="text-xl font-semibold leading-snug tracking-tight text-balance">
+          {headline}
+        </h3>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <p className="text-sm font-medium">Pricing comparison</p>
         <div className="flex items-center gap-3">

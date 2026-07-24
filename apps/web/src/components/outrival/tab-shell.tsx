@@ -15,7 +15,7 @@ export function TabCard({
   className?: string;
 }) {
   return (
-    <Card className={cn("flex flex-col divide-y divide-border overflow-hidden", className)}>
+    <Card className={cn("flex flex-col divide-y divide-border overflow-hidden rounded-lg", className)}>
       {children}
     </Card>
   );

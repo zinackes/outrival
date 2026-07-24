@@ -76,11 +76,10 @@ import {
   type DetectedTargets,
 } from "@outrival/shared";
 import { FreshnessDot } from "@/components/outrival/freshness-dot";
-import { AnalysisNotice, AnalysisProgress } from "@/components/outrival/analysis-status";
+import { AnalysisProgress } from "@/components/outrival/analysis-status";
 import { CompetitorColorPicker } from "@/components/dashboard/competitor-color-picker";
 import { competitorNameColor } from "@/lib/competitor-color";
-import { TabCard, TabSection } from "@/components/outrival/tab-shell";
-import { Reveal } from "@/components/outrival/reveal";
+import { StatusDot } from "@/components/outrival/data-marks";
 import { ListError } from "@/components/outrival/list-error";
 import { toastApiError, toastRescanLimit } from "@/lib/error-helpers";
 import { Button } from "@/components/ui/button";
@@ -88,8 +87,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Tooltip,
@@ -131,7 +128,10 @@ import { ProductTab } from "./competitor-detail/product-tab";
 import { PRODUCT_SOURCES } from "./competitor-detail/product-lenses";
 import { useMonitorActions } from "./competitor-detail/use-monitor-actions";
 import { resolveTabParam } from "./competitor-detail/tab-migration";
-import { CompetitorCoverage } from "./competitor-detail/competitor-coverage";
+import { CompetitorRail } from "./competitor-detail/competitor-rail";
+import { WhatChanged } from "./competitor-detail/what-changed";
+import { CompAvatar } from "@/components/dashboard/comp-avatar";
+import { useLastVisit } from "@/hooks/use-last-visit";
 import type { TabKey } from "./competitor-detail/types";
 
 // Six reading tabs, grouped by the question they answer. Configuration does not
@@ -143,7 +143,7 @@ const TABS: Array<{ key: TabKey; label: string; icon: typeof Activity }> = [
   { key: "pricing", label: "Pricing", icon: DollarSign },
   { key: "hiring", label: "Hiring", icon: Briefcase },
   { key: "reviews", label: "Reviews", icon: Star },
-  { key: "product", label: "Product & Positioning", icon: FileText },
+  { key: "product", label: "Positioning", icon: FileText },
 ];
 
 const VISIBLE_TABS = TABS;
@@ -228,6 +228,15 @@ function detectedTargetsOf(techStack: TechStackData): DetectedTargets | null {
     statusPage: !!profile.statusPage?.value,
     changelog: !!profile.changelog?.value,
   };
+}
+
+/** Hostname without the www, for the header's one-line meta row. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url.includes("://") ? url : `https://${url}`).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
 }
 
 export function CompetitorDetailView({ id }: { id: string }) {
@@ -582,6 +591,11 @@ export function CompetitorDetailView({ id }: { id: string }) {
     }
   }
 
+  // What landed since the last time this competitor was opened. Read once on
+  // mount so the highlight is stable for the session; shared with the Activity
+  // tab, which flags the same signals in its own list.
+  const lastVisit = useLastVisit(`competitor:${id}`);
+
   // Scope the Ask dock to this competitor while its page is open.
   useSetAskContext(
     data ? { kind: "competitor", label: data.competitor.name, competitorId: id } : null,
@@ -608,6 +622,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
         <Header
           competitor={competitor}
           lastRunMs={lastRunMs}
+          sourceCount={monitors.length}
           index={rosterIdx}
           total={roster?.length ?? 0}
           onPrev={prevId ? () => router.push(`/dashboard/competitors/${prevId}`) : undefined}
@@ -642,34 +657,22 @@ export function CompetitorDetailView({ id }: { id: string }) {
           }}
         />
 
-        {/* What we cover on this competitor, framed by what IS tracked, plus a chip
-            per configured source (status, freshness, run/pause/cadence). Everything
-            heavier — URLs, enabling a source, custom pages — lives on /sources. */}
-        <CompetitorCoverage
-          competitorId={competitor.id}
-          monitors={monitors}
-          plan={plan}
-          targets={detectedTargets}
-          scrapingIds={scrapingIds}
-          runningAll={runningAll}
-          monitoringPaused={competitor.monitoringPaused || Boolean(competitor.pausedByPlan)}
-          onRun={requestRunMonitor}
-          onRunAll={runAllMonitors}
-          onResume={resumeMonitor}
-          onSetActive={setMonitorActive}
-          onEdit={editMonitor}
-          onLockedFrequency={(frequency) =>
-            setPaywall({ code: "plan_locked_frequency", frequency, plan })
-          }
+        {/* The hook: what landed since the last visit, with the severity scale.
+            Sits above the tabs because on a monitoring product the first thing on
+            screen should be what they DID, not what they are. */}
+        <WhatChanged
+          signals={recentSignals}
+          lastVisit={lastVisit}
+          onOpenActivity={selectTab}
         />
 
-        <AiSummary
-          competitor={competitor}
-          analysis={analysis}
-          generating={summaryGenerating}
-          onGenerate={startSummaryGeneration}
-        />
-
+        {/* Two columns from lg: the reading column carries the tabs, the rail
+            carries page context (sources, summary) and stays pinned. The rail is
+            OUTSIDE the tab panels on purpose, so it is identical on all six tabs,
+            and it is deliberately the shorter column: when it outgrows the reading
+            column its overhang reads as a hole under the content. */}
+        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+          <div className="min-w-0">
         <Tabs
           value={tab}
           onValueChange={(v) => {
@@ -722,6 +725,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
               <OverviewTab
                 competitorId={competitor.id}
                 overview={overview}
+                signals={recentSignals}
                 monitors={monitors}
                 scrapingIds={scrapingIds}
                 analysis={analysis}
@@ -740,6 +744,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
                 onRefresh={refresh}
                 competitorUrl={competitor.url}
                 lastRunMs={lastRunMs}
+                lastVisit={lastVisit}
               />
             </TabsContent>
             <TabsContent value="pricing" className={TAB_PANEL_CLASS}>
@@ -790,6 +795,28 @@ export function CompetitorDetailView({ id }: { id: string }) {
             </TabsContent>
           </div>
         </Tabs>
+          </div>
+
+          <CompetitorRail
+            competitor={competitor}
+            monitors={monitors}
+            plan={plan}
+            targets={detectedTargets}
+            scrapingIds={scrapingIds}
+            runningAll={runningAll}
+            monitoringPaused={competitor.monitoringPaused || Boolean(competitor.pausedByPlan)}
+            summaryGenerating={summaryGenerating}
+            onRun={requestRunMonitor}
+            onRunAll={runAllMonitors}
+            onResume={resumeMonitor}
+            onSetActive={setMonitorActive}
+            onEdit={editMonitor}
+            onLockedFrequency={(frequency) =>
+              setPaywall({ code: "plan_locked_frequency", frequency, plan })
+            }
+            onGenerateSummary={startSummaryGeneration}
+          />
+        </div>
 
         <Dialog open={showDelete} onOpenChange={setShowDelete}>
           <DialogContent>
@@ -832,6 +859,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
 function Header({
   competitor,
   lastRunMs,
+  sourceCount,
   index,
   total,
   onPrev,
@@ -847,6 +875,7 @@ function Header({
 }: {
   competitor: Competitor;
   lastRunMs: number;
+  sourceCount: number;
   index: number;
   total: number;
   onPrev?: () => void;
@@ -886,90 +915,119 @@ function Header({
         <Link
           href="/dashboard/competitors"
           aria-label="Back to competitors"
-          className="mt-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="mt-1.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <ArrowLeft size={16} />
         </Link>
+        {/* The competitor's own mark. It shipped with CompAvatar and the per-competitor
+            colour, and the page it identifies was the one surface never using either. */}
+        <div className="mt-0.5 shrink-0">
+          <CompAvatar name={competitor.name} url={competitor.url} size={40} />
+        </div>
         <div className="min-w-0">
-          <div className="flex items-center gap-3 flex-wrap mb-1">
+          <div className="flex items-center gap-x-2.5 gap-y-1 flex-wrap">
             <h1
-              className="font-bold text-title-lg md:text-stat tracking-tight leading-[1.05] m-0"
+              className="font-bold text-title md:text-title-lg tracking-tight leading-[1.1] m-0"
               style={competitorNameColor(competitor.color)}
             >
               {competitor.name}
             </h1>
+            {/* A freeform industry label is an attribute, not a status: plain text. */}
             {competitor.category && (
-              <Badge variant="outline" className="text-meta uppercase tracking-wide font-medium">
-                {competitor.category}
-              </Badge>
-            )}
-            {competitor.pausedByPlan ? (
-              <Badge
-                variant="outline"
-                className="gap-1 text-meta uppercase tracking-wide font-medium border-high/40 text-medium"
-              >
-                <PauseCircle size={11} /> Paused · plan limit
-              </Badge>
-            ) : competitor.monitoringPaused ? (
-              <Badge
-                variant="outline"
-                className="gap-1 text-meta uppercase tracking-wide font-medium text-muted-foreground"
-              >
-                <Pause size={11} /> Paused
-              </Badge>
-            ) : null}
-            {competitor.alertsMuted && (
-              <Badge
-                variant="outline"
-                className="gap-1 text-meta uppercase tracking-wide font-medium text-muted-foreground"
-              >
-                <BellOff size={11} /> Muted
-              </Badge>
+              <span className="text-dense text-muted-foreground">{competitor.category}</span>
             )}
             {competitor.overlapScore != null && (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button type="button" aria-label="About overlap" className="cursor-help">
-                    <Badge variant="outline" className="gap-1.5 py-1 text-meta tracking-widest">
-                      <span className="h-2 w-16 overflow-hidden rounded border border-border bg-background">
-                        <span
-                          className="block h-full rounded bg-primary"
-                          style={{
-                            width: `${Math.max(0, Math.min(100, competitor.overlapScore))}%`,
-                          }}
-                        />
-                      </span>
-                      <span className="tabular-nums font-bold text-foreground">
-                        {Math.round(competitor.overlapScore)}
-                      </span>
-                      <span className="uppercase text-muted-foreground">overlap</span>
-                    </Badge>
+                  <button
+                    type="button"
+                    aria-label="About overlap"
+                    className="inline-flex cursor-help items-center gap-1.5"
+                  >
+                    <span className="h-1.5 w-12 overflow-hidden rounded-full bg-surface-3">
+                      <span
+                        className="block h-full rounded-full bg-primary"
+                        style={{
+                          width: `${Math.max(0, Math.min(100, competitor.overlapScore))}%`,
+                        }}
+                      />
+                    </span>
+                    <span className="font-mono text-dense font-semibold tabular-nums text-foreground">
+                      {Math.round(competitor.overlapScore)}
+                    </span>
+                    <span className="text-dense text-muted-foreground">overlap</span>
                   </button>
                 </TooltipTrigger>
                 <TooltipContent
                   side="top"
                   className="max-w-[240px] text-xs leading-relaxed text-pretty normal-case"
                 >
-                  How similar this competitor is to your product (0–100). Computed at
+                  How similar this competitor is to your product (0 to 100). Computed at
                   discovery via Exa + AI scoring against your product profile.
                 </TooltipContent>
               </Tooltip>
             )}
           </div>
-          <a
-            href={competitor.url}
-            target="_blank"
-            rel="noreferrer"
-            className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 transition-colors"
-          >
-            {competitor.url}
-            <ExternalLink size={12} />
-          </a>
-          {lastRunMs > 0 && (
-            <div className="text-xs text-muted-foreground mt-1">
-              last activity {formatDistanceToNow(new Date(lastRunMs), { addSuffix: true })}
-            </div>
-          )}
+          {/* One meta line instead of a three-line stack. */}
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-dense text-muted-foreground">
+            {competitor.url && (
+              <a
+                href={competitor.url}
+                target="_blank"
+                rel="noreferrer"
+                title={competitor.url}
+                className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground"
+              >
+                {hostOf(competitor.url)}
+                <ExternalLink size={11} />
+              </a>
+            )}
+            {sourceCount > 0 && (
+              <>
+                <span aria-hidden className="text-border-strong">·</span>
+                <span>
+                  {sourceCount} {sourceCount === 1 ? "source" : "sources"} tracked
+                </span>
+              </>
+            )}
+            {lastRunMs > 0 && (
+              <>
+                <span aria-hidden className="text-border-strong">·</span>
+                <span>
+                  last check {formatDistanceToNow(new Date(lastRunMs), { addSuffix: true })}
+                </span>
+              </>
+            )}
+            {competitor.pausedByPlan ? (
+              <>
+                <span aria-hidden className="text-border-strong">·</span>
+                <StatusDot tone="warn">
+                  <span className="inline-flex items-center gap-1">
+                    <PauseCircle size={11} /> Paused, plan limit
+                  </span>
+                </StatusDot>
+              </>
+            ) : competitor.monitoringPaused ? (
+              <>
+                <span aria-hidden className="text-border-strong">·</span>
+                <StatusDot>
+                  <span className="inline-flex items-center gap-1">
+                    <Pause size={11} /> Paused
+                  </span>
+                </StatusDot>
+              </>
+            ) : null}
+            {competitor.alertsMuted && (
+              <>
+                <span aria-hidden className="text-border-strong">·</span>
+                <StatusDot>
+                  <span className="inline-flex items-center gap-1">
+                    <BellOff size={11} /> Muted
+                  </span>
+                </StatusDot>
+              </>
+            )}
+          </div>
         </div>
       </div>
       <div className="flex items-center gap-2 shrink-0">
@@ -1418,105 +1476,3 @@ function PlanCapPausedBanner() {
     </div>
   );
 }
-
-function AiSummary({
-  competitor,
-  analysis,
-  generating,
-  onGenerate,
-}: {
-  competitor: Competitor;
-  analysis: AnalysisStatus | null;
-  generating: boolean;
-  onGenerate: () => void;
-}) {
-  // Was a summary already on screen last render? Drives the reveal: the very first
-  // summary lands via a branch swap (the "Generating…" card is replaced), so it
-  // should fade in — but an existing summary already painted on page load should
-  // sit still (only re-animating when its content actually changes, via `token`).
-  const hadSummary = useRef(Boolean(competitor.aiSummary));
-  useEffect(() => {
-    hadSummary.current = Boolean(competitor.aiSummary);
-  }, [competitor.aiSummary]);
-
-  if (!competitor.aiSummary) {
-    // A user-triggered generation is in flight — keep the explicit "Generating…" UX.
-    if (generating) {
-      return (
-        <Card className="px-4 py-3 border-dashed flex items-start gap-2 justify-between">
-          <div className="flex items-start gap-2 text-muted-foreground text-sm">
-            <Loader2 size={13} className="mt-0.5 shrink-0 animate-spin" />
-            <span>Generating AI summary…</span>
-          </div>
-          <Button size="sm" variant="secondary" disabled className="h-7 text-xs">
-            <Loader2 size={11} className="animate-spin" />
-            Generating…
-          </Button>
-        </Card>
-      );
-    }
-    // The first analysis is still running on its own. Only surface a notice here
-    // once the AI is actually writing the summary — it lands without a click (the
-    // detail view polls while summarizing). While the site is still being pulled
-    // down (queued → scraping) this card stays empty: the AnalysisProgress stepper
-    // above already shows that stage, so a "Scraping the site…" line here is noise.
-    if (analysis?.stage === "summarizing") {
-      return (
-        <Card className="px-4 py-3 border-dashed">
-          <AnalysisNotice analysis={analysis} />
-        </Card>
-      );
-    }
-    if (analysis?.pending) return null;
-    // Nothing in flight — the summary stalled (needs_attention) or was never
-    // attempted (idle, e.g. an idea/document self). Offer a manual generate.
-    return (
-      <Card className="px-4 py-3 border-dashed flex items-start gap-2 justify-between">
-        {analysis?.stage === "needs_attention" ? (
-          <AnalysisNotice analysis={analysis} className="mt-0.5" />
-        ) : (
-          <div className="flex items-start gap-2 text-muted-foreground text-sm">
-            <Sparkles size={13} className="mt-0.5 shrink-0" />
-            <span>AI summary not generated yet.</span>
-          </div>
-        )}
-        <Button size="sm" variant="secondary" onClick={onGenerate} className="h-7 text-xs">
-          <Sparkles size={11} />
-          Generate now
-        </Button>
-      </Card>
-    );
-  }
-  return (
-    <Reveal token={competitor.aiSummaryUpdatedAt} initial={!hadSummary.current}>
-    <Card className="px-5 py-4">
-      <div className="flex items-center justify-between gap-2 mb-2.5">
-        <h3 className="flex items-center gap-2 text-content font-semibold tracking-tight leading-tight">
-          <Sparkles size={14} className="text-muted-foreground" /> Summary
-        </h3>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={onGenerate}
-          disabled={generating}
-          className="h-7 text-xs text-muted-foreground"
-        >
-          {generating ? (
-            <Loader2 size={12} className="animate-spin" />
-          ) : (
-            <RefreshCw size={12} />
-          )}
-          {generating ? "Refreshing" : "Refresh"}
-        </Button>
-      </div>
-      <p className="text-content leading-relaxed text-foreground/90">{competitor.aiSummary}</p>
-      {competitor.aiSummaryUpdatedAt && (
-        <p className="text-xs text-muted-foreground mt-2">
-          updated {formatDistanceToNow(new Date(competitor.aiSummaryUpdatedAt), { addSuffix: true })}
-        </p>
-      )}
-    </Card>
-    </Reveal>
-  );
-}
-

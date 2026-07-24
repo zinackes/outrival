@@ -4,7 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { Activity, ArrowUp, ArrowDown, Percent, Clock, Gift } from "lucide-react";
+import { Activity, ArrowUp, ArrowDown } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
+import { PRICING_STATUS_LABELS } from "@outrival/shared";
+import { Fact, FactStrip } from "@/components/outrival/data-marks";
 import {
   api,
   type Competitor,
@@ -12,7 +15,6 @@ import {
   type MyProductPricingTier,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { eyebrowClass } from "@/components/outrival/eyebrow";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { CompetitorPricingCard } from "@/components/outrival/competitor-pricing-card";
@@ -194,6 +196,11 @@ export function PricingTab({
   // unless a "you vs them" comparison already shows those same prices above.
   const hasTrend = series.points.length >= 2;
 
+  // A price that moved in the last fortnight is the fact worth a mark in the strip.
+  const changedRecently =
+    !!pricingMonitor?.lastChangedAt &&
+    Date.now() - new Date(pricingMonitor.lastChangedAt).getTime() < 14 * 86_400_000;
+
   return (
     <TabCard>
       <TabSection>
@@ -205,12 +212,34 @@ export function PricingTab({
           summary={pricingMonitor?.aiSummary}
           summaryUpdatedAt={pricingMonitor?.aiSummaryUpdatedAt}
         />
-        {(showFreePlanBadge || latestTrial?.hasTrial) && (
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            {showFreePlanBadge && <FreePlanBadge />}
-            {latestTrial?.hasTrial && <TrialBadge trial={latestTrial} />}
-          </div>
-        )}
+      </TabSection>
+
+      {/* Four attributes of one object are a table, not a row of tinted chips. */}
+      <TabSection>
+        <FactStrip>
+          <Fact label="Free trial" tone={latestTrial?.hasTrial ? "good" : undefined} muted={!latestTrial?.hasTrial}>
+            {latestTrial == null
+              ? "Not detected"
+              : latestTrial.hasTrial
+                ? trialLabel(latestTrial)
+                : "None"}
+          </Fact>
+          <Fact label="Free plan" muted={!showFreePlanBadge && !hasCapturedFreeTier}>
+            {showFreePlanBadge || hasCapturedFreeTier ? "Yes" : "None"}
+          </Fact>
+          <Fact label="Price visibility">
+            {PRICING_STATUS_LABELS[competitor.pricingStatus ?? "unknown"]}
+          </Fact>
+          <Fact
+            label="Last change"
+            tone={changedRecently ? "warn" : undefined}
+            muted={!pricingMonitor?.lastChangedAt}
+          >
+            {pricingMonitor?.lastChangedAt
+              ? formatDistanceToNow(new Date(pricingMonitor.lastChangedAt), { addSuffix: true })
+              : "No change captured"}
+          </Fact>
+        </FactStrip>
       </TabSection>
       {myProduct && (
         <TabSection>
@@ -223,62 +252,34 @@ export function PricingTab({
           />
         </TabSection>
       )}
-      {hasTrend ? (
-        // Real history: chart (observed price trend) beside the editable current
-        // plans — pairing the wide chart with the narrow list halves the height vs
-        // stacking two full-width blocks.
-        <div className="grid lg:grid-cols-2">
-          <TabSection title="Price over time" icon={Activity}>
-            <MultiLineChart data={series.points} seriesKeys={numericPlans} height={260} />
-          </TabSection>
-          <PricingPlansEditor
-            competitorId={competitorId}
-            history={history}
-            onSaved={onRefresh}
-            className="border-t border-border lg:border-t-0 lg:border-l"
-          />
-        </div>
-      ) : (
-        <PricingPlansEditor competitorId={competitorId} history={history} onSaved={onRefresh} />
+      {/* Analysis and editing are different modes and no longer share a row: the
+          chart takes the full width it needs, the form follows it. */}
+      {hasTrend && (
+        <TabSection title="Price over time" icon={Activity}>
+          <MultiLineChart data={series.points} seriesKeys={numericPlans} height={260} />
+        </TabSection>
       )}
+      <PricingPlansEditor competitorId={competitorId} history={history} onSaved={onRefresh} />
     </TabCard>
   );
 }
 
-// Free-plan pill (detect-free-plan). Surfaces a permanent free tier the priced-card
-// extractor didn't capture (e.g. a "Free" comparison column with no price token), so
-// the tab stops implying "no free plan". Gated on the detected fact upstream.
-function FreePlanBadge() {
-  return (
-    <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-positive/30 bg-positive/10 px-2.5 py-1 text-meta font-medium text-positive">
-      <Gift className="size-3.5" />
-      Free plan
-    </span>
-  );
-}
-
-// Free-trial pill (patch-33). Only rendered when a trial actually exists — a
-// "No free trial" badge is noise, so the caller gates on trial.hasTrial and the
-// null case (scrape predates detection) is filtered upstream.
-function TrialBadge({
-  trial,
-}: {
-  trial: { hasTrial: boolean; days: number | null; requiresCard: boolean | null };
-}) {
+// Free-trial value for the fact strip (patch-33). The strip states the trial
+// whether or not there is one, so unlike the old pill this needs no gate: an
+// absent trial is a fact about their pricing, not a missing badge.
+function trialLabel(trial: {
+  days: number | null;
+  requiresCard: boolean | null;
+}): string {
   const parts = [
-    trial.days != null ? `${trial.days}-day` : null,
+    trial.days != null ? `${trial.days} days` : "Yes",
     trial.requiresCard === false
-      ? "no credit card"
+      ? "no card"
       : trial.requiresCard === true
         ? "card required"
         : null,
   ].filter(Boolean);
-  return (
-    <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-positive/30 bg-positive/10 px-2.5 py-1 text-meta font-medium text-positive">
-      <Clock className="size-3.5" />
-      Free trial{parts.length > 0 ? ` · ${parts.join(" · ")}` : ""}
-    </span>
-  );
+  return parts.join(", ");
 }
 
 // Best-effort FX rates (units of each currency per 1 USD) from the ECB via
@@ -432,33 +433,31 @@ function compareTiers(
 // The Δ cell: a signed % (prefixed ≈ when it came from a currency conversion), or
 // a dash whose tooltip explains why the pair isn't comparable.
 function DeltaCell({ cmp, from, to }: { cmp: TierCmp | null; from?: string; to?: string }) {
-  if (!cmp) return <span className="text-muted-foreground/40">—</span>;
+  // An unpairable row said "—" and hid its reason in a title attribute, so the
+  // most common cell in the table was a dash nobody could act on. The reason is
+  // short; it belongs on screen.
+  if (!cmp) return <span className="text-center text-xs text-muted-foreground">no pair</span>;
   if (cmp.pct === null) {
     return (
-      <span className="cursor-help text-muted-foreground/40" title={cmp.reason}>
-        —
+      <span className="text-balance text-center text-xs leading-snug text-muted-foreground">
+        {cmp.reason}
       </span>
     );
   }
   if (Math.abs(cmp.pct) < 1) {
-    return (
-      <span
-        className="cursor-help text-muted-foreground/40"
-        title="Within 1%, effectively the same"
-      >
-        —
-      </span>
-    );
+    return <span className="text-center text-xs text-muted-foreground">within 1%</span>;
   }
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-0.5 font-mono text-xs tabular-nums",
-        cmp.pct < 0 ? "text-positive" : "text-critical",
+        "inline-flex items-center gap-0.5 rounded-sm px-2 py-0.5 font-mono text-dense font-semibold tabular-nums",
+        cmp.pct < 0
+          ? "bg-positive/16 text-positive"
+          : "bg-critical/16 text-critical",
       )}
-      title={cmp.converted ? `Converted ${from} → ${to} at the ECB reference rate` : undefined}
+      title={cmp.converted ? `Converted ${from} to ${to} at the ECB reference rate` : undefined}
     >
-      {cmp.converted && <span className="text-muted-foreground">≈</span>}
+      {cmp.converted && <span className="opacity-70">≈</span>}
       {cmp.pct < 0 ? <ArrowDown className="size-3" /> : <ArrowUp className="size-3" />}
       {Math.abs(cmp.pct).toFixed(0)}%
     </span>
@@ -585,43 +584,49 @@ function PricingComparison({
         </div>
       </div>
 
-      {/* table-fixed + bounded widths so long plan names truncate instead of
-          blowing out the columns on a narrow mobile card; per-cell pr-3 keeps the
-          tier/price columns from touching when space is tight (worst on the left). */}
-      <table className="w-full table-fixed text-sm">
-        <thead>
-          <tr className="text-xs text-muted-foreground">
-            <th className="w-14 py-1.5 pr-3 text-left font-normal">Tier</th>
-            <th className="py-1.5 pr-3 text-left font-normal">You</th>
-            <th className="py-1.5 pr-3 text-left font-normal">
-              <span className="block truncate normal-case">{competitorName}</span>
-            </th>
-            <th className="w-12 py-1.5 text-right font-normal">
-              <Percent className="ml-auto size-3 text-muted-foreground" aria-label="Difference" />
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(({ mine, theirs, cmp }, i) => (
-            <tr key={i} className="border-t border-border">
-              <td className={cn("py-1.5 pr-3 align-top", eyebrowClass("micro"))}>{rankLabel(i)}</td>
-              <td className="py-1.5 pr-3 align-top">
-                {mine ? <TierCell tier={mine} /> : <span className="text-muted-foreground">—</span>}
-              </td>
-              <td className="py-1.5 pr-3 align-top">
-                {theirs ? (
-                  <TierCell tier={theirs} convertedTo={ourCurrency} rates={rates} />
-                ) : (
-                  <span className="text-muted-foreground">—</span>
-                )}
-              </td>
-              <td className="py-1.5 text-right align-top">
-                <DeltaCell cmp={cmp} from={theirs?.currency} to={mine?.currency} />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {/* A ladder with a spine, not a four-column table whose difference column was
+          a bare % header full of dashes explaining themselves only in a title attr.
+          Ours reads right-aligned into the centre, theirs left-aligned out of it. */}
+      <div>
+        <div className="grid grid-cols-1 items-center gap-x-4 pb-1.5 text-xs text-muted-foreground sm:grid-cols-[minmax(0,1fr)_9rem_minmax(0,1fr)]">
+          <span className="text-right max-sm:hidden">You</span>
+          <span aria-hidden />
+          <span className="truncate max-sm:hidden">{competitorName}</span>
+        </div>
+        {rows.map(({ mine, theirs, cmp }, i) => (
+          <div
+            key={i}
+            className="grid grid-cols-1 items-center gap-x-4 gap-y-1 border-t border-border py-2.5 sm:grid-cols-[minmax(0,1fr)_9rem_minmax(0,1fr)]"
+          >
+            <div className="sm:text-right">
+              {mine ? (
+                <TierCell tier={mine} align="end" />
+              ) : (
+                <span className="text-sm text-muted-foreground">no equivalent</span>
+              )}
+            </div>
+            <div className="flex flex-col items-center gap-1">
+              <span className="text-meta uppercase tracking-wide text-muted-foreground">
+                {rankLabel(i)}
+              </span>
+              <DeltaCell cmp={cmp} from={theirs?.currency} to={mine?.currency} />
+            </div>
+            <div>
+              {theirs ? (
+                <TierCell tier={theirs} convertedTo={ourCurrency} rates={rates} />
+              ) : (
+                <span className="text-sm text-muted-foreground">no equivalent</span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Said out loud, because leaving it implicit lets a reader conclude that
+          their second-cheapest tier does what your second-cheapest tier does. */}
+      <p className="text-xs text-muted-foreground">
+        Tiers line up by price rank, not by feature parity.
+      </p>
 
       {anyConverted && (
         <p className="text-xs text-muted-foreground">
@@ -664,7 +669,9 @@ function TierCell({
   tier,
   convertedTo,
   rates,
+  align = "start",
 }: {
+  align?: "start" | "end";
   tier: {
     plan_name: string;
     price: number | null;
@@ -678,9 +685,16 @@ function TierCell({
 }) {
   const conv = convertedTo ? convertedLabel(tier, convertedTo, rates ?? null) : null;
   return (
-    <div className="flex flex-col gap-0.5 min-w-0">
-      <div className="flex items-baseline gap-1.5 min-w-0">
-        <span className="font-semibold tabular-nums shrink-0">{formatTierPrice(tier)}</span>
+    <div className={cn("flex min-w-0 flex-col gap-0.5", align === "end" && "sm:items-end")}>
+      <div
+        className={cn(
+          "flex min-w-0 items-baseline gap-1.5",
+          align === "end" && "sm:flex-row-reverse",
+        )}
+      >
+        <span className="shrink-0 font-mono text-lead font-semibold tabular-nums">
+          {formatTierPrice(tier)}
+        </span>
         <span className="truncate text-xs text-muted-foreground">{tier.plan_name}</span>
       </div>
       {conv && (

@@ -191,8 +191,14 @@ and lets you do more.
 
 `coverageHeadline()` writes a good sentence that is buried in the subtitle. A
 segmented ribbon renders the same buckets, with chips below acting as filters. Its
-denominator stays the **applicable** sources only, so `not_available` sits outside
-the bar as a trailing fact, exactly as `coverage.ts` already specifies.
+denominator stays the **applicable** sources only, so `not_available` gets a chip but
+no segment, exactly as `coverage.ts` already specifies.
+
+Do not caption that rule. An early draft put "surfaces they don't have never count
+against them" next to the chip, which defends a denominator the user never sees,
+since the page deliberately shows no ratio. Exclusion from the bar is the whole
+statement. The group header in the list ("No such surface", "Add one if you know
+better") carries the only part that is actionable.
 
 ### 6. Read-only collapses
 

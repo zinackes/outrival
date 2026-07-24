@@ -80,21 +80,21 @@ const RAIL_BODY = "min-w-0 flex-1";
 // pane; prose has to stay a column, so it carries its own cap.
 const PROSE = "max-w-[42rem]";
 
+// Mirrors ConfidenceDot's tones so the two never disagree about how loud a
+// given confidence level is: amber only at "low", neutral at "moderate".
 const CONFIDENCE_COPY: Record<
-  "low" | "medium" | "high",
-  { label: string; why: string }
+  "low" | "medium",
+  { label: string; why: string; chip: string }
 > = {
-  high: {
-    label: "High",
-    why: "The insight is carried directly by the captured change.",
-  },
   medium: {
     label: "Moderate",
     why: "Reasonably inferred, with some extrapolation. Worth a quick sanity check.",
+    chip: "border-border bg-surface-2 text-muted-foreground",
   },
   low: {
     label: "Low",
     why: "Not enough evidence to be certain. Treat this as a hypothesis, not a fact.",
+    chip: "border-medium/30 bg-medium/12 text-medium",
   },
 };
 
@@ -199,7 +199,9 @@ export function SignalDetailPanel({
 
   const severity = signal.severityOverride ?? signal.severity;
   const created = new Date(signal.createdAt);
-  const confidence = CONFIDENCE_COPY[signal.aiConfidence ?? "high"];
+  // null at high confidence: nothing to warn about, so nothing is drawn.
+  const conf = signal.aiConfidence ?? "high";
+  const confidence = conf === "high" ? null : CONFIDENCE_COPY[conf];
   const hasVisual = Boolean(detail?.screenshots?.before && detail?.screenshots?.after);
   const changes = detail?.changes ?? [];
   const hasEvidence = hasVisual || changes.length > 0;
@@ -381,10 +383,33 @@ export function SignalDetailPanel({
           transition={{ duration: 0.16, ease: "easeOut" }}
           className="@container mx-auto max-w-[960px] px-5 py-6 lg:px-8"
         >
-          {/* Masthead — the verdict, the finding, and the machine's own facts. */}
+          {/* Masthead — the verdict in the margin, the finding, its provenance.
+              Each fact sits where its nature puts it rather than in a uniform
+              readout: the margin carries how much to care (severity and the
+              threat that weights it), the chip row carries qualifiers that only
+              exist sometimes, and the line under the lead carries provenance.
+              A cell that always says the same thing is not a fact, it is
+              furniture — which is what padded the block and opened the gap. */}
           <header className={RAIL}>
-            <div className={cn(RAIL_GUTTER, "mb-3 @2xl:mb-0 @2xl:pt-1")}>
+            <div className={cn(RAIL_GUTTER, "mb-4 @2xl:mb-0 @2xl:pt-1")}>
               <SeverityScale severity={severity} layout="column" />
+              {/* Threat belongs to severity, not beside it: it IS the severity
+                  weighted by overlap and relevance, so showing the two as peers
+                  invites reading one piece of evidence as two. */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <p
+                    tabIndex={0}
+                    className="mt-2 cursor-default rounded-sm text-meta text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                  >
+                    {threatLabel(signal.threatScore)} threat
+                  </p>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-[260px]">
+                  Severity weighted by how much this competitor overlaps with you,
+                  and how relevant the change is.
+                </TooltipContent>
+              </Tooltip>
             </div>
 
             <div className={RAIL_BODY}>
@@ -418,46 +443,50 @@ export function SignalDetailPanel({
                     </TooltipContent>
                   </Tooltip>
                 )}
+                {/* Confidence only shows when it is worth a second look — the
+                    rule ConfidenceDot has always applied. A permanent "High"
+                    spends a slot on a non-event. */}
+                {confidence && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className={cn("rounded-sm border px-2 py-0.5 text-meta font-medium", confidence.chip)}>
+                        {confidence.label} confidence
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-[260px]">
+                      {confidence.why}
+                    </TooltipContent>
+                  </Tooltip>
+                )}
               </div>
 
-              {/* Finding on the left, the machine's own facts in a column on the
-                  right: stacked, the readout made the masthead read narrower
-                  than every section under it. Side by side the block spans the
-                  full measure and the two voices — the sentence and the data —
-                  stop competing for the same line. */}
-              <div className="mt-3 @4xl:flex @4xl:items-start @4xl:gap-8">
-                <div className="min-w-0 flex-1">
-                  <h2 className="text-lead font-semibold leading-snug tracking-tight text-foreground">
-                    {signal.insight}
-                  </h2>
-                  <button
-                    type="button"
-                    onClick={() => setShowWhy(true)}
-                    className="mt-3 rounded-sm text-dense text-muted-foreground underline underline-offset-2 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-                  >
-                    Why this insight?
-                  </button>
-                </div>
+              <h2
+                className={cn(
+                  PROSE,
+                  "mt-2.5 text-lead font-semibold leading-snug tracking-tight text-foreground",
+                )}
+              >
+                {signal.insight}
+              </h2>
 
-                <dl className="mt-5 grid grid-cols-3 gap-x-4 border-t border-border pt-4 @md:gap-x-6 @4xl:mt-0 @4xl:w-44 @4xl:shrink-0 @4xl:grid-cols-1 @4xl:gap-y-3.5 @4xl:border-t-0 @4xl:border-l @4xl:pt-0 @4xl:pl-6">
-                  <Stat
-                    label="Detected"
-                    sub={formatDistanceToNow(created, { addSuffix: true })}
-                  >
-                    <time dateTime={signal.createdAt}>
-                      {format(created, "MMM d, HH:mm")}
-                    </time>
-                  </Stat>
-                  <Stat label="Confidence" hint={confidence.why}>
-                    {confidence.label}
-                  </Stat>
-                  <Stat
-                    label="Threat"
-                    hint="Severity weighted by how much this competitor overlaps with you, and how relevant the change is."
-                  >
-                    {threatLabel(signal.threatScore)}
-                  </Stat>
-                </dl>
+              <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-dense text-muted-foreground">
+                <span>Detected</span>
+                <time
+                  dateTime={signal.createdAt}
+                  className="font-mono tabular-nums slashed-zero text-foreground"
+                >
+                  {format(created, "MMM d, HH:mm")}
+                </time>
+                <span aria-hidden>·</span>
+                <span>{formatDistanceToNow(created, { addSuffix: true })}</span>
+                <span aria-hidden>·</span>
+                <button
+                  type="button"
+                  onClick={() => setShowWhy(true)}
+                  className="rounded-sm underline underline-offset-2 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+                >
+                  Why this insight?
+                </button>
               </div>
 
               <WhyInsightPanel
@@ -653,43 +682,6 @@ export function SignalDetailPanel({
           )}
         </motion.article>
       </div>
-    </div>
-  );
-}
-
-/** One readout cell: a muted role label over the machine's own value. */
-function Stat({
-  label,
-  children,
-  sub,
-  hint,
-}: {
-  label: string;
-  children: React.ReactNode;
-  sub?: string;
-  hint?: string;
-}) {
-  return (
-    <div className="min-w-0">
-      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
-      <dd className="mt-1 font-mono text-dense tabular-nums slashed-zero text-foreground">
-        {hint ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span
-                tabIndex={0}
-                className="cursor-default rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-              >
-                {children}
-              </span>
-            </TooltipTrigger>
-            <TooltipContent className="max-w-[260px]">{hint}</TooltipContent>
-          </Tooltip>
-        ) : (
-          children
-        )}
-      </dd>
-      {sub && <dd className="mt-0.5 text-meta text-muted-foreground">{sub}</dd>}
     </div>
   );
 }

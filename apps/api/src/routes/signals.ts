@@ -12,6 +12,7 @@ import {
   signalComments,
   signalBatches,
   users,
+  user as authUser,
 } from "@outrival/db";
 import { computeThreatScore, getBytesFromR2, SIGNAL_CATEGORIES } from "@outrival/shared";
 import { complete, withAiContext, AI_CONFIG } from "@outrival/ai";
@@ -777,15 +778,26 @@ signalsRouter.get("/:id/comments", async (c) => {
   const id = c.req.param("id");
   if (!(await ownsSignal(id, orgId))) return c.json(notFound("signal"), 404);
 
+  // The author's identity mark comes from the Better Auth row (the only place a
+  // real photo exists — Google OAuth fills `image`; every other account has
+  // none). Email rides along as the seed for the generated fallback avatar, so
+  // a comment's mark matches the one in the topbar exactly. Left join: an app
+  // user whose auth row is gone still renders, just without a photo.
   const rows = await db
     .select({
       id: signalComments.id,
       userId: signalComments.userId,
       authorName: signalComments.authorName,
       body: signalComments.body,
+      parentId: signalComments.parentId,
+      editedAt: signalComments.editedAt,
       createdAt: signalComments.createdAt,
+      authorEmail: users.email,
+      authorImage: authUser.image,
     })
     .from(signalComments)
+    .leftJoin(users, eq(users.id, signalComments.userId))
+    .leftJoin(authUser, eq(authUser.email, users.email))
     .where(eq(signalComments.signalId, id))
     .orderBy(signalComments.createdAt);
 
@@ -798,30 +810,99 @@ signalsRouter.post("/:id/comments", async (c) => {
   const id = c.req.param("id");
   if (!(await ownsSignal(id, orgId))) return c.json(notFound("signal"), 404);
 
-  const body = (await c.req.json().catch(() => ({}))) as { body?: unknown };
+  const body = (await c.req.json().catch(() => ({}))) as {
+    body?: unknown;
+    parentId?: unknown;
+  };
   const text = typeof body.body === "string" ? body.body.trim().slice(0, 2000) : "";
   if (!text) return c.json({ error: "body_required" }, 400);
+
+  // Single-level threading: a reply must name a ROOT comment on THIS signal.
+  // Replying to a reply is refused rather than silently flattened, so the depth
+  // the client renders is the depth the data can hold.
+  let parentId: string | null = null;
+  if (typeof body.parentId === "string" && body.parentId) {
+    const parent = await db.query.signalComments.findFirst({
+      where: and(
+        eq(signalComments.id, body.parentId),
+        eq(signalComments.signalId, id),
+        eq(signalComments.orgId, orgId),
+      ),
+      columns: { id: true, parentId: true },
+    });
+    if (!parent) return c.json({ error: "parent_not_found" }, 400);
+    if (parent.parentId) return c.json({ error: "parent_is_reply" }, 400);
+    parentId = parent.id;
+  }
 
   const u = await db.query.users.findFirst({
     where: eq(users.id, user.id),
     columns: { name: true, email: true },
   });
   const authorName = u?.name ?? u?.email ?? "You";
+  const me = u?.email
+    ? await db.query.user.findFirst({
+        where: eq(authUser.email, u.email),
+        columns: { image: true },
+      })
+    : null;
 
   const [row] = await db
     .insert(signalComments)
-    .values({ signalId: id, orgId, userId: user.id, authorName, body: text })
+    .values({ signalId: id, orgId, userId: user.id, authorName, body: text, parentId })
     .returning({
       id: signalComments.id,
       userId: signalComments.userId,
       authorName: signalComments.authorName,
       body: signalComments.body,
+      parentId: signalComments.parentId,
+      editedAt: signalComments.editedAt,
       createdAt: signalComments.createdAt,
     });
 
   void captureServerEvent(user.id, "signal_comment_posted", { signalId: id, orgId });
 
-  return c.json({ comment: { ...row, mine: true } }, 201);
+  return c.json(
+    {
+      comment: {
+        ...row,
+        mine: true,
+        authorEmail: u?.email ?? null,
+        authorImage: me?.image ?? null,
+      },
+    },
+    201,
+  );
+});
+
+// Edit one's own comment. `edited_at` is stamped so the thread never rewrites
+// what someone read yesterday without saying so.
+signalsRouter.patch("/:id/comments/:commentId", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const commentId = c.req.param("commentId");
+  const body = (await c.req.json().catch(() => ({}))) as { body?: unknown };
+  const text = typeof body.body === "string" ? body.body.trim().slice(0, 2000) : "";
+  if (!text) return c.json({ error: "body_required" }, 400);
+
+  const [row] = await db
+    .update(signalComments)
+    .set({ body: text, editedAt: new Date() })
+    .where(
+      and(
+        eq(signalComments.id, commentId),
+        eq(signalComments.orgId, orgId),
+        eq(signalComments.userId, user.id),
+      ),
+    )
+    .returning({
+      id: signalComments.id,
+      body: signalComments.body,
+      editedAt: signalComments.editedAt,
+    });
+
+  if (!row) return c.json(notFound("comment"), 404);
+  return c.json({ comment: row });
 });
 
 signalsRouter.delete("/:id/comments/:commentId", async (c) => {

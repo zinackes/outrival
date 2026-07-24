@@ -1048,7 +1048,7 @@ export function SignalsView() {
           <div
             role="listbox"
             aria-label="Signals"
-            className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto p-1.5"
+            className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overscroll-contain p-1.5"
           >
             {signals === null ? (
               <ListRowsSkeleton rows={8} />

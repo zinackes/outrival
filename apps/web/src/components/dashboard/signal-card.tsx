@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import {
   ArrowUpRight,
@@ -90,7 +91,15 @@ export function SignalCard({
   // The strategic narrative (patch-16) lives in a collapsed "Context" below the
   // decision path, closed by default — it was duplicating "So what" up top.
   const [showContext, setShowContext] = useState(false);
-  const [commentCount, setCommentCount] = useState<number | null>(null);
+  // Reads SignalComments' own cache once the thread is open, rather than being
+  // pushed a count. A card in a feed must not fetch a thread it isn't showing —
+  // the detail panel, which shows one signal, does prefetch it.
+  const commentsQ = useQuery({
+    queryKey: ["signalComments", signal.id],
+    queryFn: () => api.listSignalComments(signal.id).then((r) => r.comments),
+    enabled: interactive && showComments,
+  });
+  const commentCount = commentsQ.data?.length ?? null;
   const [trackOpen, setTrackOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   // Held in a ref so the parent re-creating the callback each render doesn't tear
@@ -526,7 +535,7 @@ export function SignalCard({
 
       {interactive && showComments && (
         <div data-comments>
-          <SignalComments signalId={signal.id} onCountChange={setCommentCount} />
+          <SignalComments signalId={signal.id} />
         </div>
       )}
     </div>

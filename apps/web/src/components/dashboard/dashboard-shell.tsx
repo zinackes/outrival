@@ -58,7 +58,9 @@ export function DashboardShell({
             ) : (
               <AppSidebar org={org} user={user} />
             )}
-            <SidebarInset>
+            {/* The signals workspace owns the viewport: pin the inset too, so
+                nothing behind the panes can scroll and inherit their overscroll. */}
+            <SidebarInset className={cn(fullBleed && "h-dvh overflow-hidden")}>
               <div
                 className={cn(
                   "flex w-full flex-col text-sm min-w-0",

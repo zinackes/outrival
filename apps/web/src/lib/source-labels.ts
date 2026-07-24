@@ -48,6 +48,8 @@ const SOURCE_LABELS: Record<string, string> = {
   wellknown: "App & AI footprint",
   // Internal comparison-page anchor (competitor /vs/ + alternative pages).
   comparison_page: "Comparison page",
+  // Developer documentation (pro+): OpenAPI spec diff, else docs page list.
+  docs: "Developer docs",
   // User-watched arbitrary page on the competitor's domain ("Watch a custom page").
   custom: "Custom page",
 };
@@ -89,6 +91,7 @@ export const SOURCE_SHORT_LABELS: Record<SourceType, string> = {
   hackernews: "Hacker News",
   wellknown: "App & AI footprint",
   comparison_page: "Comparison page",
+  docs: "Developer docs",
   custom: "Custom page",
 };
 

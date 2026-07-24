@@ -14,7 +14,7 @@ describe("gateAppliesTo", () => {
   });
 
   test("skips list-shaped sources — a new entry there is new by construction", () => {
-    for (const s of ["sitemap", "subdomains", "youtube", "news", "hackernews", "wellknown"]) {
+    for (const s of ["sitemap", "subdomains", "youtube", "news", "hackernews", "wellknown", "docs"]) {
       expect(gateAppliesTo(s)).toBe(false);
     }
   });

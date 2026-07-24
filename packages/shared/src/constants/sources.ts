@@ -96,6 +96,16 @@ export const SOURCE_TYPES = [
   // applySeverityGuard can allow its deterministic "critical" (a competitor attacking
   // the user by name) without opening critical for AI-classified sitemap changes.
   "comparison_page",
+  // Developer documentation — the competitor's technical roadmap surface. USER-
+  // SELECTABLE (pro+), enabled through the standard enable route with an optional
+  // URL override. Structured-first, two modes: (1) an OpenAPI/Swagger spec is found
+  // → the snapshot is the canonical sorted operation + schema listing, so the
+  // generic lexical diff IS a structural diff (endpoint added/removed, field newly
+  // deprecated) with zero AI; (2) no spec → the docs sitemap's page list (a new page
+  // = a newly documented feature) plus a capped per-page content hash. No
+  // scrape-monitor branch: it rides the generic snapshot → diff → classify chain.
+  // Kept in sync with the DB source_type enum.
+  "docs",
   // Custom page. User-selectable, but via a DEDICATED flow ("Watch a custom page")
   // — NOT the standard enable list (rejected on POST /:id/monitors). Watches ANY
   // page on the competitor's own registrable domain (/about, ToS, /security,

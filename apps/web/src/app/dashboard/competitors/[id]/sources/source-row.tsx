@@ -58,6 +58,10 @@ const URL_GUIDANCE: Partial<Record<SourceType, { placeholder: string; help: stri
     placeholder: "https://example.com/careers",
     help: "Their careers page, or the board that hosts it (Greenhouse, Lever, Ashby…).",
   },
+  docs: {
+    placeholder: "https://docs.example.com",
+    help: "Optional. Leave it empty and we'll find their developer docs on our own.",
+  },
 };
 
 /** The same rejections the API would return, said before the round-trip. */

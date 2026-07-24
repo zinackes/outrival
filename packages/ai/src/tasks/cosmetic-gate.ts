@@ -97,6 +97,10 @@ const LIST_SHAPED_SOURCES = new Set([
   "hackernews",
   "wellknown",
   "comparison_page",
+  // `docs`: both modes are list deltas — a canonical OpenAPI operation/schema listing,
+  // or the docs sitemap's page list. A new endpoint is a new endpoint; there is no
+  // wording to have been rephrased.
+  "docs",
 ]);
 
 export function gateAppliesTo(sourceType: string | undefined): boolean {

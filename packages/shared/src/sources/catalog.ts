@@ -32,7 +32,10 @@ export const CONFIGURABLE_SOURCES: Record<SourceGroup, readonly SourceType[]> = 
   // aggregators are RETIRED_SOURCES below; G2 has no connected-vendor flow (its
   // ToS review is still open), so it has no row at all rather than a fake one.
   reviews: ["appstore_reviews", "trustpilot_public"],
-  developer: ["github_repo", "status"],
+  // `docs` (pro+) reads the competitor's own developer documentation — an OpenAPI
+  // spec when they publish one, else their docs sitemap. Enabled through the standard
+  // route with an optional URL override.
+  developer: ["github_repo", "status", "docs"],
 };
 
 /**

@@ -122,8 +122,15 @@ export function sourceState(args: {
   // false gap (a competitor with no YouTube channel is not a monitoring problem).
   if (hasNoTargetError(sourceType, monitor.lastError)) return "not_available";
 
-  const category = monitor.lastFailureCategory ?? null;
-  if (monitor.refusedAt || category === "anti_bot") return "blocked";
+  // A failure verdict describes the run that produced it, and a later successful
+  // capture disproves it. The columns are sticky — only the NEXT failure overwrites
+  // them — so without this one old `site_dead` pinned a healthy homepage to "This
+  // page appears to be down or gone." forever, next to a green "Scanned 2 hours ago".
+  // Same rule monitorStatus() uses: failing = the last thing that happened failed.
+  const failing =
+    toMs(monitor.lastFailedAt) > toMs(monitor.lastRunAt) || monitor.markedUnscrapable === true;
+  const category = failing ? (monitor.lastFailureCategory ?? null) : null;
+  if (failing && (monitor.refusedAt || category === "anti_bot")) return "blocked";
   if (category === "login_required") return "login_required";
   if (category === "geo_blocked") return "geo_blocked";
   // site_dead / site_redirected / spa_empty / unknown all share one action set

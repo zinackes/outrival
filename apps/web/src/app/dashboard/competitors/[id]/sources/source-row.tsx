@@ -295,7 +295,11 @@ export function SourceRow({
         </div>
       </div>
 
-      {monitor && state !== "locked" && (
+      {/* Only a source we actually collect has a cadence to choose. On a paused,
+          blocked, broken or unavailable one the segmented control described a
+          schedule that isn't running — three buttons of noise per row, on the rows
+          that already have the least to say. */}
+      {monitor && (state === "tracking" || state === "pending") && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5 pl-[calc(0.5rem+132px+0.75rem)]">
           {MONITOR_FREQUENCIES.map((freq) => {
             const locked = !planIncludesFrequency(plan, freq);

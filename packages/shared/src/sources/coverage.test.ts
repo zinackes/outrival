@@ -16,6 +16,12 @@ const monitor = (over: Partial<MonitorCoverageFields> = {}): MonitorCoverageFiel
   ...over,
 });
 
+/** A monitor whose LAST run failed with `category` — the only state a diagnosis describes. */
+const failed = (category: string): Partial<MonitorCoverageFields> => ({
+  lastFailureCategory: category,
+  lastFailedAt: "2026-07-20T10:05:00Z",
+});
+
 describe("sourceState", () => {
   test("a healthy monitor is tracking", () => {
     expect(sourceState({ sourceType: "homepage", plan: "pro", monitor: monitor() })).toBe("tracking");
@@ -62,14 +68,14 @@ describe("sourceState", () => {
       sourceState({
         sourceType: "jobs",
         plan: "pro",
-        monitor: monitor({ sourceType: "jobs", lastFailureCategory: "login_required" }),
+        monitor: monitor({ sourceType: "jobs", ...failed("login_required") }),
       }),
     ).toBe("login_required");
     expect(
       sourceState({
         sourceType: "jobs",
         plan: "pro",
-        monitor: monitor({ sourceType: "jobs", lastFailureCategory: "geo_blocked" }),
+        monitor: monitor({ sourceType: "jobs", ...failed("geo_blocked") }),
       }),
     ).toBe("geo_blocked");
   });
@@ -77,9 +83,37 @@ describe("sourceState", () => {
   test("a moved or dead site is fixable", () => {
     for (const category of ["site_redirected", "site_dead", "spa_empty", "unknown"]) {
       expect(
-        sourceState({ sourceType: "blog", plan: "pro", monitor: monitor({ sourceType: "blog", lastFailureCategory: category }) }),
+        sourceState({ sourceType: "blog", plan: "pro", monitor: monitor({ sourceType: "blog", ...failed(category) }) }),
       ).toBe("fixable");
     }
+  });
+
+  test("a capture since the diagnosis clears it — a recovered source is tracking", () => {
+    // The failure columns are sticky: only the next failure overwrites them. A
+    // homepage that failed once and has scraped fine ever since read "This page
+    // appears to be down or gone." forever, next to a green last-scan.
+    expect(
+      sourceState({
+        sourceType: "homepage",
+        plan: "pro",
+        monitor: monitor({
+          ...failed("site_dead"),
+          lastRunAt: "2026-07-20T12:00:00Z", // captured AFTER the failure
+        }),
+      }),
+    ).toBe("tracking");
+    // Same for a refusal the site has since lifted.
+    expect(
+      sourceState({
+        sourceType: "homepage",
+        plan: "pro",
+        monitor: monitor({
+          refusedAt: "2026-07-19T09:00:00Z",
+          lastFailedAt: "2026-07-19T09:00:00Z",
+          lastRunAt: "2026-07-20T12:00:00Z",
+        }),
+      }),
+    ).toBe("tracking");
   });
 
   test("a user-paused source is off, but an auto-paused one is not", () => {
@@ -164,7 +198,7 @@ describe("NOT AVAILABLE is neutral, never a failure", () => {
         monitor: monitor({
           sourceType: "youtube",
           lastError: "youtube: feed_unreachable",
-          lastFailureCategory: "unknown",
+          ...failed("unknown"),
         }),
       }),
     ).toBe("fixable");

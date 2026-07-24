@@ -1237,14 +1237,14 @@ export function CompareView() {
                           <th
                             key={d.id}
                             className={cn(
-                              "group/col min-w-[10rem] border-b border-border px-3 py-2.5 text-left font-semibold tracking-tight",
+                              "group/col w-56 min-w-[11rem] max-w-[20rem] border-b border-border px-3 py-2.5 text-left font-semibold tracking-tight",
                               d.mine && !stuck && "bg-primary/5",
                               stuck && cn(YOU_STICKY_BG, STICKY_YOU, "border-r border-border"),
                               colAnimClass(d),
                             )}
                           >
                             <span className="flex items-center gap-2">
-                              <span className="truncate">{d.name}</span>
+                              <span className="min-w-0 truncate">{d.name}</span>
                               {d.mine && <YouTag />}
                               <button
                                 type="button"
@@ -1342,7 +1342,7 @@ export function CompareView() {
                                 <td
                                   key={d.id}
                                   className={cn(
-                                    "border-b border-border px-3 py-2.5 align-top",
+                                    "max-w-[20rem] border-b border-border px-3 py-2.5 align-top",
                                     d.mine && !stuck && "bg-primary/[0.03]",
                                     stuck &&
                                       cn(YOU_STICKY_BG, STICKY_YOU, "border-r border-border"),

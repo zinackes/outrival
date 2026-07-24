@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { ArrowUp, ArrowDown } from "lucide-react";
+import { ArrowUp, ArrowDown, ChevronRight } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { PRICING_STATUS_LABELS } from "@outrival/shared";
 import { Fact, FactStrip } from "@/components/outrival/data-marks";
@@ -196,6 +196,11 @@ export function PricingTab({
   // unless a "you vs them" comparison already shows those same prices above.
   const hasTrend = series.points.length >= 2;
 
+  // Counts for the fold's summary line, off the shared pricingPlans cache the
+  // editor already reads, so opening it costs no extra request.
+  const planCount = pricingPlansQuery.data?.resolved.length ?? latestByPlan.size;
+  const editedCount = pricingPlansQuery.data?.overrides.length ?? 0;
+
   // A price that moved in the last fortnight is the fact worth a mark in the strip.
   const changedRecently =
     !!pricingMonitor?.lastChangedAt &&
@@ -203,17 +208,6 @@ export function PricingTab({
 
   return (
     <TabCard>
-      <TabSection>
-        <CompetitorPricingCard
-          competitor={competitor}
-          onUpdated={onRefresh}
-          hasCapturedTiers={hasCapturedTiers}
-          isCapturing={isCapturing}
-          summary={pricingMonitor?.aiSummary}
-          summaryUpdatedAt={pricingMonitor?.aiSummaryUpdatedAt}
-        />
-      </TabSection>
-
       {/* Four attributes of one object are a table, not a row of tinted chips. */}
       <TabSection>
         <FactStrip>
@@ -259,7 +253,68 @@ export function PricingTab({
           <MultiLineChart data={series.points} seriesKeys={numericPlans} height={260} />
         </TabSection>
       )}
-      <PricingPlansEditor competitorId={competitorId} history={history} onSaved={onRefresh} />
+
+      {/* Editing is reference work, so it folds away. The summary line carries the
+          counts, which is what a reader wants before deciding to open a form. */}
+      <details className="details-smooth group">
+        <summary className="flex cursor-pointer list-none items-center gap-2 p-5 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset [&::-webkit-details-marker]:hidden">
+          <ChevronRight
+            size={14}
+            aria-hidden
+            className="shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
+          />
+          <span className="text-content font-semibold leading-tight tracking-tight">
+            Plan detail and manual overrides
+          </span>
+          <span className="ml-auto text-xs text-muted-foreground">
+            {planCount} {planCount === 1 ? "plan" : "plans"}
+            {editedCount > 0 && `, ${editedCount} edited by hand`}
+          </span>
+        </summary>
+        <PricingPlansEditor competitorId={competitorId} history={history} onSaved={onRefresh} />
+      </details>
+
+      {/* Provenance last: how the numbers were obtained is meta, and it used to
+          open the tab ahead of what they say. The card keeps every capability it
+          had (honest status when no tier was captured, manual entry, re-detect,
+          the source summary); only its position changed. */}
+      <TabSection>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          {pricingMonitor?.pageUrl && (
+            <span className="inline-flex min-w-0 items-center gap-1.5">
+              Captured from
+              <a
+                href={pricingMonitor.pageUrl}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="truncate text-link hover:underline"
+              >
+                {pricingMonitor.pageUrl.replace(/^https?:\/\//, "")}
+              </a>
+            </span>
+          )}
+          {pricingMonitor?.lastRunAt && (
+            <span>
+              last check{" "}
+              {formatDistanceToNow(new Date(pricingMonitor.lastRunAt), { addSuffix: true })}
+            </span>
+          )}
+          {pricingMonitor?.lastChangedAt && (
+            <span>
+              changed{" "}
+              {formatDistanceToNow(new Date(pricingMonitor.lastChangedAt), { addSuffix: true })}
+            </span>
+          )}
+        </div>
+        <CompetitorPricingCard
+          competitor={competitor}
+          onUpdated={onRefresh}
+          hasCapturedTiers={hasCapturedTiers}
+          isCapturing={isCapturing}
+          summary={pricingMonitor?.aiSummary}
+          summaryUpdatedAt={pricingMonitor?.aiSummaryUpdatedAt}
+        />
+      </TabSection>
     </TabCard>
   );
 }

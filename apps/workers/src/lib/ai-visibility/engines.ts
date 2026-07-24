@@ -1,4 +1,4 @@
-import { logger } from "@trigger.dev/sdk/v3";
+import { logger } from "../job-logger";
 
 // AI Visibility answer-engine clients (docs/ai-visibility.md, phase 2). Each engine
 // is queried ONCE per prompt; the answer text + citations are then parsed for which

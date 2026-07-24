@@ -404,72 +404,82 @@ export function SignalDetailPanel({
           className="@container mx-auto max-w-[960px] px-5 py-6 lg:px-8"
         >
           {/* Masthead — the verdict in the margin, the finding, its provenance.
-              Each fact sits where its nature puts it rather than in a uniform
-              readout: the margin carries how much to care (severity and the
-              threat that weights it), the chip row carries qualifiers that only
-              exist sometimes, and the line under the lead carries provenance.
-              A cell that always says the same thing is not a fact, it is
-              furniture — which is what padded the block and opened the gap. */}
+              Each fact sits where its nature puts it: the margin carries how
+              much to care, the finding's tail carries how it is filed, and the
+              line under it carries provenance. A cell that always says the same
+              thing is not a fact, it is furniture. */}
           <header className={RAIL}>
-            <div className={cn(RAIL_GUTTER, "mb-4 @2xl:mb-0 @2xl:pt-1")}>
+            {/* pt-0.5 puts the ticks on the lead's first line, now that nothing
+                sits above it for the margin to align against. */}
+            <div className={cn(RAIL_GUTTER, "mb-4 @2xl:mb-0 @2xl:pt-0.5")}>
               <SeverityScale severity={severity} layout="column" />
             </div>
 
             <div className={RAIL_BODY}>
-              <div className="flex flex-wrap items-center gap-2">
-                <CatPill size="compact">{signal.category}</CatPill>
-                {signal.filteredReason === "backfill" && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="inline-flex items-center gap-1 rounded-sm border border-border bg-surface-2 px-2 py-0.5 text-meta font-medium text-muted-foreground">
-                        <Archive className="size-3" />
-                        From archive
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      Reconstructed from the web archive. This change happened before
-                      we started monitoring, so it wasn&apos;t sent as an alert.
-                    </TooltipContent>
-                  </Tooltip>
-                )}
-                {heldBack && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="rounded-sm border border-border bg-surface-2 px-2 py-0.5 text-meta font-medium text-muted-foreground">
-                        Held back
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      Not sent as an alert:{" "}
-                      {FILTERED_REASON_LABEL[heldBack] ??
-                        heldBack.replace(/_/g, " ")}
-                    </TooltipContent>
-                  </Tooltip>
-                )}
-                {/* Confidence only shows when it is worth a second look — the
-                    rule ConfidenceDot has always applied. A permanent "High"
-                    spends a slot on a non-event. */}
-                {confidence && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className={cn("rounded-sm border px-2 py-0.5 text-meta font-medium", confidence.chip)}>
-                        {confidence.label} confidence
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-[260px]">
-                      {confidence.why}
-                    </TooltipContent>
-                  </Tooltip>
-                )}
-              </div>
-
+              {/* The labels ride the tail of the finding rather than sitting
+                  in a row above it: a chip row pushed the lead off the top of
+                  the block, so the severity in the margin had nothing to align
+                  with. Read in order it is now one sentence — what happened,
+                  then how it is filed. */}
               <h2
                 className={cn(
                   PROSE,
-                  "mt-2.5 text-lead font-semibold leading-snug tracking-tight text-foreground",
+                  "text-lead font-semibold leading-snug tracking-tight text-foreground",
                 )}
               >
-                {signal.insight}
+                {signal.insight}{" "}
+                <span className="ml-0.5 inline-flex translate-y-px items-center gap-1.5 whitespace-nowrap align-middle">
+                  <CatPill size="compact">{signal.category}</CatPill>
+                  {signal.filteredReason === "backfill" && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="inline-flex items-center gap-1 rounded-sm border border-border bg-surface-2 px-2 py-0.5 text-meta font-medium text-muted-foreground">
+                          <Archive className="size-3" />
+                          From archive
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        Reconstructed from the web archive. This change happened
+                        before we started monitoring, so it wasn&apos;t sent as an
+                        alert.
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                  {heldBack && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="rounded-sm border border-border bg-surface-2 px-2 py-0.5 text-meta font-medium text-muted-foreground">
+                          Held back
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        Not sent as an alert:{" "}
+                        {FILTERED_REASON_LABEL[heldBack] ??
+                          heldBack.replace(/_/g, " ")}
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                  {/* Confidence only shows when it is worth a second look — the
+                      rule ConfidenceDot has always applied. A permanent "High"
+                      spends a slot on a non-event. */}
+                  {confidence && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span
+                          className={cn(
+                            "rounded-sm border px-2 py-0.5 text-meta font-medium",
+                            confidence.chip,
+                          )}
+                        >
+                          {confidence.label} confidence
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-[260px]">
+                        {confidence.why}
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                </span>
               </h2>
 
               <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-dense text-muted-foreground">

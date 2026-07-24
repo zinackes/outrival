@@ -663,7 +663,11 @@ signalsRouter.get("/:id/screenshot/:side", async (c) => {
     return new Response(new Uint8Array(bytes), {
       headers: {
         "Content-Type": "image/png",
-        "Cache-Control": "private, max-age=86400",
+        // A snapshot's PNG is written once under a timestamped R2 key and never
+        // rewritten, so re-opening a signal should never re-download it. Was
+        // max-age=86400, which made the browser refetch a byte-identical image
+        // a day later — on a slow first paint that is the cost paid twice.
+        "Cache-Control": "private, max-age=31536000, immutable",
       },
     });
   } catch {

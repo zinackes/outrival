@@ -18,6 +18,7 @@ export function VisualDiff({ signalId }: { signalId: string }) {
   const [pos, setPos] = useState(50);
   const [full, setFull] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   const beforeUrl = `${BASE}/api/signals/${signalId}/screenshot/before`;
   const afterUrl = `${BASE}/api/signals/${signalId}/screenshot/after`;
@@ -32,22 +33,41 @@ export function VisualDiff({ signalId }: { signalId: string }) {
 
   return (
     <div className="space-y-2">
-      <div className="relative max-h-[420px] overflow-hidden rounded-md border border-border bg-surface-2">
-        {/* Before is the in-flow base (defines the height). */}
+      {/* Fixed height, not max-height. These are full-page captures served from
+          R2 with no intrinsic size known up front, so letting the image define
+          the box meant the whole document below it jumped the moment each one
+          decoded — the scroll went out from under the reader mid-read. The box
+          is the size it will settle at (a full-page capture at this width is
+          always taller than the cap), both images fill it, and nothing reflows.
+          content-visibility lets the browser skip painting it while it is off
+          screen, with the same height reserved so the scrollbar stays honest. */}
+      <div className="relative h-[420px] overflow-hidden rounded-md border border-border bg-surface-2 [contain-intrinsic-size:auto_420px] [content-visibility:auto]">
+        {!loaded && (
+          <div
+            aria-hidden
+            className="absolute inset-0 animate-pulse bg-surface-3"
+          />
+        )}
+        {/* Before is the base layer. */}
         <img
           src={beforeUrl}
           alt="Before the change"
           draggable={false}
+          loading="lazy"
+          decoding="async"
+          onLoad={() => setLoaded(true)}
           onError={() => setFailed(true)}
-          className="block w-full select-none"
+          className="absolute inset-0 size-full select-none object-cover object-top"
         />
-        {/* After overlays it at the same width, revealed from the left up to `pos`. */}
+        {/* After overlays it at the same size, revealed from the left up to `pos`. */}
         <img
           src={afterUrl}
           alt=""
           aria-hidden
           draggable={false}
-          className="pointer-events-none absolute inset-0 w-full select-none"
+          loading="lazy"
+          decoding="async"
+          className="pointer-events-none absolute inset-0 size-full select-none object-cover object-top"
           style={{ clipPath: `inset(0 ${100 - pos}% 0 0)` }}
         />
         <div
@@ -91,6 +111,7 @@ export function VisualDiff({ signalId }: { signalId: string }) {
                   src={beforeUrl}
                   alt="Homepage before the change"
                   draggable={false}
+                  decoding="async"
                   className="block w-full"
                 />
               </div>
@@ -102,6 +123,7 @@ export function VisualDiff({ signalId }: { signalId: string }) {
                   src={afterUrl}
                   alt="Homepage after the change"
                   draggable={false}
+                  decoding="async"
                   className="block w-full"
                 />
               </div>

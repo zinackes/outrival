@@ -15,7 +15,6 @@ import {
   MessageSquare,
   MoreHorizontal,
   Sparkles,
-  Target,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
@@ -41,17 +40,15 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { SeverityBadge } from "./severity-pill";
 import { CatPill } from "./cat-pill";
 import { CompAvatar } from "./comp-avatar";
 import { SignalComments } from "./signal-comments";
 import { CompetitorProductChips } from "./product-chip";
 import { SEV_DOT } from "./signals-list-header";
 import { ChangeLedger } from "@/components/outrival/change-ledger";
-import { SignalSourceLine } from "@/components/outrival/signal-source-line";
+import { WhyInsightPanel } from "@/components/outrival/why-insight-panel";
 import { FeedbackButtons } from "@/components/outrival/feedback-buttons";
-import { ConfidenceDot } from "@/components/outrival/confidence-dot";
-import { ThreatMeter } from "@/components/outrival/threat-meter";
+import { SeverityScale } from "@/components/outrival/severity-scale";
 import { AiOutputWarning } from "@/components/outrival/ai-output-warning";
 import { VisualDiff } from "@/components/outrival/visual-diff";
 import { ChangeBreakdown } from "@/components/outrival/change-breakdown";
@@ -59,14 +56,53 @@ import { ChangeBreakdown } from "@/components/outrival/change-breakdown";
 /**
  * The workspace's right column: one signal read as a document, not a card.
  *
- * The reading order IS the product's argument — what moved, why it matters, what
- * to do — so each beat is a flat section separated by a hairline instead of a
- * boxed panel. The one accent in the whole document sits on the action, because
- * that is the only part the reader is meant to leave with.
+ * Two devices carry it. The masthead states the verdict — severity as a position
+ * on its four-band scale, then the finding, then a mono readout of the facts the
+ * machine produced. Below it, section labels hang in a right-aligned margin so
+ * the body keeps one continuous left spine: the reading order IS the product's
+ * argument (what moved → why it matters → what to do) and it should read as one
+ * document, not as five stacked panels. The margin collapses under the label on
+ * a narrow pane, where there is no room to spend on it.
+ *
+ * Exactly one element in the document carries a fill and the accent — the
+ * action — because that is the only part the reader is meant to leave with.
  *
  * Mount it keyed on `signal.id`: every disclosure and the scroll position then
  * reset with the signal, which is what "opening the next one" should mean.
  */
+
+// Gutter geometry, declared once so the masthead and footer stay on the same
+// spine as the labelled sections.
+const RAIL = "@2xl:flex @2xl:gap-6";
+const RAIL_GUTTER = "shrink-0 @2xl:w-28 @2xl:text-right";
+const RAIL_BODY = "min-w-0 flex-1";
+
+const CONFIDENCE_COPY: Record<
+  "low" | "medium" | "high",
+  { label: string; why: string }
+> = {
+  high: {
+    label: "High",
+    why: "The insight is carried directly by the captured change.",
+  },
+  medium: {
+    label: "Moderate",
+    why: "Reasonably inferred, with some extrapolation. Worth a quick sanity check.",
+  },
+  low: {
+    label: "Low",
+    why: "Not enough evidence to be certain. Treat this as a hypothesis, not a fact.",
+  },
+};
+
+// Same buckets as the feed's threat meter, said in words: three bars and a
+// four-band severity scale in the same masthead would read as one instrument.
+function threatLabel(score: number): string {
+  if (score >= 0.4) return "Elevated";
+  if (score >= 0.2) return "Moderate";
+  return "Low";
+}
+
 export function SignalDetailPanel({
   signal,
   interactive = true,
@@ -102,6 +138,7 @@ export function SignalDetailPanel({
   const [showComments, setShowComments] = useState(false);
   const [showContext, setShowContext] = useState(false);
   const [showAllChanges, setShowAllChanges] = useState(false);
+  const [showWhy, setShowWhy] = useState(false);
   const [commentCount, setCommentCount] = useState<number | null>(null);
   const [flagged, setFlagged] = useState(signal.aiFlagged ?? false);
   const [severityAdjusted, setSeverityAdjusted] = useState(false);
@@ -159,9 +196,14 @@ export function SignalDetailPanel({
 
   const severity = signal.severityOverride ?? signal.severity;
   const created = new Date(signal.createdAt);
+  const confidence = CONFIDENCE_COPY[signal.aiConfidence ?? "high"];
   const hasVisual = Boolean(detail?.screenshots?.before && detail?.screenshots?.after);
   const changes = detail?.changes ?? [];
   const hasEvidence = hasVisual || changes.length > 0;
+  const heldBack =
+    signal.filteredReason && signal.filteredReason !== "backfill"
+      ? signal.filteredReason
+      : null;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -329,128 +371,157 @@ export function SignalDetailPanel({
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.16, ease: "easeOut" }}
-          className="mx-auto max-w-[820px] px-5 py-6 lg:px-8"
+          className="@container mx-auto max-w-[820px] px-5 py-6 lg:px-8"
         >
-          <div className="flex flex-wrap items-center gap-2 text-meta text-muted-foreground">
-            <SeverityBadge severity={severity} />
-            <CatPill size="compact">{signal.category}</CatPill>
-            {signal.filteredReason === "backfill" && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 font-medium">
-                    <Archive className="size-3" />
-                    From archive
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>
-                  Reconstructed from the web archive. This change happened before we
-                  started monitoring, so it wasn&apos;t sent as an alert.
-                </TooltipContent>
-              </Tooltip>
-            )}
-            <span aria-hidden>·</span>
-            <time dateTime={signal.createdAt} className="tabular-nums">
-              {format(created, "MMM d, HH:mm")}
-            </time>
-            <span aria-hidden>·</span>
-            <span className="tabular-nums">
-              {formatDistanceToNow(created, { addSuffix: true })}
-            </span>
-            <ConfidenceDot confidence={signal.aiConfidence ?? "high"} />
-            <ThreatMeter score={signal.threatScore} />
-            {signal.filteredReason && signal.filteredReason !== "backfill" && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="shrink-0">· Held back</span>
-                </TooltipTrigger>
-                <TooltipContent>
-                  Not sent as an alert:{" "}
-                  {FILTERED_REASON_LABEL[signal.filteredReason] ??
-                    signal.filteredReason.replace(/_/g, " ")}
-                </TooltipContent>
-              </Tooltip>
-            )}
-          </div>
-
-          <h2 className="mt-3 text-xl font-semibold leading-snug tracking-tight text-foreground">
-            {signal.insight}
-          </h2>
-
-          {interactive && flagged && (
-            <div className="mt-4">
-              <AiOutputWarning
-                targetType="signal"
-                targetId={signal.id}
-                onResolved={() => setFlagged(false)}
-              />
+          {/* Masthead — the verdict, the finding, and the machine's own facts. */}
+          <header className={RAIL}>
+            <div className={cn(RAIL_GUTTER, "mb-3 @2xl:mb-0 @2xl:pt-1")}>
+              <SeverityScale severity={severity} layout="column" />
             </div>
-          )}
+
+            <div className={RAIL_BODY}>
+              <div className="flex flex-wrap items-center gap-2">
+                <CatPill size="compact">{signal.category}</CatPill>
+                {signal.filteredReason === "backfill" && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex items-center gap-1 rounded-sm border border-border bg-surface-2 px-2 py-0.5 text-meta font-medium text-muted-foreground">
+                        <Archive className="size-3" />
+                        From archive
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      Reconstructed from the web archive. This change happened before
+                      we started monitoring, so it wasn&apos;t sent as an alert.
+                    </TooltipContent>
+                  </Tooltip>
+                )}
+                {heldBack && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="rounded-sm border border-border bg-surface-2 px-2 py-0.5 text-meta font-medium text-muted-foreground">
+                        Held back
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      Not sent as an alert:{" "}
+                      {FILTERED_REASON_LABEL[heldBack] ??
+                        heldBack.replace(/_/g, " ")}
+                    </TooltipContent>
+                  </Tooltip>
+                )}
+              </div>
+
+              <h2 className="mt-2.5 text-xl font-semibold leading-snug tracking-tight text-balance text-foreground">
+                {signal.insight}
+              </h2>
+
+              <dl className="mt-5 grid grid-cols-3 gap-x-4 border-t border-border pt-4 @md:gap-x-6">
+                <Stat
+                  label="Detected"
+                  sub={formatDistanceToNow(created, { addSuffix: true })}
+                >
+                  <time dateTime={signal.createdAt}>
+                    {format(created, "MMM d, HH:mm")}
+                  </time>
+                </Stat>
+                <Stat label="Confidence" hint={confidence.why}>
+                  {confidence.label}
+                </Stat>
+                <Stat
+                  label="Threat"
+                  hint="Severity weighted by how much this competitor overlaps with you, and how relevant the change is."
+                >
+                  {threatLabel(signal.threatScore)}
+                </Stat>
+              </dl>
+
+              <button
+                type="button"
+                onClick={() => setShowWhy(true)}
+                className="mt-3 rounded-sm text-dense text-muted-foreground underline underline-offset-2 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+              >
+                Why this insight?
+              </button>
+              <WhyInsightPanel
+                signalId={signal.id}
+                open={showWhy}
+                onOpenChange={setShowWhy}
+              />
+
+              {interactive && flagged && (
+                <div className="mt-4">
+                  <AiOutputWarning
+                    targetType="signal"
+                    targetId={signal.id}
+                    onResolved={() => setFlagged(false)}
+                  />
+                </div>
+              )}
+            </div>
+          </header>
 
           {(detail?.humanChangeBefore || detail?.humanChangeAfter) && (
-            <section className="mt-6">
-              <Label>What changed</Label>
-              <div className="mt-2">
-                <ChangeLedger
-                  before={detail.humanChangeBefore}
-                  after={detail.humanChangeAfter}
-                />
-              </div>
-            </section>
+            <Section label="What changed">
+              <ChangeLedger
+                before={detail.humanChangeBefore}
+                after={detail.humanChangeAfter}
+              />
+            </Section>
           )}
           {!injected && detailQ.isFetching && !detail && (
-            <div className="mt-6 space-y-2.5">
-              <Skeleton className="h-3 w-24" />
-              <Skeleton className="h-20 w-full" />
-            </div>
+            <Section label="What changed">
+              <Skeleton className="h-16 w-full" />
+            </Section>
           )}
 
-          {signal.soWhat && (
+          {(signal.soWhat || signal.narrative) && (
             <Section label="Why it matters">
-              <p className="text-content leading-relaxed text-foreground/85">
-                {signal.soWhat}
-              </p>
+              {signal.soWhat && (
+                <p className="text-content leading-relaxed text-foreground/85">
+                  {signal.soWhat}
+                </p>
+              )}
+              {signal.narrative && (
+                <div className={cn(signal.soWhat && "mt-3")}>
+                  <button
+                    type="button"
+                    onClick={() => setShowContext((v) => !v)}
+                    aria-expanded={showContext}
+                    className="flex items-center gap-1.5 rounded-sm text-dense font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+                  >
+                    <Sparkles size={13} className="shrink-0" aria-hidden />
+                    Full context
+                    <ChevronDown
+                      className={cn(
+                        "size-3.5 transition-transform",
+                        showContext && "rotate-180",
+                      )}
+                      aria-hidden
+                    />
+                  </button>
+                  {showContext && (
+                    <p className="mt-2.5 text-content leading-relaxed text-foreground/85">
+                      {signal.narrative}
+                    </p>
+                  )}
+                </div>
+              )}
             </Section>
           )}
 
           {signal.recommendedAction && signal.recommendedAction !== "—" && (
-            // The document's single accent, shared with the Track button in the bar
-            // above: in this pane the accent means "act". The label uses --link
-            // rather than the raw accent so it clears 4.5:1 on the light surface.
-            <div className="mt-6 rounded-r-md border-l-2 border-primary bg-surface-2 px-4 py-3.5">
-              <div className="mb-1.5 flex items-center gap-1.5 text-dense font-medium text-link">
-                <Target size={13} aria-hidden /> What to do
-              </div>
-              <p className="text-content leading-relaxed text-foreground/90">
+            // The document's single fill and single accent, shared with the Track
+            // button in the bar above: in this pane the accent means "act".
+            <Section label="What to do" tone="action">
+              <p className="rounded-md bg-surface-2 px-4 py-3.5 text-content leading-relaxed text-foreground/90">
                 {signal.recommendedAction}
               </p>
-            </div>
-          )}
-
-          {signal.narrative && (
-            <div className="mt-6">
-              <button
-                type="button"
-                onClick={() => setShowContext((v) => !v)}
-                aria-expanded={showContext}
-                className="flex items-center gap-1.5 text-dense font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground"
-              >
-                <Sparkles size={13} className="shrink-0" aria-hidden />
-                Context
-                <ChevronDown
-                  className={cn("size-3.5 transition-transform", showContext && "rotate-180")}
-                  aria-hidden
-                />
-              </button>
-              {showContext && (
-                <p className="mt-2 rounded-md bg-surface-2 px-4 py-3 text-content leading-relaxed text-foreground/85">
-                  {signal.narrative}
-                </p>
-              )}
-            </div>
+            </Section>
           )}
 
           {hasEvidence && (
-            <Section label="Source captures">
+            <Section label="Evidence">
               {hasVisual && <VisualDiff signalId={signal.id} />}
               {changes.length > 0 &&
                 (hasVisual || detail?.humanChangeAfter ? (
@@ -459,7 +530,7 @@ export function SignalDetailPanel({
                       type="button"
                       onClick={() => setShowAllChanges((v) => !v)}
                       aria-expanded={showAllChanges}
-                      className="flex items-center gap-1.5 text-dense font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground"
+                      className="flex items-center gap-1.5 rounded-sm text-dense font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
                     >
                       {showAllChanges ? "Hide" : "Show all"} {changes.length} change
                       {changes.length === 1 ? "" : "s"}
@@ -483,14 +554,6 @@ export function SignalDetailPanel({
             </Section>
           )}
 
-          <Section label="Where this came from">
-            <SignalSourceLine
-              signalId={signal.id}
-              sourceType={signal.sourceType}
-              detectedAt={signal.createdAt}
-            />
-          </Section>
-
           <Section label={`More from ${signal.competitorName}`}>
             {related.length > 0 ? (
               <ul className="-mx-2">
@@ -499,7 +562,7 @@ export function SignalDetailPanel({
                     <button
                       type="button"
                       onClick={() => onSelectRelated(s.id)}
-                      className="group flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent/40"
+                      className="group flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left outline-none transition-colors hover:bg-accent/40 focus-visible:ring-2 focus-visible:ring-ring/50"
                     >
                       <span
                         className={cn(
@@ -510,21 +573,23 @@ export function SignalDetailPanel({
                       <span className="min-w-0 flex-1 truncate text-dense text-foreground/90 group-hover:text-foreground">
                         {s.insight}
                       </span>
-                      <time className="shrink-0 text-meta tabular-nums text-muted-foreground">
-                        {formatDistanceToNow(new Date(s.createdAt), { addSuffix: false })}
+                      <time className="shrink-0 font-mono text-meta tabular-nums text-muted-foreground">
+                        {formatDistanceToNow(new Date(s.createdAt), {
+                          addSuffix: false,
+                        })}
                       </time>
                     </button>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="text-dense text-muted-foreground">
+              <p className="text-sm text-muted-foreground">
                 No other signals from this competitor yet.
               </p>
             )}
             <Link
               href={`/dashboard/competitors/${signal.competitorId}`}
-              className="mt-3 inline-flex items-center gap-1 text-dense text-muted-foreground transition-colors hover:text-foreground"
+              className="mt-3 inline-flex items-center gap-1 rounded-sm text-dense text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
             >
               View {signal.competitorName} profile
               <ArrowUpRight size={13} />
@@ -532,36 +597,41 @@ export function SignalDetailPanel({
           </Section>
 
           {interactive && (
-            <Section label="Discussion">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="-ml-2 h-7 text-muted-foreground"
-                onClick={() => setShowComments((v) => !v)}
-                aria-expanded={showComments}
-              >
-                <MessageSquare size={13} />
-                {commentCount && commentCount > 0
-                  ? `${commentCount} comment${commentCount === 1 ? "" : "s"}`
-                  : "Add a comment"}
-              </Button>
-              {showComments && (
-                <SignalComments signalId={signal.id} onCountChange={setCommentCount} />
-              )}
-            </Section>
-          )}
-
-          {interactive && (
-            <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-border pt-4">
-              <span className="text-dense text-muted-foreground">
-                Was this signal useful?
-              </span>
-              <FeedbackButtons
-                targetType="signal"
-                targetId={signal.id}
-                currentVerdict={signal.feedbackVerdict}
-                currentFeedbackId={signal.feedbackId}
-              />
+            <div className={cn("mt-8 border-t border-border pt-4", RAIL)}>
+              <div className={cn(RAIL_GUTTER, "hidden @2xl:block")} aria-hidden />
+              <div className={RAIL_BODY}>
+                <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                  <div className="flex items-center gap-3">
+                    <span className="text-dense text-muted-foreground">
+                      Was this useful?
+                    </span>
+                    <FeedbackButtons
+                      targetType="signal"
+                      targetId={signal.id}
+                      currentVerdict={signal.feedbackVerdict}
+                      currentFeedbackId={signal.feedbackId}
+                    />
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="-mr-2 h-7 text-muted-foreground"
+                    onClick={() => setShowComments((v) => !v)}
+                    aria-expanded={showComments}
+                  >
+                    <MessageSquare size={13} />
+                    {commentCount && commentCount > 0
+                      ? `${commentCount} comment${commentCount === 1 ? "" : "s"}`
+                      : "Discuss"}
+                  </Button>
+                </div>
+                {showComments && (
+                  <SignalComments
+                    signalId={signal.id}
+                    onCountChange={setCommentCount}
+                  />
+                )}
+              </div>
             </div>
           )}
         </motion.article>
@@ -570,23 +640,71 @@ export function SignalDetailPanel({
   );
 }
 
-function Label({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="text-dense font-medium text-muted-foreground">{children}</div>
-  );
-}
-
-function Section({
+/** One readout cell: a muted role label over the machine's own value. */
+function Stat({
   label,
   children,
+  sub,
+  hint,
 }: {
   label: string;
   children: React.ReactNode;
+  sub?: string;
+  hint?: string;
 }) {
   return (
-    <section className="mt-6 border-t border-border pt-5">
-      <Label>{label}</Label>
-      <div className="mt-2">{children}</div>
+    <div className="min-w-0">
+      <dt className="text-meta font-medium text-muted-foreground">{label}</dt>
+      <dd className="mt-1 font-mono text-dense tabular-nums slashed-zero text-foreground">
+        {hint ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                tabIndex={0}
+                className="cursor-default rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+              >
+                {children}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-[260px]">{hint}</TooltipContent>
+          </Tooltip>
+        ) : (
+          children
+        )}
+      </dd>
+      {sub && <dd className="mt-0.5 text-meta text-muted-foreground">{sub}</dd>}
+    </div>
+  );
+}
+
+/**
+ * A beat of the document. The label hangs in the right-aligned margin once the
+ * pane is wide enough to spend the space on it (container query, not viewport —
+ * the pane is a column inside the view, not the window), and stacks above the
+ * content below that.
+ */
+function Section({
+  label,
+  children,
+  tone = "default",
+}: {
+  label: string;
+  children: React.ReactNode;
+  /** `action` gives the label the document's one accent. */
+  tone?: "default" | "action";
+}) {
+  return (
+    <section className={cn("mt-6 border-t border-border pt-5", RAIL)}>
+      <h3
+        className={cn(
+          RAIL_GUTTER,
+          "text-dense font-medium @2xl:pt-0.5",
+          tone === "action" ? "text-link" : "text-muted-foreground",
+        )}
+      >
+        {label}
+      </h3>
+      <div className={cn(RAIL_BODY, "mt-2 @2xl:mt-0")}>{children}</div>
     </section>
   );
 }

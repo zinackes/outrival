@@ -1175,9 +1175,21 @@ export function SignalsView() {
             />
           ) : (
             <div className="flex h-full items-center justify-center p-8">
-              <p className="text-sm text-muted-foreground">
-                Select a signal to see the full detail.
-              </p>
+              <div className="max-w-xs text-center">
+                <span
+                  className="mx-auto flex size-9 items-center justify-center rounded-md border border-border bg-surface-2 text-muted-foreground"
+                  aria-hidden
+                >
+                  <Radar size={17} />
+                </span>
+                <p className="mt-3 text-sm font-medium text-foreground">
+                  No signal open
+                </p>
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                  Pick one from the list to read what changed, why it matters, and
+                  what to do.
+                </p>
+              </div>
             </div>
           )}
         </div>

@@ -80,18 +80,24 @@ async function queryPerplexity(prompt: string): Promise<EngineAnswer | null> {
 }
 
 // Gemini + Google Search grounding — the FREE default engine (docs/ai-visibility-free.md).
-// Gemini 3.x gets ~5,000 grounded prompts/month free on the AI Studio tier, so a
-// GEMINI_API_KEY (free) replaces the paid Perplexity Sonar fee. It's a web-grounded
-// answer with citations that stands in for "Google's AI answer". Model is overridable:
-// pin AI_VISIBILITY_GEMINI_MODEL to the current 3.x Flash to land in the free grounding
-// quota (the default alias may resolve to a paid-grounding 2.5 model).
+// A GEMINI_API_KEY (free) replaces the paid Perplexity Sonar fee: it's a web-grounded
+// answer with citations that stands in for "Google's AI answer".
+//
+// The model is PINNED, never an alias. The free grounding allowance is granted per
+// MODEL, and a `-latest` alias silently moves to a generation that has none — measured
+// 2026-07-24 on the prod key, same project, same minute:
+//   gemini-2.5-flash      200      gemini-flash-latest    429
+//   gemini-2.0-flash      429      gemini-2.5-flash-lite  429
+// That is what took AI visibility down: not an exhausted quota (72 grounded requests
+// that whole month), an alias that drifted off the free tier. Re-run that matrix before
+// changing this default, and prefer a version pin over any `-latest` name.
 async function queryGemini(prompt: string): Promise<EngineAnswer | null> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     logger.warn("ai-visibility: GEMINI_API_KEY not set, skipping gemini");
     return null;
   }
-  const model = process.env.AI_VISIBILITY_GEMINI_MODEL ?? "gemini-flash-latest";
+  const model = process.env.AI_VISIBILITY_GEMINI_MODEL ?? "gemini-2.5-flash";
   try {
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,

@@ -1144,7 +1144,10 @@ AI_VISIBILITY_MIN_PROMPTS_FOR_SIGNAL=4 # min prompts répondus (par moteur, sur 
 AI_VISIBILITY_TEASER_ENABLED=true      # L7 — teaser onboarding gratuit 1×/org (false → "unavailable")
 AI_VISIBILITY_TEASER_MAX_PROMPTS=3     # requêtes groundées free dépensées par teaser
 GEMINI_API_KEY=                        # moteur Gemini + grounding (GRATUIT, défaut) ; vide → skip
-AI_VISIBILITY_GEMINI_MODEL=gemini-flash-latest  # pin un Flash 3.x pour le quota grounding gratuit
+AI_VISIBILITY_GEMINI_MODEL=gemini-2.5-flash  # PINNER une version, JAMAIS un alias `-latest` : le
+                                       # quota grounding gratuit est PAR MODÈLE, et l'alias qui
+                                       # glisse sur une génération sans quota renvoie 429 sur tout
+                                       # appel groundé (panne 13/07→24/07/2026, 0 ligne 11 jours)
 PERPLEXITY_API_KEY=                    # moteur Perplexity Sonar (PAYANT) ; vide → moteur skip
 AI_VISIBILITY_PERPLEXITY_MODEL=sonar   # modèle Perplexity (sonar = search fee le moins cher)
 

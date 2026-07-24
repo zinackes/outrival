@@ -897,7 +897,16 @@ export interface SignalComment {
   id: string;
   userId: string;
   authorName: string;
+  // Seed for the generated identity mark — the same one the topbar uses, so a
+  // comment's avatar matches the account's everywhere else.
+  authorEmail: string | null;
+  // A real photo only exists for accounts that signed in with Google (Better
+  // Auth fills it); null everywhere else, and the generated mark takes over.
+  authorImage: string | null;
   body: string;
+  // Single-level threading: null = a root comment, otherwise the root it answers.
+  parentId: string | null;
+  editedAt: string | null;
   createdAt: string;
   mine: boolean;
 }
@@ -2485,11 +2494,16 @@ export const api = {
     request<{ ok: boolean }>(`/api/crm-destinations/${id}/test`, { method: "POST" }),
   listSignalComments: (id: string) =>
     request<{ comments: SignalComment[] }>(`/api/signals/${id}/comments`),
-  addSignalComment: (id: string, body: string) =>
+  addSignalComment: (id: string, body: string, parentId?: string) =>
     request<{ comment: SignalComment }>(`/api/signals/${id}/comments`, {
       method: "POST",
-      body: JSON.stringify({ body }),
+      body: JSON.stringify(parentId ? { body, parentId } : { body }),
     }),
+  editSignalComment: (id: string, commentId: string, body: string) =>
+    request<{ comment: { id: string; body: string; editedAt: string } }>(
+      `/api/signals/${id}/comments/${commentId}`,
+      { method: "PATCH", body: JSON.stringify({ body }) },
+    ),
   deleteSignalComment: (id: string, commentId: string) =>
     request<{ ok: true }>(`/api/signals/${id}/comments/${commentId}`, { method: "DELETE" }),
   listDigests: () => request<{ digests: Digest[] }>("/api/digests"),

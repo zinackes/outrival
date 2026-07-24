@@ -38,6 +38,19 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
+import { Fact, FactStrip } from "@/components/outrival/data-marks";
+
+// Prevalence is ordinal with three bands; these drive the width of its track.
+// Read through helpers so an unknown band degrades to the quietest step rather
+// than to undefined (noUncheckedIndexedAccess).
+const PREVALENCE_WEIGHT: Record<string, number> = { high: 3, medium: 2, low: 1 };
+const PREVALENCE_LABEL: Record<string, string> = {
+  high: "Mentioned often",
+  medium: "Regularly",
+  low: "Occasionally",
+};
+const prevalenceWeight = (p: string) => PREVALENCE_WEIGHT[p] ?? 1;
+const prevalenceLabel = (p: string) => PREVALENCE_LABEL[p] ?? p;
 import { buildReviewScoreSeries } from "./charts";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -270,6 +283,28 @@ export function ReviewsTab({
       ].filter((r): r is { label: string; v: number } => r.v != null)
     : [];
 
+  // Latest capture per source, newest last. The headline rating and the 90-day
+  // movement both read off this rather than off the raw series.
+  const sorted = [...scores].sort(
+    (a, b) => new Date(a.recorded_at).getTime() - new Date(b.recorded_at).getTime(),
+  );
+  const latest = sorted[sorted.length - 1] ?? null;
+  const ninetyDaysAgo = Date.now() - 90 * 86_400_000;
+  const baseline = sorted.find(
+    (p) => latest && p.source === latest.source && new Date(p.recorded_at).getTime() >= ninetyDaysAgo,
+  );
+  const scoreDelta =
+    latest && baseline && baseline !== latest ? latest.score - baseline.score : null;
+
+  // A sub-score only means something against a reference. Their own overall score
+  // is the one we always have, so an axis reads as "0.6 below their own average"
+  // rather than as a bare 3.6 the reader has to rank on their own.
+  const overall = latest?.score ?? null;
+  const weakest =
+    subRows.length > 0
+      ? subRows.reduce((acc, r) => (r.v < acc.v ? r : acc), subRows[0]!)
+      : null;
+
   return (
     <div className="flex flex-col gap-4">
       <TabCard>
@@ -284,8 +319,101 @@ export function ReviewsTab({
 
         {hasData && (
           <>
+            <TabSection>
+              <FactStrip>
+                <Fact label={latest ? `${latest.source} rating` : "Rating"} muted={!latest}>
+                  {latest ? (
+                    <>
+                      <span className="font-mono tabular-nums">{latest.score.toFixed(1)}</span>
+                      <span className="text-muted-foreground">of 5</span>
+                    </>
+                  ) : (
+                    "Not captured"
+                  )}
+                </Fact>
+                <Fact label="Reviews counted" muted={!latest}>
+                  {latest ? (
+                    <span className="font-mono tabular-nums">
+                      {latest.review_count.toLocaleString()}
+                    </span>
+                  ) : (
+                    "Not captured"
+                  )}
+                </Fact>
+                <Fact
+                  label="Change, 90 days"
+                  tone={scoreDelta != null && scoreDelta <= -0.2 ? "bad" : undefined}
+                  muted={scoreDelta == null || Math.abs(scoreDelta) < 0.05}
+                >
+                  {scoreDelta == null || Math.abs(scoreDelta) < 0.05 ? (
+                    "Flat"
+                  ) : (
+                    <span className="font-mono tabular-nums">
+                      {scoreDelta > 0 ? "+" : ""}
+                      {scoreDelta.toFixed(1)}
+                    </span>
+                  )}
+                </Fact>
+                <Fact label="Weakest axis" muted={!weakest}>
+                  {weakest ? weakest.label : "No breakdown"}
+                </Fact>
+              </FactStrip>
+            </TabSection>
+
+            {/* Promoted from last to first among the analyses. The tab already
+                called these the angles you can lead with, then printed them under
+                a chart and two columns of verbatims. */}
+            {reviews.summary.complaintThemes.length > 0 && (
+              <TabSection title="Angles you can lead with" icon={Star}>
+                <p className="text-sm text-muted-foreground">
+                  Grievances that repeat across reviews, most common first.
+                </p>
+                <ul className="flex flex-col">
+                  {[...reviews.summary.complaintThemes]
+                    .sort(
+                      (a, b) =>
+                        prevalenceWeight(b.prevalence) - prevalenceWeight(a.prevalence),
+                    )
+                    .map((t, i) => (
+                      <li
+                        key={i}
+                        className="grid grid-cols-[minmax(0,1fr)_3.25rem] items-center gap-x-4 border-t border-border py-2.5 first:border-t-0 sm:grid-cols-[minmax(0,1fr)_3.25rem_7rem]"
+                      >
+                        <span
+                          className={cn(
+                            "text-sm",
+                            t.prevalence === "high"
+                              ? "font-medium text-foreground"
+                              : t.prevalence === "low"
+                                ? "text-muted-foreground"
+                                : undefined,
+                          )}
+                        >
+                          {t.theme}
+                        </span>
+                        {/* A horizontal track on purpose: severity already owns the
+                            vertical tick scale and the threat meter owns ascending
+                            bars, so a third ordinal encoding needs its own shape. */}
+                        <span className="h-1 overflow-hidden rounded-full bg-surface-3">
+                          <span
+                            className={cn(
+                              "block h-full rounded-full",
+                              t.prevalence === "high" ? "bg-critical" : "bg-muted-foreground",
+                            )}
+                            style={{ width: `${prevalenceWeight(t.prevalence) * 33.4}%` }}
+                          />
+                        </span>
+                        <span className="hidden text-xs text-muted-foreground sm:block">
+                          {prevalenceLabel(t.prevalence)}
+                        </span>
+                      </li>
+                    ))}
+                </ul>
+              </TabSection>
+            )}
+
             {series && (
-              <TabSection title="Score over time" icon={Activity}>
+              <TabSection title="Rating over time" icon={Activity}>
                 <MultiLineChart
                   data={series.points}
                   seriesKeys={series.sources}
@@ -297,69 +425,84 @@ export function ReviewsTab({
             )}
 
             {subRows.length > 0 && (
-              <TabSection title="Rating breakdown" icon={Star}>
-                <div className="space-y-2.5 max-w-md">
-                  {subRows.map((r) => (
-                    <div key={r.label} className="flex items-center gap-3">
-                      <span className="w-24 shrink-0 text-xs text-muted-foreground">
-                        {r.label}
-                      </span>
-                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-border">
-                        <div
-                          className="h-full rounded-full bg-foreground/80"
-                          style={{ width: `${(r.v / 5) * 100}%` }}
-                        />
+              <TabSection
+                title="Where the rating comes from"
+                icon={Star}
+                action={
+                  overall != null && (
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      marker shows their overall{" "}
+                      <span className="font-mono tabular-nums">{overall.toFixed(1)}</span>
+                    </span>
+                  )
+                }
+              >
+                <div className="flex max-w-xl flex-col gap-3">
+                  {subRows.map((r) => {
+                    const gap = overall != null ? r.v - overall : null;
+                    return (
+                      <div key={r.label} className="flex items-center gap-3">
+                        <span className="w-24 shrink-0 text-dense text-muted-foreground">
+                          {r.label}
+                        </span>
+                        <div className="relative h-1.5 flex-1 rounded-full bg-surface-3">
+                          <div
+                            className="absolute inset-y-0 left-0 rounded-full bg-foreground/55"
+                            style={{ width: `${(r.v / 5) * 100}%` }}
+                          />
+                          {overall != null && (
+                            <div
+                              aria-hidden
+                              className="absolute -inset-y-1 w-0.5 rounded-full bg-muted-foreground"
+                              style={{ left: `${(overall / 5) * 100}%` }}
+                            />
+                          )}
+                        </div>
+                        <span className="flex w-20 shrink-0 items-baseline justify-end gap-1.5">
+                          <span className="font-mono text-dense tabular-nums">
+                            {r.v.toFixed(1)}
+                          </span>
+                          {gap != null && (
+                            <span
+                              className={cn(
+                                "text-xs",
+                                Math.abs(gap) < 0.05
+                                  ? "text-muted-foreground"
+                                  : gap < 0
+                                    ? "text-critical"
+                                    : "text-positive",
+                              )}
+                            >
+                              {Math.abs(gap) < 0.05
+                                ? "even"
+                                : `${gap > 0 ? "+" : ""}${gap.toFixed(1)}`}
+                            </span>
+                          )}
+                        </span>
                       </div>
-                      <span className="w-8 shrink-0 text-right font-mono text-xs tabular-nums text-foreground/85">
-                        {r.v.toFixed(1)}
-                      </span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </TabSection>
             )}
 
-            <TabSection title="What customers say" icon={Star}>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-6">
-                <ReviewColumn
-                  title="What they love"
-                  items={reviews.summary.praises}
-                  accent="positive"
-                />
+            {/* Not two symmetric columns: complaints are the wedge, praise is what
+                you have to match. Complaints lead and take the wider column. */}
+            <TabSection title="In their words" icon={Star}>
+              <div className="grid grid-cols-1 gap-x-10 gap-y-6 md:grid-cols-[1.35fr_1fr]">
                 <ReviewColumn
                   title="What they complain about"
                   items={reviews.summary.complaints}
                   accent="critical"
                 />
+                <ReviewColumn
+                  title="What they love"
+                  items={reviews.summary.praises}
+                  accent="positive"
+                />
               </div>
             </TabSection>
 
-            {reviews.summary.complaintThemes.length > 0 && (
-              <TabSection title="Recurring complaints" icon={Star}>
-                <p className="mb-3 text-xs text-muted-foreground">
-                  Repeated grievances across reviews. Each is an angle you can lead with.
-                </p>
-                <ul className="space-y-2">
-                  {reviews.summary.complaintThemes.map((t, i) => (
-                    <li key={i} className="flex items-center justify-between gap-3">
-                      <span className="text-dense">{t.theme}</span>
-                      <span
-                        className={cn(
-                          "shrink-0 rounded-md border px-1.5 py-0.5 text-xs capitalize",
-                          t.prevalence === "high"
-                            ? "border-critical/40 text-critical"
-                            : t.prevalence === "medium"
-                              ? "border-border text-foreground/85"
-                              : "border-border text-muted-foreground",
-                        )}
-                      >
-                        {t.prevalence}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </TabSection>
-            )}
           </>
         )}
       </TabCard>
@@ -656,7 +799,7 @@ function ReviewColumn({
         {title}
       </h3>
       {items.length === 0 ? (
-        <p className="text-dense text-muted-foreground">—</p>
+        <p className="text-dense text-muted-foreground">Nothing clustered yet.</p>
       ) : (
         <ul className="flex flex-col gap-2 text-content">
           {items.filter(Boolean).map((it, i) => (

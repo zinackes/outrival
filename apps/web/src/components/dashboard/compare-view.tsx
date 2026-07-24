@@ -629,6 +629,35 @@ function SummaryBand({ you, comps }: { you: CompareColumn; comps: CompareColumn[
 
 const ROWS_STORAGE = "compare:rows";
 const EXPORT_STORAGE = "compare:export";
+// Persisted column selection. Keyed by the active product scope: with several SKUs
+// the columns are a "this product vs these competitors" set, so one shared key would
+// hand a scope the previous product's "you" column and out-of-scope competitors.
+const SELECTION_STORAGE = "compare:selected";
+
+function selectionKey(productId: string | undefined): string {
+  return `${SELECTION_STORAGE}:${productId ?? "all"}`;
+}
+
+/**
+ * The column selection the user left behind, filtered to entities that still exist
+ * (a competitor can be deleted, or belong to another org / product scope) and capped
+ * at MAX. Null when nothing survives — the caller then seeds the ranked defaults,
+ * so a stale or emptied selection can never leave the page with no columns at all.
+ */
+function readStoredSelection(key: string, entities: PickEntity[]): string[] | null {
+  try {
+    const raw: unknown = JSON.parse(localStorage.getItem(key) ?? "null");
+    if (!Array.isArray(raw)) return null;
+    const known = new Set(entities.map((e) => e.id));
+    const kept = [
+      ...new Set(raw.filter((id): id is string => typeof id === "string" && known.has(id))),
+    ].slice(0, MAX);
+    return kept.length ? kept : null;
+  } catch {
+    /* corrupt prefs — fall back to the defaults */
+    return null;
+  }
+}
 
 // Derive the entity pick-list + the default "you vs them" selection from the
 // raw products/competitors. Shared by the server-seeded initial state and the
@@ -703,6 +732,11 @@ export function CompareView() {
   const initializedRef = useRef(
     productsQ.data != null && competitorsQ.data != null && !rankingQ.isLoading,
   );
+  // True once the persisted selection has been read (applied or found absent). The
+  // matrix fetch waits on it so the page never spends a request on the default
+  // columns just to replace them a frame later.
+  const [selectionRestored, setSelectionRestored] = useState(false);
+  const restoredRef = useRef(false);
   const [matrix, setMatrix] = useState<CompareColumn[] | null>(null);
   // Set when the compare fetch fails, so we surface an error+retry instead of a
   // lying "Nothing to compare." Bumping the reload key re-runs the fetch effect.
@@ -793,10 +827,38 @@ export function CompareView() {
       productId,
     );
     setEntities(entities);
-    setSelected(selected);
+    // The user's own selection wins over the ranked default as soon as the entities
+    // it names are known — done here too (not only in the effect below) because this
+    // path can run after that one, and would otherwise reset the restored columns.
+    setSelected(readStoredSelection(selectionKey(productId), entities) ?? selected);
+    restoredRef.current = true;
+    setSelectionRestored(true);
   }, [productsQ.data, competitorsQ.data, rankingQ.isLoading, rankingQ.data, productId]);
 
+  // Restore the persisted selection on the server-seeded path, where the picker was
+  // built during the first render and the effect above never runs. Post-mount (never
+  // in the useState initializer) so the server HTML and the first client render match.
   useEffect(() => {
+    if (restoredRef.current || !entities) return;
+    restoredRef.current = true;
+    const stored = readStoredSelection(selectionKey(productId), entities);
+    if (stored) setSelected(stored);
+    setSelectionRestored(true);
+  }, [entities, productId]);
+
+  // Persist every later change. Gated on the restore so the default seed can't
+  // overwrite the stored selection before it has been read.
+  useEffect(() => {
+    if (!selectionRestored) return;
+    try {
+      localStorage.setItem(selectionKey(productId), JSON.stringify(selected));
+    } catch {
+      /* storage blocked — ignore */
+    }
+  }, [selected, selectionRestored, productId]);
+
+  useEffect(() => {
+    if (!selectionRestored) return;
     if (selected.length === 0) {
       setMatrix([]);
       setIsFetching(false);
@@ -825,7 +887,7 @@ export function CompareView() {
     return () => {
       cancelled = true;
     };
-  }, [selected, matrixReloadKey]);
+  }, [selected, matrixReloadKey, selectionRestored]);
 
   function addColumn(id: string) {
     if (selected.includes(id) || selected.length >= MAX) return;

@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useRef, useState } from "react";
-import { ChevronRight, ExternalLink, Loader2, Lock, Play, Plus } from "lucide-react";
+import { ChevronRight, ExternalLink, Info, Loader2, Lock, Play, Plus } from "lucide-react";
 import {
   MONITOR_FREQUENCIES,
   PLAN_LABELS,
@@ -22,11 +22,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { sourceShortLabel } from "@/lib/source-labels";
 import {
   SourceStatusIcon,
   monitorStatus,
-  nextScanLabel,
   nextScanIn,
   lastScanLabel,
 } from "../competitor-detail/monitor-status";
@@ -240,15 +240,25 @@ export function SourceRow({
   // and no on/off — only the question of which page to watch.
   const canSchedule = !!monitor && (state === "tracking" || state === "pending");
   // "Weekly" alone doesn't answer the question the user actually has, which is when
-  // we look next. The long form goes in the drawer beside the cadence buttons; the
-  // bare phrase rides next to the cadence word on the closed row.
-  const nextScan = canSchedule ? nextScanLabel(monitor, status, monitoringPaused) : null;
+  // we look next. It rides next to the cadence word on the row, and is stated once.
   const nextScanShort = canSchedule ? nextScanIn(monitor, status, monitoringPaused) : null;
   const canToggle = !!monitor && state !== "not_available";
   const showUrlField = copy.action !== "upgrade";
   // "Point us at one" and "Turn on" both submit the same thing, but only the first
   // is overruling a verdict we already published.
   const isOverride = state === "not_available";
+  const urlHelp = [
+    isOverride
+      ? (NOT_AVAILABLE_PROMPT[sourceType] ?? "If you know this surface exists, name it here.")
+      : (guidance?.help ?? "Must be on this competitor's domain."),
+    // Retargeting clears the previous page's failure record server-side, so a source
+    // that was blocked or auto-paused comes back on its own.
+    monitor && !isOverride
+      ? "Saving clears this source's failure history and schedules a fresh scan, and past snapshots are kept."
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   function openWithUrlFocus() {
     setUrlValue(currentUrl);
@@ -305,10 +315,20 @@ export function SourceRow({
         open ? "bg-surface-2" : expandable && "hover:bg-surface-2/50",
       )}
     >
-      <div className="flex items-center gap-3 px-4 py-2">
+      {/* The whole line opens the row, padding included. The inner button stays for
+          the keyboard and the aria contract, but a pointer landing in the 16px
+          gutter used to hit dead space on a row that is entirely a disclosure. */}
+      <div
+        onClick={toggleOpen}
+        className={cn("flex items-center gap-3 px-4 py-2", expandable && "cursor-pointer")}
+      >
         <button
           type="button"
-          onClick={toggleOpen}
+          onClick={(e) => {
+            // Without this the parent handler fires too and toggles right back.
+            e.stopPropagation();
+            toggleOpen();
+          }}
           aria-expanded={expandable ? open : undefined}
           aria-controls={expandable ? drawerId : undefined}
           disabled={!expandable}
@@ -338,7 +358,8 @@ export function SourceRow({
           </span>
         </button>
 
-        <div className="flex shrink-0 items-center gap-1.5">
+        {/* Actions carry their own click; the row must not also swallow it. */}
+        <div className="flex shrink-0 items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
           {copy.action === "upgrade" && (
             <Button
               size="sm"
@@ -403,7 +424,10 @@ export function SourceRow({
             <span className="hidden text-xs capitalize tabular-nums text-muted-foreground sm:inline">
               {monitor.frequency}
               {nextScanShort && (
-                <span className="normal-case text-muted-foreground"> · {nextScanShort}</span>
+                <span className="normal-case text-muted-foreground">
+                  {" · "}
+                  {nextScanShort === "paused" ? nextScanShort : `next ${nextScanShort}`}
+                </span>
               )}
             </span>
           )}
@@ -449,16 +473,26 @@ export function SourceRow({
               {canSchedule && (
                 <div>
                   <p className="mb-1.5 text-xs font-medium text-muted-foreground">How often</p>
-                  <div className="flex flex-wrap items-center gap-1">
+                  {/* One track, one raised segment: three loose buttons read as three
+                      independent choices, when it is a single setting with three
+                      positions. The next scan is already stated on the row, so the
+                      drawer doesn't repeat it. */}
+                  <div className="inline-flex items-center gap-0.5 rounded-md border border-border bg-surface-2 p-0.5">
                     {MONITOR_FREQUENCIES.map((freq) => {
                       const locked = !planIncludesFrequency(plan, freq);
+                      const selected = monitor.frequency === freq;
                       return (
-                        <Button
+                        <button
                           key={freq}
                           type="button"
-                          size="sm"
-                          variant={monitor.frequency === freq ? "secondary" : "ghost"}
-                          className="h-6 gap-1 text-meta capitalize text-muted-foreground"
+                          aria-pressed={selected}
+                          className={cn(
+                            "inline-flex h-6 items-center gap-1 rounded px-2.5 text-xs capitalize",
+                            "transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                            selected
+                              ? "bg-surface text-foreground"
+                              : "text-muted-foreground hover:text-foreground",
+                          )}
                           onClick={() =>
                             locked
                               ? onLockedFrequency(freq)
@@ -472,21 +506,9 @@ export function SourceRow({
                               {PLAN_LABELS[minPlanForFrequency(freq)]}
                             </span>
                           )}
-                        </Button>
+                        </button>
                       );
                     })}
-
-                    {/* Keyed on its own text, so picking another cadence replays the
-                        fade: the answer to "and when next?" arrives one refetch after
-                        the click, and this is what tells the user it landed. */}
-                    {nextScan && (
-                      <span
-                        key={nextScan}
-                        className="ml-2 text-xs text-muted-foreground duration-300 ease-out animate-in fade-in-0 slide-in-from-right-1 motion-reduce:animate-none"
-                      >
-                        {nextScan}
-                      </span>
-                    )}
                   </div>
                 </div>
               )}
@@ -519,9 +541,27 @@ export function SourceRow({
 
               {showUrlField && (
                 <div className="min-w-[280px] flex-1">
-                  <Label htmlFor={`url-${sourceType}`} className="mb-1.5 block text-xs">
-                    {isOverride || !monitor ? `${label} URL` : "Page URL"}
-                  </Label>
+                  {/* The rule for this field (which host, what a save costs) is worth
+                      two sentences and worth reading once. As a permanent paragraph
+                      it was the tallest thing in the drawer on every row; behind the
+                      label it stays one keystroke or one hover away. */}
+                  <div className="mb-1.5 flex items-center gap-1">
+                    <Label htmlFor={`url-${sourceType}`} className="text-xs">
+                      {isOverride || !monitor ? `${label} URL` : "Page URL"}
+                    </Label>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label="What this URL has to be"
+                          className="rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          <Info size={12} />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-[44ch]">{urlHelp}</TooltipContent>
+                    </Tooltip>
+                  </div>
                   <div className="flex flex-wrap gap-2">
                     <Input
                       id={`url-${sourceType}`}
@@ -560,17 +600,6 @@ export function SourceRow({
                       <ExternalLink size={10} className="shrink-0" />
                     </a>
                   )}
-                  <p className="mt-1.5 max-w-[64ch] text-xs text-muted-foreground">
-                    {isOverride
-                      ? (NOT_AVAILABLE_PROMPT[sourceType] ??
-                        "If you know this surface exists, name it here.")
-                      : (guidance?.help ?? "Must be on this competitor's domain.")}{" "}
-                    {/* Retargeting clears the previous page's failure record server-side, so
-                        a source that was blocked or auto-paused comes back on its own. */}
-                    {monitor &&
-                      !isOverride &&
-                      "Saving clears this source's failure history and schedules a fresh scan, and past snapshots are kept."}
-                  </p>
                 </div>
               )}
             </div>

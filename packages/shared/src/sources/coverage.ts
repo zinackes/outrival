@@ -77,6 +77,15 @@ const NO_TARGET_MARKERS: Partial<Record<SourceType, readonly string[]>> = {
   // Deliberately NOT `no_docs_index` (docs exist but expose no enumerable index) —
   // that one is actionable, so it must stay a fixable failure with a URL override.
   docs: ["no_docs_surface"],
+  // roadmap.scraper.ts — two distinct neutral facts, both terminal and neither
+  // fixable by retrying or by pointing us at a better URL:
+  //   no_roadmap_portal — the competitor publishes no public roadmap/feedback portal;
+  //   portal_private    — a portal exists but its board/portal is access-restricted
+  //                       (Canny private/custom access, ProductBoard non-public);
+  //   portal_empty      — a public portal that carries no entries yet.
+  // A parse failure on a portal we DID reach is deliberately absent here: that one is
+  // a real breakage and must stay a loud, retried failure.
+  roadmap: ["no_roadmap_portal", "portal_private", "portal_empty"],
 };
 
 function hasNoTargetError(source: SourceType, lastError: string | null | undefined): boolean {

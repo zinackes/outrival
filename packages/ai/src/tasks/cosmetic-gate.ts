@@ -101,6 +101,11 @@ const LIST_SHAPED_SOURCES = new Set([
   // or the docs sitemap's page list. A new endpoint is a new endpoint; there is no
   // wording to have been rephrased.
   "docs",
+  // `roadmap`: a sorted "[status] title — votes N+" listing of a Canny/ProductBoard
+  // portal. Every line the diff shows is a status move, a vote band crossing or an
+  // entry appearing/disappearing — facts, not phrasing. Asking "was this reworded?"
+  // could only ever suppress one of them.
+  "roadmap",
 ]);
 
 export function gateAppliesTo(sourceType: string | undefined): boolean {

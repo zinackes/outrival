@@ -115,6 +115,27 @@ export const SOURCE_TYPES = [
   // (PLAN_LIMITS.customMonitorsPerCompetitor), NOT the single (competitor,sourceType)
   // uniqueness — several customs coexist per competitor. Kept in sync with the DB enum.
   "custom",
+  // Public roadmap / feedback portal — what the competitor has committed to build,
+  // and which requests their own customers are voting up. USER-SELECTABLE (pro+),
+  // enabled through the standard enable route with an optional URL override (the
+  // portal lives off-domain, so `roadmap` gets a brand exception in
+  // validateMonitorUrl, like `jobs` does for ATS hosts).
+  //
+  // Two vendor adapters, both pure L0 fetch and zero AI: (1) Canny — the board /
+  // roadmap page server-renders a `window.__data` state island carrying every post's
+  // id, title, status and vote score, plus `boards.*.settings.access` which says
+  // outright whether the board is public; (2) ProductBoard — the portal page itself
+  // is an empty SPA shell, but its own frontend reads one unauthenticated endpoint
+  // (`/api/portal/all` with an `x-portal-path` header) returning the cards, their
+  // vote counts, and the tabs that ARE the statuses.
+  //
+  // The snapshot is a listing sorted by STABLE ENTRY ID (never by votes or status),
+  // so a status move produces exactly one -/+ line pair in place. Vote counts are
+  // written as a BAND (see voteBand) rather than a raw number: raw counts drift every
+  // week on every row, which would diff the whole list; a band only moves on a real
+  // surge. No scrape-monitor branch — it rides the generic snapshot → diff → classify
+  // chain. Kept in sync with the DB source_type enum.
+  "roadmap",
 ] as const;
 
 export type SourceType = typeof SOURCE_TYPES[number];

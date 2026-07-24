@@ -10,7 +10,14 @@ import { SOURCE_TYPES, type SourceType } from "../constants/sources";
  */
 
 /** Groups of user-configurable sources, in display order on the Sources page. */
-export const SOURCE_GROUPS = ["web_content", "pricing", "hiring", "reviews", "developer"] as const;
+export const SOURCE_GROUPS = [
+  "web_content",
+  "pricing",
+  "hiring",
+  "reviews",
+  "roadmap",
+  "developer",
+] as const;
 export type SourceGroup = typeof SOURCE_GROUPS[number];
 
 export const SOURCE_GROUP_LABELS: Record<SourceGroup, string> = {
@@ -18,6 +25,10 @@ export const SOURCE_GROUP_LABELS: Record<SourceGroup, string> = {
   pricing: "Pricing",
   hiring: "Hiring",
   reviews: "Reviews",
+  // Its own group rather than a line under "Web & content": a public roadmap portal
+  // is the one surface that states what a competitor has COMMITTED to build, next to
+  // how hard their own customers are pushing for it.
+  roadmap: "Roadmap & feedback",
   // Not "Social & community": LinkedIn/X/YouTube/Reddit are all out (no scraper,
   // internal, or retired), so what actually remains here is developer + infra surface.
   developer: "Developer & infrastructure",
@@ -32,6 +43,10 @@ export const CONFIGURABLE_SOURCES: Record<SourceGroup, readonly SourceType[]> = 
   // aggregators are RETIRED_SOURCES below; G2 has no connected-vendor flow (its
   // ToS review is still open), so it has no row at all rather than a fake one.
   reviews: ["appstore_reviews", "trustpilot_public"],
+  // `roadmap` (pro+) reads the competitor's public Canny / ProductBoard portal.
+  // Enabled through the standard route; the optional URL override points at the
+  // portal itself, which is why `roadmap` gets a brand exception in validateMonitorUrl.
+  roadmap: ["roadmap"],
   // `docs` (pro+) reads the competitor's own developer documentation — an OpenAPI
   // spec when they publish one, else their docs sitemap. Enabled through the standard
   // route with an optional URL override.

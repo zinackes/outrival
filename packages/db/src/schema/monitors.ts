@@ -95,6 +95,14 @@ export const sourceTypeEnum = pgEnum("source_type", [
   // by PLAN_LIMITS.customMonitorsPerCompetitor, not the (competitor,sourceType)
   // uniqueness). Kept in sync with shared SOURCE_TYPES.
   "custom",
+  // Public roadmap / feedback portal (user-selectable, pro+). Reads the competitor's
+  // Canny or ProductBoard portal at L0 through its own public structure — Canny's
+  // SSR'd state island, ProductBoard's unauthenticated portal API — and emits a
+  // sorted "[status] title — votes N+" listing, so the generic lexical diff reads a
+  // status move (planned → in progress) and a vote-band rise as one line pair each.
+  // Scraped via getScraper, diffed by the generic path — no scrape-monitor branch.
+  // Kept in sync with shared SOURCE_TYPES.
+  "roadmap",
 ]);
 
 export const frequencyEnum = pgEnum("frequency", ["realtime", "daily", "weekly"]);

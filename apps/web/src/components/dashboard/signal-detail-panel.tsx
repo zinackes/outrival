@@ -142,7 +142,7 @@ export function SignalDetailPanel({
   const [showContext, setShowContext] = useState(false);
   const [showAllChanges, setShowAllChanges] = useState(false);
   const [showWhy, setShowWhy] = useState(false);
-  const [commentCount, setCommentCount] = useState<number | null>(null);
+
   const [flagged, setFlagged] = useState(signal.aiFlagged ?? false);
   const [severityAdjusted, setSeverityAdjusted] = useState(false);
 
@@ -154,6 +154,23 @@ export function SignalDetailPanel({
     enabled: !injected,
   });
   const detail = injected ? injectedDetail : (detailQ.data ?? null);
+
+  // The thread's size, read before it is opened: a "Discuss" button that only
+  // learns there are three comments after you click it hides the discussion
+  // from everyone who had no reason to click. Shares SignalComments' cache key,
+  // so opening the section costs no second fetch.
+  const commentsQ = useQuery({
+    queryKey: ["signalComments", signal.id],
+    queryFn: () => api.listSignalComments(signal.id).then((r) => r.comments),
+    enabled: interactive,
+  });
+  const commentCount = commentsQ.data?.length ?? null;
+
+  // An existing thread is content, not an action: show it rather than making
+  // the reader open it. Runs once per signal (the panel is keyed on its id).
+  useEffect(() => {
+    if (commentCount && commentCount > 0) setShowComments(true);
+  }, [commentCount]);
 
   // Keyboard actions dispatched by the view on the focused signal (t / c). The
   // panel is the single mount point for a signal's controls, so it listens on
@@ -376,7 +393,10 @@ export function SignalDetailPanel({
           dead band down the side of a large pane; capping the text instead
           keeps lines readable while the width goes to what actually wants it —
           the before/after captures and the related list. */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      {/* overscroll-contain: reaching the end of the pane must not hand the
+          wheel to whatever scrolls behind it — chaining made the whole page,
+          list included, move once the document ran out. */}
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <motion.article
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
@@ -393,23 +413,6 @@ export function SignalDetailPanel({
           <header className={RAIL}>
             <div className={cn(RAIL_GUTTER, "mb-4 @2xl:mb-0 @2xl:pt-1")}>
               <SeverityScale severity={severity} layout="column" />
-              {/* Threat belongs to severity, not beside it: it IS the severity
-                  weighted by overlap and relevance, so showing the two as peers
-                  invites reading one piece of evidence as two. */}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <p
-                    tabIndex={0}
-                    className="mt-2 cursor-default rounded-sm text-meta text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-                  >
-                    {threatLabel(signal.threatScore)} threat
-                  </p>
-                </TooltipTrigger>
-                <TooltipContent className="max-w-[260px]">
-                  Severity weighted by how much this competitor overlaps with you,
-                  and how relevant the change is.
-                </TooltipContent>
-              </Tooltip>
             </div>
 
             <div className={RAIL_BODY}>
@@ -479,6 +482,24 @@ export function SignalDetailPanel({
                 </time>
                 <span aria-hidden>·</span>
                 <span>{formatDistanceToNow(created, { addSuffix: true })}</span>
+                <span aria-hidden>·</span>
+                {/* Threat sits with the provenance rather than beside severity:
+                    it IS the severity weighted by overlap and relevance, so as a
+                    peer it invited reading one piece of evidence as two. */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      tabIndex={0}
+                      className="cursor-default rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                    >
+                      {threatLabel(signal.threatScore)} threat
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-[260px]">
+                    Severity weighted by how much this competitor overlaps with you,
+                    and how relevant the change is.
+                  </TooltipContent>
+                </Tooltip>
                 <span aria-hidden>·</span>
                 <button
                   type="button"
@@ -671,12 +692,7 @@ export function SignalDetailPanel({
                       : "Discuss"}
                   </Button>
                 </div>
-                {showComments && (
-                  <SignalComments
-                    signalId={signal.id}
-                    onCountChange={setCommentCount}
-                  />
-                )}
+                {showComments && <SignalComments signalId={signal.id} />}
               </div>
             </div>
           )}

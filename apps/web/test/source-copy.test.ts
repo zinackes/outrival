@@ -41,9 +41,27 @@ describe("not available: neutral, and never counted as a gap", () => {
     const copy = sourceCopy({ state: "not_available", sourceType: "github_repo" });
     expect(copy.message).toBe("No public repo for this competitor.");
     expect(copy.tone).toBe("neutral");
-    expect(copy.action).toBeNull();
     // Never phrased as our failure.
     expect(copy.message).not.toMatch(/fail|error|couldn't|unable|blocked/i);
+  });
+
+  test("the verdict can now be overruled, without the row becoming a gap", () => {
+    for (const sourceType of ["github_repo", "status", "docs", "roadmap"] as const) {
+      const copy = sourceCopy({ state: "not_available", sourceType });
+      expect(copy.action).toBe("point_at_url");
+      // The offer must not change the register: it stays a neutral fact about them,
+      // otherwise every well-covered competitor starts reading as full of holes.
+      expect(copy.tone).toBe("neutral");
+    }
+  });
+
+  test("Trustpilot too, now that the scraper reads a pinned profile URL", () => {
+    // It shipped without the control while the scraper still derived its business
+    // unit from the competitor's own domain: a field there would have looked like
+    // it worked and changed nothing, which is worse than the dead end.
+    const copy = sourceCopy({ state: "not_available", sourceType: "trustpilot_public" });
+    expect(copy.action).toBe("point_at_url");
+    expect(copy.tone).toBe("neutral");
   });
 
   test("each surface gets its own plain sentence", () => {
@@ -83,6 +101,15 @@ describe("fixable: the only family that asks the user for something", () => {
 });
 
 describe("the remaining states", () => {
+  test("a refusal still offers nothing, so it can never head a task list", () => {
+    // The Sources page files these under "Closed to us" rather than "Needs you"
+    // precisely because of this null: the doctrine is that we stop, so a call to
+    // act would contradict the sentence printed inside the row.
+    for (const state of ["blocked", "login_required", "geo_blocked"] as const) {
+      expect(sourceCopy({ state, sourceType: "blog" }).action).toBeNull();
+    }
+  });
+
   test("login and geo explain themselves without offering a false fix", () => {
     expect(sourceCopy({ state: "login_required", sourceType: "jobs" }).message).toContain(
       "behind a login",

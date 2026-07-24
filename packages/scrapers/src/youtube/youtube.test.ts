@@ -4,6 +4,7 @@ import {
   findYouTubeChannelUrl,
   channelIdFromUrl,
   extractChannelId,
+  isYouTubeUrl,
   channelFeedUrl,
   parseChannelFeed,
   buildYouTubeDoc,
@@ -151,5 +152,62 @@ describe("buildYouTubeDoc — deterministic snapshot + generic diff surfaces a n
     const added = diff.added.join("\n");
     expect(added).toContain("Acme ships enterprise SSO"); // the new video shows up
     expect(added).not.toContain("Acme launches AI copilot"); // an unchanged one does not
+  });
+});
+
+// A competitor with no YouTube link on their site reads as "no such surface". The
+// user can overrule that by pinning the channel, which only works if the resolver
+// stops treating its input as a page to go hunting on.
+describe("a pinned channel URL is the answer, not a page to search", () => {
+  test("recognises YouTube hosts and nothing else", () => {
+    expect(isYouTubeUrl("https://www.youtube.com/@acme")).toBe(true);
+    expect(isYouTubeUrl("https://youtube.com/channel/UC1234567890123456789012")).toBe(true);
+    expect(isYouTubeUrl("https://m.youtube.com/@acme")).toBe(true);
+    expect(isYouTubeUrl("https://youtu.be/abc")).toBe(true);
+    // A competitor site that merely mentions youtube is still their site.
+    expect(isYouTubeUrl("https://acme.com/youtube.com")).toBe(false);
+    expect(isYouTubeUrl("https://notyoutube.com")).toBe(false);
+    expect(isYouTubeUrl("not a url")).toBe(false);
+  });
+
+  test("an inline channel id resolves with zero fetches", async () => {
+    let fetches = 0;
+    const id = await resolveChannelId("https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv", {
+      fetchText: async () => {
+        fetches++;
+        return null;
+      },
+    });
+    expect(id).toBe("UCabcdefghijklmnopqrstuv");
+    expect(fetches).toBe(0);
+  });
+
+  test("a handle URL is fetched directly, never scanned for a link to itself", async () => {
+    const seen: string[] = [];
+    const id = await resolveChannelId("https://www.youtube.com/@acme", {
+      fetchText: async (url) => {
+        seen.push(url);
+        return '<link rel="canonical" href="https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv">';
+      },
+    });
+    expect(id).toBe("UCabcdefghijklmnopqrstuv");
+    // Exactly one fetch, of the pinned URL itself.
+    expect(seen).toEqual(["https://www.youtube.com/@acme"]);
+  });
+
+  test("the homepage path is untouched: still discovers via a link on their site", async () => {
+    const id = await resolveChannelId("https://acme.com", {
+      fetchText: async (url) =>
+        url === "https://acme.com"
+          ? '<a href="https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv">YouTube</a>'
+          : null,
+    });
+    expect(id).toBe("UCabcdefghijklmnopqrstuv");
+  });
+
+  test("a pinned URL that resolves to nothing still reports no channel", async () => {
+    await expect(
+      collectVideos("https://www.youtube.com/@ghost", { fetchText: async () => null }),
+    ).rejects.toThrow("no_channel");
   });
 });

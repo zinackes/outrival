@@ -1,5 +1,5 @@
 import { test, expect, mock, beforeEach, afterEach } from "bun:test";
-import { scrape } from "./trustpilot.scraper";
+import { scrape, resolveTrustpilotDomain } from "./trustpilot.scraper";
 import type { TrustpilotSnapshot } from "@outrival/shared";
 
 const realFetch = globalThis.fetch;
@@ -98,4 +98,26 @@ test("404 business unit → throws (no hollow snapshot)", async () => {
 test("resolved unit with no score and no reviews → throws (anti-silent-failure)", async () => {
   mockApi({ find: { status: 200, body: { id: "bu-empty", numberOfReviews: { total: 0 } } } });
   expect(scrape("c1", "https://acme.com")).rejects.toThrow(/no usable surface/i);
+});
+
+// The Trustpilot source used to be the one "no such surface" the user could not
+// answer: the business unit was derived from the competitor's own domain, so a
+// company listed under another one was simply unreachable.
+test("resolveTrustpilotDomain: the competitor's own site is used as-is", () => {
+  expect(resolveTrustpilotDomain("https://www.acme.com/pricing")).toBe("acme.com");
+  expect(resolveTrustpilotDomain("https://acme.co.uk")).toBe("acme.co.uk");
+});
+
+test("resolveTrustpilotDomain: a pinned profile names the domain to look up", () => {
+  expect(resolveTrustpilotDomain("https://www.trustpilot.com/review/acme-group.de")).toBe(
+    "acme-group.de",
+  );
+  expect(resolveTrustpilotDomain("https://trustpilot.com/review/acme.com?stars=5")).toBe("acme.com");
+});
+
+test("resolveTrustpilotDomain: a non-profile trustpilot URL names no domain", () => {
+  // Falling back to the host here would look up Trustpilot's own business unit and
+  // store a snapshot of the wrong company.
+  expect(resolveTrustpilotDomain("https://www.trustpilot.com/categories/saas")).toBeNull();
+  expect(resolveTrustpilotDomain("https://www.trustpilot.com")).toBeNull();
 });

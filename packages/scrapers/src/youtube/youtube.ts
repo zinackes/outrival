@@ -20,6 +20,21 @@ export function channelFeedUrl(channelId: string): string {
 const CHANNEL_ID_RE = /UC[0-9A-Za-z_-]{22}/;
 
 /**
+ * Whether this URL is already on YouTube, i.e. a pinned channel rather than the
+ * competitor's site to go looking on. Host-based, so `youtube.com`, `www.` and
+ * `m.` all count, and a competitor domain that merely mentions youtube does not.
+ * Pure.
+ */
+export function isYouTubeUrl(url: string): boolean {
+  try {
+    const host = new URL(url.includes("://") ? url : `https://${url}`).hostname.toLowerCase();
+    return host === "youtube.com" || host.endsWith(".youtube.com") || host === "youtu.be";
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Extract a channel id from a YouTube URL that already carries it
  * (`/channel/UC…`). Handle / custom / user URLs (`/@h`, `/c/x`, `/user/x`) don't
  * embed the id — those resolve via `extractChannelId(channelPageHtml)` after a

@@ -160,6 +160,53 @@ export function sourceState(args: {
   return "tracking";
 }
 
+/**
+ * Which attention group a source belongs to on the Sources page.
+ *
+ * The split that matters is between `fixable` and the refusal family. Only
+ * `fixable` carries an action, because under the collection doctrine we stop at a
+ * refusal rather than route around it. Filing them together would head a list with
+ * a call to act over rows whose own copy ends "No action needed from you", and the
+ * user would go looking for a control that must not exist.
+ */
+export type SourceAttention =
+  /** Collecting, or on its way. */
+  | "collecting"
+  /** The user can repoint us and it works again. The only group that is a task. */
+  | "fixable"
+  /** The surface exists and is closed to us. Real, and not the user's to fix. */
+  | "closed"
+  /** Applicable and available, simply not on (or above the plan). */
+  | "idle"
+  /** No such surface for this competitor. Never a gap. */
+  | "unavailable";
+
+export const ATTENTION_OF: Record<SourceState, SourceAttention> = {
+  tracking: "collecting",
+  pending: "collecting",
+  fixable: "fixable",
+  blocked: "closed",
+  login_required: "closed",
+  geo_blocked: "closed",
+  off: "idle",
+  locked: "idle",
+  not_configured: "idle",
+  not_available: "unavailable",
+};
+
+/**
+ * Share of the ribbon each attention group takes. `unavailable` is deliberately
+ * absent: a surface a competitor doesn't have is not part of the denominator, so
+ * it gets a count but never a segment. That exclusion IS the statement, which is
+ * why it carries no caption.
+ */
+export const RIBBON_ATTENTIONS: readonly Exclude<SourceAttention, "unavailable">[] = [
+  "collecting",
+  "fixable",
+  "closed",
+  "idle",
+];
+
 /** Buckets of a competitor's sources by what the user needs to know about them. */
 export interface SourceCoverage {
   /** Collecting — what the product actually watches. */

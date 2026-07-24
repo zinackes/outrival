@@ -1,7 +1,14 @@
 import type { SourceState, SourceType } from "@outrival/shared";
 
 /** What the user can do about a source's current state, if anything. */
-export type SourceAction = "fix_url" | "enable" | "resume" | "upgrade" | null;
+export type SourceAction =
+  | "fix_url"
+  | "enable"
+  /** Overrule a "no such surface" verdict by naming the page yourself. */
+  | "point_at_url"
+  | "resume"
+  | "upgrade"
+  | null;
 
 export type SourceTone =
   /** Working, or on its way. */
@@ -104,10 +111,13 @@ export function sourceCopy(args: {
       };
 
     case "not_available":
+      // The tone stays neutral: this is a fact about them, and it must never start
+      // reading as a gap. What changes is that the row stops being a dead end — if
+      // the user knows the surface exists, they can now say where.
       return {
         tone: "neutral",
         message: NOT_AVAILABLE[sourceType] ?? "This competitor doesn't have this surface.",
-        action: null,
+        action: "point_at_url",
       };
 
     case "off":

@@ -1,6 +1,6 @@
 "use client";
 
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, formatDistanceToNowStrict } from "date-fns";
 import { AlertCircle, Loader2, PowerOff } from "lucide-react";
 import type { Monitor } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -70,7 +70,9 @@ export function nextScanIn(
   if (m.isActive === false) return null;
   const next = m.nextRunAt ? new Date(m.nextRunAt).getTime() : 0;
   if (!next || next <= Date.now()) return "within the hour";
-  return formatDistanceToNow(new Date(next), { addSuffix: true });
+  // Strict, so a schedule reads "in 14 hours" and not "in about 14 hours": the
+  // hedge is noise on a number the scheduler treats as a ceiling anyway.
+  return formatDistanceToNowStrict(new Date(next), { addSuffix: true });
 }
 
 /** How long ago this source last produced a capture, phrased for a dense row. */

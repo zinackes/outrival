@@ -459,7 +459,14 @@ export function SourcesView({ id }: { id: string }) {
           onResolved={refresh}
         />
 
-        <Card className="overflow-hidden">
+        {/* Keyed on the active chip: picking one swaps most of the sheet at once, and
+            without a fade the page just jumps to a different set of rows with no sign
+            that the click is what did it. Reopening a drawer after filtering is the
+            price, and a filtered view is a fresh look anyway. */}
+        <Card
+          key={filter ?? "all"}
+          className="overflow-hidden duration-200 ease-out animate-in fade-in-0 slide-in-from-top-1 motion-reduce:animate-none"
+        >
           {/* Pinned above the taxonomy: the only group that asks for something. */}
           {countOf("fixable") > 0 && visible("fixable") && (
             <>
@@ -555,7 +562,16 @@ export function SourcesView({ id }: { id: string }) {
                     label={sourceShortLabel(sourceType)}
                     url={monitor?.pageUrl ?? null}
                   />
-                  <span className="text-sm text-muted-foreground">{message}</span>
+                  {/* Same split as the configurable rows: a freshness stamp is meta,
+                      "they don't have this surface" is read. */}
+                  <span
+                    className={cn(
+                      "text-muted-foreground",
+                      state === "not_available" ? "text-sm" : "text-xs",
+                    )}
+                  >
+                    {message}
+                  </span>
                   {sourceType === "youtube" && state === "not_available" && monitor && (
                     <PinChannel monitor={monitor} onEdit={editMonitor} />
                   )}
@@ -568,7 +584,7 @@ export function SourcesView({ id }: { id: string }) {
                 bundles; /api/dev is likewise unmounted in prod). */}
             <li className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5">
               <span className="w-[132px] shrink-0 truncate text-sm font-medium">Tech stack</span>
-              <span className="text-sm text-muted-foreground">
+              <span className="text-xs text-muted-foreground">
                 {techScraping
                   ? "Scanning…"
                   : techStack.lastScrapedAt

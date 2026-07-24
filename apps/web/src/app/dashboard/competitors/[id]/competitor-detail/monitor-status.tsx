@@ -50,12 +50,27 @@ export function nextScanLabel(
   status: MonitorStatus,
   monitoringPaused: boolean,
 ): string | null {
-  if (monitoringPaused) return "Monitoring paused";
+  const when = nextScanIn(m, status, monitoringPaused);
+  if (!when) return null;
+  return when === "paused" ? "Monitoring paused" : `Next scan ${when}`;
+}
+
+/**
+ * The same schedule as a bare phrase ("in about 3 hours", "within the hour"), for
+ * the row summary where it sits right after the cadence word and a second "Next
+ * scan" would only repeat what the column already means.
+ */
+export function nextScanIn(
+  m: Monitor,
+  status: MonitorStatus,
+  monitoringPaused: boolean,
+): string | null {
+  if (monitoringPaused) return "paused";
   if (status === "running" || status === "disabled") return null;
   if (m.isActive === false) return null;
   const next = m.nextRunAt ? new Date(m.nextRunAt).getTime() : 0;
-  if (!next || next <= Date.now()) return "Next scan within the hour";
-  return `Next scan ${formatDistanceToNow(new Date(next), { addSuffix: true })}`;
+  if (!next || next <= Date.now()) return "within the hour";
+  return formatDistanceToNow(new Date(next), { addSuffix: true });
 }
 
 /** How long ago this source last produced a capture, phrased for a dense row. */

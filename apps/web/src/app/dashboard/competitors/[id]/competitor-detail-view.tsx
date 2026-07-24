@@ -143,7 +143,7 @@ const TABS: Array<{ key: TabKey; label: string; icon: typeof Activity }> = [
   { key: "pricing", label: "Pricing", icon: DollarSign },
   { key: "hiring", label: "Hiring", icon: Briefcase },
   { key: "reviews", label: "Reviews", icon: Star },
-  { key: "product", label: "Product & Positioning", icon: FileText },
+  { key: "product", label: "Positioning", icon: FileText },
 ];
 
 const VISIBLE_TABS = TABS;

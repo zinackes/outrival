@@ -8,12 +8,6 @@ import type { SourceType } from "@outrival/shared";
 export const PRODUCT_LENSES = ["narrative", "product", "social"] as const;
 export type ProductLens = typeof PRODUCT_LENSES[number];
 
-export const PRODUCT_LENS_LABELS: Record<ProductLens, string> = {
-  narrative: "Narrative",
-  product: "Product",
-  social: "Social",
-};
-
 /**
  * Which lens each source belongs to. A source absent from this map is not part of
  * this tab — pricing, jobs and reviews have their own tabs, and tech stack has its

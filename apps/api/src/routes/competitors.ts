@@ -549,7 +549,11 @@ const AddMonitorSchema = z.object({
 // Slow-changing review sources default to weekly; everything else daily.
 // Clamped to a plan-allowed frequency below (weekly is allowed on every plan).
 function defaultFrequencyFor(source: SourceType): MonitorFrequency {
-  return source.endsWith("_reviews") || source === "trustpilot_public" ? "weekly" : "daily";
+  // `docs` joins the weekly set: documentation moves on release cycles, and a run
+  // costs a sitemap walk plus a capped batch of page fetches.
+  return source.endsWith("_reviews") || source === "trustpilot_public" || source === "docs"
+    ? "weekly"
+    : "daily";
 }
 
 competitorsRouter.post("/:id/monitors", async (c) => {

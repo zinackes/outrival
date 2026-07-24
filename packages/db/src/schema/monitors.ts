@@ -82,6 +82,12 @@ export const sourceTypeEnum = pgEnum("source_type", [
   // finds a new competitor comparison page. Dedicated source_type so applySeverityGuard
   // can allow its deterministic critical. isActive=false; lazy-created by the branch.
   "comparison_page",
+  // Developer documentation (user-selectable, pro+). Structured-first: an OpenAPI /
+  // Swagger spec becomes a canonical sorted operation+schema listing (so the generic
+  // lexical diff reads as a structural diff), else the docs sitemap's page list plus
+  // capped per-page content hashes. Scraped via getScraper, diffed by the generic
+  // path — no scrape-monitor branch. Kept in sync with shared SOURCE_TYPES.
+  "docs",
   // Custom page (user-selectable via the dedicated "Watch a custom page" flow, not
   // the standard enable list). Watches an arbitrary page on the competitor's own
   // registrable domain via the generic snapshot → lexical diff → classify pipeline;

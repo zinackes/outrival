@@ -38,6 +38,7 @@ Mise à jour à chaque phase / patch.
 | Stockage binaire  | Cloudflare R2                            | Quasi-gratuit pour snapshots HTML/screenshots/PDFs |
 | Jobs              | **pg-boss v12** self-hosted (`@outrival/queue`)     | Postgres-natif : 0 € de logiciel, pas de compteur par run, pas de cap à 10 crons, pas de risque roadmap vendeur. Les wrappers Trigger.dev survivent une semaine après le cutover comme rollback, cf. `docs/trigger-to-pgboss-migration.md` |
 | Scraping          | Playwright (Chromium) + fetch            | Rendu honnête : UA OutrivalBot identifiable, pas de spoofing d'automatisation, respect robots.txt (collection doctrine) |
+| Parsing YAML      | `yaml` (MIT, dép de @outrival/scrapers)  | Specs OpenAPI publiées en YAML (source `docs`) — un parser maison sur un sous-ensemble YAML casserait en silence sur les ancres / blocs multi-lignes |
 | Egress proxy      | ProxyScrape datacenter (egress amont)    | Cascade 3 niveaux (L0 fetch · L1 render · L2 datacenter). Collection doctrine : arrêt sur refus, jamais d'escalade IP/fingerprint |
 | Discovery         | Exa.ai (`exa-js`)                        | Recherche sémantique de concurrents similaires |
 | Email             | Resend                                   | Alerts + digests transactionnels |
@@ -308,6 +309,23 @@ source_type       homepage | pricing | blog | changelog | jobs |
                     semée/scrapée — porte le change→signal déterministe d'une page /vs/ +
                     source dédiée pour le carve-out du garde critical). status : on-demand
                     starter+ (patch-31).
+                  — docs : documentation développeur du concurrent (user-selectable,
+                    pro+, weekly, override d'URL optionnel). STRUCTURED-FIRST, 2 modes :
+                    (1) spec OpenAPI/Swagger trouvée (JSON ou YAML — dép `yaml`) →
+                    snapshot = listing CANONIQUE trié des opérations + schémas, donc le
+                    diff lexical générique EST un diff structurel (endpoint ajouté/
+                    supprimé, champ passé `deprecated`, marqueur `[BETA]`) — ZÉRO IA
+                    dans le diff, l'IA ne paie que le « so what » ; (2) pas de spec →
+                    liste de pages du sitemap docs (page neuve = feature nouvellement
+                    documentée) + empreinte de contenu sur les K premières pages
+                    (`DOCS_PAGE_HASH_*`) pour capter une page RÉÉCRITE. Aucune branche
+                    scrape-monitor (chemin générique), fetch pur (pas de navigateur).
+                    Garde anti mode-flip : une spec n'est « absente » que sur réponse
+                    définitive (4xx / corps non-spec) — tout échec transitoire throw
+                    `spec_probe_failed` plutôt que de dégrader en mode 2 (sinon le diff
+                    lirait « tout supprimé, tout ajouté »). `no_docs_surface` = fait
+                    neutre (NO_TARGET_MARKERS → `not_available`), `no_docs_index` =
+                    échec actionnable (l'user peut pointer une URL). 📄 docs/docs-source.md
                   — custom : page arbitraire du domaine enregistrable (eTLD+1) du
                     concurrent, user-selectable via un flow DÉDIÉ (« Watch a custom page »,
                     POST /:id/custom-monitors — pas la liste standard d'enable). config =
@@ -429,7 +447,7 @@ API gating, web UI, paywalls, et workers (send-alert).
 |-----------|-----------------|--------------------------------------------------------|---------------|-------------------------|----------|
 | free      | 2               | homepage, pricing, blog                                | weekly        | email                   | —        |
 | starter   | 5               | + jobs                                                 | daily         | + slack                 | —        |
-| pro       | 15              | + g2_reviews, capterra_reviews                         | realtime      | + webhook               | battleCards, realtimeAlerts |
+| pro       | 15              | + g2_reviews, capterra_reviews, docs                   | realtime      | + webhook               | battleCards, realtimeAlerts |
 | business  | ∞               | + appstore_reviews                                     | realtime      | email + slack + webhook | + api, multiUser |
 
 Codes d'erreur structurés sur les routes gating : `plan_limit_competitors`,
@@ -573,6 +591,22 @@ carte (état live uniquement).
                    scrape-monitor diffe le fingerprint → nouveau appID/package non-IdP = app
                    mobile launch product/high ; llms.txt apparu = api_developer/low. Sévérité
                    forcée. Empty = état valide (jamais de throw). Interne, weekly
+       docs    → PAS de branche : le scraper rend un document CANONIQUE et le chemin
+                   générique (extractContent → computeTextDiff → classify-change) fait le
+                   diff. Mode 1 (spec OpenAPI/Swagger, JSON ou YAML) : 1 ligne par
+                   opération `MÉTHODE /path — API endpoint [DEPRECATED|BETA] (params: …)`
+                   + 1 ligne par schéma avec ses champs triés et leur marqueur
+                   `[DEPRECATED]` → un endpoint neuf = 1 ligne `+`, un champ déprécié =
+                   1 paire `-`/`+`. Caps comptés dans le header (jamais de troncature
+                   silencieuse). Mode 2 (pas de spec) : liste triée des URLs du sitemap
+                   docs filtrée sur la racine docs + K lignes `page <url> — …
+                   fingerprint <hash>` (hash de `extractContent`, donc insensible aux
+                   nonces/build ids). Découverte de la racine : sous-domaines docs./
+                   developers./developer./api. → chemins /docs, /api-reference, … → lien
+                   nav/footer de la home (même domaine enregistrable seulement) ; une URL
+                   déjà « docs » (override user) est prise verbatim. Exempté du gate
+                   cosmétique (source en forme de LISTE), inscrit dans
+                   SIZE_VARIABLE_SOURCES + SYNTHETIC_DOC_SOURCES. Weekly, pro+
        hackernews → BRANCHE DÉDIÉE (pas le diff générique) : le scraper query l'Algolia
                    public HN par brand (search_by_date, fenêtre roulante HN_WINDOW_DAYS,
                    sans clé), applique la garde anti-homonyme puis rend un snapshot dont le
@@ -991,6 +1025,8 @@ REVIEW_SCORE_DROP_THRESHOLD=0.2         # Reviews v2 — aggregate-score inflect
 HIRING_SPIKE_THRESHOLD=0.5              # hiring-velocity — a department's weekly open-role count must exceed (1 + this) × its trailing 4-week average (≥4 weeks history) to emit a "hiring" inflection signal; high severity for engineering/sales, medium otherwise. Event-driven off extract-jobs (no cron slot)
 HN_POINTS_THRESHOLD=50                  # hackernews source — a mention (non-Show-HN, guard-passing) must EXCEED this many points to emit a content/medium traction signal; below it the hit is stored in the snapshot JSON island but never signalled. Show HN + matching domain always signals product/high regardless.
 HN_WINDOW_DAYS=30                       # hackernews source — recency window (days) bounding the HN Algolia search_by_date fetch (created_at_i > now − window), so a heavily-mentioned competitor never hits the hard 1000-hit ceiling
+DOCS_PAGE_HASH_ENABLED=true             # docs source, mode 2 only (no OpenAPI spec found) — on top of the sitemap page list, fingerprint the top-K docs pages so a REWRITTEN page surfaces, not only a new one. The hash is taken over extractContent output (the exact text the pipeline diffs), so a build id / nonce can never churn it; a page that fails to fetch emits NO line (never a placeholder hash). false → page list only, K fewer L0 GETs per run
+DOCS_PAGE_HASH_MAX=20                   # docs source — how many pages get fingerprinted per run. Deterministic pick (shallowest path first, then lexicographic) so the selection can't drift and fake "changed" lines; a brand-new SHALLOW page can displace the Kth, which reads as one stray removed fingerprint line next to the genuine new-page line
 
 # AI
 ANTHROPIC_API_KEY=           # provider abstrait — Claude fallback (provider="claude")

@@ -13,6 +13,7 @@ import * as subdomains from "./subdomains/subdomains.scraper";
 import * as youtube from "./youtube/youtube.scraper";
 import * as hackernews from "./hackernews/hackernews.scraper";
 import * as wellknown from "./wellknown/wellknown.scraper";
+import * as docs from "./docs/docs.scraper";
 import * as custom from "./custom/custom.scraper";
 import type { SourceType } from "@outrival/shared";
 import type { ScrapeOptions, ScrapeOutcome } from "./types";
@@ -45,6 +46,9 @@ const scrapers: Partial<Record<SourceType, ScraperFn>> = {
   youtube: youtube.scrape,
   hackernews: hackernews.scrape,
   wellknown: wellknown.scrape,
+  // Developer docs (pro+): OpenAPI spec → canonical operation/schema listing, else
+  // the docs sitemap's page list. Pure fetch, no browser cascade, no AI.
+  docs: docs.scrape,
   custom: custom.scrape,
 };
 

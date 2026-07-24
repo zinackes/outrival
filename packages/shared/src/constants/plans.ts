@@ -100,7 +100,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     // Reviews v2 (2026-07-15): scraped aggregators retired. App Store (public RSS) +
     // Trustpilot (`trustpilot_public`, official-API surface: score + trend) are the
     // review sources; G2 may return later via a connected vendor account.
-    allowedSources: ["homepage", "pricing", "blog", "jobs", "appstore_reviews", "trustpilot_public", "status"],
+    allowedSources: ["homepage", "pricing", "blog", "jobs", "appstore_reviews", "trustpilot_public", "status", "docs"],
     scrapeFrequency: "daily_adaptive",
     forcedRescansPerDay: 20,
     battleCardsPerDay: 50,
@@ -123,7 +123,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     // (`trustpilot_public`, official-API surface) are the review sources.
     allowedSources: [
       "homepage", "pricing", "blog", "jobs",
-      "appstore_reviews", "trustpilot_public", "status",
+      "appstore_reviews", "trustpilot_public", "status", "docs",
     ],
     scrapeFrequency: "daily_priority",
     // Anti-abuse ceilings, far above normal use; a fair-use clause (TOS) covers the

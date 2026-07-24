@@ -72,6 +72,11 @@ const NO_TARGET_MARKERS: Partial<Record<SourceType, readonly string[]>> = {
   trustpilot_public: ["no trustpilot business unit"],
   // github.scraper.ts:102 — the repo is gone or was never public.
   github_repo: ["repo not found or private"],
+  // docs.scraper.ts — no docs subdomain, no conventional docs path and no docs link
+  // on the homepage: this competitor publishes no public developer documentation.
+  // Deliberately NOT `no_docs_index` (docs exist but expose no enumerable index) —
+  // that one is actionable, so it must stay a fixable failure with a URL override.
+  docs: ["no_docs_surface"],
 };
 
 function hasNoTargetError(source: SourceType, lastError: string | null | undefined): boolean {

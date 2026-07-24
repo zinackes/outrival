@@ -115,6 +115,37 @@ describe("NOT AVAILABLE is neutral, never a failure", () => {
     ).toBe("not_available");
   });
 
+  test("a competitor publishing no developer docs is not_available", () => {
+    expect(
+      sourceState({
+        sourceType: "docs",
+        plan: "pro",
+        monitor: monitor({
+          sourceType: "docs",
+          lastError: "docs: no_docs_surface",
+          markedUnscrapable: true,
+        }),
+      }),
+    ).toBe("not_available");
+  });
+
+  test("docs that exist but expose no index stays FIXABLE (the user can point us at it)", () => {
+    // Deliberately NOT not_available: no_docs_index means we found their docs and
+    // couldn't enumerate them, which a URL override fixes. Calling that "they have no
+    // docs" would hide an actionable gap behind neutral copy.
+    expect(
+      sourceState({
+        sourceType: "docs",
+        plan: "pro",
+        monitor: monitor({
+          sourceType: "docs",
+          lastError: "docs: no_docs_index",
+          markedUnscrapable: true,
+        }),
+      }),
+    ).toBe("fixable");
+  });
+
   test("no resolvable status host is not_available", () => {
     expect(
       sourceState({

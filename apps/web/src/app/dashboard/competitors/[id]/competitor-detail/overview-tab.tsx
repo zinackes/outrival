@@ -1,13 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { classifyLogoName, type AnalysisStatus } from "@outrival/shared";
 import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
+import { useProductScope } from "@/components/dashboard/product-scope-provider";
+import { myProductQuery } from "@/lib/queries";
 import {
   Activity,
   ChevronRight,
   Cpu,
+  Scale,
   FileText,
   Users,
   LayoutGrid,
@@ -223,6 +227,7 @@ type PersistedTranslation = { translated: TranslatedFacts; showOriginal: boolean
 
 export function OverviewTab({
   competitorId,
+  competitorName,
   overview,
   signals,
   monitors,
@@ -251,6 +256,7 @@ export function OverviewTab({
   pricingNote: string | null;
   onRun: (id: string) => void;
   onOpenTab: (tab: TabKey) => void;
+  competitorName: string;
 }) {
   const { homepage, numericClaims, pricingNow, reviews, hiring, capturedAt } = overview;
 
@@ -620,6 +626,8 @@ export function OverviewTab({
       )}
 
       <TechStackCard techStack={techStack} />
+
+      <HeadToHead competitorName={competitorName} overview={overview} />
       </TabCard>
     </div>
   );
@@ -633,34 +641,67 @@ function TechStackCard({ techStack }: { techStack: TechStackData }) {
   const entries = techStack.entries;
   if (entries.length === 0 && !techStack.platformProfile) return null;
 
-  // Strategic tells first — a payment provider or CRM says more about how they sell
-  // than the CDN in front of their marketing site.
-  const headline = [...entries]
-    .sort((a, b) => IMPORTANCE_RANK.indexOf(a.importance) - IMPORTANCE_RANK.indexOf(b.importance))
-    .slice(0, 4);
+  // Grouped by what each tool DOES. Four chips and a "+8 more" drawer told you the
+  // count and nothing else; a competitor's stack is read by category ("who do they
+  // pay for payments, for support") and that grouping is already on every entry.
+  const byCategory = new Map<string, typeof entries>();
+  for (const t of [...entries].sort(
+    (a, b) => IMPORTANCE_RANK.indexOf(a.importance) - IMPORTANCE_RANK.indexOf(b.importance),
+  )) {
+    const bucket = byCategory.get(t.category);
+    if (bucket) bucket.push(t);
+    else byCategory.set(t.category, [t]);
+  }
+  // Categories holding a commercially telling tool first.
+  const groups = [...byCategory.entries()].sort(
+    (a, b) =>
+      IMPORTANCE_RANK.indexOf(a[1][0]!.importance) - IMPORTANCE_RANK.indexOf(b[1][0]!.importance),
+  );
 
   return (
     <>
-      <TabSection title="Tech stack" icon={Cpu}>
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="flex w-full flex-wrap items-center gap-1.5 rounded-md text-left transition-colors hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          {headline.map((t) => (
-            <Badge key={t.techId} variant="secondary" className="text-xs font-normal">
-              {t.name}
-            </Badge>
-          ))}
-          <span className="text-dense text-muted-foreground">
-            {entries.length === 0
-              ? "Platform detected"
-              : entries.length > headline.length
-                ? `+${entries.length - headline.length} more`
-                : `${entries.length} detected`}
-          </span>
-          <ChevronRight size={13} className="ml-auto shrink-0 text-muted-foreground" />
-        </button>
+      <TabSection
+        title="Tech stack"
+        icon={Cpu}
+        action={
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="shrink-0 text-xs text-link hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {entries.length > 0 ? `${entries.length} detected, see evidence` : "Platform detected"}
+          </button>
+        }
+      >
+        {groups.length > 0 && (
+          <dl className="grid grid-cols-1 gap-x-4 gap-y-2.5 sm:grid-cols-[7.5rem_minmax(0,1fr)]">
+            {groups.map(([category, techs]) => (
+              <Fragment key={category}>
+                <dt className="text-xs capitalize text-muted-foreground">
+                  {category.replace(/[_-]/g, " ")}
+                </dt>
+                <dd className="m-0 flex flex-wrap gap-1.5">
+                  {techs.map((t) => (
+                    <span
+                      key={t.techId}
+                      className={cn(
+                        "rounded-sm border px-2 py-0.5 text-dense",
+                        // A payments or CRM tell says more about how they sell than
+                        // the CDN in front of the marketing site: weight, not a
+                        // second coloured container.
+                        t.importance === "high"
+                          ? "border-border-strong text-foreground"
+                          : "border-border text-muted-foreground",
+                      )}
+                    >
+                      {t.name}
+                    </span>
+                  ))}
+                </dd>
+              </Fragment>
+            ))}
+          </dl>
+        )}
       </TabSection>
 
       <Sheet open={open} onOpenChange={setOpen}>
@@ -681,3 +722,86 @@ function TechStackCard({ techStack }: { techStack: TechStackData }) {
 }
 
 const IMPORTANCE_RANK = ["high", "medium", "low"];
+
+/** Cheapest tier carrying a real figure. Quote-based tiers have none. */
+function entryPriceOf(tiers: Array<{ price: number | null; currency: string; billing_period: string; plan_name: string }>) {
+  return tiers.filter((t) => t.price != null && t.price > 0).sort((a, b) => a.price! - b.price!)[0];
+}
+
+/**
+ * The competitor against your own product.
+ *
+ * The page compared them to nothing, which for a competitive intelligence tool is
+ * the omission that matters most. Only measures we hold on BOTH sides are listed:
+ * a self-competitor never gets a reviews monitor (patch-12), so there is no "our
+ * rating" to line up against theirs and no such row is invented. A missing side
+ * says so rather than borrowing the other one's number.
+ */
+function HeadToHead({
+  competitorName,
+  overview,
+}: {
+  competitorName: string;
+  overview: CompetitorOverview;
+}) {
+  const productScope = useProductScope() ?? undefined;
+  const myProductQ = useQuery({ ...myProductQuery(productScope), retry: false });
+  const mine = myProductQ.data ?? null;
+
+  // Without our own product captured there is nothing to compare against, and a
+  // one-sided table is worse than no table.
+  if (!mine) return null;
+
+  const ourEntry = entryPriceOf(mine.pricing.tiers);
+  const theirEntry = entryPriceOf(overview.pricingNow);
+  const rows: Array<{ label: string; ours: string | null; theirs: string | null }> = [
+    {
+      label: "Entry price",
+      ours: ourEntry ? formatTierPrice(ourEntry) : null,
+      theirs: theirEntry ? formatTierPrice(theirEntry) : null,
+    },
+    {
+      label: "Open roles",
+      ours: mine.jobs.total > 0 ? String(mine.jobs.total) : null,
+      theirs: overview.hiring.openRoles > 0 ? String(overview.hiring.openRoles) : null,
+    },
+  ];
+  // A row where neither side has a figure teaches nothing.
+  const usable = rows.filter((r) => r.ours !== null || r.theirs !== null);
+  if (usable.length === 0) return null;
+
+  return (
+    <TabSection title="Against your product" icon={Scale} action={
+      <span className="shrink-0 truncate text-xs text-muted-foreground">{mine.name}</span>
+    }>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-xs text-muted-foreground">
+              <th className="pb-1.5 text-left font-normal">Measure</th>
+              <th className="pb-1.5 text-right font-normal">
+                <span className="block truncate">{mine.name}</span>
+              </th>
+              <th className="pb-1.5 text-right font-normal">
+                <span className="block truncate">{competitorName}</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {usable.map((r) => (
+              <tr key={r.label} className="border-t border-border">
+                <td className="py-2 text-muted-foreground">{r.label}</td>
+                <td className="py-2 text-right font-mono tabular-nums">
+                  {r.ours ?? <span className="font-sans text-dense text-muted-foreground">not tracked</span>}
+                </td>
+                <td className="py-2 text-right font-mono tabular-nums text-foreground">
+                  {r.theirs ?? <span className="font-sans text-dense text-muted-foreground">not tracked</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </TabSection>
+  );
+}

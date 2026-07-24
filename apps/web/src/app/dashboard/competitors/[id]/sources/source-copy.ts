@@ -41,18 +41,6 @@ const NOT_AVAILABLE: Partial<Record<SourceType, string>> = {
   docs: "They don't publish public developer docs.",
 };
 
-/**
- * Sources where naming the page ourselves would change nothing, so we offer no
- * control rather than a field that silently does nothing.
- *
- * The Trustpilot surface derives its business unit from the competitor's own
- * domain (`trustpilot.scraper.ts`), so a stored `config.url` is never read. Until
- * the scraper accepts a profile URL, a "point us at one" field there would look
- * like it worked and quietly change nothing, which is worse than the dead end it
- * replaces.
- */
-const NO_URL_OVERRIDE = new Set<SourceType>(["trustpilot_public"]);
-
 /** Failure diagnoses the user can act on, each with its own honest sentence. */
 const FIXABLE: Record<string, string> = {
   site_redirected: "This page now redirects to a different domain.",
@@ -129,7 +117,7 @@ export function sourceCopy(args: {
       return {
         tone: "neutral",
         message: NOT_AVAILABLE[sourceType] ?? "This competitor doesn't have this surface.",
-        action: NO_URL_OVERRIDE.has(sourceType) ? null : "point_at_url",
+        action: "point_at_url",
       };
 
     case "off":

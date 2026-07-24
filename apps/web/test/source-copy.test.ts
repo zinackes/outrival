@@ -55,11 +55,12 @@ describe("not available: neutral, and never counted as a gap", () => {
     }
   });
 
-  test("no control where naming a URL would silently change nothing", () => {
-    // The Trustpilot scraper derives its business unit from the competitor's domain
-    // and never reads config.url, so a field there would look like it worked.
+  test("Trustpilot too, now that the scraper reads a pinned profile URL", () => {
+    // It shipped without the control while the scraper still derived its business
+    // unit from the competitor's own domain: a field there would have looked like
+    // it worked and changed nothing, which is worse than the dead end.
     const copy = sourceCopy({ state: "not_available", sourceType: "trustpilot_public" });
-    expect(copy.action).toBeNull();
+    expect(copy.action).toBe("point_at_url");
     expect(copy.tone).toBe("neutral");
   });
 

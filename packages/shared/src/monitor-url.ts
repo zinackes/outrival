@@ -42,6 +42,36 @@ const ROADMAP_BRANDS = new Set([
   "productboard", // portal.productboard.com/{path}
 ]);
 
+/**
+ * Vendor hosts serving a competitor's status page (`acme.statuspage.io`,
+ * `acme.instatus.com`). Deliberately EXACTLY the two the scraper can read — it
+ * fetches Statuspage's `/api/v2/summary.json` or Instatus's `/summary.json` and
+ * nothing else. Listing more vendors would let the user turn on a source that then
+ * fails every run, which is the same dead end this exception exists to remove.
+ */
+const STATUS_BRANDS = new Set(["statuspage", "instatus"]);
+
+/**
+ * The `<brand>status.com` / `<brand>-status.com` convention: githubstatus.com,
+ * vercel-status.com. These are the competitor's own status page on a sibling
+ * domain, which `extractBrand` reads as a different brand entirely (`vercel-status`
+ * is not `vercel`), so the plain same-brand check rejects them.
+ *
+ * Anchored on purpose. A `startsWith` test would accept `vercelstatus-phish.com`,
+ * and a generic "hyphen token contains the brand" rule would accept any
+ * `acme-anything.com` — this matches the convention and nothing else.
+ */
+function isStatusSibling(urlBrand: string, competitorBrand: string | null): boolean {
+  if (!competitorBrand) return false;
+  if (!urlBrand.endsWith("status")) return false;
+  const prefix = urlBrand.slice(0, -"status".length);
+  return (
+    prefix === competitorBrand ||
+    prefix === `${competitorBrand}-` ||
+    prefix === `${competitorBrand}_`
+  );
+}
+
 export type MonitorUrlValidation =
   | { ok: true; url: string }
   | { ok: false; error: string };
@@ -128,7 +158,28 @@ export function validateMonitorUrl(
   // SSRF-safe (one fixed, public host).
   const repoAllowed = sourceType === "github_repo" && urlBrand === "github";
   const roadmapAllowed = sourceType === "roadmap" && ROADMAP_BRANDS.has(urlBrand);
-  if (!sameBrand && !atsAllowed && !repoAllowed && !roadmapAllowed) {
+  // A status page almost never sits on the competitor's own brand: it is either
+  // vendor-hosted or on a sibling domain. Refusing both is what made "they don't
+  // publish a status page" unanswerable even when the user knew otherwise.
+  const statusAllowed =
+    sourceType === "status" &&
+    (STATUS_BRANDS.has(urlBrand) || isStatusSibling(urlBrand, competitorBrand));
+  // A pinned Trustpilot profile (trustpilot.com/review/<domain>) says which domain
+  // to ask the API about, for a competitor listed under a different one than their
+  // site. Same fixed-public-host shape as the ATS and roadmap exceptions.
+  const trustpilotAllowed = sourceType === "trustpilot_public" && urlBrand === "trustpilot";
+  // A channel URL is the answer to "no YouTube channel linked from their site" —
+  // by definition it lives on youtube.com, never on theirs.
+  const youtubeAllowed = sourceType === "youtube" && urlBrand === "youtube";
+  if (
+    !sameBrand &&
+    !atsAllowed &&
+    !repoAllowed &&
+    !roadmapAllowed &&
+    !statusAllowed &&
+    !trustpilotAllowed &&
+    !youtubeAllowed
+  ) {
     return { ok: false, error: "host_not_allowed" };
   }
 

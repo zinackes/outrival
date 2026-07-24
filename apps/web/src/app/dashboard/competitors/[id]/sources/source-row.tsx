@@ -71,14 +71,18 @@ const URL_GUIDANCE: Partial<Record<SourceType, { placeholder: string; help: stri
   },
   status: {
     placeholder: "https://status.example.com",
-    // The scraper reads a Statuspage / Instatus JSON summary, and the API host-locks
-    // the URL to their own domain — so both limits are stated before the field is
+    // The scraper reads a Statuspage or Instatus JSON summary and nothing else, so
+    // the limit that matters is the VENDOR, not the domain. Said before the field is
     // filled rather than as a rejection afterwards.
-    help: "A Statuspage or Instatus page on their own domain. A vendor-hosted one (example.statuspage.io) isn't supported yet.",
+    help: "A Statuspage or Instatus page. Their own domain, a vendor host (example.statuspage.io) or a sibling one (example-status.com) all work.",
   },
   changelog: {
     placeholder: "https://example.com/changelog",
     help: "Their release notes. It has to be a page on their own domain.",
+  },
+  trustpilot_public: {
+    placeholder: "https://www.trustpilot.com/review/example.com",
+    help: "Their Trustpilot profile. We normally find it from their domain, so you only need this if they're listed under a different one.",
   },
 };
 
@@ -94,6 +98,9 @@ const NOT_AVAILABLE_PROMPT: Partial<Record<SourceType, string>> = {
   github_repo: "Nothing on their site points to a public repo. If you know of one, name it here.",
   roadmap: "We found no public roadmap portal. If you know of one, name it here.",
   appstore_reviews: "We found no App Store listing. If you know of one, name it here.",
+  trustpilot_public:
+    "Trustpilot lists no profile for their domain. If they're listed under a different one, paste that profile here.",
+  youtube: "We found no channel linked from their site. If you know of one, name it here.",
 };
 
 /** The same rejections the API would return, said before the round-trip. */
@@ -117,7 +124,10 @@ function urlErrorMessage(sourceType: SourceType, code: string): string {
       if (sourceType === "roadmap")
         return "That has to be on their domain, or a Canny / ProductBoard portal.";
       if (sourceType === "status")
-        return "For now that has to be on their own domain. Vendor-hosted status pages aren't supported yet.";
+        return "That has to be a Statuspage or Instatus page, on their domain or a status one.";
+      if (sourceType === "trustpilot_public")
+        return "That has to be a trustpilot.com/review/… profile link.";
+      if (sourceType === "youtube") return "That has to be a youtube.com channel link.";
       return "That page has to be on this competitor's domain.";
     default:
       return "That URL can't be used for this source.";

@@ -59,12 +59,17 @@ Two secondary facts that make the recovery path safe:
 | `github_repo` | `repo not found or private` | yes, `github` brand exception exists | **UI only** |
 | `roadmap` | `no_roadmap_portal`, `portal_private`, `portal_empty` | yes, `ROADMAP_BRANDS` exception exists | **UI only** |
 | `appstore_reviews` | no listing | yes, `validateReviewUrl` brand-locked to apps.apple.com | **UI only** |
-| `changelog` | `targets.changelog` false | same-brand only | UI plus vendor brands |
+| `changelog` | `targets.changelog` false | same-brand only | **UI only**, see the vendor note below |
 | `status` | `targets.statusPage` false, or `no resolvable status host` | same-brand only | UI plus vendor brands |
 | `trustpilot_public` | `no trustpilot business unit` | no, domain derived from `competitor.url` | scraper change |
-| `youtube` | `no_channel` | no, in `AUTOMATIC_SOURCES`, read-only, no row | catalog plus UI |
+| `youtube` | `no_channel` | no, in `AUTOMATIC_SOURCES`, read-only, no row | scraper plus UI |
 
 **Six of eight are front-end only.** That is the whole shape of the plan.
+
+All eight now carry a control. The rule applied throughout: a source gets one only
+where naming a URL genuinely changes what we collect. A field that validates, stores,
+and is then ignored by the scraper is worse than the dead end it replaces, because it
+looks like it worked.
 
 ### The brand-lock problem (status and changelog)
 
@@ -120,19 +125,49 @@ match `vercelous.com`.
 - Gate the two unsupported sources (`status` off-domain, `trustpilot_public`) behind
   step 2 rather than shipping a control that returns a 400.
 
-**Step 2, shared and API.**
+**Step 2, shared and scrapers. SHIPPED**, with two deliberate changes of plan.
 
-- `monitor-url.ts`: `STATUS_BRANDS`, `CHANGELOG_BRANDS`, the hyphen-token same-org
-  rule, plus tests.
-- `trustpilot.scraper.ts`: accept `config.url` (a `trustpilot.com/review/<domain>`
-  profile) and derive the business unit from it instead of from `competitor.url`.
-  `validateReviewUrl` already brand-locks review URLs, so extend it rather than
-  bypass it.
+- `monitor-url.ts` gained three off-domain exceptions in the shape the ATS and
+  roadmap ones already had: `STATUS_BRANDS`, a Trustpilot profile host, and a
+  YouTube channel host.
+- `STATUS_BRANDS` is **exactly `statuspage` and `instatus`**, not the longer vendor
+  list the plan sketched. The scraper reads Statuspage's `/api/v2/summary.json` or
+  Instatus's `/summary.json` and nothing else, so listing Better Stack or Statuspal
+  would let the user turn on a source that fails every run. That is the same dead
+  end this work exists to remove, dressed as a feature.
+- The sibling-domain rule is **anchored on the convention** (`<brand>status`,
+  `<brand>-status`, `<brand>_status`) rather than the "hyphen token contains the
+  brand" heuristic the plan proposed. The loose version accepted any
+  `acme-anything.com`; a `startsWith` version accepted `vercelstatus-phish.com`.
+  Both are tested.
+- `trustpilot.scraper.ts` gained `resolveTrustpilotDomain`: a `trustpilot.com/review/
+  <domain>` URL names the domain to look up, anything else on their own site behaves
+  as before. A trustpilot.com URL that is NOT a profile returns null rather than
+  falling back to the host, which would have looked up Trustpilot's own business
+  unit and stored a snapshot of the wrong company.
 
-**Step 3, YouTube.** It sits in `AUTOMATIC_SOURCES`, so it has no configurable row by
-construction. Either move it to `CONFIGURABLE_SOURCES.web_content` (which then needs
-a plan-gate decision), or give the automatic block a narrow "pin a channel"
-affordance. The catalog partition test forces the choice to be deliberate.
+**`CHANGELOG_BRANDS` was dropped on purpose.** Opening the URL gate to
+`acme.headwayapp.co` and friends is one line, but the changelog scraper probes
+`CHANGELOG_PATHS` against whatever host it is handed, which assumes the competitor's
+own site. The vendor URL would validate, create a monitor, and then fail. Vendor-
+hosted changelogs need scraper work first; until then the same-domain override
+(`acme.com/changelog`) is the only honest offer, and it already works.
+
+**Step 3, YouTube. SHIPPED** as the narrow affordance, not the catalog move. It
+stays in `AUTOMATIC_SOURCES` (seeding, plan gating and the read-only block are all
+keyed on that partition, and moving it would change what every new competitor gets).
+Instead:
+
+- `isYouTubeUrl` plus a short-circuit at the top of `resolveChannelId`. The resolver
+  used to fetch its input and look for a link to a channel inside it, so handing it a
+  channel URL resolved only by accident. A pinned URL is now the answer: inline
+  `/channel/UC…` costs zero fetches, a handle URL is fetched once and read directly.
+- `PATCH /monitors/:id` needs no change. It validates ownership and the URL but does
+  not gate on `isConfigurableSource`, so an existing YouTube monitor is retargetable
+  once the URL validates.
+- The Sources page shows one inline control on that row and nothing else. The
+  always-on block is read-only by design, and one escape hatch must not turn it into
+  a configuration surface.
 
 ---
 

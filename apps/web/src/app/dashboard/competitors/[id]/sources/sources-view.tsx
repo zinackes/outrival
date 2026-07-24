@@ -15,6 +15,7 @@ import {
   SOURCE_GROUP_LABELS,
   buildCoverage,
   sourceState,
+  validateMonitorUrl,
   type DetectedTargets,
   type SourceAttention,
   type SourceState,
@@ -24,6 +25,7 @@ import { api, type Monitor, type TechStackData } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { PaywallDialog } from "@/components/outrival/paywall-dialog";
 import { PausedMonitors } from "@/components/outrival/monitor-alternatives";
@@ -164,6 +166,86 @@ function CollapsedBlock({
         </div>
       </div>
     </Card>
+  );
+}
+
+/**
+ * The one always-on source a user can overrule. YouTube is discovered from a link
+ * on the competitor's site, so a company that has a channel but doesn't link it
+ * reads as "no channel" forever. The monitor already exists (it ran and threw), so
+ * this retargets it rather than enabling anything.
+ *
+ * Deliberately inline and tiny: this block is read-only by design, and one source
+ * having an escape hatch must not turn it into a configuration surface.
+ */
+function PinChannel({
+  monitor,
+  onEdit,
+}: {
+  monitor: Monitor;
+  onEdit: (id: string, patch: { url?: string }) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    const url = value.trim();
+    if (!url) return;
+    const valid = validateMonitorUrl("youtube", url, null);
+    if (!valid.ok) {
+      setError("That has to be a youtube.com channel link.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await onEdit(monitor.id, { url: valid.url });
+      setOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <Button
+        size="sm"
+        variant="ghost"
+        className="ml-auto h-7 text-xs text-muted-foreground"
+        onClick={() => setOpen(true)}
+      >
+        Point us at one
+      </Button>
+    );
+  }
+  return (
+    <div className="mt-1 w-full">
+      <div className="flex flex-wrap gap-2">
+        <Input
+          autoFocus
+          value={value}
+          aria-label="YouTube channel URL"
+          aria-invalid={!!error}
+          placeholder="https://www.youtube.com/@example"
+          onChange={(e) => {
+            setValue(e.target.value);
+            if (error) setError(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !saving) void save();
+          }}
+          className="min-w-[220px] flex-1"
+        />
+        <Button size="sm" onClick={save} disabled={saving || !value.trim()}>
+          {saving ? "Saving…" : "Save"}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setOpen(false)} disabled={saving}>
+          Cancel
+        </Button>
+      </div>
+      {error && <p className="mt-1.5 text-xs text-critical">{error}</p>}
+    </div>
   );
 }
 
@@ -474,6 +556,9 @@ export function SourcesView({ id }: { id: string }) {
                     url={monitor?.pageUrl ?? null}
                   />
                   <span className="text-sm text-muted-foreground">{message}</span>
+                  {sourceType === "youtube" && state === "not_available" && monitor && (
+                    <PinChannel monitor={monitor} onEdit={editMonitor} />
+                  )}
                 </li>
               );
             })}

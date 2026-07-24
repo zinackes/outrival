@@ -4,6 +4,7 @@ import {
   findYouTubeChannelUrl,
   channelIdFromUrl,
   extractChannelId,
+  isYouTubeUrl,
   channelFeedUrl,
   parseChannelFeed,
   buildYouTubeDoc,
@@ -56,6 +57,15 @@ export async function resolveChannelId(
   deps: CollectDeps = {},
 ): Promise<string | null> {
   const fetchText = deps.fetchText ?? defaultFetchText;
+  // A pinned channel URL is the user overruling "no channel linked from their
+  // site", so it IS the answer — looking for a link to the channel inside the
+  // channel's own page would resolve by accident at best.
+  if (isYouTubeUrl(homepageUrl)) {
+    const inlineId = channelIdFromUrl(homepageUrl);
+    if (inlineId) return inlineId;
+    const pinnedPage = await fetchText(homepageUrl);
+    return pinnedPage ? extractChannelId(pinnedPage) : null;
+  }
   const homepage = await fetchText(homepageUrl);
   if (!homepage) return null;
   const channelUrl = findYouTubeChannelUrl(homepage, homepageUrl);

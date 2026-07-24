@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { validatePublicUrl, validateCustomMonitorUrl, normalizeCustomUrl } from "./monitor-url";
+import {
+  validatePublicUrl,
+  validateCustomMonitorUrl,
+  normalizeCustomUrl,
+  validateMonitorUrl,
+} from "./monitor-url";
 
 // validatePublicUrl is the SSRF guard reused by the API (competitor / product
 // URLs) and as a defense-in-depth net in the scraper layer (crawler.ts,
@@ -117,5 +122,70 @@ describe("normalizeCustomUrl", () => {
     expect(normalizeCustomUrl("https://acme.example/docs?tab=security")).not.toBe(
       normalizeCustomUrl("https://acme.example/docs?tab=billing"),
     );
+  });
+});
+
+// The off-domain exceptions. Each one exists because a source genuinely does not
+// live on the competitor's own domain, and refusing it left the user unable to
+// answer a "no such surface" verdict they knew to be wrong.
+describe("validateMonitorUrl: status pages are rarely on the competitor's brand", () => {
+  const ok = (url: string, competitor = "https://acme.com") =>
+    validateMonitorUrl("status", url, competitor).ok;
+
+  test("accepts the two vendor hosts the scraper can actually read", () => {
+    expect(ok("https://acme.statuspage.io")).toBe(true);
+    expect(ok("https://acme.instatus.com")).toBe(true);
+  });
+
+  test("accepts the sibling-domain convention, with or without a separator", () => {
+    expect(ok("https://www.vercel-status.com", "https://vercel.com")).toBe(true);
+    expect(ok("https://www.githubstatus.com", "https://github.com")).toBe(true);
+  });
+
+  test("still accepts a status page on their own domain", () => {
+    expect(ok("https://status.acme.com")).toBe(true);
+  });
+
+  test("the sibling rule is anchored, so a lookalike is not a sibling", () => {
+    // startsWith would have accepted this one.
+    expect(ok("https://vercelstatus-phish.com", "https://vercel.com")).toBe(false);
+    // A shared prefix is not a status page.
+    expect(ok("https://acmestatus.com", "https://acme.com")).toBe(true);
+    expect(ok("https://acmestatuspage.com", "https://acme.com")).toBe(false);
+    // And an unrelated brand stays out entirely.
+    expect(ok("https://evil.com")).toBe(false);
+  });
+
+  test("a status vendor is not a licence for every other source", () => {
+    expect(validateMonitorUrl("pricing", "https://acme.statuspage.io", "https://acme.com").ok).toBe(
+      false,
+    );
+    expect(validateMonitorUrl("blog", "https://vercel-status.com", "https://vercel.com").ok).toBe(
+      false,
+    );
+  });
+});
+
+describe("validateMonitorUrl: pinned third-party profiles", () => {
+  test("a Trustpilot profile is accepted only for the Trustpilot source", () => {
+    const url = "https://www.trustpilot.com/review/acme.com";
+    expect(validateMonitorUrl("trustpilot_public", url, "https://acme.com").ok).toBe(true);
+    expect(validateMonitorUrl("homepage", url, "https://acme.com").ok).toBe(false);
+  });
+
+  test("a YouTube channel is accepted only for the YouTube source", () => {
+    const url = "https://www.youtube.com/@acme";
+    expect(validateMonitorUrl("youtube", url, "https://acme.com").ok).toBe(true);
+    expect(validateMonitorUrl("blog", url, "https://acme.com").ok).toBe(false);
+  });
+
+  test("the SSRF guard is untouched by any of it", () => {
+    expect(validateMonitorUrl("status", "http://acme.statuspage.io", "https://acme.com").ok).toBe(
+      false,
+    );
+    expect(validateMonitorUrl("status", "https://127.0.0.1", "https://acme.com").ok).toBe(false);
+    expect(
+      validateMonitorUrl("status", "https://user:pw@acme.statuspage.io", "https://acme.com").ok,
+    ).toBe(false);
   });
 });

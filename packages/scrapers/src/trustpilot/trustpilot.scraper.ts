@@ -37,12 +37,38 @@ function num(v: unknown): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
+/**
+ * Which domain to ask Trustpilot about.
+ *
+ * Normally the competitor's own site, since Trustpilot keys profiles by domain.
+ * But a company is sometimes listed under another one (a legacy domain, a regional
+ * or trading name), and the `find` call then 404s — which the product reports as
+ * "no Trustpilot profile for this domain", i.e. a surface they don't have. A
+ * pinned profile URL (`trustpilot.com/review/<domain>`) is the user answering that:
+ * it names the domain to look up instead.
+ *
+ * Exported for tests.
+ */
+export function resolveTrustpilotDomain(url: string): string | null {
+  const host = normalizeHostname(url);
+  if (host !== "trustpilot.com") return host;
+  try {
+    const parsed = new URL(url.includes("://") ? url : `https://${url}`);
+    const slug = /^\/review\/([^/?#]+)/.exec(parsed.pathname)?.[1];
+    // A trustpilot.com URL that is NOT a /review/<domain> profile names no domain,
+    // and falling back to "trustpilot.com" would look up Trustpilot itself.
+    return slug ? normalizeHostname(decodeURIComponent(slug)) : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function scrape(_competitorId: string, url: string): Promise<ScrapeOutcome> {
   const key = process.env.TRUSTPILOT_API_KEY;
   // Clean degradation, not a workaround: no key ⇒ the source is simply unavailable.
   if (!key) throw new Error("trustpilot_api_key_missing");
 
-  const domain = normalizeHostname(url);
+  const domain = resolveTrustpilotDomain(url);
   if (!domain) throw new Error(`Cannot derive a domain from ${url}`);
 
   const auth = `apikey=${encodeURIComponent(key)}`;

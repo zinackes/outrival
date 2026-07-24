@@ -26,7 +26,7 @@ export function ChangeLedger({
     // Boxless: the detail pane's margin rail already frames this beat, and the
     // action block below is meant to be the one filled object in the document.
     // Capped to the pane's reading measure — the two sentences are prose.
-    <div className="max-w-[42rem]">
+    <div className="max-w-[36rem]">
       {delta ? (
         <>
           <div className="flex flex-wrap items-end gap-x-5 gap-y-3">

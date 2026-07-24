@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { RefreshCw, Sparkles } from "lucide-react";
@@ -12,6 +11,7 @@ import { GlobalSearch } from "@/components/dashboard/global-search";
 import { ThemeToggle } from "@/components/dashboard/theme-toggle";
 import { WhatsNewButton } from "@/components/dashboard/whats-new-button";
 import { UserMenu } from "@/components/dashboard/user-menu";
+import { ASK_OPEN_EVENT } from "@/components/dashboard/ask-dock";
 
 interface User {
   name: string | null;
@@ -39,14 +39,24 @@ export function Topbar({ user }: { user: User }) {
       <div className="hidden flex-1 md:block" />
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/dashboard/ask">
-              <Sparkles className="size-3.5 text-[var(--link)]" />
-              <span className="hidden sm:inline">Ask</span>
-            </Link>
+          {/* Opens the contextual sheet rather than navigating: it is the same
+              assistant, scoped to the page you are on, and it used to need a
+              floating button in the corner to be reachable. One entry point,
+              nothing over the content. */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              document.dispatchEvent(new CustomEvent(ASK_OPEN_EVENT))
+            }
+          >
+            <Sparkles className="size-3.5 text-[var(--link)]" />
+            <span className="hidden sm:inline">Ask</span>
           </Button>
         </TooltipTrigger>
-        <TooltipContent>Ask Outrival: answers from your data</TooltipContent>
+        <TooltipContent>
+          Ask Outrival: answers from your data <kbd className="font-mono">⌘J</kbd>
+        </TooltipContent>
       </Tooltip>
       <div className="hidden items-center gap-2 sm:flex lg:gap-3">
         <Tooltip>

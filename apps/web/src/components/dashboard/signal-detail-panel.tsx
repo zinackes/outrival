@@ -366,12 +366,17 @@ export function SignalDetailPanel({
         )}
       </div>
 
+      {/* Left-anchored, not centred: centring a capped measure inside a very wide
+          pane pushes the margin rail toward the middle of the screen and opens a
+          dead band to its left. Anchoring keeps the reading spine where the eye
+          already is — right after the list — and lets the slack fall on the
+          right, where a document margin belongs. */}
       <div className="min-h-0 flex-1 overflow-y-auto">
         <motion.article
           initial={{ opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.16, ease: "easeOut" }}
-          className="@container mx-auto max-w-[820px] px-5 py-6 lg:px-8"
+          className="@container max-w-[840px] px-5 py-6 lg:px-8"
         >
           {/* Masthead — the verdict, the finding, and the machine's own facts. */}
           <header className={RAIL}>
@@ -412,29 +417,36 @@ export function SignalDetailPanel({
                 )}
               </div>
 
-              <h2 className="mt-2.5 text-xl font-semibold leading-snug tracking-tight text-balance text-foreground">
+              {/* text-lead, not text-xl: 20px over a 15px body opened a cliff
+                  between the masthead and everything under it, and `lead` is the
+                  scale's own token for this role. */}
+              <h2 className="mt-2.5 text-lead font-semibold leading-snug tracking-tight text-balance text-foreground">
                 {signal.insight}
               </h2>
 
-              <dl className="mt-5 grid grid-cols-3 gap-x-4 border-t border-border pt-4 @md:gap-x-6">
-                <Stat
-                  label="Detected"
-                  sub={formatDistanceToNow(created, { addSuffix: true })}
-                >
-                  <time dateTime={signal.createdAt}>
-                    {format(created, "MMM d, HH:mm")}
-                  </time>
-                </Stat>
-                <Stat label="Confidence" hint={confidence.why}>
-                  {confidence.label}
-                </Stat>
-                <Stat
-                  label="Threat"
-                  hint="Severity weighted by how much this competitor overlaps with you, and how relevant the change is."
-                >
-                  {threatLabel(signal.threatScore)}
-                </Stat>
-              </dl>
+              {/* Capped: spread across the full measure the three cells stop
+                  reading as one instrument and drift into three lost labels. */}
+              <div className="mt-5 border-t border-border pt-4">
+                <dl className="grid max-w-md grid-cols-3 gap-x-4 @md:gap-x-6">
+                  <Stat
+                    label="Detected"
+                    sub={formatDistanceToNow(created, { addSuffix: true })}
+                  >
+                    <time dateTime={signal.createdAt}>
+                      {format(created, "MMM d, HH:mm")}
+                    </time>
+                  </Stat>
+                  <Stat label="Confidence" hint={confidence.why}>
+                    {confidence.label}
+                  </Stat>
+                  <Stat
+                    label="Threat"
+                    hint="Severity weighted by how much this competitor overlaps with you, and how relevant the change is."
+                  >
+                    {threatLabel(signal.threatScore)}
+                  </Stat>
+                </dl>
+              </div>
 
               <button
                 type="button"
@@ -478,7 +490,7 @@ export function SignalDetailPanel({
           {(signal.soWhat || signal.narrative) && (
             <Section label="Why it matters">
               {signal.soWhat && (
-                <p className="text-content leading-relaxed text-foreground/85">
+                <p className="text-content leading-relaxed text-foreground">
                   {signal.soWhat}
                 </p>
               )}
@@ -501,7 +513,7 @@ export function SignalDetailPanel({
                     />
                   </button>
                   {showContext && (
-                    <p className="mt-2.5 text-content leading-relaxed text-foreground/85">
+                    <p className="mt-2.5 text-content leading-relaxed text-foreground">
                       {signal.narrative}
                     </p>
                   )}
@@ -514,7 +526,7 @@ export function SignalDetailPanel({
             // The document's single fill and single accent, shared with the Track
             // button in the bar above: in this pane the accent means "act".
             <Section label="What to do" tone="action">
-              <p className="rounded-md bg-surface-2 px-4 py-3.5 text-content leading-relaxed text-foreground/90">
+              <p className="rounded-md bg-surface-2 px-4 py-3.5 text-content leading-relaxed text-foreground">
                 {signal.recommendedAction}
               </p>
             </Section>
@@ -654,7 +666,7 @@ function Stat({
 }) {
   return (
     <div className="min-w-0">
-      <dt className="text-meta font-medium text-muted-foreground">{label}</dt>
+      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
       <dd className="mt-1 font-mono text-dense tabular-nums slashed-zero text-foreground">
         {hint ? (
           <Tooltip>

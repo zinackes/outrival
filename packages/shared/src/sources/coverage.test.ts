@@ -4,6 +4,8 @@ import {
   buildCoverage,
   coverageHeadline,
   fallbackSources,
+  ATTENTION_OF,
+  RIBBON_ATTENTIONS,
   type MonitorCoverageFields,
 } from "./coverage";
 import type { SourceType } from "../constants/sources";
@@ -356,5 +358,39 @@ describe("a competitor added moments ago", () => {
     // as covered, so the pre-check never reads worse than reality.
     expect(coverageHeadline(partly, label)).toBe("Tracking 2 sources · 1 blocked (homepage)");
     expect(fallbackSources(partly, "homepage")).toEqual(["pricing", "blog"]);
+  });
+});
+
+describe("attention grouping: a refusal is not a task", () => {
+  test("only fixable is filed as something the user can do", () => {
+    expect(ATTENTION_OF.fixable).toBe("fixable");
+    // These three carry action: null in the copy layer precisely because the
+    // collection doctrine says we stop rather than route around a refusal. Heading
+    // them with a call to act would contradict the sentence printed inside them.
+    expect(ATTENTION_OF.blocked).toBe("closed");
+    expect(ATTENTION_OF.login_required).toBe("closed");
+    expect(ATTENTION_OF.geo_blocked).toBe("closed");
+  });
+
+  test("a surface they don't have is its own group, never a failure", () => {
+    expect(ATTENTION_OF.not_available).toBe("unavailable");
+    expect(ATTENTION_OF.off).toBe("idle");
+    expect(ATTENTION_OF.locked).toBe("idle");
+    expect(ATTENTION_OF.not_configured).toBe("idle");
+  });
+
+  test("both covered states collapse into one group", () => {
+    expect(ATTENTION_OF.tracking).toBe("collecting");
+    expect(ATTENTION_OF.pending).toBe("collecting");
+  });
+
+  test("the ribbon leaves not-available out of the denominator", () => {
+    expect(RIBBON_ATTENTIONS).not.toContain("unavailable");
+    // Every other group is represented, so the bar always accounts for the whole
+    // applicable set and can't silently drop a state.
+    const covered = new Set<string>(RIBBON_ATTENTIONS);
+    for (const attention of Object.values(ATTENTION_OF)) {
+      if (attention !== "unavailable") expect(covered.has(attention)).toBe(true);
+    }
   });
 });

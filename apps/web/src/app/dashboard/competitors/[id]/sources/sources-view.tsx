@@ -1,23 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
-import { ArrowLeft, Loader2, Play, Radio } from "lucide-react";
+import { ArrowLeft, ChevronRight, Loader2, Play } from "lucide-react";
 import {
   ALL_CONFIGURABLE_SOURCES,
+  ATTENTION_OF,
   AUTOMATIC_SOURCES,
   CONFIGURABLE_SOURCES,
+  RIBBON_ATTENTIONS,
   SOURCE_GROUPS,
   SOURCE_GROUP_LABELS,
   buildCoverage,
-  coverageHeadline,
   sourceState,
   type DetectedTargets,
+  type SourceAttention,
+  type SourceState,
   type SourceType,
 } from "@outrival/shared";
 import { api, type Monitor, type TechStackData } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -37,17 +41,138 @@ import { sourceCopy } from "./source-copy";
 
 const label = (s: SourceType) => sourceShortLabel(s).toLowerCase();
 
+/**
+ * How each attention group presents itself. The three ways a source can be off are
+ * three different facts with three different answers, and only ONE of them is a
+ * task — so they get three headings instead of one, and the heading says out loud
+ * whether there is anything to do.
+ */
+const ATTENTION_META: Record<
+  SourceAttention,
+  { chip: string; swatch: string; heading?: string; aside?: string; tone?: string }
+> = {
+  // The two groups that need no heading: their rows sit under the catalog groups
+  // the user already thinks in (Web & content, Pricing, …).
+  collecting: { chip: "collecting", swatch: "bg-positive" },
+  idle: { chip: "not set up", swatch: "bg-border-strong" },
+
+  fixable: {
+    chip: "needs a new URL",
+    swatch: "bg-critical",
+    heading: "Needs a new URL",
+    aside: "You can fix this one",
+    tone: "text-critical",
+  },
+  closed: {
+    chip: "closed to us",
+    swatch: "bg-medium",
+    heading: "Closed to us",
+    aside: "Nothing to do, we don't force a closed door",
+    tone: "text-medium",
+  },
+  unavailable: {
+    chip: "no such surface",
+    swatch: "border border-muted-foreground/60",
+    heading: "No such surface",
+    aside: "Add one if you know better",
+  },
+};
+
+/** Chip order: what asks for something, then what works, then what doesn't. */
+const CHIP_ORDER: readonly SourceAttention[] = [
+  "collecting",
+  "fixable",
+  "closed",
+  "idle",
+  "unavailable",
+];
+
 function detectedTargetsOf(techStack: TechStackData): DetectedTargets | null {
   const profile = techStack.platformProfile;
   if (!profile) return null;
   return { statusPage: !!profile.statusPage?.value, changelog: !!profile.changelog?.value };
 }
 
+/** A group heading inside the single sheet, replacing what used to be a whole Card. */
+function GroupLabel({
+  children,
+  aside,
+  tone,
+}: {
+  children: React.ReactNode;
+  aside?: string;
+  tone?: string;
+}) {
+  return (
+    <div className="flex items-baseline gap-2.5 px-4 pb-1.5 pt-4">
+      <h2
+        className={cn(
+          "text-meta font-semibold uppercase tracking-[0.06em]",
+          tone ?? "text-muted-foreground",
+        )}
+      >
+        {children}
+      </h2>
+      {aside && <span className="text-meta text-muted-foreground">{aside}</span>}
+      <span className="h-px flex-1 self-center bg-border" />
+    </div>
+  );
+}
+
+/**
+ * A block of read-only rows that carries no decision, collapsed to one line. Seven
+ * always-on sources took a seventh of the page while offering nothing to change.
+ */
+function CollapsedBlock({
+  title,
+  summary,
+  cta,
+  children,
+}: {
+  title: string;
+  summary: string;
+  cta: string;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Card className="overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-3 px-4 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <span className="shrink-0 text-sm font-medium">{title}</span>
+        <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{summary}</span>
+        <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+          {open ? "Hide" : cta}
+          <ChevronRight
+            size={13}
+            className={cn("transition-transform duration-200", open && "rotate-90")}
+          />
+        </span>
+      </button>
+      <div
+        className={cn(
+          "grid transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none",
+          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+        )}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <div className="border-t border-border">{children}</div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 /**
  * Everything that governs what we collect on one competitor. Split out of the
- * detail page so the tabs are purely for reading and this is purely for deciding —
- * and so the tri-state (tracking / not applicable / blocked) has room to explain
- * itself rather than hiding inside a chip tooltip.
+ * detail page so the tabs are purely for reading and this is purely for deciding.
+ *
+ * The page is scanned to find what needs a decision, not read in catalog order, so
+ * it is ONE sheet ranked by attention rather than eight cards ranked by taxonomy.
  */
 export function SourcesView({ id }: { id: string }) {
   const {
@@ -67,6 +192,7 @@ export function SourcesView({ id }: { id: string }) {
     removeCustomMonitor,
   } = useMonitorActions(id);
   const [techScraping, setTechScraping] = useState(false);
+  const [filter, setFilter] = useState<SourceAttention | null>(null);
 
   // Dev-only: force a tech-stack scan. The job updates techStackScrapedAt + entries,
   // so a timed refresh surfaces the result — no monitor-keyed polling like a source.
@@ -87,6 +213,26 @@ export function SourcesView({ id }: { id: string }) {
     }
   }
 
+  const monitors = data?.monitors;
+  const plan = data?.plan;
+  const techStack = data?.techStack;
+  const targets = techStack ? detectedTargetsOf(techStack) : null;
+
+  // One classification pass, read by the ribbon, the chips and every group.
+  const states = useMemo(() => {
+    if (!monitors || !plan) return null;
+    const bySource = new Map(monitors.map((m) => [m.sourceType, m]));
+    return ALL_CONFIGURABLE_SOURCES.map((sourceType) => {
+      const state = sourceState({
+        sourceType,
+        plan,
+        monitor: bySource.get(sourceType) ?? null,
+        targets,
+      });
+      return { sourceType, state, attention: ATTENTION_OF[state] };
+    });
+  }, [monitors, plan, targets]);
+
   if (error && !data) {
     return (
       <div className="mt-10">
@@ -94,25 +240,59 @@ export function SourcesView({ id }: { id: string }) {
       </div>
     );
   }
-  if (!data) return <CompetitorDetailLoading />;
+  if (!data || !states || !plan || !techStack || !monitors) return <CompetitorDetailLoading />;
 
-  const { competitor, monitors, automaticMonitors, techStack, plan } = data;
-  const targets = detectedTargetsOf(techStack);
+  const { competitor, automaticMonitors } = data;
   const bySource = new Map(monitors.map((m) => [m.sourceType, m]));
   const isRunning = (m: Monitor) => scrapingIds.has(m.id) || isServerScraping(m);
 
-  const states = ALL_CONFIGURABLE_SOURCES.map((sourceType) => ({
-    sourceType,
-    state: sourceState({ sourceType, plan, monitor: bySource.get(sourceType) ?? null, targets }),
-  }));
   const coverage = buildCoverage(states);
   // Quoted in the blocked message so a protected surface reads as "we route around
   // it", not "we're stuck".
   const fallbacks = [...coverage.tracked, ...coverage.pending].map(label);
 
+  const countOf = (a: SourceAttention) => states.filter((s) => s.attention === a).length;
+  const applicable = states.filter((s) => s.attention !== "unavailable").length;
+  const visible = (attention: SourceAttention) => filter === null || filter === attention;
+
+  const renderRow = (sourceType: SourceType, state: SourceState) => {
+    const monitor = bySource.get(sourceType) ?? null;
+    return (
+      <SourceRow
+        key={sourceType}
+        sourceType={sourceType}
+        monitor={monitor}
+        plan={plan}
+        targets={targets}
+        competitorUrl={competitor.url}
+        fallbacks={fallbacks.filter((f) => f !== label(sourceType))}
+        running={monitor ? isRunning(monitor) : false}
+        monitoringPaused={competitor.monitoringPaused || Boolean(competitor.pausedByPlan)}
+        onRun={requestRunMonitor}
+        onEnable={enableMonitor}
+        onEdit={editMonitor}
+        onSetActive={setMonitorActive}
+        onLockedFrequency={(frequency) =>
+          setPaywall({ code: "plan_locked_frequency", frequency, plan })
+        }
+        onUpgrade={(source) => setPaywall({ code: "plan_locked_source", source, plan })}
+      />
+    );
+  };
+
+  /** The rows of one attention group, in catalog order. */
+  const groupRows = (attention: SourceAttention) =>
+    states.filter((s) => s.attention === attention).map((s) => renderRow(s.sourceType, s.state));
+
+  const chips = CHIP_ORDER.map((key) => ({ key, count: countOf(key), ...ATTENTION_META[key] })).filter(
+    (c) => c.count > 0,
+  );
+
+  const automaticSummary = AUTOMATIC_SOURCES.map((s) => sourceShortLabel(s)).join(", ");
+
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="space-y-6">
+      <div className="space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex min-w-0 items-start gap-3">
             <Link
@@ -126,8 +306,7 @@ export function SourcesView({ id }: { id: string }) {
               <h1 className="m-0 text-title font-bold leading-tight tracking-tight">Sources</h1>
               <p className="mt-0.5 text-sm text-muted-foreground">
                 What we collect on{" "}
-                <span style={competitorNameColor(competitor.color)}>{competitor.name}</span> ·{" "}
-                {coverageHeadline(coverage, label)}
+                <span style={competitorNameColor(competitor.color)}>{competitor.name}</span>
               </p>
             </div>
           </div>
@@ -142,6 +321,54 @@ export function SourcesView({ id }: { id: string }) {
           </Button>
         </div>
 
+        {/* The coverage headline as a shape. Its denominator is the APPLICABLE
+            sources only: `not_available` gets a chip but no segment, because a
+            surface a competitor doesn't have was never a gap. That exclusion is the
+            whole statement, so it carries no caption. */}
+        {applicable > 0 && (
+          <div
+            className="flex h-2 gap-0.5 overflow-hidden rounded-full"
+            role="img"
+            aria-label={RIBBON_ATTENTIONS.filter((a) => countOf(a) > 0)
+              .map((a) => `${countOf(a)} ${ATTENTION_META[a].chip}`)
+              .join(", ")}
+          >
+            {RIBBON_ATTENTIONS.filter((a) => countOf(a) > 0).map((a) => (
+              <span
+                key={a}
+                style={{ flexGrow: countOf(a) }}
+                className={cn(
+                  "block transition-opacity duration-200",
+                  ATTENTION_META[a].swatch,
+                  filter !== null && filter !== a && "opacity-20",
+                )}
+              />
+            ))}
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          {chips.map((c) => (
+            <button
+              key={c.key}
+              type="button"
+              aria-pressed={filter === c.key}
+              onClick={() => setFilter((f) => (f === c.key ? null : c.key))}
+              className={cn(
+                "inline-flex h-[26px] items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                filter === c.key
+                  ? "border-border-strong bg-surface-2 text-foreground"
+                  : "border-border text-muted-foreground hover:bg-surface-2 hover:text-foreground",
+              )}
+            >
+              <span className={cn("h-[7px] w-[7px] rounded-full", c.swatch)} />
+              <span className="font-semibold tabular-nums text-foreground">{c.count}</span>
+              {c.chip}
+            </button>
+          ))}
+        </div>
+
         {/* A source we auto-paused after repeated failures keeps its recovery card
             (set a URL / enter the data / resume) — the row above states the problem,
             this offers the diagnosis-specific way out. */}
@@ -150,46 +377,61 @@ export function SourcesView({ id }: { id: string }) {
           onResolved={refresh}
         />
 
-        {SOURCE_GROUPS.map((group) => (
-          <Card key={group} className="overflow-hidden">
-            <div className="border-b border-border px-4 py-2.5">
-              <h2 className="text-sm font-semibold tracking-tight">
-                {SOURCE_GROUP_LABELS[group]}
-              </h2>
-            </div>
-            <div className="divide-y divide-border">
-              {CONFIGURABLE_SOURCES[group].map((sourceType) => {
-                const monitor = bySource.get(sourceType) ?? null;
-                return (
-                  <SourceRow
-                    key={sourceType}
-                    sourceType={sourceType}
-                    monitor={monitor}
-                    plan={plan}
-                    targets={targets}
-                    competitorUrl={competitor.url}
-                    fallbacks={fallbacks.filter((f) => f !== label(sourceType))}
-                    running={monitor ? isRunning(monitor) : false}
-                    monitoringPaused={
-                      competitor.monitoringPaused || Boolean(competitor.pausedByPlan)
-                    }
-                    onRun={requestRunMonitor}
-                    onEnable={enableMonitor}
-                    onEdit={editMonitor}
-                    onSetActive={setMonitorActive}
-                    onLockedFrequency={(frequency) =>
-                      setPaywall({ code: "plan_locked_frequency", frequency, plan })
-                    }
-                    onUpgrade={(source) =>
-                      setPaywall({ code: "plan_locked_source", source, plan })
-                    }
-                  />
-                );
-              })}
-            </div>
-          </Card>
-        ))}
+        <Card className="overflow-hidden">
+          {/* Pinned above the taxonomy: the only group that asks for something. */}
+          {countOf("fixable") > 0 && visible("fixable") && (
+            <>
+              <GroupLabel aside={ATTENTION_META.fixable.aside} tone={ATTENTION_META.fixable.tone}>
+                {ATTENTION_META.fixable.heading}
+              </GroupLabel>
+              {groupRows("fixable")}
+            </>
+          )}
 
+          {/* Everything applicable and workable, still in catalog order — a source's
+              group is how the user thinks about it, so it survives the reranking. */}
+          {SOURCE_GROUPS.map((group) => {
+            const rows = states.filter(
+              (s) =>
+                CONFIGURABLE_SOURCES[group].includes(s.sourceType) &&
+                (s.attention === "collecting" || s.attention === "idle") &&
+                visible(s.attention),
+            );
+            if (rows.length === 0) return null;
+            return (
+              <div key={group}>
+                <GroupLabel>{SOURCE_GROUP_LABELS[group]}</GroupLabel>
+                {rows.map((s) => renderRow(s.sourceType, s.state))}
+              </div>
+            );
+          })}
+
+          {/* A refusal is not a task. Amber, its own heading, and a subtitle that
+              says there is nothing to do — otherwise the page contradicts the
+              sentence printed inside these very rows. */}
+          {countOf("closed") > 0 && visible("closed") && (
+            <>
+              <GroupLabel aside={ATTENTION_META.closed.aside} tone={ATTENTION_META.closed.tone}>
+                {ATTENTION_META.closed.heading}
+              </GroupLabel>
+              {groupRows("closed")}
+            </>
+          )}
+
+          {/* The group that used to be a dead end. Neutral tone, and now an offer. */}
+          {countOf("unavailable") > 0 && visible("unavailable") && (
+            <>
+              <GroupLabel aside={ATTENTION_META.unavailable.aside}>
+                {ATTENTION_META.unavailable.heading}
+              </GroupLabel>
+              {groupRows("unavailable")}
+            </>
+          )}
+        </Card>
+
+        {/* Deliberately NOT collapsed like the read-only block below: this one holds
+            a real action (watch a page), a quota, and the free-plan upsell. Hiding a
+            feature behind a disclosure is a different mistake from showing noise. */}
         <CustomSources
           competitorUrl={competitor.url ?? ""}
           plan={plan}
@@ -203,19 +445,15 @@ export function SourcesView({ id }: { id: string }) {
           }
         />
 
-        <Card className="overflow-hidden">
-          <div className="border-b border-border px-4 py-2.5">
-            <h2 className="flex items-center gap-1.5 text-sm font-semibold tracking-tight">
-              <Radio size={13} className="text-muted-foreground" /> Automatic sources
-            </h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              Monitored automatically and can&apos;t be turned off. They cost you nothing
-              and need no configuration.
-            </p>
-          </div>
+        <CollapsedBlock
+          title="Always on"
+          summary={`Watched for free, nothing to configure: ${automaticSummary}, tech stack.`}
+          cta="Show"
+        >
           <ul className="divide-y divide-border">
             {AUTOMATIC_SOURCES.map((sourceType) => {
-              const monitor = automaticMonitors.find((m) => m.sourceType === sourceType) ?? null;
+              const monitor =
+                automaticMonitors.find((m) => m.sourceType === sourceType) ?? null;
               // An automatic source can also be "not applicable" — a competitor with
               // no YouTube channel. Report that neutrally here too, so the read-only
               // list never blames a failure the classifier calls a non-event.
@@ -270,7 +508,7 @@ export function SourcesView({ id }: { id: string }) {
               )}
             </li>
           </ul>
-        </Card>
+        </CollapsedBlock>
 
         <PaywallDialog reason={paywall} onClose={() => setPaywall(null)} />
       </div>

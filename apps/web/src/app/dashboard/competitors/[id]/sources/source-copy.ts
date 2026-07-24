@@ -1,7 +1,14 @@
 import type { SourceState, SourceType } from "@outrival/shared";
 
 /** What the user can do about a source's current state, if anything. */
-export type SourceAction = "fix_url" | "enable" | "resume" | "upgrade" | null;
+export type SourceAction =
+  | "fix_url"
+  | "enable"
+  /** Overrule a "no such surface" verdict by naming the page yourself. */
+  | "point_at_url"
+  | "resume"
+  | "upgrade"
+  | null;
 
 export type SourceTone =
   /** Working, or on its way. */
@@ -33,6 +40,18 @@ const NOT_AVAILABLE: Partial<Record<SourceType, string>> = {
   appstore_reviews: "No App Store listing for this competitor.",
   docs: "They don't publish public developer docs.",
 };
+
+/**
+ * Sources where naming the page ourselves would change nothing, so we offer no
+ * control rather than a field that silently does nothing.
+ *
+ * The Trustpilot surface derives its business unit from the competitor's own
+ * domain (`trustpilot.scraper.ts`), so a stored `config.url` is never read. Until
+ * the scraper accepts a profile URL, a "point us at one" field there would look
+ * like it worked and quietly change nothing, which is worse than the dead end it
+ * replaces.
+ */
+const NO_URL_OVERRIDE = new Set<SourceType>(["trustpilot_public"]);
 
 /** Failure diagnoses the user can act on, each with its own honest sentence. */
 const FIXABLE: Record<string, string> = {
@@ -104,10 +123,13 @@ export function sourceCopy(args: {
       };
 
     case "not_available":
+      // The tone stays neutral: this is a fact about them, and it must never start
+      // reading as a gap. What changes is that the row stops being a dead end — if
+      // the user knows the surface exists, they can now say where.
       return {
         tone: "neutral",
         message: NOT_AVAILABLE[sourceType] ?? "This competitor doesn't have this surface.",
-        action: null,
+        action: NO_URL_OVERRIDE.has(sourceType) ? null : "point_at_url",
       };
 
     case "off":

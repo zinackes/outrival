@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MessageSquarePlus, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import {
@@ -28,6 +28,9 @@ const TYPE_OPTIONS: Array<{ value: FeedbackType; label: string }> = [
   { value: "other", label: "Other" },
 ];
 
+/** Opens the feedback dialog from anywhere (the user menu). */
+export const FEEDBACK_OPEN_EVENT = "outrival-feedback-open";
+
 export function FeedbackWidget() {
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<FeedbackType>("bug");
@@ -37,6 +40,19 @@ export function FeedbackWidget() {
 
   useEffect(() => {
     initErrorBuffer();
+  }, []);
+
+  // The trigger used to be a floating circle stacked above the Ask one. Two
+  // shadowed FABs in the bottom-right corner is the support-widget silhouette,
+  // and they sat on top of the content on every page. "Send feedback" is a
+  // rare, account-level action, so it lives in the user menu; only the dialog
+  // stays mounted here.
+  useEffect(() => {
+    function onOpen() {
+      setOpen(true);
+    }
+    document.addEventListener(FEEDBACK_OPEN_EVENT, onOpen);
+    return () => document.removeEventListener(FEEDBACK_OPEN_EVENT, onOpen);
   }, []);
 
   function reset() {
@@ -89,15 +105,6 @@ export function FeedbackWidget() {
 
   return (
     <>
-      <button
-        type="button"
-        aria-label="Send feedback"
-        onClick={() => setOpen(true)}
-        className="fixed bottom-20 right-5 z-40 flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface-2 text-text-muted shadow-lg backdrop-blur-sm transition-colors hover:border-border-strong hover:text-primary"
-      >
-        <MessageSquarePlus size={18} />
-      </button>
-
       <Dialog
         open={open}
         onOpenChange={(o) => {

@@ -2,10 +2,18 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bell, ChevronDown, LogOut, Settings, User } from "lucide-react";
+import {
+  Bell,
+  ChevronDown,
+  LogOut,
+  MessageSquarePlus,
+  Settings,
+  User,
+} from "lucide-react";
 import { signOut } from "@/lib/auth-client";
 import { resetUser } from "@/lib/posthog/events";
 import { UserAvatar } from "@/components/dashboard/user-avatar";
+import { FEEDBACK_OPEN_EVENT } from "@/components/outrival/feedback-widget";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -79,6 +87,13 @@ export function UserMenu({ user }: { user: User }) {
           <Link href="/dashboard/settings">
             <Settings className="size-3.5" /> Settings
           </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={() =>
+            document.dispatchEvent(new CustomEvent(FEEDBACK_OPEN_EVENT))
+          }
+        >
+          <MessageSquarePlus className="size-3.5" /> Send feedback
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={handleSignOut}>

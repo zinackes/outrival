@@ -77,8 +77,11 @@ const RAIL = "@2xl:flex @2xl:gap-6";
 const RAIL_GUTTER = "shrink-0 @2xl:w-28 @2xl:text-right";
 const RAIL_BODY = "min-w-0 flex-1";
 // The reading measure. The container is wide so captures and lists can use the
-// pane; prose has to stay a column, so it carries its own cap.
-const PROSE = "max-w-[42rem]";
+// pane; prose has to stay a column, so it carries its own cap. 36rem is ~75
+// characters at 15px — 42rem allowed ~90, the top of the readable band, and it
+// was picked to narrow the gap with the full-width blocks. That traded the
+// reading for tidiness, which is the wrong way round.
+const PROSE = "max-w-[36rem]";
 
 // Mirrors ConfidenceDot's tones so the two never disagree about how loud a
 // given confidence level is: amber only at "low", neutral at "moderate".

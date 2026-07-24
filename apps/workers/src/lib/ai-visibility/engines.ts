@@ -19,6 +19,20 @@ export interface EngineAnswer {
   model: string;
 }
 
+// A 429 is not a per-prompt failure: the quota it reports is per project (Gemini's
+// free grounding allowance is monthly), so every remaining prompt in the run is a
+// guaranteed 429 too. Raise instead of returning null so the caller can drop the
+// engine for the whole run rather than firing N more doomed requests.
+export class EngineQuotaError extends Error {
+  constructor(
+    readonly engine: Engine,
+    readonly body: string,
+  ) {
+    super(`ai-visibility: ${engine} quota exhausted`);
+    this.name = "EngineQuotaError";
+  }
+}
+
 // Perplexity Sonar — a web-grounded answer engine with citations (the cheapest,
 // most "answer-native" first engine). Model is overridable via env; defaults to the
 // base `sonar` (lowest per-request search fee).
@@ -43,10 +57,9 @@ async function queryPerplexity(prompt: string): Promise<EngineAnswer | null> {
       signal: AbortSignal.timeout(ENGINE_TIMEOUT_MS),
     });
     if (!res.ok) {
-      logger.error("ai-visibility: perplexity request failed", {
-        status: res.status,
-        body: (await res.text()).slice(0, 300),
-      });
+      const body = (await res.text()).slice(0, 300);
+      logger.error("ai-visibility: perplexity request failed", { status: res.status, body });
+      if (res.status === 429) throw new EngineQuotaError("perplexity", body);
       return null;
     }
     const data = (await res.json()) as {
@@ -60,6 +73,7 @@ async function queryPerplexity(prompt: string): Promise<EngineAnswer | null> {
     }
     return { answer, citations: data.citations ?? [], model };
   } catch (err) {
+    if (err instanceof EngineQuotaError) throw err;
     logger.error("ai-visibility: perplexity request threw", { err: String(err) });
     return null;
   }
@@ -92,10 +106,9 @@ async function queryGemini(prompt: string): Promise<EngineAnswer | null> {
       },
     );
     if (!res.ok) {
-      logger.error("ai-visibility: gemini request failed", {
-        status: res.status,
-        body: (await res.text()).slice(0, 300),
-      });
+      const body = (await res.text()).slice(0, 300);
+      logger.error("ai-visibility: gemini request failed", { status: res.status, body });
+      if (res.status === 429) throw new EngineQuotaError("gemini", body);
       return null;
     }
     const data = (await res.json()) as {
@@ -118,6 +131,7 @@ async function queryGemini(prompt: string): Promise<EngineAnswer | null> {
       .filter((u): u is string => Boolean(u));
     return { answer, citations, model };
   } catch (err) {
+    if (err instanceof EngineQuotaError) throw err;
     logger.error("ai-visibility: gemini request threw", { err: String(err) });
     return null;
   }

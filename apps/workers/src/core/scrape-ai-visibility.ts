@@ -15,7 +15,7 @@ import {
 } from "@outrival/db";
 import { computeHash, uploadToR2 } from "@outrival/shared";
 import { extractAiVisibility, AI_CONFIG, type Classification } from "@outrival/ai";
-import { queryEngine, type Engine } from "../lib/ai-visibility/engines";
+import { EngineQuotaError, queryEngine, type Engine } from "../lib/ai-visibility/engines";
 import {
   insertAiVisibilityResults,
   getPreviousAiVisibilityRun,
@@ -97,6 +97,8 @@ export async function runScrapeAiVisibility(payload: z.input<typeof InputSchema>
     let totalPrompts = 0;
     let totalQueries = 0;
     let signalled = 0;
+    // Engines that reported a quota wall this run — skipped for every later prompt.
+    const exhausted = new Set<Engine>();
 
     for (const product of productList) {
       // Roster for this product = its self product + its linked competitors (non-deleted).
@@ -160,7 +162,22 @@ export async function runScrapeAiVisibility(payload: z.input<typeof InputSchema>
 
       for (const prompt of prompts) {
         for (const engine of ENGINES) {
-          const res = await queryEngine(engine, prompt.prompt);
+          if (exhausted.has(engine)) continue;
+          let res;
+          try {
+            res = await queryEngine(engine, prompt.prompt);
+          } catch (err) {
+            if (!(err instanceof EngineQuotaError)) throw err;
+            // Quota is per project, so the remaining prompts of this run would all
+            // 429 too. Drop the engine here instead of hammering a closed door.
+            exhausted.add(engine);
+            logger.warn("Engine quota exhausted, skipping it for the rest of the run", {
+              orgId,
+              engine,
+              body: err.body,
+            });
+            continue;
+          }
           if (!res) continue; // missing key / API error — best-effort, skip
           totalQueries++;
 

@@ -18,6 +18,7 @@ const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 export function VisualDiff({
   signalId,
   fill = false,
+  onUnavailable,
 }: {
   signalId: string;
   // Fill the parent's height instead of the standalone 420px box. For the
@@ -25,6 +26,11 @@ export function VisualDiff({
   // grid: the height is still definite (the grid row decides it), so the
   // no-reflow property below is kept, it just comes from the parent.
   fill?: boolean;
+  // Called when a capture can't be fetched (the availability flag on the detail
+  // is a pHash proxy, so R2 can still miss). The caller drops its whole section
+  // — heading included — rather than framing a message where an image was
+  // promised.
+  onUnavailable?: () => void;
 }) {
   const [pos, setPos] = useState(50);
   const [full, setFull] = useState(false);
@@ -34,16 +40,19 @@ export function VisualDiff({
   const beforeUrl = `${BASE}/api/signals/${signalId}/screenshot/before`;
   const afterUrl = `${BASE}/api/signals/${signalId}/screenshot/after`;
 
-  if (failed) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        Screenshot preview unavailable for this change.
-      </p>
-    );
-  }
+  const fail = () => {
+    setFailed(true);
+    onUnavailable?.();
+  };
+
+  if (failed) return null;
 
   return (
-    <div className={cn("space-y-2", fill && "flex min-h-0 flex-col")}>
+    // In fill mode the box below is `flex-1` of THIS column, so this column has
+    // to claim the parent's leftover height itself — without flex-1 it sizes to
+    // its content, the absolutely-positioned captures measure 0, and the whole
+    // diff collapses to the slider row alone.
+    <div className={cn("space-y-2", fill && "flex min-h-0 flex-1 flex-col")}>
       {/* Fixed height, not max-height. These are full-page captures served from
           R2 with no intrinsic size known up front, so letting the image define
           the box meant the whole document below it jumped the moment each one
@@ -56,7 +65,11 @@ export function VisualDiff({
         className={cn(
           "relative overflow-hidden rounded-md border border-border bg-surface-2",
           fill
-            ? "min-h-0 flex-1"
+            ? // The parent only has a definite height from md up (that is where
+              // the grid row fixes it); below it the dialog scrolls as one
+              // document, so the box states its own height instead of growing
+              // into an auto-height parent, which resolves to nothing.
+              "h-[300px] md:h-auto md:min-h-0 md:flex-1"
             : "h-[420px] [contain-intrinsic-size:auto_420px] [content-visibility:auto]",
         )}
       >
@@ -74,7 +87,7 @@ export function VisualDiff({
           loading="lazy"
           decoding="async"
           onLoad={() => setLoaded(true)}
-          onError={() => setFailed(true)}
+          onError={fail}
           className="absolute inset-0 size-full select-none object-cover object-top"
         />
         {/* After overlays it at the same size, revealed from the left up to `pos`. */}
@@ -85,6 +98,7 @@ export function VisualDiff({
           draggable={false}
           loading="lazy"
           decoding="async"
+          onError={fail}
           className="pointer-events-none absolute inset-0 size-full select-none object-cover object-top"
           style={{ clipPath: `inset(0 ${100 - pos}% 0 0)` }}
         />

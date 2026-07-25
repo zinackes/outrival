@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ExternalLink } from "lucide-react";
 import { format } from "date-fns";
@@ -53,6 +54,13 @@ const SectionLabel = ({ children }: { children: React.ReactNode }) => (
  * signals or a failed extraction).
  */
 export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPanelProps) {
+  // The detail's screenshot flags are a pHash proxy, so the capture can still be
+  // missing from R2. When that happens the section, its heading and the two-column
+  // layout all go away — a "Visual change" title over nothing is worse than no
+  // title at all.
+  const [visualFailed, setVisualFailed] = useState(false);
+  useEffect(() => setVisualFailed(false), [signalId]);
+
   // Fetch-on-open via useQuery.
   const detailQ = useQuery({
     queryKey: ["signalDetail", signalId],
@@ -67,7 +75,9 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
       : "idle";
 
   const hasChange = Boolean(detail?.humanChangeBefore || detail?.humanChangeAfter);
-  const hasVisual = Boolean(detail?.screenshots?.before && detail?.screenshots?.after);
+  const hasVisual =
+    Boolean(detail?.screenshots?.before && detail?.screenshots?.after) &&
+    !visualFailed;
   const changes = detail?.changes ?? [];
   const majorCount = changes.filter((c) => c.significance === "major").length;
   const host = hostOf(detail?.sourceUrl ?? null);
@@ -131,7 +141,11 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
             {hasVisual && (
               <section className="flex min-h-0 flex-col gap-2.5">
                 <SectionLabel>Visual change</SectionLabel>
-                <VisualDiff signalId={signalId} fill />
+                <VisualDiff
+                  signalId={signalId}
+                  fill
+                  onUnavailable={() => setVisualFailed(true)}
+                />
               </section>
             )}
 

@@ -71,6 +71,7 @@ export async function scrapePage(
     egressTier: options.egressTier,
     fullPage: options.fullPage,
     waitForSelector: options.waitForSelector,
+    waitForStableContent: options.waitForStableContent,
     progressiveScroll: options.progressiveScroll,
     screenshot: options.screenshot,
     blockResources: options.blockResources,

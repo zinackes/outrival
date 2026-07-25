@@ -60,6 +60,15 @@ export interface PatchrightOptions {
    * Best-effort and primary-capture-first — a failure never affects the snapshot.
    */
   captureBillingToggle?: boolean;
+  /**
+   * Hold the capture until the rendered DOM stops growing (bounded). For pages
+   * whose CONTENT is fetched after hydration — a jobs board rendering its rows from
+   * an XHR — `networkidle` is the wrong signal: analytics beacons and polling mean
+   * it often never arrives, so the bounded settle expires and the shell is captured
+   * with none of the rows. This keys on the only thing a snapshot cares about
+   * instead. Default off; a page that is already static exits after one poll.
+   */
+  waitForStableContent?: boolean;
 }
 
 // Subresources safe to abort before they hit the (paid) proxy. media + font are
@@ -210,6 +219,12 @@ export async function capturePage(
     await settleAfterNav(page);
   }
 
+  // Last chance for content that arrives after every network heuristic has given
+  // up. Best-effort: a timeout here must never lose the page we already navigated.
+  if (options.waitForStableContent) {
+    await waitForStableContent(page).catch(() => {});
+  }
+
   let html = await page.content();
   if (isCloudflareChallenge(html))
     return { ok: false, statusCode, failureReason: "cloudflare_challenge", durationMs: Date.now() - startedAt };
@@ -262,6 +277,25 @@ export async function capturePage(
     lastModified: headers["last-modified"] ?? null,
     durationMs: Date.now() - startedAt,
   };
+}
+
+/**
+ * Bounded wait until the rendered DOM stops growing (see PatchrightOptions
+ * .waitForStableContent). Polls the body size and returns as soon as two
+ * consecutive samples match, so a static page costs one poll interval and a board
+ * that is still fetching its rows gets the time it needs — capped, never hanging.
+ */
+async function waitForStableContent(page: Page): Promise<void> {
+  const pollMs = Number(process.env.SCRAPE_STABLE_POLL_MS ?? 500);
+  const maxMs = Number(process.env.SCRAPE_STABLE_MAX_MS ?? 10000);
+  const deadline = Date.now() + maxMs;
+  let last = -1;
+  while (Date.now() < deadline) {
+    const size = await page.evaluate(() => document.body?.innerHTML.length ?? 0);
+    if (size === last) return;
+    last = size;
+    await page.waitForTimeout(pollMs);
+  }
 }
 
 // Drive the page down in fixed steps to fire lazy-load / scroll-reveal handlers

@@ -561,7 +561,25 @@ carte (état live uniquement).
                    boards Notion off-site) + JOBS_RENDER_ENABLED : la page careers/board retenue et
                    les hops off-site sont rendus au navigateur (L1) + scroll, sinon les offres injectées
                    côté client — placeholder SSR « Loading positions… » — restent invisibles ; le
-                   probing des paths reste en L0. Sans ça : chemin L0-only précédent)
+                   probing des paths reste en L0. Sans ça : chemin L0-only précédent.
+                   HUB → LISTING : une page careers peut être un hub (culture, teams,
+                   benefits) qui lie ses postes un cran plus bas (« Browse jobs » →
+                   /careers/all-jobs, cf. atlassian.com, stripe.com). Le path discovery
+                   s'y arrêtait (le hub RESSEMBLE à une page careers, il en est une, elle
+                   n'a juste aucun poste) et le snapshot ne portait que de la copy
+                   marketing. `findJobListingLink` isole les liens qui annoncent le
+                   LISTING lui-même et autorise ce seul saut same-host depuis une page
+                   déjà retenue ; les liens careers génériques (« Our teams », « Benefits »)
+                   ne le déclenchent jamais. Un lien vers la page courante est écarté du
+                   ranking, sinon l'entrée de nav « Careers » auto-référente battait le
+                   vrai lien listing.
+                   ATTENTE DE STABILITÉ (`SCRAPE_STABLE_*`) : atteindre la bonne page ne
+                   suffit pas. Un board fetche ses lignes APRÈS hydratation et ces sites
+                   émettent des beacons en continu, donc `networkidle` n'arrive jamais et
+                   le settle borné expire sur le shell vide (mesuré : atlassian.com ne
+                   capturait ses postes qu'1 run sur 3). Les rendus jobs attendent donc,
+                   borné, que le DOM cesse de grossir. Une page déjà statique sort au
+                   premier poll : coût nul là où c'est inutile)
                   (hiring-velocity : sur un run ATS AUTORITATIF, extract-jobs bucketise
                    les offres en 8 départements canoniques — normalizeDepartment pur,
                    map déterministe + fallback titre, unknown compté — et UPSERT

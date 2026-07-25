@@ -33,6 +33,13 @@ export interface ScrapeOptions {
   blockResources?: boolean;
   waitForSelector?: string;
   /**
+   * Hold the browser capture until the rendered DOM stops growing (bounded). The
+   * jobs scraper uses it on careers / board pages: their rows arrive from an XHR
+   * after hydration, and on a page with constant analytics chatter `networkidle`
+   * never fires, so the capture lands on the empty shell. Default off.
+   */
+  waitForStableContent?: boolean;
+  /**
    * Progressively scroll the page after networkidle to trigger lazy-loaded /
    * scroll-revealed content before capture (patch-16). Homepage-only.
    */

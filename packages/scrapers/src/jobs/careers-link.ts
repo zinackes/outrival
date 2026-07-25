@@ -36,6 +36,46 @@ const TEXT_SIGNALS: RegExp[] = [
   /\bvacanc(?:y|ies)\b/i,
 ];
 
+// A careers page is very often a HUB (culture, teams, benefits, early careers)
+// whose actual roles live one level deeper, behind a "Browse jobs" link
+// (atlassian.com/company/careers → /company/careers/all-jobs). These patterns mark
+// a link that advertises the LISTING itself, which is what lets the scraper tell a
+// hop worth taking from a hub apart from a lateral wander through careers
+// marketing. Ranked above the generic signals below so the listing link wins over
+// the page's own "Careers" nav entry.
+const LISTING_TEXT_SIGNALS: RegExp[] = [
+  // "Browse jobs", "View all jobs", "See our open roles", "Search openings", …
+  /\b(all|browse|view|see|explore|search|find)\b[^.]{0,20}\b(jobs?|roles?|positions?|openings?|vacanc(?:y|ies))\b/i,
+  /\b(open|current|available)\s+(jobs?|roles?|positions?|openings?|vacanc(?:y|ies))\b/i,
+  /\bjob\s+(search|board|openings?|listings?)\b/i,
+  // FR
+  /\b(toutes\s+)?nos\s+offres\b/i,
+  /\boffres?\s+d['’]emploi\b/i,
+  /\bpostes?\s+(ouverts?|à\s+pourvoir|disponibles?)\b/i,
+];
+
+// Same idea on `host + path`, for a listing link whose label is an icon or a bare
+// arrow. Weaker than a listing TEXT match, stronger than a generic careers link.
+const LISTING_HREF_SIGNALS = [
+  "all-jobs",
+  "alljobs",
+  "all-openings",
+  "open-positions",
+  "open-roles",
+  "job-search",
+  "jobsearch",
+  "jobs/search",
+  "search-jobs",
+  "job-openings",
+  "current-openings",
+  "job-board",
+  "/openings",
+  "/vacancies",
+  "/positions",
+  "nos-offres",
+  "offres-emploi",
+];
+
 // Weaker signal — matched against `host + path` (an icon/image link with no text
 // still counts). Kept separate so a text match always outranks an href match.
 const HREF_SIGNALS = [
@@ -96,16 +136,40 @@ function isFollowable(u: URL): boolean {
   return true;
 }
 
-export function findCareersLink(html: string, baseUrl: string): string | null {
+/**
+ * Same page ignoring hash/query/trailing-slash. Hopping there would just re-fetch
+ * what we already have (e.g. the page is `/about-us` and the discovered careers
+ * link is `/about-us#careers`).
+ */
+export function isSameResource(a: string, b: string): boolean {
+  try {
+    const norm = (u: string) => {
+      const url = new URL(u);
+      return `${url.hostname}${url.pathname.replace(/\/+$/, "")}`.toLowerCase();
+    };
+    return norm(a) === norm(b);
+  } catch {
+    return false;
+  }
+}
+
+interface Candidate {
+  url: string;
+  score: number;
+  /** The link advertises a job LISTING, not merely a careers entry point. */
+  listing: boolean;
+}
+
+function rankCareersLinks(html: string, baseUrl: string): Candidate[] {
   let base: URL;
   try {
     base = new URL(baseUrl);
   } catch {
-    return null;
+    return [];
   }
 
   const $ = cheerio.load(html);
-  const candidates: { url: string; score: number }[] = [];
+  const candidates: Candidate[] = [];
 
   $("a[href]").each((_i, el) => {
     const raw = ($(el).attr("href") ?? "").trim();
@@ -118,6 +182,10 @@ export function findCareersLink(html: string, baseUrl: string): string | null {
       return;
     }
     if (!isFollowable(abs)) return;
+    // A link back to the page we're ranking from is never a hop worth taking, and
+    // letting it compete would let a self-referential "Careers" nav entry outrank
+    // the real "Browse jobs" link next to it.
+    if (isSameResource(abs.toString(), base.toString())) return;
 
     const label = `${$(el).text()} ${$(el).attr("aria-label") ?? ""} ${$(el).attr("title") ?? ""}`
       .replace(/\s+/g, " ")
@@ -125,7 +193,14 @@ export function findCareersLink(html: string, baseUrl: string): string | null {
     const haystack = `${abs.hostname}${abs.pathname}`.toLowerCase();
 
     let score = 0;
-    if (TEXT_SIGNALS.some((re) => re.test(label))) score = 2;
+    let listing = false;
+    if (LISTING_TEXT_SIGNALS.some((re) => re.test(label))) {
+      score = 3;
+      listing = true;
+    } else if (LISTING_HREF_SIGNALS.some((h) => haystack.includes(h))) {
+      score = 2.5;
+      listing = true;
+    } else if (TEXT_SIGNALS.some((re) => re.test(label))) score = 2;
     else if (
       HREF_SIGNALS.some((h) => haystack.includes(h)) ||
       HOST_PREFIXES.some((p) => abs.hostname.toLowerCase().startsWith(p))
@@ -138,10 +213,28 @@ export function findCareersLink(html: string, baseUrl: string): string | null {
     // the scraper's path discovery, so a cross-host hit is the one worth following.
     if (abs.hostname.toLowerCase() !== base.hostname.toLowerCase()) score += 0.5;
 
-    candidates.push({ url: abs.toString(), score });
+    candidates.push({ url: abs.toString(), score, listing });
   });
 
+  return candidates;
+}
+
+function best(candidates: Candidate[]): string | null {
   if (candidates.length === 0) return null;
   // Highest score wins; ties keep the earliest (document order).
   return candidates.reduce((a, b) => (b.score > a.score ? b : a)).url;
+}
+
+export function findCareersLink(html: string, baseUrl: string): string | null {
+  return best(rankCareersLinks(html, baseUrl));
+}
+
+/**
+ * The strongest link that advertises an actual job LISTING (not just a careers
+ * entry point). Null when the page only links careers marketing. Lets the scraper
+ * leave a careers HUB for the page that carries the roles, without wandering
+ * sideways into "Life at Acme".
+ */
+export function findJobListingLink(html: string, baseUrl: string): string | null {
+  return best(rankCareersLinks(html, baseUrl).filter((c) => c.listing));
 }

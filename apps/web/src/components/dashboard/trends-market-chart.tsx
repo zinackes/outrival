@@ -36,6 +36,12 @@ export interface MarketChartProps {
   formatValue: (value: number, series: TrendsMarketSeries) => string;
   /** Competitor ids the legend has switched off. */
   hidden?: Set<string>;
+  /**
+   * Competitor the key is currently pointing at. Every other line fades so one
+   * series can be traced through the crossings without switching the rest off,
+   * which loses the field it is being compared against.
+   */
+  highlighted?: string | null;
 }
 
 /** Raw captured value, carried alongside the plotted one so the tooltip can state both. */
@@ -122,11 +128,17 @@ export function TrendsMarketChart({
   height = 200,
   formatValue,
   hidden,
+  highlighted,
 }: MarketChartProps) {
   const visible = useMemo(
     () => series.filter((s) => !hidden?.has(s.competitorId)),
     [series, hidden],
   );
+
+  // Switching a series off while pointing at its key entry would otherwise leave
+  // the highlight on a line that is no longer plotted, fading every remaining one
+  // with nothing to look at.
+  const active = visible.some((s) => s.competitorId === highlighted) ? highlighted : null;
 
   // One row per captured day, holding whichever competitors reported that day.
   // `connectNulls` bridges the gaps so a weekly source doesn't render as dots. The
@@ -208,22 +220,28 @@ export function TrendsMarketChart({
             }}
             content={<TooltipCard series={visible} mode={mode} formatValue={formatValue} />}
           />
-          {visible.map((item, i) => (
-            <Line
-              key={item.competitorId}
-              type="monotone"
-              dataKey={item.competitorId}
-              name={item.competitorName}
-              stroke={seriesStroke(item.color, i)}
-              // Your own product is the reference every other line is read against,
-              // so it carries the only heavier stroke on the chart.
-              strokeWidth={item.isSelf ? 2.5 : 1.5}
-              dot={false}
-              activeDot={{ r: 3, strokeWidth: 1.5, stroke: "var(--background)" }}
-              connectNulls
-              isAnimationActive={false}
-            />
-          ))}
+          {visible.map((item, i) => {
+            const dimmed = active != null && active !== item.competitorId;
+            return (
+              <Line
+                key={item.competitorId}
+                type="monotone"
+                dataKey={item.competitorId}
+                name={item.competitorName}
+                stroke={seriesStroke(item.color, i)}
+                // Your own product is the reference every other line is read against,
+                // so it carries the only heavier stroke on the chart.
+                strokeWidth={item.isSelf ? 2.5 : 1.5}
+                // Faded, not hidden: the muted lines still carry the shape of the
+                // field, they just stop competing for the eye.
+                strokeOpacity={dimmed ? 0.16 : 1}
+                dot={false}
+                activeDot={{ r: 3, strokeWidth: 1.5, stroke: "var(--background)" }}
+                connectNulls
+                isAnimationActive={false}
+              />
+            );
+          })}
         </LineChart>
       </ResponsiveContainer>
     </div>

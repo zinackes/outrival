@@ -140,25 +140,36 @@ function readQueue(
   seats: { used: number; limit: number } | null,
   productName: string,
 ): { lead: string; follow: string | null } {
+  const total = items.length;
   const strong = items.filter((c) => band(c.overlapScore) === "strong").length;
   const free = seats ? Math.max(0, seats.limit - seats.used) : null;
 
-  const lead =
-    strong > 0
-      ? `${count(items.length)} ${plural(items.length, "company", "companies")} ${plural(items.length, "is", "are")} waiting on review, and ${count(strong).toLowerCase()} of them overlap ${productName} above ${STRONG_MIN}.`
-      : `${count(items.length)} ${plural(items.length, "company", "companies")} ${plural(items.length, "is", "are")} waiting on review, and none of them clears ${STRONG_MIN}.`;
+  // One candidate is a sentence about that candidate, not about a batch, so the
+  // whole clause changes rather than the noun taking an "(s)".
+  const opening = `${count(total)} ${plural(total, "company", "companies")} ${total === 1 ? "is" : "are"} waiting on review`;
+  const verdict =
+    strong === 0
+      ? total === 1
+        ? `it does not clear ${STRONG_MIN}`
+        : `none of them clears ${STRONG_MIN}`
+      : strong === total
+        ? total === 1
+          ? `it overlaps ${productName} above ${STRONG_MIN}`
+          : `all of them overlap ${productName} above ${STRONG_MIN}`
+        : `${count(strong).toLowerCase()} of them ${strong === 1 ? "overlaps" : "overlap"} ${productName} above ${STRONG_MIN}`;
+  const lead = `${opening}, and ${verdict}.`;
 
   if (free === null) return { lead, follow: null };
   if (free === 0) {
     return {
       lead,
-      follow: `Every competitor seat is taken, so tracking one of these means freeing a seat first.`,
+      follow: "Every competitor seat is taken, so tracking one means freeing a seat first.",
     };
   }
   if (strong === 0) {
     return {
       lead,
-      follow: `This is a batch to skim rather than one to spend seats on: ${free} of your ${seats!.limit} are free.`,
+      follow: `A batch to skim rather than one to spend seats on: ${free} of your ${seats!.limit} are free.`,
     };
   }
   if (strong > free) {
@@ -167,9 +178,15 @@ function readQueue(
       follow: `You have room for ${count(free).toLowerCase()} of them, so the top of the band is the decision.`,
     };
   }
+  if (strong === free) {
+    return {
+      lead,
+      follow: `Taking ${strong === 1 ? "it" : `all ${count(strong).toLowerCase()}`} would use every free seat you have.`,
+    };
+  }
   return {
     lead,
-    follow: `Taking all ${count(strong).toLowerCase()} would leave ${count(free - strong).toLowerCase()} of your ${seats!.limit} competitor seats.`,
+    follow: `Taking ${strong === 1 ? "it" : `all ${count(strong).toLowerCase()}`} would leave ${count(free - strong).toLowerCase()} of your ${seats!.limit} competitor seats.`,
   };
 }
 
@@ -1108,7 +1125,9 @@ export function DiscoveryView() {
             {items === null
               ? "Reading the review queue…"
               : tab === "dismissed"
-                ? `${count(counts?.dismissed ?? 0)} ${plural(counts?.dismissed ?? 0, "company", "companies")} you turned down. Restoring one sends it back to review.`
+                ? (counts?.dismissed ?? 0) === 0
+                  ? "Nothing turned down yet."
+                  : `${count(counts!.dismissed)} ${plural(counts!.dismissed, "company", "companies")} you turned down. Restoring one sends it back to review.`
                 : "Nothing waiting on review."}
           </p>
         )}

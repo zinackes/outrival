@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { format, formatDistanceToNow } from "date-fns";
-import { ExternalLink, FileText, Loader2, Play, Rocket, MessagesSquare, Swords } from "lucide-react";
+import { ExternalLink, FileText, Loader2, Play, Swords } from "lucide-react";
 import type { ChangeRow, CompetitorSignal } from "@/lib/api";
 import type { SourceType } from "@outrival/shared";
 import { Button } from "@/components/ui/button";
@@ -191,7 +191,7 @@ export function ProductTab({
       ))}
 
       {narrativeRest.length > 0 && (
-        <TabSection title="How they describe themselves" icon={FileText}>
+        <TabSection title="How they describe themselves">
           <ul className="flex flex-col divide-y divide-border">
             {narrativeRest.map((c) => (
               <li key={c.id} className="py-3.5 first:pt-0 last:pb-0">
@@ -211,7 +211,7 @@ export function ProductTab({
           column and a line each, because "they shipped X" and "they were down
           41 minutes" answer the same question and want the same shape. */}
       {shipped.length > 0 && (
-        <TabSection title="What they shipped" icon={Rocket}>
+        <TabSection title="What they shipped">
           <ul className="flex flex-col">
             {shipped.map((c) => (
               <LogRow
@@ -228,7 +228,7 @@ export function ProductTab({
       {/* External evidence: it did not come off their own site, so the source is
           the point and the link is the payload. */}
       {social.length > 0 && (
-        <TabSection title="Where they are talked about" icon={MessagesSquare}>
+        <TabSection title="Where they are talked about">
           <ul className="flex flex-col">
             {social.map((c) => (
               <LogRow

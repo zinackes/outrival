@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import dynamic from "next/dynamic";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { Lock, Plus, Loader2, Star, Settings2, Link2, HelpCircle } from "lucide-react";
+import { Lock, Plus, Loader2, Settings2, Link2, HelpCircle } from "lucide-react";
 import {
   PLAN_LABELS,
   MONITOR_FREQUENCIES,
@@ -415,7 +415,7 @@ export function ReviewsTab({
                 called these the angles you can lead with, then printed them under
                 a chart and two columns of verbatims. */}
             {reviews.summary.complaintThemes.length > 0 && (
-              <TabSection title="Angles you can lead with" icon={Star}>
+              <TabSection title="Angles you can lead with">
                 <p className="text-sm text-muted-foreground">
                   Grievances that repeat across reviews, most common first.
                 </p>
@@ -478,7 +478,7 @@ export function ReviewsTab({
 
             {/* Not two symmetric columns: complaints are the wedge, praise is what
                 you have to match. Complaints lead and take the wider column. */}
-            <TabSection title="In their words" icon={Star}>
+            <TabSection title="In their words">
               <div className="grid grid-cols-1 gap-x-10 gap-y-6 md:grid-cols-[1.35fr_1fr]">
                 <ReviewColumn
                   title="What they complain about"

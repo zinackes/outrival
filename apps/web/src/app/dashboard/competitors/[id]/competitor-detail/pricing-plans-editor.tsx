@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { DollarSign, Pencil, Plus, Trash2, Sparkles, TriangleAlert } from "lucide-react";
+import { Pencil, Plus, Trash2, Sparkles, TriangleAlert } from "lucide-react";
 import { normalizePlanKey } from "@outrival/shared";
 import {
   api,
@@ -162,7 +162,7 @@ export function PricingPlansEditor({
     ) : null;
 
   return (
-    <TabSection title="Current plans" icon={DollarSign} action={action} className={className}>
+    <TabSection title="Current plans" action={action} className={className}>
       {plansQuery.isLoading ? (
         <Skeleton className="h-16 w-full" />
       ) : editing ? (

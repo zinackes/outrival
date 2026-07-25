@@ -41,7 +41,7 @@ import { PageHead } from "./page-head";
 import { DigestSettingsSheet } from "./digest-settings-sheet";
 import {
   ActivityGauge,
-  CompetitorPips,
+  CompetitorMovers,
   MoverList,
   RailLabel,
   SpreadBar,
@@ -143,7 +143,7 @@ export function DigestsView() {
   if (err && digests === null) return <ListError error={err} />;
 
   return (
-    <div className="flex max-w-[1080px] flex-col gap-5">
+    <div className="flex flex-col gap-5">
       <PageHead
         flush
         title="Digests"
@@ -215,15 +215,7 @@ export function DigestsView() {
         />
       )}
 
-      {lead && (
-        <LeadBrief
-          digest={lead}
-          tab={tab}
-          colorOf={colorOf}
-          idOf={idOf}
-          watched={(competitorsQ.data ?? []).map((c) => c.name)}
-        />
-      )}
+      {lead && <LeadBrief digest={lead} tab={tab} colorOf={colorOf} idOf={idOf} />}
 
       {earlier.length > 0 && (
         <section className="flex flex-col">
@@ -252,13 +244,11 @@ function LeadBrief({
   tab,
   colorOf,
   idOf,
-  watched,
 }: {
   digest: Digest;
   tab: Tab;
   colorOf: ColorOf;
   idOf: (name: string) => string | null;
-  watched: string[];
 }) {
   const content = digest.content;
   const stats = digestStats(content);
@@ -271,12 +261,12 @@ function LeadBrief({
       ? "Today"
       : "This week"
     : "Latest brief";
-  const moved = new Set(stats.movers.map((m) => m.name.toLowerCase()));
-  const silent = watched.filter((n) => !moved.has(n.toLowerCase())).slice(0, 3);
 
   return (
     <Card className="grid grid-cols-1 overflow-hidden rounded-lg lg:grid-cols-[minmax(0,1fr)_236px]">
-      <div className="flex flex-col p-5">
+      {/* The card fills the page, its prose does not: a verdict set across 1400px
+          stops being a sentence you can read in one pass. */}
+      <div className="flex max-w-[78ch] flex-col p-5">
         <div className="flex items-center gap-2.5 text-dense text-muted-foreground">
           <span className="inline-flex items-center gap-1.5 text-meta font-semibold uppercase tracking-wider text-primary">
             <span aria-hidden className="size-1.5 rounded-full bg-primary" />
@@ -327,17 +317,11 @@ function LeadBrief({
         </div>
       </div>
 
-      <aside className="flex flex-col gap-5 border-t border-border p-5 lg:border-l lg:border-t-0">
+      <aside className="flex flex-col gap-4 border-t border-border p-5 lg:border-l lg:border-t-0">
         <div className="flex flex-col gap-2.5">
           <RailLabel>Who moved</RailLabel>
           {stats.movers.length > 0 ? (
-            <MoverList
-              movers={stats.movers}
-              total={stats.moves}
-              colorOf={colorOf}
-              idOf={idOf}
-              silent={silent}
-            />
+            <MoverList movers={stats.movers} total={stats.moves} colorOf={colorOf} idOf={idOf} />
           ) : (
             <p className="text-dense text-muted-foreground">Nobody, this period.</p>
           )}
@@ -367,7 +351,7 @@ function RunRow({ digest, colorOf }: { digest: Digest; colorOf: ColorOf }) {
   return (
     <Link
       href={`/dashboard/digests/${digest.id}`}
-      className="group -mx-2.5 grid grid-cols-1 items-center gap-x-4 gap-y-2 rounded-md border-b border-border px-2.5 py-3.5 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:grid-cols-[132px_minmax(0,1fr)_96px_120px_16px] sm:gap-y-0"
+      className="group -mx-2.5 grid grid-cols-1 items-center gap-x-5 gap-y-2 rounded-md border-b border-border px-2.5 py-3.5 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:grid-cols-[150px_minmax(0,1fr)_minmax(0,190px)_128px_16px] sm:gap-y-0"
     >
       <span className="font-mono text-dense tabular-nums">{digestLabel(digest)}</span>
       <span
@@ -377,7 +361,7 @@ function RunRow({ digest, colorOf }: { digest: Digest; colorOf: ColorOf }) {
       >
         {headline ?? "No summary was written for this period."}
       </span>
-      <CompetitorPips movers={stats.movers} colorOf={colorOf} />
+      <CompetitorMovers movers={stats.movers} colorOf={colorOf} />
       <span className="flex flex-col gap-1.5">
         <SpreadBar stats={stats} />
         <span className="text-xs text-muted-foreground">

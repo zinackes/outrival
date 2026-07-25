@@ -5,7 +5,7 @@ import { CardBlockSkeleton } from "@/components/dashboard/skeletons";
 // issues. Matching that shape keeps the skeleton→content shift small.
 export default function DigestsLoading() {
   return (
-    <div aria-busy="true" aria-live="polite" className="flex max-w-[1080px] flex-col gap-5">
+    <div aria-busy="true" aria-live="polite" className="flex flex-col gap-5">
       <div>
         <Skeleton className="h-7 w-36 mb-2" />
         <Skeleton className="h-4 w-72" />

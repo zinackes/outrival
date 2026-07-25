@@ -2,10 +2,12 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { AnimatePresence, motion } from "motion/react";
 import { format, formatDistanceToNow, isToday, isYesterday } from "date-fns";
 import { Activity, ArrowRight, ChevronRight, ExternalLink } from "lucide-react";
 import type { CompetitorSignal, ChangeRow } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { feedItemMotion } from "@/lib/motion";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { Card } from "@/components/ui/card";
@@ -227,48 +229,58 @@ export function ActivityTab({
         )}
       </div>
 
-      <div key={`${severity ?? "all"}-${category ?? "all"}`} className="animate-in fade-in duration-200">
+      {/* The list used to be re-keyed on the active filters, so picking one threw the
+          whole feed away and faded a new one in. It carries the competitors-list
+          choreography now: the rows a filter drops leave, the rows it keeps travel. */}
       {days.length === 0 ? (
         <p className="border-t border-border px-4 py-8 text-center text-sm text-muted-foreground">
           Nothing matches those filters.
         </p>
       ) : (
-        days.map((day) => (
-          <div key={day.label + day.date.getTime()}>
-            <div className="flex items-baseline gap-2.5 border-t border-border px-5 pb-2 pt-3">
-              <span className="text-dense font-semibold">{day.label}</span>
-              <span className="text-xs text-muted-foreground">
-                {day.signals.length > 0 &&
-                  `${day.signals.length} ${day.signals.length === 1 ? "signal" : "signals"}`}
-                {day.signals.length > 0 && day.changes.length > 0 && ", "}
-                {day.changes.length > 0 &&
-                  `${day.changes.length} other ${day.changes.length === 1 ? "change" : "changes"}`}
-              </span>
-              <span className="ml-auto font-mono text-meta tabular-nums text-muted-foreground">
-                {format(day.date, "d MMM")}
-              </span>
-            </div>
+        <AnimatePresence initial={false} mode="popLayout">
+          {days.map((day) => (
+            <motion.div
+              key={day.label + day.date.getTime()}
+              {...feedItemMotion}
+              layout="position"
+            >
+              <div className="flex items-baseline gap-2.5 border-t border-border px-5 pb-2 pt-3">
+                <span className="text-dense font-semibold">{day.label}</span>
+                <span className="text-xs text-muted-foreground">
+                  {day.signals.length > 0 &&
+                    `${day.signals.length} ${day.signals.length === 1 ? "signal" : "signals"}`}
+                  {day.signals.length > 0 && day.changes.length > 0 && ", "}
+                  {day.changes.length > 0 &&
+                    `${day.changes.length} other ${day.changes.length === 1 ? "change" : "changes"}`}
+                </span>
+                <span className="ml-auto font-mono text-meta tabular-nums text-muted-foreground">
+                  {format(day.date, "d MMM")}
+                </span>
+              </div>
 
-            {day.signals.map((s) => (
-              <SignalRow
-                key={s.id}
-                signal={s}
-                unread={isNew(s.createdAt)}
-                competitorUrl={competitorUrl}
-              />
-            ))}
+              <AnimatePresence initial={false} mode="popLayout">
+                {day.signals.map((s) => (
+                  <motion.div key={s.id} {...feedItemMotion} layout="position">
+                    <SignalRow
+                      signal={s}
+                      unread={isNew(s.createdAt)}
+                      competitorUrl={competitorUrl}
+                    />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
 
-            {day.changes.length > 0 && (
-              <OtherChanges
-                changes={day.changes}
-                onRefresh={onRefresh}
-                competitorUrl={competitorUrl}
-              />
-            )}
-          </div>
-        ))
+              {day.changes.length > 0 && (
+                <OtherChanges
+                  changes={day.changes}
+                  onRefresh={onRefresh}
+                  competitorUrl={competitorUrl}
+                />
+              )}
+            </motion.div>
+          ))}
+        </AnimatePresence>
       )}
-      </div>
 
       {/* This tab shows signals and classified changes. The full run history,
           including every no-change and baseline check, lives on the Activity page. */}

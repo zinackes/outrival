@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { AnimatePresence, motion } from "motion/react";
 import { ChevronRight, ExternalLink } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import type {
@@ -12,6 +13,7 @@ import type {
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { formatTime, formatDateTime } from "@/lib/format-date";
+import { disclosureMotion } from "@/lib/motion";
 import { sourceLabel } from "@/lib/source-labels";
 import { CompAvatar } from "@/components/dashboard/comp-avatar";
 import {
@@ -143,7 +145,16 @@ export function RunRow({
           aria-hidden
         />
       </button>
-      {isOpen && <RunPanel event={event} outcome={outcome} entityHref={href} />}
+      {/* The panel used to appear in one frame, which moved every row under it by
+          its full height with no sign of what pushed them. It opens on the feed's
+          spring now, so the rows below travel with it. */}
+      <AnimatePresence initial={false}>
+        {isOpen && (
+          <motion.div {...disclosureMotion}>
+            <RunPanel event={event} outcome={outcome} entityHref={href} />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   );
 }

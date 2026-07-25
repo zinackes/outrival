@@ -2,10 +2,12 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { AnimatePresence, motion } from "motion/react";
 import { ChevronRight } from "lucide-react";
 import type { ActivityDay, ActivityEvent } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { activityQuietDayQuery } from "@/lib/queries";
+import { feedItemMotion } from "@/lib/motion";
 import { Button } from "@/components/ui/button";
 import { RunRow } from "./run-row";
 import { dayBounds, dayKeyOf, dayLabel } from "./format";
@@ -79,35 +81,44 @@ export function ActivityLog({
 
   return (
     <div className="flex flex-col gap-1">
-      {groups.map(({ key, rows, day }) => {
-        const quiet = day
-          ? Math.max(0, day.checks - day.changes - day.failures - day.firstCaptures)
-          : 0;
-        return (
-          <section key={key} aria-label={dayLabel(key)}>
-            <div className="mb-1 flex items-baseline justify-between gap-3 border-b border-border pb-1.5 pt-4 first:pt-0">
-              <h3 className="text-sm font-semibold tracking-tight">{dayLabel(key)}</h3>
-              {day && <DayTally day={day} />}
-            </div>
-            {rows.map((e, i) => {
-              const k = rowKey(e, i);
-              return (
-                <RunRow key={k} event={e} isOpen={expanded.has(k)} onToggle={() => toggle(k)} />
-              );
-            })}
-            {foldable && quiet > 0 && (
-              <QuietFold
-                dayKey={key}
-                count={quiet}
-                filters={filters}
-                productId={productId}
-                expanded={expanded}
-                onToggleRow={toggle}
-              />
-            )}
-          </section>
-        );
-      })}
+      {/* Same choreography as the competitors list: a filter change is a change of
+          content, so the rows it drops leave and the rows it keeps travel to their
+          new place, instead of the whole log swapping under a single fade. */}
+      <AnimatePresence initial={false} mode="popLayout">
+        {groups.map(({ key, rows, day }) => {
+          const quiet = day
+            ? Math.max(0, day.checks - day.changes - day.failures - day.firstCaptures)
+            : 0;
+          return (
+            <motion.section key={key} aria-label={dayLabel(key)} {...feedItemMotion} layout="position">
+              <div className="mb-1 flex items-baseline justify-between gap-3 border-b border-border pb-1.5 pt-4 first:pt-0">
+                <h3 className="text-sm font-semibold tracking-tight">{dayLabel(key)}</h3>
+                {day && <DayTally day={day} />}
+              </div>
+              <AnimatePresence initial={false} mode="popLayout">
+                {rows.map((e, i) => {
+                  const k = rowKey(e, i);
+                  return (
+                    <motion.div key={k} {...feedItemMotion} layout="position">
+                      <RunRow event={e} isOpen={expanded.has(k)} onToggle={() => toggle(k)} />
+                    </motion.div>
+                  );
+                })}
+              </AnimatePresence>
+              {foldable && quiet > 0 && (
+                <QuietFold
+                  dayKey={key}
+                  count={quiet}
+                  filters={filters}
+                  productId={productId}
+                  expanded={expanded}
+                  onToggleRow={toggle}
+                />
+              )}
+            </motion.section>
+          );
+        })}
+      </AnimatePresence>
 
       {hasMore && (
         <Button
@@ -190,11 +201,17 @@ function QuietFold({
           </button>
         </p>
       )}
-      {open &&
-        q.data?.events.map((e, i) => {
-          const k = `quiet-${dayKey}-${rowKey(e, i)}`;
-          return <RunRow key={k} event={e} isOpen={expanded.has(k)} onToggle={() => onToggleRow(k)} />;
-        })}
+      <AnimatePresence initial={false} mode="popLayout">
+        {open &&
+          q.data?.events.map((e, i) => {
+            const k = `quiet-${dayKey}-${rowKey(e, i)}`;
+            return (
+              <motion.div key={k} {...feedItemMotion} layout="position">
+                <RunRow event={e} isOpen={expanded.has(k)} onToggle={() => onToggleRow(k)} />
+              </motion.div>
+            );
+          })}
+      </AnimatePresence>
     </>
   );
 }

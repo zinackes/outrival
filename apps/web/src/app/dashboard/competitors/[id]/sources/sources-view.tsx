@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { AnimatePresence, motion } from "motion/react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { ArrowLeft, ChevronRight, Loader2, Play } from "lucide-react";
@@ -30,6 +31,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { PaywallDialog } from "@/components/outrival/paywall-dialog";
 import { PausedMonitors } from "@/components/outrival/monitor-alternatives";
 import { competitorNameColor } from "@/lib/competitor-color";
+import { feedItemMotion } from "@/lib/motion";
 import { sourceShortLabel } from "@/lib/source-labels";
 import { ListError } from "@/components/outrival/list-error";
 import { toastApiError } from "@/lib/error-helpers";
@@ -459,63 +461,62 @@ export function SourcesView({ id }: { id: string }) {
           onResolved={refresh}
         />
 
-        {/* Keyed on the active chip: picking one swaps most of the sheet at once, and
-            without a fade the page just jumps to a different set of rows with no sign
-            that the click is what did it. Reopening a drawer after filtering is the
-            price, and a filtered view is a fresh look anyway. */}
-        <Card
-          key={filter ?? "all"}
-          className="overflow-hidden duration-200 ease-out animate-in fade-in-0 slide-in-from-top-1 motion-reduce:animate-none"
-        >
-          {/* Pinned above the taxonomy: the only group that asks for something. */}
-          {countOf("fixable") > 0 && visible("fixable") && (
-            <>
-              <GroupLabel aside={ATTENTION_META.fixable.aside} tone={ATTENTION_META.fixable.tone}>
-                {ATTENTION_META.fixable.heading}
-              </GroupLabel>
-              {groupRows("fixable")}
-            </>
-          )}
+        {/* Picking a chip swaps most of the sheet at once, so the groups it drops
+            leave and the ones it keeps travel to their new place, on the same spring
+            as the competitors list. The sheet used to be re-keyed on the chip and
+            faded in whole, which cost every open drawer on every filter click. */}
+        <Card className="overflow-hidden">
+          <AnimatePresence initial={false} mode="popLayout">
+            {/* Pinned above the taxonomy: the only group that asks for something. */}
+            {countOf("fixable") > 0 && visible("fixable") && (
+              <motion.div key="fixable" {...feedItemMotion} layout="position">
+                <GroupLabel aside={ATTENTION_META.fixable.aside} tone={ATTENTION_META.fixable.tone}>
+                  {ATTENTION_META.fixable.heading}
+                </GroupLabel>
+                {groupRows("fixable")}
+              </motion.div>
+            )}
 
-          {/* Everything applicable and workable, still in catalog order — a source's
-              group is how the user thinks about it, so it survives the reranking. */}
-          {SOURCE_GROUPS.map((group) => {
-            const rows = states.filter(
-              (s) =>
-                CONFIGURABLE_SOURCES[group].includes(s.sourceType) &&
-                (s.attention === "collecting" || s.attention === "idle") &&
-                visible(s.attention),
-            );
-            if (rows.length === 0) return null;
-            return (
-              <div key={group}>
-                <GroupLabel>{SOURCE_GROUP_LABELS[group]}</GroupLabel>
-                {rows.map((s) => renderRow(s.sourceType, s.state))}
-              </div>
-            );
-          })}
+            {/* Everything applicable and workable, still in catalog order — a source's
+                group is how the user thinks about it, so it survives the reranking. */}
+            {SOURCE_GROUPS.map((group) => {
+              const rows = states.filter(
+                (s) =>
+                  CONFIGURABLE_SOURCES[group].includes(s.sourceType) &&
+                  (s.attention === "collecting" || s.attention === "idle") &&
+                  visible(s.attention),
+              );
+              if (rows.length === 0) return null;
+              return (
+                <motion.div key={group} {...feedItemMotion} layout="position">
+                  <GroupLabel>{SOURCE_GROUP_LABELS[group]}</GroupLabel>
+                  {rows.map((s) => renderRow(s.sourceType, s.state))}
+                </motion.div>
+              );
+            })}
 
-          {/* A refusal is not a task. Amber, its own heading, and a subtitle that
-              says there is nothing to do — otherwise the page contradicts the
-              sentence printed inside these very rows. */}
-          {countOf("closed") > 0 && visible("closed") && (
-            <>
-              <GroupLabel aside={ATTENTION_META.closed.aside} tone={ATTENTION_META.closed.tone}>
-                {ATTENTION_META.closed.heading}
-              </GroupLabel>
-              {groupRows("closed")}
-            </>
-          )}
+            {/* A refusal is not a task. Amber, its own heading, and a subtitle that
+                says there is nothing to do — otherwise the page contradicts the
+                sentence printed inside these very rows. */}
+            {countOf("closed") > 0 && visible("closed") && (
+              <motion.div key="closed" {...feedItemMotion} layout="position">
+                <GroupLabel aside={ATTENTION_META.closed.aside} tone={ATTENTION_META.closed.tone}>
+                  {ATTENTION_META.closed.heading}
+                </GroupLabel>
+                {groupRows("closed")}
+              </motion.div>
+            )}
 
-          {/* The group that used to be a dead end. Neutral tone, and now an offer. */}
-          {countOf("unavailable") > 0 && visible("unavailable") && (
-            <>
-              <GroupLabel aside={ATTENTION_META.unavailable.aside}>
-                {ATTENTION_META.unavailable.heading}
-              </GroupLabel>
-              {groupRows("unavailable")}
-            </>
-          )}
+            {/* The group that used to be a dead end. Neutral tone, and now an offer. */}
+            {countOf("unavailable") > 0 && visible("unavailable") && (
+              <motion.div key="unavailable" {...feedItemMotion} layout="position">
+                <GroupLabel aside={ATTENTION_META.unavailable.aside}>
+                  {ATTENTION_META.unavailable.heading}
+                </GroupLabel>
+                {groupRows("unavailable")}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </Card>
 
         {/* Deliberately NOT collapsed like the read-only block below: this one holds

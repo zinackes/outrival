@@ -20,6 +20,9 @@ export const feedItemTransition: Transition = {
 };
 
 // Props bundle for an animated feed item. Spread onto a <motion.*> element.
+// A row that can grow in place (a detail panel opens inside it) should override
+// with layout="position": its own height is already animated by the panel, and
+// projecting the box on top of that distorts the row while it opens.
 export const feedItemMotion = {
   layout: true,
   variants: feedItemVariants,
@@ -27,4 +30,16 @@ export const feedItemMotion = {
   animate: "animate",
   exit: "exit",
   transition: feedItemTransition,
+} as const;
+
+// Open/close for a detail panel revealed in place (a run's detail, a question's
+// evidence). Same spring as the feed, so a list and the panels inside it move
+// with one hand. The spring is overdamped, so the height settles without the
+// overshoot that would clip the panel's last line.
+export const disclosureMotion = {
+  initial: { height: 0, opacity: 0 },
+  animate: { height: "auto", opacity: 1 },
+  exit: { height: 0, opacity: 0 },
+  transition: feedItemTransition,
+  style: { overflow: "hidden" },
 } as const;

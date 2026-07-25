@@ -97,7 +97,7 @@ export function DigestReader({ id }: { id: string }) {
 
   if (q.isLoading && !d) {
     return (
-      <div className="flex flex-col gap-6">
+      <div className="mx-auto flex w-full max-w-[980px] flex-col gap-6">
         {backLink}
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 size={14} className="animate-spin" /> Loading brief…
@@ -108,7 +108,7 @@ export function DigestReader({ id }: { id: string }) {
 
   if (!d || !detail) {
     return (
-      <div className="flex flex-col gap-6">
+      <div className="mx-auto flex w-full max-w-[980px] flex-col gap-6">
         {backLink}
         <EmptyState
           icon={Mail}
@@ -148,14 +148,17 @@ export function DigestReader({ id }: { id: string }) {
   const printHref = `/brief/${d.id}?print=1`;
 
   return (
-    <div className="flex flex-col gap-6">
+    // A brief is a document, so it is centred on its reading measure rather than
+    // stretched: on a wide screen a left-anchored column leaves the whole right
+    // half empty, which reads as a broken layout rather than as a margin. The
+    // digests LIST stays full width, because a run of issues is a table and rows
+    // do use the room.
+    <div className="mx-auto flex w-full max-w-[980px] flex-col gap-6">
       {backLink}
 
-      {/* The reading column IS the measure, so the grid track is sized to it rather
-          than to 1fr with a cap inside. As 1fr the cell outgrew its own text and
-          parked the dead space between the brief and the rail, which reads as a
-          layout bug rather than as a margin. */}
-      <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-[minmax(0,82ch)_284px] lg:gap-10">
+      {/* Both tracks are free: the CONTAINER sets the measure, so no cap inside
+          the grid can leave slack between the brief and the rail. */}
+      <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-[minmax(0,1fr)_284px] lg:gap-10">
         <div className="flex min-w-0 flex-col gap-6">
           <header className="flex flex-col gap-2.5">
             <div className="flex items-center gap-2 text-dense text-muted-foreground">

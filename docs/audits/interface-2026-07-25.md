@@ -116,9 +116,77 @@ most-clicked control in the product.
 
 ---
 
+## Phase 1. System pass: type scale and primitives
+
+Scope: the `@theme` block of `globals.css`, the 29 `components/ui` primitives,
+`lib/motion.ts`. Skills: `better-typography`, `better-ui`.
+
+### Findings
+
+#### The type scale in the specs is not the type scale in the code
+
+| Severity | Location | Before | After | Why |
+| --- | --- | --- | --- | --- |
+| HIGH | `globals.css:414,417,423` vs `DESIGN.md:230-242` and `apps/web/CLAUDE.md:24` | `--text-title: 26px`, `--text-title-lg: 34px`, `--text-stat: 44px` | Reconcile in one direction and update the losing side | The two spec files agree with each other and both disagree with the code, on the three largest tokens. Every page title and every KPI numeral in the product is one step bigger than what is documented. |
+
+| Token | `DESIGN.md` | `apps/web/CLAUDE.md` | `globals.css` | Drift |
+| --- | --- | --- | --- | --- |
+| `text-title` | 22px | 22 | **26px** | +4 |
+| `text-title-lg` | 26px | 26 | **34px** | +8 |
+| `text-stat` | 32px | (32) | **44px** | +12 |
+
+The semantic mapping drifted with the values. `DESIGN.md` maps both title tokens
+to `h1` at two breakpoints; the comments in `globals.css` map `--text-title` to
+H2 and `--text-title-lg` to H1. These describe different documents.
+
+This is the one place where the answer to "does the site match what is written"
+is no. It also matters more than its size suggests: `apps/web/CLAUDE.md` is what
+an agent reads before writing UI, so an agent reaching for `text-title` expecting
+22px silently ships 26px.
+
+#### Two names for one value
+
+| Severity | Location | Before | After | Why |
+| --- | --- | --- | --- | --- |
+| LOW | `globals.css:376,379,414,417` | `--text-title` and `--text-2xl` are both 26px; `--text-title-lg` and `--text-3xl` are both 34px | Keep the semantic pair and derive the numeric pair from it, or drop one | Two tokens at one value drift apart the first time someone tunes only one of them. |
+
+#### Shared-primitive polish
+
+| Severity | Location | Before | After | Why |
+| --- | --- | --- | --- | --- |
+| MEDIUM | `components/ui/button.tsx:16` | `transition-all duration-[150ms] ease-out` on the button base | `transition-[color,background-color,border-color,box-shadow,scale]` | `transition: all` animates every property that ever changes, including layout-affecting ones, and it is the single highest-reach declaration in the app. `feedback-buttons.tsx` already uses the explicit form, so the correct pattern exists in the codebase. |
+| MEDIUM | `components/outrival/feedback-buttons.tsx:180,198` | `active:scale-90` | `active:scale-[0.97]`, matching the button base | `better-ui` sets a hard floor at `0.95` and calls anything below it exaggerated. `0.90` is well under. |
+| LOW | `components/outrival/feedback-buttons.tsx:218` | `active:scale-95` | `active:scale-[0.97]` | Third distinct press value in a codebase whose shared base is `0.97`. |
+| LOW | `components/ui/checkbox.tsx:17` | `rounded-[4px]` | `rounded-sm` | `--radius-sm` is exactly 4px, so this is a token bypass with an exact token equivalent. |
+| LOW | `app/(onboarding)/onboarding/onboarding-form.tsx:1019` | `transition-all` | Name the properties that change | Same rule, in application code rather than a vendored primitive. |
+
+### Considered but rejected
+
+| Location | Candidate | Rejected because |
+| --- | --- | --- |
+| `globals.css`, all card and control surfaces | `better-ui` §3 prefers layered transparent `box-shadow` over borders for elevation | `DESIGN.md` states the opposite as a deliberate identity choice: "depth comes from hairline borders + lightened surfaces, never heavy shadows". The project spec wins over the generic rule. |
+| `components/ui/progress.tsx`, `accordion.tsx`, `sidebar.tsx`, `switch.tsx` | `transition-all` in four more primitives | These are unmodified shadcn defaults. Editing them diverges from upstream and costs on every `shadcn add`, for a symptom nobody has reported. Revisit if one of them shows a real stutter. |
+| `components/ui/tooltip.tsx:131` | `rounded-[2px]` bypasses the radius scale | It is the tooltip arrow, a 10px glyph. The scale's roles (badges, buttons, cards, modals) do not describe it. |
+| Legal, changelog and policy pages | Pages whose `page.tsx` contains only `h2` | Verified: the `h1` comes from the shared `DocPage` wrapper via `legal-doc.tsx`, and dashboard pages get theirs from `page-head.tsx`. The hierarchy is sound. |
+| `lib/motion.ts` | Feed exit uses `scale: 0.97` while press uses the same number for a different meaning | Distinct contexts (list exit vs pointer feedback), no user-visible collision. |
+
+### Verification
+
+| Check | Result |
+| --- | --- |
+| Type token values read from `globals.css`, not from the docs | Yes, all three divergences confirmed against source lines |
+| Heading hierarchy traced to the rendering wrapper before reporting | Yes, cleared as a non-finding |
+| Radius bypasses checked against the actual token values | Yes, `rounded-[4px]` equals `--radius-sm` exactly |
+| Motion inspected at reduced speed in a browser | **Not verified.** Deferred to the visual checklist. |
+| Press feedback felt on a real pointer and on touch | **Not verified.** Deferred. |
+
+### Verdict
+
+`Needs changes`. One HIGH (the spec-versus-code type scale), two MEDIUM, four LOW.
+
+---
+
 ## Still to run
 
-- Phase 1 remainder: `better-ui` on the 29 `components/ui` primitives, and
-  `better-typography` on the type scale.
 - Phase 2A/2B/2C: `better-interface` per flow.
 - Phase 3: `better-writing` transverse copy pass.

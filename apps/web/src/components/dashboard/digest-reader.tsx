@@ -97,7 +97,7 @@ export function DigestReader({ id }: { id: string }) {
 
   if (q.isLoading && !d) {
     return (
-      <div className="flex max-w-[1080px] flex-col gap-6">
+      <div className="flex flex-col gap-6">
         {backLink}
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 size={14} className="animate-spin" /> Loading brief…
@@ -108,7 +108,7 @@ export function DigestReader({ id }: { id: string }) {
 
   if (!d || !detail) {
     return (
-      <div className="flex max-w-[1080px] flex-col gap-6">
+      <div className="flex flex-col gap-6">
         {backLink}
         <EmptyState
           icon={Mail}
@@ -148,11 +148,11 @@ export function DigestReader({ id }: { id: string }) {
   const printHref = `/brief/${d.id}?print=1`;
 
   return (
-    <div className="flex max-w-[1080px] flex-col gap-6">
+    <div className="flex flex-col gap-6">
       {backLink}
 
-      <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-[minmax(0,1fr)_272px] lg:gap-10">
-        <div className="flex min-w-0 flex-col gap-6">
+      <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-[minmax(0,1fr)_284px] lg:gap-12">
+        <div className="flex min-w-0 max-w-[80ch] flex-col gap-6">
           <header className="flex flex-col gap-2.5">
             <div className="flex items-center gap-2 text-dense text-muted-foreground">
               <span>{periodWord}</span>

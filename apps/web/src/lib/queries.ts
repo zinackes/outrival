@@ -169,6 +169,20 @@ export function trendsSummaryQuery(range: { from: Date; to: Date }, productId?: 
   });
 }
 
+// Cross-competitor market series for the same window. Same UTC-day keying rule as
+// the summary above, for the same server-seed/client-render reason.
+export function trendsMarketQuery(range: { from: Date; to: Date }, productId?: string) {
+  const from = range.from.toISOString().slice(0, 10);
+  const to = range.to.toISOString().slice(0, 10);
+  const key = productId
+    ? (["trends", "market", from, to, productId] as const)
+    : (["trends", "market", from, to] as const);
+  return queryOptions({
+    queryKey: key,
+    queryFn: () => api.getTrendsMarket(range, productId),
+  });
+}
+
 // AI Visibility / "Share of Model" — one query backs the whole page (leaderboard,
 // breakdown, trend, prompts). patch-28: scoped to the active product ("you" + its
 // competitors); "all products" (no id) uses the primary product's self. Prompts + run

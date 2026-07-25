@@ -62,6 +62,7 @@ deadlines, security and direction.
 | 021 | Every optional capability reports whether it is live, and why it is off | P2 | S-M | LOW | — | TODO |
 | 022 | Decide how a free workspace first meets a paid capability | P2 | M | MED | — | TODO |
 | 023 | Decide whether collected data can become a public surface | P2 | M | MED-HIGH | — | TODO |
+| 024 | Find where 80% of archive backfills are lost, then stop losing them | P1 | M | MED | 019 | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
@@ -89,6 +90,12 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJE
 
 - **All five are independent of each other and of 001 to 018.** They can be
   executed in any order, or interleaved with the deep-run plans.
+- **024 is 019's output.** 019 routed to wiring; the follow-up measurement then
+  localised it: over 28 days, 109 competitors were created, 105 got a `homepage` or
+  `pricing` snapshot, and only **21** ever produced a `backfill_runs` row. The
+  enqueue site is unconditional with no early exit, and the handler is registered,
+  so the loss sits between enqueue and execution. 024 diagnoses which pg-boss job
+  state accounts for it before changing anything.
 - **019 ran on 2026-07-25 and its result changes the backlog.** The 28-day window
   measured 22 completions, 16 missed, 5 never-signal: an SLI of 27% against a 70%
   target, so the SLO's **window-exhausted** condition has fired and the error-budget

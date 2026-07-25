@@ -2009,6 +2009,15 @@ export interface ProductLinkedCompetitor {
   relevanceScore: number | null;
   name: string;
   url: string | null;
+  color: string | null;
+  // The competitor's last signal, whenever it happened (NOT windowed) — the row
+  // leads with the finding, and a silent competitor still has a last move.
+  latestMove: {
+    insight: string;
+    severity: Signal["severity"];
+    category: string;
+    createdAt: string;
+  } | null;
 }
 
 // GET /api/products/:id — the product row + its linked competitors. The rich self

@@ -8,8 +8,14 @@ import { cn } from "@/lib/utils";
 import { shortAge } from "@/lib/format-date";
 import { competitorNameColor } from "@/lib/competitor-color";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { SectionHead } from "./section-head";
-import { CatText, catLabel } from "./cat-pill";
+import { CategoryBar, CategoryLegend } from "./category-bar";
 import { CompAvatar } from "./comp-avatar";
 
 // How many tiles the row carries. Beyond this the roster page is the right surface.
@@ -68,11 +74,13 @@ export function OverviewMovers({ competitors }: { competitors: Competitor[] }) {
           </Button>
         }
       />
-      <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-6">
-        {tiles.map((t) => (
-          <MoverTile key={t.competitor.id} tile={t} />
-        ))}
-      </div>
+      <TooltipProvider delayDuration={80}>
+        <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-6">
+          {tiles.map((t) => (
+            <MoverTile key={t.competitor.id} tile={t} />
+          ))}
+        </div>
+      </TooltipProvider>
     </section>
   );
 }
@@ -117,6 +125,10 @@ function buildTiles(competitors: Competitor[]): Tile[] {
 function MoverTile({ tile }: { tile: Tile }) {
   const { competitor: c, count, delta, mix, lastSignalAt } = tile;
   const quiet = count === 0;
+  // Rebuilt from the already-ranked entries: CategoryBar and CategoryLegend both sort
+  // on count alone, and their sort is stable, so insertion order carries the
+  // catRank tie-break into the segments and the legend rows alike.
+  const mixCounts = Object.fromEntries(mix);
 
   return (
     <Link
@@ -191,21 +203,22 @@ function MoverTile({ tile }: { tile: Tile }) {
         </span>
       ) : (
         <>
-          <span className="truncate text-meta text-muted-foreground">
-            {/* Lowercase on purpose: this is a sentence fragment ("on pricing,
-                hiring"). CAT_LABEL's own proper nouns (M&A, Security) keep their
-                case because nothing is transformed. */}
-            <span className="text-text-subtle">on</span>{" "}
-            <CatText category={mix[0]![0]} capitalized={false} />
-            {mix[0]![1] > 1 && <span className="font-mono tabular-nums"> {mix[0]![1]}</span>}
-            {mix[1] && <>, {catLabel(mix[1][0])}</>}
-            {mix.length > 2 && (
-              <span className="font-mono text-text-subtle tabular-nums">
-                {" "}
-                +{mix.length - 2}
+          {/* The mix as a proportional bar, with the breakdown on hover. The bar is
+              4px tall, so the trigger takes vertical padding it gives straight back
+              in negative margin: a 4px hover target is not a target. */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="-my-1 block py-1">
+                <CategoryBar counts={mixCounts} w="100%" />
               </span>
-            )}
-          </span>
+            </TooltipTrigger>
+            <TooltipContent
+              side="bottom"
+              className="font-sans font-normal normal-case tracking-normal"
+            >
+              <CategoryLegend counts={mixCounts} />
+            </TooltipContent>
+          </Tooltip>
           <span className="truncate text-meta text-text-subtle">
             {lastSignalAt ? (
               <>

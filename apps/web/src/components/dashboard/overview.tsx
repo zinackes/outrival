@@ -72,11 +72,16 @@ function trendBuckets(
   return out;
 }
 
-function bucketLabel(fromMs: number, toMs: number, buckets: number, i: number): string {
-  const span = Math.max(1, toMs - fromMs);
-  return formatDate(new Date(fromMs + i * (span / buckets)), {
-    month: "short",
-    day: "numeric",
+// One label per bucket for the bars' hover. A bucket is a single day while the range
+// fits in MAX_BARS; past that it spans several, and the label says so rather than
+// naming only its first day.
+function bucketLabels(fromMs: number, toMs: number, buckets: number): string[] {
+  const day = (ms: number) => formatDate(new Date(ms), { month: "short", day: "numeric" });
+  const slice = Math.max(1, toMs - fromMs) / buckets;
+  const wide = slice > 1.5 * 86_400_000;
+  return Array.from({ length: buckets }, (_, i) => {
+    const start = fromMs + i * slice;
+    return wide ? `${day(start)} to ${day(start + slice - 86_400_000)}` : day(start);
   });
 }
 
@@ -247,8 +252,7 @@ export function OverviewView() {
       moverCount: movers.size,
       dominant,
       bars: trendBuckets(inWindow, rangeFrom, rangeTo, buckets),
-      barStart: bucketLabel(rangeFrom, rangeTo, buckets, 0),
-      barEnd: bucketLabel(rangeFrom, rangeTo, buckets, buckets - 1),
+      barLabels: bucketLabels(rangeFrom, rangeTo, buckets),
     };
   }, [dsSignals, dsCompetitors, rangeFrom, rangeTo, rangeDays]);
 
@@ -347,8 +351,7 @@ export function OverviewView() {
     prevCount: derived.prevCount,
     comparable: derived.comparable,
     bars: derived.bars,
-    barStart: derived.barStart,
-    barEnd: derived.barEnd,
+    barLabels: derived.barLabels,
     criticals: derived.criticals.length,
     criticalLead: derived.criticals[0]
       ? `${derived.criticals[0].competitorName}, ${catLabel(derived.criticals[0].category)}`

@@ -3,9 +3,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { ExternalLink } from "lucide-react";
 import { format } from "date-fns";
-import { api, type SignalDetail } from "@/lib/api";
+import { api } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { sourceLabel } from "@/lib/source-labels";
-import { ChangeBreakdown } from "@/components/outrival/change-breakdown";
+import { GroupedChanges } from "@/components/outrival/change-breakdown";
 import {
   Dialog,
   DialogContent,
@@ -13,7 +14,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VisualDiff } from "@/components/outrival/visual-diff";
 
@@ -33,15 +33,25 @@ function hostOf(url: string | null): string | null {
 }
 
 const SectionLabel = ({ children }: { children: React.ReactNode }) => (
-  <div className="text-xs font-medium text-muted-foreground">
+  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
     {children}
   </div>
 );
 
-// Progressive disclosure level 2 (patch-14): the user gets, in five seconds,
-// WHAT changed, WHERE it was seen, and WHEN. No raw HTML, no diff, no AI
-// classification — that lives in admin tooling. Falls back gracefully when the
-// before/after couldn't be extracted (pre-patch signals or a failed extraction).
+/**
+ * Progressive disclosure level 2 (patch-14): WHAT changed, WHERE it was seen, and
+ * WHEN, in five seconds. No raw HTML, no AI classification, that lives in admin
+ * tooling.
+ *
+ * Two columns, because stacked it ran to 1400px: the capture pair anchors the
+ * left, the reading of it sits on the right. The grid row has a definite height
+ * on desktop, so the change list scrolls inside its own column and opening a
+ * folded group never resizes the dialog under the pointer. Without screenshots
+ * (most sources) the grid drops to one column rather than leaving a lopsided gap.
+ *
+ * Falls back gracefully when the before/after couldn't be extracted (pre-patch
+ * signals or a failed extraction).
+ */
 export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPanelProps) {
   // Fetch-on-open via useQuery.
   const detailQ = useQuery({
@@ -57,15 +67,39 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
       : "idle";
 
   const hasChange = Boolean(detail?.humanChangeBefore || detail?.humanChangeAfter);
+  const hasVisual = Boolean(detail?.screenshots?.before && detail?.screenshots?.after);
+  const changes = detail?.changes ?? [];
+  const majorCount = changes.filter((c) => c.significance === "major").length;
   const host = hostOf(detail?.sourceUrl ?? null);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className={cn(hasVisual ? "max-w-[880px]" : "max-w-xl")}>
         <DialogHeader>
-          <DialogTitle className="text-base text-primary">Why this insight?</DialogTitle>
-          <DialogDescription className="sr-only">
-            Where this signal came from and what changed.
+          <DialogTitle className="text-base">Why this insight?</DialogTitle>
+          <DialogDescription>
+            {detail ? (
+              <>
+                {sourceLabel(detail.sourceType)} of {detail.competitor.name}, seen on{" "}
+                {format(new Date(detail.detectedAt), "MMM d 'at' HH:mm")}
+                {detail.sourceUrl && (
+                  <>
+                    {" · "}
+                    <a
+                      href={detail.sourceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 rounded-sm text-link outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
+                    >
+                      {host ?? "Open the live page"}
+                      <ExternalLink size={11} aria-hidden />
+                    </a>
+                  </>
+                )}
+              </>
+            ) : (
+              "Where this signal came from and what changed."
+            )}
           </DialogDescription>
         </DialogHeader>
 
@@ -85,94 +119,60 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
         )}
 
         {state === "idle" && detail && (
-          <div className="space-y-5">
-            {/* The strategic narrative used to lead here in italic purple with a
-                left side-stripe (an anti-pattern) and made the panel long; it now
-                lives in the card's collapsed "Context", so this panel stays focused
-                on the evidence + provenance. */}
-            <section className="space-y-2.5">
+          <div
+            className={cn(
+              "grid gap-x-8 gap-y-6",
+              // The definite height is desktop-only and only when there is a
+              // capture to anchor it: on a phone the dialog scrolls as one
+              // document, and without screenshots the column is short anyway.
+              hasVisual && "md:h-[440px] md:grid-cols-[1fr_330px]",
+            )}
+          >
+            {hasVisual && (
+              <section className="flex min-h-0 flex-col gap-2.5">
+                <SectionLabel>Visual change</SectionLabel>
+                <VisualDiff signalId={signalId} fill />
+              </section>
+            )}
+
+            <section className="flex min-h-0 flex-col">
               <SectionLabel>Key change</SectionLabel>
               {hasChange ? (
-                <div className="grid grid-cols-[64px_1fr] gap-x-4 gap-y-2 items-baseline">
-                  <span className="text-meta text-muted-foreground uppercase tracking-wide">
+                <div className="mt-2.5 grid grid-cols-[52px_1fr] items-baseline gap-x-4 gap-y-1.5">
+                  <span className="text-meta uppercase tracking-wide text-muted-foreground">
                     Before
                   </span>
                   <span className="text-sm text-muted-foreground">
-                    {detail.humanChangeBefore ?? "—"}
+                    {detail.humanChangeBefore ?? "Not captured"}
                   </span>
-                  <span className="text-meta text-muted-foreground uppercase tracking-wide">
+                  <span className="text-meta uppercase tracking-wide text-muted-foreground">
                     After
                   </span>
                   <span className="text-sm text-foreground">
-                    {detail.humanChangeAfter ?? "—"}
+                    {detail.humanChangeAfter ?? "Not captured"}
                   </span>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">
-                  Detail unavailable for this signal. Open the live page to see
-                  the current state.
+                <p className="mt-2.5 text-sm text-muted-foreground">
+                  We compared the page against its previous capture. The change
+                  was in the page text, so there is no field-level pair to show.
                 </p>
               )}
-            </section>
 
-            {/* Visual change (Phase 8): before/after homepage screenshots, only
-                when both are available (homepage source, captured). */}
-            {detail.screenshots?.before && detail.screenshots?.after && (
-              <>
-                <Separator />
-                <section className="space-y-2.5">
-                  <SectionLabel>Visual change</SectionLabel>
-                  <VisualDiff signalId={signalId} />
-                </section>
-              </>
-            )}
-
-            {/* Per-change breakdown (patch-16): the typed structured changes with
-                their significance. Empty for lexical / pre-patch signals. */}
-            {detail.changes.length > 0 && (
-              <>
-                <Separator />
-                <section className="space-y-3">
-                  <SectionLabel>All changes</SectionLabel>
-                  <ChangeBreakdown changes={detail.changes} />
-                </section>
-              </>
-            )}
-
-            <Separator />
-
-            <section className="space-y-1.5">
-              <SectionLabel>Source</SectionLabel>
-              <p className="text-sm text-foreground/90">
-                {sourceLabel(detail.sourceType)} of {detail.competitor.name}
-                {host && (
-                  <span className="text-muted-foreground"> · {host}</span>
-                )}
-              </p>
-              {detail.sourceUrl && (
-                <a
-                  href={detail.sourceUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-                >
-                  View live page <ExternalLink size={12} />
-                </a>
-              )}
-            </section>
-
-            <Separator />
-
-            <section className="space-y-1.5">
-              <SectionLabel>Detection</SectionLabel>
-              <p className="text-dense text-foreground/90">
-                Detected on {format(new Date(detail.detectedAt), "MMM d, yyyy 'at' HH:mm")}
-              </p>
-              {/* Relevance score (patch-17) — discreet; mostly for beta calibration. */}
-              {typeof detail.relevanceScore === "number" && (
-                <p className="text-meta text-muted-foreground">
-                  Relevance score: {detail.relevanceScore.toFixed(2)}
-                </p>
+              {changes.length > 0 && (
+                <>
+                  <div className="mt-6 flex items-baseline gap-3 border-b border-border pb-2">
+                    <SectionLabel>All changes</SectionLabel>
+                    <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+                      {changes.length} total, {majorCount} major
+                    </span>
+                  </div>
+                  {/* Scrolls inside the column so the dialog holds its size when
+                      a folded group opens. */}
+                  <div className="mt-3 min-h-0 flex-1 overflow-y-auto pr-2">
+                    <GroupedChanges changes={changes} />
+                  </div>
+                </>
               )}
             </section>
           </div>

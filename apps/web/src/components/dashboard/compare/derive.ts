@@ -1,3 +1,4 @@
+import { isComparablePricePeriod } from "@outrival/shared";
 import type { CompareColumn } from "@/lib/api";
 
 /**
@@ -65,9 +66,97 @@ export function axisTicks(max: number, count = 4): number[] {
   return out;
 }
 
+/**
+ * A currency + billing period the compared set actually publishes on. Prices are never
+ * converted here: a band is only ever drawn from plans quoted on the SAME basis, so
+ * switching the basis re-reads captured numbers instead of inventing exchanged ones.
+ */
+export interface PriceBasis {
+  currency: string | null;
+  /** Raw billing period ("monthly" | "yearly" | "one_time"). */
+  period: string | null;
+}
+
+export function basisKey(basis: PriceBasis): string {
+  return `${basis.currency ?? "—"}:${basis.period ?? "—"}`;
+}
+
+/** A column's plans that carry a chartable number, with the period each is quoted on. */
+function comparablePlans(c: CompareColumn): Array<{ price: number; period: string | null }> {
+  const p = c.pricing;
+  if (!p) return [];
+  const out: Array<{ price: number; period: string | null }> = [];
+  for (const plan of p.plans) {
+    // A plan row without its own period inherits the column's.
+    const period = plan.billingPeriod ?? p.billingPeriod;
+    if (plan.price == null || !isComparablePricePeriod(period)) continue;
+    out.push({ price: plan.price, period });
+  }
+  return out;
+}
+
+// Reading order for equally-represented bases: how a buyer thinks about a price.
+const PERIOD_RANK: Record<string, number> = { monthly: 0, yearly: 1, one_time: 2 };
+const periodRank = (period: string | null): number =>
+  period == null ? 9 : (PERIOD_RANK[period] ?? 8);
+
+/** Every basis the compared set publishes on, most-represented first. */
+export function priceBases(
+  cols: CompareColumn[],
+): Array<PriceBasis & { key: string; columns: number }> {
+  const seen = new Map<string, PriceBasis & { key: string; columns: number }>();
+  for (const c of cols) {
+    const currency = c.pricing?.currency ?? null;
+    const periods = new Set<string | null>(comparablePlans(c).map((p) => p.period));
+    // A column whose plan rows never came back still stands on the basis its own
+    // band was computed on — otherwise it would vanish from the picker entirely.
+    if (periods.size === 0 && c.pricing?.entry != null) periods.add(c.pricing.billingPeriod);
+    for (const period of periods) {
+      const key = basisKey({ currency, period });
+      const cur = seen.get(key);
+      if (cur) cur.columns++;
+      else seen.set(key, { currency, period, key, columns: 1 });
+    }
+  }
+  return [...seen.values()].sort(
+    (a, b) => b.columns - a.columns || periodRank(a.period) - periodRank(b.period),
+  );
+}
+
+export interface Band {
+  entry: number;
+  top: number;
+}
+
+/**
+ * A column's entry-to-top band, read on `basis`. Null when the column publishes
+ * nothing comparable there (quote-only, another currency, or no plan on that period)
+ * — the row then says so rather than borrowing a number from another basis.
+ */
+export function bandOf(c: CompareColumn, basis?: PriceBasis | null): Band | null {
+  const p = c.pricing;
+  if (!p) return null;
+  const own = p.entry != null && p.top != null ? { entry: p.entry, top: p.top } : null;
+  if (!basis) return own;
+  if ((p.currency ?? null) !== basis.currency) return null;
+  const prices = comparablePlans(c)
+    .filter((pl) => pl.period === basis.period)
+    .map((pl) => pl.price);
+  if (prices.length === 0) {
+    return own && (p.billingPeriod ?? null) === basis.period ? own : null;
+  }
+  return { entry: Math.min(...prices), top: Math.max(...prices) };
+}
+
 export interface PriceScale {
-  /** Upper bound of the shared axis (0-based). */
+  /** Upper bound of the axis in force (0-based). */
   max: number;
+  /** The readable ceiling: outliers excluded. */
+  robustMax: number;
+  /** The ceiling that covers every band, outliers included. */
+  fullMax: number;
+  /** True when at least one band runs past `max` and is drawn clipped. */
+  clipped: boolean;
   /** Median entry price across every priced column, the dashed reference line. */
   medianEntry: number | null;
   currency: string | null;
@@ -77,15 +166,49 @@ export interface PriceScale {
   hasData: boolean;
 }
 
-export function priceScale(cols: CompareColumn[]): PriceScale {
-  const tops = cols.map(topOf).filter((v): v is number => v != null);
-  const entries = cols.map(entryOf).filter((v): v is number => v != null);
+// How many times the median top a band may reach before it counts as an outlier that
+// owns the axis. One $2,400 enterprise tier against four $99 products flattens every
+// other bar into an invisible sliver, which is a chart that answers nothing.
+const OUTLIER_FACTOR = 4;
+
+/**
+ * The largest top worth scaling to: the raw maximum, unless it dwarfs the median, in
+ * which case the highest NON-outlier top. Bands past it are drawn clipped, and their
+ * true number is still read in the row's own value.
+ */
+export function robustCeiling(tops: number[]): number {
+  if (tops.length === 0) return 0;
+  const raw = Math.max(...tops);
+  const med = median(tops) ?? raw;
+  if (med <= 0 || raw <= med * OUTLIER_FACTOR) return raw;
+  const inliers = tops.filter((t) => t <= med * OUTLIER_FACTOR);
+  return inliers.length ? Math.max(...inliers) : raw;
+}
+
+export function priceScale(
+  cols: CompareColumn[],
+  opts: { basis?: PriceBasis | null; full?: boolean } = {},
+): PriceScale {
+  const basis = opts.basis ?? null;
+  const bands = cols.map((c) => bandOf(c, basis)).filter((b): b is Band => b != null);
+  const tops = bands.map((b) => b.top);
+  const entries = bands.map((b) => b.entry);
   const priced = cols.find((c) => c.pricing && c.pricing.entry != null);
+  const fullMax = tops.length ? niceMax(Math.max(...tops)) : 1;
+  const robustMax = tops.length ? niceMax(robustCeiling(tops)) : 1;
+  const max = opts.full ? fullMax : robustMax;
   return {
-    max: tops.length ? niceMax(Math.max(...tops)) : 1,
+    max,
+    robustMax,
+    fullMax,
+    clipped: tops.some((t) => t > max),
     medianEntry: median(entries),
-    currency: priced?.pricing?.currency ?? cols.find((c) => c.pricing)?.pricing?.currency ?? null,
-    period: periodLabel(priced?.pricing?.billingPeriod ?? null),
+    currency:
+      basis?.currency ??
+      priced?.pricing?.currency ??
+      cols.find((c) => c.pricing)?.pricing?.currency ??
+      null,
+    period: periodLabel(basis ? basis.period : (priced?.pricing?.billingPeriod ?? null)),
     hasData: tops.length > 0,
   };
 }
@@ -94,7 +217,21 @@ export function periodLabel(billingPeriod: string | null): string | null {
   if (!billingPeriod) return null;
   if (billingPeriod === "monthly") return "mo";
   if (billingPeriod === "yearly") return "yr";
+  if (billingPeriod === "one_time") return "one-time";
   return billingPeriod;
+}
+
+/** How a basis reads in the picker and the lens header: "USD / mo". */
+export function basisLabel(basis: PriceBasis): string {
+  return [basis.currency, periodLabel(basis.period)].filter(Boolean).join(" / ");
+}
+
+/** The period as an adjective, for a sentence: "No annual price". */
+export function periodWord(period: string | null): string {
+  if (period === "monthly") return "monthly";
+  if (period === "yearly") return "annual";
+  if (period === "one_time") return "one-time";
+  return "comparable";
 }
 
 export interface HiringScale {

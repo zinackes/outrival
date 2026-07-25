@@ -1,16 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { CatText } from "@/components/dashboard/cat-pill";
 import { COMP_ACCENT, competitorColorVars } from "@/lib/competitor-color";
 import { SeverityGauge } from "@/components/outrival/severity-scale";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { CompareColumn } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
   Bar,
   BarShare,
+  CardRow,
   type CompareEntity,
   Detail,
   DetailBar,
@@ -30,17 +39,20 @@ import {
 import {
   avgReview,
   axisTicks,
+  bandOf,
+  basisKey,
+  basisLabel,
   engineeringRoles,
-  entryOf,
   hiringScale,
   money,
   openRoles,
+  periodWord,
+  priceBases,
   priceScale,
   ratingScale,
   agePhrase,
   shortAge,
   techDiff,
-  topOf,
 } from "./derive";
 
 /**
@@ -73,26 +85,85 @@ const pct = (value: number, max: number): number =>
 
 export function PriceLens({ entities, expanded, onToggle }: LensProps) {
   const cols = loaded(entities);
-  const scale = priceScale(cols);
+  // The basis is picked from what the set actually publishes, never converted: an
+  // exchanged price is a number the product never captured. Held as a key so a basis
+  // that disappears (a competitor removed) falls back to the best remaining one.
+  const [basisPref, setBasisPref] = useState<string | null>(null);
+  // Outliers are trimmed off the axis by default; this is the way back to the true
+  // spread, for when the gap IS the point.
+  const [full, setFull] = useState(false);
+  const bases = priceBases(cols);
+  const basis = bases.find((b) => b.key === basisPref) ?? bases[0] ?? null;
+  const scale = priceScale(cols, { basis, full });
   const hasAny = cols.some((c) => c.pricing != null);
   if (!hasAny && !anyPending(entities)) return null;
+
+  const basisText = basis ? basisLabel(basis) : "";
+  const canExpandScale = scale.fullMax > scale.robustMax;
 
   return (
     <Lens
       id="price"
       title="Price"
       sub="Entry to top published plan, one scale"
-      meta={[scale.currency, scale.period].filter(Boolean).join(" / ") || undefined}
+      action={
+        bases.length > 1 ? (
+          <Select
+            value={basis?.key ?? undefined}
+            onValueChange={(v) => {
+              setBasisPref(v);
+              setFull(false);
+            }}
+          >
+            <SelectTrigger
+              size="sm"
+              aria-label="Price basis"
+              className="text-muted-foreground hover:bg-surface-2 h-7 gap-1.5 border-none px-2 font-mono text-meta shadow-none data-[size=sm]:h-7"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="end">
+              {bases.map((b) => (
+                <SelectItem key={b.key} value={b.key} className="font-mono text-dense">
+                  {basisLabel(b)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : basisText ? (
+          <span className="text-muted-foreground font-mono text-meta">{basisText}</span>
+        ) : undefined
+      }
       footer={
         scale.hasData ? (
           <LensFooter
-            ticks={axisTicks(scale.max).map((t) => money(t, scale.currency))}
+            ticks={axisTicks(scale.max).map((t, i, arr) =>
+              // The last tick wears the "+" when bands run past it, so the axis never
+              // claims to hold the whole set when it doesn't.
+              i === arr.length - 1 && scale.clipped
+                ? `${money(t, scale.currency)}+`
+                : money(t, scale.currency),
+            )}
             legend={
-              scale.medianEntry != null ? (
-                <LegendMedian>
-                  median entry <span className="font-mono">{money(scale.medianEntry, scale.currency)}</span>
-                </LegendMedian>
-              ) : undefined
+              <>
+                {scale.medianEntry != null && (
+                  <LegendMedian>
+                    median entry{" "}
+                    <span className="font-mono">{money(scale.medianEntry, scale.currency)}</span>
+                  </LegendMedian>
+                )}
+                {canExpandScale && (
+                  <button
+                    type="button"
+                    onClick={() => setFull((f) => !f)}
+                    className="text-link rounded-sm underline-offset-2 hover:underline"
+                  >
+                    {full
+                      ? "Trim the outlier"
+                      : `Show full scale to ${money(scale.fullMax, scale.currency)}`}
+                  </button>
+                )}
+              </>
             }
           />
         ) : undefined
@@ -100,25 +171,45 @@ export function PriceLens({ entities, expanded, onToggle }: LensProps) {
     >
       {entities.map((e) => {
         if (!e.data) return <PendingRow key={e.id} entity={e} />;
-        const entry = entryOf(e.data);
-        const top = topOf(e.data);
+        const band = bandOf(e.data, basis);
         const plans = e.data.pricing?.plans ?? [];
         const median = scale.medianEntry;
 
-        // Quote-only, or no pricing captured at all: both are readings, not gaps.
-        if (entry == null || top == null) {
+        // Four readings, no gaps: nothing captured, quote-only, priced in another
+        // currency, or priced on another period. None of them is a blank cell.
+        if (!band) {
+          const pricedElsewhere = bandOf(e.data, null) != null;
+          const otherCurrency =
+            basis && e.data.pricing && (e.data.pricing.currency ?? null) !== basis.currency
+              ? e.data.pricing.currency
+              : null;
           return (
             <MeasureRow
               key={e.id}
               entity={e}
               value={
-                e.data.pricing ? <span className="text-muted-foreground">Custom</span> : undefined
+                e.data.pricing && !pricedElsewhere ? (
+                  <span className="text-muted-foreground">Custom</span>
+                ) : undefined
               }
             >
-              {e.data.pricing ? <QuoteOnly /> : <NoReading>No pricing captured</NoReading>}
+              {!e.data.pricing ? (
+                <NoReading>No pricing captured</NoReading>
+              ) : !pricedElsewhere ? (
+                <QuoteOnly />
+              ) : otherCurrency ? (
+                <NoReading>Priced in {otherCurrency}</NoReading>
+              ) : (
+                <NoReading>No {periodWord(basis?.period ?? null)} price</NoReading>
+              )}
             </MeasureRow>
           );
         }
+
+        const { entry, top } = band;
+        // Both ends are held inside the axis; the value column keeps the true numbers.
+        const left = Math.min(pct(entry, scale.max), 97);
+        const width = Math.max(0, Math.min(pct(top, scale.max), 100) - left);
 
         return (
           <MeasureRow
@@ -157,7 +248,9 @@ export function PriceLens({ entities, expanded, onToggle }: LensProps) {
                         ) : (
                           <>
                             {money(p.price, e.data?.pricing?.currency ?? scale.currency)}
-                            {p.billingPeriod && p.billingPeriod !== e.data?.pricing?.billingPeriod && (
+                            {/* The period is called out only on the plans that are NOT
+                                on the basis the lens is being read on. */}
+                            {p.billingPeriod && basis && p.billingPeriod !== basis.period && (
                               <span className="text-muted-foreground">/{p.billingPeriod}</span>
                             )}
                           </>
@@ -170,12 +263,10 @@ export function PriceLens({ entities, expanded, onToggle }: LensProps) {
             }
           >
             <Track>
-              {median != null && <MedianMark left={pct(median, scale.max)} />}
-              <Bar
-                entity={e}
-                left={pct(entry, scale.max)}
-                width={pct(top - entry, scale.max)}
-              />
+              {median != null && median <= scale.max && (
+                <MedianMark left={pct(median, scale.max)} />
+              )}
+              <Bar entity={e} left={left} width={width} clipped={top > scale.max} />
             </Track>
           </MeasureRow>
         );
@@ -252,14 +343,11 @@ export function RatingLens({ entities, expanded, onToggle }: LensProps) {
         <LensFooter
           ticks={[0, 1, 2, 3, 4, 5].map((t) => String(t))}
           legend={
-            <>
-              {scale.median != null && (
-                <LegendMedian>
-                  median <span className="font-mono">{scale.median.toFixed(1)}</span>
-                </LegendMedian>
-              )}
-              <span>expand a row for ease, support, features and value</span>
-            </>
+            scale.median != null ? (
+              <LegendMedian>
+                median <span className="font-mono">{scale.median.toFixed(1)}</span>
+              </LegendMedian>
+            ) : undefined
           }
         />
       }
@@ -508,23 +596,36 @@ export function PositioningLens({ entities }: Omit<LensProps, "expanded" | "onTo
   if (!hasAny && !anyPending(entities)) return null;
 
   return (
-    <Lens id="positioning" title="Positioning" sub="How each one describes itself, in its own words">
+    // A grid, not a list: each reading is a paragraph, and six full-width paragraphs
+    // stacked is a page of scrolling to compare two sentences.
+    <Lens
+      id="positioning"
+      title="Positioning"
+      sub="How each one describes itself, in its own words"
+      layout="grid"
+    >
       {entities.map((e) => {
-        if (!e.data) return <PendingRow key={e.id} entity={e} />;
+        if (!e.data) {
+          return (
+            <CardRow key={e.id} entity={e}>
+              <Skeleton className="h-3 w-4/5" />
+            </CardRow>
+          );
+        }
         const { category, summary } = e.data.positioning;
         return (
-          <WideRow key={e.id} entity={e}>
+          <CardRow key={e.id} entity={e}>
             {category && (
-              <Badge variant="outline" className="mb-1 max-w-full text-meta font-normal">
+              <Badge variant="outline" className="mb-1.5 max-w-full text-meta font-normal">
                 <span className="line-clamp-1">{category}</span>
               </Badge>
             )}
             {summary ? (
-              <p className="m-0 max-w-[70ch] text-sm leading-normal">{summary}</p>
+              <p className="m-0 text-sm leading-normal">{summary}</p>
             ) : (
               !category && <NoReading>Nothing captured yet</NoReading>
             )}
-          </WideRow>
+          </CardRow>
         );
       })}
     </Lens>

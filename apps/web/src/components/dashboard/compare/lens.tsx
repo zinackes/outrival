@@ -1,6 +1,7 @@
 "use client";
 
-import { type CSSProperties, type ReactNode } from "react";
+import { type CSSProperties, type MouseEvent, type ReactNode } from "react";
+import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import { ChevronRight } from "lucide-react";
 import type { CompareColumn } from "@/lib/api";
@@ -70,18 +71,25 @@ export function Lens({
   title,
   sub,
   meta,
+  action,
   intro,
+  layout = "rows",
   children,
   footer,
 }: {
   id: string;
   title: string;
   sub?: string;
-  /** Right-hand unit note ("USD / mo", "out of 5"). */
+  /** Right-hand unit note ("out of 5"). */
   meta?: ReactNode;
+  /** A control that sets how the lens is read (the price basis). Wins over `meta`. */
+  action?: ReactNode;
   /** A line that belongs to the whole lens, above the rows (kept out of the
       presence list, which only owns the rows). */
   intro?: ReactNode;
+  /** "rows" stacks the shared row grammar; "grid" lays the same entities out as
+      cards, for the lenses whose reading is a paragraph rather than a measure. */
+  layout?: "rows" | "grid";
   children: ReactNode;
   footer?: ReactNode;
 }) {
@@ -92,13 +100,18 @@ export function Lens({
         title={title}
         sub={sub}
         action={
-          meta ? (
+          action ??
+          (meta ? (
             <span className="text-muted-foreground font-mono text-meta">{meta}</span>
-          ) : undefined
+          ) : undefined)
         }
       />
       {intro}
-      <div className="flex flex-col">
+      <div
+        className={cn(
+          layout === "grid" ? "grid gap-3 pt-3 sm:grid-cols-2" : "flex flex-col",
+        )}
+      >
         {/* popLayout takes the leaving row out of flow, so the rows below it close the
             gap while it fades instead of after it. */}
         <AnimatePresence initial={false} mode="popLayout">
@@ -223,13 +236,28 @@ export function MeasureRow({
     </>
   );
 
+  // The whole row is the control, not just its name: the bar is the biggest thing on
+  // the line and clicking it has to open the reading behind it. The identity button
+  // below stays the accessible control (it carries aria-expanded and the keyboard
+  // path), so a click that lands on it — or inside the open detail — is left alone
+  // rather than toggled twice.
+  const onRowClick = expandable
+    ? (event: MouseEvent<HTMLDivElement>) => {
+        const target = event.target as HTMLElement;
+        if (target.closest("button,a,[data-row-detail]")) return;
+        onToggle?.();
+      }
+    : undefined;
+
   return (
     <motion.div
       {...rowMotion}
+      onClick={onRowClick}
       className={cn(
         ROW_GRID,
         "group border-border -mx-1.5 rounded-md border-b px-1.5 py-2 transition-colors",
         entity.mine ? "bg-primary/[0.04] hover:bg-primary/[0.07]" : "hover:bg-surface-2",
+        expandable && "cursor-pointer",
       )}
     >
       {expandable ? (
@@ -261,6 +289,7 @@ export function MeasureRow({
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.18, ease: "easeOut" }}
+            data-row-detail
             className="col-start-2 col-end-[-1] overflow-hidden"
           >
             {detail}
@@ -268,6 +297,43 @@ export function MeasureRow({
         )}
       </AnimatePresence>
     </motion.div>
+  );
+}
+
+/**
+ * The identity block, with the competitor's name as the way into its own page. Used by
+ * the prose lenses (positioning, latest move), where a name is a thing you follow —
+ * the measure rows can't carry it, since their whole line is already a toggle and a
+ * link inside a button is not a control anyone can use.
+ */
+export function EntityIdentity({ entity }: { entity: CompareEntity }) {
+  const inner = (
+    <>
+      <CompAvatar name={entity.name} url={entity.url} size={22} />
+      <span
+        // Only the name takes the underline — an underlined avatar is a smudge.
+        className="truncate text-dense font-medium group-hover/name:underline"
+        style={entity.mine ? undefined : competitorNameColor(entity.color)}
+      >
+        {entity.name}
+      </span>
+    </>
+  );
+  return (
+    <span className="flex min-w-0 items-center gap-2 pt-px">
+      {/* Your own product has no competitor page to go to. */}
+      {entity.mine ? (
+        <span className="flex min-w-0 items-center gap-2">{inner}</span>
+      ) : (
+        <Link
+          href={`/dashboard/competitors/${entity.id}`}
+          className="focus-visible:ring-ring/50 group/name flex min-w-0 items-center gap-2 rounded-sm underline-offset-2 focus-visible:ring-2"
+        >
+          {inner}
+        </Link>
+      )}
+      {entity.mine && <YouTag />}
+    </span>
   );
 }
 
@@ -299,18 +365,36 @@ export function WideRow({
       )}
     >
       {gutter}
-      <span className="flex min-w-0 items-center gap-2 pt-px">
-        <CompAvatar name={entity.name} url={entity.url} size={22} />
-        <span
-          className="truncate text-dense font-medium"
-          style={entity.mine ? undefined : competitorNameColor(entity.color)}
-        >
-          {entity.name}
-        </span>
-        {entity.mine && <YouTag />}
-      </span>
+      <EntityIdentity entity={entity} />
       <div className="min-w-0">{children}</div>
       {right}
+    </motion.div>
+  );
+}
+
+/**
+ * The card form of a row, for a lens laid out as a grid rather than a list: the same
+ * identity on top, its reading underneath. Two per line beats one full-width row per
+ * competitor when the reading is a paragraph — six of those stacked is a page of
+ * scrolling to compare two sentences.
+ */
+export function CardRow({
+  entity,
+  children,
+}: {
+  entity: CompareEntity;
+  children: ReactNode;
+}) {
+  return (
+    <motion.div
+      {...rowMotion}
+      className={cn(
+        "border-border flex min-w-0 flex-col gap-2 rounded-lg border p-3 transition-colors",
+        entity.mine ? "bg-primary/[0.04]" : "hover:bg-surface-2",
+      )}
+    >
+      <EntityIdentity entity={entity} />
+      <div className="min-w-0">{children}</div>
     </motion.div>
   );
 }
@@ -353,30 +437,49 @@ export function Bar({
   entity,
   left,
   width,
+  clipped,
   className,
 }: {
   entity: CompareEntity;
   /** Percentages of the track. */
   left: number;
   width: number;
+  /** The band runs past the axis: square the right edge and point past it. */
+  clipped?: boolean;
   className?: string;
 }) {
   const vars = competitorColorVars(entity.color);
+  const fill = entity.mine || !vars ? {} : { ...vars, background: COMP_ACCENT };
   return (
-    <span
-      aria-hidden
-      className={cn(
-        "absolute inset-y-0 rounded-[3px] motion-safe:transition-[left,width] motion-safe:duration-300 motion-safe:ease-out",
-        entity.mine ? "bg-primary" : !vars && "bg-border-strong",
-        className,
+    <>
+      <span
+        aria-hidden
+        className={cn(
+          "absolute inset-y-0 rounded-[3px] motion-safe:transition-[left,width] motion-safe:duration-300 motion-safe:ease-out",
+          entity.mine ? "bg-primary" : !vars && "bg-border-strong",
+          clipped && "rounded-r-none",
+          className,
+        )}
+        style={{
+          left: `${left}%`,
+          // A single-point reading (one flat price) still has to be visible.
+          width: `max(${width}%, 5px)`,
+          ...fill,
+        }}
+      />
+      {clipped && (
+        // The arrowhead sits in the gutter past the track, so it reads as "continues"
+        // rather than as part of the band. The true number is still in the row's value.
+        <span
+          aria-hidden
+          className={cn(
+            "absolute top-1/2 -right-1.5 h-2 w-1.5 -translate-y-1/2 [clip-path:polygon(0_0,100%_50%,0_100%)]",
+            entity.mine ? "bg-primary" : !vars && "bg-border-strong",
+          )}
+          style={fill}
+        />
       )}
-      style={{
-        left: `${left}%`,
-        // A single-point reading (one flat price) still has to be visible.
-        width: `max(${width}%, 5px)`,
-        ...(entity.mine || !vars ? {} : { ...vars, background: COMP_ACCENT }),
-      }}
-    />
+    </>
   );
 }
 

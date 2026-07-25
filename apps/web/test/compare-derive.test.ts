@@ -4,14 +4,18 @@ import {
   agePhrase,
   avgReview,
   axisTicks,
+  bandOf,
+  basisLabel,
   buildVerdict,
   countWord,
   median,
   nameList,
   niceMax,
+  priceBases,
   priceScale,
   hiringScale,
   ratingScale,
+  robustCeiling,
   shortAge,
   techDiff,
   techOf,
@@ -153,6 +157,32 @@ describe("scales", () => {
     expect(priceScale([priced("a", "A", null, null)]).hasData).toBe(false);
   });
 
+  test("robustCeiling drops a top that dwarfs the median, keeps a merely-high one", () => {
+    // $2,400 against a $180 median owns the axis and flattens everyone else.
+    expect(robustCeiling([16, 99, 159, 200, 500, 2400])).toBe(500);
+    // Nothing here is an outlier, so the raw maximum stands.
+    expect(robustCeiling([89, 149])).toBe(149);
+    expect(robustCeiling([])).toBe(0);
+  });
+
+  test("priceScale trims the outlier off the axis and says so", () => {
+    const cols = [
+      priced("a", "A", 0, 16),
+      priced("b", "B", 0, 200),
+      priced("c", "C", 75, 2400),
+      priced("d", "D", 20, 500),
+    ];
+    const trimmed = priceScale(cols);
+    expect(trimmed.max).toBe(500);
+    expect(trimmed.fullMax).toBe(2500);
+    expect(trimmed.clipped).toBe(true);
+
+    // The way back to the true spread: nothing is clipped on the full axis.
+    const fullScale = priceScale(cols, { full: true });
+    expect(fullScale.max).toBe(2500);
+    expect(fullScale.clipped).toBe(false);
+  });
+
   test("hiringScale flags whether any engineering share can be picked out", () => {
     expect(hiringScale([hiring("a", "A", 6, 3), hiring("b", "B", 31, null)])).toEqual({
       max: 31,
@@ -168,6 +198,84 @@ describe("scales", () => {
     expect(many.median).toBe(4.4);
     // A single scored column has no comparison to win.
     expect([...ratingScale([rated("a", "A", 4.6)]).best]).toEqual([]);
+  });
+});
+
+describe("price basis", () => {
+  function planned(
+    id: string,
+    name: string,
+    plans: Array<{ name: string; price: number | null; billingPeriod: string | null }>,
+    currency = "USD",
+  ): CompareColumn {
+    const comparable = plans.filter((p) => p.price != null).map((p) => p.price as number);
+    return col({
+      id,
+      name,
+      pricing: {
+        entry: comparable.length ? Math.min(...comparable) : null,
+        top: comparable.length ? Math.max(...comparable) : null,
+        currency,
+        billingPeriod: "monthly",
+        plans,
+        capturedAt: null,
+      },
+    });
+  }
+
+  const monthlyAndYearly = planned("a", "A", [
+    { name: "Starter", price: 29, billingPeriod: "monthly" },
+    { name: "Pro", price: 99, billingPeriod: "monthly" },
+    { name: "Starter", price: 290, billingPeriod: "yearly" },
+    { name: "Pro", price: 990, billingPeriod: "yearly" },
+    { name: "Enterprise", price: null, billingPeriod: "custom" },
+  ]);
+  const monthlyOnly = planned("b", "B", [
+    { name: "Team", price: 49, billingPeriod: "monthly" },
+  ]);
+
+  test("lists every captured basis, most represented first", () => {
+    expect(priceBases([monthlyAndYearly, monthlyOnly]).map((b) => b.key)).toEqual([
+      "USD:monthly",
+      "USD:yearly",
+    ]);
+    expect(basisLabel({ currency: "USD", period: "yearly" })).toBe("USD / yr");
+  });
+
+  test("a band is read from the plans on that basis, never converted", () => {
+    expect(bandOf(monthlyAndYearly, { currency: "USD", period: "monthly" })).toEqual({
+      entry: 29,
+      top: 99,
+    });
+    expect(bandOf(monthlyAndYearly, { currency: "USD", period: "yearly" })).toEqual({
+      entry: 290,
+      top: 990,
+    });
+    // Priced, but not on the basis on screen — the row says so rather than borrowing
+    // the monthly number and calling it annual.
+    expect(bandOf(monthlyOnly, { currency: "USD", period: "yearly" })).toBeNull();
+    // Another currency is another scale entirely.
+    expect(bandOf(monthlyOnly, { currency: "EUR", period: "monthly" })).toBeNull();
+  });
+
+  test("a column whose plan rows never came back still stands on its own basis", () => {
+    const bandOnly = priced("c", "C", 19, 89);
+    expect(priceBases([bandOnly]).map((b) => b.key)).toEqual(["USD:monthly"]);
+    expect(bandOf(bandOnly, { currency: "USD", period: "monthly" })).toEqual({
+      entry: 19,
+      top: 89,
+    });
+    expect(bandOf(bandOnly, { currency: "USD", period: "yearly" })).toBeNull();
+  });
+
+  test("the scale follows the chosen basis", () => {
+    const yearly = priceScale([monthlyAndYearly, monthlyOnly], {
+      basis: { currency: "USD", period: "yearly" },
+    });
+    expect(yearly.max).toBe(1000);
+    expect(yearly.period).toBe("yr");
+    // Only the column that publishes annually is on this axis.
+    expect(yearly.medianEntry).toBe(290);
   });
 });
 

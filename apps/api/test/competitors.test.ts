@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Hono } from "hono";
 import { and, eq } from "drizzle-orm";
-import { competitors, monitors } from "@outrival/db";
+import { changes, competitors, monitors, signals, snapshots } from "@outrival/db";
 import { SOURCE_TYPES, isConfigurableSource } from "@outrival/shared";
 import { makeTestDb, type TestDb } from "./db-harness";
 import { asUser, installAppMocks, mountApp, seedOrg } from "./app-harness";
@@ -80,6 +80,112 @@ describe("GET /competitors roster projection", () => {
     expect(item?.platformProfile).toBeUndefined();
     expect(item?.selfProfile).toBeUndefined();
     expect(item?.metadata).toBeUndefined();
+  });
+
+  // The roster leads with what a competitor last DID and whether we are still
+  // watching it, so the row carries three enrichments the counts cannot express.
+  test("row carries the latest move, the 14 day shape and source coverage", async () => {
+    const day = 24 * 3600 * 1000;
+    await testDb.insert(competitors).values({
+      id: "comp-roster",
+      orgId: A.orgId,
+      name: "Roster Co",
+      url: "https://roster.example",
+    });
+    await testDb.insert(monitors).values([
+      { id: "mon-roster-home", competitorId: "comp-roster", sourceType: "homepage", isActive: true },
+      // A source that refused us: it must be named, and it must not count as live.
+      {
+        id: "mon-roster-price",
+        competitorId: "comp-roster",
+        sourceType: "pricing",
+        isActive: true,
+        markedUnscrapable: true,
+      },
+    ]);
+    await testDb
+      .insert(snapshots)
+      .values({ id: "snp-roster", monitorId: "mon-roster-home", r2Key: "k", contentHash: "h" });
+
+    const seedSignal = async (
+      id: string,
+      at: Date,
+      severity: "low" | "high",
+      category: "product" | "pricing",
+      insight: string,
+    ) => {
+      await testDb
+        .insert(changes)
+        .values({ id: `chg-${id}`, monitorId: "mon-roster-home", snapshotAfterId: "snp-roster", detectedAt: at });
+      await testDb.insert(signals).values({
+        id,
+        changeId: `chg-${id}`,
+        orgId: A.orgId,
+        competitorId: "comp-roster",
+        severity,
+        category,
+        insight,
+        createdAt: at,
+      });
+    };
+    // 40 days back: outside every window the roster counts, but still a last move.
+    await seedSignal("sig-roster-old", new Date(Date.now() - 40 * day), "low", "product", "old move");
+    await seedSignal("sig-roster-new", new Date(Date.now() - 2 * day), "high", "pricing", "fresh move");
+
+    const res = await app.request("/api/competitors", asUser(A.userId, A.email));
+    const body = (await res.json()) as { competitors: Record<string, any>[] };
+    const item = body.competitors.find((c) => c.id === "comp-roster");
+
+    expect(item?.latestMove).toMatchObject({
+      insight: "fresh move",
+      severity: "high",
+      category: "pricing",
+    });
+    // Oldest day first, one bucket per day, and the 40 day old signal is not in it.
+    expect(item?.activity).toHaveLength(14);
+    expect(item?.activity[11]).toBe(1);
+    expect((item?.activity as number[]).reduce((a, b) => a + b, 0)).toBe(1);
+    expect(item?.coverage).toEqual({ sources: 2, failing: 1, failingSource: "pricing" });
+  });
+
+  // A competitor whose only signal predates the 14 day window still has a last
+  // move: the row says "quiet since", which is the useful thing to say about it.
+  test("a competitor silent for weeks still reports its last move", async () => {
+    await testDb.insert(competitors).values({
+      id: "comp-silent",
+      orgId: A.orgId,
+      name: "Silent Co",
+      url: "https://silent.example",
+    });
+    await testDb
+      .insert(monitors)
+      .values({ id: "mon-silent", competitorId: "comp-silent", sourceType: "homepage", isActive: true });
+    await testDb
+      .insert(snapshots)
+      .values({ id: "snp-silent", monitorId: "mon-silent", r2Key: "k2", contentHash: "h2" });
+    const at = new Date(Date.now() - 30 * 24 * 3600 * 1000);
+    await testDb
+      .insert(changes)
+      .values({ id: "chg-silent", monitorId: "mon-silent", snapshotAfterId: "snp-silent", detectedAt: at });
+    await testDb.insert(signals).values({
+      id: "sig-silent",
+      changeId: "chg-silent",
+      orgId: A.orgId,
+      competitorId: "comp-silent",
+      severity: "medium",
+      category: "content",
+      insight: "an old move",
+      createdAt: at,
+    });
+
+    const res = await app.request("/api/competitors", asUser(A.userId, A.email));
+    const body = (await res.json()) as { competitors: Record<string, any>[] };
+    const item = body.competitors.find((c) => c.id === "comp-silent");
+
+    expect(item?.latestMove?.insight).toBe("an old move");
+    expect(item?.stats.signals7d).toBe(0);
+    expect((item?.activity as number[]).every((n) => n === 0)).toBe(true);
+    expect(item?.coverage).toEqual({ sources: 1, failing: 0, failingSource: null });
   });
 });
 

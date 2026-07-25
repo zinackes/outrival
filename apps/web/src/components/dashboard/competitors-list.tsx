@@ -10,20 +10,15 @@ import {
   Plus,
   Search,
   ArrowRight,
-  ArrowUp,
-  ArrowDown,
-  Flame,
   Loader2,
   MoreHorizontal,
   Trash2,
   ExternalLink,
   Telescope,
   Building2,
-  Pause,
   PauseCircle,
 } from "lucide-react";
 import { EmptyState } from "./empty-state";
-import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { api, type Competitor } from "@/lib/api";
 import { competitorsQuery } from "@/lib/queries";
@@ -56,7 +51,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Select,
   SelectContent,
@@ -65,6 +59,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn, prettyUrl } from "@/lib/utils";
+import { shortAge } from "@/lib/format-date";
+import { sourceLabel } from "@/lib/source-labels";
 import { PageHead } from "./page-head";
 import { useSetAskContext } from "./ask-context";
 import { DeltaPill, computeDelta } from "./delta-pill";
@@ -75,7 +71,7 @@ import {
   competitorColorVars,
   COMP_ACCENT,
 } from "@/lib/competitor-color";
-import { FreshnessDot } from "@/components/outrival/freshness-dot";
+import { SeverityGauge } from "@/components/outrival/severity-scale";
 import { AnalysisBadge } from "@/components/outrival/analysis-status";
 import { ProductChips } from "./product-chip";
 import { ListError } from "@/components/outrival/list-error";
@@ -85,33 +81,42 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { CatPill } from "./cat-pill";
-import { CategoryBar, CategoryLegend, CategoryKey } from "./category-bar";
-import { TableSkeleton, GridCardsSkeleton } from "./skeletons";
-import { feedItemMotion, feedItemVariants, feedItemTransition } from "@/lib/motion";
+import { CatText } from "./cat-pill";
+import { TableSkeleton } from "./skeletons";
+import { ActivitySpark } from "./activity-spark";
+import { feedItemMotion } from "@/lib/motion";
 
-type SortBy = "name" | "overlap" | "signals" | "delta" | "lastSignal";
-type SortDir = "asc" | "desc";
+type SortBy = "lastMove" | "activity" | "overlap" | "name";
+type Bucket = "all" | "moving" | "quiet" | "attention";
 
-const TH_BASE =
-  "text-left px-3.5 py-2.5 text-xs text-muted-foreground font-medium border-b border-border whitespace-nowrap";
+// Past this, a competitor's last move stops being news and the row says so by
+// dropping the headline to muted. Matches the 7 day window the counts run on.
+const QUIET_AFTER_DAYS = 7;
+
+// The row's seven slots. Tracks are dropped from the right as the content column
+// narrows (the dashboard rail eats ~256px), each one paired with the cell's own
+// `hidden @Nxl:flex` so the grid never holds an empty track. Order follows the
+// DOM: gauge, identity, latest move, activity, overlap, coverage, actions.
+const GRID = cn(
+  "grid items-center gap-x-3.5",
+  "grid-cols-[0.625rem_minmax(0,1.15fr)_minmax(0,1.6fr)_1.75rem]",
+  "@2xl:grid-cols-[0.625rem_minmax(0,1.15fr)_minmax(0,1.7fr)_7rem_1.75rem]",
+  "@4xl:grid-cols-[0.625rem_minmax(0,1.15fr)_minmax(0,1.75fr)_7rem_9rem_1.75rem]",
+  "@5xl:grid-cols-[0.625rem_minmax(0,1.15fr)_minmax(0,1.8fr)_7rem_4rem_9rem_1.75rem]",
+);
 
 // Marks a competitor the plan cap froze (over-cap after a downgrade). The scheduler
 // skips it non-destructively; the tooltip points the user to billing to resume it.
-function PausedByPlanBadge({ className }: { className?: string }) {
+function PausedByPlanBadge() {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <Link
           href="/dashboard/settings/billing"
-          onClick={(e) => e.stopPropagation()}
-          className={cn(
-            "flex w-fit items-center gap-1 rounded border border-high/40 bg-high/[0.06] px-1.5 py-0.5 text-meta font-medium text-medium",
-            className,
-          )}
+          className="relative z-10 flex shrink-0 items-center gap-1 rounded-sm border border-high/40 px-1.5 py-0.5 text-meta font-medium text-medium"
         >
           <PauseCircle size={11} className="shrink-0" />
-          Paused · plan limit
+          Plan limit
         </Link>
       </TooltipTrigger>
       <TooltipContent>
@@ -124,26 +129,12 @@ function PausedByPlanBadge({ className }: { className?: string }) {
 
 // Marks a competitor the user deliberately paused (kebab → Pause monitoring on its
 // page). Distinct from the plan-cap freeze above: nothing to upgrade, just a calm
-// reminder that this row's sources are intentionally frozen. Resume lives on the
-// competitor's own page.
-function MonitoringPausedBadge({ className }: { className?: string }) {
+// reminder that this row's sources are intentionally frozen.
+function MonitoringPausedBadge() {
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span
-          className={cn(
-            "flex w-fit items-center gap-1 rounded border border-border bg-muted/50 px-1.5 py-0.5 text-meta font-medium text-muted-foreground",
-            className,
-          )}
-        >
-          <Pause size={11} className="shrink-0" /> Paused
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>
-        Monitoring is paused, so no sources are being scraped. Resume it from the
-        competitor&apos;s page.
-      </TooltipContent>
-    </Tooltip>
+    <span className="shrink-0 rounded-sm border border-border bg-surface-2 px-1.5 py-0.5 text-meta font-medium text-muted-foreground">
+      Paused
+    </span>
   );
 }
 
@@ -154,7 +145,7 @@ function ColorSwatchButton({ color }: { color: string | null | undefined }) {
   return (
     <span
       aria-hidden
-      className="block h-4 w-4 rounded-[5px] border border-border"
+      className="block h-3.5 w-3.5 rounded-[4px] border border-border-strong"
       style={vars ? { ...vars, background: COMP_ACCENT, borderColor: "transparent" } : undefined}
     />
   );
@@ -162,6 +153,7 @@ function ColorSwatchButton({ color }: { color: string | null | undefined }) {
 
 // Per-row color picker popover — assign a competitor's identity color without
 // opening its detail page, so the whole roster's palette is editable in one view.
+// Revealed with the kebab on hover: at rest the roster shows data, not controls.
 function ColorQuickSet({
   competitor,
   onChange,
@@ -176,19 +168,17 @@ function ColorQuickSet({
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+          className={cn(
+            "h-6 w-6 p-0 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100",
+            open && "opacity-100",
+          )}
           aria-label={`Set color for ${competitor.name}`}
           title="Set color"
-          onClick={(e) => e.stopPropagation()}
         >
           <ColorSwatchButton color={competitor.color} />
         </Button>
       </PopoverTrigger>
-      <PopoverContent
-        align="end"
-        className="w-auto max-w-[16rem] p-2.5"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <PopoverContent align="end" className="w-auto max-w-[16rem] p-2.5">
         <CompetitorColorPicker
           value={competitor.color}
           onChange={(v) => {
@@ -199,6 +189,44 @@ function ColorQuickSet({
       </PopoverContent>
     </Popover>
   );
+}
+
+type Row = ReturnType<typeof enrich>[number];
+
+// One roster row's worth of derived state, computed once per render pass.
+function enrich(competitors: Competitor[]) {
+  const now = Date.now();
+  return competitors.map((c) => {
+    const stats = c.stats ?? {
+      signals7d: 0,
+      signalsPrev: 0,
+      lastSignalAt: null,
+      categoryCounts: {},
+    };
+    const move = c.latestMove ?? null;
+    const moveAgeDays = move
+      ? (now - new Date(move.createdAt).getTime()) / 86_400_000
+      : null;
+    const coverage = c.coverage ?? { sources: 0, failing: 0, failingSource: null };
+    return {
+      ...c,
+      signals7d: stats.signals7d,
+      delta: computeDelta(stats.signals7d, stats.signalsPrev),
+      lastSignal: stats.lastSignalAt,
+      activity: c.activity ?? [],
+      coverage,
+      move,
+      stale: moveAgeDays === null || moveAgeDays > QUIET_AFTER_DAYS,
+      overlap: c.overlapScore != null ? Math.round(c.overlapScore) : null,
+      // A row asks for attention when we have stopped watching properly: a source
+      // refused us, the last scan failed, or the plan cap froze the whole thing.
+      // A deliberate pause is not a problem, so it never lands here.
+      needsAttention:
+        coverage.failing > 0 ||
+        c.pausedByPlan === true ||
+        c.freshness?.status === "failed",
+    };
+  });
 }
 
 export function CompetitorsList() {
@@ -215,10 +243,8 @@ export function CompetitorsList() {
   const competitorsQ = useQuery({ ...competitorsQuery(productId), refetchInterval: 30_000 });
   const competitors = competitorsQ.data ?? null;
   const err = competitorsQ.error;
-  const [view, setView] = useState<"table" | "cards">("table");
-  const [sortBy, setSortBy] = useState<SortBy>("signals");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
-  const [filterCat, setFilterCat] = useState<Set<string>>(new Set());
+  const [sortBy, setSortBy] = useState<SortBy>("lastMove");
+  const [bucket, setBucket] = useState<Bucket>("all");
   const [query, setQuery] = useState("");
   const [showDialog, setShowDialog] = useState(false);
   const [paywall, setPaywall] = useState<PaywallReason | null>(null);
@@ -255,7 +281,6 @@ export function CompetitorsList() {
       toast.success(`${deleteTarget.name} deleted`);
       setDeleteTarget(null);
       await refresh();
-      void queryClient.invalidateQueries({ queryKey: competitorsQuery(productId).queryKey });
     } catch (e) {
       toastApiError(e);
     } finally {
@@ -263,103 +288,41 @@ export function CompetitorsList() {
     }
   }
 
-  function toggleSort(col: SortBy) {
-    if (sortBy === col) setSortDir(sortDir === "desc" ? "asc" : "desc");
-    else {
-      setSortBy(col);
-      setSortDir("desc");
-    }
-  }
+  const rows = useMemo(() => (competitors ? enrich(competitors) : []), [competitors]);
 
-  const enriched = useMemo(() => {
-    if (!competitors) return [];
-    return competitors.map((c) => {
-      const stats = c.stats ?? {
-        signals7d: 0,
-        signalsPrev: 0,
-        lastSignalAt: null,
-        categoryCounts: {},
-      };
-      const delta = computeDelta(stats.signals7d, stats.signalsPrev);
-      return {
-        ...c,
-        signals7d: stats.signals7d,
-        signalsPrev: stats.signalsPrev,
-        delta,
-        categoryCounts: stats.categoryCounts,
-        lastSignal: stats.lastSignalAt,
-        overlap:
-          c.overlapScore != null ? Math.round(c.overlapScore) : null,
-      };
-    });
-  }, [competitors]);
-
-  const kpis = useMemo(() => {
-    if (!enriched.length)
-      return {
-        total7d: 0,
-        totalPrev: 0,
-        mostActive: null as null | (typeof enriched)[number],
-        biggestMover: null as null | (typeof enriched)[number],
-      };
-    const total7d = enriched.reduce<number>((acc, c) => acc + c.signals7d, 0);
-    const totalPrev = enriched.reduce<number>((acc, c) => acc + c.signalsPrev, 0);
-    const mostActive = enriched.reduce<(typeof enriched)[number] | null>(
-      (best, c) => (best == null || c.signals7d > best.signals7d ? c : best),
-      null,
-    );
-    const biggestMover = enriched
-      .filter((c) => c.signals7d >= 2)
-      .reduce<(typeof enriched)[number] | null>(
-        (best, c) =>
-          best == null || c.delta.delta > best.delta.delta ? c : best,
-        null,
-      );
-    return { total7d, totalPrev, mostActive, biggestMover };
-  }, [enriched]);
-
-  const totalDelta = computeDelta(kpis.total7d, kpis.totalPrev);
+  const counts = useMemo(
+    () => ({
+      all: rows.length,
+      moving: rows.filter((r) => r.signals7d > 0).length,
+      quiet: rows.filter((r) => r.signals7d === 0).length,
+      attention: rows.filter((r) => r.needsAttention).length,
+    }),
+    [rows],
+  );
 
   const sorted = useMemo(() => {
-    let arr = [...enriched];
-    if (filterCat.size)
-      arr = arr.filter((c) => c.category && filterCat.has(c.category));
+    let arr = [...rows];
+    if (bucket === "moving") arr = arr.filter((r) => r.signals7d > 0);
+    if (bucket === "quiet") arr = arr.filter((r) => r.signals7d === 0);
+    if (bucket === "attention") arr = arr.filter((r) => r.needsAttention);
     if (query) {
       const q = query.toLowerCase();
       arr = arr.filter(
-        (c) =>
-          c.name.toLowerCase().includes(q) ||
-          c.url.toLowerCase().includes(q),
+        (r) => r.name.toLowerCase().includes(q) || r.url.toLowerCase().includes(q),
       );
     }
+    // One direction per field, the only one that is ever useful: newest move,
+    // busiest week, closest competitor, alphabetical.
     arr.sort((a, b) => {
-      const dir = sortDir === "desc" ? -1 : 1;
-      if (sortBy === "name") return a.name.localeCompare(b.name) * dir;
-      if (sortBy === "overlap")
-        return ((a.overlap ?? 0) - (b.overlap ?? 0)) * dir;
-      if (sortBy === "signals") return (a.signals7d - b.signals7d) * dir;
-      if (sortBy === "delta") return (a.delta.delta - b.delta.delta) * dir;
-      if (sortBy === "lastSignal") {
-        const ta = a.lastSignal ? new Date(a.lastSignal).getTime() : 0;
-        const tb = b.lastSignal ? new Date(b.lastSignal).getTime() : 0;
-        return (ta - tb) * dir;
-      }
-      return 0;
+      if (sortBy === "name") return a.name.localeCompare(b.name);
+      if (sortBy === "overlap") return (b.overlap ?? -1) - (a.overlap ?? -1);
+      if (sortBy === "activity") return b.signals7d - a.signals7d;
+      const ta = a.move ? new Date(a.move.createdAt).getTime() : 0;
+      const tb = b.move ? new Date(b.move.createdAt).getTime() : 0;
+      return tb - ta;
     });
     return arr;
-  }, [enriched, sortBy, sortDir, filterCat, query]);
-
-  const cats = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          (competitors ?? [])
-            .map((c) => c.category)
-            .filter((c): c is string => Boolean(c)),
-        ),
-      ),
-    [competitors],
-  );
+  }, [rows, bucket, query, sortBy]);
 
   if (err && competitors === null) {
     return (
@@ -371,135 +334,124 @@ export function CompetitorsList() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <PaywallDialog reason={paywall} onClose={() => setPaywall(null)} />
       <PageHead
         title="Competitors"
         sub={
-          competitors
-            ? `${competitors.length} tracked`
-            : "Loading…"
+          competitors ? (
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span>
+                <b className="font-mono font-medium text-foreground tabular-nums">
+                  {counts.all}
+                </b>{" "}
+                tracked
+              </span>
+              {counts.moving > 0 && (
+                <>
+                  <span className="text-border-strong">·</span>
+                  <span>
+                    <b className="font-mono font-medium text-foreground tabular-nums">
+                      {counts.moving}
+                    </b>{" "}
+                    moved this week
+                  </span>
+                </>
+              )}
+              {counts.attention > 0 && (
+                <>
+                  <span className="text-border-strong">·</span>
+                  <span className="text-high">
+                    <b className="font-mono font-medium tabular-nums">
+                      {counts.attention}
+                    </b>{" "}
+                    needs attention
+                  </span>
+                </>
+              )}
+            </span>
+          ) : (
+            "Loading…"
+          )
         }
         actions={
-          <Button onClick={() => setShowDialog(true)}>
-            <Plus size={13} /> Add competitor
-          </Button>
+          <>
+            <Button variant="secondary" onClick={() => router.push("/dashboard/discovery")}>
+              <Telescope size={13} /> Discovery
+            </Button>
+            <Button onClick={() => setShowDialog(true)}>
+              <Plus size={13} /> Add competitor
+            </Button>
+          </>
         }
       />
 
       {competitors && competitors.length > 0 && (
-        <Card className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-border">
-          <KpiCell
-            label="Signals 7d"
-            value={kpis.total7d}
-            delta={totalDelta.label}
-            deltaKind={totalDelta.kind}
-            sub={`${kpis.totalPrev} in previous 7d`}
-          />
-          <KpiCell
-            label="Most active"
-            value={kpis.mostActive?.name ?? "—"}
-            sub={
-              kpis.mostActive
-                ? `${kpis.mostActive.signals7d} signals · ${kpis.mostActive.delta.label}`
-                : undefined
-            }
-            highlight={!!kpis.mostActive}
-            onClick={
-              kpis.mostActive
-                ? () =>
-                    router.push(
-                      `/dashboard/competitors/${kpis.mostActive!.id}`,
-                    )
-                : undefined
-            }
-          />
-          <KpiCell
-            label="Biggest mover"
-            value={kpis.biggestMover?.name ?? "—"}
-            sub={
-              kpis.biggestMover
-                ? `${kpis.biggestMover.signals7d} signals · ${kpis.biggestMover.delta.label}`
-                : "Not enough activity"
-            }
-            deltaKind={kpis.biggestMover?.delta.kind}
-            icon={kpis.biggestMover ? <Flame size={13} /> : undefined}
-            onClick={
-              kpis.biggestMover
-                ? () =>
-                    router.push(
-                      `/dashboard/competitors/${kpis.biggestMover!.id}`,
-                    )
-                : undefined
-            }
-          />
-        </Card>
-      )}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex gap-0.5" role="group" aria-label="Filter roster">
+            <BucketChip
+              label="All"
+              count={counts.all}
+              active={bucket === "all"}
+              onClick={() => setBucket("all")}
+            />
+            {counts.moving > 0 && (
+              <BucketChip
+                label="Moving"
+                count={counts.moving}
+                active={bucket === "moving"}
+                onClick={() => setBucket("moving")}
+              />
+            )}
+            {counts.quiet > 0 && (
+              <BucketChip
+                label="Quiet"
+                count={counts.quiet}
+                active={bucket === "quiet"}
+                onClick={() => setBucket("quiet")}
+              />
+            )}
+            {counts.attention > 0 && (
+              <BucketChip
+                label="Needs attention"
+                count={counts.attention}
+                warn
+                active={bucket === "attention"}
+                onClick={() => setBucket("attention")}
+              />
+            )}
+          </div>
 
-      <div className="flex items-center gap-2 flex-wrap">
-        {cats.length > 0 && (
-          <Select
-            value={Array.from(filterCat)[0] ?? "all"}
-            onValueChange={(v) =>
-              setFilterCat(v === "all" ? new Set() : new Set([v]))
-            }
-          >
-            <SelectTrigger size="sm" className="h-8 w-[160px] text-xs">
-              <SelectValue placeholder="All categories" />
+          <div className="flex-1" />
+
+          <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortBy)}>
+            <SelectTrigger size="sm" className="h-8 w-[150px] text-xs">
+              <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All categories</SelectItem>
-              {cats.map((c) => (
-                <SelectItem key={c} value={c}>
-                  {c}
-                </SelectItem>
-              ))}
+              <SelectItem value="lastMove">Last move</SelectItem>
+              <SelectItem value="activity">Most active</SelectItem>
+              <SelectItem value="overlap">Overlap</SelectItem>
+              <SelectItem value="name">Name</SelectItem>
             </SelectContent>
           </Select>
-        )}
-        {(filterCat.size > 0 || query.length > 0) && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setFilterCat(new Set());
-              setQuery("");
-            }}
-            className="h-7 px-2 text-meta text-muted-foreground hover:text-foreground"
-          >
-            Clear filters
-          </Button>
-        )}
-        <div className="flex-1" />
-        <ToggleGroup
-          type="single"
-          value={view}
-          onValueChange={(v) => v && setView(v as "table" | "cards")}
-          variant="outline"
-          size="sm"
-        >
-          <ToggleGroupItem value="table">Table</ToggleGroupItem>
-          <ToggleGroupItem value="cards">Cards</ToggleGroupItem>
-        </ToggleGroup>
-        <div className="relative">
-          <Search
-            size={14}
-            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
-          />
-          <Input
-            placeholder="Search…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="h-8 pl-8 text-xs w-48"
-          />
-        </div>
-      </div>
 
-      {competitors === null && (
-        view === "table"
-          ? <TableSkeleton rows={6} columns={6} />
-          : <GridCardsSkeleton cards={6} minWidth={280} cardHeight={220} />
+          <div className="relative">
+            <Search
+              size={14}
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              placeholder="Search…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="h-8 w-48 pl-8 text-xs"
+            />
+          </div>
+        </div>
       )}
+
+      {competitors === null && <TableSkeleton rows={6} columns={5} />}
 
       {competitors && competitors.length === 0 && (
         <EmptyState
@@ -523,13 +475,13 @@ export function CompetitorsList() {
       )}
 
       {competitors && competitors.length > 0 && sorted.length === 0 && (
-        <Card className="px-6 py-10 text-center border-dashed text-muted-foreground">
-          <p className="text-sm mb-3">No competitors match your filters.</p>
+        <Card className="border-dashed px-6 py-10 text-center text-muted-foreground">
+          <p className="mb-3 text-sm">No competitors match this view.</p>
           <Button
             variant="secondary"
             size="sm"
             onClick={() => {
-              setFilterCat(new Set());
+              setBucket("all");
               setQuery("");
             }}
           >
@@ -538,321 +490,49 @@ export function CompetitorsList() {
         </Card>
       )}
 
-      {competitors && competitors.length > 0 && sorted.length > 0 && view === "table" && (
-        <Card className="overflow-x-auto">
-          <table className="w-full border-collapse text-dense min-w-[760px]">
-            <thead className="bg-background">
-              <tr>
-                <th className={cn(TH_BASE, "w-8")} />
-                <SortHeader
-                  col="name"
-                  sortBy={sortBy}
-                  sortDir={sortDir}
-                  onClick={toggleSort}
-                >
-                  Competitor
-                </SortHeader>
-                <th className={TH_BASE}>Category</th>
-                <SortHeader
-                  col="overlap"
-                  sortBy={sortBy}
-                  sortDir={sortDir}
-                  onClick={toggleSort}
-                  tip="How closely this competitor overlaps with your product (0–100)."
-                >
-                  Overlap
-                </SortHeader>
-                <SortHeader
-                  col="signals"
-                  sortBy={sortBy}
-                  sortDir={sortDir}
-                  onClick={toggleSort}
-                  num
-                >
-                  Signals 7d
-                </SortHeader>
-                <SortHeader
-                  col="delta"
-                  sortBy={sortBy}
-                  sortDir={sortDir}
-                  onClick={toggleSort}
-                  num
-                  tip="Signals in the last 7 days vs the previous 7 days"
-                >
-                  7d trend
-                </SortHeader>
-                <th className={TH_BASE}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="inline-flex items-center gap-1 cursor-help">
-                        Signal mix (7d)
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="mb-1.5 font-medium normal-case tracking-normal">
-                        Share of the last 7 days&apos; signals by category
-                      </p>
-                      <CategoryKey />
-                    </TooltipContent>
-                  </Tooltip>
-                </th>
-                <SortHeader
-                  col="lastSignal"
-                  sortBy={sortBy}
-                  sortDir={sortDir}
-                  onClick={toggleSort}
-                >
-                  Last signal
-                </SortHeader>
-                <th className={cn(TH_BASE, "w-8")} />
-              </tr>
-            </thead>
-            <tbody>
-              <AnimatePresence initial={false}>
-              {sorted.map((c) => (
-                <motion.tr
-                  key={c.id}
-                  variants={feedItemVariants}
-                  initial="initial"
-                  animate="animate"
-                  exit="exit"
-                  transition={feedItemTransition}
-                  onClick={() =>
-                    router.push(`/dashboard/competitors/${c.id}`)
-                  }
-                  className="border-b border-border last:border-b-0 cursor-pointer transition-colors hover:bg-accent/50"
-                >
-                  <td className="px-3.5 py-3 align-middle">
-                    <CompAvatar name={c.name} url={c.url} />
-                  </td>
-                  <td className="px-3.5 py-3 align-middle">
-                    <div className="flex items-center gap-1.5 font-medium">
-                      <Link
-                        href={`/dashboard/competitors/${c.id}`}
-                        onClick={(e) => e.stopPropagation()}
-                        className="rounded-sm underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
-                        style={competitorNameColor(c.color)}
-                      >
-                        {c.name}
-                      </Link>
-                      {c.freshness && (
-                        <FreshnessDot
-                          lastScrapedAt={c.freshness.lastScrapedAt}
-                          status={c.freshness.status}
-                        />
-                      )}
-                    </div>
-                    <a
-                      href={c.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="group/url inline-flex items-center gap-1 mt-px w-fit max-w-full font-mono text-meta text-muted-foreground transition-colors hover:text-foreground"
-                    >
-                      <span className="truncate underline-offset-2 group-hover/url:underline">
-                        {prettyUrl(c.url)}
-                      </span>
-                      <ExternalLink
-                        size={10}
-                        className="shrink-0 opacity-0 transition-opacity group-hover/url:opacity-100"
-                      />
-                    </a>
-                    <AnalysisBadge analysis={c.analysis} className="mt-1" />
-                    {c.pausedByPlan ? (
-                      <PausedByPlanBadge className="mt-1" />
-                    ) : c.monitoringPaused ? (
-                      <MonitoringPausedBadge className="mt-1" />
-                    ) : null}
-                    {allProducts && (
-                      <ProductChips
-                        productIds={c.specificProductIds}
-                        className="mt-1"
-                      />
-                    )}
-                  </td>
-                  <td className="px-3.5 py-3 align-middle text-muted-foreground">
-                    {c.category ?? "—"}
-                  </td>
-                  <td className="px-3.5 py-3 align-middle">
-                    {c.overlap != null ? (
-                      <div className="flex items-center gap-2.5">
-                        <div className="h-1.5 w-[70px] bg-background rounded border border-border overflow-hidden">
-                          <span
-                            className="block h-full bg-primary rounded"
-                            style={{ width: `${c.overlap}%` }}
-                          />
-                        </div>
-                        <span className="tabular-nums font-mono text-xs w-6">
-                          {c.overlap}
-                        </span>
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </td>
-                  <td className="px-3.5 py-3 align-middle text-right tabular-nums font-mono font-semibold">
-                    {c.signals7d}
-                  </td>
-                  <td className="px-3.5 py-3 align-middle text-right">
-                    <DeltaPill delta={c.delta} />
-                  </td>
-                  <td className="px-3.5 py-3 align-middle">
-                    <CategoryBar counts={c.categoryCounts} w={110} />
-                  </td>
-                  <td className="px-3.5 py-3 align-middle text-muted-foreground tabular-nums font-mono text-xs">
-                    {c.lastSignal
-                      ? formatDistanceToNow(new Date(c.lastSignal), { addSuffix: true })
-                      : "—"}
-                  </td>
-                  <td className="text-right px-3.5 py-3 align-middle whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                    <div className="inline-flex items-center gap-0.5">
-                    <ColorQuickSet
-                      competitor={c}
-                      onChange={(v) => void setColor(c.id, v)}
-                    />
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          aria-label={`More actions for ${c.name}`}
-                          className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <MoreHorizontal size={14} />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-40">
-                        <DropdownMenuItem
-                          onClick={() => router.push(`/dashboard/competitors/${c.id}`)}
-                        >
-                          <ArrowRight size={13} /> Open detail
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => setDeleteTarget(c)}
-                          className="text-critical focus:text-critical"
-                        >
-                          <Trash2 size={13} /> Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                    </div>
-                  </td>
-                </motion.tr>
-              ))}
-              </AnimatePresence>
-            </tbody>
-          </table>
-        </Card>
-      )}
-
-      {competitors && competitors.length > 0 && sorted.length > 0 && view === "cards" && (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3.5">
-          <AnimatePresence initial={false} mode="popLayout">
-          {sorted.map((c) => (
-            <motion.div key={c.id} {...feedItemMotion}>
-            <Card
-              role="link"
-              tabIndex={0}
-              aria-label={c.name}
-              onClick={() => router.push(`/dashboard/competitors/${c.id}`)}
-              onKeyDown={(e) => {
-                // Only the card itself navigates on Enter — nested buttons (kebab,
-                // color picker) keep their own keyboard behaviour without double-firing.
-                if (e.key === "Enter" && e.target === e.currentTarget) {
-                  router.push(`/dashboard/competitors/${c.id}`);
-                }
-              }}
-              className="cursor-pointer outline-none transition-colors hover:bg-accent/30 focus-visible:ring-[3px] focus-visible:ring-ring/70"
+      {competitors && sorted.length > 0 && (
+        <div className="@container">
+          <div
+            className={cn(
+              GRID,
+              "border-b border-border px-2 pb-2 text-meta font-medium text-muted-foreground",
+            )}
+          >
+            <span />
+            <span>Competitor</span>
+            <span>Latest move</span>
+            <ColumnLabel
+              className="hidden @2xl:flex"
+              tip="Signals in the last 7 days against the 7 before. The bars are one per day over 14 days."
             >
-              <div className="p-5">
-                <div className="flex items-center gap-2.5 mb-3.5">
-                  <CompAvatar name={c.name} url={c.url} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 font-semibold text-content">
-                      <span style={competitorNameColor(c.color)}>{c.name}</span>
-                      {c.freshness && (
-                        <FreshnessDot
-                          lastScrapedAt={c.freshness.lastScrapedAt}
-                          status={c.freshness.status}
-                        />
-                      )}
-                    </div>
-                    <a
-                      href={c.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="group/url inline-flex max-w-full items-center gap-1 font-mono text-meta text-muted-foreground transition-colors hover:text-foreground"
-                    >
-                      <span className="truncate underline-offset-2 group-hover/url:underline">
-                        {prettyUrl(c.url)}
-                      </span>
-                      <ExternalLink
-                        size={10}
-                        className="shrink-0 opacity-0 transition-opacity group-hover/url:opacity-100"
-                      />
-                    </a>
-                    <AnalysisBadge analysis={c.analysis} className="mt-1" />
-                    {c.pausedByPlan ? (
-                      <PausedByPlanBadge className="mt-1" />
-                    ) : c.monitoringPaused ? (
-                      <MonitoringPausedBadge className="mt-1" />
-                    ) : null}
-                    {allProducts && (
-                      <ProductChips
-                        productIds={c.specificProductIds}
-                        className="mt-1"
-                      />
-                    )}
-                  </div>
-                  <ColorQuickSet
-                    competitor={c}
-                    onChange={(v) => void setColor(c.id, v)}
-                  />
-                </div>
-                {c.category && (
-                  <div className="flex gap-1.5 mb-3 flex-wrap">
-                    <CatPill>{c.category}</CatPill>
-                  </div>
-                )}
-                {c.overlap != null && (
-                  <div className="mb-3">
-                    <div className="flex justify-between text-meta text-muted-foreground mb-1.5">
-                      <span>Overlap</span>
-                      <span className="tabular-nums font-mono">
-                        {c.overlap}/100
-                      </span>
-                    </div>
-                    <div className="h-1.5 bg-background rounded border border-border overflow-hidden">
-                      <span
-                        className="block h-full bg-primary rounded"
-                        style={{ width: `${c.overlap}%` }}
-                      />
-                    </div>
-                  </div>
-                )}
-                <div className="flex justify-between items-end pt-3 border-t border-border">
-                  <div>
-                    <div className="text-title font-bold tracking-tight leading-none">
-                      {c.signals7d}
-                    </div>
-                    <div className="text-meta text-muted-foreground mt-1">
-                      Signals 7d
-                    </div>
-                  </div>
-                  <DeltaPill delta={c.delta} />
-                </div>
-                <div className="mt-3">
-                  <CategoryBar counts={c.categoryCounts} w={244} />
-                  <div className="mt-2">
-                    <CategoryLegend counts={c.categoryCounts} />
-                  </div>
-                </div>
-              </div>
-            </Card>
-            </motion.div>
-          ))}
+              Activity
+            </ColumnLabel>
+            <ColumnLabel
+              className="hidden @5xl:flex"
+              tip="How closely this competitor overlaps with your product (0 to 100)."
+            >
+              Overlap
+            </ColumnLabel>
+            <ColumnLabel
+              className="hidden @4xl:flex"
+              tip="Sources we are actively watching, and when the stalest one last answered."
+            >
+              Coverage
+            </ColumnLabel>
+            <span />
+          </div>
+
+          <AnimatePresence initial={false} mode="popLayout">
+            {sorted.map((row) => (
+              <motion.div key={row.id} {...feedItemMotion}>
+                <CompetitorRow
+                  row={row}
+                  allProducts={allProducts}
+                  onColor={(v) => void setColor(row.id, v)}
+                  onDelete={() => setDeleteTarget(row)}
+                />
+              </motion.div>
+            ))}
           </AnimatePresence>
         </div>
       )}
@@ -905,128 +585,275 @@ export function CompetitorsList() {
   );
 }
 
-function KpiCell({
-  label,
-  value,
-  sub,
-  delta,
-  deltaKind = "neutral",
-  highlight,
-  icon,
-  onClick,
+/**
+ * One competitor, answering three questions in the order an analyst asks them:
+ * who are they, what did they just do, are we watching them properly.
+ *
+ * Fixed height and two text lines, so fifty rows keep one rhythm. State badges sit
+ * inline after the name rather than stacking under it, which is what used to make
+ * a row anywhere between 56 and 120px tall. The whole row navigates via a stretched
+ * link on the name; everything else that is clickable lifts itself above it.
+ */
+function CompetitorRow({
+  row,
+  allProducts,
+  onColor,
+  onDelete,
 }: {
-  label: string;
-  value: string | number;
-  sub?: string;
-  delta?: string;
-  deltaKind?: "pos" | "neg" | "neutral";
-  highlight?: boolean;
-  icon?: React.ReactNode;
-  onClick?: () => void;
+  row: Row;
+  allProducts: boolean;
+  onColor: (value: string | null) => void;
+  onDelete: () => void;
 }) {
-  const isPos = deltaKind === "pos";
-  const isNeg = deltaKind === "neg";
-  const Wrap = (onClick ? "button" : "div") as "button" | "div";
+  const router = useRouter();
+  const href = `/dashboard/competitors/${row.id}`;
+  const cov = row.coverage;
+  const live = cov.sources - cov.failing;
+
   return (
-    <Wrap
-      onClick={onClick}
+    <div
       className={cn(
-        "px-5 py-4 flex flex-col gap-1.5 text-left min-w-0",
-        onClick && "transition-colors hover:bg-accent/30",
+        GRID,
+        "group relative rounded-md border-b border-border px-2 py-2.5 transition-colors hover:bg-surface-2 focus-within:bg-surface-2",
       )}
     >
-      <div className="text-meta font-medium text-muted-foreground flex items-center justify-between gap-2">
-        <span>{label}</span>
-        {delta && (
-          <span
-            className={cn(
-              "font-mono text-meta inline-flex items-center gap-0.5",
-              isPos && "text-positive",
-              isNeg && "text-critical",
-              !isPos && !isNeg && "text-muted-foreground",
+      <SeverityGauge severity={row.move && !row.stale ? row.move.severity : null} />
+
+      <div className="flex min-w-0 items-center gap-2.5">
+        <CompAvatar name={row.name} url={row.url} size={28} />
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <Link
+              href={href}
+              // Stretched link: the pseudo-element covers the row, so the whole
+              // row navigates without nesting interactive elements inside an <a>.
+              className="min-w-0 truncate rounded-sm text-dense font-semibold outline-none after:absolute after:inset-0 after:content-[''] focus-visible:ring-2 focus-visible:ring-ring/50"
+              style={competitorNameColor(row.color)}
+            >
+              {row.name}
+            </Link>
+            {/* No freshness dot beside the name: the coverage cell owns that
+                reading now, and a second dot on the same row said it twice while
+                sitting under the row's navigation overlay, where its tooltip
+                could never open. */}
+            {row.pausedByPlan ? (
+              <PausedByPlanBadge />
+            ) : row.monitoringPaused ? (
+              <MonitoringPausedBadge />
+            ) : null}
+            <AnalysisBadge analysis={row.analysis} />
+          </div>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <a
+              href={row.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group/url relative z-10 inline-flex min-w-0 items-center gap-1 font-mono text-meta text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <span className="truncate underline-offset-2 group-hover/url:underline">
+                {prettyUrl(row.url)}
+              </span>
+              <ExternalLink
+                size={10}
+                className="shrink-0 opacity-0 transition-opacity group-hover/url:opacity-100"
+              />
+            </a>
+            {allProducts && (
+              <ProductChips productIds={row.specificProductIds} className="shrink-0" />
             )}
-          >
-            {isPos ? (
-              <ArrowUp className="size-3" />
-            ) : isNeg ? (
-              <ArrowDown className="size-3" />
-            ) : (
-              "·"
-            )}{" "}
-            {delta}
-          </span>
-        )}
-      </div>
-      <div
-        className={cn(
-          "font-bold tracking-tight leading-none truncate flex items-center gap-2",
-          typeof value === "number"
-            ? "text-title-lg font-mono tabular-nums"
-            : "text-lg",
-          highlight && "text-foreground",
-        )}
-      >
-        {icon}
-        <span className="truncate">{value}</span>
-      </div>
-      {sub && (
-        <div className="text-muted-foreground text-meta truncate">
-          {sub}
+          </div>
         </div>
-      )}
-    </Wrap>
+      </div>
+
+      <div className="flex min-w-0 flex-col gap-0.5">
+        {row.monitoringPaused ? (
+          <span className="truncate text-dense text-muted-foreground">
+            Monitoring is paused, so no sources are being scraped.
+          </span>
+        ) : row.move ? (
+          <>
+            <span
+              className={cn(
+                "truncate text-dense leading-snug",
+                row.stale ? "text-muted-foreground" : "font-medium text-foreground",
+              )}
+            >
+              {row.move.insight}
+            </span>
+            <span className="flex min-w-0 items-center gap-1.5 text-meta text-muted-foreground">
+              <CatText category={row.move.category} />
+              <span aria-hidden className="text-border-strong">
+                ·
+              </span>
+              <span className="font-mono tabular-nums">{shortAge(row.move.createdAt)}</span>
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="truncate text-dense text-muted-foreground">
+              Nothing detected yet.
+            </span>
+            <span className="text-meta text-muted-foreground">
+              Added <span className="font-mono tabular-nums">{shortAge(row.createdAt)}</span> ago
+            </span>
+          </>
+        )}
+      </div>
+
+      <div className="hidden min-w-0 flex-col gap-1.5 @2xl:flex">
+        <span className="flex items-baseline gap-2">
+          <span className="font-mono text-dense font-semibold tabular-nums">
+            {row.signals7d}
+          </span>
+          {row.signals7d > 0 ? (
+            <DeltaPill delta={row.delta} />
+          ) : (
+            <span className="font-mono text-xs text-muted-foreground">—</span>
+          )}
+        </span>
+        <ActivitySpark
+          values={row.activity}
+          label={`${row.signals7d} signals in the last 7 days`}
+        />
+      </div>
+
+      <div className="hidden min-w-0 flex-col gap-1.5 @5xl:flex">
+        {row.overlap != null ? (
+          <>
+            <span className="font-mono text-dense font-semibold tabular-nums">
+              {row.overlap}
+            </span>
+            <span className="h-[3px] overflow-hidden rounded-sm bg-surface-3">
+              <span
+                className="block h-full bg-muted-foreground"
+                style={{ width: `${row.overlap}%` }}
+              />
+            </span>
+          </>
+        ) : (
+          <span className="text-dense text-muted-foreground">—</span>
+        )}
+      </div>
+
+      <div className="hidden min-w-0 flex-col gap-0.5 text-xs @4xl:flex">
+        {row.monitoringPaused ? (
+          <span className="flex items-center gap-1.5 text-muted-foreground">
+            <span className="size-1.5 shrink-0 rounded-full bg-border-strong" />
+            Paused
+          </span>
+        ) : cov.failing > 0 ? (
+          <>
+            <span className="flex min-w-0 items-center gap-1.5 font-medium text-high">
+              <span className="size-1.5 shrink-0 rounded-full bg-high" />
+              <span className="truncate">{sourceLabel(cov.failingSource)} blocked</span>
+            </span>
+            <span className="font-mono text-meta text-muted-foreground tabular-nums">
+              {live} of {cov.sources} live
+            </span>
+          </>
+        ) : cov.sources > 0 ? (
+          <>
+            <span className="flex items-center gap-1.5 text-muted-foreground">
+              <span className="size-1.5 shrink-0 rounded-full bg-positive" />
+              {cov.sources} source{cov.sources > 1 ? "s" : ""} live
+            </span>
+            <span className="font-mono text-meta text-muted-foreground">
+              {row.freshness?.lastScrapedAt
+                ? `checked ${shortAge(row.freshness.lastScrapedAt)} ago`
+                : "not scanned yet"}
+            </span>
+          </>
+        ) : (
+          <span className="text-muted-foreground">No sources yet</span>
+        )}
+      </div>
+
+      <div className="relative z-10 flex items-center justify-end gap-0.5">
+        <ColorQuickSet competitor={row} onChange={onColor} />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={`More actions for ${row.name}`}
+              className="h-6 w-6 p-0 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100"
+            >
+              <MoreHorizontal size={14} />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-40">
+            <DropdownMenuItem onClick={() => router.push(href)}>
+              <ArrowRight size={13} /> Open detail
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={onDelete}
+              className="text-critical focus:text-critical"
+            >
+              <Trash2 size={13} /> Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
   );
 }
 
-function SortHeader({
-  col,
-  sortBy,
-  sortDir,
+function BucketChip({
+  label,
+  count,
+  active,
+  warn,
   onClick,
-  children,
-  num,
-  tip,
 }: {
-  col: SortBy;
-  sortBy: SortBy;
-  sortDir: SortDir;
-  onClick: (col: SortBy) => void;
-  children: React.ReactNode;
-  num?: boolean;
-  tip?: string;
+  label: string;
+  count: number;
+  active: boolean;
+  warn?: boolean;
+  onClick: () => void;
 }) {
-  const active = sortBy === col;
-  // The sort control is a real <button> (keyboard-operable), and the <th> carries
-  // aria-sort so assistive tech announces the current column + direction.
-  const control = (
+  return (
     <button
       type="button"
-      onClick={() => onClick(col)}
-      aria-label={`Sort by ${typeof children === "string" ? children : col}`}
+      aria-pressed={active}
+      onClick={onClick}
       className={cn(
-        "inline-flex cursor-pointer select-none items-center gap-1 rounded-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/70",
-        active && "text-foreground",
+        "inline-flex h-8 items-center gap-1.5 rounded-md border border-transparent px-2.5 text-xs outline-none transition-colors",
+        "hover:bg-surface-2 focus-visible:ring-[3px] focus-visible:ring-ring/70",
+        active ? "border-border bg-surface-2 font-medium text-foreground" : "text-muted-foreground",
       )}
     >
-      {children}
-      {active &&
-        (sortDir === "desc" ? <ArrowDown size={10} /> : <ArrowUp size={10} />)}
+      {label}
+      <span
+        className={cn(
+          "font-mono text-meta tabular-nums",
+          warn ? "text-high" : active ? "text-muted-foreground" : "text-text-subtle",
+        )}
+      >
+        {count}
+      </span>
     </button>
   );
+}
+
+// A column label that explains its own encoding once, in the header, instead of
+// per row: the rows have no width to spare, and a tooltip inside a row would sit
+// under the stretched navigation link anyway.
+function ColumnLabel({
+  children,
+  tip,
+  className,
+}: {
+  children: React.ReactNode;
+  tip: string;
+  className?: string;
+}) {
   return (
-    <th
-      className={cn(TH_BASE, num && "text-right")}
-      aria-sort={active ? (sortDir === "desc" ? "descending" : "ascending") : "none"}
-    >
-      {tip ? (
-        <Tooltip>
-          <TooltipTrigger asChild>{control}</TooltipTrigger>
-          <TooltipContent>{tip}</TooltipContent>
-        </Tooltip>
-      ) : (
-        control
-      )}
-    </th>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className={cn("w-fit cursor-help items-center", className)}>{children}</span>
+      </TooltipTrigger>
+      <TooltipContent>{tip}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -1106,7 +933,7 @@ function AddCompetitorDialog({
               onChange={(e) => setUrl(e.target.value)}
             />
           </div>
-          {err && <p className="text-critical text-sm">{err}</p>}
+          {err && <p className="text-sm text-critical">{err}</p>}
           <DialogFooter>
             <Button
               type="button"

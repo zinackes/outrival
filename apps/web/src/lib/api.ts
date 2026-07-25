@@ -335,6 +335,11 @@ export interface Monitor {
 export interface ChangeRow {
   id: string;
   diffText: string | null;
+  // Engagement on the source that produced this change, projected server-side out
+  // of rawDiff. Only Hacker News carries it, and only on captures taken after it
+  // started being stored structurally; null everywhere else.
+  engagementPoints?: number | null;
+  engagementComments?: number | null;
   summary: string | null;
   detectedAt: string;
   monitorId: string;

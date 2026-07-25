@@ -72,6 +72,7 @@ activityRouter.get("/health", async (c) => {
       competitorColor: competitors.color,
       competitorType: competitors.type,
       sourceType: monitors.sourceType,
+      frequency: monitors.frequency,
       isActive: monitors.isActive,
       lastRunAt: monitors.lastRunAt,
       nextRunAt: monitors.nextRunAt,
@@ -120,12 +121,17 @@ activityRouter.get("/health", async (c) => {
     // Most-recently-run first; never-run (null lastRunAt) sink to the bottom.
     .sort((a, b) => (b.lastRunAt?.getTime() ?? 0) - (a.lastRunAt?.getTime() ?? 0));
 
-  // "Next checks" — the soonest scheduled runs, soonest-first. Unlike `sources`
-  // this INCLUDES the internal anchors (sitemap/news) that carry a real nextRunAt:
+  // "Next checks" — the scheduled runs, soonest-first. Unlike `sources` this
+  // INCLUDES the internal anchors (sitemap/news) that carry a real nextRunAt:
   // they run silently in the background, and showing when they run next closes the
   // "is Outrival still watching?" gap. tech_stack drops out naturally — it's
   // interval-driven (no nextRunAt) and shows its own next scan on the competitor
   // page. Paused / unscrapable monitors are excluded (they won't run).
+  //
+  // The whole queue is sent, not a head of it: the page states how many checks are
+  // due in the next day, and a truncated list would make that count describe the
+  // slice rather than the schedule. These rows are already loaded for `sources`, so
+  // the cost is JSON size on a roster the same request already carries.
   const upcoming = rows
     .filter((r) => r.isActive && !r.markedUnscrapable && r.nextRunAt)
     .map((r) => ({
@@ -135,10 +141,12 @@ activityRouter.get("/health", async (c) => {
       competitorColor: r.competitorColor,
       isSelf: r.competitorType === "self",
       sourceType: r.sourceType,
+      // The cadence the schedule comes from, so a check that is two days out reads
+      // as its rhythm rather than as a source that has gone quiet.
+      frequency: r.frequency,
       nextRunAt: r.nextRunAt,
     }))
-    .sort((a, b) => (a.nextRunAt!.getTime() ?? 0) - (b.nextRunAt!.getTime() ?? 0))
-    .slice(0, 12);
+    .sort((a, b) => (a.nextRunAt!.getTime() ?? 0) - (b.nextRunAt!.getTime() ?? 0));
 
   return c.json({ sources, upcoming });
 });

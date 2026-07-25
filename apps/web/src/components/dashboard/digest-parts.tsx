@@ -100,36 +100,41 @@ export function spreadSentence(stats: DigestStats): string {
   return `${stats.moves} move${stats.moves === 1 ? "" : "s"}, none urgent`;
 }
 
-/** Who moved, as a row of tinted dots. Overflow is counted, never truncated silently. */
-export function CompetitorPips({
+/**
+ * Who moved in one line of a list row.
+ *
+ * This used to be a row of tinted dots, which assumed every competitor carries an
+ * assigned colour. Most do not: the palette is opt-in, so the dots rendered as a
+ * line of identical grey circles that said nothing and could only be decoded by
+ * hovering. Names answer the question at a glance; the tint, when there is one,
+ * is a bonus rather than the whole message.
+ */
+export function CompetitorMovers({
   movers,
   colorOf,
-  max = 3,
+  max = 2,
 }: {
   movers: DigestMover[];
   colorOf: ColorOf;
   max?: number;
 }) {
   if (movers.length === 0) {
-    return <span className="size-[7px] shrink-0 rounded-full bg-surface-3" aria-hidden />;
+    return <span className="truncate text-dense text-muted-foreground">Nobody</span>;
   }
   const shown = movers.slice(0, max);
-  const label = movers.map((m) => m.name).join(", ");
+  const rest = movers.length - shown.length;
   return (
-    <span className="flex items-center gap-1.5" title={label}>
-      <span className="sr-only">{label}</span>
-      {shown.map((m) => (
-        <span
-          key={m.name}
-          aria-hidden
-          className="size-[7px] shrink-0 rounded-full"
-          style={tintStyle(colorOf(m.name))}
-        />
-      ))}
-      {movers.length > max && (
-        <span className="font-mono text-meta text-muted-foreground" aria-hidden>
-          +{movers.length - max}
-        </span>
+    <span className="flex min-w-0 items-center gap-1.5 text-dense" title={movers.map((m) => m.name).join(", ")}>
+      <span className="truncate">
+        {shown.map((m, i) => (
+          <span key={m.name}>
+            {i > 0 && <span className="text-muted-foreground">, </span>}
+            <span style={textTintStyle(colorOf(m.name))}>{m.name}</span>
+          </span>
+        ))}
+      </span>
+      {rest > 0 && (
+        <span className="shrink-0 font-mono text-xs text-muted-foreground">+{rest}</span>
       )}
     </span>
   );
@@ -139,25 +144,64 @@ export function CompetitorPips({
  * The week by company: who moved, how often, and what share of the brief they are.
  * Answers the second question a brief raises ("is this one company or the market?")
  * which a flat list of moves hides.
+ *
+ * One line per competitor, and capped. An org watching fifteen competitors turned
+ * this into a 550px column that dwarfed the brief it was supposed to annotate, and
+ * listing the ones that did NOT move padded it with rows reading "0".
  */
 export function MoverList({
   movers,
   total,
   colorOf,
   idOf,
-  silent = [],
+  max = 6,
 }: {
   movers: DigestMover[];
   total: number;
   colorOf: ColorOf;
   /** Resolves a competitor name to its page, when we hold one. */
   idOf?: (name: string) => string | null;
-  /** Watched competitors that did not move. Their silence is a fact too. */
-  silent?: string[];
+  /** How many rows before the list folds. The rest open on demand. */
+  max?: number;
+}) {
+  const head = movers.slice(0, max);
+  const tail = movers.slice(max);
+
+  // A native disclosure rather than component state: this file is imported by the
+  // server-rendered public sample page, and folding a list is not worth a client
+  // boundary or a hydration pass.
+  return (
+    <div className="flex flex-col gap-2">
+      <MoverRows rows={head} total={total} colorOf={colorOf} idOf={idOf} />
+      {tail.length > 0 && (
+        <details className="group flex flex-col gap-2">
+          <summary className="cursor-pointer list-none text-dense text-link marker:hidden hover:underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <span className="group-open:hidden">Show all {movers.length}</span>
+            <span className="hidden group-open:inline">Show less</span>
+          </summary>
+          <div className="mt-1.5">
+            <MoverRows rows={tail} total={total} colorOf={colorOf} idOf={idOf} />
+          </div>
+        </details>
+      )}
+    </div>
+  );
+}
+
+function MoverRows({
+  rows,
+  total,
+  colorOf,
+  idOf,
+}: {
+  rows: DigestMover[];
+  total: number;
+  colorOf: ColorOf;
+  idOf?: (name: string) => string | null;
 }) {
   return (
-    <ul className="flex flex-col gap-2.5">
-      {movers.map((m) => {
+    <ul className="flex flex-col gap-1.5">
+      {rows.map((m) => {
         const color = colorOf(m.name);
         const id = idOf?.(m.name) ?? null;
         const share = total > 0 ? Math.round((m.count / total) * 100) : 0;
@@ -167,43 +211,37 @@ export function MoverList({
           </span>
         );
         return (
-          <li key={m.name} className="flex flex-col gap-1">
-            <div className="flex items-center gap-2 text-dense">
-              <span
-                aria-hidden
-                className="size-[7px] shrink-0 rounded-full"
-                style={tintStyle(color)}
-              />
-              {id ? (
-                <Link
-                  href={`/dashboard/competitors/${id}`}
-                  className="min-w-0 flex-1 hover:underline underline-offset-2"
-                >
-                  {name}
-                </Link>
-              ) : (
-                <span className="min-w-0 flex-1">{name}</span>
-              )}
-              <span className="font-mono text-xs tabular-nums text-muted-foreground">
-                {m.count}
-              </span>
-            </div>
-            <span className="ml-[15px] flex h-[3px] overflow-hidden rounded-[2px] bg-surface-3" aria-hidden>
+          <li key={m.name} className="flex items-center gap-2 text-dense">
+            <span
+              aria-hidden
+              className="size-[7px] shrink-0 rounded-full"
+              style={tintStyle(color)}
+            />
+            {id ? (
+              <Link
+                href={`/dashboard/competitors/${id}`}
+                className="min-w-0 flex-1 hover:underline underline-offset-2"
+              >
+                {name}
+              </Link>
+            ) : (
+              <span className="min-w-0 flex-1">{name}</span>
+            )}
+            <span
+              aria-hidden
+              className="flex h-1 w-9 shrink-0 overflow-hidden rounded-[2px] bg-surface-3"
+            >
               <span
                 className="h-full rounded-[2px]"
                 style={{ width: `${share}%`, ...tintStyle(color) }}
               />
             </span>
+            <span className="w-4 shrink-0 text-right font-mono text-xs tabular-nums text-muted-foreground">
+              {m.count}
+            </span>
           </li>
         );
       })}
-      {silent.map((name) => (
-        <li key={name} className="flex items-center gap-2 text-dense text-muted-foreground">
-          <span aria-hidden className="size-[7px] shrink-0 rounded-full bg-surface-3" />
-          <span className="min-w-0 flex-1 truncate">{name}</span>
-          <span className="font-mono text-xs tabular-nums">0</span>
-        </li>
-      ))}
     </ul>
   );
 }

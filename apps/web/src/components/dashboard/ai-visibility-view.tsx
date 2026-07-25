@@ -1090,6 +1090,47 @@ function QuestionStatus({ cell, active }: { cell: AiVisibilityCell | null; activ
   );
 }
 
+// Trailing public suffix, so a roster name stored as "capydex.fr" still marks "Capydex"
+// in prose. Mirrors the worker-side mention guard (lib/ai-visibility/match.ts).
+const TRAILING_TLD = /\.(com|io|app|dev|ai|co|net|org|fr|de|es|it|eu|uk|us|gg|xyz)$/i;
+
+type ExcerptSegment = { text: string; brand: string | null };
+
+// Split the engine's answer around every brand on the board it names, so each one can be
+// marked in the colour it carries everywhere else on the page. Whole-token,
+// case-insensitive, whitespace-flexible for multi-word brands; longest name first so
+// "Acme CRM" wins over "Acme". A brand the prompt seeded is marked too: the mark says
+// "the engine wrote this name here", which is true regardless of the share accounting.
+function splitByBrand(text: string, names: string[]): ExcerptSegment[] {
+  const cores = names
+    .map((name) => ({ name, core: name.replace(TRAILING_TLD, "").trim() }))
+    .filter((c) => c.core.length >= 2) // 1-char names are too noisy to word-match
+    .sort((a, b) => b.core.length - a.core.length);
+  if (cores.length === 0) return [{ text, brand: null }];
+
+  const key = (s: string) => s.toLowerCase().replace(/\s+/g, " ");
+  const byCore = new Map(cores.map((c) => [key(c.core), c.name]));
+  const pattern = cores
+    .map((c) => c.core.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/ /g, "\\s+"))
+    .join("|");
+  const re = new RegExp(`(?<![\\p{L}\\p{N}])(?:${pattern})(?![\\p{L}\\p{N}])`, "giu");
+
+  const out: ExcerptSegment[] = [];
+  let last = 0;
+  for (const m of text.matchAll(re)) {
+    const hit = m[0];
+    const at = m.index;
+    if (hit === undefined || at === undefined) continue;
+    const brand = byCore.get(key(hit));
+    if (!brand) continue;
+    if (at > last) out.push({ text: text.slice(last, at), brand: null });
+    out.push({ text: hit, brand });
+    last = at + hit.length;
+  }
+  if (last < text.length) out.push({ text: text.slice(last), brand: null });
+  return out;
+}
+
 function QuestionEvidence({
   cell,
   colors,
@@ -1112,7 +1153,21 @@ function QuestionEvidence({
     <div className="flex flex-col gap-3 px-5 pb-4 pl-12">
       {cell.excerpt && (
         <blockquote className="rounded-md bg-muted/40 p-3 text-dense leading-relaxed text-muted-foreground">
-          {cell.excerpt}
+          {splitByBrand(cell.excerpt, Object.keys(colors)).map((seg, i) =>
+            seg.brand ? (
+              <mark
+                key={i}
+                className="rounded-[3px] px-0.5 font-medium text-foreground"
+                style={{
+                  background: `color-mix(in oklab, ${colors[seg.brand] ?? "var(--muted)"} 22%, transparent)`,
+                }}
+              >
+                {seg.text}
+              </mark>
+            ) : (
+              <span key={i}>{seg.text}</span>
+            ),
+          )}
         </blockquote>
       )}
       {order.length > 0 && (

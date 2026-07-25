@@ -4,11 +4,13 @@ import { getOverviewData } from "@/lib/api-server";
 import { makeServerQueryClient } from "@/lib/server-query";
 import { resolveServerScope } from "@/lib/product-scope-server";
 import {
-  signalsQuery,
+  overviewSignalsQuery,
   competitorsQuery,
   sectoralTeaserQuery,
   battleCardsQuery,
   onboardingChecklistQuery,
+  activityHealthQuery,
+  digestsQuery,
 } from "@/lib/queries";
 
 export default async function DashboardHomePage({
@@ -26,10 +28,7 @@ export default async function DashboardHomePage({
   const queryClient = makeServerQueryClient();
   const initial = await getOverviewData(product);
   if (initial) {
-    queryClient.setQueryData(
-      signalsQuery({ limit: 200, productId: product }).queryKey,
-      initial.signals,
-    );
+    queryClient.setQueryData(overviewSignalsQuery(product).queryKey, initial.signals);
     queryClient.setQueryData(competitorsQuery(product).queryKey, initial.competitors);
     // Secondary sections — seed only when present (a plan-gated/null teaser leaves
     // the cache empty so the client query fetches + renders its own gated state).
@@ -41,6 +40,15 @@ export default async function DashboardHomePage({
     }
     if (initial.checklist) {
       queryClient.setQueryData(onboardingChecklistQuery().queryKey, initial.checklist);
+    }
+    // Source health backs one rail stat plus the "next scan" line; digests back the
+    // footer's weekly brief link. Both keys are tz-independent, so the server seed
+    // and the client read land on the same entry.
+    if (initial.health) {
+      queryClient.setQueryData(activityHealthQuery(product).queryKey, initial.health);
+    }
+    if (initial.digests) {
+      queryClient.setQueryData(digestsQuery().queryKey, initial.digests);
     }
   }
   return (

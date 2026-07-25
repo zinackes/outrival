@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { competitorsQuery, signalsQuery } from "@/lib/queries";
+import { competitorsQuery, overviewSignalsQuery } from "@/lib/queries";
 import {
   ONBOARDING_EVENTS,
   milestoneKey,
@@ -93,7 +93,7 @@ export function useOnboardingStreaming(productId?: string): OnboardingStreamingS
         if (analyzed > lastAnalyzed) {
           lastAnalyzed = analyzed;
           void qc.invalidateQueries({
-            queryKey: signalsQuery({ limit: 200, productId: pid }).queryKey,
+            queryKey: overviewSignalsQuery(pid).queryKey,
           });
         }
 

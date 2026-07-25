@@ -19,7 +19,8 @@ function ForceSample({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-// (a) The real Overview, populated by sample data — KPI strip + Recent signals feed.
+// (a) The real Overview, populated by sample data: the lead signal + its pulse rail,
+// the movers band, and the decision queue.
 function OverviewShot() {
   return (
     <>

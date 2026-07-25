@@ -50,24 +50,43 @@ const CAT_INK: Record<string, string> = {
 };
 
 /**
+ * The display label for a category enum value. Exported so a caller that renders
+ * the category inside its own markup (e.g. a comma list) matches the labels the
+ * chips use, instead of printing "security_compliance".
+ */
+export function catLabel(category: string): string {
+  const key = category.toLowerCase().trim();
+  return CAT_LABEL[key] ?? key.replace(/_/g, " ");
+}
+
+/**
  * The category as tinted words rather than a chip — for a meta line that already
  * carries a competitor tint, where a bordered uppercase badge on every row is the
  * loudest thing in the column. Keeps the wayfinding hue, drops the box.
  */
-export function CatText({ category }: { category: string }) {
+export function CatText({
+  category,
+  // Off when the label sits mid-sentence ("on pricing, hiring"). The labels that
+  // are proper nouns (M&A, Security) carry their own case either way, so nothing
+  // is ever transformed downwards.
+  capitalized = true,
+}: {
+  category: string;
+  capitalized?: boolean;
+}) {
   const key = category.toLowerCase().trim();
-  const label = CAT_LABEL[key] ?? key.replace(/_/g, " ");
 
   return (
     <span
       className={cn(
         // One short word, and the more useful of the two attributions: let the
         // source label absorb the truncation instead.
-        "shrink-0 whitespace-nowrap capitalize",
+        "shrink-0 whitespace-nowrap",
+        capitalized && "capitalize",
         CAT_INK[key] ?? "text-muted-foreground",
       )}
     >
-      {label}
+      {catLabel(key)}
     </span>
   );
 }

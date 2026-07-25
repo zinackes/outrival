@@ -6,8 +6,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { Download, ArrowRight, Radar, FlaskConical } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
-import { type Signal } from "@/lib/api";
-import { signalsQuery, competitorsQuery } from "@/lib/queries";
+import { api, type Signal } from "@/lib/api";
+import {
+  overviewSignalsQuery,
+  OVERVIEW_SIGNALS_LIMIT,
+  competitorsQuery,
+  activityHealthQuery,
+} from "@/lib/queries";
 import { toCsv, downloadCsv } from "@/lib/csv";
 import { formatDate } from "@/lib/format-date";
 import { Button } from "@/components/ui/button";
@@ -16,16 +21,17 @@ import {
   lastNDays,
   type DateRange,
 } from "@/components/ui/date-range-picker";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import { PageHead } from "./page-head";
 import { useSetAskContext } from "./ask-context";
-import { SectionHead } from "./section-head";
-import { RecentBattleCards } from "./recent-battle-cards";
-import { Kpi } from "./kpi";
-import { SeverityBadge } from "./severity-pill";
-import { CatPill } from "./cat-pill";
+import { catLabel } from "./cat-pill";
 import { OnboardingChecklistCard } from "./onboarding-checklist";
 import { LandscapeSection } from "./landscape";
+import { OverviewLead, type PulseData } from "./overview-lead";
+import { OverviewMovers } from "./overview-movers";
+import { OverviewQueue, type QueueItem } from "./overview-queue";
+import { OverviewMeasured } from "./overview-measured";
+import { OverviewArtifacts } from "./overview-artifacts";
+import { OverviewSkeleton } from "./overview-skeleton";
 import { EmptyState } from "./empty-state";
 import { SampleBanner } from "./sample-banner";
 import { useSampleMode } from "@/hooks/use-sample-mode";
@@ -33,24 +39,21 @@ import { getSampleData } from "@/lib/sample-data";
 import { ListError } from "@/components/outrival/list-error";
 import { OnboardingAnalysisPanel } from "@/components/onboarding/onboarding-analysis-panel";
 import { useOnboardingStreaming } from "@/hooks/use-onboarding-streaming";
-import DashboardLoading from "@/app/dashboard/dashboard-skeleton";
+import { toastApiError } from "@/lib/error-helpers";
 
-const SEV_ORDER: Record<Signal["severity"], number> = {
-  critical: 0,
-  high: 1,
+const SEV_RANK: Record<Signal["severity"], number> = {
+  critical: 4,
+  high: 3,
   medium: 2,
-  low: 3,
+  low: 1,
 };
 
-interface Counts {
-  signals: number;
-  critical: number;
-  activeCompetitors: number;
-  totalCompetitors: number;
-}
+// Bars in the pulse rail. Enough to show a shape, few enough that each one stays
+// readable in a 264px column (a 90 day range buckets into 14, not 90 slivers).
+const MAX_BARS = 14;
 
 // Buckets signals across the selected [from, to] window into `buckets` equal
-// slices, so the sparkline spans the picked range rather than a fixed 10-day tail.
+// slices, so the bars span the picked range rather than a fixed tail.
 function trendBuckets(
   signals: Signal[],
   fromMs: number,
@@ -59,25 +62,22 @@ function trendBuckets(
 ): number[] {
   const span = Math.max(1, toMs - fromMs);
   const slice = span / buckets;
-  const out = new Array(buckets).fill(0);
+  const out = new Array<number>(buckets).fill(0);
   for (const s of signals) {
     const t = new Date(s.createdAt).getTime();
     if (t < fromMs || t > toMs) continue;
     const i = Math.min(buckets - 1, Math.floor((t - fromMs) / slice));
-    out[i]++;
+    out[i]!++;
   }
   return out;
 }
 
-function trendLabels(fromMs: number, toMs: number, buckets: number): string[] {
+function bucketLabel(fromMs: number, toMs: number, buckets: number, i: number): string {
   const span = Math.max(1, toMs - fromMs);
-  const slice = span / buckets;
-  const labels: string[] = [];
-  for (let i = 0; i < buckets; i++) {
-    const date = new Date(fromMs + i * slice);
-    labels.push(formatDate(date, { month: "short", day: "numeric" }));
-  }
-  return labels;
+  return formatDate(new Date(fromMs + i * (span / buckets)), {
+    month: "short",
+    day: "numeric",
+  });
 }
 
 export function OverviewView() {
@@ -88,15 +88,26 @@ export function OverviewView() {
   // Server-seeded on first paint (see app/dashboard/page.tsx) → useQuery reads the
   // hydrated cache instead of fetching; falls back to a client fetch when the seed
   // was missing or the server prefetch failed.
-  // Poll every 30s (matching the competitors list / sidebar roster). The global
-  // QueryClient is staleTime 60s + refetchOnWindowFocus:false, so without an interval
-  // the "Recent signals" list — and the watching→populated flip that gates on the first
-  // signal landing in signalsQ — never refresh on their own, while the count surfaces do.
-  // 60s (not 30s): the signals query pulls limit:200 with insight/so_what/narrative
-  // (~100KB) and criticals already arrive live via SSE/alerts, so a tighter idle poll
-  // just burns bandwidth on an idle tab.
-  const signalsQ = useQuery({ ...signalsQuery({ limit: 200, productId }), refetchInterval: 60_000 });
-  const competitorsQ = useQuery({ ...competitorsQuery(productId), refetchInterval: 60_000 });
+  // Poll every 60s (not 30s): the signals query pulls the newest 200 with
+  // insight/so_what/narrative (~100KB) and criticals already arrive live via
+  // SSE/alerts, so a tighter idle poll just burns bandwidth on an idle tab.
+  //
+  // sort:"recent" (not the default threat order) because every number on this page
+  // is windowed: the period count, its comparison against the period before, the
+  // per-bucket bars. A threat-ranked page of 200 is an arbitrary sample of the
+  // calendar, so those numbers were quietly wrong for any org past 200 signals. The
+  // lead is still chosen by threatScore, which every row carries.
+  const signalsQ = useQuery({
+    ...overviewSignalsQuery(productId),
+    refetchInterval: 60_000,
+  });
+  const competitorsQ = useQuery({
+    ...competitorsQuery(productId),
+    refetchInterval: 60_000,
+  });
+  // Source health feeds one rail stat and the "next scan" line in the cleared
+  // queue. Best-effort: a failure just drops those two, never the page.
+  const healthQ = useQuery(activityHealthQuery(productId));
   const signals = signalsQ.data ?? null;
   const competitors = competitorsQ.data ?? null;
   const err = signalsQ.error ?? competitorsQ.error;
@@ -104,10 +115,7 @@ export function OverviewView() {
   const rangeFrom = range.from.getTime();
   const rangeTo = range.to.getTime();
   const rangeDays = Math.max(1, Math.round((rangeTo - rangeFrom) / 86_400_000));
-  const inWindow = (iso: string) => {
-    const t = new Date(iso).getTime();
-    return t >= rangeFrom && t <= rangeTo;
-  };
+  const rangeLabel = `last ${rangeDays} days`;
 
   // Sample / demo mode (Step 0 cold-start): when on, every computation below
   // reads a fixed fictional dataset instead of the org's data, so a brand-new
@@ -124,10 +132,29 @@ export function OverviewView() {
   // truth (no parallel useState to keep in sync).
   const load = useCallback(() => {
     void queryClient.invalidateQueries({
-      queryKey: signalsQuery({ limit: 200, productId }).queryKey,
+      queryKey: overviewSignalsQuery(productId).queryKey,
     });
     void queryClient.invalidateQueries({ queryKey: competitorsQuery(productId).queryKey });
   }, [queryClient, productId]);
+
+  // Clears the lead without leaving the page. Optimistic on the exact cache entry
+  // this view reads, so the band advances to the next signal immediately.
+  const markRead = useCallback(
+    async (id: string) => {
+      const key = overviewSignalsQuery(productId).queryKey;
+      const prev = queryClient.getQueryData<Signal[]>(key);
+      queryClient.setQueryData<Signal[]>(key, (rows) =>
+        rows?.map((s) => (s.id === id ? { ...s, isRead: true } : s)),
+      );
+      try {
+        await api.markSignalRead(id);
+      } catch (e) {
+        queryClient.setQueryData(key, prev);
+        toastApiError(e);
+      }
+    },
+    [queryClient, productId],
+  );
 
   // Lifted here (single poller) so the Overview can stagger its first-run
   // surfaces: while the first analysis streams in, only the analysis panel shows
@@ -138,11 +165,95 @@ export function OverviewView() {
   const analysis = useOnboardingStreaming(productId);
   const analysisActive = analysis.active && analysis.total > 0;
 
-  function exportCsv() {
-    if (!dsSignals) return;
-    const rows = dsSignals.filter(
-      (s) => inWindow(s.createdAt),
+  // Everything the blocks read, derived once. `window` is the picked period,
+  // `prev` the period of the same length immediately before it (the comparison).
+  const derived = useMemo(() => {
+    const all = dsSignals ?? [];
+    const span = rangeTo - rangeFrom;
+    const inWindow: Signal[] = [];
+    let prevCount = 0;
+    let oldest = Number.POSITIVE_INFINITY;
+    for (const s of all) {
+      const t = new Date(s.createdAt).getTime();
+      if (t < oldest) oldest = t;
+      if (t >= rangeFrom && t <= rangeTo) inWindow.push(s);
+      else if (t >= rangeFrom - span && t < rangeFrom) prevCount++;
+    }
+    // The fetch returns the NEWEST page. When it is full and its oldest row still
+    // lands after the previous window opened, that window is only partly fetched —
+    // so the comparison is withheld instead of being understated.
+    const comparable = all.length < OVERVIEW_SIGNALS_LIMIT || oldest <= rangeFrom - span;
+
+    const byThreat = [...inWindow].sort(
+      (a, b) =>
+        Number(a.isRead) - Number(b.isRead) ||
+        b.threatScore - a.threatScore ||
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     );
+    const lead = byThreat[0] ?? null;
+
+    // The queue is keyed on state, not severity: what has not been looked at, and
+    // what the user has claimed. The lead is excluded so the page never says the
+    // same thing twice.
+    const queue: QueueItem[] = inWindow
+      .filter((s) => s.id !== lead?.id)
+      .map((s): QueueItem | null => {
+        const sev = s.severityOverride ?? s.severity;
+        if (s.actionStatus === "todo") return { signal: s, reason: "todo" };
+        if (s.actionStatus === "doing") return { signal: s, reason: "doing" };
+        if (!s.isRead && sev === "critical") return { signal: s, reason: "critical" };
+        if (!s.isRead && sev === "high") return { signal: s, reason: "high" };
+        return null;
+      })
+      .filter((i): i is QueueItem => i !== null)
+      .sort(
+        (a, b) =>
+          SEV_RANK[b.signal.severityOverride ?? b.signal.severity] -
+            SEV_RANK[a.signal.severityOverride ?? a.signal.severity] ||
+          new Date(b.signal.createdAt).getTime() - new Date(a.signal.createdAt).getTime(),
+      )
+      .slice(0, 4);
+
+    const criticals = inWindow.filter(
+      (s) => (s.severityOverride ?? s.severity) === "critical" && !s.isRead,
+    );
+    // Counted against the roster only. The feed also carries self-product signals
+    // ("your own page changed"), which the roster endpoint excludes — left
+    // unfiltered the masthead could claim "6 of 5 competitors moved".
+    const roster = new Set((dsCompetitors ?? []).map((c) => c.id));
+    const movers = new Set(
+      inWindow.filter((s) => roster.has(s.competitorId)).map((s) => s.competitorId),
+    );
+
+    // The window's dominant category, only when one genuinely dominates. Below
+    // this the masthead says nothing rather than promoting a two-signal tie.
+    const catCounts = new Map<string, number>();
+    for (const s of inWindow) catCounts.set(s.category, (catCounts.get(s.category) ?? 0) + 1);
+    let dominant: string | null = null;
+    for (const [cat, n] of catCounts) {
+      if (n >= 3 && n / inWindow.length >= 0.4) {
+        if (dominant === null || n > (catCounts.get(dominant) ?? 0)) dominant = cat;
+      }
+    }
+
+    const buckets = Math.min(MAX_BARS, Math.max(3, rangeDays));
+    return {
+      inWindow,
+      prevCount,
+      comparable,
+      lead,
+      queue,
+      criticals,
+      moverCount: movers.size,
+      dominant,
+      bars: trendBuckets(inWindow, rangeFrom, rangeTo, buckets),
+      barStart: bucketLabel(rangeFrom, rangeTo, buckets, 0),
+      barEnd: bucketLabel(rangeFrom, rangeTo, buckets, buckets - 1),
+    };
+  }, [dsSignals, dsCompetitors, rangeFrom, rangeTo, rangeDays]);
+
+  function exportCsv() {
+    const rows = derived.inWindow;
     if (!rows.length) return;
     const csv = toCsv(rows, [
       { key: "createdAt", label: "Date" },
@@ -157,52 +268,6 @@ export function OverviewView() {
     downloadCsv(`outrival-overview-${rangeDays}d-${date}.csv`, csv);
   }
 
-  const counts = useMemo<Counts>(() => {
-    const inRange = (dsSignals ?? []).filter(
-      (s) => inWindow(s.createdAt),
-    );
-    const critical = inRange.filter(
-      (s) => s.severity === "critical" && !s.isRead,
-    ).length;
-    const activeIds = new Set(inRange.map((s) => s.competitorId));
-    return {
-      signals: inRange.length,
-      critical,
-      activeCompetitors: activeIds.size,
-      totalCompetitors: dsCompetitors?.length ?? 0,
-    };
-  }, [dsSignals, dsCompetitors, range]);
-
-  const recentSignals = useMemo(() => {
-    if (!dsSignals) return [];
-    return dsSignals
-      .filter((s) => inWindow(s.createdAt))
-      .sort((a, b) => {
-        const s = SEV_ORDER[a.severity] - SEV_ORDER[b.severity];
-        if (s !== 0) return s;
-        return (
-          new Date(b.createdAt).getTime() -
-          new Date(a.createdAt).getTime()
-        );
-      })
-      .slice(0, 5);
-  }, [dsSignals, range]);
-
-  // One daily bucket per day in the range (≥2 points so a sparkline still reads,
-  // capped at 60 so long ranges don't produce sub-pixel bars).
-  const sparkBuckets = Math.min(60, Math.max(2, rangeDays));
-  const trendSpark = useMemo(
-    () =>
-      dsSignals
-        ? trendBuckets(dsSignals, rangeFrom, rangeTo, sparkBuckets)
-        : [],
-    [dsSignals, rangeFrom, rangeTo, sparkBuckets],
-  );
-  const trendSparkLabels = useMemo(
-    () => trendLabels(rangeFrom, rangeTo, sparkBuckets),
-    [rangeFrom, rangeTo, sparkBuckets],
-  );
-
   // Loading / error gates apply to the live fetch only — sample data is always
   // ready, so demo mode renders immediately even before the real fetch settles.
   if (!sample && err && (signals === null || competitors === null)) {
@@ -214,7 +279,7 @@ export function OverviewView() {
   }
 
   if (!sample && (signals === null || competitors === null)) {
-    return <DashboardLoading />;
+    return <OverviewSkeleton />;
   }
 
   // Past the gates the effective data is non-null (real fetch resolved, or sample).
@@ -228,7 +293,6 @@ export function OverviewView() {
   //    a strip of bare "0" KPIs that reads as broken;
   //  • populated           → the full dashboard.
   const watching = hasCompetitors && !everHadSignals;
-  const rangeLabel = `last ${rangeDays} days`;
 
   // First use — lead with one setup prompt + safe exploration, skip the empty grid.
   if (!sample && !hasCompetitors) {
@@ -263,6 +327,35 @@ export function OverviewView() {
     );
   }
 
+  const health = healthQ.data ?? null;
+  // Competitor sources only: the org's own product is not something the user is
+  // watching for movement.
+  const watched = health ? health.sources.filter((s) => !s.isSelf) : [];
+  const sources = health
+    ? {
+        total: watched.length,
+        ok: watched.filter((s) => s.status === "ok").length,
+        failing: watched.filter((s) => s.status === "failing" || s.status === "unscrapable")
+          .length,
+        paused: watched.filter((s) => s.status === "paused").length,
+      }
+    : null;
+  const nextRun = health?.upcoming[0]?.nextRunAt ?? null;
+
+  const pulse: PulseData = {
+    count: derived.inWindow.length,
+    prevCount: derived.prevCount,
+    comparable: derived.comparable,
+    bars: derived.bars,
+    barStart: derived.barStart,
+    barEnd: derived.barEnd,
+    criticals: derived.criticals.length,
+    criticalLead: derived.criticals[0]
+      ? `${derived.criticals[0].competitorName}, ${catLabel(derived.criticals[0].category)}`
+      : null,
+    sources: sample ? null : sources,
+  };
+
   return (
     <div className="space-y-9">
       {/* Progressive streaming right after onboarding (patch-25) — refreshes this
@@ -276,11 +369,33 @@ export function OverviewView() {
       <PageHead
         title="Overview"
         sub={
-          watching
-            ? `Watching ${comps.length} competitor${comps.length > 1 ? "s" : ""}.`
-            : counts.signals > 0
-              ? `${counts.activeCompetitors} competitor${counts.activeCompetitors > 1 ? "s" : ""} moved in this period · ${counts.critical} critical signal${counts.critical > 1 ? "s" : ""} pending.`
-              : `No signals in the last ${rangeDays} days.`
+          watching ? (
+            `Watching ${comps.length} competitor${comps.length > 1 ? "s" : ""}.`
+          ) : (
+            // The verdict, not the tally: who moved, on what, and whether anything
+            // is still unhandled. Composed from counts we already hold, so it costs
+            // no model call and can never contradict the blocks below it.
+            <span className="text-foreground">
+              {derived.inWindow.length === 0 ? (
+                <>No competitor moved in the {rangeLabel}.</>
+              ) : (
+                <>
+                  {derived.moverCount} of {comps.length} competitor
+                  {comps.length > 1 ? "s" : ""} moved
+                  {derived.dominant ? `, mostly on ${catLabel(derived.dominant)}` : ""}.
+                </>
+              )}{" "}
+              <span className="text-muted-foreground">
+                {derived.criticals.length > 0
+                  ? `${derived.criticals.length} critical still open.`
+                  : derived.inWindow.length > 0
+                    ? "Nothing critical open."
+                    : nextRun
+                      ? `Next scan ${formatDistanceToNow(new Date(nextRun), { addSuffix: true })}.`
+                      : ""}
+              </span>
+            </span>
+          )
         }
         actions={
           <>
@@ -289,7 +404,7 @@ export function OverviewView() {
               variant="outline"
               size="sm"
               onClick={exportCsv}
-              disabled={counts.signals === 0}
+              disabled={derived.inWindow.length === 0}
             >
               <Download size={13} /> Export
             </Button>
@@ -304,142 +419,37 @@ export function OverviewView() {
         <LandscapeSection productId={productId} competitorCount={comps.length} />
       ) : (
         <>
+          {derived.lead ? (
+            <OverviewLead
+              signal={derived.lead}
+              pulse={pulse}
+              rangeLabel={rangeLabel}
+              onMarkRead={sample ? undefined : markRead}
+            />
+          ) : (
+            // Signals exist, but none in this window. The range is the thing to
+            // change, so say that rather than showing a dead band.
+            <div className="rounded-lg border border-border bg-card px-5 py-8 text-sm text-muted-foreground">
+              No signals in the {rangeLabel}. Widen the range to see history.
+            </div>
+          )}
 
-      {/* KPI strip — banded surface cells, hairline dividers between them, closed
-          by a light rounded border like the controls. */}
-      <TooltipProvider delayDuration={80}>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-px bg-border border border-border rounded-md overflow-hidden">
-        <div className="bg-card">
-          <Kpi
-            label="Signals"
-            value={counts.signals}
-            delta={counts.signals > 0 ? rangeLabel : "—"}
-            deltaKind="pos"
-            spark={trendSpark}
-            sparkColor="var(--accent)"
-            sparkLabels={trendSparkLabels}
-            sparkValueLabel="signals"
-          />
-        </div>
-        <div className="bg-card">
-          <Kpi
-            label="Critical pending"
-            value={counts.critical}
-            href={
-              counts.critical > 0 ? "/dashboard/signals?view=critical" : undefined
-            }
-            deltaKind={counts.critical > 0 ? "neg" : "neutral"}
-            delta={counts.critical > 0 ? "action required" : "nothing to handle"}
-            meta={
-              counts.critical > 0
-                ? recentSignals
-                    .filter((s) => s.severity === "critical")
-                    .slice(0, 2)
-                    .map((s) => `${s.competitorName} · ${s.category}`)
-                    .join(" · ") || undefined
-                : undefined
+          <OverviewMovers competitors={comps} />
+
+          <OverviewQueue
+            items={derived.queue}
+            windowCount={derived.inWindow.length}
+            rangeLabel={rangeLabel}
+            nextRunLabel={
+              nextRun
+                ? formatDistanceToNow(new Date(nextRun), { addSuffix: true })
+                : null
             }
           />
-        </div>
-        <div className="bg-card">
-          <Kpi
-            label="Active competitors"
-            value={counts.activeCompetitors}
-            suffix={`/ ${counts.totalCompetitors}`}
-            hint={`Competitors that produced at least one signal in the selected period, out of the ${counts.totalCompetitors} you track. Not your plan's competitor limit.`}
-            deltaKind="neutral"
-            delta={
-              counts.activeCompetitors < counts.totalCompetitors
-                ? "some silent"
-                : "all active"
-            }
-          />
-        </div>
-        <div className="bg-card">
-          <Kpi
-            label="Last signal"
-            valueClassName="text-lg"
-            value={
-              recentSignals[0]
-                ? formatDistanceToNow(new Date(recentSignals[0].createdAt), {
-                    addSuffix: true,
-                  })
-                : "—"
-            }
-          />
-        </div>
-      </div>
-      </TooltipProvider>
 
-      {/* Recent signals — the hero list, closed by a light rounded border like
-          the controls. */}
-      <section>
-        <SectionHead
-          title="Recent signals"
-          sub="sorted by severity then date"
-          divider={false}
-          action={
-            <Button asChild variant="outline" size="sm">
-              <Link href="/dashboard/signals">
-                View all <ArrowRight size={11} />
-              </Link>
-            </Button>
-          }
-        />
-        <TooltipProvider delayDuration={80}>
-          <div className="mt-3 max-h-[440px] overflow-y-auto rounded-md border border-border">
-            {recentSignals.length === 0 ? (
-              // Reached only in the populated view if the top-5 is momentarily
-              // empty — first-use / watching are handled upstream.
-              <div className="px-4 py-10 text-sm text-muted-foreground">
-                No signals in the {rangeLabel}. Widen the range to see history.
-              </div>
-            ) : (
-              recentSignals.map((s) => (
-                <Link
-                  key={s.id}
-                  href={`/dashboard/signals?focus=${s.id}`}
-                  className="grid grid-cols-[1fr_auto] gap-3 max-sm:gap-2 items-start px-4 py-3.5 max-sm:py-2.5 border-b border-border last:border-b-0 cursor-pointer hover:bg-accent/50 transition-colors"
-                >
-                  <div className="min-w-0 max-w-[120ch]">
-                    {/* Classification header — who / severity / category grouped on
-                        one meta line, kept distinct from the body prose below so the
-                        eye reads "who & how bad" before "what & what to do". */}
-                    <div className="flex items-center gap-2 mb-1.5 min-w-0">
-                      <span className="font-semibold text-content truncate">
-                        {s.competitorName}
-                      </span>
-                      <SeverityBadge severity={s.severity} />
-                      <CatPill size="compact">{s.category}</CatPill>
-                    </div>
-                    {/* The finding — the lead, clamped to one line */}
-                    <div className="text-content leading-snug line-clamp-1">
-                      {s.insight}
-                    </div>
-                    {/* Why it matters — one muted supporting line, clamped */}
-                    {s.soWhat && (
-                      <div className="text-muted-foreground text-sm mt-1 line-clamp-1">
-                        {s.soWhat}
-                      </div>
-                    )}
-                  </div>
-                  <span className="text-meta text-muted-foreground mt-[3px]">
-                    {formatDistanceToNow(new Date(s.createdAt), {
-                      addSuffix: true,
-                    })}
-                  </span>
-                </Link>
-              ))
-            )}
-          </div>
-        </TooltipProvider>
-      </section>
+          {!sample && <OverviewMeasured range={range} productId={productId} />}
 
-      {/* Recent battle cards — discreet surface, self-hides when the org has no
-          cards. Restores the pre-landing-overhaul section: with signals present the
-          overview otherwise reads as just KPIs + one list. */}
-      {!sample && <RecentBattleCards />}
-
+          {!sample && <OverviewArtifacts />}
         </>
       )}
     </div>

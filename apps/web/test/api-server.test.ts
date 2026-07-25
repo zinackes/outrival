@@ -76,6 +76,9 @@ describe("success path maps the API shape", () => {
       if (u.includes("/api/competitors")) return ok({ competitors: [{ id: "c1" }] });
       if (u.includes("/api/sectoral")) return ok({ signals: [{ id: "sec1" }] });
       if (u.includes("/api/battle-cards")) return ok({ battleCards: [{ id: "bc1" }] });
+      if (u.includes("/api/activity/health"))
+        return ok({ sources: [{ monitorId: "m1" }], upcoming: [] });
+      if (u.includes("/api/digests")) return ok({ digests: [{ id: "d1" }] });
       return ok({ completed: false }); // /api/onboarding/checklist
     };
     const { getOverviewData } = await load();
@@ -86,7 +89,27 @@ describe("success path maps the API shape", () => {
       sectoral: [{ id: "sec1" }],
       battleCards: [{ id: "bc1" }],
       checklist: { completed: false },
+      health: { sources: [{ monitorId: "m1" }], upcoming: [] },
+      digests: [{ id: "d1" }],
     });
+  });
+
+  test("getOverviewData asks for the newest page, not the threat-ranked one", async () => {
+    // The Overview windows every number it shows, so the seed must fetch in the same
+    // chronological order overviewSignalsQuery does — otherwise the seed writes a
+    // cache entry the view never reads.
+    router = (u) => {
+      if (u.includes("/api/signals")) return ok({ signals: [] });
+      if (u.includes("/api/competitors")) return ok({ competitors: [] });
+      return ok({});
+    };
+    const { getOverviewData } = await load();
+
+    await getOverviewData();
+
+    const signalsCall = fetchCalls.find((c) => c.url.includes("/api/signals"))!;
+    expect(signalsCall.url).toContain("sort=recent");
+    expect(signalsCall.url).toContain("limit=200");
   });
 
   test("getSignalsData threads sort + productId into the query string", async () => {

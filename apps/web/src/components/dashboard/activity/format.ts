@@ -55,6 +55,64 @@ export function duration(ms: number): string {
   return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
 }
 
+// ── Watch strip bars ─────────────────────────────────────────────────────────
+
+/** What one slice of an hour's bar stands for. */
+export type BarKind = "quiet" | "change" | "failed";
+
+export interface BarSegment {
+  kind: BarKind;
+  height: number;
+  count: number;
+}
+
+// Smallest slice that still reads as a slice. One change inside a busy hour has
+// to stay visible, so a present outcome is never allowed to round down to
+// nothing.
+const MIN_SEGMENT = 3;
+
+/**
+ * One hour's bar split into its outcomes, bottom to top: the routine checks
+ * first, then the changes, then the failures. An hour holds several checks and
+ * they do not all end the same way — colouring the whole bar by the worst one
+ * would erase the changes behind a single failure, so each outcome gets its own
+ * slice, sized by how many checks it accounts for.
+ *
+ * Returns the segments and the height they need: a bar carrying three outcomes
+ * cannot be shorter than three minimum slices, so the volume height is raised to
+ * fit rather than the slices being squeezed out of existence.
+ */
+export function barSegments(
+  height: number,
+  checks: number,
+  changes: number,
+  failures: number,
+): { segments: BarSegment[]; height: number } {
+  // changes and failures are counted by disjoint filters server-side, so what is
+  // left is the checks that ran and found nothing.
+  const parts: BarSegment[] = (
+    [
+      { kind: "quiet", count: Math.max(0, checks - changes - failures), height: 0 },
+      { kind: "change", count: changes, height: 0 },
+      { kind: "failed", count: failures, height: 0 },
+    ] satisfies BarSegment[]
+  ).filter((p) => p.count > 0);
+
+  if (parts.length === 0) return { segments: [{ kind: "quiet", count: 0, height }], height };
+  if (parts.length === 1) return { segments: [{ ...parts[0]!, height }], height };
+
+  const total = Math.max(height, parts.length * MIN_SEGMENT);
+  for (const p of parts) p.height = Math.max(MIN_SEGMENT, Math.round((total * p.count) / checks));
+
+  // Rounding and the floor both push the stack off `total`; the biggest slice
+  // absorbs the difference, since it is the one that can lose a pixel without
+  // changing what it says.
+  const biggest = parts.reduce((m, p) => (p.height > m.height ? p : m), parts[0]!);
+  biggest.height = Math.max(MIN_SEGMENT, biggest.height + total - parts.reduce((n, p) => n + p.height, 0));
+
+  return { segments: parts, height: parts.reduce((n, p) => n + p.height, 0) };
+}
+
 // ── Structured homepage changes ──────────────────────────────────────────────
 
 // Readable label per structured-diff kind. Sentence case, not an uppercase mono

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { ActivityBucket, ActivityFinding, ActivityUpcoming } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { barSegments, type BarSegment } from "./format";
 import { formatTime } from "@/lib/format-date";
 import { sourceLabel } from "@/lib/source-labels";
 import { competitorNameColor } from "@/lib/competitor-color";
@@ -42,24 +43,26 @@ const MARK_GAP = 4;
 const NIGHT_FROM = 22;
 const NIGHT_TO = 7;
 
-type BarKind = "quiet" | "change" | "failed";
-
 interface Bar {
   slot: number;
   left: number;
   width: number;
   height: number;
-  kind: BarKind;
+  // The hour's outcomes, bottom to top. An hour that both found a change and
+  // lost a source draws both, rather than picking one to stand for the hour.
+  segments: BarSegment[];
   start: Date;
   end: Date;
   checks: number;
   findings: ActivityFinding[];
 }
 
-function bucketKind(b: ActivityBucket): BarKind {
-  if (b.failures > 0) return "failed";
-  if (b.changes > 0) return "change";
-  return "quiet";
+// What the hour's cap stands for. An hour holding both outcomes is capped by the
+// failure: the bar already says a change is in there too, and of the two it is
+// the unreachable source that costs the reader something.
+function markKind(bar: Bar): "change" | "failed" | null {
+  if (bar.segments.some((s) => s.kind === "failed")) return "failed";
+  return bar.segments.some((s) => s.kind === "change") ? "change" : null;
 }
 
 export function WatchStrip({
@@ -143,15 +146,17 @@ export function WatchStrip({
       if (!b || b.checks === 0) {
         // An observed zero keeps a stub, so an hour with nothing due reads as
         // "nothing due" and not as a hole in the record.
-        bars.push({ ...common, height: BAR_STUB, kind: "quiet", checks: 0 });
+        bars.push({
+          ...common,
+          height: BAR_STUB,
+          segments: [{ kind: "quiet", count: 0, height: BAR_STUB }],
+          checks: 0,
+        });
         continue;
       }
-      bars.push({
-        ...common,
-        height: Math.round(BAR_MIN + Math.min(b.checks / busiest, 1) * (BAR_MAX - BAR_MIN)),
-        kind: bucketKind(b),
-        checks: b.checks,
-      });
+      const volume = Math.round(BAR_MIN + Math.min(b.checks / busiest, 1) * (BAR_MAX - BAR_MIN));
+      const stack = barSegments(volume, b.checks, b.changes, b.failures);
+      bars.push({ ...common, height: stack.height, segments: stack.segments, checks: b.checks });
     }
 
     // Contiguous night runs, so the shading is one band per night rather than 24
@@ -348,37 +353,50 @@ export function WatchStrip({
               />
             )}
 
-            {model.bars.map((bar) => (
-              <span
-                key={bar.slot}
-                className={cn(
-                  "absolute bottom-0 rounded-t-[1.5px]",
-                  bar.kind === "change" && "bg-foreground",
-                  bar.kind === "failed" && "bg-critical",
-                  bar.kind === "quiet" &&
-                    (bar.checks === 0
-                      ? "bg-border"
-                      : hoveredBar?.slot === bar.slot
-                        ? "bg-foreground"
-                        : "bg-border-strong"),
-                )}
-                style={{
-                  left: `${bar.left}%`,
-                  width: `calc(${bar.width}% - 2px)`,
-                  height: `${bar.height}px`,
-                }}
-                aria-hidden
-              />
-            ))}
+            {model.bars.map((bar) => {
+              // A bar with nothing but routine checks brightens under the cursor;
+              // one that holds a finding already carries its own colour, and
+              // brightening its base would read as a second change.
+              const allQuiet = bar.segments.every((s) => s.kind === "quiet");
+              return (
+                <span
+                  key={bar.slot}
+                  className="absolute bottom-0 flex flex-col-reverse overflow-hidden rounded-t-[1.5px]"
+                  style={{
+                    left: `${bar.left}%`,
+                    width: `calc(${bar.width}% - 2px)`,
+                    height: `${bar.height}px`,
+                  }}
+                  aria-hidden
+                >
+                  {bar.segments.map((s) => (
+                    <i
+                      key={s.kind}
+                      className={cn(
+                        "block w-full",
+                        s.kind === "change" && "bg-foreground",
+                        s.kind === "failed" && "bg-critical",
+                        s.kind === "quiet" &&
+                          (bar.checks === 0
+                            ? "bg-border"
+                            : allQuiet && hoveredBar?.slot === bar.slot
+                              ? "bg-foreground"
+                              : "bg-border-strong"),
+                      )}
+                      style={{ height: `${s.height}px` }}
+                    />
+                  ))}
+                </span>
+              );
+            })}
 
             {/* A cap over a finding's bar, so a change reads by shape before it
                 reads by colour — and, where the width allows a legible one, by
                 WHO. */}
-            {model.bars
-              .filter((b) => b.kind !== "quiet")
-              .map((bar) => (
-                <FindingMark key={`pin-${bar.slot}`} bar={bar} />
-              ))}
+            {model.bars.map((bar) => {
+              const kind = markKind(bar);
+              return kind && <FindingMark key={`pin-${bar.slot}`} bar={bar} kind={kind} />;
+            })}
 
             {/* Everything right of now: scheduled, not observed. */}
             <div
@@ -449,12 +467,12 @@ export function WatchStrip({
 // The mark is a decoration, not a control — the hour it caps is read through the
 // strip's own cursor (pointer or arrow keys), which already names every finding
 // of the bucket, including the ones a single mark cannot show.
-function FindingMark({ bar }: { bar: Bar }) {
+function FindingMark({ bar, kind }: { bar: Bar; kind: "change" | "failed" }) {
   // Findings arrive newest first, so the hour is capped by its latest one — of
-  // the kind the BAR already draws, so a red bar never names a competitor whose
-  // source was reached fine. An hour that moved for more than one competitor gets
-  // a tile behind the mark, so the logo never claims it belonged to a single name.
-  const lead = bar.findings.find((f) => f.kind === bar.kind) ?? bar.findings[0] ?? null;
+  // the kind the CAP draws, so a red mark never names a competitor whose source
+  // was reached fine. An hour that moved for more than one competitor gets a tile
+  // behind the mark, so the logo never claims it belonged to a single name.
+  const lead = bar.findings.find((f) => f.kind === kind) ?? bar.findings[0] ?? null;
   const names = new Set(bar.findings.map((f) => f.competitorId)).size;
   const bottom = `${bar.height + MARK_GAP}px`;
   return (
@@ -466,7 +484,7 @@ function FindingMark({ bar }: { bar: Bar }) {
         className={cn(
           "absolute size-[5px] rounded-full",
           lead && "sm:hidden",
-          bar.kind === "failed" ? "bg-critical" : "bg-foreground",
+          kind === "failed" ? "bg-critical" : "bg-foreground",
         )}
         style={{ left: `calc(${bar.left + bar.width / 2}% - 2.5px)`, bottom }}
         aria-hidden
@@ -486,7 +504,7 @@ function FindingMark({ bar }: { bar: Bar }) {
           <span
             className={cn(
               "relative block rounded-[4px]",
-              bar.kind === "failed" && "ring-1 ring-critical",
+              kind === "failed" && "ring-1 ring-critical",
             )}
           >
             <CompAvatar name={lead.competitorName} url={lead.url} size={MARK} />

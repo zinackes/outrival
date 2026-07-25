@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  barSegments,
   capturedSummary,
   dayBounds,
   dayKeyOf,
@@ -69,6 +70,40 @@ describe("day boundaries", () => {
 
   test("consecutive days do not overlap or leave a gap", () => {
     expect(dayBounds("2026-07-25").to).toBe(dayBounds("2026-07-26").from);
+  });
+});
+
+describe("barSegments", () => {
+  const kinds = (h: number, c: number, ch: number, f: number) =>
+    barSegments(h, c, ch, f).segments.map((s) => s.kind);
+
+  test("an hour that both moved and broke draws both, not the worse one", () => {
+    expect(kinds(30, 8, 2, 1)).toEqual(["quiet", "change", "failed"]);
+  });
+
+  test("a single outcome takes the whole bar", () => {
+    expect(barSegments(30, 5, 0, 0).segments).toEqual([{ kind: "quiet", count: 5, height: 30 }]);
+    expect(kinds(30, 3, 3, 0)).toEqual(["change"]);
+  });
+
+  test("one finding inside a busy hour keeps a visible slice", () => {
+    const { segments } = barSegments(40, 60, 1, 0);
+    expect(segments.find((s) => s.kind === "change")!.height).toBeGreaterThanOrEqual(3);
+  });
+
+  test("the slices add up to the height they report", () => {
+    for (const [h, c, ch, f] of [
+      [40, 60, 1, 0],
+      [30, 8, 2, 1],
+      [6, 3, 1, 1],
+      [7, 12, 1, 1],
+      [12, 4, 1, 2],
+    ] as const) {
+      const { segments, height } = barSegments(h, c, ch, f);
+      expect(segments.reduce((n, s) => n + s.height, 0)).toBe(height);
+      // A short bar grows to fit its slices rather than dropping one.
+      expect(height).toBeGreaterThanOrEqual(h);
+    }
   });
 });
 

@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { formatDistanceToNow } from "date-fns";
 import dynamic from "next/dynamic";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { Lock, Plus, Loader2, Activity, Star, Settings2, Link2, HelpCircle } from "lucide-react";
+import { Lock, Plus, Loader2, Star, Settings2, Link2, HelpCircle } from "lucide-react";
 import {
   PLAN_LABELS,
   MONITOR_FREQUENCIES,
@@ -17,7 +18,7 @@ import {
   type ReviewSourceType,
   type MonitorFrequency,
 } from "@outrival/shared";
-import { api, type Monitor } from "@/lib/api";
+import { api, type CompetitorSignal, type Monitor } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -218,6 +219,7 @@ function ReviewEnableState({
 
 export function ReviewsTab({
   competitorId,
+  signals,
   monitors,
   scrapingIds,
   onRun,
@@ -229,6 +231,8 @@ export function ReviewsTab({
   onLockedFrequency,
 }: {
   competitorId: string;
+  /** Already on the page; carries the review-shift anchor the chart marks. */
+  signals: CompetitorSignal[];
   plan: Plan;
   onLockedSource?: (source: ReviewSourceType) => void;
   onLockedFrequency: (freq: MonitorFrequency) => void;
@@ -272,16 +276,12 @@ export function ReviewsTab({
   const hasData = reviews.recent.length > 0 || scores.length > 0;
   const series = scores.length > 0 ? buildReviewScoreSeries(scores) : null;
 
-  // Per-criterion breakdown (patch-32): which axes the competitor wins/loses on.
-  const sub = reviews.summary.subScores;
-  const subRows: Array<{ label: string; v: number }> = sub
-    ? [
-        { label: "Ease of use", v: sub.easeOfUse },
-        { label: "Support", v: sub.support },
-        { label: "Features", v: sub.features },
-        { label: "Value", v: sub.value },
-      ].filter((r): r is { label: string; v: number } => r.v != null)
-    : [];
+  // The per-criterion breakdown (patch-32) is gone. `subScores` is null unless a
+  // source exposes one, and since Reviews v2 retired the scraped aggregators for
+  // legal reasons the two live sources do not: the App Store public RSS carries a
+  // rating and a count, and the official Trustpilot API carries a rating, a count
+  // and a star distribution. The section had been rendering for nobody. Bringing
+  // it back means a source that publishes criteria, not a UI change.
 
   // Latest capture per source, newest last. The headline rating and the 90-day
   // movement both read off this rather than off the raw series.
@@ -300,10 +300,51 @@ export function ReviewsTab({
   // is the one we always have, so an axis reads as "0.6 below their own average"
   // rather than as a bare 3.6 the reader has to rank on their own.
   const overall = latest?.score ?? null;
-  const weakest =
-    subRows.length > 0
-      ? subRows.reduce((acc, r) => (r.v < acc.v ? r : acc), subRows[0]!)
-      : null;
+
+  // The most repeated grievance, which is the angle the tab exists to hand over.
+  const topTheme =
+    [...reviews.summary.complaintThemes].sort(
+      (a, b) => prevalenceWeight(b.prevalence) - prevalenceWeight(a.prevalence),
+    )[0] ?? null;
+
+  // Stated from the captured numbers, never generated. Movement first: a rating
+  // that slipped is the fact worth leading with, and a steady one hands over the
+  // complaint instead.
+  const verdict = (() => {
+    if (!latest) return null;
+    if (scoreDelta != null && scoreDelta <= -0.2) {
+      return `Their rating slipped ${Math.abs(scoreDelta).toFixed(1)} to ${latest.score.toFixed(1)} over 90 days.`;
+    }
+    if (scoreDelta != null && scoreDelta >= 0.2) {
+      return `Their rating climbed ${scoreDelta.toFixed(1)} to ${latest.score.toFixed(1)} over 90 days.`;
+    }
+    if (topTheme && topTheme.prevalence === "high") {
+      return `${topTheme.theme} is what their customers repeat most.`;
+    }
+    return `They hold ${latest.score.toFixed(1)} across ${latest.review_count.toLocaleString()} reviews.`;
+  })();
+
+  // Where detect-review-theme-shifts crossed its threshold. Same treatment as the
+  // hiring inflection: the detector already emits it, nothing showed it.
+  const dropMarkers = signals
+    .filter((sig) => sig.sourceType === "review_shift")
+    .map((sig) => {
+      const at = new Date(sig.createdAt).getTime();
+      const nearest = (series?.points ?? []).reduce<{ x: string; gap: number } | null>(
+        (best, pt) => {
+          const labelText = String(pt.date);
+          const gap = Math.abs(
+            new Date(`${labelText} ${new Date(at).getFullYear()}`).getTime() - at,
+          );
+          if (Number.isNaN(gap)) return best;
+          return !best || gap < best.gap ? { x: labelText, gap } : best;
+        },
+        null,
+      );
+      return nearest ? { x: nearest.x, label: "Drop signalled", tone: "critical" as const } : null;
+    })
+    .filter((m): m is { x: string; label: string; tone: "critical" } => m !== null)
+    .slice(0, 1);
 
   return (
     <div className="flex flex-col gap-4">
@@ -319,6 +360,14 @@ export function ReviewsTab({
 
         {hasData && (
           <>
+            {verdict && (
+              <TabSection>
+                <h3 className="text-xl font-semibold leading-snug tracking-tight text-balance">
+                  {verdict}
+                </h3>
+              </TabSection>
+            )}
+
             <TabSection>
               <FactStrip>
                 <Fact label={latest ? `${latest.source} rating` : "Rating"} muted={!latest}>
@@ -354,8 +403,10 @@ export function ReviewsTab({
                     </span>
                   )}
                 </Fact>
-                <Fact label="Weakest axis" muted={!weakest}>
-                  {weakest ? weakest.label : "No breakdown"}
+                <Fact label="Last check" muted={!reviewMonitor.lastRunAt}>
+                  {reviewMonitor.lastRunAt
+                    ? formatDistanceToNow(new Date(reviewMonitor.lastRunAt), { addSuffix: true })
+                    : "Never scanned"}
                 </Fact>
               </FactStrip>
             </TabSection>
@@ -413,76 +464,15 @@ export function ReviewsTab({
             )}
 
             {series && (
-              <TabSection title="Rating over time" icon={Activity}>
+              <TabSection title="Rating over time">
                 <MultiLineChart
                   data={series.points}
                   seriesKeys={series.sources}
                   height={220}
                   yDomain={[0, 5]}
                   dot
+                  markers={dropMarkers}
                 />
-              </TabSection>
-            )}
-
-            {subRows.length > 0 && (
-              <TabSection
-                title="Where the rating comes from"
-                icon={Star}
-                action={
-                  overall != null && (
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      marker shows their overall{" "}
-                      <span className="font-mono tabular-nums">{overall.toFixed(1)}</span>
-                    </span>
-                  )
-                }
-              >
-                <div className="flex max-w-xl flex-col gap-3">
-                  {subRows.map((r) => {
-                    const gap = overall != null ? r.v - overall : null;
-                    return (
-                      <div key={r.label} className="flex items-center gap-3">
-                        <span className="w-24 shrink-0 text-dense text-muted-foreground">
-                          {r.label}
-                        </span>
-                        <div className="relative h-1.5 flex-1 rounded-full bg-surface-3">
-                          <div
-                            className="absolute inset-y-0 left-0 rounded-full bg-foreground/55"
-                            style={{ width: `${(r.v / 5) * 100}%` }}
-                          />
-                          {overall != null && (
-                            <div
-                              aria-hidden
-                              className="absolute -inset-y-1 w-0.5 rounded-full bg-muted-foreground"
-                              style={{ left: `${(overall / 5) * 100}%` }}
-                            />
-                          )}
-                        </div>
-                        <span className="flex w-20 shrink-0 items-baseline justify-end gap-1.5">
-                          <span className="font-mono text-dense tabular-nums">
-                            {r.v.toFixed(1)}
-                          </span>
-                          {gap != null && (
-                            <span
-                              className={cn(
-                                "text-xs",
-                                Math.abs(gap) < 0.05
-                                  ? "text-muted-foreground"
-                                  : gap < 0
-                                    ? "text-critical"
-                                    : "text-positive",
-                              )}
-                            >
-                              {Math.abs(gap) < 0.05
-                                ? "even"
-                                : `${gap > 0 ? "+" : ""}${gap.toFixed(1)}`}
-                            </span>
-                          )}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
               </TabSection>
             )}
 

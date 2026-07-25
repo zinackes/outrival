@@ -213,7 +213,7 @@
      4.47:1), so both moved. The shift is invisible; the contrast is not. */
   --accent: #6c5dfd;
   --accent-dim: #5f51e6; /* active state (pairs with translateY 1px) */
-  --accent-bright: #7d6fff; /* hover — STILL under AA at 3.76:1, see DESIGN.md */
+  --accent-bright: #7d6fff; /* hover EDGE (inset ring), no longer a fill */
   --accent-foreground: #ffffff; /* label on an Iris fill; matches light */
   --link: #9a8cff; /* links / accent text on dark surfaces */
 

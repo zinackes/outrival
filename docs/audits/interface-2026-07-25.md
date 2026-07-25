@@ -322,12 +322,39 @@ gamut-mapping every token, not by re-running numbers hardcoded in a script.
 Also confirmed unbroken: the dark active state stays darker than rest (L 0.539 vs
 0.586), so the interaction ramp order survives the change.
 
-### Still open
+**PR 2**, the CTA hover model. `hover:bg-accent-bright` is replaced by
+`hover:inset-ring-2 hover:inset-ring-accent-bright` on the primary variant: hover
+now lights the **edge** instead of the fill, so the label's background never
+changes and the engaged state stops being the least legible one.
 
-- **Dark CTA hover, 3.76:1.** Deliberately left failing by PR 1. No fill brighter
-  than the rest state can carry a light label at AA, and raising chroma at fixed
-  lightness does not move contrast at all. Decided: hover stops changing the fill
-  lightness and marks itself another way. That is PR 2.
+`inset-ring` rather than `ring` on purpose. Compiling the utilities confirms the
+two land on separate `box-shadow` layers (`--tw-inset-ring-shadow` and
+`--tw-ring-shadow`), so hovering a keyboard-focused button cannot collapse the
+3px focus ring. That was verified by running the Tailwind CLI over the classes,
+not assumed from the docs: an invalid utility name fails silently and `tsc` would
+never catch it.
+
+`--accent-bright` keeps its value and loses its fill role. `DESIGN.md` §5, which
+said "Hover → Cyan Bright", now describes the edge model and records the 3.43:1
+measurement that forced it.
+
+### Found while fixing: shadows
+
+`DESIGN.md` §4 states the system "defines **no** shadow tokens", that depth comes
+from tonal surfaces and hairline borders, and that outside true overlays "shadow
+is forbidden". `globals.css:377-378` defines `--shadow-e2` and `--shadow-e3`, and
+the primary button carries `shadow-e2` (6 consumers in total).
+
+Not fixed here, because it is a real decision rather than a slip: either the
+button drops its shadow, or §4 stops claiming the system has none. Flagged
+because the original plan for this PR was to intensify that shadow on hover,
+which would have deepened exactly what the spec forbids.
+
+Two smaller ones spotted alongside, both unfixed: `DESIGN.md` §5 says buttons are
+36px tall (`h-9`) while `button.tsx:43` ships `h-[38px]`, and `--shadow-e3`
+hardcodes `rgba(109, 94, 255, …)`, which was the accent value before PR 1.
+
+### Still open
 - `/auth` form behaviour, PR 3. Primitives polish, PR 4.
 - The 16 out-of-gamut tokens and the three roles sharing `#242424`, both parked
   pending the visual checks below.

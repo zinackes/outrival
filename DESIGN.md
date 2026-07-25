@@ -291,7 +291,10 @@ and (where relevant) loading and error. Radius scale: `sm` 4px (badges/pills), `
 - **Shape:** gently squared (`rounded-md`, 6px). Default height 36px (`h-9`);
   sizes xs/sm/lg and icon variants share the radius.
 - **Primary:** Signal Cyan fill, Accent Ink text, `text-sm` weight 500.
-  Hover → Cyan Bright, active → Cyan Dim.
+  Hover lights the **edge** (a 2px inset ring in `--accent-bright`), active → Dim fill.
+  Hover deliberately does not touch the fill: no fill brighter than `--accent` can
+  carry a light label at 4.5:1, so brightening on hover made the engaged state the
+  least legible one. Measured 3.43:1 before the change.
 - **Focus:** 3px cyan ring at 50% (`ring-ring/50`) plus border shift. Always visible
   — including on raw `<button>` elements, which must carry `focus-visible` rings too
   (don't `outline-none` without a replacement).

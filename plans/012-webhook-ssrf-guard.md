@@ -163,8 +163,9 @@ Note: `turbo` is **not** on `PATH`. Use the `pnpm` scripts.
 - `packages/shared/src/webhook/sign.test.ts` (extend)
 - `apps/workers/src/lib/webhook.ts` (route through the shared sender, or delete
   it and repoint its caller)
-- `apps/workers/src/core/send-alert.ts` (only the import line, if you delete the
-  duplicate sender)
+- `apps/workers/src/core/send-alert.ts` (the import AND the call site: the two
+  senders have incompatible contracts, see the revised Step 5)
+- `apps/workers/test/` (one test that a failed webhook records its failure)
 
 **Out of scope** (do NOT touch, even though they look related):
 - `packages/shared/src/monitor-url.ts`. Reuse `validatePublicUrl`; do not modify it.
@@ -212,18 +213,56 @@ Extend `packages/shared/src/webhook/sign.test.ts` with cases that fail today:
 **Verify**: `cd packages/shared && bun test src` now **fails** on the new cases.
 That failure is the proof the fix is needed. Record which ones failed.
 
-### Step 3: Delegate the guard to `validatePublicUrl`
+### Step 3: LAYER the guard on `validatePublicUrl`, do not delegate wholesale
 
-Rewrite `isSafeWebhookUrl` to keep its name and boolean signature (so the four
-call sites are untouched) but delegate:
+> **Revised 2026-07-26 after a first execution attempt stopped here.** The original
+> instruction was "otherwise return `validatePublicUrl(raw).ok`". That is wrong and
+> it trips this plan's own STOP condition 2. Verified against the live modules:
+> `validatePublicUrl("https://172.32.0.1/hooks")` and
+> `validatePublicUrl("https://203.0.113.5/hook")` both return
+> `{ ok: false, error: "host_not_allowed" }`, because `isIpLiteral()` in
+> `monitor-url.ts` rejects **every** IP literal unconditionally, public or private.
+> `sign.test.ts:66` deliberately locks in that `https://172.32.0.1/hooks` stays
+> accepted. Delegating wholesale silently narrows webhook policy, which is a
+> behaviour change nobody asked for.
 
-- reject anything that is not `https:` (keep this: it is stricter than
-  `validatePublicUrl` and correct for outbound webhooks)
-- otherwise return `validatePublicUrl(raw).ok`
+Rewrite `isSafeWebhookUrl` to keep its name and boolean signature (so the four call
+sites are untouched), composed of three parts in this order:
 
-Keep a short English comment explaining why https is enforced here specifically
-and why the host checks are delegated rather than duplicated: the local copy had
-three dead IPv6 branches precisely because it was a second implementation.
+1. **Scheme**: reject anything that is not `https:`. Keep this local; it is stricter
+   than `validatePublicUrl` and correct for outbound webhooks.
+2. **IP literals**: handle them in one dedicated branch that **accepts public
+   addresses and rejects everything non-routable**. It must reject, at minimum, every
+   case in the table below, all of which the current guard accepts today. Parse the
+   host properly rather than pattern-matching the raw string: `new URL(...).hostname`
+   keeps the square brackets on an IPv6 literal, which is the exact bug that made the
+   old IPv6 branches dead.
+3. **Everything else**: delegate the host-shape checks to `validatePublicUrl` so the
+   `.internal`, single-label and DNS-shape rules live in one implementation.
+
+Keep a short English comment saying why the IP branch is local while the rest is
+delegated, so the next reader does not "simplify" it back into the broken form.
+
+**The six holes this must close** (measured on the unmodified module, 2026-07-26;
+every one of these is **accepted today** and must be rejected after):
+
+| URL | why it must be rejected |
+|---|---|
+| `https://[::1]/hook` | IPv6 loopback |
+| `https://[fd00::1]/hook` | IPv6 unique-local |
+| `https://[::ffff:127.0.0.1]/hook` | IPv4-mapped loopback |
+| `https://foo.internal/hook` | internal TLD |
+| `https://100.64.0.1/hook` | CGNAT (RFC 6598) |
+| `https://intranet/hook` | single-label host |
+
+And these must stay **accepted**: `https://hooks.example.com/x` and
+`https://172.32.0.1/hooks` (public, outside the 16-31 private block).
+
+**Production check, already done, so you do not need to**: no live destination is
+configured against a raw IP (`organizations.slack_webhook_url`: 1 row, 0 IP literals;
+`crm_destinations`: 0 rows). So this choice carries no migration risk either way; it
+is about what the guard should permit going forward, and preserving the documented
+existing behaviour is the conservative reading.
 
 **Verify**: `cd packages/shared && bun test src` passes, including every new case
 and every pre-existing one.
@@ -246,6 +285,25 @@ depend on that).
 `apps/workers/src/lib/webhook.ts` posts to a user-supplied URL with no guard.
 Prefer deleting it and repointing `apps/workers/src/core/send-alert.ts` at the
 shared `sendWebhook`.
+
+> **Revised 2026-07-26.** The scope list at the top of this plan says "only the
+> import line, if you delete the duplicate sender". That is **not sufficient** and the
+> scope list is wrong; this step's text governs. The two senders have incompatible
+> contracts, verified:
+>
+> - `apps/workers/src/lib/webhook.ts` returns `Promise<void>` and **throws** on a
+>   non-ok response.
+> - the shared `sendWebhook` returns `Promise<boolean>` and **catches**, so it never
+>   throws.
+>
+> `apps/workers/src/core/send-alert.ts` depends on the throw: it records
+> `alerts.error` only from its `catch` block, and otherwise unconditionally stamps
+> `sentAt` and `webhookSent = true`. Swapping the import without adapting the call
+> site would make **every failed webhook record as delivered**, which is a worse bug
+> than the one this plan fixes. Adapt the call site to branch on the boolean, and add
+> a test that a `false` return records the failure. `apps/workers/src/lib/crm-webhook.ts`
+> already re-exports the shared guarded sender, so CRM pushes are unaffected; only the
+> plain `org.webhookUrl` alert channel has this mismatch.
 
 Before doing so, compare the two: if the worker version has behaviour the shared
 one lacks (a different timeout, a different retry posture, a different return

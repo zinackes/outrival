@@ -50,7 +50,7 @@ deadlines, security and direction.
 | 009 | A half-configured AI provider fails loudly, not with a dead model | P1 | S | LOW | — | TODO |
 | 010 | Clear the reachable high advisories a version bump fixes | P1 | S | LOW-MED | — | TODO |
 | 011 | The dependency audit gate blocks again, allowlist justified | P2 | S | LOW-MED | 010 | TODO |
-| 012 | Webhook guard loses its dead IPv6 branches, follows no redirects | P1 | S | LOW | — | TODO |
+| 012 | Webhook guard loses its dead IPv6 branches, follows no redirects | P1 | S-M | LOW | — | TODO (refined 2026-07-26 after an execution stopped at STOP-2; steps 3 and 5 rewritten) |
 | 013 | A link prefetch can no longer silently disable an org's digests | P1 | S | LOW | — | TODO |
 | 014 | Turning off 2FA requires the same step-up as changing a password | P2 | M | MED | — | TODO |
 | 015 | Public share links expire and report when last read | P2 | S-M | MED | — | TODO |

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { AnimatePresence, motion } from "motion/react";
 import { ChevronRight, X } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
@@ -9,6 +10,7 @@ import { api, type ActivitySource } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toastApiError } from "@/lib/error-helpers";
 import { useForceRescan } from "@/hooks/use-force-rescan";
+import { feedItemMotion } from "@/lib/motion";
 import { sourceLabel } from "@/lib/source-labels";
 import { competitorNameColor } from "@/lib/competitor-color";
 import { Button } from "@/components/ui/button";
@@ -114,9 +116,14 @@ export function Attention({
         )}
       >
         <div className="overflow-hidden">
-          {visible.map((s) => (
-            <AttentionRow key={s.monitorId} source={s} onDismiss={dismiss} onChanged={onChanged} />
-          ))}
+          {/* A dismissed row leaves the way a filtered-out competitor does, and the
+              rows under it close the gap, so the cross reads as retiring THAT row
+              rather than reprinting the list. */}
+          <AnimatePresence initial={false} mode="popLayout">
+            {visible.map((s) => (
+              <AttentionRow key={s.monitorId} source={s} onDismiss={dismiss} onChanged={onChanged} />
+            ))}
+          </AnimatePresence>
         </div>
       </div>
     </section>
@@ -175,7 +182,12 @@ function AttentionRow({
     : `/dashboard/competitors/${source.competitorId}/sources`;
 
   return (
-    <div className="grid grid-cols-[8px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-1.5 border-b border-border py-2.5 pl-1 last:border-b-0 max-sm:grid-cols-[8px_minmax(0,1fr)]">
+    // The row IS the animated element (not a wrapper around it), or `last:` would
+    // match every row's only child and the hairlines would all disappear.
+    <motion.div
+      {...feedItemMotion}
+      className="grid grid-cols-[8px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-1.5 border-b border-border py-2.5 pl-1 last:border-b-0 max-sm:grid-cols-[8px_minmax(0,1fr)]"
+    >
       <span
         className={
           source.status === "failing" || source.status === "unscrapable"
@@ -220,6 +232,6 @@ function AttentionRow({
           <X className="size-3.5" aria-hidden />
         </Button>
       </div>
-    </div>
+    </motion.div>
   );
 }

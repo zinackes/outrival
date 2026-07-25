@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { AnimatePresence, motion } from "motion/react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import {
@@ -31,6 +32,7 @@ import {
   type AiVisibilitySubject,
 } from "@/lib/api";
 import { formatDate } from "@/lib/format-date";
+import { disclosureMotion, feedItemMotion } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { paywallFromError } from "@/components/outrival/paywall-dialog";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
@@ -673,16 +675,20 @@ function Board({
         <span className="text-right">Change</span>
       </div>
       <ul>
-        {lb.subjects.map((s, i) => (
-          <BoardRow
-            key={s.competitorId}
-            subject={s}
-            rank={i + 1}
-            max={max}
-            color={colors[s.name] ?? "var(--muted)"}
-            cols={cols}
-          />
-        ))}
+        {/* Switching engine reranks the same brands, so the rows travel to their new
+            standing on the competitors-list spring instead of the board reprinting. */}
+        <AnimatePresence initial={false} mode="popLayout">
+          {lb.subjects.map((s, i) => (
+            <BoardRow
+              key={s.competitorId}
+              subject={s}
+              rank={i + 1}
+              max={max}
+              color={colors[s.name] ?? "var(--muted)"}
+              cols={cols}
+            />
+          ))}
+        </AnimatePresence>
       </ul>
     </section>
   );
@@ -703,7 +709,8 @@ function BoardRow({
 }) {
   const delta = s.prevSov == null ? null : Math.round((s.sov - s.prevSov) * 100);
   return (
-    <li
+    <motion.li
+      {...feedItemMotion}
       className={cn(
         "grid items-center gap-3 border-t border-border px-5 py-2.5 transition-colors",
         cols,
@@ -762,7 +769,7 @@ function BoardRow({
       >
         {delta == null ? "new" : delta === 0 ? "flat" : `${delta > 0 ? "+" : ""}${delta} pts`}
       </span>
-    </li>
+    </motion.li>
   );
 }
 
@@ -858,117 +865,125 @@ function QuestionList({
         </p>
       ) : (
         <ul className="mt-3">
-          {rows.map((r) => {
-            const { prompt: p, cell } = r;
-            const expanded = open.has(p.id);
-            const editing = editingId === p.id;
-            const saveEdit = () => {
-              const next = editDraft.trim();
-              if (next.length >= 3 && next !== p.prompt) onEdit(p.id, next);
-              setEditingId(null);
-            };
-            return (
-              <li key={p.id} className="group border-t border-border">
-                <div className="flex items-start gap-2 pr-4 transition-colors hover:bg-surface-2">
-                  {editing ? (
-                    <div className="flex flex-1 items-center gap-2 py-2.5 pl-5">
-                      <Input
-                        value={editDraft}
-                        onChange={(e) => setEditDraft(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") saveEdit();
-                          if (e.key === "Escape") setEditingId(null);
-                        }}
-                        autoFocus
-                        className="h-8 min-w-0 flex-1"
-                        aria-label="Edit question"
-                      />
-                      <button
-                        onClick={saveEdit}
-                        disabled={editDraft.trim().length < 3}
-                        className={iconBtn}
-                        aria-label="Save question"
-                      >
-                        <Check className="size-4" />
-                      </button>
-                      <button
-                        onClick={() => setEditingId(null)}
-                        className={iconBtn}
-                        aria-label="Cancel edit"
-                      >
-                        <X className="size-4" />
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      <button
-                        onClick={() => toggleOpen(p.id)}
-                        aria-expanded={expanded}
-                        disabled={!cell}
-                        className="flex min-w-0 flex-1 items-start gap-3 py-3 pl-5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset disabled:cursor-default"
-                      >
-                        <ChevronRight
-                          className={cn(
-                            "mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform",
-                            expanded && "rotate-90",
-                            !cell && "opacity-0",
-                          )}
-                          aria-hidden
+          <AnimatePresence initial={false} mode="popLayout">
+            {rows.map((r) => {
+              const { prompt: p, cell } = r;
+              const expanded = open.has(p.id);
+              const editing = editingId === p.id;
+              const saveEdit = () => {
+                const next = editDraft.trim();
+                if (next.length >= 3 && next !== p.prompt) onEdit(p.id, next);
+                setEditingId(null);
+              };
+              return (
+                // layout="position": the row's own height is animated by the evidence
+                // opening inside it, so only its place is projected.
+                <motion.li key={p.id} {...feedItemMotion} layout="position" className="group border-t border-border">
+                  <div className="flex items-start gap-2 pr-4 transition-colors hover:bg-surface-2">
+                    {editing ? (
+                      <div className="flex flex-1 items-center gap-2 py-2.5 pl-5">
+                        <Input
+                          value={editDraft}
+                          onChange={(e) => setEditDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") saveEdit();
+                            if (e.key === "Escape") setEditingId(null);
+                          }}
+                          autoFocus
+                          className="h-8 min-w-0 flex-1"
+                          aria-label="Edit question"
                         />
-                        <span className="min-w-0 flex-1">
-                          <span
+                        <button
+                          onClick={saveEdit}
+                          disabled={editDraft.trim().length < 3}
+                          className={iconBtn}
+                          aria-label="Save question"
+                        >
+                          <Check className="size-4" />
+                        </button>
+                        <button
+                          onClick={() => setEditingId(null)}
+                          className={iconBtn}
+                          aria-label="Cancel edit"
+                        >
+                          <X className="size-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => toggleOpen(p.id)}
+                          aria-expanded={expanded}
+                          disabled={!cell}
+                          className="flex min-w-0 flex-1 items-start gap-3 py-3 pl-5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset disabled:cursor-default"
+                        >
+                          <ChevronRight
                             className={cn(
-                              "block text-sm leading-snug",
-                              !p.isActive && "text-muted-foreground",
+                              "mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform",
+                              expanded && "rotate-90",
+                              !cell && "opacity-0",
                             )}
-                          >
-                            {p.prompt}
+                            aria-hidden
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span
+                              className={cn(
+                                "block text-sm leading-snug",
+                                !p.isActive && "text-muted-foreground",
+                              )}
+                            >
+                              {p.prompt}
+                            </span>
+                            <MentionLine cell={cell} colors={colors} active={p.isActive} />
                           </span>
-                          <MentionLine cell={cell} colors={colors} active={p.isActive} />
+                        </button>
+                        <span className="flex shrink-0 items-center gap-1 py-3">
+                          <QuestionStatus cell={cell} active={p.isActive} />
+                          <span className="flex opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                            <button
+                              onClick={() => onToggle(p.id, !p.isActive)}
+                              className={iconBtn}
+                              aria-label={p.isActive ? "Pause question" : "Resume question"}
+                            >
+                              {p.isActive ? (
+                                <Pause className="size-4" />
+                              ) : (
+                                <Play className="size-4" />
+                              )}
+                            </button>
+                            <button
+                              onClick={() => {
+                                setEditDraft(p.prompt);
+                                setEditingId(p.id);
+                              }}
+                              className={iconBtn}
+                              aria-label="Edit question"
+                            >
+                              <Pencil className="size-4" />
+                            </button>
+                            <button
+                              onClick={() => setDeleteTarget(p)}
+                              className={iconBtn}
+                              aria-label="Remove question"
+                            >
+                              <Trash2 className="size-4" />
+                            </button>
+                          </span>
                         </span>
-                      </button>
-                      <span className="flex shrink-0 items-center gap-1 py-3">
-                        <QuestionStatus cell={cell} active={p.isActive} />
-                        <span className="flex opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-                          <button
-                            onClick={() => onToggle(p.id, !p.isActive)}
-                            className={iconBtn}
-                            aria-label={p.isActive ? "Pause question" : "Resume question"}
-                          >
-                            {p.isActive ? (
-                              <Pause className="size-4" />
-                            ) : (
-                              <Play className="size-4" />
-                            )}
-                          </button>
-                          <button
-                            onClick={() => {
-                              setEditDraft(p.prompt);
-                              setEditingId(p.id);
-                            }}
-                            className={iconBtn}
-                            aria-label="Edit question"
-                          >
-                            <Pencil className="size-4" />
-                          </button>
-                          <button
-                            onClick={() => setDeleteTarget(p)}
-                            className={iconBtn}
-                            aria-label="Remove question"
-                          >
-                            <Trash2 className="size-4" />
-                          </button>
-                        </span>
-                      </span>
-                    </>
-                  )}
-                </div>
-                {expanded && cell && (
-                  <QuestionEvidence cell={cell} colors={colors} selfName={selfName} />
-                )}
-              </li>
-            );
-          })}
+                      </>
+                    )}
+                  </div>
+                  <AnimatePresence initial={false}>
+                    {expanded && cell && (
+                      <motion.div {...disclosureMotion}>
+                        <QuestionEvidence cell={cell} colors={colors} selfName={selfName} />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.li>
+              );
+            })}
+          </AnimatePresence>
         </ul>
       )}
 

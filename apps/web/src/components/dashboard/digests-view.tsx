@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { AnimatePresence, motion } from "motion/react";
 import {
   ChevronRight,
   Loader2,
@@ -19,6 +20,7 @@ import { EmptyState } from "./empty-state";
 import { toastApiError } from "@/lib/error-helpers";
 import { ListError } from "@/components/outrival/list-error";
 import { api, type Digest } from "@/lib/api";
+import { feedItemMotion } from "@/lib/motion";
 import { competitorsQuery, digestsQuery } from "@/lib/queries";
 import {
   digestHeadline,
@@ -225,9 +227,16 @@ export function DigestsView() {
               {earlier.length}
             </span>
           </div>
-          {earlier.map((d) => (
-            <RunRow key={d.id} digest={d} colorOf={colorOf} />
-          ))}
+          {/* Weekly and daily are two different lists behind one control, so the
+              swap carries the competitors-list choreography rather than repainting
+              in place. */}
+          <AnimatePresence initial={false} mode="popLayout">
+            {earlier.map((d) => (
+              <motion.div key={d.id} {...feedItemMotion}>
+                <RunRow digest={d} colorOf={colorOf} />
+              </motion.div>
+            ))}
+          </AnimatePresence>
         </section>
       )}
     </div>

@@ -128,7 +128,28 @@ export function SignalsListHeader({
   return (
     <div className="shrink-0">
       <div className="flex items-center gap-2 px-4 pt-3.5">
-        <h1 className="text-lg font-semibold tracking-tight">Signals</h1>
+        <div className="flex min-w-0 items-baseline gap-2.5">
+          <h1 className="text-lg font-semibold tracking-tight">Signals</h1>
+          {/* Scope, on the title's own line. The old second line also announced
+              "classified by AI" — how a signal was produced isn't something the
+              reader acts on here, and it cost a line of chrome above the feed. */}
+          <span className="truncate text-meta text-muted-foreground">
+            {loading ? (
+              "Loading…"
+            ) : (
+              <>
+                <span className="tabular-nums">{total}</span> signal
+                {total === 1 ? "" : "s"}
+                {unreadCount > 0 && (
+                  <>
+                    {" · "}
+                    <span className="tabular-nums">{unreadCount}</span> unread
+                  </>
+                )}
+              </>
+            )}
+          </span>
+        </div>
         <span className="flex-1" />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -153,24 +174,6 @@ export function SignalsListHeader({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-
-      <p className="px-4 pt-0.5 text-meta text-muted-foreground">
-        {loading ? (
-          "Loading…"
-        ) : (
-          <>
-            <span className="tabular-nums">{total}</span> signal
-            {total === 1 ? "" : "s"}
-            {unreadCount > 0 && (
-              <>
-                {" · "}
-                <span className="tabular-nums">{unreadCount}</span> unread
-              </>
-            )}
-            {" · classified by AI"}
-          </>
-        )}
-      </p>
 
       <div className="flex items-center gap-1.5 px-4 py-2.5">
         <div className="relative min-w-0 flex-1">
@@ -352,9 +355,13 @@ export function SignalsListHeader({
           {QUICK_VIEWS.map((v) => (
             <TabsTrigger key={v.value} value={v.value} className="px-2.5">
               {v.label}
-              <span className="font-mono text-meta tabular-nums text-muted-foreground">
-                {quickCounts[v.value]}
-              </span>
+              {/* A zero is not worth a figure: "Unread 0" advertised an empty view
+                  on every render. The tab stays reachable, just unlabelled. */}
+              {quickCounts[v.value] > 0 && (
+                <span className="font-mono text-meta tabular-nums text-muted-foreground">
+                  {quickCounts[v.value]}
+                </span>
+              )}
             </TabsTrigger>
           ))}
         </TabsList>

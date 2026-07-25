@@ -151,8 +151,12 @@ export function DigestReader({ id }: { id: string }) {
     <div className="flex flex-col gap-6">
       {backLink}
 
-      <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-[minmax(0,1fr)_284px] lg:gap-12">
-        <div className="flex min-w-0 max-w-[80ch] flex-col gap-6">
+      {/* The reading column IS the measure, so the grid track is sized to it rather
+          than to 1fr with a cap inside. As 1fr the cell outgrew its own text and
+          parked the dead space between the brief and the rail, which reads as a
+          layout bug rather than as a margin. */}
+      <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-[minmax(0,82ch)_284px] lg:gap-10">
+        <div className="flex min-w-0 flex-col gap-6">
           <header className="flex flex-col gap-2.5">
             <div className="flex items-center gap-2 text-dense text-muted-foreground">
               <span>{periodWord}</span>
@@ -164,7 +168,7 @@ export function DigestReader({ id }: { id: string }) {
 
             {/* The model already writes the week's verdict as its first TL;DR point.
                 It leads the page instead of sitting under a "TL;DR" label. */}
-            <h1 className="m-0 max-w-[21em] text-title font-semibold leading-tight tracking-tight text-balance md:text-title-lg">
+            <h1 className="m-0 text-title font-semibold leading-tight tracking-tight text-balance md:text-title-lg">
               {quiet ? "All quiet this period" : (headline ?? digestLabel(d))}
             </h1>
 

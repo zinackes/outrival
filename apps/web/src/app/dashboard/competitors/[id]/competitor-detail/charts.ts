@@ -11,8 +11,22 @@ export function lineColor(i: number): string {
   return `var(--chart-${(i % 6) + 1})`;
 }
 
+/**
+ * The analytics tables store `recorded_at` as a naive `timestamp`, so the API wraps
+ * it in `AT TIME ZONE 'UTC'` and Postgres renders "2026-07-11 23:02:25+00". That
+ * offset is one digit short of ISO 8601: swapping the space for a "T" turned a
+ * string the engine parses fine into an unparseable one, and every axis label fell
+ * back to printing the raw timestamp. Parse as given, and only reach for the "T"
+ * form when the engine actually rejects it.
+ */
+export function parseRecordedAt(value: string): Date {
+  const direct = new Date(value);
+  if (!Number.isNaN(direct.getTime())) return direct;
+  return new Date(value.replace(" ", "T"));
+}
+
 export function shortDate(iso: string): string {
-  const d = new Date(iso.replace(" ", "T"));
+  const d = parseRecordedAt(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return formatDate(d, { day: "2-digit", month: "short" });
 }
@@ -61,7 +75,7 @@ export function mergeTrendsByDate(
   for (const p of points) {
     const date = shortDate(p.recorded_at);
     const entry = byDate.get(date) ?? {
-      at: new Date(p.recorded_at.replace(" ", "T")).getTime(),
+      at: parseRecordedAt(p.recorded_at).getTime(),
       row: { date },
     };
     entry.row[p.department] = p.count;

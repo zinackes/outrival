@@ -256,6 +256,21 @@ export function entryPrice(tiers: PricingTier[]): EntryPrice | null {
 }
 
 /**
+ * An entry price read on the monthly axis, or null when it cannot be.
+ *
+ * A yearly plan lands on a monthly axis divided by 12 (arithmetic, not a guess),
+ * but a one-time price is not a rate at all and a usage rate is priced per unit,
+ * so neither has a monthly equivalent. Same rule as the compare lens
+ * (apps/web/src/components/dashboard/compare/derive.ts), so one pricing table
+ * reads the same on the products ladder and on the comparison grid.
+ */
+export function monthlyEquivalent(entry: EntryPrice): number | null {
+  if (entry.billingPeriod === "monthly") return entry.price;
+  if (entry.billingPeriod === "yearly") return entry.price / 12;
+  return null;
+}
+
+/**
  * Median of a price sample, or null when the sample is empty.
  *
  * The median, not the mean: one $2,000 enterprise list price would drag an

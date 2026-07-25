@@ -2144,9 +2144,11 @@ export interface ProductSummary {
   // `median` are null until at least one rival publishes a comparable price.
   pricing?: {
     entry: { planName: string; price: number; currency: string; billingPeriod: string } | null;
+    // `entry` read on the band's monthly axis (a yearly plan ÷12); null when it
+    // is quoted on a basis the band cannot hold.
+    entryMonthly: number | null;
     median: number | null;
     currency: string | null;
-    billingPeriod: string | null;
     low: number | null;
     high: number | null;
     rivalsPriced: number;
@@ -2155,24 +2157,29 @@ export interface ProductSummary {
 
 // Where a product's entry price sits against the competitors tracked on it. Both
 // sides are read the same way (latest detected batch → user overrides → cheapest
-// paid tier); `comparable` marks the rivals whose price shares our currency and
-// billing period, and only those are in the median.
+// paid tier) on ONE monthly axis in one currency, like the compare lens: `monthly`
+// is that reading (a yearly plan ÷12), `comparable` marks the rivals that reach
+// the axis, and only those are in the median.
 export interface ProductPricingRival {
   competitorId: string;
   name: string;
   url: string | null;
   color: string | null;
   entry: { planName: string; price: number; currency: string; billingPeriod: string } | null;
+  monthly: number | null;
   comparable: boolean;
 }
 
 export interface ProductPricingPosition {
   mine: { planName: string; price: number; currency: string; billingPeriod: string } | null;
+  mineMonthly: number | null;
   rivals: ProductPricingRival[];
   median: number | null;
   currency: string | null;
-  billingPeriod: string | null;
+  // Rivals publishing no price at all, and rivals publishing one that cannot
+  // reach the axis (one-time, another currency) — two different findings.
   quoteOnly: number;
+  offAxis: number;
 }
 
 // A competitor linked to a product (junction product_competitors).

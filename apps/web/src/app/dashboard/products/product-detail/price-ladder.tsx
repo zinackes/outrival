@@ -8,17 +8,23 @@ import { CompAvatar } from "@/components/dashboard/comp-avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
-const money = (price: number, currency: string) =>
-  currency === "USD" ? `$${price}` : `${price} ${currency}`;
+const money = (price: number, currency: string) => {
+  // The axis is monthly, so an annual plan read ÷12 arrives with decimals. Round
+  // to the unit, as the compare lens does, so one table reads the same in both.
+  const amount = Math.round(price);
+  return currency === "USD" ? `$${amount}` : `${amount} ${currency}`;
+};
 
 /**
  * Every tracked competitor's entry price, ours among them.
  *
  * This is the one comparison only this page can draw, so it leads the Pricing
  * tab: the same number, read the same way on both sides (cheapest paid tier of
- * the latest detected batch, user edits winning), which is the only way the gap
- * describes the market rather than our method. Rivals who publish nothing are
- * counted, not hidden: "four of nine quote only" is itself the finding.
+ * the latest detected batch, user edits winning), on the same monthly axis as the
+ * compare lens, which is the only way the gap describes the market rather than
+ * our method. What cannot reach that axis is named for what it is: a rival that
+ * publishes nothing reads as quote-only, one that publishes on another basis says
+ * so, and neither is silently counted as the other.
  */
 export function PriceLadder({ productId }: { productId: string }) {
   const q = useQuery(productPricingPositionQuery(productId));
@@ -44,26 +50,58 @@ export function PriceLadder({ productId }: { productId: string }) {
   }
 
   const rows = [
-    ...(data.mine
-      ? [{ key: "self", name: "Your product", entry: data.mine, self: true, url: null, color: null }]
+    ...(data.mine && data.mineMonthly !== null
+      ? [
+          {
+            key: "self",
+            name: "Your product",
+            monthly: data.mineMonthly,
+            period: data.mine.billingPeriod,
+            self: true,
+            url: null,
+            color: null,
+          },
+        ]
       : []),
     ...data.rivals
-      .filter((r) => r.entry && r.comparable)
+      .filter((r) => r.comparable && r.monthly !== null)
       .map((r) => ({
         key: r.competitorId,
         name: r.name,
-        entry: r.entry!,
+        monthly: r.monthly!,
+        period: r.entry!.billingPeriod,
         self: false,
         url: r.url,
         color: r.color,
       })),
-  ].sort((a, b) => a.entry.price - b.entry.price);
+  ].sort((a, b) => a.monthly - b.monthly);
 
-  const max = Math.max(...rows.map((r) => r.entry.price), 1);
+  const max = Math.max(...rows.map((r) => r.monthly), 1);
   const gap =
-    data.mine && data.median
-      ? Math.round(((data.mine.price - data.median) / data.median) * 100)
+    data.mineMonthly !== null && data.median
+      ? Math.round(((data.mineMonthly - data.median) / data.median) * 100)
       : null;
+  const currency = data.currency ?? "USD";
+  // What the axis could not hold, said in the competitor's own terms rather than
+  // rolled into one number the compare page would contradict. Only two things put
+  // a published price off a monthly axis: another currency, or a one-time price.
+  const offAxisReasons = [
+    ...new Set(
+      data.rivals
+        .filter((r) => r.entry && !r.comparable)
+        .map((r) => (r.entry!.currency !== currency ? r.entry!.currency : "one-time")),
+    ),
+  ];
+
+  if (rows.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        No price here can be read on a monthly scale yet
+        {offAxisReasons.length > 0 ? `: everything published is ${offAxisReasons.join(", ")}` : ""}.
+        Prices appear here as soon as a comparable pricing page is read.
+      </p>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -90,7 +128,7 @@ export function PriceLadder({ productId }: { productId: string }) {
             <span className="h-2 overflow-hidden rounded-sm bg-surface-3">
               <span
                 className={cn("block h-full rounded-sm", r.self ? "bg-primary" : "bg-muted-foreground/35")}
-                style={{ width: `${Math.max(4, (r.entry.price / max) * 100)}%` }}
+                style={{ width: `${Math.max(4, (r.monthly / max) * 100)}%` }}
               />
             </span>
             <span
@@ -99,7 +137,10 @@ export function PriceLadder({ productId }: { productId: string }) {
                 r.self ? "font-semibold text-foreground" : "text-muted-foreground",
               )}
             >
-              {money(r.entry.price, r.entry.currency)}
+              {/* An annual plan is read on the monthly axis divided by 12, so the
+                  number is ours, not one the competitor published. Say so. */}
+              {r.period === "monthly" ? "" : "≈"}
+              {money(r.monthly, currency)}
             </span>
           </div>
         ))}
@@ -108,10 +149,10 @@ export function PriceLadder({ productId }: { productId: string }) {
       <p className="m-0 text-sm text-muted-foreground">
         {data.median !== null && (
           <>
-            The middle of the {rows.filter((r) => !r.self).length} published{" "}
-            {data.billingPeriod ?? "monthly"} entry prices is{" "}
+            The middle of the {rows.filter((r) => !r.self).length} published monthly entry
+            prices is{" "}
             <span className="font-mono tabular-nums text-foreground">
-              {money(data.median, data.currency ?? "USD")}
+              {money(data.median, currency)}
             </span>
             .{" "}
           </>
@@ -128,11 +169,21 @@ export function PriceLadder({ productId }: { productId: string }) {
               it.
             </>
           ))}
+        {data.mine && data.mineMonthly === null && (
+          <> Your own entry plan is a one-time price, so it does not sit on this scale.</>
+        )}
         {data.quoteOnly > 0 && (
           <>
             {" "}
             {data.quoteOnly} competitor{data.quoteOnly > 1 ? "s publish" : " publishes"} no
             price at all.
+          </>
+        )}
+        {data.offAxis > 0 && (
+          <>
+            {" "}
+            {data.offAxis} competitor{data.offAxis > 1 ? "s publish" : " publishes"} on another
+            basis ({offAxisReasons.join(", ")}), so they are not on this scale.
           </>
         )}
       </p>

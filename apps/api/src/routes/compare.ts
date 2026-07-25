@@ -55,12 +55,15 @@ interface RawPricingPlan {
   price: number | null;
   currency: string | null;
   billingPeriod: string | null;
+  // Only present on detected rows — a manual override has no capture time.
+  recordedAt?: string | null;
 }
 // One job_counts row from the latest batch (one per department).
 interface RawHiringDept {
   competitorId: string;
   department: string;
   count: number;
+  recordedAt: string | null;
 }
 interface RawReview {
   competitorId: string;
@@ -71,6 +74,7 @@ interface RawReview {
   support: number | null;
   features: number | null;
   value: number | null;
+  recordedAt: string | null;
 }
 
 interface PricingDetail {
@@ -80,17 +84,29 @@ interface PricingDetail {
   currency: string | null;
   billingPeriod: string | null;
   plans: Array<{ name: string; price: number | null; billingPeriod: string | null }>;
+  // When the batch these plans come from was captured — the provenance line under
+  // an expanded price row. Null on a competitor whose plans are all manual overrides.
+  capturedAt: string | null;
 }
 interface HiringDetail {
   totalOpen: number;
   topDepartment: string | null;
   departments: Array<{ department: string; count: number }>;
+  // Open roles in the canonical `engineering` bucket, from hiring_metrics. The
+  // compare page picks this share out of the total bar, because it is the share
+  // that says what a competitor is building. Null when the competitor has no
+  // authoritative ATS run (job_counts holds raw ATS labels, which cannot be
+  // bucketed here without guessing) — the UI then shows the total alone rather
+  // than a number it made up.
+  engineeringOpen: number | null;
+  capturedAt: string | null;
 }
 interface ReviewDetail {
   source: string;
   score: number;
   reviewCount: number;
   sub: { ease: number; support: number; features: number; value: number } | null;
+  recordedAt: string | null;
 }
 interface PlatformDetail {
   framework: string | null;
@@ -109,7 +125,16 @@ interface CompareColumn {
   reviews: ReviewDetail[];
   tech: string[];
   platform: PlatformDetail | null;
-  latestSignal: { severity: string; createdAt: string } | null;
+  // The competitor's last move, in the words the feed uses. The compare page leads
+  // its "Latest move" lens with `insight`, so a severity word and a date (all this
+  // used to carry) is not enough — `id` deep-links the row to the signal.
+  latestSignal: {
+    id: string;
+    severity: string;
+    category: string;
+    insight: string;
+    createdAt: string;
+  } | null;
 }
 
 compareRouter.get("/", async (c) => {
@@ -167,7 +192,10 @@ compareRouter.get("/", async (c) => {
     db
       .selectDistinctOn([signals.competitorId], {
         competitorId: signals.competitorId,
+        id: signals.id,
         severity: signals.severity,
+        category: signals.category,
+        insight: signals.insight,
         createdAt: signals.createdAt,
       })
       .from(signals)
@@ -184,7 +212,7 @@ compareRouter.get("/", async (c) => {
       FROM pricing_history WHERE competitor_id IN (${idList}) GROUP BY competitor_id
     )
     SELECT p.competitor_id AS "competitorId", p.plan_name AS "planName", p.price,
-           p.currency, p.billing_period AS "billingPeriod"
+           p.currency, p.billing_period AS "billingPeriod", p.recorded_at AS "recordedAt"
     FROM pricing_history p
     JOIN latest l ON l.competitor_id = p.competitor_id AND p.recorded_at = l.rid
     ORDER BY p.competitor_id, p.price
@@ -226,7 +254,8 @@ compareRouter.get("/", async (c) => {
       SELECT competitor_id, max(recorded_at) AS rid
       FROM job_counts WHERE competitor_id IN (${idList}) GROUP BY competitor_id
     )
-    SELECT j.competitor_id AS "competitorId", j.department, j.count::int AS count
+    SELECT j.competitor_id AS "competitorId", j.department, j.count::int AS count,
+           j.recorded_at AS "recordedAt"
     FROM job_counts j
     JOIN latest l ON l.competitor_id = j.competitor_id AND j.recorded_at = l.rid
     ORDER BY j.competitor_id, j.count DESC
@@ -236,18 +265,52 @@ compareRouter.get("/", async (c) => {
     SELECT DISTINCT ON (competitor_id, source)
            competitor_id AS "competitorId", source, score, review_count AS "reviewCount",
            sub_ease_of_use AS ease, sub_support AS support,
-           sub_features AS features, sub_value AS value
+           sub_features AS features, sub_value AS value,
+           recorded_at AS "recordedAt"
     FROM review_scores WHERE competitor_id IN (${idList})
     ORDER BY competitor_id, source, recorded_at DESC
   `);
 
+  // Engineering share of the open roles, from the canonical buckets the ATS path
+  // writes weekly. Deliberately a separate read from job_counts: that table holds
+  // the raw ATS labels ("Platform Engineering", "R&D"), which only the worker's
+  // normalizeDepartment can bucket. Missing here (LLM/careers fallback, no ATS run)
+  // → engineeringOpen stays null and the UI shows the total alone.
+  const engineeringRows = await analyticsQuery<{ competitorId: string; openCount: number }>(sql`
+    WITH latest AS (
+      SELECT competitor_id, max(week_start) AS w
+      FROM hiring_metrics WHERE competitor_id IN (${idList}) GROUP BY competitor_id
+    )
+    SELECT h.competitor_id AS "competitorId", h.open_count::int AS "openCount"
+    FROM hiring_metrics h
+    JOIN latest l ON l.competitor_id = h.competitor_id AND h.week_start = l.w
+    WHERE h.department_bucket = 'engineering'
+  `);
+  const engineeringById = new Map(engineeringRows.map((r) => [r.competitorId, r.openCount]));
+
   // Index analytics by competitor — fold the row-level results into per-competitor
   // detail objects (band + plans, total + departments, score + sub-scores).
+  // Capture time of the detected batch, kept before the override resolution below
+  // (resolveCurrentPricing returns resolved tiers, which carry no recorded_at).
+  const pricingCapturedAt = new Map<string, string>();
+  for (const p of detectedPlans) {
+    if (p.recordedAt && !pricingCapturedAt.has(p.competitorId)) {
+      pricingCapturedAt.set(p.competitorId, p.recordedAt);
+    }
+  }
+
   const pricingById = new Map<string, PricingDetail>();
   for (const p of pricingPlans) {
     let cur = pricingById.get(p.competitorId);
     if (!cur) {
-      cur = { entry: null, top: null, currency: p.currency, billingPeriod: p.billingPeriod, plans: [] };
+      cur = {
+        entry: null,
+        top: null,
+        currency: p.currency,
+        billingPeriod: p.billingPeriod,
+        plans: [],
+        capturedAt: pricingCapturedAt.get(p.competitorId) ?? null,
+      };
       pricingById.set(p.competitorId, cur);
     }
     cur.plans.push({ name: p.planName, price: p.price, billingPeriod: p.billingPeriod });
@@ -268,6 +331,8 @@ compareRouter.get("/", async (c) => {
         totalOpen: h.count,
         topDepartment: h.department,
         departments: [{ department: h.department, count: h.count }],
+        engineeringOpen: engineeringById.get(h.competitorId) ?? null,
+        capturedAt: h.recordedAt,
       });
     } else {
       cur.totalOpen += h.count;
@@ -287,7 +352,13 @@ compareRouter.get("/", async (c) => {
             value: r.value ?? 0,
           }
         : null;
-    list.push({ source: r.source, score: r.score, reviewCount: r.reviewCount, sub });
+    list.push({
+      source: r.source,
+      score: r.score,
+      reviewCount: r.reviewCount,
+      sub,
+      recordedAt: r.recordedAt,
+    });
     reviewsById.set(r.competitorId, list);
   }
   const signalById = new Map(latestSignals.map((s) => [s.competitorId, s]));
@@ -338,7 +409,13 @@ compareRouter.get("/", async (c) => {
         tech,
         platform,
         latestSignal: sig
-          ? { severity: sig.severity, createdAt: sig.createdAt as unknown as string }
+          ? {
+              id: sig.id,
+              severity: sig.severity,
+              category: sig.category,
+              insight: sig.insight,
+              createdAt: sig.createdAt as unknown as string,
+            }
           : null,
       };
     });

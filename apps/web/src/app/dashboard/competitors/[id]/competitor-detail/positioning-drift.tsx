@@ -1,8 +1,8 @@
 "use client";
 
-import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
-import { api, type PositioningVersion } from "@/lib/api";
+import type { PositioningVersion } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TabSection } from "@/components/outrival/tab-shell";
 
@@ -12,25 +12,19 @@ import { TabSection } from "@/components/outrival/tab-shell";
  * The tab could say a competitor's copy changed, never what it changed FROM,
  * which is the half that carries the meaning: "Everything your TCG world needs"
  * is a headline, and "they stopped saying track your collection and started
- * saying buy, sell, trade" is a repositioning. The API returns distinct versions
- * of the copy (see /positioning-history), so the comparison is against the last
- * wording they actually used, not against an arbitrary date.
+ * saying buy, sell, trade" is a repositioning.
  *
- * Renders nothing until there are two versions: a competitor whose homepage has
- * never been rewritten has no drift, and an empty before/after would imply we
- * simply failed to capture one.
+ * Presentational: the tab owns the query, because its verdict is derived from the
+ * same two versions and the two must never disagree about whether the copy moved.
  */
-export function PositioningDrift({ competitorId }: { competitorId: string }) {
-  const historyQuery = useQuery({
-    queryKey: ["competitor", competitorId, "positioningHistory"],
-    queryFn: () => api.getCompetitorPositioningHistory(competitorId).then((r) => r.versions),
-    placeholderData: keepPreviousData,
-  });
-
-  // Best-effort: this is one section of a tab that works without it, so a failure
-  // stays silent rather than replacing the feed with an error.
-  if (historyQuery.isError) return null;
-  if (!historyQuery.data) {
+export function PositioningDrift({
+  versions,
+  loading,
+}: {
+  versions: PositioningVersion[] | null;
+  loading: boolean;
+}) {
+  if (loading) {
     return (
       <TabSection title="How the homepage reads now">
         <Skeleton className="h-24 w-full" />
@@ -38,15 +32,13 @@ export function PositioningDrift({ competitorId }: { competitorId: string }) {
     );
   }
 
-  const [now, before] = historyQuery.data;
+  const [now, before] = versions ?? [];
+  // A homepage that has never been rewritten has no drift, and an empty
+  // before/after would read as a capture we failed to take.
   if (!now || !before) return null;
 
-  const added = before.valueProps.length > 0 || now.valueProps.length > 0
-    ? now.valueProps.filter((v) => !before.valueProps.includes(v))
-    : [];
-  const dropped = now.valueProps.length > 0 || before.valueProps.length > 0
-    ? before.valueProps.filter((v) => !now.valueProps.includes(v))
-    : [];
+  const added = now.valueProps.filter((v) => !before.valueProps.includes(v));
+  const dropped = before.valueProps.filter((v) => !now.valueProps.includes(v));
 
   return (
     <TabSection
@@ -82,8 +74,8 @@ export function PositioningDrift({ competitorId }: { competitorId: string }) {
               <dd className="m-0 flex flex-col gap-1.5">
                 {dropped.map((v) => (
                   // Struck through: what a competitor STOPPED claiming is as
-                  // telling as what they started claiming, and reading it as
-                  // plain text alongside the additions loses which is which.
+                  // telling as what they started claiming, and reading both as
+                  // plain text loses which is which.
                   <span
                     key={v}
                     className="text-sm leading-snug text-muted-foreground line-through decoration-muted-foreground/50"
@@ -116,9 +108,10 @@ function Version({
       </p>
       {version.headline ? (
         <p
-          className={`text-lead font-semibold leading-snug tracking-tight text-balance ${
-            muted ? "text-muted-foreground" : "text-foreground"
-          }`}
+          className={cn(
+            "text-lead font-semibold leading-snug tracking-tight text-balance",
+            muted ? "text-muted-foreground" : "text-foreground",
+          )}
         >
           {version.headline}
         </p>

@@ -2,7 +2,7 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { endOfDay, startOfDay, subDays } from "date-fns";
 import type { Plan } from "@outrival/shared";
-import { SIGNALS_PAGE_SIZE } from "./queries";
+import { OVERVIEW_SIGNALS_LIMIT, SIGNALS_PAGE_SIZE } from "./queries";
 import type {
   Signal,
   SignalsPage,
@@ -82,21 +82,32 @@ export async function getOverviewData(productId?: string): Promise<{
   sectoral: SectoralSignal[] | null;
   battleCards: BattleCardSummary[] | null;
   checklist: OnboardingChecklist | null;
+  health: { sources: ActivitySource[]; upcoming: ActivityUpcoming[] } | null;
+  digests: Digest[] | null;
 } | null> {
   // patch-28 — an optional product scope filters both feeds; absent → org-wide.
   const scope = productId ? `&productId=${encodeURIComponent(productId)}` : "";
   const compScope = productId ? `?productId=${encodeURIComponent(productId)}` : "";
   try {
     // signals + competitors gate the whole seed (their failure nulls it, keeping
-    // the prior contract). The three secondary Overview sections are best-effort
+    // the prior contract). The secondary Overview sections are best-effort
     // (tryGet → null), so a plan-gated sectoral teaser or a checklist blip never
     // sinks the hero feeds; each falls back to its own client fetch.
-    const [s, c, sectoral, cards, checklist] = await Promise.all([
-      serverGet<{ signals: Signal[] }>(`/api/signals?limit=200${scope}`),
+    //
+    // sort=recent must match overviewSignalsQuery, or the seed writes a cache entry
+    // the view never reads (and the view then fetches anyway).
+    const [s, c, sectoral, cards, checklist, health, digests] = await Promise.all([
+      serverGet<{ signals: Signal[] }>(
+        `/api/signals?limit=${OVERVIEW_SIGNALS_LIMIT}&sort=recent${scope}`,
+      ),
       serverGet<{ competitors: Competitor[] }>(`/api/competitors${compScope}`),
       tryGet<{ signals: SectoralSignal[] }>(`/api/sectoral?limit=3`),
       tryGet<{ battleCards: BattleCardSummary[] }>(`/api/battle-cards`),
       tryGet<OnboardingChecklist>(`/api/onboarding/checklist`),
+      tryGet<{ sources: ActivitySource[]; upcoming: ActivityUpcoming[] }>(
+        `/api/activity/health${compScope}`,
+      ),
+      tryGet<{ digests: Digest[] }>(`/api/digests`),
     ]);
     return {
       signals: s.signals,
@@ -104,6 +115,8 @@ export async function getOverviewData(productId?: string): Promise<{
       sectoral: sectoral?.signals ?? null,
       battleCards: cards?.battleCards ?? null,
       checklist: checklist ?? null,
+      health: health ?? null,
+      digests: digests?.digests ?? null,
     };
   } catch {
     return null;

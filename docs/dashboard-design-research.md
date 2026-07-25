@@ -309,9 +309,14 @@ is exactly patterns 2/5/6/6b. So this is mostly confirmation, with a few gaps to
 - Best-effort degrade server-side = the foundation for per-widget error states. ✓
 
 **Already implemented (verified in code, June 2026) — most of the research is done:**
-- North-star + **outcome framing** — `PageHead` sub reads "N competitors moved · M
-  critical pending", KPI strip (Signals/Critical/Active/Last) with sparkline. ✓
-  (`components/dashboard/overview.tsx`, `kpi.tsx`)
+- North-star + **outcome framing** — the Overview leads with a verdict ("N of M
+  competitors moved, mostly on pricing. K critical still open") over the window's
+  highest-threat signal, with the counters demoted to a rail beside it where each one
+  carries a comparison or a destination. ✓ (`overview.tsx`, `overview-lead.tsx`)
+- **Who is moving** — per-competitor tiles (7d count, week over week, the categories
+  named in their own hue, silence as a state). ✓ (`overview-movers.tsx`)
+- **A queue keyed on state, not severity** — unread critical/high plus user-claimed
+  signals, with a real cleared state. ✓ (`overview-queue.tsx`)
 - **On-card AI summary** — `signal.narrative` rendered inline with a Sparkles mark;
   `soWhat`/`recommendedAction` on the card. ✓ (`signal-card.tsx`)
 - **Visibly ranked feed** — feed default sort is `threat` (server: severity × overlap
@@ -335,12 +340,15 @@ is exactly patterns 2/5/6/6b. So this is mostly confirmation, with a few gaps to
 2. **Visual diff as the hero detail view** (Visualping) — before/after screenshot +
    highlight of what changed. Genuinely missing (Roadmap Phase 8); the detail today
    is text (narrative/so-what/relevance) via `why-insight-panel`. Larger build.
-3. **Streaming skeletons on the overview client-fallback.** Server-prefetch is fine,
-   but the client path blocks the whole screen on `signals===null || competitors===null`
-   → render the shell + per-card skeletons and hydrate as data lands. Polish.
-4. **Empty-state CTAs.** Overview "No signals yet" is instruction-only; add one clear
-   action where appropriate ("two parts instruction, one part delight, one action").
-   (First-run is already covered by `OnboardingChecklistCard`.) Minor.
+3. **Empty-state CTAs.** The Overview's "no signals in this window" state is still
+   instruction-only ("widen the range"); add one clear action where appropriate ("two
+   parts instruction, one part delight, one action"). (First-run is already covered by
+   `OnboardingChecklistCard`, and the decision queue's cleared state now names what
+   happens next.) Minor.
+
+**Closed since:** streaming skeletons on the overview client-fallback — the page now
+renders its own per-block skeleton (`overview-skeleton.tsx`) shaped like the real
+blocks, instead of a generic dashboard one that matched nothing on screen.
 
 ---
 

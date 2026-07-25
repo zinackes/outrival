@@ -29,6 +29,19 @@ export function signalsQuery(params: SignalsParams = {}) {
   });
 }
 
+// The Overview's feed: the newest N signals, chronological.
+//
+// "recent" (not the default threat order) because every number on that page is
+// windowed — the period count, the comparison against the period before, the
+// per-bucket bars — and a threat-ranked page of 200 is an arbitrary sample of the
+// calendar. One factory so the cache key has a single definition, shared by the
+// view, the RSC seed and the onboarding poller that invalidates it.
+export const OVERVIEW_SIGNALS_LIMIT = 200;
+
+export function overviewSignalsQuery(productId?: string) {
+  return signalsQuery({ limit: OVERVIEW_SIGNALS_LIMIT, productId, sort: "recent" });
+}
+
 // Page size for the paginated Signals feed. Shared so the SSR seed (first page) and
 // the client's initial page hit the same limit → the same cache entry.
 export const SIGNALS_PAGE_SIZE = 50;

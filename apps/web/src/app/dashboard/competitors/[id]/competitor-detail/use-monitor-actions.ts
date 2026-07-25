@@ -14,24 +14,20 @@ import { paywallFromError, type PaywallReason } from "@/components/outrival/payw
 import { POLL_TIMEOUT_MS, POLL_INTERVAL_MS, isServerScraping } from "./shared";
 import type { CompetitorData } from "../competitor-detail-view";
 
-// Sources whose tab data is written by an async DOWNSTREAM extraction job
-// (extract-pricing / extract-jobs / extract-reviews), not by the scrape itself.
-// Their per-tab query has nothing new to show at the instant the scrape's lastRunAt
-// moves — the extraction lands seconds-to-minutes later.
-const EXTRACTION_BACKED_SOURCES = new Set<string>([
-  "pricing",
-  "jobs",
-  // Reviews v2: App Store (RSS) + Trustpilot surface are the live review sources.
-  "appstore_reviews",
-  "trustpilot_public",
-]);
-
-// Rather than guess the extraction delay with fixed timers (the old scheme gave up
-// at 70s and left slow extractions stuck until a hard refresh), poll the detail
-// until aiSummaryUpdatedAt advances past the pre-scrape baseline — bounded by a
-// hard deadline for the rare case where extraction never stamps.
-const EXTRACTION_WATCH_INTERVAL_MS = 5000;
-const EXTRACTION_WATCH_TIMEOUT_MS = 210_000;
+// A scrape only writes the snapshot. Everything a tab reads lands in DOWNSTREAM
+// jobs enqueued just before lastRunAt moves — extract-pricing / extract-jobs /
+// extract-reviews for the data tabs, classify-change → generate-signal for the
+// changes and signals. At the instant the poller calls a scrape "finished", none
+// of it exists yet, so the invalidation fired there refetches emptiness.
+//
+// Watching monitors.aiSummaryUpdatedAt for the landing didn't work: that stamp is
+// written only when the best-effort AI source summary returns, so an AI failure or
+// an extraction that bails early (parse_failed / empty_unverified) never moves it
+// and the tab sat on its empty state until a hard reload. Re-check on a widening
+// schedule instead — whatever lands, whenever it lands, shows up on its own.
+// invalidateQueries only refetches MOUNTED queries, so this costs the active tab's
+// queries plus the detail, not the whole cache.
+const RECHECK_STEPS_MS = [3000, 5000, 8000, 13000, 21000, 34000, 55000];
 
 /** What the "Watch a custom page" dialog needs back to stay open on a bad URL. */
 export type CustomAddResult = { ok: true } | { ok: false; message: string };
@@ -52,12 +48,12 @@ export function useMonitorActions(id: string) {
   const [runningAll, setRunningAll] = useState(false);
   const [paywall, setPaywall] = useState<PaywallReason | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Watches downstream extraction results. Holds the poll interval + the monitors
-  // we're waiting on (baseline aiSummaryUpdatedAt at scrape-finish + a deadline).
-  const extractionWatchRef = useRef<{
-    interval: ReturnType<typeof setInterval> | null;
-    monitors: Map<string, { baseline: string | null; deadline: number }>;
-  }>({ interval: null, monitors: new Map() });
+  // Post-scrape recheck chain: the pending timer + how far into RECHECK_STEPS_MS
+  // we are. A newly finished scrape restarts it from the first step.
+  const recheckRef = useRef<{ timer: ReturnType<typeof setTimeout> | null; step: number }>({
+    timer: null,
+    step: 0,
+  });
   const scrapingStartRef = useRef<
     Map<
       string,
@@ -66,11 +62,14 @@ export function useMonitorActions(id: string) {
         lastRunAt: string | null;
         lastFailedAt: string | null;
         lastChangedAt: string | null;
-        aiSummaryUpdatedAt: string | null;
       }
     >
   >(new Map());
-  const seededRef = useRef(false);
+  // Which competitor the in-progress seeding below already ran for. Keyed by id,
+  // not a boolean: the pager swaps `id` without remounting this hook, and a bare
+  // flag left a scrape running on the newly opened competitor untracked — so its
+  // results only appeared on a reload, the same symptom this file exists to avoid.
+  const seededRef = useRef<string | null>(null);
 
   function setData(updater: (prev: CompetitorData | null) => CompetitorData | null) {
     queryClient.setQueryData<CompetitorData>(competitorDetailQuery(id).queryKey, (prev) =>
@@ -93,46 +92,33 @@ export function useMonitorActions(id: string) {
     return r.data ?? null;
   }
 
-  // Broad-invalidate every per-tab query for this competitor (not the heavy detail,
-  // refreshed separately by the pollers) so whichever tab is active refetches.
-  function invalidateExtractionTabs() {
-    void queryClient.invalidateQueries({
-      queryKey: ["competitor", id],
-      predicate: (q) => q.queryKey[2] !== "detail",
-    });
-  }
-
-  function watchExtraction(pending: { id: string; baseline: string | null }[]) {
-    const ref = extractionWatchRef.current;
-    const deadline = Date.now() + EXTRACTION_WATCH_TIMEOUT_MS;
-    for (const p of pending) ref.monitors.set(p.id, { baseline: p.baseline, deadline });
-    if (ref.interval) return;
-    ref.interval = setInterval(async () => {
-      const fresh = await refresh();
-      const now = Date.now();
-      let touched = false;
-      for (const [mid, meta] of ref.monitors) {
-        const updated = fresh?.monitors.find((x) => x.id === mid)?.aiSummaryUpdatedAt ?? null;
-        // Extraction stamped a fresh summary → its tab data has landed. Or the
-        // deadline passed → give up and refresh once regardless.
-        if ((updated !== null && updated !== meta.baseline) || now > meta.deadline) {
-          ref.monitors.delete(mid);
-          touched = true;
-        }
+  // Re-read this competitor (detail + whichever tab is mounted) on a widening
+  // schedule, so downstream extraction and classification results appear without
+  // a reload. Called on every scrape finish; a later finish restarts the chain.
+  function scheduleRecheck() {
+    const ref = recheckRef.current;
+    if (ref.timer) clearTimeout(ref.timer);
+    ref.step = 0;
+    const tick = () => {
+      const delay = RECHECK_STEPS_MS[ref.step];
+      if (delay === undefined) {
+        ref.timer = null;
+        return;
       }
-      if (touched) invalidateExtractionTabs();
-      if (ref.monitors.size === 0 && ref.interval) {
-        clearInterval(ref.interval);
-        ref.interval = null;
-      }
-    }, EXTRACTION_WATCH_INTERVAL_MS);
+      ref.step += 1;
+      ref.timer = setTimeout(() => {
+        void queryClient.invalidateQueries({ queryKey: ["competitor", id] });
+        tick();
+      }, delay);
+    };
+    tick();
   }
 
   // Restore the in-progress state after a refresh: any monitor the server still
   // reports as scraping is re-tracked so the poll resumes and reports its outcome.
   useEffect(() => {
-    if (!data || seededRef.current) return;
-    seededRef.current = true;
+    if (!data || seededRef.current === id) return;
+    seededRef.current = id;
     const running = data.monitors.filter(isServerScraping);
     if (running.length === 0) return;
     for (const m of running) {
@@ -141,11 +127,10 @@ export function useMonitorActions(id: string) {
         lastRunAt: m.lastRunAt,
         lastFailedAt: m.lastFailedAt,
         lastChangedAt: m.lastChangedAt,
-        aiSummaryUpdatedAt: m.aiSummaryUpdatedAt,
       });
     }
     setScrapingIds(new Set(running.map((m) => m.id)));
-  }, [data]);
+  }, [data, id]);
 
   useEffect(() => {
     if (scrapingIds.size === 0) {
@@ -166,9 +151,6 @@ export function useMonitorActions(id: string) {
       const changed: string[] = [];
       const failed: string[] = [];
       const timedOut: string[] = [];
-      // Pre-scrape aiSummaryUpdatedAt per finished extraction-backed source, so the
-      // watcher can tell when the downstream extraction has stamped a fresh one.
-      const extractionBaselines = new Map<string, string | null>();
       const now = Date.now();
       for (const monitorId of scrapingIds) {
         const tracker = scrapingStartRef.current.get(monitorId);
@@ -178,9 +160,6 @@ export function useMonitorActions(id: string) {
         const updatedFailed = updated?.lastFailedAt ?? null;
         if (updatedRun !== null && updatedRun !== tracker.lastRunAt) {
           finished.push(monitorId);
-          if (updated && EXTRACTION_BACKED_SOURCES.has(updated.sourceType)) {
-            extractionBaselines.set(monitorId, tracker.aiSummaryUpdatedAt);
-          }
           const updatedChanged = updated?.lastChangedAt ?? null;
           if (updatedChanged !== null && updatedChanged !== tracker.lastChangedAt) {
             changed.push(monitorId);
@@ -217,19 +196,10 @@ export function useMonitorActions(id: string) {
           toast.info("Scrape complete · no change", { description: unchangedLabels.join(", ") });
         }
         void queryClient.invalidateQueries({ queryKey: ["competitor", id] });
-
-        // Extraction-backed sources write their tab data in a downstream job that
-        // finishes AFTER lastRunAt moves — the invalidate above refetches data that
-        // isn't there yet. Watch each such source until its extraction stamps a fresh
-        // aiSummaryUpdatedAt, unless it already landed within this tick.
-        const pending = finished
-          .filter((mid) => extractionBaselines.has(mid))
-          .filter((mid) => {
-            const current = fresh.monitors.find((x) => x.id === mid)?.aiSummaryUpdatedAt ?? null;
-            return current === (extractionBaselines.get(mid) ?? null);
-          })
-          .map((mid) => ({ id: mid, baseline: extractionBaselines.get(mid) ?? null }));
-        if (pending.length > 0) watchExtraction(pending);
+        // That invalidation lands before any downstream job has written anything —
+        // the extractions and the classify → signal chain were only just enqueued.
+        // Keep re-reading for a couple of minutes so their results surface here.
+        scheduleRecheck();
       }
       if (failed.length > 0) {
         for (const mid of failed) {
@@ -258,14 +228,13 @@ export function useMonitorActions(id: string) {
     };
   }, [scrapingIds, id]);
 
-  // Tear down the extraction watch when switching competitor or unmounting (it
+  // Tear down the recheck chain when switching competitor or unmounting (it
   // invalidates this id's queries).
   useEffect(() => {
-    const ref = extractionWatchRef.current;
+    const ref = recheckRef.current;
     return () => {
-      if (ref.interval) clearInterval(ref.interval);
-      ref.interval = null;
-      ref.monitors.clear();
+      if (ref.timer) clearTimeout(ref.timer);
+      ref.timer = null;
     };
   }, [id]);
 
@@ -275,7 +244,6 @@ export function useMonitorActions(id: string) {
       lastRunAt: monitor.lastRunAt,
       lastFailedAt: monitor.lastFailedAt,
       lastChangedAt: monitor.lastChangedAt,
-      aiSummaryUpdatedAt: monitor.aiSummaryUpdatedAt,
     });
     setScrapingIds((prev) => new Set(prev).add(monitor.id));
   }

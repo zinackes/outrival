@@ -367,20 +367,18 @@ function RunRow({ digest, colorOf }: { digest: Digest; colorOf: ColorOf }) {
   return (
     <Link
       href={`/dashboard/digests/${digest.id}`}
-      className="group -mx-2.5 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 rounded-md border-b border-border px-2.5 py-3.5 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:grid-cols-[132px_minmax(0,1fr)_96px_120px_16px] sm:gap-y-0"
+      className="group -mx-2.5 grid grid-cols-1 items-center gap-x-4 gap-y-2 rounded-md border-b border-border px-2.5 py-3.5 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:grid-cols-[132px_minmax(0,1fr)_96px_120px_16px] sm:gap-y-0"
     >
-      <span className="order-1 font-mono text-dense tabular-nums">{digestLabel(digest)}</span>
+      <span className="font-mono text-dense tabular-nums">{digestLabel(digest)}</span>
       <span
-        className={`order-3 line-clamp-2 text-sm leading-snug sm:order-2 ${
+        className={`line-clamp-2 text-sm leading-snug ${
           quiet || !headline ? "text-muted-foreground" : ""
         }`}
       >
         {headline ?? "No summary was written for this period."}
       </span>
-      <span className="order-2 justify-self-end sm:order-3 sm:justify-self-start">
-        <CompetitorPips movers={stats.movers} colorOf={colorOf} />
-      </span>
-      <span className="order-4 flex flex-col gap-1.5">
+      <CompetitorPips movers={stats.movers} colorOf={colorOf} />
+      <span className="flex flex-col gap-1.5">
         <SpreadBar stats={stats} />
         <span className="text-xs text-muted-foreground">
           {quiet ? "Nothing to answer" : spreadSentence(stats)}
@@ -389,7 +387,7 @@ function RunRow({ digest, colorOf }: { digest: Digest; colorOf: ColorOf }) {
       <ChevronRight
         size={14}
         aria-hidden
-        className="order-5 hidden text-muted-foreground opacity-40 transition-opacity group-hover:opacity-100 sm:block"
+        className="hidden text-muted-foreground opacity-40 transition-opacity group-hover:opacity-100 sm:block"
       />
     </Link>
   );

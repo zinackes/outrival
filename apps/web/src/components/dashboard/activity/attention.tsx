@@ -2,49 +2,44 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { X } from "lucide-react";
+import { ChevronRight, X } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { api, type ActivitySource } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { toastApiError } from "@/lib/error-helpers";
 import { useForceRescan } from "@/hooks/use-force-rescan";
 import { sourceLabel } from "@/lib/source-labels";
 import { competitorNameColor } from "@/lib/competitor-color";
 import { Button } from "@/components/ui/button";
-import { SectionHead } from "@/components/dashboard/section-head";
 
 // Sources that have stopped answering, named. Nothing on this page could say so
 // before: the roster was fetched to fill three dropdowns and thrown away.
 //
-// Each is one hairline row rather than a card — the block exists to be read and
-// cleared, and two cards cost 130px to say two things. The cross hides a row for
-// a week rather than for good: a source still dark next Friday has to come back,
-// otherwise dismissing it quietly stops the watching it was reporting.
+// Each is one hairline row rather than a card, the section collapses, and the
+// cross retires a row for good. The opening sentence still counts every dark
+// source, because that line is the page's one claim about coverage and must not
+// go quiet just because this task list was cleared.
 
 const STORE_KEY = "outrival.activity.dismissed";
-const HIDE_DAYS = 7;
 
-type Dismissals = Record<string, number>;
-
-function readDismissals(): Dismissals {
-  if (typeof window === "undefined") return {};
+function readDismissed(): string[] {
+  if (typeof window === "undefined") return [];
   try {
     const raw = window.localStorage.getItem(STORE_KEY);
-    if (!raw) return {};
+    if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return {};
-    const now = Date.now();
-    // Drop expired entries on read, so the store cannot grow without bound and a
-    // week-old dismissal cannot outlive its window.
-    return Object.fromEntries(
-      Object.entries(parsed as Dismissals).filter(([, until]) => typeof until === "number" && until > now),
-    );
+    // The first shape was {monitorId: expiryMs}. Reading its keys as a plain set
+    // means an upgrade never resurrects a row the user had already dismissed.
+    if (Array.isArray(parsed)) return parsed.filter((v): v is string => typeof v === "string");
+    if (parsed && typeof parsed === "object") return Object.keys(parsed);
+    return [];
   } catch {
-    return {};
+    return [];
   }
 }
 
-function writeDismissals(next: Dismissals) {
+function writeDismissed(next: string[]) {
   try {
     window.localStorage.setItem(STORE_KEY, JSON.stringify(next));
   } catch {
@@ -61,79 +56,75 @@ export function Attention({
   sources: ActivitySource[];
   onChanged: () => void;
 }) {
-  const [dismissed, setDismissed] = useState<Dismissals>({});
-  // localStorage is unreachable while the component renders on the server, so the
-  // block stays out of the tree until the first client pass has read it. That
-  // costs one frame and avoids showing a row the user already dismissed.
+  const [dismissed, setDismissed] = useState<string[]>([]);
+  // localStorage is unreachable while this renders on the server, so the block
+  // stays out of the tree until the first client pass has read it. That costs one
+  // frame and avoids showing a row the user already cleared.
   const [ready, setReady] = useState(false);
+  const [open, setOpen] = useState(true);
   useEffect(() => {
-    setDismissed(readDismissals());
+    setDismissed(readDismissed());
     setReady(true);
   }, []);
 
   const dismiss = useCallback((monitorId: string) => {
     setDismissed((prev) => {
-      const next = { ...prev, [monitorId]: Date.now() + HIDE_DAYS * 86_400_000 };
-      writeDismissals(next);
+      const next = prev.includes(monitorId) ? prev : [...prev, monitorId];
+      writeDismissed(next);
       return next;
     });
   }, []);
 
-  const restore = useCallback((monitorId: string) => {
-    setDismissed((prev) => {
-      const next = { ...prev };
-      delete next[monitorId];
-      writeDismissals(next);
-      return next;
-    });
-  }, []);
-
-  const broken = sources
-    .filter((s) => s.status !== "ok")
+  const visible = sources
+    .filter((s) => s.status !== "ok" && !dismissed.includes(s.monitorId))
     .sort((a, b) => (STATE_RANK[a.status] ?? 9) - (STATE_RANK[b.status] ?? 9));
-  const visible = broken.filter((s) => !dismissed[s.monitorId]);
-  const hidden = broken.filter((s) => dismissed[s.monitorId]);
 
-  if (!ready || broken.length === 0) return null;
+  if (!ready || visible.length === 0) return null;
 
   return (
-    <section className="flex flex-col" aria-labelledby="activity-attention">
-      <SectionHead
-        title="Needs attention"
-        divider
-        action={
-          <span className="text-dense text-muted-foreground">
-            <span className="tabular-nums">{visible.length}</span> of{" "}
-            <span className="tabular-nums">{sources.length}</span> sources
-          </span>
-        }
-      />
-      {visible.map((s) => (
-        <AttentionRow key={s.monitorId} source={s} onDismiss={dismiss} onChanged={onChanged} />
-      ))}
-      {hidden.map((s) => (
-        <div
-          key={s.monitorId}
-          className="flex items-center gap-2.5 border-b border-border py-2.5 pl-1 text-dense text-muted-foreground last:border-b-0"
-        >
-          <span>
-            {s.competitorName} {sourceLabel(s.sourceType).toLowerCase()} hidden for {HIDE_DAYS} days.
-          </span>
-          <button
-            type="button"
-            onClick={() => restore(s.monitorId)}
-            className="font-medium text-link hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-          >
-            Undo
-          </button>
+    <section className="flex flex-col">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex items-center justify-between gap-3 border-b border-border pb-2 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      >
+        <span className="flex items-center gap-1.5">
+          <ChevronRight
+            className={cn(
+              "size-4 text-muted-foreground transition-transform duration-200 motion-reduce:transition-none",
+              open && "rotate-90",
+            )}
+            aria-hidden
+          />
+          <h2 className="text-lg font-semibold leading-tight tracking-tight">Needs attention</h2>
+        </span>
+        <span className="text-dense text-muted-foreground">
+          <span className="tabular-nums">{visible.length}</span> of{" "}
+          <span className="tabular-nums">{sources.length}</span> sources
+        </span>
+      </button>
+
+      {/* 0fr to 1fr animates a height the browser measures itself, so the section
+          opens smoothly without pinning a pixel height a wrapped row would break. */}
+      <div
+        className={cn(
+          "grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none",
+          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+        )}
+      >
+        <div className="overflow-hidden">
+          {visible.map((s) => (
+            <AttentionRow key={s.monitorId} source={s} onDismiss={dismiss} onChanged={onChanged} />
+          ))}
         </div>
-      ))}
+      </div>
     </section>
   );
 }
 
 // Why a source stopped, in its own terms. Only ever built from columns that stay
-// current (lastRunAt, consecutiveFailures, the two pause flags) — the failure
+// current (lastRunAt, consecutiveFailures, the two pause flags): the failure
 // diagnosis columns are sticky and can describe a source that has since healed.
 function explain(s: ActivitySource): string {
   const failures = s.consecutiveFailures ?? 0;
@@ -223,8 +214,8 @@ function AttentionRow({
           size="icon-sm"
           variant="ghost"
           onClick={() => onDismiss(source.monitorId)}
-          aria-label={`Hide ${source.competitorName} ${sourceLabel(source.sourceType).toLowerCase()} for ${HIDE_DAYS} days`}
-          title={`Hide for ${HIDE_DAYS} days`}
+          aria-label={`Stop showing ${source.competitorName} ${sourceLabel(source.sourceType).toLowerCase()} here`}
+          title="Stop showing this here"
         >
           <X className="size-3.5" aria-hidden />
         </Button>

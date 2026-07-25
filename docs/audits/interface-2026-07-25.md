@@ -254,7 +254,111 @@ set below the project's own legibility floor.
 
 ---
 
-## Still to run
+## Phase 2B/2C/3. Systematic scan across the remaining surfaces
 
-- Phase 2B/2C: `better-interface` on the core product and onboarding flows.
-- Phase 3: `better-writing` transverse copy pass.
+### Scope boundary, stated plainly
+
+This is **not** three more full-mode `better-interface` runs. A per-flow deep read
+was done once, for `/auth`. For the dashboard, competitor detail, onboarding and
+the copy layer, what follows is a systematic scan for the specific rule classes
+that had already produced findings, applied across every non-admin `.tsx` file.
+
+That trades depth for breadth on purpose. It catches a rule violated in twenty
+places and misses a subtle single-screen composition problem. The per-flow reads
+of the dashboard and onboarding remain genuinely **not reviewed**.
+
+### Findings
+
+| # | Severity | Domain | Location | Before | After | Why |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | MEDIUM | Accessibility | `add-product-wizard.tsx:311-315,331-335` is the only correct instance; `auth-form.tsx` is the counter-example | Exactly 2 files in the app use `aria-describedby`; the wizard is the only form that pairs it with `aria-invalid` and an adjacent error node | Make the wizard's pattern the default for every validated field | The correct pattern is already written, proven, and shipped. It is not missing knowledge, it is an unapplied default. This is the same shape as `transition-all`: `feedback-buttons.tsx` names its transition properties, the shared `button.tsx` base does not. |
+| 2 | MEDIUM | Accessibility | `feedback-widget.tsx:178`, `update-profile-dialog.tsx:429` | `disabled={!message.trim()}` and `disabled={!sourceValid \|\| analyzing}` | Keep enabled, validate on submit | Same anti-pattern as `/auth`. Distinct from the roughly 27 other `disabled={!x}` uses in the app, which gate on plan availability or an explicit acknowledgement and are correct: `better-accessibility` §7 permits `disabled` when a control is genuinely unavailable. |
+| 3 | LOW | Writing | `auth-form.tsx:122`, `demo-form.tsx:74,79`, `security-settings.tsx:65` | `"Something went wrong. Please try again."` as the server-message fallback | Name the action that failed: "Unable to sign in. Check your connection and try again." | `better-writing` §10 uses this exact string as its bad example. Each of these four call sites knows what the user was doing, so the generic string discards context the code already holds. |
+
+### Verified clean
+
+Scanned across every non-admin component and route. These came back with nothing,
+which is worth recording because they are the checks that usually produce noise:
+
+| Check | Result |
+| --- | --- |
+| Icon-only `<Button size="icon">` without an accessible name | **0** |
+| `<img>` without `alt` | **0** |
+| `<div>` / `<span>` with `onClick` standing in for a control | **1**, and it is `stopPropagation` on an action cluster, with a comment explaining why the row must not swallow the click. Correct. |
+| `"Click here"` | 0 |
+| Bare `"Learn more"` link text | 0 |
+| `"Oops"` | 0 |
+| `Yes` / `No` / `OK` as button labels on consequential actions | 0 |
+| Exclamation marks in user-facing copy | 0 |
+| Arbitrary `text-[Npx]` sizes | 0 |
+
+The copy layer is in notably good shape. `better-writing`'s most common findings
+simply do not occur here, and the two remaining `"Something went wrong"` strings
+sit in error boundaries (`global-error.tsx`, `dashboard/error.tsx`) where the code
+genuinely does not know what failed, so they are correct as written.
+
+### Verdict
+
+`Needs changes` on the two MEDIUM findings. The breadth scan found no systemic
+accessibility failure outside the form-validation pattern.
+
+---
+
+## Visual verification checklist
+
+Everything below needs a rendered browser and a human. Grouped by what you need
+open, so it is a handful of sittings rather than fourteen errands.
+
+### A. Dark theme, any dashboard page
+
+1. **Primary CTA contrast.** Find a primary (Iris-filled) button. Screenshot it at
+   rest, then hovered. The measurement says the label sits at 4.09:1 at rest and
+   **3.43:1 on hover**, both under AA. What I need from you is the judgement call:
+   does the hover state read as *less* legible than rest? If yes, that confirms
+   the ranking and it should be fixed before the rest of the colour work.
+2. **Overnight band ordering.** Open `/dashboard/activity`. The band behind the
+   asleep hours (`--night`) measures L 0.213 against the card's L 0.200, so it is
+   computed as *raised above* the card it sits in, which contradicts its own
+   comment. Screenshot the strip. Does the band read as sitting on top of the
+   card, or behind it? A photo settles it faster than more arithmetic.
+
+### B. Chrome DevTools, Animations panel, dashboard signals feed
+
+3. **Motion at 10% speed.** Open the Animations panel, set speed to 10%, then
+   toggle a filter on the signals feed so rows enter, exit and reorder. Record it.
+   Watch for: a row that jumps rather than settles, a detail panel whose last line
+   clips as the height animates, and whether fast repeated toggling ever looks
+   laggy. `lib/motion.ts` uses one spring for both the list and the panels, so
+   they should move as one hand.
+4. **Press feedback side by side.** On a signal card, press a feedback button
+   (thumbs) and then a normal Button. The feedback buttons use `scale-90`, the
+   shared base uses `scale-[0.97]`. Screenshot or just tell me: does the feedback
+   button visibly squash more than the others?
+
+### C. `/auth`, keyboard only, no mouse
+
+5. **Focus walk.** Tab from the top through: Google, passkey if enabled, email
+   field, Continue, the password toggle, and back. Every stop must show a visible
+   ring. Note any stop where the ring vanishes or is clipped.
+6. **The error path.** Type a deliberately malformed email, then Tab away. Three
+   things to check: does the Continue button look dead before you can submit, does
+   anything announce the error if you have VoiceOver or NVDA on, and does the error
+   text look small to you. All three are reported findings, this confirms them.
+7. **The password reveal target.** Switch to the password fallback and try to hit
+   the eye icon with a finger on a phone. It measures about 16×16px, under the
+   24×24 baseline. Tell me if you miss it.
+
+### D. Any browser, `/auth` and the signals feed
+
+8. **Reflow.** Set the window to 320px wide, then set zoom to 200%. Nothing should
+   scroll horizontally and no control should be clipped. Screenshot anything that
+   breaks.
+
+### E. If you have a P3 display
+
+9. **Accent saturation.** 16 colour tokens are authored outside sRGB, up to 49% of
+   the chroma. On a P3 screen you see close to the authored colour; on an sRGB
+   screen the light accent renders `#006266` / `#006e73` / `#007b80`. If you can
+   compare two screens, tell me whether the brand accent looks like the same colour
+   on both. That decides whether this is worth a P3 fallback layer or a rewrite to
+   in-gamut values.

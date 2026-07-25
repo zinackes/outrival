@@ -441,9 +441,9 @@ function cleanSummary(s: string | null): string | null {
 }
 
 // The org's competitors in scope. Names and urls come back with the ids because
-// the summary attributes its findings by name and draws its coverage row from the
-// urls, and re-querying for them would be a second round trip for data this call
-// already holds.
+// the summary names its findings and draws their marks from the urls, and
+// re-querying for them would be a second round trip for data this call already
+// holds.
 async function scopedCompetitors(orgId: string, productId: string | undefined) {
   const comps = await orgCompetitors(orgId);
   if (!productId) return comps;
@@ -460,7 +460,7 @@ activityRouter.get("/summary", async (c) => {
   const orgId = await ensureUserOrg(user.id);
   const comps = await scopedCompetitors(orgId, c.req.query("productId"));
   const ids = comps.map((x) => x.id);
-  if (ids.length === 0) return c.json({ buckets: [], days: [], findings: [], checked: [] });
+  if (ids.length === 0) return c.json({ buckets: [], days: [], findings: [] });
   const byId = new Map(comps.map((x) => [x.id, x]));
 
   // The viewer's offset in JS convention (minutes to ADD to local to get UTC, so
@@ -530,8 +530,9 @@ activityRouter.get("/summary", async (c) => {
   `);
 
   // The findings of the last 24 hours, named. A bucket only knows it holds one;
-  // hovering it should say WHICH source moved, and there are few enough of these
-  // in a day (the cap is a guard, not a page size) to send them with the counts.
+  // the strip marks it with the competitor's own logo and hovering it should say
+  // WHICH source moved, and there are few enough of these in a day (the cap is a
+  // guard, not a page size) to send them with the counts.
   const findings = await analyticsQuery<{
     recordedAt: string;
     competitorId: string;
@@ -550,45 +551,19 @@ activityRouter.get("/summary", async (c) => {
     LIMIT 60
   `);
 
-  // Who was actually looked at in the last 24 hours, whether or not anything
-  // moved. The buckets carry the volume of work and the findings carry what moved,
-  // but a quiet hour names nobody — so the count of checks is the only proof the
-  // watching happened, and a count names no one. One row per competitor (not per
-  // run) keeps this small enough to send with the rest.
-  const checked = await analyticsQuery<{ competitorId: string; checks: number }>(sql`
-    SELECT r.competitor_id AS "competitorId", count(*)::int AS checks
-    FROM scrape_runs r
-    WHERE ${scope} AND r.recorded_at > ${utcNow} - interval '24 hours'
-    GROUP BY 1
-  `);
-
   return c.json({
     buckets: buckets.filter((b) => b.slot >= 0 && b.slot < 24),
     days,
     findings: findings.map((f) => ({
       recordedAt: f.recordedAt,
+      competitorId: f.competitorId,
       competitorName: byId.get(f.competitorId)?.name ?? "Unknown",
+      // The mark the strip draws is the competitor's favicon, keyed on this url;
+      // without one it falls back to the initial, never to an empty tile.
+      url: byId.get(f.competitorId)?.url ?? null,
       sourceType: f.sourceType,
       kind: f.failed ? ("failed" as const) : ("change" as const),
     })),
-    // Busiest first, so the cap the UI applies drops the least-checked rather than
-    // whatever the aggregate happened to return first.
-    checked: checked
-      .flatMap((r) => {
-        const comp = byId.get(r.competitorId);
-        return comp
-          ? [
-              {
-                competitorId: comp.id,
-                competitorName: comp.name,
-                url: comp.url,
-                isSelf: comp.type === "self",
-                checks: r.checks,
-              },
-            ]
-          : [];
-      })
-      .sort((a, b) => b.checks - a.checks || a.competitorName.localeCompare(b.competitorName)),
   });
 });
 

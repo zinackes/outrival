@@ -83,6 +83,12 @@ const RAIL_BODY = "min-w-0 flex-1";
 // reading for tidiness, which is the wrong way round.
 const PROSE = "max-w-[36rem]";
 
+// "More from <competitor>" is fed the whole loaded feed for that competitor, so on
+// a busy one it ran to dozens of rows and pushed the feedback and the thread off
+// the bottom of the document. Show a glance, then reveal in feed-sized pages.
+const RELATED_INITIAL = 5;
+const RELATED_STEP = 10;
+
 // Mirrors ConfidenceDot's tones so the two never disagree about how loud a
 // given confidence level is: amber only at "low", neutral at "moderate".
 const CONFIDENCE_COPY: Record<
@@ -145,6 +151,8 @@ export function SignalDetailPanel({
   const [showContext, setShowContext] = useState(false);
   const [showAllChanges, setShowAllChanges] = useState(false);
   const [showWhy, setShowWhy] = useState(false);
+  const [visualFailed, setVisualFailed] = useState(false);
+  const [relatedShown, setRelatedShown] = useState(RELATED_INITIAL);
 
   const [flagged, setFlagged] = useState(signal.aiFlagged ?? false);
   const [severityAdjusted, setSeverityAdjusted] = useState(false);
@@ -222,7 +230,12 @@ export function SignalDetailPanel({
   // null at high confidence: nothing to warn about, so nothing is drawn.
   const conf = signal.aiConfidence ?? "high";
   const confidence = conf === "high" ? null : CONFIDENCE_COPY[conf];
-  const hasVisual = Boolean(detail?.screenshots?.before && detail?.screenshots?.after);
+  // The detail's screenshot flags are a pHash proxy — R2 can still miss — so a
+  // capture that fails to load retracts the whole Evidence block it anchored,
+  // rather than leaving a labelled empty frame.
+  const hasVisual =
+    Boolean(detail?.screenshots?.before && detail?.screenshots?.after) &&
+    !visualFailed;
   const changes = detail?.changes ?? [];
   const hasEvidence = hasVisual || changes.length > 0;
   const heldBack =
@@ -602,7 +615,12 @@ export function SignalDetailPanel({
 
           {hasEvidence && (
             <Section label="Evidence">
-              {hasVisual && <VisualDiff signalId={signal.id} />}
+              {hasVisual && (
+                <VisualDiff
+                  signalId={signal.id}
+                  onUnavailable={() => setVisualFailed(true)}
+                />
+              )}
               {changes.length > 0 &&
                 (hasVisual || detail?.humanChangeAfter ? (
                   <div className={cn(hasVisual && "mt-4")}>
@@ -637,7 +655,7 @@ export function SignalDetailPanel({
           <Section label={`More from ${signal.competitorName}`}>
             {related.length > 0 ? (
               <ul className="-mx-2">
-                {related.map((s) => (
+                {related.slice(0, relatedShown).map((s) => (
                   <li key={s.id}>
                     <button
                       type="button"
@@ -666,6 +684,18 @@ export function SignalDetailPanel({
               <p className="text-sm text-muted-foreground">
                 No other signals from this competitor yet.
               </p>
+            )}
+            {related.length > relatedShown && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mt-1 w-full text-muted-foreground"
+                onClick={() => setRelatedShown((n) => n + RELATED_STEP)}
+              >
+                {related.length - relatedShown > RELATED_STEP
+                  ? `Show ${RELATED_STEP} more · ${related.length - relatedShown} left`
+                  : `Show ${related.length - relatedShown} more`}
+              </Button>
             )}
             <Link
               href={`/dashboard/competitors/${signal.competitorId}`}

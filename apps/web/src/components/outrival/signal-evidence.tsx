@@ -40,6 +40,9 @@ export function SignalEvidence({
   detail?: SignalDetail | null;
 }) {
   const [showAll, setShowAll] = useState(false);
+  // screenshots.before/after is a pHash proxy, so R2 can still miss. A capture
+  // that fails to load takes its whole section — heading included — with it.
+  const [visualFailed, setVisualFailed] = useState(false);
   const injected = injectedDetail !== undefined;
   // Shares the ["signalDetail", id] cache with the "Why this insight?" panel.
   const detailQ = useQuery({
@@ -69,7 +72,9 @@ export function SignalEvidence({
   if (state === "error" || !detail) return null;
 
   const hasChange = Boolean(detail.humanChangeBefore || detail.humanChangeAfter);
-  const hasVisual = Boolean(detail.screenshots?.before && detail.screenshots?.after);
+  const hasVisual =
+    Boolean(detail.screenshots?.before && detail.screenshots?.after) &&
+    !visualFailed;
   const hasChanges = detail.changes.length > 0;
   // A headline before/after or a visual diff already summarizes the change, so the
   // typed breakdown can stay folded. Without either, the breakdown IS the summary —
@@ -107,7 +112,10 @@ export function SignalEvidence({
       {hasVisual && (
         <section className="space-y-2.5">
           <Label>Visual change</Label>
-          <VisualDiff signalId={signalId} />
+          <VisualDiff
+            signalId={signalId}
+            onUnavailable={() => setVisualFailed(true)}
+          />
         </section>
       )}
 

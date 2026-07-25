@@ -1,7 +1,7 @@
 "use client";
 
 import { formatDistanceToNow } from "date-fns";
-import { Check, Cpu, Layers } from "lucide-react";
+import { Check } from "lucide-react";
 import { TabCard, TabSection } from "./tab-shell";
 import { FreshnessDot } from "./freshness-dot";
 import { ConfidenceDot, type Confidence } from "./confidence-dot";
@@ -101,7 +101,7 @@ export function CompetitorTechStack({ techStack }: { techStack: TechStackData })
   return (
     <TabCard>
       {platformRows.length > 0 && (
-        <TabSection title="Platform" icon={Layers}>
+        <TabSection title="Platform">
           <div className="space-y-2 text-dense">
             {platformRows.map((r) => (
               <div key={r.label} className="flex items-center gap-3">
@@ -118,7 +118,6 @@ export function CompetitorTechStack({ techStack }: { techStack: TechStackData })
 
       <TabSection
         title="Detected tech stack"
-        icon={Cpu}
         action={
           <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
             {lastScrapedAt && (

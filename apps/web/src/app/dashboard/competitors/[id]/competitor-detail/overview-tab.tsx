@@ -8,14 +8,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { myProductQuery } from "@/lib/queries";
 import {
-  Activity,
   ChevronRight,
-  Cpu,
-  Scale,
-  FileText,
-  Users,
   LayoutGrid,
-  Megaphone,
   Star,
   Loader2,
   Play,
@@ -578,7 +572,6 @@ export function OverviewTab({
       {homepage && (dHeadline || dSubheadline) && (
         <TabSection
           title="How they position"
-          icon={Megaphone}
           action={
             capturedAt && (
               <span className="shrink-0 text-xs text-muted-foreground">
@@ -604,63 +597,87 @@ export function OverviewTab({
         </TabSection>
       )}
 
-      {homepage && dValueProps.length > 0 && (
-        <TabSection title="What they highlight" icon={FileText}>
-          <ul className="flex flex-col gap-2">
-            {dValueProps.map((v, i) => (
-              <li key={i} className="text-content leading-relaxed flex gap-2.5">
-                <span className="text-primary shrink-0 mt-px">•</span>
-                <span>{v}</span>
-              </li>
-            ))}
-          </ul>
-        </TabSection>
-      )}
-
-      {homepage && (customerLogos.length > 0 || dTestimonials.length > 0) && (
-        <TabSection title="Customers & proof" icon={Users}>
-          {customerLogos.length > 0 && (
-            <TooltipProvider delayDuration={150}>
-              <div className="grid grid-cols-[repeat(auto-fit,minmax(124px,1fr))] gap-px overflow-hidden rounded-lg border border-border bg-card">
-                {customerLogos.map((l, i) => (
-                  <LogoChip key={i} logo={l} />
-                ))}
-              </div>
-            </TooltipProvider>
-          )}
-          {dTestimonials.length > 0 && (
-            <ul className="flex flex-col gap-3 mt-1">
-              {dTestimonials.map((t, i) => (
-                <li key={i} className="border-l border-border pl-3.5">
-                  <p className="text-content italic leading-relaxed">“{t.quote}”</p>
-                  {t.author && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {t.author}
-                    </p>
-                  )}
+      {homepage && (dValueProps.length > 0 || numericClaims.length > 0) && (
+        <TabSection title="What they highlight">
+          {dValueProps.length > 0 && (
+            <ul className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
+              {dValueProps.map((v, i) => (
+                <li key={i} className="flex gap-2.5 text-sm leading-snug">
+                  {/* A bullet is punctuation; it does not spend the accent. */}
+                  <span
+                    aria-hidden
+                    className="mt-2 size-1 shrink-0 rounded-full bg-border-strong"
+                  />
+                  <span>{v}</span>
                 </li>
               ))}
             </ul>
           )}
+          {numericClaims.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {numericClaims.map((cl, i) => (
+                <span
+                  key={i}
+                  className="rounded-sm border border-border px-2 py-0.5 text-dense text-muted-foreground"
+                >
+                  {cl.raw_text}
+                </span>
+              ))}
+            </div>
+          )}
         </TabSection>
       )}
 
-      {numericClaims.length > 0 && (
-        <TabSection title="Claims" icon={Activity}>
-          <div className="flex flex-wrap gap-1.5">
-            {numericClaims.map((cl, i) => (
-              <Badge key={i} variant="secondary" className="text-xs font-normal">
-                {cl.raw_text}
-              </Badge>
-            ))}
+      {homepage && (customerLogos.length > 0 || dTestimonials.length > 0) && (
+        <TabSection
+          title="Customers and proof"
+          action={
+            <span className="shrink-0 text-xs text-muted-foreground">
+              from the homepage capture
+            </span>
+          }
+        >
+          <div
+            className={cn(
+              "grid gap-5",
+              customerLogos.length > 0 && dTestimonials.length > 0
+                ? "md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]"
+                : "grid-cols-1",
+            )}
+          >
+            {customerLogos.length > 0 && (
+              <TooltipProvider delayDuration={150}>
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(104px,1fr))] gap-px overflow-hidden rounded-md border border-border bg-border">
+                  {customerLogos.map((l, i) => (
+                    <LogoChip key={i} logo={l} />
+                  ))}
+                </div>
+              </TooltipProvider>
+            )}
+            {dTestimonials.length > 0 && (
+              <ul className="flex flex-col gap-3">
+                {dTestimonials.map((t, i) => (
+                  // The quotation marks are the quotation mark: no rail.
+                  <li key={i} className="flex flex-col gap-1.5">
+                    <p className="text-sm leading-relaxed text-muted-foreground">
+                      &ldquo;{t.quote}&rdquo;
+                    </p>
+                    {t.author && (
+                      <span className="text-xs text-muted-foreground">{t.author}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </TabSection>
       )}
 
+      </TabCard>
+
       <TechStackCard techStack={techStack} />
 
       <HeadToHead competitorName={competitorName} overview={overview} />
-      </TabCard>
     </div>
   );
 }
@@ -692,9 +709,9 @@ function TechStackCard({ techStack }: { techStack: TechStackData }) {
 
   return (
     <>
+      <TabCard>
       <TabSection
         title="Tech stack"
-        icon={Cpu}
         action={
           <button
             type="button"
@@ -735,6 +752,7 @@ function TechStackCard({ techStack }: { techStack: TechStackData }) {
           </dl>
         )}
       </TabSection>
+      </TabCard>
 
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl">
@@ -803,7 +821,8 @@ function HeadToHead({
   if (usable.length === 0) return null;
 
   return (
-    <TabSection title="Against your product" icon={Scale} action={
+    <TabCard>
+    <TabSection title="Against your product" action={
       <span className="shrink-0 truncate text-xs text-muted-foreground">{mine.name}</span>
     }>
       <div className="overflow-x-auto">
@@ -835,5 +854,6 @@ function HeadToHead({
         </table>
       </div>
     </TabSection>
+    </TabCard>
   );
 }

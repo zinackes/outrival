@@ -237,14 +237,15 @@ export function MeasureRow({
   );
 
   // The whole row is the control, not just its name: the bar is the biggest thing on
-  // the line and clicking it has to open the reading behind it. The identity button
-  // below stays the accessible control (it carries aria-expanded and the keyboard
-  // path), so a click that lands on it — or inside the open detail — is left alone
-  // rather than toggled twice.
+  // the line and clicking it has to open the reading behind it, and clicking the open
+  // breakdown has to close it again — the row's pointer cursor runs over that too, so
+  // a dead zone there reads as a broken toggle. The identity button below stays the
+  // accessible control (it carries aria-expanded and the keyboard path), so only a
+  // click that lands on a real control is left alone rather than toggled twice.
   const onRowClick = expandable
     ? (event: MouseEvent<HTMLDivElement>) => {
         const target = event.target as HTMLElement;
-        if (target.closest("button,a,[data-row-detail]")) return;
+        if (target.closest("button,a")) return;
         onToggle?.();
       }
     : undefined;
@@ -289,7 +290,6 @@ export function MeasureRow({
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.18, ease: "easeOut" }}
-            data-row-detail
             className="col-start-2 col-end-[-1] overflow-hidden"
           >
             {detail}

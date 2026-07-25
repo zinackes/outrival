@@ -108,11 +108,14 @@ export function digestsQuery() {
   });
 }
 
-// Single digest — backs the /dashboard/digests/[id] reader route.
+// Single digest — backs the /dashboard/digests/[id] reader route. Carries the
+// server-resolved section links (competitor + signal per move) and the period's
+// provenance alongside the row, so the reader can be a document with exits rather
+// than a dead end.
 export function digestDetailQuery(id: string) {
   return queryOptions({
     queryKey: ["digest", id] as const,
-    queryFn: () => api.getDigest(id).then((r) => r.digest),
+    queryFn: () => api.getDigest(id),
   });
 }
 

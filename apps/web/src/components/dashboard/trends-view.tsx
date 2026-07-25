@@ -198,12 +198,21 @@ function readMarket(
     clauses.push(`${tech.added.length} ${plural(tech.added.length, "tool")} adopted`);
   }
 
+  // The strongest supporting reading gets its own sentence; the rest follow in one
+  // more. Chaining four clauses onto a single comma spliced sentence reads as filler
+  // and buries whichever one the user actually needed.
+  const sentence = (parts: string[]) => {
+    const capped = `${parts[0]![0]!.toUpperCase()}${parts[0]!.slice(1)}`;
+    if (parts.length === 1) return `${capped}.`;
+    if (parts.length === 2) return `${capped}, and ${parts[1]}.`;
+    return `${capped}, ${parts.slice(1, -1).join(", ")}, and ${parts[parts.length - 1]}.`;
+  };
   const detail =
     clauses.length === 0
       ? "The sources reported, and nothing in them changed."
-      : `${clauses[0]![0]!.toUpperCase()}${clauses[0]!.slice(1)}${
-          clauses.length > 1 ? `, and ${clauses.slice(1).join(", ")}` : ""
-        }.`;
+      : clauses.length === 1
+        ? sentence(clauses)
+        : `${sentence([clauses[0]!])} ${sentence(clauses.slice(1, 3))}`;
   return { headline, detail };
 }
 

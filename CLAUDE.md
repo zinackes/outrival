@@ -124,9 +124,11 @@ sur invocation explicite seulement.
 
 ### Interface / design (repo `jakubkrehel/skills`)
 
-100 % markdown : zéro script, zéro hook, rien à exécuter. Six skills sur sept
-installés. `better-accessibility` est écarté, il recouvre `web-design-guidelines`
-(Vercel Web Interface Guidelines, déjà là et rafraîchi à chaque run).
+100 % markdown : zéro script, zéro hook, rien à exécuter. Les 7 skills du repo
+sont installés. `web-design-guidelines` (Vercel Web Interface Guidelines) reste
+en place et se recoupe avec `better-accessibility` : le premier est une commande
+de revue qui refetch ses règles, le second un corpus que `better-interface` peut
+charger comme domaine.
 
 - **better-ui** : polish et motion. Rayon concentrique (`outer = inner + padding`),
   `scale(0.96)` au press, transitions CSS interruptibles plutôt que keyframes,
@@ -143,8 +145,12 @@ installés. `better-accessibility` est écarté, il recouvre `web-design-guideli
   « Geist Mono = voix data uniquement, jamais de la prose ».
 - **better-layout** : groupement, alignement, ordre de lecture, disclosure
   progressive, breakpoints et container queries, propriétés logiques.
-- **better-interface** : orchestrateur read-only. Il lance les domaines ci-dessus
-  et consolide en un seul tableau de findings + verdict (`Block` / `Needs changes` /
-  `Approve`). `better-accessibility` n'étant pas installé, il rendra toujours ce
-  domaine `Not reviewed` : c'est attendu, `web-design-guidelines` couvre ce terrain
-  séparément.
+- **better-accessibility** : focus states, support clavier, ARIA, formulaires,
+  lecteurs d'écran, hit areas, `prefers-reduced-motion`. Les 5 skills de domaine
+  ci-dessus lui délèguent explicitement tout ce qui touche à l'accessibilité.
+- **better-interface** : orchestrateur read-only. Il lance les six domaines
+  ci-dessus dans l'ordre (accessibilité en premier, polish en dernier, pour qu'un
+  défaut de fond ne soit pas masqué par du vernis) et consolide en un seul tableau
+  de findings + verdict (`Block` / `Needs changes` / `Approve`). Plafonné à 15
+  findings en mode `full`, 5 en `quick` : cadrer le périmètre avant de le lancer,
+  le web fait 90 pages et 210 composants.

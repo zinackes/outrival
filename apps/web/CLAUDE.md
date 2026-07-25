@@ -17,7 +17,7 @@ Stack : Next.js 15, Tailwind v4, shadcn/ui new-york, Better Auth client
 - hooks/        Custom hooks React
 
 ## Design system Outrival
-- Source de vérité : `PRODUCT.md` (stratégie/register) + `DESIGN.md` (système visuel) à la racine du repo
+- Source de vérité : `DESIGN.md` (système visuel) à la racine du repo
 - Couleurs : OKLCH dark-first ; surfaces dark = **graphite neutre** (sans teinte, R≈G≈B — l'ancien navy `#101319` est retiré), light garde un soupçon de hue 260 ; light + dark via next-themes (`:root` = light) ; accent rationné CTA + focus ring (cyan en light, Iris indigo en dark ; `--link` pour liens/icônes). Tokens dans `globals.css`
 - Typo : **Geist Sans pour display/titres ET corps/UI** (une seule grotesque neutre — la hiérarchie vient du poids/taille/tracking, pas d'une police de titre typée) + Geist Mono (data/IDs, tabular-nums + slashed-zero) ; landing = Zodiak serif (registre brand) — `globals.css` + `layout.tsx`
 - Échelle type = tokens uniquement, **jamais `text-[Npx]`** : `text-micro`(10) `text-meta`(11) `text-xs`(12) `text-dense`(13) `text-sm`(14) `text-content`(15) `text-base`(16) `text-lead`(17) `text-lg`(18) `text-xl`(20) · titres de page `text-title`(22)/`text-title-lg`(26) · KPI `text-stat`(32). Définis dans `globals.css @theme`, doc dans `DESIGN.md §3`. Un nouveau rôle = un nouveau token, pas une valeur arbitraire.

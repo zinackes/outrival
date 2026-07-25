@@ -27,6 +27,8 @@ export interface PulseData {
   bars: number[];
   /** One label per bucket, for the hover tooltip. */
   barLabels: string[];
+  /** The newest bucket's window has not closed yet, so its bar is drawn open. */
+  barsPartialLast?: boolean;
   /** Unread criticals in the window, and who they belong to. */
   criticals: number;
   criticalLead: string | null;
@@ -143,7 +145,12 @@ export function OverviewLead({
               : `in the ${rangeLabel}`}
           </span>
           <div className="mt-1">
-            <BarSpark data={pulse.bars} labels={pulse.barLabels} unit="signal" />
+            <BarSpark
+              data={pulse.bars}
+              labels={pulse.barLabels}
+              unit="signal"
+              partialLast={pulse.barsPartialLast}
+            />
             <div className="mt-1 flex justify-between font-mono text-meta text-muted-foreground">
               <span>{pulse.barLabels[0]}</span>
               <span>{pulse.barLabels[pulse.barLabels.length - 1]}</span>

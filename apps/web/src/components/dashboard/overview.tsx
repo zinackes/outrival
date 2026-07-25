@@ -352,6 +352,9 @@ export function OverviewView() {
     comparable: derived.comparable,
     bars: derived.bars,
     barLabels: derived.barLabels,
+    // The presets end at `endOfDay(today)`, so the newest bucket covers a window
+    // that has not closed yet. It is drawn open rather than compared as if it had.
+    barsPartialLast: rangeTo > Date.now(),
     criticals: derived.criticals.length,
     criticalLead: derived.criticals[0]
       ? `${derived.criticals[0].competitorName}, ${catLabel(derived.criticals[0].category)}`

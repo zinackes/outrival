@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, YAxis } from "recharts";
 
 export interface BarSparkProps {
@@ -10,6 +11,12 @@ export interface BarSparkProps {
   /** Singular unit; the tooltip pluralises with a trailing "s". */
   unit?: string;
   h?: number;
+  /**
+   * The last bucket is still filling (its window ends in the future). It draws
+   * hatched instead of solid, because a bucket counted over half a day sits lower
+   * than its neighbours for a reason that has nothing to do with the trend.
+   */
+  partialLast?: boolean;
 }
 
 interface TipProps {
@@ -17,10 +24,11 @@ interface TipProps {
   payload?: Array<{ value?: number; payload?: { i: number } }>;
   labels?: string[];
   unit?: string;
+  partialIndex?: number;
 }
 
 // Same popover look as the area sparkline's tooltip, with the bucket's own label.
-function BarTooltip({ active, payload, labels, unit }: TipProps) {
+function BarTooltip({ active, payload, labels, unit, partialIndex }: TipProps) {
   const point = active ? payload?.[0] : undefined;
   if (!point) return null;
   const i = point.payload?.i ?? 0;
@@ -32,6 +40,9 @@ function BarTooltip({ active, payload, labels, unit }: TipProps) {
         {v}
         {unit ? ` ${v === 1 ? unit : `${unit}s`}` : ""}
       </div>
+      {i === partialIndex && (
+        <div className="text-meta text-muted-foreground">still counting</div>
+      )}
     </div>
   );
 }
@@ -45,7 +56,8 @@ function BarTooltip({ active, payload, labels, unit }: TipProps) {
  * fourteen 4px hit targets. Split into its own module so the parent can lazy-load it
  * and keep recharts off the route's first-load bundle (F7).
  */
-export function BarSparkChart({ data, labels, unit, h = 26 }: BarSparkProps) {
+export function BarSparkChart({ data, labels, unit, h = 26, partialLast = false }: BarSparkProps) {
+  const hatchId = useId();
   if (!data || data.length === 0) return null;
   const chartData = data.map((v, i) => ({ i, v }));
   const max = Math.max(...data, 1);
@@ -54,6 +66,25 @@ export function BarSparkChart({ data, labels, unit, h = 26 }: BarSparkProps) {
   return (
     <ResponsiveContainer width="100%" height={h}>
       <BarChart data={chartData} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
+        <defs>
+          {/* Diagonal accent hatch for the bucket that is still filling. Drawn in
+              the same accent as a closed bucket, so it reads as the same series
+              rather than as a different metric. */}
+          <pattern
+            id={hatchId}
+            width={3}
+            height={3}
+            patternTransform="rotate(45)"
+            patternUnits="userSpaceOnUse"
+          >
+            <rect
+              width={3}
+              height={3}
+              fill="color-mix(in oklab, var(--accent) 22%, transparent)"
+            />
+            <line x1={0} y1={0} x2={0} y2={3} stroke="var(--accent)" strokeWidth={1} />
+          </pattern>
+        </defs>
         {/* Domain from 0 so bar heights are proportional to the count, not to the
             spread between the smallest and largest bucket. */}
         <YAxis hide domain={[0, max]} />
@@ -65,23 +96,38 @@ export function BarSparkChart({ data, labels, unit, h = 26 }: BarSparkProps) {
           allowEscapeViewBox={{ x: false, y: true }}
           wrapperStyle={{ zIndex: 20, outline: "none" }}
           cursor={{ fill: "var(--foreground)", fillOpacity: 0.06 }}
-          content={<BarTooltip labels={labels} unit={unit} />}
+          content={
+            <BarTooltip
+              labels={labels}
+              unit={unit}
+              partialIndex={partialLast ? last : undefined}
+            />
+          }
         />
         <Bar dataKey="v" radius={[1, 1, 0, 0]} minPointSize={2} animationDuration={400}>
-          {chartData.map((d) => (
-            <Cell
-              key={d.i}
-              // A zero bucket keeps a 2px stub in the border colour: it has to read
-              // as an observed zero, not as a gap in the chart.
-              fill={
-                d.v === 0
-                  ? "var(--border-strong)"
-                  : d.i === last
-                    ? "var(--accent)"
-                    : "color-mix(in oklab, var(--accent) 70%, transparent)"
-              }
-            />
-          ))}
+          {chartData.map((d) => {
+            const partial = partialLast && d.i === last;
+            return (
+              <Cell
+                key={d.i}
+                // A zero bucket keeps a 2px stub in the border colour: it has to read
+                // as an observed zero, not as a gap in the chart.
+                fill={
+                  d.v === 0
+                    ? "var(--border-strong)"
+                    : partial
+                      ? `url(#${hatchId})`
+                      : d.i === last
+                        ? "var(--accent)"
+                        : "color-mix(in oklab, var(--accent) 70%, transparent)"
+                }
+                // The outline keeps a low hatched bar findable: without it the
+                // pattern alone reads as a faded bar rather than an open one.
+                stroke={partial && d.v > 0 ? "var(--accent)" : undefined}
+                strokeWidth={partial && d.v > 0 ? 1 : 0}
+              />
+            );
+          })}
         </Bar>
       </BarChart>
     </ResponsiveContainer>

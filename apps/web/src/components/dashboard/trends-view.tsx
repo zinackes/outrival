@@ -414,10 +414,12 @@ function ChartKey({
   series,
   hidden,
   onToggle,
+  onHighlight,
 }: {
   series: TrendsMarketSeries[];
   hidden: Set<string>;
   onToggle: (id: string) => void;
+  onHighlight: (id: string | null) => void;
 }) {
   if (series.length < 2) return null;
   return (
@@ -429,6 +431,12 @@ function ChartKey({
             key={item.competitorId}
             type="button"
             onClick={() => onToggle(item.competitorId)}
+            // Pointing at a key entry traces its line on the chart. Keyboard focus
+            // does the same, so the highlight is not mouse-only.
+            onMouseEnter={() => onHighlight(off ? null : item.competitorId)}
+            onMouseLeave={() => onHighlight(null)}
+            onFocus={() => onHighlight(off ? null : item.competitorId)}
+            onBlur={() => onHighlight(null)}
             aria-pressed={!off}
             className={cn(
               "inline-flex items-center gap-1.5 rounded-sm px-1 py-0.5 text-xs transition-opacity",
@@ -465,13 +473,22 @@ function MarketPlot({
   height?: number;
 }) {
   const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const [highlighted, setHighlighted] = useState<string | null>(null);
   if (series.length === 0) return null;
   return (
     <div className="flex flex-col gap-2">
-      <MarketChart series={series} mode={mode} formatValue={formatValue} hidden={hidden} height={height} />
+      <MarketChart
+        series={series}
+        mode={mode}
+        formatValue={formatValue}
+        hidden={hidden}
+        highlighted={highlighted}
+        height={height}
+      />
       <ChartKey
         series={series}
         hidden={hidden}
+        onHighlight={setHighlighted}
         onToggle={(id) =>
           setHidden((prev) => {
             const next = new Set(prev);

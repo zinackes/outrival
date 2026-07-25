@@ -1,19 +1,26 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ExternalLink, Loader2, SignalHigh, Boxes } from "lucide-react";
-import { productDetailQuery } from "@/lib/queries";
+import { Boxes, Check, ChevronDown, ChevronRight } from "lucide-react";
+import { productDetailQuery, productsListQuery } from "@/lib/queries";
+import { useSetProductScope } from "@/components/dashboard/product-scope-provider";
 import { MyProductView } from "../my-product-view";
 import { EmptyState } from "@/components/dashboard/empty-state";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { ProductTile } from "@/components/dashboard/product-tile";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 // patch-28 — a single product's detail page. Reuses MyProductView (profile, pricing,
-// features, tech stack, hiring, self-changes — all scoped by productId) and adds the
-// product-specific surfaces around it: its linked competitors and a scoped signals link.
+// features, tech stack, hiring, self-changes — all scoped by productId) and hands it
+// the product's linked competitors, which become its Competitors tab.
 export function ProductDetailView({ productId }: { productId: string }) {
   const detailQ = useQuery(productDetailQuery(productId));
   const detail = detailQ.data ?? null;
@@ -26,14 +33,14 @@ export function ProductDetailView({ productId }: { productId: string }) {
   if (detailQ.isError) {
     return (
       <div className="xl:px-6 2xl:px-12">
-        <BackLink />
+        <ProductCrumbs productId={productId} name="Product" />
         <EmptyState
           icon={Boxes}
           title="Product not found"
           description="This product doesn't exist or you don't have access to it."
           actions={
             <Button asChild>
-              <Link href="/dashboard/settings/products">Back to products</Link>
+              <Link href="/dashboard/products?product=all">Back to products</Link>
             </Button>
           }
         />
@@ -43,82 +50,96 @@ export function ProductDetailView({ productId }: { productId: string }) {
 
   return (
     <div className="xl:px-6 2xl:px-12">
-      <BackLink />
-
-      <MyProductView productId={productId} title={name} isPrimary={product?.isPrimary ?? false} />
-
-      <div className="mt-6">
-        <Card className="bg-gradient-card-strong p-4">
-          <div className="flex items-center justify-between mb-1">
-            <h3 className="text-dense font-semibold uppercase tracking-wide text-muted-foreground">
-              Competitors{competitors.length > 0 ? ` (${competitors.length})` : ""}
-            </h3>
-            <Button asChild variant="ghost" size="sm">
-              <Link href={`/dashboard/signals?product=${encodeURIComponent(productId)}`}>
-                <SignalHigh className="size-3.5" />
-                View signals
-              </Link>
-            </Button>
-          </div>
-          <Separator className="mb-2" />
-          {detailQ.isLoading ? (
-            <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
-              <Loader2 className="size-3.5 animate-spin" /> Loading competitors…
-            </div>
-          ) : competitors.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No competitors linked to this product yet. Link competitors from each
-              competitor&apos;s page.
-            </p>
-          ) : (
-            <ul className="divide-y divide-border">
-              {competitors.map((c) => (
-                <li
-                  key={c.competitorId}
-                  className="flex items-center justify-between gap-3 py-2 first:pt-0 last:pb-0"
-                >
-                  <Link
-                    href={`/dashboard/competitors/${c.competitorId}`}
-                    className="min-w-0 flex-1 truncate text-content font-medium hover:underline"
-                  >
-                    {c.name}
-                  </Link>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Badge variant={c.isSpecific ? "outline" : "secondary"} className="text-meta">
-                      {c.isSpecific ? "specific" : "shared"}
-                    </Badge>
-                    {c.url && (
-                      <a
-                        href={c.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-muted-foreground hover:text-foreground"
-                        aria-label="Open competitor site"
-                      >
-                        <ExternalLink className="size-3.5" />
-                      </a>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      </div>
+      <ProductCrumbs productId={productId} name={name} />
+      <MyProductView
+        productId={productId}
+        title={name}
+        isPrimary={product?.isPrimary ?? false}
+        // Loading and empty are different answers, and the tab must not claim
+        // "none linked" while the request is still in flight.
+        competitors={detailQ.isLoading ? undefined : competitors}
+      />
     </div>
   );
 }
 
-function BackLink() {
+/**
+ * Products / <this one>, with the switcher on the product itself.
+ *
+ * Changing SKU used to mean a trip through the sidebar or Settings, which is a
+ * long way round for the most frequent move on a multi-product workspace: reading
+ * the same thing about the next product.
+ */
+function ProductCrumbs({ productId, name }: { productId: string; name: string }) {
+  const router = useRouter();
+  const setScope = useSetProductScope();
+  const { data: products } = useQuery(productsListQuery());
+  const siblings = (products ?? []).filter((p) => p.status !== "archived");
+  const current = siblings.find((p) => p.id === productId);
+
+  function goAll() {
+    // Opening a product makes it the active scope, so going up has to release it,
+    // otherwise the portfolio redirects straight back into this product.
+    setScope(null);
+    router.push("/dashboard/products?product=all");
+  }
+
   return (
-    <div className="mb-4">
-      <Link
-        href="/dashboard/settings/products"
-        className="inline-flex items-center gap-1 text-dense text-muted-foreground hover:text-foreground"
+    <div className="mb-4 flex items-center gap-1.5 text-dense text-muted-foreground">
+      <button
+        type="button"
+        onClick={goAll}
+        className="rounded-sm outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
       >
-        <ArrowLeft className="size-3.5" />
-        All products
-      </Link>
+        Products
+      </button>
+      <ChevronRight size={13} aria-hidden />
+      {siblings.length > 1 ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="h-7 gap-1.5 px-2">
+              <ProductTile
+                name={name}
+                url={current?.url}
+                repoUrl={current?.repoUrl}
+                position={current?.position}
+                size={16}
+                ring
+              />
+              <span className="max-w-40 truncate">{name}</span>
+              <ChevronDown size={13} className="text-muted-foreground" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-56">
+            {siblings.map((p) => (
+              <DropdownMenuItem
+                key={p.id}
+                className="gap-2"
+                onSelect={() => {
+                  if (p.id === productId) return;
+                  setScope(p.id);
+                  router.push(`/dashboard/products/${p.id}`);
+                }}
+              >
+                <ProductTile
+                  name={p.name}
+                  url={p.url}
+                  repoUrl={p.repoUrl}
+                  position={p.position}
+                  size={16}
+                  ring
+                />
+                <span className="flex-1 truncate">{p.name}</span>
+                {p.id === productId && <Check size={13} className="shrink-0" />}
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={goAll}>All products</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : (
+        <span className="text-foreground">{name}</span>
+      )}
     </div>
   );
 }

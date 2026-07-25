@@ -156,9 +156,11 @@ export function WorkspaceSwitcher({
   function selectProduct(value: string) {
     const next = value === ALL_PRODUCTS ? null : value;
     setScope(next); // persist to cookie + update context (readers react immediately)
-    // Detail page → navigate to the chosen product's page (All → overview).
+    // Detail page → navigate to the chosen product's page. "All products" now has
+    // a page of its own (the portfolio), which is where leaving a product belongs;
+    // it used to drop the user on the Overview, a different question entirely.
     if (detailProductId) {
-      router.push(next ? `/dashboard/products/${next}` : "/dashboard");
+      router.push(next ? `/dashboard/products/${next}` : "/dashboard/products?product=all");
       return;
     }
     // Collapse any inbound ?product= override so a stale deep-link param can't fight

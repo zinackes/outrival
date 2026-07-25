@@ -1,12 +1,22 @@
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
-import { and, asc, count, eq, isNull, ne } from "drizzle-orm";
+import { and, asc, count, eq, gte, inArray, isNull, ne, notInArray, sql } from "drizzle-orm";
 import { scrapeMonitor } from "@outrival/queue";
-import { products, productCompetitors, competitors, monitors } from "@outrival/db";
-import { productLimit, minPlanForProductCount, validatePublicUrl } from "@outrival/shared";
+import { products, productCompetitors, competitors, monitors, signals } from "@outrival/db";
+import {
+  entryPrice,
+  isComparablePricePeriod,
+  priceMedian,
+  productLimit,
+  minPlanForProductCount,
+  resolveCurrentPricing,
+  validatePublicUrl,
+  type PricingTier,
+} from "@outrival/shared";
 import { ProductProfileSchema } from "@outrival/ai";
 import { db } from "../lib/db";
+import { analyticsQuery, sql as analyticsSql } from "../lib/analytics-safe";
 import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
@@ -128,8 +138,46 @@ async function ownedProduct(productId: string, orgId: string) {
   });
 }
 
+// Daily buckets behind each product's sparkline. Same window as the competitor
+// roster, so a product row and a competitor row read on one scale.
+const ACTIVITY_DAYS = 14;
+
+// Internal anchors are infrastructure, not sources a user chose to watch, so they
+// stay out of the coverage count exactly as they do on the roster.
+const INTERNAL_SOURCES = ["tech_stack", "sitemap", "news", "subdomains"] as const;
+
+/**
+ * How much of a product we are actually capturing. A source counts as failing
+ * when it was marked unscrapable (a refusal, per the collection doctrine) or when
+ * its last run ended in failure. Mirrors coverageOf() on the competitors roster.
+ */
+function coverageOf(
+  rows: Array<{
+    sourceType: string;
+    lastRunAt: Date | null;
+    lastFailedAt: Date | null;
+    markedUnscrapable: boolean | null;
+  }>,
+) {
+  let failing = 0;
+  let failingSource: string | null = null;
+  for (const m of rows) {
+    const run = m.lastRunAt?.getTime() ?? null;
+    const failed = m.lastFailedAt?.getTime() ?? null;
+    const isFailing = m.markedUnscrapable || (failed !== null && (run === null || failed >= run));
+    if (!isFailing) continue;
+    failing++;
+    // Name one source, and let a refusal outrank a transient failure: it is the
+    // one the user can act on.
+    if (failingSource === null || m.markedUnscrapable) failingSource = m.sourceType;
+  }
+  return { sources: rows.length, failing, failingSource };
+}
+
 // GET /api/products — the org's products (ordered for the selector), each with its
-// monitored URL (from the self-competitor anchor) and competitor count.
+// monitored URL (from the self-competitor anchor), competitor count, and what the
+// portfolio needs to compare them: capture health, last scan, and 14 days of signal
+// activity on their competitors.
 productsRouter.get("/", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
@@ -143,11 +191,128 @@ productsRouter.get("/", async (c) => {
       position: products.position,
       url: competitors.url,
       selfCompetitorId: products.selfCompetitorId,
+      selfOverrides: competitors.overrides,
     })
     .from(products)
     .innerJoin(competitors, eq(competitors.id, products.selfCompetitorId))
     .where(eq(products.orgId, orgId))
     .orderBy(asc(products.position), asc(products.name));
+
+  const plan = await getOrgPlan(orgId);
+  if (rows.length === 0) {
+    return c.json({ products: [], plan, limit: productLimit(plan) });
+  }
+
+  const links = await db
+    .select({
+      productId: productCompetitors.productId,
+      competitorId: productCompetitors.competitorId,
+      name: competitors.name,
+      url: competitors.url,
+      color: competitors.color,
+      overrides: competitors.overrides,
+    })
+    .from(productCompetitors)
+    .innerJoin(products, eq(products.id, productCompetitors.productId))
+    .innerJoin(competitors, eq(competitors.id, productCompetitors.competitorId))
+    .where(and(eq(products.orgId, orgId), isNull(competitors.deletedAt)));
+
+  const competitorsByProduct = new Map<string, typeof links>();
+  for (const l of links) {
+    const arr = competitorsByProduct.get(l.productId) ?? [];
+    arr.push(l);
+    competitorsByProduct.set(l.productId, arr);
+  }
+
+  const now = Date.now();
+  const day = 24 * 3600 * 1000;
+  const sevenDaysAgo = new Date(now - 7 * day);
+  const fourteenDaysAgo = new Date(now - ACTIVITY_DAYS * day);
+  const sevenIso = sevenDaysAgo.toISOString();
+
+  // Signal activity is read through product_competitors rather than through
+  // signals.product_ids: the junction is the same source the tagger derives from,
+  // it needs no backfill for signals older than patch-28, and a competitor shared
+  // by two products is then counted for both, which is what the column means.
+  const linkedIds = [...new Set(links.map((l) => l.competitorId))];
+  const dayExpr = sql`date_trunc('day', ${signals.createdAt})`;
+  const [aggregates, dailyRows] = linkedIds.length
+    ? await Promise.all([
+        db
+          .select({
+            competitorId: signals.competitorId,
+            signals7d: sql<number>`count(*) filter (where ${signals.createdAt} >= ${sevenIso}::timestamp)::int`,
+            signalsPrev: sql<number>`count(*) filter (where ${signals.createdAt} < ${sevenIso}::timestamp)::int`,
+            critical7d: sql<number>`count(*) filter (where ${signals.createdAt} >= ${sevenIso}::timestamp and ${signals.severity} = 'critical')::int`,
+            lastSignalAt: sql<string | null>`max(${signals.createdAt})`,
+          })
+          .from(signals)
+          .where(
+            and(
+              eq(signals.orgId, orgId),
+              gte(signals.createdAt, fourteenDaysAgo),
+              inArray(signals.competitorId, linkedIds),
+            ),
+          )
+          .groupBy(signals.competitorId),
+        db
+          .select({
+            competitorId: signals.competitorId,
+            day: sql<string>`${dayExpr}::date::text`,
+            value: sql<number>`count(*)::int`,
+          })
+          .from(signals)
+          .where(
+            and(
+              eq(signals.orgId, orgId),
+              gte(signals.createdAt, fourteenDaysAgo),
+              inArray(signals.competitorId, linkedIds),
+            ),
+          )
+          .groupBy(signals.competitorId, dayExpr),
+      ])
+    : [[], []];
+
+  const aggByCompetitor = new Map(aggregates.map((a) => [a.competitorId, a]));
+  const dailyByCompetitor = new Map<string, Map<string, number>>();
+  for (const r of dailyRows) {
+    const byDay = dailyByCompetitor.get(r.competitorId) ?? new Map<string, number>();
+    byDay.set(r.day, r.value);
+    dailyByCompetitor.set(r.competitorId, byDay);
+  }
+  // Oldest day first, so the bars read left to right like a calendar.
+  const dayKeys: string[] = [];
+  for (let i = ACTIVITY_DAYS - 1; i >= 0; i--) {
+    dayKeys.push(new Date(now - i * day).toISOString().slice(0, 10));
+  }
+
+  // The anchors we scrape for the product itself (its own site / repo), which is
+  // what "are we still watching this product" means here. Internal anchors are
+  // dropped; unscrapable rows are kept, because a refusal is the thing to name.
+  const anchorIds = rows.map((p) => p.selfCompetitorId);
+  const monitorRows = await db
+    .select({
+      competitorId: monitors.competitorId,
+      sourceType: monitors.sourceType,
+      config: monitors.config,
+      lastRunAt: monitors.lastRunAt,
+      lastFailedAt: monitors.lastFailedAt,
+      markedUnscrapable: monitors.markedUnscrapable,
+    })
+    .from(monitors)
+    .where(
+      and(
+        inArray(monitors.competitorId, anchorIds),
+        eq(monitors.isActive, true),
+        notInArray(monitors.sourceType, [...INTERNAL_SOURCES]),
+      ),
+    );
+  const monitorsByAnchor = new Map<string, typeof monitorRows>();
+  for (const m of monitorRows) {
+    const arr = monitorsByAnchor.get(m.competitorId) ?? [];
+    arr.push(m);
+    monitorsByAnchor.set(m.competitorId, arr);
+  }
 
   const counts = await db
     .select({ productId: productCompetitors.productId, value: count() })
@@ -158,13 +323,101 @@ productsRouter.get("/", async (c) => {
     .groupBy(productCompetitors.productId);
   const countBy = new Map(counts.map((r) => [r.productId, r.value]));
 
-  // The plan + product limit drive the settings page's "N / limit" + upgrade hint.
-  const plan = await getOrgPlan(orgId);
-  return c.json({
-    products: rows.map((p) => ({ ...p, competitorCount: countBy.get(p.id) ?? 0 })),
-    plan,
-    limit: productLimit(plan),
+  // One pricing read for the whole page: every product's own anchor plus every
+  // competitor any of them tracks. Best-effort, so a slow analytics read costs the
+  // price column and nothing else.
+  const pricingByCompetitor = await latestPricingByCompetitor([
+    ...anchorIds,
+    ...linkedIds,
+  ]);
+
+  const enriched = rows.map((p) => {
+    const anchors = monitorsByAnchor.get(p.selfCompetitorId) ?? [];
+    const lastScan = anchors.reduce((max, m) => Math.max(max, m.lastRunAt?.getTime() ?? 0), 0);
+    const repo = anchors.find((m) => m.sourceType === "github_repo");
+    const repoUrl =
+      repo && typeof (repo.config as { url?: unknown } | null)?.url === "string"
+        ? ((repo.config as { url: string }).url ?? null)
+        : null;
+
+    // Sum the product's competitors rather than tagging signals: see the note on
+    // the aggregate query above.
+    const mine = competitorsByProduct.get(p.id) ?? [];
+    let signals7d = 0;
+    let signalsPrev = 0;
+    let critical7d = 0;
+    let lastSignalAt: string | null = null;
+    const activity = dayKeys.map(() => 0);
+    for (const { competitorId: cid } of mine) {
+      const a = aggByCompetitor.get(cid);
+      if (a) {
+        signals7d += a.signals7d;
+        signalsPrev += a.signalsPrev;
+        critical7d += a.critical7d;
+        if (a.lastSignalAt && (lastSignalAt === null || a.lastSignalAt > lastSignalAt)) {
+          lastSignalAt = a.lastSignalAt;
+        }
+      }
+      const byDay = dailyByCompetitor.get(cid);
+      if (!byDay) continue;
+      dayKeys.forEach((k, i) => {
+        activity[i] = (activity[i] ?? 0) + (byDay.get(k) ?? 0);
+      });
+    }
+
+    return {
+      ...p,
+      repoUrl,
+      // What we can observe of it, which is what the detail page's monitors follow:
+      // a live site, a repo while it is being built, or neither.
+      stage: p.url ? ("live" as const) : repoUrl ? ("developing" as const) : ("idea" as const),
+      competitorCount: countBy.get(p.id) ?? 0,
+      // A few faces for the row, so "12 competitors" says who rather than only how
+      // many. Ordered by name for a stable set across refreshes.
+      topCompetitors: [...mine]
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .slice(0, 3)
+        .map((l) => ({ id: l.competitorId, name: l.name, url: l.url, color: l.color })),
+      pricing: (() => {
+        const pos = pricePosition(
+          { id: p.selfCompetitorId, overrides: p.selfOverrides },
+          mine,
+          pricingByCompetitor,
+        );
+        return {
+          entry: pos.mine,
+          median: pos.median,
+          currency: pos.currency,
+          billingPeriod: pos.billingPeriod,
+          // The band the row draws its marker on: nothing to draw with fewer than
+          // two comparable rivals, so the cell says "not priced" instead of
+          // implying a market from one data point.
+          low: pos.comparableIds.size
+            ? Math.min(
+                ...pos.priced
+                  .filter((x) => pos.comparableIds.has(x.row.competitorId))
+                  .map((x) => x.entry!.price),
+              )
+            : null,
+          high: pos.comparableIds.size
+            ? Math.max(
+                ...pos.priced
+                  .filter((x) => pos.comparableIds.has(x.row.competitorId))
+                  .map((x) => x.entry!.price),
+              )
+            : null,
+          rivalsPriced: pos.comparableIds.size,
+        };
+      })(),
+      lastScanAt: lastScan > 0 ? new Date(lastScan).toISOString() : null,
+      coverage: coverageOf(anchors),
+      activity,
+      stats: { signals7d, signalsPrev, critical7d, lastSignalAt },
+    };
   });
+
+  // The plan + product limit drive the settings page's "N / limit" + upgrade hint.
+  return c.json({ products: enriched, plan, limit: productLimit(plan) });
 });
 
 // GET /api/products/:id — a product with its associated competitors.
@@ -187,6 +440,146 @@ productsRouter.get("/:id", async (c) => {
     .where(and(eq(productCompetitors.productId, product.id), isNull(competitors.deletedAt)));
 
   return c.json({ product, competitors: linked });
+});
+
+// Latest detected pricing batch per competitor. `distinct on` walks the index once
+// and stops at the newest recorded_at, then keeps every row of that batch.
+interface PricingRow {
+  competitor_id: string;
+  plan_name: string;
+  price: number | null;
+  currency: string | null;
+  billing_period: string | null;
+}
+
+async function latestPricingByCompetitor(ids: string[]): Promise<Map<string, PricingTier[]>> {
+  const byCompetitor = new Map<string, PricingTier[]>();
+  if (ids.length === 0) return byCompetitor;
+  const idList = analyticsSql.join(
+    ids.map((id) => analyticsSql`${id}`),
+    analyticsSql`, `,
+  );
+  // Best-effort: pricing history is analytics, so a read failure degrades the
+  // ladder to "not priced" instead of failing the page.
+  const rows = await analyticsQuery<PricingRow>(analyticsSql`
+    WITH latest AS (
+      SELECT competitor_id, max(recorded_at) AS rid
+      FROM pricing_history WHERE competitor_id IN (${idList}) GROUP BY competitor_id
+    )
+    SELECT p.competitor_id, p.plan_name, p.price, p.currency, p.billing_period
+    FROM pricing_history p
+    JOIN latest l ON l.competitor_id = p.competitor_id AND p.recorded_at = l.rid
+  `);
+  for (const r of rows) {
+    const arr = byCompetitor.get(r.competitor_id) ?? [];
+    arr.push({
+      planName: r.plan_name,
+      price: r.price,
+      currency: r.currency ?? "USD",
+      billingPeriod: r.billing_period ?? "monthly",
+    });
+    byCompetitor.set(r.competitor_id, arr);
+  }
+  return byCompetitor;
+}
+
+/**
+ * Where a product's entry price sits against a set of rivals.
+ *
+ * Both sides are read the same way (latest detected batch → user overrides →
+ * cheapest paid tier), otherwise the gap measures our method, not the market. The
+ * median covers only the rivals publishing in the SAME currency and period as
+ * ours; everyone else is counted as quote-only, which is itself a finding worth
+ * showing rather than hiding. Pure, so the list and the detail route cannot drift.
+ */
+function pricePosition<R extends { competitorId: string; overrides: unknown }>(
+  self: { id: string; overrides: unknown } | null,
+  rivals: R[],
+  pricingByCompetitor: Map<string, PricingTier[]>,
+) {
+  const resolve = (id: string, overrides: unknown) =>
+    entryPrice(
+      resolveCurrentPricing(
+        pricingByCompetitor.get(id) ?? [],
+        (overrides as Parameters<typeof resolveCurrentPricing>[1]) ?? null,
+      ),
+    );
+
+  const mine = self ? resolve(self.id, self.overrides) : null;
+  const priced = rivals.map((r) => ({ row: r, entry: resolve(r.competitorId, r.overrides) }));
+
+  // With no price of our own we still describe the market, on its own period.
+  const axis =
+    mine ??
+    priced.find((p) => p.entry && isComparablePricePeriod(p.entry.billingPeriod))?.entry ??
+    null;
+  const comparable = axis
+    ? priced.filter(
+        (p) =>
+          p.entry &&
+          p.entry.currency === axis.currency &&
+          p.entry.billingPeriod === axis.billingPeriod,
+      )
+    : [];
+  const comparableIds = new Set(comparable.map((p) => p.row.competitorId));
+
+  return {
+    mine,
+    priced,
+    comparableIds,
+    median: priceMedian(comparable.map((p) => p.entry!.price)),
+    currency: axis?.currency ?? null,
+    billingPeriod: axis?.billingPeriod ?? null,
+    quoteOnly: rivals.length - comparable.length,
+  };
+}
+
+// GET /api/products/:id/pricing-position — the ladder behind the product's
+// Pricing tab: every tracked rival's entry price, ours among them.
+productsRouter.get("/:id/pricing-position", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const product = await ownedProduct(c.req.param("id"), orgId);
+  if (!product) return c.json({ error: "Not found" }, 404);
+
+  const linked = await db
+    .select({
+      competitorId: competitors.id,
+      name: competitors.name,
+      url: competitors.url,
+      color: competitors.color,
+      overrides: competitors.overrides,
+    })
+    .from(productCompetitors)
+    .innerJoin(competitors, eq(competitors.id, productCompetitors.competitorId))
+    .where(and(eq(productCompetitors.productId, product.id), isNull(competitors.deletedAt)));
+
+  const self = await db.query.competitors.findFirst({
+    where: eq(competitors.id, product.selfCompetitorId),
+    columns: { id: true, name: true, url: true, overrides: true },
+  });
+
+  const pricingByCompetitor = await latestPricingByCompetitor([
+    ...linked.map((l) => l.competitorId),
+    ...(self ? [self.id] : []),
+  ]);
+  const position = pricePosition(self ?? null, linked, pricingByCompetitor);
+
+  return c.json({
+    mine: position.mine,
+    rivals: position.priced.map((p) => ({
+      competitorId: p.row.competitorId,
+      name: p.row.name,
+      url: p.row.url,
+      color: p.row.color,
+      entry: p.entry,
+      comparable: position.comparableIds.has(p.row.competitorId),
+    })),
+    median: position.median,
+    currency: position.currency,
+    billingPeriod: position.billingPeriod,
+    quoteOnly: position.quoteOnly,
+  });
 });
 
 const publicUrl = () =>

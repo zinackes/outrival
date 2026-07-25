@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Hono } from "hono";
 import { eq } from "drizzle-orm";
-import { competitors } from "@outrival/db";
+import { changes, competitors, monitors, pricingHistory, signals, snapshots } from "@outrival/db";
 import { makeTestDb, type TestDb } from "./db-harness";
 import { asUser, installAppMocks, mountApp, seedOrg } from "./app-harness";
 
@@ -121,6 +121,193 @@ describe("products per-tier limit + invariants", () => {
     );
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe("primary_product");
+  });
+});
+
+// The portfolio compares products on capture health and on what moved around
+// them, so the list handler now carries those aggregates. They are derived from
+// product_competitors (not from signals.product_ids), which is what makes a
+// pre-patch-28 signal count and a shared competitor count for both its products.
+describe("GET /products portfolio aggregates", () => {
+  test("a product with no monitors and no signals reports zeros, never nulls", async () => {
+    const res = await app.request("/api/products", asUser(A.userId, A.email));
+    const body = (await res.json()) as { products: Record<string, any>[] };
+    const item = body.products.find((p) => p.id === productA);
+
+    expect(item?.stage).toBe("idea"); // created with no url and no repo
+    expect(item?.lastScanAt).toBeNull();
+    expect(item?.coverage).toEqual({ sources: 0, failing: 0, failingSource: null });
+    expect(item?.activity).toHaveLength(14);
+    expect(item?.stats).toMatchObject({ signals7d: 0, signalsPrev: 0, critical7d: 0 });
+  });
+
+  test("signals on a linked competitor land on the product's own row", async () => {
+    // comp-a was attached to productA by the attach test above.
+    await testDb
+      .insert(monitors)
+      .values({ id: "mon-pa", competitorId: "comp-a", sourceType: "homepage", isActive: true });
+    await testDb
+      .insert(snapshots)
+      .values({ id: "snp-pa", monitorId: "mon-pa", r2Key: "k", contentHash: "h" });
+    const at = new Date(Date.now() - 2 * 24 * 3600 * 1000);
+    await testDb
+      .insert(changes)
+      .values({ id: "chg-pa", monitorId: "mon-pa", snapshotAfterId: "snp-pa", detectedAt: at });
+    await testDb.insert(signals).values({
+      id: "sig-pa",
+      changeId: "chg-pa",
+      orgId: A.orgId,
+      competitorId: "comp-a",
+      severity: "critical",
+      category: "pricing",
+      insight: "Entry tier moved",
+      createdAt: at,
+    });
+
+    const res = await app.request("/api/products", asUser(A.userId, A.email));
+    const body = (await res.json()) as { products: Record<string, any>[] };
+    const item = body.products.find((p) => p.id === productA);
+
+    expect(item?.stats).toMatchObject({ signals7d: 1, critical7d: 1 });
+    // Oldest day first: two days ago is the twelfth of fourteen buckets.
+    expect(item?.activity[11]).toBe(1);
+    expect((item?.activity as number[]).reduce((a, b) => a + b, 0)).toBe(1);
+  });
+
+  test("a monitor that refused us is named, and does not count as reporting", async () => {
+    const detail = await (await get(A, productA)).json();
+    await testDb.insert(monitors).values([
+      {
+        id: "mon-self-home",
+        competitorId: detail.product.selfCompetitorId,
+        sourceType: "homepage",
+        isActive: true,
+        lastRunAt: new Date(),
+      },
+      {
+        id: "mon-self-price",
+        competitorId: detail.product.selfCompetitorId,
+        sourceType: "pricing",
+        isActive: true,
+        markedUnscrapable: true,
+      },
+      // Internal anchors are infrastructure: they must not inflate the count.
+      {
+        id: "mon-self-news",
+        competitorId: detail.product.selfCompetitorId,
+        sourceType: "news",
+        isActive: true,
+      },
+    ]);
+
+    const res = await app.request("/api/products", asUser(A.userId, A.email));
+    const body = (await res.json()) as { products: Record<string, any>[] };
+    const item = body.products.find((p) => p.id === productA);
+
+    expect(item?.coverage).toEqual({ sources: 2, failing: 1, failingSource: "pricing" });
+    expect(item?.lastScanAt).not.toBeNull();
+  });
+});
+
+describe("price position", () => {
+  // A fresh org so the ladder is exactly what this test seeds.
+  let P: { orgId: string; userId: string; email: string };
+  let productP: string;
+  let selfP: string;
+
+  const priceRow = (competitorId: string, planName: string, price: number | null) => ({
+    competitorId,
+    planName,
+    price,
+    currency: "USD",
+    billingPeriod: "monthly",
+    recordedAt: new Date(),
+  });
+
+  beforeAll(async () => {
+    P = await seedOrg(testDb, { plan: "pro" });
+    const created = await app.request(
+      "/api/products",
+      asUser(P.userId, P.email, { method: "POST", body: JSON.stringify({ name: "Priced" }) }),
+    );
+    productP = (await created.json()).product.id;
+    selfP = (await (await get(P, productP)).json()).product.selfCompetitorId;
+
+    await testDb.insert(competitors).values([
+      { id: "riv-cheap", orgId: P.orgId, name: "Cheap Co" },
+      { id: "riv-mid", orgId: P.orgId, name: "Mid Co" },
+      { id: "riv-dear", orgId: P.orgId, name: "Dear Co" },
+      { id: "riv-quote", orgId: P.orgId, name: "Quote Co" },
+    ]);
+    for (const id of ["riv-cheap", "riv-mid", "riv-dear", "riv-quote"]) {
+      await app.request(
+        `/api/products/${productP}/competitors/${id}`,
+        asUser(P.userId, P.email, { method: "POST", body: JSON.stringify({}) }),
+      );
+    }
+
+    await testDb.insert(pricingHistory).values([
+      // Ours: a free tier that must NOT be read as the entry price.
+      priceRow(selfP, "Free", 0),
+      priceRow(selfP, "Starter", 49),
+      priceRow("riv-cheap", "Basic", 69),
+      priceRow("riv-mid", "Team", 99),
+      priceRow("riv-dear", "Growth", 149),
+      // Quote-based only: a real competitor, but not on the price axis.
+      priceRow("riv-quote", "Enterprise", null),
+    ]);
+  });
+
+  test("the ladder puts our cheapest paid tier against the priced rivals", async () => {
+    const res = await app.request(
+      `/api/products/${productP}/pricing-position`,
+      asUser(P.userId, P.email),
+    );
+    const body = await res.json();
+    expect(body.mine).toMatchObject({ planName: "Starter", price: 49 });
+    expect(body.median).toBe(99);
+    expect(body.quoteOnly).toBe(1);
+    expect(body.rivals.find((r: any) => r.competitorId === "riv-quote").comparable).toBe(false);
+    expect(body.rivals.find((r: any) => r.competitorId === "riv-dear").entry.price).toBe(149);
+  });
+
+  test("the list row carries the same numbers as the ladder", async () => {
+    const res = await app.request("/api/products", asUser(P.userId, P.email));
+    const body = (await res.json()) as { products: Record<string, any>[] };
+    const item = body.products.find((p) => p.id === productP);
+    expect(item?.pricing).toMatchObject({
+      median: 99,
+      low: 69,
+      high: 149,
+      rivalsPriced: 3,
+      currency: "USD",
+    });
+    expect(item?.pricing.entry).toMatchObject({ price: 49 });
+    expect(item?.topCompetitors).toHaveLength(3);
+  });
+});
+
+describe("GET /products/:id/pricing-position", () => {
+  test("a foreign org cannot read another org's price position (404)", async () => {
+    const res = await app.request(
+      `/api/products/${productA}/pricing-position`,
+      asUser(B.userId, B.email),
+    );
+    expect(res.status).toBe(404);
+  });
+
+  test("with no priced competitor the ladder is empty rather than absent", async () => {
+    const res = await app.request(
+      `/api/products/${productA}/pricing-position`,
+      asUser(A.userId, A.email),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.mine).toBeNull();
+    expect(body.median).toBeNull();
+    // comp-a is linked but publishes nothing, so it reads as quote-only.
+    expect(body.rivals).toHaveLength(1);
+    expect(body.quoteOnly).toBe(1);
   });
 });
 

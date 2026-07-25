@@ -365,8 +365,10 @@ export async function getCompareData(productId?: string): Promise<{
  * Best-effort: null → MyProductView falls back to its own client fetch (which
  * also drives the scan polling).
  */
-/** The org's products (SKUs) + plan/limit. Best-effort: null on failure. Used by
- * /dashboard/products to redirect to the primary product's detail page. */
+/** The org's products (SKUs) + plan/limit, each carrying the portfolio's
+ * aggregates (capture health, activity, price band). Best-effort: null on
+ * failure. Seeds /dashboard/products, which renders the portfolio or redirects
+ * to a single product depending on the active scope. */
 export async function getProductsList(): Promise<{
   products: ProductSummary[];
   plan: string;

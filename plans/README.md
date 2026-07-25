@@ -63,6 +63,7 @@ deadlines, security and direction.
 | 022 | Decide how a free workspace first meets a paid capability | P2 | M | MED | — | TODO |
 | 023 | Decide whether collected data can become a public surface | P2 | M | MED-HIGH | — | TODO |
 | 024 | Find where 80% of archive backfills are lost, then stop losing them | P1 | M | MED | 019 | REJECTED (premise falsified: the gap was historical and self-resolved on 2026-07-22) |
+| 025 | The dead-letter tile reports the real depth, and something pages | P1 | S | LOW | — | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
@@ -90,6 +91,10 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJE
 
 - **All five are independent of each other and of 001 to 018.** They can be
   executed in any order, or interleaved with the deep-run plans.
+- **025 came out of 024's autopsy.** Querying the queue to falsify 024 surfaced
+  `outrival-dlq` holding 602 jobs while the `/admin` tile that exists for exactly
+  that reads `25`, because the count is the length of a list capped at `DLQ_CAP`.
+  Nothing alerts on it either. Small, live, and independent of everything else.
 - **024 is REJECTED, and the reason is worth keeping.** It was written on a
   measurement that was true but mis-framed: 105 of 109 new competitors got a
   backfillable snapshot and only 21 produced a `backfill_runs` row. Splitting that

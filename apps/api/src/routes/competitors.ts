@@ -1165,6 +1165,12 @@ competitorsRouter.get("/:id", async (c) => {
           // /pricing, /tarifs… from the homepage), so it's the right "View page"
           // target. config.url is only set when the user pinned a URL manually.
           monitorUrl: sql<string | null>`COALESCE(${snapshots.resolvedUrl}, ${monitors.config}->>'url')`,
+          // Engagement, projected out of rawDiff rather than shipping the blob:
+          // the column holds the full added/removed arrays and only Hacker News
+          // carries these two keys (scrape-monitor). Null on every other source,
+          // and on HN captures that predate them.
+          engagementPoints: sql<number | null>`(${changes.rawDiff}->>'points')::int`,
+          engagementComments: sql<number | null>`(${changes.rawDiff}->>'numComments')::int`,
         })
         .from(changes)
         .innerJoin(monitors, eq(monitors.id, changes.monitorId))

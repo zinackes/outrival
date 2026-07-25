@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { format, formatDistanceToNow } from "date-fns";
 import { ExternalLink, FileText, Loader2, Play, Rocket, MessagesSquare, Swords } from "lucide-react";
 import type { ChangeRow, CompetitorSignal } from "@/lib/api";
@@ -8,9 +9,36 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
 import { sourceShortLabel } from "@/lib/source-labels";
+import { cn } from "@/lib/utils";
 import { ChangeCard } from "./changes";
+import { PositioningDrift } from "./positioning-drift";
 import { Empty, type MonitorSourceProps } from "./shared";
-import { PRODUCT_SOURCES, filterByLens, lensCounts } from "./product-lenses";
+import {
+  PRODUCT_SOURCES,
+  filterByLens,
+  lensCounts,
+  type ProductLens,
+} from "./product-lenses";
+
+const LENS_LABELS: Array<{ lens: ProductLens; label: string }> = [
+  { lens: "narrative", label: "Narrative" },
+  { lens: "product", label: "Shipped" },
+  { lens: "social", label: "Talked about" },
+];
+
+/**
+ * Hacker News carries its engagement structurally on the change (points and
+ * comments in rawDiff, session 5b). Older captures predate that and simply show
+ * no figure; the numbers are never parsed back out of the prose line.
+ */
+function engagementOf(change: ChangeRow): string | null {
+  if (typeof change.engagementPoints !== "number") return null;
+  const parts = [`${change.engagementPoints} points`];
+  if (typeof change.engagementComments === "number") {
+    parts.push(`${change.engagementComments} comments`);
+  }
+  return parts.join(", ");
+}
 
 /**
  * Positioning: the story and how it drifted.
@@ -26,6 +54,7 @@ import { PRODUCT_SOURCES, filterByLens, lensCounts } from "./product-lenses";
  * they shipped, and where they are talked about.
  */
 export function ProductTab({
+  competitorId,
   changes,
   signals,
   monitors,
@@ -34,11 +63,13 @@ export function ProductTab({
   onRefresh,
   competitorUrl,
 }: {
+  competitorId: string;
   changes: ChangeRow[];
   signals: CompetitorSignal[];
   onRefresh?: () => void;
   competitorUrl: string;
 } & MonitorSourceProps) {
+  const [lens, setLens] = useState<ProductLens | null>(null);
   const counts = lensCounts(changes);
   const tabMonitors = monitors.filter((m) =>
     (PRODUCT_SOURCES as readonly string[]).includes(m.sourceType),
@@ -96,9 +127,13 @@ export function ProductTab({
     );
   }
 
-  const narrative = filterByLens(changes, "narrative");
-  const shipped = filterByLens(changes, "product");
-  const social = filterByLens(changes, "social");
+  // The chips hide the other sections rather than filtering one list: each lens
+  // has its own rendering now, so "show me only what they shipped" is a section
+  // choice, not a predicate over a uniform feed.
+  const show = (l: ProductLens) => lens === null || lens === l;
+  const narrative = show("narrative") ? filterByLens(changes, "narrative") : [];
+  const shipped = show("product") ? filterByLens(changes, "product") : [];
+  const social = show("social") ? filterByLens(changes, "social") : [];
 
   // A competitor publishing a /vs/ or /alternatives/ page is the highest-stakes
   // positioning event there is: they get to choose the criteria. The sitemap
@@ -109,6 +144,21 @@ export function ProductTab({
 
   return (
     <TabCard>
+      <div className="flex flex-wrap items-center gap-1.5 px-5 py-3">
+        <LensChip label="All" count={counts.all} active={lens === null} onClick={() => setLens(null)} />
+        {LENS_LABELS.map(({ lens: l, label }) => (
+          <LensChip
+            key={l}
+            label={label}
+            count={counts[l]}
+            active={lens === l}
+            onClick={() => setLens(lens === l ? null : l)}
+          />
+        ))}
+      </div>
+
+      {show("narrative") && <PositioningDrift competitorId={competitorId} />}
+
       {comparisons.map((c) => (
         <TabSection key={c.id}>
           <div className="flex flex-col gap-2 rounded-lg border border-critical/30 bg-critical/[0.06] px-4 py-3.5">
@@ -187,6 +237,7 @@ export function ProductTab({
                 insight={insightByChangeId.get(c.id)}
                 fallbackUrl={competitorUrl}
                 linkLabel="Open"
+                engagement={engagementOf(c)}
               />
             ))}
           </ul>
@@ -196,17 +247,52 @@ export function ProductTab({
   );
 }
 
+function LensChip({
+  label,
+  count,
+  active,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={cn(
+        // The full pill marks an interactive filter, keeping it distinct from the
+        // static badges on the rows below.
+        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs transition-colors",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        active
+          ? "border-border-strong bg-surface-3 font-medium text-foreground"
+          : "border-border text-muted-foreground hover:bg-surface-2 hover:text-foreground",
+      )}
+    >
+      {label}
+      <span className="font-mono text-meta tabular-nums text-muted-foreground">{count}</span>
+    </button>
+  );
+}
+
 /** A dated line: when, what, where it came from. */
 function LogRow({
   change: c,
   insight,
   fallbackUrl,
   linkLabel = "View",
+  engagement,
 }: {
   change: ChangeRow;
   insight?: string;
   fallbackUrl: string;
   linkLabel?: string;
+  /** "312 points, 84 comments" when the source carries it. */
+  engagement?: string | null;
 }) {
   const url = c.monitorUrl ?? fallbackUrl;
   const text = insight ?? c.summary;
@@ -223,6 +309,11 @@ function LogRow({
         )}
       </span>
       <span className="flex shrink-0 items-center gap-2.5">
+        {engagement && (
+          <span className="font-mono text-xs tabular-nums text-muted-foreground">
+            {engagement}
+          </span>
+        )}
         <span className="text-xs text-muted-foreground">
           {sourceShortLabel(c.sourceType as SourceType)}
         </span>

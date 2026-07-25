@@ -63,6 +63,9 @@ Notes:
   it. Not rerouted through `tierLimitBody` to avoid churning a working path.
 - `FORCED_RESCAN_LIMIT_*` env still overrides the `PLAN_LIMITS` defaults (back-compat).
 
+Whether a free workspace ever *encounters* these gates (vs. hitting them silently)
+is a separate question from whether they're enforced. 📄 docs/monetization-first-encounter.md
+
 ## Deferred (TODO — value in the source of truth, enforcement later)
 
 - **`historyRetentionDays`** — no purge job yet. Needs a per-org cron purging PG

@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
 import { toastApiError } from "@/lib/error-helpers";
 import { formatDate } from "@/lib/format-date";
+import { track } from "@/lib/posthog/events";
 
 interface Options {
   /** Fired right after the re-scan is accepted (before the result is known) so
@@ -87,6 +88,9 @@ export function useForceRescan(monitorId: string, options?: Options) {
     } catch (err) {
       if (err instanceof ApiError && err.status === 429) {
         const detail = (err.data.error ?? {}) as { message?: string; upgradeHint?: boolean };
+        // Same shape toastRescanLimit() parses in error-helpers.ts, inlined here;
+        // invisible to the paywall_shown funnel without this (plan 022).
+        track("paywall_shown", { reason: "rescan_limit_reached" });
         toast.warning(detail.message ?? "Daily re-scan limit reached. It resets tomorrow.", {
           id: toastId,
           action: detail.upgradeHint

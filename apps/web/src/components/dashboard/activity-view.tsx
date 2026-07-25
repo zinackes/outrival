@@ -74,7 +74,12 @@ export function ActivityView() {
   // Unfiltered "All" is the only view whose day tallies describe the rows shown:
   // it leads with findings and folds the quiet runs per day. Every other view is
   // an explicit selection, so it lists exactly what was asked for.
-  const foldable = segment === "all" && !filtered;
+  //
+  // It also needs the tallies to EXIST. Without them there is no fold to open, so
+  // asking the feed for findings only would hide the quiet runs with no way back;
+  // when the summary is unavailable the log falls back to listing every run.
+  const haveTallies = (summaryQ.data?.days.length ?? 0) > 0;
+  const foldable = segment === "all" && !filtered && haveTallies;
 
   const feedParams = useMemo(() => {
     const seg = SEGMENTS.find((s) => s.id === segment)!;
@@ -128,6 +133,8 @@ export function ActivityView() {
             buckets={summaryQ.data?.buckets ?? []}
             upcoming={upcoming}
             loading={summaryQ.isPending}
+            failed={summaryQ.isError}
+            onRetry={() => void summaryQ.refetch()}
           />
 
           {sources && <Attention sources={sources} onChanged={() => void healthQ.refetch()} />}

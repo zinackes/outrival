@@ -13,7 +13,7 @@ import type {
 import { cn } from "@/lib/utils";
 import { formatTime, formatDateTime } from "@/lib/format-date";
 import { sourceLabel } from "@/lib/source-labels";
-import { competitorNameColor } from "@/lib/competitor-color";
+import { CompAvatar } from "@/components/dashboard/comp-avatar";
 import {
   capturedSummary,
   duration,
@@ -99,7 +99,10 @@ export function RunRow({
         title={formatDateTime(event.recordedAt)}
         className={cn(
           "grid w-full grid-cols-[3px_minmax(0,1fr)_14px] items-start gap-x-3 gap-y-1 rounded-md px-2 py-2.5 text-left text-dense text-muted-foreground transition-colors",
-          "sm:grid-cols-[46px_3px_minmax(0,1.05fr)_minmax(0,2.1fr)_minmax(0,0.95fr)_14px] sm:items-baseline",
+          // Centred, not baseline-aligned: the row is one line, and the mark and
+          // the favicon are objects that have to sit on the name's midline rather
+          // than hang off its baseline.
+          "sm:grid-cols-[46px_3px_minmax(0,1.15fr)_minmax(0,2fr)_minmax(0,0.95fr)_14px] sm:items-center",
           "hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring",
           isOpen && "bg-surface-2",
         )}
@@ -109,14 +112,17 @@ export function RunRow({
         </span>
         <span
           className={cn(
-            "h-3.5 rounded-sm max-sm:col-start-1 max-sm:row-span-4 max-sm:h-full max-sm:min-h-4 sm:self-stretch",
+            "h-3.5 rounded-sm max-sm:col-start-1 max-sm:row-span-4 max-sm:h-full max-sm:min-h-4",
             MARK[outcome],
           )}
           aria-hidden
         />
-        <span className="truncate font-medium text-foreground max-sm:col-start-2">
-          {event.competitorName}
-          <span className="font-normal text-muted-foreground"> · {sourceLabel(event.sourceType)}</span>
+        <span className="flex min-w-0 items-center gap-1.5 max-sm:col-start-2">
+          <CompAvatar name={event.competitorName} url={event.url} size={15} />
+          <span className="truncate">
+            <span className="font-medium text-foreground">{event.competitorName}</span>
+            <span className="text-muted-foreground"> · {sourceLabel(event.sourceType)}</span>
+          </span>
         </span>
         <span
           className={cn(

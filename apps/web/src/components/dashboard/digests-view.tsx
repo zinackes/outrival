@@ -49,6 +49,7 @@ import {
   SpreadBar,
   spreadSentence,
   type ColorOf,
+  type UrlOf,
 } from "./digest-parts";
 
 const DIGEST_PRESETS: DatePreset[] = [
@@ -97,15 +98,16 @@ export function DigestsView() {
   // The roster endpoint already excludes the self-competitor, so every name here is
   // a real competitor the brief could be naming.
   const roster = useMemo(() => {
-    const byName = new Map<string, { id: string; color: string | null }>();
+    const byName = new Map<string, { id: string; color: string | null; url: string | null }>();
     for (const c of competitorsQ.data ?? []) {
-      byName.set(c.name.toLowerCase().trim(), { id: c.id, color: c.color });
+      byName.set(c.name.toLowerCase().trim(), { id: c.id, color: c.color, url: c.url });
     }
     return byName;
   }, [competitorsQ.data]);
 
   const colorOf: ColorOf = (name) => roster.get(name.toLowerCase().trim())?.color ?? null;
   const idOf = (name: string) => roster.get(name.toLowerCase().trim())?.id ?? null;
+  const urlOf = (name: string) => roster.get(name.toLowerCase().trim())?.url ?? null;
 
   const tab: Tab = searchParams.get("tab") === "daily" ? "daily" : "weekly";
   function setTab(next: Tab) {
@@ -217,7 +219,9 @@ export function DigestsView() {
         />
       )}
 
-      {lead && <LeadBrief digest={lead} tab={tab} colorOf={colorOf} idOf={idOf} />}
+      {lead && (
+        <LeadBrief digest={lead} tab={tab} colorOf={colorOf} idOf={idOf} urlOf={urlOf} />
+      )}
 
       {earlier.length > 0 && (
         <section className="flex flex-col">
@@ -253,11 +257,13 @@ function LeadBrief({
   tab,
   colorOf,
   idOf,
+  urlOf,
 }: {
   digest: Digest;
   tab: Tab;
   colorOf: ColorOf;
   idOf: (name: string) => string | null;
+  urlOf: UrlOf;
 }) {
   const content = digest.content;
   const stats = digestStats(content);
@@ -330,7 +336,13 @@ function LeadBrief({
         <div className="flex flex-col gap-2.5">
           <RailLabel>Who moved</RailLabel>
           {stats.movers.length > 0 ? (
-            <MoverList movers={stats.movers} total={stats.moves} colorOf={colorOf} idOf={idOf} />
+            <MoverList
+              movers={stats.movers}
+              total={stats.moves}
+              colorOf={colorOf}
+              idOf={idOf}
+              urlOf={urlOf}
+            />
           ) : (
             <p className="text-dense text-muted-foreground">Nobody, this period.</p>
           )}

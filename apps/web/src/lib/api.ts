@@ -1072,6 +1072,8 @@ export interface Digest {
 export interface DigestSectionLink {
   competitorId: string | null;
   competitorColor: string | null;
+  /** The competitor's site, so the brief can draw its favicon next to its name. */
+  competitorUrl: string | null;
   signalId: string | null;
 }
 

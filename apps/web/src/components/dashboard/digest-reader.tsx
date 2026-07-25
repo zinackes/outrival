@@ -132,17 +132,25 @@ export function DigestReader({ id }: { id: string }) {
         : "low";
   const periodWord = d.period === "daily" ? "Daily brief" : "Weekly brief";
 
-  // The section links already carry each competitor's colour and id, so the rail is
-  // built from the payload the page has: no roster query, no second waterfall.
-  const identity = new Map<string, { id: string | null; color: string | null }>();
+  // The section links already carry each competitor's colour, id and site, so the rail
+  // is built from the payload the page has: no roster query, no second waterfall.
+  const identity = new Map<
+    string,
+    { id: string | null; color: string | null; url: string | null }
+  >();
   (content?.sections ?? []).forEach((s, i) => {
     const key = s.competitor?.toLowerCase().trim();
     if (!key || identity.has(key)) return;
     const link = detail.links?.[i];
-    identity.set(key, { id: link?.competitorId ?? null, color: link?.competitorColor ?? null });
+    identity.set(key, {
+      id: link?.competitorId ?? null,
+      color: link?.competitorColor ?? null,
+      url: link?.competitorUrl ?? null,
+    });
   });
   const colorOf: ColorOf = (name) => identity.get(name.toLowerCase().trim())?.color ?? null;
   const idOf = (name: string) => identity.get(name.toLowerCase().trim())?.id ?? null;
+  const urlOf = (name: string) => identity.get(name.toLowerCase().trim())?.url ?? null;
 
   // Outside /dashboard on purpose: the sheet must not inherit the app shell.
   const printHref = `/brief/${d.id}?print=1`;
@@ -267,6 +275,7 @@ export function DigestReader({ id }: { id: string }) {
                 total={stats.moves}
                 colorOf={colorOf}
                 idOf={idOf}
+                urlOf={urlOf}
               />
             </div>
           )}

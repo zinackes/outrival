@@ -1778,6 +1778,17 @@ export type CompetitorOverview = {
     sentiment_score: number;
   }>;
   hiring: { openRoles: number };
+  // Movement, not level. The overview stated levels only, and on a monitoring
+  // product the derivative is the product: "3 open roles" is inventory, "+2 this
+  // month" is the finding. Each is null when its series is too short to say.
+  movement: {
+    // When the entry price last differed from today's. Null means it has never
+    // differed, which is "unchanged for as long as we have watched" and reads
+    // differently from "changed recently".
+    entryPriceChangedAt: string | null;
+    openRoles30d: number | null;
+    reviewScore90d: number | null;
+  };
 };
 
 // --- Quality feedback on AI outputs (patch-21) ---

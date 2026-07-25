@@ -172,6 +172,19 @@ export interface Competitor {
   // Present on the list endpoint only; the row shows an "Analyzing…" badge while
   // pending so a freshly-added competitor doesn't read as idle.
   analysis?: AnalysisStatus;
+  // How much of this competitor we are actually watching (list endpoint only):
+  // active user-facing sources, how many stopped answering, and which one to name.
+  coverage?: { sources: number; failing: number; failingSource: string | null };
+  // The competitor's last signal, whenever it happened (NOT windowed) — the roster
+  // row leads with the finding, and a silent competitor still has a last move.
+  latestMove?: {
+    insight: string;
+    severity: Signal["severity"];
+    category: string;
+    createdAt: string;
+  } | null;
+  // Daily signal counts over the last 14 days, oldest first — the row's sparkline.
+  activity?: number[];
 }
 
 export interface CompetitorJob {

@@ -843,6 +843,10 @@ competitorsRouter.post("/:id/custom-monitors", async (c) => {
   return c.json({ monitor, created: true }, 201);
 });
 
+// Days of daily signal counts shipped per competitor for the roster sparkline.
+// Matches the 14 day window the roster's count/trend pair is already computed over.
+const ACTIVITY_DAYS = 14;
+
 competitorsRouter.get("/", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
@@ -928,6 +932,59 @@ competitorsRouter.get("/", async (c) => {
 
   const byCompetitor = new Map(aggregates.map((a) => [a.competitorId, a]));
 
+  const ids = list.map((c) => c.id);
+
+  // What each competitor last DID, not how many times they did something. The
+  // roster leads with the finding now, so the row carries the latest signal's own
+  // text. Deliberately NOT bounded by the 14 day window above: a competitor that
+  // has been silent for three weeks still has a last move, and "quiet since" is
+  // the most useful thing its row can say. `distinct on` walks
+  // signals_competitor_created_idx once and stops at the first row per competitor.
+  const latestRows = await db
+    .selectDistinctOn([signals.competitorId], {
+      competitorId: signals.competitorId,
+      insight: signals.insight,
+      severity: signals.severity,
+      category: signals.category,
+      createdAt: signals.createdAt,
+    })
+    .from(signals)
+    .where(and(eq(signals.orgId, orgId), inArray(signals.competitorId, ids)))
+    .orderBy(signals.competitorId, desc(signals.createdAt));
+  const latestByCompetitor = new Map(latestRows.map((r) => [r.competitorId, r]));
+
+  // Daily counts for the row's sparkline. A percentage cannot tell "eleven quiet
+  // days then four loud ones" from a steady hum, and that shape is what says
+  // whether something is building. Same window and same index as the aggregate.
+  const dayExpr = sql`date_trunc('day', ${signals.createdAt})`;
+  const dailyRows = await db
+    .select({
+      competitorId: signals.competitorId,
+      day: sql<string>`${dayExpr}::date::text`,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(signals)
+    .where(
+      and(
+        eq(signals.orgId, orgId),
+        gte(signals.createdAt, fourteenDaysAgo),
+        restrictIds ? inArray(signals.competitorId, restrictIds) : undefined,
+      ),
+    )
+    .groupBy(signals.competitorId, dayExpr);
+
+  // Oldest day first, so the bar chart reads left to right like a calendar.
+  const dayKeys: string[] = [];
+  for (let i = ACTIVITY_DAYS - 1; i >= 0; i--) {
+    dayKeys.push(new Date(now - i * day).toISOString().slice(0, 10));
+  }
+  const dailyByCompetitor = new Map<string, Map<string, number>>();
+  for (const r of dailyRows) {
+    const byDay = dailyByCompetitor.get(r.competitorId) ?? new Map<string, number>();
+    byDay.set(r.day, r.count);
+    dailyByCompetitor.set(r.competitorId, byDay);
+  }
+
   // Per-competitor freshness for the global list dot (patch-14). A competitor is
   // only as fresh as its STALEST active source, and a failed last scan wins. We
   // ship the (lastScrapedAt, status) pair the FreshnessDot expects and let the
@@ -940,21 +997,22 @@ competitorsRouter.get("/", async (c) => {
   //     (the bug: a blog stuck since Jun 5 made an otherwise-fresh competitor
   //     read "last scan failed · Jun 5"). It has its own "unavailable" state.
   //   - internal anchors (tech_stack/sitemap/news) — infra, not user-facing.
+  // markedUnscrapable rows ARE selected here (they were filtered out in SQL before)
+  // because the roster's coverage cell has to name a blocked source; they are
+  // dropped again before aggregateFreshness, so the dot behaves exactly as it did.
   const monitorRows = await db
     .select({
       competitorId: monitors.competitorId,
+      sourceType: monitors.sourceType,
       lastRunAt: monitors.lastRunAt,
       lastFailedAt: monitors.lastFailedAt,
+      markedUnscrapable: monitors.markedUnscrapable,
     })
     .from(monitors)
     .where(
       and(
-        inArray(
-          monitors.competitorId,
-          list.map((c) => c.id),
-        ),
+        inArray(monitors.competitorId, ids),
         eq(monitors.isActive, true),
-        eq(monitors.markedUnscrapable, false),
         notInArray(monitors.sourceType, ["tech_stack", "sitemap", "news", "subdomains"]),
       ),
     );
@@ -988,6 +1046,27 @@ competitorsRouter.get("/", async (c) => {
     const arr = monitorsByCompetitor.get(m.competitorId) ?? [];
     arr.push(m);
     monitorsByCompetitor.set(m.competitorId, arr);
+  }
+
+  // "Are we actually watching them" is the one question only the roster can
+  // answer, and until now it got a 6px dot. A source counts as failing when it
+  // was marked unscrapable (a refusal, per the collection doctrine) or when its
+  // last run ended in failure. Pure arithmetic on rows already in hand.
+  function coverageOf(rows: typeof monitorRows) {
+    let failing = 0;
+    let failingSource: string | null = null;
+    for (const m of rows) {
+      const run = m.lastRunAt ? new Date(m.lastRunAt).getTime() : null;
+      const failed = m.lastFailedAt ? new Date(m.lastFailedAt).getTime() : null;
+      const isFailing =
+        m.markedUnscrapable || (failed !== null && (run === null || failed >= run));
+      if (!isFailing) continue;
+      failing++;
+      // Name one source. A refusal outranks a transient failure, since it is the
+      // one the user can act on (an unscrapable source stays dead until re-armed).
+      if (failingSource === null || m.markedUnscrapable) failingSource = m.sourceType;
+    }
+    return { sources: rows.length, failing, failingSource };
   }
 
   // Per-competitor product attribution for the all-products chip (patch-28): only the
@@ -1026,9 +1105,12 @@ competitorsRouter.get("/", async (c) => {
   const nowMs = Date.now();
   const enriched = list.map((c) => {
     const a = byCompetitor.get(c.id);
+    const rows = monitorsByCompetitor.get(c.id) ?? [];
     const freshness =
-      aggregateFreshness(monitorsByCompetitor.get(c.id) ?? []) ??
+      aggregateFreshness(rows.filter((m) => !m.markedUnscrapable)) ??
       ({ lastScrapedAt: null, status: "success" } as const);
+    const latest = latestByCompetitor.get(c.id);
+    const byDay = dailyByCompetitor.get(c.id);
     // Where the first AI analysis is at (queued → scraping → summarizing → ready),
     // so the list can mark a freshly-added competitor as "Analyzing…" instead of
     // looking idle until its summary lands.
@@ -1042,6 +1124,16 @@ competitorsRouter.get("/", async (c) => {
       pausedByPlan: pausedByPlan.has(c.id),
       freshness,
       analysis,
+      coverage: coverageOf(rows),
+      latestMove: latest
+        ? {
+            insight: latest.insight,
+            severity: latest.severity,
+            category: latest.category,
+            createdAt: latest.createdAt,
+          }
+        : null,
+      activity: dayKeys.map((k) => byDay?.get(k) ?? 0),
       stats: {
         signals7d: a?.signals7d ?? 0,
         signalsPrev: a?.signalsPrev ?? 0,

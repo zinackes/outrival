@@ -100,15 +100,20 @@ export function SeverityGauge({
   severity,
   className,
 }: {
-  severity: Severity;
+  // null renders the scale with nothing lit — the competitors roster uses it for a
+  // competitor that has not moved, where "no band" is the reading, and an empty
+  // gutter would just look like a missing element.
+  severity: Severity | null;
   className?: string;
 }) {
-  const active = BANDS.indexOf(severity);
+  const active = severity ? BANDS.indexOf(severity) : -1;
 
   return (
     <span
       role="img"
-      aria-label={`Severity ${severity}, band ${active + 1} of 4`}
+      aria-label={
+        severity ? `Severity ${severity}, band ${active + 1} of 4` : "No severity"
+      }
       className={cn("flex w-2.5 flex-col-reverse gap-px", className)}
     >
       {BANDS.map((band, i) => (
@@ -118,7 +123,7 @@ export function SeverityGauge({
             // Same unlit treatment as the scale: an unlit band still has to read
             // as a step, otherwise "high" loses its "out of what".
             "h-[3px] rounded-[1px]",
-            i <= active ? FILL[severity] : "bg-border-strong",
+            severity && i <= active ? FILL[severity] : "bg-border-strong",
           )}
         />
       ))}

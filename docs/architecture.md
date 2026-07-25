@@ -1259,6 +1259,14 @@ BUILD_TIME=                  # build timestamp → GET /api/version. In Coolify:
   `/health` (monitors ⋈ competitors → statut `ok|failing|paused|unscrapable`) + `/timeline`
   (`scrape_runs` org-scoped best-effort, incl. no-change/échecs). Échecs adoucis, sources
   internes exclues, tous tiers. 0 migration, 0 IA.
+- **Capability liveness readout (plan 021)**: `GET /api/admin/capabilities`, rendered
+  on `/admin/system`, answers behaviourally whether each optional capability (archive
+  backfill, staged extraction, platform detection, AI Visibility, the faithfulness
+  gate, standing queries, share links, the CRM webhook, Ask, signal comments, saved
+  views, passkeys) has actually written a row recently, plus two directly-read entries
+  (visual diff, multi-user). Booleans and counts only, never an env value: the API and
+  the workers are separate environments, so an API-side read would be meaningless for
+  a worker-owned switch. 📄 docs/capability-activation.md
 - **Public share links — "Competitive Snapshot Report" (L7/L8, feature ad-hoc)** — lien
   public read-only révocable d'un artefact (v1 : le landscape par product). Table
   `share_links` (org_id, type, product_id, token unique, created_by, revoked_at ;

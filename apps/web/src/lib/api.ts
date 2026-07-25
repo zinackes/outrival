@@ -1921,6 +1921,24 @@ export type AdminErrorRates = {
   };
 };
 
+// Capability liveness readout (plan 021) — behavioural probe per optional
+// capability: has it actually written a row recently, or (for the two entries
+// that are a flag/env read instead of a probe) what the switch says. No
+// environment value ever appears here, only booleans and counts.
+export type AdminCapability = {
+  key: string;
+  label: string;
+  observable: boolean;
+  live: boolean;
+  count: number;
+  note: string | null;
+};
+export type AdminCapabilities = {
+  checkedAt: string;
+  cached: boolean;
+  capabilities: AdminCapability[];
+};
+
 // Detected tech stack on a competitor (patch-18).
 export type TechStackEntry = {
   techId: string;

@@ -12,11 +12,6 @@ import type { CompareColumn } from "@/lib/api";
 
 // ── scalar readings ─────────────────────────────────────────────────────────
 
-/** Lowest comparable published price, or null when only quote tiers were captured. */
-export function entryOf(c: CompareColumn): number | null {
-  return c.pricing?.entry ?? null;
-}
-
 export function topOf(c: CompareColumn): number | null {
   return c.pricing?.top ?? null;
 }
@@ -66,61 +61,25 @@ export function axisTicks(max: number, count = 4): number[] {
   return out;
 }
 
-/**
- * A currency + billing period the compared set actually publishes on. Prices are never
- * converted here: a band is only ever drawn from plans quoted on the SAME basis, so
- * switching the basis re-reads captured numbers instead of inventing exchanged ones.
- */
-export interface PriceBasis {
-  currency: string | null;
-  /** Raw billing period ("monthly" | "yearly" | "one_time"). */
-  period: string | null;
-}
-
-export function basisKey(basis: PriceBasis): string {
-  return `${basis.currency ?? "—"}:${basis.period ?? "—"}`;
-}
-
 /** A column's plans that carry a chartable number, with the period each is quoted on. */
-function comparablePlans(c: CompareColumn): Array<{ price: number; period: string | null }> {
+function comparablePlans(c: CompareColumn): Array<{ price: number; period: string }> {
   const p = c.pricing;
   if (!p) return [];
-  const out: Array<{ price: number; period: string | null }> = [];
+  const out: Array<{ price: number; period: string }> = [];
   for (const plan of p.plans) {
     // A plan row without its own period inherits the column's.
     const period = plan.billingPeriod ?? p.billingPeriod;
     if (plan.price == null || !isComparablePricePeriod(period)) continue;
-    out.push({ price: plan.price, period });
+    out.push({ price: plan.price, period: period as string });
+  }
+  // A column whose plan rows never came back still stands on the band the API
+  // computed for it, rather than vanishing off the lens entirely.
+  const own = p.billingPeriod;
+  if (out.length === 0 && p.entry != null && p.top != null && isComparablePricePeriod(own)) {
+    const period = own as string;
+    out.push({ price: p.entry, period }, { price: p.top, period });
   }
   return out;
-}
-
-// Reading order for equally-represented bases: how a buyer thinks about a price.
-const PERIOD_RANK: Record<string, number> = { monthly: 0, yearly: 1, one_time: 2 };
-const periodRank = (period: string | null): number =>
-  period == null ? 9 : (PERIOD_RANK[period] ?? 8);
-
-/** Every basis the compared set publishes on, most-represented first. */
-export function priceBases(
-  cols: CompareColumn[],
-): Array<PriceBasis & { key: string; columns: number }> {
-  const seen = new Map<string, PriceBasis & { key: string; columns: number }>();
-  for (const c of cols) {
-    const currency = c.pricing?.currency ?? null;
-    const periods = new Set<string | null>(comparablePlans(c).map((p) => p.period));
-    // A column whose plan rows never came back still stands on the basis its own
-    // band was computed on — otherwise it would vanish from the picker entirely.
-    if (periods.size === 0 && c.pricing?.entry != null) periods.add(c.pricing.billingPeriod);
-    for (const period of periods) {
-      const key = basisKey({ currency, period });
-      const cur = seen.get(key);
-      if (cur) cur.columns++;
-      else seen.set(key, { currency, period, key, columns: 1 });
-    }
-  }
-  return [...seen.values()].sort(
-    (a, b) => b.columns - a.columns || periodRank(a.period) - periodRank(b.period),
-  );
 }
 
 export interface Band {
@@ -129,23 +88,111 @@ export interface Band {
 }
 
 /**
- * A column's entry-to-top band, read on `basis`. Null when the column publishes
- * nothing comparable there (quote-only, another currency, or no plan on that period)
- * — the row then says so rather than borrowing a number from another basis.
+ * The currency the lens normalises to. A comparison only means something on ONE unit,
+ * so the axis is fixed and prices are converted onto it, rather than asking the reader
+ * to pick a basis and hiding half the set behind whichever one they picked.
  */
-export function bandOf(c: CompareColumn, basis?: PriceBasis | null): Band | null {
+export const DISPLAY_CURRENCY = "USD";
+
+// A monthly axis can hold a yearly plan (÷12 is arithmetic, not a guess) but never a
+// one-time price, which is not a rate at all.
+const MONTHLY_DIVISOR: Record<string, number> = { monthly: 1, yearly: 12 };
+
+// Which captured period a column is read on: whatever it actually publishes, cheapest
+// unit of commitment first. Same order as shared/pricing.ts entryPrice(), so the
+// compare lens and the products portfolio never pick different tiers off one table.
+const PERIOD_ORDER = ["monthly", "yearly", "one_time"] as const;
+
+interface Reading extends Band {
+  /** True when the numbers were derived (converted and/or annual ÷12). */
+  approx: boolean;
+  /** Captured currency, when it isn't the one on screen. */
+  from: string | null;
+  /** Captured period the reading came off ("yearly" when read ÷12). */
+  period: string;
+}
+
+export type PriceBandReading = Reading & { kind: "band" };
+
+/**
+ * What a column contributes to the price lens. Every branch is a reading — a column
+ * is never a blank cell, it either lands on the axis or says why it can't.
+ *
+ * - `band`      monthly amounts in the display currency (annual plans read ÷12).
+ * - `one_time`  a one-off price, which has no monthly equivalent: read off-axis.
+ * - `foreign`   captured in a currency no rate table could convert (offline / exotic).
+ * - `quote`     a pricing page with no public number ("Contact sales").
+ * - `none`      nothing captured at all.
+ */
+export type PriceReading =
+  | PriceBandReading
+  | (Reading & { kind: "one_time" })
+  | { kind: "foreign"; currency: string }
+  | { kind: "quote" }
+  | { kind: "none" };
+
+/** Units of `to` per one unit of `from`, or null when the pair can't be converted. */
+function fxFactor(
+  from: string,
+  to: string,
+  rates: Record<string, number> | null,
+): number | null {
+  if (from === to) return 1;
+  const rf = rates?.[from];
+  const rt = rates?.[to];
+  if (!rf || !rt) return null;
+  return rt / rf;
+}
+
+/**
+ * A column read as a monthly price in `to`. Conversion is deliberate and marked: the
+ * captured numbers still show in the row's plan breakdown, and anything derived from
+ * them carries `approx` so the UI can say so rather than passing arithmetic off as
+ * something the competitor published.
+ */
+export function priceReading(
+  c: CompareColumn,
+  rates: Record<string, number> | null,
+  to: string = DISPLAY_CURRENCY,
+): PriceReading {
   const p = c.pricing;
-  if (!p) return null;
-  const own = p.entry != null && p.top != null ? { entry: p.entry, top: p.top } : null;
-  if (!basis) return own;
-  if ((p.currency ?? null) !== basis.currency) return null;
-  const prices = comparablePlans(c)
-    .filter((pl) => pl.period === basis.period)
-    .map((pl) => pl.price);
-  if (prices.length === 0) {
-    return own && (p.billingPeriod ?? null) === basis.period ? own : null;
+  if (!p) return { kind: "none" };
+  const plans = comparablePlans(c);
+  if (plans.length === 0) return { kind: "quote" };
+  const currency = p.currency ?? to;
+  const factor = fxFactor(currency, to, rates);
+  if (factor == null) return { kind: "foreign", currency };
+  const period = PERIOD_ORDER.find((cand) => plans.some((pl) => pl.period === cand));
+  if (!period) return { kind: "quote" };
+  const values = plans
+    .filter((pl) => pl.period === period)
+    .map((pl) => (pl.price * factor) / (MONTHLY_DIVISOR[period] ?? 1));
+  return {
+    kind: period === "one_time" ? "one_time" : "band",
+    entry: Math.min(...values),
+    top: Math.max(...values),
+    approx: currency !== to || period === "yearly",
+    from: currency === to ? null : currency,
+    period,
+  };
+}
+
+/**
+ * The currency the lens reads in: USD once rates are in hand, otherwise whatever the
+ * set is mostly captured in — an all-EUR set still reads on one axis when the rate
+ * table is unreachable, instead of every row falling off a USD one.
+ */
+export function displayCurrency(
+  cols: CompareColumn[],
+  rates: Record<string, number> | null,
+): string {
+  if (rates?.[DISPLAY_CURRENCY]) return DISPLAY_CURRENCY;
+  const counts = new Map<string, number>();
+  for (const c of cols) {
+    const cur = c.pricing?.currency;
+    if (cur) counts.set(cur, (counts.get(cur) ?? 0) + 1);
   }
-  return { entry: Math.min(...prices), top: Math.max(...prices) };
+  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? DISPLAY_CURRENCY;
 }
 
 export interface PriceScale {
@@ -159,11 +206,15 @@ export interface PriceScale {
   clipped: boolean;
   /** Median entry price across every priced column, the dashed reference line. */
   medianEntry: number | null;
-  currency: string | null;
-  /** "mo" | "yr" | null — the period the band is quoted in. */
-  period: string | null;
+  currency: string;
+  /** The axis unit — always monthly now that every band is normalised to it. */
+  period: "mo";
   /** True when at least one column carries a comparable number. */
   hasData: boolean;
+  /** Captured currencies that had to be converted to reach the axis, deduped. */
+  converted: string[];
+  /** True when at least one band was read off annual plans (÷12). */
+  annualised: boolean;
 }
 
 // How many times the median top a band may reach before it counts as an outlier that
@@ -187,13 +238,14 @@ export function robustCeiling(tops: number[]): number {
 
 export function priceScale(
   cols: CompareColumn[],
-  opts: { basis?: PriceBasis | null; full?: boolean } = {},
+  opts: { rates?: Record<string, number> | null; to?: string; full?: boolean } = {},
 ): PriceScale {
-  const basis = opts.basis ?? null;
-  const bands = cols.map((c) => bandOf(c, basis)).filter((b): b is Band => b != null);
+  const rates = opts.rates ?? null;
+  const to = opts.to ?? displayCurrency(cols, rates);
+  const readings = cols.map((c) => priceReading(c, rates, to));
+  const bands = readings.filter((r): r is PriceBandReading => r.kind === "band");
   const tops = bands.map((b) => b.top);
   const entries = bands.map((b) => b.entry);
-  const priced = cols.find((c) => c.pricing && c.pricing.entry != null);
   const fullMax = tops.length ? niceMax(Math.max(...tops)) : 1;
   const robustMax = tops.length ? niceMax(robustCeiling(tops)) : 1;
   const max = opts.full ? fullMax : robustMax;
@@ -203,35 +255,12 @@ export function priceScale(
     fullMax,
     clipped: tops.some((t) => t > max),
     medianEntry: median(entries),
-    currency:
-      basis?.currency ??
-      priced?.pricing?.currency ??
-      cols.find((c) => c.pricing)?.pricing?.currency ??
-      null,
-    period: periodLabel(basis ? basis.period : (priced?.pricing?.billingPeriod ?? null)),
+    currency: to,
+    period: "mo",
     hasData: tops.length > 0,
+    converted: [...new Set(bands.map((b) => b.from).filter((f): f is string => f != null))],
+    annualised: bands.some((b) => b.period === "yearly"),
   };
-}
-
-export function periodLabel(billingPeriod: string | null): string | null {
-  if (!billingPeriod) return null;
-  if (billingPeriod === "monthly") return "mo";
-  if (billingPeriod === "yearly") return "yr";
-  if (billingPeriod === "one_time") return "one-time";
-  return billingPeriod;
-}
-
-/** How a basis reads in the picker and the lens header: "USD / mo". */
-export function basisLabel(basis: PriceBasis): string {
-  return [basis.currency, periodLabel(basis.period)].filter(Boolean).join(" / ");
-}
-
-/** The period as an adjective, for a sentence: "No annual price". */
-export function periodWord(period: string | null): string {
-  if (period === "monthly") return "monthly";
-  if (period === "yearly") return "annual";
-  if (period === "one_time") return "one-time";
-  return "comparable";
 }
 
 export interface HiringScale {
@@ -436,6 +465,7 @@ export function buildVerdict(
   you: CompareColumn,
   comps: CompareColumn[],
   now = Date.now(),
+  rates: Record<string, number> | null = null,
 ): Verdict {
   const lead: Segment[] = [];
   const facts: Fact[] = [];
@@ -486,10 +516,16 @@ export function buildVerdict(
   }
 
   // ── price standing
-  const youEntry = entryOf(you);
-  const currency = you.pricing?.currency ?? comps.find((c) => c.pricing)?.pricing?.currency ?? null;
+  // Read on the lens's own axis (one currency, monthly): comparing a captured €490/yr
+  // against a captured $49/mo would name the wrong product cheapest.
+  const currency = displayCurrency([you, ...comps], rates);
+  const monthlyEntry = (c: CompareColumn): number | null => {
+    const r = priceReading(c, rates, currency);
+    return r.kind === "band" ? r.entry : null;
+  };
+  const youEntry = monthlyEntry(you);
   const compEntries = comps
-    .map((c) => ({ name: c.name, entry: entryOf(c) }))
+    .map((c) => ({ name: c.name, entry: monthlyEntry(c) }))
     .filter((x): x is { name: string; entry: number } => x.entry != null);
   let priceStanding: string | null = null;
   let cheaper: Array<{ name: string; entry: number }> = [];

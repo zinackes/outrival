@@ -243,6 +243,14 @@ export function productDetailQuery(id: string) {
   });
 }
 
+// Where a product's entry price sits against its tracked competitors (Pricing tab).
+export function productPricingPositionQuery(id: string) {
+  return queryOptions({
+    queryKey: ["products", "pricing-position", id] as const,
+    queryFn: () => api.getProductPricingPosition(id),
+  });
+}
+
 // Day-0 competitive landscape (Overview cold-start while no signal exists yet).
 export function landscapeQuery(productId?: string) {
   return queryOptions({

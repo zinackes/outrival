@@ -1,16 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { myProductQuery, myProductChangesQuery } from "@/lib/queries";
+import { myProductQuery, myProductChangesQuery, productsListQuery } from "@/lib/queries";
 import {
   RefreshCw,
   SquarePen,
   Loader2,
   AlertTriangle,
+  Briefcase,
+  DollarSign,
   ExternalLink,
+  FileText,
   Sparkles,
   Store,
+  Users,
   ChevronDown,
 } from "lucide-react";
 import { EmptyState } from "@/components/dashboard/empty-state";
@@ -22,8 +26,11 @@ import {
   api,
   type MyProductPatch,
   type MyProductRescanCategory,
+  type ProductLinkedCompetitor,
   type SelfProductChange,
 } from "@/lib/api";
+import { cn, prettyUrl } from "@/lib/utils";
+import { ProductTile } from "@/components/dashboard/product-tile";
 import { SelfChangesPanel } from "@/components/outrival/self-change-review";
 import { AnalysisNotice, AnalysisProgress } from "@/components/outrival/analysis-status";
 import { Button } from "@/components/ui/button";
@@ -44,16 +51,28 @@ import { ChangeProductUrlDialog } from "@/components/outrival/change-product-url
 import { UpdateProfileDialog } from "@/components/outrival/update-profile-dialog";
 // Blocks live in ./product-detail: this file owns the page (data, scan state,
 // mutations), they own their own editing state.
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EditableList, EditableText } from "./product-detail/fields";
 import { PricingCard } from "./product-detail/pricing-card";
 import { JobsCard } from "./product-detail/jobs-card";
 import { RescanMenu } from "./product-detail/rescan-menu";
 import { useScanPoll } from "./product-detail/use-scan-poll";
+import { ProductLead } from "./product-detail/product-lead";
+import { PriceLadder } from "./product-detail/price-ladder";
+import { ProductCompetitors } from "./product-detail/competitors-tab";
+
+// The reading tabs. Positioning leads because it is what the rest is measured
+// against; Competitors and Hiring only exist when there is something behind them.
+const TAB_KEYS = ["positioning", "pricing", "competitors", "hiring"] as const;
+type ProductTabKey = (typeof TAB_KEYS)[number];
+
+const TAB_PANEL_CLASS = "animate-in fade-in slide-in-from-bottom-1 duration-300";
 
 export function MyProductView({
   productId,
   title = "My product",
   isPrimary = productId === undefined,
+  competitors,
 }: {
   // patch-28 — scope the view to a given product's self-competitor. Omitted → the
   // primary self (legacy "My product"). The /dashboard/products/[id] page passes both.
@@ -62,6 +81,9 @@ export function MyProductView({
   // The org-coupled "Update profile" dialog (onboarding profile + project stage) only
   // makes sense for the primary product; secondary products edit inline / re-scan.
   isPrimary?: boolean;
+  // The product's linked competitors, when the caller has them (the [id] page).
+  // Absent on the legacy self view, which has no product row and so no tab.
+  competitors?: ProductLinkedCompetitor[];
 } = {}) {
   // Server-seeded on first paint (products/[id]/page.tsx). product is
   // undefined while loading, null when no product site is set yet (or on error).
@@ -71,6 +93,13 @@ export function MyProductView({
   const product = productQ.isError ? null : productQ.data;
   const changes = changesQ.data ?? [];
   const error = productQ.error;
+  // The portfolio row for this product, for the lead's rail. It is the list the
+  // sidebar switcher already keeps warm, so this costs no extra request; absent
+  // (legacy self view, cold cache) simply drops the two stats it feeds.
+  const { data: allProducts } = useQuery(productsListQuery());
+  const row = productId ? allProducts?.find((r) => r.id === productId) : undefined;
+
+  const [tab, setTab] = useState<ProductTabKey>("positioning");
   const [rescanning, setRescanning] = useState(false);
   const [actingId, setActingId] = useState<string | null>(null);
   const [rediscover, setRediscover] = useState<{ reason: string } | null>(null);
@@ -107,6 +136,20 @@ export function MyProductView({
   );
 
   useScanPoll({ product, productId, load });
+
+  // Adopt ?tab= on mount so a link into a tab lands on it, and mirror every switch
+  // back (replaceState, so tabbing does not fill the back button).
+  useEffect(() => {
+    const raw = new URLSearchParams(window.location.search).get("tab");
+    if (raw && (TAB_KEYS as readonly string[]).includes(raw)) setTab(raw as ProductTabKey);
+  }, []);
+
+  function selectTab(key: ProductTabKey) {
+    setTab(key);
+    const params = new URLSearchParams(window.location.search);
+    params.set("tab", key);
+    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
+  }
 
   async function patch(body: MyProductPatch) {
     await api.updateMyProduct(body, productId);
@@ -258,6 +301,19 @@ export function MyProductView({
     <div className="xl:px-6 2xl:px-12">
       <PageHead
         title={title}
+        // The product's own mark, the same favicon its competitors are shown with,
+        // so a multi-SKU workspace can tell at a glance which one is open.
+        icon={
+          <ProductTile
+            name={p.name}
+            url={p.url}
+            repoUrl={p.repoUrl}
+            position={row?.position}
+            size={30}
+            ring={Boolean(row)}
+            className="mr-0.5"
+          />
+        }
         sub={
           <span className="inline-flex items-center gap-2">
             {p.url || p.repoUrl ? (
@@ -267,10 +323,10 @@ export function MyProductView({
                 rel="noreferrer"
                 className="inline-flex items-center gap-1 hover:text-foreground"
               >
-                {p.name} <ExternalLink className="size-3" />
+                {prettyUrl(p.url ?? p.repoUrl!)} <ExternalLink className="size-3" />
               </a>
             ) : (
-              <span>{p.name}</span>
+              <span>No site or repo yet</span>
             )}
             <span className="text-[var(--muted-2)]">·</span>
             {p.scanning ? (
@@ -460,65 +516,127 @@ export function MyProductView({
         </Card>
       )}
 
-      <div className="flex flex-col gap-6">
-        <Card className="bg-gradient-card-strong p-4">
-          <h3 className="text-dense font-semibold uppercase tracking-wide text-muted-foreground mb-1">
-            Profile
-          </h3>
-          <Separator className="mb-1" />
-          <EditableText
-            label="Category"
-            field={profile.category}
-            onSave={(v) => patch({ category: v })}
-          />
-          <EditableText
-            label="Audience"
-            field={profile.audience}
-            multiline
-            onSave={(v) => patch({ audience: v })}
-          />
-          <EditableText
-            label="Value prop"
-            field={profile.valueProp}
-            multiline
-            onSave={(v) => patch({ valueProp: v })}
-          />
-        </Card>
+      <ProductLead
+        product={p}
+        row={row}
+        competitorCount={competitors ? competitors.length : (row?.competitorCount ?? null)}
+        specificCount={competitors?.filter((c) => c.isSpecific).length ?? null}
+        onEdit={() => selectTab("positioning")}
+        onRescan={() => void rescan(["profile"])}
+        canRescan={Boolean(p.url)}
+      />
 
-        <PricingCard pricing={p.pricing} onSave={(pr) => patch({ pricing: pr })} />
+      <Tabs value={tab} onValueChange={(v) => selectTab(v as ProductTabKey)} className="mt-5">
+        <TabsList variant="line" className="w-full justify-start overflow-x-auto">
+          <TabsTrigger value="positioning">
+            <FileText size={13} /> Positioning
+          </TabsTrigger>
+          <TabsTrigger value="pricing">
+            <DollarSign size={13} /> Pricing
+          </TabsTrigger>
+          {competitors && (
+            <TabsTrigger value="competitors">
+              <Users size={13} /> Competitors
+              <span className="ml-1.5 font-mono text-meta text-muted-foreground">
+                {competitors.length}
+              </span>
+            </TabsTrigger>
+          )}
+          {(p.url || p.jobs.total > 0) && (
+            <TabsTrigger value="hiring">
+              <Briefcase size={13} /> Hiring
+              {p.jobs.total > 0 && (
+                <span className="ml-1.5 font-mono text-meta text-muted-foreground">
+                  {p.jobs.total}
+                </span>
+              )}
+            </TabsTrigger>
+          )}
+        </TabsList>
 
-        {/* The jobs source is monitored independently of the homepage URL — its
-            careers target lives in monitor.config.url (scrape-monitor derives
-            scrapeUrl = configUrl ?? competitor.url). So a product with detected
-            openings but no live homepage URL must still surface them here. */}
-        {(p.url || p.jobs.total > 0) && <JobsCard jobs={p.jobs} />}
-
-        <EditableList
-          label={`Features detected${profile.features?.value?.length ? ` (${profile.features.value.length})` : ""}`}
-          field={profile.features}
-          onSave={(v) => patch({ features: v })}
-        />
-
-        <EditableList
-          label="Tech stack detected"
-          field={profile.techStack}
-          onSave={(v) => patch({ techStack: v })}
-        />
-
-        {(p.analysis.pending || p.analysis.stage === "needs_attention") && (
-          <Card className="px-4 py-3 border-dashed">
-            <AnalysisNotice analysis={p.analysis} />
-          </Card>
-        )}
-        {p.aiSummary && (
+        <TabsContent value="positioning" className={cn(TAB_PANEL_CLASS, "mt-4 flex flex-col gap-6")}>
           <Card className="bg-gradient-card-strong p-4">
-            <h3 className="text-dense font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-              Summary
+            <h3 className="text-dense font-semibold uppercase tracking-wide text-muted-foreground mb-1">
+              Profile
             </h3>
-            <p className="text-content text-muted-foreground leading-relaxed">{p.aiSummary}</p>
+            <Separator className="mb-1" />
+            <EditableText
+              label="Category"
+              field={profile.category}
+              onSave={(v) => patch({ category: v })}
+            />
+            <EditableText
+              label="Audience"
+              field={profile.audience}
+              multiline
+              onSave={(v) => patch({ audience: v })}
+            />
+            <EditableText
+              label="Value prop"
+              field={profile.valueProp}
+              multiline
+              onSave={(v) => patch({ valueProp: v })}
+            />
           </Card>
+
+          <EditableList
+            label={`Features detected${profile.features?.value?.length ? ` (${profile.features.value.length})` : ""}`}
+            field={profile.features}
+            onSave={(v) => patch({ features: v })}
+          />
+
+          <EditableList
+            label="Tech stack detected"
+            field={profile.techStack}
+            onSave={(v) => patch({ techStack: v })}
+          />
+
+          {(p.analysis.pending || p.analysis.stage === "needs_attention") && (
+            <Card className="px-4 py-3 border-dashed">
+              <AnalysisNotice analysis={p.analysis} />
+            </Card>
+          )}
+          {p.aiSummary && (
+            <Card className="bg-gradient-card-strong p-4">
+              <h3 className="text-dense font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                Summary
+              </h3>
+              <p className="text-content text-muted-foreground leading-relaxed">{p.aiSummary}</p>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="pricing" className={cn(TAB_PANEL_CLASS, "mt-4 flex flex-col gap-6")}>
+          {/* The ladder leads: where you sit is the question, your own plan table
+              is the evidence behind it. */}
+          {productId && (
+            <Card className="bg-gradient-card-strong p-4">
+              <h3 className="text-dense font-semibold uppercase tracking-wide text-muted-foreground mb-1">
+                Where your entry price sits
+              </h3>
+              <Separator className="mb-3" />
+              <PriceLadder productId={productId} />
+            </Card>
+          )}
+          <PricingCard pricing={p.pricing} onSave={(pr) => patch({ pricing: pr })} />
+        </TabsContent>
+
+        {competitors && (
+          <TabsContent value="competitors" className={cn(TAB_PANEL_CLASS, "mt-4")}>
+            <ProductCompetitors productId={productId!} competitors={competitors} />
+          </TabsContent>
         )}
-      </div>
+
+        {(p.url || p.jobs.total > 0) && (
+          <TabsContent value="hiring" className={cn(TAB_PANEL_CLASS, "mt-4")}>
+            {/* The jobs source is monitored independently of the homepage URL — its
+                careers target lives in monitor.config.url (scrape-monitor derives
+                scrapeUrl = configUrl ?? competitor.url). So a product with detected
+                openings but no live homepage URL must still surface them here. */}
+            <JobsCard jobs={p.jobs} />
+          </TabsContent>
+        )}
+      </Tabs>
 
       <ChangeProductUrlDialog
         open={changeUrlOpen}

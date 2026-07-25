@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ExternalLink, Loader2, SignalHigh, Boxes } from "lucide-react";
+import { useSetProductScope } from "@/components/dashboard/product-scope-provider";
 import { productDetailQuery } from "@/lib/queries";
 import { MyProductView } from "../my-product-view";
 import { EmptyState } from "@/components/dashboard/empty-state";
@@ -109,16 +111,30 @@ export function ProductDetailView({ productId }: { productId: string }) {
   );
 }
 
+/**
+ * Back to the portfolio, not to Settings: leaving a product used to swap the main
+ * rail for the settings one, so changing product meant leaving the product area.
+ *
+ * Opening a product makes it the active scope (sidebar.tsx writes it back), so
+ * going up has to release that scope too, otherwise the workspace stays pinned to
+ * a product the user just left and the portfolio redirects straight back into it.
+ */
 function BackLink() {
+  const router = useRouter();
+  const setScope = useSetProductScope();
   return (
     <div className="mb-4">
-      <Link
-        href="/dashboard/settings/products"
-        className="inline-flex items-center gap-1 text-dense text-muted-foreground hover:text-foreground"
+      <button
+        type="button"
+        onClick={() => {
+          setScope(null);
+          router.push("/dashboard/products?product=all");
+        }}
+        className="inline-flex items-center gap-1 rounded-sm text-dense text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
       >
         <ArrowLeft className="size-3.5" />
         All products
-      </Link>
+      </button>
     </div>
   );
 }

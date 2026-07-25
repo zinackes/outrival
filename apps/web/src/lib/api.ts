@@ -1965,6 +1965,19 @@ export interface ProductSummary {
     critical7d: number;
     lastSignalAt: string | null;
   };
+  // A few faces for the row, so a competitor count says who and not only how many.
+  topCompetitors?: { id: string; name: string; url: string | null; color: string | null }[];
+  // Our entry price and the band the priced competitors occupy. `low`/`high`/
+  // `median` are null until at least one rival publishes a comparable price.
+  pricing?: {
+    entry: { planName: string; price: number; currency: string; billingPeriod: string } | null;
+    median: number | null;
+    currency: string | null;
+    billingPeriod: string | null;
+    low: number | null;
+    high: number | null;
+    rivalsPriced: number;
+  };
 }
 
 // Where a product's entry price sits against the competitors tracked on it. Both

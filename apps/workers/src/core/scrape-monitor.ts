@@ -1399,7 +1399,17 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
               snapshotAfterId: newSnapshot.id,
               diffText: line.slice(0, 50000),
               diffType: "text",
-              rawDiff: { added: [line], removed: [], threadUrl: hit.threadUrl, objectID: hit.objectID },
+              // Points and comments also ride in the prose line for grounding, but
+              // structured here so a reader can be shown "312 points" without the
+              // UI having to parse them back out of a sentence.
+              rawDiff: {
+                added: [line],
+                removed: [],
+                threadUrl: hit.threadUrl,
+                objectID: hit.objectID,
+                points: hit.points,
+                numComments: hit.numComments,
+              },
               detectedAt: new Date(),
             })
             .returning();

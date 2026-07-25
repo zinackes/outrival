@@ -418,6 +418,69 @@ async function buildOverview(competitorId: string) {
     .from(jobPostings)
     .where(and(eq(jobPostings.competitorId, competitorId), eq(jobPostings.isActive, true)));
 
+  // --- Movement ---------------------------------------------------------------
+  // The overview stated levels only, and on a monitoring product the derivative is
+  // the product: "3 open roles" is inventory, "+2 this month" is the finding. Each
+  // of these is best-effort like everything else here, so a missing series simply
+  // leaves its delta null and the cell renders as a level.
+
+  // When the entry price last differed from today's. Compared on the CHEAPEST
+  // priced tier per batch, not on the batch as a whole: a competitor adding a top
+  // tier has not moved its entry point, and reading any row would call that a
+  // price change.
+  const [pricingMoved] = await analyticsQuery<{ changed_at: string | null }>(sql`
+    WITH entry AS (
+      SELECT recorded_at, min(price) AS price
+      FROM pricing_history
+      WHERE competitor_id = ${competitorId}
+        AND price IS NOT NULL AND price > 0
+      GROUP BY recorded_at
+    )
+    SELECT max(recorded_at)::text AS changed_at
+    FROM entry
+    WHERE price IS DISTINCT FROM (SELECT price FROM entry ORDER BY recorded_at DESC LIMIT 1)
+  `);
+
+  // Open-role movement over 30 days, from the job_counts series rather than from
+  // the live postings table, so it reflects what we OBSERVED rather than what
+  // happens to be flagged active right now.
+  const [rolesDelta] = await analyticsQuery<{ delta: number | null }>(sql`
+    WITH totals AS (
+      SELECT recorded_at, sum(count) AS total
+      FROM job_counts
+      WHERE competitor_id = ${competitorId}
+        AND recorded_at >= now() - make_interval(days => 30)
+      GROUP BY recorded_at
+    )
+    SELECT (
+      (SELECT total FROM totals ORDER BY recorded_at DESC LIMIT 1) -
+      (SELECT total FROM totals ORDER BY recorded_at ASC LIMIT 1)
+    )::int AS delta
+    FROM totals
+    LIMIT 1
+  `);
+
+  // Rating movement over 90 days for the source the headline rating comes from.
+  // Mixing sources would compare an App Store score against a Trustpilot one.
+  const [scoreDelta] = await analyticsQuery<{ delta: number | null }>(sql`
+    WITH latest AS (
+      SELECT source, score, recorded_at
+      FROM review_scores
+      WHERE competitor_id = ${competitorId}
+      ORDER BY recorded_at DESC
+      LIMIT 1
+    )
+    SELECT (
+      (SELECT score FROM latest) -
+      (SELECT score FROM review_scores
+        WHERE competitor_id = ${competitorId}
+          AND source = (SELECT source FROM latest)
+          AND recorded_at >= now() - make_interval(days => 90)
+        ORDER BY recorded_at ASC LIMIT 1)
+    )::real AS delta
+    FROM latest
+  `);
+
   return {
     capturedAt,
     homepage,
@@ -425,6 +488,13 @@ async function buildOverview(competitorId: string) {
     pricingNow,
     reviews,
     hiring: { openRoles: hiringRow?.count ?? 0 },
+    movement: {
+      // Null when the entry price has never differed, which is "unchanged for as
+      // long as we have watched" and reads differently from "changed recently".
+      entryPriceChangedAt: pricingMoved?.changed_at ?? null,
+      openRoles30d: rolesDelta?.delta ?? null,
+      reviewScore90d: scoreDelta?.delta ?? null,
+    },
   };
 }
 

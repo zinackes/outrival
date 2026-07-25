@@ -258,7 +258,7 @@ export function OverviewTab({
   onOpenTab: (tab: TabKey) => void;
   competitorName: string;
 }) {
-  const { homepage, numericClaims, pricingNow, reviews, hiring, capturedAt } = overview;
+  const { homepage, numericClaims, pricingNow, reviews, hiring, capturedAt, movement } = overview;
 
   // Entry price = the cheapest captured tier with a real number. Quote-based tiers
   // carry no figure, so they never win the "entry" slot.
@@ -439,9 +439,11 @@ export function OverviewTab({
           label="Entry price"
           onClick={() => onOpenTab("pricing")}
           foot={
-            pricingNow.length > 1 ? (
+            entryTier ? (
               <span className="text-muted-foreground">
-                {pricingNow.length} tiers captured
+                {movement.entryPriceChangedAt
+                  ? `changed ${formatDistanceToNow(new Date(movement.entryPriceChangedAt), { addSuffix: true })}`
+                  : "unchanged since we started watching"}
               </span>
             ) : undefined
           }
@@ -459,8 +461,22 @@ export function OverviewTab({
           label="Open roles"
           onClick={() => onOpenTab("hiring")}
           foot={
-            hiring.openRoles > 0 ? (
-              <span className="text-muted-foreground">across their board</span>
+            movement.openRoles30d ? (
+              <>
+                <span
+                  aria-hidden
+                  className={cn(
+                    "size-1.5 rounded-full",
+                    movement.openRoles30d > 0 ? "bg-high" : "bg-positive",
+                  )}
+                />
+                <span className="text-muted-foreground">
+                  {movement.openRoles30d > 0 ? "+" : ""}
+                  {movement.openRoles30d} in 30 days
+                </span>
+              </>
+            ) : hiring.openRoles > 0 ? (
+              <span className="text-muted-foreground">flat over 30 days</span>
             ) : undefined
           }
         >
@@ -472,9 +488,25 @@ export function OverviewTab({
           onClick={() => onOpenTab("reviews")}
           foot={
             topReview ? (
-              <span className="font-mono tabular-nums text-muted-foreground">
-                {topReview.review_count} reviews
-              </span>
+              movement.reviewScore90d && Math.abs(movement.reviewScore90d) >= 0.1 ? (
+                <>
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "size-1.5 rounded-full",
+                      movement.reviewScore90d < 0 ? "bg-critical" : "bg-positive",
+                    )}
+                  />
+                  <span className="text-muted-foreground">
+                    {movement.reviewScore90d > 0 ? "+" : ""}
+                    {movement.reviewScore90d.toFixed(1)} in 90 days
+                  </span>
+                </>
+              ) : (
+                <span className="font-mono tabular-nums text-muted-foreground">
+                  {topReview.review_count} reviews
+                </span>
+              )
             ) : undefined
           }
         >

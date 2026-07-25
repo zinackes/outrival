@@ -94,15 +94,10 @@ export function SignalRow({
         >
           {signal.insight}
         </span>
-        {/* Attribution: who moved, and on which surface we caught it. */}
+        {/* Where we caught it. The competitor is NOT repeated here: the insight
+            opens with its name (the model writes it from the context it's given),
+            and it opens the line, so truncation never eats it. */}
         <span className="mt-1 flex min-w-0 items-center gap-1.5 text-meta text-muted-foreground">
-          <span
-            className="truncate font-medium"
-            style={competitorNameColor(signal.competitorColor)}
-          >
-            {signal.competitorName}
-          </span>
-          <span aria-hidden>·</span>
           <span className="truncate">{sourceLabel(signal.sourceType)}</span>
           <span aria-hidden>·</span>
           <CatText category={signal.category} />

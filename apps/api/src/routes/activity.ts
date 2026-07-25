@@ -440,13 +440,17 @@ function cleanSummary(s: string | null): string | null {
   return t.length > 140 ? `${t.slice(0, 140)}…` : t;
 }
 
-// The org's competitor ids in scope, or null when there are none (the caller
-// returns an empty payload rather than building an `IN ()`).
-async function scopedIds(orgId: string, productId: string | undefined): Promise<string[]> {
+// The org's competitors in scope. Names come back with the ids because the
+// summary's findings are attributed by name, and re-querying for them would be a
+// second round trip for data this call already holds.
+async function scopedCompetitors(
+  orgId: string,
+  productId: string | undefined,
+): Promise<{ id: string; name: string }[]> {
   const comps = await orgCompetitors(orgId);
-  if (!productId) return comps.map((x) => x.id);
+  if (!productId) return comps.map((x) => ({ id: x.id, name: x.name }));
   const allowed = new Set(await scopedActivityIds(orgId, productId));
-  return comps.filter((x) => allowed.has(x.id)).map((x) => x.id);
+  return comps.filter((x) => allowed.has(x.id)).map((x) => ({ id: x.id, name: x.name }));
 }
 
 // Counts, not rows: what the page states in its opening sentence, the shape of
@@ -456,9 +460,10 @@ async function scopedIds(orgId: string, productId: string | undefined): Promise<
 activityRouter.get("/summary", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
-  const ids = await scopedIds(orgId, c.req.query("productId"));
-  const empty = { buckets: [], days: [] };
-  if (ids.length === 0) return c.json(empty);
+  const comps = await scopedCompetitors(orgId, c.req.query("productId"));
+  const ids = comps.map((x) => x.id);
+  if (ids.length === 0) return c.json({ buckets: [], days: [], findings: [] });
+  const nameById = new Map(comps.map((x) => [x.id, x.name]));
 
   // The viewer's offset in JS convention (minutes to ADD to local to get UTC, so
   // CEST sends -120). Day boundaries have to be the user's, or a 00:30 local run
@@ -520,9 +525,36 @@ activityRouter.get("/summary", async (c) => {
     ORDER BY 1 DESC
   `);
 
+  // The findings of the last 24 hours, named. A bucket only knows it holds one;
+  // hovering it should say WHICH source moved, and there are few enough of these
+  // in a day (the cap is a guard, not a page size) to send them with the counts.
+  const findings = await analyticsQuery<{
+    recordedAt: string;
+    competitorId: string;
+    sourceType: string;
+    failed: boolean;
+  }>(sql`
+    SELECT (r.recorded_at AT TIME ZONE 'UTC') AS "recordedAt",
+           r.competitor_id AS "competitorId",
+           r.source_type AS "sourceType",
+           (r.status = 'failed') AS failed
+    FROM scrape_runs r
+    WHERE ${scope}
+      AND r.recorded_at > ${utcNow} - interval '24 hours'
+      AND (r.status = 'failed' OR (r.status = 'success' AND ${CHANGE_EXISTS}))
+    ORDER BY r.recorded_at DESC
+    LIMIT 60
+  `);
+
   return c.json({
     buckets: buckets.filter((b) => b.slot >= 0 && b.slot < 96),
     days,
+    findings: findings.map((f) => ({
+      recordedAt: f.recordedAt,
+      competitorName: nameById.get(f.competitorId) ?? "Unknown",
+      sourceType: f.sourceType,
+      kind: f.failed ? ("failed" as const) : ("change" as const),
+    })),
   });
 });
 

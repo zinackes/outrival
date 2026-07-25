@@ -20,10 +20,12 @@ const FALLBACK = "var(--muted-2)";
 
 export function CategoryBar({
   counts,
+  // A number for the fixed-width table columns, or a CSS length ("100%") when the bar
+  // fills its cell (the Overview's mover tiles).
   w = 120,
 }: {
   counts: Record<string, number>;
-  w?: number;
+  w?: number | string;
 }) {
   const sorted = Object.entries(counts)
     .filter(([, n]) => n > 0)

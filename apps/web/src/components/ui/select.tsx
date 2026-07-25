@@ -53,8 +53,11 @@ function SelectTrigger({
 function SelectContent({
   className,
   children,
-  position = "item-aligned",
-  align = "center",
+  // Always drop the list BELOW the trigger, left edge lined up with the value.
+  // "item-aligned" (Radix's legacy mode) instead parks the selected item ON the
+  // trigger, so the panel jumps up or down depending on which value is current.
+  position = "popper",
+  align = "start",
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Content>) {
   return (

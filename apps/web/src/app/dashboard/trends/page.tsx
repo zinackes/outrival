@@ -1,10 +1,10 @@
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { startOfDay, endOfDay, subDays } from "date-fns";
 import { TrendsView } from "@/components/dashboard/trends-view";
-import { getTrendsData } from "@/lib/api-server";
+import { getTrendsData, getTrendsMarketData } from "@/lib/api-server";
 import { makeServerQueryClient } from "@/lib/server-query";
 import { resolveServerScope } from "@/lib/product-scope-server";
-import { trendsSummaryQuery } from "@/lib/queries";
+import { trendsSummaryQuery, trendsMarketQuery } from "@/lib/queries";
 
 export default async function TrendsPage({
   searchParams,
@@ -20,9 +20,15 @@ export default async function TrendsPage({
   const queryClient = makeServerQueryClient();
   const from = startOfDay(subDays(new Date(), 90));
   const to = endOfDay(new Date());
-  const initial = await getTrendsData(product);
+  const [initial, initialMarket] = await Promise.all([
+    getTrendsData(product),
+    getTrendsMarketData(product),
+  ]);
   if (initial) {
     queryClient.setQueryData(trendsSummaryQuery({ from, to }, product).queryKey, initial);
+  }
+  if (initialMarket) {
+    queryClient.setQueryData(trendsMarketQuery({ from, to }, product).queryKey, initialMarket);
   }
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>

@@ -687,6 +687,8 @@ export interface ReviewMove {
   competitorName: string;
   source: string;
   score: number;
+  /** Score at the start of the window, so the row can state a drift. Optional for back-compat. */
+  firstScore?: number | null;
   reviewCount: number;
   recordedAt: string;
 }
@@ -718,6 +720,26 @@ export interface TrendsSeries {
   metric: TrendMetric;
   competitorId: string;
   points: TrendSeriesPoint[];
+}
+
+// Cross-competitor daily series backing the trends report's market charts. One
+// entry per competitor that the metric actually captured; absent competitors are
+// omitted rather than sent as an empty line.
+export interface TrendsMarketSeries {
+  competitorId: string;
+  competitorName: string;
+  competitorUrl: string | null;
+  color: string | null;
+  isSelf: boolean;
+  /** Pricing only — currency of the latest captured entry price. */
+  unit: string | null;
+  points: { t: string; value: number }[];
+}
+export interface TrendsMarket {
+  pricing: TrendsMarketSeries[];
+  hiring: TrendsMarketSeries[];
+  reviews: TrendsMarketSeries[];
+  degraded?: boolean;
 }
 
 // Day-0 competitive landscape (post-onboarding activation, Lever 1) — the
@@ -2561,6 +2583,16 @@ export const api = {
     if (productId) q.set("productId", productId);
     const qs = q.toString();
     return request<TrendsSummary>(`/api/trends/summary${qs ? `?${qs}` : ""}`);
+  },
+  getTrendsMarket: (range?: { from: Date; to: Date }, productId?: string) => {
+    const q = new URLSearchParams();
+    if (range) {
+      q.set("from", range.from.toISOString());
+      q.set("to", range.to.toISOString());
+    }
+    if (productId) q.set("productId", productId);
+    const qs = q.toString();
+    return request<TrendsMarket>(`/api/trends/market${qs ? `?${qs}` : ""}`);
   },
   getTrendsSeries: (
     competitorId: string,

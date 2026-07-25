@@ -9,6 +9,7 @@ import type {
   SignalsFacets,
   Competitor,
   TrendsSummary,
+  TrendsMarket,
   Digest,
   DigestDetail,
   SectoralSignal,
@@ -255,6 +256,23 @@ export async function getTrendsData(productId?: string): Promise<TrendsSummary |
   if (productId) q.set("productId", productId);
   try {
     return await serverGet<TrendsSummary>(`/api/trends/summary?${q.toString()}`);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Prefetch the cross-competitor market series behind the trends charts. Seeded
+ * beside the summary so the report's charts paint with the page instead of
+ * popping in a beat later. Best-effort: null → TrendsView fetches client-side.
+ */
+export async function getTrendsMarketData(productId?: string): Promise<TrendsMarket | null> {
+  const from = startOfDay(subDays(new Date(), 90));
+  const to = endOfDay(new Date());
+  const q = new URLSearchParams({ from: from.toISOString(), to: to.toISOString() });
+  if (productId) q.set("productId", productId);
+  try {
+    return await serverGet<TrendsMarket>(`/api/trends/market?${q.toString()}`);
   } catch {
     return null;
   }

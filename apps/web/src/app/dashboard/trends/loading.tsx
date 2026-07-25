@@ -1,23 +1,25 @@
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChartSkeleton } from "@/components/dashboard/skeletons";
 
-// Trends is a header + date-range control + a grid of charts. Overrides the generic
-// card-grid skeleton so the chart shape matches and the skeleton→content shift is minimal.
+// Trends is a header, a verdict card, then a stack of movements (heading, chart,
+// rows). Mirrors that shape so the skeleton to content shift is minimal.
 export default function TrendsLoading() {
   return (
-    <div aria-busy="true" aria-live="polite">
-      <div className="mb-5 flex items-start justify-between gap-4">
+    <div aria-busy="true" aria-live="polite" className="flex flex-col gap-7">
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <Skeleton className="h-7 w-40 mb-2" />
+          <Skeleton className="mb-2 h-7 w-40" />
           <Skeleton className="h-4 w-72" />
         </div>
         <Skeleton className="h-9 w-40 rounded-md" />
       </div>
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <ChartSkeleton key={i} />
-        ))}
-      </div>
+      <Skeleton className="h-[148px] w-full rounded-lg" />
+      {Array.from({ length: 2 }).map((_, i) => (
+        <div key={i} className="flex flex-col gap-3">
+          <Skeleton className="h-12 w-72" />
+          <Skeleton className="h-[200px] w-full" />
+          <Skeleton className="h-24 w-full" />
+        </div>
+      ))}
     </div>
   );
 }

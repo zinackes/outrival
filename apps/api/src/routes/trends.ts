@@ -45,9 +45,24 @@ function resolveRange(fromRaw?: string, toRaw?: string, windowRaw?: string): {
 
 async function orgCompetitors(orgId: string) {
   return db
-    .select({ id: competitors.id, name: competitors.name })
+    .select({
+      id: competitors.id,
+      name: competitors.name,
+      url: competitors.url,
+      color: competitors.color,
+      type: competitors.type,
+    })
     .from(competitors)
     .where(and(eq(competitors.orgId, orgId), isNull(competitors.deletedAt)));
+}
+
+// Resolve the org's competitors for a window, honouring the optional product scope.
+// Shared by /summary and /market so both read the same set (and the same tenant guard).
+async function scopedCompetitors(orgId: string, productId?: string) {
+  const comps = await orgCompetitors(orgId);
+  if (!productId) return comps;
+  const allowed = new Set(await productCompetitorIds(orgId, productId));
+  return comps.filter((x) => allowed.has(x.id));
 }
 
 interface RawPricingMove {
@@ -69,6 +84,9 @@ interface RawReviewMove {
   competitorId: string;
   source: string;
   score: number;
+  // Score at the START of the window for the same (competitor, source), so a
+  // "review trajectory" row can state a drift instead of only a level.
+  firstScore: number | null;
   reviewCount: number;
   recordedAt: string;
 }
@@ -95,11 +113,7 @@ trendsRouter.get("/summary", async (c) => {
   // patch-28 — optional product scope: restrict the cross-competitor leaderboards to
   // the product's linked competitors. Absent → all org competitors (unchanged).
   const productId = c.req.query("productId");
-  let comps = await orgCompetitors(orgId);
-  if (productId) {
-    const allowed = new Set(await productCompetitorIds(orgId, productId));
-    comps = comps.filter((x) => allowed.has(x.id));
-  }
+  const comps = await scopedCompetitors(orgId, productId);
   const nameById = new Map(comps.map((x) => [x.id, x.name]));
   const ids = comps.map((x) => x.id);
   if (ids.length === 0) {
@@ -155,14 +169,24 @@ trendsRouter.get("/summary", async (c) => {
     LIMIT 50
   `),
 
-    // Latest score per (competitor, source).
+    // Latest score per (competitor, source), carrying the window's FIRST score for
+    // the same pair — a review row on a trends page has to state a direction, not
+    // just today's level.
     analyticsQueryResult<RawReviewMove>(sql`
+    WITH scoped AS (
+      SELECT competitor_id, source, score, review_count, recorded_at,
+             first_value(score) OVER (
+               PARTITION BY competitor_id, source ORDER BY recorded_at ASC
+             ) AS first_score
+      FROM review_scores
+      WHERE competitor_id IN (${idList})
+        AND recorded_at >= ${fromIso}::timestamp AND recorded_at <= ${toIso}::timestamp
+    )
     SELECT DISTINCT ON (competitor_id, source)
-           competitor_id AS "competitorId", source, score, review_count AS "reviewCount",
+           competitor_id AS "competitorId", source, score,
+           first_score AS "firstScore", review_count AS "reviewCount",
            (recorded_at AT TIME ZONE 'UTC') AS "recordedAt"
-    FROM review_scores
-    WHERE competitor_id IN (${idList})
-      AND recorded_at >= ${fromIso}::timestamp AND recorded_at <= ${toIso}::timestamp
+    FROM scoped
     ORDER BY competitor_id, source, recorded_at DESC
     LIMIT 100
   `),
@@ -194,6 +218,122 @@ trendsRouter.get("/summary", async (c) => {
     reviews: withName(reviewsRes.rows),
     tech: withName(techRes.rows),
     degraded,
+  });
+});
+
+interface RawMarketPoint {
+  competitorId: string;
+  t: string;
+  value: number;
+  /** Pricing only — the currency of the cheapest plan that day, so a chart can label it. */
+  currency?: string | null;
+}
+
+// Cross-competitor series for the trends report. /series answers "one competitor
+// over time", which can never show whether a MARKET moved — the page's actual
+// question. This returns one daily series per competitor for all three metrics in a
+// single round-trip, so the client can plot every competitor on one axis (indexed
+// client-side, since absolute prices span $9 to $499 and would flatten each other).
+trendsRouter.get("/market", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  c.header("Cache-Control", "private, max-age=60"); // F11 — see /summary
+  const { from, to } = resolveRange(c.req.query("from"), c.req.query("to"), c.req.query("window"));
+  const fromIso = from.toISOString();
+  const toIso = to.toISOString();
+
+  const comps = await scopedCompetitors(orgId, c.req.query("productId"));
+  if (comps.length === 0) {
+    return c.json({ pricing: [], hiring: [], reviews: [], degraded: false });
+  }
+  const idList = sql.join(
+    comps.map((x) => sql`${x.id}`),
+    sql`, `,
+  );
+
+  const [pricingRes, hiringRes, reviewsRes] = await Promise.all([
+    // Entry price per day: the cheapest recurring paid plan captured that day.
+    // Yearly rows would compare a year against a month, and `usage` rows carry
+    // per-unit prices (cents) that would masquerade as a collapse.
+    analyticsQueryResult<RawMarketPoint>(sql`
+      SELECT competitor_id AS "competitorId",
+             (date_trunc('day', recorded_at) AT TIME ZONE 'UTC') AS "t",
+             min(price)::float AS value,
+             (array_agg(currency ORDER BY price ASC))[1] AS currency
+      FROM pricing_history
+      WHERE competitor_id IN (${idList})
+        AND recorded_at >= ${fromIso}::timestamp AND recorded_at <= ${toIso}::timestamp
+        AND price > 0
+        AND (billing_period IS NULL OR billing_period NOT IN ('yearly', 'usage'))
+      GROUP BY 1, 2
+      ORDER BY 2 ASC
+      LIMIT 5000
+    `),
+
+    // Open roles per day. A day can hold several captures, so the day takes the
+    // LAST one rather than summing the same board twice.
+    analyticsQueryResult<RawMarketPoint>(sql`
+      WITH per_capture AS (
+        SELECT competitor_id, recorded_at, sum(count)::int AS total
+        FROM job_counts
+        WHERE competitor_id IN (${idList})
+          AND recorded_at >= ${fromIso}::timestamp AND recorded_at <= ${toIso}::timestamp
+        GROUP BY 1, 2
+      )
+      SELECT DISTINCT ON (competitor_id, date_trunc('day', recorded_at))
+             competitor_id AS "competitorId",
+             (date_trunc('day', recorded_at) AT TIME ZONE 'UTC') AS "t",
+             total::float AS value
+      FROM per_capture
+      ORDER BY competitor_id, date_trunc('day', recorded_at), recorded_at DESC
+      LIMIT 5000
+    `),
+
+    // Mean score across the sources captured that day.
+    analyticsQueryResult<RawMarketPoint>(sql`
+      SELECT competitor_id AS "competitorId",
+             (date_trunc('day', recorded_at) AT TIME ZONE 'UTC') AS "t",
+             avg(score)::float AS value
+      FROM review_scores
+      WHERE competitor_id IN (${idList})
+        AND recorded_at >= ${fromIso}::timestamp AND recorded_at <= ${toIso}::timestamp
+        AND score IS NOT NULL
+      GROUP BY 1, 2
+      ORDER BY 2 ASC
+      LIMIT 5000
+    `),
+  ]);
+
+  // Group flat rows into one series per competitor, dropping competitors the metric
+  // never captured (an empty line is a lie about coverage, not a flat trend).
+  const toSeries = (rows: RawMarketPoint[]) => {
+    const byCompetitor = new Map<string, { t: string; value: number }[]>();
+    const unitByCompetitor = new Map<string, string>();
+    for (const row of rows) {
+      const points = byCompetitor.get(row.competitorId);
+      if (points) points.push({ t: row.t, value: row.value });
+      else byCompetitor.set(row.competitorId, [{ t: row.t, value: row.value }]);
+      // Rows arrive oldest-first, so the last write is the latest capture's currency.
+      if (row.currency) unitByCompetitor.set(row.competitorId, row.currency);
+    }
+    return comps
+      .filter((comp) => byCompetitor.has(comp.id))
+      .map((comp) => ({
+        competitorId: comp.id,
+        competitorName: comp.name,
+        competitorUrl: comp.url,
+        color: comp.color,
+        isSelf: comp.type === "self",
+        unit: unitByCompetitor.get(comp.id) ?? null,
+        points: byCompetitor.get(comp.id) ?? [],
+      }));
+  };
+
+  return c.json({
+    pricing: toSeries(pricingRes.rows),
+    hiring: toSeries(hiringRes.rows),
+    reviews: toSeries(reviewsRes.rows),
+    degraded: !pricingRes.ok || !hiringRes.ok || !reviewsRes.ok,
   });
 });
 

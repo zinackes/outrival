@@ -304,6 +304,34 @@ accessibility failure outside the form-validation pattern.
 
 ---
 
+## Remediation status
+
+### Landed
+
+**PR 1**, the zero-risk batch. Verified by re-parsing `globals.css` from disk and
+gamut-mapping every token, not by re-running numbers hardcoded in a script.
+
+| Finding | Was | Now |
+| --- | --- | --- |
+| Dark CTA at rest under AA | 4.09:1 | **4.54:1**, via `--accent` L .590 → .586 (`#6c5dfd`) and the label taken to pure white. Pure white alone only reached 4.47:1, so both had to move. |
+| `--night` above the surface it belongs to | L 0.213 vs card 0.200 | **L 0.187**, back between `--background-2` and `--surface` |
+| `--link` under AA on the canvas | 4.45:1 | **4.51:1**, L .55 → .547 |
+| Type scale: specs disagree with code | `DESIGN.md` and `apps/web/CLAUDE.md` said 22/26/32 | Both now say **26/34/44**. Settled by history: `d5dfc36` (Precision Instrument, 2026-06-21) bumped the tokens deliberately and did not touch the specs, so the code was the intended state. |
+| `globals.css` calling `--text-title` "H2" | Comment claimed H2/H1 split | `page-head.tsx:26` renders `<h1 className="text-title md:text-title-lg">`, so both are the same `h1` at two breakpoints. Comments corrected. |
+
+Also confirmed unbroken: the dark active state stays darker than rest (L 0.539 vs
+0.586), so the interaction ramp order survives the change.
+
+### Still open
+
+- **Dark CTA hover, 3.76:1.** Deliberately left failing by PR 1. No fill brighter
+  than the rest state can carry a light label at AA, and raising chroma at fixed
+  lightness does not move contrast at all. Decided: hover stops changing the fill
+  lightness and marks itself another way. That is PR 2.
+- `/auth` form behaviour, PR 3. Primitives polish, PR 4.
+- The 16 out-of-gamut tokens and the three roles sharing `#242424`, both parked
+  pending the visual checks below.
+
 ## Visual verification checklist
 
 Everything below needs a rendered browser and a human. Grouped by what you need

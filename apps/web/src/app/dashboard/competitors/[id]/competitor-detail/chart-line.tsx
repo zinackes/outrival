@@ -11,6 +11,7 @@ import {
   Legend,
   ReferenceLine,
 } from "recharts";
+import { ChartCursorLine, chartTooltipMotion } from "@/components/dashboard/chart-motion";
 import { lineColor } from "./charts";
 
 const TOOLTIP_STYLE = {
@@ -93,7 +94,11 @@ export function MultiLineChart({
           width={44}
           {...(yDomain ? { domain: yDomain } : {})}
         />
-        <ChartTooltip contentStyle={TOOLTIP_STYLE} />
+        <ChartTooltip
+          {...chartTooltipMotion}
+          contentStyle={TOOLTIP_STYLE}
+          cursor={<ChartCursorLine />}
+        />
         {seriesKeys.length > 1 && <Legend wrapperStyle={{ fontSize: 11 }} />}
         {/* Where a detector fired. Rendered before the areas so a band never
             paints over the rule. */}

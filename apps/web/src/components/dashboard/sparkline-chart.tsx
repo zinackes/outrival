@@ -8,6 +8,11 @@ import {
   Tooltip,
   YAxis,
 } from "recharts";
+import {
+  ChartCursorLine,
+  chartTooltipCardMotion,
+  chartTooltipMotion,
+} from "@/components/dashboard/chart-motion";
 
 export interface SparklineProps {
   data: number[];
@@ -34,7 +39,9 @@ function SparkTooltip({ active, payload, labels, valueLabel }: TipProps) {
   if (!point) return null;
   const i = point.payload?.i ?? 0;
   return (
-    <div className="pointer-events-none rounded-md border border-border bg-popover px-2 py-1 shadow-sm whitespace-nowrap">
+    <div
+      className={`pointer-events-none rounded-md border border-border bg-popover px-2 py-1 shadow-sm whitespace-nowrap ${chartTooltipCardMotion}`}
+    >
       {labels?.[i] && (
         <div className="text-meta text-muted-foreground">
           {labels[i]}
@@ -79,7 +86,7 @@ export function SparklineChart({
         <YAxis hide domain={[min, max]} />
         {interactive && (
           <Tooltip
-            isAnimationActive={false}
+            {...chartTooltipMotion}
             // Pin the tooltip above the (very short) sparkline — only `y` is
             // fixed, so `x` keeps tracking the cursor. `allowEscapeViewBox.y`
             // lets it rise out of the 28px plot into the KPI cell instead of
@@ -87,12 +94,7 @@ export function SparklineChart({
             position={{ y: -44 }}
             allowEscapeViewBox={{ x: false, y: true }}
             wrapperStyle={{ zIndex: 20, outline: "none" }}
-            cursor={{
-              stroke: "var(--muted-foreground)",
-              strokeWidth: 1,
-              strokeDasharray: "2 3",
-              strokeOpacity: 0.4,
-            }}
+            cursor={<ChartCursorLine />}
             content={<SparkTooltip labels={labels} valueLabel={valueLabel} />}
           />
         )}

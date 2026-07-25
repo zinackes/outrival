@@ -598,6 +598,16 @@
   }
 }
 
+/* Arrival fade for a chart's hover readout (see .chart-hover-fade below). */
+@keyframes chart-hover-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 @layer components {
   /* Disclosure rows (competitor Activity signals, Hiring departments) open and
      close instantly: a native <details> snaps its content in with no in-between.
@@ -620,6 +630,27 @@
     .details-smooth[open]::details-content {
       block-size: auto;
     }
+  }
+
+  /* Arrival fade for a chart's hover readout — crosshair, active dot, tooltip
+     card. Opacity only, unlike tw-animate-css's `animate-in`, whose `enter`
+     keyframe also resets `transform` and would drag the crosshair in from the
+     plot's origin. Easing hard-coded for the same reason as .skeleton below. */
+  .chart-hover-fade {
+    animation: chart-hover-in var(--duration-fast) cubic-bezier(0.2, 0.7, 0.3, 1);
+  }
+
+  /* The active dot of every series is redrawn at new coordinates on each pointer
+     move, so it teleports along the line while the tooltip and crosshair (see
+     components/dashboard/chart-motion.tsx) slide. `cx`/`cy` are real CSS geometry
+     properties, so the same dot can be transitioned to the next capture instead;
+     engines without them keep the jump. The fade replays only when the dot
+     mounts, i.e. when the pointer arrives on the plot. */
+  .recharts-active-dot circle {
+    transition:
+      cx var(--duration-fast) cubic-bezier(0.2, 0.7, 0.3, 1),
+      cy var(--duration-fast) cubic-bezier(0.2, 0.7, 0.3, 1);
+    animation: chart-hover-in var(--duration-fast) cubic-bezier(0.2, 0.7, 0.3, 1);
   }
 
   .skeleton {

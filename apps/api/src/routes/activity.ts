@@ -99,8 +99,16 @@ activityRouter.get("/health", async (c) => {
       competitorColor: r.competitorColor,
       isSelf: r.competitorType === "self",
       sourceType: r.sourceType,
+      // lastRunAt is stamped by the SUCCESS paths of scrape-monitor only, so on a
+      // failing source it reads as "when it last answered" — which is what the
+      // attention row states. A failed attempt never moves it.
       lastRunAt: r.lastRunAt,
       nextRunAt: r.nextRunAt,
+      // How many checks in a row have failed since. Drives the attention row's
+      // explanation; the sticky failure-diagnosis columns are deliberately not
+      // used here (they only refresh on the NEXT failure, so they can describe a
+      // source that has since recovered).
+      consecutiveFailures: r.consecutiveFailures,
       status: r.markedUnscrapable
         ? "unscrapable"
         : !r.isActive
@@ -398,15 +406,125 @@ function shapeStructured(raw: unknown): ReadableChange[] {
     .filter((c) => c.kind && c.kind !== "section_reordered");
 }
 
+// ── Shared outcome predicates ─────────────────────────────────────────────────
+// Both expressions are written against the `scrape_runs r` alias and are reused by
+// the timeline (page + count) and by the summary aggregates, so "what counts as a
+// change" is defined once. Reusing one sql fragment across queries is safe: the
+// template is an immutable chunk list.
+
+// A run has an earlier snapshot when the monitor was already captured before it.
+// The 5-min margin excludes the run's own snapshot (its scraped_at sits a few
+// seconds before recorded_at); real captures are ≥1h apart (hourly scrape cron),
+// so this never mistakes a second capture for a baseline.
+const EARLIER_SNAPSHOT = sql`EXISTS (
+  SELECT 1 FROM snapshots s
+  WHERE s.monitor_id = r.monitor_id
+    AND s.scraped_at < r.recorded_at - interval '5 minutes'
+)`;
+
+// Whether the run produced a change row. monitor_id + a tight ±5min window around
+// recorded_at matches at most one change (a monitor emits one change per run).
+const CHANGE_EXISTS = sql`EXISTS (
+  SELECT 1 FROM changes c
+  WHERE c.monitor_id = r.monitor_id
+    AND c.detected_at BETWEEN r.recorded_at - interval '5 minutes'
+                          AND r.recorded_at + interval '5 minutes'
+)`;
+
 // "Change detected" runs carry no diff in scrape_runs, so we attach the change
-// the run produced. monitor_id + a tight ±5min window around recorded_at matches
-// at most one change (a monitor emits one change per run), so this can't mismatch.
+// the run produced.
 function cleanSummary(s: string | null): string | null {
   if (!s) return null;
   const t = s.replace(/\s+/g, " ").trim();
   if (!t) return null;
   return t.length > 140 ? `${t.slice(0, 140)}…` : t;
 }
+
+// The org's competitor ids in scope, or null when there are none (the caller
+// returns an empty payload rather than building an `IN ()`).
+async function scopedIds(orgId: string, productId: string | undefined): Promise<string[]> {
+  const comps = await orgCompetitors(orgId);
+  if (!productId) return comps.map((x) => x.id);
+  const allowed = new Set(await scopedActivityIds(orgId, productId));
+  return comps.filter((x) => allowed.has(x.id)).map((x) => x.id);
+}
+
+// Counts, not rows: what the page states in its opening sentence, the shape of
+// the last 24 hours, and each day's tally. The timeline pages through findings
+// only, so these are the sole source of "38 checks today" — deriving it from a
+// loaded page would report the page, not the day.
+activityRouter.get("/summary", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const ids = await scopedIds(orgId, c.req.query("productId"));
+  const empty = { buckets: [], days: [] };
+  if (ids.length === 0) return c.json(empty);
+
+  // The viewer's offset in JS convention (minutes to ADD to local to get UTC, so
+  // CEST sends -120). Day boundaries have to be the user's, or a 00:30 local run
+  // lands in yesterday's tally. Clamped to the real range of world offsets.
+  const rawTz = Number(c.req.query("tzOffset") ?? 0);
+  const tzOffset = Number.isFinite(rawTz) ? Math.max(-840, Math.min(840, Math.trunc(rawTz))) : 0;
+
+  const idList = sql.join(
+    ids.map((id) => sql`${id}`),
+    sql`, `,
+  );
+  const hiddenList = sql.join(
+    HIDDEN_SOURCES.map((s) => sql`${s}`),
+    sql`, `,
+  );
+  // recorded_at is a naive timestamp holding UTC wall-clock, so `now()` (which is
+  // timestamptz in the server's zone) has to be pulled into UTC before comparing,
+  // otherwise the window slides by the server's offset.
+  const utcNow = sql`(now() AT TIME ZONE 'UTC')`;
+  const scope = sql`r.competitor_id IN (${idList}) AND r.source_type NOT IN (${hiddenList})`;
+
+  // 15-minute buckets over the last 24h. `slot` counts backwards from now (0 =
+  // the quarter hour in progress), so the client never has to reconcile clocks.
+  const buckets = await analyticsQuery<{
+    slot: number;
+    checks: number;
+    changes: number;
+    failures: number;
+  }>(sql`
+    SELECT floor(extract(epoch FROM (${utcNow} - r.recorded_at)) / 900)::int AS slot,
+           count(*)::int AS checks,
+           count(*) FILTER (WHERE r.status = 'success' AND ${CHANGE_EXISTS})::int AS changes,
+           count(*) FILTER (WHERE r.status = 'failed')::int AS failures
+    FROM scrape_runs r
+    WHERE ${scope} AND r.recorded_at > ${utcNow} - interval '24 hours'
+    GROUP BY 1
+    ORDER BY 1
+  `);
+
+  // Per local day for the last two weeks: everything a day header states, plus
+  // the first-capture count the log needs to size its "found nothing new" fold.
+  const days = await analyticsQuery<{
+    date: string;
+    checks: number;
+    changes: number;
+    failures: number;
+    firstCaptures: number;
+  }>(sql`
+    SELECT to_char(date_trunc('day', r.recorded_at - make_interval(mins => ${tzOffset})), 'YYYY-MM-DD') AS date,
+           count(*)::int AS checks,
+           count(*) FILTER (WHERE r.status = 'success' AND ${CHANGE_EXISTS})::int AS changes,
+           count(*) FILTER (WHERE r.status = 'failed')::int AS failures,
+           count(*) FILTER (
+             WHERE r.status = 'success' AND NOT ${CHANGE_EXISTS} AND NOT ${EARLIER_SNAPSHOT}
+           )::int AS "firstCaptures"
+    FROM scrape_runs r
+    WHERE ${scope} AND r.recorded_at > ${utcNow} - interval '15 days'
+    GROUP BY 1
+    ORDER BY 1 DESC
+  `);
+
+  return c.json({
+    buckets: buckets.filter((b) => b.slot >= 0 && b.slot < 96),
+    days,
+  });
+});
 
 activityRouter.get("/timeline", async (c) => {
   const user = c.get("user");
@@ -422,11 +540,25 @@ activityRouter.get("/timeline", async (c) => {
   // run is split into a real "change" (has a change row), a "first_capture"
   // (baseline, no diff possible) and "no_change" (content shifted but nothing
   // meaningful — folded with the dedup no-change runs). "failed" maps 1:1.
-  const statusRaw = c.req.query("status");
+  // Comma-separated, because the log's default view is the three outcomes that
+  // carry a finding; a single value still works as before.
   const STATUS_FILTERS = ["change", "first_capture", "no_change", "failed"] as const;
-  const status = (STATUS_FILTERS as readonly string[]).includes(statusRaw ?? "")
-    ? (statusRaw as (typeof STATUS_FILTERS)[number])
-    : undefined;
+  type Outcome = (typeof STATUS_FILTERS)[number];
+  const statuses = (c.req.query("status") ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s): s is Outcome => (STATUS_FILTERS as readonly string[]).includes(s));
+
+  // Bounded window, used by the log to pull one day's quiet runs on demand. The
+  // ISO instant is cast to a naive timestamp on purpose: recorded_at holds UTC
+  // wall-clock, and the client sends UTC, so the two compare directly.
+  const parseBound = (raw: string | undefined) => {
+    if (!raw) return null;
+    const ms = Date.parse(raw);
+    return Number.isNaN(ms) ? null : new Date(ms).toISOString();
+  };
+  const from = parseBound(c.req.query("from"));
+  const to = parseBound(c.req.query("to"));
 
   // patch-28 — optional product scope (same as /health): the product's linked
   // competitors + its own self-product.
@@ -452,16 +584,7 @@ activityRouter.get("/timeline", async (c) => {
     sql`, `,
   );
 
-  // A run has an earlier snapshot when the monitor was already captured before it.
-  // The 5-min margin excludes the run's own snapshot (its scraped_at sits a few
-  // seconds before recorded_at); real captures are ≥1h apart (hourly scrape cron),
-  // so this never mistakes a second capture for a baseline. Reused by the
-  // first_capture filter and the isFirstCapture projection below.
-  const earlierSnapshot = sql`EXISTS (
-    SELECT 1 FROM snapshots s
-    WHERE s.monitor_id = r.monitor_id
-      AND s.scraped_at < r.recorded_at - interval '5 minutes'
-  )`;
+  const earlierSnapshot = EARLIER_SNAPSHOT;
 
   const conds = [
     sql`r.competitor_id IN (${idList})`,
@@ -469,16 +592,21 @@ activityRouter.get("/timeline", async (c) => {
   ];
   if (competitorId) conds.push(sql`r.competitor_id = ${competitorId}`);
   if (sourceType) conds.push(sql`r.source_type = ${sourceType}`);
+  if (from) conds.push(sql`r.recorded_at >= ${from}::timestamp`);
+  if (to) conds.push(sql`r.recorded_at < ${to}::timestamp`);
   // ch.id (the LATERAL-joined change row, gated ON r.status='success') is in scope
   // here, so the outcome buckets can be expressed directly in the WHERE clause.
-  if (status === "change") conds.push(sql`r.status = 'success' AND ch.id IS NOT NULL`);
-  else if (status === "first_capture")
-    conds.push(sql`r.status = 'success' AND ch.id IS NULL AND NOT ${earlierSnapshot}`);
-  else if (status === "no_change")
-    conds.push(
-      sql`(r.status = 'no_change' OR (r.status = 'success' AND ch.id IS NULL AND ${earlierSnapshot}))`,
-    );
-  else if (status === "failed") conds.push(sql`r.status = 'failed'`);
+  const outcomeCond = (s: Outcome) =>
+    s === "change"
+      ? sql`(r.status = 'success' AND ch.id IS NOT NULL)`
+      : s === "first_capture"
+        ? sql`(r.status = 'success' AND ch.id IS NULL AND NOT ${earlierSnapshot})`
+        : s === "no_change"
+          ? sql`(r.status = 'no_change' OR (r.status = 'success' AND ch.id IS NULL AND ${earlierSnapshot}))`
+          : sql`(r.status = 'failed')`;
+  if (statuses.length > 0) {
+    conds.push(sql`(${sql.join(statuses.map(outcomeCond), sql` OR `)})`);
+  }
   const where = sql.join(conds, sql` AND `);
 
   const rows = await analyticsQuery<RawRun>(sql`
@@ -672,30 +800,30 @@ activityRouter.get("/timeline", async (c) => {
     capturedDelta: shapeCapturedDelta(r),
   }));
 
-  // Total matching rows, for numbered pagination. Expressed without the LATERAL
-  // change/signal joins of the page query — the outcome buckets only need to know
-  // whether a matching change row EXISTS, so this stays a single indexed scan over
-  // scrape_runs. changeExists mirrors the LATERAL's ±5-min match window.
-  const changeExists = sql`EXISTS (
-    SELECT 1 FROM changes c
-    WHERE c.monitor_id = r.monitor_id
-      AND c.detected_at BETWEEN r.recorded_at - interval '5 minutes'
-                            AND r.recorded_at + interval '5 minutes'
-  )`;
+  // Total matching rows, so the log knows whether an older page exists. Expressed
+  // without the LATERAL change/signal joins of the page query — the outcome buckets
+  // only need to know whether a matching change row EXISTS, so this stays a single
+  // indexed scan over scrape_runs. CHANGE_EXISTS mirrors the LATERAL's ±5-min window.
+  const changeExists = CHANGE_EXISTS;
   const countConds = [
     sql`r.competitor_id IN (${idList})`,
     sql`r.source_type NOT IN (${hiddenList})`,
   ];
   if (competitorId) countConds.push(sql`r.competitor_id = ${competitorId}`);
   if (sourceType) countConds.push(sql`r.source_type = ${sourceType}`);
-  if (status === "change") countConds.push(sql`r.status = 'success' AND ${changeExists}`);
-  else if (status === "first_capture")
-    countConds.push(sql`r.status = 'success' AND NOT ${changeExists} AND NOT ${earlierSnapshot}`);
-  else if (status === "no_change")
-    countConds.push(
-      sql`(r.status = 'no_change' OR (r.status = 'success' AND NOT ${changeExists} AND ${earlierSnapshot}))`,
-    );
-  else if (status === "failed") countConds.push(sql`r.status = 'failed'`);
+  if (from) countConds.push(sql`r.recorded_at >= ${from}::timestamp`);
+  if (to) countConds.push(sql`r.recorded_at < ${to}::timestamp`);
+  const countOutcomeCond = (s: Outcome) =>
+    s === "change"
+      ? sql`(r.status = 'success' AND ${changeExists})`
+      : s === "first_capture"
+        ? sql`(r.status = 'success' AND NOT ${changeExists} AND NOT ${earlierSnapshot})`
+        : s === "no_change"
+          ? sql`(r.status = 'no_change' OR (r.status = 'success' AND NOT ${changeExists} AND ${earlierSnapshot}))`
+          : sql`(r.status = 'failed')`;
+  if (statuses.length > 0) {
+    countConds.push(sql`(${sql.join(statuses.map(countOutcomeCond), sql` OR `)})`);
+  }
   const countWhere = sql.join(countConds, sql` AND `);
 
   const countRows = await analyticsQuery<{ total: number }>(sql`

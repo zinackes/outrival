@@ -1,51 +1,19 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
-import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import Link from "next/link";
+import { useMemo, useState } from "react";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
-import { useProductScope } from "@/components/dashboard/product-scope-provider";
-import { Activity, ChevronRight, ExternalLink } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { Activity } from "lucide-react";
+import type { ActivityDay, ActivitySource, ActivityStatusFilter } from "@/lib/api";
 import {
-  type ActivitySource,
-  type ActivityUpcoming,
-  type ActivityEvent,
-  type ActivityChange,
-  type ActivityCaptured,
-  type ActivityCapturedDelta,
-  type ActivityStatusFilter,
-} from "@/lib/api";
-import {
+  ACTIVITY_FINDING_STATUSES,
+  activityFeedQuery,
   activityHealthQuery,
-  activityTimelineQuery,
-  ACTIVITY_PAGE_SIZE,
+  activitySummaryQuery,
 } from "@/lib/queries";
+import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { sourceLabel } from "@/lib/source-labels";
-import { formatDateTime } from "@/lib/format-date";
-import { competitorNameColor } from "@/lib/competitor-color";
 import { cn } from "@/lib/utils";
-import { DataTablePagination } from "@/components/ui/data-table-pagination";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { PageHead } from "./page-head";
-import { useSetAskContext } from "./ask-context";
 import {
   Select,
   SelectContent,
@@ -53,731 +21,75 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { PageHead } from "./page-head";
+import { useSetAskContext } from "./ask-context";
+import { Attention } from "./activity/attention";
+import { ActivityLog } from "./activity/log";
+import { WatchStrip } from "./activity/watch-strip";
 
-const PAGE_SIZE = ACTIVITY_PAGE_SIZE;
+// Activity answers two questions with one page: is Outrival still watching
+// everything, and what did it find. The roster answers the first (a source that
+// stopped answering is named, not left to be inferred from an absence), the log
+// answers the second, and the strip carries the work between them.
 
-// The four user-facing outcomes, derived from the raw run status below. The raw
-// scrape_runs.status="success" covers three different things — a real change, a
-// monitor's baseline capture, and a sub-threshold content shift — so a flat
-// status→label map would mislabel a first scrape as "Change detected".
-const OUTCOME_META: Record<ActivityStatusFilter, { label: string; color: string }> = {
-  change: { label: "Change detected", color: "var(--positive)" },
-  first_capture: { label: "First capture", color: "var(--link)" },
-  no_change: { label: "No change", color: "var(--muted-foreground)" },
-  failed: { label: "Couldn't reach", color: "var(--critical)" },
-};
+type Segment = "all" | "changes" | "problems" | "quiet";
 
-const OUTCOME_ORDER: ActivityStatusFilter[] = [
-  "change",
-  "first_capture",
-  "no_change",
-  "failed",
+const SEGMENTS: { id: Segment; label: string; statuses: ActivityStatusFilter[] }[] = [
+  { id: "all", label: "All", statuses: [] },
+  { id: "changes", label: "Changes", statuses: ["change"] },
+  { id: "problems", label: "Problems", statuses: ["failed"] },
+  { id: "quiet", label: "Quiet", statuses: ["no_change"] },
 ];
 
-// Map a run to its outcome: a successful run is a real change only when it carries
-// a change row; the first-ever capture (no diff possible) is "First capture"; a
-// success that produced neither (content shifted but nothing material) folds into
-// "No change", alongside the dedup no-change runs.
-function eventOutcome(e: ActivityEvent): ActivityStatusFilter {
-  if (e.status === "failed") return "failed";
-  if (e.status === "success") {
-    if (e.changeId) return "change";
-    if (e.isFirstCapture) return "first_capture";
-  }
-  return "no_change";
+// Deep links from the competitor page carry the old status values; map the ones
+// that name an outcome onto the segment that shows it.
+function segmentFromUrl(raw: string | null): Segment {
+  if (raw === "change" || raw === "first_capture") return "changes";
+  if (raw === "failed") return "problems";
+  if (raw === "no_change") return "quiet";
+  return "all";
 }
 
-function rel(iso: string | null): string {
-  if (!iso) return "never";
-  return formatDistanceToNow(new Date(iso), { addSuffix: true });
-}
-
-// Relative label for a SCHEDULED (future) run — nextRunAt. formatDistanceToNow with
-// addSuffix renders a past instant as "8 minutes ago", which reads as a scrape that
-// already happened. But an overdue nextRunAt only means the hourly scrape cron hasn't
-// picked the monitor up yet (or, in dev, isn't running) — the check is still pending,
-// not done. Collapse any past/imminent time to "due now" so a next check never looks
-// like a completed one.
-function relNext(iso: string | null): string {
-  if (!iso) return "not scheduled";
-  const ts = new Date(iso).getTime();
-  if (Number.isNaN(ts)) return "not scheduled";
-  // 30s of slack so a run due in seconds reads "due now", not "in 20 seconds".
-  if (ts - Date.now() <= 30_000) return "due now";
-  return formatDistanceToNow(new Date(ts), { addSuffix: true });
-}
-
-function duration(ms: number): string {
-  if (!ms) return "—";
-  return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
-}
-
-// Absolute date + time for the "When" hover tooltip. Clock adapts to the viewer's
-// region (24h in FR, 12h in US); text stays English. See lib/format-date.
-function absDateTime(iso: string): string {
-  return formatDateTime(iso);
-}
-
-
-function Dot({ color }: { color: string }) {
-  return (
-    <span
-      className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
-      style={{ background: color }}
-      aria-hidden
-    />
-  );
-}
-
-// The user's own product (self-competitor) surfaces in this feed alongside
-// competitors; its name is often a bare hostname, so a badge makes it unambiguous.
-function SelfBadge() {
-  return (
-    <span className="ml-1.5 whitespace-nowrap rounded bg-muted px-1.5 py-0.5 align-middle text-meta font-medium text-muted-foreground">
-      Your product
-    </span>
-  );
-}
-
-// A self row links to the products page (self-competitors have no competitor detail
-// page); a competitor row links to its detail page.
-function entityHref(id: string, isSelf?: boolean): string {
-  return isSelf ? "/dashboard/products" : `/dashboard/competitors/${id}`;
-}
-
-// Readable label per structured-diff kind (homepage). Sentence case, not an
-// uppercase mono eyebrow — these read as plain field names, not tags.
-const KIND_LABEL: Record<string, string> = {
-  hero_headline_changed: "Headline",
-  hero_subheadline_changed: "Subheadline",
-  hero_cta_changed: "Call-to-action",
-  section_added: "New section",
-  section_removed: "Section removed",
-  section_renamed: "Section renamed",
-  section_body_changed: "Section updated",
-  navigation_changed: "Navigation",
-  meta_changed: "Branding",
-  social_proof_changed: "Social proof",
-  visual_redesign: "Visual redesign",
-  numeric_claim_changed: "Metric",
-  customer_logo_added: "New customer",
-  customer_logo_removed: "Customer removed",
-  testimonial_added: "New testimonial",
-  testimonial_removed: "Testimonial removed",
-};
-
-// Kinds with no natural before/after — show a plain phrase instead of an arrow.
-const STATIC_PHRASE: Record<string, string> = {
-  visual_redesign: "The homepage was visually redesigned",
-  section_reordered: "Sections were reordered",
-};
-
-function kindLabel(kind: string): string {
-  return KIND_LABEL[kind] ?? "Change";
-}
-
-// "sections[pricing]" → "pricing" — a readable subject for section_* kinds that
-// carry no before/after value of their own.
-function sectionName(field: string): string | null {
-  const m = field.match(/sections?\[([^\]]+)\]/i);
-  return m ? m[1]!.replace(/[_-]+/g, " ") : null;
-}
-
-// A row can be expanded when there's something worth showing. "change" rows need
-// real change detail; "first_capture" and "no_change" rows always expand — they
-// carry an explanation + a link to the live page so a quiet run is never a dead
-// end. "failed" stays collapsed (its status already says it couldn't be reached).
-function isExpandable(e: ActivityEvent): boolean {
-  const outcome = eventOutcome(e);
-  if (outcome === "first_capture" || outcome === "no_change") return true;
-  if (outcome === "change") {
-    return Boolean(
-      (e.structuredChanges && e.structuredChanges.length > 0) ||
-        e.humanChangeBefore ||
-        e.humanChangeAfter ||
-        e.changeSummary,
-    );
-  }
-  return false;
-}
-
-// One labeled before→after line. Renders the arrow only when both sides exist;
-// degrades to a single value (added/removed) or a static phrase otherwise.
-function ChangeLine({ change }: { change: ActivityChange }) {
-  const before = change.before?.trim() || null;
-  const after = change.after?.trim() || null;
-  const subject = sectionName(change.field);
-
-  let body: ReactNode;
-  if (before && after) {
-    body = (
-      <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-        <span className="text-muted-foreground">{before}</span>
-        <span className="text-muted-foreground" aria-hidden>
-          →
-        </span>
-        <span className="text-foreground">{after}</span>
-      </span>
-    );
-  } else if (after) {
-    body = <span className="text-foreground">{after}</span>;
-  } else if (before) {
-    body = <span className="text-muted-foreground line-through">{before}</span>;
-  } else if (subject) {
-    body = <span className="text-foreground capitalize">{subject}</span>;
-  } else {
-    body = (
-      <span className="text-muted-foreground">
-        {STATIC_PHRASE[change.kind] ?? "Updated"}
-      </span>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-3">
-      <span className="w-32 shrink-0 text-meta text-muted-foreground">
-        {kindLabel(change.kind)}
-      </span>
-      <div className="min-w-0 flex-1 text-sm">{body}</div>
-    </div>
-  );
-}
-
-// Precise, readable breakdown of what a run found: typed homepage changes first
-// (richest), else the AI-distilled plain before/after, else the summary.
-function ChangeDetail({ event }: { event: ActivityEvent }) {
-  const changes = event.structuredChanges ?? [];
-  const hasHuman = Boolean(event.humanChangeBefore || event.humanChangeAfter);
-
-  if (changes.length > 0) {
-    return (
-      <div className="flex flex-col gap-2">
-        {changes.map((c, i) => (
-          <ChangeLine key={`${c.kind}-${c.field}-${i}`} change={c} />
-        ))}
-      </div>
-    );
-  }
-
-  if (hasHuman) {
-    return (
-      <ChangeLine
-        change={{
-          kind: "",
-          field: "",
-          before: event.humanChangeBefore ?? null,
-          after: event.humanChangeAfter ?? null,
-        }}
-      />
-    );
-  }
-
-  return (
-    <p className="text-sm text-muted-foreground">
-      {event.changeSummary ?? "No detail captured for this change."}
-    </p>
-  );
-}
-
-// "View live page" — opens the exact page this run inspected (snapshot resolved
-// URL, else the competitor site). Hidden when no URL is known (rare).
-function LivePageLink({ url }: { url: string | null | undefined }) {
-  if (!url) return null;
-  return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      onClick={(e) => e.stopPropagation()}
-      className="inline-flex w-fit items-center gap-1.5 text-sm text-link hover:underline"
-    >
-      <ExternalLink className="size-3.5" aria-hidden />
-      View live page
-    </a>
-  );
-}
-
-// Detail for a quiet run (no change to show): explain what happened so the row
-// isn't a dead end, plus a link out to the page we actually checked.
-function QuietRunDetail({
-  outcome,
-  event,
-}: {
-  outcome: ActivityStatusFilter;
-  event: ActivityEvent;
-}) {
-  return (
-    <div className="flex flex-col gap-2 text-sm">
-      <p className="text-muted-foreground">
-        {outcome === "first_capture"
-          ? "First time we captured this page. We saved it as the baseline: every future check is compared against it, and anything that changes shows up here."
-          : "We checked this page and it matches our last capture, so nothing changed."}
-      </p>
-      {outcome === "no_change" && event.lastChangedAt && (
-        <p className="text-muted-foreground">
-          Last actual change{" "}
-          <span className="tabular-nums">{rel(event.lastChangedAt)}</span>.
-        </p>
-      )}
-      <LivePageLink url={event.url} />
-    </div>
-  );
-}
-
-// ── Captured data (jobs / pricing / reviews) ──────────────────────────────────
-// What a data source actually held on a run — the value a baseline or no-change
-// row otherwise hides. Shown as a one-line summary in the "Captured" column, with
-// a breakdown in the expanded panel.
-
-const CURRENCY_SYMBOL: Record<string, string> = { USD: "$", EUR: "€", GBP: "£" };
-const PERIOD_SHORT: Record<string, string> = { monthly: "mo", yearly: "yr" };
-
-function fmtPrice(value: number | null, currency: string | null): string {
-  if (value == null) return "";
-  const n = Number.isInteger(value) ? String(value) : value.toFixed(2);
-  const sym = currency ? CURRENCY_SYMBOL[currency] : undefined;
-  return sym ? `${sym}${n}` : currency ? `${n} ${currency}` : n;
-}
-
-// The single line for the "Captured" column. null → render "Nothing found"
-// (and no "View more": a null summary means there's no payload to break down).
-function capturedSummary(c: ActivityCaptured): string | null {
-  if (c.kind === "jobs") {
-    if (c.total === 0) return null;
-    const roles = `${c.total} open role${c.total > 1 ? "s" : ""}`;
-    return c.teams > 1 ? `${roles} · ${c.teams} teams` : roles;
-  }
-  if (c.kind === "pricing") {
-    if (c.planCount === 0) return null;
-    const plans = `${c.planCount} plan${c.planCount > 1 ? "s" : ""}`;
-    if (c.minPrice == null) return plans; // all quote-based tiers
-    const range =
-      c.maxPrice != null && c.maxPrice !== c.minPrice
-        ? `${fmtPrice(c.minPrice, c.currency)}–${fmtPrice(c.maxPrice, c.currency)}`
-        : fmtPrice(c.minPrice, c.currency);
-    return `${plans} · ${range}`;
-  }
-  if (c.score == null) return null;
-  const stars = `${c.score.toFixed(1)}★`;
-  return c.reviewCount > 0 ? `${stars} · ${c.reviewCount.toLocaleString()} reviews` : stars;
-}
-
-// One before→after pair, muted → foreground, matching the change detail styling.
-function DeltaArrow({ before, after }: { before: ReactNode; after: ReactNode }) {
-  return (
-    <span className="inline-flex items-baseline gap-1 tabular-nums">
-      <span className="text-muted-foreground">{before}</span>
-      <span className="text-muted-foreground" aria-hidden>
-        →
-      </span>
-      <span className="text-foreground">{after}</span>
-    </span>
-  );
-}
-
-// What MOVED on a change run — the delta line shown in the "Captured" column
-// instead of the running total. Reuses fmtPrice / PERIOD units above.
-function CapturedDeltaContent({ delta }: { delta: ActivityCapturedDelta }) {
-  if (delta.kind === "jobs") {
-    return (
-      <span className="inline-flex items-baseline gap-1">
-        <DeltaArrow before={delta.before} after={delta.after} />
-        <span className="text-muted-foreground">roles</span>
-      </span>
-    );
-  }
-  if (delta.kind === "pricingCount") {
-    return (
-      <span className="inline-flex items-baseline gap-1">
-        <DeltaArrow before={delta.before} after={delta.after} />
-        <span className="text-muted-foreground">plans</span>
-      </span>
-    );
-  }
-  if (delta.kind === "reviews") {
-    if (delta.unit === "score") {
-      return (
-        <DeltaArrow
-          before={`${delta.before.toFixed(1)}★`}
-          after={`${delta.after.toFixed(1)}★`}
-        />
-      );
-    }
-    return (
-      <span className="inline-flex items-baseline gap-1">
-        <DeltaArrow
-          before={delta.before.toLocaleString()}
-          after={delta.after.toLocaleString()}
-        />
-        <span className="text-muted-foreground">reviews</span>
-      </span>
-    );
-  }
-  // pricing — a plan's price moved (before/after always present for this kind)
-  return (
-    <span className="inline-flex min-w-0 items-baseline gap-1.5">
-      <span className="min-w-0 truncate text-foreground">{delta.plan}</span>
-      <DeltaArrow
-        before={fmtPrice(delta.before, delta.currency)}
-        after={fmtPrice(delta.after, delta.currency)}
-      />
-      {delta.more > 0 && (
-        <span className="shrink-0 text-muted-foreground">+{delta.more} more</span>
-      )}
-    </span>
-  );
-}
-
-// "View more" — opens the full snapshot breakdown modal for a run.
-function ViewMoreButton({ onView }: { onView: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation();
-        onView();
-      }}
-      className="shrink-0 text-xs text-link hover:underline"
-    >
-      View more
-    </button>
-  );
-}
-
-// "Captured" cell content. On a change row (delta present) we show what MOVED vs
-// the previous capture, not the running total — the total reads oddly next to
-// "What changed". "View more" still opens the full current-state breakdown. On a
-// quiet run: a dash for non-data sources, "Nothing found" for an empty extraction,
-// else the snapshot summary line plus "View more".
-function CapturedCell({
-  captured,
-  delta,
-  onView,
-}: {
-  captured: ActivityCaptured | null | undefined;
-  delta: ActivityCapturedDelta | null | undefined;
-  onView: () => void;
-}) {
-  if (delta) {
-    const hasBreakdown = captured != null && capturedSummary(captured) != null;
-    return (
-      <span className="inline-flex min-w-0 items-center gap-2">
-        <span className="min-w-0 truncate">
-          <CapturedDeltaContent delta={delta} />
-        </span>
-        {hasBreakdown && <ViewMoreButton onView={onView} />}
-      </span>
-    );
-  }
-  if (!captured) return <span className="text-muted-foreground">—</span>;
-  const summary = capturedSummary(captured);
-  if (!summary) return <span className="text-muted-foreground">Nothing found</span>;
-  return (
-    <span className="inline-flex items-center gap-2">
-      <span className="tabular-nums text-foreground">{summary}</span>
-      <ViewMoreButton onView={onView} />
-    </span>
-  );
-}
-
-const REVIEW_SUBS: Array<{ key: keyof NonNullable<Extract<ActivityCaptured, { kind: "reviews" }>["subScores"]>; label: string }> = [
-  { key: "easeOfUse", label: "Ease of use" },
-  { key: "support", label: "Support" },
-  { key: "features", label: "Features" },
-  { key: "value", label: "Value" },
-];
-
-// The expanded breakdown of a run's captured data: departments, plans, or scores.
-function CapturedDetail({ captured }: { captured: ActivityCaptured }) {
-  if (captured.kind === "jobs") {
-    return (
-      <div className="flex flex-col gap-2 text-sm">
-        <p className="text-muted-foreground">
-          {captured.total} open role{captured.total > 1 ? "s" : ""} across {captured.teams} team
-          {captured.teams > 1 ? "s" : ""}.
-        </p>
-        <ul className="flex flex-wrap gap-x-4 gap-y-1">
-          {captured.byDept.map((d) => (
-            <li key={d.department} className="text-muted-foreground">
-              <span className="text-foreground">{d.department}</span>{" "}
-              <span className="tabular-nums">{d.count}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
-    );
-  }
-
-  if (captured.kind === "pricing") {
-    const removed = captured.removedPlans ?? [];
-    const priceLabel = (p: { price: number | null; currency: string; billingPeriod: string }) =>
-      p.price != null
-        ? `${fmtPrice(p.price, p.currency)}/${PERIOD_SHORT[p.billingPeriod] ?? p.billingPeriod}`
-        : "Custom";
-    return (
-      <div className="flex flex-col gap-2 text-sm">
-        <p className="text-muted-foreground">
-          {captured.planCount} pricing plan{captured.planCount > 1 ? "s" : ""} captured.
-        </p>
-        <ul className="flex flex-col gap-0.5">
-          {captured.plans.map((p, i) => (
-            <li
-              key={`${p.planName}-${i}`}
-              className="flex items-baseline justify-between gap-4"
-            >
-              <span className="inline-flex min-w-0 items-baseline gap-1.5">
-                <span
-                  className={cn(
-                    "min-w-0 truncate",
-                    p.isNew ? "text-positive" : "text-foreground",
-                  )}
-                >
-                  {p.planName}
-                </span>
-                {p.isNew && (
-                  <span className="shrink-0 text-meta font-medium text-positive">New</span>
-                )}
-              </span>
-              <span
-                className={cn(
-                  "shrink-0 tabular-nums",
-                  p.isNew ? "text-positive" : "text-muted-foreground",
-                )}
-              >
-                {priceLabel(p)}
-              </span>
-            </li>
-          ))}
-          {removed.map((p, i) => (
-            <li
-              key={`removed-${p.planName}-${i}`}
-              className="flex items-baseline justify-between gap-4"
-            >
-              <span className="inline-flex min-w-0 items-baseline gap-1.5">
-                <span className="min-w-0 truncate text-muted-foreground line-through">
-                  {p.planName}
-                </span>
-                <span className="shrink-0 text-meta font-medium text-critical">Removed</span>
-              </span>
-              <span className="shrink-0 tabular-nums text-muted-foreground line-through">
-                {priceLabel(p)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-2 text-sm">
-      <p className="text-muted-foreground">
-        <span className="text-foreground tabular-nums">{captured.score?.toFixed(1)}★</span>
-        {captured.reviewCount > 0 && (
-          <>
-            {" "}
-            from <span className="tabular-nums">{captured.reviewCount.toLocaleString()}</span>{" "}
-            reviews
-          </>
-        )}
-      </p>
-      {captured.subScores && (
-        <ul className="flex flex-wrap gap-x-4 gap-y-1">
-          {REVIEW_SUBS.map(({ key, label }) => {
-            const v = captured.subScores![key];
-            if (v == null) return null;
-            return (
-              <li key={key} className="text-muted-foreground">
-                {label} <span className="text-foreground tabular-nums">{v.toFixed(1)}</span>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-// Routes an expanded row to the right detail: real change breakdown, or a quiet
-// run explanation (first capture / no change). The captured-data breakdown lives
-// in its own modal (opened from the "Captured" column), not here.
-function RunDetail({ event }: { event: ActivityEvent }) {
-  const outcome = eventOutcome(event);
-  if (outcome === "change") return <ChangeDetail event={event} />;
-  return <QuietRunDetail outcome={outcome} event={event} />;
-}
-
-// Mobile (<sm) equivalent of one table row: the 8-column grid can't fit a phone
-// (table-fixed just crushes the columns until the text overlaps), so it collapses
-// into a stacked card. Same expand/modal behavior as the desktop row; drops the
-// Duration column (low-value ops detail) to stay scannable.
-function MobileRunCard({
-  event,
-  isOpen,
-  onToggle,
-  onView,
-}: {
-  event: ActivityEvent;
-  isOpen: boolean;
-  onToggle: (() => void) | null;
-  onView: () => void;
-}) {
-  const outcome = eventOutcome(event);
-  const meta = OUTCOME_META[outcome];
-  const expandable = onToggle !== null;
-  const changedText =
-    outcome === "change"
-      ? event.changeSummary
-      : outcome === "first_capture"
-        ? "Baseline snapshot saved"
-        : null;
-  const hasCaptured = Boolean(event.captured || event.capturedDelta);
-
-  return (
-    <div
-      className={cn(
-        "rounded-lg border border-border p-3",
-        isOpen && "bg-muted/40",
-      )}
-    >
-      <div
-        className={cn("flex flex-col gap-2", expandable && "cursor-pointer")}
-        onClick={onToggle ?? undefined}
-        onKeyDown={
-          onToggle
-            ? (ev) => {
-                if (ev.key === "Enter" || ev.key === " ") {
-                  ev.preventDefault();
-                  onToggle();
-                }
-              }
-            : undefined
-        }
-        role={expandable ? "button" : undefined}
-        tabIndex={expandable ? 0 : undefined}
-        aria-expanded={expandable ? isOpen : undefined}
-      >
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 text-sm">
-            <Link
-              href={entityHref(event.competitorId, event.isSelf)}
-              className="font-medium hover:underline"
-              style={competitorNameColor(event.competitorColor)}
-              onClick={(ev) => ev.stopPropagation()}
-            >
-              {event.competitorName}
-            </Link>
-            {event.isSelf && <SelfBadge />}
-            <span className="text-muted-foreground">
-              {" · "}
-              {sourceLabel(event.sourceType)}
-            </span>
-          </div>
-          <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
-            <span className="text-xs text-muted-foreground tabular-nums">
-              {rel(event.recordedAt)}
-            </span>
-            {expandable && (
-              <ChevronRight
-                className={cn(
-                  "size-3.5 text-muted-foreground transition-transform",
-                  isOpen && "rotate-90",
-                )}
-                aria-hidden
-              />
-            )}
-          </div>
-        </div>
-
-        <span className="inline-flex items-center gap-1.5 text-sm">
-          <Dot color={meta.color} />
-          <span className="text-muted-foreground">{meta.label}</span>
-        </span>
-
-        {changedText && (
-          <p className="text-sm text-muted-foreground">{changedText}</p>
-        )}
-
-        {hasCaptured && (
-          <div className="text-sm text-muted-foreground">
-            <CapturedCell
-              captured={event.captured}
-              delta={event.capturedDelta}
-              onView={onView}
-            />
-          </div>
-        )}
-      </div>
-
-      {isOpen && (
-        <div className="mt-3 border-t border-border pt-3">
-          <RunDetail event={event} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-// User-facing activity: every scrape Outrival ran for the org — including the
-// no-change runs and failures the Signals feed never surfaces, and what each
-// "change detected" run actually found. Filterable by competitor, source, status.
 export function ActivityView() {
   useSetAskContext({ kind: "view", label: "Activity timeline" });
 
-  // Deep-link support: the competitor page links here pre-filtered
-  // (?competitorId=…). Seed the filters from the URL once on mount; the user can
-  // change them freely afterward (we don't push back to the URL).
+  // The competitor page links here pre-filtered (?competitorId=…). Seed once on
+  // mount; the user is free to change it afterwards (we never push back to the URL).
   const searchParams = useSearchParams();
-  const urlCompetitor = searchParams.get("competitorId") ?? "all";
-  const urlSource = searchParams.get("source") ?? "all";
-  const urlStatusRaw = searchParams.get("status") ?? "all";
-  const urlStatus = OUTCOME_ORDER.includes(urlStatusRaw as ActivityStatusFilter)
-    ? urlStatusRaw
-    : "all";
+  const [competitor, setCompetitor] = useState(searchParams.get("competitorId") ?? "all");
+  const [source, setSource] = useState(searchParams.get("source") ?? "all");
+  const [segment, setSegment] = useState<Segment>(segmentFromUrl(searchParams.get("status")));
 
-  // patch-28 — active product scope (cookie-backed switcher, URL ?product= overrides).
   const productId = useProductScope() ?? undefined;
 
-  // Server-seeded on first paint (activity/page.tsx): health (filter options) +
-  // the page-1 unfiltered timeline. A URL filter produces a different timeline key,
-  // so useQuery fetches that filtered page instead of the seeded unfiltered one.
   const healthQ = useQuery(activityHealthQuery(productId));
   const sources = healthQ.data?.sources ?? null;
   const upcoming = healthQ.data?.upcoming ?? [];
 
-  const [page, setPage] = useState(1);
-  const [competitor, setCompetitor] = useState(urlCompetitor);
-  const [source, setSource] = useState(urlSource);
-  const [status, setStatus] = useState(urlStatus);
+  // Day boundaries are the viewer's, so the tallies match the rows underneath.
+  const tzOffset = useMemo(() => new Date().getTimezoneOffset(), []);
+  const summaryQ = useQuery(activitySummaryQuery(productId, tzOffset));
 
-  // Any filter change resets to page 1 in the same handler as the value change,
-  // so the fetch effect (keyed on filters + page) fires exactly once.
-  function onFilter(setter: (v: string) => void) {
-    return (v: string) => {
-      setter(v);
-      setPage(1);
+  const filtered = competitor !== "all" || source !== "all";
+  // Unfiltered "All" is the only view whose day tallies describe the rows shown:
+  // it leads with findings and folds the quiet runs per day. Every other view is
+  // an explicit selection, so it lists exactly what was asked for.
+  const foldable = segment === "all" && !filtered;
+
+  const feedParams = useMemo(() => {
+    const seg = SEGMENTS.find((s) => s.id === segment)!;
+    return {
+      competitorId: competitor !== "all" ? competitor : undefined,
+      sourceType: source !== "all" ? source : undefined,
+      statuses: foldable ? ACTIVITY_FINDING_STATUSES : seg.statuses,
     };
-  }
+  }, [competitor, source, segment, foldable]);
 
-  // The run whose captured-data breakdown is open in the modal (null = closed).
-  const [detailEvent, setDetailEvent] = useState<ActivityEvent | null>(null);
-
-  // Rows expanded to reveal their precise change breakdown, keyed by row id.
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const toggleRow = (key: string) =>
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      next.has(key) ? next.delete(key) : next.add(key);
-      return next;
-    });
+  const feedQ = useInfiniteQuery(activityFeedQuery(feedParams, productId));
+  const events = useMemo(
+    () => feedQ.data?.pages.flatMap((p) => p.events) ?? null,
+    [feedQ.data],
+  );
 
   const competitorOptions = useMemo(() => {
     if (!sources) return [];
@@ -788,45 +100,12 @@ export function ActivityView() {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [sources]);
 
-  const sourceOptions = useMemo(() => {
-    if (!sources) return [];
-    return [...new Set(sources.map((s) => s.sourceType))].sort();
-  }, [sources]);
-
-  const filterParams = useMemo(
-    () => ({
-      competitorId: competitor !== "all" ? competitor : undefined,
-      sourceType: source !== "all" ? source : undefined,
-      status: status !== "all" ? (status as ActivityStatusFilter) : undefined,
-    }),
-    [competitor, source, status],
+  const sourceOptions = useMemo(
+    () => (sources ? [...new Set(sources.map((s) => s.sourceType))].sort() : []),
+    [sources],
   );
 
-  // One page server-side; key on page + filters. keepPreviousData keeps the prior
-  // rows visible (dimmed) during a fetch instead of flashing — only the very first
-  // load shows the empty/Loading state.
-  const timelineQ = useQuery({
-    ...activityTimelineQuery(page, filterParams, productId),
-    placeholderData: keepPreviousData,
-  });
-  const events = timelineQ.data?.events ?? null;
-  const total = timelineQ.data?.total ?? 0;
-  const loading = timelineQ.isFetching;
-
-  const isFiltered = competitor !== "all" || source !== "all" || status !== "all";
-
-  // Soonest scheduled run (upcoming is already sorted soonest-first); the rest sit
-  // behind a "+N more" popover so the section is a single line, not a tall card.
-  const nextCheck = upcoming[0] ?? null;
-
-  // The DOM only ever holds PAGE_SIZE rows, so the table stays light no matter how
-  // deep the history.
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
-
-  // Collapse any expanded detail rows when the page or filters change.
-  useEffect(() => {
-    setExpanded(new Set());
-  }, [filterParams, page]);
+  const onFilter = (setter: (v: string) => void) => (v: string) => setter(v);
 
   return (
     <div className="flex flex-col gap-6">
@@ -834,158 +113,85 @@ export function ActivityView() {
         flush
         icon={<Activity size={18} className="text-muted-foreground" aria-hidden />}
         title="Activity"
-        sub="What Outrival has been doing for you: every source we check, kept fresh in the background."
+        sub="Every check Outrival ran for you, and what each one found."
       />
 
       {sources && sources.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No monitored sources yet. Add a competitor to start tracking.
+          No monitored sources yet. Add a competitor and Outrival starts checking within the hour.
         </p>
       ) : (
-        <div className="flex flex-col gap-3">
-          {nextCheck && (
-            <TooltipProvider delayDuration={150}>
-              <div className="flex items-baseline justify-between gap-3 text-sm">
-                <span className="flex min-w-0 items-baseline gap-1.5">
-                  <span className="shrink-0 font-medium text-muted-foreground">
-                    Next check
-                  </span>
-                  <span aria-hidden className="text-muted-foreground">
-                    ·
-                  </span>
-                  <span className="min-w-0 truncate">
-                    <Link
-                      href={entityHref(nextCheck.competitorId, nextCheck.isSelf)}
-                      className="font-medium hover:underline"
-                      style={competitorNameColor(nextCheck.competitorColor)}
-                    >
-                      {nextCheck.competitorName}
-                    </Link>
-                    {nextCheck.isSelf && <SelfBadge />}
-                    <span className="text-muted-foreground">
-                      {" · "}
-                      {sourceLabel(nextCheck.sourceType)}{" "}
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="cursor-default tabular-nums">
-                            {relNext(nextCheck.nextRunAt)}
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          {absDateTime(nextCheck.nextRunAt)}
-                        </TooltipContent>
-                      </Tooltip>
-                    </span>
-                  </span>
-                </span>
+        <>
+          <Reading sources={sources} days={summaryQ.data?.days ?? null} />
 
-                {upcoming.length > 1 && (
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <button
-                        type="button"
-                        className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
-                      >
-                        +{upcoming.length - 1} more
-                      </button>
-                    </PopoverTrigger>
-                    <PopoverContent align="end" className="w-72 p-2">
-                      <div className="mb-1.5 px-1 text-xs font-medium text-muted-foreground">
-                        Next checks
-                      </div>
-                      <ul className="flex flex-col">
-                        {upcoming.map((u) => (
-                          <li
-                            key={u.monitorId}
-                            className="flex items-baseline justify-between gap-3 rounded px-1 py-1 text-sm"
-                          >
-                            <span className="min-w-0 truncate">
-                              <Link
-                                href={entityHref(u.competitorId, u.isSelf)}
-                                className="font-medium hover:underline"
-                                style={competitorNameColor(u.competitorColor)}
-                              >
-                                {u.competitorName}
-                              </Link>
-                              {u.isSelf && <SelfBadge />}
-                              <span className="text-muted-foreground">
-                                {" · "}
-                                {sourceLabel(u.sourceType)}
-                              </span>
-                            </span>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="shrink-0 cursor-default text-xs text-muted-foreground tabular-nums">
-                                  {relNext(u.nextRunAt)}
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                {absDateTime(u.nextRunAt)}
-                              </TooltipContent>
-                            </Tooltip>
-                          </li>
-                        ))}
-                      </ul>
-                    </PopoverContent>
-                  </Popover>
-                )}
-              </div>
-            </TooltipProvider>
-          )}
+          <WatchStrip
+            buckets={summaryQ.data?.buckets ?? []}
+            upcoming={upcoming}
+            loading={summaryQ.isPending}
+          />
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Select value={competitor} onValueChange={onFilter(setCompetitor)}>
-              <SelectTrigger size="sm" className="w-[180px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All competitors</SelectItem>
-                {competitorOptions.map((o) => (
-                  <SelectItem key={o.id} value={o.id}>
-                    {o.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          {sources && <Attention sources={sources} onChanged={() => void healthQ.refetch()} />}
 
-            <Select value={source} onValueChange={onFilter(setSource)}>
-              <SelectTrigger size="sm" className="w-[150px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All sources</SelectItem>
-                {sourceOptions.map((s) => (
-                  <SelectItem key={s} value={s}>
-                    {sourceLabel(s)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap gap-0.5" role="group" aria-label="Filter the log">
+              {SEGMENTS.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  aria-pressed={segment === s.id}
+                  onClick={() => setSegment(s.id)}
+                  className={cn(
+                    "rounded-md border px-2.5 py-1 text-dense font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+                    segment === s.id
+                      ? "border-border bg-surface-2 text-foreground"
+                      : "border-transparent text-muted-foreground hover:bg-surface-2 hover:text-foreground",
+                  )}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
 
-            <Select value={status} onValueChange={onFilter(setStatus)}>
-              <SelectTrigger size="sm" className="w-[160px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                {OUTCOME_ORDER.map((s) => (
-                  <SelectItem key={s} value={s}>
-                    <span className="inline-flex items-center gap-1.5">
-                      <Dot color={OUTCOME_META[s].color} />
-                      {OUTCOME_META[s].label}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex flex-wrap gap-2">
+              {competitorOptions.length > 1 && (
+                <Select value={competitor} onValueChange={onFilter(setCompetitor)}>
+                  <SelectTrigger size="sm" className="w-[180px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All competitors</SelectItem>
+                    {competitorOptions.map((o) => (
+                      <SelectItem key={o.id} value={o.id}>
+                        {o.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {sourceOptions.length > 1 && (
+                <Select value={source} onValueChange={onFilter(setSource)}>
+                  <SelectTrigger size="sm" className="w-[150px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All sources</SelectItem>
+                    {sourceOptions.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {sourceLabel(s)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
           </div>
 
-          {timelineQ.isError ? (
+          {feedQ.isError ? (
             <p className="text-sm text-muted-foreground">
               Couldn&apos;t load activity.{" "}
               <button
                 type="button"
-                onClick={() => void timelineQ.refetch()}
+                onClick={() => void feedQ.refetch()}
                 className="text-link underline underline-offset-2"
               >
                 Retry
@@ -993,216 +199,95 @@ export function ActivityView() {
             </p>
           ) : events === null ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : events.length === 0 ? (
+          ) : events.length === 0 &&
+            // The unfiltered view still has something to say with no findings at
+            // all: the day tallies carry the quiet work. Anything else is empty.
+            (!foldable || (summaryQ.data?.days ?? []).length === 0) ? (
             <p className="text-sm text-muted-foreground">
-              {isFiltered
-                ? "No activity matches these filters."
-                : "No activity yet."}
+              {segment === "problems"
+                ? "No failed checks here. Every source answered."
+                : filtered || segment !== "all"
+                  ? "No activity matches these filters."
+                  : "No activity yet. The first checks run within the hour."}
             </p>
           ) : (
-            <>
-              {/* Mobile: the table collapses into a stacked card list. */}
-              <div
-                className={cn(
-                  "flex flex-col gap-2 transition-opacity sm:hidden",
-                  loading && "opacity-60",
-                )}
-                aria-busy={loading}
-              >
-                {events.map((e, i) => {
-                  const key = `${e.competitorId}-${e.recordedAt}-${i}`;
-                  const expandable = isExpandable(e);
-                  return (
-                    <MobileRunCard
-                      key={key}
-                      event={e}
-                      isOpen={expanded.has(key)}
-                      onToggle={expandable ? () => toggleRow(key) : null}
-                      onView={() => setDetailEvent(e)}
-                    />
-                  );
-                })}
-              </div>
-
-              <div
-                className={cn(
-                  "hidden overflow-hidden rounded-lg border border-border transition-opacity sm:block",
-                  loading && "opacity-60",
-                )}
-                aria-busy={loading}
-              >
-                <TooltipProvider delayDuration={150}>
-                <Table className="table-fixed">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-8" />
-                      <TableHead className="w-[17%] text-xs text-muted-foreground">Competitor</TableHead>
-                      <TableHead className="w-[10%] text-xs text-muted-foreground">Source</TableHead>
-                      <TableHead className="w-[12%] text-xs text-muted-foreground">Status</TableHead>
-                      <TableHead className="w-[24%] text-xs text-muted-foreground">What changed</TableHead>
-                      <TableHead className="w-[17%] text-xs text-muted-foreground">Captured</TableHead>
-                      <TableHead className="w-[8%] text-right text-xs text-muted-foreground">
-                        Duration
-                      </TableHead>
-                      <TableHead className="w-[12%] text-right text-xs text-muted-foreground">When</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {events.map((e, i) => {
-                      const outcome = eventOutcome(e);
-                      const meta = OUTCOME_META[outcome];
-                      const key = `${e.competitorId}-${e.recordedAt}-${i}`;
-                      const expandable = isExpandable(e);
-                      const isOpen = expanded.has(key);
-                      const relText = rel(e.recordedAt);
-                      return (
-                        <Fragment key={key}>
-                          <TableRow
-                            className={cn(
-                              expandable && "cursor-pointer",
-                              isOpen && "bg-muted/40 hover:bg-muted/40",
-                            )}
-                            onClick={expandable ? () => toggleRow(key) : undefined}
-                            onKeyDown={
-                              expandable
-                                ? (ev) => {
-                                    if (ev.key === "Enter" || ev.key === " ") {
-                                      ev.preventDefault();
-                                      toggleRow(key);
-                                    }
-                                  }
-                                : undefined
-                            }
-                            role={expandable ? "button" : undefined}
-                            tabIndex={expandable ? 0 : undefined}
-                            aria-expanded={expandable ? isOpen : undefined}
-                          >
-                            <TableCell className="w-8 pr-0">
-                              {expandable && (
-                                <ChevronRight
-                                  className={cn(
-                                    "size-3.5 text-muted-foreground transition-transform",
-                                    isOpen && "rotate-90",
-                                  )}
-                                  aria-hidden
-                                />
-                              )}
-                            </TableCell>
-                            <TableCell className="truncate">
-                              <Link
-                                href={entityHref(e.competitorId, e.isSelf)}
-                                className="font-medium hover:underline"
-                                style={competitorNameColor(e.competitorColor)}
-                                onClick={(ev) => ev.stopPropagation()}
-                              >
-                                {e.competitorName}
-                              </Link>
-                              {e.isSelf && <SelfBadge />}
-                            </TableCell>
-                            <TableCell className="text-muted-foreground">
-                              {sourceLabel(e.sourceType)}
-                            </TableCell>
-                            <TableCell>
-                              <span className="inline-flex items-center gap-1.5">
-                                <Dot color={meta.color} />
-                                <span className="text-muted-foreground">{meta.label}</span>
-                              </span>
-                            </TableCell>
-                            <TableCell
-                              className="truncate text-muted-foreground"
-                              title={outcome === "change" ? (e.changeSummary ?? undefined) : undefined}
-                            >
-                              {outcome === "change"
-                                ? (e.changeSummary ?? "—")
-                                : outcome === "first_capture"
-                                  ? "Baseline snapshot saved"
-                                  : "—"}
-                            </TableCell>
-                            <TableCell className="text-muted-foreground">
-                              <CapturedCell
-                                captured={e.captured}
-                                delta={e.capturedDelta}
-                                onView={() => setDetailEvent(e)}
-                              />
-                            </TableCell>
-                            <TableCell className="text-right text-xs text-muted-foreground tabular-nums">
-                              {duration(e.durationMs)}
-                            </TableCell>
-                            <TableCell className="text-right text-xs text-muted-foreground tabular-nums">
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span className="cursor-default">{relText}</span>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  {absDateTime(e.recordedAt)}
-                                </TooltipContent>
-                              </Tooltip>
-                            </TableCell>
-                          </TableRow>
-                          {isOpen && (
-                            <TableRow className="hover:bg-transparent">
-                              <TableCell colSpan={8} className="bg-muted/40 py-3 pl-10 pr-4">
-                                <RunDetail event={e} />
-                              </TableCell>
-                            </TableRow>
-                          )}
-                        </Fragment>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-                </TooltipProvider>
-              </div>
-              <DataTablePagination
-                page={page}
-                pageCount={pageCount}
-                onPageChange={setPage}
-                total={total}
-                pageSize={PAGE_SIZE}
-                disabled={loading}
+            <div className={cn("transition-opacity", feedQ.isFetching && !feedQ.isFetchingNextPage && "opacity-60")}>
+              <ActivityLog
+                events={events}
+                days={summaryQ.data?.days ?? []}
+                foldable={foldable}
+                filters={{ competitorId: feedParams.competitorId, sourceType: feedParams.sourceType }}
+                productId={productId}
+                hasMore={feedQ.hasNextPage}
+                loadingMore={feedQ.isFetchingNextPage}
+                onLoadMore={() => void feedQ.fetchNextPage()}
               />
-            </>
+            </div>
           )}
-        </div>
+        </>
       )}
-
-      <Dialog
-        open={!!detailEvent}
-        onOpenChange={(open) => !open && setDetailEvent(null)}
-      >
-        <DialogContent className="sm:max-w-md">
-          {detailEvent && (
-            <>
-              <DialogHeader>
-                <DialogTitle>
-                  <span style={competitorNameColor(detailEvent.competitorColor)}>
-                    {detailEvent.competitorName}
-                  </span>
-                  {detailEvent.isSelf && <SelfBadge />}{" "}
-                  · {sourceLabel(detailEvent.sourceType)}
-                </DialogTitle>
-                <DialogDescription>
-                  Captured {absDateTime(detailEvent.recordedAt)}
-                </DialogDescription>
-              </DialogHeader>
-              {detailEvent.capturedDelta && (
-                <div className="flex flex-col gap-1.5">
-                  <p className="text-meta font-medium text-muted-foreground">
-                    What changed
-                  </p>
-                  <div className="text-sm">
-                    <CapturedDeltaContent delta={detailEvent.capturedDelta} />
-                  </div>
-                </div>
-              )}
-              {detailEvent.captured && (
-                <CapturedDetail captured={detailEvent.captured} />
-              )}
-              <LivePageLink url={detailEvent.url} />
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
+}
+
+// The page opens on a sentence computed from what is on screen: the work of the
+// week, and whether anything has stopped answering. The roster arrives with the
+// first paint and the counts a moment later, so the sentence starts complete and
+// only gets richer rather than shifting the page.
+function Reading({
+  sources,
+  days,
+}: {
+  sources: ActivitySource[] | null;
+  days: ActivityDay[] | null;
+}) {
+  const week = useMemo(() => {
+    if (!days) return null;
+    const recent = days.slice(0, 7);
+    return {
+      checks: recent.reduce((n, d) => n + d.checks, 0),
+      changes: recent.reduce((n, d) => n + d.changes, 0),
+    };
+  }, [days]);
+
+  if (!sources) return null;
+
+  const dark = sources.filter((s) => s.status !== "ok");
+  const named = dark
+    .slice(0, 2)
+    .map((s) => `${s.competitorName} ${sourceLabel(s.sourceType).toLowerCase()}`);
+  const rest = dark.length - named.length;
+
+  return (
+    <p className="max-w-[78ch] text-content leading-relaxed text-pretty">
+      {week && week.checks > 0 ? (
+        <>
+          Outrival ran <Num n={week.checks} /> check{week.checks === 1 ? "" : "s"} across{" "}
+          <Num n={sources.length} /> source{sources.length === 1 ? "" : "s"} this week and caught{" "}
+          <Num n={week.changes} /> change{week.changes === 1 ? "" : "s"}.
+        </>
+      ) : (
+        <>
+          Outrival is watching <Num n={sources.length} /> source
+          {sources.length === 1 ? "" : "s"}.
+        </>
+      )}{" "}
+      {dark.length === 0 ? (
+        <span className="text-muted-foreground">Every source is answering.</span>
+      ) : (
+        <>
+          <span className="font-semibold text-critical">
+            {dark.length === 1 ? "One source has" : `${dark.length} sources have`} stopped answering
+          </span>
+          , so {named.join(" and ")}
+          {rest > 0 && ` and ${rest} other${rest === 1 ? "" : "s"}`}{" "}
+          {dark.length === 1 ? "is" : "are"} not being watched right now.
+        </>
+      )}
+    </p>
+  );
+}
+
+function Num({ n }: { n: number }) {
+  return <span className="font-semibold tabular-nums">{n.toLocaleString()}</span>;
 }

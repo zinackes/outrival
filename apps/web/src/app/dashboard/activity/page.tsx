@@ -3,16 +3,22 @@ import { ActivityView } from "@/components/dashboard/activity-view";
 import { getActivityData } from "@/lib/api-server";
 import { makeServerQueryClient } from "@/lib/server-query";
 import { resolveServerScope } from "@/lib/product-scope-server";
-import { activityHealthQuery, activityTimelineQuery } from "@/lib/queries";
+import {
+  ACTIVITY_FINDING_STATUSES,
+  activityFeedQuery,
+  activityHealthQuery,
+} from "@/lib/queries";
 
 export default async function ActivityPage({
   searchParams,
 }: {
   searchParams: Promise<{ product?: string }>;
 }) {
-  // Seed both queries: health (filter options) + the page-1 unfiltered timeline.
-  // Best-effort: null → ActivityView's useQuery fetches client-side. patch-28 — scope:
-  // URL ?product= override wins, else the persisted cookie scope.
+  // Seed the two queries the first paint needs: health (the source roster, which
+  // also feeds the reading and the attention rows) and the log's first page of
+  // findings. The summary is deliberately NOT seeded — its key carries the
+  // viewer's timezone offset, which the server would have to guess.
+  // patch-28 — scope: URL ?product= override wins, else the persisted cookie.
   const { product: urlProduct } = await searchParams;
   const product = await resolveServerScope(urlProduct);
   const queryClient = makeServerQueryClient();
@@ -22,10 +28,13 @@ export default async function ActivityPage({
       sources: initial.sources,
       upcoming: initial.upcoming,
     });
-    queryClient.setQueryData(activityTimelineQuery(1, {}, product).queryKey, {
-      events: initial.events,
-      total: initial.total,
-    });
+    queryClient.setQueryData(
+      activityFeedQuery({ statuses: ACTIVITY_FINDING_STATUSES }, product).queryKey,
+      {
+        pages: [{ events: initial.events, total: initial.total }],
+        pageParams: [0],
+      },
+    );
   }
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>

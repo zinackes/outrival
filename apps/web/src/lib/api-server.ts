@@ -336,8 +336,12 @@ export async function getActivityData(productId?: string): Promise<{
       serverGet<{ sources: ActivitySource[]; upcoming: ActivityUpcoming[] }>(
         `/api/activity/health${healthScope}`,
       ),
+      // The log's first page: the outcomes that carry a finding, matching
+      // ACTIVITY_FINDING_STATUSES so the seed lands on the client's page-1 key.
+      // The summary (strip + day tallies) is NOT seeded — its key carries the
+      // viewer's timezone offset, which the server cannot know without guessing.
       serverGet<{ events: ActivityEvent[]; total: number }>(
-        `/api/activity/timeline?limit=25${tlScope}`,
+        `/api/activity/timeline?limit=25&status=change,first_capture,failed${tlScope}`,
       ),
     ]);
     return {

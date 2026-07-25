@@ -53,6 +53,11 @@
   --skeleton-base: oklch(0.92 0.006 260);
   --skeleton-sheen: oklch(0.965 0.004 260);
 
+  /* Overnight band — the hours behind the activity strip when the user is asleep
+     and the scrapers keep running. A step off the canvas, below the card surface:
+     it has to read as context, never as a selected range. */
+  --night: oklch(0.945 0.004 260);
+
   /* Text — near-black tinted (never pure #000) */
   --foreground: oklch(0.22 0.01 260);
   --muted: oklch(0.46 0.015 260);
@@ -182,6 +187,10 @@
   --skeleton-base: #242424;
   --skeleton-sheen: #2e2e2e;
 
+  /* Overnight band (see :root) — a lift off the near-black canvas that stays
+     under the card surface. */
+  --night: #191919;
+
   /* Text — off-white (never pure #fff; avoids halation on near-black) */
   --foreground: #f2f5f8; /* primary text */
   --muted: #9aa2ad; /* secondary text */
@@ -298,6 +307,7 @@
   --color-surface-2: var(--surface-2);
   --color-surface-3: var(--surface-3);
   --color-border-strong: var(--border-strong);
+  --color-night: var(--night);
   --color-text-muted: var(--muted);
   --color-text-subtle: var(--muted-3);
 

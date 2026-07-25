@@ -897,17 +897,23 @@ export interface CompareColumn {
     currency: string | null;
     billingPeriod: string | null;
     plans: Array<{ name: string; price: number | null; billingPeriod: string | null }>;
+    capturedAt: string | null;
   } | null;
   hiring: {
     totalOpen: number;
     topDepartment: string | null;
     departments: Array<{ department: string; count: number }>;
+    // Canonical `engineering` bucket count; null when the competitor has no
+    // authoritative ATS run to bucket (the compare bar then shows the total only).
+    engineeringOpen: number | null;
+    capturedAt: string | null;
   } | null;
   reviews: Array<{
     source: string;
     score: number;
     reviewCount: number;
     sub: { ease: number; support: number; features: number; value: number } | null;
+    recordedAt: string | null;
   }>;
   tech: string[];
   platform: {
@@ -916,7 +922,13 @@ export interface CompareColumn {
     ats: string | null;
     hosting: string | null;
   } | null;
-  latestSignal: { severity: string; createdAt: string } | null;
+  latestSignal: {
+    id: string;
+    severity: string;
+    category: string;
+    insight: string;
+    createdAt: string;
+  } | null;
 }
 
 // Activation checklist (Phase B) — booleans derived from existing data.

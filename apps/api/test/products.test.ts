@@ -18,6 +18,10 @@ let productA: string;
 
 afterAll(() => closeDb());
 
+// PGlite migrates the whole schema on first use and this file seeds three orgs,
+// which runs past bun's 5s hook default on a cold VM.
+const HOOK_TIMEOUT_MS = 30_000;
+
 beforeAll(async () => {
   ({ db: testDb, close: closeDb } = await makeTestDb());
   await installAppMocks(testDb);
@@ -40,7 +44,7 @@ beforeAll(async () => {
   );
   expect(res.status).toBe(201);
   productA = (await res.json()).product.id;
-});
+}, HOOK_TIMEOUT_MS);
 
 const get = (u: { userId: string; email: string }, id: string) =>
   app.request(`/api/products/${id}`, asUser(u.userId, u.email));
@@ -209,6 +213,38 @@ describe("GET /products portfolio aggregates", () => {
   });
 });
 
+describe("GET /products/:id linked competitors", () => {
+  // The Competitors tab leads with the finding, so the row needs what the
+  // competitor last DID. Unwindowed on purpose: a competitor silent for weeks
+  // still has a last move, and that is the useful thing its row can say.
+  test("each linked competitor carries its latest signal", async () => {
+    const body = await (await get(A, productA)).json();
+    const linked = body.competitors.find(
+      (c: { competitorId: string }) => c.competitorId === "comp-a",
+    );
+    expect(linked.latestMove).toMatchObject({
+      insight: "Entry tier moved",
+      severity: "critical",
+      category: "pricing",
+    });
+  });
+
+  test("a competitor with no signal reports null, not a missing key", async () => {
+    await testDb
+      .insert(competitors)
+      .values({ id: "comp-quiet", orgId: A.orgId, name: "Quiet Co" });
+    await app.request(
+      `/api/products/${productA}/competitors/comp-quiet`,
+      asUser(A.userId, A.email, { method: "POST", body: JSON.stringify({}) }),
+    );
+    const body = await (await get(A, productA)).json();
+    const linked = body.competitors.find(
+      (c: { competitorId: string }) => c.competitorId === "comp-quiet",
+    );
+    expect(linked.latestMove).toBeNull();
+  });
+});
+
 describe("price position", () => {
   // A fresh org so the ladder is exactly what this test seeds.
   let P: { orgId: string; userId: string; email: string };
@@ -256,7 +292,7 @@ describe("price position", () => {
       // Quote-based only: a real competitor, but not on the price axis.
       priceRow("riv-quote", "Enterprise", null),
     ]);
-  });
+  }, HOOK_TIMEOUT_MS);
 
   test("the ladder puts our cheapest paid tier against the priced rivals", async () => {
     const res = await app.request(
@@ -305,9 +341,11 @@ describe("GET /products/:id/pricing-position", () => {
     const body = await res.json();
     expect(body.mine).toBeNull();
     expect(body.median).toBeNull();
-    // comp-a is linked but publishes nothing, so it reads as quote-only.
-    expect(body.rivals).toHaveLength(1);
-    expect(body.quoteOnly).toBe(1);
+    // The linked competitors publish nothing, so every one of them reads as
+    // quote-only rather than being dropped from the ladder.
+    expect(body.rivals.length).toBeGreaterThan(0);
+    expect(body.rivals.every((r: { comparable: boolean }) => !r.comparable)).toBe(true);
+    expect(body.quoteOnly).toBe(body.rivals.length);
   });
 });
 

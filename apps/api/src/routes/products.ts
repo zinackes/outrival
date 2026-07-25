@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
-import { and, asc, count, eq, gte, inArray, isNull, ne, notInArray, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNull, ne, notInArray, sql } from "drizzle-orm";
 import { scrapeMonitor } from "@outrival/queue";
 import { products, productCompetitors, competitors, monitors, signals } from "@outrival/db";
 import {
@@ -434,12 +434,49 @@ productsRouter.get("/:id", async (c) => {
       relevanceScore: productCompetitors.relevanceScore,
       name: competitors.name,
       url: competitors.url,
+      color: competitors.color,
     })
     .from(productCompetitors)
     .innerJoin(competitors, eq(competitors.id, productCompetitors.competitorId))
     .where(and(eq(productCompetitors.productId, product.id), isNull(competitors.deletedAt)));
 
-  return c.json({ product, competitors: linked });
+  // What each of them last DID. The tab leads with the finding, like the roster:
+  // a name and an overlap score say who we watch, never what happened. Deliberately
+  // unwindowed, because a competitor silent for three weeks still has a last move,
+  // and "quiet since" is the useful thing its row can say.
+  const ids = linked.map((l) => l.competitorId);
+  const latest = ids.length
+    ? await db
+        .selectDistinctOn([signals.competitorId], {
+          competitorId: signals.competitorId,
+          insight: signals.insight,
+          severity: signals.severity,
+          category: signals.category,
+          createdAt: signals.createdAt,
+        })
+        .from(signals)
+        .where(and(eq(signals.orgId, orgId), inArray(signals.competitorId, ids)))
+        .orderBy(signals.competitorId, desc(signals.createdAt))
+    : [];
+  const latestBy = new Map(latest.map((r) => [r.competitorId, r]));
+
+  return c.json({
+    product,
+    competitors: linked.map((l) => {
+      const move = latestBy.get(l.competitorId);
+      return {
+        ...l,
+        latestMove: move
+          ? {
+              insight: move.insight,
+              severity: move.severity,
+              category: move.category,
+              createdAt: move.createdAt,
+            }
+          : null,
+      };
+    }),
+  });
 });
 
 // Latest detected pricing batch per competitor. `distinct on` walks the index once

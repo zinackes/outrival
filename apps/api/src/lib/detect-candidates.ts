@@ -152,6 +152,9 @@ export async function detectCandidatesForProduct(
       productId,
       url: d.url,
       title: d.title,
+      // Exa hands back 500 chars of the company's own page with every hit. Keeping
+      // it is what lets the review queue say what a candidate does without a scrape.
+      snippet: d.snippet || null,
       overlapScore: scoring.overlapScore,
       reason: scoring.reason,
       status: "new",

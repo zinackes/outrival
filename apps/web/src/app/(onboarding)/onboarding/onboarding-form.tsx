@@ -686,6 +686,8 @@ export function OnboardingForm({
     const toCandidate = (c: Selection) => ({
       url: c.url,
       title: c.title || undefined,
+      // Carried through so the queue can describe the company on day one.
+      snippet: c.snippet || undefined,
       overlapScore: c.overlapScore || undefined,
       reason: c.reason || undefined,
     });

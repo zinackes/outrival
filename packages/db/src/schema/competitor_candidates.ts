@@ -1,6 +1,7 @@
 import { pgTable, text, timestamp, real, pgEnum, index } from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
 import { products } from "./products";
+import { competitors } from "./competitors";
 
 export const candidateStatusEnum = pgEnum("candidate_status", [
   "new",
@@ -32,6 +33,18 @@ export const competitorCandidates = pgTable(
     title: text("title"),
     overlapScore: real("overlap_score"),
     reason: text("reason"),
+    // What the company does, in its own words: the page text Exa already returns
+    // with every hit (500 chars) and that discovery used to throw away. The review
+    // queue needs a description to decide on, and re-fetching it later would cost a
+    // scrape per candidate. Null on rows discovered before this column.
+    snippet: text("snippet"),
+    // What this candidate became, stamped when it is tracked. Lets the queue show
+    // what it actually bought the org (signals captured since) without matching
+    // hostnames after the fact. Null while pending, and on rows added before this
+    // column (those still resolve by hostname).
+    competitorId: text("competitor_id").references(() => competitors.id, {
+      onDelete: "set null",
+    }),
     status: candidateStatusEnum("status").notNull().default("new"),
     source: candidateSourceEnum("source").notNull().default("detection"),
     firstSeenAt: timestamp("first_seen_at").notNull().defaultNow(),

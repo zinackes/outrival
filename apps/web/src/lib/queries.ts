@@ -334,6 +334,15 @@ export function candidatesQuery(status: "new" | "dismissed", productId?: string)
   });
 }
 
+// Candidates already tracked, with what each has captured since (the Added tab).
+// Its own key: it survives tab switches and is only fetched when that tab opens.
+export function addedCandidatesQuery(productId?: string) {
+  return queryOptions({
+    queryKey: ["candidates", "added", productId ?? null] as const,
+    queryFn: () => api.listAddedCandidates(productId),
+  });
+}
+
 // Discovery staleness (tab-independent, per-product) → drives the "already up to
 // date" nudge.
 export function discoveryStalenessQuery(productId?: string) {

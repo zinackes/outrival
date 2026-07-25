@@ -576,6 +576,9 @@ const FrequencySchema = z.enum(["daily", "weekly"]);
 const CandidateInputSchema = z.object({
   url: z.string().url(),
   title: z.string().optional(),
+  // The discovery step already showed this text (Exa's page extract); carrying it
+  // over is what gives the day-one Discovery queue a description per candidate.
+  snippet: z.string().max(2000).optional(),
   overlapScore: z.number().min(0).max(100).optional(),
   reason: z.string().optional(),
 });
@@ -781,7 +784,13 @@ onboardingRouter.post("/complete", async (c) => {
   const onboardingProductId = await primaryProductId(orgId);
   const candidateRows: Array<typeof competitorCandidates.$inferInsert> = [];
   const collectCandidate = (
-    item: { url: string; title?: string; overlapScore?: number; reason?: string },
+    item: {
+      url: string;
+      title?: string;
+      snippet?: string;
+      overlapScore?: number;
+      reason?: string;
+    },
     status: "new" | "dismissed",
   ) => {
     const host = normalizeHostname(item.url);
@@ -792,6 +801,7 @@ onboardingRouter.post("/complete", async (c) => {
       productId: onboardingProductId,
       url: item.url,
       title: item.title ?? null,
+      snippet: item.snippet ?? null,
       overlapScore: item.overlapScore ?? null,
       reason: item.reason ?? null,
       status,

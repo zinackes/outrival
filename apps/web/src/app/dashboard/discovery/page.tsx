@@ -2,7 +2,7 @@ import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { DiscoveryView } from "./discovery-view";
 import { getDiscoveryData } from "@/lib/api-server";
 import { makeServerQueryClient } from "@/lib/server-query";
-import { candidatesQuery } from "@/lib/queries";
+import { candidatesQuery, discoveryStalenessQuery } from "@/lib/queries";
 import { resolveServerScope } from "@/lib/product-scope-server";
 
 export default async function DiscoveryPage({
@@ -15,16 +15,17 @@ export default async function DiscoveryPage({
   const { product } = await searchParams;
   const productId = await resolveServerScope(product);
 
-  // Seed the "new" queue (list + counts). Staleness is left to its own client query
-  // (its full shape isn't in getDiscoveryData; it gates only a soft nudge).
-  // Best-effort: null → the client useQueries fetch on mount.
+  // Seed the "new" queue and the staleness record: together they carry every number
+  // the page's opening reading is made of, so the first paint states a verdict rather
+  // than a skeleton. Best-effort: null → the client queries fetch on mount.
   const queryClient = makeServerQueryClient();
   const initial = await getDiscoveryData(productId);
   if (initial) {
-    queryClient.setQueryData(candidatesQuery("new", productId).queryKey, {
-      candidates: initial.candidates,
-      counts: initial.counts,
-    });
+    queryClient.setQueryData(candidatesQuery("new", productId).queryKey, initial.list);
+    queryClient.setQueryData(
+      discoveryStalenessQuery(productId).queryKey,
+      initial.staleness,
+    );
   }
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>

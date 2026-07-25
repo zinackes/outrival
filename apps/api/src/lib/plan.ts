@@ -134,7 +134,10 @@ function dimensionLimit(plan: Plan, dimension: LimitDimension): number {
     : PLAN_LIMITS[plan].discoveriesPerMonth;
 }
 
-async function dimensionUsage(orgId: string, dimension: LimitDimension): Promise<number> {
+export async function dimensionUsage(
+  orgId: string,
+  dimension: LimitDimension,
+): Promise<number> {
   if (dimension === "battleCardsPerDay") {
     // Distinct cards generated/refreshed today (cards upsert per product×competitor).
     const [row] = await db

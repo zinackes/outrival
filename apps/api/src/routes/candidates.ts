@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { detectPlatform, scrapeMonitor } from "@outrival/queue";
 import {
   competitorCandidates,
@@ -9,9 +9,17 @@ import {
   monitors,
   organizations,
   products,
+  signals,
   selfProfileLastEditedAt,
 } from "@outrival/db";
-import { DetectionConfigSchema, resolveDetectionConfig } from "@outrival/shared";
+import { PLAN_LIMITS } from "@outrival/shared";
+import {
+  DetectionConfigSchema,
+  resolveDetectionConfig,
+  nextAutomaticDetectionAt,
+  type DetectionConfig,
+} from "@outrival/shared";
+import { selfProfileToDiscoveryProfile } from "@outrival/ai";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
@@ -28,6 +36,7 @@ import {
   assertWithinLimit,
   tierLimitBody,
   currentMonthKey,
+  dimensionUsage,
 } from "../lib/plan";
 import { detectCandidatesForProduct } from "../lib/detect-candidates";
 
@@ -95,6 +104,57 @@ async function nonArchivedProductIds(orgId: string): Promise<string[]> {
     columns: { id: true },
   });
   return rows.map((r) => r.id);
+}
+
+// What the search actually ran on, in the terms a user can act on. The Discovery
+// page prints this as the source note under its reading, because when a scan returns
+// junk the fix is one of these five values (profile category/audience, extra
+// keywords, region, exclusions) and all of them used to be invisible behind a sheet.
+// The all-products scope reports the primary product's profile: it is the one the
+// org-wide search is anchored on.
+export interface DiscoveryBasis {
+  productId: string | null;
+  category: string | null;
+  audience: string | null;
+  keywords: string;
+  region: string | null;
+  excludedDomains: number;
+  autoDetect: boolean;
+  cadence: DetectionConfig["cadence"];
+}
+
+async function discoveryBasis(
+  orgId: string,
+  scope: DiscoveryScope,
+): Promise<DiscoveryBasis> {
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, orgId),
+    columns: { detectionConfig: true, productProfile: true },
+  });
+  const cfg = resolveDetectionConfig(org?.detectionConfig);
+  const productId =
+    scope.kind === "product"
+      ? scope.productId
+      : ((await nonArchivedProductIds(orgId))[0] ?? null);
+  const target = productId ? await productDiscoveryTarget(orgId, productId) : null;
+  // The org-level profile is the fallback for the primary product and for an org
+  // that has no product row yet (mid-onboarding); a secondary SKU must never borrow
+  // it, or the basis would describe a different product than the one searched for.
+  const profile = selfProfileToDiscoveryProfile(
+    target?.selfProfile ?? null,
+    !target || target.isPrimary ? (org?.productProfile ?? null) : null,
+  );
+
+  return {
+    productId,
+    category: profile?.category?.trim() || null,
+    audience: profile?.audience?.trim() || null,
+    keywords: cfg.keywords,
+    region: cfg.region,
+    excludedDomains: cfg.excludedDomains.length,
+    autoDetect: cfg.autoDetect,
+    cadence: cfg.cadence,
+  };
 }
 
 // Per-product discovery staleness (patch-22): "fresh" while the last run is <7 days old
@@ -216,13 +276,27 @@ candidatesRouter.get("/", async (c) => {
     .where(scope)
     .groupBy(competitorCandidates.status);
 
-  const counts = { new: 0, dismissed: 0 };
+  const counts = { new: 0, dismissed: 0, added: 0 };
   for (const r of countRows) {
     if (r.status === "new") counts.new = r.n;
     else if (r.status === "dismissed") counts.dismissed = r.n;
+    else if (r.status === "added") counts.added = r.n;
   }
 
-  return c.json({ candidates: rows, counts });
+  // Seats + search basis travel with the list because both explain THIS list: what
+  // tracking a candidate costs (a competitor seat, the scarce resource the queue is
+  // spent against) and what produced it. Shipping them here keeps the page's first
+  // paint to the single server-seeded request it already makes.
+  const plan = await getOrgPlan(orgId);
+  const quota = await checkCompetitorQuota(orgId, plan, 0);
+  const basis = await discoveryBasis(orgId, scopeSel);
+
+  return c.json({
+    candidates: rows,
+    counts,
+    seats: { used: quota.used, limit: quota.limit },
+    basis,
+  });
 });
 
 candidatesRouter.get("/config", async (c) => {
@@ -282,8 +356,31 @@ candidatesRouter.get("/staleness", async (c) => {
     scopeSel.kind === "product"
       ? [scopeSel.productId]
       : await nonArchivedProductIds(orgId);
+
+  // The monthly scan allowance and the date the cron will next run for this org.
+  // Both belong to the same question the page asks here ("is scanning worth it, and
+  // can I"), so they ride along rather than costing a third request.
+  const plan = await getOrgPlan(orgId);
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, orgId),
+    columns: { detectionConfig: true, detectionLastRunAt: true },
+  });
+  const scans = {
+    used: await dimensionUsage(orgId, "discoveriesPerMonth"),
+    limit: PLAN_LIMITS[plan].discoveriesPerMonth,
+  };
+  const nextAutomaticAt = nextAutomaticDetectionAt(
+    org?.detectionLastRunAt ?? null,
+    resolveDetectionConfig(org?.detectionConfig),
+  );
+
   if (productIds.length === 0) {
-    return c.json({ staleness: "never_run", needsRediscovery: true });
+    return c.json({
+      staleness: "never_run",
+      needsRediscovery: true,
+      scans,
+      nextAutomaticAt,
+    });
   }
 
   let anyRun = false;
@@ -303,7 +400,12 @@ candidatesRouter.get("/staleness", async (c) => {
   }
 
   if (!anyRun) {
-    return c.json({ staleness: "never_run", needsRediscovery: true });
+    return c.json({
+      staleness: "never_run",
+      needsRediscovery: true,
+      scans,
+      nextAutomaticAt,
+    });
   }
   if (anyStale) {
     return c.json({
@@ -311,6 +413,8 @@ candidatesRouter.get("/staleness", async (c) => {
       needsRediscovery: true,
       lastDiscoveryAt: latest,
       reason: staleReason,
+      scans,
+      nextAutomaticAt,
     });
   }
   return c.json({
@@ -318,6 +422,97 @@ candidatesRouter.get("/staleness", async (c) => {
     needsRediscovery: false,
     lastDiscoveryAt: latest,
     reason: "profile_unchanged_recent_run",
+    scans,
+    nextAutomaticAt,
+  });
+});
+
+// What the review queue actually bought the org: every candidate that was tracked,
+// with the competitor it became and what that competitor has captured since. A seat
+// spent on a company that produces nothing is the one thing the queue could never
+// tell you, and it is the argument for reviewing the next batch at all.
+candidatesRouter.get("/added", async (c) => {
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const scopeSel = await resolveScope(orgId, c.req.query("productId"));
+  const scope =
+    scopeSel.kind === "product"
+      ? and(
+          eq(competitorCandidates.orgId, orgId),
+          eq(competitorCandidates.productId, scopeSel.productId),
+        )
+      : eq(competitorCandidates.orgId, orgId);
+
+  const rows = await db.query.competitorCandidates.findMany({
+    where: and(scope, eq(competitorCandidates.status, "added")),
+    orderBy: desc(competitorCandidates.firstSeenAt),
+    limit: 25,
+  });
+  if (rows.length === 0) return c.json({ added: [] });
+
+  // Rows added before competitor_id existed carry no link, so they resolve by
+  // hostname against the org's live competitors. A miss (competitor since deleted)
+  // is reported as a null competitor rather than dropped: "added, then removed" is
+  // still an outcome.
+  const tracked = await db.query.competitors.findMany({
+    where: and(eq(competitors.orgId, orgId), isNull(competitors.deletedAt)),
+    columns: { id: true, name: true, url: true, color: true, createdAt: true },
+  });
+  const byId = new Map(tracked.map((t) => [t.id, t]));
+  const byHost = new Map<string, (typeof tracked)[number]>();
+  for (const t of tracked) {
+    const h = normalizeDomain(t.url ?? "");
+    if (h && !byHost.has(h)) byHost.set(h, t);
+  }
+
+  const resolved = rows.map((r) => {
+    const host = normalizeDomain(r.url);
+    const competitor =
+      (r.competitorId ? byId.get(r.competitorId) : undefined) ??
+      (host ? byHost.get(host) : undefined) ??
+      null;
+    return { row: r, competitor };
+  });
+
+  const ids = [...new Set(resolved.flatMap((r) => (r.competitor ? [r.competitor.id] : [])))];
+  const activity = new Map<string, { signalCount: number; lastSignalAt: Date | null }>();
+  if (ids.length > 0) {
+    const counted = await db
+      .select({
+        competitorId: signals.competitorId,
+        n: sql<number>`count(*)::int`,
+        last: sql<Date | null>`max(${signals.createdAt})`,
+      })
+      .from(signals)
+      .where(and(eq(signals.orgId, orgId), inArray(signals.competitorId, ids)))
+      .groupBy(signals.competitorId);
+    for (const r of counted) {
+      activity.set(r.competitorId, { signalCount: r.n, lastSignalAt: r.last });
+    }
+  }
+
+  return c.json({
+    added: resolved.map(({ row, competitor }) => ({
+      id: row.id,
+      url: row.url,
+      title: row.title,
+      snippet: row.snippet,
+      overlapScore: row.overlapScore,
+      productId: row.productId,
+      firstSeenAt: row.firstSeenAt,
+      competitor: competitor
+        ? {
+            id: competitor.id,
+            name: competitor.name,
+            url: competitor.url,
+            color: competitor.color,
+            addedAt: competitor.createdAt,
+          }
+        : null,
+      signalCount: competitor ? (activity.get(competitor.id)?.signalCount ?? 0) : 0,
+      lastSignalAt: competitor ? (activity.get(competitor.id)?.lastSignalAt ?? null) : null,
+    })),
   });
 });
 
@@ -401,7 +596,7 @@ candidatesRouter.post("/:id/add", async (c) => {
 
   await db
     .update(competitorCandidates)
-    .set({ status: "added" })
+    .set({ status: "added", competitorId: competitor.id })
     .where(eq(competitorCandidates.id, candidate.id));
 
   for (const m of monitorRows) {

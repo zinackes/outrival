@@ -22,6 +22,8 @@ import type {
   MyProduct,
   SelfProductChange,
   CompetitorCandidate,
+  DiscoveryBasis,
+  DiscoveryStaleness,
   BattleCardSummary,
   WorkspaceSettings,
   NotificationSettings,
@@ -438,14 +440,20 @@ export async function getMyProductData(productId?: string): Promise<{
 }
 
 /**
- * Prefetch the discovery page: the "new" candidates queue (+ tab counts) and the
- * staleness flag that gates the re-run button. Best-effort: null → the view
- * falls back to its own client fetches. Tab switches stay client-side.
+ * Prefetch the discovery page: the "new" queue with everything the reading is made
+ * of (counts, competitor seats, what the search ran on) plus the staleness record
+ * behind the scan button. Both are seeded so the page's first paint states its
+ * verdict instead of a skeleton. Best-effort: null → the view falls back to its own
+ * client fetches. Tab switches stay client-side.
  */
 export async function getDiscoveryData(productId?: string): Promise<{
-  candidates: CompetitorCandidate[];
-  counts: { new: number; dismissed: number };
-  discoveryFresh: boolean;
+  list: {
+    candidates: CompetitorCandidate[];
+    counts: { new: number; dismissed: number; added: number };
+    seats: { used: number; limit: number };
+    basis: DiscoveryBasis;
+  };
+  staleness: DiscoveryStaleness;
 } | null> {
   try {
     const scope = productId ? `&productId=${productId}` : "";
@@ -453,17 +461,13 @@ export async function getDiscoveryData(productId?: string): Promise<{
     const [list, staleness] = await Promise.all([
       serverGet<{
         candidates: CompetitorCandidate[];
-        counts: { new: number; dismissed: number };
+        counts: { new: number; dismissed: number; added: number };
+        seats: { used: number; limit: number };
+        basis: DiscoveryBasis;
       }>(`/api/candidates?status=new${scope}`),
-      serverGet<{ needsRediscovery: boolean }>(
-        `/api/candidates/staleness${staleScope}`,
-      ),
+      serverGet<DiscoveryStaleness>(`/api/candidates/staleness${staleScope}`),
     ]);
-    return {
-      candidates: list.candidates,
-      counts: list.counts,
-      discoveryFresh: !staleness.needsRediscovery,
-    };
+    return { list, staleness };
   } catch {
     return null;
   }

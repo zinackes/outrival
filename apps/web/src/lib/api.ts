@@ -563,6 +563,9 @@ export interface ActivityUpcoming {
   competitorColor?: string | null;
   isSelf?: boolean;
   sourceType: string;
+  // The monitor's cadence (realtime | daily | weekly) — what the schedule repeats
+  // on, so a check due in two days reads as its rhythm and not as a gap.
+  frequency?: string;
   nextRunAt: string;
 }
 

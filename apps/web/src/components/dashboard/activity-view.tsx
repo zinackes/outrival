@@ -25,6 +25,7 @@ import { PageHead } from "./page-head";
 import { useSetAskContext } from "./ask-context";
 import { Attention } from "./activity/attention";
 import { ActivityLog } from "./activity/log";
+import { UpNext } from "./activity/up-next";
 import { WatchStrip } from "./activity/watch-strip";
 
 // Activity answers two questions with one page: is Outrival still watching
@@ -139,6 +140,10 @@ export function ActivityView() {
           />
 
           {sources && <Attention sources={sources} onChanged={() => void healthQ.refetch()} />}
+
+          {/* The strip only draws the three hours it can fit, where a daily source
+              is never due. The queue itself is here. */}
+          {healthQ.data && <UpNext upcoming={upcoming} />}
 
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap gap-0.5" role="group" aria-label="Filter the log">

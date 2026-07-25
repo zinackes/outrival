@@ -8,13 +8,24 @@ import { useState } from "react";
 import { Maximize2 } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 // Before/after homepage screenshots for a signal's change. The panel is narrow, so
 // the default is a wipe slider (one column, before underneath, after clipped from the
 // right); a "Side by side" button opens the full-size two-column view.
-export function VisualDiff({ signalId }: { signalId: string }) {
+export function VisualDiff({
+  signalId,
+  fill = false,
+}: {
+  signalId: string;
+  // Fill the parent's height instead of the standalone 420px box. For the
+  // "Why this insight?" panel, where this sits in a column of a fixed-height
+  // grid: the height is still definite (the grid row decides it), so the
+  // no-reflow property below is kept, it just comes from the parent.
+  fill?: boolean;
+}) {
   const [pos, setPos] = useState(50);
   const [full, setFull] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -32,7 +43,7 @@ export function VisualDiff({ signalId }: { signalId: string }) {
   }
 
   return (
-    <div className="space-y-2">
+    <div className={cn("space-y-2", fill && "flex min-h-0 flex-col")}>
       {/* Fixed height, not max-height. These are full-page captures served from
           R2 with no intrinsic size known up front, so letting the image define
           the box meant the whole document below it jumped the moment each one
@@ -41,7 +52,14 @@ export function VisualDiff({ signalId }: { signalId: string }) {
           always taller than the cap), both images fill it, and nothing reflows.
           content-visibility lets the browser skip painting it while it is off
           screen, with the same height reserved so the scrollbar stays honest. */}
-      <div className="relative h-[420px] overflow-hidden rounded-md border border-border bg-surface-2 [contain-intrinsic-size:auto_420px] [content-visibility:auto]">
+      <div
+        className={cn(
+          "relative overflow-hidden rounded-md border border-border bg-surface-2",
+          fill
+            ? "min-h-0 flex-1"
+            : "h-[420px] [contain-intrinsic-size:auto_420px] [content-visibility:auto]",
+        )}
+      >
         {!loaded && (
           <div
             aria-hidden

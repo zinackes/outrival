@@ -207,6 +207,22 @@ describe("GET /api/activity/summary", () => {
     expect(eastBody.days[0]!.date >= utcBody.days[0]!.date).toBe(true);
   });
 
+  test("names the last 24h findings so a bucket can attribute itself", async () => {
+    const res = await app.request("/api/activity/summary?tzOffset=0", asUser(A.userId, A.email));
+    const body = (await res.json()) as {
+      findings: { competitorName: string; sourceType: string; kind: string; recordedAt: string }[];
+    };
+    // The 2h change and the 4h refusal, and nothing else: a baseline capture and
+    // a quiet run found nothing to name.
+    expect(body.findings).toHaveLength(2);
+    expect(body.findings.map((f) => f.kind).sort()).toEqual(["change", "failed"]);
+    expect(body.findings.every((f) => f.competitorName.startsWith("Competitor"))).toBe(true);
+    // Newest first, and inside the window the strip draws.
+    const times = body.findings.map((f) => new Date(f.recordedAt).getTime());
+    expect(times[0]!).toBeGreaterThan(times[1]!);
+    expect(Date.now() - times[1]!).toBeLessThan(24 * HOUR);
+  });
+
   test("is org-scoped", async () => {
     const res = await app.request("/api/activity/summary?tzOffset=0", asUser(B.userId, B.email));
     const body = (await res.json()) as { buckets: { checks: number }[] };

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import type { ActivityBucket, ActivityUpcoming } from "@/lib/api";
+import type { ActivityBucket, ActivityFinding, ActivityUpcoming } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { formatTime } from "@/lib/format-date";
 import { sourceLabel } from "@/lib/source-labels";
@@ -31,7 +31,10 @@ interface Bar {
   left: number;
   height: number;
   kind: BarKind;
-  title: string;
+  start: Date;
+  end: Date;
+  checks: number;
+  findings: ActivityFinding[];
 }
 
 function bucketKind(b: ActivityBucket): BarKind {
@@ -40,22 +43,18 @@ function bucketKind(b: ActivityBucket): BarKind {
   return "quiet";
 }
 
-function barTitle(start: Date, b: ActivityBucket, kind: BarKind): string {
-  const when = formatTime(start);
-  const checks = `${b.checks} check${b.checks > 1 ? "s" : ""}`;
-  if (kind === "failed") return `${when} · ${checks}, one could not be reached`;
-  if (kind === "change") return `${when} · ${checks}, one found a change`;
-  return `${when} · ${checks}`;
-}
-
 export function WatchStrip({
   buckets,
+  findings,
   upcoming,
   loading,
   failed,
   onRetry,
 }: {
   buckets: ActivityBucket[];
+  // The named findings of the window, so hovering a bar says WHICH source moved
+  // rather than only that something did.
+  findings: ActivityFinding[];
   upcoming: ActivityUpcoming[];
   loading: boolean;
   // A strip drawn from a failed request looks exactly like a day where nothing
@@ -78,25 +77,41 @@ export function WatchStrip({
     if (now == null) return null;
     const bySlot = new Map(buckets.map((b) => [b.slot, b]));
 
+    // Attribute each finding to the bucket it happened in, so a bar can name it.
+    const findingsBySlot = new Map<number, ActivityFinding[]>();
+    for (const f of findings) {
+      const slot = Math.floor((now - new Date(f.recordedAt).getTime()) / (15 * 60_000));
+      if (slot < 0 || slot >= SLOTS) continue;
+      const list = findingsBySlot.get(slot);
+      if (list) list.push(f);
+      else findingsBySlot.set(slot, [f]);
+    }
+
     const bars: Bar[] = [];
     const nightSlots: boolean[] = [];
     for (let slot = SLOTS - 1; slot >= 0; slot--) {
       // Slot s covers [now - (s+1)·15min, now - s·15min).
       const start = new Date(now - (slot + 1) * 15 * 60_000);
+      const end = new Date(now - slot * 15 * 60_000);
       const hour = start.getHours();
       nightSlots[SLOTS - 1 - slot] = hour >= NIGHT_FROM || hour < NIGHT_TO;
 
       const b = bySlot.get(slot);
       const left = ((SLOTS - 1 - slot) / SLOTS) * PAST_PCT;
+      const common = { slot, left, start, end, findings: findingsBySlot.get(slot) ?? [] };
       if (!b || b.checks === 0) {
         // An observed zero keeps a stub, so a quarter hour with nothing due reads
         // as "nothing due" and not as a hole in the record.
-        bars.push({ slot, left, height: 3, kind: "quiet", title: `${formatTime(start)} · no check due` });
+        bars.push({ ...common, height: 3, kind: "quiet", checks: 0 });
         continue;
       }
       const kind = bucketKind(b);
-      const height = kind === "quiet" ? Math.min(6 + b.checks * 8, 26) : 32;
-      bars.push({ slot, left, height, kind, title: barTitle(start, b, kind) });
+      bars.push({
+        ...common,
+        height: kind === "quiet" ? Math.min(6 + b.checks * 8, 26) : 32,
+        kind,
+        checks: b.checks,
+      });
     }
 
     // Contiguous night runs, so the shading is one band per night rather than 96
@@ -133,10 +148,46 @@ export function WatchStrip({
     );
 
     const checks = buckets.reduce((n, b) => n + b.checks, 0);
-    const findings = buckets.reduce((n, b) => n + b.changes + b.failures, 0);
+    const findingCount = buckets.reduce((n, b) => n + b.changes + b.failures, 0);
 
-    return { bars, bands, widest, scheduled, axis, checks, findings };
-  }, [buckets, upcoming, now]);
+    return { bars, bands, widest, scheduled, axis, checks, findingCount };
+  }, [buckets, findings, upcoming, now]);
+
+  // One shared cursor rather than 96 hover targets: the pointer's x resolves to a
+  // bucket, which is both cheaper than a tooltip root per bar and easier to hit
+  // than a 7px column.
+  const stripRef = useRef<HTMLDivElement>(null);
+  const [hovered, setHovered] = useState<number | null>(null);
+
+  const onPointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const el = stripRef.current;
+      if (!el || !model) return;
+      const rect = el.getBoundingClientRect();
+      const pastWidth = (rect.width * PAST_PCT) / 100;
+      const x = e.clientX - rect.left;
+      if (x < 0 || x > pastWidth) {
+        setHovered(null);
+        return;
+      }
+      const index = Math.min(SLOTS - 1, Math.max(0, Math.floor((x / pastWidth) * SLOTS)));
+      setHovered(SLOTS - 1 - index);
+    },
+    [model],
+  );
+
+  // Arrow keys walk the same cursor, so the reading is reachable without a mouse.
+  const onKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    setHovered((prev) => {
+      const from = prev ?? 0;
+      const next = e.key === "ArrowLeft" ? from + 1 : from - 1;
+      return Math.min(SLOTS - 1, Math.max(0, next));
+    });
+  }, []);
+
+  const hoveredBar = hovered == null ? null : (model?.bars.find((b) => b.slot === hovered) ?? null);
 
   const next = upcoming[0] ?? null;
 
@@ -176,8 +227,8 @@ export function WatchStrip({
                 <>
                   <span className="tabular-nums">{model.checks}</span> check
                   {model.checks === 1 ? "" : "s"},{" "}
-                  <span className="tabular-nums">{model.findings}</span> finding
-                  {model.findings === 1 ? "" : "s"}
+                  <span className="tabular-nums">{model.findingCount}</span> finding
+                  {model.findingCount === 1 ? "" : "s"}
                 </>
               )}
             </>
@@ -186,7 +237,21 @@ export function WatchStrip({
         {next && <NextCheck next={next} />}
       </div>
 
-      <div className="relative h-16 border-b border-border">
+      <div
+        ref={stripRef}
+        className="relative h-16 border-b border-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        onPointerMove={onPointerMove}
+        onPointerLeave={() => setHovered(null)}
+        onKeyDown={onKeyDown}
+        onBlur={() => setHovered(null)}
+        tabIndex={model ? 0 : -1}
+        role="img"
+        aria-label={
+          model
+            ? `${model.checks} checks over the last 24 hours, ${model.findingCount} of them found something. Use the arrow keys to read a quarter hour at a time.`
+            : "Checks over the last 24 hours"
+        }
+      >
         {model && (
           <>
             {model.bands.map((band) => (
@@ -204,21 +269,36 @@ export function WatchStrip({
               </div>
             ))}
 
+            {/* The hovered quarter hour, marked behind the bars so the bar itself
+                stays the brightest thing in its own column. */}
+            {hoveredBar && (
+              <div
+                className="absolute inset-y-0 bg-surface-3"
+                style={{ left: `${hoveredBar.left}%`, width: `${SLOT_PCT}%` }}
+                aria-hidden
+              />
+            )}
+
             {model.bars.map((bar) => (
               <span
                 key={bar.slot}
-                title={bar.title}
                 className={cn(
                   "absolute bottom-0 rounded-t-[1.5px]",
                   bar.kind === "change" && "bg-foreground",
                   bar.kind === "failed" && "bg-critical",
-                  bar.kind === "quiet" && (bar.height <= 3 ? "bg-border" : "bg-border-strong"),
+                  bar.kind === "quiet" &&
+                    (bar.height <= 3
+                      ? "bg-border"
+                      : hoveredBar?.slot === bar.slot
+                        ? "bg-foreground"
+                        : "bg-border-strong"),
                 )}
                 style={{
                   left: `${bar.left}%`,
                   width: `calc(${SLOT_PCT}% - 2px)`,
                   height: `${bar.height}px`,
                 }}
+                aria-hidden
               />
             ))}
 
@@ -257,6 +337,8 @@ export function WatchStrip({
               <span className="absolute -left-[2.5px] top-0 size-1.5 rounded-full bg-foreground" aria-hidden />
               <span className="absolute left-2.5 -top-0.5 font-mono text-meta text-foreground">now</span>
             </div>
+
+            {hoveredBar && <BucketCard bar={hoveredBar} />}
           </>
         )}
         {!model && loading && (
@@ -286,6 +368,47 @@ export function WatchStrip({
         <LegendItem className="border border-b-0 border-border-strong">scheduled</LegendItem>
       </p>
     </section>
+  );
+}
+
+// What one quarter hour holds. Anchored to its own bar and clamped to the strip,
+// so a bucket at either end still reads inside the page.
+function BucketCard({ bar }: { bar: Bar }) {
+  const centre = bar.left + SLOT_PCT / 2;
+  const clamped = Math.min(88, Math.max(12, centre));
+  return (
+    <div
+      className="pointer-events-none absolute bottom-full z-10 mb-1.5 -translate-x-1/2 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 shadow-xs"
+      style={{ left: `${clamped}%` }}
+      aria-live="polite"
+    >
+      <div className="font-mono text-meta text-muted-foreground tabular-nums">
+        {formatTime(bar.start)} to {formatTime(bar.end)}
+      </div>
+      <div className="whitespace-nowrap text-dense text-foreground">
+        {bar.checks === 0 ? (
+          "No check due"
+        ) : (
+          <>
+            <span className="tabular-nums">{bar.checks}</span> check
+            {bar.checks === 1 ? "" : "s"}
+            {bar.findings.length === 0 && (
+              <span className="text-muted-foreground">, nothing new</span>
+            )}
+          </>
+        )}
+      </div>
+      {bar.findings.map((f, i) => (
+        <div key={`${f.recordedAt}-${i}`} className="whitespace-nowrap text-dense">
+          <span className="text-foreground">{f.competitorName}</span>
+          <span className="text-muted-foreground">
+            {" "}
+            {sourceLabel(f.sourceType).toLowerCase()}{" "}
+            {f.kind === "failed" ? "could not be reached" : "found a change"}
+          </span>
+        </div>
+      ))}
+    </div>
   );
 }
 

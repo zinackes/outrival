@@ -1129,7 +1129,10 @@ VISUAL_DIFF_ENABLED=true               # false → endpoints screenshot 404, sec
 
 # AI Visibility / "Share of Model" — présence self + concurrents dans les réponses des
 # moteurs IA. Feature premium (features.aiVisibility, pro+). gemini = moteur par défaut
-# GRATUIT (Google Search grounding, ~5k prompts groundés/mois gratuits sur AI Studio 3.x)
+# GRATUIT (Google Search grounding : free tier = 500 requêtes groundées/JOUR, sur 2.5
+# flash/flash-lite seulement, cap partagé entre les deux ; le grounding des Gemini 3.x est
+# réservé au tier payant, où l'enveloppe est de 5k prompts/mois. Le « 5k/mois gratuit »
+# longtemps écrit ici décrivait donc le tier PAYANT, pas le nôtre)
 # → active sans payer. Chaque moteur best-effort (vide → skip, 0 coût). Stratégie coût-zéro
 # (BYOK, scrape-cascade AIO) : 📄 docs/ai-visibility-free.md — 📄 docs/ai-visibility.md
 # L7 teaser (docs/post-onboarding-activation.md) : dérivé GRATUIT non-gaté — 1 run/org à
@@ -1141,6 +1144,11 @@ AI_VISIBILITY_ENABLED=true             # false → scheduler + job no-op (kill-s
 AI_VISIBILITY_INTERVAL_DAYS=7          # cadence par org (jours entre 2 runs)
 AI_VISIBILITY_MAX_PROMPTS=10           # cap prompts/org/run (garde-fou coût)
 AI_VISIBILITY_MIN_PROMPTS_FOR_SIGNAL=4 # min prompts répondus (par moteur, sur les DEUX runs) avant qu'un shift SoV soit signalé — sinon skip (1-2 prompts = quota gratuit épuisé, bruit 100%/50%, pas un vrai mouvement)
+AI_VISIBILITY_MIN_REQUEST_GAP_MS=6500  # espacement min entre 2 appels au MÊME moteur. Le free tier
+                                       # plafonne aussi PAR MINUTE : un jeu de prompts tiré en rafale
+                                       # 429 dès le 11e appel, ce que le garde quota lit comme une
+                                       # enveloppe épuisée et qui tue le moteur pour tout le run.
+                                       # Ne baisser que sur un tier payant (plafond/minute plus haut)
 AI_VISIBILITY_TEASER_ENABLED=true      # L7 — teaser onboarding gratuit 1×/org (false → "unavailable")
 AI_VISIBILITY_TEASER_MAX_PROMPTS=3     # requêtes groundées free dépensées par teaser
 GEMINI_API_KEY=                        # moteur Gemini + grounding (GRATUIT, défaut) ; vide → skip

@@ -6,6 +6,7 @@ import { Check, ChevronDown, Copy, Download } from "lucide-react";
 import { api, type Competitor, type CompareColumn, type ProductSummary } from "@/lib/api";
 import { productsListQuery, competitorsQuery, compareRankingQuery } from "@/lib/queries";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
+import { assignSeriesColors } from "@/lib/competitor-color";
 import { PageHead } from "@/components/dashboard/page-head";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -329,7 +330,7 @@ export function CompareView() {
       ...selected.filter((id) => youIds.has(id)),
       ...selected.filter((id) => !youIds.has(id)),
     ];
-    return order.map((id) => {
+    const base = order.map((id) => {
       const data = matrixById.get(id) ?? null;
       const pick = byId.get(id);
       return {
@@ -342,6 +343,10 @@ export function CompareView() {
         pending: !data && isFetching,
       };
     });
+    // Compare is a chart before it is a list: a competitor who was never given a colour
+    // still needs one here, or every bar on the page is the same grey.
+    const series = assignSeriesColors(base);
+    return base.map((row) => ({ ...row, color: series.get(row.id) ?? row.color }));
   }, [selected, youIds, matrixById, byId, isFetching]);
 
   const loadedCols = useMemo(

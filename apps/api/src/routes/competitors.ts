@@ -215,6 +215,57 @@ type HomepageFacts = {
 // contained (resolves the homepage monitor + newest successful snapshot itself)
 // so both buildOverview and the translate route can reuse it. Null when nothing
 // captured / pre-patch snapshot.
+// How many recent homepage captures the positioning history walks. A daily
+// homepage scrape makes this roughly a year of history, and it bounds the query
+// by work done rather than by versions found: a competitor that never rewrites
+// its homepage must not make us read its entire snapshot table.
+const POSITIONING_HISTORY_SCAN_LIMIT = 400;
+// Distinct rewrites returned. Past a handful the list stops being a story.
+const POSITIONING_HISTORY_MAX_VERSIONS = 12;
+
+/**
+ * The copy a competitor positions itself with, derived from one stored homepage
+ * structure. Shared by the fact sheet and by the positioning history, so a "then"
+ * capture and a "now" capture are always derived the same way. Re-implementing
+ * this for the history would make any drift in the derivation look like drift in
+ * their messaging, which is the one thing an over-time view must never invent.
+ */
+function positioningCopyOf(s: StoredHomepage): {
+  headline: string | null;
+  subheadline: string | null;
+  valueProps: string[];
+} {
+  // Section headings carrying the value proposition (feature blocks and
+  // integration showcases), in document order, capped for the glance.
+  // Scroll-driven "stepped" layouts repeat a mockup label (e.g. an H3
+  // "Product Brief") across every panel, and it classifies as a feature
+  // heading — so dedupe case-insensitively and drop any heading recurring
+  // 3+ times (a template/UI label, never a distinct highlight).
+  const headings = (s.sections ?? [])
+    .filter((sec) => sec.type === "features" || sec.type === "integrations")
+    .map((sec) => sec.heading?.trim() ?? "")
+    .filter((h) => h.length > 0);
+  const counts = new Map<string, number>();
+  for (const h of headings) {
+    const k = h.toLowerCase();
+    counts.set(k, (counts.get(k) ?? 0) + 1);
+  }
+  const seen = new Set<string>();
+  const valueProps: string[] = [];
+  for (const h of headings) {
+    const k = h.toLowerCase();
+    if ((counts.get(k) ?? 0) >= 3) continue; // template/UI label, not a highlight
+    if (seen.has(k)) continue;
+    seen.add(k);
+    valueProps.push(h);
+  }
+  return {
+    headline: s.hero?.headline ?? null,
+    subheadline: s.hero?.subheadline ?? null,
+    valueProps: valueProps.slice(0, 8),
+  };
+}
+
 async function buildHomepageFacts(
   competitorId: string,
 ): Promise<{ capturedAt: Date | null; homepage: HomepageFacts | null }> {
@@ -255,35 +306,7 @@ async function buildHomepageFacts(
 
   const s = snap.structure as StoredHomepage;
 
-  const headline = s.hero?.headline ?? null;
-  const subheadline = s.hero?.subheadline ?? null;
-  // Section headings carrying the value proposition (feature blocks and
-  // integration showcases), in document order, capped for the glance.
-  // Scroll-driven "stepped" layouts repeat a mockup label (e.g. an H3
-  // "Product Brief") across every panel, and it classifies as a feature
-  // heading — so dedupe case-insensitively and drop any heading recurring
-  // 3+ times (a template/UI label, never a distinct highlight).
-  const valueProps = (() => {
-    const headings = (s.sections ?? [])
-      .filter((sec) => sec.type === "features" || sec.type === "integrations")
-      .map((sec) => sec.heading?.trim() ?? "")
-      .filter((h) => h.length > 0);
-    const counts = new Map<string, number>();
-    for (const h of headings) {
-      const k = h.toLowerCase();
-      counts.set(k, (counts.get(k) ?? 0) + 1);
-    }
-    const seen = new Set<string>();
-    const out: string[] = [];
-    for (const h of headings) {
-      const k = h.toLowerCase();
-      if ((counts.get(k) ?? 0) >= 3) continue; // template/UI label, not a highlight
-      if (seen.has(k)) continue;
-      seen.add(k);
-      out.push(h);
-    }
-    return out.slice(0, 8);
-  })();
+  const { headline, subheadline, valueProps } = positioningCopyOf(s);
   const testimonials = (s.socialProof?.testimonials ?? [])
     .map((t) => ({ quote: t.quote?.trim() ?? "", author: t.author ?? null }))
     .filter((t) => t.quote.length > 0)
@@ -1347,6 +1370,91 @@ competitorsRouter.get("/:id/review-scores", async (c) => {
   `);
 
   return c.json({ scores: rows });
+});
+
+export type PositioningVersion = {
+  capturedAt: string;
+  headline: string | null;
+  subheadline: string | null;
+  valueProps: string[];
+};
+
+/**
+ * Collapse newest-first homepage captures into DISTINCT versions of the
+ * positioning copy.
+ *
+ * Two properties this has to get right, hence its own function and its own test:
+ * consecutive captures carrying identical copy are one version, not many, and a
+ * version's `capturedAt` is when that wording FIRST appeared. Walking newest to
+ * oldest we meet the newest capture of a version first, so the timestamp is
+ * corrected downward on every older identical capture; without that, two adjacent
+ * versions would both be stamped with the day we last SAW them and the pair would
+ * read as a rewrite that never happened on that date.
+ */
+export function collapsePositioningVersions(
+  rows: Array<{ structure: unknown; scrapedAt: Date }>,
+  maxVersions: number = POSITIONING_HISTORY_MAX_VERSIONS,
+): PositioningVersion[] {
+  const versions: PositioningVersion[] = [];
+  let previousKey: string | null = null;
+  for (const row of rows) {
+    if (!row.structure) continue;
+    const copy = positioningCopyOf(row.structure as StoredHomepage);
+    const key = JSON.stringify([copy.headline, copy.subheadline, copy.valueProps]);
+    if (key === previousKey) {
+      const current = versions[versions.length - 1];
+      if (current) current.capturedAt = row.scrapedAt.toISOString();
+      continue;
+    }
+    previousKey = key;
+    versions.push({ capturedAt: row.scrapedAt.toISOString(), ...copy });
+    if (versions.length >= maxVersions) break;
+  }
+  return versions;
+}
+
+/**
+ * How this competitor's positioning copy has changed over time.
+ *
+ * Returns DISTINCT versions, newest first, not one entry per capture. A homepage
+ * is scraped daily and rewritten a handful of times a year, so a raw capture list
+ * would be hundreds of identical rows; collapsing on the copy itself means every
+ * entry in the response is a real rewrite, and `capturedAt` is the first capture
+ * that carried it.
+ *
+ * Lazy-loaded by the Positioning tab alone, so it stays off the competitor detail
+ * payload that every other tab pays for.
+ */
+competitorsRouter.get("/:id/positioning-history", async (c) => {
+  const id = c.req.param("id");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor) return c.json({ error: "Not found" }, 404);
+
+  const [homepageMonitor] = await db
+    .select({ id: monitors.id })
+    .from(monitors)
+    .where(and(eq(monitors.competitorId, id), eq(monitors.sourceType, "homepage")))
+    .limit(1);
+  if (!homepageMonitor) return c.json({ versions: [] });
+
+  // Bounded by captures scanned, not by versions found: a competitor that never
+  // rewrites its homepage must not make us walk its entire snapshot history.
+  const rows = await db
+    .select({ structure: snapshots.homepageStructure, scrapedAt: snapshots.scrapedAt })
+    .from(snapshots)
+    .where(
+      and(
+        eq(snapshots.monitorId, homepageMonitor.id),
+        eq(snapshots.status, "success"),
+        isNotNull(snapshots.homepageStructure),
+      ),
+    )
+    .orderBy(desc(snapshots.scrapedAt))
+    .limit(POSITIONING_HISTORY_SCAN_LIMIT);
+
+  return c.json({ versions: collapsePositioningVersions(rows) });
 });
 
 competitorsRouter.get("/:id/pricing-history", async (c) => {

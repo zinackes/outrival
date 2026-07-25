@@ -54,7 +54,7 @@ export function DigestView({
       {lead && (headline || points.length > 0) && (
         <div className="flex flex-col gap-4">
           {headline && (
-            <p className="max-w-[21em] text-xl font-semibold leading-snug tracking-tight text-balance">
+            <p className="max-w-[26ch] text-xl font-semibold leading-snug tracking-tight text-balance">
               {headline}
             </p>
           )}
@@ -92,7 +92,7 @@ export function DigestView({
           {trends.map((t, i) => (
             <div key={i} className="border-b border-border p-4 last:border-b-0 sm:px-5">
               <h4 className="m-0 text-content font-medium tracking-tight">{t.title}</h4>
-              <p className="m-0 mt-1.5 max-w-[62ch] text-content leading-relaxed text-muted-foreground">
+              <p className="m-0 mt-1.5 max-w-[68ch] text-content leading-relaxed text-muted-foreground">
                 {t.insight}
               </p>
             </div>
@@ -111,7 +111,7 @@ export function DigestView({
                 <h4 className="m-0 text-content font-medium tracking-tight">{q.question}</h4>
                 <span className="shrink-0 text-xs text-high">changed</span>
               </div>
-              <p className="m-0 mt-1.5 max-w-[62ch] text-content leading-relaxed text-muted-foreground">
+              <p className="m-0 mt-1.5 max-w-[68ch] text-content leading-relaxed text-muted-foreground">
                 {q.changeSummary}
               </p>
             </div>
@@ -162,10 +162,10 @@ function Move({
         {section.category && <CatText category={section.category} />}
       </div>
 
-      <p className="m-0 mt-2 max-w-[66ch] text-content leading-relaxed">{section.insight}</p>
+      <p className="m-0 mt-2 max-w-[72ch] text-content leading-relaxed">{section.insight}</p>
 
       {section.so_what && (
-        <p className="m-0 mt-2 flex max-w-[66ch] gap-2.5 text-content leading-relaxed text-muted-foreground">
+        <p className="m-0 mt-2 flex max-w-[72ch] gap-2.5 text-content leading-relaxed text-muted-foreground">
           <ArrowRight className="mt-1 size-3.5 shrink-0 text-muted-foreground" aria-hidden />
           <span>{section.so_what}</span>
         </p>

@@ -246,7 +246,12 @@ export function DigestReader({ id }: { id: string }) {
           )}
         </div>
 
-        <aside className="flex flex-col gap-6 lg:sticky lg:top-6">
+        {/* 68px = the 52px topbar (sticky top-0 z-20, see topbar.tsx) plus a
+            16px gap, so the rail parks below it instead of sliding underneath.
+            Bounded and scrollable: a brief naming a dozen competitors makes the
+            rail taller than the viewport, and a pinned column whose foot is
+            unreachable hides the export buttons. */}
+        <aside className="flex flex-col gap-6 lg:sticky lg:top-[68px] lg:max-h-[calc(100dvh-84px)] lg:overflow-y-auto">
           {stats.movers.length > 0 && (
             <div className="flex flex-col gap-2.5">
               <RailLabel>Who moved</RailLabel>

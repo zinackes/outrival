@@ -344,10 +344,12 @@ export function WatchStrip({
             ))}
 
             {/* The hovered hour, marked behind the bars so the bar itself stays
-                the brightest thing in its own column. */}
+                the brightest thing in its own column. It slides from hour to hour
+                rather than teleporting, so the cursor reads as one mark moving
+                along the strip instead of 24 marks blinking on and off. */}
             {hoveredBar && (
               <div
-                className="absolute inset-y-0 bg-surface-3"
+                className="absolute inset-y-0 animate-in bg-surface-3 fade-in-0 transition-[left,width] duration-150 ease-out"
                 style={{ left: `${hoveredBar.left}%`, width: `${hoveredBar.width}%` }}
                 aria-hidden
               />
@@ -373,7 +375,7 @@ export function WatchStrip({
                     <i
                       key={s.kind}
                       className={cn(
-                        "block w-full",
+                        "block w-full transition-colors",
                         s.kind === "change" && "bg-foreground",
                         s.kind === "failed" && "bg-critical",
                         s.kind === "quiet" &&
@@ -516,13 +518,14 @@ function FindingMark({ bar, kind }: { bar: Bar; kind: "change" | "failed" }) {
 }
 
 // What one hour holds. Anchored to its own bar and clamped to the strip, so a
-// bucket at either end still reads inside the page.
+// bucket at either end still reads inside the page. It rides the same slide as
+// the band under it, so it only fades in once, on entering the strip.
 function BucketCard({ bar }: { bar: Bar }) {
   const centre = bar.left + bar.width / 2;
   const clamped = Math.min(88, Math.max(12, centre));
   return (
     <div
-      className="pointer-events-none absolute bottom-full z-10 mb-1.5 -translate-x-1/2 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 shadow-xs"
+      className="pointer-events-none absolute bottom-full z-10 mb-1.5 -translate-x-1/2 animate-in rounded-md border border-border bg-surface-2 px-2.5 py-1.5 shadow-xs fade-in-0 zoom-in-95 transition-[left] duration-150 ease-out"
       style={{ left: `${clamped}%` }}
       aria-live="polite"
     >

@@ -156,7 +156,7 @@ export function UpNext({ upcoming }: { upcoming: ActivityUpcoming[] }) {
                   )}
                   <motion.div
                     {...feedItemMotion}
-                    className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-3 border-b border-border py-2 pl-1 last:border-b-0"
+                    className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-3 border-b border-border py-2 pl-1 transition-colors last:border-b-0 hover:bg-surface-2"
                   >
                     <span className="min-w-0 truncate text-dense">
                       <Link

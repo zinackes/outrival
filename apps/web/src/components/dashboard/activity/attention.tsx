@@ -186,7 +186,7 @@ function AttentionRow({
     // match every row's only child and the hairlines would all disappear.
     <motion.div
       {...feedItemMotion}
-      className="grid grid-cols-[8px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-1.5 border-b border-border py-2.5 pl-1 last:border-b-0 max-sm:grid-cols-[8px_minmax(0,1fr)]"
+      className="grid grid-cols-[8px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-1.5 border-b border-border py-2.5 pl-1 transition-colors last:border-b-0 hover:bg-surface-2 max-sm:grid-cols-[8px_minmax(0,1fr)]"
     >
       <span
         className={

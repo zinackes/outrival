@@ -160,6 +160,75 @@ never-a-signal cohort is a coverage failure and deserves its own tracking:
 - Track it in the same ops-health-check output. Promote to a full SLO (own
   target + policy) once the primary SLO's first recalibration lands.
 
+## Miss attribution review, 2026-07-25
+
+First post-backfill 28-day window with the miss-attribution join
+(`GET /api/admin/first-signal-misses`, plan 019) live. Numbers below are the
+production values for the 28-day window ending 2026-07-25.
+
+### SLI
+
+| Metric | Value |
+|---|---|
+| Completions (10-min window elapsed) | 22 |
+| Missed (no signal within 10 minutes) | 16 |
+| Never got a signal at all | 5 |
+| **SLI (compliance)** | **6/22 = 27%** (target: 70%) |
+
+`missed <= completions` (16 ≤ 22) and `neverSignal <= missed` (5 ≤ 16) both
+hold — the numbers are internally consistent.
+
+### Miss buckets (per-org presence, not a partition)
+
+| Bucket | Orgs (of the 16 missed) |
+|---|---|
+| `no_backfill_run` | 14 |
+| `no_archive_capture` | 2 |
+| `change_triggered` | 1 |
+
+For reference, every `backfill_runs` row in the same 28 days, across all orgs
+(not just the missed ones):
+
+| Outcome | Rows |
+|---|---|
+| `change_triggered` | 23 |
+| `no_archive_capture` | 7 |
+| `no_significant_change` | 1 |
+
+### Dominant bucket
+
+`no_backfill_run`, at 14 of 16 missed orgs (88%) — well clear of
+`no_archive_capture` (2) and `change_triggered` (1).
+
+### Routing call
+
+Per the error-budget policy's step 3 (line 142): `no_backfill_run` dominant
+routes to **wiring**, not coverage. The backfill mechanism itself is healthy —
+23 `change_triggered` rows landed in the same 28 days, more than any other
+outcome — so this is not the "backfill is dead" case. It simply never ran at
+all for 14 of the 16 missed orgs: no `backfill_runs` row exists for any of
+their competitors in the window. That points at the backfill never being
+triggered (`BACKFILL_ENABLED`, `BACKFILL_SOURCES` scope, monitor seeding not
+reaching the first-scrape trigger, or a worker deploy gap), not at a broken
+Wayback fetch or an unlucky archive miss. Building the coverage artifact this
+SLO doc originally anticipated (`no_archive_capture` +
+`no_significant_change` dominant) would not fix this: those two buckets
+together are only 3 of 16 misses. The next step is a **separate plan**
+scoped to finding why the backfill trigger doesn't fire for most first
+scrapes — not designed here.
+
+### Does the 70% target survive?
+
+No — on these numbers the **window-exhausted** alert condition (28d
+compliance < 70% with ≥ 10 completions, `docs/slos/onboarding-first-signal.md`
+Alerting table) has fired: 27% compliance on 22 completions. That triggers the
+error-budget policy's freeze (step 1) and root-causing (step 2, this section).
+The **honesty gate** (step 4, soften the landing-page promise copy) requires
+two *consecutive* out-of-budget windows before it fires; this is the first
+post-backfill 28-day window measured, so the gate has not fired yet on the
+data alone — but at 27% against a 70% target it is close enough that the next
+window's result should be treated as the deciding one, not a formality.
+
 ## Alerts (calculator reference output)
 
 Kept for the record; superseded by the event-based table above.

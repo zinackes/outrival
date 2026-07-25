@@ -1,7 +1,7 @@
 import { AlertTriangle } from "lucide-react";
 import { adminFetch } from "../_lib/server";
 import { PageHeader, Section, Stat, Empty, durationFmt, pctFmt } from "../_components/shell";
-import type { AdminFirstSignalSlo, AdminOnboardingMetrics } from "@/lib/api";
+import type { AdminFirstSignalMisses, AdminFirstSignalSlo, AdminOnboardingMetrics } from "@/lib/api";
 
 // First-signal SLO status → human label + token color. Kept local so the shared
 // StatusPill sets stay untouched.
@@ -20,9 +20,10 @@ function pctOrDash(pct: number | null): string {
 }
 
 export default async function OnboardingMetricsPage() {
-  const [m, slo] = await Promise.all([
+  const [m, slo, misses] = await Promise.all([
     adminFetch<AdminOnboardingMetrics>("/api/admin/onboarding-metrics"),
     adminFetch<AdminFirstSignalSlo>("/api/admin/first-signal-slo"),
+    adminFetch<AdminFirstSignalMisses>("/api/admin/first-signal-misses"),
   ]);
 
   if (!m) {
@@ -90,6 +91,41 @@ export default async function OnboardingMetricsPage() {
                 value={pctOrDash(slo.coverage24h.pct)}
                 hint={`${slo.coverage24h.within}/${slo.coverage24h.completions} within 24h`}
               />
+            </div>
+          </div>
+        )}
+      </Section>
+
+      <Section
+        title="First-signal miss attribution"
+        note="28d"
+        info="For completions that missed the 10-minute first-signal window, what the archive backfill did (backfill_runs outcome). Buckets are per-org presence, not a partition: an org with several competitors can carry more than one outcome, so the counts do not sum to the miss total."
+      >
+        {!misses || !misses.available ? (
+          <Empty>Not enough completed onboardings yet.</Empty>
+        ) : misses.buckets.every((b) => b.orgs === 0) ? (
+          <Empty>No misses in this window.</Empty>
+        ) : (
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-2 gap-6 md:grid-cols-3">
+              <Stat label="Completions" value={misses.completions} />
+              <Stat label="Missed (10 min)" value={misses.missed} />
+              <Stat label="Never got a signal" value={misses.neverSignal} />
+            </div>
+            <div className="flex flex-col">
+              {misses.buckets
+                .filter((b) => b.orgs > 0)
+                .map((b) => (
+                  <div
+                    key={b.bucket}
+                    className="flex items-center justify-between gap-4 border-b border-border py-2 last:border-0"
+                  >
+                    <span className="font-mono text-sm">{b.bucket}</span>
+                    <span className="text-sm text-muted-foreground">
+                      {b.orgs} org{b.orgs === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                ))}
             </div>
           </div>
         )}

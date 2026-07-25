@@ -186,7 +186,75 @@ an agent reads before writing UI, so an agent reaching for `text-title` expectin
 
 ---
 
+## Phase 2A. Flow review: `/auth`
+
+Orchestrated by `better-interface`, mode `full`.
+
+### Scope and coverage
+
+Scope narrowed from "acquisition" (landing + `/auth` + an `/alternatives` page) to
+**`/auth` alone**: the sign-in flow end to end, covering the email step, the OTP
+code step, the password fallback, the TOTP and backup-code step, and the passkey
+and Google entry points. `apps/web/src/app/(auth)/auth/auth-form.tsx`, 799 lines.
+The landing and comparison pages were **not** inspected and are not covered by
+this verdict.
+
+Stack: Next.js App Router client component, Tailwind v4 with the project's token
+scale, shadcn/ui primitives, Better Auth client.
+
+| Domain | Evidence inspected | Result |
+| --- | --- | --- |
+| Accessibility | Field labelling, submit states, error association, OTP widget keyboard model, hit areas | 5 findings |
+| Layout | Field stack, divider, button insets, six-box row at `sm` | Clear (320px reflow not verified) |
+| Writing | Button labels, flow vocabulary, error strings, the password-recovery affordance | Clear |
+| Typography | Input sizing vs iOS zoom, error text size against the project floor | 1 finding |
+| Colours | Token-level pairs already measured in Phase 1; no screen-local colour introduced | Clear |
+| UI | Loading affordances, focus styling, press feedback | 1 finding |
+
+### Findings
+
+| # | Severity | Domain | Location | Before | After | Why |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | MEDIUM | Accessibility | `auth-form.tsx:426`, `:404` | `disabled={!email \|\| status === "loading"}` and `disabled={!email \|\| !password \|\| ...}` | Keep enabled until the request starts; validate on submit and focus the first invalid field | A submit disabled until the form is valid gives a dead control with no stated reason. `better-accessibility` §7 names this exact anti-pattern. The user cannot ask the form what is wrong. |
+| 2 | MEDIUM | Accessibility | `auth-form.tsx:366-375` sets it, `:449-453` renders it | Blur validation writes to a page-level centred `role="alert"` at the bottom of the card | Add `aria-invalid` on the field, point `aria-describedby` at an error node rendered next to it | The failing field never announces that it is invalid, and returning to it gives no context. `better-writing` §10 wants the instruction adjacent to the break; here it is detached and centred. |
+| 3 | MEDIUM | Accessibility | `auth-form.tsx:359-379`, `:384-392` | `aria-label` + `placeholder`, no visible `<label>` | Add a visible `<label for>` for each field | Assistive tech is covered by `aria-label`, but the placeholder is doing the visible labelling and it disappears on first keystroke. Classic placeholder-as-label, `better-accessibility` §6. |
+| 4 | MEDIUM | Accessibility | `auth-form.tsx:393-400` | A 16px icon in a button with no padding, so a roughly 16×16 target | Pad to at least 24×24, or extend with a pseudo-element | Under WCAG 2.5.8's Level AA baseline. The field is 38px tall, so the room exists. |
+| 5 | MEDIUM | Typography | `auth-form.tsx:450`, `:548`, `:657` | `text-xs` (12px) on every error message | `text-sm` (14px) | `DESIGN.md` §3's Small-Text Floor Rule floors read prose, helper text included, at 14px. The documented 12-13px exception is for **form field labels**, not error text. The most important sentence on the screen is set below the project's own floor. |
+| 6 | LOW | Accessibility | `auth-form.tsx:766-771` | `invalid` drives `border-destructive` only | Add `aria-invalid={invalid}` to each box | The visual invalid state has no programmatic equivalent. The adjacent `role="alert"` carries the message, so this is a gap rather than a failure. |
+| 7 | LOW | UI | `auth-form.tsx:406-408` vs `:426-433` | One submit keeps its label and adds a spinner; the other swaps both label and icon | Pick one pattern for the submit class | Two behaviours for the same action type on the same screen. `better-ui` §15 wants motion and state change to be consistent, not per-button. |
+
+### Considered but rejected
+
+| Location | Candidate | Rejected because |
+| --- | --- | --- |
+| `components/ui/input.tsx:14` | Input font size triggering the iOS focus-zoom | Verified rather than assumed: the field is `text-base` (16px), at the threshold. No zoom, no finding. |
+| `auth-form.tsx:768` | `focus:` rather than `focus-visible:` on the OTP boxes | For text inputs, showing the focus treatment on click is conventional and wanted. The `focus-visible` rule targets controls where a mouse ring is noise. |
+| `auth-form.tsx:769` | Invalid state carried by border colour alone | A `role="alert"` message renders directly beneath, which is the redundant cue `better-accessibility` §9 asks for. |
+| `auth-form.tsx:397` | Physical `right-2` instead of a logical property | The product ships English only per `.claude/rules/language.md`. RTL is not a supported direction, so logical properties buy nothing here. |
+| `auth-form.tsx:352-356` | The "or" divider and the `aria-hidden` separators | Correct as written. The divider reads naturally and the decorative spans are properly hidden. |
+
+### Verification
+
+| Check | Result |
+| --- | --- |
+| OTP widget keyboard model read in full | Arrow keys, backspace-then-step-back, paste distribution, `inputMode="numeric"`, `autoComplete="one-time-code"`, 40px boxes. Sound, no finding. |
+| Input font size checked against source before reporting an iOS zoom finding | `text-base`, cleared |
+| Small-text floor checked against `DESIGN.md` §3 rather than from memory | Confirmed at `DESIGN.md:260-266` |
+| Keyboard walk of the complete flow in a browser | **Not verified.** Deferred to the visual checklist. |
+| Screen-reader announcement of the error and OTP steps | **Not verified.** Deferred. |
+| 320px reflow and 200% zoom | **Not verified.** Deferred. |
+| Landing and `/alternatives` pages | **Not reviewed.** Out of the narrowed scope. |
+
+### Verdict
+
+`Needs changes`. Five MEDIUM, two LOW, no HIGH. Nothing blocks sign-in, but
+findings 1, 2 and 5 compound on the same failure path: a user who mistypes their
+email gets a dead button, an error that their field never claims, and that error
+set below the project's own legibility floor.
+
+---
+
 ## Still to run
 
-- Phase 2A/2B/2C: `better-interface` per flow.
+- Phase 2B/2C: `better-interface` on the core product and onboarding flows.
 - Phase 3: `better-writing` transverse copy pass.

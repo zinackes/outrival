@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Hono } from "hono";
 import { eq } from "drizzle-orm";
-import { changes, competitors, monitors, signals, snapshots } from "@outrival/db";
+import { changes, competitors, monitors, pricingHistory, signals, snapshots } from "@outrival/db";
 import { makeTestDb, type TestDb } from "./db-harness";
 import { asUser, installAppMocks, mountApp, seedOrg } from "./app-harness";
 
@@ -206,6 +206,84 @@ describe("GET /products portfolio aggregates", () => {
 
     expect(item?.coverage).toEqual({ sources: 2, failing: 1, failingSource: "pricing" });
     expect(item?.lastScanAt).not.toBeNull();
+  });
+});
+
+describe("price position", () => {
+  // A fresh org so the ladder is exactly what this test seeds.
+  let P: { orgId: string; userId: string; email: string };
+  let productP: string;
+  let selfP: string;
+
+  const priceRow = (competitorId: string, planName: string, price: number | null) => ({
+    competitorId,
+    planName,
+    price,
+    currency: "USD",
+    billingPeriod: "monthly",
+    recordedAt: new Date(),
+  });
+
+  beforeAll(async () => {
+    P = await seedOrg(testDb, { plan: "pro" });
+    const created = await app.request(
+      "/api/products",
+      asUser(P.userId, P.email, { method: "POST", body: JSON.stringify({ name: "Priced" }) }),
+    );
+    productP = (await created.json()).product.id;
+    selfP = (await (await get(P, productP)).json()).product.selfCompetitorId;
+
+    await testDb.insert(competitors).values([
+      { id: "riv-cheap", orgId: P.orgId, name: "Cheap Co" },
+      { id: "riv-mid", orgId: P.orgId, name: "Mid Co" },
+      { id: "riv-dear", orgId: P.orgId, name: "Dear Co" },
+      { id: "riv-quote", orgId: P.orgId, name: "Quote Co" },
+    ]);
+    for (const id of ["riv-cheap", "riv-mid", "riv-dear", "riv-quote"]) {
+      await app.request(
+        `/api/products/${productP}/competitors/${id}`,
+        asUser(P.userId, P.email, { method: "POST", body: JSON.stringify({}) }),
+      );
+    }
+
+    await testDb.insert(pricingHistory).values([
+      // Ours: a free tier that must NOT be read as the entry price.
+      priceRow(selfP, "Free", 0),
+      priceRow(selfP, "Starter", 49),
+      priceRow("riv-cheap", "Basic", 69),
+      priceRow("riv-mid", "Team", 99),
+      priceRow("riv-dear", "Growth", 149),
+      // Quote-based only: a real competitor, but not on the price axis.
+      priceRow("riv-quote", "Enterprise", null),
+    ]);
+  });
+
+  test("the ladder puts our cheapest paid tier against the priced rivals", async () => {
+    const res = await app.request(
+      `/api/products/${productP}/pricing-position`,
+      asUser(P.userId, P.email),
+    );
+    const body = await res.json();
+    expect(body.mine).toMatchObject({ planName: "Starter", price: 49 });
+    expect(body.median).toBe(99);
+    expect(body.quoteOnly).toBe(1);
+    expect(body.rivals.find((r: any) => r.competitorId === "riv-quote").comparable).toBe(false);
+    expect(body.rivals.find((r: any) => r.competitorId === "riv-dear").entry.price).toBe(149);
+  });
+
+  test("the list row carries the same numbers as the ladder", async () => {
+    const res = await app.request("/api/products", asUser(P.userId, P.email));
+    const body = (await res.json()) as { products: Record<string, any>[] };
+    const item = body.products.find((p) => p.id === productP);
+    expect(item?.pricing).toMatchObject({
+      median: 99,
+      low: 69,
+      high: 149,
+      rivalsPriced: 3,
+      currency: "USD",
+    });
+    expect(item?.pricing.entry).toMatchObject({ price: 49 });
+    expect(item?.topCompetitors).toHaveLength(3);
   });
 });
 

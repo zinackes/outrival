@@ -191,6 +191,7 @@ productsRouter.get("/", async (c) => {
       position: products.position,
       url: competitors.url,
       selfCompetitorId: products.selfCompetitorId,
+      selfOverrides: competitors.overrides,
     })
     .from(products)
     .innerJoin(competitors, eq(competitors.id, products.selfCompetitorId))
@@ -206,16 +207,20 @@ productsRouter.get("/", async (c) => {
     .select({
       productId: productCompetitors.productId,
       competitorId: productCompetitors.competitorId,
+      name: competitors.name,
+      url: competitors.url,
+      color: competitors.color,
+      overrides: competitors.overrides,
     })
     .from(productCompetitors)
     .innerJoin(products, eq(products.id, productCompetitors.productId))
     .innerJoin(competitors, eq(competitors.id, productCompetitors.competitorId))
     .where(and(eq(products.orgId, orgId), isNull(competitors.deletedAt)));
 
-  const competitorsByProduct = new Map<string, string[]>();
+  const competitorsByProduct = new Map<string, typeof links>();
   for (const l of links) {
     const arr = competitorsByProduct.get(l.productId) ?? [];
-    arr.push(l.competitorId);
+    arr.push(l);
     competitorsByProduct.set(l.productId, arr);
   }
 
@@ -318,6 +323,14 @@ productsRouter.get("/", async (c) => {
     .groupBy(productCompetitors.productId);
   const countBy = new Map(counts.map((r) => [r.productId, r.value]));
 
+  // One pricing read for the whole page: every product's own anchor plus every
+  // competitor any of them tracks. Best-effort, so a slow analytics read costs the
+  // price column and nothing else.
+  const pricingByCompetitor = await latestPricingByCompetitor([
+    ...anchorIds,
+    ...linkedIds,
+  ]);
+
   const enriched = rows.map((p) => {
     const anchors = monitorsByAnchor.get(p.selfCompetitorId) ?? [];
     const lastScan = anchors.reduce((max, m) => Math.max(max, m.lastRunAt?.getTime() ?? 0), 0);
@@ -335,7 +348,7 @@ productsRouter.get("/", async (c) => {
     let critical7d = 0;
     let lastSignalAt: string | null = null;
     const activity = dayKeys.map(() => 0);
-    for (const cid of mine) {
+    for (const { competitorId: cid } of mine) {
       const a = aggByCompetitor.get(cid);
       if (a) {
         signals7d += a.signals7d;
@@ -359,6 +372,43 @@ productsRouter.get("/", async (c) => {
       // a live site, a repo while it is being built, or neither.
       stage: p.url ? ("live" as const) : repoUrl ? ("developing" as const) : ("idea" as const),
       competitorCount: countBy.get(p.id) ?? 0,
+      // A few faces for the row, so "12 competitors" says who rather than only how
+      // many. Ordered by name for a stable set across refreshes.
+      topCompetitors: [...mine]
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .slice(0, 3)
+        .map((l) => ({ id: l.competitorId, name: l.name, url: l.url, color: l.color })),
+      pricing: (() => {
+        const pos = pricePosition(
+          { id: p.selfCompetitorId, overrides: p.selfOverrides },
+          mine,
+          pricingByCompetitor,
+        );
+        return {
+          entry: pos.mine,
+          median: pos.median,
+          currency: pos.currency,
+          billingPeriod: pos.billingPeriod,
+          // The band the row draws its marker on: nothing to draw with fewer than
+          // two comparable rivals, so the cell says "not priced" instead of
+          // implying a market from one data point.
+          low: pos.comparableIds.size
+            ? Math.min(
+                ...pos.priced
+                  .filter((x) => pos.comparableIds.has(x.row.competitorId))
+                  .map((x) => x.entry!.price),
+              )
+            : null,
+          high: pos.comparableIds.size
+            ? Math.max(
+                ...pos.priced
+                  .filter((x) => pos.comparableIds.has(x.row.competitorId))
+                  .map((x) => x.entry!.price),
+              )
+            : null,
+          rivalsPriced: pos.comparableIds.size,
+        };
+      })(),
       lastScanAt: lastScan > 0 ? new Date(lastScan).toISOString() : null,
       coverage: coverageOf(anchors),
       activity,
@@ -433,14 +483,59 @@ async function latestPricingByCompetitor(ids: string[]): Promise<Map<string, Pri
   return byCompetitor;
 }
 
-// GET /api/products/:id/pricing-position — where this product's entry price sits
-// against the competitors tracked on it.
-//
-// Both sides are read the same way (latest detected batch → user overrides →
-// cheapest paid tier), otherwise the gap measures our method, not the market. The
-// median is taken over the rivals that publish a comparable price in the SAME
-// currency and period as ours; everyone else is counted as quote-only, which is
-// itself a finding worth showing rather than hiding.
+/**
+ * Where a product's entry price sits against a set of rivals.
+ *
+ * Both sides are read the same way (latest detected batch → user overrides →
+ * cheapest paid tier), otherwise the gap measures our method, not the market. The
+ * median covers only the rivals publishing in the SAME currency and period as
+ * ours; everyone else is counted as quote-only, which is itself a finding worth
+ * showing rather than hiding. Pure, so the list and the detail route cannot drift.
+ */
+function pricePosition<R extends { competitorId: string; overrides: unknown }>(
+  self: { id: string; overrides: unknown } | null,
+  rivals: R[],
+  pricingByCompetitor: Map<string, PricingTier[]>,
+) {
+  const resolve = (id: string, overrides: unknown) =>
+    entryPrice(
+      resolveCurrentPricing(
+        pricingByCompetitor.get(id) ?? [],
+        (overrides as Parameters<typeof resolveCurrentPricing>[1]) ?? null,
+      ),
+    );
+
+  const mine = self ? resolve(self.id, self.overrides) : null;
+  const priced = rivals.map((r) => ({ row: r, entry: resolve(r.competitorId, r.overrides) }));
+
+  // With no price of our own we still describe the market, on its own period.
+  const axis =
+    mine ??
+    priced.find((p) => p.entry && isComparablePricePeriod(p.entry.billingPeriod))?.entry ??
+    null;
+  const comparable = axis
+    ? priced.filter(
+        (p) =>
+          p.entry &&
+          p.entry.currency === axis.currency &&
+          p.entry.billingPeriod === axis.billingPeriod,
+      )
+    : [];
+  const comparableIds = new Set(comparable.map((p) => p.row.competitorId));
+
+  return {
+    mine,
+    priced,
+    comparableIds,
+    median: priceMedian(comparable.map((p) => p.entry!.price)),
+    currency: axis?.currency ?? null,
+    billingPeriod: axis?.billingPeriod ?? null,
+    quoteOnly: rivals.length - comparable.length,
+  };
+}
+
+// GET /api/products/:id/pricing-position — the ladder behind the product's
+// Pricing tab: every tracked rival's entry price, ours among them.
 productsRouter.get("/:id/pricing-position", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
@@ -449,7 +544,7 @@ productsRouter.get("/:id/pricing-position", async (c) => {
 
   const linked = await db
     .select({
-      id: competitors.id,
+      competitorId: competitors.id,
       name: competitors.name,
       url: competitors.url,
       color: competitors.color,
@@ -464,48 +559,26 @@ productsRouter.get("/:id/pricing-position", async (c) => {
     columns: { id: true, name: true, url: true, overrides: true },
   });
 
-  const ids = [...linked.map((l) => l.id), ...(self ? [self.id] : [])];
-  const pricingByCompetitor = await latestPricingByCompetitor(ids);
-  const resolve = (id: string, overrides: unknown) =>
-    entryPrice(
-      resolveCurrentPricing(
-        pricingByCompetitor.get(id) ?? [],
-        (overrides as Parameters<typeof resolveCurrentPricing>[1]) ?? null,
-      ),
-    );
-
-  const mine = self ? resolve(self.id, self.overrides) : null;
-
-  const rivals = linked.map((l) => ({
-    competitorId: l.id,
-    name: l.name,
-    url: l.url,
-    color: l.color,
-    entry: resolve(l.id, l.overrides),
-  }));
-
-  // Comparable = same currency and same billing period as ours. With no price of
-  // our own we still describe the market, on its own most common period.
-  const axis = mine
-    ? { currency: mine.currency, billingPeriod: mine.billingPeriod }
-    : (rivals.find((r) => r.entry && isComparablePricePeriod(r.entry.billingPeriod))?.entry ??
-      null);
-  const comparable = axis
-    ? rivals.filter(
-        (r) =>
-          r.entry &&
-          r.entry.currency === axis.currency &&
-          r.entry.billingPeriod === axis.billingPeriod,
-      )
-    : [];
+  const pricingByCompetitor = await latestPricingByCompetitor([
+    ...linked.map((l) => l.competitorId),
+    ...(self ? [self.id] : []),
+  ]);
+  const position = pricePosition(self ?? null, linked, pricingByCompetitor);
 
   return c.json({
-    mine,
-    rivals: rivals.map((r) => ({ ...r, comparable: comparable.includes(r) })),
-    median: priceMedian(comparable.map((r) => r.entry!.price)),
-    currency: axis?.currency ?? null,
-    billingPeriod: axis?.billingPeriod ?? null,
-    quoteOnly: rivals.length - comparable.length,
+    mine: position.mine,
+    rivals: position.priced.map((p) => ({
+      competitorId: p.row.competitorId,
+      name: p.row.name,
+      url: p.row.url,
+      color: p.row.color,
+      entry: p.entry,
+      comparable: position.comparableIds.has(p.row.competitorId),
+    })),
+    median: position.median,
+    currency: position.currency,
+    billingPeriod: position.billingPeriod,
+    quoteOnly: position.quoteOnly,
   });
 });
 

@@ -141,6 +141,83 @@ function readTech(moves: TechMove[]) {
   return { added, dropped, ranked };
 }
 
+export interface MoverMark {
+  value: string;
+  tone: "neutral" | "pressure" | "opening";
+}
+export interface Mover {
+  competitorId: string;
+  competitorName: string;
+  marks: MoverMark[];
+  score: number;
+}
+
+/**
+ * Who is behind the headline.
+ *
+ * "3 competitors raised prices" is the reading, but the next question is always
+ * which three, and the answer was three sections down. This collapses every
+ * movement in the window to one entry per competitor, ranked by how far they
+ * moved, so the card states the names as well as the count.
+ *
+ * The weights put a 20% price move, a dozen roles and four tenths of a review
+ * point in the same order of magnitude, which is roughly how an analyst reads them.
+ */
+function readMovers(
+  pricing: ReturnType<typeof readPricing>,
+  hiring: ReturnType<typeof readHiring>,
+  reviews: ReturnType<typeof readReviews>,
+): Mover[] {
+  const movers = new Map<string, Mover>();
+  const entry = (competitorId: string, competitorName: string) => {
+    const existing = movers.get(competitorId);
+    if (existing) return existing;
+    const fresh: Mover = { competitorId, competitorName, marks: [], score: 0 };
+    movers.set(competitorId, fresh);
+    return fresh;
+  };
+
+  // A competitor's biggest relative price move, not each of its plans: a chip is a
+  // summary, and four plan rows for one company is what the sections are for.
+  const biggestPrice = new Map<string, { pct: number; name: string }>();
+  for (const { move, pct } of pricing.ranked) {
+    const current = biggestPrice.get(move.competitorId);
+    if (!current || Math.abs(pct) > Math.abs(current.pct)) {
+      biggestPrice.set(move.competitorId, { pct, name: move.competitorName });
+    }
+  }
+  for (const [competitorId, { pct, name }] of biggestPrice) {
+    if (pct === 0) continue;
+    const mover = entry(competitorId, name);
+    // Whether their price moving helps or hurts depends on how you are positioned,
+    // so the page states the fact and declines to score it.
+    mover.marks.push({ value: `${pct > 0 ? "+" : ""}${pct}% price`, tone: "neutral" });
+    mover.score += Math.abs(pct);
+  }
+
+  for (const move of hiring.ranked) {
+    if (move.net === 0) continue;
+    const mover = entry(move.competitorId, move.competitorName);
+    mover.marks.push({
+      value: `${move.net > 0 ? "+" : ""}${move.net} ${plural(Math.abs(move.net), "role")}`,
+      tone: move.net > 0 ? "pressure" : "opening",
+    });
+    mover.score += Math.abs(move.net) * 2;
+  }
+
+  for (const { move, drift } of reviews.moved) {
+    if (drift === null) continue;
+    const mover = entry(move.competitorId, move.competitorName);
+    mover.marks.push({
+      value: `${drift > 0 ? "+" : ""}${drift.toFixed(1)} rating`,
+      tone: drift > 0 ? "pressure" : "opening",
+    });
+    mover.score += Math.abs(drift) * 50;
+  }
+
+  return [...movers.values()].sort((a, b) => b.score - a.score);
+}
+
 /**
  * The one sentence the window is worth. Ranked by what a competitive analyst acts
  * on first: a price move changes a deal today, a hiring swing changes a roadmap
@@ -257,6 +334,46 @@ function RailStat({
       </span>
       <span className="text-xs text-muted-foreground">{children}</span>
     </div>
+  );
+}
+
+/**
+ * One competitor that moved, and how far. Sits under the headline so the card
+ * names the companies it is counting, and opens onto the one that matters.
+ */
+function MoverChip({
+  mover,
+  identity,
+}: {
+  mover: Mover;
+  identity?: { url: string | null; color: string | null };
+}) {
+  return (
+    <Link
+      href={`/dashboard/competitors/${mover.competitorId}`}
+      style={competitorNameColor(identity?.color)}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-sm border border-border bg-background-2 py-1 pl-1 pr-2",
+        "transition-colors hover:bg-surface-2",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+      )}
+    >
+      <CompAvatar name={mover.competitorName} url={identity?.url} size={18} />
+      <span className="text-xs font-medium">{mover.competitorName}</span>
+      {mover.marks.slice(0, 2).map((mark) => (
+        <span
+          key={mark.value}
+          className={cn(
+            "font-mono text-meta tabular-nums",
+            mark.tone === "pressure" && "text-high",
+            mark.tone === "opening" && "text-positive",
+            mark.tone === "neutral" && "text-muted-foreground",
+          )}
+        >
+          {mark.value}
+        </span>
+      ))}
+    </Link>
   );
 }
 
@@ -434,22 +551,29 @@ function MoveRow({
   );
 }
 
-function Delta({ value, suffix = "", invert }: { value: number; suffix?: string; invert?: boolean }) {
+function Delta({
+  value,
+  suffix = "",
+  // Whether a competitor's price moving helps or hurts depends on how you are
+  // positioned, so pricing states the number and declines to score it. Hiring does
+  // carry a reading: them opening roles is pressure, them closing roles is not.
+  neutral,
+}: {
+  value: number;
+  suffix?: string;
+  neutral?: boolean;
+}) {
   if (value === 0) {
     return <span className="font-mono text-dense text-muted-foreground tabular-nums">flat</span>;
   }
-  // A competitor raising a price or opening roles is pressure on you, so "up" is
-  // warm here, not green. Reviews invert: their score falling is your opening.
   const rising = value > 0;
-  const tone = invert
-    ? rising
-      ? "text-positive"
-      : "text-critical"
-    : rising
-      ? "text-high"
-      : "text-positive";
   return (
-    <span className={cn("font-mono text-dense tabular-nums", tone)}>
+    <span
+      className={cn(
+        "font-mono text-dense tabular-nums",
+        neutral ? "text-foreground" : rising ? "text-high" : "text-positive",
+      )}
+    >
       {rising ? "+" : ""}
       {value}
       {suffix}
@@ -482,7 +606,14 @@ export function TrendsView() {
     const hiring = readHiring(summary.hiring);
     const reviews = readReviews(summary.reviews);
     const tech = readTech(summary.tech);
-    return { pricing, hiring, reviews, tech, market: readMarket(pricing, hiring, reviews, tech) };
+    return {
+      pricing,
+      hiring,
+      reviews,
+      tech,
+      movers: readMovers(pricing, hiring, reviews),
+      market: readMarket(pricing, hiring, reviews, tech),
+    };
   }, [summary]);
 
   // Competitor identity (favicon + assigned colour) only travels on the market
@@ -577,14 +708,26 @@ export function TrendsView() {
               <p className="m-0 max-w-[64ch] text-sm text-muted-foreground">
                 {reading.market.detail}
               </p>
+
+              {reading.movers.length > 0 && (
+                <div className="mt-1 flex flex-col gap-2 border-t border-dashed border-border pt-3">
+                  <span className="text-xs text-muted-foreground">Who moved</span>
+                  <div className="flex flex-wrap gap-x-2 gap-y-1.5">
+                    {reading.movers.slice(0, 6).map((mover) => (
+                      <MoverChip
+                        key={mover.competitorId}
+                        mover={mover}
+                        identity={identity.get(mover.competitorId)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="flex flex-col border-border bg-background-2 max-lg:flex-row max-lg:border-t max-sm:flex-col lg:border-l">
               <RailStat
                 label="Price moves"
                 value={String(reading.pricing.raised.length + reading.pricing.cut.length)}
-                tone={
-                  reading.pricing.raised.length > reading.pricing.cut.length ? "up" : undefined
-                }
               >
                 {reading.pricing.raised.length} up, {reading.pricing.cut.length} down
               </RailStat>
@@ -660,7 +803,7 @@ export function TrendsView() {
                         {money(move.price, move.currency)}
                       </>
                     }
-                    delta={<Delta value={pct} suffix="%" />}
+                    delta={<Delta value={pct} suffix="%" neutral />}
                     when={shortDate(move.recordedAt)}
                   />
                 ))}

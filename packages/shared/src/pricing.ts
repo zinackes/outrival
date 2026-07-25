@@ -205,6 +205,72 @@ export function resolveCurrentPricing(
   return result;
 }
 
+// ---------------------------------------------------------------------------
+// Price position (products portfolio + product Pricing tab).
+//
+// "Where does my entry price sit against the rivals I track" needs one number
+// per product, drawn the same way on both sides of the comparison — otherwise
+// the gap is an artefact of how each side was picked. These two helpers are that
+// rule, kept here so the API and the web never derive it twice.
+// ---------------------------------------------------------------------------
+
+// A buyer compares monthly list prices first, so that is the axis we read. Only
+// when a product publishes no monthly tier do we fall back, and the period is
+// returned with the price so a caller never charts $49/month against $490/year.
+const ENTRY_PERIOD_ORDER = ["monthly", "yearly", "one_time"] as const;
+
+export interface EntryPrice {
+  planName: string;
+  price: number;
+  currency: string;
+  billingPeriod: string;
+}
+
+/**
+ * The cheapest PAID tier of a pricing table, or null when nothing qualifies.
+ *
+ * Free tiers (price 0) and quote-based tiers (price null) are excluded on
+ * purpose: neither is a price a buyer can compare, and counting a $0 plan as the
+ * entry point would report every freemium product as infinitely undercutting.
+ * Usage rates are excluded too, by never being in ENTRY_PERIOD_ORDER, since a
+ * per-call rate does not belong on a subscription axis.
+ */
+export function entryPrice(tiers: PricingTier[]): EntryPrice | null {
+  for (const period of ENTRY_PERIOD_ORDER) {
+    let best: EntryPrice | null = null;
+    for (const t of tiers) {
+      if (t.billingPeriod !== period) continue;
+      if (t.price === null || t.price === undefined || t.price <= 0) continue;
+      if (best === null || t.price < best.price) {
+        best = {
+          planName: t.planName,
+          price: t.price,
+          currency: t.currency,
+          billingPeriod: t.billingPeriod,
+        };
+      }
+    }
+    if (best) return best;
+  }
+  return null;
+}
+
+/**
+ * Median of a price sample, or null when the sample is empty.
+ *
+ * The median, not the mean: one $2,000 enterprise list price would drag an
+ * average far above anything a buyer actually chooses between, and the whole
+ * point of the number is to say what the middle of the market asks. Callers must
+ * pass one currency and one billing period (see entryPrice).
+ */
+export function priceMedian(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) return sorted[mid]!;
+  return (sorted[mid - 1]! + sorted[mid]!) / 2;
+}
+
 export type PricingRepositioningType =
   | "pricing_gated" // pulled public prices behind a gate
   | "pricing_public" // exposed previously gated prices

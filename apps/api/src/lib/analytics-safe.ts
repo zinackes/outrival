@@ -29,11 +29,17 @@ export async function analyticsQueryResult<T>(
     // out query throws → caught below → same best-effort [] contract as any
     // other failure. The relational hot path (which never routes through here)
     // is untouched.
-    const rows = await db.transaction(async (tx) => {
+    const result = await db.transaction(async (tx) => {
       await tx.execute(sql`SET LOCAL statement_timeout = 10000`);
       return await tx.execute(query);
     });
-    return { ok: true, rows: rows as unknown as T[] };
+    // postgres-js returns the rows as an array; the PGlite driver the API tests
+    // run on returns { rows }. Normalising here keeps the "always an array"
+    // contract every caller iterates on, and is what makes a handler that reads
+    // analytics testable at all (an object reached `for (const r of rows)` as a
+    // 500 instead of degrading to empty).
+    const rows = result as unknown as T[] | { rows?: T[] };
+    return { ok: true, rows: Array.isArray(rows) ? rows : (rows?.rows ?? []) };
   } catch (err) {
     logger.error({ err }, "analytics query failed");
     return { ok: false, rows: [] };

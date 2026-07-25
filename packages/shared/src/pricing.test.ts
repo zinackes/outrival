@@ -1,6 +1,8 @@
 import { test, expect } from "bun:test";
 import {
+  entryPrice,
   normalizePlanKey,
+  priceMedian,
   resolveCurrentPricing,
   type PricingTier,
   type CompetitorOverrides,
@@ -99,4 +101,47 @@ test("plan key matching is case/whitespace insensitive", () => {
   const out = resolveCurrentPricing(detected, overrides);
   expect(out).toHaveLength(1);
   expect(out[0]).toMatchObject({ price: 30, origin: "edited", locked: true });
+});
+
+// ─── price position (products portfolio + product Pricing tab) ───────────────
+
+test("entry price is the cheapest paid monthly tier", () => {
+  expect(entryPrice([T("Free", 0), T("Pro", 49), T("Business", 199)])).toEqual({
+    planName: "Pro",
+    price: 49,
+    currency: "USD",
+    billingPeriod: "monthly",
+  });
+});
+
+test("entry price ignores free and quote-based tiers", () => {
+  expect(entryPrice([T("Free", 0), T("Enterprise", null)])).toBeNull();
+});
+
+test("entry price falls back to yearly only when no monthly tier is published", () => {
+  const out = entryPrice([T("Annual", 490, "yearly"), T("Enterprise", null, "custom")]);
+  expect(out).toMatchObject({ price: 490, billingPeriod: "yearly" });
+});
+
+test("a monthly tier wins over a cheaper yearly one, so periods never mix", () => {
+  const out = entryPrice([T("Annual", 20, "yearly"), T("Pro", 49)]);
+  expect(out).toMatchObject({ price: 49, billingPeriod: "monthly" });
+});
+
+test("usage rates never become an entry price", () => {
+  expect(entryPrice([T("Metered", 0.004, "usage")])).toBeNull();
+});
+
+test("entry price of an empty table is null, not zero", () => {
+  expect(entryPrice([])).toBeNull();
+});
+
+test("median takes the middle of an odd sample and the mean of the two middles", () => {
+  expect(priceMedian([99, 49, 199])).toBe(99);
+  expect(priceMedian([49, 99, 149, 199])).toBe(124);
+});
+
+test("median of one price is that price, of none is null", () => {
+  expect(priceMedian([99])).toBe(99);
+  expect(priceMedian([])).toBeNull();
 });

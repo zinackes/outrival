@@ -1949,6 +1949,44 @@ export interface ProductSummary {
   url: string | null;
   selfCompetitorId: string;
   competitorCount: number;
+  // The GitHub repo watched while a product is still being built (monitor config),
+  // which is also what the portfolio's avatar falls back to when there is no site.
+  repoUrl?: string | null;
+  // What we can observe of the product, and therefore what its row can say.
+  stage?: "live" | "developing" | "idea";
+  lastScanAt?: string | null;
+  // How much of the product's own site/repo we are still capturing.
+  coverage?: { sources: number; failing: number; failingSource: string | null };
+  // Daily signal counts on this product's competitors over 14 days, oldest first.
+  activity?: number[];
+  stats?: {
+    signals7d: number;
+    signalsPrev: number;
+    critical7d: number;
+    lastSignalAt: string | null;
+  };
+}
+
+// Where a product's entry price sits against the competitors tracked on it. Both
+// sides are read the same way (latest detected batch → user overrides → cheapest
+// paid tier); `comparable` marks the rivals whose price shares our currency and
+// billing period, and only those are in the median.
+export interface ProductPricingRival {
+  competitorId: string;
+  name: string;
+  url: string | null;
+  color: string | null;
+  entry: { planName: string; price: number; currency: string; billingPeriod: string } | null;
+  comparable: boolean;
+}
+
+export interface ProductPricingPosition {
+  mine: { planName: string; price: number; currency: string; billingPeriod: string } | null;
+  rivals: ProductPricingRival[];
+  median: number | null;
+  currency: string | null;
+  billingPeriod: string | null;
+  quoteOnly: number;
 }
 
 // A competitor linked to a product (junction product_competitors).
@@ -2452,6 +2490,10 @@ export const api = {
     request<{ ok: true }>(`/api/products/${id}`, { method: "DELETE" }),
   getProduct: (id: string) =>
     request<ProductDetail>(`/api/products/${encodeURIComponent(id)}`),
+  getProductPricingPosition: (id: string) =>
+    request<ProductPricingPosition>(
+      `/api/products/${encodeURIComponent(id)}/pricing-position`,
+    ),
   listSectoral: (params?: {
     limit?: number;
     offset?: number;

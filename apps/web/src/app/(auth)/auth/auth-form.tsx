@@ -49,6 +49,33 @@ export function AuthForm() {
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState("");
   const [cooldown, setCooldown] = useState(0);
+  // Which field the current error belongs to, so it can render next to that
+  // field and be wired with aria-describedby. null = the error is form-level
+  // (server, network, captcha) and stays in the shared region below.
+  const [fieldError, setFieldError] = useState<"email" | "password" | null>(null);
+  const emailRef = useRef<HTMLInputElement | null>(null);
+  const passwordRef = useRef<HTMLInputElement | null>(null);
+
+  // One place to fail a field: message, invalid state, and focus, so no caller
+  // can set two of the three and leave the field silently invalid.
+  // focus:false for blur-time validation — pulling focus back into the field the
+  // user just left would trap them there.
+  function failField(
+    field: "email" | "password",
+    message: string,
+    { focus = true }: { focus?: boolean } = {},
+  ) {
+    setError(message);
+    setFieldError(field);
+    setStatus("error");
+    if (focus) (field === "email" ? emailRef : passwordRef).current?.focus();
+  }
+
+  function clearError() {
+    setError("");
+    setFieldError(null);
+    if (status === "error") setStatus("idle");
+  }
 
   const turnstileRequired = Boolean(TURNSTILE_SITE_KEY);
   const tokenReady = !turnstileRequired || Boolean(turnstileToken);
@@ -93,17 +120,17 @@ export function AuthForm() {
   async function handleSendCode() {
     const emailError = validateEmailInline(email);
     if (emailError) {
-      setError(emailError);
-      setStatus("error");
+      failField("email", emailError);
       return;
     }
     if (!tokenReady) {
       setError("Verifying you're human. One moment, then try again.");
+      setFieldError(null);
       setStatus("error");
       return;
     }
     setStatus("loading");
-    setError("");
+    clearError();
     track("auth_magic_link_requested", { method: "email_otp" });
     try {
       const res = await fetch(`${API_URL}/api/auth/check-and-send-magic-link`, {
@@ -199,12 +226,15 @@ export function AuthForm() {
   async function handlePasswordLogin() {
     const emailError = validateEmailInline(email);
     if (emailError) {
-      setError(emailError);
-      setStatus("error");
+      failField("email", emailError);
+      return;
+    }
+    if (!password) {
+      failField("password", "Enter your password, or sign in with an email code.");
       return;
     }
     setStatus("loading");
-    setError("");
+    clearError();
     const result = await signIn.email({ email, password });
     if (result.error) {
       // Generic on purpose — never reveal whether the email exists.
@@ -224,8 +254,7 @@ export function AuthForm() {
   }
 
   function togglePasswordMode() {
-    setError("");
-    setStatus("idle");
+    clearError();
     if (!usePassword) track("auth_password_option_clicked");
     setUsePassword((v) => !v);
   }
@@ -357,37 +386,52 @@ export function AuthForm() {
 
               <div className="flex flex-col gap-3">
                 <Input
+                  ref={emailRef}
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (fieldError === "email") clearError();
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !usePassword) void handleSendCode();
                   }}
                   onBlur={() => {
+                    if (!email) return;
                     const msg = validateEmailInline(email);
-                    if (msg) {
-                      setError(msg);
-                      setStatus("error");
-                    } else if (status === "error") {
-                      setError("");
-                      setStatus("idle");
-                    }
+                    if (msg) failField("email", msg, { focus: false });
+                    else if (fieldError === "email") clearError();
                   }}
                   placeholder="you@your-company.com"
                   autoComplete="email"
                   aria-label="Email address"
+                  aria-invalid={fieldError === "email"}
+                  aria-describedby={fieldError === "email" ? "auth-email-error" : undefined}
                 />
+                {fieldError === "email" && (
+                  <p id="auth-email-error" className="text-sm text-destructive">
+                    {error}
+                  </p>
+                )}
 
                 {usePassword ? (
                   <>
                     <div className="relative">
                       <Input
+                        ref={passwordRef}
                         type={showPassword ? "text" : "password"}
                         value={password}
-                        onChange={(e) => setPassword(e.target.value)}
+                        onChange={(e) => {
+                          setPassword(e.target.value);
+                          if (fieldError === "password") clearError();
+                        }}
                         placeholder="Your password"
                         autoComplete="current-password"
                         aria-label="Password"
+                        aria-invalid={fieldError === "password"}
+                        aria-describedby={
+                          fieldError === "password" ? "auth-password-error" : undefined
+                        }
                         className="pr-10"
                       />
                       <button
@@ -399,10 +443,12 @@ export function AuthForm() {
                         {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                       </button>
                     </div>
-                    <Button
-                      onClick={handlePasswordLogin}
-                      disabled={!email || !password || status === "loading"}
-                    >
+                    {fieldError === "password" && (
+                      <p id="auth-password-error" className="text-sm text-destructive">
+                        {error}
+                      </p>
+                    )}
+                    <Button onClick={handlePasswordLogin} disabled={status === "loading"}>
                       {status === "loading" && <Loader2 size={14} className="animate-spin" />}
                       Sign in
                     </Button>
@@ -423,7 +469,7 @@ export function AuthForm() {
                     </button>
                   </>
                 ) : (
-                  <Button onClick={handleSendCode} disabled={!email || status === "loading"}>
+                  <Button onClick={handleSendCode} disabled={status === "loading"}>
                     {status === "loading" ? (
                       <Loader2 size={14} className="animate-spin" />
                     ) : (
@@ -446,8 +492,10 @@ export function AuthForm() {
                 </button>
               </div>
 
-              {status === "error" && error && (
-                <p className="mt-4 text-center text-xs text-destructive" role="alert">
+              {/* Form-level only. A field error renders next to its field, wired
+                  with aria-describedby, so it is never announced twice. */}
+              {status === "error" && error && !fieldError && (
+                <p className="mt-4 text-center text-sm text-destructive" role="alert">
                   {error}
                 </p>
               )}
@@ -545,7 +593,7 @@ function CodeStep({
       </Button>
 
       {invalid && (
-        <p className="mt-4 text-xs text-destructive" role="alert">
+        <p className="mt-4 text-sm text-destructive" role="alert">
           {error}
         </p>
       )}
@@ -654,7 +702,7 @@ function TotpStep({
       </Button>
 
       {invalid && (
-        <p className="mt-4 text-xs text-destructive" role="alert">
+        <p className="mt-4 text-sm text-destructive" role="alert">
           {error}
         </p>
       )}

@@ -1,9 +1,22 @@
 import os from "node:os";
 import { Hono } from "hono";
-import { gte, sql } from "drizzle-orm";
+import { and, eq, gte, sql } from "drizzle-orm";
 import { Resend } from "resend";
-import { db, users, organizations, signals, onboardingSessions } from "@outrival/db";
-import { logger, getRedis } from "@outrival/shared";
+import {
+  db,
+  users,
+  organizations,
+  signals,
+  onboardingSessions,
+  standingQueries,
+  shareLinks,
+  crmDestinations,
+  askHistory,
+  signalComments,
+  savedViews,
+  passkey,
+} from "@outrival/db";
+import { logger, getRedis, FEATURE_FLAGS } from "@outrival/shared";
 import { checkGlobalBreaker } from "@outrival/ai";
 import { getStripe } from "../../lib/stripe";
 import { analyticsQuery } from "../../lib/analytics-safe";
@@ -160,6 +173,231 @@ systemRouter.get("/dependencies", async (c) => {
 
   const payload = { checkedAt: new Date().toISOString(), dependencies };
   depCache = { at: Date.now(), payload };
+  return c.json({ ...payload, cached: false });
+});
+
+// --- Capability liveness readout (plan 021) ---
+// Every optional capability behind a switch/key/plan flag, answered behaviourally:
+// has it written a row recently? The API and workers are separate services with
+// separate environments, so an env read is only meaningful for a capability that
+// is genuinely API-side (visual_diff) — everything else is probed from a trace it
+// already leaves in an existing table. No env value ever appears below: booleans
+// and counts only, matching /dependencies above.
+type CapabilityStatus = {
+  key: string;
+  label: string;
+  observable: boolean;
+  live: boolean;
+  count: number;
+  note: string | null;
+};
+
+const CAPABILITY_WINDOW_DAYS = 30;
+const CAP_CACHE_MS = 60_000;
+let capCache: {
+  at: number;
+  payload: { checkedAt: string; capabilities: CapabilityStatus[] };
+} | null = null;
+
+systemRouter.get("/capabilities", async (c) => {
+  if (capCache && Date.now() - capCache.at < CAP_CACHE_MS) {
+    return c.json({ ...capCache.payload, cached: true });
+  }
+
+  const windowSql = sql`now() - make_interval(days => ${CAPABILITY_WINDOW_DAYS})`;
+
+  const [backfillRows, extractionRows, platformRows, aiVisibilityRows] = await Promise.all([
+    analyticsQuery<{ n: string }>(
+      sql`SELECT count(*) AS n FROM backfill_runs WHERE recorded_at >= ${windowSql}`,
+    ),
+    analyticsQuery<{ total: string; non_floor: string }>(sql`
+      SELECT count(*) AS total, count(*) FILTER (WHERE resolution <> 'ai_fallback') AS non_floor
+      FROM extraction_runs WHERE recorded_at >= ${windowSql}
+    `),
+    analyticsQuery<{ n: string }>(
+      sql`SELECT count(*) AS n FROM platform_detection_runs WHERE recorded_at >= ${windowSql}`,
+    ),
+    analyticsQuery<{ n: string }>(
+      sql`SELECT count(*) AS n FROM ai_visibility_results WHERE recorded_at >= ${windowSql}`,
+    ),
+  ]);
+
+  const windowStart = new Date(Date.now() - CAPABILITY_WINDOW_DAYS * 86_400_000);
+
+  const [faithfulnessRow] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(signals)
+    .where(and(gte(signals.createdAt, windowStart), sql`${signals.faithfulness} IS NOT NULL`));
+
+  const [standingRow] = await db
+    .select({
+      evaluated: sql<number>`count(*) filter (where ${standingQueries.lastEvaluatedAt} is not null)::int`,
+      dormant: sql<number>`count(*) filter (where ${standingQueries.lastEvaluatedAt} is null)::int`,
+    })
+    .from(standingQueries)
+    .where(eq(standingQueries.isActive, true));
+
+  const [shareLinksRow] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(shareLinks)
+    .where(sql`${shareLinks.revokedAt} IS NULL`);
+
+  const [crmRow] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(crmDestinations)
+    .where(eq(crmDestinations.enabled, true));
+
+  const [askRow] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(askHistory)
+    .where(gte(askHistory.createdAt, windowStart));
+
+  const [commentsRow] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(signalComments)
+    .where(gte(signalComments.createdAt, windowStart));
+
+  const [savedViewsRow] = await db.select({ n: sql<number>`count(*)::int` }).from(savedViews);
+  const [passkeyRow] = await db.select({ n: sql<number>`count(*)::int` }).from(passkey);
+
+  const backfillCount = num(backfillRows[0]?.n);
+  const extractionTotal = num(extractionRows[0]?.total);
+  const extractionNonFloor = num(extractionRows[0]?.non_floor);
+  const platformCount = num(platformRows[0]?.n);
+  const aiVisibilityCount = num(aiVisibilityRows[0]?.n);
+  const faithfulnessCount = faithfulnessRow?.n ?? 0;
+  const standingEvaluated = standingRow?.evaluated ?? 0;
+  const standingDormant = standingRow?.dormant ?? 0;
+  const shareLinksCount = shareLinksRow?.n ?? 0;
+  const crmCount = crmRow?.n ?? 0;
+  const askCount = askRow?.n ?? 0;
+  const commentsCount = commentsRow?.n ?? 0;
+  const savedViewsCount = savedViewsRow?.n ?? 0;
+  const passkeyCount = passkeyRow?.n ?? 0;
+
+  const capabilities: CapabilityStatus[] = [
+    {
+      key: "archive_backfill",
+      label: "Archive backfill",
+      observable: true,
+      live: backfillCount > 0,
+      count: backfillCount,
+      note: null,
+    },
+    {
+      key: "staged_extraction",
+      label: "Staged extraction",
+      observable: true,
+      live: extractionNonFloor > 0,
+      count: extractionNonFloor,
+      note:
+        extractionTotal > 0 && extractionNonFloor === 0
+          ? "Every resolution in the window was the AI fallback floor; the staged tiers are not resolving anything themselves."
+          : null,
+    },
+    {
+      key: "platform_detection",
+      label: "Platform detection",
+      observable: true,
+      live: platformCount > 0,
+      count: platformCount,
+      note: null,
+    },
+    {
+      key: "ai_visibility",
+      label: "AI Visibility",
+      observable: true,
+      live: aiVisibilityCount > 0,
+      count: aiVisibilityCount,
+      note: null,
+    },
+    {
+      key: "faithfulness_gate",
+      label: "Faithfulness gate",
+      observable: true,
+      live: faithfulnessCount > 0,
+      count: faithfulnessCount,
+      note: null,
+    },
+    {
+      key: "standing_queries",
+      label: "Standing queries",
+      observable: true,
+      live: standingEvaluated > 0,
+      count: standingEvaluated,
+      note:
+        standingDormant > 0
+          ? `${standingDormant} active but never evaluated, the dormant-secret symptom.`
+          : null,
+    },
+    {
+      key: "share_links",
+      label: "Share links",
+      observable: true,
+      live: shareLinksCount > 0,
+      count: shareLinksCount,
+      note: null,
+    },
+    {
+      key: "crm_webhook",
+      label: "CRM webhook",
+      observable: true,
+      live: crmCount > 0,
+      count: crmCount,
+      note: null,
+    },
+    {
+      key: "ask",
+      label: "Ask Outrival",
+      observable: true,
+      live: askCount > 0,
+      count: askCount,
+      note: null,
+    },
+    {
+      key: "signal_comments",
+      label: "Signal comments",
+      observable: true,
+      live: commentsCount > 0,
+      count: commentsCount,
+      note: null,
+    },
+    {
+      key: "saved_views",
+      label: "Saved views",
+      observable: true,
+      live: savedViewsCount > 0,
+      count: savedViewsCount,
+      note: null,
+    },
+    {
+      key: "passkeys",
+      label: "Passkeys",
+      observable: true,
+      live: passkeyCount > 0,
+      count: passkeyCount,
+      note: null,
+    },
+    {
+      key: "visual_diff",
+      label: "Visual diff",
+      observable: true,
+      live: process.env.VISUAL_DIFF_ENABLED !== "false",
+      count: 0,
+      note: null,
+    },
+    {
+      key: "multi_user",
+      label: "Multi-user orgs",
+      observable: true,
+      live: FEATURE_FLAGS.multiUser,
+      count: 0,
+      note: "Deliberately off, see docs/paid-feature-delivery.md.",
+    },
+  ];
+
+  const payload = { checkedAt: new Date().toISOString(), capabilities };
+  capCache = { at: Date.now(), payload };
   return c.json({ ...payload, cached: false });
 });
 

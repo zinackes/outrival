@@ -27,6 +27,8 @@ import type {
   AdminDependency,
   AdminHostHealth,
   AdminErrorRates,
+  AdminCapabilities,
+  AdminCapability,
 } from "@/lib/api";
 
 // Backlog over this many queued runs is worth flagging (scraping fans out, so a
@@ -344,12 +346,59 @@ function QueueSections({ health }: { health: AdminQueueHealth }) {
   );
 }
 
+function CapabilityPill({ live }: { live: boolean }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 text-meta">
+      <span
+        className="h-1.5 w-1.5 rounded-full"
+        style={{ background: live ? "var(--positive)" : "var(--muted)" }}
+      />
+      <span style={mono}>{live ? "live" : "dark"}</span>
+    </span>
+  );
+}
+
+function CapabilitiesSection({ capabilities }: { capabilities: AdminCapability[] }) {
+  return (
+    <Section
+      title="Capability liveness"
+      info="Whether each optional capability has actually written a row in the last 30 days (durable state, no window, for saved views / passkeys / share links / the CRM webhook). Booleans and counts only, never an environment value. See docs/capability-activation.md for what turns each one on."
+    >
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Capability</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead className="text-right">Count</TableHead>
+            <TableHead>Note</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {capabilities.map((cap) => (
+            <TableRow key={cap.key}>
+              <TableCell>{cap.label}</TableCell>
+              <TableCell>
+                <CapabilityPill live={cap.live} />
+              </TableCell>
+              <TableCell className="text-right" style={mono}>
+                {cap.count}
+              </TableCell>
+              <TableCell className="text-xs text-muted-foreground">{cap.note ?? "—"}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </Section>
+  );
+}
+
 export default async function SystemPage() {
-  const [health, deps, host, rates] = await Promise.all([
+  const [health, deps, host, rates, caps] = await Promise.all([
     adminFetch<AdminQueueHealth>("/api/admin/queue-health"),
     adminFetch<AdminDependencies>("/api/admin/dependencies"),
     adminFetch<AdminHostHealth>("/api/admin/host-health"),
     adminFetch<AdminErrorRates>("/api/admin/error-rates"),
+    adminFetch<AdminCapabilities>("/api/admin/capabilities"),
   ]);
 
   return (
@@ -378,6 +427,14 @@ export default async function SystemPage() {
       {host ? <HostSection host={host} /> : null}
 
       {rates ? <ErrorsSection rates={rates} /> : null}
+
+      {caps ? (
+        <CapabilitiesSection capabilities={caps.capabilities} />
+      ) : (
+        <Section title="Capability liveness">
+          <Empty>Capability readout unavailable.</Empty>
+        </Section>
+      )}
 
       {!health ? (
         <Section title="Job queue">

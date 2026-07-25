@@ -57,9 +57,9 @@ deadlines, security and direction.
 | 016 | `daily_priority` either does something, or stops being sold | P2 | S/M | LOW/MED | — | TODO |
 | 017 | Measure the faithfulness gate's false-block rate, then decide | P2 | M | LOW | — | TODO |
 | 018 | One authored release ledger feeds both changelogs, plus a feed | P3 | S-M | LOW | — | TODO |
-| 019 | Every first-signal SLO miss is attributed to a named cause | P1 | M | LOW | — | DONE (reviewed, `advisor/019-first-signal-miss-buckets` @ `8dc044a`, unmerged) |
-| 020 | Every recurring briefing links back, and its clicks are measurable | P1 | S-M | LOW | — | TODO |
-| 021 | Every optional capability reports whether it is live, and why it is off | P2 | S-M | LOW | — | TODO |
+| 019 | Every first-signal SLO miss is attributed to a named cause | P1 | M | LOW | — | DONE (merged, PR #272) |
+| 020 | Every recurring briefing links back, and its clicks are measurable | P1 | S-M | LOW | — | DONE (reviewed, PR #278) |
+| 021 | Every optional capability reports whether it is live, and why it is off | P2 | S-M | LOW | — | DONE (reviewed, PR #281) |
 | 022 | Decide how a free workspace first meets a paid capability | P2 | M | MED | — | TODO |
 | 023 | Decide whether collected data can become a public surface | P2 | M | MED-HIGH | — | TODO |
 | 024 | Find where 80% of archive backfills are lost, then stop losing them | P1 | M | MED | 019 | REJECTED (premise falsified: the gap was historical and self-resolved on 2026-07-22) |

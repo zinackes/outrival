@@ -30,9 +30,31 @@ aiVisibilityRouter.use("*", authMiddleware);
 // engine (Google Search grounding free tier), so it's the one with data out of the box.
 const TREND_ENGINE = "gemini";
 const MAX_TREND_LINES = 6;
+// How far back the "newest run that actually named somebody" search reaches. At the
+// weekly cadence this is ~7 months. It was 10 runs, which a two-month engine outage
+// exhausts: the board then fell back to a run naming nobody and rendered a wall of 0%
+// beside a trend chart that (correctly) skips those runs, so the two panels disagreed.
+const DISPLAY_RUN_WINDOW = 30;
 
 const num = (v: unknown): number => Number(v ?? 0) || 0;
 const pct = (v: unknown): number => Math.round(num(v) * 100);
+
+// When the next automated check lands. The scheduler is weekly
+// (CRON_SCHEDULES["schedule-ai-visibility"] = "0 7 * * 1" in @outrival/queue) and only
+// enqueues an org whose newest result is older than AI_VISIBILITY_INTERVAL_DAYS, so the
+// next check is the first Monday 07:00 UTC at or after that due date.
+function nextWeeklyRun(latestRunAt: string | null): string {
+  const intervalDays = Number(process.env.AI_VISIBILITY_INTERVAL_DAYS ?? 7);
+  const due = latestRunAt
+    ? new Date(latestRunAt).getTime() + intervalDays * 86_400_000
+    : Date.now();
+  const floor = Math.max(due, Date.now());
+  const at = new Date(floor);
+  at.setUTCHours(7, 0, 0, 0);
+  at.setUTCDate(at.getUTCDate() + ((1 - at.getUTCDay() + 7) % 7)); // 1 = Monday
+  if (at.getTime() < floor) at.setUTCDate(at.getUTCDate() + 7);
+  return at.toISOString();
+}
 
 // Onboarding TEASER (Lever 7) — the ONE ungated read in this router: a free one-time
 // "share of model" taste any plan sees at day 0. Returns "pending" until the worker
@@ -106,7 +128,7 @@ aiVisibilityRouter.get("/", async (c) => {
       WHERE org_id = ${orgId} ${productFilter}
       GROUP BY run_id
       ORDER BY max(recorded_at) DESC
-      LIMIT 10`),
+      LIMIT ${DISPLAY_RUN_WINDOW}`),
   ]);
   const nameById = new Map(roster.map((r) => [r.id, r.name]));
 
@@ -135,8 +157,18 @@ aiVisibilityRouter.get("/", async (c) => {
   // a fresh run actually wrote rows, which lastRunAt can't tell when a zero-mention run
   // leaves an older mentioned run as the one on display.
   const latestRunAt = runsMeta[0]?.recordedAt ?? null;
+  // The newest check named nobody, so everything below is the last standing we could
+  // measure rather than a current one. The page marks the board "as of <lastRunAt>" and
+  // explains the gap, instead of presenting an engine outage as a verdict on the product.
+  const stale = !!latestRunAt && !!lastRunAt && latestRunAt !== lastRunAt;
+  // The measured run before the displayed one — the baseline every "change" column is
+  // read against. Same rule as the display run: a run that named nobody carries no
+  // information, so it can't serve as a baseline either.
+  const prevRunId =
+    runsMeta.find((r) => num(r.mentions) > 0 && r.runId !== latestRunId)?.runId ?? null;
 
   type LbRow = { engine: string; competitorId: string; mentions: number; total: number; avgRank: number | null };
+  type PrevRow = { engine: string; competitorId: string; sov: number | null };
   type RawRow = { promptId: string; engine: string; competitorId: string; mentioned: number; promptNamed: number; rank: number | null; answerExcerpt: string | null };
   type TrendRow = { recordedAt: string; competitorId: string; sov: number };
 
@@ -144,9 +176,10 @@ aiVisibilityRouter.get("/", async (c) => {
   let lbRows: LbRow[] = [];
   let rawRows: RawRow[] = [];
   let trendRows: TrendRow[] = [];
+  let prevRows: PrevRow[] = [];
 
   if (latestRunId) {
-    const [lb, raw] = await Promise.all([
+    const [lb, raw, prev] = await Promise.all([
       // Organic share-of-voice: a subject named IN the prompt (prompt_named = 1) is a
       // seeded, contaminated pair — excluded from both its mention count and its prompt
       // denominator, so the denominator is per-subject (each subject's un-naming prompts).
@@ -164,9 +197,22 @@ aiVisibilityRouter.get("/", async (c) => {
                mentioned, prompt_named AS "promptNamed", rank, answer_excerpt AS "answerExcerpt"
         FROM ai_visibility_results
         WHERE org_id = ${orgId} AND run_id = ${latestRunId} ${productFilter}`),
+      // Same share, one measured run earlier: the baseline for every per-brand change.
+      // The trend series can't serve here — it covers one engine and its top six lines,
+      // while the change column has to hold for every subject on every engine.
+      prevRunId
+        ? analyticsQueryResult<PrevRow>(sql`
+            SELECT engine, competitor_id AS "competitorId",
+                   (count(*) FILTER (WHERE mentioned = 1 AND prompt_named = 0))::float
+                     / nullif(count(DISTINCT prompt_id) FILTER (WHERE prompt_named = 0), 0) AS sov
+            FROM ai_visibility_results
+            WHERE org_id = ${orgId} AND run_id = ${prevRunId} ${productFilter}
+            GROUP BY engine, competitor_id`)
+        : Promise.resolve({ ok: true, rows: [] as PrevRow[] }),
     ]);
     lbRows = lb.rows;
     rawRows = raw.rows;
+    prevRows = prev.rows;
     degraded = degraded || !lb.ok || !raw.ok;
 
     // Exclude degraded runs (the engine named nobody across the whole roster — a quota /
@@ -202,6 +248,9 @@ aiVisibilityRouter.get("/", async (c) => {
     e.totalPrompts = Math.max(e.totalPrompts, num(r.total));
     e.subjects.push(r);
   }
+  const prevSovByKey = new Map(
+    prevRows.map((r) => [`${r.engine}:${r.competitorId}`, r.sov == null ? null : num(r.sov)]),
+  );
   const leaderboard = [...byEngine.values()].map((e) => ({
     engine: e.engine,
     totalPrompts: e.totalPrompts,
@@ -212,8 +261,15 @@ aiVisibilityRouter.get("/", async (c) => {
         name: nameById.get(s.competitorId) ?? "Unknown",
         isSelf: s.competitorId === selfId,
         mentions: num(s.mentions),
+        // The subject's OWN organic denominator (the prompts that don't name it), which
+        // differs per subject and from the engine's headline count. Shipped so the page
+        // can read "2 of 9" instead of dividing by a total that isn't this subject's.
+        prompts: num(s.total),
         // Per-subject organic denominator (its own un-naming prompts), not the engine total.
         sov: num(s.total) > 0 ? num(s.mentions) / num(s.total) : 0,
+        // Share on the previous measured run; null when there is no earlier run to
+        // compare against, which the page renders as "new" rather than as "flat".
+        prevSov: prevSovByKey.get(`${e.engine}:${s.competitorId}`) ?? null,
         avgRank: s.avgRank == null ? null : num(s.avgRank),
       }))
       .sort((a, b) => b.sov - a.sov),
@@ -246,6 +302,10 @@ aiVisibilityRouter.get("/", async (c) => {
           engine,
           selfMentioned: organic,
           selfRank: organic ? selfRow.rank : null,
+          // This prompt names you, so the engine was handed the answer and your own
+          // share excludes it. The page says so on the row: it is the whole reason a
+          // subject's denominator can read 9 where the engine ran 10 prompts.
+          selfSeeded: selfRow?.promptNamed === 1,
           mentioned: er
             .filter(
               (r) =>
@@ -256,7 +316,14 @@ aiVisibilityRouter.get("/", async (c) => {
                 inScope(r.competitorId),
             )
             .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99))
-            .map((r) => nameById.get(r.competitorId) ?? "Unknown"),
+            // Id + position travel with the name so the page can tint each brand with
+            // the colour it carries in the board, link to it, and show where in the
+            // answer it lands (buyers read the first two).
+            .map((r) => ({
+              competitorId: r.competitorId,
+              name: nameById.get(r.competitorId) ?? "Unknown",
+              rank: r.rank,
+            })),
           excerpt: er.find((r) => r.answerExcerpt)?.answerExcerpt ?? null,
         };
       }),
@@ -265,11 +332,36 @@ aiVisibilityRouter.get("/", async (c) => {
 
   // --- Trend: SoV-over-time lines for self + top competitors (recharts-ready rows). ---
   const topEngine = leaderboard.find((l) => l.engine === TREND_ENGINE) ?? leaderboard[0];
-  const trendKeys = (topEngine?.subjects ?? [])
-    .slice()
-    .sort((a, b) => (b.isSelf ? 1 : 0) - (a.isSelf ? 1 : 0) || b.sov - a.sov)
-    .slice(0, MAX_TREND_LINES)
-    .map((s) => s.name);
+  const selfName = topEngine?.subjects.find((s) => s.isSelf)?.name ?? null;
+  // Normally the charted lines are the board's top subjects. On a run where the engine
+  // named nobody every share is 0, so that ordering is arbitrary and the six lines got
+  // picked at random — the chart then drew whichever brands sorted first rather than the
+  // ones with history. Fall back to who the trend itself shows most, self always kept.
+  const boardHasMentions = (topEngine?.subjects ?? []).some((s) => s.mentions > 0);
+  let trendKeys: string[];
+  if (boardHasMentions) {
+    trendKeys = (topEngine?.subjects ?? [])
+      .slice()
+      .sort((a, b) => (b.isSelf ? 1 : 0) - (a.isSelf ? 1 : 0) || b.sov - a.sov)
+      .slice(0, MAX_TREND_LINES)
+      .map((s) => s.name);
+  } else {
+    const peak = new Map<string, number>();
+    for (const r of trendRows) {
+      const name = nameById.get(r.competitorId);
+      if (!name || !inScope(r.competitorId)) continue;
+      peak.set(name, Math.max(peak.get(name) ?? 0, num(r.sov)));
+    }
+    // Keep self only if it actually has a series; charting a key with no points draws
+    // an invisible line and makes the caller's colour map claim a brand it never plots.
+    const keepSelf = !!selfName && peak.has(selfName);
+    if (selfName) peak.delete(selfName);
+    trendKeys = [...peak.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, keepSelf ? MAX_TREND_LINES - 1 : MAX_TREND_LINES)
+      .map(([name]) => name);
+    if (keepSelf && selfName) trendKeys.unshift(selfName);
+  }
   const trendKeySet = new Set(trendKeys);
   const byTime = new Map<string, Record<string, string | number>>();
   for (const r of trendRows) {
@@ -286,6 +378,10 @@ aiVisibilityRouter.get("/", async (c) => {
     enabled,
     lastRunAt,
     latestRunAt,
+    // Only promise a next check when one is actually going to happen: the scheduler
+    // skips an org with no active question, which is exactly what `enabled` reports.
+    nextRunAt: enabled ? nextWeeklyRun(latestRunAt) : null,
+    stale,
     leaderboard,
     breakdown,
     trendKeys,

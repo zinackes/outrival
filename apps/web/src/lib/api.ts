@@ -1918,7 +1918,12 @@ export interface AiVisibilitySubject {
   name: string;
   isSelf: boolean;
   mentions: number;
+  /** This subject's own organic denominator: the prompts that don't name it. Differs
+   *  per subject, and from the engine's headline `totalPrompts`. */
+  prompts: number;
   sov: number;
+  /** Share on the previous measured run; null when there's no earlier run to compare. */
+  prevSov: number | null;
   avgRank: number | null;
 }
 export interface AiVisibilityLeaderboard {
@@ -1926,11 +1931,19 @@ export interface AiVisibilityLeaderboard {
   totalPrompts: number;
   subjects: AiVisibilitySubject[];
 }
+export interface AiVisibilityMention {
+  competitorId: string;
+  name: string;
+  rank: number | null;
+}
 export interface AiVisibilityCell {
   engine: string;
   selfMentioned: boolean;
   selfRank: number | null;
-  mentioned: string[];
+  /** The prompt itself names you, so the answer was seeded and this prompt is excluded
+   *  from your share (but still counts for every other brand). */
+  selfSeeded: boolean;
+  mentioned: AiVisibilityMention[];
   excerpt: string | null;
 }
 export interface AiVisibilityBreakdownRow {
@@ -1951,6 +1964,12 @@ export interface AiVisibilityData {
   // which can lag on a zero-mention run). Advancing past a pre-run baseline is the
   // "this run wrote rows" signal the Run-now poller uses.
   latestRunAt: string | null;
+  /** When the next automated weekly check is due; null when no question is active, so
+   *  the scheduler will skip this org and there is nothing to promise. */
+  nextRunAt: string | null;
+  /** The newest run named nobody, so the board is the last standing we could measure
+   *  rather than a current one. Drives the "as of" marker and the empty-run notice. */
+  stale: boolean;
   leaderboard: AiVisibilityLeaderboard[];
   breakdown: AiVisibilityBreakdownRow[];
   trendKeys: string[];

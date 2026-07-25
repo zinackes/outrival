@@ -20,12 +20,46 @@ default configuration (Gemini key only) costs nothing.
 
 ### Tier 0 — Gemini + Google Search grounding (FREE, official, shipped)
 
-The default engine. Gemini 3.x on the AI Studio free tier gives **~5,000 grounded
-prompts/month free** (then $14/1k), and grounding is only billed when the answer carries
-a grounding URL. At 40 prompts/org/month that's **~125 orgs covered for $0** on a
-web-grounded engine with citations that stands in for "Google's AI answer" — the single
-biggest AI-answer surface. ToS-clean (official API). `GEMINI_API_KEY` +
-`AI_VISIBILITY_GEMINI_MODEL` (pin a 3.x Flash for the free quota).
+The default engine: a web-grounded answer with citations that stands in for "Google's AI
+answer", the single biggest AI-answer surface. **Read the tier grid carefully. An earlier
+version of this doc had it wrong, and that error is what kept the engine down for eleven
+days.**
+
+| | Free tier (no card) | Tier 1 (card on file) |
+|---|---|---|
+| `gemini-2.5-flash` / `-flash-lite` grounded | **500 RPD free** (the two share the cap) | 1,500 RPD free, then $35/1k |
+| `gemini-3.x` grounded | **Not available** | 5,000 prompts/month free, then $14/1k |
+
+The "~5,000 free prompts/month" figure belongs to the **paid** tier. On the free tier the
+published budget is 500 grounded requests per DAY, on 2.5 Flash only.
+
+**But the published number is not the one that binds.** The per-model request cap applies
+first, and AI Studio reported this for our free-tier project on 2026-07-25:
+
+```
+Gemini 2.5 Flash    RPM 7/5    TPM 196/250K    RPD 27/20
+```
+
+**5 requests per minute, 20 per day.** Not 500. One product at `AI_VISIBILITY_MAX_PROMPTS=10`
+plus a 3-prompt onboarding teaser already spends 13 of the 20, and a second product finishes
+the day's budget before the run ends. Always read the console (`aistudio.google.com/rate-limit`)
+rather than the pricing page before sizing anything here.
+
+That ceiling is the real constraint on this feature, and it does not scale: at ~2 products
+per org, the free tier tops out around **one org per day**. Options, in order of what they
+cost us: move the project to Tier 1 (a card on file, 1,500 grounded RPD still free, so $0
+until the allowance is passed), cut `AI_VISIBILITY_MAX_PROMPTS`, or lean on the parametric
+engine below, which answers from the internal pool and has no Gemini quota at all.
+
+Two traps follow from that grid, and we hit both. **Never pin a `-latest` alias**: the
+allowance is granted per MODEL, the alias drifted onto a 3.x generation that has none on
+the free tier, and every grounded call came back 429 (outage 13/07 to 24/07/2026, zero
+rows written, 72 requests used out of the allowance). And the free tier caps requests per
+MINUTE as well, so an unpaced prompt set 429s from the 11th call on, which reads exactly
+like a spent allowance. `AI_VISIBILITY_MIN_REQUEST_GAP_MS` paces the calls, and the engine
+client only drops an engine when the 429 names a per-day quota.
+
+ToS-clean (official API). `GEMINI_API_KEY` + `AI_VISIBILITY_GEMINI_MODEL`.
 
 ### Tier 0b — Parametric ("share of model", FREE)
 
@@ -67,10 +101,11 @@ Only run when a key is present. Never the default.
    query/scrape it **once**, then parse the one answer against each org's roster. Cost
    becomes **sub-linear** in org count (prompts overlap heavily within a sector). *(Needs
    a shared answer cache keyed by (normalized prompt, engine, locale, day).)*
-3. **Budget by free quota, not by dollars.** Cap the monthly total under the 5k Gemini
-   free ceiling (the existing `AI_VISIBILITY_MAX_PROMPTS` + interval caps already bound
-   per-org volume); when a surface has no free quota, fall back to the scrape-cascade
-   (free) rather than a paid API.
+3. **Budget by free quota, not by dollars.** The ceiling to stay under is a DAILY one
+   (500 grounded requests on the free tier), so what matters is how many products a
+   single day's runs touch, not the monthly sum. `AI_VISIBILITY_MAX_PROMPTS` bounds the
+   per-org volume and the weekly interval spreads the load; if a day ever gets tight,
+   spread the scheduler further before reaching for a paid tier.
 
 ## Status
 

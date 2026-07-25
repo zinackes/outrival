@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { logger } from "@trigger.dev/sdk/v3";
+import { logger } from "./job-logger";
 import { db, competitors, monitors } from "@outrival/db";
 import {
   normalizeDomain,

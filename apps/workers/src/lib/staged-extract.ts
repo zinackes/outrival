@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import type { ZodType } from "zod";
-import { logger } from "@trigger.dev/sdk/v3";
+import { logger } from "./job-logger";
 import { db, parserExtractors } from "@outrival/db";
 import {
   normalizeDomain,

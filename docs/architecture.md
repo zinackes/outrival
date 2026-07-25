@@ -1129,7 +1129,12 @@ VISUAL_DIFF_ENABLED=true               # false → endpoints screenshot 404, sec
 
 # AI Visibility / "Share of Model" — présence self + concurrents dans les réponses des
 # moteurs IA. Feature premium (features.aiVisibility, pro+). gemini = moteur par défaut
-# GRATUIT (Google Search grounding, ~5k prompts groundés/mois gratuits sur AI Studio 3.x)
+# GRATUIT (Google Search grounding : sur free tier le grounding n'existe que sur 2.5
+# flash/flash-lite, celui des Gemini 3.x est réservé au tier payant. Le « 5k prompts/mois
+# gratuits » longtemps écrit ici décrivait donc le tier PAYANT. Et le cap de requêtes DU
+# MODÈLE mord avant celui du grounding : MESURÉ en console 5 RPM / 20 RPD, pas les 500 RPD
+# annoncés — soit ~1 org/jour à 10 prompts par produit. Lire aistudio.google.com/rate-limit,
+# jamais la page pricing, avant de dimensionner quoi que ce soit ici)
 # → active sans payer. Chaque moteur best-effort (vide → skip, 0 coût). Stratégie coût-zéro
 # (BYOK, scrape-cascade AIO) : 📄 docs/ai-visibility-free.md — 📄 docs/ai-visibility.md
 # L7 teaser (docs/post-onboarding-activation.md) : dérivé GRATUIT non-gaté — 1 run/org à
@@ -1141,10 +1146,19 @@ AI_VISIBILITY_ENABLED=true             # false → scheduler + job no-op (kill-s
 AI_VISIBILITY_INTERVAL_DAYS=7          # cadence par org (jours entre 2 runs)
 AI_VISIBILITY_MAX_PROMPTS=10           # cap prompts/org/run (garde-fou coût)
 AI_VISIBILITY_MIN_PROMPTS_FOR_SIGNAL=4 # min prompts répondus (par moteur, sur les DEUX runs) avant qu'un shift SoV soit signalé — sinon skip (1-2 prompts = quota gratuit épuisé, bruit 100%/50%, pas un vrai mouvement)
+AI_VISIBILITY_MIN_REQUEST_GAP_MS=13000 # espacement min entre 2 appels au MÊME moteur. Le free tier
+                                       # plafonne aussi PAR MINUTE : un jeu de prompts tiré en rafale
+                                       # 429 en cours de run, ce que le garde quota lit comme une
+                                       # enveloppe épuisée et qui tue le moteur pour tout le run.
+                                       # Le défaut vise le plafond MESURÉ (5 RPM), pas l'annoncé.
+                                       # Ne baisser que sur un tier payant (plafonds plus hauts)
 AI_VISIBILITY_TEASER_ENABLED=true      # L7 — teaser onboarding gratuit 1×/org (false → "unavailable")
 AI_VISIBILITY_TEASER_MAX_PROMPTS=3     # requêtes groundées free dépensées par teaser
 GEMINI_API_KEY=                        # moteur Gemini + grounding (GRATUIT, défaut) ; vide → skip
-AI_VISIBILITY_GEMINI_MODEL=gemini-flash-latest  # pin un Flash 3.x pour le quota grounding gratuit
+AI_VISIBILITY_GEMINI_MODEL=gemini-2.5-flash  # PINNER une version, JAMAIS un alias `-latest` : le
+                                       # quota grounding gratuit est PAR MODÈLE, et l'alias qui
+                                       # glisse sur une génération sans quota renvoie 429 sur tout
+                                       # appel groundé (panne 13/07→24/07/2026, 0 ligne 11 jours)
 PERPLEXITY_API_KEY=                    # moteur Perplexity Sonar (PAYANT) ; vide → moteur skip
 AI_VISIBILITY_PERPLEXITY_MODEL=sonar   # modèle Perplexity (sonar = search fee le moins cher)
 

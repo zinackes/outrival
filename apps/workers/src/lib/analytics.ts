@@ -1,4 +1,4 @@
-import { logger } from "@trigger.dev/sdk/v3";
+import { logger } from "./job-logger";
 import { getActiveProvider, getActiveModel, consumeUsage, withAiContext } from "@outrival/ai";
 import {
   db,

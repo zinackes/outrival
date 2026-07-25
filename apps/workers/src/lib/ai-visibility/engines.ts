@@ -1,4 +1,4 @@
-import { logger } from "@trigger.dev/sdk/v3";
+import { logger } from "../job-logger";
 
 // AI Visibility answer-engine clients (docs/ai-visibility.md, phase 2). Each engine
 // is queried ONCE per prompt; the answer text + citations are then parsed for which
@@ -19,6 +19,95 @@ export interface EngineAnswer {
   model: string;
 }
 
+// A 429 that reports an ALLOWANCE (per day, per month, or a model with no free
+// grounding at all) is not a per-prompt failure: every remaining prompt in the run
+// would 429 too. Raise instead of returning null so the caller can drop the engine
+// for the whole run rather than firing N more doomed requests. A per-MINUTE 429 is
+// a different animal and never reaches here — see engineFetch.
+export class EngineQuotaError extends Error {
+  constructor(
+    readonly engine: Engine,
+    readonly body: string,
+  ) {
+    super(`ai-visibility: ${engine} quota exhausted`);
+    this.name = "EngineQuotaError";
+  }
+}
+
+// Minimum gap between two calls to the SAME engine. Gemini's free tier caps requests
+// per minute as well as per day, and this job used to fire its whole prompt set in a
+// burst — 10 prompts per product, back to back — so a healthy key still 429'd from
+// the 11th call on. That rate 429 then tripped the quota guard above and killed the
+// engine for the entire run, which reads exactly like an exhausted allowance. Pacing
+// the calls is what tells the two apart in the first place.
+//
+// The default targets the MEASURED free-tier ceiling, not the published one: AI Studio
+// reported 5 RPM / 20 RPD on gemini-2.5-flash (2026-07-25), where the pricing page
+// advertises 500 grounded RPD. The per-model request cap binds before the grounding
+// cap, so read the console, not the docs, before lowering this.
+const MIN_REQUEST_GAP_MS = Number(process.env.AI_VISIBILITY_MIN_REQUEST_GAP_MS ?? 13_000);
+const lastCallAt = new Map<Engine, number>();
+
+// Cap on how long we honour a provider's retryDelay. Beyond this the wait costs more
+// than the answer is worth, and the run should move on.
+const MAX_RETRY_WAIT_MS = 30_000;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function pace(engine: Engine) {
+  const last = lastCallAt.get(engine);
+  const wait = last === undefined ? 0 : last + MIN_REQUEST_GAP_MS - Date.now();
+  if (wait > 0) await sleep(wait);
+  lastCallAt.set(engine, Date.now());
+}
+
+// Google names the quota that tripped in error.details[].violations[].quotaId, e.g.
+// "GenerateRequestsPerMinutePerProjectPerModel-FreeTier" versus its PerDay sibling.
+// Perplexity carries no such field, so fall back to a short Retry-After, which only
+// a rate limiter sends. Anything else is treated as an allowance: dropping an engine
+// for one run costs a data point, retrying a spent allowance costs the whole run.
+export function retryAfterMs(body: string, headers: Headers): number | null {
+  // An allowance 429 can also carry a retryDelay, and honouring it would burn a call
+  // to be refused again. The named quota wins over the hint.
+  if (/"quotaId":\s*"[^"]*per[\s_-]*day/i.test(body)) return null;
+  const perMinute = /"quotaId":\s*"[^"]*per[\s_-]*minute/i.test(body);
+  const hinted =
+    body.match(/"retryDelay":\s*"(\d+(?:\.\d+)?)s"/)?.[1] ?? headers.get("retry-after");
+  if (!perMinute && hinted == null) return null;
+  const seconds = Number(hinted);
+  const ms = Number.isFinite(seconds) ? Math.ceil(seconds * 1000) : MIN_REQUEST_GAP_MS;
+  if (ms > MAX_RETRY_WAIT_MS) return null;
+  return Math.max(ms, MIN_REQUEST_GAP_MS);
+}
+
+// Shared request path: pace the call, retry ONCE through a per-minute rate limit,
+// and raise EngineQuotaError on an exhausted allowance. Returns the response when
+// it's usable, null on any other failure (best-effort skip, the caller's contract).
+async function engineFetch(
+  engine: Engine,
+  url: string,
+  init: RequestInit,
+  retried = false,
+): Promise<Response | null> {
+  await pace(engine);
+  const res = await fetch(url, { ...init, signal: AbortSignal.timeout(ENGINE_TIMEOUT_MS) });
+  if (res.ok) return res;
+
+  // Read enough to see the quota id (it sits past the 300 chars we log).
+  const body = (await res.text()).slice(0, 2_000);
+  logger.error(`ai-visibility: ${engine} request failed`, {
+    status: res.status,
+    body: body.slice(0, 300),
+  });
+  if (res.status !== 429) return null;
+
+  const wait = retried ? null : retryAfterMs(body, res.headers);
+  if (wait === null) throw new EngineQuotaError(engine, body.slice(0, 300));
+  logger.warn(`ai-visibility: ${engine} rate limited, retrying once`, { waitMs: wait });
+  await sleep(wait);
+  return engineFetch(engine, url, init, true);
+}
+
 // Perplexity Sonar — a web-grounded answer engine with citations (the cheapest,
 // most "answer-native" first engine). Model is overridable via env; defaults to the
 // base `sonar` (lowest per-request search fee).
@@ -30,7 +119,7 @@ async function queryPerplexity(prompt: string): Promise<EngineAnswer | null> {
   }
   const model = process.env.AI_VISIBILITY_PERPLEXITY_MODEL ?? "sonar";
   try {
-    const res = await fetch("https://api.perplexity.ai/chat/completions", {
+    const res = await engineFetch("perplexity", "https://api.perplexity.ai/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -40,15 +129,8 @@ async function queryPerplexity(prompt: string): Promise<EngineAnswer | null> {
         model,
         messages: [{ role: "user", content: prompt }],
       }),
-      signal: AbortSignal.timeout(ENGINE_TIMEOUT_MS),
     });
-    if (!res.ok) {
-      logger.error("ai-visibility: perplexity request failed", {
-        status: res.status,
-        body: (await res.text()).slice(0, 300),
-      });
-      return null;
-    }
+    if (!res) return null;
     const data = (await res.json()) as {
       choices?: { message?: { content?: string } }[];
       citations?: string[];
@@ -60,26 +142,34 @@ async function queryPerplexity(prompt: string): Promise<EngineAnswer | null> {
     }
     return { answer, citations: data.citations ?? [], model };
   } catch (err) {
+    if (err instanceof EngineQuotaError) throw err;
     logger.error("ai-visibility: perplexity request threw", { err: String(err) });
     return null;
   }
 }
 
 // Gemini + Google Search grounding — the FREE default engine (docs/ai-visibility-free.md).
-// Gemini 3.x gets ~5,000 grounded prompts/month free on the AI Studio tier, so a
-// GEMINI_API_KEY (free) replaces the paid Perplexity Sonar fee. It's a web-grounded
-// answer with citations that stands in for "Google's AI answer". Model is overridable:
-// pin AI_VISIBILITY_GEMINI_MODEL to the current 3.x Flash to land in the free grounding
-// quota (the default alias may resolve to a paid-grounding 2.5 model).
+// A GEMINI_API_KEY (free) replaces the paid Perplexity Sonar fee: it's a web-grounded
+// answer with citations that stands in for "Google's AI answer".
+//
+// The model is PINNED, never an alias. The free grounding allowance is granted per
+// MODEL, and a `-latest` alias silently moves to a generation that has none — measured
+// 2026-07-24 on the prod key, same project, same minute:
+//   gemini-2.5-flash      200      gemini-flash-latest    429
+//   gemini-2.0-flash      429      gemini-2.5-flash-lite  429
+// That is what took AI visibility down: not an exhausted quota (72 grounded requests
+// that whole month), an alias that drifted off the free tier. Re-run that matrix before
+// changing this default, and prefer a version pin over any `-latest` name.
 async function queryGemini(prompt: string): Promise<EngineAnswer | null> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     logger.warn("ai-visibility: GEMINI_API_KEY not set, skipping gemini");
     return null;
   }
-  const model = process.env.AI_VISIBILITY_GEMINI_MODEL ?? "gemini-flash-latest";
+  const model = process.env.AI_VISIBILITY_GEMINI_MODEL ?? "gemini-2.5-flash";
   try {
-    const res = await fetch(
+    const res = await engineFetch(
+      "gemini",
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
       {
         method: "POST",
@@ -88,16 +178,9 @@ async function queryGemini(prompt: string): Promise<EngineAnswer | null> {
           contents: [{ parts: [{ text: prompt }] }],
           tools: [{ google_search: {} }],
         }),
-        signal: AbortSignal.timeout(ENGINE_TIMEOUT_MS),
       },
     );
-    if (!res.ok) {
-      logger.error("ai-visibility: gemini request failed", {
-        status: res.status,
-        body: (await res.text()).slice(0, 300),
-      });
-      return null;
-    }
+    if (!res) return null;
     const data = (await res.json()) as {
       candidates?: {
         content?: { parts?: { text?: string }[] };
@@ -118,6 +201,7 @@ async function queryGemini(prompt: string): Promise<EngineAnswer | null> {
       .filter((u): u is string => Boolean(u));
     return { answer, citations, model };
   } catch (err) {
+    if (err instanceof EngineQuotaError) throw err;
     logger.error("ai-visibility: gemini request threw", { err: String(err) });
     return null;
   }

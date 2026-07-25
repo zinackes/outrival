@@ -52,10 +52,16 @@ export function WatchStrip({
   buckets,
   upcoming,
   loading,
+  failed,
+  onRetry,
 }: {
   buckets: ActivityBucket[];
   upcoming: ActivityUpcoming[];
   loading: boolean;
+  // A strip drawn from a failed request looks exactly like a day where nothing
+  // ran, which is the one reading it must never give by accident. Say so instead.
+  failed: boolean;
+  onRetry: () => void;
 }) {
   // The strip is drawn relative to the browser's clock, so it can only be built
   // after mount: rendering it during SSR would place `now` at request time and
@@ -134,6 +140,28 @@ export function WatchStrip({
 
   const next = upcoming[0] ?? null;
 
+  if (failed) {
+    return (
+      <section className="flex flex-col gap-1.5" aria-label="Checks over the last 24 hours">
+        <div className="flex items-baseline justify-between gap-3 text-dense text-muted-foreground">
+          <span className="font-medium text-foreground">Last 24 hours</span>
+          {next && <NextCheck next={next} />}
+        </div>
+        <p className="text-dense text-muted-foreground">
+          We couldn&apos;t load the last 24 hours, so this is not a quiet day, it is a missing
+          reading.{" "}
+          <button
+            type="button"
+            onClick={onRetry}
+            className="text-link underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          >
+            Retry
+          </button>
+        </p>
+      </section>
+    );
+  }
+
   return (
     <section className="flex flex-col gap-2" aria-label="Checks over the last 24 hours">
       <div className="flex items-baseline justify-between gap-3 text-dense text-muted-foreground">
@@ -142,10 +170,16 @@ export function WatchStrip({
           {model && (
             <>
               {" · "}
-              <span className="tabular-nums">{model.checks}</span> check
-              {model.checks === 1 ? "" : "s"},{" "}
-              <span className="tabular-nums">{model.findings}</span> finding
-              {model.findings === 1 ? "" : "s"}
+              {model.checks === 0 ? (
+                "no checks ran"
+              ) : (
+                <>
+                  <span className="tabular-nums">{model.checks}</span> check
+                  {model.checks === 1 ? "" : "s"},{" "}
+                  <span className="tabular-nums">{model.findings}</span> finding
+                  {model.findings === 1 ? "" : "s"}
+                </>
+              )}
             </>
           )}
         </span>

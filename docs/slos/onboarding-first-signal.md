@@ -229,6 +229,42 @@ post-backfill 28-day window measured, so the gate has not fired yet on the
 data alone — but at 27% against a 70% target it is close enough that the next
 window's result should be treated as the deciding one, not a formality.
 
+### Correction, same day: the wiring gap is historical, not live
+
+The routing call above sent the follow-up at "find why the backfill never fires".
+Measuring that before writing the fix showed the premise is already stale. Both
+numbers come from `backfill_runs` (append-only, never purged) against the first
+`live` snapshot per competitor:
+
+| Period | First captures of a backfillable source | `backfill_runs` rows |
+|---|---|---|
+| 2026-06-28 to 2026-07-13 | 85 | 2 |
+| 2026-07-22 to 2026-07-25 | 20 | 37 |
+
+Since 2026-07-22 the backfill fires on essentially every first capture: 37 rows for
+20 competitors is the expected `homepage` + `pricing` pair. Before that date it
+fired almost never. The queue's own record agrees and rules out the delivery
+hypothesis outright: over 28 days `pgboss.job` holds 37 `backfill-history` jobs, all
+in state `completed`, none `expired`, `failed` or unclaimed. Nothing is being
+dropped between enqueue and execution.
+
+So the 27% figure above is a **28-day average dominated by the era before the
+backfill ran at all**, not a description of the system as it stands. Since
+2026-07-22 there have been 2 completed onboardings, 1 of them inside the 10-minute
+mark. At n=2 that is not a measurement, and the alert thresholds already encode
+that: the 7-day rule needs n>=5 and the 28-day rule n>=10.
+
+What this means for the error-budget policy: the freeze in step 1 has no target.
+There is no defect to freeze changes around, because the defect that produced most
+of the window's misses was resolved on 2026-07-22. The honest next action is to
+**re-measure once 10 or more completions have accumulated post-2026-07-22**, and
+only then decide whether the 70% target is met, missed, or needs its scheduled
+recalibration.
+
+Recorded rather than edited away, because the sequence is the lesson: an SLI
+averaged across a fix reads as a live failure, and the miss buckets could not
+distinguish "never fired" from "fired and lost" without the temporal split.
+
 ## Alerts (calculator reference output)
 
 Kept for the record; superseded by the event-based table above.

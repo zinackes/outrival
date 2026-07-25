@@ -62,6 +62,8 @@ deadlines, security and direction.
 | 021 | Every optional capability reports whether it is live, and why it is off | P2 | S-M | LOW | — | TODO |
 | 022 | Decide how a free workspace first meets a paid capability | P2 | M | MED | — | TODO |
 | 023 | Decide whether collected data can become a public surface | P2 | M | MED-HIGH | — | TODO |
+| 024 | Find where 80% of archive backfills are lost, then stop losing them | P1 | M | MED | 019 | REJECTED (premise falsified: the gap was historical and self-resolved on 2026-07-22) |
+| 025 | The dead-letter tile reports the real depth, and something pages | P1 | S | LOW | — | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
@@ -89,6 +91,29 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJE
 
 - **All five are independent of each other and of 001 to 018.** They can be
   executed in any order, or interleaved with the deep-run plans.
+- **025 came out of 024's autopsy.** Querying the queue to falsify 024 surfaced
+  `outrival-dlq` holding 602 jobs while the `/admin` tile that exists for exactly
+  that reads `25`, because the count is the length of a list capped at `DLQ_CAP`.
+  Nothing alerts on it either. Small, live, and independent of everything else.
+- **024 is REJECTED, and the reason is worth keeping.** It was written on a
+  measurement that was true but mis-framed: 105 of 109 new competitors got a
+  backfillable snapshot and only 21 produced a `backfill_runs` row. Splitting that
+  by day before writing the fix showed why: 85 first captures between 2026-06-28 and
+  2026-07-13 produced 2 backfill rows, while 20 first captures since 2026-07-22
+  produced 37, which is the expected homepage-plus-pricing pair per competitor. The
+  queue confirms it: all 37 `backfill-history` jobs over 28 days are `completed`,
+  none expired or failed. The backfill works; the gap closed on 2026-07-22. The plan
+  file stays as the record. Do not execute it.
+- **The 27% SLI from 019 is therefore a historical average, not a live state.** It
+  spans the era before the backfill ran. Post-2026-07-22 there are 2 completions,
+  1 inside the 10-minute mark, which is n=2 and not a measurement. Re-measure at
+  n>=10 before drawing any conclusion or acting on the error-budget freeze.
+- **024 was 019's output.** 019 routed to wiring; the follow-up measurement then
+  localised it: over 28 days, 109 competitors were created, 105 got a `homepage` or
+  `pricing` snapshot, and only **21** ever produced a `backfill_runs` row. The
+  enqueue site is unconditional with no early exit, and the handler is registered,
+  so the loss sits between enqueue and execution. 024 diagnoses which pg-boss job
+  state accounts for it before changing anything.
 - **019 ran on 2026-07-25 and its result changes the backlog.** The 28-day window
   measured 22 completions, 16 missed, 5 never-signal: an SLI of 27% against a 70%
   target, so the SLO's **window-exhausted** condition has fired and the error-budget

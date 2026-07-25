@@ -174,6 +174,100 @@ productRouter.get("/first-signal-slo", async (c) => {
   return c.json({ available: true, ...summarizeFirstSignalSlo(inputs) });
 });
 
+// First-signal miss attribution (docs/slos/onboarding-first-signal.md, step 3 of
+// the error-budget policy) — for the 28d onboarding completions that MISSED the
+// 10-minute first-signal window, what did the archive backfill do? Joins the
+// miss-bucket taxonomy already written by every backfill run
+// (resolveBackfillOutcome, apps/workers/src/lib/backfill-guard.ts) against the
+// org's own missed completions, so the dominant bucket routes the fix per the
+// SLO doc's policy: no_archive_capture/no_significant_change dominant → coverage
+// work; no_backfill_run dominant → wiring (the chain never fired); change_triggered
+// dominant → latency (the chain fired but arrived late). Also reports the
+// never-signal cohort (missed forever, not just missed the 10-minute mark) since
+// the SLO doc tracks those as a separate product problem. Best-effort: a read
+// error or empty cohort returns { available: false }, never throws.
+productRouter.get("/first-signal-misses", async (c) => {
+  const cohortRows = await analyticsQuery<{
+    completions: number;
+    never_signal: number;
+    missed: number;
+  }>(sql`
+    WITH completions AS (
+      SELECT os.org_id, os.completed_at
+      FROM onboarding_sessions os
+      WHERE os.stage = 'completed' AND os.completed_at IS NOT NULL
+        AND os.org_id IS NOT NULL
+        AND os.completed_at >= now() - interval '28 days'
+        AND os.completed_at <= now() - interval '10 minutes'
+    )
+    SELECT
+      count(*)::int AS completions,
+      count(*) FILTER (
+        WHERE NOT EXISTS (SELECT 1 FROM signals s WHERE s.org_id = c.org_id)
+      )::int AS never_signal,
+      count(*) FILTER (
+        WHERE NOT EXISTS (
+          SELECT 1 FROM signals s
+          WHERE s.org_id = c.org_id AND s.created_at <= c.completed_at + interval '10 minutes'
+        )
+      )::int AS missed
+    FROM completions c
+  `);
+
+  const cohort = cohortRows[0];
+  if (!cohort) return c.json({ available: false });
+
+  // Per-org presence, not a partition: an org that missed can carry several
+  // backfill outcomes (one per competitor's monitor), so bucket counts do NOT
+  // sum to `missed`. Plain DISTINCT (not DISTINCT ON) — the join fans out to one
+  // row per (org, outcome) pair, and it's the pair being deduped, not an ordering.
+  const bucketRows = await analyticsQuery<{ bucket: string; orgs: number }>(sql`
+    WITH completions AS (
+      SELECT os.org_id, os.completed_at
+      FROM onboarding_sessions os
+      WHERE os.stage = 'completed' AND os.completed_at IS NOT NULL
+        AND os.org_id IS NOT NULL
+        AND os.completed_at >= now() - interval '28 days'
+        AND os.completed_at <= now() - interval '10 minutes'
+    ),
+    missed AS (
+      SELECT c.org_id
+      FROM completions c
+      WHERE NOT EXISTS (
+        SELECT 1 FROM signals s
+        WHERE s.org_id = c.org_id
+          AND s.created_at <= c.completed_at + interval '10 minutes'
+      )
+    ),
+    runs AS (
+      SELECT DISTINCT m.org_id, br.outcome
+      FROM missed m
+      JOIN competitors comp ON comp.org_id = m.org_id
+      JOIN backfill_runs br ON br.competitor_id = comp.id
+      WHERE br.recorded_at >= now() - interval '28 days'
+    )
+    SELECT outcome AS bucket, count(DISTINCT org_id)::int AS orgs
+    FROM runs GROUP BY 1
+    UNION ALL
+    SELECT 'no_backfill_run' AS bucket, count(*)::int AS orgs
+    FROM missed m
+    WHERE NOT EXISTS (
+      SELECT 1 FROM competitors comp
+      JOIN backfill_runs br ON br.competitor_id = comp.id
+      WHERE comp.org_id = m.org_id AND br.recorded_at >= now() - interval '28 days'
+    )
+  `);
+
+  return c.json({
+    available: true,
+    windowDays: 28,
+    completions: num(cohort.completions),
+    missed: num(cohort.missed),
+    neverSignal: num(cohort.never_signal),
+    buckets: bucketRows.map((r) => ({ bucket: r.bucket, orgs: num(r.orgs) })),
+  });
+});
+
 // patch-28 — multi-product adoption: how many orgs run >1 SKU, the shared-vs-
 // specific competitor split (validates the hybrid model), and battle-card spread.
 productRouter.get("/multi-product-metrics", async (c) => {

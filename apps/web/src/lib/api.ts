@@ -1707,6 +1707,20 @@ export type AdminFirstSignalSlo =
       recentAllMiss: boolean;
     };
 
+// Miss attribution (plan 019): for the 28d completions that missed the 10-minute
+// first-signal window, which backfill_runs outcome bucket dominates. Buckets are
+// per-org presence, not a partition — they do not sum to `missed`.
+export type AdminFirstSignalMisses =
+  | { available: false }
+  | {
+      available: true;
+      windowDays: number;
+      completions: number;
+      missed: number;
+      neverSignal: number;
+      buckets: Array<{ bucket: string; orgs: number }>;
+    };
+
 export type AdminUserRow = {
   userId: string;
   email: string;

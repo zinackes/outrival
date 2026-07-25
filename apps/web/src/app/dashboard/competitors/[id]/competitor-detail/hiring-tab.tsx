@@ -2,10 +2,10 @@
 
 import dynamic from "next/dynamic";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { Briefcase, Activity, ArrowUp, ArrowDown, ChevronRight, ExternalLink } from "lucide-react";
+import { ArrowUp, ArrowDown, ChevronRight, ExternalLink } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Fact, FactStrip } from "@/components/outrival/data-marks";
-import { api } from "@/lib/api";
+import { api, type CompetitorSignal } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Sparkline } from "@/components/dashboard/sparkline";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
@@ -35,11 +35,16 @@ const MultiLineChart = dynamic(() => import("./chart-line"), {
 
 export function HiringTab({
   competitorId,
+  signals,
   monitors,
   scrapingIds,
   onRun,
   onEnable,
-}: { competitorId: string } & MonitorSourceProps) {
+}: {
+  competitorId: string;
+  /** Already on the page; carries the hiring-shift anchor the chart marks. */
+  signals: CompetitorSignal[];
+} & MonitorSourceProps) {
   // The shared QueryClient serves the cache instantly on tab re-switch (no skeleton
   // flash); keepPreviousData keeps the last result during a refetch. A forced
   // re-scan invalidates ["competitor", id] from the detail view.
@@ -144,8 +149,65 @@ export function HiringTab({
 
   const sortedDepartments = [...jobs.departments].sort((a, b) => b.count - a.count);
 
+  // Which department drove the net movement. "They added three roles" is a fact;
+  // "and all of it is engineering" is the read.
+  const deltaByDept = Object.entries(trendByDept)
+    .map(([dept, s]) => {
+      const first = s[0]?.count;
+      const last = s[s.length - 1]?.count;
+      return { dept, delta: first != null && last != null ? last - first : 0 };
+    })
+    .filter((d) => d.delta !== 0)
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+  const driver = deltaByDept[0] ?? null;
+  const driverShare =
+    driver && totalDelta !== 0 ? Math.abs(driver.delta) / Math.abs(totalDelta) : 0;
+
+  const verdict = (() => {
+    if (jobs.total === 0) return null;
+    if (totalDelta === 0) {
+      return `Their board has held at ${jobs.total} open ${jobs.total === 1 ? "role" : "roles"}.`;
+    }
+    const verb = totalDelta > 0 ? "opened" : "closed";
+    const n = Math.abs(totalDelta);
+    const where =
+      driver && driverShare >= 0.99
+        ? `, all of it ${driver.dept.toLowerCase()}`
+        : driver && driverShare >= 0.5
+          ? `, mostly ${driver.dept.toLowerCase()}`
+          : "";
+    return `They ${verb} ${n} ${n === 1 ? "role" : "roles"}${where}.`;
+  })();
+
+  // Where detect-hiring-velocity-shifts fired. The signal carries the date; the
+  // chart's X axis is a formatted label, so the marker snaps to the nearest
+  // captured point rather than inventing a tick between two of them.
+  const chartPoints = mergeTrendsByDate(trends);
+  const shiftMarkers = signals
+    .filter((sig) => sig.sourceType === "hiring_shift")
+    .map((sig) => {
+      const at = new Date(sig.createdAt).getTime();
+      const nearest = chartPoints.reduce<{ x: string; gap: number } | null>((best, pt) => {
+        const label = String(pt.date);
+        const gap = Math.abs(new Date(`${label} ${new Date(at).getFullYear()}`).getTime() - at);
+        if (Number.isNaN(gap)) return best;
+        return !best || gap < best.gap ? { x: label, gap } : best;
+      }, null);
+      return nearest ? { x: nearest.x, label: "Inflection signalled" as const } : null;
+    })
+    .filter((m): m is { x: string; label: "Inflection signalled" } => m !== null)
+    .slice(0, 1);
+
   return (
     <TabCard>
+      {verdict && (
+        <TabSection>
+          <h3 className="text-xl font-semibold leading-snug tracking-tight text-balance">
+            {verdict}
+          </h3>
+        </TabSection>
+      )}
+
       <TabSection>
         <FactStrip>
           <Fact label="Open roles">
@@ -190,12 +252,21 @@ export function HiringTab({
       />
 
       {hasTrend && (
-        <TabSection title="Open roles over time" icon={Activity}>
+        <TabSection
+          title="Open roles over time"
+          action={
+            <span className="shrink-0 text-xs text-muted-foreground">by department</span>
+          }
+        >
+          {/* Stacked: these are parts of one board, so the top edge is the total.
+              Independent series sharing an axis (plan prices) must not stack. */}
           <MultiLineChart
-            data={mergeTrendsByDate(trends)}
+            data={chartPoints}
             seriesKeys={Object.keys(trendByDept)}
             height={240}
             yAllowDecimals={false}
+            stacked
+            markers={shiftMarkers}
           />
         </TabSection>
       )}
@@ -204,71 +275,74 @@ export function HiringTab({
           count-and-delta table, and a weekly sparkline list, all drawing the same
           axis, with the roles in a separate 30rem scroll cage below them. Each row
           now carries the count, the shape and the delta, and opens onto its roles. */}
-      <TabSection title="By department" icon={Briefcase}>
-        <div className="-mx-1">
-          {sortedDepartments.map((d) => {
-            const series = trendByDept[d.department] ?? [];
+      <div>
+        {sortedDepartments.map((d) => {
+          const series = trendByDept[d.department] ?? [];
             const first = series[0]?.count ?? d.count;
             const last = series[series.length - 1]?.count ?? d.count;
             const delta = last - first;
             const spark = velocityByLabel.get(d.department.toLowerCase());
             return (
-              <details key={d.department} className="details-smooth group border-t border-border first:border-t-0">
-                <summary
+            <details
+              key={d.department}
+              className="details-smooth group border-t border-border first:border-t-0"
+            >
+              {/* Fixed columns, so name, count, shape and delta line up down the
+                  list instead of drifting with each department's name length. */}
+              <summary
+                className={cn(
+                  "grid cursor-pointer list-none items-center gap-3.5 px-5 py-3",
+                  "grid-cols-[0.875rem_minmax(0,1fr)_auto_4.25rem] sm:grid-cols-[0.875rem_minmax(0,1fr)_4.5rem_6rem_4.25rem]",
+                  "transition-colors hover:bg-surface-2",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+                  "[&::-webkit-details-marker]:hidden",
+                )}
+              >
+                <ChevronRight
+                  size={14}
+                  aria-hidden
+                  className="shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
+                />
+                <span className="min-w-0 truncate text-sm font-medium">{d.department}</span>
+                <span className="text-right text-dense text-muted-foreground">
+                  <span className="font-mono font-semibold tabular-nums text-foreground">
+                    {d.count}
+                  </span>{" "}
+                  open
+                </span>
+                <span className="hidden justify-self-end sm:block">
+                  {spark && spark.series.length >= 2 && (
+                    <Sparkline
+                      data={spark.series}
+                      w={88}
+                      h={22}
+                      color="var(--link)"
+                      fill
+                      valueLabel="roles"
+                    />
+                  )}
+                </span>
+                <span
                   className={cn(
-                    "flex cursor-pointer list-none items-center gap-3 px-1 py-2.5",
-                    "transition-colors hover:bg-surface-2",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-                    "[&::-webkit-details-marker]:hidden",
+                    "text-right font-mono text-dense tabular-nums",
+                    delta === 0
+                      ? "text-muted-foreground"
+                      : delta > 0
+                        ? "text-high"
+                        : "text-positive",
                   )}
                 >
-                  <ChevronRight
-                    size={13}
-                    aria-hidden
-                    className="shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
-                  />
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                    {d.department}
-                  </span>
-                  <span className="shrink-0 text-dense text-muted-foreground">
-                    <span className="font-mono font-semibold tabular-nums text-foreground">
-                      {d.count}
-                    </span>{" "}
-                    open
-                  </span>
-                  {spark && spark.series.length >= 2 && (
-                    <span className="hidden shrink-0 sm:block">
-                      <Sparkline
-                        data={spark.series}
-                        w={88}
-                        h={22}
-                        color="var(--link)"
-                        fill
-                        valueLabel="roles"
-                      />
+                  {delta === 0 ? (
+                    "flat"
+                  ) : (
+                    <span className="inline-flex items-center justify-end gap-0.5">
+                      {delta > 0 ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />}
+                      {Math.abs(delta)}
                     </span>
                   )}
-                  <span
-                    className={cn(
-                      "w-16 shrink-0 text-right font-mono text-dense tabular-nums",
-                      delta === 0
-                        ? "text-muted-foreground"
-                        : delta > 0
-                          ? "text-high"
-                          : "text-positive",
-                    )}
-                  >
-                    {delta === 0 ? (
-                      "flat"
-                    ) : (
-                      <span className="inline-flex items-center justify-end gap-0.5">
-                        {delta > 0 ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />}
-                        {Math.abs(delta)}
-                      </span>
-                    )}
-                  </span>
-                </summary>
-                <ul className="flex flex-col pb-2 pl-7 pr-1">
+                </span>
+              </summary>
+              <ul className="flex flex-col pb-3 pl-[2.875rem] pr-5">
                   {d.jobs.map((role) => {
                     const salary = salaryLabel(role);
                     return (
@@ -317,22 +391,53 @@ export function HiringTab({
                           )}
                         </span>
                       </li>
-                    );
-                  })}
-                </ul>
-              </details>
-            );
-          })}
-        </div>
+                  );
+                })}
+              </ul>
+            </details>
+          );
+        })}
+      </div>
 
-        {emptyBuckets.length > 0 && (
-          <p className="text-dense text-muted-foreground">
-            Nothing open in{" "}
-            <span className="text-foreground">{emptyBuckets.join(", ").toLowerCase()}</span>. A
-            department they track but are not hiring into is a read of its own.
-          </p>
+      {emptyBuckets.length > 0 && (
+        <p className="px-5 py-3 text-dense text-muted-foreground">
+          Nothing open in{" "}
+          <span className="text-foreground">{emptyBuckets.join(", ").toLowerCase()}</span>. A
+          department they track but are not hiring into is a read of its own.
+        </p>
+      )}
+
+      {/* Provenance last, matching Pricing: which board, when it was last read. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3 text-xs text-muted-foreground">
+        {jobsMonitor?.pageUrl && (
+          <span className="inline-flex min-w-0 items-center gap-1.5">
+            Captured from
+            <a
+              href={jobsMonitor.pageUrl}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="truncate text-link hover:underline"
+            >
+              {jobsMonitor.pageUrl.replace(/^https?:\/\//, "")}
+            </a>
+          </span>
         )}
-      </TabSection>
+        {jobsMonitor?.lastRunAt && (
+          <span>
+            last check {formatDistanceToNow(new Date(jobsMonitor.lastRunAt), { addSuffix: true })}
+          </span>
+        )}
+        {jobsMonitor && (
+          <button
+            type="button"
+            onClick={() => onRun(jobsMonitor.id)}
+            disabled={scrapingIds.has(jobsMonitor.id)}
+            className="ml-auto text-link hover:underline disabled:opacity-60"
+          >
+            {scrapingIds.has(jobsMonitor.id) ? "Scanning…" : "Re-scan now"}
+          </button>
+        )}
+      </div>
     </TabCard>
   );
 }

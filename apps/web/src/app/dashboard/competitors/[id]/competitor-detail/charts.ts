@@ -54,14 +54,22 @@ export function buildJobTrend(
 export function mergeTrendsByDate(
   points: JobTrendPoint[],
 ): Array<Record<string, number | string>> {
-  const byDate = new Map<string, Record<string, number | string>>();
+  // Ordered by the real timestamp, not by the "05 Jul" label: the label sorts
+  // lexically, which puts July before June, and the rows arrived in whatever
+  // order the query returned. An unordered series draws as noise.
+  const byDate = new Map<string, { at: number; row: Record<string, number | string> }>();
   for (const p of points) {
     const date = shortDate(p.recorded_at);
-    const row = byDate.get(date) ?? { date };
-    row[p.department] = p.count;
-    byDate.set(date, row);
+    const entry = byDate.get(date) ?? {
+      at: new Date(p.recorded_at.replace(" ", "T")).getTime(),
+      row: { date },
+    };
+    entry.row[p.department] = p.count;
+    byDate.set(date, entry);
   }
-  return Array.from(byDate.values());
+  return Array.from(byDate.values())
+    .sort((a, b) => a.at - b.at)
+    .map((e) => e.row);
 }
 
 export function buildReviewScoreSeries(points: ReviewScorePoint[]): {

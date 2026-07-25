@@ -9,6 +9,7 @@ import {
   Tooltip as ChartTooltip,
   CartesianGrid,
   Legend,
+  ReferenceLine,
 } from "recharts";
 import { lineColor } from "./charts";
 
@@ -43,6 +44,8 @@ export function MultiLineChart({
   yDomain,
   yAllowDecimals = true,
   dot = false,
+  stacked = false,
+  markers = [],
 }: {
   data: Array<Record<string, number | string>>;
   seriesKeys: string[];
@@ -50,6 +53,13 @@ export function MultiLineChart({
   yDomain?: [number, number];
   yAllowDecimals?: boolean;
   dot?: boolean;
+  // Stack the bands so the top edge reads as the total. Right for parts of one
+  // whole (open roles per department); wrong for independent series that share an
+  // axis (plan prices), where stacking would invent a sum nobody is paying.
+  stacked?: boolean;
+  // Vertical annotations on the X axis, e.g. where a shift detector fired. `x`
+  // must match a value of the series' `date` key.
+  markers?: Array<{ x: string; label: string; tone?: "high" | "critical" }>;
 }) {
   const lastIndex = data.length - 1;
 
@@ -85,6 +95,24 @@ export function MultiLineChart({
         />
         <ChartTooltip contentStyle={TOOLTIP_STYLE} />
         {seriesKeys.length > 1 && <Legend wrapperStyle={{ fontSize: 11 }} />}
+        {/* Where a detector fired. Rendered before the areas so a band never
+            paints over the rule. */}
+        {markers.map((mk) => (
+          <ReferenceLine
+            key={`${mk.x}-${mk.label}`}
+            x={mk.x}
+            stroke={mk.tone === "critical" ? "var(--critical)" : "var(--high)"}
+            strokeDasharray="3 3"
+            strokeOpacity={0.7}
+            label={{
+              value: mk.label,
+              position: "insideTopRight",
+              fill: mk.tone === "critical" ? "var(--critical)" : "var(--high)",
+              fontSize: 11,
+              fontWeight: 600,
+            }}
+          />
+        ))}
         {seriesKeys.map((k, i) => (
           <Area
             key={k}
@@ -93,6 +121,7 @@ export function MultiLineChart({
             stroke={lineColor(i)}
             strokeWidth={2}
             fill={`url(#fill-${i})`}
+            {...(stacked ? { stackId: "total" } : {})}
             // Every point when the caller asked for dots (reviews plots sparse
             // captures); otherwise only the newest one, which is what a monitoring
             // reader is looking for.

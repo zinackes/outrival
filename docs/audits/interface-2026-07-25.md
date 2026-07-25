@@ -365,6 +365,27 @@ Left alone as agreed: the same disabled-until-valid pattern in
 the placeholder-as-label finding, since visible labels would change the look of a
 deliberately minimal screen.
 
+**PR 4**, primitives polish. Closes the remaining LOW and MEDIUM findings.
+
+`transition-all` on the button base becomes an explicit list. The properties were
+enumerated by cross-checking every state the variants declare, then the rule was
+compiled to confirm it generates. `underline` on the `link` variant is the one
+state left out, deliberately: `text-decoration-line` is not animatable, so
+`transition-all` was not animating it either.
+
+Press feedback is now one value. `scale-90` twice and `scale-95` once become
+`scale-[0.97]`, matching the shared base. `scale-100` on the `link` variant stays:
+that is the deliberate opt-out `better-ui` provides for.
+
+Also: `rounded-[4px]` on the checkbox becomes `rounded-sm` (identical value, via
+the token), `transition-all` in `onboarding-form.tsx` is enumerated, and the OTP
+boxes finally expose `aria-invalid`.
+
+Three of the four generic `"Something went wrong"` fallbacks now name the action
+that failed. The fourth, `security-settings.tsx:65`, is left alone: it sits in a
+generic fetch helper that genuinely does not know what the caller was doing, the
+same reason the two error boundaries keep theirs.
+
 ### Found while fixing: shadows
 
 `DESIGN.md` §4 states the system "defines **no** shadow tokens", that depth comes

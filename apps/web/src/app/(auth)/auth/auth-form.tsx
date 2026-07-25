@@ -146,7 +146,7 @@ export function AuthForm() {
         track("auth_magic_link_sent");
       } else {
         setStatus("error");
-        setError(data?.message ?? "Something went wrong. Please try again.");
+        setError(data?.message ?? "Couldn't send your code. Try again in a moment.");
       }
     } catch {
       setStatus("error");
@@ -811,6 +811,7 @@ function OtpInput({
           disabled={disabled}
           autoFocus={i === 0}
           aria-label={`Digit ${i + 1}`}
+          aria-invalid={invalid}
           className={cn(
             "size-10 sm:size-12 rounded-lg border bg-background text-center text-xl font-mono tabular-nums slashed-zero text-foreground outline-none transition-colors",
             "focus:border-ring focus:ring-2 focus:ring-ring/30",

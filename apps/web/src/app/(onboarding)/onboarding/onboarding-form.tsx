@@ -1016,7 +1016,7 @@ function StageChooser({
               onClick={() => onChoose(s)}
               aria-pressed={current === s}
               className={cn(
-                "text-left p-5 rounded-md border transition-all",
+                "text-left p-5 rounded-md border transition-[background-color,border-color,box-shadow]",
                 current === s
                   ? "border-primary bg-primary/10 ring-1 ring-primary/40"
                   : "border-border hover:border-border-strong hover:bg-surface-2",

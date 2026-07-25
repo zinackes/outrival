@@ -8,16 +8,25 @@ import { formatTime } from "@/lib/format-date";
 import { sourceLabel } from "@/lib/source-labels";
 import { competitorNameColor } from "@/lib/competitor-color";
 
-// 24 hours of history in quarter-hour buckets, then the checks the scheduler
-// already has queued. One object answers both halves of "is it still watching":
-// the work done, and the work due.
-const SLOTS = 96; // 24h in quarter hours
+// 24 hours of history in clock hours, then the checks the scheduler already has
+// queued. One object answers both halves of "is it still watching": the work
+// done, and the work due.
+const SLOTS = 24;
+const HOUR = 3_600_000;
 const FUTURE_MINUTES = 180;
 // 24h of history against 3h of schedule, so an hour is the same width on both
 // sides of now.
 const PAST_PCT = 88.9;
 const FUTURE_PCT = 100 - PAST_PCT;
-const SLOT_PCT = PAST_PCT / SLOTS;
+
+// How tall a bar can get, and the check count that reaches it. Height carries the
+// volume of work, so a busy hour has to look busier than a quiet one — but scaling
+// against the window's own maximum would make a day of single checks draw
+// full-height bars, so the reference has a floor.
+const BAR_MIN = 6;
+const BAR_MAX = 40;
+const BAR_STUB = 3; // an observed zero: nothing was due, which is not a hole
+const BUSY_REFERENCE = 6;
 
 // Hours the user is asleep. Outrival keeps checking through them, which is most
 // of the reason this page exists.
@@ -29,6 +38,7 @@ type BarKind = "quiet" | "change" | "failed";
 interface Bar {
   slot: number;
   left: number;
+  width: number;
   height: number;
   kind: BarKind;
   start: Date;
@@ -77,44 +87,65 @@ export function WatchStrip({
     if (now == null) return null;
     const bySlot = new Map(buckets.map((b) => [b.slot, b]));
 
-    // Attribute each finding to the bucket it happened in, so a bar can name it.
+    // The strip is cut on the clock, not on the request minute: slot 0 is the hour
+    // in progress, so a bar spans 16:00 to 17:00 rather than 16:45 to 17:45. The
+    // window therefore runs from a whole hour to now, and the hour in progress
+    // draws as the part of it that has already happened.
+    const hourStart = new Date(now).setMinutes(0, 0, 0);
+    const windowStart = hourStart - (SLOTS - 1) * HOUR;
+    const span = now - windowStart;
+    const pct = (t: number) => ((t - windowStart) / span) * PAST_PCT;
+
+    // Attribute each finding to the hour it happened in, so a bar can name it.
     const findingsBySlot = new Map<number, ActivityFinding[]>();
     for (const f of findings) {
-      const slot = Math.floor((now - new Date(f.recordedAt).getTime()) / (15 * 60_000));
+      const at = new Date(f.recordedAt).setMinutes(0, 0, 0);
+      const slot = Math.round((hourStart - at) / HOUR);
       if (slot < 0 || slot >= SLOTS) continue;
       const list = findingsBySlot.get(slot);
       if (list) list.push(f);
       else findingsBySlot.set(slot, [f]);
     }
 
+    // Height reads as volume of work, so it needs the busiest hour before any bar
+    // can be sized.
+    const busiest = buckets.reduce((m, b) => Math.max(m, b.checks), BUSY_REFERENCE);
+
     const bars: Bar[] = [];
     const nightSlots: boolean[] = [];
     for (let slot = SLOTS - 1; slot >= 0; slot--) {
-      // Slot s covers [now - (s+1)·15min, now - s·15min).
-      const start = new Date(now - (slot + 1) * 15 * 60_000);
-      const end = new Date(now - slot * 15 * 60_000);
-      const hour = start.getHours();
-      nightSlots[SLOTS - 1 - slot] = hour >= NIGHT_FROM || hour < NIGHT_TO;
+      // Slot s covers the clock hour [hourStart - s·1h, +1h), clipped at now for
+      // the hour still running.
+      const startMs = hourStart - slot * HOUR;
+      const start = new Date(startMs);
+      const end = new Date(Math.min(startMs + HOUR, now));
+      nightSlots[SLOTS - 1 - slot] = start.getHours() >= NIGHT_FROM || start.getHours() < NIGHT_TO;
 
+      const left = pct(startMs);
+      const common = {
+        slot,
+        left,
+        width: pct(end.getTime()) - left,
+        start,
+        end,
+        findings: findingsBySlot.get(slot) ?? [],
+      };
       const b = bySlot.get(slot);
-      const left = ((SLOTS - 1 - slot) / SLOTS) * PAST_PCT;
-      const common = { slot, left, start, end, findings: findingsBySlot.get(slot) ?? [] };
       if (!b || b.checks === 0) {
-        // An observed zero keeps a stub, so a quarter hour with nothing due reads
-        // as "nothing due" and not as a hole in the record.
-        bars.push({ ...common, height: 3, kind: "quiet", checks: 0 });
+        // An observed zero keeps a stub, so an hour with nothing due reads as
+        // "nothing due" and not as a hole in the record.
+        bars.push({ ...common, height: BAR_STUB, kind: "quiet", checks: 0 });
         continue;
       }
-      const kind = bucketKind(b);
       bars.push({
         ...common,
-        height: kind === "quiet" ? Math.min(6 + b.checks * 8, 26) : 32,
-        kind,
+        height: Math.round(BAR_MIN + Math.min(b.checks / busiest, 1) * (BAR_MAX - BAR_MIN)),
+        kind: bucketKind(b),
         checks: b.checks,
       });
     }
 
-    // Contiguous night runs, so the shading is one band per night rather than 96
+    // Contiguous night runs, so the shading is one band per night rather than 24
     // adjacent cells (and survives a window that spans two of them).
     const bands: { left: number; width: number; slots: number }[] = [];
     let i = 0;
@@ -123,9 +154,15 @@ export function WatchStrip({
         i++;
         continue;
       }
-      const start = i;
+      const from = i;
       while (i < SLOTS && nightSlots[i]) i++;
-      bands.push({ left: start * SLOT_PCT, width: (i - start) * SLOT_PCT, slots: i - start });
+      // Bar index k is the hour starting windowStart + k·1h.
+      const left = pct(windowStart + from * HOUR);
+      bands.push({
+        left,
+        width: pct(Math.min(windowStart + i * HOUR, now)) - left,
+        slots: i - from,
+      });
     }
     const widest = bands.reduce<{ left: number; width: number; slots: number } | null>(
       (m, b) => (m === null || b.slots > m.slots ? b : m),
@@ -143,19 +180,39 @@ export function WatchStrip({
         left: PAST_PCT + (Math.max(x.inMinutes, 0) / FUTURE_MINUTES) * FUTURE_PCT,
       }));
 
-    const axis = [24, 18, 12, 6, 0].map((hoursAgo) =>
-      formatTime(new Date(now - hoursAgo * 3_600_000), { hour: "numeric", minute: "2-digit" }),
-    );
+    // Marks on whole hours, placed where their hour actually starts, so the axis
+    // reads 16:00 and not the minute the page happened to load.
+    const axis = [0, 6, 12, 18].map((hoursIn) => ({
+      label: formatTime(new Date(windowStart + hoursIn * HOUR), {
+        hour: "numeric",
+        minute: "2-digit",
+      }),
+      // The axis row is its own box, already sized to the past region, so a mark
+      // is placed as a fraction of THAT rather than of the whole strip.
+      left: ((hoursIn * HOUR) / span) * 100,
+    }));
+    const nowLabel = formatTime(new Date(now), { hour: "numeric", minute: "2-digit" });
 
     const checks = buckets.reduce((n, b) => n + b.checks, 0);
     const findingCount = buckets.reduce((n, b) => n + b.changes + b.failures, 0);
 
-    return { bars, bands, widest, scheduled, axis, checks, findingCount };
+    return {
+      bars,
+      bands,
+      widest,
+      scheduled,
+      axis,
+      nowLabel,
+      checks,
+      findingCount,
+      windowStart,
+      span,
+    };
   }, [buckets, findings, upcoming, now]);
 
-  // One shared cursor rather than 96 hover targets: the pointer's x resolves to a
-  // bucket, which is both cheaper than a tooltip root per bar and easier to hit
-  // than a 7px column.
+  // One shared cursor rather than 24 hover targets: the pointer's x resolves to a
+  // bucket, which is cheaper than a tooltip root per bar and keeps the reading on
+  // one element.
   const stripRef = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState<number | null>(null);
 
@@ -170,8 +227,11 @@ export function WatchStrip({
         setHovered(null);
         return;
       }
-      const index = Math.min(SLOTS - 1, Math.max(0, Math.floor((x / pastWidth) * SLOTS)));
-      setHovered(SLOTS - 1 - index);
+      // The window ends on `now` mid-hour, so x resolves through time rather than
+      // through equal columns.
+      const at = model.windowStart + (x / pastWidth) * model.span;
+      const index = Math.floor((at - model.windowStart) / HOUR);
+      setHovered(Math.min(SLOTS - 1, Math.max(0, SLOTS - 1 - index)));
     },
     [model],
   );
@@ -248,7 +308,7 @@ export function WatchStrip({
         role="img"
         aria-label={
           model
-            ? `${model.checks} checks over the last 24 hours, ${model.findingCount} of them found something. Use the arrow keys to read a quarter hour at a time.`
+            ? `${model.checks} checks over the last 24 hours, ${model.findingCount} of them found something. Use the arrow keys to read an hour at a time.`
             : "Checks over the last 24 hours"
         }
       >
@@ -261,7 +321,7 @@ export function WatchStrip({
                 style={{ left: `${band.left}%`, width: `${band.width}%` }}
                 aria-hidden
               >
-                {model.widest === band && band.slots >= 12 && (
+                {model.widest === band && band.slots >= 4 && (
                   <span className="absolute left-1/2 top-0.5 -translate-x-1/2 font-mono text-meta text-muted-foreground">
                     overnight
                   </span>
@@ -269,12 +329,12 @@ export function WatchStrip({
               </div>
             ))}
 
-            {/* The hovered quarter hour, marked behind the bars so the bar itself
-                stays the brightest thing in its own column. */}
+            {/* The hovered hour, marked behind the bars so the bar itself stays
+                the brightest thing in its own column. */}
             {hoveredBar && (
               <div
                 className="absolute inset-y-0 bg-surface-3"
-                style={{ left: `${hoveredBar.left}%`, width: `${SLOT_PCT}%` }}
+                style={{ left: `${hoveredBar.left}%`, width: `${hoveredBar.width}%` }}
                 aria-hidden
               />
             )}
@@ -287,7 +347,7 @@ export function WatchStrip({
                   bar.kind === "change" && "bg-foreground",
                   bar.kind === "failed" && "bg-critical",
                   bar.kind === "quiet" &&
-                    (bar.height <= 3
+                    (bar.checks === 0
                       ? "bg-border"
                       : hoveredBar?.slot === bar.slot
                         ? "bg-foreground"
@@ -295,7 +355,7 @@ export function WatchStrip({
                 )}
                 style={{
                   left: `${bar.left}%`,
-                  width: `calc(${SLOT_PCT}% - 2px)`,
+                  width: `calc(${bar.width}% - 2px)`,
                   height: `${bar.height}px`,
                 }}
                 aria-hidden
@@ -313,7 +373,10 @@ export function WatchStrip({
                     "absolute size-[5px] rounded-full",
                     bar.kind === "failed" ? "bg-critical" : "bg-foreground",
                   )}
-                  style={{ left: `calc(${bar.left + SLOT_PCT / 2}% - 2.5px)`, bottom: "36px" }}
+                  style={{
+                    left: `calc(${bar.left + bar.width / 2}% - 2.5px)`,
+                    bottom: `${bar.height + 4}px`,
+                  }}
                   aria-hidden
                 />
               ))}
@@ -348,12 +411,21 @@ export function WatchStrip({
 
       {model && (
         <div className="flex font-mono text-meta text-muted-foreground tabular-nums">
-          <div className="flex justify-between" style={{ flex: `0 0 ${PAST_PCT}%` }}>
-            {model.axis.map((label, i) => (
-              <span key={i} className={cn(i % 2 === 1 && "hidden sm:inline")}>
-                {label}
+          <div className="relative h-3.5" style={{ flex: `0 0 ${PAST_PCT}%` }}>
+            {model.axis.map((mark, i) => (
+              <span
+                key={mark.label}
+                className={cn(
+                  "absolute top-0",
+                  i === 0 ? "left-0" : "-translate-x-1/2",
+                  i % 2 === 1 && "hidden sm:inline",
+                )}
+                style={i === 0 ? undefined : { left: `${mark.left}%` }}
+              >
+                {mark.label}
               </span>
             ))}
+            <span className="absolute right-0 top-0">{model.nowLabel}</span>
           </div>
           <div className="flex-1 whitespace-nowrap text-right text-text-subtle max-sm:hidden">
             next 3h
@@ -371,10 +443,10 @@ export function WatchStrip({
   );
 }
 
-// What one quarter hour holds. Anchored to its own bar and clamped to the strip,
-// so a bucket at either end still reads inside the page.
+// What one hour holds. Anchored to its own bar and clamped to the strip, so a
+// bucket at either end still reads inside the page.
 function BucketCard({ bar }: { bar: Bar }) {
-  const centre = bar.left + SLOT_PCT / 2;
+  const centre = bar.left + bar.width / 2;
   const clamped = Math.min(88, Math.max(12, centre));
   return (
     <div
@@ -383,7 +455,7 @@ function BucketCard({ bar }: { bar: Bar }) {
       aria-live="polite"
     >
       <div className="font-mono text-meta text-muted-foreground tabular-nums">
-        {formatTime(bar.start)} to {formatTime(bar.end)}
+        {formatTime(bar.start)} to {bar.slot === 0 ? "now" : formatTime(bar.end)}
       </div>
       <div className="whitespace-nowrap text-dense text-foreground">
         {bar.checks === 0 ? (

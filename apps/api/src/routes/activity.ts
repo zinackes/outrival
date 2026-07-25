@@ -485,20 +485,26 @@ activityRouter.get("/summary", async (c) => {
   const utcNow = sql`(now() AT TIME ZONE 'UTC')`;
   const scope = sql`r.competitor_id IN (${idList}) AND r.source_type NOT IN (${hiddenList})`;
 
-  // 15-minute buckets over the last 24h. `slot` counts backwards from now (0 =
-  // the quarter hour in progress), so the client never has to reconcile clocks.
+  // 24 hourly buckets, aligned to the VIEWER's clock rather than to the minute the
+  // request happened to be made: `slot` counts whole local hours back from the one
+  // in progress (0 = this hour), so a bar reads "16:00 to 17:00" and not
+  // "16:45 to 17:45". The 25-hour scan gives the oldest bucket its full hour.
+  const localShift = sql`make_interval(mins => ${tzOffset})`;
   const buckets = await analyticsQuery<{
     slot: number;
     checks: number;
     changes: number;
     failures: number;
   }>(sql`
-    SELECT floor(extract(epoch FROM (${utcNow} - r.recorded_at)) / 900)::int AS slot,
+    SELECT floor(extract(epoch FROM (
+             date_trunc('hour', ${utcNow} - ${localShift})
+             - date_trunc('hour', r.recorded_at - ${localShift})
+           )) / 3600)::int AS slot,
            count(*)::int AS checks,
            count(*) FILTER (WHERE r.status = 'success' AND ${CHANGE_EXISTS})::int AS changes,
            count(*) FILTER (WHERE r.status = 'failed')::int AS failures
     FROM scrape_runs r
-    WHERE ${scope} AND r.recorded_at > ${utcNow} - interval '24 hours'
+    WHERE ${scope} AND r.recorded_at > ${utcNow} - interval '25 hours'
     GROUP BY 1
     ORDER BY 1
   `);
@@ -547,7 +553,7 @@ activityRouter.get("/summary", async (c) => {
   `);
 
   return c.json({
-    buckets: buckets.filter((b) => b.slot >= 0 && b.slot < 96),
+    buckets: buckets.filter((b) => b.slot >= 0 && b.slot < 24),
     days,
     findings: findings.map((f) => ({
       recordedAt: f.recordedAt,

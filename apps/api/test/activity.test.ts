@@ -150,7 +150,7 @@ afterAll(async () => {
 const sum = (rows: { checks: number }[]) => rows.reduce((n, r) => n + r.checks, 0);
 
 describe("GET /api/activity/summary", () => {
-  test("counts the last 24h into quarter-hour buckets, hidden sources excluded", async () => {
+  test("counts the last 24h into clock-hour buckets, hidden sources excluded", async () => {
     const res = await app.request("/api/activity/summary?tzOffset=0", asUser(A.userId, A.email));
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
@@ -161,12 +161,10 @@ describe("GET /api/activity/summary", () => {
     expect(sum(body.buckets)).toBe(4);
     expect(body.buckets.reduce((n, b) => n + b.changes, 0)).toBe(1);
     expect(body.buckets.reduce((n, b) => n + b.failures, 0)).toBe(1);
-    // Slots count backwards from now, so a 2h-old run sits around slot 8 and every
-    // slot is inside the drawn window.
-    for (const b of body.buckets) {
-      expect(b.slot).toBeGreaterThanOrEqual(0);
-      expect(b.slot).toBeLessThan(96);
-    }
+    // Buckets are whole clock hours counted back from the one in progress, not a
+    // window sliding with the request minute: a run exactly N hours old lands in
+    // slot N, whatever o'clock it is when the test runs.
+    expect(body.buckets.map((b) => b.slot).sort((x, y) => x - y)).toEqual([2, 4, 6, 8]);
   });
 
   test("day tallies split the four outcomes and reach back past 24h", async () => {

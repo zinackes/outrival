@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { classifyLogoName, type AnalysisStatus } from "@outrival/shared";
 import { toast } from "sonner";
@@ -33,13 +33,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { CompetitorTechStack } from "@/components/outrival/competitor-tech-stack";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
@@ -683,95 +676,15 @@ export function OverviewTab({
 }
 
 // Tech stack lost its tab: it is reference material, not a lens you flip to every
-// visit. The headline tells you the commercially interesting part (who they pay for
-// payments, CRM, analytics) and the full catalogue opens in a sheet on demand.
+// visit. It reads in place here, with the platform rows and the evidence the sheet
+// used to hold: a stack you have to open a panel to see is a stack nobody reads,
+// and the summary that stood in for it repeated the same grouping with less in it.
 function TechStackCard({ techStack }: { techStack: TechStackData }) {
-  const [open, setOpen] = useState(false);
-  const entries = techStack.entries;
-  if (entries.length === 0 && !techStack.platformProfile) return null;
-
-  // Grouped by what each tool DOES. Four chips and a "+8 more" drawer told you the
-  // count and nothing else; a competitor's stack is read by category ("who do they
-  // pay for payments, for support") and that grouping is already on every entry.
-  const byCategory = new Map<string, typeof entries>();
-  for (const t of [...entries].sort(
-    (a, b) => IMPORTANCE_RANK.indexOf(a.importance) - IMPORTANCE_RANK.indexOf(b.importance),
-  )) {
-    const bucket = byCategory.get(t.category);
-    if (bucket) bucket.push(t);
-    else byCategory.set(t.category, [t]);
-  }
-  // Categories holding a commercially telling tool first.
-  const groups = [...byCategory.entries()].sort(
-    (a, b) =>
-      IMPORTANCE_RANK.indexOf(a[1][0]!.importance) - IMPORTANCE_RANK.indexOf(b[1][0]!.importance),
-  );
-
-  return (
-    <>
-      <TabCard>
-      <TabSection
-        title="Tech stack"
-        action={
-          <button
-            type="button"
-            onClick={() => setOpen(true)}
-            className="shrink-0 text-xs text-link hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            {entries.length > 0 ? `${entries.length} detected, see evidence` : "Platform detected"}
-          </button>
-        }
-      >
-        {groups.length > 0 && (
-          <dl className="grid grid-cols-1 gap-x-4 gap-y-2.5 sm:grid-cols-[7.5rem_minmax(0,1fr)]">
-            {groups.map(([category, techs]) => (
-              <Fragment key={category}>
-                <dt className="text-xs capitalize text-muted-foreground">
-                  {category.replace(/[_-]/g, " ")}
-                </dt>
-                <dd className="m-0 flex flex-wrap gap-1.5">
-                  {techs.map((t) => (
-                    <span
-                      key={t.techId}
-                      className={cn(
-                        "rounded-sm border px-2 py-0.5 text-dense",
-                        // A payments or CRM tell says more about how they sell than
-                        // the CDN in front of the marketing site: weight, not a
-                        // second coloured container.
-                        t.importance === "high"
-                          ? "border-border-strong text-foreground"
-                          : "border-border text-muted-foreground",
-                      )}
-                    >
-                      {t.name}
-                    </span>
-                  ))}
-                </dd>
-              </Fragment>
-            ))}
-          </dl>
-        )}
-      </TabSection>
-      </TabCard>
-
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl">
-          <SheetHeader>
-            <SheetTitle>Tech stack</SheetTitle>
-            <SheetDescription>
-              Third-party technology detected on this competitor&apos;s site, scanned monthly.
-            </SheetDescription>
-          </SheetHeader>
-          <div className="px-4 pb-6">
-            <CompetitorTechStack techStack={techStack} />
-          </div>
-        </SheetContent>
-      </Sheet>
-    </>
-  );
+  // Never scanned and nothing detected: no card at all, rather than a card whose
+  // only content is a promise that the scan is coming.
+  if (techStack.entries.length === 0 && !techStack.platformProfile) return null;
+  return <CompetitorTechStack techStack={techStack} />;
 }
-
-const IMPORTANCE_RANK = ["high", "medium", "low"];
 
 /** Cheapest tier carrying a real figure. Quote-based tiers have none. */
 function entryPriceOf(tiers: Array<{ price: number | null; currency: string; billing_period: string; plan_name: string }>) {

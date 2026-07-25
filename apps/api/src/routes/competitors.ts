@@ -26,6 +26,7 @@ import { associateCompetitorWithPrimaryProduct, productCompetitorIds } from "../
 import { analyticsQuery } from "../lib/analytics-safe";
 import { translateToEnglish } from "../lib/translate";
 import { detectContentLanguage } from "../lib/detect-language";
+import { dedupeVerbatims } from "../lib/review-verbatims";
 import {
   checkCompetitorQuota,
   getOrgPlan,
@@ -1448,6 +1449,9 @@ competitorsRouter.get("/:id/hiring-velocity", async (c) => {
   return c.json({ velocity });
 });
 
+/** How many praises / complaints "In their words" shows once restatements are out. */
+const VERBATIM_LIMIT = 5;
+
 competitorsRouter.get("/:id/reviews", async (c) => {
   const id = c.req.param("id");
   const user = c.get("user");
@@ -1505,8 +1509,10 @@ competitorsRouter.get("/:id/reviews", async (c) => {
 
   return c.json({
     summary: {
-      praises: praises.slice(0, 5).map((r) => r.content),
-      complaints: complaints.slice(0, 5).map((r) => r.content),
+      // Deduped, not just sliced: each run re-writes the same page's verbatims, so
+      // the five newest rows were often three points with two of them said twice.
+      praises: dedupeVerbatims(praises.map((r) => r.content), VERBATIM_LIMIT),
+      complaints: dedupeVerbatims(complaints.map((r) => r.content), VERBATIM_LIMIT),
       lastUpdatedAt: rows[0]?.detectedAt ?? null,
       subScores: subRow ?? null,
       complaintThemes,

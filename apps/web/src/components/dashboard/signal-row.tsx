@@ -1,33 +1,17 @@
 "use client";
 
-import {
-  OctagonAlert,
-  TriangleAlert,
-  AlertCircle,
-  ArrowDownRight,
-  Layers,
-  Archive,
-  type LucideIcon,
-} from "lucide-react";
+import { Layers, Archive } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import type { Signal } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { shortAge } from "@/lib/format-date";
 import { sourceLabel } from "@/lib/source-labels";
 import { competitorNameColor } from "@/lib/competitor-color";
-import { CatPill } from "./cat-pill";
+import { SeverityGauge } from "@/components/outrival/severity-scale";
+import { CatText } from "./cat-pill";
 
 type Sev = Signal["severity"];
 
-// Severity icon — the non-color encoding (shape differs per level), so severity
-// reads without relying on color alone. It is now the row's only severity cue:
-// the former filled SEVERITY badge + colored left rail are dropped to keep the
-// list quiet (they stacked four colored elements per row, reading as "AI slop").
-const SEV_ICON: Record<Sev, LucideIcon> = {
-  critical: OctagonAlert,
-  high: TriangleAlert,
-  medium: AlertCircle,
-  low: ArrowDownRight,
-};
 const SEV_TEXT: Record<Sev, string> = {
   critical: "text-critical",
   high: "text-high",
@@ -40,7 +24,12 @@ const SEV_RANK: Record<Sev, number> = { critical: 4, high: 3, medium: 2, low: 1 
  * One compact row in the Signals master list (Linear/Sentry inbox register). The
  * detail lives in the right pane; this stays scannable — the finding leads, and
  * who moved / from where sits under it as attribution. Read rows dim; unread
- * carry a left accent rail + dot. Selection is a background tint (no bar).
+ * carry a bold title + trailing dot. Selection is a background tint (no bar).
+ *
+ * Severity is the SeverityGauge — the same four bands the detail pane shows, so
+ * the encoding is learned once. It replaced a set of four alert icons whose
+ * shapes (octagon/triangle/circle/arrow) were arbitrary, which left color doing
+ * the work alone and made a routine copy change wear an incident's chrome.
  */
 export function SignalRow({
   signal,
@@ -57,13 +46,12 @@ export function SignalRow({
   // the rest are -1 (still programmatically focusable by the arrow/j-k handler).
   tabStop?: boolean;
   onFocus?: () => void;
-  // The selection checkbox occupies this row's severity-icon slot (row hover, or a
-  // live selection). Fade the icon out underneath so the two never overlap — the
-  // slot is reused instead of reserving a permanent empty gutter left of the list.
+  // The selection checkbox occupies this row's severity slot (row hover, or a live
+  // selection). Fade the gauge out underneath so the two never overlap — the slot
+  // is reused instead of reserving a permanent empty gutter left of the list.
   selecting?: boolean;
 }) {
   const sev = signal.severityOverride ?? signal.severity;
-  const Icon = SEV_ICON[sev];
   const unread = !signal.isRead;
 
   return (
@@ -77,26 +65,21 @@ export function SignalRow({
       onClick={onSelect}
       className={cn(
         "group relative grid w-full grid-cols-[auto_1fr_auto] items-start gap-x-2.5 rounded-md px-3 py-2.5 text-left outline-none transition-colors",
-        // Unread rail as an inset pill (before:) so it floats inside the row and
-        // never collides with the list's rounded corners on the first/last item.
-        // Selection is a background tint only — the rail now flags unread, not
-        // selection (a left-edge cue reads far more than the trailing dot alone).
-        "before:absolute before:inset-y-2 before:left-1 before:w-0.5 before:rounded-full before:transition-colors before:content-['']",
-        unread ? "before:bg-primary" : "before:bg-transparent",
+        // No unread rail: the gauge owns the gutter now, and a second thin
+        // vertical 6px to its left stuttered. Unread reads from the title (bold,
+        // full-contrast, against a read row's muted medium) plus the trailing dot.
         selected ? "bg-accent" : "hover:bg-accent/50 focus-visible:bg-accent/50",
       )}
     >
-      <Icon
-        size={15}
+      <SeverityGauge
+        severity={sev}
         className={cn(
           // Fade out only on hover-capable devices — paired with the checkbox
           // reveal, which is gated the same way (see signals-view renderRow). On
-          // touch the icon must stay, since no checkbox slides in to replace it.
+          // touch the gauge must stay, since no checkbox slides in to replace it.
           "mt-0.5 shrink-0 transition-opacity [@media(hover:hover)]:group-hover/row:opacity-0",
           selecting && "opacity-0",
-          SEV_TEXT[sev],
         )}
-        aria-label={`${sev} severity`}
       />
 
       <span className="min-w-0">
@@ -121,7 +104,8 @@ export function SignalRow({
           </span>
           <span aria-hidden>·</span>
           <span className="truncate">{sourceLabel(signal.sourceType)}</span>
-          <CatPill size="compact">{signal.category}</CatPill>
+          <span aria-hidden>·</span>
+          <CatText category={signal.category} />
           {/* L2 provenance marker — this row was reconstructed from the web archive. */}
           {signal.filteredReason === "backfill" && (
             <Archive
@@ -134,8 +118,14 @@ export function SignalRow({
       </span>
 
       <span className="flex shrink-0 items-center gap-2 pt-0.5">
-        <time className="text-meta text-muted-foreground tabular-nums">
-          {formatDistanceToNow(new Date(signal.createdAt), { addSuffix: false })}
+        <time
+          className="text-meta text-muted-foreground tabular-nums"
+          dateTime={signal.createdAt}
+          title={formatDistanceToNow(new Date(signal.createdAt), {
+            addSuffix: true,
+          })}
+        >
+          {shortAge(signal.createdAt)}
         </time>
         {unread && (
           <span

@@ -81,3 +81,47 @@ export function SeverityScale({
     </span>
   );
 }
+
+/**
+ * The same four bands stood upright, filling from the floor: the master-list form
+ * of the scale above.
+ *
+ * A list gutter can't wear the inline scale, even compact. Four 2px ticks repeated
+ * down fifty rows read as a picket fence, and "three lit or four?" is a count
+ * rather than a glance. Upright, the band reads as a height, and a mark that is
+ * taller than it is wide sits quieter beside two lines of text — which is what a
+ * gutter owes the row it annotates. There is no label: the row has no width to
+ * spare, and the gauge repeats every 44px, so the reader learns it once.
+ *
+ * Footprint matches the 15px icon set it replaced, so the selection checkbox still
+ * overlays this slot on hover (see SignalRow `selecting`).
+ */
+export function SeverityGauge({
+  severity,
+  className,
+}: {
+  severity: Severity;
+  className?: string;
+}) {
+  const active = BANDS.indexOf(severity);
+
+  return (
+    <span
+      role="img"
+      aria-label={`Severity ${severity}, band ${active + 1} of 4`}
+      className={cn("flex w-2.5 flex-col-reverse gap-px", className)}
+    >
+      {BANDS.map((band, i) => (
+        <span
+          key={band}
+          className={cn(
+            // Same unlit treatment as the scale: an unlit band still has to read
+            // as a step, otherwise "high" loses its "out of what".
+            "h-[3px] rounded-[1px]",
+            i <= active ? FILL[severity] : "bg-border-strong",
+          )}
+        />
+      ))}
+    </span>
+  );
+}

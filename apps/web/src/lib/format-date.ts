@@ -58,6 +58,25 @@ export function formatDate(
   return asDate(input).toLocaleDateString(LOCALE, opts);
 }
 
+// Compact age for a dense list row: "4m", "11h", "3d", "2w", "5mo".
+//
+// The long form ("about 11 hours" next to "20 days") ragged the right edge of every
+// list it appeared in and spent width on words nobody reads twice. One or two digits
+// plus a unit letter stays tabular, so ages line up down the column. Buckets are
+// coarse on purpose: past a week, "when exactly" belongs to the detail, not the row.
+export function shortAge(input: Date | string | number): string {
+  const mins = Math.max(0, Math.floor((Date.now() - asDate(input).getTime()) / 60_000));
+  if (mins < 1) return "now";
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d`;
+  const weeks = Math.floor(days / 7);
+  if (weeks < 8) return `${weeks}w`;
+  return `${Math.floor(days / 30)}mo`;
+}
+
 // Time only — e.g. "21:08" (FR) / "9:08 PM" (US).
 export function formatTime(
   input: Date | string | number,

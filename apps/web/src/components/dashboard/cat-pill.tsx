@@ -32,6 +32,46 @@ const CAT_LABEL: Record<string, string> = {
   api_developer: "Developer",
 };
 
+/* Text-only tint of the same twelve hues. Spelled out in full like CAT_CLASS so
+   Tailwind keeps them in the build. */
+const CAT_INK: Record<string, string> = {
+  pricing: "text-cat-pricing",
+  product: "text-cat-product",
+  hiring: "text-cat-hiring",
+  reviews: "text-cat-reviews",
+  content: "text-cat-content",
+  funding: "text-cat-funding",
+  api_developer: "text-cat-api-developer",
+  ma: "text-cat-ma",
+  security_compliance: "text-cat-security-compliance",
+  ads: "text-cat-ads",
+  partnerships: "text-cat-partnerships",
+  leadership: "text-cat-leadership",
+};
+
+/**
+ * The category as tinted words rather than a chip — for a meta line that already
+ * carries a competitor tint, where a bordered uppercase badge on every row is the
+ * loudest thing in the column. Keeps the wayfinding hue, drops the box.
+ */
+export function CatText({ category }: { category: string }) {
+  const key = category.toLowerCase().trim();
+  const label = CAT_LABEL[key] ?? key.replace(/_/g, " ");
+
+  return (
+    <span
+      className={cn(
+        // One short word, and the more useful of the two attributions: let the
+        // source label absorb the truncation instead.
+        "shrink-0 whitespace-nowrap capitalize",
+        CAT_INK[key] ?? "text-muted-foreground",
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
 export function CatPill({
   children,
   size = "meta",

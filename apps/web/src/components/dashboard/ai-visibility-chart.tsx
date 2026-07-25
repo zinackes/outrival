@@ -9,6 +9,7 @@ import {
   CartesianGrid,
   Tooltip,
 } from "recharts";
+import { ChartCursorLine, chartTooltipMotion } from "@/components/dashboard/chart-motion";
 
 // Share-of-voice over time, one line per subject (self + top competitors). Split into
 // its own module so the view can lazy-load it with next/dynamic and keep recharts
@@ -55,6 +56,8 @@ export function AiVisibilityChart({
             tickFormatter={(v) => `${v}%`}
           />
           <Tooltip
+            {...chartTooltipMotion}
+            cursor={<ChartCursorLine />}
             contentStyle={{
               background: "var(--surface)",
               border: "1px solid var(--border)",

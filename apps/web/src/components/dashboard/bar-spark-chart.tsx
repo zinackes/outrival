@@ -2,6 +2,11 @@
 
 import { useId } from "react";
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, YAxis } from "recharts";
+import {
+  ChartCursorBand,
+  chartTooltipCardMotion,
+  chartTooltipMotion,
+} from "@/components/dashboard/chart-motion";
 
 export interface BarSparkProps {
   /** One value per bucket, oldest first. */
@@ -34,7 +39,9 @@ function BarTooltip({ active, payload, labels, unit, partialIndex }: TipProps) {
   const i = point.payload?.i ?? 0;
   const v = point.value ?? 0;
   return (
-    <div className="pointer-events-none rounded-md border border-border bg-popover px-2 py-1 whitespace-nowrap shadow-sm">
+    <div
+      className={`pointer-events-none rounded-md border border-border bg-popover px-2 py-1 whitespace-nowrap shadow-sm ${chartTooltipCardMotion}`}
+    >
       {labels?.[i] && <div className="text-meta text-muted-foreground">{labels[i]}</div>}
       <div className="font-mono text-meta font-semibold tabular-nums">
         {v}
@@ -89,13 +96,13 @@ export function BarSparkChart({ data, labels, unit, h = 26, partialLast = false 
             spread between the smallest and largest bucket. */}
         <YAxis hide domain={[0, max]} />
         <Tooltip
-          isAnimationActive={false}
+          {...chartTooltipMotion}
           // Pinned above the 26px plot (only `y` is fixed, `x` keeps tracking the
           // cursor) and allowed to escape it, otherwise the rail's overflow clips it.
           position={{ y: -46 }}
           allowEscapeViewBox={{ x: false, y: true }}
           wrapperStyle={{ zIndex: 20, outline: "none" }}
-          cursor={{ fill: "var(--foreground)", fillOpacity: 0.06 }}
+          cursor={<ChartCursorBand />}
           content={
             <BarTooltip
               labels={labels}

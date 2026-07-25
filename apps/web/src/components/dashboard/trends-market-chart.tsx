@@ -12,6 +12,11 @@ import {
   Tooltip,
 } from "recharts";
 import type { TrendsMarketSeries } from "@/lib/api";
+import {
+  ChartCursorLine,
+  chartTooltipCardMotion,
+  chartTooltipMotion,
+} from "@/components/dashboard/chart-motion";
 import { formatDate } from "@/lib/format-date";
 import { seriesStroke } from "@/lib/series-color";
 
@@ -90,7 +95,9 @@ function TooltipCard({
   if (entries.length === 0) return null;
 
   return (
-    <div className="pointer-events-none min-w-[11rem] rounded-md border border-border bg-popover px-2.5 py-2 shadow-sm">
+    <div
+      className={`pointer-events-none min-w-[11rem] rounded-md border border-border bg-popover px-2.5 py-2 shadow-sm ${chartTooltipCardMotion}`}
+    >
       <div className="mb-1.5 text-meta text-muted-foreground">{label}</div>
       <div className="flex flex-col gap-1">
         {entries.map((entry) => (
@@ -211,13 +218,8 @@ export function TrendsMarketChart({
             <ReferenceLine y={0} stroke="var(--border-strong)" strokeDasharray="3 3" />
           )}
           <Tooltip
-            isAnimationActive={false}
-            cursor={{
-              stroke: "var(--muted-foreground)",
-              strokeWidth: 1,
-              strokeDasharray: "2 3",
-              strokeOpacity: 0.5,
-            }}
+            {...chartTooltipMotion}
+            cursor={<ChartCursorLine />}
             content={<TooltipCard series={visible} mode={mode} formatValue={formatValue} />}
           />
           {visible.map((item, i) => {
@@ -233,8 +235,11 @@ export function TrendsMarketChart({
                 // so it carries the only heavier stroke on the chart.
                 strokeWidth={item.isSelf ? 2.5 : 1.5}
                 // Faded, not hidden: the muted lines still carry the shape of the
-                // field, they just stop competing for the eye.
+                // field, they just stop competing for the eye. Faded over the same
+                // beat as the rest of the hover, so running down the key dims the
+                // field rather than flicking it on and off.
                 strokeOpacity={dimmed ? 0.16 : 1}
+                style={{ transition: "stroke-opacity 150ms ease-out" }}
                 dot={false}
                 activeDot={{ r: 3, strokeWidth: 1.5, stroke: "var(--background)" }}
                 connectNulls

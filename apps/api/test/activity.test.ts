@@ -221,11 +221,29 @@ describe("GET /api/activity/summary", () => {
     expect(Date.now() - times[1]!).toBeLessThan(24 * HOUR);
   });
 
+  test("names who was checked, on the same window the bars count", async () => {
+    const res = await app.request("/api/activity/summary?tzOffset=0", asUser(A.userId, A.email));
+    const body = (await res.json()) as {
+      checked: { competitorId: string; competitorName: string; url: string | null; checks: number }[];
+    };
+    // The roster is the bars' own window read by competitor, so it has to agree
+    // with them: quiet runs counted, the 40h-old run and the sitemap anchor not.
+    expect(body.checked).toHaveLength(1);
+    expect(body.checked[0]!.checks).toBe(4);
+    expect(body.checked[0]!.competitorName).toStartWith("Competitor");
+    // The url is what draws the mark; without it the row is initials.
+    expect(body.checked[0]!.url).toContain("https://");
+  });
+
   test("is org-scoped", async () => {
     const res = await app.request("/api/activity/summary?tzOffset=0", asUser(B.userId, B.email));
-    const body = (await res.json()) as { buckets: { checks: number }[] };
+    const body = (await res.json()) as {
+      buckets: { checks: number }[];
+      checked: { competitorId: string }[];
+    };
     // B sees its own single run, never A's five.
     expect(sum(body.buckets)).toBe(1);
+    expect(body.checked).toHaveLength(1);
   });
 
   test("requires a session", async () => {

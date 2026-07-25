@@ -544,10 +544,22 @@ export interface ActivityFinding {
   kind: "change" | "failed";
 }
 
+// A competitor Outrival ran at least one check against in the last 24 hours,
+// whether or not anything moved. The strip's bars carry the volume and the
+// findings carry what changed; this is the roster the quiet hours never name.
+export interface ActivityChecked {
+  competitorId: string;
+  competitorName: string;
+  url: string | null;
+  isSelf: boolean;
+  checks: number;
+}
+
 export interface ActivitySummary {
   buckets: ActivityBucket[];
   days: ActivityDay[];
   findings: ActivityFinding[];
+  checked: ActivityChecked[];
 }
 
 // A scheduled upcoming check (activity /health `upcoming`): when Outrival will

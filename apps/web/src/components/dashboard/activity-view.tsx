@@ -132,6 +132,7 @@ export function ActivityView() {
           <WatchStrip
             buckets={summaryQ.data?.buckets ?? []}
             findings={summaryQ.data?.findings ?? []}
+            checked={summaryQ.data?.checked ?? []}
             upcoming={upcoming}
             loading={summaryQ.isPending}
             failed={summaryQ.isError}

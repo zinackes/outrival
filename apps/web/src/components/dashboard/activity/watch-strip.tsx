@@ -2,11 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import type { ActivityBucket, ActivityFinding, ActivityUpcoming } from "@/lib/api";
+import type {
+  ActivityBucket,
+  ActivityChecked,
+  ActivityFinding,
+  ActivityUpcoming,
+} from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { formatTime } from "@/lib/format-date";
 import { sourceLabel } from "@/lib/source-labels";
 import { competitorNameColor } from "@/lib/competitor-color";
+import { CompAvatar } from "@/components/dashboard/comp-avatar";
 
 // 24 hours of history in clock hours, then the checks the scheduler already has
 // queued. One object answers both halves of "is it still watching": the work
@@ -56,6 +62,7 @@ function bucketKind(b: ActivityBucket): BarKind {
 export function WatchStrip({
   buckets,
   findings,
+  checked,
   upcoming,
   loading,
   failed,
@@ -65,6 +72,10 @@ export function WatchStrip({
   // The named findings of the window, so hovering a bar says WHICH source moved
   // rather than only that something did.
   findings: ActivityFinding[];
+  // Who was looked at, change or no change. The bars are anonymous by design —
+  // one hour holds several competitors, so no bar can name one without hiding the
+  // rest — which leaves a quiet hour proved only by a count. This names them.
+  checked: ActivityChecked[];
   upcoming: ActivityUpcoming[];
   loading: boolean;
   // A strip drawn from a failed request looks exactly like a day where nothing
@@ -433,6 +444,8 @@ export function WatchStrip({
         </div>
       )}
 
+      {checked.length > 0 && <Coverage checked={checked} />}
+
       <p className="flex flex-wrap gap-x-3.5 gap-y-1 text-meta text-muted-foreground">
         <LegendItem className="bg-foreground">found a change</LegendItem>
         <LegendItem className="bg-critical">could not be reached</LegendItem>
@@ -440,6 +453,40 @@ export function WatchStrip({
         <LegendItem className="border border-b-0 border-border-strong">scheduled</LegendItem>
       </p>
     </section>
+  );
+}
+
+// Past this many marks the row stops being readable as a roster and starts being
+// a texture. The overflow is counted rather than dropped in silence — the whole
+// point of the row is that nobody is missing from it.
+const COVERAGE_MAX = 14;
+
+// Who Outrival looked at in the window, busiest first. Deliberately NOT drawn on
+// the bars: an hour holds several competitors, so a mark per bar would name one
+// and hide the others, and it would sit exactly where the finding pins already
+// are — flattening the one contrast the strip exists to draw.
+function Coverage({ checked }: { checked: ActivityChecked[] }) {
+  const shown = checked.slice(0, COVERAGE_MAX);
+  const rest = checked.length - shown.length;
+  return (
+    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1.5 text-meta text-muted-foreground">
+      <span className="mr-0.5">Checked</span>
+      {shown.map((c) => {
+        const label = `${c.competitorName}, ${c.checks} check${c.checks === 1 ? "" : "s"}`;
+        return (
+          <Link
+            key={c.competitorId}
+            href={c.isSelf ? "/dashboard/products" : `/dashboard/competitors/${c.competitorId}`}
+            title={label}
+            aria-label={label}
+            className="rounded-[4px] opacity-75 transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          >
+            <CompAvatar name={c.competitorName} url={c.url} size={18} />
+          </Link>
+        );
+      })}
+      {rest > 0 && <span className="tabular-nums">+{rest}</span>}
+    </div>
   );
 }
 

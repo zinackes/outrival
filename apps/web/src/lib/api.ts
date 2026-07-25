@@ -1254,9 +1254,69 @@ export interface CompetitorCandidate {
   title: string | null;
   overlapScore: number | null;
   reason: string | null;
+  // The company in its own words (Exa's page extract, kept at discovery time).
+  // Null on candidates discovered before the column existed.
+  snippet: string | null;
+  // The competitor this candidate became, once tracked. Null while pending.
+  competitorId: string | null;
   status: "new" | "dismissed" | "added";
   source: "detection" | "onboarding";
   firstSeenAt: string;
+}
+
+// A discovered-but-untracked company carried from onboarding into the review queue.
+// `snippet` is the description the discovery step already showed, so day-one
+// Discovery reads the same as a later scan.
+export interface OnboardingCandidateInput {
+  url: string;
+  title?: string;
+  snippet?: string;
+  overlapScore?: number;
+  reason?: string;
+}
+
+// Whether re-running discovery is worth it, plus the two facts the rail states
+// about scanning: what is left of the monthly allowance and when the cron runs next.
+export interface DiscoveryStaleness {
+  staleness: "never_run" | "fresh" | "outdated";
+  needsRediscovery: boolean;
+  lastDiscoveryAt?: string;
+  reason?: string;
+  scans: { used: number; limit: number };
+  nextAutomaticAt: string | null;
+}
+
+// What the discovery search ran on, printed as the source note under the reading.
+export interface DiscoveryBasis {
+  productId: string | null;
+  category: string | null;
+  audience: string | null;
+  keywords: string;
+  region: string | null;
+  excludedDomains: number;
+  autoDetect: boolean;
+  cadence: "weekly" | "monthly";
+}
+
+// A candidate that was tracked, with what it has captured since. Drives the Added
+// tab: the queue's own receipt.
+export interface AddedCandidate {
+  id: string;
+  url: string;
+  title: string | null;
+  snippet: string | null;
+  overlapScore: number | null;
+  productId: string | null;
+  firstSeenAt: string;
+  competitor: {
+    id: string;
+    name: string;
+    url: string | null;
+    color: string | null;
+    addedAt: string;
+  } | null;
+  signalCount: number;
+  lastSignalAt: string | null;
 }
 
 export interface BillingInfo {
@@ -2942,8 +3002,8 @@ export const api = {
     }),
   completeOnboarding: (body: {
     selectedCompetitors: Array<{ name: string; url: string; overlapScore?: number }>;
-    savedCandidates?: Array<{ url: string; title?: string; overlapScore?: number; reason?: string }>;
-    dismissedCandidates?: Array<{ url: string; title?: string; overlapScore?: number; reason?: string }>;
+    savedCandidates?: Array<OnboardingCandidateInput>;
+    dismissedCandidates?: Array<OnboardingCandidateInput>;
     monitoringPrefs: { frequency: "daily" | "weekly"; sources: Array<"homepage" | "pricing" | "blog"> };
     // Primary market chosen at discovery (ISO alpha-2) — persisted into the org's
     // detectionConfig so the weekly cron + on-demand detect inherit it. null = global.
@@ -2996,9 +3056,17 @@ export const api = {
     const s = qs.toString();
     return request<{
       candidates: CompetitorCandidate[];
-      counts: { new: number; dismissed: number };
+      counts: { new: number; dismissed: number; added: number };
+      // Competitor seats: what tracking a candidate costs against the plan cap.
+      seats: { used: number; limit: number };
+      basis: DiscoveryBasis;
     }>(`/api/candidates${s ? `?${s}` : ""}`);
   },
+  // The Added tab: candidates that became competitors, with what they captured.
+  listAddedCandidates: (productId?: string) =>
+    request<{ added: AddedCandidate[] }>(
+      `/api/candidates/added${productId ? `?productId=${productId}` : ""}`,
+    ),
   detectCandidates: (productId?: string) =>
     request<{ detected: number }>(
       `/api/candidates/detect${productId ? `?productId=${productId}` : ""}`,
@@ -3008,12 +3076,9 @@ export const api = {
   // Whether re-running discovery is worth it (patch-22, per-product patch-28): "fresh"
   // → greyed-out button.
   getDiscoveryStaleness: (productId?: string) =>
-    request<{
-      staleness: "never_run" | "fresh" | "outdated";
-      needsRediscovery: boolean;
-      lastDiscoveryAt?: string;
-      reason?: string;
-    }>(`/api/candidates/staleness${productId ? `?productId=${productId}` : ""}`),
+    request<DiscoveryStaleness>(
+      `/api/candidates/staleness${productId ? `?productId=${productId}` : ""}`,
+    ),
   getDetectionConfig: () =>
     request<{ config: DetectionConfig; lastRunAt: string | null }>(
       `/api/candidates/config`,

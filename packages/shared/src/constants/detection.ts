@@ -48,3 +48,45 @@ export function resolveDetectionConfig(
 ): DetectionConfig {
   return { ...DEFAULT_DETECTION_CONFIG, ...(raw ?? {}) };
 }
+
+/**
+ * Minimum gap the weekly cron enforces between two automatic runs for one org.
+ * Slightly under the nominal period so a run that lands a few hours late one week
+ * isn't skipped the next.
+ */
+export const DETECTION_MIN_INTERVAL_MS: Record<DetectionCadence, number> = {
+  weekly: 6 * 24 * 60 * 60 * 1000,
+  monthly: 27 * 24 * 60 * 60 * 1000,
+};
+
+/** The cron slot automatic detection runs in: Sunday 20:00 UTC. */
+export const DETECTION_CRON_WEEKDAY = 0;
+export const DETECTION_CRON_HOUR_UTC = 20;
+
+/**
+ * When automatic detection will next actually run for an org, which is not simply
+ * "next Sunday": the cron fires weekly but skips any org whose last run (manual
+ * scans included) is inside the cadence interval. Returns null when the org opted
+ * out. Pure, so the UI can state a date instead of a vague "runs every Sunday".
+ */
+export function nextAutomaticDetectionAt(
+  lastRunAt: Date | null,
+  config: Pick<DetectionConfig, "autoDetect" | "cadence">,
+  now: Date = new Date(),
+): Date | null {
+  if (!config.autoDetect) return null;
+  const earliest = lastRunAt
+    ? new Date(lastRunAt.getTime() + DETECTION_MIN_INTERVAL_MS[config.cadence])
+    : now;
+  const slot = new Date(Math.max(earliest.getTime(), now.getTime()));
+  slot.setUTCHours(DETECTION_CRON_HOUR_UTC, 0, 0, 0);
+  // setUTCHours can land in the past on the same day; step to the next day first,
+  // then to the next cron weekday.
+  if (slot.getTime() < Math.max(earliest.getTime(), now.getTime())) {
+    slot.setUTCDate(slot.getUTCDate() + 1);
+  }
+  while (slot.getUTCDay() !== DETECTION_CRON_WEEKDAY) {
+    slot.setUTCDate(slot.getUTCDate() + 1);
+  }
+  return slot;
+}

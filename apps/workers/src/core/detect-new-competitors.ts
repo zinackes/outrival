@@ -20,11 +20,10 @@ import {
   buildDetectionBody,
   buildDetectionTitle,
   resolveDetectionConfig,
+  DETECTION_MIN_INTERVAL_MS,
 } from "@outrival/shared";
 
 const CANDIDATES_PER_PRODUCT = 20;
-const WEEKLY_MIN_MS = 6 * 24 * 60 * 60 * 1000;
-const MONTHLY_MIN_MS = 27 * 24 * 60 * 60 * 1000;
 
 function normalizeHostname(url: string | null | undefined): string | null {
   if (!url) return null;
@@ -59,8 +58,9 @@ export async function runDetectNewCompetitors() {
     for (const org of orgs) {
       const cfg = resolveDetectionConfig(org.detectionConfig);
       if (!cfg.autoDetect) continue;
-      const minIntervalMs =
-        cfg.cadence === "monthly" ? MONTHLY_MIN_MS : WEEKLY_MIN_MS;
+      // Shared with the API, which derives the "next automatic scan" date the
+      // Discovery page states from the same intervals.
+      const minIntervalMs = DETECTION_MIN_INTERVAL_MS[cfg.cadence];
       if (
         org.detectionLastRunAt &&
         Date.now() - org.detectionLastRunAt.getTime() < minIntervalMs
@@ -176,6 +176,9 @@ export async function runDetectNewCompetitors() {
               productId: product.productId,
               url: d.url,
               title: d.title,
+              // The company's own words, straight from the Exa hit: the review
+              // queue shows it as the candidate's description.
+              snippet: d.snippet || null,
               overlapScore: scoring.overlapScore,
               reason: scoring.reason,
               status: "new",

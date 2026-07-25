@@ -2,12 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import type {
-  ActivityBucket,
-  ActivityChecked,
-  ActivityFinding,
-  ActivityUpcoming,
-} from "@/lib/api";
+import type { ActivityBucket, ActivityFinding, ActivityUpcoming } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { formatTime } from "@/lib/format-date";
 import { sourceLabel } from "@/lib/source-labels";
@@ -33,6 +28,14 @@ const BAR_MIN = 6;
 const BAR_MAX = 40;
 const BAR_STUB = 3; // an observed zero: nothing was due, which is not a hole
 const BUSY_REFERENCE = 6;
+
+// The logo that caps an hour which found something, and the gap it keeps off its
+// bar. At 24 slots a legible mark stops fitting below the sm breakpoint, so those
+// widths keep the plain dot rather than drawing marks over their neighbours. The
+// strip is h-20 rather than h-16 because BAR_MAX + MARK_GAP + MARK reaches 60px,
+// which in the old box sat on top of the "overnight" label.
+const MARK = 16;
+const MARK_GAP = 4;
 
 // Hours the user is asleep. Outrival keeps checking through them, which is most
 // of the reason this page exists.
@@ -62,20 +65,15 @@ function bucketKind(b: ActivityBucket): BarKind {
 export function WatchStrip({
   buckets,
   findings,
-  checked,
   upcoming,
   loading,
   failed,
   onRetry,
 }: {
   buckets: ActivityBucket[];
-  // The named findings of the window, so hovering a bar says WHICH source moved
-  // rather than only that something did.
+  // The named findings of the window: what caps an hour that moved with the
+  // competitor's own logo, and what hovering a bar reads out source by source.
   findings: ActivityFinding[];
-  // Who was looked at, change or no change. The bars are anonymous by design —
-  // one hour holds several competitors, so no bar can name one without hiding the
-  // rest — which leaves a quiet hour proved only by a count. This names them.
-  checked: ActivityChecked[];
   upcoming: ActivityUpcoming[];
   loading: boolean;
   // A strip drawn from a failed request looks exactly like a day where nothing
@@ -310,7 +308,7 @@ export function WatchStrip({
 
       <div
         ref={stripRef}
-        className="relative h-16 border-b border-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        className="relative h-20 border-b border-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         onPointerMove={onPointerMove}
         onPointerLeave={() => setHovered(null)}
         onKeyDown={onKeyDown}
@@ -374,22 +372,12 @@ export function WatchStrip({
             ))}
 
             {/* A cap over a finding's bar, so a change reads by shape before it
-                reads by colour. */}
+                reads by colour — and, where the width allows a legible one, by
+                WHO. */}
             {model.bars
               .filter((b) => b.kind !== "quiet")
               .map((bar) => (
-                <span
-                  key={`pin-${bar.slot}`}
-                  className={cn(
-                    "absolute size-[5px] rounded-full",
-                    bar.kind === "failed" ? "bg-critical" : "bg-foreground",
-                  )}
-                  style={{
-                    left: `calc(${bar.left + bar.width / 2}% - 2.5px)`,
-                    bottom: `${bar.height + 4}px`,
-                  }}
-                  aria-hidden
-                />
+                <FindingMark key={`pin-${bar.slot}`} bar={bar} />
               ))}
 
             {/* Everything right of now: scheduled, not observed. */}
@@ -444,8 +432,6 @@ export function WatchStrip({
         </div>
       )}
 
-      {checked.length > 0 && <Coverage checked={checked} />}
-
       <p className="flex flex-wrap gap-x-3.5 gap-y-1 text-meta text-muted-foreground">
         <LegendItem className="bg-foreground">found a change</LegendItem>
         <LegendItem className="bg-critical">could not be reached</LegendItem>
@@ -456,37 +442,58 @@ export function WatchStrip({
   );
 }
 
-// Past this many marks the row stops being readable as a roster and starts being
-// a texture. The overflow is counted rather than dropped in silence — the whole
-// point of the row is that nobody is missing from it.
-const COVERAGE_MAX = 14;
-
-// Who Outrival looked at in the window, busiest first. Deliberately NOT drawn on
-// the bars: an hour holds several competitors, so a mark per bar would name one
-// and hide the others, and it would sit exactly where the finding pins already
-// are — flattening the one contrast the strip exists to draw.
-function Coverage({ checked }: { checked: ActivityChecked[] }) {
-  const shown = checked.slice(0, COVERAGE_MAX);
-  const rest = checked.length - shown.length;
+// What caps an hour that found something. The logo names WHO moved without
+// spending a hover, which is the one thing the bars cannot say: they carry the
+// volume of work and the fact that it moved, never the name.
+//
+// The mark is a decoration, not a control — the hour it caps is read through the
+// strip's own cursor (pointer or arrow keys), which already names every finding
+// of the bucket, including the ones a single mark cannot show.
+function FindingMark({ bar }: { bar: Bar }) {
+  // Findings arrive newest first, so the hour is capped by its latest one — of
+  // the kind the BAR already draws, so a red bar never names a competitor whose
+  // source was reached fine. An hour that moved for more than one competitor gets
+  // a tile behind the mark, so the logo never claims it belonged to a single name.
+  const lead = bar.findings.find((f) => f.kind === bar.kind) ?? bar.findings[0] ?? null;
+  const names = new Set(bar.findings.map((f) => f.competitorId)).size;
+  const bottom = `${bar.height + MARK_GAP}px`;
   return (
-    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1.5 text-meta text-muted-foreground">
-      <span className="mr-0.5">Checked</span>
-      {shown.map((c) => {
-        const label = `${c.competitorName}, ${c.checks} check${c.checks === 1 ? "" : "s"}`;
-        return (
-          <Link
-            key={c.competitorId}
-            href={c.isSelf ? "/dashboard/products" : `/dashboard/competitors/${c.competitorId}`}
-            title={label}
-            aria-label={label}
-            className="rounded-[4px] opacity-75 transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+    <>
+      {/* The dot the logo replaces. Kept where a logo would not fit, and kept
+          outright when the finding count outran the named findings the summary
+          sends: a bar that moved is never left uncapped. */}
+      <span
+        className={cn(
+          "absolute size-[5px] rounded-full",
+          lead && "sm:hidden",
+          bar.kind === "failed" ? "bg-critical" : "bg-foreground",
+        )}
+        style={{ left: `calc(${bar.left + bar.width / 2}% - 2.5px)`, bottom }}
+        aria-hidden
+      />
+      {lead && (
+        <span
+          className="absolute max-sm:hidden"
+          style={{ left: `calc(${bar.left + bar.width / 2}% - ${MARK / 2}px)`, bottom }}
+          aria-hidden
+        >
+          {names > 1 && (
+            <span
+              className="absolute rounded-[4px] border border-border bg-surface-2"
+              style={{ right: -3, top: -3, width: MARK, height: MARK }}
+            />
+          )}
+          <span
+            className={cn(
+              "relative block rounded-[4px]",
+              bar.kind === "failed" && "ring-1 ring-critical",
+            )}
           >
-            <CompAvatar name={c.competitorName} url={c.url} size={18} />
-          </Link>
-        );
-      })}
-      {rest > 0 && <span className="tabular-nums">+{rest}</span>}
-    </div>
+            <CompAvatar name={lead.competitorName} url={lead.url} size={MARK} />
+          </span>
+        </span>
+      )}
+    </>
   );
 }
 

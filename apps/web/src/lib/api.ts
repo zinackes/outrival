@@ -536,30 +536,21 @@ export interface ActivityDay {
 }
 
 // A run of the last 24 hours that found something, named. A bucket only knows it
-// holds a finding; this is what lets the strip's hover say which source moved.
+// holds a finding; this is what lets the strip mark the hour with the
+// competitor's own logo and its hover say which source moved.
 export interface ActivityFinding {
   recordedAt: string;
-  competitorName: string;
-  sourceType: string;
-  kind: "change" | "failed";
-}
-
-// A competitor Outrival ran at least one check against in the last 24 hours,
-// whether or not anything moved. The strip's bars carry the volume and the
-// findings carry what changed; this is the roster the quiet hours never name.
-export interface ActivityChecked {
   competitorId: string;
   competitorName: string;
   url: string | null;
-  isSelf: boolean;
-  checks: number;
+  sourceType: string;
+  kind: "change" | "failed";
 }
 
 export interface ActivitySummary {
   buckets: ActivityBucket[];
   days: ActivityDay[];
   findings: ActivityFinding[];
-  checked: ActivityChecked[];
 }
 
 // A scheduled upcoming check (activity /health `upcoming`): when Outrival will

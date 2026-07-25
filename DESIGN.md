@@ -227,8 +227,8 @@ defined once, so the scale stays enforceable and changes in one place.
 
 | Utility | Size | Role |
 |---|---|---|
-| `text-title-lg` | 26px | page title (≥ md) — `h1` |
-| `text-title` | 22px | page title (mobile) — `h1` |
+| `text-title-lg` | 34px | page title (≥ md) — `h1` |
+| `text-title` | 26px | page title (mobile) — `h1` |
 | `text-xl` | 20px | dialog / headline titles |
 | `text-lg` | 18px | large headings, lead sub |
 | `text-lead` | 17px | signal insight lead |
@@ -239,9 +239,9 @@ defined once, so the scale stays enforceable and changes in one place.
 | `text-xs` | 12px | labels, table-header text, controls |
 | `text-meta` | 11px | **mono** meta + the label/badge **floor**: timestamps, counts, IDs |
 | `text-micro` | 10px | a11y floor only — **not for labels**; defined but retired from usage |
-| `text-stat` | 32px | KPI numerals (mono) |
+| `text-stat` | 44px | KPI numerals (mono) |
 
-Larger display steps (`text-2xl`…`text-7xl`, 25→76px) exist for the marketing
+Larger display steps (`text-2xl`…`text-7xl`, 26→76px) exist for the marketing
 landing (brand register); product chrome stays on the table above.
 
 ### Named Rules

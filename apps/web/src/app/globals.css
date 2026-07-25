@@ -79,7 +79,10 @@
   --accent-dim: oklch(0.45 0.15 200);
   --accent-bright: oklch(0.49 0.15 200);
   --accent-foreground: oklch(1 0 0);
-  --link: oklch(0.55 0.14 200);
+  /* L trimmed from .55 so links clear 4.5:1 on the CANVAS, not just on a card:
+     .55 measured 4.45:1 against --background once gamut-mapped to sRGB, and the
+     canvas is most of the dashboard. On --surface it always cleared. */
+  --link: oklch(0.547 0.14 200);
 
   /* Severity scale — Tailwind 700-level on light: each step clears ≥4.5:1 both as
      text on the near-white canvas AND under white as a solid fill, with wide hue
@@ -188,8 +191,10 @@
   --skeleton-sheen: #2e2e2e;
 
   /* Overnight band (see :root) — a lift off the near-black canvas that stays
-     under the card surface. */
-  --night: #191919;
+     under the card surface. #191919 read L .213 against the card's .200, so it
+     sat ABOVE the surface it belongs to; .187 puts it back between
+     --background-2 and --surface. Hex hides this, hence the note in DESIGN.md. */
+  --night: #131314;
 
   /* Text — off-white (never pure #fff; avoids halation on near-black) */
   --foreground: #f2f5f8; /* primary text */
@@ -202,10 +207,14 @@
 
   /* Accent — Iris Indigo. Rationed to CTA / links / focus / selection / signal
      dot. Never a flat background fill, never a decorative gradient. */
-  --accent: #6d5eff;
+  /* L trimmed .590 → .586 and the label taken to PURE white: at #6d5eff with an
+     off-white label the CTA measured 4.09:1, under AA, in the DEFAULT theme. The
+     off-white cost most of the margin (pure white alone still only reached
+     4.47:1), so both moved. The shift is invisible; the contrast is not. */
+  --accent: #6c5dfd;
   --accent-dim: #5f51e6; /* active state (pairs with translateY 1px) */
-  --accent-bright: #7d6fff; /* hover */
-  --accent-foreground: #f2f5f8; /* label on an Iris fill (reads white) */
+  --accent-bright: #7d6fff; /* hover — STILL under AA at 3.76:1, see DESIGN.md */
+  --accent-foreground: #ffffff; /* label on an Iris fill; matches light */
   --link: #9a8cff; /* links / accent text on dark surfaces */
 
   /* Severity — the only semantic color scale. Drives severity badges + signal
@@ -411,10 +420,10 @@
   --text-content--line-height: 1.5;
   --text-lead: 1.0625rem;     /* 17px — signal insight lead */
   --text-lead--line-height: 1.35;
-  --text-title: 1.625rem;     /* 26px — page title (mobile) = H2 */
+  --text-title: 1.625rem;     /* 26px — page title (mobile), the h1 */
   --text-title--line-height: 1.18;
   --text-title--letter-spacing: -0.01em;
-  --text-title-lg: 2.125rem;  /* 34px — page title (≥ md) = H1 */
+  --text-title-lg: 2.125rem;  /* 34px — page title (≥ md), same h1 scaled up */
   --text-title-lg--line-height: 1.1;
   --text-title-lg--letter-spacing: -0.015em;
   --text-display: 3.25rem;    /* 52px — Display (hero metric / marquee numerals) */

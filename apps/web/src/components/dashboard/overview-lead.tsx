@@ -9,6 +9,7 @@ import { sourceLabel } from "@/lib/source-labels";
 import { competitorNameColor } from "@/lib/competitor-color";
 import { SeverityScale } from "@/components/outrival/severity-scale";
 import { Button } from "@/components/ui/button";
+import { BarSpark } from "./bar-spark";
 import { CatText } from "./cat-pill";
 import { CompAvatar } from "./comp-avatar";
 
@@ -24,9 +25,8 @@ export interface PulseData {
   comparable: boolean;
   /** One bucket per bar, oldest first. */
   bars: number[];
-  /** Label of the first and last bucket, for the two axis ends. */
-  barStart: string;
-  barEnd: string;
+  /** One label per bucket, for the hover tooltip. */
+  barLabels: string[];
   /** Unread criticals in the window, and who they belong to. */
   criticals: number;
   criticalLead: string | null;
@@ -142,7 +142,13 @@ export function OverviewLead({
               ? `this period, ${pulse.prevCount} before`
               : `in the ${rangeLabel}`}
           </span>
-          <DayBars bars={pulse.bars} start={pulse.barStart} end={pulse.barEnd} />
+          <div className="mt-1">
+            <BarSpark data={pulse.bars} labels={pulse.barLabels} unit="signal" />
+            <div className="mt-1 flex justify-between font-mono text-meta text-muted-foreground">
+              <span>{pulse.barLabels[0]}</span>
+              <span>{pulse.barLabels[pulse.barLabels.length - 1]}</span>
+            </div>
+          </div>
         </PulseStat>
 
         <PulseStat
@@ -240,40 +246,3 @@ function StatValue({ value, tone }: { value: number; tone?: "critical" }) {
   );
 }
 
-/**
- * Signals per bucket across the picked window. Bars, not a line: these are small
- * integer counts, and a bar reads a zero day honestly where an area chart
- * interpolates straight through it. The last bucket carries the accent so "now"
- * is findable.
- */
-function DayBars({ bars, start, end }: { bars: number[]; start: string; end: string }) {
-  const max = Math.max(1, ...bars);
-  return (
-    <div className="mt-1">
-      <div
-        className="flex h-6 items-end gap-[3px]"
-        role="img"
-        aria-label={`Signals per bucket, oldest first: ${bars.join(", ")}`}
-      >
-        {bars.map((n, i) => (
-          <span
-            key={i}
-            className={cn(
-              "min-h-[2px] flex-1 rounded-[1.5px]",
-              n === 0
-                ? "bg-border-strong"
-                : i === bars.length - 1
-                  ? "bg-primary"
-                  : "bg-primary/70",
-            )}
-            style={{ height: n === 0 ? 2 : `${Math.max(12, (n / max) * 100)}%` }}
-          />
-        ))}
-      </div>
-      <div className="mt-1 flex justify-between font-mono text-meta text-muted-foreground">
-        <span>{start}</span>
-        <span>{end}</span>
-      </div>
-    </div>
-  );
-}

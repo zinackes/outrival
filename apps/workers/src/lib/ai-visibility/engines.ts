@@ -40,7 +40,12 @@ export class EngineQuotaError extends Error {
 // the 11th call on. That rate 429 then tripped the quota guard above and killed the
 // engine for the entire run, which reads exactly like an exhausted allowance. Pacing
 // the calls is what tells the two apart in the first place.
-const MIN_REQUEST_GAP_MS = Number(process.env.AI_VISIBILITY_MIN_REQUEST_GAP_MS ?? 6_500);
+//
+// The default targets the MEASURED free-tier ceiling, not the published one: AI Studio
+// reported 5 RPM / 20 RPD on gemini-2.5-flash (2026-07-25), where the pricing page
+// advertises 500 grounded RPD. The per-model request cap binds before the grounding
+// cap, so read the console, not the docs, before lowering this.
+const MIN_REQUEST_GAP_MS = Number(process.env.AI_VISIBILITY_MIN_REQUEST_GAP_MS ?? 13_000);
 const lastCallAt = new Map<Engine, number>();
 
 // Cap on how long we honour a provider's retryDelay. Beyond this the wait costs more

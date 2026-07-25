@@ -31,9 +31,25 @@ days.**
 | `gemini-3.x` grounded | **Not available** | 5,000 prompts/month free, then $14/1k |
 
 The "~5,000 free prompts/month" figure belongs to the **paid** tier. On the free tier the
-budget is 500 grounded requests per DAY, on 2.5 Flash only. At 10 prompts per product per
-weekly pass that covers ~50 products a day, ~350 a week once the scheduler spreads them,
-which is far past our current scale.
+published budget is 500 grounded requests per DAY, on 2.5 Flash only.
+
+**But the published number is not the one that binds.** The per-model request cap applies
+first, and AI Studio reported this for our free-tier project on 2026-07-25:
+
+```
+Gemini 2.5 Flash    RPM 7/5    TPM 196/250K    RPD 27/20
+```
+
+**5 requests per minute, 20 per day.** Not 500. One product at `AI_VISIBILITY_MAX_PROMPTS=10`
+plus a 3-prompt onboarding teaser already spends 13 of the 20, and a second product finishes
+the day's budget before the run ends. Always read the console (`aistudio.google.com/rate-limit`)
+rather than the pricing page before sizing anything here.
+
+That ceiling is the real constraint on this feature, and it does not scale: at ~2 products
+per org, the free tier tops out around **one org per day**. Options, in order of what they
+cost us: move the project to Tier 1 (a card on file, 1,500 grounded RPD still free, so $0
+until the allowance is passed), cut `AI_VISIBILITY_MAX_PROMPTS`, or lean on the parametric
+engine below, which answers from the internal pool and has no Gemini quota at all.
 
 Two traps follow from that grid, and we hit both. **Never pin a `-latest` alias**: the
 allowance is granted per MODEL, the alias drifted onto a 3.x generation that has none on

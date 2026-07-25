@@ -19,7 +19,7 @@ const GOOGLE_PER_MINUTE = JSON.stringify({
           },
         ],
       },
-      { "@type": "type.googleapis.com/google.rpc.RetryInfo", retryDelay: "12s" },
+      { "@type": "type.googleapis.com/google.rpc.RetryInfo", retryDelay: "20s" },
     ],
   },
 });
@@ -28,7 +28,7 @@ const GOOGLE_PER_DAY = GOOGLE_PER_MINUTE.replace("PerMinute", "PerDay");
 
 describe("retryAfterMs", () => {
   test("waits out a per-minute rate limit, honouring the hinted delay", () => {
-    expect(retryAfterMs(GOOGLE_PER_MINUTE, new Headers())).toBe(12_000);
+    expect(retryAfterMs(GOOGLE_PER_MINUTE, new Headers())).toBe(20_000);
   });
 
   test("never retries a per-day allowance, even when a retryDelay is offered", () => {
@@ -48,11 +48,11 @@ describe("retryAfterMs", () => {
   });
 
   test("floors the wait at the pacing gap, so a 0s hint still spaces the retry", () => {
-    const wait = retryAfterMs(GOOGLE_PER_MINUTE.replace('"12s"', '"0s"'), new Headers());
-    expect(wait).toBe(6_500);
+    const wait = retryAfterMs(GOOGLE_PER_MINUTE.replace('"20s"', '"0s"'), new Headers());
+    expect(wait).toBe(13_000);
   });
 
   test("gives up when the provider asks for longer than the run can wait", () => {
-    expect(retryAfterMs(GOOGLE_PER_MINUTE.replace('"12s"', '"90s"'), new Headers())).toBeNull();
+    expect(retryAfterMs(GOOGLE_PER_MINUTE.replace('"20s"', '"90s"'), new Headers())).toBeNull();
   });
 });

@@ -182,6 +182,8 @@ function digestWindow(weekStart: string, weekEnd: string): { start: Date; end: D
 interface SectionLink {
   competitorId: string | null;
   competitorColor: string | null;
+  // The competitor's site, used to render its favicon beside its name in the brief.
+  competitorUrl: string | null;
   signalId: string | null;
 }
 
@@ -198,7 +200,12 @@ async function resolveSections(
   window: { start: Date; end: Date },
 ): Promise<SectionLink[]> {
   const empty = (): SectionLink[] =>
-    sections.map(() => ({ competitorId: null, competitorColor: null, signalId: null }));
+    sections.map(() => ({
+      competitorId: null,
+      competitorColor: null,
+      competitorUrl: null,
+      signalId: null,
+    }));
   if (sections.length === 0) return [];
 
   const rows = await db
@@ -208,6 +215,7 @@ async function resolveSections(
       competitorId: competitors.id,
       competitorName: competitors.name,
       competitorColor: competitors.color,
+      competitorUrl: competitors.url,
     })
     .from(signals)
     .innerJoin(competitors, eq(competitors.id, signals.competitorId))
@@ -222,11 +230,13 @@ async function resolveSections(
     );
   if (rows.length === 0) return empty();
 
-  const byName = new Map<string, { id: string; color: string | null }>();
+  const byName = new Map<string, { id: string; color: string | null; url: string | null }>();
   const byCompetitorCategory = new Map<string, string[]>();
   for (const r of rows) {
     const name = r.competitorName.toLowerCase().trim();
-    if (!byName.has(name)) byName.set(name, { id: r.competitorId, color: r.competitorColor });
+    if (!byName.has(name)) {
+      byName.set(name, { id: r.competitorId, color: r.competitorColor, url: r.competitorUrl });
+    }
     const key = `${r.competitorId}|${r.category}`;
     const bucket = byCompetitorCategory.get(key);
     if (bucket) bucket.push(r.signalId);
@@ -236,12 +246,20 @@ async function resolveSections(
   return sections.map((s) => {
     const name = typeof s.competitor === "string" ? s.competitor.toLowerCase().trim() : "";
     const competitor = name ? byName.get(name) : undefined;
-    if (!competitor) return { competitorId: null, competitorColor: null, signalId: null };
+    if (!competitor) {
+      return {
+        competitorId: null,
+        competitorColor: null,
+        competitorUrl: null,
+        signalId: null,
+      };
+    }
     const category = typeof s.category === "string" ? s.category.toLowerCase().trim() : "";
     const candidates = byCompetitorCategory.get(`${competitor.id}|${category}`) ?? [];
     return {
       competitorId: competitor.id,
       competitorColor: competitor.color,
+      competitorUrl: competitor.url,
       signalId: candidates.length === 1 ? candidates[0]! : null,
     };
   });

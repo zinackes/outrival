@@ -65,7 +65,7 @@ import { TableSkeleton } from "@/components/dashboard/skeletons";
 import { competitorNameColor } from "@/lib/competitor-color";
 import { formatDate, shortAge } from "@/lib/format-date";
 import { cn, isValidHttpUrl, prettyUrl } from "@/lib/utils";
-import { feedItemMotion } from "@/lib/motion";
+import { disclosureMotion, feedItemMotion } from "@/lib/motion";
 
 type Tab = "queue" | "dismissed" | "added";
 
@@ -474,7 +474,17 @@ function CandidateRow({
         </span>
       </div>
 
-      {open && <Evidence candidate={candidate} name={name} />}
+      {/* The evidence used to appear in one frame while the row's `layout` spring was
+          still projecting the old box over the new one, which stretched the row and
+          its text as it opened. It opens on the feed's spring now, and the row keeps
+          only its POSITION animated (see the wrappers), so nothing is scaled. */}
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div {...disclosureMotion}>
+            <Evidence candidate={candidate} name={name} />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1237,7 +1247,7 @@ export function DiscoveryView() {
               />
               <AnimatePresence initial={false} mode="popLayout">
                 {bands.strong.map((c) => (
-                  <motion.div key={c.id} {...feedItemMotion}>
+                  <motion.div key={c.id} {...feedItemMotion} layout="position">
                     <CandidateRow {...rowProps(c)} />
                   </motion.div>
                 ))}
@@ -1254,7 +1264,7 @@ export function DiscoveryView() {
               />
               <AnimatePresence initial={false} mode="popLayout">
                 {bands.worth.map((c) => (
-                  <motion.div key={c.id} {...feedItemMotion}>
+                  <motion.div key={c.id} {...feedItemMotion} layout="position">
                     <CandidateRow {...rowProps(c)} />
                   </motion.div>
                 ))}
@@ -1272,7 +1282,7 @@ export function DiscoveryView() {
               {showWeak ? (
                 <AnimatePresence initial={false} mode="popLayout">
                   {bands.weak.map((c) => (
-                    <motion.div key={c.id} {...feedItemMotion}>
+                    <motion.div key={c.id} {...feedItemMotion} layout="position">
                       <CandidateRow {...rowProps(c)} />
                     </motion.div>
                   ))}
@@ -1329,7 +1339,7 @@ export function DiscoveryView() {
           ) : (
             <AnimatePresence initial={false} mode="popLayout">
               {ranked.map((c) => (
-                <motion.div key={c.id} {...feedItemMotion}>
+                <motion.div key={c.id} {...feedItemMotion} layout="position">
                   <CandidateRow {...rowProps(c)} />
                 </motion.div>
               ))}

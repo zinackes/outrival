@@ -2,9 +2,13 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { COMP_ACCENT, competitorColorVars } from "@/lib/competitor-color";
 import type { DigestMover, DigestStats } from "@/lib/digest-shape";
+import { CompAvatar } from "./comp-avatar";
 
 /** Look up a competitor's stored colour by name, case-insensitively. */
 export type ColorOf = (name: string) => string | null;
+
+/** Look up a competitor's site by name, case-insensitively. Null = no favicon to draw. */
+export type UrlOf = (name: string) => string | null;
 
 /** The neutral tint a competitor with no assigned colour falls back to. */
 const NEUTRAL = "var(--border-strong)";
@@ -154,6 +158,7 @@ export function MoverList({
   total,
   colorOf,
   idOf,
+  urlOf,
   max = 6,
 }: {
   movers: DigestMover[];
@@ -161,6 +166,8 @@ export function MoverList({
   colorOf: ColorOf;
   /** Resolves a competitor name to its page, when we hold one. */
   idOf?: (name: string) => string | null;
+  /** Resolves a competitor name to its site, so the row can carry its mark. */
+  urlOf?: UrlOf;
   /** How many rows before the list folds. The rest open on demand. */
   max?: number;
 }) {
@@ -172,7 +179,7 @@ export function MoverList({
   // boundary or a hydration pass.
   return (
     <div className="flex flex-col gap-2">
-      <MoverRows rows={head} total={total} colorOf={colorOf} idOf={idOf} />
+      <MoverRows rows={head} total={total} colorOf={colorOf} idOf={idOf} urlOf={urlOf} />
       {tail.length > 0 && (
         <details className="group flex flex-col gap-2">
           <summary className="cursor-pointer list-none text-dense text-link marker:hidden hover:underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -180,7 +187,7 @@ export function MoverList({
             <span className="hidden group-open:inline">Show less</span>
           </summary>
           <div className="mt-1.5">
-            <MoverRows rows={tail} total={total} colorOf={colorOf} idOf={idOf} />
+            <MoverRows rows={tail} total={total} colorOf={colorOf} idOf={idOf} urlOf={urlOf} />
           </div>
         </details>
       )}
@@ -193,17 +200,20 @@ function MoverRows({
   total,
   colorOf,
   idOf,
+  urlOf,
 }: {
   rows: DigestMover[];
   total: number;
   colorOf: ColorOf;
   idOf?: (name: string) => string | null;
+  urlOf?: UrlOf;
 }) {
   return (
-    <ul className="flex flex-col gap-1.5">
+    <ul className="flex flex-col gap-2">
       {rows.map((m) => {
         const color = colorOf(m.name);
         const id = idOf?.(m.name) ?? null;
+        const url = urlOf?.(m.name) ?? null;
         const share = total > 0 ? Math.round((m.count / total) * 100) : 0;
         const name = (
           <span className="truncate" style={textTintStyle(color)}>
@@ -212,11 +222,11 @@ function MoverRows({
         );
         return (
           <li key={m.name} className="flex items-center gap-2 text-dense">
-            <span
-              aria-hidden
-              className="size-[7px] shrink-0 rounded-full"
-              style={tintStyle(color)}
-            />
+            {/* The company's own mark rather than a tinted dot: the palette is opt-in,
+                so most rows drew the same grey circle. The favicon names the company
+                before the text is read, and falls back to its initial on its own. The
+                tint it used to carry still reads on the name and the share bar. */}
+            <CompAvatar name={m.name} url={url} size={18} />
             {id ? (
               <Link
                 href={`/dashboard/competitors/${id}`}

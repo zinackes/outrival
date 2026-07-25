@@ -1,4 +1,4 @@
-import { emailShell } from "./shell";
+import { emailButton, emailShell } from "./shell";
 import { e, type EmailRole } from "./theme";
 import { escapeHtml } from "./escape-html";
 
@@ -48,6 +48,9 @@ export function renderDigestEmail(
   unsubscribeUrl?: string,
   // Sub-heading under the wordmark. Daily resends override the default weekly copy.
   subtitle = "Your weekly competitive briefing",
+  // CTA back into the app (patch-20 measurement). Absent → no button, same
+  // degradation contract as feedbackLinks/unsubscribeUrl.
+  readUrl?: string,
 ): string {
   const sectionsHtml = (["action_required", "watch", "fyi"] as const)
     .map((urgency) => {
@@ -148,6 +151,11 @@ export function renderDigestEmail(
       ${sectoralHtml}
       ${watchedHtml}
       ${
+        readUrl
+          ? `<div style="margin-top:28px;text-align:center;">${emailButton(readUrl, "Open the full briefing")}</div>`
+          : ""
+      }
+      ${
         feedbackLinks
           ? `<div ${e(["rule", "muted"], "margin-top:28px;border-top-width:1px;border-top-style:solid;padding-top:18px;text-align:center;font-size:13px;")}>
         Was this briefing useful?
@@ -173,6 +181,8 @@ export interface AllQuietDigestData {
   weekStart: string;
   weekEnd: string;
   unsubscribeUrl?: string;
+  // CTA back into the app (patch-20 measurement). Absent → no button.
+  readUrl?: string;
 }
 
 // Lever 6 — a calm week (no signals) still gets a light briefing instead of
@@ -185,6 +195,7 @@ export function renderAllQuietDigest({
   weekStart,
   weekEnd,
   unsubscribeUrl,
+  readUrl,
 }: AllQuietDigestData): string {
   const pageWord = pages === 1 ? "page" : "pages";
   const checksClause = checks > 0 ? `, ${checks} time${checks === 1 ? "" : "s"}` : "";
@@ -198,6 +209,11 @@ export function renderAllQuietDigest({
         <div ${e("muted", "font-size:13px;margin-bottom:8px;")}>All quiet</div>
         <div ${e("text", "font-size:15px;line-height:1.5;")}>${escapeHtml(copy)}</div>
       </div>
+      ${
+        readUrl
+          ? `<div style="margin-top:28px;text-align:center;">${emailButton(readUrl, "See what we checked")}</div>`
+          : ""
+      }
       <div ${e("faint", "margin-top:32px;font-size:11px;text-align:center;")}>Outrival · Automated competitive intelligence${
         unsubscribeUrl
           ? ` · <a href="${unsubscribeUrl}" ${e("faint", "text-decoration:underline;")}>Unsubscribe</a>`

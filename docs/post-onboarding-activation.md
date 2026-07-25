@@ -288,6 +288,33 @@ notification settings. Repackage, don't rebuild:
 - North-star retention metric for the product: **briefing open rate**, not
   DAU. The app is where you dig; the inbox is where the habit lives.
 
+### Measuring the briefing habit
+
+Every recurring briefing CTA carries `?src=<tag>`, so click-through is
+countable from the `$pageview` events already collected. Four tags, one per
+recurring send path: `digest_weekly`, `digest_allquiet`, `digest_daily`,
+`digest_resend`.
+
+Read click-through with:
+
+```sql
+SELECT properties.$pathname AS path, count() AS clicks, uniq(person_id) AS people
+FROM events
+WHERE timestamp >= now() - INTERVAL 30 DAY
+  AND event = '$pageview'
+  AND properties.$current_url LIKE '%src=digest%'
+GROUP BY path
+```
+
+**Open rate stays unmeasured, on purpose.** It needs an image beacon, which
+is a privacy surface this product does not currently have, and
+click-through is the stronger retention signal anyway. Whoever wants opens
+must decide that trade-off explicitly, not inherit it.
+
+**Baseline: zero clicks.** At the time of writing, no recurring briefing had
+carried a link back into the product, so there is no prior click-through to
+compare against. Read the number as a baseline to beat, not a bug report.
+
 ---
 
 ## Sequencing

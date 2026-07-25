@@ -70,6 +70,39 @@ describe("renderDigestEmail", () => {
     expect(rich).toContain("Your watched questions");
     expect(rich).toContain("Has anyone shipped it?");
   });
+
+  // patch-20 — the CTA back into the app, measurable via the src tag it carries.
+  test("readUrl renders a CTA above the feedback block", () => {
+    const withCta = renderDigestEmail(
+      DIGEST,
+      "2026-07-06",
+      "2026-07-13",
+      undefined,
+      undefined,
+      undefined,
+      "https://outrival.app/dashboard/digests/abc?src=digest_weekly",
+    );
+    expect(withCta).toContain("https://outrival.app/dashboard/digests/abc?src=digest_weekly");
+    expect(withCta).toContain("Open the full briefing");
+  });
+
+  test("without readUrl, no CTA is rendered", () => {
+    expect(html).not.toContain("Open the full briefing");
+  });
+
+  test("a readUrl with & and \" is escaped, not injected raw", () => {
+    const withCta = renderDigestEmail(
+      DIGEST,
+      "2026-07-06",
+      "2026-07-13",
+      undefined,
+      undefined,
+      undefined,
+      'https://outrival.app/dashboard/digests/abc?src=digest_weekly&x="y"',
+    );
+    expect(withCta).toContain("&amp;x=&quot;y&quot;");
+    expect(withCta).not.toContain('&x="y"');
+  });
 });
 
 // Lever 6 — the all-quiet weekly briefing. No AI call: the copy is templated
@@ -127,6 +160,20 @@ describe("renderAllQuietDigest", () => {
       weekEnd: "2026-07-06",
     });
     expect(withoutLink).not.toContain("Unsubscribe");
+  });
+
+  // patch-20 — the CTA back into the app; the all-quiet email's job is to prove
+  // work happened, so its CTA leads to the evidence rather than an empty feed.
+  test("readUrl renders a CTA pointing at the evidence", () => {
+    const html = renderAllQuietDigest({
+      pages: 12,
+      checks: 34,
+      weekStart: "2026-06-29",
+      weekEnd: "2026-07-06",
+      readUrl: "https://outrival.app/dashboard/digests/abc?src=digest_allquiet",
+    });
+    expect(html).toContain("https://outrival.app/dashboard/digests/abc?src=digest_allquiet");
+    expect(html).toContain("See what we checked");
   });
 
   test("makes no network/AI call — pure string templating", () => {

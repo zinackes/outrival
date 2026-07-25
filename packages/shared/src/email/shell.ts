@@ -1,4 +1,5 @@
 import { darkRules, e, EMAIL_LIGHT } from "./theme";
+import { escapeHtml } from "./escape-html";
 
 // The single shell for every user-facing email (workers + API auth). Light is
 // authored inline, dark is an override — see theme.ts for why that direction.
@@ -53,4 +54,11 @@ export function emailShell(inner: string, maxWidthPx = 520): string {
   </table>
 </body>
 </html>`;
+}
+
+// The CTA is an accent fill in both modes. It used to be a white pill (readable
+// only because the canvas was always dark) — on a light canvas that is a white
+// button on white.
+export function emailButton(href: string, label: string): string {
+  return `<a href="${escapeHtml(href)}" ${e("btn", "display:inline-block;padding:11px 20px;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px;")}>${escapeHtml(label)}</a>`;
 }

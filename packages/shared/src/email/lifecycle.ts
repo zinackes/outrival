@@ -1,17 +1,10 @@
-import { emailShell } from "./shell";
+import { emailButton, emailShell } from "./shell";
 import { e } from "./theme";
 import { escapeHtml } from "./escape-html";
 
 // Behavioral lifecycle emails (Lever 5, docs/post-onboarding-activation.md). Pure
 // render functions (no DB, no Resend) so they stay in @outrival/shared and are easy
 // to test; the worker sends the result. Same shell + palette as the digest.
-
-// The CTA is an accent fill in both modes. It used to be a white pill (readable
-// only because the canvas was always dark) — on a light canvas that is a white
-// button on white.
-function button(href: string, label: string): string {
-  return `<a href="${escapeHtml(href)}" ${e("btn", "display:inline-block;padding:11px 20px;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px;")}>${escapeHtml(label)}</a>`;
-}
 
 // Brick 1 — D0 welcome digest: "here's your starting position; we'll email when it moves."
 export function renderWelcomeEmail(input: {
@@ -34,7 +27,7 @@ export function renderWelcomeEmail(input: {
   you the moment something moves.
 </div>
 ${list}
-${button(input.dashboardUrl, "Open your dashboard")}
+${emailButton(input.dashboardUrl, "Open your dashboard")}
 <div ${e("faint", "font-size:12px;margin-top:28px;")}>You'll only hear from us when it matters.</div>`;
   return {
     subject: "You're all set — here's your competitive starting position",
@@ -59,7 +52,7 @@ export function renderCelebrationEmail(input: {
   <div ${e("text", "font-size:14px;margin-bottom:8px;")}>${escapeHtml(input.insight)}</div>
   ${input.soWhat ? `<div ${e("watch", "font-size:13px;")}>→ ${escapeHtml(input.soWhat)}</div>` : ""}
 </div>
-${button(input.signalUrl, "See what changed")}
+${emailButton(input.signalUrl, "See what changed")}
 <div ${e("faint", "font-size:12px;margin-top:28px;")}>This is the first of many. We'll keep watching.</div>`;
   return {
     subject: `Your monitoring just paid off — ${input.competitorName} moved`,
@@ -95,7 +88,7 @@ ${
     ? `<div ${e(["card", "text"], "border-radius:6px;padding:14px;margin-bottom:20px;font-size:13px;")}>Biggest move: ${escapeHtml(input.biggestInsight)}</div>`
     : ""
 }
-${button(input.recapUrl, "See your full recap →")}
+${emailButton(input.recapUrl, "See your full recap →")}
 <div ${e("faint", "font-size:12px;margin-top:28px;")}>A quick look back — tap through your month.</div>`;
   return {
     subject: `Your ${input.monthLabel} competitive recap`,

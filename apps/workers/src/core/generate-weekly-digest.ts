@@ -172,12 +172,14 @@ export async function runGenerateWeeklyDigest(payload?: { timestamp?: Date }) {
           apiBase && secret
             ? `${apiBase}/api/digest-feedback/unsubscribe?token=${signUnsubscribeToken(org.id, secret)}`
             : undefined;
+        const webUrl = process.env.WEB_URL ?? "https://outrival.app";
         const html = renderAllQuietDigest({
           pages,
           checks,
           weekStart: isoDate(weekStart),
           weekEnd: isoDate(weekEnd),
           unsubscribeUrl,
+          readUrl: `${webUrl}/dashboard/digests/${stored.id}?src=digest_allquiet`,
         });
 
         try {
@@ -386,12 +388,15 @@ export async function runGenerateWeeklyDigest(payload?: { timestamp?: Date }) {
             apiBase && secret
               ? `${apiBase}/api/digest-feedback/unsubscribe?token=${signUnsubscribeToken(org.id, secret)}`
               : undefined;
+          const webUrl = process.env.WEB_URL ?? "https://outrival.app";
           const html = renderDigestEmail(
             digest,
             isoDate(weekStart),
             isoDate(weekEnd),
             feedbackLinks,
             unsubscribeUrl,
+            undefined,
+            `${webUrl}/dashboard/digests/${stored.id}?src=digest_weekly`,
           );
           await getResend().emails.send({
             from: ALERT_FROM,

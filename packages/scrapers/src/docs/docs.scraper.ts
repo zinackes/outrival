@@ -96,9 +96,15 @@ async function fetchHtml(url: string): Promise<string | null> {
   return probe.kind === "body" ? probe.text : null;
 }
 
-/** Sitemap URLs declared in the docs origin's robots.txt (`Sitemap: <url>`). */
-async function sitemapsFromRobots(origin: string): Promise<string[]> {
-  const bytes = await fetchBytes(`${origin}/robots.txt`);
+/** Sitemap URLs declared in the docs origin's robots.txt (`Sitemap: <url>`).
+ *  Takes the byte fetcher rather than closing over the module-level one: this is the
+ *  first request of sitemap mode, so reaching past the injected dependency sent every
+ *  test that got this far to the real network under a fixture hostname. */
+async function sitemapsFromRobots(
+  origin: string,
+  getBytes: (url: string) => Promise<Uint8Array | null>,
+): Promise<string[]> {
+  const bytes = await getBytes(`${origin}/robots.txt`);
   if (!bytes) return [];
   const text = Buffer.from(bytes).toString("utf-8");
   const out: string[] = [];
@@ -163,7 +169,7 @@ async function resolveDocsPages(
   }
   const base = docsRoot.endsWith("/") ? docsRoot : `${docsRoot}/`;
   const roots = [
-    ...(await sitemapsFromRobots(root.origin)),
+    ...(await sitemapsFromRobots(root.origin, fetchSitemapBytes)),
     new URL("sitemap.xml", base).toString(),
     `${root.origin}/sitemap.xml`,
     `${root.origin}/sitemap_index.xml`,

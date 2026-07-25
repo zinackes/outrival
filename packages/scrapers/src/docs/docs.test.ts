@@ -471,6 +471,27 @@ describe("(c) clean degradation", () => {
     expect(outcome.text).toContain("https://docs.acme.com/a — documentation page");
   });
 
+  test("every read in sitemap mode goes through the injected deps", async () => {
+    // Guard for a leak that made this suite reach the real internet: robots.txt is the
+    // first request of sitemap mode, and it used to call the module-level fetcher
+    // instead of the injected one. Locally the fixture hostname failed DNS instantly
+    // and everything looked green; on CI it hung to the timeout and failed three tests
+    // that have nothing to do with robots.txt.
+    const requested: string[] = [];
+    await scrape("c1", "https://docs.acme.com/", {}, {
+      reachable: async () => false,
+      fetchHtml: async () => "<html><body><p>A documented page with enough content.</p></body></html>",
+      probeText: async () => ({ kind: "absent" }),
+      fetchBytes: async (u) => {
+        requested.push(u);
+        return u.endsWith("/sitemap.xml")
+          ? new TextEncoder().encode(sitemapXml(["https://docs.acme.com/a"]))
+          : null;
+      },
+    });
+    expect(requested).toContain("https://docs.acme.com/robots.txt");
+  });
+
   test("a spec found → mode openapi, and the snapshot is never hollow", async () => {
     const outcome = await scrape("c1", "https://docs.acme.com/", {}, {
       fetchHtml: async () => "<html><body><h1>Docs</h1></body></html>",

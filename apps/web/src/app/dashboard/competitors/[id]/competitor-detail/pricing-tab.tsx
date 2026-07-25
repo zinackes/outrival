@@ -28,6 +28,7 @@ import {
   Empty,
   TabLoading,
   MonitorEmptyState,
+  SourceSummary,
   isServerScraping,
   type MonitorSourceProps,
 } from "./shared";
@@ -201,6 +202,34 @@ export function PricingTab({
   const planCount = pricingPlansQuery.data?.resolved.length ?? latestByPlan.size;
   const editedCount = pricingPlansQuery.data?.overrides.length ?? 0;
 
+  // The tab's answer, stated before the evidence. It lived inside the comparison,
+  // so a workspace with no product of its own captured got no verdict at all.
+  // Same-currency only here: a converted comparison keeps its ≈ marker down in the
+  // ladder, where the footnote naming the rate sits next to it.
+  const theirEntry = allTheirTiers
+    .filter((t) => t.billing_period !== "usage" && t.price != null && t.price > 0)
+    .sort((a, b) => (a.price ?? 0) - (b.price ?? 0))[0];
+  const ourEntry = (myProduct?.pricing.tiers ?? [])
+    .filter((t) => t.price != null && t.price > 0)
+    .sort((a, b) => (a.price ?? 0) - (b.price ?? 0))[0];
+  const verdict = (() => {
+    if (!theirEntry) {
+      return competitor.pricingStatus && competitor.pricingStatus !== "public"
+        ? `${competitor.name} doesn't publish a price you can compare.`
+        : null;
+    }
+    if (ourEntry && ourEntry.currency === theirEntry.currency && ourEntry.price && theirEntry.price) {
+      const pct = ((ourEntry.price - theirEntry.price) / theirEntry.price) * 100;
+      if (Math.abs(pct) >= 1) {
+        return pct > 0
+          ? `They undercut your entry tier by ${Math.round(pct)}%.`
+          : `You undercut their entry tier by ${Math.round(Math.abs(pct))}%.`;
+      }
+      return "Your entry tiers are priced within a percent of each other.";
+    }
+    return `Their entry tier is ${formatTierPrice(theirEntry)}.`;
+  })();
+
   // A price that moved in the last fortnight is the fact worth a mark in the strip.
   const changedRecently =
     !!pricingMonitor?.lastChangedAt &&
@@ -208,6 +237,14 @@ export function PricingTab({
 
   return (
     <TabCard>
+      {verdict && (
+        <TabSection>
+          <h3 className="text-xl font-semibold leading-snug tracking-tight text-balance">
+            {verdict}
+          </h3>
+        </TabSection>
+      )}
+
       {/* Four attributes of one object are a table, not a row of tinted chips. */}
       <TabSection>
         <FactStrip>
@@ -235,6 +272,11 @@ export function PricingTab({
           </Fact>
         </FactStrip>
       </TabSection>
+      <SourceSummary
+        summary={pricingMonitor?.aiSummary}
+        updatedAt={pricingMonitor?.aiSummaryUpdatedAt}
+      />
+
       {myProduct && (
         <TabSection>
           <PricingComparison
@@ -306,14 +348,6 @@ export function PricingTab({
             </span>
           )}
         </div>
-        <CompetitorPricingCard
-          competitor={competitor}
-          onUpdated={onRefresh}
-          hasCapturedTiers={hasCapturedTiers}
-          isCapturing={isCapturing}
-          summary={pricingMonitor?.aiSummary}
-          summaryUpdatedAt={pricingMonitor?.aiSummaryUpdatedAt}
-        />
       </TabSection>
     </TabCard>
   );
@@ -604,33 +638,8 @@ function PricingComparison({
     lines.push(`${competitorName}'s top tier is sales-gated, so not every price is public.`);
   }
 
-  // The headline: how their entry tier sits against yours, stated rather than
-  // left for the reader to compute off two columns.
-  const entryPct = entryCmp.pct;
-  const headline =
-    entryPct !== null && Math.abs(entryPct) >= 1 ? (
-      entryPct < 0 ? (
-        <>
-          You undercut their entry tier by{" "}
-          <span className="font-mono tabular-nums">{Math.abs(entryPct).toFixed(0)}%</span>.
-        </>
-      ) : (
-        <>
-          They undercut your entry tier by{" "}
-          <span className="font-mono tabular-nums">{entryPct.toFixed(0)}%</span>.
-        </>
-      )
-    ) : entryPct !== null ? (
-      <>Your entry tiers are priced within a percent of each other.</>
-    ) : null;
-
   return (
     <div className="flex flex-col gap-3">
-      {headline && (
-        <h3 className="text-xl font-semibold leading-snug tracking-tight text-balance">
-          {headline}
-        </h3>
-      )}
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <p className="text-sm font-medium">Pricing comparison</p>
         <div className="flex items-center gap-3">

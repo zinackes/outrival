@@ -259,7 +259,6 @@ export function CompetitorDetailView({ id }: { id: string }) {
     setMonitorActive,
     enableMonitor,
     editMonitor,
-    switchReviewSource,
   } = useMonitorActions(id);
   const [tab, setTab] = useState<TabKey>("overview");
   const [showDelete, setShowDelete] = useState(false);
@@ -720,7 +719,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
               first card is level with the tab content, not with the strip. The
               min-height floor keeps a sparse tab from collapsing the page after a
               dense one, so switching tabs never jumps. */}
-          <div className="mt-4 grid min-h-[280px] items-start gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+          <div className="mt-3 grid min-h-[280px] items-start gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
             <div className="min-w-0">
             <TabsContent value="overview" className={TAB_PANEL_CLASS}>
               <OverviewTab
@@ -776,13 +775,9 @@ export function CompetitorDetailView({ id }: { id: string }) {
                 scrapingIds={scrapingIds}
                 onRun={requestRunMonitor}
                 onEnable={enableMonitor}
-                onEdit={editMonitor}
-                onSwitch={switchReviewSource}                plan={plan}
+                plan={plan}
                 onLockedSource={(source) =>
                   setPaywall({ code: "plan_locked_source", source, plan })
-                }
-                onLockedFrequency={(freq) =>
-                  setPaywall({ code: "plan_locked_frequency", frequency: freq, plan })
                 }
               />
             </TabsContent>

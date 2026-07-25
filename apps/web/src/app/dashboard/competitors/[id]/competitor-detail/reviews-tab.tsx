@@ -1,43 +1,25 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import dynamic from "next/dynamic";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { Lock, Plus, Loader2, Settings2, Link2, HelpCircle } from "lucide-react";
+import { Lock, Plus, Loader2, Link2 } from "lucide-react";
 import {
   PLAN_LABELS,
-  MONITOR_FREQUENCIES,
   planIncludesSource,
   minPlanForSource,
-  planIncludesFrequency,
-  minPlanForFrequency,
   validateReviewUrl,
   type Plan,
   type SourceType,
   type ReviewSourceType,
-  type MonitorFrequency,
 } from "@outrival/shared";
-import { api, type CompetitorSignal, type Monitor } from "@/lib/api";
+import { api, type CompetitorSignal } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
 import { Fact, FactStrip } from "@/components/outrival/data-marks";
 
@@ -224,23 +206,15 @@ export function ReviewsTab({
   scrapingIds,
   onRun,
   onEnable,
-  onEdit,
-  onSwitch,
   plan,
   onLockedSource,
-  onLockedFrequency,
 }: {
   competitorId: string;
   /** Already on the page; carries the review-shift anchor the chart marks. */
   signals: CompetitorSignal[];
   plan: Plan;
   onLockedSource?: (source: ReviewSourceType) => void;
-  onLockedFrequency: (freq: MonitorFrequency) => void;
-  onEdit: (id: string, patch: { url?: string; frequency?: MonitorFrequency }) => Promise<void>;
-  onSwitch: (oldMonitorId: string, source: SourceType, url: string) => Promise<void>;
 } & MonitorSourceProps) {
-  const [managing, setManaging] = useState(false);
-
   // The shared QueryClient serves the cache instantly on tab re-switch (no skeleton
   // flash); keepPreviousData keeps the last result during a refetch. A forced
   // re-scan invalidates ["competitor", id] from the detail view.
@@ -349,15 +323,6 @@ export function ReviewsTab({
   return (
     <div className="flex flex-col gap-4">
       <TabCard>
-        <TabSection>
-          <ReviewSourceToolbar monitor={reviewMonitor} onManage={() => setManaging(true)} />
-        </TabSection>
-
-        <SourceSummary
-          summary={reviewMonitor.aiSummary}
-          updatedAt={reviewMonitor.aiSummaryUpdatedAt}
-        />
-
         {hasData && (
           <>
             {verdict && (
@@ -410,6 +375,11 @@ export function ReviewsTab({
                 </Fact>
               </FactStrip>
             </TabSection>
+
+            <SourceSummary
+              summary={reviewMonitor.aiSummary}
+              updatedAt={reviewMonitor.aiSummaryUpdatedAt}
+            />
 
             {/* Promoted from last to first among the analyses. The tab already
                 called these the angles you can lead with, then printed them under
@@ -508,258 +478,7 @@ export function ReviewsTab({
         />
       )}
 
-      <ReviewSourceDialog
-        open={managing}
-        monitor={reviewMonitor}
-        plan={plan}
-        onClose={() => setManaging(false)}
-        onEdit={onEdit}
-        onSwitch={onSwitch}
-        onLockedSource={onLockedSource}
-        onLockedFrequency={onLockedFrequency}
-      />
     </div>
-  );
-}
-
-// Header row above the reviews content: shows the active review source + the
-// pinned page, with one entry point to edit the URL/frequency or switch source.
-function ReviewSourceToolbar({
-  monitor,
-  onManage,
-}: {
-  monitor: Monitor;
-  onManage: () => void;
-}) {
-  const opt = REVIEW_SOURCE_OPTIONS.find((o) => o.value === monitor.sourceType);
-  const url = monitor.config?.url ?? "";
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <div className="flex items-baseline gap-2 min-w-0">
-        <span className="shrink-0 text-dense font-medium text-foreground">
-          {opt?.label ?? monitor.sourceType}
-        </span>
-        {url && (
-          <span className="truncate text-xs font-mono text-muted-foreground">{url}</span>
-        )}
-      </div>
-      <Button size="sm" variant="outline" onClick={onManage} className="h-7 text-xs shrink-0">
-        <Settings2 size={12} /> Configure
-      </Button>
-    </div>
-  );
-}
-
-// Edit the active review monitor: change the page URL / frequency in place. Since
-// Reviews v2 retired the scraped aggregators, App Store is the only URL-based review
-// source, so the source picker below is effectively a single option; onSwitch is kept
-// for when another URL-based review source returns (e.g. a connected G2 vendor account).
-function ReviewSourceDialog({
-  open,
-  monitor,
-  plan,
-  onClose,
-  onEdit,
-  onSwitch,
-  onLockedSource,
-  onLockedFrequency,
-}: {
-  open: boolean;
-  monitor: Monitor;
-  plan: Plan;
-  onClose: () => void;
-  onEdit: (id: string, patch: { url?: string; frequency?: MonitorFrequency }) => Promise<void>;
-  onSwitch: (oldMonitorId: string, source: SourceType, url: string) => Promise<void>;
-  onLockedSource?: (source: ReviewSourceType) => void;
-  onLockedFrequency: (freq: MonitorFrequency) => void;
-}) {
-  const currentSource = monitor.sourceType as ReviewSourceType;
-  const currentUrl = monitor.config?.url ?? "";
-  const [source, setSource] = useState<ReviewSourceType>(currentSource);
-  const [url, setUrl] = useState(currentUrl);
-  const [frequency, setFrequency] = useState<MonitorFrequency>(
-    monitor.frequency as MonitorFrequency,
-  );
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    if (open) {
-      setSource(monitor.sourceType as ReviewSourceType);
-      setUrl(monitor.config?.url ?? "");
-      setFrequency(monitor.frequency as MonitorFrequency);
-    }
-  }, [open, monitor]);
-
-  const active = REVIEW_SOURCE_OPTIONS.find((o) => o.value === source)!;
-  const trimmed = url.trim();
-  const sourceChanged = source !== currentSource;
-  const urlValid = trimmed.length > 0 && validateReviewUrl(source, trimmed).ok;
-  const urlChanged = trimmed !== currentUrl;
-  const freqChanged = frequency !== monitor.frequency;
-  const canSave = !busy && urlValid && (sourceChanged || urlChanged || freqChanged);
-
-  async function save() {
-    setBusy(true);
-    try {
-      if (sourceChanged) {
-        await onSwitch(monitor.id, source, trimmed);
-      } else {
-        const patch: { url?: string; frequency?: MonitorFrequency } = {};
-        if (urlChanged) patch.url = trimmed;
-        if (freqChanged) patch.frequency = frequency;
-        if (Object.keys(patch).length > 0) await onEdit(monitor.id, patch);
-      }
-      onClose();
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Configure reviews</DialogTitle>
-          <DialogDescription>
-            Choose the review site, pin the page to watch, and how often it&apos;s checked.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-5">
-          <div className="space-y-1.5">
-            <p className="text-xs font-medium text-foreground">Review source</p>
-            <ToggleGroup
-              type="single"
-              value={source}
-              onValueChange={(v) => {
-                if (!v) return;
-                const next = v as ReviewSourceType;
-                if (!planIncludesSource(plan, next)) {
-                  onClose();
-                  onLockedSource?.(next);
-                  return;
-                }
-                setSource(next);
-              }}
-              variant="outline"
-              size="sm"
-              className="w-full"
-            >
-              {REVIEW_SOURCE_OPTIONS.map((o) => {
-                const locked = !planIncludesSource(plan, o.value);
-                return (
-                  <ToggleGroupItem
-                    key={o.value}
-                    value={o.value}
-                    className="grow basis-0 gap-1.5"
-                    title={
-                      locked ? `Requires ${PLAN_LABELS[minPlanForSource(o.value)]}` : undefined
-                    }
-                  >
-                    {locked && <Lock size={11} className="opacity-70" />}
-                    {o.label}
-                  </ToggleGroupItem>
-                );
-              })}
-            </ToggleGroup>
-          </div>
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-1.5">
-              <p className="text-xs font-medium text-foreground">Check frequency</p>
-              <TooltipProvider delayDuration={150}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      aria-label="What does check frequency mean?"
-                      className="text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground"
-                    >
-                      <HelpCircle size={13} />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="max-w-56">
-                    An upper bound. Stable sources are checked less often automatically.
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-            <ToggleGroup
-              type="single"
-              value={frequency}
-              onValueChange={(v) => {
-                if (!v) return;
-                const next = v as MonitorFrequency;
-                if (!planIncludesFrequency(plan, next)) {
-                  onClose();
-                  onLockedFrequency(next);
-                  return;
-                }
-                setFrequency(next);
-              }}
-              variant="outline"
-              size="sm"
-              className="w-full"
-              disabled={sourceChanged}
-            >
-              {MONITOR_FREQUENCIES.map((f) => {
-                const locked = !planIncludesFrequency(plan, f);
-                return (
-                  <ToggleGroupItem
-                    key={f}
-                    value={f}
-                    className="grow basis-0 gap-1.5 capitalize hover:bg-muted hover:text-foreground data-[state=on]:font-semibold data-[state=on]:hover:bg-accent data-[state=on]:hover:text-accent-foreground"
-                    title={
-                      locked ? `Requires ${PLAN_LABELS[minPlanForFrequency(f)]}` : undefined
-                    }
-                  >
-                    {locked && <Lock size={11} className="opacity-70" />}
-                    {f}
-                  </ToggleGroupItem>
-                );
-              })}
-            </ToggleGroup>
-          </div>
-          <div className="space-y-1.5">
-            <p className="text-xs font-medium text-foreground">Page URL</p>
-            <div className="relative">
-              <Link2
-                size={14}
-                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-              />
-              <Input
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder={active.placeholder}
-                inputMode="url"
-                autoComplete="off"
-                className="pl-8"
-                aria-invalid={trimmed !== "" && !urlValid}
-              />
-            </div>
-            {trimmed !== "" && !urlValid ? (
-              <p className="text-xs text-critical">
-                This URL isn&apos;t valid for {active.label}.
-              </p>
-            ) : (
-              <p className="text-xs text-muted-foreground">Must be a {active.host} URL.</p>
-            )}
-          </div>
-          {sourceChanged && (
-            <p className="text-xs text-critical/80">
-              Switching source replaces the current monitor and its captured history.
-            </p>
-          )}
-        </div>
-        <DialogFooter>
-          <Button variant="outline" size="sm" onClick={onClose} disabled={busy}>
-            Cancel
-          </Button>
-          <Button size="sm" onClick={save} disabled={!canSave}>
-            {busy && <Loader2 size={12} className="animate-spin" />}
-            {sourceChanged ? "Switch source" : "Save"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
 

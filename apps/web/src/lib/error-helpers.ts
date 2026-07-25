@@ -1,5 +1,6 @@
 import { toast } from "sonner";
 import { ApiError } from "./api";
+import { track } from "./posthog/events";
 
 // Turns an API error code into a user-facing config, always in three parts:
 //   title       — what happened (past)
@@ -114,6 +115,9 @@ export function toastRescanLimit(err: unknown, toastId?: string | number): boole
     upgradeHint?: boolean;
   };
   if (detail.code !== "rescan_limit_reached") return false;
+  // This 429 never opens PaywallDialog, so it was invisible to the paywall_shown
+  // funnel (plan 022). Same event, same reason-code convention, no dialog.
+  track("paywall_shown", { reason: "rescan_limit_reached" });
   toast.warning(detail.message ?? "Daily re-scan limit reached. It resets tomorrow.", {
     id: toastId,
     action: detail.upgradeHint

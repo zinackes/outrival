@@ -375,23 +375,71 @@ export function activityHealthQuery(productId?: string) {
   });
 }
 
-// One page of the activity timeline. Key embeds page + filters; the RSC seeds
-// page 1 unfiltered. A URL filter yields a different key → a client fetch, exactly
-// like the old hasUrlFilter path.
-export function activityTimelineQuery(
-  page: number,
-  filters: { competitorId?: string; sourceType?: string; status?: ActivityStatusFilter },
-  productId?: string,
-) {
+// The counts the page opens on: the 24-hour strip and the per-day tallies. Kept
+// apart from the timeline because the log pages through findings only — a day's
+// "38 checks" can never be derived from the rows on screen.
+export function activitySummaryQuery(productId?: string, tzOffset = 0) {
   const key = productId
-    ? (["activity", "timeline", page, filters, productId] as const)
-    : (["activity", "timeline", page, filters] as const);
+    ? (["activity", "summary", productId, tzOffset] as const)
+    : (["activity", "summary", tzOffset] as const);
   return queryOptions({
     queryKey: key,
-    queryFn: () =>
+    queryFn: () => api.activitySummary(productId, tzOffset),
+  });
+}
+
+// The outcomes that carry a finding. The log leads with these; the quiet runs sit
+// behind each day's fold and are fetched by the query below.
+export const ACTIVITY_FINDING_STATUSES: ActivityStatusFilter[] = [
+  "change",
+  "first_capture",
+  "failed",
+];
+
+export interface ActivityFeedParams {
+  competitorId?: string;
+  sourceType?: string;
+  // Empty means every outcome — what a filtered view shows, since hiding quiet
+  // runs there would leave no way to see them (the per-day fold is off).
+  statuses?: ActivityStatusFilter[];
+}
+
+// The activity log, offset "load older". Filters live in the key, so switching one
+// refetches; the RSC seeds the unfiltered findings feed (see activity/page.tsx),
+// whose params must match ACTIVITY_FINDING_STATUSES exactly to hit that entry.
+export function activityFeedQuery(params: ActivityFeedParams, productId?: string) {
+  return infiniteQueryOptions({
+    queryKey: ["activity", "feed", params, productId ?? null] as const,
+    queryFn: ({ pageParam }) =>
       api.activityTimeline({
         limit: ACTIVITY_PAGE_SIZE,
-        offset: (page - 1) * ACTIVITY_PAGE_SIZE,
+        offset: pageParam,
+        ...params,
+        productId,
+      }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      const loaded = allPages.reduce((n, p) => n + p.events.length, 0);
+      return loaded < lastPage.total ? loaded : undefined;
+    },
+  });
+}
+
+// The quiet runs of ONE local day, fetched when its fold is opened. Bounded by
+// the day's own UTC instants so the rows match the tally in its header exactly.
+export function activityQuietDayQuery(
+  day: { key: string; from: string; to: string },
+  filters: { competitorId?: string; sourceType?: string },
+  productId?: string,
+) {
+  return queryOptions({
+    queryKey: ["activity", "quiet", day.key, filters, productId ?? null] as const,
+    queryFn: () =>
+      api.activityTimeline({
+        limit: 100,
+        statuses: ["no_change"],
+        from: day.from,
+        to: day.to,
         ...filters,
         productId,
       }),

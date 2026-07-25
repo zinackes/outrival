@@ -506,9 +506,38 @@ export interface ActivitySource {
   // the products page instead of a competitor detail page.
   isSelf?: boolean;
   sourceType: string;
+  // When the source last ANSWERED: only a successful scrape stamps it, so on a
+  // failing source it reads as "last answered", not "last attempted".
   lastRunAt: string | null;
   nextRunAt: string | null;
+  // Checks that have failed back to back since. 0 on a healthy source.
+  consecutiveFailures?: number;
   status: ActivitySourceStatus;
+}
+
+// One 15-minute bucket of the last 24 hours of scraping. `slot` counts backwards
+// from now (0 = the quarter hour in progress), so the strip never has to
+// reconcile the server's clock with the browser's.
+export interface ActivityBucket {
+  slot: number;
+  checks: number;
+  changes: number;
+  failures: number;
+}
+
+// One LOCAL day of work: what a day header states, plus the first-capture count
+// the log needs to size its "found nothing new" fold.
+export interface ActivityDay {
+  date: string; // YYYY-MM-DD in the viewer's timezone
+  checks: number;
+  changes: number;
+  failures: number;
+  firstCaptures: number;
+}
+
+export interface ActivitySummary {
+  buckets: ActivityBucket[];
+  days: ActivityDay[];
 }
 
 // A scheduled upcoming check (activity /health `upcoming`): when Outrival will
@@ -2540,12 +2569,25 @@ export const api = {
     request<{ sources: ActivitySource[]; upcoming: ActivityUpcoming[] }>(
       `/api/activity/health${productId ? `?productId=${encodeURIComponent(productId)}` : ""}`,
     ),
+  // Counts behind the page's opening sentence, its 24-hour strip and each day
+  // header. tzOffset is the viewer's Date#getTimezoneOffset, so day boundaries
+  // are the user's rather than the server's.
+  activitySummary: (productId: string | undefined, tzOffset: number) => {
+    const q = new URLSearchParams({ tzOffset: String(tzOffset) });
+    if (productId) q.set("productId", productId);
+    return request<ActivitySummary>(`/api/activity/summary?${q.toString()}`);
+  },
   activityTimeline: (params?: {
     limit?: number;
     offset?: number;
     competitorId?: string;
     sourceType?: string;
-    status?: ActivityStatusFilter;
+    // One or more outcome buckets. The log's default view asks for the three that
+    // carry a finding and pulls the quiet ones per day, on demand.
+    statuses?: ActivityStatusFilter[];
+    // UTC instants bounding the runs to return (used by the per-day quiet fold).
+    from?: string;
+    to?: string;
     productId?: string;
   }) => {
     const q = new URLSearchParams();
@@ -2553,7 +2595,9 @@ export const api = {
     if (params?.offset) q.set("offset", String(params.offset));
     if (params?.competitorId) q.set("competitorId", params.competitorId);
     if (params?.sourceType) q.set("sourceType", params.sourceType);
-    if (params?.status) q.set("status", params.status);
+    if (params?.statuses?.length) q.set("status", params.statuses.join(","));
+    if (params?.from) q.set("from", params.from);
+    if (params?.to) q.set("to", params.to);
     if (params?.productId) q.set("productId", params.productId);
     const qs = q.toString();
     return request<{ events: ActivityEvent[]; total: number }>(

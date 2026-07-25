@@ -1738,6 +1738,16 @@ export type TechStackData = {
   platformProfile: PlatformProfile | null;
 };
 
+// One version of a competitor's homepage positioning copy. `capturedAt` is when
+// this wording FIRST appeared, not when it was last seen, so two consecutive
+// versions read as "they changed this on that date".
+export interface PositioningVersion {
+  capturedAt: string;
+  headline: string | null;
+  subheadline: string | null;
+  valueProps: string[];
+}
+
 // Competitor "fact sheet" — the state view behind the Overview tab. Pure
 // surfacing of already-captured data (homepage structure patch-16/17, pricing /
 // reviews analytics, active job postings); no AI generation. Any field can be
@@ -2011,6 +2021,12 @@ export const api = {
     request<ReviewsData>(`/api/competitors/${id}/reviews`),
   getCompetitorReviewScores: (id: string) =>
     request<{ scores: ReviewScorePoint[] }>(`/api/competitors/${id}/review-scores`),
+  // Distinct versions of a competitor's positioning copy, newest first. Lazy: the
+  // Positioning tab is the only caller, so it stays off the detail payload.
+  getCompetitorPositioningHistory: (id: string) =>
+    request<{ versions: PositioningVersion[] }>(
+      `/api/competitors/${id}/positioning-history`,
+    ),
   getCompetitorPricingHistory: (id: string) =>
     request<{ history: PricingHistoryPoint[] }>(`/api/competitors/${id}/pricing-history`),
   // Per-plan pricing overlay: the latest detected batch, the user's overrides, and

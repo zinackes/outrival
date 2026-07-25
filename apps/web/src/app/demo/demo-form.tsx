@@ -71,12 +71,14 @@ export function DemoForm({
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { message?: string };
-        throw new Error(body.message ?? "Something went wrong. Please try again.");
+        throw new Error(body.message ?? "Couldn't send your request. Try again in a moment.");
       }
       setStatus("success");
     } catch (err) {
       setStatus("error");
-      setError(err instanceof Error ? err.message : "Something went wrong.");
+      setError(
+        err instanceof Error ? err.message : "Couldn't send your request. Try again in a moment.",
+      );
       // Turnstile tokens are single-use; refresh so a retry has a fresh one.
       turnstileRef.current?.reset();
       setTurnstileToken(null);

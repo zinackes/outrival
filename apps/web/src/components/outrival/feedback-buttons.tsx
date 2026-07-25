@@ -177,7 +177,7 @@ export function FeedbackButtons({
             disabled={busy}
             onClick={() => handleVerdict("useful")}
             className={cn(
-              "rounded-md p-1.5 text-text-subtle transition-[transform,background-color,color] duration-150 ease-out hover:bg-surface-3 hover:text-foreground active:scale-90 disabled:opacity-50",
+              "rounded-md p-1.5 text-text-subtle transition-[transform,background-color,color] duration-150 ease-out hover:bg-surface-3 hover:text-foreground active:scale-[0.97] disabled:opacity-50",
               verdict === "useful" && "bg-positive/12 text-positive hover:bg-positive/15 hover:text-positive",
             )}
           >
@@ -195,7 +195,7 @@ export function FeedbackButtons({
             disabled={busy}
             onClick={() => handleVerdict("not_useful")}
             className={cn(
-              "rounded-md p-1.5 text-text-subtle transition-[transform,background-color,color] duration-150 ease-out hover:bg-surface-3 hover:text-foreground active:scale-90 disabled:opacity-50",
+              "rounded-md p-1.5 text-text-subtle transition-[transform,background-color,color] duration-150 ease-out hover:bg-surface-3 hover:text-foreground active:scale-[0.97] disabled:opacity-50",
               verdict === "not_useful" && "bg-critical/12 text-critical hover:bg-critical/15 hover:text-critical",
             )}
           >
@@ -215,7 +215,7 @@ export function FeedbackButtons({
               aria-pressed={reason === r}
               onClick={() => handleReason(r)}
               className={cn(
-                "rounded border px-1.5 py-0.5 text-meta transition-[transform,border-color,color] duration-150 ease-out active:scale-95 disabled:opacity-50",
+                "rounded border px-1.5 py-0.5 text-meta transition-[transform,border-color,color] duration-150 ease-out active:scale-[0.97] disabled:opacity-50",
                 reason === r
                   ? "border-border-strong text-foreground"
                   : "border-border text-text-subtle hover:border-border-strong hover:text-foreground",

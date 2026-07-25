@@ -17,9 +17,13 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        // Primary — Iris fill, soft directional shadow (E2).
+        // Primary — Iris fill, soft directional shadow (E2). Hover lights the EDGE
+        // rather than the fill: no fill brighter than --accent can carry a light
+        // label at 4.5:1, so brightening on hover made the engaged state the least
+        // legible one. inset-ring, not ring, so it never competes with the outset
+        // focus-visible ring when a focused button is also hovered.
         default:
-          "bg-primary text-primary-foreground shadow-e2 hover:bg-accent-bright active:bg-accent-dim",
+          "bg-primary text-primary-foreground shadow-e2 hover:inset-ring-2 hover:inset-ring-accent-bright active:bg-accent-dim",
         // Secondary — raised surface (#171B22) + reinforced 14% border.
         secondary:
           "border border-border-strong bg-secondary text-secondary-foreground hover:bg-surface-3 active:bg-surface-3",

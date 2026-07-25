@@ -535,9 +535,19 @@ export interface ActivityDay {
   firstCaptures: number;
 }
 
+// A run of the last 24 hours that found something, named. A bucket only knows it
+// holds a finding; this is what lets the strip's hover say which source moved.
+export interface ActivityFinding {
+  recordedAt: string;
+  competitorName: string;
+  sourceType: string;
+  kind: "change" | "failed";
+}
+
 export interface ActivitySummary {
   buckets: ActivityBucket[];
   days: ActivityDay[];
+  findings: ActivityFinding[];
 }
 
 // A scheduled upcoming check (activity /health `upcoming`): when Outrival will

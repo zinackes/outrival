@@ -4,14 +4,13 @@ import {
   agePhrase,
   avgReview,
   axisTicks,
-  bandOf,
-  basisLabel,
   buildVerdict,
   countWord,
+  displayCurrency,
   median,
   nameList,
   niceMax,
-  priceBases,
+  priceReading,
   priceScale,
   hiringScale,
   ratingScale,
@@ -201,7 +200,7 @@ describe("scales", () => {
   });
 });
 
-describe("price basis", () => {
+describe("one monthly axis", () => {
   function planned(
     id: string,
     name: string,
@@ -223,6 +222,9 @@ describe("price basis", () => {
     });
   }
 
+  // 0.8 EUR to the dollar, so €100 reads as $125 on the axis.
+  const RATES = { USD: 1, EUR: 0.8 };
+
   const monthlyAndYearly = planned("a", "A", [
     { name: "Starter", price: 29, billingPeriod: "monthly" },
     { name: "Pro", price: 99, billingPeriod: "monthly" },
@@ -230,52 +232,81 @@ describe("price basis", () => {
     { name: "Pro", price: 990, billingPeriod: "yearly" },
     { name: "Enterprise", price: null, billingPeriod: "custom" },
   ]);
-  const monthlyOnly = planned("b", "B", [
-    { name: "Team", price: 49, billingPeriod: "monthly" },
+  const yearlyOnly = planned("y", "Y", [
+    { name: "Team", price: 600, billingPeriod: "yearly" },
+    { name: "Scale", price: 1200, billingPeriod: "yearly" },
   ]);
+  const euro = planned("e", "E", [{ name: "Team", price: 100, billingPeriod: "monthly" }], "EUR");
 
-  test("lists every captured basis, most represented first", () => {
-    expect(priceBases([monthlyAndYearly, monthlyOnly]).map((b) => b.key)).toEqual([
-      "USD:monthly",
-      "USD:yearly",
-    ]);
-    expect(basisLabel({ currency: "USD", period: "yearly" })).toBe("USD / yr");
-  });
-
-  test("a band is read from the plans on that basis, never converted", () => {
-    expect(bandOf(monthlyAndYearly, { currency: "USD", period: "monthly" })).toEqual({
+  test("a column is read on the cheapest unit of commitment it publishes", () => {
+    // The annual variants of the SAME plans are the same offer billed differently,
+    // not two cheaper tiers — a column that publishes monthly is read monthly.
+    expect(priceReading(monthlyAndYearly, null)).toMatchObject({
+      kind: "band",
       entry: 29,
       top: 99,
+      approx: false,
+      period: "monthly",
     });
-    expect(bandOf(monthlyAndYearly, { currency: "USD", period: "yearly" })).toEqual({
-      entry: 290,
-      top: 990,
-    });
-    // Priced, but not on the basis on screen — the row says so rather than borrowing
-    // the monthly number and calling it annual.
-    expect(bandOf(monthlyOnly, { currency: "USD", period: "yearly" })).toBeNull();
-    // Another currency is another scale entirely.
-    expect(bandOf(monthlyOnly, { currency: "EUR", period: "monthly" })).toBeNull();
   });
 
-  test("a column whose plan rows never came back still stands on its own basis", () => {
-    const bandOnly = priced("c", "C", 19, 89);
-    expect(priceBases([bandOnly]).map((b) => b.key)).toEqual(["USD:monthly"]);
-    expect(bandOf(bandOnly, { currency: "USD", period: "monthly" })).toEqual({
+  test("an annual-only column reads as its monthly equivalent, marked derived", () => {
+    expect(priceReading(yearlyOnly, null)).toMatchObject({
+      kind: "band",
+      entry: 50,
+      top: 100,
+      approx: true,
+      period: "yearly",
+    });
+  });
+
+  test("another currency is converted onto the axis and names itself", () => {
+    expect(priceReading(euro, RATES, "USD")).toMatchObject({
+      kind: "band",
+      entry: 125,
+      top: 125,
+      approx: true,
+      from: "EUR",
+    });
+  });
+
+  test("with no rate table the foreign column stays off the axis rather than guessing", () => {
+    expect(priceReading(euro, null, "USD")).toEqual({ kind: "foreign", currency: "EUR" });
+    // ...and the axis falls back to what the set is mostly captured in, so an
+    // all-EUR set still reads on one scale.
+    expect(displayCurrency([euro], null)).toBe("EUR");
+    expect(displayCurrency([euro], RATES)).toBe("USD");
+    expect(priceReading(euro, null, "EUR")).toMatchObject({ entry: 100, approx: false });
+  });
+
+  test("a one-time price has no monthly equivalent, so it reads off-axis", () => {
+    const oneOff = planned("o", "O", [{ name: "Licence", price: 499, billingPeriod: "one_time" }]);
+    expect(priceReading(oneOff, null)).toMatchObject({ kind: "one_time", entry: 499 });
+    expect(priceScale([oneOff]).hasData).toBe(false);
+  });
+
+  test("quote-only and nothing-captured are their own readings", () => {
+    expect(priceReading(priced("c", "C", null, null), null)).toEqual({ kind: "quote" });
+    expect(priceReading(col({ id: "n", name: "N" }), null)).toEqual({ kind: "none" });
+  });
+
+  test("a column whose plan rows never came back still stands on its own band", () => {
+    expect(priceReading(priced("c", "C", 19, 89), null)).toMatchObject({
+      kind: "band",
       entry: 19,
       top: 89,
     });
-    expect(bandOf(bandOnly, { currency: "USD", period: "yearly" })).toBeNull();
   });
 
-  test("the scale follows the chosen basis", () => {
-    const yearly = priceScale([monthlyAndYearly, monthlyOnly], {
-      basis: { currency: "USD", period: "yearly" },
-    });
-    expect(yearly.max).toBe(1000);
-    expect(yearly.period).toBe("yr");
-    // Only the column that publishes annually is on this axis.
-    expect(yearly.medianEntry).toBe(290);
+  test("the scale holds every convertible column and names what it derived", () => {
+    const s = priceScale([monthlyAndYearly, yearlyOnly, euro], { rates: RATES, to: "USD" });
+    expect(s.currency).toBe("USD");
+    expect(s.period).toBe("mo");
+    // 29 (monthly), 50 (annual ÷12), 125 (converted) — one axis, three units captured.
+    expect(s.medianEntry).toBe(50);
+    expect(s.max).toBe(200);
+    expect(s.converted).toEqual(["EUR"]);
+    expect(s.annualised).toBe(true);
   });
 });
 
@@ -376,6 +407,27 @@ describe("buildVerdict", () => {
     expect(leadText(buildVerdict(you, [cheapWorse, dearBetter], NOW))).toContain(
       "Sentinel is mid-table on both reviews and price.",
     );
+  });
+
+  test("ranks price on the lens's axis, not on the unit each product publishes", () => {
+    const you = priced("you", "Sentinel", 49, 199);
+    // $480 a year is $40 a month: cheaper at the door, though the captured number
+    // is ten times yours. Read raw, this named the wrong product cheapest.
+    const annual = col({
+      id: "b",
+      name: "Beacon",
+      pricing: {
+        entry: 480,
+        top: 480,
+        currency: "USD",
+        billingPeriod: "yearly",
+        plans: [{ name: "Team", price: 480, billingPeriod: "yearly" }],
+        capturedAt: null,
+      },
+    });
+    const v = buildVerdict(you, [annual], NOW);
+    expect(leadText(v)).toContain("Beacon is the only one cheaper at the door, by $9.");
+    expect(v.facts.find((f) => f.key === "price")?.value).toBe("$49 vs $40");
   });
 
   test("calls out the engineering gap only past the multiple", () => {

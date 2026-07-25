@@ -2,6 +2,7 @@
 
 import { motion } from "motion/react";
 import type { CompareColumn } from "@/lib/api";
+import { useFx } from "@/lib/fx";
 import { cn } from "@/lib/utils";
 import { buildVerdict, type Fact, type LensId, type Tone } from "./derive";
 
@@ -73,7 +74,10 @@ export function CompareVerdict({
   you: CompareColumn;
   comps: CompareColumn[];
 }) {
-  const { lead, facts } = buildVerdict(you, comps);
+  // Same rates as the price lens, so "cheapest way in" is decided on the axis the
+  // reader then scrolls to rather than on whatever unit each product publishes in.
+  const fx = useFx();
+  const { lead, facts } = buildVerdict(you, comps, Date.now(), fx?.rates ?? null);
 
   if (lead.length === 0 && facts.length === 0) {
     return (

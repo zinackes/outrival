@@ -15,6 +15,7 @@ import {
   type MyProductPricingTier,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { convertCurrency, useFx } from "@/lib/fx";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { CompetitorPricingCard } from "@/components/outrival/competitor-pricing-card";
@@ -369,61 +370,6 @@ function trialLabel(trial: {
         : null,
   ].filter(Boolean);
   return parts.join(", ");
-}
-
-// Best-effort FX rates (units of each currency per 1 USD) from the ECB via
-// frankfurter.dev — no API key, CORS-enabled (`access-control-allow-origin: *`).
-// The legacy api.frankfurter.app host now 301-redirects here, and a cross-origin
-// redirect breaks the browser CORS fetch, so we hit the .dev host directly.
-// Cached at module scope and shared across renders; a fetch failure (offline,
-// unsupported currency) leaves rates null and the comparison falls back to
-// flagging the mismatch instead of inventing a cross-currency %.
-type FxData = { rates: Record<string, number>; date: string };
-let fxCache: FxData | null = null;
-let fxPromise: Promise<FxData | null> | null = null;
-
-function loadFx(): Promise<FxData | null> {
-  if (fxCache) return Promise.resolve(fxCache);
-  if (fxPromise) return fxPromise;
-  fxPromise = fetch("https://api.frankfurter.dev/v1/latest?base=USD")
-    .then((r) => (r.ok ? r.json() : null))
-    .then((d: { rates?: Record<string, number>; date?: string } | null) => {
-      if (!d?.rates) return null;
-      fxCache = { rates: { USD: 1, ...d.rates }, date: d.date ?? "" };
-      return fxCache;
-    })
-    .catch(() => null);
-  return fxPromise;
-}
-
-function useFx(): FxData | null {
-  const [fx, setFx] = useState<FxData | null>(fxCache);
-  useEffect(() => {
-    if (fx) return;
-    let alive = true;
-    void loadFx().then((r) => {
-      if (alive) setFx(r);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [fx]);
-  return fx;
-}
-
-// Convert an amount between currencies using USD-based rates; null when either
-// currency is missing from the rate table (or rates haven't loaded yet).
-function convertCurrency(
-  amount: number,
-  from: string,
-  to: string,
-  rates: Record<string, number> | null,
-): number | null {
-  if (from === to) return amount;
-  const rf = rates?.[from];
-  const rt = rates?.[to];
-  if (!rf || !rt) return null;
-  return (amount * rt) / rf;
 }
 
 type TierLite = { price: number | null; currency: string; billing_period: string };

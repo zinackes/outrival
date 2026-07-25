@@ -3,18 +3,12 @@
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { CatText } from "@/components/dashboard/cat-pill";
 import { COMP_ACCENT, competitorColorVars } from "@/lib/competitor-color";
 import { SeverityGauge } from "@/components/outrival/severity-scale";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { CompareColumn } from "@/lib/api";
+import { fxDateLabel, useFx } from "@/lib/fx";
 import { cn } from "@/lib/utils";
 import {
   Bar,
@@ -39,15 +33,12 @@ import {
 import {
   avgReview,
   axisTicks,
-  bandOf,
-  basisKey,
-  basisLabel,
+  displayCurrency,
   engineeringRoles,
   hiringScale,
   money,
   openRoles,
-  periodWord,
-  priceBases,
+  priceReading,
   priceScale,
   ratingScale,
   agePhrase,
@@ -85,55 +76,37 @@ const pct = (value: number, max: number): number =>
 
 export function PriceLens({ entities, expanded, onToggle }: LensProps) {
   const cols = loaded(entities);
-  // The basis is picked from what the set actually publishes, never converted: an
-  // exchanged price is a number the product never captured. Held as a key so a basis
-  // that disappears (a competitor removed) falls back to the best remaining one.
-  const [basisPref, setBasisPref] = useState<string | null>(null);
+  // Every price is read on one axis — the display currency, per month — so the rows
+  // rank against each other instead of against the unit each competitor happens to
+  // publish in. Annual plans are read ÷12 and other currencies converted at ECB
+  // rates; anything derived is marked "≈" and the captured numbers stay in the
+  // row's plan breakdown.
+  const fx = useFx();
+  const rates = fx?.rates ?? null;
   // Outliers are trimmed off the axis by default; this is the way back to the true
   // spread, for when the gap IS the point.
   const [full, setFull] = useState(false);
-  const bases = priceBases(cols);
-  const basis = bases.find((b) => b.key === basisPref) ?? bases[0] ?? null;
-  const scale = priceScale(cols, { basis, full });
+  const to = displayCurrency(cols, rates);
+  const scale = priceScale(cols, { rates, to, full });
   const hasAny = cols.some((c) => c.pricing != null);
   if (!hasAny && !anyPending(entities)) return null;
 
-  const basisText = basis ? basisLabel(basis) : "";
   const canExpandScale = scale.fullMax > scale.robustMax;
+  const derivation = [
+    scale.annualised ? "annual plans read ÷ 12" : null,
+    scale.converted.length
+      ? `converted from ${scale.converted.join(", ")} at ECB rates${
+          fx?.date ? ` (${fxDateLabel(fx.date)})` : ""
+        }`
+      : null,
+  ].filter(Boolean);
 
   return (
     <Lens
       id="price"
       title="Price"
       sub="Entry to top published plan, one scale"
-      action={
-        bases.length > 1 ? (
-          <Select
-            value={basis?.key ?? undefined}
-            onValueChange={(v) => {
-              setBasisPref(v);
-              setFull(false);
-            }}
-          >
-            <SelectTrigger
-              size="sm"
-              aria-label="Price basis"
-              className="text-muted-foreground hover:bg-surface-2 h-7 gap-1.5 border-none px-2 font-mono text-meta shadow-none data-[size=sm]:h-7"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent align="end">
-              {bases.map((b) => (
-                <SelectItem key={b.key} value={b.key} className="font-mono text-dense">
-                  {basisLabel(b)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        ) : basisText ? (
-          <span className="text-muted-foreground font-mono text-meta">{basisText}</span>
-        ) : undefined
-      }
+      meta={`${to} / mo`}
       footer={
         scale.hasData ? (
           <LensFooter
@@ -163,6 +136,9 @@ export function PriceLens({ entities, expanded, onToggle }: LensProps) {
                       : `Show full scale to ${money(scale.fullMax, scale.currency)}`}
                   </button>
                 )}
+                {/* What the "≈" rows were derived from, so a converted number is never
+                    passed off as one the competitor published. */}
+                {derivation.length > 0 && <span>≈ {derivation.join(" · ")}</span>}
               </>
             }
           />
@@ -171,42 +147,46 @@ export function PriceLens({ entities, expanded, onToggle }: LensProps) {
     >
       {entities.map((e) => {
         if (!e.data) return <PendingRow key={e.id} entity={e} />;
-        const band = bandOf(e.data, basis);
+        const reading = priceReading(e.data, rates, to);
         const plans = e.data.pricing?.plans ?? [];
         const median = scale.medianEntry;
 
-        // Four readings, no gaps: nothing captured, quote-only, priced in another
-        // currency, or priced on another period. None of them is a blank cell.
-        if (!band) {
-          const pricedElsewhere = bandOf(e.data, null) != null;
-          const otherCurrency =
-            basis && e.data.pricing && (e.data.pricing.currency ?? null) !== basis.currency
-              ? e.data.pricing.currency
-              : null;
+        // Five readings, no gaps: nothing captured, quote-only, a one-off price with
+        // no monthly equivalent, a currency no rate could reach, or a band. None of
+        // them is a blank cell.
+        if (reading.kind !== "band") {
           return (
             <MeasureRow
               key={e.id}
               entity={e}
               value={
-                e.data.pricing && !pricedElsewhere ? (
+                reading.kind === "quote" ? (
                   <span className="text-muted-foreground">Custom</span>
+                ) : reading.kind === "one_time" ? (
+                  <>
+                    {reading.approx && "≈"}
+                    {money(reading.entry, to)}
+                    {reading.entry !== reading.top && (
+                      <span className="text-muted-foreground">–{plain(reading.top)}</span>
+                    )}
+                  </>
                 ) : undefined
               }
             >
-              {!e.data.pricing ? (
+              {reading.kind === "none" ? (
                 <NoReading>No pricing captured</NoReading>
-              ) : !pricedElsewhere ? (
+              ) : reading.kind === "quote" ? (
                 <QuoteOnly />
-              ) : otherCurrency ? (
-                <NoReading>Priced in {otherCurrency}</NoReading>
+              ) : reading.kind === "one_time" ? (
+                <NoReading>One-time price, no monthly equivalent</NoReading>
               ) : (
-                <NoReading>No {periodWord(basis?.period ?? null)} price</NoReading>
+                <NoReading>Priced in {reading.currency}, no rate to convert</NoReading>
               )}
             </MeasureRow>
           );
         }
 
-        const { entry, top } = band;
+        const { entry, top } = reading;
         // Both ends are held inside the axis; the value column keeps the true numbers.
         const left = Math.min(pct(entry, scale.max), 97);
         const width = Math.max(0, Math.min(pct(top, scale.max), 100) - left);
@@ -220,10 +200,12 @@ export function PriceLens({ entities, expanded, onToggle }: LensProps) {
             value={
               entry === top ? (
                 <>
+                  {reading.approx && "≈"}
                   {money(entry, scale.currency)} <span className="text-muted-foreground">flat</span>
                 </>
               ) : (
                 <>
+                  {reading.approx && "≈"}
                   {money(entry, scale.currency)}
                   <span className="text-muted-foreground">–{plain(top)}</span>
                 </>
@@ -247,10 +229,13 @@ export function PriceLens({ entities, expanded, onToggle }: LensProps) {
                           "Custom"
                         ) : (
                           <>
+                            {/* Captured, in the currency the competitor published it
+                                in — the derived monthly number lives on the row above,
+                                this is the evidence behind it. */}
                             {money(p.price, e.data?.pricing?.currency ?? scale.currency)}
                             {/* The period is called out only on the plans that are NOT
-                                on the basis the lens is being read on. */}
-                            {p.billingPeriod && basis && p.billingPeriod !== basis.period && (
+                                on the one the row's band was read off. */}
+                            {p.billingPeriod && p.billingPeriod !== reading.period && (
                               <span className="text-muted-foreground">/{p.billingPeriod}</span>
                             )}
                           </>

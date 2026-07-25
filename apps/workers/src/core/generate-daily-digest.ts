@@ -9,7 +9,7 @@ import {
   competitors,
   digests,
 } from "@outrival/db";
-import { signUnsubscribeToken } from "@outrival/shared";
+import { emailButton, signUnsubscribeToken } from "@outrival/shared";
 import { getResend, ALERT_FROM } from "../lib/resend";
 import { localHour } from "../lib/notification-dispatcher";
 import { escapeHtml } from "../lib/escape-html";
@@ -169,11 +169,13 @@ export async function runGenerateDailyDigest(payload?: { timestamp?: Date }) {
         apiBase && secret
           ? `${apiBase}/api/digest-feedback/unsubscribe?token=${signUnsubscribeToken(org.id, secret)}`
           : undefined;
+      const webUrl = process.env.WEB_URL ?? "https://outrival.app";
 
       const html = emailShell(
         `<p ${e("muted", "font-size:12px;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 4px;")}>Daily briefing</p>
   <h2 ${e("text", "margin:0 0 16px;")}>${deferred.length} update${deferred.length > 1 ? "s" : ""} since yesterday</h2>
   ${rows}
+  <div style="margin-top:28px;text-align:center;">${emailButton(`${webUrl}/dashboard/signals?src=digest_daily`, "Open the full briefing")}</div>
   ${unsubscribeUrl ? `<div ${e("faint", "margin-top:24px;font-size:11px;text-align:center;")}><a href="${unsubscribeUrl}" ${e("faint", "text-decoration:underline;")}>Unsubscribe</a></div>` : ""}`,
       );
 

@@ -355,6 +355,7 @@ digestsRouter.post("/:id/send", async (c) => {
     ? `${apiBase}/api/digest-feedback/unsubscribe?token=${signUnsubscribeToken(orgId, secret)}`
     : undefined;
 
+  const webUrl = process.env.WEB_URL ?? "https://outrival.app";
   const html = renderDigestEmail(
     digest.content as DigestEmailData,
     digest.weekStart,
@@ -362,6 +363,7 @@ digestsRouter.post("/:id/send", async (c) => {
     feedbackLinks,
     unsubscribeUrl,
     isDaily ? "Your daily competitive briefing" : "Your weekly competitive briefing",
+    `${webUrl}/dashboard/digests/${digest.id}?src=digest_resend`,
   );
 
   try {

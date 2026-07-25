@@ -70,6 +70,52 @@ describe("renderDigestEmail", () => {
     expect(rich).toContain("Your watched questions");
     expect(rich).toContain("Has anyone shipped it?");
   });
+
+  // patch-20 — the CTA back into the app, measurable via the src tag it carries.
+  // Ordering matters as much as presence: a CTA below the unsubscribe/feedback
+  // footer is a CTA nobody sees, so this asserts position, not just presence.
+  test("readUrl renders a CTA above the feedback block", () => {
+    const withCta = renderDigestEmail(
+      DIGEST,
+      "2026-07-06",
+      "2026-07-13",
+      {
+        useful: "https://api.outrival.io/api/digest-feedback?token=u",
+        notUseful: "https://api.outrival.io/api/digest-feedback?token=n",
+      },
+      undefined,
+      undefined,
+      "https://outrival.app/dashboard/digests/abc?src=digest_weekly",
+    );
+    expect(withCta).toContain("https://outrival.app/dashboard/digests/abc?src=digest_weekly");
+    expect(withCta).toContain("Open the full briefing");
+    const ctaIndex = withCta.indexOf("Open the full briefing");
+    const feedbackIndex = withCta.indexOf("Was this briefing useful?");
+    // Assert both markers actually exist before comparing positions: an
+    // indexOf of -1 on either side would make the ordering check pass
+    // vacuously and silently stop guarding the placement.
+    expect(ctaIndex).toBeGreaterThanOrEqual(0);
+    expect(feedbackIndex).toBeGreaterThanOrEqual(0);
+    expect(ctaIndex).toBeLessThan(feedbackIndex);
+  });
+
+  test("without readUrl, no CTA is rendered", () => {
+    expect(html).not.toContain("Open the full briefing");
+  });
+
+  test("a readUrl with & and \" is escaped, not injected raw", () => {
+    const withCta = renderDigestEmail(
+      DIGEST,
+      "2026-07-06",
+      "2026-07-13",
+      undefined,
+      undefined,
+      undefined,
+      'https://outrival.app/dashboard/digests/abc?src=digest_weekly&x="y"',
+    );
+    expect(withCta).toContain("&amp;x=&quot;y&quot;");
+    expect(withCta).not.toContain('&x="y"');
+  });
 });
 
 // Lever 6 — the all-quiet weekly briefing. No AI call: the copy is templated
@@ -127,6 +173,28 @@ describe("renderAllQuietDigest", () => {
       weekEnd: "2026-07-06",
     });
     expect(withoutLink).not.toContain("Unsubscribe");
+  });
+
+  // patch-20 — the CTA back into the app; the all-quiet email's job is to prove
+  // work happened, so its CTA leads to the evidence rather than an empty feed.
+  // Ordering matters as much as presence: a CTA below the footer is unseen.
+  test("readUrl renders a CTA pointing at the evidence", () => {
+    const html = renderAllQuietDigest({
+      pages: 12,
+      checks: 34,
+      weekStart: "2026-06-29",
+      weekEnd: "2026-07-06",
+      readUrl: "https://outrival.app/dashboard/digests/abc?src=digest_allquiet",
+    });
+    expect(html).toContain("https://outrival.app/dashboard/digests/abc?src=digest_allquiet");
+    expect(html).toContain("See what we checked");
+    const ctaIndex = html.indexOf("See what we checked");
+    const footerIndex = html.indexOf("Outrival · Automated competitive intelligence");
+    // Both markers must exist before comparing positions, or a vacuous -1
+    // comparison would pass and stop guarding the placement.
+    expect(ctaIndex).toBeGreaterThanOrEqual(0);
+    expect(footerIndex).toBeGreaterThanOrEqual(0);
+    expect(ctaIndex).toBeLessThan(footerIndex);
   });
 
   test("makes no network/AI call — pure string templating", () => {

@@ -338,6 +338,33 @@ never catch it.
 said "Hover → Cyan Bright", now describes the edge model and records the 3.43:1
 measurement that forced it.
 
+**PR 3**, the `/auth` form. Closes findings 1, 2, 5 and 6 of the Phase 2A table,
+which all sat on the same failure path.
+
+Both handlers already validated on entry and returned early, so the "validate on
+submit" path existed; the disabled button was what made it unreachable. Removing
+`!email` / `!password` from the `disabled` expressions turns that dead code live.
+
+Errors now belong to a field: a `fieldError` state drives `aria-invalid` and
+`aria-describedby` on the input, renders the message next to it at `text-sm`, and
+moves focus there. One `failField` helper sets message, invalid state and focus
+together so no caller can set two of the three and leave a field silently
+invalid. Blur-time validation passes `focus: false`, since pulling focus back
+into the field the user just left would trap them.
+
+The shared bottom region now renders only form-level errors (server, network,
+captcha), so a field error is never announced twice.
+
+Verified that `Input` actually forwards its ref: it is a React 19 function
+component spreading `...props` onto the `<input>`, so `focus()` reaches the DOM
+node. Had it not, the focus half of the fix would have failed silently and `tsc`
+would not have noticed.
+
+Left alone as agreed: the same disabled-until-valid pattern in
+`feedback-widget.tsx:178` and `update-profile-dialog.tsx:429`. Also left alone:
+the placeholder-as-label finding, since visible labels would change the look of a
+deliberately minimal screen.
+
 ### Found while fixing: shadows
 
 `DESIGN.md` §4 states the system "defines **no** shadow tokens", that depth comes

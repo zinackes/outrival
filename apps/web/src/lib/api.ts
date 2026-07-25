@@ -924,10 +924,37 @@ export interface DigestSection {
   so_what: string;
 }
 
+/** A market-wide trend, appended verbatim by the weekly job from sectoral signals. */
+export interface DigestSectoralTrend {
+  title: string;
+  insight: string;
+}
+
+/** A watched Ask question whose answer materially moved during the period. */
+export interface DigestWatchedQuestion {
+  question: string;
+  changeSummary: string;
+}
+
+/**
+ * What an all-quiet week actually cost to establish. Written by the weekly job when
+ * it finds no signals, so a calm week can report the work instead of rendering blank.
+ */
+export interface DigestQuietCounts {
+  pages: number;
+  checks: number;
+}
+
 export interface DigestContent {
   temperature: "low" | "moderate" | "high";
   tldr: string[];
   sections: DigestSection[];
+  // Both are generated, stored and emailed by the weekly job. They were missing from
+  // this type, so the in-app reader silently dropped them and the email was richer
+  // than the product.
+  sectoralTrends?: DigestSectoralTrend[];
+  watchedQuestions?: DigestWatchedQuestion[];
+  quiet?: DigestQuietCounts;
 }
 
 export type DigestRange = "this_week" | "last_7_days" | "last_30_days";
@@ -942,6 +969,30 @@ export interface Digest {
   period: "weekly" | "daily";
   sentAt: string | null;
   createdAt: string;
+}
+
+/**
+ * Where one digest section points, resolved server-side against the org's own data.
+ * Positional: `links[i]` belongs to `content.sections[i]`. Every field is nullable
+ * because resolution is deliberately strict — an ambiguous match yields no link
+ * rather than a plausible wrong one.
+ */
+export interface DigestSectionLink {
+  competitorId: string | null;
+  competitorColor: string | null;
+  signalId: string | null;
+}
+
+/** What the period cost to produce. Best-effort; null when analytics are down. */
+export interface DigestProvenance {
+  pages: number;
+  changes: number;
+}
+
+export interface DigestDetail {
+  digest: Digest;
+  links: DigestSectionLink[];
+  provenance: DigestProvenance | null;
 }
 
 export interface NotificationSettings {
@@ -2558,7 +2609,7 @@ export const api = {
   deleteSignalComment: (id: string, commentId: string) =>
     request<{ ok: true }>(`/api/signals/${id}/comments/${commentId}`, { method: "DELETE" }),
   listDigests: () => request<{ digests: Digest[] }>("/api/digests"),
-  getDigest: (id: string) => request<{ digest: Digest }>(`/api/digests/${id}`),
+  getDigest: (id: string) => request<DigestDetail>(`/api/digests/${id}`),
   sendDigest: (id: string) =>
     request<{ ok: true; sentAt: string }>(`/api/digests/${id}/send`, {
       method: "POST",

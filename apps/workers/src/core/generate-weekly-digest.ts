@@ -128,7 +128,16 @@ export async function runGenerateWeeklyDigest(payload?: { timestamp?: Date }) {
         }
 
         const { pages, checks } = await getAllQuietCounts(org.id, weekStart, weekEnd);
-        const allQuietContent = { temperature: "low" as const, tldr: [], sections: [] };
+        // The counts travel with the digest, not just with the email: a stored
+        // all-quiet week used to carry three empty fields, so the in-app reader had
+        // nothing to render and showed a blank page. With them, a calm week can
+        // report the work that established it.
+        const allQuietContent = {
+          temperature: "low" as const,
+          tldr: [],
+          sections: [],
+          quiet: { pages, checks },
+        };
 
         const [stored] = existing
           ? await db

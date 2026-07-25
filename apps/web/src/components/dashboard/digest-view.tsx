@@ -1,98 +1,236 @@
-import { ArrowRight } from "lucide-react";
-import { Card } from "@/components/ui/card";
-import { CatPill } from "./cat-pill";
-import type { DigestContent, DigestSection as DigestSectionData } from "@/lib/api";
+import Link from "next/link";
+import { ArrowRight, ArrowUpRight, ListFilter } from "lucide-react";
+import { CatText } from "./cat-pill";
+import { MoverName } from "./digest-parts";
+import {
+  URGENCY_META,
+  digestGroups,
+  digestHeadline,
+  digestSupportingPoints,
+  isQuietDigest,
+  quietSentence,
+} from "@/lib/digest-shape";
+import type {
+  DigestContent,
+  DigestSection as DigestSectionData,
+  DigestSectionLink,
+} from "@/lib/api";
 
-function urgencyMeta(urgency: string) {
-  if (urgency === "action_required") {
-    return { title: "Action required", color: "var(--critical)" };
-  }
-  if (urgency === "watch") {
-    return { title: "Watch", color: "var(--accent)" };
-  }
-  return { title: "FYI", color: "var(--muted)" };
-}
-
-// Presentational render of a digest body — the TL;DR card plus the urgency-grouped
-// sections. Extracted from DigestReader so the in-app reader
-// (/dashboard/digests/[id]) and the public sample page (/sample) render a digest
-// identically from the same DigestContent. Pure: no hooks, no fetching, so it
-// works in a server component too.
-export function DigestView({ content }: { content: DigestContent }) {
+/**
+ * The body of a brief: the week's verdict, then the moves in decision order, then
+ * the two blocks the reader used to throw away (sector trends, watched questions).
+ *
+ * Shared by the in-app reader (/dashboard/digests/[id]) and the public sample page
+ * (/sample), so a visitor reads exactly what a client receives. Pure: no hooks, no
+ * fetching, so it renders inside a server component.
+ *
+ * `links` is positional against `content.sections` and entirely optional — without
+ * it every move renders as plain text, which is what the public page wants.
+ */
+export function DigestView({
+  content,
+  links,
+  // The reader promotes the verdict into its masthead, so it asks for the body
+  // alone. Anywhere else (the sample page) the brief has to carry its own lead.
+  lead = true,
+}: {
+  content: DigestContent;
+  links?: DigestSectionLink[];
+  lead?: boolean;
+}) {
+  const groups = digestGroups(content);
   const sections = content.sections ?? [];
-  const tldr = content.tldr ?? [];
-  const crit = sections.filter((s) => s.urgency === "action_required");
-  const watch = sections.filter((s) => s.urgency === "watch");
-  const fyi = sections.filter((s) => s.urgency === "fyi");
+  const trends = content.sectoralTrends ?? [];
+  const questions = content.watchedQuestions ?? [];
+  const headline = digestHeadline(content);
+  const points = digestSupportingPoints(content);
+
+  if (isQuietDigest(content)) {
+    return <QuietBody content={content} />;
+  }
 
   return (
-    <div className="space-y-6">
-      {tldr.length > 0 && (
-        <Card className="px-5 py-5">
-          <div className="text-xs font-semibold text-primary mb-3">TL;DR</div>
-          <ul className="m-0 pl-5 text-content leading-relaxed">
-            {tldr.map((t, i) => (
-              <li key={i}>{t}</li>
-            ))}
-          </ul>
-        </Card>
+    <div className="flex flex-col gap-8">
+      {lead && (headline || points.length > 0) && (
+        <div className="flex flex-col gap-4">
+          {headline && (
+            <p className="max-w-[21em] text-xl font-semibold leading-snug tracking-tight text-balance">
+              {headline}
+            </p>
+          )}
+          {points.length > 0 && <SupportingPoints points={points} />}
+        </div>
       )}
 
-      {[crit, watch, fyi].map((items, idx) => {
-        if (items.length === 0) return null;
+      {groups.map((group) => {
+        const meta = URGENCY_META[group.urgency];
         return (
-          <DigestSection
-            key={idx}
-            meta={urgencyMeta(items[0]!.urgency)}
-            items={items}
-          />
+          <section key={group.urgency} className="flex flex-col">
+            <div className="flex items-center gap-2.5 border-b border-border pb-2">
+              <span aria-hidden className={`h-3.5 w-[3px] rounded-[1px] ${meta.swatch}`} />
+              <h3 className="text-content font-semibold tracking-tight">{meta.label}</h3>
+              <span className="ml-auto font-mono text-xs tabular-nums text-muted-foreground">
+                {group.items.length}
+              </span>
+            </div>
+            {group.items.map((section) => {
+              const index = sections.indexOf(section);
+              return (
+                <Move
+                  key={index === -1 ? `${section.competitor}-${section.insight}` : index}
+                  section={section}
+                  link={index === -1 ? undefined : links?.[index]}
+                />
+              );
+            })}
+          </section>
         );
       })}
+
+      {trends.length > 0 && (
+        <Band title="Sector trends" sub="Across everything we watch">
+          {trends.map((t, i) => (
+            <div key={i} className="border-b border-border p-4 last:border-b-0 sm:px-5">
+              <h4 className="m-0 text-content font-medium tracking-tight">{t.title}</h4>
+              <p className="m-0 mt-1.5 max-w-[62ch] text-content leading-relaxed text-muted-foreground">
+                {t.insight}
+              </p>
+            </div>
+          ))}
+        </Band>
+      )}
+
+      {questions.length > 0 && (
+        <Band
+          title="Your watched questions"
+          sub={`${questions.length} answer${questions.length === 1 ? "" : "s"} moved`}
+        >
+          {questions.map((q, i) => (
+            <div key={i} className="border-b border-border p-4 last:border-b-0 sm:px-5">
+              <div className="flex items-baseline justify-between gap-3">
+                <h4 className="m-0 text-content font-medium tracking-tight">{q.question}</h4>
+                <span className="shrink-0 text-xs text-high">changed</span>
+              </div>
+              <p className="m-0 mt-1.5 max-w-[62ch] text-content leading-relaxed text-muted-foreground">
+                {q.changeSummary}
+              </p>
+            </div>
+          ))}
+        </Band>
+      )}
     </div>
   );
 }
 
-function DigestSection({
-  meta,
-  items,
+export function SupportingPoints({ points }: { points: string[] }) {
+  return (
+    <ul className="m-0 flex list-none flex-col gap-2 p-0">
+      {points.map((p, i) => (
+        <li key={i} className="flex gap-2.5 text-content leading-relaxed text-muted-foreground">
+          <span aria-hidden className="mt-2.5 size-1 shrink-0 rounded-full bg-border-strong" />
+          <span>{p}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * One competitor move. The finding leads, the consequence follows, and the exits sit
+ * underneath: reading a brief should end somewhere other than the end of the page.
+ */
+function Move({
+  section,
+  link,
 }: {
-  meta: { title: string; color: string };
-  items: DigestSectionData[];
+  section: DigestSectionData;
+  link?: DigestSectionLink;
+}) {
+  const competitorHref = link?.competitorId
+    ? `/dashboard/competitors/${link.competitorId}`
+    : null;
+  const signalHref = link?.signalId ? `/dashboard/signals?focus=${link.signalId}` : null;
+
+  return (
+    <article className="group border-b border-border py-4 last:border-b-0">
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-dense">
+        <MoverName
+          name={section.competitor}
+          color={link?.competitorColor ?? null}
+          href={competitorHref}
+        />
+        {section.category && <CatText category={section.category} />}
+      </div>
+
+      <p className="m-0 mt-2 max-w-[66ch] text-content leading-relaxed">{section.insight}</p>
+
+      {section.so_what && (
+        <p className="m-0 mt-2 flex max-w-[66ch] gap-2.5 text-content leading-relaxed text-muted-foreground">
+          <ArrowRight className="mt-1 size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+          <span>{section.so_what}</span>
+        </p>
+      )}
+
+      {(competitorHref || signalHref) && (
+        <div className="mt-2.5 flex flex-wrap gap-4 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+          {competitorHref && (
+            <Link
+              href={competitorHref}
+              className="inline-flex items-center gap-1.5 text-dense text-link hover:underline underline-offset-2"
+            >
+              <ArrowUpRight size={12} aria-hidden />
+              Open {section.competitor}
+            </Link>
+          )}
+          {signalHref && (
+            <Link
+              href={signalHref}
+              className="inline-flex items-center gap-1.5 text-dense text-link hover:underline underline-offset-2"
+            >
+              <ListFilter size={12} aria-hidden />
+              See the signal
+            </Link>
+          )}
+        </div>
+      )}
+    </article>
+  );
+}
+
+function Band({
+  title,
+  sub,
+  children,
+}: {
+  title: string;
+  sub: string;
+  children: React.ReactNode;
 }) {
   return (
-    <Card>
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <span
-            className="size-2 shrink-0 rounded-sm"
-            style={{ background: meta.color }}
-            aria-hidden
-          />
-          <div className="font-semibold text-sm tracking-tight">{meta.title}</div>
-        </div>
-        <span className="text-muted-foreground tabular-nums font-mono text-xs">
-          {items.length} signals
-        </span>
+    <section className="overflow-hidden rounded-lg border border-border bg-card">
+      <div className="flex items-center justify-between gap-3 border-b border-border p-4 sm:px-5">
+        <h3 className="text-content font-semibold tracking-tight">{title}</h3>
+        <span className="shrink-0 text-xs text-muted-foreground">{sub}</span>
       </div>
-      <div>
-        {items.map((s, i) => (
-          <div key={i} className="p-5 border-b border-border last:border-b-0">
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <CatPill>{s.category}</CatPill>
-              <span className="font-semibold text-sm">{s.competitor}</span>
-            </div>
-            <p className="m-0 mb-1.5 text-content leading-snug font-medium">
-              {s.insight}
-            </p>
-            {s.so_what && (
-              <p className="m-0 flex gap-1 text-muted-foreground text-sm leading-snug">
-                <ArrowRight className="size-3.5 mt-0.5 shrink-0" />
-                {s.so_what}
-              </p>
-            )}
-          </div>
-        ))}
-      </div>
-    </Card>
+      {children}
+    </section>
+  );
+}
+
+/**
+ * A week Outrival watched and found nothing in. It used to render as an empty page,
+ * which reads as a broken product rather than as a calm market.
+ */
+function QuietBody({ content }: { content: DigestContent }) {
+  return (
+    <div className="rounded-lg border border-border bg-card p-6">
+      <p className="m-0 max-w-[46ch] text-lg font-medium leading-snug tracking-tight text-balance">
+        {quietSentence(content)}
+      </p>
+      <p className="m-0 mt-2.5 max-w-[54ch] text-content leading-relaxed text-muted-foreground">
+        Nothing your competitors did this period was worth interrupting you for. The
+        watch continues, and the next brief lands on schedule.
+      </p>
+    </div>
   );
 }

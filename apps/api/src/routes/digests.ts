@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { and, desc, eq, gte, isNull, lt } from "drizzle-orm";
-import { digests, signals, competitors, organizations } from "@outrival/db";
+import { and, count, desc, eq, gte, isNull, lt, ne, notInArray } from "drizzle-orm";
+import { digests, signals, competitors, organizations, monitors, changes } from "@outrival/db";
 import { generateDigest, toMyProductContext, type DigestInputSignal } from "@outrival/ai";
 import {
   renderDigestEmail,
@@ -157,6 +157,141 @@ digestsRouter.post("/generate", async (c) => {
   return c.json({ digest: stored[0] });
 });
 
+// Internal monitoring anchors with no user-facing meaning — mirrors HIDDEN_SOURCES in
+// routes/activity.ts and INTERNAL_SOURCES in workers' lib/digest-counts.ts. Never
+// counted as a "page" Outrival watches on the user's behalf.
+const INTERNAL_SOURCES = ["tech_stack", "sitemap", "news", "subdomains", "youtube"] as const;
+
+/**
+ * [start, end) covering a digest's period.
+ *
+ * `weekEnd` is the EXCLUSIVE upper bound both producers use (the cron runs
+ * [monday-7d, monday), the on-demand route stores isoDate(now)), so the day is added
+ * back to cover an on-demand digest generated mid-day and a daily digest whose two
+ * dates are equal. Over-covering is safe by construction here: the digest was written
+ * from signals inside the window, so a wider window can only ADD candidates — which
+ * makes a match ambiguous and yields no link — never replace the true one.
+ */
+function digestWindow(weekStart: string, weekEnd: string): { start: Date; end: Date } {
+  const start = new Date(`${weekStart}T00:00:00.000Z`);
+  const end = new Date(`${weekEnd}T00:00:00.000Z`);
+  end.setUTCDate(end.getUTCDate() + 1);
+  return { start, end };
+}
+
+interface SectionLink {
+  competitorId: string | null;
+  competitorColor: string | null;
+  signalId: string | null;
+}
+
+/**
+ * Point each digest section at the entities it is about, so a brief stops being a
+ * dead end. Deterministic and strict, never AI: a competitor resolves by exact
+ * (case-insensitive) name inside the org, and a signal only when exactly ONE signal
+ * of that competitor+category exists in the period. Anything ambiguous stays null and
+ * renders as plain text, because a plausible wrong link is worse than no link.
+ */
+async function resolveSections(
+  orgId: string,
+  sections: Array<{ competitor?: unknown; category?: unknown }>,
+  window: { start: Date; end: Date },
+): Promise<SectionLink[]> {
+  const empty = (): SectionLink[] =>
+    sections.map(() => ({ competitorId: null, competitorColor: null, signalId: null }));
+  if (sections.length === 0) return [];
+
+  const rows = await db
+    .select({
+      signalId: signals.id,
+      category: signals.category,
+      competitorId: competitors.id,
+      competitorName: competitors.name,
+      competitorColor: competitors.color,
+    })
+    .from(signals)
+    .innerJoin(competitors, eq(competitors.id, signals.competitorId))
+    .where(
+      and(
+        eq(signals.orgId, orgId),
+        // A competitor deleted since would 404 on its page: leave those unlinked.
+        isNull(competitors.deletedAt),
+        gte(signals.createdAt, window.start),
+        lt(signals.createdAt, window.end),
+      ),
+    );
+  if (rows.length === 0) return empty();
+
+  const byName = new Map<string, { id: string; color: string | null }>();
+  const byCompetitorCategory = new Map<string, string[]>();
+  for (const r of rows) {
+    const name = r.competitorName.toLowerCase().trim();
+    if (!byName.has(name)) byName.set(name, { id: r.competitorId, color: r.competitorColor });
+    const key = `${r.competitorId}|${r.category}`;
+    const bucket = byCompetitorCategory.get(key);
+    if (bucket) bucket.push(r.signalId);
+    else byCompetitorCategory.set(key, [r.signalId]);
+  }
+
+  return sections.map((s) => {
+    const name = typeof s.competitor === "string" ? s.competitor.toLowerCase().trim() : "";
+    const competitor = name ? byName.get(name) : undefined;
+    if (!competitor) return { competitorId: null, competitorColor: null, signalId: null };
+    const category = typeof s.category === "string" ? s.category.toLowerCase().trim() : "";
+    const candidates = byCompetitorCategory.get(`${competitor.id}|${category}`) ?? [];
+    return {
+      competitorId: competitor.id,
+      competitorColor: competitor.color,
+      signalId: candidates.length === 1 ? candidates[0]! : null,
+    };
+  });
+}
+
+/**
+ * What the period cost to produce: pages watched, and raw changes found before the
+ * pipeline filtered them down to the brief. Best-effort — the brief renders without
+ * it rather than failing on a slow count.
+ */
+async function digestProvenance(
+  orgId: string,
+  window: { start: Date; end: Date },
+): Promise<{ pages: number; changes: number } | null> {
+  try {
+    const [pageRow] = await db
+      .select({ n: count() })
+      .from(monitors)
+      .innerJoin(competitors, eq(competitors.id, monitors.competitorId))
+      .where(
+        and(
+          eq(competitors.orgId, orgId),
+          isNull(competitors.deletedAt),
+          ne(competitors.type, "self"),
+          eq(monitors.isActive, true),
+          notInArray(monitors.sourceType, [...INTERNAL_SOURCES]),
+        ),
+      );
+
+    const [changeRow] = await db
+      .select({ n: count() })
+      .from(changes)
+      .innerJoin(monitors, eq(monitors.id, changes.monitorId))
+      .innerJoin(competitors, eq(competitors.id, monitors.competitorId))
+      .where(
+        and(
+          eq(competitors.orgId, orgId),
+          isNull(competitors.deletedAt),
+          gte(changes.detectedAt, window.start),
+          lt(changes.detectedAt, window.end),
+        ),
+      );
+
+    return { pages: pageRow?.n ?? 0, changes: changeRow?.n ?? 0 };
+  } catch (err) {
+    console.error("Digest provenance failed", { orgId, err: String(err) });
+    return null;
+  }
+}
+
 digestsRouter.get("/:id", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
@@ -167,7 +302,14 @@ digestsRouter.get("/:id", async (c) => {
   });
   if (!digest) return c.json({ error: "Not found" }, 404);
 
-  return c.json({ digest });
+  const content = digest.content as { sections?: Array<{ competitor?: unknown; category?: unknown }> };
+  const window = digestWindow(digest.weekStart, digest.weekEnd);
+  const [links, provenance] = await Promise.all([
+    resolveSections(orgId, content.sections ?? [], window),
+    digestProvenance(orgId, window),
+  ]);
+
+  return c.json({ digest, links, provenance });
 });
 
 // Send (or resend) this digest by email on demand. The weekly cron auto-sends on

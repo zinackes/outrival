@@ -10,6 +10,7 @@ import type {
   Competitor,
   TrendsSummary,
   Digest,
+  DigestDetail,
   SectoralSignal,
   SectoralEligibility,
   ActivitySource,
@@ -276,9 +277,8 @@ export async function getDigestsData(): Promise<Digest[] | null> {
  * Prefetch a single digest for the reader route. Best-effort: null → the reader's
  * useQuery fetches client-side (and the page renders notFound on a hard miss).
  */
-export async function getDigestDetailData(id: string): Promise<Digest | null> {
-  const r = await tryGet<{ digest: Digest }>(`/api/digests/${encodeURIComponent(id)}`);
-  return r?.digest ?? null;
+export async function getDigestDetailData(id: string): Promise<DigestDetail | null> {
+  return await tryGet<DigestDetail>(`/api/digests/${encodeURIComponent(id)}`);
 }
 
 /**

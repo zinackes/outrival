@@ -165,6 +165,7 @@ export async function scrapePage(url: string, options: CascadeOptions = {}): Pro
     screenshot: options.screenshot,
     blockResources: options.blockResources,
     captureBillingToggle: options.captureBillingToggle,
+    waitForStableContent: options.waitForStableContent,
   };
 
   // L0 — fetch HTTP direct (direct egress only; datacenter egress starts at the

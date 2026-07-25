@@ -8,7 +8,7 @@ import {
   type AtsBoard,
   type AtsJob,
 } from "./ats";
-import { findCareersLink } from "./careers-link";
+import { findCareersLink, findJobListingLink, isSameResource } from "./careers-link";
 import { hasCareersSignals } from "./signals";
 
 // A page is only trusted as "the careers page" when it actually reads like a jobs
@@ -72,21 +72,6 @@ const CAREERS_KEYWORDS = [
 // actually get a page, not an empty SPA shell" floor — not a richness contest.
 const MIN_CAREERS_HOP_TEXT = 200;
 
-// Same page ignoring hash/query/trailing-slash — hopping there would just re-fetch
-// what we already have (e.g. the monitor URL is `/about-us` and the discovered
-// careers link is `/about-us#careers`).
-function isSameResource(a: string, b: string): boolean {
-  try {
-    const norm = (u: string) => {
-      const url = new URL(u);
-      return `${url.hostname}${url.pathname.replace(/\/+$/, "")}`.toLowerCase();
-    };
-    return norm(a) === norm(b);
-  } catch {
-    return false;
-  }
-}
-
 export async function scrape(
   _competitorId: string,
   url: string,
@@ -120,8 +105,18 @@ export async function scrape(
   const renderJobs = process.env.JOBS_RENDER_ENABLED !== "false";
   // Jobs parse HTML/JSON only — no screenshot needed; drop media/font bandwidth.
   const probeOpts = { blockResources: true, knownLevel: options.knownLevel };
+  // waitForStableContent: rendering is not enough on its own. A board fetches its
+  // rows AFTER hydration, and careers sites are beacon-heavy, so `networkidle`
+  // rarely arrives and the bounded settle expires on the empty shell — measured on
+  // atlassian.com, which captured the roles in only 1 run out of 3 even once the
+  // right page was reached. Holding for the DOM to stop growing closes that gap.
   const renderPage = (u: string) =>
-    scrapePage(u, renderJobs ? { ...probeOpts, render: true, progressiveScroll: true } : probeOpts);
+    scrapePage(
+      u,
+      renderJobs
+        ? { ...probeOpts, render: true, progressiveScroll: true, waitForStableContent: true }
+        : probeOpts,
+    );
 
   let result: ScrapeOutcome;
   let onCareersPage: boolean; // false ⇒ the homepage fallback, not a careers page
@@ -194,23 +189,33 @@ export async function scrape(
   // listing.
   //
   // A CROSS-host link (Welcome to the Jungle, a Notion board, careers.microsoft.com)
-  // is always worth it. A SAME-host link is followed only when `result` is the
-  // homepage fallback (`!onCareersPage`): the standard path guesses (/careers,
-  // /jobs, …) 404'd, yet the site still links its openings at a non-standard path
-  // (e.g. thenile.dev → /about-us#careers, often only from the footer). Without this
-  // the link is discovered but never opened, so no jobs ever surface. Re-fetching
-  // the page we already have (same host+path) is skipped.
+  // is always worth it. A SAME-host link is followed in two cases:
+  //
+  //  - `result` is the homepage fallback (`!onCareersPage`): the standard path
+  //    guesses (/careers, /jobs, …) 404'd, yet the site still links its openings at
+  //    a non-standard path (e.g. thenile.dev → /about-us#careers, often only from
+  //    the footer). Without this the link is discovered but never opened.
+  //  - the page we committed to is a careers HUB that links its LISTING one level
+  //    deeper ("Browse jobs" → /company/careers/all-jobs). Path discovery stops at
+  //    the hub because it reads like a careers page (it is one — it just has no
+  //    roles on it), so atlassian.com yielded a page of culture copy and zero
+  //    openings. Only a listing-grade link qualifies here, so we still never wander
+  //    sideways into "Life at Acme" / "Early careers" (regression-tested).
+  //
+  // Re-fetching the page we already have (same host+path) is skipped.
   //
   // Keep the hop whenever it returns real content (floor) rather than requiring it
   // to beat `result`: `result` is often the marketing homepage, which has far more
   // raw text than a jobs listing yet zero openings — comparing lengths would wrongly
   // discard the page that actually has the jobs. Fail-soft: keep `result`.
   const finalUrl = (typeof result.metadata.url === "string" && result.metadata.url) || url;
-  const careersLink = findCareersLink(result.html, finalUrl);
+  const listingLink = onCareersPage ? findJobListingLink(result.html, finalUrl) : null;
+  const careersLink = listingLink ?? findCareersLink(result.html, finalUrl);
   if (careersLink) {
     try {
       const crossHost = new URL(careersLink).hostname !== new URL(finalUrl).hostname;
-      const followSameHost = !onCareersPage && !isSameResource(careersLink, finalUrl);
+      const followSameHost =
+        (!onCareersPage || listingLink !== null) && !isSameResource(careersLink, finalUrl);
       if (crossHost || followSameHost) {
         const hop = await renderPage(careersLink);
         // Keep the hop only when it's a real listing, not just a page that rendered

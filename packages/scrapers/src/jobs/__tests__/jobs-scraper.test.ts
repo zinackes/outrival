@@ -50,7 +50,34 @@ function outcome(html: string, url: string): ScrapeOutcome {
   };
 }
 
+// A careers HUB: reads like a careers page (so path discovery commits to it) but
+// carries no roles — those sit one level deeper behind "Browse jobs".
+// atlassian.com/company/careers is exactly this.
+const hubHtml = `<html><body>
+  <h1>Careers at Acme</h1>
+  <p>Life at Acme: join our team of builders. Meet the people behind the product.</p>
+  <nav>
+    <a href="/careers">Careers</a>
+    <a href="/careers/all-jobs">Browse jobs</a>
+    <a href="/careers/teams">Our teams</a>
+    <a href="/careers/benefits">Benefits and perks</a>
+  </nav>
+</body></html>`;
+
+// A real listing that ALSO carries careers-marketing links in its chrome. Nothing
+// here advertises another listing, so the scraper must stay put.
+const listingWithNavHtml = listingHtml.replace(
+  "</body>",
+  `<nav>
+    <a href="/careers/teams">Our teams</a>
+    <a href="/careers/benefits">Benefits and perks</a>
+  </nav></body>`,
+);
+
 const scrapePage = mock(async (u: string): Promise<ScrapeOutcome> => {
+  if (u.includes("/jobs-with-links")) return outcome(listingWithNavHtml, u);
+  if (u.includes("/careers/all-jobs")) return outcome(listingHtml, u);
+  if (u.includes("/careers")) return outcome(hubHtml, u);
   if (u.includes("/about-us")) return outcome(listingHtml, u);
   if (u.includes("jobs.wttj.com")) return outcome(listingHtml, u);
   return outcome(homepageHtml, HOMEPAGE);
@@ -94,6 +121,25 @@ describe("jobs scraper — careers discovery routing", () => {
     scrapePage.mockImplementationOnce(async () => outcome(html, HOMEPAGE));
     const res = await scrape("comp-2", HOMEPAGE);
     expect(res.metadata.careersFollowed).toBe("https://jobs.wttj.com/acme");
+    expect(res.text).toContain("Founding Engineer - Auth");
+  });
+
+  it("leaves a careers HUB for the listing it links one level deeper", async () => {
+    // Regression (atlassian.com): /careers is a culture page that reads like a
+    // careers page, so path discovery committed to it and stopped — the roles live
+    // at /careers/all-jobs, linked as "Browse jobs". Result was a snapshot of
+    // marketing copy with zero openings, every run.
+    const res = await scrape("comp-4", "https://acme.com/careers");
+    expect(res.metadata.careersFollowed).toBe("https://acme.com/careers/all-jobs");
+    expect(res.text).toContain("Founding Engineer - Auth");
+  });
+
+  it("stays on a careers page that has roles when no LISTING link is offered", async () => {
+    // The other side of the hub hop: "Our teams" / "Benefits and perks" are careers
+    // links, but none advertises a listing, so following one would trade a page of
+    // roles for a page of marketing.
+    const res = await scrape("comp-5", "https://acme.com/jobs-with-links");
+    expect(res.metadata.careersFollowed).toBeUndefined();
     expect(res.text).toContain("Founding Engineer - Auth");
   });
 

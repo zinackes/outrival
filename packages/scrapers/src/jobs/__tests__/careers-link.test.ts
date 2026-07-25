@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { findCareersLink } from "../careers-link";
+import { findCareersLink, findJobListingLink } from "../careers-link";
 
 describe("findCareersLink", () => {
   it("follows a FR footer link to an external careers site", () => {
@@ -71,5 +71,57 @@ describe("findCareersLink", () => {
   it('treats a bare "Hiring" label as a careers signal', () => {
     const html = `<a href="https://talent.acme.io/">Hiring</a>`;
     expect(findCareersLink(html, "https://acme.io/")).toBe("https://talent.acme.io/");
+  });
+
+  it("ranks the listing link above the page's own Careers nav entry", () => {
+    // atlassian.com/company/careers shape: the nav links back to the page we're on
+    // ("Careers") and to the real board ("Browse Jobs"). Both used to score 2, so
+    // document order handed the win to the self-link and the roles were never read.
+    const html = `<nav>
+      <a href="/company/careers">Careers</a>
+      <a href="/company/careers/all-jobs">Browse Jobs</a>
+      <a href="/company/careers/teams">All Teams</a>
+    </nav>`;
+    expect(findCareersLink(html, "https://acme.com/company/careers")).toBe(
+      "https://acme.com/company/careers/all-jobs",
+    );
+  });
+});
+
+describe("findJobListingLink", () => {
+  it("returns the link that advertises the listing itself", () => {
+    const html = `<nav>
+      <a href="/careers/life">Life at Acme</a>
+      <a href="/careers/early">Early careers</a>
+      <a href="/careers/all-jobs">Browse jobs</a>
+    </nav>`;
+    expect(findJobListingLink(html, "https://acme.com/careers")).toBe(
+      "https://acme.com/careers/all-jobs",
+    );
+  });
+
+  it("matches a listing path even when the label carries no hiring words", () => {
+    const html = `<a href="/careers/open-positions">→</a>`;
+    expect(findJobListingLink(html, "https://acme.com/careers")).toBe(
+      "https://acme.com/careers/open-positions",
+    );
+  });
+
+  it("returns null on a careers hub that only links careers marketing", () => {
+    // The guard that keeps the scraper from wandering sideways off a page it
+    // already committed to: these are careers links, none is a listing.
+    const html = `<nav>
+      <a href="/careers/benefits">Benefits and perks</a>
+      <a href="/careers/teams">Our teams</a>
+      <a href="/careers/resources">Candidate resources</a>
+    </nav>`;
+    expect(findJobListingLink(html, "https://acme.com/careers")).toBeNull();
+    // …while the generic finder still sees them as careers links.
+    expect(findCareersLink(html, "https://acme.com/careers")).not.toBeNull();
+  });
+
+  it("ignores a listing link that points back at the current page", () => {
+    const html = `<a href="/careers/all-jobs?loc=fr">Open positions</a>`;
+    expect(findJobListingLink(html, "https://acme.com/careers/all-jobs")).toBeNull();
   });
 });

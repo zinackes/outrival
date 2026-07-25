@@ -15,6 +15,7 @@ import {
   Archive,
   Telescope,
   Search,
+  SlidersHorizontal,
   ChevronRight,
 } from "lucide-react";
 import { EmptyState } from "@/components/dashboard/empty-state";
@@ -199,13 +200,7 @@ function readQueue(
  * back with junk the fix is one of these values, and every one of them used to be
  * invisible behind a "Configure" sheet.
  */
-function ProvenanceLine({
-  basis,
-  onAdjust,
-}: {
-  basis: DiscoveryBasis | null;
-  onAdjust: () => void;
-}) {
+function ProvenanceLine({ basis }: { basis: DiscoveryBasis | null }) {
   const parts: string[] = [];
   if (basis?.category) parts.push(`as ${basis.category}`);
   if (basis?.audience) parts.push(`for ${basis.audience}`);
@@ -223,13 +218,6 @@ function ProvenanceLine({
   return (
     <p className="m-0 max-w-[84ch] text-dense text-muted-foreground">
       Searched {parts.join(", ")}.
-      <button
-        type="button"
-        onClick={onAdjust}
-        className="ml-1.5 rounded-sm text-link hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        Adjust the search
-      </button>
     </p>
   );
 }
@@ -275,7 +263,7 @@ function ScoreMeter({ score }: { score: number | null }) {
     <span className="flex flex-col gap-1">
       <span
         className={cn(
-          "font-mono text-sm tabular-nums tracking-tight",
+          "font-mono text-base tabular-nums tracking-tight",
           value != null && value < WORTH_MIN ? "text-muted-foreground" : "text-foreground",
         )}
       >
@@ -1095,6 +1083,19 @@ export function DiscoveryView() {
         sub="Companies worth watching, ranked against your product profile."
         actions={
           <>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  aria-label="Adjust the search"
+                  onClick={() => setConfigOpen(true)}
+                >
+                  <SlidersHorizontal size={13} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Adjust the search</TooltipContent>
+            </Tooltip>
             <Button variant="outline" size="sm" onClick={() => setAddOpen(true)}>
               <Plus size={13} />
               Add by URL
@@ -1131,7 +1132,7 @@ export function DiscoveryView() {
                 : "Nothing waiting on review."}
           </p>
         )}
-        <ProvenanceLine basis={basis} onAdjust={() => setConfigOpen(true)} />
+        <ProvenanceLine basis={basis} />
         <NumberRail
           cells={[
             { label: "In queue", value: String(counts?.new ?? 0) },

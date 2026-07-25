@@ -6,7 +6,7 @@ import { scrapeMonitor } from "@outrival/queue";
 import { products, productCompetitors, competitors, monitors, signals } from "@outrival/db";
 import {
   entryPrice,
-  isComparablePricePeriod,
+  monthlyEquivalent,
   priceMedian,
   productLimit,
   minPlanForProductCount,
@@ -384,28 +384,22 @@ productsRouter.get("/", async (c) => {
           mine,
           pricingByCompetitor,
         );
+        const onAxis = pos.priced
+          .filter((x) => pos.comparableIds.has(x.row.competitorId))
+          .map((x) => x.monthly!);
         return {
           entry: pos.mine,
+          // Our own price on the band's axis: null when it is quoted on a basis
+          // the band cannot hold (one-time), so the cell states that rather than
+          // marking a yearly number on a monthly scale.
+          entryMonthly: pos.mineMonthly,
           median: pos.median,
           currency: pos.currency,
-          billingPeriod: pos.billingPeriod,
           // The band the row draws its marker on: nothing to draw with fewer than
           // two comparable rivals, so the cell says "not priced" instead of
           // implying a market from one data point.
-          low: pos.comparableIds.size
-            ? Math.min(
-                ...pos.priced
-                  .filter((x) => pos.comparableIds.has(x.row.competitorId))
-                  .map((x) => x.entry!.price),
-              )
-            : null,
-          high: pos.comparableIds.size
-            ? Math.max(
-                ...pos.priced
-                  .filter((x) => pos.comparableIds.has(x.row.competitorId))
-                  .map((x) => x.entry!.price),
-              )
-            : null,
+          low: onAxis.length ? Math.min(...onAxis) : null,
+          high: onAxis.length ? Math.max(...onAxis) : null,
           rivalsPriced: pos.comparableIds.size,
         };
       })(),
@@ -525,49 +519,53 @@ async function latestPricingByCompetitor(ids: string[]): Promise<Map<string, Pri
  *
  * Both sides are read the same way (latest detected batch → user overrides →
  * cheapest paid tier), otherwise the gap measures our method, not the market. The
- * median covers only the rivals publishing in the SAME currency and period as
- * ours; everyone else is counted as quote-only, which is itself a finding worth
- * showing rather than hiding. Pure, so the list and the detail route cannot drift.
+ * axis is ONE monthly amount in one currency, exactly as the compare lens reads
+ * the same tables: a yearly plan reaches it ÷12, a one-time price or a foreign
+ * currency cannot, and our own period never sets it — a product whose cheapest
+ * paid tier happens to be annual would otherwise push every monthly rival off the
+ * ladder. What can't reach the axis is reported for what it is: `quoteOnly` are
+ * the rivals publishing no price at all, `offAxis` those publishing one we can't
+ * put on this scale. Pure, so the list and the detail route cannot drift.
  */
 function pricePosition<R extends { competitorId: string; overrides: unknown }>(
   self: { id: string; overrides: unknown } | null,
   rivals: R[],
   pricingByCompetitor: Map<string, PricingTier[]>,
 ) {
-  const resolve = (id: string, overrides: unknown) =>
-    entryPrice(
+  const resolve = (id: string, overrides: unknown) => {
+    const entry = entryPrice(
       resolveCurrentPricing(
         pricingByCompetitor.get(id) ?? [],
         (overrides as Parameters<typeof resolveCurrentPricing>[1]) ?? null,
       ),
     );
+    return { entry, monthly: entry ? monthlyEquivalent(entry) : null };
+  };
 
-  const mine = self ? resolve(self.id, self.overrides) : null;
-  const priced = rivals.map((r) => ({ row: r, entry: resolve(r.competitorId, r.overrides) }));
+  const mine = self ? resolve(self.id, self.overrides) : { entry: null, monthly: null };
+  const priced = rivals.map((r) => ({ row: r, ...resolve(r.competitorId, r.overrides) }));
 
-  // With no price of our own we still describe the market, on its own period.
-  const axis =
-    mine ??
-    priced.find((p) => p.entry && isComparablePricePeriod(p.entry.billingPeriod))?.entry ??
+  // One currency, whichever ours is quoted in — and with no price of our own, the
+  // one the tracked market mostly publishes in.
+  const axisCurrency =
+    (mine.monthly !== null ? mine.entry!.currency : null) ??
+    priced.find((p) => p.monthly !== null)?.entry!.currency ??
     null;
-  const comparable = axis
-    ? priced.filter(
-        (p) =>
-          p.entry &&
-          p.entry.currency === axis.currency &&
-          p.entry.billingPeriod === axis.billingPeriod,
-      )
+  const comparable = axisCurrency
+    ? priced.filter((p) => p.monthly !== null && p.entry!.currency === axisCurrency)
     : [];
   const comparableIds = new Set(comparable.map((p) => p.row.competitorId));
+  const quoteOnly = priced.filter((p) => p.entry === null).length;
 
   return {
-    mine,
+    mine: mine.entry,
+    mineMonthly: mine.monthly,
     priced,
     comparableIds,
-    median: priceMedian(comparable.map((p) => p.entry!.price)),
-    currency: axis?.currency ?? null,
-    billingPeriod: axis?.billingPeriod ?? null,
-    quoteOnly: rivals.length - comparable.length,
+    median: priceMedian(comparable.map((p) => p.monthly!)),
+    currency: axisCurrency,
+    quoteOnly,
+    offAxis: priced.length - comparable.length - quoteOnly,
   };
 }
 
@@ -604,18 +602,20 @@ productsRouter.get("/:id/pricing-position", async (c) => {
 
   return c.json({
     mine: position.mine,
+    mineMonthly: position.mineMonthly,
     rivals: position.priced.map((p) => ({
       competitorId: p.row.competitorId,
       name: p.row.name,
       url: p.row.url,
       color: p.row.color,
       entry: p.entry,
+      monthly: p.monthly,
       comparable: position.comparableIds.has(p.row.competitorId),
     })),
     median: position.median,
     currency: position.currency,
-    billingPeriod: position.billingPeriod,
     quoteOnly: position.quoteOnly,
+    offAxis: position.offAxis,
   });
 });
 

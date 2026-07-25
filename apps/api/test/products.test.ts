@@ -319,7 +319,75 @@ describe("price position", () => {
       currency: "USD",
     });
     expect(item?.pricing.entry).toMatchObject({ price: 49 });
+    expect(item?.pricing.entryMonthly).toBe(49);
     expect(item?.topCompetitors).toHaveLength(3);
+  });
+});
+
+describe("price position: one axis, whatever period each side publishes on", () => {
+  // Our cheapest PAID tier is annual (the free tier is not an entry price), while
+  // every rival publishes monthly. Reading the ladder on OUR period would drop all
+  // of them and report the market as unpriced, contradicting the compare lens.
+  let Y: { orgId: string; userId: string; email: string };
+  let productY: string;
+
+  beforeAll(async () => {
+    Y = await seedOrg(testDb, { plan: "pro" });
+    const created = await app.request(
+      "/api/products",
+      asUser(Y.userId, Y.email, { method: "POST", body: JSON.stringify({ name: "Annual" }) }),
+    );
+    productY = (await created.json()).product.id;
+    const selfY = (
+      await (
+        await app.request(`/api/products/${productY}`, asUser(Y.userId, Y.email))
+      ).json()
+    ).product.selfCompetitorId;
+
+    await testDb.insert(competitors).values([
+      { id: "yr-monthly", orgId: Y.orgId, name: "Monthly Co" },
+      { id: "yr-euro", orgId: Y.orgId, name: "Euro Co" },
+      { id: "yr-quote", orgId: Y.orgId, name: "Quote Co" },
+    ]);
+    for (const id of ["yr-monthly", "yr-euro", "yr-quote"]) {
+      await app.request(
+        `/api/products/${productY}/competitors/${id}`,
+        asUser(Y.userId, Y.email, { method: "POST", body: JSON.stringify({}) }),
+      );
+    }
+
+    const row = (
+      competitorId: string,
+      planName: string,
+      price: number | null,
+      billingPeriod = "monthly",
+      currency = "USD",
+    ) => ({ competitorId, planName, price, currency, billingPeriod, recordedAt: new Date() });
+
+    await testDb.insert(pricingHistory).values([
+      row(selfY, "Free", 0),
+      row(selfY, "Pro", 120, "yearly"),
+      row("yr-monthly", "Team", 20),
+      row("yr-euro", "Team", 30, "monthly", "EUR"),
+      row("yr-quote", "Enterprise", null),
+    ]);
+  }, HOOK_TIMEOUT_MS);
+
+  test("an annual entry price is read on the monthly axis, not off it", async () => {
+    const res = await app.request(
+      `/api/products/${productY}/pricing-position`,
+      asUser(Y.userId, Y.email),
+    );
+    const body = await res.json();
+    expect(body.mine).toMatchObject({ planName: "Pro", price: 120, billingPeriod: "yearly" });
+    expect(body.mineMonthly).toBe(10);
+    expect(body.currency).toBe("USD");
+    // The monthly rival is on the axis; only the one publishing nothing is
+    // quote-only, and the euro-priced one is counted apart rather than as silent.
+    expect(body.median).toBe(20);
+    expect(body.rivals.find((r: any) => r.competitorId === "yr-monthly").comparable).toBe(true);
+    expect(body.quoteOnly).toBe(1);
+    expect(body.offAxis).toBe(1);
   });
 });
 

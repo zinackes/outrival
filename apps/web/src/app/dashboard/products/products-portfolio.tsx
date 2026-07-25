@@ -335,19 +335,22 @@ function ProductRow({ product: p }: { product: ProductSummary }) {
  */
 function PriceBand({ pricing }: { pricing: ProductSummary["pricing"] }) {
   const entry = pricing?.entry ?? null;
-  const { median, low, high, rivalsPriced = 0 } = pricing ?? {};
+  const { entryMonthly = null, median, low, high, rivalsPriced = 0 } = pricing ?? {};
 
-  if (!entry) {
+  // The band is a monthly axis, so our own number has to be read on it too (an
+  // annual plan ÷12, marked "≈"). A one-time price reaches no monthly axis at all.
+  if (!entry || entryMonthly === null) {
     return (
       <span className="text-dense text-muted-foreground">
-        {rivalsPriced > 0 ? "No price of your own" : "Not priced"}
+        {entry ? "One-time price" : rivalsPriced > 0 ? "No price of your own" : "Not priced"}
       </span>
     );
   }
 
-  const amount = `${entry.currency === "USD" ? "$" : ""}${entry.price}${
-    entry.currency === "USD" ? "" : ` ${entry.currency}`
-  }`;
+  const rounded = Math.round(entryMonthly);
+  const amount = `${entry.billingPeriod === "monthly" ? "" : "≈"}${
+    entry.currency === "USD" ? "$" : ""
+  }${rounded}${entry.currency === "USD" ? "" : ` ${entry.currency}`}`;
 
   if (median == null || low == null || high == null || rivalsPriced < 2) {
     return (
@@ -364,7 +367,7 @@ function PriceBand({ pricing }: { pricing: ProductSummary["pricing"] }) {
   // renders at an edge rather than escaping the track.
   const span = Math.max(1, high - low);
   const pct = (v: number) => Math.min(100, Math.max(0, ((v - low) / span) * 100));
-  const gap = Math.round(((entry.price - median) / median) * 100);
+  const gap = Math.round(((entryMonthly - median) / median) * 100);
 
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
@@ -382,7 +385,7 @@ function PriceBand({ pricing }: { pricing: ProductSummary["pricing"] }) {
         <span
           aria-hidden
           className="absolute top-[-3px] h-[11px] w-[2px] rounded-sm bg-primary"
-          style={{ left: `${pct(entry.price)}%` }}
+          style={{ left: `${pct(entryMonthly)}%` }}
         />
       </span>
       <span className="flex min-w-0 items-baseline gap-1.5">

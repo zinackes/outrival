@@ -784,12 +784,12 @@ export function CompetitorDetailView({ id }: { id: string }) {
             <TabsContent value="product" className={TAB_PANEL_CLASS}>
               <ProductTab
                 competitorId={id}
+                competitorName={competitor.name}
                 changes={recentChanges}
                 signals={recentSignals}
                 monitors={monitors}
                 scrapingIds={scrapingIds}
                 onRun={requestRunMonitor}
-                onRefresh={refresh}
                 competitorUrl={competitor.url}
               />
             </TabsContent>

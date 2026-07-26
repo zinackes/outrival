@@ -163,6 +163,25 @@ export const auth = betterAuth({
   // cookie instead, which the existing /two-factor/verify-totp endpoint consumes.
   // Safe-by-default: it early-returns for everyone without 2FA enabled, so it has
   // zero effect until a user opts in.
+  //
+  // Decision recorded 2026-07-26 (plan 014): passkey sign-in (Better Auth's
+  // /passkey/verify-authentication) is deliberately NOT added to the paths this
+  // hook intercepts, so a 2FA-enabled user who signs in with a passkey is never
+  // challenged for a TOTP code on top of it. Reasoning: a passkey already
+  // combines "something you have" (a device-bound private key that never
+  // leaves the authenticator) with "something you are/know" (the local
+  // biometric/PIN unlock that releases it) — it satisfies MFA by construction,
+  // the same treatment GitHub/Google/Microsoft give a passkey or security-key
+  // sign-in. Stacking a TOTP prompt on top would trade away what makes
+  // passkeys worth having (frictionless + phishing-resistant) for a marginal
+  // security gain, on a feature still gated behind
+  // NEXT_PUBLIC_PASSKEYS_ENABLED pending staging verification with a real
+  // device. This was already the de facto behaviour before this decision (the
+  // hook never covered this path) — the settings copy in
+  // security-settings.tsx was updated to say so instead of promising a code on
+  // every sign-in. If this is revisited, enforcing TOTP after passkey sign-in
+  // means adding `ctx.path === "/passkey/verify-authentication"` to the
+  // isEmailOtp/isSocialCallback check below.
   hooks: {
     after: createAuthMiddleware(async (ctx) => {
       const isEmailOtp = ctx.path === "/sign-in/email-otp";

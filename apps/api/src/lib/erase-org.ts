@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import { organizations } from "@outrival/db";
-import { deleteManyFromR2, logger } from "@outrival/shared";
+import { deleteManyFromR2, logger, snapshotObjectKeys } from "@outrival/shared";
 import { db } from "./db";
 import { getStripe } from "./stripe";
 
@@ -95,8 +95,10 @@ export async function eraseOrg(
   }
   try {
     const keys = [
-      ...snapKeys.map((r) => r.r2_key).filter(Boolean),
-      ...snapKeys.map((r) => r.r2_key?.replace(/\.html$/, ".png")).filter(Boolean),
+      ...snapKeys
+        .map((r) => r.r2_key)
+        .filter(Boolean)
+        .flatMap(snapshotObjectKeys),
       ...cardKeys.map((r) => r.pdf_r2_key).filter(Boolean),
     ];
     if (keys.length > 0) await deleteManyFromR2(keys);

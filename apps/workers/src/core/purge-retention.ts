@@ -1,7 +1,7 @@
 import { logger } from "../lib/job-logger";
 import { sql } from "drizzle-orm";
 import { db, organizations } from "@outrival/db";
-import { PLAN_LIMITS, deleteManyFromR2 } from "@outrival/shared";
+import { PLAN_LIMITS, deleteManyFromR2, snapshotObjectKeys } from "@outrival/shared";
 
 // Enforces PLAN_LIMITS.historyRetentionDays (free 7d / starter 30d / pro 365d /
 // business 1095d) — the one tier dimension that had a value but no enforcement.
@@ -101,10 +101,13 @@ export async function runPurgeRetention() {
       const r2Keys = (purgedSnapshots as unknown as Array<{ r2_key: string }>)
         .map((r) => r.r2_key)
         .filter(Boolean)
-        .flatMap((key) => [key, key.replace(/\.html$/, ".png")]);
+        .flatMap(snapshotObjectKeys);
       if (r2Keys.length > 0) {
         try {
           await deleteManyFromR2(r2Keys);
+          // Keys attempted, not confirmed deletions: DeleteObjects treats a
+          // missing key as a no-op success, so this can't tell "deleted" apart
+          // from "was already gone".
           r2Deleted += r2Keys.length;
         } catch (err) {
           logger.error("R2 purge failed (orphaned objects)", {

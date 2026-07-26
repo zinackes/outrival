@@ -13,6 +13,7 @@ export * from "./staleness";
 export * from "./standing-queries";
 export * from "./slo/first-signal";
 export * from "./r2/client";
+export * from "./r2/keys";
 export * from "./diff";
 export * from "./scoring/threat";
 export * from "./scheduling";

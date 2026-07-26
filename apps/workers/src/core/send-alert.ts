@@ -11,9 +11,8 @@ import {
   notifications,
   crmDestinations,
 } from "@outrival/db";
-import { PLAN_LIMITS } from "@outrival/shared";
+import { PLAN_LIMITS, sendWebhook } from "@outrival/shared";
 import { sendSlackMessage } from "../lib/slack";
-import { sendWebhook } from "../lib/webhook";
 import { pushWebhook } from "../lib/crm-webhook";
 import { getResend, ALERT_FROM } from "../lib/resend";
 import { escapeHtml } from "../lib/escape-html";
@@ -136,19 +135,22 @@ export async function runSendAlert(payload: z.input<typeof InputSchema>) {
       limits.allowedChannels.includes("webhook") &&
       !sentChannels.has("webhook")
     ) {
-      try {
-        await sendWebhook(org.webhookUrl, {
-          competitor: { id: competitor.id, name: competitor.name },
-          signal: {
-            id: signal.id,
-            severity: signal.severity,
-            category: signal.category,
-            insight: signal.insight,
-            soWhat: signal.soWhat,
-            recommendedAction: signal.recommendedAction,
-          },
-          linkUrl: `/dashboard/competitors/${competitor.id}`,
-        });
+      // The shared sendWebhook never throws — it returns false on any failure
+      // (unsafe URL, network error, non-ok response). org.webhookUrl carries no
+      // signing secret (unlike CRM destinations), so pass null.
+      const delivered = await sendWebhook(org.webhookUrl, null, {
+        competitor: { id: competitor.id, name: competitor.name },
+        signal: {
+          id: signal.id,
+          severity: signal.severity,
+          category: signal.category,
+          insight: signal.insight,
+          soWhat: signal.soWhat,
+          recommendedAction: signal.recommendedAction,
+        },
+        linkUrl: `/dashboard/competitors/${competitor.id}`,
+      });
+      if (delivered) {
         await db.insert(alerts).values({
           signalId: signal.id,
           orgId: org.id,
@@ -156,14 +158,14 @@ export async function runSendAlert(payload: z.input<typeof InputSchema>) {
           sentAt: new Date(),
         });
         webhookSent = true;
-      } catch (err) {
+      } else {
         await db.insert(alerts).values({
           signalId: signal.id,
           orgId: org.id,
           channel: "webhook",
-          error: String(err),
+          error: "Webhook delivery failed",
         });
-        logger.error("Webhook alert failed", { err: String(err) });
+        logger.error("Webhook alert failed", { orgId: org.id });
       }
     }
 

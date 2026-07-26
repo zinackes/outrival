@@ -176,6 +176,43 @@ function toIso(x: unknown): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
+/** Strip tags + decode the handful of entities an HTML board list actually emits. */
+function htmlFieldText(fragment: string): string {
+  return fragment
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#(\d+);/g, (_m, d: string) => String.fromCharCode(Number(d)))
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** First present value among `names`, matched as a substring of the field label. */
+function pickField(fields: Record<string, string>, names: string[]): string {
+  for (const name of names) {
+    for (const [label, value] of Object.entries(fields)) {
+      if (label.includes(name)) return value;
+    }
+  }
+  return "";
+}
+
+/**
+ * Split a Workday token ("<host>/<site>", optionally locale-prefixed) into the
+ * three identifiers its API path needs. The tenant is the host's first label, which
+ * is the myworkdayjobs convention (`nvidia.wd5.myworkdayjobs.com` → `nvidia`).
+ */
+function workdayParts(token: string): { host: string; tenant: string; site: string } | null {
+  const parts = token.split("/").filter(Boolean);
+  const host = parts[0];
+  // Drop a locale segment (`en-US`) so it is never mistaken for the site name.
+  const site = parts.slice(1).filter((p) => !/^[a-z]{2}-[a-z]{2}$/i.test(p)).pop();
+  const tenant = host?.split(".")[0];
+  if (!host || !site || !tenant) return null;
+  return { host, tenant, site };
+}
+
 /** Read the text of the first `<tag>…</tag>` in an XML block, unwrapping CDATA. */
 function xmlTag(block: string, tag: string): string {
   const m = new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)</${tag}>`, "i").exec(block);
@@ -189,15 +226,29 @@ interface ProviderDef {
   patterns: RegExp[];
   boardUrl: (token: string) => string;
   api?: {
-    url: (token: string) => string;
-    /** Response format. "xml" providers (Personio) receive the raw text string
-     *  in `parse`; "json" (default) receive the parsed JSON value. */
-    format?: "json" | "xml";
+    url: (token: string, page: number) => string;
+    /** Response format. "xml" (Personio) and "html" (iCIMS) providers receive the
+     *  raw text string in `parse`; "json" (default) receive the parsed JSON value. */
+    format?: "json" | "xml" | "html";
     /** POST request descriptor for search-API providers (Algolia — Welcome to the
-     *  Jungle). Headers/body are sent as a POST; absent ⇒ a plain GET (the default
-     *  for the REST board APIs). */
-    post?: (token: string) => { headers: Record<string, string>; body: string };
+     *  Jungle, Workday). Headers/body are sent as a POST; absent ⇒ a plain GET (the
+     *  default for the REST board APIs). */
+    post?: (token: string, page: number) => { headers: Record<string, string>; body: string };
     parse: (data: unknown, token: string) => AtsJob[];
+    /**
+     * Boards that only ever serve one page per request (Workday, iCIMS). Absent ⇒
+     * a single request, exactly the previous behaviour. The cap bounds the cost of
+     * a very large board; `fetchAtsJobs` also stops early on the first page that
+     * adds no NEW posting, so a board that ignores the page parameter costs one
+     * wasted request rather than looping all the way to the cap.
+     */
+    maxPages?: number;
+    /**
+     * Total postings the board declares, when its payload says so (Workday sends
+     * `total` on the first page). Lets an over-cap board bail after ONE request
+     * instead of walking all the way to the cap only to discard the result.
+     */
+    total?: (data: unknown) => number | null;
   };
 }
 
@@ -216,6 +267,9 @@ const WTTJ_ALGOLIA_KEY = "4bd8f6215d0cc52b26430765769e65a0";
 // objectID); "_en" additionally localises the profession labels to English, which
 // matches the product language. Titles stay in the posting's own language.
 const WTTJ_JOBS_INDEX = "wttj_jobs_production_en";
+
+// Workday serves a fixed slice per request; the offset is a multiple of this.
+const WORKDAY_PAGE_SIZE = 20;
 
 const PROVIDERS: ProviderDef[] = [
   {
@@ -460,6 +514,119 @@ const PROVIDERS: ProviderDef[] = [
     ],
     boardUrl: (t) => `https://apply.workable.com/${t}/`,
   },
+  {
+    // Workday (myworkdayjobs.com) — the ATS behind a large share of enterprise
+    // careers sites. Its own career-site frontend reads an UNAUTHENTICATED JSON
+    // endpoint, `/wday/cxs/<tenant>/<site>/jobs`, which we query the same way; the
+    // token carries both identifiers the path needs as "<host>/<site>". The site
+    // segment is case-INSENSITIVE on this endpoint (verified against a live
+    // tenant), so detectAtsBoard lowercasing the token is safe here.
+    // Paginated: `limit`/`offset`, 20 per page, `total` only on the first page.
+    name: "workday",
+    patterns: [
+      // Matches both the bare and locale-prefixed careers URLs
+      // (…myworkdayjobs.com/NVIDIAExternalCareerSite and …/en-US/NVIDIAExternal…).
+      /((?:[a-z0-9][a-z0-9-]{0,60}\.wd\d{1,3}\.myworkdayjobs\.com)\/(?:[a-z]{2}-[a-z]{2}\/)?[a-z0-9_-]{2,80})/i,
+    ],
+    boardUrl: (t) => {
+      const p = workdayParts(t);
+      return p ? `https://${p.host}/${p.site}` : `https://${t}`;
+    },
+    api: {
+      url: (t) => {
+        const p = workdayParts(t);
+        return p ? `https://${p.host}/wday/cxs/${p.tenant}/${p.site}/jobs` : "";
+      },
+      post: (_t, page) => ({
+        headers: {},
+        body: JSON.stringify({
+          appliedFacets: {},
+          limit: WORKDAY_PAGE_SIZE,
+          offset: page * WORKDAY_PAGE_SIZE,
+          searchText: "",
+        }),
+      }),
+      maxPages: 25,
+      total: (data) => {
+        const t = (data as { total?: unknown })?.total;
+        return typeof t === "number" ? t : null;
+      },
+      parse: (data, token) => {
+        const posts = (data as { jobPostings?: unknown })?.jobPostings;
+        if (!Array.isArray(posts)) return [];
+        const p = workdayParts(token);
+        return posts
+          .map((j: Record<string, unknown>) => {
+            const path = str(j?.externalPath);
+            return mkJob({
+              title: str(j?.title),
+              // The list payload carries no department (it lives behind a facet
+              // query, one request per bucket) — normalizeDepartment's title
+              // fallback buckets these downstream.
+              location: str(j?.locationsText) || null,
+              url: p && path ? `https://${p.host}/${p.site}${path}` : null,
+              // `postedOn` is relative prose ("Posted Today", "Posted 30+ Days
+              // Ago"), not a date. Left null rather than inventing a timestamp.
+            });
+          })
+          .filter((j) => j.title);
+      },
+    },
+  },
+  {
+    // iCIMS — enterprise ATS whose portals live at `<slug>.icims.com`. There is no
+    // public JSON API (theirs is authenticated), but the portal's own job search
+    // renders server-side, so the card list is parsed deterministically from the
+    // HTML. Paginated via `pr` (0-based).
+    //
+    // The per-card `<dt>/<dd>` fields are CONFIGURED PER TENANT — one portal
+    // exposes Category/ID/Type, another City/Company/Work Status, another only a
+    // Requisition ID — so they are read BY LABEL and are best-effort. Title and
+    // apply URL are the only fields every portal carries.
+    name: "icims",
+    patterns: [
+      // Anchored on the `//` of the URL so the scan can't restart mid-host and turn
+      // `cdn02.icims.com` into the token `dn02.icims.com`. iCIMS' own asset hosts
+      // are excluded; a customer portal (`careers-acme.icims.com`) still matches.
+      /\/\/(?!www\.|cdn\d*\.|images\.|static\.|login\.)([a-z0-9][a-z0-9-]{1,60}\.icims\.com)/i,
+    ],
+    boardUrl: (t) => `https://${t}/jobs/search?ss=1`,
+    api: {
+      url: (t, page) => `https://${t}/jobs/search?ss=1&pr=${page}`,
+      format: "html",
+      maxPages: 15,
+      parse: (data) => {
+        if (typeof data !== "string") return [];
+        const cards = data.match(/<li class="iCIMS_JobCardItem">[\s\S]*?<\/li>/gi);
+        if (!cards) return [];
+        return cards
+          .map((card) => {
+            const anchor = /<a\b[^>]*class="[^"]*iCIMS_Anchor[^"]*"[^>]*>/i.exec(card)?.[0] ?? "";
+            const href = /href="([^"]+)"/i.exec(anchor)?.[1] ?? null;
+            const title =
+              htmlFieldText(/<h3\b[^>]*>([\s\S]*?)<\/h3>/i.exec(card)?.[1] ?? "") ||
+              htmlFieldText(/title="([^"]+)"/i.exec(anchor)?.[1] ?? "");
+            const fields: Record<string, string> = {};
+            for (const [, dt, dd] of card.matchAll(
+              /<dt\b[^>]*>([\s\S]*?)<\/dt>\s*<dd\b[^>]*>([\s\S]*?)<\/dd>/gi,
+            )) {
+              // Labels carry markup of their own (a map-marker glyph plus an
+              // sr-only "Location : Location"), so both sides are flattened first.
+              const label = htmlFieldText(dt ?? "").toLowerCase();
+              const value = htmlFieldText(dd ?? "");
+              if (label && value) fields[label] = value;
+            }
+            return mkJob({
+              title,
+              department: pickField(fields, ["category", "department", "job family", "function"]),
+              location: pickField(fields, ["location", "city", "state", "region"]) || null,
+              url: href,
+            });
+          })
+          .filter((j) => j.title);
+      },
+    },
+  },
 ];
 
 // Path/subdomain segments that are never a real board token.
@@ -562,21 +729,63 @@ async function fetchText(url: string, timeoutMs = 8000): Promise<string | null> 
 export async function fetchAtsJobs(board: AtsBoard): Promise<AtsJob[] | null> {
   const def = PROVIDERS.find((p) => p.name === board.provider);
   if (!def?.api) return null;
-  let data: unknown | null;
-  if (def.api.format === "xml") {
-    data = await fetchText(def.api.url(board.token));
-  } else if (def.api.post) {
-    const { headers, body } = def.api.post(board.token);
-    data = await fetchJson(def.api.url(board.token), 8000, {
-      method: "POST",
-      headers: { "content-type": "application/json", ...headers },
-      body,
-    });
-  } else {
-    data = await fetchJson(def.api.url(board.token));
+  const api = def.api;
+  const jobs: AtsJob[] = [];
+  // Dedup key: the apply URL is unique per posting, which matters because a board
+  // legitimately repeats a title across locations (one "Financial Services
+  // Representative" per branch) — keying on the title alone would collapse real
+  // openings and under-count the board.
+  const seen = new Set<string>();
+  // True when the cap ran out while the board was still yielding postings, i.e.
+  // what we hold is a PREFIX of the board rather than the board.
+  let truncated = false;
+
+  for (let page = 0; page < (api.maxPages ?? 1); page++) {
+    let data: unknown | null;
+    const url = api.url(board.token, page);
+    if (api.format === "xml" || api.format === "html") {
+      data = await fetchText(url);
+    } else if (api.post) {
+      const { headers, body } = api.post(board.token, page);
+      data = await fetchJson(url, 8000, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...headers },
+        body,
+      });
+    } else {
+      data = await fetchJson(url);
+    }
+    // A failed page mid-walk keeps what we already have: a partial board beats
+    // discarding every posting we successfully read.
+    if (data == null) break;
+
+    let added = 0;
+    for (const job of api.parse(data, board.token)) {
+      const key = job.url || `${job.title}|${job.location ?? ""}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      jobs.push(job);
+      added++;
+    }
+    if (added === 0) break;
+    if (api.maxPages && page === api.maxPages - 1) truncated = true;
+    // `added` on the first page IS the page size, so this compares the declared
+    // board size against what the cap can ever cover, without hardcoding either.
+    if (page === 0 && api.maxPages) {
+      const total = api.total?.(data) ?? null;
+      if (total !== null && total > api.maxPages * added) {
+        truncated = true;
+        break;
+      }
+    }
   }
-  if (data == null) return null;
-  const jobs = def.api.parse(data, board.token);
+
+  // A partial board must NOT be handed back: the caller treats a non-null result as
+  // the AUTHORITATIVE list of open roles, so every posting past the cap would be
+  // diffed as newly closed. Falling back to the careers-page path reports fewer
+  // roles but never invents a wave of closures. (Single-request providers can't
+  // trip this — one call is the whole board by contract.)
+  if (truncated) return null;
   return jobs.length > 0 ? jobs : null;
 }
 

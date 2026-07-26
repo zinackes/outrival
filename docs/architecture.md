@@ -557,6 +557,24 @@ carte (état live uniquement).
                   (structured-first = ATS API JSON island puis JobPosting JSON-LD ; pipeline complet.
                    patch-32 : 7 ATS — Greenhouse/Lever/Ashby/SmartRecruiters/Recruitee/Workable +
                    Personio (feed XML) ; schéma cross-ATS enrichi séniorité/datePost/salaire normalisé.
+                   + Workday et iCIMS, les deux ATS d'entreprise, PAGINÉS (les 7 autres
+                   rendent tout le board en une requête). Workday = JSON non authentifié
+                   `/wday/cxs/{tenant}/{site}/jobs`, POST limit/offset, 20 max par page
+                   (au-delà l'API renvoie vide) ; token composite `{host}/{site}`, segment
+                   de locale retiré. iCIMS = pas d'API publique (la leur est authentifiée),
+                   mais le portail `{slug}.icims.com/jobs/search` rend ses cartes côté
+                   serveur, donc parsées en regex (ats.ts reste sans cheerio) ; pagination
+                   `pr`. Chez iCIMS les colonnes dt/dd sont CONFIGURÉES PAR TENANT (l'un
+                   expose Category/ID/Type, l'autre City/Company/Work Status) : titre et URL
+                   de candidature sont les seuls champs garantis, le reste est lu par label
+                   et best-effort. Ni l'un ni l'autre ne porte de département dans la liste,
+                   le fallback titre de normalizeDepartment bucketise en aval.
+                   GARDE DE TRONCATURE : un board qui rendait encore des postes quand le cap
+                   de pages s'épuise renvoie `null` (repli page careers) au lieu d'une liste
+                   partielle. Une liste partielle est traitée en aval comme la liste
+                   AUTORITATIVE des postes ouverts, donc tout ce qui dépasse le cap serait
+                   diffé comme fermé. Workday annonçant son `total` dès la 1re page, un board
+                   hors cap sort en 1 requête (mesuré : 1,6s au lieu de 28s).
                    careers-link discovery élargie (labels « Jobs »/« Hiring », paths open-positions,
                    boards Notion off-site) + JOBS_RENDER_ENABLED : la page careers/board retenue et
                    les hops off-site sont rendus au navigateur (L1) + scroll, sinon les offres injectées

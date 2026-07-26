@@ -168,12 +168,16 @@ type TwoFactorSetup = {
 type SetupStep = "scan" | "verify" | "backup";
 
 // Authenticator-app 2FA, housed in a dialog (the 2026 settings convention: the
-// list stays calm, the multi-step flow runs in a modal). Enabling is verify-first
-// — we fetch a secret + recovery codes, the user scans then confirms a TOTP code,
-// and only then is 2FA switched on server-side, so an abandoned setup never locks
-// anyone out. When already on, the dialog manages the method: regenerate recovery
-// codes (gated by an emailed step-up code) or turn it off. Sign-in enforcement
-// (incl. the email-code & Google paths) lives in the API auth hook.
+// list stays calm, the multi-step flow runs in a modal). Starting setup AND
+// turning 2FA off both require an emailed step-up code first (a hijacked
+// session alone can no longer flip either without the inbox — see
+// apps/api/src/routes/auth.ts /two-factor/enable + /disable). Enabling itself
+// stays verify-first once that gate passes: we fetch a secret + recovery
+// codes, the user scans then confirms a TOTP code, and only then is 2FA
+// switched on server-side, so an abandoned setup never locks anyone out. When
+// already on, the dialog manages the method: regenerate recovery codes (same
+// step-up gate) or turn it off. Sign-in enforcement (incl. the email-code &
+// Google paths) lives in the API auth hook.
 function TwoFactorDialog({
   open,
   onOpenChange,
@@ -193,11 +197,16 @@ function TwoFactorDialog({
   const [code, setCode] = useState("");
   const [enrollAck, setEnrollAck] = useState(false);
   const startedRef = useRef(false);
+  // Step-up gate before setup starts (dialog opened, 2FA not yet enabled)
+  const [enableCode, setEnableCode] = useState("");
   // Manage → regenerate recovery codes
   const [regenOpen, setRegenOpen] = useState(false);
   const [regenCode, setRegenCode] = useState("");
   const [newCodes, setNewCodes] = useState<string[] | null>(null);
   const [regenAck, setRegenAck] = useState(false);
+  // Manage → turn off 2FA
+  const [disableOpen, setDisableOpen] = useState(false);
+  const [disableCode, setDisableCode] = useState("");
   // Shared
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -207,22 +216,27 @@ function TwoFactorDialog({
     setStep("scan");
     setCode("");
     setEnrollAck(false);
+    setEnableCode("");
     setRegenOpen(false);
     setRegenCode("");
     setNewCodes(null);
     setRegenAck(false);
+    setDisableOpen(false);
+    setDisableCode("");
     setBusy(false);
     setError("");
     startedRef.current = false;
   }, []);
 
-  const startEnable = useCallback(async () => {
+  const startEnable = useCallback(async (stepUpCode: string) => {
     if (startedRef.current) return; // dedupe (React strict-mode double-invoke)
     startedRef.current = true;
     setBusy(true);
     setError("");
     try {
-      const data = await twoFactorRequest<{ totpURI: string; backupCodes?: string[] }>("enable");
+      const data = await twoFactorRequest<{ totpURI: string; backupCodes?: string[] }>("enable", {
+        code: stepUpCode,
+      });
       setSetup({
         totpURI: data.totpURI,
         secret: secretFromUri(data.totpURI),
@@ -237,15 +251,13 @@ function TwoFactorDialog({
     }
   }, []);
 
-  // Kick off enrollment when the dialog opens for a user without 2FA; clear all
-  // state when it closes so the next open starts fresh.
+  // Clear all state when the dialog closes so the next open starts fresh.
+  // Setup no longer auto-starts on open — /two-factor/enable now requires the
+  // same emailed step-up code as disabling it, collected first in
+  // renderConfirm below.
   useEffect(() => {
-    if (!open) {
-      reset();
-      return;
-    }
-    if (!enabled) void startEnable();
-  }, [open, enabled, startEnable, reset]);
+    if (!open) reset();
+  }, [open, reset]);
 
   // verify-totp flips 2FA on server-side; we then reveal the recovery codes.
   async function confirmCode() {
@@ -268,7 +280,7 @@ function TwoFactorDialog({
     setBusy(true);
     setError("");
     try {
-      await twoFactorRequest("disable");
+      await twoFactorRequest("disable", { code: disableCode });
       onEnabledChange(false);
       toast.success("Two-factor authentication is off.");
       onOpenChange(false);
@@ -505,23 +517,72 @@ function TwoFactorDialog({
           )}
         </div>
 
-        {error && !regenOpen && (
+        <div className="flex flex-col gap-3 rounded-md border border-border p-4">
+          <div>
+            <div className="text-sm font-medium text-foreground">Turn off two-factor</div>
+            <p className="text-dense text-muted-foreground">
+              Sign-ins will only need your usual method afterward.
+            </p>
+          </div>
+
+          {disableOpen ? (
+            <div className="flex flex-col gap-3">
+              <p className="text-dense text-muted-foreground">
+                We email a confirmation code before turning off two-factor authentication.
+              </p>
+              <ReauthCodeField code={disableCode} onCode={setDisableCode} />
+              {error && (
+                <p className="text-dense text-destructive" role="alert">
+                  {error}
+                </p>
+              )}
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setDisableOpen(false);
+                    setDisableCode("");
+                    setError("");
+                  }}
+                  disabled={busy}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-destructive border-destructive/25"
+                  onClick={disable}
+                  disabled={busy || disableCode.length !== 6}
+                >
+                  {busy && <Loader2 size={13} className="animate-spin" />}
+                  Turn off two-factor
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-destructive border-destructive/25"
+                onClick={() => setDisableOpen(true)}
+                disabled={busy}
+              >
+                Turn off two-factor
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {error && !regenOpen && !disableOpen && (
           <p className="text-dense text-destructive" role="alert">
             {error}
           </p>
         )}
 
-        <DialogFooter className="sm:justify-between">
-          <Button
-            variant="outline"
-            size="sm"
-            className="text-destructive border-destructive/25"
-            onClick={disable}
-            disabled={busy}
-          >
-            {busy && !regenOpen && <Loader2 size={13} className="animate-spin" />}
-            Turn off two-factor
-          </Button>
+        <DialogFooter>
           <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)} disabled={busy}>
             Close
           </Button>
@@ -530,34 +591,35 @@ function TwoFactorDialog({
     );
   }
 
-  // ── Starting / loading the enrollment secret ─────────────────────────────
-  function renderStarting() {
+  // ── Confirm view (step-up code before setup starts) ──────────────────────
+  function renderConfirm() {
     return (
       <>
         <DialogHeader>
           <DialogTitle>Set up two-factor authentication</DialogTitle>
-          <DialogDescription>Preparing your setup…</DialogDescription>
+          <DialogDescription>
+            We email a confirmation code before starting setup.
+          </DialogDescription>
         </DialogHeader>
-        {error ? (
-          <>
-            <p className="text-dense text-destructive" role="alert">
-              {error}
-            </p>
-            <DialogFooter>
-              <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
-                Cancel
-              </Button>
-              <Button size="sm" onClick={startEnable}>
-                Try again
-              </Button>
-            </DialogFooter>
-          </>
-        ) : (
-          <div className="flex items-center gap-2 py-4 text-dense text-muted-foreground">
-            <Loader2 size={14} className="animate-spin" />
-            One moment…
-          </div>
+        <ReauthCodeField code={enableCode} onCode={setEnableCode} />
+        {error && (
+          <p className="text-dense text-destructive" role="alert">
+            {error}
+          </p>
         )}
+        <DialogFooter>
+          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)} disabled={busy}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => void startEnable(enableCode)}
+            disabled={busy || enableCode.length !== 6}
+          >
+            {busy && <Loader2 size={13} className="animate-spin" />}
+            Continue
+          </Button>
+        </DialogFooter>
       </>
     );
   }
@@ -565,7 +627,7 @@ function TwoFactorDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        {setup ? renderEnroll(setup) : enabled ? renderManage() : renderStarting()}
+        {setup ? renderEnroll(setup) : enabled ? renderManage() : renderConfirm()}
       </DialogContent>
     </Dialog>
   );
@@ -583,8 +645,8 @@ function TwoFactorRow({ initialEnabled }: { initialEnabled: boolean }) {
         title="Authenticator app"
         description={
           enabled
-            ? "A one-time code is required on every sign-in."
-            : "Add a one-time code to every sign-in: email code, Google, and password alike."
+            ? "Required at every sign-in — except with a passkey, itself phishing-resistant."
+            : "Add a one-time code to every sign-in: email code, Google, and password alike. Passkey sign-in stays code-free."
         }
       >
         {enabled ? (
@@ -608,9 +670,14 @@ function TwoFactorRow({ initialEnabled }: { initialEnabled: boolean }) {
 }
 
 // Passkeys (WebAuthn) — register/list/remove device-bound credentials in a
-// dialog. Adding runs a browser ceremony (authClient.passkey.addPasskey); listing
-// and removal hit the plugin routes directly. The whole method is gated behind
-// NEXT_PUBLIC_PASSKEYS_ENABLED until verified on staging with a real device.
+// dialog. Adding requires an emailed step-up code first, collected here and
+// passed as an `x-reauth-code` header (not a body field — Better Auth's client
+// SDK builds the verify-registration body itself; see the matching comment on
+// apps/api/src/routes/auth.ts's /passkey/verify-registration for why). The
+// browser ceremony itself (authClient.passkey.addPasskey) then runs as before;
+// listing and removal hit the plugin routes directly. The whole method is
+// gated behind NEXT_PUBLIC_PASSKEYS_ENABLED until verified on staging with a
+// real device.
 function PasskeysDialog({
   open,
   onOpenChange,
@@ -628,6 +695,18 @@ function PasskeysDialog({
   });
   const passkeys: PasskeyRow[] | null = passkeysQ.data ?? null;
   const [busy, setBusy] = useState<string | null>(null);
+  // Step-up gate before the WebAuthn ceremony starts
+  const [addOpen, setAddOpen] = useState(false);
+  const [addCode, setAddCode] = useState("");
+
+  // Clear the step-up state when the dialog closes so the next open starts
+  // fresh (mirrors TwoFactorDialog's reset-on-close).
+  useEffect(() => {
+    if (!open) {
+      setAddOpen(false);
+      setAddCode("");
+    }
+  }, [open]);
 
   function load() {
     return queryClient.invalidateQueries({ queryKey: ["passkeys"] });
@@ -636,11 +715,15 @@ function PasskeysDialog({
   async function add() {
     setBusy("add");
     try {
-      const res = await authClient.passkey.addPasskey();
+      const res = await authClient.passkey.addPasskey(
+        { fetchOptions: { headers: { "x-reauth-code": addCode } } },
+      );
       if (res?.error) {
         toast.error(res.error.message || "Couldn't add that passkey.");
       } else {
         toast.success("Passkey added.");
+        setAddOpen(false);
+        setAddCode("");
         load();
       }
     } catch {
@@ -714,11 +797,38 @@ function PasskeysDialog({
           </Card>
         )}
 
+        {addOpen && (
+          <div className="flex flex-col gap-3 rounded-md border border-border p-4">
+            <p className="text-dense text-muted-foreground">
+              We email a confirmation code before adding a new passkey.
+            </p>
+            <ReauthCodeField code={addCode} onCode={setAddCode} />
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setAddOpen(false);
+                  setAddCode("");
+                }}
+                disabled={busy === "add"}
+              >
+                Cancel
+              </Button>
+              <Button size="sm" onClick={add} disabled={busy === "add" || addCode.length !== 6}>
+                {busy === "add" && <Loader2 size={13} className="animate-spin" />}
+                Continue
+              </Button>
+            </div>
+          </div>
+        )}
+
         <DialogFooter className="sm:justify-between">
-          <Button variant="outline" size="sm" onClick={add} disabled={busy === "add"}>
-            {busy === "add" && <Loader2 size={13} className="animate-spin" />}
-            Add a passkey
-          </Button>
+          {!addOpen && (
+            <Button variant="outline" size="sm" onClick={() => setAddOpen(true)}>
+              Add a passkey
+            </Button>
+          )}
           <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
             Close
           </Button>

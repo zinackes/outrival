@@ -346,3 +346,164 @@ authRouter.post("/regenerate-backup-codes", authMiddleware, async (c) => {
     );
   }
 });
+
+/**
+ * Disable authenticator-app 2FA from Settings > Security. Better Auth's own
+ * password check inside the plugin (`shouldRequirePassword`) is a no-op for
+ * most Outrival users because `allowPasswordless: true` — for anyone who
+ * signed up via email OTP or Google (no credential account), an open session
+ * alone was previously enough to turn 2FA off. Same step-up gate as
+ * /set-password and /regenerate-backup-codes above: an emailed one-time code,
+ * so a hijacked session alone can no longer remove the second factor (OWASP:
+ * re-authenticate before a credential change).
+ *
+ * Shadows Better Auth's plugin path `/two-factor/disable` (POST, confirmed in
+ * node_modules/better-auth .../dist/plugins/two-factor/index.mjs) — this
+ * route in `authRouter`, mounted before the Better Auth wildcard
+ * (src/index.ts:77-81), takes precedence.
+ */
+authRouter.post("/two-factor/disable", authMiddleware, async (c) => {
+  const user = c.get("user");
+  const body = (await c.req.json().catch(() => ({}))) as {
+    password?: unknown;
+    code?: unknown;
+  };
+  const password = typeof body.password === "string" ? body.password : undefined;
+  const code = typeof body.code === "string" ? body.code : "";
+
+  if (!(await verifyReauthCode(user.id, code))) {
+    return c.json(
+      errorBody("reauth_failed", "That confirmation code is invalid or expired.", {
+        userAction: "retry",
+      }),
+      400,
+    );
+  }
+
+  try {
+    const res = await auth.api.disableTwoFactor({
+      headers: c.req.raw.headers,
+      body: { password },
+    });
+    return c.json(res);
+  } catch {
+    return c.json(
+      errorBody(
+        "two_factor_disable_failed",
+        "Couldn't disable two-factor authentication. Try again.",
+        { userAction: "retry" },
+      ),
+      400,
+    );
+  }
+});
+
+/**
+ * Enable authenticator-app 2FA from Settings > Security. Enabling itself
+ * doesn't flip `user.twoFactorEnabled` — that only happens once
+ * /two-factor/verify-totp confirms a code (verify-first design, see
+ * lib/auth.ts's twoFactor() comment), so an attacker can't fully take over 2FA
+ * from this call alone. The step-up is applied symmetrically with disable
+ * anyway: without it, a hijacked session could still seed a TOTP secret and
+ * backup codes the account owner never asked for, and read them back.
+ *
+ * Shadows Better Auth's plugin path `/two-factor/enable` (POST, confirmed in
+ * node_modules/better-auth .../dist/plugins/two-factor/index.mjs).
+ */
+authRouter.post("/two-factor/enable", authMiddleware, async (c) => {
+  const user = c.get("user");
+  const body = (await c.req.json().catch(() => ({}))) as {
+    password?: unknown;
+    issuer?: unknown;
+    code?: unknown;
+  };
+  const password = typeof body.password === "string" ? body.password : undefined;
+  const issuer = typeof body.issuer === "string" ? body.issuer : undefined;
+  const code = typeof body.code === "string" ? body.code : "";
+
+  if (!(await verifyReauthCode(user.id, code))) {
+    return c.json(
+      errorBody("reauth_failed", "That confirmation code is invalid or expired.", {
+        userAction: "retry",
+      }),
+      400,
+    );
+  }
+
+  try {
+    const res = await auth.api.enableTwoFactor({
+      headers: c.req.raw.headers,
+      body: { password, issuer },
+    });
+    return c.json(res);
+  } catch {
+    return c.json(
+      errorBody(
+        "two_factor_enable_failed",
+        "Couldn't enable two-factor authentication. Try again.",
+        { userAction: "retry" },
+      ),
+      400,
+    );
+  }
+});
+
+/**
+ * Persist a new passkey from Settings > Security. This is the mutating half of
+ * enrolment: the WebAuthn ceremony itself runs against
+ * /passkey/generate-register-options first (GET, hands back a challenge only —
+ * NOT gated here, nothing is written until this call). Without a step-up on
+ * this call, a hijacked session could register an attacker-controlled
+ * authenticator that survives a later password change.
+ *
+ * The code rides in an `x-reauth-code` header, not the body: Better Auth's
+ * client SDK (authClient.passkey.addPasskey, apps/web) builds the POST body
+ * for this call itself — `{ response, name }` — as a literal that overrides
+ * any body passed via fetchOptions, so a body-based `code` field can never
+ * reach the server through that helper. `fetchOptions.headers` DOES pass
+ * through untouched (dist/client.mjs, @better-auth/passkey 1.6.22), so the web
+ * client sets the header instead of forking the WebAuthn ceremony to bypass
+ * the SDK (which would need @simplewebauthn/browser as a new direct
+ * dependency of apps/web — out of scope for this change).
+ *
+ * Shadows Better Auth's plugin path `/passkey/verify-registration` (POST, body
+ * `{ response, name? }`, confirmed in
+ * node_modules/@better-auth/passkey/dist/index.mjs). That plugin endpoint also
+ * runs Better Auth's own `freshSessionMiddleware` (24h session-age check,
+ * unrelated to this gate) — pre-existing, unchanged by this route.
+ */
+authRouter.post("/passkey/verify-registration", authMiddleware, async (c) => {
+  const user = c.get("user");
+  const body = (await c.req.json().catch(() => ({}))) as {
+    response?: unknown;
+    name?: unknown;
+  };
+  const code = c.req.header("x-reauth-code") ?? "";
+
+  if (!(await verifyReauthCode(user.id, code))) {
+    return c.json(
+      errorBody("reauth_failed", "That confirmation code is invalid or expired.", {
+        userAction: "retry",
+      }),
+      400,
+    );
+  }
+
+  try {
+    const res = await auth.api.verifyPasskeyRegistration({
+      headers: c.req.raw.headers,
+      body: {
+        response: body.response,
+        name: typeof body.name === "string" ? body.name : undefined,
+      },
+    });
+    return c.json(res);
+  } catch {
+    return c.json(
+      errorBody("passkey_enrollment_failed", "Couldn't add that passkey. Try again.", {
+        userAction: "retry",
+      }),
+      400,
+    );
+  }
+});

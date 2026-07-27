@@ -256,6 +256,23 @@ export function WatchStrip({
   // one element.
   const stripRef = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState<number | null>(null);
+  // Mirrors `hovered` for the handlers that have to read it during the event that
+  // is about to change it (a tap decides what it means from where the cursor
+  // already was).
+  const shownRef = useRef<number | null>(null);
+  const show = useCallback((slot: number | null) => {
+    shownRef.current = slot;
+    setHovered(slot);
+  }, []);
+
+  // A finger has no hover, so the strip's whole reading was unreachable on a
+  // phone: a tap went straight to selecting the hour, and the card naming what
+  // that hour holds never appeared. Touch therefore reads in two taps — the first
+  // opens the card where a hover would have, the second hands the hour to the log
+  // — which is also what makes a tap on a 24-slot strip recoverable when it lands
+  // one hour off.
+  const [touch, setTouch] = useState(false);
+  const tapArmed = useRef(false);
 
   const slotAt = useCallback(
     (clientX: number): number | null => {
@@ -275,9 +292,37 @@ export function WatchStrip({
   );
 
   const onPointerMove = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => setHovered(slotAt(e.clientX)),
-    [slotAt],
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      // A touch drag is a scroll, not a reading: only a real cursor moves this one.
+      if (e.pointerType !== "mouse") return;
+      setTouch(false);
+      show(slotAt(e.clientX));
+    },
+    [slotAt, show],
   );
+
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.pointerType === "mouse") return;
+      setTouch(true);
+      const slot = slotAt(e.clientX);
+      // Second tap on the hour already open: this one selects.
+      tapArmed.current = slot != null && slot === shownRef.current;
+      show(slot);
+    },
+    [slotAt, show],
+  );
+
+  // A card opened by a tap has no pointerleave to close it, so anything outside
+  // the strip does.
+  useEffect(() => {
+    if (!touch || hovered == null) return;
+    const away = (e: PointerEvent) => {
+      if (!stripRef.current?.contains(e.target as Node)) show(null);
+    };
+    document.addEventListener("pointerdown", away);
+    return () => document.removeEventListener("pointerdown", away);
+  }, [touch, hovered, show]);
 
   // Hand the hour to the log. An hour where nothing ran has no runs to show, so
   // it is not selectable: narrowing to it would answer a click with an empty list.
@@ -308,13 +353,22 @@ export function WatchStrip({
       }
       if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
       e.preventDefault();
-      setHovered((prev) => {
-        const from = prev ?? 0;
-        const next = e.key === "ArrowLeft" ? from + 1 : from - 1;
-        return Math.min(SLOTS - 1, Math.max(0, next));
-      });
+      const from = shownRef.current ?? 0;
+      const next = e.key === "ArrowLeft" ? from + 1 : from - 1;
+      show(Math.min(SLOTS - 1, Math.max(0, next)));
     },
-    [hovered, select],
+    [hovered, select, show],
+  );
+
+  // A mouse click picks the hour under the cursor. A tap only does once the card
+  // for that hour is already open.
+  const onClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (touch && !tapArmed.current) return;
+      select(slotAt(e.clientX));
+      if (touch) show(null);
+    },
+    [select, slotAt, show, touch],
   );
 
   const hoveredBar = hovered == null ? null : (model?.bars.find((b) => b.slot === hovered) ?? null);
@@ -377,10 +431,17 @@ export function WatchStrip({
           hoveredBar && hoveredBar.checks > 0 && "cursor-pointer",
         )}
         onPointerMove={onPointerMove}
-        onPointerLeave={() => setHovered(null)}
-        onClick={(e) => select(slotAt(e.clientX))}
+        onPointerDown={onPointerDown}
+        // Touch fires this on lift, which would close the card the tap just opened.
+        onPointerLeave={(e) => {
+          if (e.pointerType === "mouse") show(null);
+        }}
+        // The browser took the gesture over to scroll the page: that touch was
+        // never a reading, so it leaves no card behind.
+        onPointerCancel={() => show(null)}
+        onClick={onClick}
         onKeyDown={onKeyDown}
-        onBlur={() => setHovered(null)}
+        onBlur={() => show(null)}
         tabIndex={model ? 0 : -1}
         role="img"
         aria-label={
@@ -429,10 +490,6 @@ export function WatchStrip({
             )}
 
             {model.bars.map((bar) => {
-              // A bar with nothing but routine checks brightens under the cursor;
-              // one that holds a finding already carries its own colour, and
-              // brightening its base would read as a second change.
-              const allQuiet = bar.segments.every((s) => s.kind === "quiet");
               return (
                 <span
                   key={bar.slot}
@@ -451,19 +508,18 @@ export function WatchStrip({
                   }}
                   aria-hidden
                 >
+                  {/* A bar's colour says what its hour FOUND, and nothing else.
+                      Brightening it under the cursor made a quiet hour borrow the
+                      colour of a change for as long as it was being read; the band
+                      behind the bar is what marks the hour instead. */}
                   {bar.segments.map((s) => (
                     <i
                       key={s.kind}
                       className={cn(
-                        "block w-full transition-colors",
+                        "block w-full",
                         s.kind === "change" && "bg-foreground",
                         s.kind === "failed" && "bg-critical",
-                        s.kind === "quiet" &&
-                          (bar.checks === 0
-                            ? "bg-border"
-                            : allQuiet && hoveredBar?.slot === bar.slot
-                              ? "bg-foreground"
-                              : "bg-border-strong"),
+                        s.kind === "quiet" && (bar.checks === 0 ? "bg-border" : "bg-border-strong"),
                       )}
                       style={{ height: `${s.height}px` }}
                     />
@@ -509,7 +565,7 @@ export function WatchStrip({
               <span className="absolute left-2.5 -top-0.5 font-mono text-meta text-foreground">now</span>
             </div>
 
-            {hoveredBar && <BucketCard bar={hoveredBar} stripRef={stripRef} />}
+            {hoveredBar && <BucketCard bar={hoveredBar} stripRef={stripRef} touch={touch} />}
           </>
         )}
         {!model && loading && (
@@ -674,9 +730,13 @@ function FindingMark({
 function BucketCard({
   bar,
   stripRef,
+  touch,
 }: {
   bar: Bar;
   stripRef: React.RefObject<HTMLDivElement | null>;
+  // Touch reached this card with one tap and needs a second to open the hour, so
+  // the card has to say which gesture it is waiting for.
+  touch: boolean;
 }) {
   const centre = bar.left + bar.width / 2;
   const clamped = Math.min(88, Math.max(12, centre));
@@ -762,7 +822,9 @@ function BucketCard({
         </div>
       )}
       {bar.checks > 0 && (
-        <div className="mt-0.5 text-meta text-text-subtle">Click to list these checks</div>
+        <div className="mt-0.5 text-meta text-text-subtle">
+          {touch ? "Tap again to list these checks" : "Click to list these checks"}
+        </div>
       )}
     </div>
   );

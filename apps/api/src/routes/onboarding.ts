@@ -40,7 +40,7 @@ import { ensureUserOrg } from "../lib/org";
 import { enqueueJob } from "../lib/queue";
 import {
   ensurePrimaryProductForSelf,
-  associateCompetitorWithPrimaryProduct,
+  associateCompetitorWithScopedProduct,
   primaryProductId,
 } from "../lib/products";
 import { fetchRepoArtifacts } from "../lib/github";
@@ -763,7 +763,7 @@ onboardingRouter.post("/complete", async (c) => {
   // their signals are tagged into its feed (createSelfCompetitor created the product
   // just above, so the primary now exists). Shared by default; reclassify later.
   for (const c of created) {
-    await associateCompetitorWithPrimaryProduct(orgId, c.competitorId);
+    await associateCompetitorWithScopedProduct(orgId, c.competitorId);
   }
 
   const orgRow = await db.query.organizations.findFirst({

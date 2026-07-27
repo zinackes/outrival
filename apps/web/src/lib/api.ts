@@ -2403,7 +2403,14 @@ export const api = {
     }),
   getCompetitorSignals: (id: string, limit = 50) =>
     request<{ signals: CompetitorSignal[] }>(`/api/competitors/${id}/signals?limit=${limit}`),
-  createCompetitor: (body: { name: string; url: string; description?: string }) =>
+  // productId = the active product scope, so the competitor is linked to the product
+  // the user added it from. Omitted (All products) → the org's primary.
+  createCompetitor: (body: {
+    name: string;
+    url: string;
+    description?: string;
+    productId?: string;
+  }) =>
     request<{ competitor: Competitor; monitors: Monitor[] }>("/api/competitors", {
       method: "POST",
       body: JSON.stringify(body),

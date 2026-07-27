@@ -639,6 +639,7 @@ function AddByUrlDialog({
 }) {
   const queryClient = useQueryClient();
   const router = useRouter();
+  const productId = useProductScope() ?? undefined;
   const [url, setUrl] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -661,6 +662,7 @@ function AddByUrlDialog({
       const { competitor } = await api.createCompetitor({
         name: host.split(".")[0]!.replace(/^./, (ch) => ch.toUpperCase()),
         url: normalized,
+        productId,
       });
       void queryClient.invalidateQueries({ queryKey: competitorsQuery().queryKey });
       router.refresh();

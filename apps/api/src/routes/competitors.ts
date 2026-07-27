@@ -27,7 +27,7 @@ import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
 import { enqueueJob } from "../lib/queue";
-import { associateCompetitorWithPrimaryProduct, productCompetitorIds } from "../lib/products";
+import { associateCompetitorWithScopedProduct, productCompetitorIds } from "../lib/products";
 import { analyticsQuery } from "../lib/analytics-safe";
 import { translateToEnglish } from "../lib/translate";
 import { detectContentLanguage } from "../lib/detect-language";
@@ -84,6 +84,10 @@ const CreateCompetitorSchema = z.object({
   name: z.string().min(1),
   url: z.string().url(),
   description: z.string().optional(),
+  // The product scope the competitor is being added from. Loose on purpose: an id that
+  // doesn't resolve in this org falls back to the primary product rather than 400-ing a
+  // create over a stale cookie.
+  productId: z.string().min(1).optional(),
 });
 
 // Resolves a competitor the caller owns, EXCLUDING soft-deleted rows (deletedAt).
@@ -537,9 +541,11 @@ competitorsRouter.post("/", async (c) => {
     .returning();
   if (!competitor) return c.json({ error: "Failed to create competitor" }, 500);
 
-  // patch-28 — tag this competitor into the org's primary product so its signals
-  // show in that product's feed (shared; reclassify/attach to others from the UI).
-  await associateCompetitorWithPrimaryProduct(orgId, competitor.id);
+  // patch-28 — tag this competitor into the product the user added it from so its
+  // signals show in the feed they were looking at (shared; reclassify/attach to others
+  // from the UI). Without the scope this always tagged the primary, so a competitor
+  // added while scoped to another SKU landed in a feed the user wasn't watching.
+  await associateCompetitorWithScopedProduct(orgId, competitor.id, parsed.data.productId);
 
   // patch-31 — detect the platform profile (fire-and-forget) so the first scrapes
   // can route via structured connectors. Never blocks the create.

@@ -1,0 +1,1 @@
+ALTER TABLE "monitors" ADD COLUMN "scrape_picked_up_at" timestamp;

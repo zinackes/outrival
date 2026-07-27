@@ -2,7 +2,12 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { and, asc, desc, eq, gte, isNull, isNotNull, ne, inArray, notInArray, sql } from "drizzle-orm";
 import { captureServerEvent } from "../lib/posthog";
-import { detectPlatform, scrapeMonitor, refreshCompetitorSummary } from "@outrival/queue";
+import {
+  detectPlatform,
+  scrapeMonitor,
+  refreshCompetitorSummary,
+  USER_SCRAPE_PRIORITY,
+} from "@outrival/queue";
 import {
   competitors,
   monitors,
@@ -617,7 +622,9 @@ competitorsRouter.post("/", async (c) => {
   // immediately. Best-effort: a trigger miss just falls back to the cron.
   for (const m of createdMonitors) {
     try {
-      await enqueueJob(scrapeMonitor, { monitorId: m.id, force: true });
+      await enqueueJob(scrapeMonitor, { monitorId: m.id, force: true }, {
+        priority: USER_SCRAPE_PRIORITY,
+      });
     } catch (e) {
       console.error("Failed to trigger initial scrape", { monitorId: m.id, error: String(e) });
     }
@@ -1027,6 +1034,7 @@ competitorsRouter.get("/", async (c) => {
       lastRunAt: monitors.lastRunAt,
       lastFailedAt: monitors.lastFailedAt,
       scrapeStartedAt: monitors.scrapeStartedAt,
+      scrapePickedUpAt: monitors.scrapePickedUpAt,
       markedUnscrapable: monitors.markedUnscrapable,
       isActive: monitors.isActive,
     })
@@ -1712,7 +1720,9 @@ competitorsRouter.post("/:id/pricing/redetect", async (c) => {
     where: and(eq(monitors.competitorId, id), eq(monitors.sourceType, "pricing")),
   });
   if (pricingMonitor) {
-    await enqueueJob(scrapeMonitor, { monitorId: pricingMonitor.id, force: true });
+    await enqueueJob(scrapeMonitor, { monitorId: pricingMonitor.id, force: true }, {
+      priority: USER_SCRAPE_PRIORITY,
+    });
   }
   return c.json({ ok: true, rescraped: Boolean(pricingMonitor) });
 });

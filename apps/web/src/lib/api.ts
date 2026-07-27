@@ -324,7 +324,12 @@ export interface Monitor {
   // next hourly cron tick, not a stale timestamp — never render it as a past date.
   nextRunAt: string | null;
   lastChangedAt: string | null;
+  // When the scrape was ENQUEUED. Set the moment the user (or the seeder) asks for
+  // one, which can be a long way before anything actually fetches the site.
   scrapeStartedAt: string | null;
+  // When a worker picked the job up. Null while it waits its turn — the gap between
+  // the two is what the "Queued" state reports.
+  scrapePickedUpAt: string | null;
   lastFailedAt: string | null;
   lastError: string | null;
   aiSummary: string | null;

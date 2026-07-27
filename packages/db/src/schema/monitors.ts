@@ -141,7 +141,15 @@ export const monitors = pgTable("monitors", {
   lastRunAt: timestamp("last_run_at"),
   nextRunAt: timestamp("next_run_at"),
   lastChangedAt: timestamp("last_changed_at"),
+  // Set by whoever ENQUEUES a scrape, so the UI can show the source as in-flight
+  // straight away. It says "this scrape has been asked for", NOT "a worker is on
+  // it" — the two can be an hour apart when the queue is behind.
   scrapeStartedAt: timestamp("scrape_started_at"),
+  // Set by the WORKER when the handler actually picks the job up. The gap between
+  // this and scrapeStartedAt is the queue wait, which is what lets the UI say
+  // "Queued" instead of claiming to be scanning a site nobody has fetched yet.
+  // Cleared alongside scrapeStartedAt on every terminal outcome.
+  scrapePickedUpAt: timestamp("scrape_picked_up_at"),
   lastFailedAt: timestamp("last_failed_at"),
   lastError: text("last_error"),
   // Fine-grained failure diagnosis (patch-23): the last scrape failure's category

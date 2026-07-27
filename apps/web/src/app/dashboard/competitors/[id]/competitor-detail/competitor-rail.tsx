@@ -42,7 +42,7 @@ import {
 import { StatusDot } from "@/components/outrival/data-marks";
 import { sourceShortLabel } from "@/lib/source-labels";
 import { friendlyScrapeError } from "@/lib/scrape-errors";
-import { isServerScraping } from "./shared";
+import { isServerScraping, isServerQueued } from "./shared";
 import { lastScanLabel, monitorStatus, nextScanLabel, type MonitorStatus } from "./monitor-status";
 
 const label = (s: SourceType) => sourceShortLabel(s).toLowerCase();
@@ -148,13 +148,14 @@ export function CompetitorRail({
           <div className="px-4">
             {monitors.map((m) => {
               const running = scrapingIds.has(m.id) || isServerScraping(m);
+              const queued = !running && isServerQueued(m);
               return (
                 <SourceRow
                   key={m.id}
                   competitorId={competitor.id}
                   monitor={m}
                   running={running}
-                  status={monitorStatus(m, running)}
+                  status={monitorStatus(m, running, queued)}
                   monitoringPaused={monitoringPaused}
                   plan={plan}
                   onRun={onRun}
@@ -310,7 +311,9 @@ function SourceRow({
   const age =
     status === "running"
       ? "…"
-      : off
+      : status === "queued"
+        ? "queued"
+        : off
         ? "off"
         : failed
           ? "failed"

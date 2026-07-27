@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { and, asc, count, desc, eq, gte, inArray, isNull, ne, notInArray, sql } from "drizzle-orm";
-import { scrapeMonitor } from "@outrival/queue";
+import { scrapeMonitor, USER_SCRAPE_PRIORITY } from "@outrival/queue";
 import { products, productCompetitors, competitors, monitors, signals } from "@outrival/db";
 import {
   entryPrice,
@@ -731,7 +731,9 @@ productsRouter.post("/", async (c) => {
     const seeded = await db.insert(monitors).values(monitorRows).returning();
     for (const m of seeded) {
       try {
-        await enqueueJob(scrapeMonitor, { monitorId: m.id, force: true });
+        await enqueueJob(scrapeMonitor, { monitorId: m.id, force: true }, {
+          priority: USER_SCRAPE_PRIORITY,
+        });
       } catch (e) {
         console.error("Failed to trigger product scrape", { monitorId: m.id, error: String(e) });
       }

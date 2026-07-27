@@ -51,10 +51,20 @@ export async function enqueueByName(name: string, data: object = {}): Promise<st
   return getBoss().send(name, data);
 }
 
+/**
+ * `priority` (higher runs first, default 0) is how a job somebody is watching gets
+ * ahead of the hourly bulk fan-out. Use USER_SCRAPE_PRIORITY for anything a user
+ * just clicked; leave it off for background work.
+ */
 export async function enqueueJob<P extends object>(
-  job: { enqueue: (data: P, options?: { singletonKey?: string }) => Promise<string | null> },
+  job: {
+    enqueue: (
+      data: P,
+      options?: { singletonKey?: string; priority?: number },
+    ) => Promise<string | null>;
+  },
   data: P,
-  options?: { singletonKey?: string },
+  options?: { singletonKey?: string; priority?: number },
 ): Promise<string | null> {
   await ensureQueue();
   return job.enqueue(data, options);

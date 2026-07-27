@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
-import { detectPlatform, scrapeMonitor } from "@outrival/queue";
+import { detectPlatform, scrapeMonitor, USER_SCRAPE_PRIORITY } from "@outrival/queue";
 import {
   competitorCandidates,
   competitors,
@@ -601,7 +601,9 @@ candidatesRouter.post("/:id/add", async (c) => {
 
   for (const m of monitorRows) {
     try {
-      await enqueueJob(scrapeMonitor, { monitorId: m.id, force: true });
+      await enqueueJob(scrapeMonitor, { monitorId: m.id, force: true }, {
+        priority: USER_SCRAPE_PRIORITY,
+      });
     } catch (e) {
       console.error("Failed to trigger initial scrape", { monitorId: m.id, error: String(e) });
     }

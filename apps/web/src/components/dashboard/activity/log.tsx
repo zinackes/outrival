@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import { ChevronRight } from "lucide-react";
 import type { ActivityDay, ActivityEvent } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { activityQuietDayQuery } from "@/lib/queries";
+import { usePersistedOpen } from "@/hooks/use-persisted-open";
 import { feedItemMotion } from "@/lib/motion";
 import { Button } from "@/components/ui/button";
 import { RunRow } from "./run-row";
@@ -85,39 +86,20 @@ export function ActivityLog({
           content, so the rows it drops leave and the rows it keeps travel to their
           new place, instead of the whole log swapping under a single fade. */}
       <AnimatePresence initial={false} mode="popLayout">
-        {groups.map(({ key, rows, day }) => {
-          const quiet = day
-            ? Math.max(0, day.checks - day.changes - day.failures - day.firstCaptures)
-            : 0;
-          return (
-            <motion.section key={key} aria-label={dayLabel(key)} {...feedItemMotion} layout="position">
-              <div className="mb-1 flex items-baseline justify-between gap-3 border-b border-border pb-1.5 pt-4 first:pt-0">
-                <h3 className="text-sm font-semibold tracking-tight">{dayLabel(key)}</h3>
-                {day && <DayTally day={day} />}
-              </div>
-              <AnimatePresence initial={false} mode="popLayout">
-                {rows.map((e, i) => {
-                  const k = rowKey(e, i);
-                  return (
-                    <motion.div key={k} {...feedItemMotion} layout="position">
-                      <RunRow event={e} isOpen={expanded.has(k)} onToggle={() => toggle(k)} />
-                    </motion.div>
-                  );
-                })}
-              </AnimatePresence>
-              {foldable && quiet > 0 && (
-                <QuietFold
-                  dayKey={key}
-                  count={quiet}
-                  filters={filters}
-                  productId={productId}
-                  expanded={expanded}
-                  onToggleRow={toggle}
-                />
-              )}
-            </motion.section>
-          );
-        })}
+        {groups.map(({ key, rows, day }) => (
+          <motion.section key={key} aria-label={dayLabel(key)} {...feedItemMotion} layout="position">
+            <DaySection
+              dayKey={key}
+              rows={rows}
+              day={day}
+              foldable={foldable}
+              filters={filters}
+              productId={productId}
+              expanded={expanded}
+              onToggleRow={toggle}
+            />
+          </motion.section>
+        ))}
       </AnimatePresence>
 
       {hasMore && (
@@ -132,6 +114,105 @@ export function ActivityLog({
         </Button>
       )}
     </div>
+  );
+}
+
+// One day of the log. The header folds it: a week of activity is a long page, and
+// the day the reader is done with should get out of the way of the one under it.
+// The tally stays on the header, so a folded day still states its work rather than
+// becoming a bare date.
+//
+// The fold is remembered per day (localStorage, only written once a day has
+// actually been toggled), for the same reason the other sections of this page are:
+// re-opening it on every navigation reads as the app forgetting what it was told.
+function DaySection({
+  dayKey,
+  rows,
+  day,
+  foldable,
+  filters,
+  productId,
+  expanded,
+  onToggleRow,
+}: {
+  dayKey: string;
+  rows: ActivityEvent[];
+  day: ActivityDay | null;
+  foldable: boolean;
+  filters: Filters;
+  productId?: string;
+  expanded: Set<string>;
+  onToggleRow: (key: string) => void;
+}) {
+  const [open, setOpen] = usePersistedOpen(`outrival.activity.day.${dayKey}.open`);
+  const quiet = day ? Math.max(0, day.checks - day.changes - day.failures - day.firstCaptures) : 0;
+  const bodyId = `activity-day-${dayKey}`;
+
+  // The remembered state is read one tick after mount, so a day the user had
+  // folded starts open and closes. Animating THAT would play the fold back at
+  // them on every load: the transition only arms once the first paint is past.
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setArmed(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
+  return (
+    <>
+      <div className="mb-1 flex items-baseline justify-between gap-3 border-b border-border pb-1.5 pt-4 first:pt-0">
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          aria-expanded={open}
+          aria-controls={bodyId}
+          className="flex min-w-0 items-center gap-1.5 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        >
+          <ChevronRight
+            className={cn(
+              "size-3.5 shrink-0 text-text-subtle transition-transform duration-200 motion-reduce:transition-none",
+              open && "rotate-90",
+            )}
+            aria-hidden
+          />
+          <h3 className="truncate text-sm font-semibold tracking-tight">{dayLabel(dayKey)}</h3>
+        </button>
+        {day && <DayTally day={day} />}
+      </div>
+
+      {/* Same 0fr→1fr grid as the other folds on this page: the browser measures
+          the height, so a day of wrapped rows opens as smoothly as a day of one. */}
+      <div
+        id={bodyId}
+        className={cn(
+          "grid",
+          armed && "transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none",
+          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+        )}
+      >
+        <div className="overflow-hidden">
+          <AnimatePresence initial={false} mode="popLayout">
+            {rows.map((e, i) => {
+              const k = rowKey(e, i);
+              return (
+                <motion.div key={k} {...feedItemMotion} layout="position">
+                  <RunRow event={e} isOpen={expanded.has(k)} onToggle={() => onToggleRow(k)} />
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
+          {foldable && quiet > 0 && (
+            <QuietFold
+              dayKey={dayKey}
+              count={quiet}
+              filters={filters}
+              productId={productId}
+              expanded={expanded}
+              onToggleRow={onToggleRow}
+            />
+          )}
+        </div>
+      </div>
+    </>
   );
 }
 

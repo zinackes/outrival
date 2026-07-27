@@ -1,16 +1,38 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Search } from "lucide-react";
-import type { ProductLinkedCompetitor } from "@/lib/api";
+import { useRouter } from "next/navigation";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { ArrowRight, Link2, Loader2, MoreHorizontal, Search, Trash2, Unlink } from "lucide-react";
+import { api, type ProductLinkedCompetitor } from "@/lib/api";
+import { competitorsQuery, productDetailQuery, productsListQuery } from "@/lib/queries";
 import { competitorNameColor } from "@/lib/competitor-color";
 import { shortAge } from "@/lib/format-date";
+import { toastApiError } from "@/lib/error-helpers";
 import { cn } from "@/lib/utils";
 import { CompAvatar } from "@/components/dashboard/comp-avatar";
 import { CatText } from "@/components/dashboard/cat-pill";
 import { SeverityGauge } from "@/components/outrival/severity-scale";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 // Past this, a competitor's last move stops being news and the row says so by
 // dropping the headline to muted. Same window as the roster.
@@ -25,6 +47,11 @@ const QUIET_AFTER_DAYS = 7;
  * row carries the competitor's latest signal in its own words, under the same
  * severity gauge the roster stands in its gutter, and the shared/specific badge
  * sits inline after the name rather than being the row's point.
+ *
+ * The tab is also where that list is EDITED. Reading who a product is measured
+ * against and changing it are the same job, and sending the user to the roster or
+ * to each competitor's own page to link, unlink or retire one made a two-click
+ * decision into a tour of the app.
  */
 export function ProductCompetitors({
   productId,
@@ -33,21 +60,140 @@ export function ProductCompetitors({
   productId: string;
   competitors: ProductLinkedCompetitor[];
 }) {
+  const queryClient = useQueryClient();
+  const [linking, setLinking] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<ProductLinkedCompetitor | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  // Which row is mid-write, so its menu can't be fired twice while the first call
+  // is still out.
+  const [pending, setPending] = useState<string | null>(null);
+
+  function refresh() {
+    // The junction feeds the tab, the product tile's competitor count and every
+    // product-scoped roster, so a link change invalidates all three rather than
+    // leaving two of them describing the list as it was.
+    void queryClient.invalidateQueries({ queryKey: productDetailQuery(productId).queryKey });
+    void queryClient.invalidateQueries({ queryKey: productsListQuery().queryKey });
+    return queryClient.invalidateQueries({ queryKey: ["competitors"] });
+  }
+
+  // Shared ↔ specific. Same endpoint as linking (it upserts), so the switch is one
+  // call and cannot leave the competitor unlinked on the way through.
+  async function setSpecific(c: ProductLinkedCompetitor, next: boolean) {
+    setPending(c.competitorId);
+    try {
+      await api.attachCompetitorToProduct(productId, c.competitorId, next);
+      toast.success(
+        next
+          ? `${c.name} now counts for this product only`
+          : `${c.name} is shared across your products`,
+      );
+      await refresh();
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't update this competitor" });
+    } finally {
+      setPending(null);
+    }
+  }
+
+  async function unlink(c: ProductLinkedCompetitor) {
+    setPending(c.competitorId);
+    try {
+      await api.detachCompetitorFromProduct(productId, c.competitorId);
+      toast.success(`${c.name} removed from this product`, {
+        description: "It's still tracked for your workspace. Link it back any time.",
+      });
+      await refresh();
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't remove this competitor" });
+    } finally {
+      setPending(null);
+    }
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await api.deleteCompetitor(deleteTarget.competitorId);
+      toast.success(`${deleteTarget.name} deleted`);
+      setDeleteTarget(null);
+      await refresh();
+    } catch (e) {
+      toastApiError(e);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  const dialogs = (
+    <>
+      <LinkCompetitorsDialog
+        productId={productId}
+        linked={competitors}
+        open={linking}
+        onOpenChange={setLinking}
+        onChanged={refresh}
+      />
+
+      <Dialog open={deleteTarget !== null} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete competitor?</DialogTitle>
+            <DialogDescription>
+              {deleteTarget?.name} and all its monitors, snapshots, changes, signals and battle
+              cards will be soft-deleted, for every product. To keep watching it elsewhere, remove
+              it from this product instead.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setDeleteTarget(null)}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={confirmDelete}
+              disabled={deleting}
+            >
+              {deleting && <Loader2 size={13} className="animate-spin" />}
+              {deleting ? "Deleting…" : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+
   if (competitors.length === 0) {
     return (
-      <Card className="flex flex-col items-center gap-3 border-dashed px-6 py-10 text-center">
-        <p className="text-sm font-semibold">No competitors on this product yet</p>
-        <p className="max-w-md text-sm text-muted-foreground">
-          Link competitors to it and its signals, battle cards and price comparison
-          start filling in. Discovery suggests them from this product&apos;s positioning.
-        </p>
-        <Button asChild size="sm">
-          <Link href="/dashboard/discovery">
-            <Search size={14} />
-            Find competitors
-          </Link>
-        </Button>
-      </Card>
+      <>
+        <Card className="flex flex-col items-center gap-3 border-dashed px-6 py-10 text-center">
+          <p className="text-sm font-semibold">No competitors on this product yet</p>
+          <p className="max-w-md text-sm text-muted-foreground">
+            Link competitors to it and its signals, battle cards and price comparison
+            start filling in. Discovery suggests them from this product&apos;s positioning.
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <Button asChild size="sm">
+              <Link href="/dashboard/discovery">
+                <Search size={14} />
+                Find competitors
+              </Link>
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setLinking(true)}>
+              <Link2 size={14} />
+              Link existing
+            </Button>
+          </div>
+        </Card>
+        {dialogs}
+      </>
     );
   }
 
@@ -71,17 +217,30 @@ export function ProductCompetitors({
             here, and only they tag this product on a signal.
           </p>
         </div>
-        <Button asChild size="sm" variant="outline" className="shrink-0">
-          <Link href="/dashboard/discovery">
-            <Search size={14} />
-            Find more
-          </Link>
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => setLinking(true)}>
+            <Link2 size={14} />
+            Link existing
+          </Button>
+          <Button asChild size="sm" variant="outline">
+            <Link href="/dashboard/discovery">
+              <Search size={14} />
+              Find more
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <div>
         {sorted.map((c) => (
-          <CompetitorRow key={c.competitorId} competitor={c} />
+          <CompetitorRow
+            key={c.competitorId}
+            competitor={c}
+            busy={pending === c.competitorId}
+            onSetSpecific={(next) => void setSpecific(c, next)}
+            onUnlink={() => void unlink(c)}
+            onDelete={() => setDeleteTarget(c)}
+          />
         ))}
       </div>
 
@@ -90,18 +249,34 @@ export function ProductCompetitors({
           See every signal on this product
         </Link>
       </Button>
+
+      {dialogs}
     </div>
   );
 }
 
-function CompetitorRow({ competitor: c }: { competitor: ProductLinkedCompetitor }) {
+function CompetitorRow({
+  competitor: c,
+  busy,
+  onSetSpecific,
+  onUnlink,
+  onDelete,
+}: {
+  competitor: ProductLinkedCompetitor;
+  busy: boolean;
+  onSetSpecific: (next: boolean) => void;
+  onUnlink: () => void;
+  onDelete: () => void;
+}) {
+  const router = useRouter();
   const move = c.latestMove;
   const stale = move
     ? (Date.now() - new Date(move.createdAt).getTime()) / 86_400_000 > QUIET_AFTER_DAYS
     : false;
+  const href = `/dashboard/competitors/${c.competitorId}`;
 
   return (
-    <div className="group relative grid grid-cols-[0.625rem_minmax(0,1.15fr)_minmax(0,1.7fr)] items-center gap-x-3.5 rounded-md border-b border-border px-2 py-2.5 transition-colors hover:bg-surface-2 focus-within:bg-surface-2">
+    <div className="group relative grid grid-cols-[0.625rem_minmax(0,1.15fr)_minmax(0,1.7fr)_1.5rem] items-center gap-x-3.5 rounded-md border-b border-border px-2 py-2.5 transition-colors hover:bg-surface-2 focus-within:bg-surface-2">
       <SeverityGauge severity={move && !stale ? move.severity : null} />
 
       <div className="flex min-w-0 items-center gap-2.5">
@@ -109,7 +284,7 @@ function CompetitorRow({ competitor: c }: { competitor: ProductLinkedCompetitor 
         <div className="flex min-w-0 flex-col gap-0.5">
           <div className="flex min-w-0 items-center gap-1.5">
             <Link
-              href={`/dashboard/competitors/${c.competitorId}`}
+              href={href}
               // Stretched link: the row navigates without nesting anything
               // interactive inside an <a>.
               className="min-w-0 truncate rounded-sm text-dense font-semibold outline-none after:absolute after:inset-0 after:content-[''] focus-visible:ring-2 focus-visible:ring-ring/50"
@@ -161,6 +336,161 @@ function CompetitorRow({ competitor: c }: { competitor: ProductLinkedCompetitor 
           </span>
         )}
       </div>
+
+      {/* Above the stretched link, or the row's own navigation would swallow every
+          menu click. */}
+      <div className="relative z-10 flex justify-end">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={busy}
+              aria-label={`Manage ${c.name}`}
+              className="h-6 w-6 p-0 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100 max-sm:opacity-100"
+            >
+              {busy ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <MoreHorizontal size={14} />
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuItem onSelect={() => router.push(href)}>
+              <ArrowRight size={13} /> Open detail
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onSetSpecific(!c.isSpecific)}>
+              <Link2 size={13} />
+              {c.isSpecific ? "Share across products" : "Make specific to this product"}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={onUnlink}>
+              <Unlink size={13} /> Remove from this product
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={onDelete} className="text-critical focus:text-critical">
+              <Trash2 size={13} /> Delete competitor
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     </div>
+  );
+}
+
+/**
+ * The competitors the workspace already tracks that this product is NOT measured
+ * against. Without it, removing a competitor from a product was a one-way door:
+ * the only way back was the competitor's own page, one at a time.
+ *
+ * Ticking a box links immediately, the way the mirror dialog on the competitor
+ * page does. A row the user has touched in this session stays on screen even once
+ * it is linked, so the list doesn't collapse under the click that changed it.
+ */
+function LinkCompetitorsDialog({
+  productId,
+  linked,
+  open,
+  onOpenChange,
+  onChanged,
+}: {
+  productId: string;
+  linked: ProductLinkedCompetitor[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onChanged: () => Promise<unknown>;
+}) {
+  const rosterQ = useQuery({ ...competitorsQuery(), enabled: open });
+  const [touched, setTouched] = useState<Set<string>>(new Set());
+  const [pending, setPending] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (open) setTouched(new Set());
+  }, [open]);
+
+  const linkedIds = new Set(linked.map((c) => c.competitorId));
+  const available = (rosterQ.data ?? []).filter(
+    (c) => !linkedIds.has(c.id) || touched.has(c.id),
+  );
+
+  async function toggle(competitorId: string, next: boolean) {
+    setPending((p) => new Set(p).add(competitorId));
+    setTouched((t) => new Set(t).add(competitorId));
+    try {
+      if (next) await api.attachCompetitorToProduct(productId, competitorId);
+      else await api.detachCompetitorFromProduct(productId, competitorId);
+      await onChanged();
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't update this product's competitors" });
+    } finally {
+      setPending((p) => {
+        const n = new Set(p);
+        n.delete(competitorId);
+        return n;
+      });
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Link existing competitors</DialogTitle>
+          <DialogDescription>
+            Competitors your workspace already tracks. Linking one here puts its signals in
+            this product&apos;s feed and its prices on the comparison.
+          </DialogDescription>
+        </DialogHeader>
+
+        {rosterQ.isPending ? (
+          <div className="flex justify-center py-6">
+            <Loader2 size={16} className="animate-spin text-muted-foreground" />
+          </div>
+        ) : rosterQ.isError ? (
+          <p className="py-4 text-sm text-muted-foreground">
+            Couldn&apos;t load your competitors.{" "}
+            <button
+              type="button"
+              onClick={() => void rosterQ.refetch()}
+              className="text-link underline underline-offset-2"
+            >
+              Retry
+            </button>
+          </p>
+        ) : available.length === 0 ? (
+          <p className="py-4 text-sm text-muted-foreground">
+            Every competitor you track is already on this product. Discovery finds more.
+          </p>
+        ) : (
+          <div className="-mx-1 max-h-80 space-y-0.5 overflow-y-auto px-1">
+            {available.map((c) => {
+              const checked = linkedIds.has(c.id);
+              const isPending = pending.has(c.id);
+              return (
+                <label
+                  key={c.id}
+                  className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 hover:bg-surface-2"
+                >
+                  <Checkbox
+                    checked={checked}
+                    disabled={isPending}
+                    onCheckedChange={(v) => void toggle(c.id, v === true)}
+                  />
+                  <CompAvatar name={c.name} url={c.url} size={22} />
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium">{c.name}</span>
+                  {isPending && <Loader2 size={12} className="animate-spin text-muted-foreground" />}
+                </label>
+              );
+            })}
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
+            Done
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

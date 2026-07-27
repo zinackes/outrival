@@ -425,6 +425,10 @@ export interface ActivityFeedParams {
   // Empty means every outcome — what a filtered view shows, since hiding quiet
   // runs there would leave no way to see them (the per-day fold is off).
   statuses?: ActivityStatusFilter[];
+  // UTC instants bounding the runs to list, set when an hour of the 24-hour strip
+  // is picked. Part of the key, so picking another hour refetches.
+  from?: string;
+  to?: string;
 }
 
 // The activity log, offset "load older". Filters live in the key, so switching one

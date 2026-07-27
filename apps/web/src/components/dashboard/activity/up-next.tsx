@@ -10,6 +10,7 @@ import { feedItemMotion } from "@/lib/motion";
 import { formatDate, formatTime } from "@/lib/format-date";
 import { sourceLabel } from "@/lib/source-labels";
 import { competitorNameColor } from "@/lib/competitor-color";
+import { usePersistedOpen } from "@/hooks/use-persisted-open";
 
 // The queue, named. The strip already draws the checks due in its next three
 // hours, but almost nothing is: a daily source is scheduled a day out and a
@@ -23,6 +24,7 @@ import { competitorNameColor } from "@/lib/competitor-color";
 
 const PREVIEW = 6;
 const DAY = 86_400_000;
+const OPEN_KEY = "outrival.activity.upNext.open";
 
 type Bucket = "soon" | "today" | "tomorrow" | "later";
 
@@ -79,7 +81,7 @@ export function UpNext({ upcoming }: { upcoming: ActivityUpcoming[] }) {
     return () => clearInterval(id);
   }, []);
 
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = usePersistedOpen(OPEN_KEY);
   const [showAll, setShowAll] = useState(false);
 
   const model = useMemo(() => {
@@ -101,7 +103,7 @@ export function UpNext({ upcoming }: { upcoming: ActivityUpcoming[] }) {
     <section className="flex flex-col">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => setOpen(!open)}
         aria-expanded={open}
         className="flex items-center justify-between gap-3 border-b border-border pb-2 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       >

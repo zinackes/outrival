@@ -159,25 +159,28 @@ function DaySection({
 
   return (
     <>
-      <div className="mb-1 flex items-baseline justify-between gap-3 border-b border-border pb-1.5 pt-4 first:pt-0">
-        <button
-          type="button"
-          onClick={() => setOpen(!open)}
-          aria-expanded={open}
-          aria-controls={bodyId}
-          className="flex min-w-0 items-center gap-1.5 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-        >
+      {/* The whole band folds, not just the date: the tally is the other half of
+          the header, and a strip of dead pixels between two hit areas is a miss
+          waiting to happen — on touch most of all. */}
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        aria-controls={bodyId}
+        className="group mb-1 flex w-full items-baseline justify-between gap-3 rounded-sm border-b border-border pb-1.5 pt-4 text-left first:pt-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      >
+        <span className="flex min-w-0 items-center gap-1.5">
           <ChevronRight
             className={cn(
-              "size-3.5 shrink-0 text-text-subtle transition-transform duration-200 motion-reduce:transition-none",
+              "size-3.5 shrink-0 text-text-subtle transition-transform duration-200 group-hover:text-foreground motion-reduce:transition-none",
               open && "rotate-90",
             )}
             aria-hidden
           />
           <h3 className="truncate text-sm font-semibold tracking-tight">{dayLabel(dayKey)}</h3>
-        </button>
+        </span>
         {day && <DayTally day={day} />}
-      </div>
+      </button>
 
       {/* Same 0fr→1fr grid as the other folds on this page: the browser measures
           the height, so a day of wrapped rows opens as smoothly as a day of one. */}
@@ -221,8 +224,12 @@ function DayTally({ day }: { day: ActivityDay }) {
   if (day.changes > 0) parts.push(`${day.changes} change${day.changes === 1 ? "" : "s"}`);
   if (day.firstCaptures > 0) parts.push(`${day.firstCaptures} first capture${day.firstCaptures === 1 ? "" : "s"}`);
   if (day.failures > 0) parts.push(`${day.failures} not reached`);
+  // Lights up with the chevron so the far end of the band reads as part of the
+  // same control, rather than as a label that happens to sit next to a button.
   return (
-    <span className="text-dense text-muted-foreground tabular-nums">{parts.join(" · ")}</span>
+    <span className="text-dense text-muted-foreground tabular-nums transition-colors group-hover:text-foreground">
+      {parts.join(" · ")}
+    </span>
   );
 }
 

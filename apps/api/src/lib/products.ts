@@ -117,16 +117,25 @@ export async function ensurePrimaryProductForSelf(
 }
 
 /**
- * patch-28 — link a freshly added competitor to the org's primary product (shared,
- * isSpecific=false) so its signals get tagged into that product's feed. No-op when
- * the org has no product yet (the self-competitor anchor / product is created first).
- * relevanceScore seeds from the competitor's overlap. Idempotent.
+ * patch-28 — link a freshly added competitor to the product the caller is scoped to
+ * (shared, isSpecific=false) so its signals get tagged into the feed the user was
+ * actually looking at, falling back to the org's primary when there is no scope (All
+ * products) or the scope no longer resolves — a stale cookie or a foreign org must not
+ * leave the competitor linked to nothing, which would hide it from every product feed.
+ * No-op when the org has no product yet (the self-competitor anchor is created first).
  */
-export async function associateCompetitorWithPrimaryProduct(
+export async function associateCompetitorWithScopedProduct(
   orgId: string,
   competitorId: string,
+  productId?: string | null,
 ): Promise<void> {
-  const pid = await primaryProductId(orgId);
+  const scoped = productId
+    ? await db.query.products.findFirst({
+        where: and(eq(products.id, productId), eq(products.orgId, orgId)),
+        columns: { id: true },
+      })
+    : null;
+  const pid = scoped?.id ?? (await primaryProductId(orgId));
   if (pid) await associateCompetitorWithProduct(orgId, pid, competitorId);
 }
 

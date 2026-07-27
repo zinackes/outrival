@@ -868,6 +868,7 @@ function AddCompetitorDialog({
   onAdded: () => void;
   onPaywall: (reason: PaywallReason) => void;
 }) {
+  const productId = useProductScope() ?? undefined;
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
@@ -886,7 +887,7 @@ function AddCompetitorDialog({
     setBusy(true);
     setErr(null);
     try {
-      await api.createCompetitor({ name, url });
+      await api.createCompetitor({ name, url, productId });
       track("competitor_added", { source: "manual" });
       await onAdded();
       onOpenChange(false);

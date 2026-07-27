@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { ActivityBucket, ActivityFinding, ActivityUpcoming } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -37,6 +37,17 @@ const BUSY_REFERENCE = 6;
 // which in the old box sat on top of the "overnight" label.
 const MARK = 16;
 const MARK_GAP = 4;
+// How many of an hour's competitors the cap is willing to name at once. The marks
+// fan out inside the bar's own column, so past this they overlap into a smear —
+// the card above still lists the hour finding by finding.
+const MAX_MARKS = 4;
+
+// The card is drawn above the strip, under a topbar that is sticky at 52px. An
+// hour with several findings makes a tall card, so on a scrolled page it was
+// drawn UNDER that bar and lost its first lines. Two answers, both needed: cap
+// what the card says, and flip it below the strip when the room above is gone.
+const MAX_CARD_FINDINGS = 4;
+const TOPBAR_SAFE = 60;
 
 // Hours the user is asleep. Outrival keeps checking through them, which is most
 // of the reason this page exists.
@@ -459,7 +470,16 @@ export function WatchStrip({
                 WHO. */}
             {model.bars.map((bar) => {
               const kind = markKind(bar);
-              return kind && <FindingMark key={`pin-${bar.slot}`} bar={bar} kind={kind} />;
+              return (
+                kind && (
+                  <FindingMark
+                    key={`pin-${bar.slot}`}
+                    bar={bar}
+                    kind={kind}
+                    expanded={hoveredBar?.slot === bar.slot}
+                  />
+                )
+              );
             })}
 
             {/* Everything right of now: scheduled, not observed. */}
@@ -482,7 +502,7 @@ export function WatchStrip({
               <span className="absolute left-2.5 -top-0.5 font-mono text-meta text-foreground">now</span>
             </div>
 
-            {hoveredBar && <BucketCard bar={hoveredBar} />}
+            {hoveredBar && <BucketCard bar={hoveredBar} stripRef={stripRef} />}
           </>
         )}
         {!model && loading && (
@@ -531,14 +551,41 @@ export function WatchStrip({
 // The mark is a decoration, not a control — the hour it caps is read through the
 // strip's own cursor (pointer or arrow keys), which already names every finding
 // of the bucket, including the ones a single mark cannot show.
-function FindingMark({ bar, kind }: { bar: Bar; kind: "change" | "failed" }) {
+//
+// Under the cursor the cap opens: an hour that moved for several competitors
+// fans its stacked marks out so all of them are named at once. The fan is laid
+// out INSIDE the bar's own column (first mark on its left edge, last on its
+// right), so however many it holds it never spills over the neighbouring hours.
+function FindingMark({
+  bar,
+  kind,
+  expanded,
+}: {
+  bar: Bar;
+  kind: "change" | "failed";
+  expanded: boolean;
+}) {
   // Findings arrive newest first, so the hour is capped by its latest one — of
   // the kind the CAP draws, so a red mark never names a competitor whose source
   // was reached fine. An hour that moved for more than one competitor gets a tile
   // behind the mark, so the logo never claims it belonged to a single name.
   const lead = bar.findings.find((f) => f.kind === kind) ?? bar.findings[0] ?? null;
   const names = new Set(bar.findings.map((f) => f.competitorId)).size;
+  // One mark per competitor, the cap's own first, so the fan opens from the mark
+  // that was already there instead of reshuffling under the cursor.
+  const marks = useMemo(() => {
+    if (!lead) return [];
+    const seen = new Set<string>();
+    const out: ActivityFinding[] = [];
+    for (const f of [lead, ...bar.findings]) {
+      if (seen.has(f.competitorId) || out.length === MAX_MARKS) continue;
+      seen.add(f.competitorId);
+      out.push(f);
+    }
+    return out;
+  }, [bar.findings, lead]);
   const bottom = `${bar.height + MARK_GAP}px`;
+  const fanned = expanded && marks.length > 1;
   return (
     <>
       {/* The dot the logo replaces. Kept where a logo would not fit, and kept
@@ -553,26 +600,58 @@ function FindingMark({ bar, kind }: { bar: Bar; kind: "change" | "failed" }) {
         style={{ left: `calc(${bar.left + bar.width / 2}% - 2.5px)`, bottom }}
         aria-hidden
       />
-      {lead && (
+      {marks.length > 0 && (
         <span
           className="absolute max-sm:hidden"
-          style={{ left: `calc(${bar.left + bar.width / 2}% - ${MARK / 2}px)`, bottom }}
+          style={{
+            left: `${bar.left}%`,
+            width: `calc(${bar.width}% - 2px)`,
+            height: MARK,
+            bottom,
+          }}
           aria-hidden
         >
-          {names > 1 && (
-            <span
-              className="absolute rounded-[4px] border border-border bg-surface-2"
-              style={{ right: -3, top: -3, width: MARK, height: MARK }}
-            />
-          )}
-          <span
-            className={cn(
-              "relative block rounded-[4px]",
-              kind === "failed" && "ring-1 ring-critical",
-            )}
-          >
-            <CompAvatar name={lead.competitorName} url={lead.url} size={MARK} />
-          </span>
+          {marks.map((f, i) => {
+            // Fanned, the marks divide the column between its two edges; stacked,
+            // they all sit on the cap's own centre. Both ends are `pct - px`, so
+            // the two states interpolate rather than jump.
+            const t = marks.length > 1 ? i / (marks.length - 1) : 0;
+            const left = fanned
+              ? `calc(${t * 100}% - ${t * MARK}px)`
+              : `calc(50% - ${MARK / 2}px)`;
+            return (
+              <span
+                key={f.competitorId}
+                className="absolute top-0 transition-[left,opacity] duration-200 ease-out"
+                style={{
+                  left,
+                  // Only the cap shows while stacked: the rest are exactly under
+                  // it, and drawing them there would just thicken its edge.
+                  opacity: i === 0 || fanned ? 1 : 0,
+                  // The cap stays on top as the others slide out from under it.
+                  zIndex: marks.length - i,
+                  transitionDelay: fanned ? `${i * 40}ms` : "0ms",
+                }}
+              >
+                {i === 0 && names > 1 && (
+                  <span
+                    className="absolute rounded-[4px] border border-border bg-surface-2 transition-opacity duration-200 ease-out"
+                    // The "there are more" tile has said its piece once the marks
+                    // it stood for are out.
+                    style={{ right: -3, top: -3, width: MARK, height: MARK, opacity: fanned ? 0 : 1 }}
+                  />
+                )}
+                <span
+                  className={cn(
+                    "relative block rounded-[4px]",
+                    f.kind === "failed" && "ring-1 ring-critical",
+                  )}
+                >
+                  <CompAvatar name={f.competitorName} url={f.url} size={MARK} />
+                </span>
+              </span>
+            );
+          })}
         </span>
       )}
     </>
@@ -582,12 +661,48 @@ function FindingMark({ bar, kind }: { bar: Bar; kind: "change" | "failed" }) {
 // What one hour holds. Anchored to its own bar and clamped to the strip, so a
 // bucket at either end still reads inside the page. It rides the same slide as
 // the band under it, so it only fades in once, on entering the strip.
-function BucketCard({ bar }: { bar: Bar }) {
+function BucketCard({
+  bar,
+  stripRef,
+}: {
+  bar: Bar;
+  stripRef: React.RefObject<HTMLDivElement | null>;
+}) {
   const centre = bar.left + bar.width / 2;
   const clamped = Math.min(88, Math.max(12, centre));
+  // An hour can hold more findings than a hover is worth reading. The card names
+  // the first few and counts the rest; clicking the bar lists all of them below.
+  const shown = bar.findings.slice(0, MAX_CARD_FINDINGS);
+  const rest = bar.findings.length - shown.length;
+
+  // Above the strip by default, below it when the page has scrolled far enough
+  // that the topbar would cover the card's first lines. The height is measured
+  // rather than estimated, and it is the same in either placement, so the
+  // decision cannot oscillate between the two.
+  const ref = useRef<HTMLDivElement>(null);
+  const [below, setBelow] = useState(false);
+  useLayoutEffect(() => {
+    const measure = () => {
+      const card = ref.current;
+      const strip = stripRef.current;
+      if (!card || !strip) return;
+      setBelow(strip.getBoundingClientRect().top - card.offsetHeight - 6 < TOPBAR_SAFE);
+    };
+    measure();
+    // Scrolling with the pointer parked on a bar moves the strip under a card
+    // that has already chosen its side. Capture, because the page's scroller is
+    // not necessarily the window and scroll events do not bubble.
+    document.addEventListener("scroll", measure, { passive: true, capture: true });
+    return () => document.removeEventListener("scroll", measure, { capture: true });
+  }, [bar.slot, shown.length, stripRef]);
+
   return (
     <div
-      className="pointer-events-none absolute bottom-full z-10 mb-1.5 -translate-x-1/2 animate-in rounded-md border border-border bg-surface-2 px-2.5 py-1.5 shadow-xs fade-in-0 zoom-in-95 transition-[left] duration-150 ease-out"
+      ref={ref}
+      className={cn(
+        "pointer-events-none absolute z-10 max-w-[17rem] -translate-x-1/2 animate-in rounded-md border border-border bg-surface-2 px-2.5 py-1.5 shadow-xs fade-in-0 zoom-in-95 transition-[left] duration-150 ease-out",
+        below ? "top-full mt-1.5" : "bottom-full mb-1.5",
+      )}
       style={{ left: `${clamped}%` }}
       aria-live="polite"
     >
@@ -610,11 +725,8 @@ function BucketCard({ bar }: { bar: Bar }) {
       {/* One outcome per line, coloured the way the bar under it is: a change and
           an unreachable source read alike in plain muted text, which is exactly
           the distinction this card exists to make. */}
-      {bar.findings.map((f, i) => (
-        <div
-          key={`${f.recordedAt}-${i}`}
-          className="flex items-center gap-1.5 whitespace-nowrap text-dense"
-        >
+      {shown.map((f, i) => (
+        <div key={`${f.recordedAt}-${i}`} className="flex items-center gap-1.5 text-dense">
           <i
             className={cn(
               "h-2.5 w-[3px] shrink-0 rounded-t-[1px]",
@@ -622,7 +734,7 @@ function BucketCard({ bar }: { bar: Bar }) {
             )}
             aria-hidden
           />
-          <span>
+          <span className="min-w-0 truncate">
             <span className="font-medium text-foreground">{f.competitorName}</span>
             <span className="text-muted-foreground">
               {" "}
@@ -634,6 +746,11 @@ function BucketCard({ bar }: { bar: Bar }) {
           </span>
         </div>
       ))}
+      {rest > 0 && (
+        <div className="text-dense text-muted-foreground">
+          and <span className="tabular-nums">{rest}</span> more
+        </div>
+      )}
       {bar.checks > 0 && (
         <div className="mt-0.5 text-meta text-text-subtle">Click to list these checks</div>
       )}

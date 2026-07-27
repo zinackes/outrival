@@ -30,6 +30,7 @@ import {
   nextScanIn,
   lastScanLabel,
 } from "../competitor-detail/monitor-status";
+import { isServerQueued } from "../competitor-detail/shared";
 import { sourceCopy, isConcerning } from "./source-copy";
 
 // `limited` was `text-warning`, which no token defines — so the one tone that had
@@ -215,7 +216,12 @@ export function SourceRow({
   const drawerId = useId();
 
   const state = sourceState({ sourceType, plan, monitor, targets });
-  const status = monitor ? monitorStatus(monitor, running) : "idle";
+  // `running` carries the optimistic client-side set (a click before the server has
+  // caught up); "queued" is purely server state, so it is read off the monitor here
+  // rather than threaded through as a second prop.
+  const status = monitor
+    ? monitorStatus(monitor, running, !running && isServerQueued(monitor))
+    : "idle";
   const copy = sourceCopy({
     state,
     sourceType,

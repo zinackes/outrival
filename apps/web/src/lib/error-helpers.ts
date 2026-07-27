@@ -32,6 +32,16 @@ const ERROR_CONFIGS: Record<string, ErrorConfig> = {
     description: "You've hit the rate limit. Wait a minute before trying again.",
     action: { label: "Wait a minute", type: "wait" },
   },
+  // The per-user hourly cap on AI-intensive actions (manual scrapes, battle cards,
+  // discovery). It was missing here, so every trip fell through to "Something went
+  // wrong" and the API's own message — which names the cap AND when it resets — was
+  // thrown away. That is what made a re-scan refusal read as a broken button.
+  ai_rate_limit_exceeded: {
+    title: "Hourly action limit reached",
+    description:
+      "You've used this hour's manual scrapes. They resume automatically; scheduled scans keep running.",
+    action: { label: "Wait", type: "wait" },
+  },
   monitor_unreachable: {
     title: "Couldn't reach the site",
     description: "We retry automatically within the hour, no action needed.",
@@ -94,8 +104,15 @@ export function errorConfig(err: unknown): ErrorConfig {
   // Prefer the human message the API sent (patch-14 envelope), but only as the
   // description — the title/action still come from the known code so the copy
   // stays consistent. Plan/paywall codes are handled by the paywall flow, not here.
+  //
+  // The preference above was documented but never implemented: the envelope's
+  // `message` was parsed and dropped, so a 429 that says "try again in about 12
+  // minutes" surfaced as "The action didn't go through. Try again in a moment."
+  // The API writes these strings for users, so the specific one wins when present.
   const code = err instanceof ApiError ? err.code : undefined;
-  return (code && ERROR_CONFIGS[code]) || DEFAULT_CONFIG;
+  const base = (code && ERROR_CONFIGS[code]) || DEFAULT_CONFIG;
+  const sent = err instanceof ApiError ? err.data.message : undefined;
+  return typeof sent === "string" && sent.trim() ? { ...base, description: sent } : base;
 }
 
 // Surfaces a transient error as a sonner toast in three parts, never leaking the

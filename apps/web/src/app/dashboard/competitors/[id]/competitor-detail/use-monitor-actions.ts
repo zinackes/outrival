@@ -11,7 +11,7 @@ import { toastApiError, toastRescanLimit } from "@/lib/error-helpers";
 import { friendlyScrapeError } from "@/lib/scrape-errors";
 import { sourceShortLabel } from "@/lib/source-labels";
 import { paywallFromError, type PaywallReason } from "@/components/outrival/paywall-dialog";
-import { POLL_TIMEOUT_MS, POLL_INTERVAL_MS, isServerScraping } from "./shared";
+import { QUEUE_TIMEOUT_MS, POLL_INTERVAL_MS, isServerInFlight } from "./shared";
 import type { CompetitorData } from "../competitor-detail-view";
 
 // A scrape only writes the snapshot. Everything a tab reads lands in DOWNSTREAM
@@ -119,7 +119,10 @@ export function useMonitorActions(id: string) {
   useEffect(() => {
     if (!data || seededRef.current === id) return;
     seededRef.current = id;
-    const running = data.monitors.filter(isServerScraping);
+    // Queued counts as in-flight here: a job that has not been picked up yet is
+    // still coming, and dropping it from the tracker is what left a source with no
+    // outcome toast when the queue was behind.
+    const running = data.monitors.filter(isServerInFlight);
     if (running.length === 0) return;
     for (const m of running) {
       scrapingStartRef.current.set(m.id, {
@@ -166,7 +169,11 @@ export function useMonitorActions(id: string) {
           }
         } else if (updatedFailed !== null && updatedFailed !== tracker.lastFailedAt) {
           failed.push(monitorId);
-        } else if (now - tracker.startedAt > POLL_TIMEOUT_MS) {
+          // The give-up point has to cover the QUEUE wait, not just the fetch: at
+          // the old 5 minutes the poller stopped watching sources that were still
+          // waiting their turn, so their result never produced a toast and the row
+          // fell back to looking idle.
+        } else if (now - tracker.startedAt > QUEUE_TIMEOUT_MS) {
           timedOut.push(monitorId);
         }
       }
@@ -214,8 +221,8 @@ export function useMonitorActions(id: string) {
         const labels = timedOut
           .map((mid) => fresh.monitors.find((m) => m.id === mid)?.sourceType ?? mid)
           .join(", ");
-        toast.warning("Scrape still running", {
-          description: `${labels}: still in progress after 5 min, will continue in background. Refresh the page later to see results.`,
+        toast.warning("Scrape still pending", {
+          description: `${labels}: still waiting after an hour. It stays queued and will run; check back later.`,
         });
       }
     }, POLL_INTERVAL_MS);
@@ -269,8 +276,8 @@ export function useMonitorActions(id: string) {
     try {
       await api.runMonitor(monitorId);
       track("scrape_triggered", { sourceType: monitor.sourceType });
-      toast.info(`Scrape started · ${monitor.sourceType}`, {
-        description: "Polling for completion…",
+      toast.info(`Scrape queued · ${monitor.sourceType}`, {
+        description: "It runs as soon as a scanner is free. We'll tell you how it went.",
       });
       return "ok";
     } catch (e) {

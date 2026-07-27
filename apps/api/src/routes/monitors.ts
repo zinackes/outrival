@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { monitors, competitors, changes, signals, alerts, forcedRescanLog } from "@outrival/db";
-import { scrapeMonitor } from "@outrival/queue";
+import { scrapeMonitor, USER_SCRAPE_PRIORITY } from "@outrival/queue";
 import {
   MONITOR_FREQUENCIES,
   validateMonitorUrl,
@@ -300,14 +300,18 @@ monitorsRouter.post("/:id/run", aiIntensiveRateLimit, async (c) => {
     logId = log!.id;
   }
 
-  const jobId = await enqueueJob(scrapeMonitor, {
-    monitorId: monitor.id,
-    force: true,
-    // When metered, pass the log id so the worker stamps the outcome (useful/wasted ratio).
-    ...(logId
-      ? { triggeredBy: "user_forced_rescan" as const, userId: user.id, forcedRescanLogId: logId }
-      : {}),
-  });
+  const jobId = await enqueueJob(
+    scrapeMonitor,
+    {
+      monitorId: monitor.id,
+      force: true,
+      // When metered, pass the log id so the worker stamps the outcome (useful/wasted ratio).
+      ...(logId
+        ? { triggeredBy: "user_forced_rescan" as const, userId: user.id, forcedRescanLogId: logId }
+        : {}),
+    },
+    { priority: USER_SCRAPE_PRIORITY },
+  );
 
   if (logId) {
     await db.update(forcedRescanLog).set({ taskId: jobId }).where(eq(forcedRescanLog.id, logId));
@@ -375,13 +379,17 @@ monitorsRouter.post("/:id/force-rescan", async (c) => {
     logId = log!.id;
   }
 
-  const jobId = await enqueueJob(scrapeMonitor, {
-    monitorId: monitor.id,
-    force: true,
-    ...(logId
-      ? { triggeredBy: "user_forced_rescan" as const, userId: user.id, forcedRescanLogId: logId }
-      : {}),
-  });
+  const jobId = await enqueueJob(
+    scrapeMonitor,
+    {
+      monitorId: monitor.id,
+      force: true,
+      ...(logId
+        ? { triggeredBy: "user_forced_rescan" as const, userId: user.id, forcedRescanLogId: logId }
+        : {}),
+    },
+    { priority: USER_SCRAPE_PRIORITY },
+  );
 
   if (logId) {
     await db.update(forcedRescanLog).set({ taskId: jobId }).where(eq(forcedRescanLog.id, logId));

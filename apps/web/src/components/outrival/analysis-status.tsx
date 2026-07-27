@@ -32,7 +32,7 @@ type StageMeta = {
 // the in-flight + stuck stages get an entry.
 const STAGE_META: Partial<Record<AnalysisStage, StageMeta>> = {
   queued: {
-    label: "Queued, first scan starts soon",
+    label: "Waiting in the scan queue",
     short: "Queued",
     Icon: Clock,
     spin: false,
@@ -129,7 +129,7 @@ const PHASE_ORDER: Phase[] = ["scan", "summary", "ready"];
 
 // One line under the headline describing what's happening right now.
 const PROGRESS_SUB: Partial<Record<AnalysisStage, string>> = {
-  queued: "Queued, the first scan starts in a moment.",
+  queued: "Waiting in the scan queue. It starts as soon as a scanner is free.",
   scraping: "Scanning the site for positioning, pricing, hiring and more.",
   summarizing: "Site scanned. Writing the AI summary now.",
 };

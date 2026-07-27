@@ -84,11 +84,23 @@ export type Empty = Record<string, never>;
 // the light worker and the queue Postgres, and each in-flight scrape can hold a
 // Chromium. There is no second lane to tune — the slow lane was retired with L3/L4
 // (see above), so this single number is the whole scrape concurrency budget.
+// expireIn is 15 min, not the 5 it was: prod runs already reach 300s (a pricing
+// capture measured 302.7s), and pg-boss cannot ABORT a JS handler when a job
+// expires — it just marks the job expired and retries it, while the original
+// handler keeps scraping. So a ceiling set at the real p100 did not cap anything;
+// it duplicated the slowest scrapes and left the monitor row stamped in-flight
+// with no failure to explain it. 15 min sits above every observed run.
 export const scrapeMonitor = defineJob<ScrapeMonitorPayload>("scrape-monitor", {
-  expireInSeconds: 300,
+  expireInSeconds: 900,
   concurrency: Number(process.env.SCRAPE_CONCURRENCY ?? 3),
   deadLetter: PIPELINE_DLQ,
 });
+
+// Priority for a scrape someone is WAITING on, versus the hourly fan-out that
+// nobody is watching. pg-boss fetches highest priority first, so a click no longer
+// queues behind up to a thousand cron-seeded monitors — which is how a 13-second
+// hiring scrape ended up 35 minutes late. Cron enqueues stay at the default 0.
+export const USER_SCRAPE_PRIORITY = 100;
 
 export const classifyChange = defineJob<ClassifyChangePayload>("classify-change", {
   expireInSeconds: 120,

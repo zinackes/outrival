@@ -10,7 +10,7 @@ import {
   user as authUser,
   session as authSession,
 } from "@outrival/db";
-import { scrapeMonitor } from "@outrival/queue";
+import { scrapeMonitor, USER_SCRAPE_PRIORITY } from "@outrival/queue";
 import { auth } from "../../lib/auth";
 import { eraseOrg } from "../../lib/erase-org";
 import { enqueueJob } from "../../lib/queue";
@@ -136,7 +136,11 @@ usersRouter.post("/monitors/:id/force-scrape", async (c) => {
   const monitor = await db.query.monitors.findFirst({ where: eq(monitors.id, id) });
   if (!monitor) return c.json({ error: "Not found" }, 404);
 
-  const jobId = await enqueueJob(scrapeMonitor, { monitorId: id, force: true });
+  const jobId = await enqueueJob(scrapeMonitor, { monitorId: id, force: true }, {
+
+    priority: USER_SCRAPE_PRIORITY,
+
+  });
   await logAudit(c.get("user").email, "force_scrape", "monitor", id, {
     competitorId: monitor.competitorId,
     sourceType: monitor.sourceType,

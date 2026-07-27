@@ -3,6 +3,7 @@ import {
   deriveAnalysisStatus,
   ANALYSIS_SUMMARY_GRACE_MS,
   ANALYSIS_SCRAPE_TIMEOUT_MS,
+  ANALYSIS_QUEUE_TIMEOUT_MS,
   type AnalysisMonitorInput,
 } from "./analysis-status";
 
@@ -11,9 +12,16 @@ const anchor = (o: Partial<AnalysisMonitorInput>): AnalysisMonitorInput => ({
   lastRunAt: null,
   lastFailedAt: null,
   scrapeStartedAt: null,
+  scrapePickedUpAt: null,
   markedUnscrapable: false,
   isActive: true,
   ...o,
+});
+
+/** A scrape a worker has actually taken: both stamps set, pickup after enqueue. */
+const running = (agoMs: number): Partial<AnalysisMonitorInput> => ({
+  scrapeStartedAt: new Date(NOW - agoMs - 1_000),
+  scrapePickedUpAt: new Date(NOW - agoMs),
 });
 
 test("ready when a summary exists, regardless of scrape state", () => {
@@ -31,23 +39,49 @@ test("queued: seeded, never scraped, no scrape in flight", () => {
   expect(s).toEqual({ stage: "queued", pending: true });
 });
 
-test("scraping: scrapeStartedAt is fresh and after the last terminal event", () => {
-  const s = deriveAnalysisStatus(
-    { hasSummary: false, anchor: anchor({ scrapeStartedAt: new Date(NOW - 10_000) }) },
-    NOW,
-  );
+test("scraping: a worker picked the job up", () => {
+  const s = deriveAnalysisStatus({ hasSummary: false, anchor: anchor(running(10_000)) }, NOW);
   expect(s).toEqual({ stage: "scraping", pending: true });
 });
 
-test("a stale scrapeStartedAt past the timeout is no longer 'scraping'", () => {
+// The distinction this module exists to draw: enqueued is not the same as running.
+// Prod queue waits reached an hour, so calling that "scraping" told the user we
+// were fetching a site nothing had opened yet.
+test("queued: enqueued but no worker has taken it", () => {
+  const s = deriveAnalysisStatus(
+    { hasSummary: false, anchor: anchor({ scrapeStartedAt: new Date(NOW - 20 * 60_000) }) },
+    NOW,
+  );
+  expect(s).toEqual({ stage: "queued", pending: true });
+});
+
+test("a stale pickup past the scrape timeout is no longer 'scraping'", () => {
   const s = deriveAnalysisStatus(
     {
       hasSummary: false,
-      anchor: anchor({ scrapeStartedAt: new Date(NOW - ANALYSIS_SCRAPE_TIMEOUT_MS - 1) }),
+      anchor: anchor(running(ANALYSIS_SCRAPE_TIMEOUT_MS + 1)),
     },
     NOW,
   );
-  expect(s.stage).toBe("queued");
+  expect(s.stage).not.toBe("scraping");
+});
+
+// A never-scraped source stays "queued" however old the enqueue is — the hourly
+// cron keeps re-enqueuing it, so it genuinely is still waiting. The ceiling is for
+// the other case: a re-scan whose job died leaves a stamp nothing will ever clear,
+// and past the ceiling the state the source had before must win again.
+test("an enqueue older than the queue ceiling falls back to the settled state", () => {
+  const s = deriveAnalysisStatus(
+    {
+      hasSummary: false,
+      anchor: anchor({
+        lastFailedAt: new Date(NOW - 2 * ANALYSIS_QUEUE_TIMEOUT_MS),
+        scrapeStartedAt: new Date(NOW - ANALYSIS_QUEUE_TIMEOUT_MS - 1),
+      }),
+    },
+    NOW,
+  );
+  expect(s).toEqual({ stage: "needs_attention", pending: false });
 });
 
 test("summarizing: scraped within grace, summary still missing", () => {
@@ -116,12 +150,28 @@ test("a fresh retry after a failed first scrape reads as scraping again", () => 
       hasSummary: false,
       anchor: anchor({
         lastFailedAt: new Date(NOW - 60_000), // earlier failure
-        scrapeStartedAt: new Date(NOW - 5_000), // user hit "Retry"
+        ...running(5_000), // user hit "Retry", a worker took it
       }),
     },
     NOW,
   );
   expect(s).toEqual({ stage: "scraping", pending: true });
+});
+
+// The retry is in the queue but not yet picked up: still pending, still visible,
+// but honest about which of the two it is.
+test("a retry still waiting its turn reads as queued, not as the old failure", () => {
+  const s = deriveAnalysisStatus(
+    {
+      hasSummary: false,
+      anchor: anchor({
+        lastFailedAt: new Date(NOW - 60_000),
+        scrapeStartedAt: new Date(NOW - 5_000),
+      }),
+    },
+    NOW,
+  );
+  expect(s).toEqual({ stage: "queued", pending: true });
 });
 
 test("a recent success supersedes an older failure (summarizing, not needs_attention)", () => {
@@ -144,7 +194,7 @@ test("a re-scan in flight after a prior success reads as scraping", () => {
       hasSummary: false,
       anchor: anchor({
         lastRunAt: new Date(NOW - ANALYSIS_SUMMARY_GRACE_MS - 100_000), // old success
-        scrapeStartedAt: new Date(NOW - 5_000), // fresh re-scan
+        ...running(5_000), // fresh re-scan, already picked up
       }),
     },
     NOW,

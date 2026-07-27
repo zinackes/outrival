@@ -177,6 +177,9 @@ function formatClaim(value: number, unit: string | null, context: string): strin
 // page ("This page appears to be down or gone." under a green last-scan). A capture
 // is the strongest possible evidence against every one of them, so clear them all.
 const SCRAPE_SUCCESS_RESET = {
+  // The run is over, so it is neither queued nor in progress any more. Paired with
+  // the scrapeStartedAt: null every caller already sets alongside this spread.
+  scrapePickedUpAt: null,
   lastFailedAt: null,
   lastError: null,
   consecutiveFailures: 0,
@@ -286,6 +289,7 @@ async function handleRefusal(
     .update(monitors)
     .set({
       scrapeStartedAt: null,
+      scrapePickedUpAt: null,
       isActive: false,
       markedUnscrapable: true,
       refusedAt: new Date(),
@@ -336,6 +340,7 @@ async function handleBenignSkip(
     .update(monitors)
     .set({
       scrapeStartedAt: null,
+      scrapePickedUpAt: null,
       lastRunAt: new Date(),
       nextRunAt: computeNextRun(frequency, monitor.lastChangedAt, monitor.createdAt),
       consecutiveFailures: 0,
@@ -577,9 +582,25 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
       });
       if (recent) {
         logger.log("Recent snapshot exists, skipping", { snapshotId: recent.id });
+        // This is a terminal outcome like any other, so release the in-flight
+        // stamp the enqueuer set. Without it the source stays "in progress"
+        // forever from the UI's point of view — nothing else ever clears it,
+        // because no run is coming.
+        await db
+          .update(monitors)
+          .set({ scrapeStartedAt: null, scrapePickedUpAt: null })
+          .where(eq(monitors.id, monitor.id));
         return { skipped: true, reason: "recent_snapshot" };
       }
     }
+
+    // Past the last early return: a worker now genuinely owns this scrape. The
+    // stamp is what tells "Queued" from "Scanning" on the source row — up to now
+    // the job may have been sitting in the queue for the best part of an hour.
+    await db
+      .update(monitors)
+      .set({ scrapePickedUpAt: new Date() })
+      .where(eq(monitors.id, monitor.id));
 
     const configUrl =
       monitor.config && typeof monitor.config === "object" && "url" in monitor.config
@@ -1893,6 +1914,7 @@ export async function onScrapeMonitorFailure({
       .update(monitors)
       .set({
         scrapeStartedAt: null,
+        scrapePickedUpAt: null,
         nextRunAt,
         lastFailedAt: new Date(),
         lastError: message.slice(0, 1000),

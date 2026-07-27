@@ -84,16 +84,42 @@ function blockedResourceTypes(options: PatchrightOptions): Set<string> {
 }
 
 // One browser per egress tier: direct and datacenter launch with different proxy
-// configs, so they cannot share a single Chromium. Lazily launched, reused across
-// scrapes within a worker run (the run is an isolated machine).
+// configs, so they cannot share a single Chromium. Lazily launched and reused.
+//
+// This pool is process-global, and the process is no longer single-threaded: the
+// pg-boss worker runs SCRAPE_CONCURRENCY scrapes at once (3 by default), where
+// Trigger.dev gave each run its own machine. Everything below exists to make the
+// pool safe under that concurrency.
 const browserByTier: Partial<Record<ProxyTier, Browser>> = {};
+
+// In-flight launches, so N concurrent callers share ONE Chromium instead of each
+// launching their own and clobbering the map. The losers of that race were never
+// reachable again — nothing held a handle to close them — so they stayed resident
+// until the box ran out of memory, which is what a 180s `launch` timeout looks
+// like from the inside.
+const launchingByTier: Partial<Record<ProxyTier, Promise<Browser>>> = {};
+
+// How many renders are currently holding a pooled browser, plus whether a teardown
+// was asked for while they were. See closePatchrightPool.
+let activeRenders = 0;
+let closeRequested = false;
 
 async function getBrowser(tier: ProxyTier): Promise<Browser> {
   const existing = browserByTier[tier];
   if (existing && existing.isConnected()) return existing;
-  const browser = await chromium.launch(browserLaunchOptions(tier));
-  browserByTier[tier] = browser;
-  return browser;
+  const pending = launchingByTier[tier];
+  if (pending) return pending;
+  const launch = chromium
+    .launch(browserLaunchOptions(tier))
+    .then((browser) => {
+      browserByTier[tier] = browser;
+      return browser;
+    })
+    .finally(() => {
+      delete launchingByTier[tier];
+    });
+  launchingByTier[tier] = launch;
+  return launch;
 }
 
 /**
@@ -104,17 +130,35 @@ async function getBrowser(tier: ProxyTier): Promise<Browser> {
 export async function closeTierBrowser(tier: ProxyTier): Promise<void> {
   const browser = browserByTier[tier];
   if (!browser) return;
+  // Same hazard as closePatchrightPool: this fires BETWEEN two cascade levels of
+  // one job, when that job holds no lease — but a concurrent job may be rendering
+  // on this very browser. Leave it alone then; the RAM it saves is one Chromium,
+  // the render it kills costs a failed scrape and a retry.
+  if (activeRenders > 0) return;
   delete browserByTier[tier];
   await browser.close().catch(() => {});
 }
 
 /**
  * Close every pooled Chromium browser and empty the pool. Contexts are always
- * closed per-scrape, but the browsers persist (deliberately, for intra-run reuse).
- * A run must call this in a finally so a long-lived worker process (pg-boss) does
- * not leak browsers across jobs. No-op for L0-only scrapes (pool never populated).
+ * closed per-scrape, but the browsers persist (deliberately, for reuse).
+ * Every scrape calls this in a finally so a long-lived worker process (pg-boss)
+ * does not leak browsers across jobs. No-op for L0-only scrapes (pool never
+ * populated).
+ *
+ * DEFERRED while other renders are in flight. The pool is process-global and jobs
+ * run concurrently, so an unconditional close tore the browser out from under the
+ * scrapes still using it — the caller then saw "Target page, context or browser
+ * has been closed", failed, retried, and relaunched, which is how three concurrent
+ * scrapes managed less throughput than one. The last render out does the closing,
+ * so the RAM intent survives and no live page is ever pulled.
  */
 export async function closePatchrightPool(): Promise<void> {
+  if (activeRenders > 0) {
+    closeRequested = true;
+    return;
+  }
+  closeRequested = false;
   const browsers = Object.entries(browserByTier);
   for (const [tier] of browsers) delete browserByTier[tier as ProxyTier];
   await Promise.all(browsers.map(([, b]) => b?.close().catch(() => {})));
@@ -130,6 +174,25 @@ export async function scrapeWithPatchright(
   url: string,
   tier: ProxyTier,
   options: PatchrightOptions = {},
+): Promise<ScrapeResult> {
+  // Hold a lease on the process-global pool for the whole render — acquiring the
+  // browser included, since a concurrent teardown between getBrowser and newPage
+  // is exactly how "Target page, context or browser has been closed" happened.
+  activeRenders++;
+  try {
+    return await renderWithPatchright(url, tier, options);
+  } finally {
+    activeRenders--;
+    // A sibling job asked for the pool while this render held it: last one out
+    // does the closing it deferred.
+    if (activeRenders === 0 && closeRequested) await closePatchrightPool();
+  }
+}
+
+async function renderWithPatchright(
+  url: string,
+  tier: ProxyTier,
+  options: PatchrightOptions,
 ): Promise<ScrapeResult> {
   const startedAt = Date.now();
   const browser = await getBrowser(tier);

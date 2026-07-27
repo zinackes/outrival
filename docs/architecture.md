@@ -114,7 +114,14 @@ monitors               id, competitor_id, source_type, frequency, config (jsonb)
                        is_active, requires_level (0|1|2|3|4|null — patch-20),
                        requires_level_since, requires_level_last_reprobe,
                        consecutive_failures, marked_unscrapable, last_run_at, next_run_at,
-                       last_changed_at, created_at
+                       last_changed_at, created_at,
+                       scrape_started_at (ENQUEUED — stamped by the API/seeder),
+                       scrape_picked_up_at (migration 0052 — stamped by the WORKER when
+                       the handler actually starts). Both cleared on every terminal
+                       outcome. The gap between them IS the queue wait, and it is what
+                       lets the UI say "Queued" instead of claiming to scan a page no
+                       worker has opened. Measured on prod 2026-07-27: p50 51s but 25 of
+                       149 seeded monitors waited >5 min and one waited 60 min
 
 snapshots              id, monitor_id, r2_key, content_hash, scraped_at,
                        status (success|failed|partial), etag, last_modified,
@@ -1220,6 +1227,25 @@ BUILD_TIME=                  # build timestamp → GET /api/version. In Coolify:
 
 ## Décisions architecturales clés
 
+- **Attendre son tour est un état, pas un scrape (2026-07-27)** — l'UI stampait
+  `scrape_started_at` à l'ENQUEUE et appelait ça « Scanning the site », alors que
+  le travail commence quand un worker prend le job. Sur prod, ajouter ~10
+  concurrents sème 149 monitors : p50 51s d'attente, mais 25 au-delà de 5 min et
+  un à 60 min (source `jobs` d'Accenture : 35 min d'attente pour un scrape de
+  13s). Trois conséquences, corrigées ensemble. (1) Le worker stampe
+  `scrape_picked_up_at` : « Queued » (horloge) et « Scanning » (spinner) sont
+  désormais deux états distincts, dans `deriveAnalysisStatus` comme sur la ligne
+  de source. (2) Les plafonds de fraîcheur sont séparés — 15 min pour un job
+  PRIS, 60 min pour un job EN ATTENTE. L'ancien plafond unique de 5 min faisait
+  disparaître l'état en cours pile quand l'attente devenait longue, donc la
+  source repassait « stale » alors qu'elle était toujours dans la queue : le
+  symptôme exact qui faisait relancer à la main. (3) Les enqueues déclenchées par
+  un user portent `USER_SCRAPE_PRIORITY` ; le fan-out horaire reste à 0, donc un
+  clic ne fait plus la queue derrière ~1200 monitors de cron.
+  `scrape-monitor.expireInSeconds` passe de 300 à 900 : un run mesuré à 302,7s
+  franchissait déjà la ligne, et pg-boss ne peut PAS interrompre un handler JS —
+  l'expiration ne coupait rien, elle dupliquait le scrape le plus lent et laissait
+  la ligne monitor marquée en vol sans échec pour l'expliquer.
 - **La sévérité quitte le modèle (taxonomie v2 — matérialité)** — le classifieur
   choisissait librement une bande à partir d'une rubrique en prose, ce qui faisait
   de la sortie la plus lourde de conséquences du pipeline (un `critical` bypasse

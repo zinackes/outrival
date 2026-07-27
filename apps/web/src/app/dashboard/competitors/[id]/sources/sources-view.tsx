@@ -36,7 +36,7 @@ import { sourceShortLabel } from "@/lib/source-labels";
 import { ListError } from "@/components/outrival/list-error";
 import { toastApiError } from "@/lib/error-helpers";
 import CompetitorDetailLoading from "../detail-skeleton";
-import { isServerScraping } from "../competitor-detail/shared";
+import { isServerScraping, isServerQueued } from "../competitor-detail/shared";
 import { lastScanLabel, monitorStatus } from "../competitor-detail/monitor-status";
 import { useMonitorActions } from "../competitor-detail/use-monitor-actions";
 import { CustomSources } from "./custom-sources";
@@ -552,7 +552,14 @@ export function SourcesView({ id }: { id: string }) {
                 state === "not_available"
                   ? sourceCopy({ state, sourceType }).message
                   : monitor
-                    ? lastScanLabel(monitor, monitorStatus(monitor, isRunning(monitor)))
+                    ? lastScanLabel(
+                        monitor,
+                        monitorStatus(
+                          monitor,
+                          isRunning(monitor),
+                          !isRunning(monitor) && isServerQueued(monitor),
+                        ),
+                      )
                     : "Not seeded yet";
               return (
                 <li

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { scrapeMonitor } from "@outrival/queue";
+import { scrapeMonitor, USER_SCRAPE_PRIORITY } from "@outrival/queue";
 import {
   competitors,
   monitors,
@@ -239,6 +239,7 @@ myProductRouter.get("/", async (c) => {
             lastRunAt: homepageSelfMonitor.lastRunAt,
             lastFailedAt: homepageSelfMonitor.lastFailedAt,
             scrapeStartedAt: homepageSelfMonitor.scrapeStartedAt,
+            scrapePickedUpAt: homepageSelfMonitor.scrapePickedUpAt,
             markedUnscrapable: homepageSelfMonitor.markedUnscrapable,
             isActive: homepageSelfMonitor.isActive,
           }
@@ -405,7 +406,9 @@ myProductRouter.post("/site", async (c) => {
     : seeded;
   for (const m of toScrape) {
     try {
-      await enqueueJob(scrapeMonitor, { monitorId: m.id, force: true });
+      await enqueueJob(scrapeMonitor, { monitorId: m.id, force: true }, {
+        priority: USER_SCRAPE_PRIORITY,
+      });
     } catch (e) {
       console.error("Failed to trigger self scrape", { monitorId: m.id, error: String(e) });
     }
@@ -477,7 +480,9 @@ myProductRouter.post("/repo", async (c) => {
   }
 
   try {
-    await enqueueJob(scrapeMonitor, { monitorId, force: true });
+    await enqueueJob(scrapeMonitor, { monitorId, force: true }, {
+      priority: USER_SCRAPE_PRIORITY,
+    });
   } catch (e) {
     console.error("Failed to trigger self repo scrape", { monitorId, error: String(e) });
   }
@@ -570,13 +575,21 @@ myProductRouter.post("/rescan", aiIntensiveRateLimit, async (c) => {
       usageToday++;
     }
     try {
-      const jobId = await enqueueJob(scrapeMonitor, {
-        monitorId: m.id,
-        force: true,
-        ...(logId
-          ? { triggeredBy: "user_forced_rescan" as const, userId: user.id, forcedRescanLogId: logId }
-          : {}),
-      });
+      const jobId = await enqueueJob(
+        scrapeMonitor,
+        {
+          monitorId: m.id,
+          force: true,
+          ...(logId
+            ? {
+                triggeredBy: "user_forced_rescan" as const,
+                userId: user.id,
+                forcedRescanLogId: logId,
+              }
+            : {}),
+        },
+        { priority: USER_SCRAPE_PRIORITY },
+      );
       if (logId) {
         await db.update(forcedRescanLog).set({ taskId: jobId }).where(eq(forcedRescanLog.id, logId));
       }

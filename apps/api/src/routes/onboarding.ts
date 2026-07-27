@@ -26,7 +26,13 @@ import {
   type ProductProfile,
 } from "@outrival/ai";
 import { findSimilarCompanies } from "@outrival/scrapers/discovery";
-import { scrapeMonitor, notifyOnboardingAnalysis, aiVisibilityTeaser, sendWelcomeDigest } from "@outrival/queue";
+import {
+  scrapeMonitor,
+  notifyOnboardingAnalysis,
+  aiVisibilityTeaser,
+  sendWelcomeDigest,
+  USER_SCRAPE_PRIORITY,
+} from "@outrival/queue";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
@@ -161,7 +167,9 @@ async function createSelfCompetitor(orgId: string) {
   const selfMonitorRows = await db.insert(monitors).values(monitorRows).returning();
   for (const m of selfMonitorRows) {
     try {
-      await enqueueJob(scrapeMonitor, { monitorId: m.id, force: true });
+      await enqueueJob(scrapeMonitor, { monitorId: m.id, force: true }, {
+        priority: USER_SCRAPE_PRIORITY,
+      });
     } catch (e) {
       console.error("Failed to trigger self scrape", { monitorId: m.id, error: String(e) });
     }
@@ -734,7 +742,9 @@ onboardingRouter.post("/complete", async (c) => {
 
     for (const m of monitorRows) {
       try {
-        await enqueueJob(scrapeMonitor, { monitorId: m.id, force: true });
+        await enqueueJob(scrapeMonitor, { monitorId: m.id, force: true }, {
+          priority: USER_SCRAPE_PRIORITY,
+        });
       } catch (e) {
         console.error("Failed to trigger initial scrape", { monitorId: m.id, error: String(e) });
       }

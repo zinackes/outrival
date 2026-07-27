@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { scrapeMonitor } from "@outrival/queue";
+import { scrapeMonitor, USER_SCRAPE_PRIORITY } from "@outrival/queue";
 import { monitorAlternatives, monitors, competitors } from "@outrival/db";
 import { validateMonitorUrl, computeNextRun } from "@outrival/shared";
 import { db } from "../lib/db";
@@ -89,7 +89,9 @@ monitorAlternativesRouter.post("/:id/accept", async (c) => {
         nextRunAt: computeNextRun(monitor.frequency, monitor.lastChangedAt, monitor.createdAt),
       })
       .where(eq(monitors.id, monitor.id));
-    runId = await enqueueJob(scrapeMonitor, { monitorId: monitor.id, force: true });
+    runId = await enqueueJob(scrapeMonitor, { monitorId: monitor.id, force: true }, {
+      priority: USER_SCRAPE_PRIORITY,
+    });
     await db
       .update(monitors)
       .set({ scrapeStartedAt: new Date(), lastFailedAt: null, lastError: null })
@@ -144,7 +146,11 @@ monitorAlternativesRouter.post("/:monitorId/resume", async (c) => {
       ),
     );
 
-  const jobId = await enqueueJob(scrapeMonitor, { monitorId: monitor.id, force: true });
+  const jobId = await enqueueJob(scrapeMonitor, { monitorId: monitor.id, force: true }, {
+
+    priority: USER_SCRAPE_PRIORITY,
+
+  });
   return c.json({ ok: true, runId: jobId });
 });
 
@@ -197,7 +203,11 @@ monitorAlternativesRouter.post("/:monitorId/set-url", async (c) => {
       ),
     );
 
-  const jobId = await enqueueJob(scrapeMonitor, { monitorId: monitor.id, force: true });
+  const jobId = await enqueueJob(scrapeMonitor, { monitorId: monitor.id, force: true }, {
+
+    priority: USER_SCRAPE_PRIORITY,
+
+  });
   return c.json({ ok: true, runId: jobId });
 });
 

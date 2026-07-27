@@ -4,6 +4,8 @@ import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { Loader2, Plus, Play, Sparkles, ChevronDown, Lock } from "lucide-react";
 import {
+  ANALYSIS_SCRAPE_TIMEOUT_MS,
+  ANALYSIS_QUEUE_TIMEOUT_MS,
   PLAN_LABELS,
   minPlanForFrequency,
   planIncludesFrequency,
@@ -19,24 +21,47 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ChartSkeleton } from "@/components/dashboard/skeletons";
 import { TabSection } from "@/components/outrival/tab-shell";
 
-// A monitor scrape can run longer than this before we stop treating a stale
-// scrapeStartedAt as "in progress".
-export const POLL_TIMEOUT_MS = 300_000;
+// How long a scrape a worker has PICKED UP is still believed to be running, and
+// how long one that is merely enqueued is still believed to be waiting. They differ
+// by an order of magnitude on purpose: fetching a site takes seconds to minutes,
+// but waiting for a free scanner routinely takes half an hour when the hourly
+// fan-out is ahead of you. Both mirror the shared analysis-status ceilings so the
+// source row and the analysis banner never contradict each other.
+export const POLL_TIMEOUT_MS = ANALYSIS_SCRAPE_TIMEOUT_MS;
+export const QUEUE_TIMEOUT_MS = ANALYSIS_QUEUE_TIMEOUT_MS;
 
 // How often an in-flight job (scrape, AI summary) is re-checked.
 export const POLL_INTERVAL_MS = 3000;
 
-// A monitor is "running" from the server's point of view when its scrape was
-// started after the last terminal event (success or failure) and hasn't blown
-// past the poll timeout. This lets the in-progress state survive a page refresh
-// even though the client-side `scrapingIds` set is reset on reload.
-export function isServerScraping(m: Monitor): boolean {
-  if (!m.scrapeStartedAt) return false;
+// Is this monitor's scrape request still open — enqueued or running — from the
+// server's point of view? Both stamps are cleared on every terminal outcome, so a
+// stamp newer than the last success/failure means "this request is still open".
+// Survives a page refresh, unlike the client-side `scrapingIds` set.
+function inFlightSince(m: Monitor): number | null {
+  if (!m.scrapeStartedAt) return null;
   const started = new Date(m.scrapeStartedAt).getTime();
   const lastRun = m.lastRunAt ? new Date(m.lastRunAt).getTime() : 0;
   const lastFailed = m.lastFailedAt ? new Date(m.lastFailedAt).getTime() : 0;
-  if (started <= lastRun || started <= lastFailed) return false;
-  return Date.now() - started < POLL_TIMEOUT_MS;
+  if (started <= lastRun || started <= lastFailed) return null;
+  return started;
+}
+
+/** A worker has the job and is fetching the site right now. */
+export function isServerScraping(m: Monitor): boolean {
+  if (inFlightSince(m) === null || !m.scrapePickedUpAt) return false;
+  return Date.now() - new Date(m.scrapePickedUpAt).getTime() < POLL_TIMEOUT_MS;
+}
+
+/** Requested, but no worker has taken it yet — it is sitting in the queue. */
+export function isServerQueued(m: Monitor): boolean {
+  const started = inFlightSince(m);
+  if (started === null || m.scrapePickedUpAt) return false;
+  return Date.now() - started < QUEUE_TIMEOUT_MS;
+}
+
+/** Either of the above — for callers that only need "something is happening". */
+export function isServerInFlight(m: Monitor): boolean {
+  return isServerScraping(m) || isServerQueued(m);
 }
 
 export type MonitorSourceProps = {

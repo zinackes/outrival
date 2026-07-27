@@ -65,6 +65,14 @@ function markKind(bar: Bar): "change" | "failed" | null {
   return bar.segments.some((s) => s.kind === "change") ? "change" : null;
 }
 
+/** One hour of the strip, as the log below reads it. */
+export interface WatchHour {
+  /** The hour's own bounds, so the log lists exactly the runs the bar counted. */
+  from: string;
+  to: string;
+  label: string;
+}
+
 export function WatchStrip({
   buckets,
   findings,
@@ -72,6 +80,8 @@ export function WatchStrip({
   loading,
   failed,
   onRetry,
+  onSelectHour,
+  selectedFrom,
 }: {
   buckets: ActivityBucket[];
   // The named findings of the window: what caps an hour that moved with the
@@ -83,6 +93,12 @@ export function WatchStrip({
   // ran, which is the one reading it must never give by accident. Say so instead.
   failed: boolean;
   onRetry: () => void;
+  // Picking an hour narrows the log below to it: the strip says an hour moved,
+  // and this is how the reader gets from that to the runs behind it.
+  onSelectHour: (hour: WatchHour) => void;
+  // The hour the log is currently narrowed to, so the strip keeps saying which
+  // one it is after the page has scrolled away from the chip.
+  selectedFrom: string | null;
 }) {
   // The strip is drawn relative to the browser's clock, so it can only be built
   // after mount: rendering it during SSR would place `now` at request time and
@@ -230,38 +246,70 @@ export function WatchStrip({
   const stripRef = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState<number | null>(null);
 
-  const onPointerMove = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
+  const slotAt = useCallback(
+    (clientX: number): number | null => {
       const el = stripRef.current;
-      if (!el || !model) return;
+      if (!el || !model) return null;
       const rect = el.getBoundingClientRect();
       const pastWidth = (rect.width * PAST_PCT) / 100;
-      const x = e.clientX - rect.left;
-      if (x < 0 || x > pastWidth) {
-        setHovered(null);
-        return;
-      }
+      const x = clientX - rect.left;
+      if (x < 0 || x > pastWidth) return null;
       // The window ends on `now` mid-hour, so x resolves through time rather than
       // through equal columns.
       const at = model.windowStart + (x / pastWidth) * model.span;
       const index = Math.floor((at - model.windowStart) / HOUR);
-      setHovered(Math.min(SLOTS - 1, Math.max(0, SLOTS - 1 - index)));
+      return Math.min(SLOTS - 1, Math.max(0, SLOTS - 1 - index));
     },
     [model],
   );
 
-  // Arrow keys walk the same cursor, so the reading is reachable without a mouse.
-  const onKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-    e.preventDefault();
-    setHovered((prev) => {
-      const from = prev ?? 0;
-      const next = e.key === "ArrowLeft" ? from + 1 : from - 1;
-      return Math.min(SLOTS - 1, Math.max(0, next));
-    });
-  }, []);
+  const onPointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => setHovered(slotAt(e.clientX)),
+    [slotAt],
+  );
+
+  // Hand the hour to the log. An hour where nothing ran has no runs to show, so
+  // it is not selectable: narrowing to it would answer a click with an empty list.
+  const select = useCallback(
+    (slot: number | null) => {
+      const bar = slot == null ? null : (model?.bars.find((b) => b.slot === slot) ?? null);
+      if (!bar || bar.checks === 0) return;
+      onSelectHour({
+        from: bar.start.toISOString(),
+        // The whole clock hour, not the bar's drawn end: slot 0 stops at the `now`
+        // this strip last redrew on, and a run recorded since then belongs to the
+        // hour the reader just clicked.
+        to: new Date(bar.start.getTime() + HOUR).toISOString(),
+        label: `${formatTime(bar.start)} to ${bar.slot === 0 ? "now" : formatTime(bar.end)}`,
+      });
+    },
+    [model, onSelectHour],
+  );
+
+  // Arrow keys walk the same cursor and Enter picks the hour under it, so the
+  // reading and the filter are both reachable without a mouse.
+  const onKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        select(hovered);
+        return;
+      }
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      e.preventDefault();
+      setHovered((prev) => {
+        const from = prev ?? 0;
+        const next = e.key === "ArrowLeft" ? from + 1 : from - 1;
+        return Math.min(SLOTS - 1, Math.max(0, next));
+      });
+    },
+    [hovered, select],
+  );
 
   const hoveredBar = hovered == null ? null : (model?.bars.find((b) => b.slot === hovered) ?? null);
+  const selectedBar = selectedFrom
+    ? (model?.bars.find((b) => b.start.toISOString() === selectedFrom) ?? null)
+    : null;
 
   const next = upcoming[0] ?? null;
 
@@ -313,16 +361,20 @@ export function WatchStrip({
 
       <div
         ref={stripRef}
-        className="relative h-20 border-b border-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        className={cn(
+          "relative h-20 border-b border-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+          hoveredBar && hoveredBar.checks > 0 && "cursor-pointer",
+        )}
         onPointerMove={onPointerMove}
         onPointerLeave={() => setHovered(null)}
+        onClick={(e) => select(slotAt(e.clientX))}
         onKeyDown={onKeyDown}
         onBlur={() => setHovered(null)}
         tabIndex={model ? 0 : -1}
         role="img"
         aria-label={
           model
-            ? `${model.checks} checks over the last 24 hours, ${model.findingCount} of them found something. Use the arrow keys to read an hour at a time.`
+            ? `${model.checks} checks over the last 24 hours, ${model.findingCount} of them found something. Use the arrow keys to read an hour at a time, and Enter to list that hour's checks below.`
             : "Checks over the last 24 hours"
         }
       >
@@ -351,6 +403,16 @@ export function WatchStrip({
               <div
                 className="absolute inset-y-0 animate-in bg-surface-3 fade-in-0 transition-[left,width] duration-150 ease-out"
                 style={{ left: `${hoveredBar.left}%`, width: `${hoveredBar.width}%` }}
+                aria-hidden
+              />
+            )}
+
+            {/* The hour the log is narrowed to. An outline rather than a second
+                fill, so it stays legible under the cursor's own band. */}
+            {selectedBar && (
+              <div
+                className="absolute inset-y-0 rounded-t-sm border-x border-t border-dashed border-foreground"
+                style={{ left: `${selectedBar.left}%`, width: `${selectedBar.width}%` }}
                 aria-hidden
               />
             )}
@@ -545,16 +607,36 @@ function BucketCard({ bar }: { bar: Bar }) {
           </>
         )}
       </div>
+      {/* One outcome per line, coloured the way the bar under it is: a change and
+          an unreachable source read alike in plain muted text, which is exactly
+          the distinction this card exists to make. */}
       {bar.findings.map((f, i) => (
-        <div key={`${f.recordedAt}-${i}`} className="whitespace-nowrap text-dense">
-          <span className="text-foreground">{f.competitorName}</span>
-          <span className="text-muted-foreground">
-            {" "}
-            {sourceLabel(f.sourceType).toLowerCase()}{" "}
-            {f.kind === "failed" ? "could not be reached" : "found a change"}
+        <div
+          key={`${f.recordedAt}-${i}`}
+          className="flex items-center gap-1.5 whitespace-nowrap text-dense"
+        >
+          <i
+            className={cn(
+              "h-2.5 w-[3px] shrink-0 rounded-t-[1px]",
+              f.kind === "failed" ? "bg-critical" : "bg-foreground",
+            )}
+            aria-hidden
+          />
+          <span>
+            <span className="font-medium text-foreground">{f.competitorName}</span>
+            <span className="text-muted-foreground">
+              {" "}
+              {sourceLabel(f.sourceType).toLowerCase()}{" "}
+            </span>
+            <span className={f.kind === "failed" ? "text-critical" : "text-foreground"}>
+              {f.kind === "failed" ? "could not be reached" : "found a change"}
+            </span>
           </span>
         </div>
       ))}
+      {bar.checks > 0 && (
+        <div className="mt-0.5 text-meta text-text-subtle">Click to list these checks</div>
+      )}
     </div>
   );
 }

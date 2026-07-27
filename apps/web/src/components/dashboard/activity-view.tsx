@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
-import { Activity } from "lucide-react";
+import { Activity, X } from "lucide-react";
 import type { ActivityDay, ActivitySource, ActivityStatusFilter } from "@/lib/api";
 import {
   ACTIVITY_FINDING_STATUSES,
@@ -26,7 +26,7 @@ import { useSetAskContext } from "./ask-context";
 import { Attention } from "./activity/attention";
 import { ActivityLog } from "./activity/log";
 import { UpNext } from "./activity/up-next";
-import { WatchStrip } from "./activity/watch-strip";
+import { WatchStrip, type WatchHour } from "./activity/watch-strip";
 
 // Activity answers two questions with one page: is Outrival still watching
 // everything, and what did it find. The roster answers the first (a source that
@@ -60,6 +60,11 @@ export function ActivityView() {
   const [competitor, setCompetitor] = useState(searchParams.get("competitorId") ?? "all");
   const [source, setSource] = useState(searchParams.get("source") ?? "all");
   const [segment, setSegment] = useState<Segment>(segmentFromUrl(searchParams.get("status")));
+  // An hour picked on the strip. It narrows the log the way the dropdowns do, so
+  // the bar the user clicked and the rows they end up reading are the same work.
+  const [hour, setHour] = useState<WatchHour | null>(null);
+
+  const logRef = useRef<HTMLDivElement>(null);
 
   const productId = useProductScope() ?? undefined;
 
@@ -71,7 +76,7 @@ export function ActivityView() {
   const tzOffset = useMemo(() => new Date().getTimezoneOffset(), []);
   const summaryQ = useQuery(activitySummaryQuery(productId, tzOffset));
 
-  const filtered = competitor !== "all" || source !== "all";
+  const filtered = competitor !== "all" || source !== "all" || hour !== null;
   // Unfiltered "All" is the only view whose day tallies describe the rows shown:
   // it leads with findings and folds the quiet runs per day. Every other view is
   // an explicit selection, so it lists exactly what was asked for.
@@ -88,8 +93,10 @@ export function ActivityView() {
       competitorId: competitor !== "all" ? competitor : undefined,
       sourceType: source !== "all" ? source : undefined,
       statuses: foldable ? ACTIVITY_FINDING_STATUSES : seg.statuses,
+      from: hour?.from,
+      to: hour?.to,
     };
-  }, [competitor, source, segment, foldable]);
+  }, [competitor, source, segment, foldable, hour]);
 
   const feedQ = useInfiniteQuery(activityFeedQuery(feedParams, productId));
   const events = useMemo(
@@ -112,6 +119,22 @@ export function ActivityView() {
   );
 
   const onFilter = (setter: (v: string) => void) => (v: string) => setter(v);
+
+  // Picking the hour already being read clears it, so one bar toggles the log
+  // between that hour and everything.
+  const pickHour = (h: WatchHour) => {
+    if (hour?.from === h.from) {
+      setHour(null);
+      return;
+    }
+    setHour(h);
+    // The log sits below the fold on most screens, so a filter applied where the
+    // reader cannot see it would read as the page having gone quiet.
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    requestAnimationFrame(() =>
+      logRef.current?.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" }),
+    );
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -137,6 +160,8 @@ export function ActivityView() {
             loading={summaryQ.isPending}
             failed={summaryQ.isError}
             onRetry={() => void summaryQ.refetch()}
+            onSelectHour={pickHour}
+            selectedFrom={hour?.from ?? null}
           />
 
           {sources && <Attention sources={sources} onChanged={() => void healthQ.refetch()} />}
@@ -145,24 +170,43 @@ export function ActivityView() {
               is never due. The queue itself is here. */}
           {healthQ.data && <UpNext upcoming={upcoming} />}
 
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap gap-0.5" role="group" aria-label="Filter the log">
-              {SEGMENTS.map((s) => (
+          {/* Scrolled to when an hour is picked on the strip: the filters come
+              first, so the narrowed log arrives WITH the reason it narrowed. */}
+          <div
+            ref={logRef}
+            className="flex scroll-mt-20 flex-wrap items-center justify-between gap-2"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap gap-0.5" role="group" aria-label="Filter the log">
+                {SEGMENTS.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    aria-pressed={segment === s.id}
+                    onClick={() => setSegment(s.id)}
+                    className={cn(
+                      "rounded-md border px-2.5 py-1 text-dense font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+                      segment === s.id
+                        ? "border-border bg-surface-2 text-foreground"
+                        : "border-transparent text-muted-foreground hover:bg-surface-2 hover:text-foreground",
+                    )}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+
+              {hour && (
                 <button
-                  key={s.id}
                   type="button"
-                  aria-pressed={segment === s.id}
-                  onClick={() => setSegment(s.id)}
-                  className={cn(
-                    "rounded-md border px-2.5 py-1 text-dense font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
-                    segment === s.id
-                      ? "border-border bg-surface-2 text-foreground"
-                      : "border-transparent text-muted-foreground hover:bg-surface-2 hover:text-foreground",
-                  )}
+                  onClick={() => setHour(null)}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-2 px-2 py-1 text-dense text-foreground transition-colors hover:bg-surface-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                 >
-                  {s.label}
+                  <span className="font-mono tabular-nums">{hour.label}</span>
+                  <X className="size-3.5 text-muted-foreground" aria-hidden />
+                  <span className="sr-only">Show every hour again</span>
                 </button>
-              ))}
+              )}
             </div>
 
             <div className="flex flex-wrap gap-2">

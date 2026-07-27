@@ -10,6 +10,7 @@ import { api, type ActivitySource } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toastApiError } from "@/lib/error-helpers";
 import { useForceRescan } from "@/hooks/use-force-rescan";
+import { usePersistedOpen } from "@/hooks/use-persisted-open";
 import { feedItemMotion } from "@/lib/motion";
 import { sourceLabel } from "@/lib/source-labels";
 import { competitorNameColor } from "@/lib/competitor-color";
@@ -24,6 +25,7 @@ import { Button } from "@/components/ui/button";
 // go quiet just because this task list was cleared.
 
 const STORE_KEY = "outrival.activity.dismissed";
+const OPEN_KEY = "outrival.activity.attention.open";
 
 function readDismissed(): string[] {
   if (typeof window === "undefined") return [];
@@ -63,7 +65,7 @@ export function Attention({
   // stays out of the tree until the first client pass has read it. That costs one
   // frame and avoids showing a row the user already cleared.
   const [ready, setReady] = useState(false);
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = usePersistedOpen(OPEN_KEY);
   useEffect(() => {
     setDismissed(readDismissed());
     setReady(true);
@@ -87,7 +89,7 @@ export function Attention({
     <section className="flex flex-col">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => setOpen(!open)}
         aria-expanded={open}
         className="flex items-center justify-between gap-3 border-b border-border pb-2 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       >

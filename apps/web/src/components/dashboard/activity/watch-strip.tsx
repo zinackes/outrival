@@ -437,9 +437,16 @@ export function WatchStrip({
                 <span
                   key={bar.slot}
                   className="absolute bottom-0 flex flex-col-reverse overflow-hidden rounded-t-[1.5px]"
+                  // The gutter that keeps two calm hours from fusing into one
+                  // ribbon is split across both edges, not taken off the right:
+                  // the cursor's band spans the whole hour, so a one-sided
+                  // gutter reads as the bar failing to fill its own column. The
+                  // floor keeps the hour in progress visible in its first
+                  // minutes, when its share of the window is thinner than the
+                  // gutter itself.
                   style={{
-                    left: `${bar.left}%`,
-                    width: `calc(${bar.width}% - 2px)`,
+                    left: `calc(${bar.left}% + 1px)`,
+                    width: `max(2px, calc(${bar.width}% - 2px))`,
                     height: `${bar.height}px`,
                   }}
                   aria-hidden
@@ -603,9 +610,12 @@ function FindingMark({
       {marks.length > 0 && (
         <span
           className="absolute max-sm:hidden"
+          // The fan opens inside the bar's own column, so it takes the bar's
+          // geometry verbatim: a fan laid out on the raw hour would put its last
+          // mark past the edge of the bar it caps.
           style={{
-            left: `${bar.left}%`,
-            width: `calc(${bar.width}% - 2px)`,
+            left: `calc(${bar.left}% + 1px)`,
+            width: `max(2px, calc(${bar.width}% - 2px))`,
             height: MARK,
             bottom,
           }}

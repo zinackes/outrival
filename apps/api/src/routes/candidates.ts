@@ -12,7 +12,7 @@ import {
   signals,
   selfProfileLastEditedAt,
 } from "@outrival/db";
-import { PLAN_LIMITS } from "@outrival/shared";
+import { PLAN_LIMITS, deriveCompetitorName } from "@outrival/shared";
 import {
   DetectionConfigSchema,
   resolveDetectionConfig,
@@ -225,16 +225,6 @@ async function recordDiscoveryRun(orgId: string, productId: string): Promise<voi
       detectCount: nextCount,
       detectCountMonth: month,
     });
-  }
-}
-
-function deriveCompetitorName(url: string, title: string | null): string {
-  if (title && title.trim().length > 0) return title.trim().slice(0, 100);
-  try {
-    const host = new URL(url).hostname.replace(/^www\./, "");
-    return host;
-  } catch {
-    return url;
   }
 }
 

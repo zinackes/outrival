@@ -71,6 +71,7 @@ import {
   planIncludesFrequency,
   aggregateFreshness,
   deriveAnalysisStatus,
+  COMPETITOR_NAME_MAX_LENGTH,
   type Plan,
   type AnalysisStatus,
   type DetectedTargets,
@@ -1263,7 +1264,12 @@ function EditDetailsDialog({
         <div className="space-y-3">
           <div className="space-y-1.5">
             <Label htmlFor="cmp-name">Name</Label>
-            <Input id="cmp-name" value={name} onChange={(e) => setName(e.target.value)} />
+            <Input
+              id="cmp-name"
+              value={name}
+              maxLength={COMPETITOR_NAME_MAX_LENGTH}
+              onChange={(e) => setName(e.target.value)}
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="cmp-url">Website URL</Label>

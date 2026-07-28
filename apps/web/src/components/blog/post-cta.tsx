@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRightIcon } from "@phosphor-icons/react/ssr";
+import { ArrowRightIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 
 // End-of-article call to action. Mirrors the landing CTA band (rounded-2xl,
@@ -21,7 +21,7 @@ export function PostCta() {
       <div className="mt-5 flex flex-wrap items-center gap-3">
         <Button asChild size="lg">
           <Link href="/demo?intent=sample">
-            Get a sample digest <ArrowRightIcon size={14} />
+            Get a sample digest <ArrowRightIcon size={16} />
           </Link>
         </Button>
         <Button asChild variant="outline">

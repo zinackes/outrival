@@ -1,6 +1,6 @@
 "use client";
 
-import { ProhibitIcon, EyedropperIcon } from "@phosphor-icons/react/ssr";
+import { ProhibitIcon, EyedropperIcon } from "@/components/icons";
 import { COMPETITOR_COLORS } from "@outrival/shared";
 import { competitorColorVars, COMP_ACCENT } from "@/lib/competitor-color";
 import { cn } from "@/lib/utils";
@@ -36,7 +36,7 @@ export function CompetitorColorPicker({
           !value && SELECTED,
         )}
       >
-        <ProhibitIcon size={13} />
+        <ProhibitIcon size={16} />
       </button>
 
       {COMPETITOR_COLORS.map((c) => (
@@ -67,7 +67,7 @@ export function CompetitorColorPicker({
           isCustom && SELECTED,
         )}
       >
-        <EyedropperIcon size={13} className={isCustom ? "text-background" : undefined} />
+        <EyedropperIcon size={16} className={isCustom ? "text-background" : undefined} />
         <input
           type="color"
           value={customValue}

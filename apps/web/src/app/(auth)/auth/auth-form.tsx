@@ -10,10 +10,10 @@ import {
   EyeIcon,
   EyeSlashIcon,
   FingerprintIcon,
-  CircleNotchIcon,
+  SpinnerIcon,
   EnvelopeIcon,
   ShieldCheckIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import { emailSchema } from "@outrival/shared";
 import { signIn } from "@/lib/auth-client";
 import { track, identifyUser } from "@/lib/posthog/events";
@@ -413,7 +413,7 @@ export function AuthForm() {
                       onClick={handlePasswordLogin}
                       disabled={!email || !password || status === "loading"}
                     >
-                      {status === "loading" && <CircleNotchIcon size={14} className="animate-spin" />}
+                      {status === "loading" && <SpinnerIcon size={16} className="animate-spin" />}
                       Sign in
                     </Button>
                     {/* OTP-first recovery: a forgotten password isn't a dead end —
@@ -435,9 +435,9 @@ export function AuthForm() {
                 ) : (
                   <Button onClick={handleSendCode} disabled={!email || status === "loading"}>
                     {status === "loading" ? (
-                      <CircleNotchIcon size={14} className="animate-spin" />
+                      <SpinnerIcon size={16} className="animate-spin" />
                     ) : (
-                      <ArrowRightIcon size={14} />
+                      <ArrowRightIcon size={16} />
                     )}
                     {status === "loading" ? "Sending…" : "Continue with email"}
                   </Button>
@@ -451,7 +451,7 @@ export function AuthForm() {
                   onClick={togglePasswordMode}
                   className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  <ArrowElbowDownRightIcon className="size-3.5" />
+                  <ArrowElbowDownRightIcon className="size-4" />
                   {usePassword ? "Email me a code instead" : "Prefer a password?"}
                 </button>
               </div>
@@ -529,7 +529,7 @@ function CodeStep({
   return (
     <div className="text-center">
       <div className="mx-auto flex size-11 items-center justify-center rounded-full bg-primary/10 text-primary">
-        <EnvelopeIcon size={18} />
+        <EnvelopeIcon size={20} />
       </div>
       <h2 className="mt-5 text-base font-medium text-foreground">Check your email</h2>
       <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
@@ -550,7 +550,7 @@ function CodeStep({
         onClick={() => onVerify(code)}
         disabled={code.length < 6 || status === "loading"}
       >
-        {status === "loading" && <CircleNotchIcon size={14} className="animate-spin" />}
+        {status === "loading" && <SpinnerIcon size={16} className="animate-spin" />}
         Verify and continue
       </Button>
 
@@ -568,7 +568,7 @@ function CodeStep({
           onClick={onBack}
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
-          <ArrowLeftIcon size={14} />
+          <ArrowLeftIcon size={16} />
           Use a different email
         </button>
         <span className="text-border" aria-hidden>
@@ -609,7 +609,7 @@ function TotpStep({
   return (
     <div className="text-center">
       <div className="mx-auto flex size-11 items-center justify-center rounded-full bg-primary/10 text-primary">
-        <ShieldCheckIcon size={18} />
+        <ShieldCheckIcon size={20} />
       </div>
       <h2 className="mt-5 text-base font-medium text-foreground">
         Two-factor authentication
@@ -659,7 +659,7 @@ function TotpStep({
           status === "loading" || (useBackup ? code.length === 0 : code.length < 6)
         }
       >
-        {status === "loading" && <CircleNotchIcon size={14} className="animate-spin" />}
+        {status === "loading" && <SpinnerIcon size={16} className="animate-spin" />}
         Verify and continue
       </Button>
 
@@ -675,7 +675,7 @@ function TotpStep({
           onClick={onBack}
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
-          <ArrowLeftIcon size={14} />
+          <ArrowLeftIcon size={16} />
           Back to sign in
         </button>
         <span className="text-border" aria-hidden>

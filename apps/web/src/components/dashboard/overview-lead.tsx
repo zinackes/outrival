@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRightIcon, CheckIcon } from "@phosphor-icons/react/ssr";
+import { ArrowRightIcon, CheckIcon } from "@/components/icons";
 import type { Signal } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { shortAge } from "@/lib/format-date";
@@ -117,7 +117,7 @@ export function OverviewLead({
           </Button>
           {onMarkRead && !signal.isRead && (
             <Button size="sm" variant="ghost" onClick={() => onMarkRead(signal.id)}>
-              <CheckIcon size={13} /> Mark read
+              <CheckIcon size={16} /> Mark read
             </Button>
           )}
         </div>
@@ -214,7 +214,7 @@ function PulseStat({
           {label}
           {href && (
             <ArrowRightIcon
-              size={11}
+              size={16}
               className="opacity-0 transition-opacity group-hover/stat:opacity-100"
               aria-hidden
             />

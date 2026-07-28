@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { ArrowsClockwiseIcon } from "@phosphor-icons/react/ssr";
+import { ArrowsClockwiseIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -94,7 +94,7 @@ export function JobsView({
         info="Live pg-boss job history: every background job with its status, duration and timestamps. Filter by status and refresh to poll the latest runs."
         action={
           <Button variant="ghost" size="sm" disabled={busy} onClick={() => reload()}>
-            <ArrowsClockwiseIcon className="mr-1.5 h-3.5 w-3.5" />
+            <ArrowsClockwiseIcon className="mr-1.5 h-4 w-4" />
             Refresh
           </Button>
         }

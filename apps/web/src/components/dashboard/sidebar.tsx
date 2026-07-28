@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
+import type { Icon as PhosphorIcon } from "@/components/icons";
 import {
   SquaresFourIcon,
   BroadcastIcon,
@@ -20,8 +21,7 @@ import {
   CaretUpDownIcon,
   CreditCardIcon,
   ColumnsIcon,
-} from "@phosphor-icons/react/ssr";
-import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
+} from "@/components/icons";
 import {
   Sidebar,
   SidebarContent,
@@ -200,9 +200,9 @@ export function WorkspaceSwitcher({
                 <div className="grid flex-1 text-left leading-tight">
                   <span className="truncate text-sm font-semibold inline-flex items-center gap-1">
                     {activeProduct ? (
-                      <CubeIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                      <CubeIcon className="size-4 shrink-0 text-muted-foreground" />
                     ) : (
-                      <CardsThreeIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                      <CardsThreeIcon className="size-4 shrink-0 text-muted-foreground" />
                     )}
                     {activeProduct?.name ?? "All products"}
                   </span>
@@ -249,22 +249,22 @@ export function WorkspaceSwitcher({
                     onSelect={() => selectProduct(p.id)}
                     className="gap-2"
                   >
-                    <CubeIcon className="size-3.5 text-muted-foreground" />
+                    <CubeIcon className="size-4 text-muted-foreground" />
                     <span className="flex-1 truncate">{p.name}</span>
-                    {current === p.id && <CheckIcon className="size-3.5 shrink-0" />}
+                    {current === p.id && <CheckIcon className="size-4 shrink-0" />}
                   </DropdownMenuItem>
                 ))}
                 <DropdownMenuItem
                   onSelect={() => selectProduct(ALL_PRODUCTS)}
                   className="gap-2"
                 >
-                  <CardsThreeIcon className="size-3.5 text-muted-foreground" />
+                  <CardsThreeIcon className="size-4 text-muted-foreground" />
                   <span className="flex-1 truncate">All products</span>
-                  {current === ALL_PRODUCTS && <CheckIcon className="size-3.5 shrink-0" />}
+                  {current === ALL_PRODUCTS && <CheckIcon className="size-4 shrink-0" />}
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild className="gap-2">
                   <Link href="/dashboard/settings/products">
-                    <GearIcon className="size-3.5" /> Manage products
+                    <GearIcon className="size-4" /> Manage products
                   </Link>
                 </DropdownMenuItem>
               </>
@@ -273,12 +273,12 @@ export function WorkspaceSwitcher({
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
               <Link href="/dashboard/settings">
-                <GearIcon className="size-3.5" /> Workspace settings
+                <GearIcon className="size-4" /> Workspace settings
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <Link href="/dashboard/settings/billing">
-                <CreditCardIcon className="size-3.5" /> Subscription
+                <CreditCardIcon className="size-4" /> Subscription
               </Link>
             </DropdownMenuItem>
           </DropdownMenuContent>

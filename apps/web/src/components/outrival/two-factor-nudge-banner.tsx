@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ShieldCheckIcon, XIcon } from "@phosphor-icons/react/ssr";
+import { ShieldCheckIcon, XIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 
 const DISMISS_KEY = "outrival.2fa-nudge-dismissed";

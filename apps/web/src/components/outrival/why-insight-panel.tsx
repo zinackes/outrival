@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowSquareOutIcon } from "@phosphor-icons/react/ssr";
+import { ArrowSquareOutIcon } from "@/components/icons";
 import { format } from "date-fns";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -102,7 +102,7 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
                       className="inline-flex items-center gap-1 rounded-sm text-link outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
                     >
                       {host ?? "Open the live page"}
-                      <ArrowSquareOutIcon size={11} aria-hidden />
+                      <ArrowSquareOutIcon size={16} aria-hidden />
                     </a>
                   </>
                 )}

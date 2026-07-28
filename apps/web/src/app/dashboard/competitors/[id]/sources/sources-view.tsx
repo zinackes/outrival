@@ -5,12 +5,7 @@ import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
-import {
-  ArrowLeftIcon,
-  CaretRightIcon,
-  CircleNotchIcon,
-  PlayIcon,
-} from "@phosphor-icons/react/ssr";
+import { ArrowLeftIcon, CaretRightIcon, SpinnerIcon, PlayIcon } from "@/components/icons";
 import {
   ALL_CONFIGURABLE_SOURCES,
   ATTENTION_OF,
@@ -157,7 +152,7 @@ function CollapsedBlock({
         <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
           {open ? "Hide" : cta}
           <CaretRightIcon
-            size={13}
+            size={16}
             className={cn("transition-transform duration-200", open && "rotate-90")}
           />
         </span>
@@ -408,7 +403,7 @@ export function SourcesView({ id }: { id: string }) {
             disabled={runningAll}
             className="h-8 shrink-0 text-xs"
           >
-            {runningAll ? <CircleNotchIcon size={12} className="animate-spin" /> : <PlayIcon size={12} />}
+            {runningAll ? <SpinnerIcon size={16} className="animate-spin" /> : <PlayIcon size={16} />}
             Scan all
           </Button>
         </div>
@@ -616,9 +611,9 @@ export function SourcesView({ id }: { id: string }) {
                   disabled={techScraping}
                 >
                   {techScraping ? (
-                    <CircleNotchIcon size={11} className="animate-spin" />
+                    <SpinnerIcon size={16} className="animate-spin" />
                   ) : (
-                    <PlayIcon size={11} />
+                    <PlayIcon size={16} />
                   )}
                   Run
                 </Button>

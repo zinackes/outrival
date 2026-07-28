@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { XIcon } from "@phosphor-icons/react/ssr";
+import { XIcon } from "@/components/icons";
 
 import { cn } from "@/lib/utils";
 

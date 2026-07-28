@@ -16,7 +16,7 @@ import {
   GitBranchIcon,
   GlobeIcon,
   LightbulbIcon,
-  CircleNotchIcon,
+  SpinnerIcon,
   LockIcon,
   SignOutIcon,
   PlusIcon,
@@ -25,7 +25,7 @@ import {
   TrashIcon,
   UploadSimpleIcon,
   XIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import {
   PLAN_LIMITS,
   detectTemporaryUrl,
@@ -860,10 +860,10 @@ function Header({
           {showControls && (
             <>
               <Button variant="ghost" size="sm" onClick={onRestart}>
-                <ArrowCounterClockwiseIcon size={14} /> <span className="hidden sm:inline">Restart</span>
+                <ArrowCounterClockwiseIcon size={16} /> <span className="hidden sm:inline">Restart</span>
               </Button>
               <Button variant="ghost" size="sm" onClick={() => void onSkip()}>
-                <SignOutIcon size={14} /> <span className="hidden sm:inline">Leave for now</span>
+                <SignOutIcon size={16} /> <span className="hidden sm:inline">Leave for now</span>
               </Button>
             </>
           )}
@@ -917,7 +917,7 @@ function ErrorBanner({ message, onDismiss }: { message: string; onDismiss: () =>
         aria-label="Close"
         className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
       >
-        <XIcon size={14} />
+        <XIcon size={16} />
       </button>
     </div>
   );
@@ -965,20 +965,20 @@ function FooterNav({
         <div>
           {onBack && (
             <Button type="button" variant="ghost" onClick={onBack} disabled={busy}>
-              <ArrowLeftIcon size={14} /> Edit
+              <ArrowLeftIcon size={16} /> Edit
             </Button>
           )}
         </div>
         <Button type="button" onClick={() => void onSubmit()} disabled={busy || primaryDisabled}>
           {busy ? (
             <>
-              <CircleNotchIcon size={14} className="animate-spin" />
+              <SpinnerIcon size={16} className="animate-spin" />
               {busyLabel ?? "Loading…"}
             </>
           ) : (
             <>
               {primaryLabel}
-              <ArrowRightIcon size={14} />
+              <ArrowRightIcon size={16} />
             </>
           )}
         </Button>
@@ -1181,7 +1181,7 @@ function ModeForm({
               />
             </label>
             <div className="flex items-start gap-2 rounded-md border border-positive/30 bg-positive/10 px-4 py-3">
-              <LockIcon size={15} className="mt-0.5 text-positive shrink-0" />
+              <LockIcon size={16} className="mt-0.5 text-positive shrink-0" />
               <p className="text-xs text-foreground leading-relaxed">
                 Your document is analyzed in memory and will <strong>never be stored</strong>.
                 Only the extracted product profile is saved.
@@ -1226,7 +1226,7 @@ function ModeForm({
             />
             {temp.temporary && (
               <div className="mt-2 flex items-start gap-2 rounded-md border border-border-strong bg-surface-2/60 px-3 py-2">
-                <WarningCircleIcon size={14} className="mt-0.5 text-foreground shrink-0" />
+                <WarningCircleIcon size={16} className="mt-0.5 text-foreground shrink-0" />
                 <div className="flex-1">
                   <p className="text-xs text-foreground">
                     This looks like a temporary URL. Would you rather use the “In
@@ -1307,7 +1307,7 @@ function ProfileForm({
       </p>
 
       <div className="flex items-center gap-1.5 mt-6 mb-3 text-xs text-muted-foreground">
-        <SparkleIcon size={13} className="text-primary" /> Extracted by AI
+        <SparkleIcon size={16} className="text-primary" /> Extracted by AI
       </div>
 
       <Card className="p-5 sm:p-6 flex flex-col gap-5">
@@ -1359,12 +1359,12 @@ function ProfileForm({
 
       {prefetchStatus === "running" && (
         <p className="mt-4 flex items-center gap-1.5 text-xs text-muted-foreground">
-          <CircleNotchIcon size={12} className="animate-spin" /> Searching competitors…
+          <SpinnerIcon size={16} className="animate-spin" /> Searching competitors…
         </p>
       )}
       {prefetchStatus === "completed" && (
         <p className="mt-4 flex items-center gap-1.5 text-xs text-positive">
-          <CheckIcon size={12} /> Competitors found
+          <CheckIcon size={16} /> Competitors found
         </p>
       )}
 
@@ -1488,7 +1488,7 @@ function DiscoverStep({
       <Card className="p-2 sm:p-3 max-h-[420px] overflow-auto">
         {busy ? (
           <div className="px-4 py-12 flex items-center justify-center gap-2 text-sm text-muted-foreground">
-            <CircleNotchIcon size={16} className="animate-spin" /> Analyzing your market…
+            <SpinnerIcon size={16} className="animate-spin" /> Analyzing your market…
           </div>
         ) : competitors.length === 0 ? (
           <div className="px-4 py-12 text-center text-sm text-muted-foreground">
@@ -1529,7 +1529,7 @@ function DiscoverStep({
             }}
           />
           <Button type="button" variant="outline" onClick={addManualCompetitor}>
-            <PlusIcon size={14} /> Add
+            <PlusIcon size={16} /> Add
           </Button>
         </div>
       </div>
@@ -1595,7 +1595,7 @@ function CompetitorRow({
           className="text-meta font-mono text-muted-foreground hover:text-foreground inline-flex items-center gap-1 mt-0.5 max-w-full transition-colors"
         >
           <span className="truncate">{competitor.url.replace(/^https?:\/\//, "")}</span>
-          <ArrowSquareOutIcon size={10} className="shrink-0" />
+          <ArrowSquareOutIcon size={16} className="shrink-0" />
         </a>
         {competitor.snippet && (
           <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">
@@ -1614,7 +1614,7 @@ function CompetitorRow({
         aria-label="Remove"
         className="text-muted-foreground hover:text-destructive"
       >
-        <TrashIcon size={14} />
+        <TrashIcon size={16} />
       </Button>
     </li>
   );
@@ -1723,7 +1723,7 @@ function DoneStep({
   return (
     <div className="flex flex-col items-center text-center">
       <div className="w-12 h-12 rounded-full bg-positive/15 border border-positive/30 flex items-center justify-center">
-        <CheckIcon size={22} className="text-positive" />
+        <CheckIcon size={20} className="text-positive" />
       </div>
       <h1 className="text-title md:text-title-lg font-semibold mt-5">
         Setup complete
@@ -1740,16 +1740,16 @@ function DoneStep({
             className="group mt-6 inline-flex items-center gap-2 rounded-md border border-border bg-surface-2/60 px-4 py-2 outline-none transition-colors hover:bg-surface-2 focus-visible:ring-[3px] focus-visible:ring-ring/35"
           >
             {!allDone && (
-              <CircleNotchIcon size={14} className="animate-spin text-muted-foreground" />
+              <SpinnerIcon size={16} className="animate-spin text-muted-foreground" />
             )}
-            {allDone && <CheckIcon size={14} className="text-positive" />}
+            {allDone && <CheckIcon size={16} className="text-positive" />}
             <span className="text-sm text-foreground">
               {allDone
                 ? `${totalCompetitors} competitors analyzed`
                 : `Analyzing ${analyzed}/${totalCompetitors} competitors…`}
             </span>
             <CaretDownIcon
-              size={14}
+              size={16}
               className="text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
             />
           </button>
@@ -1766,14 +1766,14 @@ function DoneStep({
             ) : (
               progress.map((c) => {
                 const meta = c.analyzed ? null : analysisStageMeta(c.stage);
-                const StageIcon = meta?.Icon ?? CircleNotchIcon;
+                const StageIcon = meta?.Icon ?? SpinnerIcon;
                 return (
                   <li
                     key={c.id}
                     className="flex items-center gap-2 rounded-sm px-2 py-1.5"
                   >
                     {c.analyzed ? (
-                      <CheckIcon size={14} className="shrink-0 text-positive" />
+                      <CheckIcon size={16} className="shrink-0 text-positive" />
                     ) : (
                       <StageIcon
                         size={14}
@@ -1815,7 +1815,7 @@ function DoneStep({
       </Card>
 
       <Button className="mt-8" onClick={onDashboard}>
-        Go to dashboard <ArrowRightIcon size={14} />
+        Go to dashboard <ArrowRightIcon size={16} />
       </Button>
     </div>
   );

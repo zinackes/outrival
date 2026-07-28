@@ -17,11 +17,11 @@ import {
   XIcon,
   CaretRightIcon,
   LockIcon,
-  CircleNotchIcon,
+  SpinnerIcon,
   CubeIcon,
   WarningIcon,
   PauseIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import { aiVisibilityQuery, productsListQuery } from "@/lib/queries";
 import {
   api,
@@ -303,7 +303,7 @@ export function AiVisibilityView({ locked = false }: { locked?: boolean }) {
 
   const runButton = (
     <Button onClick={runNow} disabled={running} size="sm">
-      {running ? <CircleNotchIcon className="size-4 animate-spin" /> : <PlayIcon className="size-4" />}
+      {running ? <SpinnerIcon className="size-4 animate-spin" /> : <PlayIcon className="size-4" />}
       {running ? "Running…" : "Run now"}
     </Button>
   );
@@ -1251,7 +1251,7 @@ function EmptyState({ onRun, running }: { onRun: () => void; running: boolean })
         which competitors show up instead.
       </p>
       <Button onClick={onRun} disabled={running} size="sm" className="mt-5">
-        {running ? <CircleNotchIcon className="size-4 animate-spin" /> : <PlayIcon className="size-4" />}
+        {running ? <SpinnerIcon className="size-4 animate-spin" /> : <PlayIcon className="size-4" />}
         Run first check
       </Button>
     </div>
@@ -1268,7 +1268,7 @@ function RunProgressBanner({ landing }: { landing: boolean }) {
       aria-live="polite"
       className="flex items-start gap-3 rounded-md border border-border bg-card px-4 py-3"
     >
-      <CircleNotchIcon className="mt-0.5 size-4 shrink-0 animate-spin text-link" aria-hidden />
+      <SpinnerIcon className="mt-0.5 size-4 shrink-0 animate-spin text-link" aria-hidden />
       <div className="min-w-0">
         <p className="text-sm font-medium text-foreground">
           {landing ? "Results are landing…" : "Checking AI answer engines…"}

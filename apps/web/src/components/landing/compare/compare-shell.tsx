@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { CaretRightIcon } from "@phosphor-icons/react/ssr";
+import { CaretRightIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/dashboard/theme-toggle";
 import { Footer } from "../footer";
@@ -70,7 +70,7 @@ export function Breadcrumbs({
               )}
               {!last && (
                 <CaretRightIcon
-                  size={13}
+                  size={16}
                   className="text-text-subtle/60"
                   aria-hidden
                 />

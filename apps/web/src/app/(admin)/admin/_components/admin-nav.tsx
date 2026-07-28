@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { Icon as PhosphorIcon } from "@/components/icons";
 import {
   SquaresFourIcon,
   PulseIcon,
@@ -25,8 +26,7 @@ import {
   HeartbeatIcon,
   TrendUpIcon,
   ChartLineIcon,
-} from "@phosphor-icons/react/ssr";
-import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
+} from "@/components/icons";
 
 type NavItem = { href: string; label: string; icon: PhosphorIcon };
 type NavSection = { title?: string; items: NavItem[] };

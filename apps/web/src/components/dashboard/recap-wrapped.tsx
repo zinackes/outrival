@@ -4,12 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
-import {
-  CaretLeftIcon,
-  CaretRightIcon,
-  SparkleIcon,
-  ArrowUpRightIcon,
-} from "@phosphor-icons/react/ssr";
+import { CaretLeftIcon, CaretRightIcon, SparkleIcon, ArrowUpRightIcon } from "@/components/icons";
 import { api, type MonthlyRecap } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { ShareRecapButton } from "./share-recap-button";
@@ -209,7 +204,7 @@ function buildSlides(r: MonthlyRecap, publicMode: boolean): React.ReactNode[] {
   slides.push(
     <Slide accent={a(7)}>
       <motion.div variants={item}>
-        <SparkleIcon className="mx-auto mb-4 size-7 text-link" />
+        <SparkleIcon className="mx-auto mb-4 size-6 text-link" />
       </motion.div>
       <Big>That&apos;s your month.</Big>
       <Lead>We&apos;ll keep watching. See you next month.</Lead>

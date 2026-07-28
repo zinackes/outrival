@@ -8,7 +8,7 @@ import { AnimatePresence, motion } from "motion/react";
 import {
   XIcon,
   PlusIcon,
-  CircleNotchIcon,
+  SpinnerIcon,
   ArrowSquareOutIcon,
   TrashIcon,
   ArrowCounterClockwiseIcon,
@@ -17,7 +17,7 @@ import {
   MagnifyingGlassIcon,
   SlidersHorizontalIcon,
   CaretRightIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { toast } from "sonner";
 import { DISCOVERY_REGIONS } from "@outrival/shared";
@@ -415,7 +415,7 @@ function CandidateRow({
                   onRestore();
                 }}
               >
-                <ArrowCounterClockwiseIcon size={11} />
+                <ArrowCounterClockwiseIcon size={16} />
                 Restore
               </Button>
               <Tooltip>
@@ -431,7 +431,7 @@ function CandidateRow({
                       onDelete();
                     }}
                   >
-                    <TrashIcon size={12} />
+                    <TrashIcon size={16} />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>Delete permanently</TooltipContent>
@@ -448,7 +448,7 @@ function CandidateRow({
                   onTrack();
                 }}
               >
-                {busy ? <CircleNotchIcon size={11} className="animate-spin" /> : <PlusIcon size={11} />}
+                {busy ? <SpinnerIcon size={16} className="animate-spin" /> : <PlusIcon size={16} />}
                 Track
               </Button>
               <Tooltip>
@@ -464,7 +464,7 @@ function CandidateRow({
                       onDismiss();
                     }}
                   >
-                    <XIcon size={12} />
+                    <XIcon size={16} />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>Dismiss</TooltipContent>
@@ -546,7 +546,7 @@ function Evidence({
         <Button variant="outline" size="sm" asChild>
           <a href={candidate.url} target="_blank" rel="noopener noreferrer">
             Open {prettyUrl(candidate.url)}
-            <ArrowSquareOutIcon size={11} />
+            <ArrowSquareOutIcon size={16} />
           </a>
         </Button>
         <span className="sr-only">Evidence for {name}</span>
@@ -713,7 +713,7 @@ function AddByUrlDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={!valid || saving}>
-              {saving && <CircleNotchIcon size={13} className="animate-spin" />}
+              {saving && <SpinnerIcon size={16} className="animate-spin" />}
               Track it
             </Button>
           </DialogFooter>
@@ -1103,20 +1103,20 @@ export function DiscoveryView() {
                   aria-label="Adjust the search"
                   onClick={() => setConfigOpen(true)}
                 >
-                  <SlidersHorizontalIcon size={13} />
+                  <SlidersHorizontalIcon size={16} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>Adjust the search</TooltipContent>
             </Tooltip>
             <Button variant="outline" size="sm" onClick={() => setAddOpen(true)}>
-              <PlusIcon size={13} />
+              <PlusIcon size={16} />
               Add by URL
             </Button>
             <Button size="sm" onClick={requestDetection} disabled={scanning}>
               {scanning ? (
-                <CircleNotchIcon size={13} className="animate-spin" />
+                <SpinnerIcon size={16} className="animate-spin" />
               ) : (
-                <MagnifyingGlassIcon size={13} />
+                <MagnifyingGlassIcon size={16} />
               )}
               {scanning ? "Scanning…" : "Scan for competitors"}
             </Button>
@@ -1220,13 +1220,13 @@ export function DiscoveryView() {
           actions={
             <>
               <Button size="sm" onClick={() => setAddOpen(true)}>
-                <PlusIcon size={13} />
+                <PlusIcon size={16} />
                 Add by URL
               </Button>
               {counts && counts.added > 0 && (
                 <Button variant="outline" size="sm" onClick={() => setTab("added")}>
                   See what they captured
-                  <CaretRightIcon size={13} />
+                  <CaretRightIcon size={16} />
                 </Button>
               )}
             </>

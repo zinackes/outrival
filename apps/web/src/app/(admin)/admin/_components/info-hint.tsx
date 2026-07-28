@@ -1,6 +1,6 @@
 "use client";
 
-import { InfoIcon } from "@phosphor-icons/react/ssr";
+import { InfoIcon } from "@/components/icons";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 // Small "what is this card?" affordance for the admin dashboard. Self-contained
@@ -15,7 +15,7 @@ export function InfoHint({ text }: { text: string }) {
             aria-label="What is this?"
             className="inline-flex text-muted-foreground transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none"
           >
-            <InfoIcon className="size-3.5" aria-hidden />
+            <InfoIcon className="size-4" aria-hidden />
           </button>
         </TooltipTrigger>
         <TooltipContent side="top" className="max-w-xs text-xs leading-relaxed font-normal">

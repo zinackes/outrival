@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { WarningIcon } from "@phosphor-icons/react/ssr";
+import { WarningIcon } from "@/components/icons";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";

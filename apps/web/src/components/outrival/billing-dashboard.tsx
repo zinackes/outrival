@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CheckIcon, CircleNotchIcon } from "@phosphor-icons/react/ssr";
+import { CheckIcon, SpinnerIcon } from "@/components/icons";
 import {
   PLAN_LABELS,
   PLAN_LIMITS,
@@ -397,7 +397,7 @@ export function BillingDashboard() {
               onClick={handleResume}
               disabled={busy === "resume"}
             >
-              {busy === "resume" && <CircleNotchIcon size={12} className="animate-spin" />}
+              {busy === "resume" && <SpinnerIcon size={16} className="animate-spin" />}
               {busy === "resume" ? "Resuming…" : "Resume plan"}
             </Button>
           </div>
@@ -613,7 +613,7 @@ export function BillingDashboard() {
                 >
                   {card.features.map((f, i) => (
                     <li key={i} className="flex items-start gap-2">
-                      <CheckIcon size={14} className="mt-0.5 shrink-0 text-primary" />
+                      <CheckIcon size={16} className="mt-0.5 shrink-0 text-primary" />
                       <span>{f}</span>
                     </li>
                   ))}
@@ -635,7 +635,7 @@ export function BillingDashboard() {
                     className="mt-6 w-full"
                   >
                     {busy === plan && (
-                      <CircleNotchIcon size={12} className="animate-spin" />
+                      <SpinnerIcon size={16} className="animate-spin" />
                     )}
                     {busy === plan
                       ? "Working…"
@@ -660,7 +660,7 @@ export function BillingDashboard() {
                     className="mt-6 w-full"
                   >
                     {busy === "free" && (
-                      <CircleNotchIcon size={12} className="animate-spin" />
+                      <SpinnerIcon size={16} className="animate-spin" />
                     )}
                     {busy === "free" ? "Working…" : "Downgrade to Free"}
                   </Button>
@@ -717,7 +717,7 @@ export function BillingDashboard() {
               onClick={() => confirm && applyChange(confirm)}
               disabled={Boolean(busy)}
             >
-              {busy === confirm && <CircleNotchIcon size={12} className="animate-spin" />}
+              {busy === confirm && <SpinnerIcon size={16} className="animate-spin" />}
               {confirm === "free" ? "Downgrade to Free" : "Confirm switch"}
             </Button>
           </DialogFooter>

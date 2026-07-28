@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CheckIcon, CircleNotchIcon, LockIcon } from "@phosphor-icons/react/ssr";
+import { CheckIcon, SpinnerIcon, LockIcon } from "@/components/icons";
 import { PLANS, PLAN_LABELS, PLAN_LIMITS, type Plan } from "@outrival/shared";
 import { api, type NotificationSettings } from "@/lib/api";
 import { notificationSettingsQuery, planQuery } from "@/lib/queries";
@@ -117,7 +117,7 @@ export function NotificationSettingsForm() {
                   className="inline-flex cursor-help"
                   aria-label="Locked, requires a higher plan"
                 >
-                  <LockIcon size={12} className="text-muted-foreground" />
+                  <LockIcon size={16} className="text-muted-foreground" />
                 </span>
               </TooltipTrigger>
               <TooltipContent>
@@ -170,7 +170,7 @@ export function NotificationSettingsForm() {
                   className="inline-flex cursor-help"
                   aria-label="Locked, requires a higher plan"
                 >
-                  <LockIcon size={12} className="text-muted-foreground" />
+                  <LockIcon size={16} className="text-muted-foreground" />
                 </span>
               </TooltipTrigger>
               <TooltipContent>
@@ -277,7 +277,7 @@ export function NotificationSettingsForm() {
               Cancel
             </Button>
             <Button type="submit" size="sm" disabled={saving}>
-              {saving && <CircleNotchIcon size={12} className="animate-spin" />}
+              {saving && <SpinnerIcon size={16} className="animate-spin" />}
               {saving ? "Saving…" : "Save changes"}
             </Button>
           </div>

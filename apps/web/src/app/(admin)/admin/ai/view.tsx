@@ -9,7 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { WarningCircleIcon } from "@phosphor-icons/react/ssr";
+import { WarningCircleIcon } from "@/components/icons";
 import { PageHeader, Section, Empty, mono, pctFmt } from "../_components/shell";
 import type { AdminAiHealth } from "@/lib/api";
 

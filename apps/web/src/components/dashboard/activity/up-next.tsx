@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "motion/react";
-import { CaretRightIcon } from "@phosphor-icons/react/ssr";
+import { CaretRightIcon } from "@/components/icons";
 import type { ActivityUpcoming } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { feedItemMotion } from "@/lib/motion";

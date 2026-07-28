@@ -1,7 +1,7 @@
 "use client";
 
 import { formatDistanceToNow } from "date-fns";
-import { CheckIcon } from "@phosphor-icons/react/ssr";
+import { CheckIcon } from "@/components/icons";
 import { TabCard, TabSection } from "./tab-shell";
 import { FreshnessDot } from "./freshness-dot";
 import { ConfidenceDot, type Confidence } from "./confidence-dot";
@@ -150,7 +150,7 @@ export function CompetitorTechStack({ techStack }: { techStack: TechStackData })
                       key={e.techId}
                       className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/30 px-2 py-1 text-dense"
                     >
-                      <CheckIcon size={12} className="text-positive shrink-0" />
+                      <CheckIcon size={16} className="text-positive shrink-0" />
                       <span>{e.name}</span>
                       {isRecent(e.firstDetectedAt) && (
                         <span className="text-meta text-muted-foreground">

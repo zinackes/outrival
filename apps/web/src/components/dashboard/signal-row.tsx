@@ -1,6 +1,6 @@
 "use client";
 
-import { StackIcon, ArchiveIcon } from "@phosphor-icons/react/ssr";
+import { StackIcon, ArchiveIcon } from "@/components/icons";
 import { formatDistanceToNow } from "date-fns";
 import type { Signal } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -104,7 +104,7 @@ export function SignalRow({
           {/* L2 provenance marker — this row was reconstructed from the web archive. */}
           {signal.filteredReason === "backfill" && (
             <ArchiveIcon
-              size={12}
+              size={16}
               className="shrink-0"
               aria-label="From archive"
             />
@@ -183,7 +183,7 @@ export function BatchRow({
       )}
     >
       <StackIcon
-        size={15}
+        size={16}
         className={cn("mt-0.5 shrink-0", SEV_TEXT[maxSev])}
         aria-label={`${maxSev} severity batch`}
       />

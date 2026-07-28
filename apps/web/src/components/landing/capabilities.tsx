@@ -1,4 +1,4 @@
-import { ChatIcon, ScanIcon, SwordIcon } from "@phosphor-icons/react/ssr";
+import { ChatIcon, ScanIcon, SwordIcon } from "@/components/icons";
 
 const FEATURES = [
   {

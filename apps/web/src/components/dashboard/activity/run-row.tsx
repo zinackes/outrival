@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
-import { CaretRightIcon, ArrowSquareOutIcon } from "@phosphor-icons/react/ssr";
+import { CaretRightIcon, ArrowSquareOutIcon } from "@/components/icons";
 import { formatDistanceToNow } from "date-fns";
 import type {
   ActivityCaptured,
@@ -188,7 +188,7 @@ function RunPanel({
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 text-link hover:underline"
           >
-            <ArrowSquareOutIcon className="size-3.5" aria-hidden />
+            <ArrowSquareOutIcon className="size-4" aria-hidden />
             View the page we read
           </a>
         )}

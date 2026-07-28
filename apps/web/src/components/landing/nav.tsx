@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ListIcon, XIcon } from "@phosphor-icons/react/ssr";
+import { ListIcon, XIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/dashboard/theme-toggle";
 import { LogoMark } from "@/components/outrival/logo";
@@ -84,7 +84,7 @@ export function Nav() {
             aria-controls="mobile-nav"
             className="-mr-1.5 inline-flex size-11 items-center justify-center rounded-md text-text-muted transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 md:hidden"
           >
-            {open ? <XIcon size={18} /> : <ListIcon size={18} />}
+            {open ? <XIcon size={20} /> : <ListIcon size={20} />}
           </button>
         </div>
       </div>

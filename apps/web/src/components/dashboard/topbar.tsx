@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
-import { ArrowsClockwiseIcon, SparkleIcon } from "@phosphor-icons/react/ssr";
+import { ArrowsClockwiseIcon, SparkleIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -50,7 +50,7 @@ export function Topbar({ user }: { user: User }) {
               document.dispatchEvent(new CustomEvent(ASK_OPEN_EVENT))
             }
           >
-            <SparkleIcon className="size-3.5 text-[var(--link)]" />
+            <SparkleIcon className="size-4 text-[var(--link)]" />
             <span className="hidden sm:inline">Ask</span>
           </Button>
         </TooltipTrigger>
@@ -68,7 +68,7 @@ export function Topbar({ user }: { user: User }) {
               onClick={refresh}
               disabled={isPending}
             >
-              <ArrowsClockwiseIcon size={14} className={isPending ? "animate-spin" : ""} />
+              <ArrowsClockwiseIcon size={16} className={isPending ? "animate-spin" : ""} />
             </Button>
           </TooltipTrigger>
           <TooltipContent>Refresh</TooltipContent>

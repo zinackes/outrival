@@ -9,10 +9,10 @@ import {
   FingerprintIcon,
   KeyIcon,
   LinkIcon,
-  CircleNotchIcon,
+  SpinnerIcon,
   MonitorIcon,
   ShieldCheckIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -153,11 +153,11 @@ function RecoveryCodes({
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="outline" size="sm" onClick={copy}>
-          <CopyIcon size={13} />
+          <CopyIcon size={16} />
           CopyIcon
         </Button>
         <Button variant="outline" size="sm" onClick={download}>
-          <DownloadSimpleIcon size={13} />
+          <DownloadSimpleIcon size={16} />
           DownloadSimpleIcon
         </Button>
       </div>
@@ -419,7 +419,7 @@ function TwoFactorDialog({
                 Back
               </Button>
               <Button size="sm" onClick={confirmCode} disabled={busy || code.length < 6}>
-                {busy && <CircleNotchIcon size={13} className="animate-spin" />}
+                {busy && <SpinnerIcon size={16} className="animate-spin" />}
                 Verify and continue
               </Button>
             </DialogFooter>
@@ -512,7 +512,7 @@ function TwoFactorDialog({
                   Cancel
                 </Button>
                 <Button size="sm" onClick={regenerate} disabled={busy || regenCode.length !== 6}>
-                  {busy && <CircleNotchIcon size={13} className="animate-spin" />}
+                  {busy && <SpinnerIcon size={16} className="animate-spin" />}
                   Generate new codes
                 </Button>
               </div>
@@ -565,7 +565,7 @@ function TwoFactorDialog({
                   onClick={disable}
                   disabled={busy || disableCode.length !== 6}
                 >
-                  {busy && <CircleNotchIcon size={13} className="animate-spin" />}
+                  {busy && <SpinnerIcon size={16} className="animate-spin" />}
                   Turn off two-factor
                 </Button>
               </div>
@@ -625,7 +625,7 @@ function TwoFactorDialog({
             onClick={() => void startEnable(enableCode)}
             disabled={busy || enableCode.length !== 6}
           >
-            {busy && <CircleNotchIcon size={13} className="animate-spin" />}
+            {busy && <SpinnerIcon size={16} className="animate-spin" />}
             Continue
           </Button>
         </DialogFooter>
@@ -782,7 +782,7 @@ function PasskeysDialog({
             {passkeys.map((p) => (
               <div key={p.id} className="flex items-center gap-3 px-5 py-3.5">
                 <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground">
-                  <KeyIcon size={14} />
+                  <KeyIcon size={16} />
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="text-dense font-medium">{p.name || "Passkey"}</div>
@@ -798,7 +798,7 @@ function PasskeysDialog({
                   onClick={() => remove(p.id)}
                   disabled={busy === p.id}
                 >
-                  {busy === p.id && <CircleNotchIcon size={13} className="animate-spin" />}
+                  {busy === p.id && <SpinnerIcon size={16} className="animate-spin" />}
                   Remove
                 </Button>
               </div>
@@ -825,7 +825,7 @@ function PasskeysDialog({
                 Cancel
               </Button>
               <Button size="sm" onClick={add} disabled={busy === "add" || addCode.length !== 6}>
-                {busy === "add" && <CircleNotchIcon size={13} className="animate-spin" />}
+                {busy === "add" && <SpinnerIcon size={16} className="animate-spin" />}
                 Continue
               </Button>
             </div>
@@ -949,7 +949,7 @@ function ConnectedAccountRows() {
             onClick={() => disconnect(a.providerId)}
             disabled={busy === a.providerId}
           >
-            {busy === a.providerId && <CircleNotchIcon size={13} className="animate-spin" />}
+            {busy === a.providerId && <SpinnerIcon size={16} className="animate-spin" />}
             Disconnect
           </Button>
         </MethodRow>
@@ -1132,7 +1132,7 @@ function PasswordDialog({
                 Cancel
               </Button>
               <Button size="sm" onClick={sendCode} disabled={busy || !canContinue}>
-                {busy && <CircleNotchIcon size={13} className="animate-spin" />}
+                {busy && <SpinnerIcon size={16} className="animate-spin" />}
                 Continue
               </Button>
             </DialogFooter>
@@ -1182,7 +1182,7 @@ function PasswordDialog({
                 Back
               </Button>
               <Button size="sm" onClick={submit} disabled={busy || code.length !== 6}>
-                {busy && <CircleNotchIcon size={13} className="animate-spin" />}
+                {busy && <SpinnerIcon size={16} className="animate-spin" />}
                 {hasPassword ? "Change password" : "Set password"}
               </Button>
             </DialogFooter>
@@ -1336,7 +1336,7 @@ function ActiveSessions() {
             onClick={revokeOthers}
             disabled={busy === "others"}
           >
-            {busy === "others" && <CircleNotchIcon size={13} className="animate-spin" />}
+            {busy === "others" && <SpinnerIcon size={16} className="animate-spin" />}
             Sign out other sessions
           </Button>
         )}
@@ -1355,7 +1355,7 @@ function ActiveSessions() {
             return (
               <div key={s.id} className="flex items-center gap-3 px-5 py-3.5">
                 <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground">
-                  <MonitorIcon size={14} />
+                  <MonitorIcon size={16} />
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 text-dense font-medium">
@@ -1380,7 +1380,7 @@ function ActiveSessions() {
                     onClick={() => revokeOne(s.token)}
                     disabled={busy === s.token}
                   >
-                    {busy === s.token && <CircleNotchIcon size={13} className="animate-spin" />}
+                    {busy === s.token && <SpinnerIcon size={16} className="animate-spin" />}
                     Sign out
                   </Button>
                 )}

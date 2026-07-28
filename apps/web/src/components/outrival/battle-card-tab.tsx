@@ -7,7 +7,7 @@ import {
   XCircleIcon,
   DownloadSimpleIcon,
   QuestionIcon,
-  CircleNotchIcon,
+  SpinnerIcon,
   ChatIcon,
   ArrowsClockwiseIcon,
   FloppyDiskIcon,
@@ -17,7 +17,7 @@ import {
   SwordIcon,
   TargetIcon,
   XIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import {
   api,
@@ -288,7 +288,7 @@ export function BattleCardTab({ competitorId }: Props) {
           description="Generate one with AI in a few seconds."
           actions={
             <Button size="sm" onClick={onGenerate}>
-              <SparkleIcon size={12} /> Generate battle card
+              <SparkleIcon size={16} /> Generate battle card
             </Button>
           }
         />
@@ -314,7 +314,7 @@ export function BattleCardTab({ competitorId }: Props) {
       <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-2.5">
           <h2 className="flex items-center gap-2 text-content font-semibold tracking-tight leading-tight">
-            <SwordIcon size={14} className="text-muted-foreground shrink-0" />
+            <SwordIcon size={16} className="text-muted-foreground shrink-0" />
             Battle card
           </h2>
           {!editing && evidence && <BattleCardProvenance evidence={evidence} />}
@@ -330,13 +330,13 @@ export function BattleCardTab({ competitorId }: Props) {
                 setEditing(false);
               }}
             >
-              <XIcon size={12} /> Cancel
+              <XIcon size={16} /> Cancel
             </Button>
             <Button size="sm" disabled={status === "saving"} onClick={onSave}>
               {status === "saving" ? (
-                <CircleNotchIcon size={12} className="animate-spin" />
+                <SpinnerIcon size={16} className="animate-spin" />
               ) : (
-                <FloppyDiskIcon size={12} />
+                <FloppyDiskIcon size={16} />
               )}
               {status === "saving" ? "Saving…" : "FloppyDiskIcon"}
             </Button>
@@ -355,14 +355,14 @@ export function BattleCardTab({ competitorId }: Props) {
                     className="text-muted-foreground"
                     onClick={() => setConfirmingRegen(true)}
                   >
-                    <ArrowsClockwiseIcon size={12} /> Regenerate · up to date
+                    <ArrowsClockwiseIcon size={16} /> Regenerate · up to date
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>No changes since the last generation.</TooltipContent>
               </Tooltip>
             ) : (
               <Button size="sm" onClick={onGenerate}>
-                <ArrowsClockwiseIcon size={12} /> Regenerate
+                <ArrowsClockwiseIcon size={16} /> Regenerate
               </Button>
             )}
             <Button asChild={canDownload} size="sm" disabled={!canDownload}>
@@ -372,11 +372,11 @@ export function BattleCardTab({ competitorId }: Props) {
                   target="_blank"
                   rel="noreferrer"
                 >
-                  <DownloadSimpleIcon size={12} /> DownloadSimpleIcon PDF
+                  <DownloadSimpleIcon size={16} /> DownloadSimpleIcon PDF
                 </a>
               ) : (
                 <span className="opacity-50">
-                  <DownloadSimpleIcon size={12} /> DownloadSimpleIcon PDF
+                  <DownloadSimpleIcon size={16} /> DownloadSimpleIcon PDF
                 </span>
               )}
             </Button>
@@ -508,7 +508,7 @@ function Heading({
           color,
         )}
       >
-        <Icon size={14} className={cn("shrink-0", !color && "text-muted-foreground")} />
+        <Icon size={16} className={cn("shrink-0", !color && "text-muted-foreground")} />
         {children}
       </h3>
       {action}
@@ -547,13 +547,13 @@ function BattleCardProvenance({ evidence }: { evidence: BattleCardEvidence }) {
           type="button"
           className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-muted/30 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
-          <ShieldCheckIcon size={12} className={cn("shrink-0", confColor)} />
+          <ShieldCheckIcon size={16} className={cn("shrink-0", confColor)} />
           {label}
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-64 p-0">
         <div className="flex items-center gap-1.5 border-b border-border px-3.5 py-2.5 text-dense">
-          <ShieldCheckIcon size={13} className={cn("shrink-0", confColor)} />
+          <ShieldCheckIcon size={16} className={cn("shrink-0", confColor)} />
           <span className="font-medium">{label}</span>
           <span className="ml-auto text-meta text-muted-foreground tabular-nums">
             {verifiedCount}/{evidence.sources.length} sources
@@ -645,7 +645,7 @@ function ObjectionsSection({
         action={
           <Tooltip>
             <TooltipTrigger asChild>
-              <QuestionIcon size={13} className="text-muted-foreground cursor-help" />
+              <QuestionIcon size={16} className="text-muted-foreground cursor-help" />
             </TooltipTrigger>
             <TooltipContent className="max-w-xs">
               Objections a prospect might raise to pick this competitor over you,
@@ -754,7 +754,7 @@ function EditableList({
                 aria-label="Remove"
                 className="h-7 w-7"
               >
-                <XIcon size={12} />
+                <XIcon size={16} />
               </Button>
             </TooltipTrigger>
             <TooltipContent>Remove</TooltipContent>
@@ -848,7 +848,7 @@ function GeneratingState({ startedAt, firstTime }: { startedAt: number; firstTim
     <Card className="flex flex-col gap-4 p-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <SparkleIcon size={14} className="shrink-0 text-primary" />
+          <SparkleIcon size={16} className="shrink-0 text-primary" />
           <span className="text-content font-medium">Generating battle card</span>
         </div>
         <span className="text-xs text-muted-foreground tabular-nums">{elapsed}s</span>
@@ -862,9 +862,9 @@ function GeneratingState({ startedAt, firstTime }: { startedAt: number; firstTim
             <li key={s.label} className="flex items-center gap-2.5 text-sm">
               <span className="flex w-4 shrink-0 justify-center">
                 {done ? (
-                  <CheckCircleIcon size={15} className="text-positive" />
+                  <CheckCircleIcon size={16} className="text-positive" />
                 ) : isActive ? (
-                  <CircleNotchIcon size={15} className="animate-spin text-primary" />
+                  <SpinnerIcon size={16} className="animate-spin text-primary" />
                 ) : (
                   <span className="size-1.5 rounded-full bg-muted-foreground/40" />
                 )}

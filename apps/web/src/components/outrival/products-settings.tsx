@@ -3,14 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  CheckIcon,
-  CircleNotchIcon,
-  PlusIcon,
-  StarIcon,
-  TrashIcon,
-  XIcon,
-} from "@phosphor-icons/react/ssr";
+import { CheckIcon, SpinnerIcon, PlusIcon, StarIcon, TrashIcon, XIcon } from "@/components/icons";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -112,7 +105,7 @@ export function ProductsSettings() {
           </p>
         </div>
         <Button size="sm" onClick={() => setAddOpen(true)} disabled={atLimit}>
-          <PlusIcon size={14} />
+          <PlusIcon size={16} />
           Add product
         </Button>
       </div>
@@ -193,7 +186,7 @@ export function ProductsSettings() {
               Cancel
             </Button>
             <Button variant="destructive" onClick={onConfirmDelete} disabled={deleting}>
-              {deleting && <CircleNotchIcon size={14} className="animate-spin" />}
+              {deleting && <SpinnerIcon size={16} className="animate-spin" />}
               Remove
             </Button>
           </DialogFooter>
@@ -260,7 +253,7 @@ function ProductRow({
               aria-label={`Rename ${p.name}`}
             />
             <Button type="submit" size="sm" variant="ghost" aria-label="Save name">
-              <CheckIcon size={14} />
+              <CheckIcon size={16} />
             </Button>
             <Button
               type="button"
@@ -269,7 +262,7 @@ function ProductRow({
               onClick={() => setDraft(null)}
               aria-label="Cancel rename"
             >
-              <XIcon size={14} />
+              <XIcon size={16} />
             </Button>
           </form>
         ) : (
@@ -311,7 +304,7 @@ function ProductRow({
               <TooltipTrigger asChild>
                 <span>
                   <Button variant="ghost" size="sm" disabled aria-label="Remove product">
-                    <TrashIcon size={14} />
+                    <TrashIcon size={16} />
                     Remove
                   </Button>
                 </span>
@@ -323,11 +316,11 @@ function ProductRow({
           ) : (
             <>
               <Button variant="ghost" size="sm" onClick={onSetPrimary}>
-                <StarIcon size={14} />
+                <StarIcon size={16} />
                 Make primary
               </Button>
               <Button variant="danger" size="sm" onClick={onRemove}>
-                <TrashIcon size={14} />
+                <TrashIcon size={16} />
                 Remove
               </Button>
             </>

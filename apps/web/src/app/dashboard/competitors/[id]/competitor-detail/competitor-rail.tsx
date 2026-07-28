@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import {
-  CircleNotchIcon,
+  SpinnerIcon,
   ClockIcon,
   LockIcon,
   PlayIcon,
@@ -13,7 +13,7 @@ import {
   ShieldSlashIcon,
   SlidersHorizontalIcon,
   SparkleIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import {
   ALL_CONFIGURABLE_SOURCES,
   MONITOR_FREQUENCIES,
@@ -138,7 +138,7 @@ export function CompetitorRail({
               onClick={onRunAll}
               disabled={runningAll}
             >
-              {runningAll ? <CircleNotchIcon size={12} className="animate-spin" /> : <PlayIcon size={12} />}
+              {runningAll ? <SpinnerIcon size={16} className="animate-spin" /> : <PlayIcon size={16} />}
               Scan all
             </Button>
           )}
@@ -182,7 +182,7 @@ export function CompetitorRail({
 
         {coverage.blocked.length > 0 && (
           <p className="mt-2 flex items-start gap-1.5 border-t border-border px-4 py-2.5 text-sm text-muted-foreground">
-            <ShieldSlashIcon size={13} className="mt-0.5 shrink-0" />
+            <ShieldSlashIcon size={16} className="mt-0.5 shrink-0" />
             <span>
               {coverage.blocked.length === 1
                 ? `Their ${label(coverage.blocked[0]!)} blocks automated collection and we don't bypass it.`
@@ -199,7 +199,7 @@ export function CompetitorRail({
             href={`/dashboard/competitors/${competitor.id}/sources`}
             className="inline-flex items-center gap-1.5 text-xs text-link hover:underline"
           >
-            <SlidersHorizontalIcon size={12} /> Manage sources
+            <SlidersHorizontalIcon size={16} /> Manage sources
           </Link>
         </div>
       </Card>
@@ -239,7 +239,7 @@ function RailSummary({
     return (
       <Card className="flex flex-col gap-2.5 rounded-lg border-dashed px-4 py-3.5">
         <div className="flex items-start gap-2 text-sm text-muted-foreground">
-          <SparkleIcon size={13} className="mt-0.5 shrink-0" />
+          <SparkleIcon size={16} className="mt-0.5 shrink-0" />
           <span>No summary yet.</span>
         </div>
         <Button
@@ -249,7 +249,7 @@ function RailSummary({
           disabled={generating}
           className="h-7 w-fit text-xs"
         >
-          {generating ? <CircleNotchIcon size={11} className="animate-spin" /> : <SparkleIcon size={11} />}
+          {generating ? <SpinnerIcon size={16} className="animate-spin" /> : <SparkleIcon size={16} />}
           {generating ? "Generating…" : "Generate now"}
         </Button>
       </Card>
@@ -276,9 +276,9 @@ function RailSummary({
         className="-ml-2 h-7 w-fit text-xs text-muted-foreground"
       >
         {generating ? (
-          <CircleNotchIcon size={12} className="animate-spin" />
+          <SpinnerIcon size={16} className="animate-spin" />
         ) : (
-          <ArrowsClockwiseIcon size={12} />
+          <ArrowsClockwiseIcon size={16} />
         )}
         {generating ? "Refreshing" : "Refresh"}
       </Button>
@@ -415,7 +415,7 @@ function SourceRow({
                     locked ? onLockedFrequency(freq) : void onEdit(m.id, { frequency: freq })
                   }
                 >
-                  {locked && <LockIcon size={9} className="opacity-70" />}
+                  {locked && <LockIcon size={16} className="opacity-70" />}
                   {freq}
                 </Button>
               );
@@ -431,12 +431,12 @@ function SourceRow({
         <DropdownMenuSeparator />
         {status === "disabled" ? (
           <DropdownMenuItem onClick={() => onResume(m.id)} disabled={busy}>
-            {busy ? <CircleNotchIcon size={13} className="animate-spin" /> : <ArrowsClockwiseIcon size={13} />}
+            {busy ? <SpinnerIcon size={16} className="animate-spin" /> : <ArrowsClockwiseIcon size={16} />}
             {busy ? "Resuming…" : "Resume monitoring"}
           </DropdownMenuItem>
         ) : status === "paused" ? (
           <DropdownMenuItem onClick={() => onSetActive(m.id, true)}>
-            <PowerIcon size={13} /> Enable monitoring
+            <PowerIcon size={16} /> Enable monitoring
           </DropdownMenuItem>
         ) : (
           <>
@@ -445,11 +445,11 @@ function SourceRow({
                 queue behind the first. */}
             <DropdownMenuItem onClick={() => onRun(m.id)} disabled={busy}>
               {status === "running" ? (
-                <CircleNotchIcon size={13} className="animate-spin" />
+                <SpinnerIcon size={16} className="animate-spin" />
               ) : status === "queued" ? (
-                <ClockIcon size={13} />
+                <ClockIcon size={16} />
               ) : (
-                <PlayIcon size={13} />
+                <PlayIcon size={16} />
               )}
               {status === "running"
                 ? "Scraping…"
@@ -458,13 +458,13 @@ function SourceRow({
                   : "Run now"}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onSetActive(m.id, false)} disabled={busy}>
-              <PauseCircleIcon size={13} /> Pause monitoring
+              <PauseCircleIcon size={16} /> Pause monitoring
             </DropdownMenuItem>
           </>
         )}
         <DropdownMenuItem asChild>
           <Link href={`/dashboard/competitors/${competitorId}/sources`}>
-            <SlidersHorizontalIcon size={13} /> All source settings
+            <SlidersHorizontalIcon size={16} /> All source settings
           </Link>
         </DropdownMenuItem>
       </DropdownMenuContent>

@@ -4,6 +4,7 @@ import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
+import type { Icon as PhosphorIcon } from "@/components/icons";
 import {
   MagnifyingGlassIcon,
   BuildingsIcon,
@@ -24,8 +25,7 @@ import {
   SunIcon,
   MoonIcon,
   MonitorIcon,
-} from "@phosphor-icons/react/ssr";
-import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
+} from "@/components/icons";
 
 import { api, type SearchResults } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -155,10 +155,10 @@ export function GlobalSearch() {
           "transition-colors hover:bg-muted hover:text-foreground",
         )}
       >
-        <MagnifyingGlassIcon size={14} />
+        <MagnifyingGlassIcon size={16} />
         <span className="hidden md:inline">MagnifyingGlassIcon…</span>
         <kbd className="hidden md:inline-flex md:ml-auto pointer-events-none h-5 select-none items-center gap-0.5 rounded border border-border bg-background px-1.5 font-mono text-meta font-medium">
-          <CommandIcon className="size-3" />K
+          <CommandIcon className="size-4" />K
         </kbd>
       </button>
 

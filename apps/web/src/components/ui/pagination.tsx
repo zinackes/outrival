@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { CaretLeftIcon, CaretRightIcon, DotsThreeIcon } from "@phosphor-icons/react/ssr";
+import { CaretLeftIcon, CaretRightIcon, DotsThreeIcon } from "@/components/icons";
 
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";

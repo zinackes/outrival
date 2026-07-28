@@ -1,4 +1,4 @@
-import { PulseIcon, ArrowRightIcon, StackIcon, LightningIcon } from "@phosphor-icons/react/ssr";
+import { PulseIcon, ArrowRightIcon, StackIcon, LightningIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { DigestMockup } from "./digest-mockup";
 
@@ -67,7 +67,7 @@ export function DigestFeature() {
             <div className="mt-8">
               <Button asChild variant="outline">
                 <a href="/sample">
-                  See the full sample digest <ArrowRightIcon size={14} />
+                  See the full sample digest <ArrowRightIcon size={16} />
                 </a>
               </Button>
             </div>

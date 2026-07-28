@@ -1,3 +1,4 @@
+import type { Icon as PhosphorIcon } from "@/components/icons";
 import {
   PulseIcon,
   ArrowRightIcon,
@@ -9,8 +10,7 @@ import {
   RssIcon,
   StarIcon,
   TagIcon,
-} from "@phosphor-icons/react/ssr";
-import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
+} from "@/components/icons";
 import { Button } from "@/components/ui/button";
 
 type Source = { icon: PhosphorIcon; label: string; meta: string };
@@ -123,7 +123,7 @@ export function Sources() {
           </div>
           <Button asChild size="lg">
             <a href="/auth">
-              Add your product free <ArrowRightIcon size={15} />
+              Add your product free <ArrowRightIcon size={16} />
             </a>
           </Button>
         </div>

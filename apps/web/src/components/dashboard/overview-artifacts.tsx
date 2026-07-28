@@ -3,8 +3,8 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRightIcon, FileTextIcon, IdentificationCardIcon } from "@phosphor-icons/react/ssr";
-import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
+import type { Icon as PhosphorIcon } from "@/components/icons";
+import { ArrowRightIcon, FileTextIcon, IdentificationCardIcon } from "@/components/icons";
 import { battleCardsQuery, digestsQuery } from "@/lib/queries";
 import { formatDate, shortAge } from "@/lib/format-date";
 import { cn } from "@/lib/utils";
@@ -109,14 +109,14 @@ function Shelf({
         className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-background-2 text-muted-foreground"
         aria-hidden
       >
-        <Icon size={15} />
+        <Icon size={16} />
       </span>
       <span className="min-w-0">
         <span className="block truncate text-dense font-semibold">{label}</span>
         <span className="mt-0.5 block truncate text-meta text-text-subtle">{meta}</span>
       </span>
       <ArrowRightIcon
-        size={14}
+        size={16}
         className="ms-auto shrink-0 text-text-subtle transition-transform group-hover/shelf:translate-x-0.5"
         aria-hidden
       />

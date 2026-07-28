@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CircleNotchIcon } from "@phosphor-icons/react/ssr";
+import { SpinnerIcon } from "@/components/icons";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import {
@@ -178,7 +178,7 @@ export function FeedbackWidget() {
             <Button onClick={handleSubmit} disabled={!message.trim() || submitting}>
               {submitting ? (
                 <>
-                  <CircleNotchIcon size={14} className="animate-spin" /> Sending...
+                  <SpinnerIcon size={16} className="animate-spin" /> Sending...
                 </>
               ) : (
                 "Send"

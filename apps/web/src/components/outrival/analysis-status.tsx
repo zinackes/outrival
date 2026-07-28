@@ -1,13 +1,13 @@
 "use client";
 
 import {
-  CircleNotchIcon,
+  SpinnerIcon,
   ClockIcon,
   SparkleIcon,
   WarningIcon,
   CheckCircleIcon,
   CircleIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import type { AnalysisStage, AnalysisStatus } from "@outrival/shared";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -23,7 +23,7 @@ type StageMeta = {
   label: string;
   // Terse variant for dense rows (AnalysisBadge).
   short: string;
-  Icon: typeof CircleNotchIcon;
+  Icon: typeof SpinnerIcon;
   spin: boolean;
   tone: string; // text colour token
 };
@@ -41,7 +41,7 @@ const STAGE_META: Partial<Record<AnalysisStage, StageMeta>> = {
   scraping: {
     label: "Scraping the site…",
     short: "Scraping…",
-    Icon: CircleNotchIcon,
+    Icon: SpinnerIcon,
     spin: true,
     tone: "text-muted-foreground",
   },
@@ -88,7 +88,7 @@ export function AnalysisBadge({
       )}
       title={label}
     >
-      <Icon size={11} className={cn("shrink-0", spin && "animate-spin")} />
+      <Icon size={16} className={cn("shrink-0", spin && "animate-spin")} />
       {short}
     </span>
   );
@@ -110,7 +110,7 @@ export function AnalysisNotice({
   const { label, Icon, spin, tone } = meta;
   return (
     <div className={cn("flex items-center gap-2 text-sm", tone, className)}>
-      <Icon size={14} className={cn("shrink-0", spin && "animate-spin")} />
+      <Icon size={16} className={cn("shrink-0", spin && "animate-spin")} />
       <span>{label}</span>
     </div>
   );
@@ -182,7 +182,7 @@ export function AnalysisProgress({
                 className="mt-3 h-7 text-xs"
                 onClick={onRetry}
               >
-                <CircleNotchIcon size={11} /> Retry analysis
+                <SpinnerIcon size={16} /> Retry analysis
               </Button>
             )}
           </div>
@@ -204,7 +204,7 @@ export function AnalysisProgress({
         {waiting ? (
           <ClockIcon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
         ) : (
-          <CircleNotchIcon className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-link" />
+          <SpinnerIcon className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-link" />
         )}
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-foreground">Setting up this competitor</p>
@@ -221,7 +221,7 @@ export function AnalysisProgress({
                   : st === "active"
                     ? waiting
                       ? ClockIcon
-                      : CircleNotchIcon
+                      : SpinnerIcon
                     : CircleIcon;
               return (
                 <li key={p.key} className="flex items-center">
@@ -232,7 +232,7 @@ export function AnalysisProgress({
                     )}
                   >
                     <Icon
-                      size={13}
+                      size={16}
                       className={cn(
                         "shrink-0",
                         st === "active" && (waiting ? "text-muted-foreground" : "animate-spin text-link"),

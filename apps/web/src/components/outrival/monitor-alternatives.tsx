@@ -12,7 +12,7 @@ import {
   PlayIcon,
   ArrowsCounterClockwiseIcon,
   XIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import { isReviewSource, type SourceType } from "@outrival/shared";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";

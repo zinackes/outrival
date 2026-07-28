@@ -5,12 +5,12 @@ import {
   CaretRightIcon,
   ArrowSquareOutIcon,
   InfoIcon,
-  CircleNotchIcon,
+  SpinnerIcon,
   ClockIcon,
   LockIcon,
   PlayIcon,
   PlusIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import {
   MONITOR_FREQUENCIES,
   PLAN_LABELS,
@@ -166,7 +166,7 @@ export function SourceName({ label, url }: { label: string; url: string | null }
     >
       <span className="truncate">{label}</span>
       <ArrowSquareOutIcon
-        size={11}
+        size={16}
         className="shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/src:opacity-100"
       />
     </a>
@@ -384,7 +384,7 @@ export function SourceRow({
               className="h-7 text-xs"
               onClick={() => onUpgrade(sourceType)}
             >
-              <LockIcon size={11} /> Upgrade
+              <LockIcon size={16} /> Upgrade
             </Button>
           )}
 
@@ -399,7 +399,7 @@ export function SourceRow({
               disabled={enabling}
               onClick={() => (needsUrlToEnable ? openWithUrlFocus() : void enableWithoutUrl())}
             >
-              {enabling ? <CircleNotchIcon size={11} className="animate-spin" /> : <PlusIcon size={11} />}
+              {enabling ? <SpinnerIcon size={16} className="animate-spin" /> : <PlusIcon size={16} />}
               Turn on
             </Button>
           )}
@@ -433,11 +433,11 @@ export function SourceRow({
               onClick={() => onRun(monitor.id)}
             >
               {activity === "scraping" ? (
-                <CircleNotchIcon size={11} className="animate-spin" />
+                <SpinnerIcon size={16} className="animate-spin" />
               ) : activity === "queued" ? (
-                <ClockIcon size={11} />
+                <ClockIcon size={16} />
               ) : (
-                <PlayIcon size={11} />
+                <PlayIcon size={16} />
               )}
               {activity === "queued" ? "Queued" : "Run"}
             </Button>
@@ -464,7 +464,7 @@ export function SourceRow({
               className="flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground"
             >
               <CaretRightIcon
-                size={14}
+                size={16}
                 className={cn("transition-transform duration-200", open && "rotate-90")}
               />
             </button>
@@ -522,7 +522,7 @@ export function SourceRow({
                               : void onEdit(monitor.id, { frequency: freq })
                           }
                         >
-                          {locked && <LockIcon size={9} className="opacity-70" />}
+                          {locked && <LockIcon size={16} className="opacity-70" />}
                           {freq}
                           {locked && (
                             <span className="text-meta uppercase tracking-wide opacity-70">
@@ -579,7 +579,7 @@ export function SourceRow({
                           aria-label="What this URL has to be"
                           className="rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
-                          <InfoIcon size={12} />
+                          <InfoIcon size={16} />
                         </button>
                       </TooltipTrigger>
                       <TooltipContent className="max-w-[44ch]">{urlHelp}</TooltipContent>
@@ -620,7 +620,7 @@ export function SourceRow({
                       className="mt-1.5 inline-flex max-w-full items-center gap-1 text-xs text-link hover:underline focus-visible:outline-none focus-visible:underline"
                     >
                       <span className="truncate">Open the page we scrape</span>
-                      <ArrowSquareOutIcon size={10} className="shrink-0" />
+                      <ArrowSquareOutIcon size={16} className="shrink-0" />
                     </a>
                   )}
                 </div>

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
+import type { Icon as PhosphorIcon } from "@/components/icons";
 
 /**
  * Shared empty-state panel (Step 0 cold-start system). Left-aligned and dense
@@ -39,7 +39,7 @@ export function EmptyState({
             }`}
             aria-hidden
           >
-            <Icon size={17} />
+            <Icon size={20} />
           </span>
         )}
         <div className="space-y-1.5">

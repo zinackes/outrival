@@ -6,9 +6,9 @@ import {
   WarningIcon,
   CheckCircleIcon,
   InfoIcon,
-  CircleNotchIcon,
+  SpinnerIcon,
   XCircleIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 
 export function Toaster() {
   const { theme } = useTheme();
@@ -28,7 +28,7 @@ export function Toaster() {
         error: <XCircleIcon size={16} className="text-critical" />,
         warning: <WarningIcon size={16} className="text-medium" />,
         info: <InfoIcon size={16} className="text-[var(--link)]" />,
-        loading: <CircleNotchIcon size={16} className="animate-spin text-muted-foreground" />,
+        loading: <SpinnerIcon size={16} className="animate-spin text-muted-foreground" />,
       }}
       toastOptions={{
         classNames: {

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { pageMetadata } from "@/lib/metadata";
 import Link from "next/link";
-import { RssIcon } from "@phosphor-icons/react/ssr";
+import { RssIcon } from "@/components/icons";
 import { getAllPosts, formatPostDate } from "@/lib/blog";
 import { BlogShell } from "@/components/blog/blog-shell";
 
@@ -31,7 +31,7 @@ export default function BlogIndexPage() {
             href="/blog/rss.xml"
             className="inline-flex w-fit items-center gap-1.5 text-sm text-text-muted transition-colors hover:text-foreground"
           >
-            <RssIcon size={14} /> RSS feed
+            <RssIcon size={16} /> RSS feed
           </a>
         </header>
 

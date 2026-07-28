@@ -7,8 +7,8 @@ import { digestsQuery } from "@/lib/queries";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, CircleIcon } from "@phosphor-icons/react/ssr";
-import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
+import type { Icon as PhosphorIcon } from "@/components/icons";
+import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, CircleIcon } from "@/components/icons";
 
 const URGENCY_META: Record<
   DigestSection["urgency"],
@@ -106,7 +106,7 @@ export function DigestsList() {
                       </div>
                       <p className="text-sm mb-1">{s.insight}</p>
                       <p className="flex gap-1 text-sm text-primary">
-                        <ArrowRightIcon className="size-3.5 mt-0.5 shrink-0" />
+                        <ArrowRightIcon className="size-4 mt-0.5 shrink-0" />
                         {s.so_what}
                       </p>
                     </Card>
@@ -139,7 +139,7 @@ export function DigestsList() {
               <div className="flex items-center gap-1 text-xs text-muted-foreground">
                 {d.sentAt ? (
                   <>
-                    <CheckIcon className="size-3" /> sent
+                    <CheckIcon className="size-4" /> sent
                   </>
                 ) : (
                   "not sent"

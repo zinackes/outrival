@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
-import { LockIcon, SparkleIcon } from "@phosphor-icons/react/ssr";
+import { LockIcon, SparkleIcon } from "@/components/icons";
 import { PLAN_LABELS, type Plan } from "@outrival/shared";
 import { ApiError } from "@/lib/api";
 import { track } from "@/lib/posthog/events";
@@ -186,7 +186,7 @@ export function PaywallDialog({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-md">
         <div className="flex items-center justify-center w-10 h-10 rounded-full bg-[var(--accent-dim)]">
-          <LockIcon size={18} className="text-primary-foreground" />
+          <LockIcon size={20} className="text-primary-foreground" />
         </div>
         <DialogHeader>
           <DialogTitle>{copy?.title}</DialogTitle>
@@ -212,7 +212,7 @@ export function PaywallDialog({
                 onClose();
               }}
             >
-              <SparkleIcon size={14} /> View plans
+              <SparkleIcon size={16} /> View plans
             </Link>
           </Button>
         </DialogFooter>

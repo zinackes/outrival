@@ -7,9 +7,9 @@ import {
   ArrowLeftIcon,
   ClipboardIcon,
   DownloadSimpleIcon,
-  CircleNotchIcon,
+  SpinnerIcon,
   EnvelopeIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { api, ApiError, type DigestDetail } from "@/lib/api";
@@ -96,7 +96,7 @@ export function DigestReader({ id }: { id: string }) {
       className="-mb-1 self-start px-0 hover:bg-transparent"
     >
       <Link href="/dashboard/digests">
-        <ArrowLeftIcon size={12} /> All digests
+        <ArrowLeftIcon size={16} /> All digests
       </Link>
     </Button>
   );
@@ -106,7 +106,7 @@ export function DigestReader({ id }: { id: string }) {
       <div className="mx-auto flex w-full max-w-[980px] flex-col gap-6">
         {backLink}
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <CircleNotchIcon size={14} className="animate-spin" /> Loading brief…
+          <SpinnerIcon size={16} className="animate-spin" /> Loading brief…
         </div>
       </div>
     );
@@ -310,9 +310,9 @@ export function DigestReader({ id }: { id: string }) {
               onClick={handleSend}
             >
               {sending ? (
-                <CircleNotchIcon size={13} className="animate-spin" />
+                <SpinnerIcon size={16} className="animate-spin" />
               ) : (
-                <EnvelopeIcon size={13} />
+                <EnvelopeIcon size={16} />
               )}
               {d.sentAt ? "Send again" : "Send by email"}
             </Button>
@@ -322,7 +322,7 @@ export function DigestReader({ id }: { id: string }) {
             <RailLabel>Take it with you</RailLabel>
             <Button variant="outline" size="sm" className="w-full justify-start" asChild>
               <a href={printHref} target="_blank" rel="noopener noreferrer">
-                <DownloadSimpleIcon size={13} /> Save as PDF
+                <DownloadSimpleIcon size={16} /> Save as PDF
               </a>
             </Button>
             <Button
@@ -333,9 +333,9 @@ export function DigestReader({ id }: { id: string }) {
               onClick={handleCopy}
             >
               {copying ? (
-                <CircleNotchIcon size={13} className="animate-spin" />
+                <SpinnerIcon size={16} className="animate-spin" />
               ) : (
-                <ClipboardIcon size={13} />
+                <ClipboardIcon size={16} />
               )}
               Copy as Markdown
             </Button>

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { SparkleIcon, ArrowRightIcon } from "@phosphor-icons/react/ssr";
+import { SparkleIcon, ArrowRightIcon } from "@/components/icons";
 import { aiVisibilityTeaserQuery } from "@/lib/queries";
 import { Button } from "@/components/ui/button";
 

@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
-import { CaretDownIcon, DownloadSimpleIcon, SwordIcon } from "@phosphor-icons/react/ssr";
+import { CaretDownIcon, DownloadSimpleIcon, SwordIcon } from "@/components/icons";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { api, type BattleCardSummary } from "@/lib/api";
 import { battleCardsQuery } from "@/lib/queries";
@@ -95,7 +95,7 @@ export function BattleCardsView() {
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm">
                 {productLabel}
-                <CaretDownIcon size={11} className="opacity-60" />
+                <CaretDownIcon size={16} className="opacity-60" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-56">
@@ -114,7 +114,7 @@ export function BattleCardsView() {
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm">
                 {competitorLabel}
-                <CaretDownIcon size={11} className="opacity-60" />
+                <CaretDownIcon size={16} className="opacity-60" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-56 max-h-[400px] overflow-y-auto">
@@ -154,7 +154,7 @@ export function BattleCardsView() {
                   className="flex items-center gap-3 px-4 py-3 hover:bg-accent/30 transition-colors"
                 >
                   <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground">
-                    <SwordIcon size={14} />
+                    <SwordIcon size={16} />
                   </span>
                   <div className="min-w-0 flex-1">
                     <Link
@@ -173,7 +173,7 @@ export function BattleCardsView() {
                       className="shrink-0"
                     >
                       <Button variant="outline" size="sm">
-                        <DownloadSimpleIcon size={12} /> PDF
+                        <DownloadSimpleIcon size={16} /> PDF
                       </Button>
                     </a>
                   )}

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRightIcon } from "@phosphor-icons/react/ssr";
+import { ArrowRightIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 
 // The lowest-commitment step in the funnel, and until now it only existed at the
@@ -31,7 +31,7 @@ export function SampleOffer() {
           <div className="flex shrink-0 flex-col items-start gap-3 lg:items-end">
             <Button asChild size="lg">
               <Link href="/demo?intent=sample">
-                Get a sample digest <ArrowRightIcon size={14} />
+                Get a sample digest <ArrowRightIcon size={16} />
               </Link>
             </Button>
             <Link

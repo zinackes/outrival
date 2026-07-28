@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { WarningIcon } from "@phosphor-icons/react/ssr";
+import { WarningIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { UpdateProfileDialog } from "@/components/outrival/update-profile-dialog";
 

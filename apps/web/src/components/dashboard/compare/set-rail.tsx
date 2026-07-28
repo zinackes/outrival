@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { CheckIcon, PlusIcon, XIcon } from "@phosphor-icons/react/ssr";
+import { CheckIcon, PlusIcon, XIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -70,7 +70,7 @@ function Chip({
         aria-label={`Remove ${entity.name} from the comparison`}
         className="text-muted-foreground hover:bg-surface-3 hover:text-foreground focus-visible:ring-ring/50 grid size-4 place-items-center rounded-sm focus-visible:ring-2 focus-visible:outline-none"
       >
-        <XIcon size={11} />
+        <XIcon size={16} />
       </button>
     </motion.span>
   );
@@ -96,7 +96,7 @@ function PickItem({
       }}
       className="gap-2"
     >
-      <CheckIcon size={14} className={cn(on ? "opacity-100" : "opacity-0")} />
+      <CheckIcon size={16} className={cn(on ? "opacity-100" : "opacity-0")} />
       <CompAvatar name={entity.name} url={entity.url} size={18} />
       <span className="truncate">{entity.name}</span>
     </CommandItem>
@@ -139,7 +139,7 @@ export function CompareSetRail({
             size="sm"
             className="text-muted-foreground border-border-strong h-7 border border-dashed"
           >
-            <PlusIcon size={12} />
+            <PlusIcon size={16} />
             Add
           </Button>
         </PopoverTrigger>

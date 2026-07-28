@@ -6,13 +6,13 @@ import {
   FileMagnifyingGlassIcon,
   PlusIcon,
   LockIcon,
-  CircleNotchIcon,
+  SpinnerIcon,
   ClockIcon,
   PlayIcon,
   TrashIcon,
   ArrowSquareOutIcon,
   LinkIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import {
   PLAN_LABELS,
   CUSTOM_MONITOR_HINTS,
@@ -108,7 +108,7 @@ export function CustomSources({
           {PLAN_LABELS[minPlanForCustomMonitors()]} plan.
         </p>
         <Button size="sm" onClick={onLocked}>
-          <LockIcon size={12} /> Upgrade to watch pages
+          <LockIcon size={16} /> Upgrade to watch pages
         </Button>
       </Card>
     );
@@ -141,7 +141,7 @@ export function CustomSources({
                   : undefined
               }
             >
-              <PlusIcon size={12} /> Watch a page
+              <PlusIcon size={16} /> Watch a page
             </Button>
           </div>
         </TabSection>
@@ -233,7 +233,7 @@ function CustomMonitorRow({
               className="inline-flex min-w-0 items-center gap-1 font-mono hover:text-foreground"
             >
               <span className="truncate">{url}</span>
-              <ArrowSquareOutIcon size={11} className="shrink-0" />
+              <ArrowSquareOutIcon size={16} className="shrink-0" />
             </a>
           )}
           <span aria-hidden className="text-muted-foreground/40">
@@ -257,15 +257,15 @@ function CustomMonitorRow({
         >
           {activity === "scraping" ? (
             <>
-              <CircleNotchIcon size={12} className="animate-spin" /> Scraping…
+              <SpinnerIcon size={16} className="animate-spin" /> Scraping…
             </>
           ) : activity === "queued" ? (
             <>
-              <ClockIcon size={12} /> Queued
+              <ClockIcon size={16} /> Queued
             </>
           ) : (
             <>
-              <PlayIcon size={12} /> Scrape
+              <PlayIcon size={16} /> Scrape
             </>
           )}
         </Button>
@@ -285,7 +285,7 @@ function CustomMonitorRow({
               }
             }}
           >
-            {deleting ? <CircleNotchIcon size={12} className="animate-spin" /> : null}
+            {deleting ? <SpinnerIcon size={16} className="animate-spin" /> : null}
             Remove?
           </Button>
         ) : (
@@ -296,7 +296,7 @@ function CustomMonitorRow({
             aria-label="Remove this custom page"
             onClick={() => setConfirming(true)}
           >
-            <TrashIcon size={13} />
+            <TrashIcon size={16} />
           </Button>
         )}
       </div>
@@ -379,7 +379,7 @@ function AddCustomDialog({
             <p className="text-xs font-medium text-foreground">Page URL</p>
             <div className="relative">
               <LinkIcon
-                size={14}
+                size={16}
                 className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
               />
               <Input
@@ -433,7 +433,7 @@ function AddCustomDialog({
             Cancel
           </Button>
           <Button size="sm" onClick={submit} disabled={!canSubmit}>
-            {busy && <CircleNotchIcon size={12} className="animate-spin" />}
+            {busy && <SpinnerIcon size={16} className="animate-spin" />}
             Watch page
           </Button>
         </DialogFooter>

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { pageMetadata } from "@/lib/metadata";
 import Link from "next/link";
-import { ArrowLeftIcon, CheckIcon } from "@phosphor-icons/react/ssr";
+import { ArrowLeftIcon, CheckIcon } from "@/components/icons";
 import { Footer } from "@/components/landing/footer";
 import { ProductShot } from "@/components/landing/product-shot";
 import { DemoForm } from "./demo-form";
@@ -59,7 +59,7 @@ export default async function DemoPage({
             href="/"
             className="inline-flex items-center gap-1.5 text-sm text-text-muted transition-colors hover:text-foreground"
           >
-            <ArrowLeftIcon size={14} /> Back to home
+            <ArrowLeftIcon size={16} /> Back to home
           </Link>
         </div>
       </header>

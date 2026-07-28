@@ -1,4 +1,4 @@
-import { ArrowUpIcon, ArrowDownIcon } from "@phosphor-icons/react/ssr";
+import { ArrowUpIcon, ArrowDownIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
 export type Delta = {
@@ -44,7 +44,7 @@ export function DeltaPill({ delta }: { delta: Delta }) {
         delta.kind === "neg" && "text-critical",
       )}
     >
-      {delta.kind === "pos" ? <ArrowUpIcon size={11} /> : <ArrowDownIcon size={11} />}
+      {delta.kind === "pos" ? <ArrowUpIcon size={16} /> : <ArrowDownIcon size={16} />}
       {delta.label}
     </span>
   );

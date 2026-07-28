@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
-import { MonitorIcon, MoonIcon, SunIcon } from "@phosphor-icons/react/ssr";
+import { MonitorIcon, MoonIcon, SunIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -46,9 +46,9 @@ export function ThemeToggle() {
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon-sm" aria-label="Toggle theme">
                 {mounted && resolvedTheme === "dark" ? (
-                  <MoonIcon size={14} />
+                  <MoonIcon size={16} />
                 ) : (
-                  <SunIcon size={14} />
+                  <SunIcon size={16} />
                 )}
               </Button>
             </DropdownMenuTrigger>

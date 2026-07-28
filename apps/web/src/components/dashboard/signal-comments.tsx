@@ -2,12 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  DotsThreeIcon,
-  PencilIcon,
-  ArrowClockwiseIcon,
-  TrashIcon,
-} from "@phosphor-icons/react/ssr";
+import { DotsThreeIcon, PencilIcon, ArrowClockwiseIcon, TrashIcon } from "@/components/icons";
 import { format, formatDistanceToNow, isToday } from "date-fns";
 import { toast } from "sonner";
 import { api, type SignalComment } from "@/lib/api";
@@ -391,7 +386,7 @@ function Comment({
               onClick={() => onRetry(unsent)}
               className="inline-flex items-center gap-1 rounded-sm text-foreground underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
             >
-              <ArrowClockwiseIcon size={11} aria-hidden /> Retry
+              <ArrowClockwiseIcon size={16} aria-hidden /> Retry
             </button>
             <button
               type="button"
@@ -423,15 +418,15 @@ function Comment({
               aria-label="Comment actions"
               className="size-6 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
             >
-              <DotsThreeIcon size={14} />
+              <DotsThreeIcon size={16} />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-36">
             <DropdownMenuItem onSelect={onEdit}>
-              <PencilIcon size={13} /> Edit
+              <PencilIcon size={16} /> Edit
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => onDelete(posted)}>
-              <TrashIcon size={13} /> Delete
+              <TrashIcon size={16} /> Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

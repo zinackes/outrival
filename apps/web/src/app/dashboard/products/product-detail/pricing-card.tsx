@@ -3,13 +3,13 @@
 import { useState } from "react";
 import {
   CheckIcon,
-  CircleNotchIcon,
+  SpinnerIcon,
   PencilIcon,
   PlusIcon,
   SparkleIcon,
   TrashIcon,
   XIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import { formatDistanceToNow } from "date-fns";
 import type { MyProduct, MyProductPatch, MyProductPricingTier } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
@@ -110,7 +110,7 @@ export function PricingCard({
                 </>
               ) : (
                 <>
-                  <SparkleIcon className="size-3" /> detected auto
+                  <SparkleIcon className="size-4" /> detected auto
                 </>
               )}
             </span>
@@ -129,7 +129,7 @@ export function PricingCard({
           )}
           {!editing && (
             <Button size="sm" variant="ghost" onClick={startEdit}>
-              <PencilIcon className="size-3.5" /> Edit
+              <PencilIcon className="size-4" /> Edit
             </Button>
           )}
         </div>
@@ -175,7 +175,7 @@ export function PricingCard({
                   onClick={() => setTiers((ts) => ts.filter((_, idx) => idx !== i))}
                   aria-label="Remove tier"
                 >
-                  <TrashIcon className="size-3.5" />
+                  <TrashIcon className="size-4" />
                 </Button>
               </div>
             ))}
@@ -190,7 +190,7 @@ export function PricingCard({
                 ])
               }
             >
-              <PlusIcon className="size-3.5" /> Add tier
+              <PlusIcon className="size-4" /> Add tier
             </Button>
           </div>
 
@@ -228,11 +228,11 @@ export function PricingCard({
 
           <div className="flex gap-2">
             <Button size="sm" onClick={save} disabled={saving}>
-              {saving ? <CircleNotchIcon className="size-3.5 animate-spin" /> : <CheckIcon className="size-3.5" />}
+              {saving ? <SpinnerIcon className="size-4 animate-spin" /> : <CheckIcon className="size-4" />}
               Save
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setEditing(false)} disabled={saving}>
-              <XIcon className="size-3.5" /> Cancel
+              <XIcon className="size-4" /> Cancel
             </Button>
           </div>
         </div>

@@ -137,8 +137,8 @@ export function WatchedQuestions() {
                   size="icon-sm"
                   onClick={() => void toggle(q)}
                   disabled={busy}
-                  aria-label={q.isActive ? "PauseIcon watching" : "Resume watching"}
-                  title={q.isActive ? "PauseIcon watching" : "Resume watching"}
+                  aria-label={q.isActive ? "Pause watching" : "Resume watching"}
+                  title={q.isActive ? "Pause watching" : "Resume watching"}
                 >
                   {busy ? (
                     <SpinnerIcon className="size-4 animate-spin" />

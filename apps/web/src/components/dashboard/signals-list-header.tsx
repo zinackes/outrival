@@ -183,8 +183,8 @@ export function SignalsListHeader({
           />
           <Input
             id="signals-search"
-            aria-label="MagnifyingGlassIcon signals"
-            placeholder="MagnifyingGlassIcon…"
+            aria-label="Search signals"
+            placeholder="Search…"
             value={searchInput}
             onChange={(e) => onSearchInput(e.target.value)}
             className="h-8 w-full pl-8 text-sm"

@@ -59,7 +59,7 @@ interface NavCommand {
 const NAV: NavCommand[] = [
   { href: "/dashboard", label: "Overview", icon: SquaresFourIcon, keywords: "home dashboard" },
   { href: "/dashboard/signals", label: "Signals", icon: BroadcastIcon, keywords: "feed alerts" },
-  { href: "/dashboard/activity", label: "PulseIcon", icon: PulseIcon, keywords: "scraping runs health" },
+  { href: "/dashboard/activity", label: "Activity", icon: PulseIcon, keywords: "scraping runs health" },
   { href: "/dashboard/ask", label: "Ask Outrival", icon: SparkleIcon, keywords: "ai chat question" },
   { href: "/dashboard/sector", label: "Sector", icon: GlobeIcon, keywords: "market overview" },
   { href: "/dashboard/trends", label: "Trends", icon: ChartLineIcon, keywords: "charts analytics" },
@@ -69,7 +69,7 @@ const NAV: NavCommand[] = [
   { href: "/dashboard/discovery", label: "Discovery", icon: MagnifyingGlassIcon, keywords: "candidates suggestions" },
   { href: "/dashboard/battle-cards", label: "Battle cards", icon: IdentificationCardIcon, keywords: "sales pdf" },
   { href: "/dashboard/digests", label: "Digests", icon: FileTextIcon, keywords: "weekly report email" },
-  { href: "/dashboard/settings", label: "GearIcon", icon: GearIcon, keywords: "preferences config" },
+  { href: "/dashboard/settings", label: "Settings", icon: GearIcon, keywords: "preferences config" },
   { href: "/dashboard/settings/billing", label: "Billing", icon: CreditCardIcon, keywords: "subscription plan invoice" },
 ];
 
@@ -149,7 +149,7 @@ export function GlobalSearch() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label="MagnifyingGlassIcon"
+        aria-label="Search"
         className={cn(
           "inline-flex h-8 items-center gap-2 rounded-md border border-border bg-muted/40 px-2.5 text-xs text-muted-foreground md:w-80",
           "transition-colors hover:bg-muted hover:text-foreground",
@@ -172,7 +172,7 @@ export function GlobalSearch() {
             <CommandInput
               value={query}
               onValueChange={setQuery}
-              placeholder="MagnifyingGlassIcon or jump to…"
+              placeholder="Search or jump to…"
             />
             <CommandList>
               {/* Commands — always available, filtered by the query (substring on

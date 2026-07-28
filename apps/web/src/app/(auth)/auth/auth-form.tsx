@@ -740,9 +740,9 @@ function OtpInput({
         commit(value.slice(0, i - 1) + value.slice(i));
         refs.current[i - 1]?.focus();
       }
-    } else if (e.key === "ArrowLeftIcon" && i > 0) {
+    } else if (e.key === "ArrowLeft" && i > 0) {
       refs.current[i - 1]?.focus();
-    } else if (e.key === "ArrowRightIcon" && i < 5) {
+    } else if (e.key === "ArrowRight" && i < 5) {
       refs.current[i + 1]?.focus();
     }
   }

@@ -5,13 +5,14 @@ import type {
   MonitorFrequency,
   DetectionConfig,
   AnalysisStatus,
+  ScrapeActivity,
   PricingTier,
   PricingPlanOverride,
   ResolvedPricingTier,
   CustomMonitorHint,
 } from "@outrival/shared";
 
-export type { DetectionConfig, AnalysisStatus } from "@outrival/shared";
+export type { DetectionConfig, AnalysisStatus, ScrapeActivity } from "@outrival/shared";
 export type {
   PricingTier,
   PricingPlanOverride,
@@ -572,6 +573,11 @@ export interface ActivityUpcoming {
   // on, so a check due in two days reads as its rhythm and not as a gap.
   frequency?: string;
   nextRunAt: string;
+  // Whether this check has already been handed to the queue ("queued") or a worker
+  // is on it ("scraping"). A due-but-not-yet-enqueued check has neither, and that
+  // difference is the whole point: "due now" and "waiting for a scanner" are not
+  // the same wait, and only one of them is already moving.
+  activity?: ScrapeActivity;
 }
 
 // One readable change in the expandable activity detail: a typed label + a
@@ -1462,6 +1468,10 @@ export interface MyProduct {
   // last failure message once scanning settles, scanErrorSource the source that
   // failed (so the UI can render a precise, human-readable reason).
   scanning: boolean;
+  // True while at least one self monitor is enqueued but not yet picked up. Kept
+  // apart from `scanning`: the site is not being read yet, and saying it is was
+  // what made a half-hour queue wait look like a scan that had hung.
+  scanQueued?: boolean;
   scanError: string | null;
   scanErrorSource: string | null;
   // Where the first AI analysis is at (queued → scraping → summarizing → ready),

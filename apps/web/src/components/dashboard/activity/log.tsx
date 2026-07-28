@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
-import { CaretRightIcon } from "@phosphor-icons/react/ssr";
+import { CaretRightIcon } from "@/components/icons";
 import type { ActivityDay, ActivityEvent } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { activityQuietDayQuery } from "@/lib/queries";

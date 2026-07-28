@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useQuery } from "@tanstack/react-query";
-import { ChartLineIcon } from "@phosphor-icons/react/ssr";
+import { ChartLineIcon } from "@/components/icons";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { EmptyState } from "./empty-state";
 import {

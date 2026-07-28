@@ -15,7 +15,7 @@ import {
   ChatIcon,
   DotsThreeIcon,
   SparkleIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import { format, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { motion } from "motion/react";
@@ -284,7 +284,7 @@ export function SignalDetailPanel({
         {detail?.sourceUrl && (
           <Button variant="outline" size="sm" className="h-8 shrink-0" asChild>
             <a href={detail.sourceUrl} target="_blank" rel="noopener noreferrer">
-              <ArrowSquareOutIcon size={13} />
+              <ArrowSquareOutIcon size={16} />
               <span className="hidden xl:inline">Open source</span>
             </a>
           </Button>
@@ -299,9 +299,9 @@ export function SignalDetailPanel({
                   size="sm"
                   className="h-8 shrink-0"
                 >
-                  <ListChecksIcon size={13} />
+                  <ListChecksIcon size={16} />
                   {actionStatus ? ACTION_LABEL[actionStatus] : "Track"}
-                  <CaretDownIcon size={11} className="opacity-60" />
+                  <CaretDownIcon size={16} className="opacity-60" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
@@ -350,17 +350,17 @@ export function SignalDetailPanel({
                       : onMarkRead?.(signal.id)
                   }
                 >
-                  <CircleIcon size={13} />
+                  <CircleIcon size={16} />
                   {signal.isRead ? "Mark unread" : "Mark read"}
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => setShowComments((v) => !v)}>
-                  <ChatIcon size={13} /> Discuss
+                  <ChatIcon size={16} /> Discuss
                 </DropdownMenuItem>
                 {onSnooze && (
                   <>
                     <DropdownMenuSeparator />
                     <DropdownMenuLabel className="flex items-center gap-1.5 text-xs font-normal text-muted-foreground">
-                      <ClockIcon size={13} /> Snooze
+                      <ClockIcon size={16} /> Snooze
                     </DropdownMenuLabel>
                     {SNOOZE_PRESETS.map((p) => (
                       <DropdownMenuItem
@@ -450,7 +450,7 @@ export function SignalDetailPanel({
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <span className="inline-flex items-center gap-1 rounded-sm border border-border bg-surface-2 px-2 py-0.5 text-meta font-medium text-muted-foreground">
-                          <ArchiveIcon className="size-3" />
+                          <ArchiveIcon className="size-4" />
                           From archive
                         </span>
                       </TooltipTrigger>
@@ -583,7 +583,7 @@ export function SignalDetailPanel({
                     aria-expanded={showContext}
                     className="flex items-center gap-1.5 rounded-sm text-dense font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
                   >
-                    <SparkleIcon size={13} className="shrink-0" aria-hidden />
+                    <SparkleIcon size={16} className="shrink-0" aria-hidden />
                     Full context
                     <CaretDownIcon
                       className={cn(
@@ -702,7 +702,7 @@ export function SignalDetailPanel({
               className="mt-3 inline-flex items-center gap-1 rounded-sm text-dense text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
             >
               View {signal.competitorName} profile
-              <ArrowUpRightIcon size={13} />
+              <ArrowUpRightIcon size={16} />
             </Link>
           </Section>
 
@@ -729,7 +729,7 @@ export function SignalDetailPanel({
                     onClick={() => setShowComments((v) => !v)}
                     aria-expanded={showComments}
                   >
-                    <ChatIcon size={13} />
+                    <ChatIcon size={16} />
                     {commentCount && commentCount > 0
                       ? `${commentCount} comment${commentCount === 1 ? "" : "s"}`
                       : "Discuss"}

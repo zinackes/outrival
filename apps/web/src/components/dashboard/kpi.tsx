@@ -1,12 +1,12 @@
 import Link from "next/link";
+import type { Icon as PhosphorIcon } from "@/components/icons";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
   ArrowRightIcon,
   InfoIcon,
   MinusIcon,
-} from "@phosphor-icons/react/ssr";
-import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
+} from "@/components/icons";
 import { Sparkline } from "./sparkline";
 import {
   Tooltip,
@@ -75,7 +75,7 @@ export function Kpi({
           {label}
           {href && (
             <ArrowRightIcon
-              size={11}
+              size={16}
               className="opacity-0 transition-opacity group-hover/kpi:opacity-100"
               aria-hidden
             />
@@ -88,7 +88,7 @@ export function Kpi({
                   aria-label={`About ${label}`}
                   className="inline-flex cursor-help text-muted-foreground transition-colors hover:text-foreground"
                 >
-                  <InfoIcon size={12} aria-hidden />
+                  <InfoIcon size={16} aria-hidden />
                 </button>
               </TooltipTrigger>
               <TooltipContent className="max-w-[240px] font-sans text-xs font-normal normal-case tracking-normal">
@@ -101,7 +101,7 @@ export function Kpi({
           <span
             className={`text-meta inline-flex items-center gap-1 ${DELTA_COLOR[deltaKind]}`}
           >
-            <DeltaIcon size={11} weight="bold" aria-hidden />
+            <DeltaIcon size={16} aria-hidden />
             {delta}
           </span>
         )}

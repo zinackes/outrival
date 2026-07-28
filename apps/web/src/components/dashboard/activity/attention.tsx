@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
-import { CaretRightIcon, XIcon } from "@phosphor-icons/react/ssr";
+import { CaretRightIcon, XIcon } from "@/components/icons";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { api, type ActivitySource } from "@/lib/api";
@@ -231,7 +231,7 @@ function AttentionRow({
           aria-label={`Stop showing ${source.competitorName} ${sourceLabel(source.sourceType).toLowerCase()} here`}
           title="Stop showing this here"
         >
-          <XIcon className="size-3.5" aria-hidden />
+          <XIcon className="size-4" aria-hidden />
         </Button>
       </div>
     </motion.div>

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeftIcon, ShieldIcon, WarningIcon } from "@phosphor-icons/react/ssr";
+import { ArrowLeftIcon, ShieldIcon, WarningIcon } from "@/components/icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,7 +27,7 @@ export function UserDetailView({ detail }: { detail: AdminUserDetail }) {
         </div>
         <Button asChild variant="ghost" size="sm">
           <Link href="/admin/users">
-            <ArrowLeftIcon className="mr-1.5 h-3.5 w-3.5" />
+            <ArrowLeftIcon className="mr-1.5 h-4 w-4" />
             Users
           </Link>
         </Button>
@@ -103,10 +103,10 @@ export function UserDetailView({ detail }: { detail: AdminUserDetail }) {
                               {m.sourceType}
                               {m.requiresLevel != null && m.requiresLevel >= 2 && (
                                 <>
-                                  <ShieldIcon className="size-3" />L{m.requiresLevel}
+                                  <ShieldIcon className="size-4" />L{m.requiresLevel}
                                 </>
                               )}
-                              {m.markedUnscrapable && <WarningIcon className="size-3" />}
+                              {m.markedUnscrapable && <WarningIcon className="size-4" />}
                             </span>
                           </TableCell>
                           <TableCell className="text-xs text-muted-foreground">

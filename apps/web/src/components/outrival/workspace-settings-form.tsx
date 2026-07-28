@@ -2,12 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import {
-  CheckIcon,
-  CircleNotchIcon,
-  ArrowsClockwiseIcon,
-  PencilIcon,
-} from "@phosphor-icons/react/ssr";
+import { CheckIcon, SpinnerIcon, ArrowsClockwiseIcon, PencilIcon } from "@/components/icons";
 import { api, type ProductProfile, type ProjectStage, type WorkspaceSettings } from "@/lib/api";
 import { workspaceSettingsQuery } from "@/lib/queries";
 import { Button } from "@/components/ui/button";
@@ -198,7 +193,7 @@ export function WorkspaceSettingsForm() {
             onClick={() => setChangeUrlOpen(true)}
             title="Change the monitored product URL"
           >
-            <PencilIcon size={13} />
+            <PencilIcon size={16} />
             Change URL
           </Button>
         </div>
@@ -266,7 +261,7 @@ export function WorkspaceSettingsForm() {
             onClick={() => setUpdateOpen(true)}
             title="Refine your profile or re-analyze your source. Your competitors stay"
           >
-            <ArrowsClockwiseIcon size={13} />
+            <ArrowsClockwiseIcon size={16} />
             Update my product profile
           </Button>
         </div>
@@ -298,7 +293,7 @@ export function WorkspaceSettingsForm() {
               Cancel
             </Button>
             <Button type="submit" size="sm" disabled={saving}>
-              {saving && <CircleNotchIcon size={12} className="animate-spin" />}
+              {saving && <SpinnerIcon size={16} className="animate-spin" />}
               {saving ? "Saving…" : "Save changes"}
             </Button>
           </div>

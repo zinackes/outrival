@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { DownloadSimpleIcon, CircleNotchIcon } from "@phosphor-icons/react/ssr";
+import { DownloadSimpleIcon, SpinnerIcon } from "@/components/icons";
 import { toast } from "sonner";
 import { PLAN_LIMITS } from "@outrival/shared";
 import { api } from "@/lib/api";
@@ -68,7 +68,7 @@ export function DataSettings() {
           </div>
         </div>
         <Button variant="outline" size="sm" onClick={exportData} disabled={busy}>
-          {busy ? <CircleNotchIcon size={13} className="animate-spin" /> : <DownloadSimpleIcon size={13} />}
+          {busy ? <SpinnerIcon size={16} className="animate-spin" /> : <DownloadSimpleIcon size={16} />}
           Export
         </Button>
       </Card>

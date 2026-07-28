@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CaretDownIcon, CircleNotchIcon, ArrowsClockwiseIcon } from "@phosphor-icons/react/ssr";
+import { CaretDownIcon, SpinnerIcon, ClockIcon, ArrowsClockwiseIcon } from "@/components/icons";
 import type { MyProductRescanCategory } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,9 +28,12 @@ export const RESCAN_CATEGORIES: { key: MyProductRescanCategory; label: string }[
  * Shown for live products; repo/idea stages use a plain button. */
 export function RescanMenu({
   busy,
+  queued = false,
   onRescan,
 }: {
   busy: boolean;
+  /** Requested, no scanner on it yet. Not the same claim as "Scanning…". */
+  queued?: boolean;
   onRescan: (categories?: MyProductRescanCategory[]) => void;
 }) {
   const [selected, setSelected] = useState<Set<MyProductRescanCategory>>(new Set());
@@ -45,10 +48,16 @@ export function RescanMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" disabled={busy}>
-          {busy ? <CircleNotchIcon className="size-3.5 animate-spin" /> : <ArrowsClockwiseIcon className="size-3.5" />}
-          {busy ? "Scanning…" : "Re-scan"}
-          <CaretDownIcon className="size-3.5" />
+        <Button variant="outline" size="sm" disabled={busy || queued}>
+          {busy ? (
+            <SpinnerIcon className="size-4 animate-spin" />
+          ) : queued ? (
+            <ClockIcon className="size-4" />
+          ) : (
+            <ArrowsClockwiseIcon className="size-4" />
+          )}
+          {busy ? "Scanning…" : queued ? "Queued" : "Re-scan"}
+          <CaretDownIcon className="size-4" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-52">

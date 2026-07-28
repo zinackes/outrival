@@ -5,11 +5,11 @@ import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import {
   ArrowSquareOutIcon,
-  CircleNotchIcon,
+  SpinnerIcon,
   SparkleIcon,
   CaretDownIcon,
   CaretRightIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import { api, type ChangeRow } from "@/lib/api";
 import { toastApiError } from "@/lib/error-helpers";
 import { cn } from "@/lib/utils";
@@ -70,7 +70,7 @@ export function ChangeCard({
             rel="noreferrer noopener"
             className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
-            View page <ArrowSquareOutIcon size={12} />
+            View page <ArrowSquareOutIcon size={16} />
           </a>
         )}
       </div>
@@ -91,11 +91,11 @@ export function ChangeCard({
           >
             {classifying ? (
               <>
-                <CircleNotchIcon size={11} className="animate-spin" /> Classifying…
+                <SpinnerIcon size={16} className="animate-spin" /> Classifying…
               </>
             ) : (
               <>
-                <SparkleIcon size={11} /> Classify with AI
+                <SparkleIcon size={16} /> Classify with AI
               </>
             )}
           </Button>
@@ -109,7 +109,7 @@ export function ChangeCard({
             onClick={() => setOpen((v) => !v)}
             className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
-            {open ? <CaretDownIcon size={11} /> : <CaretRightIcon size={11} />}
+            {open ? <CaretDownIcon size={16} /> : <CaretRightIcon size={16} />}
             {open ? "Hide raw diff" : "Show raw diff"}
           </button>
           {open && (

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CheckIcon } from "@phosphor-icons/react/ssr";
+import { CheckIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { COMPETITORS, OUTRIVAL, PRICE_AS_OF, type CompetitorKey } from "./data";
 
@@ -70,7 +70,7 @@ export function PricingFaceOff({
         <ul className="mt-5 space-y-2.5 text-sm">
           {OUTRIVAL.plans.map((p) => (
             <li key={p.name} className="flex items-start gap-2.5">
-              <CheckIcon size={14} className="mt-0.5 shrink-0 text-primary" />
+              <CheckIcon size={16} className="mt-0.5 shrink-0 text-primary" />
               <span>
                 <span className="font-medium">{p.name}</span>{" "}
                 <span className="tabular-nums text-text-muted">

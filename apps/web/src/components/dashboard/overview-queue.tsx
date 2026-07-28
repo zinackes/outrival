@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRightIcon, CheckIcon } from "@phosphor-icons/react/ssr";
+import { ArrowRightIcon, CheckIcon } from "@/components/icons";
 import type { Signal } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { shortAge } from "@/lib/format-date";
@@ -59,7 +59,7 @@ export function OverviewQueue({
         action={
           <Button asChild variant="outline" size="sm">
             <Link href="/dashboard/signals">
-              Signals inbox <ArrowRightIcon size={11} />
+              Signals inbox <ArrowRightIcon size={16} />
             </Link>
           </Button>
         }
@@ -71,7 +71,7 @@ export function OverviewQueue({
             className="flex size-7 shrink-0 items-center justify-center rounded-full border border-positive/40 bg-positive/10 text-positive"
             aria-hidden
           >
-            <CheckIcon size={13} weight="bold" />
+            <CheckIcon size={16} />
           </span>
           <span>
             <span className="block text-sm font-semibold">Nothing waiting.</span>

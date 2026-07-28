@@ -4,12 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import { format, formatDistanceToNow, isToday, isYesterday } from "date-fns";
-import {
-  PulseIcon,
-  ArrowRightIcon,
-  CaretRightIcon,
-  ArrowSquareOutIcon,
-} from "@phosphor-icons/react/ssr";
+import { PulseIcon, ArrowRightIcon, CaretRightIcon, ArrowSquareOutIcon } from "@/components/icons";
 import type { CompetitorSignal, ChangeRow } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { feedItemMotion } from "@/lib/motion";
@@ -149,7 +144,7 @@ export function ActivityTab({
               href={activityHref}
               className="inline-flex items-center gap-1.5 text-sm text-link hover:underline"
             >
-              <PulseIcon size={14} aria-hidden />
+              <PulseIcon size={16} aria-hidden />
               View monitoring activity
             </Link>
           )
@@ -299,7 +294,7 @@ export function ActivityTab({
           className="inline-flex items-center gap-1.5 text-dense text-link hover:underline"
         >
           Every check we ran, including no-change runs
-          <ArrowRightIcon size={13} aria-hidden />
+          <ArrowRightIcon size={16} aria-hidden />
         </Link>
       </div>
     </Card>
@@ -422,7 +417,7 @@ function SignalRow({
             rel="noreferrer noopener"
             className="inline-flex items-center gap-1 text-xs text-link hover:underline"
           >
-            View page <ArrowSquareOutIcon size={11} />
+            View page <ArrowSquareOutIcon size={16} />
           </a>
         </dd>
       </dl>
@@ -457,7 +452,7 @@ function OtherChanges({
         )}
       >
         <CaretRightIcon
-          size={13}
+          size={16}
           aria-hidden
           className="shrink-0 transition-transform group-open:rotate-90"
         />

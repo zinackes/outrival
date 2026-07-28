@@ -12,7 +12,7 @@ import { signalsFeedQuery, signalsFacetsQuery } from "@/lib/queries";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
-import { CheckIcon, CaretDownIcon, TrayIcon, FlaskIcon, ScanIcon } from "@phosphor-icons/react/ssr";
+import { CheckIcon, CaretDownIcon, TrayIcon, FlaskIcon, ScanIcon } from "@/components/icons";
 import { startOfWeek, endOfWeek, format, isToday, isYesterday } from "date-fns";
 import { toast } from "sonner";
 import { AnimatePresence, motion } from "motion/react";
@@ -999,7 +999,7 @@ export function SignalsView() {
               </Button>
               {!sample && (
                 <Button size="sm" variant="ghost" onClick={() => setSample(true)}>
-                  <FlaskIcon size={13} /> Explore with sample data
+                  <FlaskIcon size={16} /> Explore with sample data
                 </Button>
               )}
             </>
@@ -1180,7 +1180,7 @@ export function SignalsView() {
                   className="mx-auto flex size-9 items-center justify-center rounded-md border border-border bg-surface-2 text-muted-foreground"
                   aria-hidden
                 >
-                  <ScanIcon size={17} />
+                  <ScanIcon size={20} />
                 </span>
                 <p className="mt-3 text-sm font-medium text-foreground">
                   No signal open
@@ -1229,7 +1229,7 @@ function SelectCheckbox({
           : "border-border text-transparent hover:border-foreground/50",
       )}
     >
-      <CheckIcon size={11} weight="bold" />
+      <CheckIcon size={16} />
     </button>
   );
 }
@@ -1255,7 +1255,7 @@ function GroupHeader({
       className="sticky top-0 z-10 flex w-full items-center gap-1.5 rounded-md bg-card/95 px-2 py-1.5 text-left outline-none backdrop-blur transition-colors hover:bg-accent/50 focus-visible:bg-accent/50"
     >
       <CaretDownIcon
-        size={13}
+        size={16}
         className={cn(
           "shrink-0 text-muted-foreground transition-transform",
           collapsed && "-rotate-90",

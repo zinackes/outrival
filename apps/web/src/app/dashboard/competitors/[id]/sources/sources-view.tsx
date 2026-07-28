@@ -5,12 +5,7 @@ import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
-import {
-  ArrowLeftIcon,
-  CaretRightIcon,
-  CircleNotchIcon,
-  PlayIcon,
-} from "@phosphor-icons/react/ssr";
+import { ArrowLeftIcon, CaretRightIcon, SpinnerIcon, PlayIcon } from "@/components/icons";
 import {
   ALL_CONFIGURABLE_SOURCES,
   ATTENTION_OF,
@@ -41,7 +36,7 @@ import { sourceShortLabel } from "@/lib/source-labels";
 import { ListError } from "@/components/outrival/list-error";
 import { toastApiError } from "@/lib/error-helpers";
 import CompetitorDetailLoading from "../detail-skeleton";
-import { isServerScraping, isServerQueued } from "../competitor-detail/shared";
+import { scrapeActivity } from "../competitor-detail/shared";
 import { lastScanLabel, monitorStatus } from "../competitor-detail/monitor-status";
 import { useMonitorActions } from "../competitor-detail/use-monitor-actions";
 import { CustomSources } from "./custom-sources";
@@ -157,7 +152,7 @@ function CollapsedBlock({
         <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
           {open ? "Hide" : cta}
           <CaretRightIcon
-            size={13}
+            size={16}
             className={cn("transition-transform duration-200", open && "rotate-90")}
           />
         </span>
@@ -333,7 +328,10 @@ export function SourcesView({ id }: { id: string }) {
 
   const { competitor, automaticMonitors } = data;
   const bySource = new Map(monitors.map((m) => [m.sourceType, m]));
-  const isRunning = (m: Monitor) => scrapingIds.has(m.id) || isServerScraping(m);
+  // Scraping vs queued in one call. The tracking set alone can't tell them apart:
+  // it holds queued jobs too, so using it as "running" made every waiting source
+  // claim a scan was under way.
+  const activityOf = (m: Monitor) => scrapeActivity(m, scrapingIds.has(m.id));
 
   const coverage = buildCoverage(states);
   // Quoted in the blocked message so a protected surface reads as "we route around
@@ -355,7 +353,7 @@ export function SourcesView({ id }: { id: string }) {
         targets={targets}
         competitorUrl={competitor.url}
         fallbacks={fallbacks.filter((f) => f !== label(sourceType))}
-        running={monitor ? isRunning(monitor) : false}
+        activity={monitor ? activityOf(monitor) : null}
         monitoringPaused={competitor.monitoringPaused || Boolean(competitor.pausedByPlan)}
         onRun={requestRunMonitor}
         onEnable={enableMonitor}
@@ -405,7 +403,7 @@ export function SourcesView({ id }: { id: string }) {
             disabled={runningAll}
             className="h-8 shrink-0 text-xs"
           >
-            {runningAll ? <CircleNotchIcon size={12} className="animate-spin" /> : <PlayIcon size={12} />}
+            {runningAll ? <SpinnerIcon size={16} className="animate-spin" /> : <PlayIcon size={16} />}
             Scan all
           </Button>
         </div>
@@ -561,8 +559,8 @@ export function SourcesView({ id }: { id: string }) {
                         monitor,
                         monitorStatus(
                           monitor,
-                          isRunning(monitor),
-                          !isRunning(monitor) && isServerQueued(monitor),
+                          activityOf(monitor) === "scraping",
+                          activityOf(monitor) === "queued",
                         ),
                       )
                     : "Not seeded yet";
@@ -613,9 +611,9 @@ export function SourcesView({ id }: { id: string }) {
                   disabled={techScraping}
                 >
                   {techScraping ? (
-                    <CircleNotchIcon size={11} className="animate-spin" />
+                    <SpinnerIcon size={16} className="animate-spin" />
                   ) : (
-                    <PlayIcon size={11} />
+                    <PlayIcon size={16} />
                   )}
                   Run
                 </Button>

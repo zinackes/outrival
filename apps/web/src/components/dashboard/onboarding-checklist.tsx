@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { CheckIcon, CircleIcon, XIcon, RocketIcon } from "@phosphor-icons/react/ssr";
+import { CheckIcon, CircleIcon, XIcon, RocketIcon } from "@/components/icons";
 import { type ChecklistStepKey } from "@/lib/api";
 import { onboardingChecklistQuery } from "@/lib/queries";
 
@@ -64,7 +64,7 @@ export function OnboardingChecklistCard() {
     <section className="rounded-lg border border-border p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2">
-          <RocketIcon size={15} className="text-muted-foreground" aria-hidden />
+          <RocketIcon size={16} className="text-muted-foreground" aria-hidden />
           <h2 className="text-sm font-semibold tracking-tight">Get set up</h2>
           <span className="text-muted-foreground font-mono text-meta">
             {doneCount}/{data.steps.length}
@@ -75,7 +75,7 @@ export function OnboardingChecklistCard() {
           aria-label="Dismiss"
           className="text-muted-foreground hover:text-foreground transition-colors"
         >
-          <XIcon size={14} />
+          <XIcon size={16} />
         </button>
       </div>
       <ul className="mt-3 space-y-1.5">
@@ -84,9 +84,9 @@ export function OnboardingChecklistCard() {
           return (
             <li key={s.key} className="flex items-center gap-2.5">
               {s.done ? (
-                <CheckIcon size={14} className="text-primary shrink-0" aria-hidden />
+                <CheckIcon size={16} className="text-primary shrink-0" aria-hidden />
               ) : (
-                <CircleIcon size={14} className="text-muted-foreground/40 shrink-0" aria-hidden />
+                <CircleIcon size={16} className="text-muted-foreground/40 shrink-0" aria-hidden />
               )}
               {s.done ? (
                 <span className="text-muted-foreground text-dense line-through">{meta.label}</span>

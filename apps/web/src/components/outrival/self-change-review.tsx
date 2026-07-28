@@ -8,7 +8,7 @@ import {
   WarningIcon,
   CheckIcon,
   ArrowUpRightIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import { formatDistanceToNow } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -288,7 +288,7 @@ function ToggleItem({
           checked ? "border-primary bg-primary text-primary-foreground" : "border-input"
         }`}
       >
-        {checked && <CheckIcon className="size-3" weight="bold" />}
+        {checked && <CheckIcon className="size-4" />}
       </span>
       <span
         className={`text-xs leading-snug ${dim && !checked ? "text-muted-foreground" : ""}`}
@@ -351,7 +351,7 @@ function DiffRow({ item, kind }: { item: DiffItem; kind: "added" | "removed" | "
             className="ml-1.5 inline-flex items-center gap-0.5 align-baseline text-dense font-medium text-link no-underline hover:underline"
           >
             View
-            <ArrowUpRightIcon className="size-3" />
+            <ArrowUpRightIcon className="size-4" />
           </a>
         )}
       </span>
@@ -536,7 +536,7 @@ function ReviewBody({
                         aria-label={`Remove ${item}`}
                         className="text-[var(--muted-2)] hover:text-foreground"
                       >
-                        <XIcon className="size-3" />
+                        <XIcon className="size-4" />
                       </button>
                     </span>
                   ))}
@@ -558,7 +558,7 @@ function ReviewBody({
                 className="h-8 text-xs"
               />
               <Button type="submit" size="sm" variant="outline" disabled={!draft.trim()}>
-                <PlusIcon className="size-3.5" />
+                <PlusIcon className="size-4" />
                 Add
               </Button>
             </form>
@@ -606,7 +606,7 @@ function ReviewBody({
 
         {change.severity === "major" && (
           <div className="mt-5 flex items-start gap-2 rounded-md border border-border bg-accent/50 px-3 py-2.5 text-sm text-muted-foreground">
-            <WarningIcon className="mt-0.5 size-3.5 shrink-0 text-destructive" />
+            <WarningIcon className="mt-0.5 size-4 shrink-0 text-destructive" />
             Major change. Accepting it may flag some competitors for re-evaluation.
           </div>
         )}

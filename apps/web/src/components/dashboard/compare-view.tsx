@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CheckIcon, CaretDownIcon, CopyIcon, DownloadSimpleIcon } from "@phosphor-icons/react/ssr";
+import { CheckIcon, CaretDownIcon, CopyIcon, DownloadSimpleIcon } from "@/components/icons";
 import { api, type Competitor, type CompareColumn, type ProductSummary } from "@/lib/api";
 import { productsListQuery, competitorsQuery, compareRankingQuery } from "@/lib/queries";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
@@ -25,11 +25,14 @@ import { CompareVerdict } from "@/components/dashboard/compare/verdict";
 import type { CompareEntity } from "@/components/dashboard/compare/lens";
 import {
   HiringLens,
+  MEASURE_LENSES,
   MovesLens,
   PositioningLens,
   PriceLens,
   RatingLens,
   StackLens,
+  lensHasContent,
+  type MeasureLensId,
 } from "@/components/dashboard/compare/lenses";
 import { agePhrase } from "@/components/dashboard/compare/derive";
 import {
@@ -50,7 +53,41 @@ import {
  * it shows the evidence. The grid still exists, as the export.
  */
 
-const MAX = 6;
+/**
+ * How many COMPETITORS can be compared at once. Your own products share the roster but
+ * do not consume a slot: the page reads "you vs them", so spending one of the six on
+ * yourself left a pro account (15 competitors) able to line up only five of them.
+ */
+const MAX_COMPETITORS = 6;
+/**
+ * Hard ceiling on the whole set, matching the API's own column cap (routes/compare.ts
+ * MAX_COLUMNS). Past it the request is truncated silently, so the picker stops first.
+ * Only reachable with several SKUs selected at once.
+ */
+const MAX_COLUMNS = 12;
+
+/** id → kind. An id we don't know counts as a competitor, i.e. against the tighter cap. */
+function kindsOf(entities: PickEntity[]): Map<string, PickEntity["kind"]> {
+  return new Map(entities.map((e) => [e.id, e.kind]));
+}
+
+/**
+ * Trim a selection to both caps, keeping the incoming order. Anything that would breach
+ * a cap is dropped, so appending a candidate last is also how an add is refused.
+ */
+function capSelection(ids: string[], kinds: Map<string, PickEntity["kind"]>): string[] {
+  const kept: string[] = [];
+  let comps = 0;
+  for (const id of ids) {
+    if (kept.length >= MAX_COLUMNS) break;
+    if (kinds.get(id) !== "you") {
+      if (comps >= MAX_COMPETITORS) continue;
+      comps += 1;
+    }
+    kept.push(id);
+  }
+  return kept;
+}
 
 const EXPORT_STORAGE = "compare:export";
 // Persisted column selection. Keyed by the active product scope: with several SKUs the
@@ -64,7 +101,7 @@ function selectionKey(productId: string | undefined): string {
 
 /**
  * The selection the user left behind, filtered to entities that still exist (a
- * competitor can be deleted, or belong to another product scope) and capped at MAX.
+ * competitor can be deleted, or belong to another product scope) and capped.
  * Null when nothing survives — the caller then seeds the ranked defaults, so a stale
  * selection can never leave the page with nothing to compare.
  */
@@ -72,10 +109,11 @@ function readStoredSelection(key: string, entities: PickEntity[]): string[] | nu
   try {
     const raw: unknown = JSON.parse(localStorage.getItem(key) ?? "null");
     if (!Array.isArray(raw)) return null;
-    const known = new Set(entities.map((e) => e.id));
-    const kept = [
-      ...new Set(raw.filter((id): id is string => typeof id === "string" && known.has(id))),
-    ].slice(0, MAX);
+    const kinds = kindsOf(entities);
+    const kept = capSelection(
+      [...new Set(raw.filter((id): id is string => typeof id === "string" && kinds.has(id)))],
+      kinds,
+    );
     return kept.length ? kept : null;
   } catch {
     /* corrupt prefs — fall back to the defaults */
@@ -130,7 +168,9 @@ function buildPickList(
     }),
   );
   const pinned = you.find((e) => e.id === scopedSelf) ?? you[0];
-  const seed = pinned ? [pinned, ...comps.slice(0, MAX - 1)] : comps.slice(0, MAX);
+  const seed = pinned
+    ? [pinned, ...comps.slice(0, MAX_COMPETITORS)]
+    : comps.slice(0, MAX_COMPETITORS);
   return { entities: [...you, ...comps], selected: seed.map((e) => e.id) };
 }
 
@@ -292,13 +332,11 @@ export function CompareView() {
   }, [selected, matrixReloadKey, selectionRestored]);
 
   function toggle(id: string) {
-    setSelected((prev) =>
-      prev.includes(id)
-        ? prev.filter((x) => x !== id)
-        : prev.length >= MAX
-          ? prev
-          : [...prev, id],
-    );
+    setSelected((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      // Appended last, so capSelection drops it (and only it) when a cap is reached.
+      return capSelection([...prev, id], kindsOf(entities ?? []));
+    });
   }
 
   function toggleRow(lens: string, id: string) {
@@ -380,6 +418,24 @@ export function CompareView() {
     onToggle: (id: string) => toggleRow(lens, id),
   });
 
+  /**
+   * The measure lenses that will actually draw, dealt alternately into two columns.
+   * Fixed slots (price+hiring left, rating+stack right) emptied the whole right half
+   * whenever a set had no reviews and no detected stack; alternating keeps both
+   * columns fed, and with a full roster it reproduces the original pairing exactly.
+   */
+  const visibleLenses = useMemo<MeasureLensId[]>(
+    () => MEASURE_LENSES.filter((id) => lensHasContent[id](rows)),
+    [rows],
+  );
+
+  const renderLens = (id: MeasureLensId) => {
+    if (id === "price") return <PriceLens key={id} {...lensProps("price")} />;
+    if (id === "rating") return <RatingLens key={id} {...lensProps("rating")} />;
+    if (id === "hiring") return <HiringLens key={id} {...lensProps("hiring")} />;
+    return <StackLens key={id} entities={rows} />;
+  };
+
   async function runExport() {
     const cols = exportIncludeYou
       ? loadedCols
@@ -440,11 +496,11 @@ export function CompareView() {
               disabled={!canExport}
             >
               {exportDone ? (
-                <CheckIcon size={12} />
+                <CheckIcon size={16} />
               ) : exportIsCopy ? (
-                <CopyIcon size={12} />
+                <CopyIcon size={16} />
               ) : (
-                <DownloadSimpleIcon size={12} />
+                <DownloadSimpleIcon size={16} />
               )}
               {exportDone
                 ? exportIsCopy
@@ -461,7 +517,7 @@ export function CompareView() {
                   disabled={!canExport}
                   aria-label="Export options"
                 >
-                  <CaretDownIcon size={14} />
+                  <CaretDownIcon size={16} />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
@@ -516,7 +572,8 @@ export function CompareView() {
             pickYou={pickYou}
             pickComps={pickComps}
             selectedIds={selectedIds}
-            max={MAX}
+            maxCompetitors={MAX_COMPETITORS}
+            maxTotal={MAX_COLUMNS}
             onToggle={toggle}
           />
 
@@ -548,17 +605,20 @@ export function CompareView() {
 
               {/* Two independent columns, not a two-column grid: a shared grid row
                   couples the heights, so expanding a row in Rating would leave a void
-                  under Price. On one column the lenses simply stack in this order. */}
-              <div className="grid items-start gap-8 lg:grid-cols-2 lg:gap-x-10">
-                <div className="flex min-w-0 flex-col gap-8">
-                  <PriceLens {...lensProps("price")} />
-                  <HiringLens {...lensProps("hiring")} />
+                  under Price. A lone lens takes the full width rather than sitting in
+                  a half-empty grid. */}
+              {visibleLenses.length <= 1 ? (
+                visibleLenses.map(renderLens)
+              ) : (
+                <div className="grid items-start gap-8 lg:grid-cols-2 lg:gap-x-10">
+                  <div className="flex min-w-0 flex-col gap-8">
+                    {visibleLenses.filter((_, i) => i % 2 === 0).map(renderLens)}
+                  </div>
+                  <div className="flex min-w-0 flex-col gap-8">
+                    {visibleLenses.filter((_, i) => i % 2 === 1).map(renderLens)}
+                  </div>
                 </div>
-                <div className="flex min-w-0 flex-col gap-8">
-                  <RatingLens {...lensProps("rating")} />
-                  <StackLens entities={rows} />
-                </div>
-              </div>
+              )}
 
               <PositioningLens entities={rows} />
               <MovesLens entities={rows} />

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BellIcon, CheckIcon, ChecksIcon, TrashIcon, XIcon } from "@phosphor-icons/react/ssr";
+import { BellIcon, CheckIcon, ChecksIcon, TrashIcon, XIcon } from "@/components/icons";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -81,7 +81,7 @@ export function NotificationsBell({ compact = false }: { compact?: boolean } = {
         toast(notif.title, {
           id: notif.id,
           description: notif.body ?? undefined,
-          icon: <BellIcon size={14} className="text-[var(--link)]" />,
+          icon: <BellIcon size={16} className="text-[var(--link)]" />,
           action: notif.linkUrl
             ? { label: "View", onClick: () => router.push(notif.linkUrl!) }
             : undefined,
@@ -191,7 +191,7 @@ export function NotificationsBell({ compact = false }: { compact?: boolean } = {
                 aria-controls="notifications-panel"
                 className="relative"
               >
-                <BellIcon size={14} />
+                <BellIcon size={16} />
                 {unreadCount > 0 && (
                   <span
                     className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-primary border-2 border-background"
@@ -244,7 +244,7 @@ export function NotificationsBell({ compact = false }: { compact?: boolean } = {
                     onClick={markAllRead}
                     className="h-7 px-2 text-xs text-primary hover:text-primary"
                   >
-                    <CheckIcon size={11} /> Mark all read
+                    <CheckIcon size={16} /> Mark all read
                   </Button>
                 )}
                 {items.length > 0 && (
@@ -254,7 +254,7 @@ export function NotificationsBell({ compact = false }: { compact?: boolean } = {
                     onClick={clearAll}
                     className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
                   >
-                    <TrashIcon size={11} /> Clear all
+                    <TrashIcon size={16} /> Clear all
                   </Button>
                 )}
               </div>
@@ -263,7 +263,7 @@ export function NotificationsBell({ compact = false }: { compact?: boolean } = {
               {items.length === 0 ? (
                 <li className="flex flex-col items-center gap-2 p-8 text-center">
                   <span className="inline-flex size-9 items-center justify-center rounded-md border border-positive/25 bg-positive/10 text-positive">
-                    <ChecksIcon size={17} aria-hidden />
+                    <ChecksIcon size={20} aria-hidden />
                   </span>
                   <span className="text-sm font-medium text-foreground">
                     You&apos;re all caught up

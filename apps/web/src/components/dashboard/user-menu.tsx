@@ -9,7 +9,7 @@ import {
   ChatCenteredDotsIcon,
   GearIcon,
   UserIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import { signOut } from "@/lib/auth-client";
 import { resetUser } from "@/lib/posthog/events";
 import { UserAvatar } from "@/components/dashboard/user-avatar";
@@ -53,7 +53,7 @@ export function UserMenu({ user }: { user: UserIcon }) {
           >
             {user.name ?? user.email ?? "Account"}
           </span>
-          <CaretDownIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+          <CaretDownIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" sideOffset={8} className="w-56">
@@ -74,18 +74,18 @@ export function UserMenu({ user }: { user: UserIcon }) {
         {/* patch-29 — personal shortcuts to the two most-visited sections. */}
         <DropdownMenuItem asChild>
           <Link href="/dashboard/settings/profile">
-            <UserIcon className="size-3.5" /> Profile
+            <UserIcon className="size-4" /> Profile
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
           <Link href="/dashboard/settings/notifications">
-            <BellIcon className="size-3.5" /> Notifications
+            <BellIcon className="size-4" /> Notifications
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
           <Link href="/dashboard/settings">
-            <GearIcon className="size-3.5" /> GearIcon
+            <GearIcon className="size-4" /> GearIcon
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem
@@ -93,11 +93,11 @@ export function UserMenu({ user }: { user: UserIcon }) {
             document.dispatchEvent(new CustomEvent(FEEDBACK_OPEN_EVENT))
           }
         >
-          <ChatCenteredDotsIcon className="size-3.5" /> Send feedback
+          <ChatCenteredDotsIcon className="size-4" /> Send feedback
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={handleSignOut}>
-          <SignOutIcon className="size-3.5" /> Sign out
+          <SignOutIcon className="size-4" /> Sign out
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

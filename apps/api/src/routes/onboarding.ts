@@ -14,7 +14,12 @@ import {
   type SelfProfile,
   type SelfProfileField,
 } from "@outrival/db";
-import { normalizeHostname, validatePublicUrl, resolveDetectionConfig } from "@outrival/shared";
+import {
+  normalizeHostname,
+  validatePublicUrl,
+  resolveDetectionConfig,
+  deriveCompetitorName,
+} from "@outrival/shared";
 import {
   scoreOverlap,
   nameKnownCompetitors,
@@ -670,7 +675,10 @@ onboardingRouter.post("/complete", async (c) => {
       .insert(competitors)
       .values({
         orgId,
-        name: sel.name,
+        // The discovery step carries the page <title>, which is a tagline more
+        // often than a company name. Derive the brand here rather than trusting
+        // the client's label.
+        name: deriveCompetitorName(sel.url, sel.name),
         url: sel.url,
         overlapScore: sel.overlapScore ?? null,
       })

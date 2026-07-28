@@ -9,10 +9,10 @@ import {
   GitBranchIcon,
   GlobeIcon,
   LightbulbIcon,
-  CircleNotchIcon,
+  SpinnerIcon,
   SparkleIcon,
   UploadSimpleIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -378,7 +378,7 @@ export function AddProductWizard({
                     onClick={() => fileInputRef.current?.click()}
                     className="justify-start font-normal"
                   >
-                    <UploadSimpleIcon size={14} className="mr-2" />
+                    <UploadSimpleIcon size={16} className="mr-2" />
                     {file ? file.name : "Choose a file (PDF, DOCX, TXT, MD, max 10MB)"}
                   </Button>
                   <p className="text-xs text-muted-foreground">
@@ -389,7 +389,7 @@ export function AddProductWizard({
             </div>
             <DialogFooter className="sm:justify-between">
               <Button variant="ghost" onClick={() => setScreen("stage")} disabled={!!busy}>
-                <ArrowLeftIcon size={14} className="mr-1" />
+                <ArrowLeftIcon size={16} className="mr-1" />
                 Back
               </Button>
               <div className="flex gap-2">
@@ -398,9 +398,9 @@ export function AddProductWizard({
                 </Button>
                 <Button onClick={analyze} disabled={!!busy || !canAnalyze}>
                   {busy === "analyze" ? (
-                    <CircleNotchIcon size={14} className="mr-1 animate-spin" />
+                    <SpinnerIcon size={16} className="mr-1 animate-spin" />
                   ) : (
-                    <SparkleIcon size={14} className="mr-1" />
+                    <SparkleIcon size={16} className="mr-1" />
                   )}
                   Analyze
                 </Button>
@@ -454,11 +454,11 @@ export function AddProductWizard({
             </div>
             <DialogFooter className="sm:justify-between">
               <Button variant="ghost" onClick={() => setScreen("input")} disabled={!!busy}>
-                <ArrowLeftIcon size={14} className="mr-1" />
+                <ArrowLeftIcon size={16} className="mr-1" />
                 Back
               </Button>
               <Button onClick={createAndDiscover} disabled={!!busy || !name.trim() || !profileReady}>
-                {busy === "create" && <CircleNotchIcon size={14} className="mr-1 animate-spin" />}
+                {busy === "create" && <SpinnerIcon size={16} className="mr-1 animate-spin" />}
                 Create & find competitors
               </Button>
             </DialogFooter>
@@ -476,14 +476,14 @@ export function AddProductWizard({
             <div className="flex flex-col items-center gap-3 py-6 text-center">
               {busy === "discover" ? (
                 <>
-                  <CircleNotchIcon size={28} className="animate-spin text-muted-foreground" />
+                  <SpinnerIcon size={24} className="animate-spin text-muted-foreground" />
                   <p className="text-sm text-muted-foreground">Finding competitors…</p>
                 </>
               ) : discoverError ? (
                 <p className="text-sm text-muted-foreground">{discoverError}</p>
               ) : (
                 <>
-                  <SparkleIcon size={28} className="text-primary" />
+                  <SparkleIcon size={24} className="text-primary" />
                   <p className="text-content font-medium">
                     {detected && detected > 0
                       ? `Found ${detected} competitor${detected > 1 ? "s" : ""} to review`

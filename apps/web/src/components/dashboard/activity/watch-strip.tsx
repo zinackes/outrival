@@ -376,7 +376,9 @@ export function WatchStrip({
     ? (model?.bars.find((b) => b.start.toISOString() === selectedFrom) ?? null)
     : null;
 
-  const next = upcoming[0] ?? null;
+  // A check already handed to the fleet outranks the soonest scheduled one: it is
+  // the only line here describing work that has actually started moving.
+  const next = upcoming.find((u) => u.activity) ?? upcoming[0] ?? null;
 
   if (failed) {
     return (
@@ -845,15 +847,27 @@ function NextCheck({ next }: { next: ActivityUpcoming }) {
   const [label, setLabel] = useState<string | null>(null);
   useEffect(() => {
     const compute = () => {
+      // Already handed to the fleet: the schedule is no longer what it waits on.
+      if (next.activity) {
+        setLabel(next.activity === "scraping" ? "running now" : "queued, waiting for a scanner");
+        return;
+      }
       const mins = Math.round((new Date(next.nextRunAt).getTime() - Date.now()) / 60_000);
       // An overdue nextRunAt only means the hourly cron has not picked the monitor
-      // up yet: the check is pending, never "12 minutes ago".
-      setLabel(mins <= 1 ? "due now" : mins < 60 ? `in ${mins} min` : `in ${Math.round(mins / 60)}h`);
+      // up yet: the check is pending, never "12 minutes ago". Name the hour it is
+      // fanned out on, so "due" doesn't read as "stuck".
+      if (mins <= 1) {
+        const top = new Date();
+        top.setMinutes(0, 0, 0);
+        setLabel(`due, runs ${formatTime(top.getTime() + 3_600_000)}`);
+        return;
+      }
+      setLabel(mins < 60 ? `in ${mins} min` : `in ${Math.round(mins / 60)}h`);
     };
     compute();
     const id = setInterval(compute, 30_000);
     return () => clearInterval(id);
-  }, [next.nextRunAt]);
+  }, [next.nextRunAt, next.activity]);
 
   if (!label) return null;
   return (

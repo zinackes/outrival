@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { CheckIcon, PlusIcon, XIcon } from "@phosphor-icons/react/ssr";
+import { CheckIcon, PlusIcon, XIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -70,7 +70,7 @@ function Chip({
         aria-label={`Remove ${entity.name} from the comparison`}
         className="text-muted-foreground hover:bg-surface-3 hover:text-foreground focus-visible:ring-ring/50 grid size-4 place-items-center rounded-sm focus-visible:ring-2 focus-visible:outline-none"
       >
-        <XIcon size={11} />
+        <XIcon size={16} />
       </button>
     </motion.span>
   );
@@ -96,7 +96,7 @@ function PickItem({
       }}
       className="gap-2"
     >
-      <CheckIcon size={14} className={cn(on ? "opacity-100" : "opacity-0")} />
+      <CheckIcon size={16} className={cn(on ? "opacity-100" : "opacity-0")} />
       <CompAvatar name={entity.name} url={entity.url} size={18} />
       <span className="truncate">{entity.name}</span>
     </CommandItem>
@@ -108,7 +108,8 @@ export function CompareSetRail({
   pickYou,
   pickComps,
   selectedIds,
-  max,
+  maxCompetitors,
+  maxTotal,
   onToggle,
 }: {
   /** In display order — your products first, then the competitors. */
@@ -116,11 +117,16 @@ export function CompareSetRail({
   pickYou: PickEntity[];
   pickComps: PickEntity[];
   selectedIds: Set<string>;
-  max: number;
+  /** Competitor slots. Your own products share the roster but don't consume one. */
+  maxCompetitors: number;
+  /** Ceiling on the whole set, matching the API's column cap. Bites only on multi-SKU. */
+  maxTotal: number;
   onToggle: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const full = selectedIds.size >= max;
+  const usedComps = pickComps.reduce((n, e) => (selectedIds.has(e.id) ? n + 1 : n), 0);
+  const atTotal = selectedIds.size >= maxTotal;
+  const compsFull = atTotal || usedComps >= maxCompetitors;
 
   return (
     <div className="border-border flex flex-wrap items-center gap-1.5 border-b pb-4">
@@ -139,7 +145,7 @@ export function CompareSetRail({
             size="sm"
             className="text-muted-foreground border-border-strong h-7 border border-dashed"
           >
-            <PlusIcon size={12} />
+            <PlusIcon size={16} />
             Add
           </Button>
         </PopoverTrigger>
@@ -155,7 +161,7 @@ export function CompareSetRail({
                       key={e.id}
                       entity={e}
                       on={selectedIds.has(e.id)}
-                      full={full}
+                      full={atTotal}
                       onToggle={onToggle}
                     />
                   ))}
@@ -167,7 +173,7 @@ export function CompareSetRail({
                     key={e.id}
                     entity={e}
                     on={selectedIds.has(e.id)}
-                    full={full}
+                    full={compsFull}
                     onToggle={onToggle}
                   />
                 ))}
@@ -178,7 +184,7 @@ export function CompareSetRail({
       </Popover>
 
       <span className="text-muted-foreground ml-0.5 font-mono text-meta tabular-nums">
-        {selectedIds.size}/{max}
+        {usedComps}/{maxCompetitors}
       </span>
     </div>
   );

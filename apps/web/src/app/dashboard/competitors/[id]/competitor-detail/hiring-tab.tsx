@@ -2,12 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import {
-  ArrowUpIcon,
-  ArrowDownIcon,
-  CaretRightIcon,
-  ArrowSquareOutIcon,
-} from "@phosphor-icons/react/ssr";
+import { ArrowUpIcon, ArrowDownIcon, CaretRightIcon, ArrowSquareOutIcon } from "@/components/icons";
 import { formatDistanceToNow } from "date-fns";
 import { Fact, FactStrip } from "@/components/outrival/data-marks";
 import { api, type CompetitorSignal } from "@/lib/api";
@@ -28,7 +23,9 @@ import {
   TabLoading,
   MonitorEmptyState,
   SourceSummary,
+  scrapeActivity,
   type MonitorSourceProps,
+  type ScrapeActivity,
 } from "./shared";
 
 // recharts is heavy + client-only: lazy-load the chart so it stays off this
@@ -304,7 +301,7 @@ export function HiringTab({
                 )}
               >
                 <CaretRightIcon
-                  size={14}
+                  size={16}
                   aria-hidden
                   className="shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
                 />
@@ -341,7 +338,7 @@ export function HiringTab({
                     "flat"
                   ) : (
                     <span className="inline-flex items-center justify-end gap-0.5">
-                      {delta > 0 ? <ArrowUpIcon className="size-3" /> : <ArrowDownIcon className="size-3" />}
+                      {delta > 0 ? <ArrowUpIcon className="size-4" /> : <ArrowDownIcon className="size-4" />}
                       {Math.abs(delta)}
                     </span>
                   )}
@@ -364,7 +361,7 @@ export function HiringTab({
                               className="inline-flex items-center gap-1 underline-offset-2 hover:underline"
                             >
                               {role.title}
-                              <ArrowSquareOutIcon size={11} className="shrink-0 text-muted-foreground" />
+                              <ArrowSquareOutIcon size={16} className="shrink-0 text-muted-foreground" />
                             </a>
                           ) : (
                             role.title
@@ -433,16 +430,36 @@ export function HiringTab({
           </span>
         )}
         {jobsMonitor && (
-          <button
-            type="button"
-            onClick={() => onRun(jobsMonitor.id)}
-            disabled={scrapingIds.has(jobsMonitor.id)}
-            className="ml-auto text-link hover:underline disabled:opacity-60"
-          >
-            {scrapingIds.has(jobsMonitor.id) ? "Scanning…" : "Re-scan now"}
-          </button>
+          <RescanLink
+            activity={scrapeActivity(jobsMonitor, scrapingIds.has(jobsMonitor.id))}
+            onRun={() => onRun(jobsMonitor.id)}
+          />
         )}
       </div>
     </TabCard>
+  );
+}
+
+/**
+ * Re-scan affordance for the jobs board. Three states, because "Scanning…" over a
+ * job that is still waiting for a free scanner is the claim that made a long queue
+ * look like a stalled scrape.
+ */
+function RescanLink({
+  activity,
+  onRun,
+}: {
+  activity: ScrapeActivity;
+  onRun: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onRun}
+      disabled={activity !== null}
+      className="ml-auto text-link hover:underline disabled:opacity-60"
+    >
+      {activity === "scraping" ? "Scanning…" : activity === "queued" ? "Queued" : "Re-scan now"}
+    </button>
   );
 }

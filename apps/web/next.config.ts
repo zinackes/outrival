@@ -25,18 +25,13 @@ const nextConfig: NextConfig = {
     staticGenerationMinPagesPerWorker: 1000,
     staticGenerationMaxConcurrency: 4,
     // Tree-shake barrel/umbrella imports on the hot path: `radix-ui` (the umbrella
-    // meta-package used by every ui/* primitive), `motion` (pulled into the shell
-    // chunk on every dashboard page) and `@phosphor-icons/react/ssr` (a 1500-icon
-    // barrel — without this, dev compiles every icon module on every page). Without
-    // this, an umbrella import can drag in far more than the single primitive used.
+    // meta-package used by every ui/* primitive) and `motion` (pulled into the shell
+    // chunk on every dashboard page). Without this, an umbrella import can drag in
+    // far more than the single primitive used. Icons no longer need an entry: they
+    // are local components in `@/components/icons`, not a package barrel.
     // date-fns is already covered by Next's defaults; recharts is already lazy via
     // next/dynamic.
-    optimizePackageImports: [
-      "radix-ui",
-      "motion",
-      "@phosphor-icons/react",
-      "@phosphor-icons/react/ssr",
-    ],
+    optimizePackageImports: ["radix-ui", "motion"],
     // Client Router Cache TTL. Default `dynamic: 0` means every dashboard page — all
     // dynamic (cookie product-scope + no-store API reads) — re-renders on the server on
     // every navigation, even when re-visiting a page seconds later. A 30s dynamic window

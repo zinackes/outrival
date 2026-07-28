@@ -372,6 +372,12 @@ export type Segment = { t: "text"; v: string } | { t: "num"; v: string };
 
 export interface Fact {
   key: string;
+  /**
+   * Who the reading is about — its favicon leads the chip, so a fact is attached to a
+   * face before it is read. Your product for your own standing (price, rating), the
+   * competitor applying the pressure for the rest (out-hired by, just moved).
+   */
+  subject: { name: string; url: string | null };
   /** Emphasised opening of the line. */
   lead: string;
   /** The rest of the line, plain. */
@@ -469,6 +475,7 @@ export function buildVerdict(
 ): Verdict {
   const lead: Segment[] = [];
   const facts: Fact[] = [];
+  const yours = { name: you.name, url: you.url };
   const total = comps.length + 1;
   const text = (v: string) => lead.push({ t: "text", v });
   const num = (v: string) => lead.push({ t: "num", v });
@@ -486,6 +493,7 @@ export function buildVerdict(
       ratingStanding = `the best rated of the ${countWord(total)}`;
       facts.push({
         key: "rating",
+        subject: yours,
         lead: "Best rated",
         rest: `of the set, ahead of ${bestOther(compAvgs)}`,
         value: `${youAvg.toFixed(1)} vs ${(ratingMed ?? youAvg).toFixed(1)} med`,
@@ -496,6 +504,7 @@ export function buildVerdict(
       ratingStanding = `the lowest rated of the ${countWord(total)}`;
       facts.push({
         key: "rating",
+        subject: yours,
         lead: "Lowest rated",
         rest: `of the set, behind ${bestOther(compAvgs)}`,
         value: `${youAvg.toFixed(1)} vs ${(ratingMed ?? youAvg).toFixed(1)} med`,
@@ -506,6 +515,7 @@ export function buildVerdict(
       ratingStanding = "mid-table on reviews";
       facts.push({
         key: "rating",
+        subject: yours,
         lead: "Mid-table on reviews",
         rest: `between ${worstOther(compAvgs)} and ${bestOther(compAvgs)}`,
         value: `${youAvg.toFixed(1)} vs ${(ratingMed ?? youAvg).toFixed(1)} med`,
@@ -536,6 +546,7 @@ export function buildVerdict(
       priceStanding = "the cheapest way in";
       facts.push({
         key: "price",
+        subject: yours,
         lead: "Cheapest entry price",
         rest: `of the ${countWord(total)}`,
         value: money(youEntry, currency),
@@ -547,6 +558,7 @@ export function buildVerdict(
       const min = Math.min(...compEntries.map((x) => x.entry));
       facts.push({
         key: "price",
+        subject: yours,
         lead: "Highest entry price",
         rest: `of the ${countWord(total)}`,
         value: `${money(youEntry, currency)} vs ${money(min, currency)}`,
@@ -558,6 +570,7 @@ export function buildVerdict(
       const min = Math.min(...cheaper.map((x) => x.entry));
       facts.push({
         key: "price",
+        subject: yours,
         lead: cheaper.length === 1 ? "Second cheapest" : `Cheaper than ${countWord(dearer.length)}`,
         rest: cheaper.length === 1 ? `entry price, behind ${cheaper[0]?.name}` : "of them at the door",
         value: `${money(youEntry, currency)} · +${money(youEntry - min, currency)}`,
@@ -597,9 +610,10 @@ export function buildVerdict(
 
   // ── sentence three: the pressure, hiring first then the freshest move
   const youEng = engineeringRoles(you);
+  // The column is carried through, not just its name: the fact wears its favicon.
   const engLeader = comps
-    .map((c) => ({ name: c.name, eng: engineeringRoles(c) }))
-    .filter((x): x is { name: string; eng: number } => x.eng != null)
+    .map((c) => ({ name: c.name, url: c.url, eng: engineeringRoles(c) }))
+    .filter((x): x is { name: string; url: string | null; eng: number } => x.eng != null)
     .sort((a, b) => b.eng - a.eng)[0];
   const engGap =
     youEng != null && engLeader && engLeader.eng >= Math.max(1, youEng) * ENG_GAP_MULTIPLE
@@ -613,6 +627,7 @@ export function buildVerdict(
     text(". ");
     facts.push({
       key: "hiring",
+      subject: { name: engGap.name, url: engGap.url },
       lead: "Out-hired in engineering",
       rest: `by ${engGap.name}`,
       value: `${youEng} vs ${engGap.eng}`,
@@ -622,6 +637,7 @@ export function buildVerdict(
   } else if (youEng != null && engLeader) {
     facts.push({
       key: "hiring",
+      subject: { name: engLeader.name, url: engLeader.url },
       lead: "Hiring in step",
       rest: `with ${engLeader.name}, the most active of them`,
       value: `${youEng} vs ${engLeader.eng} eng`,
@@ -630,20 +646,22 @@ export function buildVerdict(
     });
   }
 
-  const freshMove = comps
-    .map((c) => c.latestSignal)
-    .filter((s): s is NonNullable<CompareColumn["latestSignal"]> => s != null)
-    .filter((s) => ["critical", "high"].includes(s.severity))
-    .filter((s) => daysSince(s.createdAt, now) <= MOVE_FRESH_DAYS)
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
-  if (freshMove) {
-    const mover = comps.find((c) => c.latestSignal?.id === freshMove.id);
+  const fresh = comps
+    .map((c) => ({ col: c, move: c.latestSignal }))
+    .filter((x): x is { col: CompareColumn; move: NonNullable<CompareColumn["latestSignal"]> } =>
+      x.move != null,
+    )
+    .filter((x) => ["critical", "high"].includes(x.move.severity))
+    .filter((x) => daysSince(x.move.createdAt, now) <= MOVE_FRESH_DAYS)
+    .sort((a, b) => new Date(b.move.createdAt).getTime() - new Date(a.move.createdAt).getTime())[0];
+  if (fresh) {
     facts.push({
       key: "moves",
-      lead: `${mover?.name ?? "One of them"} just moved`,
-      rest: firstClause(freshMove.insight),
-      value: shortAge(freshMove.createdAt, now),
-      tone: freshMove.severity === "critical" ? "bad" : "warn",
+      subject: { name: fresh.col.name, url: fresh.col.url },
+      lead: `${fresh.col.name} just moved`,
+      rest: firstClause(fresh.move.insight),
+      value: shortAge(fresh.move.createdAt, now),
+      tone: fresh.move.severity === "critical" ? "bad" : "warn",
       lens: "moves",
     });
   }

@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { AiVisibilityTeaser } from "./ai-visibility-teaser";
+import type { Icon as PhosphorIcon } from "@/components/icons";
 import {
   ArrowRightIcon,
   BriefcaseIcon,
@@ -17,8 +18,7 @@ import {
   StarIcon,
   TagIcon,
   WarningIcon,
-} from "@phosphor-icons/react/ssr";
-import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
+} from "@/components/icons";
 import { formatDistanceToNow } from "date-fns";
 import type { LandscapeData, LandscapeInsight, LandscapePricingRow } from "@/lib/api";
 import { landscapeQuery } from "@/lib/queries";
@@ -131,7 +131,7 @@ function PriceCell({
         </>
       ) : (
         <span className="inline-flex items-center gap-1.5 text-meta text-muted-foreground">
-          <ClockIcon size={11} aria-hidden /> {summary.secondary}
+          <ClockIcon size={16} aria-hidden /> {summary.secondary}
         </span>
       )}
     </span>
@@ -147,7 +147,7 @@ function WaitEmptyState({ competitorCount }: { competitorCount: number }) {
       actions={
         <Button asChild size="sm" variant="outline">
           <Link href="/dashboard/competitors">
-            Review competitors <ArrowRightIcon size={11} />
+            Review competitors <ArrowRightIcon size={16} />
           </Link>
         </Button>
       }
@@ -188,7 +188,7 @@ function InsightCards({
           const body = (
             <>
               <span className="flex size-7 shrink-0 items-center justify-center rounded-full border border-border bg-accent/40 text-primary">
-                <Icon size={14} aria-hidden />
+                <Icon size={16} aria-hidden />
               </span>
               <span className="text-sm leading-snug">{ins.text}</span>
             </>
@@ -246,7 +246,7 @@ function SourcesCoverage({
         className="flex w-full items-center gap-2 px-4 py-3 text-left"
       >
         <CaretDownIcon
-          size={14}
+          size={16}
           aria-hidden
           className={`shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
         />
@@ -275,7 +275,7 @@ function SourcesCoverage({
               className="flex items-center gap-2 border-b border-border px-4 py-2 text-dense last:border-b-0"
             >
               <WarningIcon
-                size={12}
+                size={16}
                 className="shrink-0 text-muted-foreground"
                 aria-hidden
               />
@@ -319,11 +319,11 @@ function SourcesCoverage({
                       className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-meta text-muted-foreground"
                     >
                       {s.status === "captured" ? (
-                        <CheckIcon size={11} className="text-primary" aria-hidden />
+                        <CheckIcon size={16} className="text-primary" aria-hidden />
                       ) : s.status === "pending" ? (
-                        <ClockIcon size={11} aria-hidden />
+                        <ClockIcon size={16} aria-hidden />
                       ) : (
-                        <WarningIcon size={11} aria-hidden />
+                        <WarningIcon size={16} aria-hidden />
                       )}
                       {SOURCE_LABELS[s.sourceType] ?? s.sourceType.replace(/_/g, " ")}
                     </span>
@@ -416,7 +416,7 @@ export function LandscapeSection({
                   href="/dashboard/compare"
                   className="inline-flex items-center gap-1 text-xs text-link underline-offset-2 hover:underline"
                 >
-                  Compare pricing <ArrowRightIcon size={11} />
+                  Compare pricing <ArrowRightIcon size={16} />
                 </Link>
               </div>
               <div>
@@ -565,7 +565,7 @@ export function LandscapeSection({
                     >
                       {item.title}
                       <ArrowSquareOutIcon
-                        size={10}
+                        size={16}
                         className="ml-1 inline shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
                       />
                     </a>

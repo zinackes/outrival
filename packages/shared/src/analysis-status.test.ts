@@ -1,6 +1,7 @@
 import { test, expect } from "bun:test";
 import {
   deriveAnalysisStatus,
+  deriveScrapeActivity,
   ANALYSIS_SUMMARY_GRACE_MS,
   ANALYSIS_SCRAPE_TIMEOUT_MS,
   ANALYSIS_QUEUE_TIMEOUT_MS,
@@ -200,4 +201,73 @@ test("a re-scan in flight after a prior success reads as scraping", () => {
     NOW,
   );
   expect(s).toEqual({ stage: "scraping", pending: true });
+});
+
+// ── deriveScrapeActivity: the one reading of the two stamps every surface uses ──
+
+test("activity: nothing enqueued reads as no activity", () => {
+  expect(
+    deriveScrapeActivity(
+      { lastRunAt: new Date(NOW - 60_000), lastFailedAt: null, scrapeStartedAt: null, scrapePickedUpAt: null },
+      NOW,
+    ),
+  ).toBeNull();
+});
+
+test("activity: enqueued but unclaimed is queued, not scraping", () => {
+  expect(
+    deriveScrapeActivity(
+      {
+        lastRunAt: null,
+        lastFailedAt: null,
+        scrapeStartedAt: new Date(NOW - 30 * 60_000),
+        scrapePickedUpAt: null,
+      },
+      NOW,
+    ),
+  ).toBe("queued");
+});
+
+test("activity: a queue wait past the hour ceiling stops being reported", () => {
+  expect(
+    deriveScrapeActivity(
+      {
+        lastRunAt: null,
+        lastFailedAt: null,
+        scrapeStartedAt: new Date(NOW - ANALYSIS_QUEUE_TIMEOUT_MS - 1),
+        scrapePickedUpAt: null,
+      },
+      NOW,
+    ),
+  ).toBeNull();
+});
+
+test("activity: a pick-up older than the request it would describe is ignored", () => {
+  // A handler killed mid-flight leaves scrapePickedUpAt behind. Reading it as this
+  // request's would make a freshly enqueued scrape look like nothing at all.
+  expect(
+    deriveScrapeActivity(
+      {
+        lastRunAt: null,
+        lastFailedAt: null,
+        scrapeStartedAt: new Date(NOW - 60_000),
+        scrapePickedUpAt: new Date(NOW - ANALYSIS_SCRAPE_TIMEOUT_MS - 60_000),
+      },
+      NOW,
+    ),
+  ).toBe("queued");
+});
+
+test("activity: a terminal outcome after the request closes the window", () => {
+  expect(
+    deriveScrapeActivity(
+      {
+        lastRunAt: new Date(NOW - 10_000),
+        lastFailedAt: null,
+        scrapeStartedAt: new Date(NOW - 60_000),
+        scrapePickedUpAt: new Date(NOW - 50_000),
+      },
+      NOW,
+    ),
+  ).toBeNull();
 });

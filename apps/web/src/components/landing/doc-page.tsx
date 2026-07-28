@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { ArrowLeftIcon } from "@phosphor-icons/react/ssr";
+import { ArrowLeftIcon } from "@/components/icons";
 import { Footer } from "./footer";
 
 // Shared shell for the standalone marketing/legal pages (terms, privacy, dpa,
@@ -29,7 +29,7 @@ export function DocPage({
             href="/"
             className="inline-flex items-center gap-1.5 text-sm text-text-muted transition-colors hover:text-foreground"
           >
-            <ArrowLeftIcon size={14} /> Back to home
+            <ArrowLeftIcon size={16} /> Back to home
           </Link>
         </div>
       </header>

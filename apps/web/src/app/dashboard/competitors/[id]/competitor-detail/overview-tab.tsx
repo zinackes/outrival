@@ -11,10 +11,10 @@ import {
   CaretRightIcon,
   GridFourIcon,
   StarIcon,
-  CircleNotchIcon,
+  SpinnerIcon,
   PlayIcon,
   TranslateIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import {
   api,
   type CompetitorSignal,
@@ -37,6 +37,7 @@ import { EmptyState } from "@/components/dashboard/empty-state";
 import { CompetitorTechStack } from "@/components/outrival/competitor-tech-stack";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
 import { formatTierPrice, logoLabel, isRenderableLogoSrc } from "./helpers";
+import { scrapeActivity } from "./shared";
 import type { TabKey } from "./types";
 
 /**
@@ -64,7 +65,7 @@ function Metric({
     >
       <span className="flex items-center gap-1 text-xs text-muted-foreground">
         {label}
-        <CaretRightIcon size={11} className="opacity-60" aria-hidden />
+        <CaretRightIcon size={16} className="opacity-60" aria-hidden />
       </span>
       <span className="block">{children}</span>
       {foot && <span className="flex min-h-4 items-center gap-1.5 text-xs">{foot}</span>}
@@ -153,7 +154,7 @@ function LogoChip({ logo }: { logo: { name: string | null; src: string | null } 
   // to the theme — the standard "trusted by" wall treatment: coherent regardless of the
   // source artwork, polarity-correct in both light (dark ink) and dark (light ink) mode.
   const tile = (
-    <div className="flex h-14 items-center justify-center bg-card px-3">
+    <div className="flex h-14 min-w-0 grow basis-[104px] items-center justify-center bg-card px-3">
       {showImage ? (
         // eslint-disable-next-line @next/next/no-img-element -- arbitrary external logo URL, next/image can't whitelist competitor domains
         <img
@@ -379,16 +380,27 @@ export function OverviewTab({
 
   if (!hasAnything) {
     const homepageMonitor = monitors.find((m) => m.sourceType === "homepage");
-    const running = homepageMonitor ? scrapingIds.has(homepageMonitor.id) : false;
+    const activity = homepageMonitor
+      ? scrapeActivity(homepageMonitor, scrapingIds.has(homepageMonitor.id))
+      : null;
     // The first analysis is still running (queued → scraping → summarizing). The
     // top-of-page stepper carries the live stage; here we just avoid a misleading
     // "Nothing captured yet" + manual-scrape button while it's already working.
-    if (analysis?.pending || running) {
+    if (analysis?.pending || activity) {
+      // The stepper above this panel already says which of those it is, so this
+      // has to agree with it: "we're scanning the homepage" under a banner that
+      // reads "waiting in the scan queue" is the contradiction that made the wait
+      // look like a hang. Both read the same anchor monitor, so they cannot split.
+      const waiting = analysis ? analysis.stage === "queued" : activity === "queued";
       return (
         <EmptyState
           icon={GridFourIcon}
-          title="Analyzing this competitor…"
-          description="We're scanning the homepage and generating the first insights. This tab fills in automatically once it's done, no need to refresh."
+          title={waiting ? "Waiting in the scan queue…" : "Analyzing this competitor…"}
+          description={
+            waiting
+              ? "The first scan starts as soon as a scanner is free, then the insights are written. This tab fills in on its own, no need to refresh."
+              : "We're scanning the homepage and generating the first insights. This tab fills in automatically once it's done, no need to refresh."
+          }
         />
       );
     }
@@ -399,16 +411,8 @@ export function OverviewTab({
         description="Once the homepage is scraped, this is where you'll see what this competitor says about itself (positioning, value props, customers and pricing) at a glance."
         actions={
           homepageMonitor && (
-            <Button size="sm" disabled={running} onClick={() => onRun(homepageMonitor.id)}>
-              {running ? (
-                <>
-                  <CircleNotchIcon size={12} className="animate-spin" /> Scraping…
-                </>
-              ) : (
-                <>
-                  <PlayIcon size={12} /> Scrape homepage now
-                </>
-              )}
+            <Button size="sm" onClick={() => onRun(homepageMonitor.id)}>
+              <PlayIcon size={16} /> Scrape homepage now
             </Button>
           )
         }
@@ -542,9 +546,9 @@ export function OverviewTab({
               disabled={translating}
             >
               {translating ? (
-                <CircleNotchIcon size={12} className="animate-spin" />
+                <SpinnerIcon size={16} className="animate-spin" />
               ) : (
-                <TranslateIcon size={12} />
+                <TranslateIcon size={16} />
               )}
               Translate to English
             </Button>
@@ -555,7 +559,7 @@ export function OverviewTab({
               className="h-7 gap-1.5 text-dense"
               onClick={() => setShowOriginal((o) => !o)}
             >
-              <TranslateIcon size={12} />
+              <TranslateIcon size={16} />
               {showOriginal ? "Show English" : "Show original"}
             </Button>
           )}
@@ -630,17 +634,24 @@ export function OverviewTab({
             </span>
           }
         >
+          {/* One balanced flow, not two rigid columns. The logo wall is short and the
+              quotes are long, so a fixed two-column split stretched the wall to the
+              quotes' height and painted the leftover as dead bands between logo rows.
+              Balanced columns size themselves to the content: a quote drops under the
+              wall only when there is spare height AND a quote to spare — nothing is
+              stretched to fill, and nothing is moved just to fill. */}
           <div
             className={cn(
-              "grid gap-5",
-              customerLogos.length > 0 && dTestimonials.length > 0
-                ? "md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]"
-                : "grid-cols-1",
+              customerLogos.length > 0 &&
+                dTestimonials.length > 0 &&
+                "md:columns-2 md:gap-5",
             )}
           >
             {customerLogos.length > 0 && (
               <TooltipProvider delayDuration={150}>
-                <div className="grid grid-cols-[repeat(auto-fit,minmax(104px,1fr))] gap-px overflow-hidden rounded-md border border-border bg-border">
+                {/* flex-wrap rather than grid: a partial last row grows to fill itself,
+                    so the container's rule colour never shows through as empty cells. */}
+                <div className="mb-5 flex break-inside-avoid flex-wrap gap-px overflow-hidden rounded-md border border-border bg-border last:mb-0">
                   {customerLogos.map((l, i) => (
                     <LogoChip key={i} logo={l} />
                   ))}
@@ -648,10 +659,13 @@ export function OverviewTab({
               </TooltipProvider>
             )}
             {dTestimonials.length > 0 && (
-              <ul className="flex flex-col gap-3">
+              <ul>
                 {dTestimonials.map((t, i) => (
                   // The quotation marks are the quotation mark: no rail.
-                  <li key={i} className="flex flex-col gap-1.5">
+                  <li
+                    key={i}
+                    className="mb-3 flex break-inside-avoid flex-col gap-1.5 last:mb-0"
+                  >
                     <p className="text-sm leading-relaxed text-muted-foreground">
                       &ldquo;{t.quote}&rdquo;
                     </p>

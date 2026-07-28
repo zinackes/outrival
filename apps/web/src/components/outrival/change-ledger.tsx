@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRightIcon, ArrowElbowDownRightIcon } from "@phosphor-icons/react/ssr";
+import { ArrowRightIcon, ArrowElbowDownRightIcon } from "@/components/icons";
 import { parseDelta, formatDeltaPct } from "@/lib/signal-delta";
 
 /**

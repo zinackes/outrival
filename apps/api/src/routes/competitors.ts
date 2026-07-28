@@ -54,6 +54,7 @@ import {
   computeNextScanAt,
   TECH_STACK_SCRAPE_INTERVAL_DAYS,
   isValidCompetitorColor,
+  COMPETITOR_NAME_MAX_LENGTH,
   classifyLogoName,
   isBlankSvgDataUri,
   isStoreBadgeSrc,
@@ -81,7 +82,7 @@ export const competitorsRouter = new Hono<{ Variables: Variables }>();
 competitorsRouter.use("*", authMiddleware);
 
 const CreateCompetitorSchema = z.object({
-  name: z.string().min(1),
+  name: z.string().min(1).max(COMPETITOR_NAME_MAX_LENGTH),
   url: z.string().url(),
   description: z.string().optional(),
   // The product scope the competitor is being added from. Loose on purpose: an id that
@@ -1916,7 +1917,7 @@ competitorsRouter.post("/:id/translate", aiIntensiveRateLimit, async (c) => {
 // below (it's what the homepage monitor fetches), the rest are free text.
 const UpdateCompetitorSchema = z
   .object({
-    name: z.string().min(1).max(200).optional(),
+    name: z.string().min(1).max(COMPETITOR_NAME_MAX_LENGTH).optional(),
     url: z.string().url().max(2048).optional(),
     category: z.string().max(100).nullable().optional(),
     description: z.string().max(2000).nullable().optional(),

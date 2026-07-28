@@ -2,13 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
-import {
-  EyeIcon,
-  CircleNotchIcon,
-  PauseIcon,
-  PlayIcon,
-  TrashIcon,
-} from "@phosphor-icons/react/ssr";
+import { EyeIcon, SpinnerIcon, PauseIcon, PlayIcon, TrashIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -91,7 +85,7 @@ export function WatchedQuestions() {
   return (
     <div>
       <p className="flex items-center gap-1.5 text-dense font-medium text-muted-foreground">
-        <EyeIcon className="size-3.5" aria-hidden />
+        <EyeIcon className="size-4" aria-hidden />
         Watched questions
       </p>
       <p className="mt-1 text-meta text-muted-foreground">
@@ -147,11 +141,11 @@ export function WatchedQuestions() {
                   title={q.isActive ? "PauseIcon watching" : "Resume watching"}
                 >
                   {busy ? (
-                    <CircleNotchIcon className="size-3.5 animate-spin" />
+                    <SpinnerIcon className="size-4 animate-spin" />
                   ) : q.isActive ? (
-                    <PauseIcon className="size-3.5 text-muted-foreground" />
+                    <PauseIcon className="size-4 text-muted-foreground" />
                   ) : (
-                    <PlayIcon className="size-3.5 text-muted-foreground" />
+                    <PlayIcon className="size-4 text-muted-foreground" />
                   )}
                 </Button>
                 <Button
@@ -162,7 +156,7 @@ export function WatchedQuestions() {
                   aria-label="Stop watching and delete"
                   title="Stop watching and delete"
                 >
-                  <TrashIcon className="size-3.5 text-muted-foreground" />
+                  <TrashIcon className="size-4 text-muted-foreground" />
                 </Button>
               </div>
             </div>

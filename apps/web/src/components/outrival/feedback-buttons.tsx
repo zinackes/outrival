@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ThumbsUpIcon, ThumbsDownIcon, XIcon } from "@phosphor-icons/react/ssr";
+import { ThumbsUpIcon, ThumbsDownIcon, XIcon } from "@/components/icons";
 import { toast } from "sonner";
 import {
   api,
@@ -230,7 +230,7 @@ export function FeedbackButtons({
             onClick={() => setShowReasons(false)}
             className="rounded p-0.5 text-text-subtle hover:text-foreground"
           >
-            <XIcon size={12} />
+            <XIcon size={16} />
           </button>
         </div>
       )}

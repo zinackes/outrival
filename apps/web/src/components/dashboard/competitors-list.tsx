@@ -10,14 +10,14 @@ import {
   PlusIcon,
   MagnifyingGlassIcon,
   ArrowRightIcon,
-  CircleNotchIcon,
+  SpinnerIcon,
   DotsThreeIcon,
   TrashIcon,
   ArrowSquareOutIcon,
   BinocularsIcon,
   BuildingsIcon,
   PauseCircleIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import { EmptyState } from "./empty-state";
 import { toast } from "sonner";
 import { api, type Competitor } from "@/lib/api";
@@ -47,6 +47,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { COMPETITOR_NAME_MAX_LENGTH } from "@outrival/shared";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -115,7 +116,7 @@ function PausedByPlanBadge() {
           href="/dashboard/settings/billing"
           className="relative z-10 flex shrink-0 items-center gap-1 rounded-sm border border-high/40 px-1.5 py-0.5 text-meta font-medium text-medium"
         >
-          <PauseCircleIcon size={11} className="shrink-0" />
+          <PauseCircleIcon size={16} className="shrink-0" />
           Plan limit
         </Link>
       </TooltipTrigger>
@@ -377,10 +378,10 @@ export function CompetitorsList() {
         actions={
           <>
             <Button variant="secondary" onClick={() => router.push("/dashboard/discovery")}>
-              <BinocularsIcon size={13} /> Discovery
+              <BinocularsIcon size={16} /> Discovery
             </Button>
             <Button onClick={() => setShowDialog(true)}>
-              <PlusIcon size={13} /> Add competitor
+              <PlusIcon size={16} /> Add competitor
             </Button>
           </>
         }
@@ -438,7 +439,7 @@ export function CompetitorsList() {
 
           <div className="relative">
             <MagnifyingGlassIcon
-              size={14}
+              size={16}
               className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
             />
             <Input
@@ -461,13 +462,13 @@ export function CompetitorsList() {
           actions={
             <>
               <Button onClick={() => setShowDialog(true)}>
-                <PlusIcon size={13} /> Add competitor
+                <PlusIcon size={16} /> Add competitor
               </Button>
               <Button
                 variant="secondary"
                 onClick={() => router.push("/dashboard/discovery")}
               >
-                <BinocularsIcon size={13} /> Explore Discovery
+                <BinocularsIcon size={16} /> Explore Discovery
               </Button>
             </>
           }
@@ -575,7 +576,7 @@ export function CompetitorsList() {
               onClick={confirmDelete}
               disabled={deleting}
             >
-              {deleting && <CircleNotchIcon size={13} className="animate-spin" />}
+              {deleting && <SpinnerIcon size={16} className="animate-spin" />}
               {deleting ? "Deleting…" : "Delete"}
             </Button>
           </DialogFooter>
@@ -654,7 +655,7 @@ function CompetitorRow({
                 {prettyUrl(row.url)}
               </span>
               <ArrowSquareOutIcon
-                size={10}
+                size={16}
                 className="shrink-0 opacity-0 transition-opacity group-hover/url:opacity-100"
               />
             </a>
@@ -778,18 +779,18 @@ function CompetitorRow({
               aria-label={`More actions for ${row.name}`}
               className="h-6 w-6 p-0 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100"
             >
-              <DotsThreeIcon size={14} />
+              <DotsThreeIcon size={16} />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-40">
             <DropdownMenuItem onClick={() => router.push(href)}>
-              <ArrowRightIcon size={13} /> Open detail
+              <ArrowRightIcon size={16} /> Open detail
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={onDelete}
               className="text-critical focus:text-critical"
             >
-              <TrashIcon size={13} /> Delete
+              <TrashIcon size={16} /> Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -918,6 +919,7 @@ function AddCompetitorDialog({
             <Input
               id="competitor-name"
               required
+              maxLength={COMPETITOR_NAME_MAX_LENGTH}
               value={name}
               onChange={(e) => setName(e.target.value)}
               autoFocus
@@ -944,7 +946,7 @@ function AddCompetitorDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={busy}>
-              {busy && <CircleNotchIcon size={13} className="animate-spin" />}
+              {busy && <SpinnerIcon size={16} className="animate-spin" />}
               {busy ? "Adding…" : "Add"}
             </Button>
           </DialogFooter>

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { CopyIcon, TrashIcon, LinkIcon, PlusIcon } from "@phosphor-icons/react/ssr";
+import { CopyIcon, TrashIcon, LinkIcon, PlusIcon } from "@/components/icons";
 import { api } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";

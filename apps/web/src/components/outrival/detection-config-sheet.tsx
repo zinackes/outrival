@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CircleNotchIcon } from "@phosphor-icons/react/ssr";
+import { SpinnerIcon } from "@/components/icons";
 import { toast } from "sonner";
 import { DETECTION_OVERLAP_PRESETS, DISCOVERY_REGIONS } from "@outrival/shared";
 import { api, type DetectionConfig } from "@/lib/api";
@@ -248,7 +248,7 @@ export function DetectionConfigSheet({
             size="sm"
             disabled={saving || !config}
           >
-            {saving && <CircleNotchIcon size={12} className="animate-spin" />}
+            {saving && <SpinnerIcon size={16} className="animate-spin" />}
             {saving ? "Saving…" : "Save"}
           </Button>
         </div>

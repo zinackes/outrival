@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
+import type { Icon as PhosphorIcon } from "@/components/icons";
 import {
   PulseIcon,
   ArrowUpRightIcon,
@@ -16,15 +17,14 @@ import {
   EyeSlashIcon,
   GitDiffIcon,
   InfoIcon,
-  CircleNotchIcon,
+  SpinnerIcon,
   ChatIcon,
   PackageIcon,
   PlusIcon,
   SparkleIcon,
   WarningIcon,
   UsersIcon,
-} from "@phosphor-icons/react/ssr";
-import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
+} from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -135,7 +135,7 @@ function Steps({ steps, active }: { steps: string[]; active: boolean }) {
           >
             <span className="flex size-3.5 shrink-0 items-center justify-center">
               {running ? (
-                <CircleNotchIcon className="size-3.5 animate-spin text-[var(--link)]" />
+                <SpinnerIcon className="size-4 animate-spin text-[var(--link)]" />
               ) : (
                 <span className="size-1.5 rounded-full bg-[var(--link)] ring-2 ring-[var(--surface)]" />
               )}
@@ -494,7 +494,7 @@ export function AskPanel({
                 : "border-border text-muted-foreground hover:text-foreground",
             )}
           >
-            <CrosshairIcon className="size-3" /> {context.label}
+            <CrosshairIcon className="size-4" /> {context.label}
           </button>
           <span className="text-meta text-muted-foreground">
             {scoped ? "questions scoped here" : "asking across all competitors"}
@@ -506,7 +506,7 @@ export function AskPanel({
           with an AI system, at the latest at first interaction, in clear terms
           that aren't buried in the terms of service. */}
       <p className="mb-3 flex items-start gap-1.5 text-meta text-muted-foreground">
-        <InfoIcon className="mt-0.5 size-3 shrink-0" aria-hidden />
+        <InfoIcon className="mt-0.5 size-4 shrink-0" aria-hidden />
         <span>
           You&apos;re interacting with AI. Ask Outrival generates answers from
           your workspace data and can be inaccurate, so verify important details.
@@ -545,7 +545,7 @@ export function AskPanel({
               <span className="hidden sm:inline">to send</span>
             </span>
             <Button type="submit" disabled={loading || !question.trim()}>
-              {loading ? <CircleNotchIcon className="size-4 animate-spin" /> : <SparkleIcon className="size-4" />}
+              {loading ? <SpinnerIcon className="size-4 animate-spin" /> : <SparkleIcon className="size-4" />}
               Ask
             </Button>
           </div>
@@ -571,7 +571,7 @@ export function AskPanel({
                 <Icon className="size-4 shrink-0" style={{ color: tint }} aria-hidden />
                 <span className="flex-1 text-sm text-foreground">{q}</span>
                 <ArrowElbowDownLeftIcon
-                  className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
+                  className="size-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
                   aria-hidden
                 />
               </button>
@@ -590,13 +590,13 @@ export function AskPanel({
                     onClick={() => openHistory(item)}
                     className="flex w-full items-center gap-3 border-b border-border px-3 py-2.5 text-left transition-colors last:border-b-0 hover:bg-surface-3 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
                   >
-                    <ChatIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                    <ChatIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
                     <span className="min-w-0 flex-1 truncate text-sm text-foreground">
                       {item.question}
                     </span>
                     {item.context && (
                       <span className="hidden max-w-[8rem] shrink-0 items-center gap-1 text-meta text-muted-foreground sm:inline-flex">
-                        <CrosshairIcon className="size-3 shrink-0" aria-hidden />
+                        <CrosshairIcon className="size-4 shrink-0" aria-hidden />
                         <span className="truncate">{item.context.label}</span>
                       </span>
                     )}
@@ -642,7 +642,7 @@ export function AskPanel({
           {trace.length > 0 && (
             <details className="group mt-6">
               <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 text-meta text-muted-foreground transition-colors hover:text-foreground">
-                <CaretRightIcon className="size-3 transition-transform group-open:rotate-90" aria-hidden />
+                <CaretRightIcon className="size-4 transition-transform group-open:rotate-90" aria-hidden />
                 <span className="font-mono">{trace.length}</span> steps to answer
               </summary>
               <div className="mt-3 pl-1">
@@ -677,27 +677,27 @@ export function AskPanel({
                             <>
                               {/* Default label; swaps to the un-watch affordance on hover/focus. */}
                               <span className="inline-flex items-center gap-1.5 group-hover:hidden group-focus-visible:hidden">
-                                <CheckIcon className="size-3.5 text-[var(--positive)]" />
+                                <CheckIcon className="size-4 text-[var(--positive)]" />
                                 Watching
                               </span>
                               <span className="hidden items-center gap-1.5 group-hover:inline-flex group-focus-visible:inline-flex">
-                                <EyeSlashIcon className="size-3.5 text-muted-foreground" />
+                                <EyeSlashIcon className="size-4 text-muted-foreground" />
                                 Unwatch
                               </span>
                             </>
                           ) : watchState === "saving" ? (
                             <>
-                              <CircleNotchIcon className="size-3.5 animate-spin" />
+                              <SpinnerIcon className="size-4 animate-spin" />
                               Watching…
                             </>
                           ) : watchState === "removing" ? (
                             <>
-                              <CircleNotchIcon className="size-3.5 animate-spin" />
+                              <SpinnerIcon className="size-4 animate-spin" />
                               Unwatching…
                             </>
                           ) : (
                             <>
-                              <EyeIcon className="size-3.5 text-muted-foreground" />
+                              <EyeIcon className="size-4 text-muted-foreground" />
                               Watch this question
                             </>
                           )}
@@ -722,9 +722,9 @@ export function AskPanel({
                   title={copied ? "Copied" : "CopyIcon answer"}
                 >
                   {copied ? (
-                    <CheckIcon className="size-3.5 text-[var(--positive)]" />
+                    <CheckIcon className="size-4 text-[var(--positive)]" />
                   ) : (
-                    <CopyIcon className="size-3.5 text-muted-foreground" />
+                    <CopyIcon className="size-4 text-muted-foreground" />
                   )}
                 </Button>
               </div>
@@ -743,7 +743,7 @@ export function AskPanel({
                       className="inline-flex items-center gap-1 rounded-md border border-border bg-surface px-2.5 py-1 text-dense text-foreground transition-colors hover:border-border-strong hover:bg-surface-3"
                     >
                       {c.label}
-                      <ArrowUpRightIcon className="size-3 text-muted-foreground" />
+                      <ArrowUpRightIcon className="size-4 text-muted-foreground" />
                     </Link>
                   ))}
                 </div>
@@ -756,7 +756,7 @@ export function AskPanel({
             onClick={resetPanel}
             className="mt-3 inline-flex items-center gap-1.5 rounded-sm text-meta text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
           >
-            <PlusIcon className="size-3" aria-hidden />
+            <PlusIcon className="size-4" aria-hidden />
             Ask something else
           </button>
         </div>

@@ -5,11 +5,12 @@ import {
   CaretRightIcon,
   ArrowSquareOutIcon,
   InfoIcon,
-  CircleNotchIcon,
+  SpinnerIcon,
+  ClockIcon,
   LockIcon,
   PlayIcon,
   PlusIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import {
   MONITOR_FREQUENCIES,
   PLAN_LABELS,
@@ -38,7 +39,7 @@ import {
   nextScanIn,
   lastScanLabel,
 } from "../competitor-detail/monitor-status";
-import { isServerQueued } from "../competitor-detail/shared";
+import type { ScrapeActivity } from "../competitor-detail/shared";
 import { sourceCopy, isConcerning } from "./source-copy";
 
 // `limited` was `text-warning`, which no token defines — so the one tone that had
@@ -165,7 +166,7 @@ export function SourceName({ label, url }: { label: string; url: string | null }
     >
       <span className="truncate">{label}</span>
       <ArrowSquareOutIcon
-        size={11}
+        size={16}
         className="shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/src:opacity-100"
       />
     </a>
@@ -189,7 +190,7 @@ export function SourceRow({
   targets,
   competitorUrl,
   fallbacks,
-  running,
+  activity,
   monitoringPaused,
   onRun,
   onEnable,
@@ -206,7 +207,8 @@ export function SourceRow({
   competitorUrl: string | null;
   /** Other sources we ARE collecting — quoted in the blocked message. */
   fallbacks: string[];
-  running: boolean;
+  /** Open scrape request, if any: a worker has it, or it is still in the queue. */
+  activity: ScrapeActivity;
   monitoringPaused: boolean;
   onRun: (id: string) => void;
   onEnable: (source: SourceType, url?: string) => Promise<void>;
@@ -224,12 +226,13 @@ export function SourceRow({
   const drawerId = useId();
 
   const state = sourceState({ sourceType, plan, monitor, targets });
-  // `running` carries the optimistic client-side set (a click before the server has
-  // caught up); "queued" is purely server state, so it is read off the monitor here
-  // rather than threaded through as a second prop.
+  // One verdict, computed once by the caller: the server stamps say whether a
+  // worker holds the job or it is still waiting, and the optimistic client marker
+  // can only ever mean "queued" (a request is tracked from the moment it is sent).
   const status = monitor
-    ? monitorStatus(monitor, running, !running && isServerQueued(monitor))
+    ? monitorStatus(monitor, activity === "scraping", activity === "queued")
     : "idle";
+  const busy = activity !== null;
   const copy = sourceCopy({
     state,
     sourceType,
@@ -381,7 +384,7 @@ export function SourceRow({
               className="h-7 text-xs"
               onClick={() => onUpgrade(sourceType)}
             >
-              <LockIcon size={11} /> Upgrade
+              <LockIcon size={16} /> Upgrade
             </Button>
           )}
 
@@ -396,7 +399,7 @@ export function SourceRow({
               disabled={enabling}
               onClick={() => (needsUrlToEnable ? openWithUrlFocus() : void enableWithoutUrl())}
             >
-              {enabling ? <CircleNotchIcon size={11} className="animate-spin" /> : <PlusIcon size={11} />}
+              {enabling ? <SpinnerIcon size={16} className="animate-spin" /> : <PlusIcon size={16} />}
               Turn on
             </Button>
           )}
@@ -426,11 +429,17 @@ export function SourceRow({
               size="sm"
               variant="ghost"
               className="h-7 text-xs opacity-0 transition-opacity focus-visible:opacity-100 group-hover/row:opacity-100 group-data-[open]/row:opacity-100"
-              disabled={running || monitor.isActive === false}
+              disabled={busy || monitor.isActive === false}
               onClick={() => onRun(monitor.id)}
             >
-              {running ? <CircleNotchIcon size={11} className="animate-spin" /> : <PlayIcon size={11} />}
-              Run
+              {activity === "scraping" ? (
+                <SpinnerIcon size={16} className="animate-spin" />
+              ) : activity === "queued" ? (
+                <ClockIcon size={16} />
+              ) : (
+                <PlayIcon size={16} />
+              )}
+              {activity === "queued" ? "Queued" : "Run"}
             </Button>
           )}
 
@@ -455,7 +464,7 @@ export function SourceRow({
               className="flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground"
             >
               <CaretRightIcon
-                size={14}
+                size={16}
                 className={cn("transition-transform duration-200", open && "rotate-90")}
               />
             </button>
@@ -513,7 +522,7 @@ export function SourceRow({
                               : void onEdit(monitor.id, { frequency: freq })
                           }
                         >
-                          {locked && <LockIcon size={9} className="opacity-70" />}
+                          {locked && <LockIcon size={16} className="opacity-70" />}
                           {freq}
                           {locked && (
                             <span className="text-meta uppercase tracking-wide opacity-70">
@@ -570,7 +579,7 @@ export function SourceRow({
                           aria-label="What this URL has to be"
                           className="rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
-                          <InfoIcon size={12} />
+                          <InfoIcon size={16} />
                         </button>
                       </TooltipTrigger>
                       <TooltipContent className="max-w-[44ch]">{urlHelp}</TooltipContent>
@@ -611,7 +620,7 @@ export function SourceRow({
                       className="mt-1.5 inline-flex max-w-full items-center gap-1 text-xs text-link hover:underline focus-visible:outline-none focus-visible:underline"
                     >
                       <span className="truncate">Open the page we scrape</span>
-                      <ArrowSquareOutIcon size={10} className="shrink-0" />
+                      <ArrowSquareOutIcon size={16} className="shrink-0" />
                     </a>
                   )}
                 </div>

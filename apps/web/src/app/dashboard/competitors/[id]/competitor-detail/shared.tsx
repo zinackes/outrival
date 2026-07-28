@@ -3,16 +3,19 @@
 import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import {
-  CircleNotchIcon,
+  SpinnerIcon,
+  ClockIcon,
   PlusIcon,
   PlayIcon,
   SparkleIcon,
   CaretDownIcon,
   LockIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import {
   ANALYSIS_SCRAPE_TIMEOUT_MS,
   ANALYSIS_QUEUE_TIMEOUT_MS,
+  deriveScrapeActivity,
+  type ScrapeActivity,
   PLAN_LABELS,
   minPlanForFrequency,
   planIncludesFrequency,
@@ -37,38 +40,46 @@ import { TabSection } from "@/components/outrival/tab-shell";
 export const POLL_TIMEOUT_MS = ANALYSIS_SCRAPE_TIMEOUT_MS;
 export const QUEUE_TIMEOUT_MS = ANALYSIS_QUEUE_TIMEOUT_MS;
 
+export type { ScrapeActivity };
+
 // How often an in-flight job (scrape, AI summary) is re-checked.
 export const POLL_INTERVAL_MS = 3000;
 
-// Is this monitor's scrape request still open — enqueued or running — from the
-// server's point of view? Both stamps are cleared on every terminal outcome, so a
-// stamp newer than the last success/failure means "this request is still open".
-// Survives a page refresh, unlike the client-side `scrapingIds` set.
-function inFlightSince(m: Monitor): number | null {
-  if (!m.scrapeStartedAt) return null;
-  const started = new Date(m.scrapeStartedAt).getTime();
-  const lastRun = m.lastRunAt ? new Date(m.lastRunAt).getTime() : 0;
-  const lastFailed = m.lastFailedAt ? new Date(m.lastFailedAt).getTime() : 0;
-  if (started <= lastRun || started <= lastFailed) return null;
-  return started;
-}
+// Server-side truth about an open scrape request. Both stamps are cleared on every
+// terminal outcome, so a stamp newer than the last success/failure means "this
+// request is still open" — which survives a page refresh, unlike the client-side
+// `scrapingIds` set. The reading of the stamps lives in @outrival/shared, so the
+// API payloads, the analysis banner and every source row cannot drift apart.
 
 /** A worker has the job and is fetching the site right now. */
 export function isServerScraping(m: Monitor): boolean {
-  if (inFlightSince(m) === null || !m.scrapePickedUpAt) return false;
-  return Date.now() - new Date(m.scrapePickedUpAt).getTime() < POLL_TIMEOUT_MS;
+  return deriveScrapeActivity(m, Date.now()) === "scraping";
 }
 
 /** Requested, but no worker has taken it yet — it is sitting in the queue. */
 export function isServerQueued(m: Monitor): boolean {
-  const started = inFlightSince(m);
-  if (started === null || m.scrapePickedUpAt) return false;
-  return Date.now() - started < QUEUE_TIMEOUT_MS;
+  return deriveScrapeActivity(m, Date.now()) === "queued";
 }
 
 /** Either of the above — for callers that only need "something is happening". */
 export function isServerInFlight(m: Monitor): boolean {
-  return isServerScraping(m) || isServerQueued(m);
+  return deriveScrapeActivity(m, Date.now()) !== null;
+}
+
+/**
+ * How an open scrape request should READ on screen: server state, plus this
+ * client's optimistic marker for a run it just asked for.
+ *
+ * `tracked` (the id is in `scrapingIds`) deliberately cannot produce "scraping":
+ * that set is seeded from QUEUED jobs too, since a request is tracked from the
+ * moment it is enqueued. Reading it as "a worker has this" is exactly what made
+ * every source row claim to be scanning a page no worker had opened yet.
+ */
+export function scrapeActivity(m: Monitor, tracked = false): ScrapeActivity {
+  const server = deriveScrapeActivity(m, Date.now());
+  if (server === "scraping") return "scraping";
+  if (server === "queued" || tracked) return "queued";
+  return null;
 }
 
 export type MonitorSourceProps = {
@@ -117,11 +128,11 @@ export function MonitorEmptyState({
           >
             {enabling ? (
               <>
-                <CircleNotchIcon size={12} className="animate-spin" /> Enabling…
+                <SpinnerIcon size={16} className="animate-spin" /> Enabling…
               </>
             ) : (
               <>
-                <PlusIcon size={12} /> Enable {label} monitoring
+                <PlusIcon size={16} /> Enable {label} monitoring
               </>
             )}
           </Button>
@@ -129,28 +140,35 @@ export function MonitorEmptyState({
       </Card>
     );
   }
-  const running = scrapingIds.has(monitor.id);
+  const activity = scrapeActivity(monitor, scrapingIds.has(monitor.id));
+  const busy = activity !== null;
   return (
     <Card className="px-6 py-10 text-center border-dashed flex flex-col items-center gap-3">
       <p className="text-sm font-semibold text-foreground">No {label} data yet</p>
       <p className="text-sm text-muted-foreground max-w-md">
-        {monitor.lastRunAt
-          ? `Monitor was scraped ${formatDistanceToNow(new Date(monitor.lastRunAt), { addSuffix: true })}, but no ${label} data was extracted. The source page may not expose this data.`
-          : `This monitor has never been scraped. Run it now to extract ${label} data.`}
+        {activity === "queued"
+          ? `This source is waiting in the scan queue. It runs as soon as a scanner is free, and ${label} data lands here on its own.`
+          : monitor.lastRunAt
+            ? `Monitor was scraped ${formatDistanceToNow(new Date(monitor.lastRunAt), { addSuffix: true })}, but no ${label} data was extracted. The source page may not expose this data.`
+            : `This monitor has never been scraped. Run it now to extract ${label} data.`}
       </p>
       <Button
         size="sm"
-        variant={running ? "secondary" : "default"}
+        variant={busy ? "secondary" : "default"}
         onClick={() => onRun(monitor.id)}
-        disabled={running}
+        disabled={busy}
       >
-        {running ? (
+        {activity === "scraping" ? (
           <>
-            <CircleNotchIcon size={12} className="animate-spin" /> Scraping…
+            <SpinnerIcon size={16} className="animate-spin" /> Scraping…
+          </>
+        ) : activity === "queued" ? (
+          <>
+            <ClockIcon size={16} /> Queued
           </>
         ) : (
           <>
-            <PlayIcon size={12} /> Scrape now
+            <PlayIcon size={16} /> Scrape now
           </>
         )}
       </Button>
@@ -209,7 +227,7 @@ export function FrequencyButton({
       disabled={disabled}
       className="h-7 gap-1.5 text-xs capitalize"
     >
-      {locked && <LockIcon size={10} className="opacity-70" />}
+      {locked && <LockIcon size={16} className="opacity-70" />}
       {freq}
       {locked && (
         <span className="inline-flex items-center rounded bg-muted-foreground/15 px-1 py-0.5 text-meta font-medium uppercase leading-none tracking-wide text-muted-foreground">
@@ -236,12 +254,12 @@ export function SourceSummary({
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-center gap-2 text-left"
       >
-        <SparkleIcon size={14} className="shrink-0 text-muted-foreground" />
+        <SparkleIcon size={16} className="shrink-0 text-muted-foreground" />
         <span className="text-content font-semibold tracking-tight leading-tight">
           What we found
         </span>
         <CaretDownIcon
-          size={14}
+          size={16}
           className={cn(
             "shrink-0 text-muted-foreground transition-transform",
             open && "rotate-180",

@@ -1,7 +1,7 @@
 "use client";
 
 import { formatDistanceToNow } from "date-fns";
-import { ArrowRightIcon } from "@phosphor-icons/react/ssr";
+import { ArrowRightIcon } from "@/components/icons";
 import type { CompetitorSignal } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { SeverityScale } from "@/components/outrival/severity-scale";
@@ -90,7 +90,7 @@ export function WhatChanged({
       </span>
       <span className="inline-flex shrink-0 items-center gap-1.5 self-end text-xs text-link sm:self-auto">
         Review all
-        <ArrowRightIcon size={13} aria-hidden />
+        <ArrowRightIcon size={16} aria-hidden />
       </span>
     </button>
   );

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRightIcon } from "@phosphor-icons/react/ssr";
+import { ArrowRightIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Breadcrumbs, CompareShell } from "./compare-shell";
 import { CompareFaq } from "./compare-faq";
@@ -171,7 +171,7 @@ export function AlternativesPage({
                       className="inline-flex items-center gap-1.5 font-medium text-primary hover:underline"
                     >
                       Start free
-                      <ArrowRightIcon size={13} aria-hidden />
+                      <ArrowRightIcon size={16} aria-hidden />
                     </Link>
                   ) : it.href ? (
                     <Link
@@ -179,7 +179,7 @@ export function AlternativesPage({
                       className="inline-flex items-center gap-1.5 text-text-muted transition-colors hover:text-foreground"
                     >
                       Outrival vs {it.name}
-                      <ArrowRightIcon size={13} aria-hidden />
+                      <ArrowRightIcon size={16} aria-hidden />
                     </Link>
                   ) : null}
                 </div>
@@ -222,28 +222,28 @@ export function AlternativesPage({
               className="inline-flex items-center gap-1.5 text-text-muted transition-colors hover:text-foreground"
             >
               Outrival vs {subject}
-              <ArrowRightIcon size={13} aria-hidden />
+              <ArrowRightIcon size={16} aria-hidden />
             </Link>
             <Link
               href={`/alternatives/${competitorKey === "crayon" ? "klue" : "crayon"}`}
               className="inline-flex items-center gap-1.5 text-text-muted transition-colors hover:text-foreground"
             >
               Best {competitorKey === "crayon" ? "Klue" : "Crayon"} alternatives
-              <ArrowRightIcon size={13} aria-hidden />
+              <ArrowRightIcon size={16} aria-hidden />
             </Link>
             <Link
               href="/alternatives/best-competitive-intelligence-tools"
               className="inline-flex items-center gap-1.5 text-text-muted transition-colors hover:text-foreground"
             >
               Best competitive-intelligence tools
-              <ArrowRightIcon size={13} aria-hidden />
+              <ArrowRightIcon size={16} aria-hidden />
             </Link>
             <Link
               href="/vs/diy"
               className="inline-flex items-center gap-1.5 text-text-muted transition-colors hover:text-foreground"
             >
               Outrival vs doing it yourself
-              <ArrowRightIcon size={13} aria-hidden />
+              <ArrowRightIcon size={16} aria-hidden />
             </Link>
           </div>
 

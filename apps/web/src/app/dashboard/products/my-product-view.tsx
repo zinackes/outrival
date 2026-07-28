@@ -6,7 +6,8 @@ import { myProductQuery, myProductChangesQuery, productsListQuery } from "@/lib/
 import {
   ArrowsClockwiseIcon,
   NotePencilIcon,
-  CircleNotchIcon,
+  SpinnerIcon,
+  ClockIcon,
   WarningIcon,
   BriefcaseIcon,
   CurrencyDollarIcon,
@@ -16,7 +17,7 @@ import {
   StorefrontIcon,
   UsersIcon,
   CaretDownIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { toast } from "sonner";
 import { toastApiError, toastRescanLimit } from "@/lib/error-helpers";
@@ -205,7 +206,9 @@ export function MyProductView({
           },
         });
       } else {
-        toast.success("Re-scan started", { description: "Scanning your sources now…" });
+        toast.success("Re-scan queued", {
+          description: "Your sources are scanned as soon as a scanner is free.",
+        });
       }
       await load(); // pick up scanning=true so the progress poll kicks in
     } catch (e) {
@@ -259,7 +262,7 @@ export function MyProductView({
   if (product === undefined) {
     return (
       <div className="flex items-center justify-center py-24 text-muted-foreground">
-        <CircleNotchIcon className="size-5 animate-spin" />
+        <SpinnerIcon className="size-5 animate-spin" />
       </div>
     );
   }
@@ -323,7 +326,7 @@ export function MyProductView({
                 rel="noreferrer"
                 className="inline-flex items-center gap-1 hover:text-foreground"
               >
-                {prettyUrl(p.url ?? p.repoUrl!)} <ArrowSquareOutIcon className="size-3" />
+                {prettyUrl(p.url ?? p.repoUrl!)} <ArrowSquareOutIcon className="size-4" />
               </a>
             ) : (
               <span>No site or repo yet</span>
@@ -331,11 +334,17 @@ export function MyProductView({
             <span className="text-[var(--muted-2)]">·</span>
             {p.scanning ? (
               <span className="inline-flex items-center gap-1 text-foreground">
-                <CircleNotchIcon className="size-3 animate-spin" /> Scanning…
+                <SpinnerIcon className="size-4 animate-spin" /> Scanning…
+              </span>
+            ) : p.scanQueued ? (
+              // A clock, not a spinner: nothing is turning while the job waits its
+              // turn, and the wait routinely runs into the tens of minutes.
+              <span className="inline-flex items-center gap-1 text-muted-foreground">
+                <ClockIcon className="size-4" /> Queued for a scan
               </span>
             ) : p.scanError ? (
               <span className="inline-flex items-center gap-1 text-destructive">
-                <WarningIcon className="size-3" /> Last scan failed
+                <WarningIcon className="size-4" /> Last scan failed
               </span>
             ) : (
               <span>
@@ -355,7 +364,7 @@ export function MyProductView({
                 project stage), so it's the primary product's tool only. */}
             {isPrimary && (
               <Button onClick={() => setUpdateOpen(true)} variant="outline" size="sm">
-                <NotePencilIcon className="size-3.5" />
+                <NotePencilIcon className="size-4" />
                 Update profile
               </Button>
             )}
@@ -363,22 +372,25 @@ export function MyProductView({
               // Live product: site + pricing monitors exist, so offer selective re-scan.
               <RescanMenu
                 busy={rescanning || p.scanning}
+                queued={Boolean(p.scanQueued)}
                 onRescan={(categories) => void rescan(categories)}
               />
             ) : p.repoUrl ? (
               // Repo-only (developing) product: nothing to scope, plain re-scan.
               <Button
                 onClick={() => rescan()}
-                disabled={rescanning || p.scanning}
+                disabled={rescanning || p.scanning || p.scanQueued}
                 variant="outline"
                 size="sm"
               >
                 {rescanning || p.scanning ? (
-                  <CircleNotchIcon className="size-3.5 animate-spin" />
+                  <SpinnerIcon className="size-4 animate-spin" />
+                ) : p.scanQueued ? (
+                  <ClockIcon className="size-4" />
                 ) : (
-                  <ArrowsClockwiseIcon className="size-3.5" />
+                  <ArrowsClockwiseIcon className="size-4" />
                 )}
-                {p.scanning ? "Scanning…" : "Re-scan"}
+                {p.scanning ? "Scanning…" : p.scanQueued ? "Queued" : "Re-scan"}
               </Button>
             ) : null}
           </div>
@@ -418,9 +430,9 @@ export function MyProductView({
                   disabled={rescanning || p.scanning}
                 >
                   {rescanning ? (
-                    <CircleNotchIcon className="size-3.5 animate-spin" />
+                    <SpinnerIcon className="size-4 animate-spin" />
                   ) : (
-                    <ArrowsClockwiseIcon className="size-3.5" />
+                    <ArrowsClockwiseIcon className="size-4" />
                   )}
                   Try again
                 </Button>
@@ -466,7 +478,7 @@ export function MyProductView({
                   className="sm:max-w-sm"
                 />
                 <Button type="submit" disabled={enabling || !siteUrl.trim()}>
-                  {enabling ? <CircleNotchIcon className="size-3.5 animate-spin" /> : <SparkleIcon className="size-3.5" />}
+                  {enabling ? <SpinnerIcon className="size-4 animate-spin" /> : <SparkleIcon className="size-4" />}
                   Enable monitoring
                 </Button>
               </form>
@@ -482,7 +494,7 @@ export function MyProductView({
                       className="inline-flex items-center gap-1 hover:text-foreground underline"
                     >
                       {p.repoUrl.replace(/^https?:\/\//, "")}
-                      <ArrowSquareOutIcon className="size-3" />
+                      <ArrowSquareOutIcon className="size-4" />
                     </a>
                   </p>
                 ) : (
@@ -502,9 +514,9 @@ export function MyProductView({
                     />
                     <Button type="submit" variant="outline" disabled={trackingRepo || !repoUrl.trim()}>
                       {trackingRepo ? (
-                        <CircleNotchIcon className="size-3.5 animate-spin" />
+                        <SpinnerIcon className="size-4 animate-spin" />
                       ) : (
-                        <ArrowsClockwiseIcon className="size-3.5" />
+                        <ArrowsClockwiseIcon className="size-4" />
                       )}
                       Track repo
                     </Button>
@@ -529,14 +541,14 @@ export function MyProductView({
       <Tabs value={tab} onValueChange={(v) => selectTab(v as ProductTabKey)} className="mt-5">
         <TabsList variant="line" className="w-full justify-start overflow-x-auto">
           <TabsTrigger value="positioning">
-            <FileTextIcon size={13} /> Positioning
+            <FileTextIcon size={16} /> Positioning
           </TabsTrigger>
           <TabsTrigger value="pricing">
-            <CurrencyDollarIcon size={13} /> Pricing
+            <CurrencyDollarIcon size={16} /> Pricing
           </TabsTrigger>
           {competitors && (
             <TabsTrigger value="competitors">
-              <UsersIcon size={13} /> Competitors
+              <UsersIcon size={16} /> Competitors
               <span className="ml-1.5 font-mono text-meta text-muted-foreground">
                 {competitors.length}
               </span>
@@ -544,7 +556,7 @@ export function MyProductView({
           )}
           {(p.url || p.jobs.total > 0) && (
             <TabsTrigger value="hiring">
-              <BriefcaseIcon size={13} /> Hiring
+              <BriefcaseIcon size={16} /> Hiring
               {p.jobs.total > 0 && (
                 <span className="ml-1.5 font-mono text-meta text-muted-foreground">
                   {p.jobs.total}
@@ -663,7 +675,7 @@ export function MyProductView({
               Keep as is
             </Button>
             <Button onClick={launchRediscovery} disabled={discovering}>
-              {discovering && <CircleNotchIcon className="size-3.5 animate-spin" />}
+              {discovering && <SpinnerIcon className="size-4 animate-spin" />}
               Launch re-discovery
             </Button>
           </DialogFooter>

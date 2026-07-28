@@ -10,7 +10,7 @@ import {
   MagnifyingGlassIcon,
   SlidersHorizontalIcon,
   XIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import type { SavedViewFilters, Signal } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -162,14 +162,14 @@ export function SignalsListHeader({
               onSelect={onMarkAllRead}
               disabled={loading || unreadCount === 0}
             >
-              <CheckIcon size={13} /> Mark all read
+              <CheckIcon size={16} /> Mark all read
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={onExportCsv} disabled={loading || total === 0}>
-              <DownloadSimpleIcon size={13} /> Export CSV
+              <DownloadSimpleIcon size={16} /> Export CSV
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={onShowShortcuts}>
-              <KeyboardIcon size={13} /> KeyboardIcon shortcuts
+              <KeyboardIcon size={16} /> KeyboardIcon shortcuts
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -178,7 +178,7 @@ export function SignalsListHeader({
       <div className="flex items-center gap-1.5 px-4 py-2.5">
         <div className="relative min-w-0 flex-1">
           <MagnifyingGlassIcon
-            size={14}
+            size={16}
             className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
           />
           <Input
@@ -198,7 +198,7 @@ export function SignalsListHeader({
               size="sm"
               className="h-8 shrink-0"
             >
-              <SlidersHorizontalIcon size={13} />
+              <SlidersHorizontalIcon size={16} />
               Filters
               {activeFilterCount > 0 && (
                 <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 font-mono text-meta tabular-nums text-primary-foreground">
@@ -284,7 +284,7 @@ export function SignalsListHeader({
               }, ${GROUP_LABEL[group].toLowerCase()}`}
               title="Order and grouping"
             >
-              <ArrowsDownUpIcon size={14} />
+              <ArrowsDownUpIcon size={16} />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52">
@@ -303,7 +303,7 @@ export function SignalsListHeader({
             </DropdownMenuCheckboxItem>
             <DropdownMenuSeparator />
             <DropdownMenuLabel className="flex items-center gap-1.5">
-              <RowsIcon size={13} /> Group by
+              <RowsIcon size={16} /> Group by
             </DropdownMenuLabel>
             {GROUP_MODES.map((m) => (
               <DropdownMenuCheckboxItem
@@ -387,7 +387,7 @@ function FilterChip({
             className="ml-0.5 text-muted-foreground transition-colors hover:text-foreground"
             aria-label="Remove filter"
           >
-            <XIcon size={11} />
+            <XIcon size={16} />
           </button>
         </TooltipTrigger>
         <TooltipContent>Remove filter</TooltipContent>

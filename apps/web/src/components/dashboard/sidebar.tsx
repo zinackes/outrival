@@ -5,23 +5,23 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
-  LayoutDashboard,
-  Radio,
-  FileText,
-  Activity,
-  LineChart,
-  Eye,
-  Users,
-  Box,
-  Boxes,
-  Check,
-  Search,
-  Settings,
-  ChevronsUpDown,
-  CreditCard,
-  Columns3,
-  type LucideIcon,
-} from "lucide-react";
+  SquaresFourIcon,
+  BroadcastIcon,
+  FileTextIcon,
+  PulseIcon,
+  ChartLineIcon,
+  EyeIcon,
+  UsersIcon,
+  CubeIcon,
+  CardsThreeIcon,
+  CheckIcon,
+  MagnifyingGlassIcon,
+  GearIcon,
+  CaretUpDownIcon,
+  CreditCardIcon,
+  ColumnsIcon,
+} from "@phosphor-icons/react/ssr";
+import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import {
   Sidebar,
   SidebarContent,
@@ -68,7 +68,7 @@ export interface SwitcherUser {
 interface NavItem {
   href: string;
   label: string;
-  icon: LucideIcon;
+  icon: PhosphorIcon;
   exact?: boolean;
 }
 
@@ -79,7 +79,7 @@ interface NavItem {
 const OVERVIEW: NavItem = {
   href: "/dashboard",
   label: "Overview",
-  icon: LayoutDashboard,
+  icon: SquaresFourIcon,
   exact: true,
 };
 
@@ -87,9 +87,9 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: "Monitor",
     items: [
-      { href: "/dashboard/signals", label: "Signals", icon: Radio },
-      { href: "/dashboard/digests", label: "Digests", icon: FileText },
-      { href: "/dashboard/activity", label: "Activity", icon: Activity },
+      { href: "/dashboard/signals", label: "Signals", icon: BroadcastIcon },
+      { href: "/dashboard/digests", label: "Digests", icon: FileTextIcon },
+      { href: "/dashboard/activity", label: "PulseIcon", icon: PulseIcon },
     ],
   },
   {
@@ -98,23 +98,23 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
     // Compare stay — real cross-competitor destinations. AI Visibility (docs/ai-visibility.md).
     label: "Analyze",
     items: [
-      { href: "/dashboard/ai-visibility", label: "AI Visibility", icon: Eye },
-      { href: "/dashboard/trends", label: "Trends", icon: LineChart },
-      { href: "/dashboard/compare", label: "Compare", icon: Columns3 },
+      { href: "/dashboard/ai-visibility", label: "AI Visibility", icon: EyeIcon },
+      { href: "/dashboard/trends", label: "Trends", icon: ChartLineIcon },
+      { href: "/dashboard/compare", label: "Compare", icon: ColumnsIcon },
     ],
   },
   {
     label: "Manage",
     items: [
-      { href: "/dashboard/competitors", label: "Competitors", icon: Users },
-      { href: "/dashboard/products", label: "Products", icon: Box },
-      { href: "/dashboard/discovery", label: "Discovery", icon: Search },
+      { href: "/dashboard/competitors", label: "Competitors", icon: UsersIcon },
+      { href: "/dashboard/products", label: "Products", icon: CubeIcon },
+      { href: "/dashboard/discovery", label: "Discovery", icon: MagnifyingGlassIcon },
     ],
   },
 ];
 
 const BOTTOM_NAV: NavItem[] = [
-  { href: "/dashboard/settings", label: "Settings", icon: Settings },
+  { href: "/dashboard/settings", label: "GearIcon", icon: GearIcon },
 ];
 
 export function WorkspaceSwitcher({
@@ -200,9 +200,9 @@ export function WorkspaceSwitcher({
                 <div className="grid flex-1 text-left leading-tight">
                   <span className="truncate text-sm font-semibold inline-flex items-center gap-1">
                     {activeProduct ? (
-                      <Box className="size-3.5 shrink-0 text-muted-foreground" />
+                      <CubeIcon className="size-3.5 shrink-0 text-muted-foreground" />
                     ) : (
-                      <Boxes className="size-3.5 shrink-0 text-muted-foreground" />
+                      <CardsThreeIcon className="size-3.5 shrink-0 text-muted-foreground" />
                     )}
                     {activeProduct?.name ?? "All products"}
                   </span>
@@ -223,7 +223,7 @@ export function WorkspaceSwitcher({
                   )}
                 </div>
               )}
-              <ChevronsUpDown className="ml-auto size-4 opacity-50" />
+              <CaretUpDownIcon className="ml-auto size-4 opacity-50" />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent
@@ -249,22 +249,22 @@ export function WorkspaceSwitcher({
                     onSelect={() => selectProduct(p.id)}
                     className="gap-2"
                   >
-                    <Box className="size-3.5 text-muted-foreground" />
+                    <CubeIcon className="size-3.5 text-muted-foreground" />
                     <span className="flex-1 truncate">{p.name}</span>
-                    {current === p.id && <Check className="size-3.5 shrink-0" />}
+                    {current === p.id && <CheckIcon className="size-3.5 shrink-0" />}
                   </DropdownMenuItem>
                 ))}
                 <DropdownMenuItem
                   onSelect={() => selectProduct(ALL_PRODUCTS)}
                   className="gap-2"
                 >
-                  <Boxes className="size-3.5 text-muted-foreground" />
+                  <CardsThreeIcon className="size-3.5 text-muted-foreground" />
                   <span className="flex-1 truncate">All products</span>
-                  {current === ALL_PRODUCTS && <Check className="size-3.5 shrink-0" />}
+                  {current === ALL_PRODUCTS && <CheckIcon className="size-3.5 shrink-0" />}
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild className="gap-2">
                   <Link href="/dashboard/settings/products">
-                    <Settings className="size-3.5" /> Manage products
+                    <GearIcon className="size-3.5" /> Manage products
                   </Link>
                 </DropdownMenuItem>
               </>
@@ -273,12 +273,12 @@ export function WorkspaceSwitcher({
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
               <Link href="/dashboard/settings">
-                <Settings className="size-3.5" /> Workspace settings
+                <GearIcon className="size-3.5" /> Workspace settings
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <Link href="/dashboard/settings/billing">
-                <CreditCard className="size-3.5" /> Subscription
+                <CreditCardIcon className="size-3.5" /> Subscription
               </Link>
             </DropdownMenuItem>
           </DropdownMenuContent>

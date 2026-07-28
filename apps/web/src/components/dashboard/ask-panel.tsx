@@ -4,27 +4,27 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import {
-  Activity,
-  ArrowUpRight,
-  Check,
-  ChevronRight,
-  Copy,
-  CornerDownLeft,
-  Crosshair,
-  DollarSign,
-  Eye,
-  EyeOff,
-  GitCompare,
-  Info,
-  Loader2,
-  MessageSquare,
-  Package,
-  Plus,
-  Sparkles,
-  TriangleAlert,
-  Users,
-  type LucideIcon,
-} from "lucide-react";
+  PulseIcon,
+  ArrowUpRightIcon,
+  CheckIcon,
+  CaretRightIcon,
+  CopyIcon,
+  ArrowElbowDownLeftIcon,
+  CrosshairIcon,
+  CurrencyDollarIcon,
+  EyeIcon,
+  EyeSlashIcon,
+  GitDiffIcon,
+  InfoIcon,
+  CircleNotchIcon,
+  ChatIcon,
+  PackageIcon,
+  PlusIcon,
+  SparkleIcon,
+  WarningIcon,
+  UsersIcon,
+} from "@phosphor-icons/react/ssr";
+import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -94,13 +94,13 @@ interface Suggestion {
   kind: SuggestionKind;
 }
 
-const KIND_META: Record<SuggestionKind, { icon: LucideIcon; tint: string }> = {
-  activity: { icon: Activity, tint: "var(--link)" },
-  pricing: { icon: DollarSign, tint: "var(--cat-pricing)" },
-  hiring: { icon: Users, tint: "var(--cat-hiring)" },
-  reviews: { icon: MessageSquare, tint: "var(--cat-reviews)" },
-  product: { icon: Package, tint: "var(--cat-product)" },
-  compare: { icon: GitCompare, tint: "var(--link)" },
+const KIND_META: Record<SuggestionKind, { icon: PhosphorIcon; tint: string }> = {
+  activity: { icon: PulseIcon, tint: "var(--link)" },
+  pricing: { icon: CurrencyDollarIcon, tint: "var(--cat-pricing)" },
+  hiring: { icon: UsersIcon, tint: "var(--cat-hiring)" },
+  reviews: { icon: ChatIcon, tint: "var(--cat-reviews)" },
+  product: { icon: PackageIcon, tint: "var(--cat-product)" },
+  compare: { icon: GitDiffIcon, tint: "var(--link)" },
 };
 
 // Shown while the fetch is in flight and if it fails or returns nothing.
@@ -135,7 +135,7 @@ function Steps({ steps, active }: { steps: string[]; active: boolean }) {
           >
             <span className="flex size-3.5 shrink-0 items-center justify-center">
               {running ? (
-                <Loader2 className="size-3.5 animate-spin text-[var(--link)]" />
+                <CircleNotchIcon className="size-3.5 animate-spin text-[var(--link)]" />
               ) : (
                 <span className="size-1.5 rounded-full bg-[var(--link)] ring-2 ring-[var(--surface)]" />
               )}
@@ -438,7 +438,7 @@ export function AskPanel({
       }
     } catch (e) {
       if (!(e instanceof DOMException && e.name === "AbortError")) {
-        setError("Network error. Could not reach the assistant. Check your connection.");
+        setError("Network error. Could not reach the assistant. CheckIcon your connection.");
       }
     } finally {
       setLoading(false);
@@ -475,7 +475,7 @@ export function AskPanel({
       {!embedded && (
         <PageHead
           title="Ask"
-          icon={<Sparkles className="size-5 text-[var(--link)]" />}
+          icon={<SparkleIcon className="size-5 text-[var(--link)]" />}
           sub="Ask anything about your tracked competitors, answered from your own data."
         />
       )}
@@ -494,7 +494,7 @@ export function AskPanel({
                 : "border-border text-muted-foreground hover:text-foreground",
             )}
           >
-            <Crosshair className="size-3" /> {context.label}
+            <CrosshairIcon className="size-3" /> {context.label}
           </button>
           <span className="text-meta text-muted-foreground">
             {scoped ? "questions scoped here" : "asking across all competitors"}
@@ -506,7 +506,7 @@ export function AskPanel({
           with an AI system, at the latest at first interaction, in clear terms
           that aren't buried in the terms of service. */}
       <p className="mb-3 flex items-start gap-1.5 text-meta text-muted-foreground">
-        <Info className="mt-0.5 size-3 shrink-0" aria-hidden />
+        <InfoIcon className="mt-0.5 size-3 shrink-0" aria-hidden />
         <span>
           You&apos;re interacting with AI. Ask Outrival generates answers from
           your workspace data and can be inaccurate, so verify important details.
@@ -545,7 +545,7 @@ export function AskPanel({
               <span className="hidden sm:inline">to send</span>
             </span>
             <Button type="submit" disabled={loading || !question.trim()}>
-              {loading ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+              {loading ? <CircleNotchIcon className="size-4 animate-spin" /> : <SparkleIcon className="size-4" />}
               Ask
             </Button>
           </div>
@@ -570,7 +570,7 @@ export function AskPanel({
               >
                 <Icon className="size-4 shrink-0" style={{ color: tint }} aria-hidden />
                 <span className="flex-1 text-sm text-foreground">{q}</span>
-                <CornerDownLeft
+                <ArrowElbowDownLeftIcon
                   className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
                   aria-hidden
                 />
@@ -590,13 +590,13 @@ export function AskPanel({
                     onClick={() => openHistory(item)}
                     className="flex w-full items-center gap-3 border-b border-border px-3 py-2.5 text-left transition-colors last:border-b-0 hover:bg-surface-3 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
                   >
-                    <MessageSquare className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                    <ChatIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
                     <span className="min-w-0 flex-1 truncate text-sm text-foreground">
                       {item.question}
                     </span>
                     {item.context && (
                       <span className="hidden max-w-[8rem] shrink-0 items-center gap-1 text-meta text-muted-foreground sm:inline-flex">
-                        <Crosshair className="size-3 shrink-0" aria-hidden />
+                        <CrosshairIcon className="size-3 shrink-0" aria-hidden />
                         <span className="truncate">{item.context.label}</span>
                       </span>
                     )}
@@ -619,7 +619,7 @@ export function AskPanel({
 
       {error && (
         <Card className="mt-6 flex items-start gap-3 border-destructive/40 p-4">
-          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden />
+          <WarningIcon className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden />
           <div className="flex-1">
             <p className="text-sm text-foreground">{error}</p>
             {question.trim() && (
@@ -642,7 +642,7 @@ export function AskPanel({
           {trace.length > 0 && (
             <details className="group mt-6">
               <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 text-meta text-muted-foreground transition-colors hover:text-foreground">
-                <ChevronRight className="size-3 transition-transform group-open:rotate-90" aria-hidden />
+                <CaretRightIcon className="size-3 transition-transform group-open:rotate-90" aria-hidden />
                 <span className="font-mono">{trace.length}</span> steps to answer
               </summary>
               <div className="mt-3 pl-1">
@@ -677,27 +677,27 @@ export function AskPanel({
                             <>
                               {/* Default label; swaps to the un-watch affordance on hover/focus. */}
                               <span className="inline-flex items-center gap-1.5 group-hover:hidden group-focus-visible:hidden">
-                                <Check className="size-3.5 text-[var(--positive)]" />
+                                <CheckIcon className="size-3.5 text-[var(--positive)]" />
                                 Watching
                               </span>
                               <span className="hidden items-center gap-1.5 group-hover:inline-flex group-focus-visible:inline-flex">
-                                <EyeOff className="size-3.5 text-muted-foreground" />
+                                <EyeSlashIcon className="size-3.5 text-muted-foreground" />
                                 Unwatch
                               </span>
                             </>
                           ) : watchState === "saving" ? (
                             <>
-                              <Loader2 className="size-3.5 animate-spin" />
+                              <CircleNotchIcon className="size-3.5 animate-spin" />
                               Watching…
                             </>
                           ) : watchState === "removing" ? (
                             <>
-                              <Loader2 className="size-3.5 animate-spin" />
+                              <CircleNotchIcon className="size-3.5 animate-spin" />
                               Unwatching…
                             </>
                           ) : (
                             <>
-                              <Eye className="size-3.5 text-muted-foreground" />
+                              <EyeIcon className="size-3.5 text-muted-foreground" />
                               Watch this question
                             </>
                           )}
@@ -718,13 +718,13 @@ export function AskPanel({
                   variant="ghost"
                   size="icon-sm"
                   onClick={copyAnswer}
-                  aria-label={copied ? "Copied" : "Copy answer"}
-                  title={copied ? "Copied" : "Copy answer"}
+                  aria-label={copied ? "Copied" : "CopyIcon answer"}
+                  title={copied ? "Copied" : "CopyIcon answer"}
                 >
                   {copied ? (
-                    <Check className="size-3.5 text-[var(--positive)]" />
+                    <CheckIcon className="size-3.5 text-[var(--positive)]" />
                   ) : (
-                    <Copy className="size-3.5 text-muted-foreground" />
+                    <CopyIcon className="size-3.5 text-muted-foreground" />
                   )}
                 </Button>
               </div>
@@ -743,7 +743,7 @@ export function AskPanel({
                       className="inline-flex items-center gap-1 rounded-md border border-border bg-surface px-2.5 py-1 text-dense text-foreground transition-colors hover:border-border-strong hover:bg-surface-3"
                     >
                       {c.label}
-                      <ArrowUpRight className="size-3 text-muted-foreground" />
+                      <ArrowUpRightIcon className="size-3 text-muted-foreground" />
                     </Link>
                   ))}
                 </div>
@@ -756,7 +756,7 @@ export function AskPanel({
             onClick={resetPanel}
             className="mt-3 inline-flex items-center gap-1.5 rounded-sm text-meta text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
           >
-            <Plus className="size-3" aria-hidden />
+            <PlusIcon className="size-3" aria-hidden />
             Ask something else
           </button>
         </div>

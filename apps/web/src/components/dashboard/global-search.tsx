@@ -5,27 +5,27 @@ import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import {
-  Search,
-  Building2,
-  FileText,
-  Command as CommandIcon,
-  LayoutDashboard,
-  Radio,
-  Activity,
-  Sparkles,
-  Globe,
-  LineChart,
-  Columns3,
-  Users,
-  Box,
-  IdCard,
-  Settings,
-  CreditCard,
-  Sun,
-  Moon,
-  Monitor,
-  type LucideIcon,
-} from "lucide-react";
+  MagnifyingGlassIcon,
+  BuildingsIcon,
+  FileTextIcon,
+  CommandIcon,
+  SquaresFourIcon,
+  BroadcastIcon,
+  PulseIcon,
+  SparkleIcon,
+  GlobeIcon,
+  ChartLineIcon,
+  ColumnsIcon,
+  UsersIcon,
+  CubeIcon,
+  IdentificationCardIcon,
+  GearIcon,
+  CreditCardIcon,
+  SunIcon,
+  MoonIcon,
+  MonitorIcon,
+} from "@phosphor-icons/react/ssr";
+import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 
 import { api, type SearchResults } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -52,25 +52,25 @@ const SEVERITY_DOT: Record<string, string> = {
 interface NavCommand {
   href: string;
   label: string;
-  icon: LucideIcon;
+  icon: PhosphorIcon;
   keywords?: string;
 }
 
 const NAV: NavCommand[] = [
-  { href: "/dashboard", label: "Overview", icon: LayoutDashboard, keywords: "home dashboard" },
-  { href: "/dashboard/signals", label: "Signals", icon: Radio, keywords: "feed alerts" },
-  { href: "/dashboard/activity", label: "Activity", icon: Activity, keywords: "scraping runs health" },
-  { href: "/dashboard/ask", label: "Ask Outrival", icon: Sparkles, keywords: "ai chat question" },
-  { href: "/dashboard/sector", label: "Sector", icon: Globe, keywords: "market overview" },
-  { href: "/dashboard/trends", label: "Trends", icon: LineChart, keywords: "charts analytics" },
-  { href: "/dashboard/compare", label: "Compare", icon: Columns3, keywords: "side by side" },
-  { href: "/dashboard/competitors", label: "Competitors", icon: Users, keywords: "roster companies" },
-  { href: "/dashboard/products", label: "Products", icon: Box, keywords: "my product sku" },
-  { href: "/dashboard/discovery", label: "Discovery", icon: Search, keywords: "candidates suggestions" },
-  { href: "/dashboard/battle-cards", label: "Battle cards", icon: IdCard, keywords: "sales pdf" },
-  { href: "/dashboard/digests", label: "Digests", icon: FileText, keywords: "weekly report email" },
-  { href: "/dashboard/settings", label: "Settings", icon: Settings, keywords: "preferences config" },
-  { href: "/dashboard/settings/billing", label: "Billing", icon: CreditCard, keywords: "subscription plan invoice" },
+  { href: "/dashboard", label: "Overview", icon: SquaresFourIcon, keywords: "home dashboard" },
+  { href: "/dashboard/signals", label: "Signals", icon: BroadcastIcon, keywords: "feed alerts" },
+  { href: "/dashboard/activity", label: "PulseIcon", icon: PulseIcon, keywords: "scraping runs health" },
+  { href: "/dashboard/ask", label: "Ask Outrival", icon: SparkleIcon, keywords: "ai chat question" },
+  { href: "/dashboard/sector", label: "Sector", icon: GlobeIcon, keywords: "market overview" },
+  { href: "/dashboard/trends", label: "Trends", icon: ChartLineIcon, keywords: "charts analytics" },
+  { href: "/dashboard/compare", label: "Compare", icon: ColumnsIcon, keywords: "side by side" },
+  { href: "/dashboard/competitors", label: "Competitors", icon: UsersIcon, keywords: "roster companies" },
+  { href: "/dashboard/products", label: "Products", icon: CubeIcon, keywords: "my product sku" },
+  { href: "/dashboard/discovery", label: "Discovery", icon: MagnifyingGlassIcon, keywords: "candidates suggestions" },
+  { href: "/dashboard/battle-cards", label: "Battle cards", icon: IdentificationCardIcon, keywords: "sales pdf" },
+  { href: "/dashboard/digests", label: "Digests", icon: FileTextIcon, keywords: "weekly report email" },
+  { href: "/dashboard/settings", label: "GearIcon", icon: GearIcon, keywords: "preferences config" },
+  { href: "/dashboard/settings/billing", label: "Billing", icon: CreditCardIcon, keywords: "subscription plan invoice" },
 ];
 
 const matches = (q: string, ...fields: (string | undefined)[]) =>
@@ -128,9 +128,9 @@ export function GlobalSearch() {
   const q = query.trim();
   const navMatches = NAV.filter((n) => matches(q, n.label, n.keywords));
   const THEME_ACTIONS = [
-    { id: "theme-dark", label: "Switch to dark theme", icon: Moon, run: () => setTheme("dark"), kw: "theme dark mode" },
-    { id: "theme-light", label: "Switch to light theme", icon: Sun, run: () => setTheme("light"), kw: "theme light mode" },
-    { id: "theme-system", label: "Match system theme", icon: Monitor, run: () => setTheme("system"), kw: "theme system auto" },
+    { id: "theme-dark", label: "Switch to dark theme", icon: MoonIcon, run: () => setTheme("dark"), kw: "theme dark mode" },
+    { id: "theme-light", label: "Switch to light theme", icon: SunIcon, run: () => setTheme("light"), kw: "theme light mode" },
+    { id: "theme-system", label: "Match system theme", icon: MonitorIcon, run: () => setTheme("system"), kw: "theme system auto" },
   ];
   const actionMatches = THEME_ACTIONS.filter((a) => matches(q, a.label, a.kw));
 
@@ -149,14 +149,14 @@ export function GlobalSearch() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label="Search"
+        aria-label="MagnifyingGlassIcon"
         className={cn(
           "inline-flex h-8 items-center gap-2 rounded-md border border-border bg-muted/40 px-2.5 text-xs text-muted-foreground md:w-80",
           "transition-colors hover:bg-muted hover:text-foreground",
         )}
       >
-        <Search size={14} />
-        <span className="hidden md:inline">Search…</span>
+        <MagnifyingGlassIcon size={14} />
+        <span className="hidden md:inline">MagnifyingGlassIcon…</span>
         <kbd className="hidden md:inline-flex md:ml-auto pointer-events-none h-5 select-none items-center gap-0.5 rounded border border-border bg-background px-1.5 font-mono text-meta font-medium">
           <CommandIcon className="size-3" />K
         </kbd>
@@ -172,7 +172,7 @@ export function GlobalSearch() {
             <CommandInput
               value={query}
               onValueChange={setQuery}
-              placeholder="Search or jump to…"
+              placeholder="MagnifyingGlassIcon or jump to…"
             />
             <CommandList>
               {/* Commands — always available, filtered by the query (substring on
@@ -229,7 +229,7 @@ export function GlobalSearch() {
                       value={`competitor-${c.id}`}
                       onSelect={() => go(`/dashboard/competitors/${c.id}`)}
                     >
-                      <Building2 className="text-muted-foreground" />
+                      <BuildingsIcon className="text-muted-foreground" />
                       <span className="truncate">{c.name}</span>
                       {c.category && (
                         <span className="ml-auto truncate text-xs text-muted-foreground">
@@ -272,7 +272,7 @@ export function GlobalSearch() {
                       value={`digest-${d.id}`}
                       onSelect={() => go("/dashboard/digests")}
                     >
-                      <FileText className="text-muted-foreground" />
+                      <FileTextIcon className="text-muted-foreground" />
                       <span className="truncate">Week of {d.weekStart}</span>
                       {d.temperature && (
                         <span className="ml-auto truncate text-xs text-muted-foreground">

@@ -3,7 +3,16 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { Copy, Download, Fingerprint, KeyRound, Link2, Loader2, Monitor, ShieldCheck } from "lucide-react";
+import {
+  CopyIcon,
+  DownloadSimpleIcon,
+  FingerprintIcon,
+  KeyIcon,
+  LinkIcon,
+  CircleNotchIcon,
+  MonitorIcon,
+  ShieldCheckIcon,
+} from "@phosphor-icons/react/ssr";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -144,12 +153,12 @@ function RecoveryCodes({
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="outline" size="sm" onClick={copy}>
-          <Copy size={13} />
-          Copy
+          <CopyIcon size={13} />
+          CopyIcon
         </Button>
         <Button variant="outline" size="sm" onClick={download}>
-          <Download size={13} />
-          Download
+          <DownloadSimpleIcon size={13} />
+          DownloadSimpleIcon
         </Button>
       </div>
       <label className="flex items-center gap-2 text-dense text-foreground">
@@ -410,7 +419,7 @@ function TwoFactorDialog({
                 Back
               </Button>
               <Button size="sm" onClick={confirmCode} disabled={busy || code.length < 6}>
-                {busy && <Loader2 size={13} className="animate-spin" />}
+                {busy && <CircleNotchIcon size={13} className="animate-spin" />}
                 Verify and continue
               </Button>
             </DialogFooter>
@@ -503,7 +512,7 @@ function TwoFactorDialog({
                   Cancel
                 </Button>
                 <Button size="sm" onClick={regenerate} disabled={busy || regenCode.length !== 6}>
-                  {busy && <Loader2 size={13} className="animate-spin" />}
+                  {busy && <CircleNotchIcon size={13} className="animate-spin" />}
                   Generate new codes
                 </Button>
               </div>
@@ -556,7 +565,7 @@ function TwoFactorDialog({
                   onClick={disable}
                   disabled={busy || disableCode.length !== 6}
                 >
-                  {busy && <Loader2 size={13} className="animate-spin" />}
+                  {busy && <CircleNotchIcon size={13} className="animate-spin" />}
                   Turn off two-factor
                 </Button>
               </div>
@@ -616,7 +625,7 @@ function TwoFactorDialog({
             onClick={() => void startEnable(enableCode)}
             disabled={busy || enableCode.length !== 6}
           >
-            {busy && <Loader2 size={13} className="animate-spin" />}
+            {busy && <CircleNotchIcon size={13} className="animate-spin" />}
             Continue
           </Button>
         </DialogFooter>
@@ -641,7 +650,7 @@ function TwoFactorRow({ initialEnabled }: { initialEnabled: boolean }) {
   return (
     <>
       <MethodRow
-        icon={<ShieldCheck size={16} />}
+        icon={<ShieldCheckIcon size={16} />}
         title="Authenticator app"
         description={
           enabled
@@ -773,7 +782,7 @@ function PasskeysDialog({
             {passkeys.map((p) => (
               <div key={p.id} className="flex items-center gap-3 px-5 py-3.5">
                 <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground">
-                  <KeyRound size={14} />
+                  <KeyIcon size={14} />
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="text-dense font-medium">{p.name || "Passkey"}</div>
@@ -789,7 +798,7 @@ function PasskeysDialog({
                   onClick={() => remove(p.id)}
                   disabled={busy === p.id}
                 >
-                  {busy === p.id && <Loader2 size={13} className="animate-spin" />}
+                  {busy === p.id && <CircleNotchIcon size={13} className="animate-spin" />}
                   Remove
                 </Button>
               </div>
@@ -816,7 +825,7 @@ function PasskeysDialog({
                 Cancel
               </Button>
               <Button size="sm" onClick={add} disabled={busy === "add" || addCode.length !== 6}>
-                {busy === "add" && <Loader2 size={13} className="animate-spin" />}
+                {busy === "add" && <CircleNotchIcon size={13} className="animate-spin" />}
                 Continue
               </Button>
             </div>
@@ -852,7 +861,7 @@ function PasskeysRow() {
   return (
     <>
       <MethodRow
-        icon={<Fingerprint size={16} />}
+        icon={<FingerprintIcon size={16} />}
         title="Passkeys"
         description={
           count > 0
@@ -918,7 +927,7 @@ function ConnectedAccountRows() {
   if (social.length === 0) {
     return (
       <MethodRow
-        icon={<Link2 size={16} />}
+        icon={<LinkIcon size={16} />}
         title="Third-party logins"
         description="No third-party accounts connected. You can always sign in with an email code."
       />
@@ -930,7 +939,7 @@ function ConnectedAccountRows() {
       {social.map((a) => (
         <MethodRow
           key={a.providerId}
-          icon={<Link2 size={16} />}
+          icon={<LinkIcon size={16} />}
           title={PROVIDER_LABELS[a.providerId] ?? a.providerId}
           description="Connected, use it to sign in."
         >
@@ -940,7 +949,7 @@ function ConnectedAccountRows() {
             onClick={() => disconnect(a.providerId)}
             disabled={busy === a.providerId}
           >
-            {busy === a.providerId && <Loader2 size={13} className="animate-spin" />}
+            {busy === a.providerId && <CircleNotchIcon size={13} className="animate-spin" />}
             Disconnect
           </Button>
         </MethodRow>
@@ -1123,7 +1132,7 @@ function PasswordDialog({
                 Cancel
               </Button>
               <Button size="sm" onClick={sendCode} disabled={busy || !canContinue}>
-                {busy && <Loader2 size={13} className="animate-spin" />}
+                {busy && <CircleNotchIcon size={13} className="animate-spin" />}
                 Continue
               </Button>
             </DialogFooter>
@@ -1173,7 +1182,7 @@ function PasswordDialog({
                 Back
               </Button>
               <Button size="sm" onClick={submit} disabled={busy || code.length !== 6}>
-                {busy && <Loader2 size={13} className="animate-spin" />}
+                {busy && <CircleNotchIcon size={13} className="animate-spin" />}
                 {hasPassword ? "Change password" : "Set password"}
               </Button>
             </DialogFooter>
@@ -1208,7 +1217,7 @@ function PasswordSection() {
       <Card className="px-5 py-4">
         <div className="flex items-center gap-3">
           <span className="flex size-9 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground">
-            <KeyRound size={16} />
+            <KeyIcon size={16} />
           </span>
           <div className="min-w-0 flex-1">
             <div className="text-sm font-medium text-foreground">
@@ -1327,7 +1336,7 @@ function ActiveSessions() {
             onClick={revokeOthers}
             disabled={busy === "others"}
           >
-            {busy === "others" && <Loader2 size={13} className="animate-spin" />}
+            {busy === "others" && <CircleNotchIcon size={13} className="animate-spin" />}
             Sign out other sessions
           </Button>
         )}
@@ -1346,7 +1355,7 @@ function ActiveSessions() {
             return (
               <div key={s.id} className="flex items-center gap-3 px-5 py-3.5">
                 <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground">
-                  <Monitor size={14} />
+                  <MonitorIcon size={14} />
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 text-dense font-medium">
@@ -1371,7 +1380,7 @@ function ActiveSessions() {
                     onClick={() => revokeOne(s.token)}
                     disabled={busy === s.token}
                   >
-                    {busy === s.token && <Loader2 size={13} className="animate-spin" />}
+                    {busy === s.token && <CircleNotchIcon size={13} className="animate-spin" />}
                     Sign out
                   </Button>
                 )}

@@ -3,32 +3,32 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard,
-  Activity,
-  Brain,
-  ListChecks,
-  Users,
-  Rocket,
-  MessageSquare,
-  ThumbsUp,
-  ShieldAlert,
-  DollarSign,
-  ScrollText,
-  Unplug,
-  BellRing,
-  Gauge,
-  Boxes,
-  Network,
-  Send,
-  Telescope,
-  Sparkles,
-  HeartPulse,
-  TrendingUp,
-  LineChart,
-  type LucideIcon,
-} from "lucide-react";
+  SquaresFourIcon,
+  PulseIcon,
+  BrainIcon,
+  ListChecksIcon,
+  UsersIcon,
+  RocketIcon,
+  ChatIcon,
+  ThumbsUpIcon,
+  ShieldWarningIcon,
+  CurrencyDollarIcon,
+  ScrollIcon,
+  PlugsIcon,
+  BellRingingIcon,
+  GaugeIcon,
+  CardsThreeIcon,
+  TreeStructureIcon,
+  PaperPlaneTiltIcon,
+  BinocularsIcon,
+  SparkleIcon,
+  HeartbeatIcon,
+  TrendUpIcon,
+  ChartLineIcon,
+} from "@phosphor-icons/react/ssr";
+import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 
-type NavItem = { href: string; label: string; icon: LucideIcon };
+type NavItem = { href: string; label: string; icon: PhosphorIcon };
 type NavSection = { title?: string; items: NavItem[] };
 
 // Grouped by domain so the flat 21-item list reads as sections (Control /
@@ -37,53 +37,53 @@ type NavSection = { title?: string; items: NavItem[] };
 const SECTIONS: NavSection[] = [
   {
     items: [
-      { href: "/admin", label: "Overview", icon: LayoutDashboard },
-      { href: "/admin/system", label: "System", icon: HeartPulse },
-      { href: "/admin/jobs", label: "Jobs", icon: ListChecks },
+      { href: "/admin", label: "Overview", icon: SquaresFourIcon },
+      { href: "/admin/system", label: "System", icon: HeartbeatIcon },
+      { href: "/admin/jobs", label: "Jobs", icon: ListChecksIcon },
     ],
   },
   {
     title: "Scraping",
     items: [
-      { href: "/admin/scraping", label: "Scraping", icon: Activity },
-      { href: "/admin/monitors-health", label: "Monitors health", icon: Gauge },
-      { href: "/admin/scraping-edge-cases", label: "Edge cases", icon: Unplug },
-      { href: "/admin/platform-detection", label: "Platform", icon: Network },
-      { href: "/admin/enrichment", label: "Enrichment", icon: Sparkles },
+      { href: "/admin/scraping", label: "Scraping", icon: PulseIcon },
+      { href: "/admin/monitors-health", label: "Monitors health", icon: GaugeIcon },
+      { href: "/admin/scraping-edge-cases", label: "Edge cases", icon: PlugsIcon },
+      { href: "/admin/platform-detection", label: "Platform", icon: TreeStructureIcon },
+      { href: "/admin/enrichment", label: "Enrichment", icon: SparkleIcon },
     ],
   },
   {
     title: "AI",
     items: [
-      { href: "/admin/ai", label: "AI", icon: Brain },
-      { href: "/admin/feedback-quality", label: "AI quality", icon: ThumbsUp },
-      { href: "/admin/ai-review-queue", label: "AI review", icon: ShieldAlert },
-      { href: "/admin/cost", label: "Cost", icon: DollarSign },
+      { href: "/admin/ai", label: "AI", icon: BrainIcon },
+      { href: "/admin/feedback-quality", label: "AI quality", icon: ThumbsUpIcon },
+      { href: "/admin/ai-review-queue", label: "AI review", icon: ShieldWarningIcon },
+      { href: "/admin/cost", label: "Cost", icon: CurrencyDollarIcon },
     ],
   },
   {
     title: "Delivery",
     items: [
-      { href: "/admin/notification-moderation", label: "Notifications", icon: BellRing },
-      { href: "/admin/delivery", label: "Delivery", icon: Send },
+      { href: "/admin/notification-moderation", label: "Notifications", icon: BellRingingIcon },
+      { href: "/admin/delivery", label: "Delivery", icon: PaperPlaneTiltIcon },
     ],
   },
   {
     title: "Growth",
     items: [
-      { href: "/admin/onboarding", label: "Onboarding", icon: Rocket },
-      { href: "/admin/discovery", label: "Discovery", icon: Telescope },
-      { href: "/admin/multi-product", label: "Products", icon: Boxes },
-      { href: "/admin/business", label: "Business", icon: TrendingUp },
-      { href: "/admin/product", label: "Product KPIs", icon: LineChart },
+      { href: "/admin/onboarding", label: "Onboarding", icon: RocketIcon },
+      { href: "/admin/discovery", label: "Discovery", icon: BinocularsIcon },
+      { href: "/admin/multi-product", label: "Products", icon: CardsThreeIcon },
+      { href: "/admin/business", label: "Business", icon: TrendUpIcon },
+      { href: "/admin/product", label: "Product KPIs", icon: ChartLineIcon },
     ],
   },
   {
     title: "Support",
     items: [
-      { href: "/admin/users", label: "Users", icon: Users },
-      { href: "/admin/feedback", label: "Feedback", icon: MessageSquare },
-      { href: "/admin/audit", label: "Audit", icon: ScrollText },
+      { href: "/admin/users", label: "UsersIcon", icon: UsersIcon },
+      { href: "/admin/feedback", label: "Feedback", icon: ChatIcon },
+      { href: "/admin/audit", label: "Audit", icon: ScrollIcon },
     ],
   },
 ];

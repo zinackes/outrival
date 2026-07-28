@@ -5,16 +5,16 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import {
-  ArrowRight,
-  X,
-  Sparkles,
-  TrendingUp,
-  DollarSign,
-  Target,
-  Sprout,
-  Globe,
-  type LucideIcon,
-} from "lucide-react";
+  ArrowRightIcon,
+  XIcon,
+  SparkleIcon,
+  TrendUpIcon,
+  CurrencyDollarIcon,
+  TargetIcon,
+  PlantIcon,
+  GlobeIcon,
+} from "@phosphor-icons/react/ssr";
+import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { api, type SectoralSignal, type SectoralCategory } from "@/lib/api";
 import { sectoralTeaserQuery } from "@/lib/queries";
 import { Button } from "@/components/ui/button";
@@ -26,12 +26,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-export const CATEGORY_META: Record<SectoralCategory, { icon: LucideIcon; label: string }> = {
-  feature_trend: { icon: Sparkles, label: "Features" },
-  hiring_trend: { icon: TrendingUp, label: "Hiring" },
-  pricing_trend: { icon: DollarSign, label: "Pricing" },
-  positioning_shift: { icon: Target, label: "Positioning" },
-  category_emergence: { icon: Sprout, label: "Emerging" },
+export const CATEGORY_META: Record<SectoralCategory, { icon: PhosphorIcon; label: string }> = {
+  feature_trend: { icon: SparkleIcon, label: "Features" },
+  hiring_trend: { icon: TrendUpIcon, label: "Hiring" },
+  pricing_trend: { icon: CurrencyDollarIcon, label: "Pricing" },
+  positioning_shift: { icon: TargetIcon, label: "Positioning" },
+  category_emergence: { icon: PlantIcon, label: "Emerging" },
 };
 
 export function confidencePct(raw: string): number {
@@ -158,7 +158,7 @@ export function SectoralRow({
           </div>
           <div className="mt-2 flex items-center gap-2.5">
             <Button variant="outline" size="sm" onClick={onOpen}>
-              View detail <ArrowRight size={11} />
+              View detail <ArrowRightIcon size={11} />
             </Button>
             <span className="text-meta text-muted-foreground">
               Confidence {confidencePct(signal.confidence)}%
@@ -175,7 +175,7 @@ export function SectoralRow({
             aria-label="Dismiss"
             className="text-muted-foreground hover:text-foreground transition-colors mt-0.5"
           >
-            <X size={14} />
+            <XIcon size={14} />
           </button>
         )}
       </div>
@@ -222,7 +222,7 @@ export function SectoralSignalsSection() {
     <section>
       <SectionHead
         title="Sector trends"
-        icon={<Globe size={14} />}
+        icon={<GlobeIcon size={14} />}
         sub="patterns across your competitors · not single-competitor signals"
       />
       <div>
@@ -238,7 +238,7 @@ export function SectoralSignalsSection() {
       <div className="pt-2">
         <Button asChild variant="ghost" size="sm">
           <Link href="/dashboard/sector">
-            View all sector trends <ArrowRight size={11} />
+            View all sector trends <ArrowRightIcon size={11} />
           </Link>
         </Button>
       </div>

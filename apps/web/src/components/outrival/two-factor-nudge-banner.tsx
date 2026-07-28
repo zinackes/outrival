@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ShieldCheck, X } from "lucide-react";
+import { ShieldCheckIcon, XIcon } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 
 const DISMISS_KEY = "outrival.2fa-nudge-dismissed";
@@ -53,7 +53,7 @@ export function TwoFactorNudgeBanner({
 
   return (
     <div className="mb-4 flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3">
-      <ShieldCheck size={16} className="shrink-0 text-link" />
+      <ShieldCheckIcon size={16} className="shrink-0 text-link" />
       <p className="flex-1 text-sm text-foreground">
         Add an extra layer of security: turn on two-factor authentication so a
         stolen email or password isn&apos;t enough to sign in.
@@ -70,7 +70,7 @@ export function TwoFactorNudgeBanner({
         aria-label="Dismiss"
         className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
       >
-        <X size={16} />
+        <XIcon size={16} />
       </button>
     </div>
   );

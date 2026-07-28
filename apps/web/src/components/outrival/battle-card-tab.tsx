@@ -3,21 +3,21 @@
 import { useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import {
-  CircleCheck,
-  CircleX,
-  Download,
-  HelpCircle,
-  Loader2,
-  MessageSquare,
-  RefreshCw,
-  Save,
-  Shield,
-  ShieldCheck,
-  Sparkles,
-  Swords,
-  Target,
-  X,
-} from "lucide-react";
+  CheckCircleIcon,
+  XCircleIcon,
+  DownloadSimpleIcon,
+  QuestionIcon,
+  CircleNotchIcon,
+  ChatIcon,
+  ArrowsClockwiseIcon,
+  FloppyDiskIcon,
+  ShieldIcon,
+  ShieldCheckIcon,
+  SparkleIcon,
+  SwordIcon,
+  TargetIcon,
+  XIcon,
+} from "@phosphor-icons/react/ssr";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import {
   api,
@@ -202,7 +202,7 @@ export function BattleCardTab({ competitorId }: Props) {
   // The job writes the card content first (~10-20s of AI) and only then renders +
   // uploads the PDF (slower). Reveal the card the moment new content lands — don't
   // make the user stare at a spinner through the extra PDF step — and keep polling
-  // silently to enable Download.
+  // silently to enable DownloadSimpleIcon.
   function startPolling(
     prevGeneratedAt: string | null = card?.generatedAt ?? null,
     prevR2: string | null = card?.pdfR2Key ?? null,
@@ -283,12 +283,12 @@ export function BattleCardTab({ competitorId }: Props) {
     return (
       <>
         <EmptyState
-          icon={Sparkles}
+          icon={SparkleIcon}
           title="No battle card for this competitor yet"
           description="Generate one with AI in a few seconds."
           actions={
             <Button size="sm" onClick={onGenerate}>
-              <Sparkles size={12} /> Generate battle card
+              <SparkleIcon size={12} /> Generate battle card
             </Button>
           }
         />
@@ -314,7 +314,7 @@ export function BattleCardTab({ competitorId }: Props) {
       <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-2.5">
           <h2 className="flex items-center gap-2 text-content font-semibold tracking-tight leading-tight">
-            <Swords size={14} className="text-muted-foreground shrink-0" />
+            <SwordIcon size={14} className="text-muted-foreground shrink-0" />
             Battle card
           </h2>
           {!editing && evidence && <BattleCardProvenance evidence={evidence} />}
@@ -330,15 +330,15 @@ export function BattleCardTab({ competitorId }: Props) {
                 setEditing(false);
               }}
             >
-              <X size={12} /> Cancel
+              <XIcon size={12} /> Cancel
             </Button>
             <Button size="sm" disabled={status === "saving"} onClick={onSave}>
               {status === "saving" ? (
-                <Loader2 size={12} className="animate-spin" />
+                <CircleNotchIcon size={12} className="animate-spin" />
               ) : (
-                <Save size={12} />
+                <FloppyDiskIcon size={12} />
               )}
-              {status === "saving" ? "Saving…" : "Save"}
+              {status === "saving" ? "Saving…" : "FloppyDiskIcon"}
             </Button>
           </>
         ) : (
@@ -355,14 +355,14 @@ export function BattleCardTab({ competitorId }: Props) {
                     className="text-muted-foreground"
                     onClick={() => setConfirmingRegen(true)}
                   >
-                    <RefreshCw size={12} /> Regenerate · up to date
+                    <ArrowsClockwiseIcon size={12} /> Regenerate · up to date
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>No changes since the last generation.</TooltipContent>
               </Tooltip>
             ) : (
               <Button size="sm" onClick={onGenerate}>
-                <RefreshCw size={12} /> Regenerate
+                <ArrowsClockwiseIcon size={12} /> Regenerate
               </Button>
             )}
             <Button asChild={canDownload} size="sm" disabled={!canDownload}>
@@ -372,11 +372,11 @@ export function BattleCardTab({ competitorId }: Props) {
                   target="_blank"
                   rel="noreferrer"
                 >
-                  <Download size={12} /> Download PDF
+                  <DownloadSimpleIcon size={12} /> DownloadSimpleIcon PDF
                 </a>
               ) : (
                 <span className="opacity-50">
-                  <Download size={12} /> Download PDF
+                  <DownloadSimpleIcon size={12} /> DownloadSimpleIcon PDF
                 </span>
               )}
             </Button>
@@ -413,7 +413,7 @@ export function BattleCardTab({ competitorId }: Props) {
       <section className="grid grid-cols-1 gap-x-8 gap-y-6 p-5 sm:grid-cols-2 lg:grid-cols-3">
         <ListBlock
           title="Their strengths"
-          icon={Shield}
+          icon={ShieldIcon}
           color="text-destructive"
           items={showContent.their_strengths}
           editing={editing}
@@ -421,7 +421,7 @@ export function BattleCardTab({ competitorId }: Props) {
         />
         <ListBlock
           title="Our strengths"
-          icon={ShieldCheck}
+          icon={ShieldCheckIcon}
           color="text-positive"
           items={showContent.our_strengths}
           editing={editing}
@@ -429,7 +429,7 @@ export function BattleCardTab({ competitorId }: Props) {
         />
         <ListBlock
           title="Their weaknesses"
-          icon={Target}
+          icon={TargetIcon}
           color="text-primary"
           items={showContent.their_weaknesses}
           editing={editing}
@@ -446,7 +446,7 @@ export function BattleCardTab({ competitorId }: Props) {
       <section className="grid grid-cols-1 gap-x-8 gap-y-6 p-5 sm:grid-cols-2">
         <ListBlock
           title="When we win"
-          icon={CircleCheck}
+          icon={CheckCircleIcon}
           color="text-positive"
           items={showContent.when_we_win}
           editing={editing}
@@ -454,7 +454,7 @@ export function BattleCardTab({ competitorId }: Props) {
         />
         <ListBlock
           title="When we lose"
-          icon={CircleX}
+          icon={XCircleIcon}
           color="text-destructive"
           items={showContent.when_we_lose}
           editing={editing}
@@ -547,13 +547,13 @@ function BattleCardProvenance({ evidence }: { evidence: BattleCardEvidence }) {
           type="button"
           className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-muted/30 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
-          <ShieldCheck size={12} className={cn("shrink-0", confColor)} />
+          <ShieldCheckIcon size={12} className={cn("shrink-0", confColor)} />
           {label}
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-64 p-0">
         <div className="flex items-center gap-1.5 border-b border-border px-3.5 py-2.5 text-dense">
-          <ShieldCheck size={13} className={cn("shrink-0", confColor)} />
+          <ShieldCheckIcon size={13} className={cn("shrink-0", confColor)} />
           <span className="font-medium">{label}</span>
           <span className="ml-auto text-meta text-muted-foreground tabular-nums">
             {verifiedCount}/{evidence.sources.length} sources
@@ -640,12 +640,12 @@ function ObjectionsSection({
   return (
     <section className="flex flex-col gap-3 p-5">
       <Heading
-        icon={MessageSquare}
+        icon={ChatIcon}
         color="text-primary"
         action={
           <Tooltip>
             <TooltipTrigger asChild>
-              <HelpCircle size={13} className="text-muted-foreground cursor-help" />
+              <QuestionIcon size={13} className="text-muted-foreground cursor-help" />
             </TooltipTrigger>
             <TooltipContent className="max-w-xs">
               Objections a prospect might raise to pick this competitor over you,
@@ -754,7 +754,7 @@ function EditableList({
                 aria-label="Remove"
                 className="h-7 w-7"
               >
-                <X size={12} />
+                <XIcon size={12} />
               </Button>
             </TooltipTrigger>
             <TooltipContent>Remove</TooltipContent>
@@ -848,7 +848,7 @@ function GeneratingState({ startedAt, firstTime }: { startedAt: number; firstTim
     <Card className="flex flex-col gap-4 p-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Sparkles size={14} className="shrink-0 text-primary" />
+          <SparkleIcon size={14} className="shrink-0 text-primary" />
           <span className="text-content font-medium">Generating battle card</span>
         </div>
         <span className="text-xs text-muted-foreground tabular-nums">{elapsed}s</span>
@@ -862,9 +862,9 @@ function GeneratingState({ startedAt, firstTime }: { startedAt: number; firstTim
             <li key={s.label} className="flex items-center gap-2.5 text-sm">
               <span className="flex w-4 shrink-0 justify-center">
                 {done ? (
-                  <CircleCheck size={15} className="text-positive" />
+                  <CheckCircleIcon size={15} className="text-positive" />
                 ) : isActive ? (
-                  <Loader2 size={15} className="animate-spin text-primary" />
+                  <CircleNotchIcon size={15} className="animate-spin text-primary" />
                 ) : (
                   <span className="size-1.5 rounded-full bg-muted-foreground/40" />
                 )}

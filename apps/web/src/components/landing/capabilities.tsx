@@ -1,18 +1,18 @@
-import { MessageSquare, Radar, Swords } from "lucide-react";
+import { ChatIcon, ScanIcon, SwordIcon } from "@phosphor-icons/react/ssr";
 
 const FEATURES = [
   {
-    icon: MessageSquare,
+    icon: ChatIcon,
     title: "Ask Outrival",
     desc: "Ask in plain English, like “how did Vantage's pricing move this quarter?”, and get an answer grounded on the data we already track, deep-linked back to the signal it came from.",
   },
   {
-    icon: Swords,
+    icon: SwordIcon,
     title: "Battle cards",
     desc: "AI-generated battle cards per competitor: six editable sections, exportable to PDF. They flag themselves for a refresh when the underlying signals move.",
   },
   {
-    icon: Radar,
+    icon: ScanIcon,
     title: "Competitor discovery",
     desc: "Every week we surface look-alike competitors you aren't tracking yet: semantic search across the market, scored by overlap. Add one in a click.",
   },

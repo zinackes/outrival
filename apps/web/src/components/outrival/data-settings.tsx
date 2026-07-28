@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { Download, Loader2 } from "lucide-react";
+import { DownloadSimpleIcon, CircleNotchIcon } from "@phosphor-icons/react/ssr";
 import { toast } from "sonner";
 import { PLAN_LIMITS } from "@outrival/shared";
 import { api } from "@/lib/api";
@@ -63,12 +63,12 @@ export function DataSettings() {
         <div className="flex-1">
           <div className="text-dense font-medium">Export</div>
           <div className="text-dense text-muted-foreground mt-1">
-            Download everything in your workspace (competitors, signals, digests,
+            DownloadSimpleIcon everything in your workspace (competitors, signals, digests,
             products, battle cards and more) as JSON.
           </div>
         </div>
         <Button variant="outline" size="sm" onClick={exportData} disabled={busy}>
-          {busy ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+          {busy ? <CircleNotchIcon size={13} className="animate-spin" /> : <DownloadSimpleIcon size={13} />}
           Export
         </Button>
       </Card>

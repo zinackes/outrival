@@ -159,7 +159,10 @@ Wording first-person : "Commencer gratuitement" / "Lancer ma veille".
 ## 7. Composants (app)
 
 - Base : shadcn/ui new-york, radius 6px, thémé dark via les tokens ci-dessus
-- Icônes : lucide-react UNIQUEMENT, jamais d'emoji comme élément d'UI
+- Icônes : Phosphor (`@phosphor-icons/react/ssr`) UNIQUEMENT, jamais d'emoji comme
+  élément d'UI. Glyphes remplis : le poids se règle via `weight` (défaut `regular`,
+  `bold` sous 14px), jamais via `strokeWidth`. Taille toujours explicite (`size={N}`
+  ou une classe `size-*`) — le défaut Phosphor est `1em`, pas 24px
 - Badges sévérité : pill, fond --{severity}-soft, texte --{severity}
 - Boutons : primaire amber (texte sombre), secondaire ghost (bordure --border)
 - Graphiques : recharts thémés dark + amber, grille discrète, mono pour les axes

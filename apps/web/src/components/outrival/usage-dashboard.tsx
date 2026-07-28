@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { Gauge, ArrowUpRight } from "lucide-react";
+import { GaugeIcon, ArrowUpRightIcon } from "@phosphor-icons/react/ssr";
 import { PLAN_LABELS, PLAN_LIMITS } from "@outrival/shared";
 import {
   type UsageItem,
@@ -60,7 +60,7 @@ function UsageRow({ item }: { item: UsageItem }) {
           {item.suggestedPlan && (
             <Button asChild variant="outline" size="sm">
               <Link href="/dashboard/settings/billing">
-                Upgrade to {PLAN_LABELS[item.suggestedPlan]} <ArrowUpRight size={12} />
+                Upgrade to {PLAN_LABELS[item.suggestedPlan]} <ArrowUpRightIcon size={12} />
               </Link>
             </Button>
           )}
@@ -107,7 +107,7 @@ export function UsageDashboard() {
       <div className="rounded-lg border border-border p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Gauge size={15} className="text-muted-foreground" aria-hidden />
+            <GaugeIcon size={15} className="text-muted-foreground" aria-hidden />
             <span className="text-dense font-semibold tracking-tight">Plan limits</span>
           </div>
           <Badge variant="outline">{PLAN_LABELS[data.plan]}</Badge>

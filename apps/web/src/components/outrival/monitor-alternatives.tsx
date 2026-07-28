@@ -4,15 +4,15 @@ import { useState } from "react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
-  ArrowRight,
-  ChevronDown,
-  Link2,
-  PauseCircle,
-  PencilLine,
-  Play,
-  RefreshCcw,
-  X,
-} from "lucide-react";
+  ArrowRightIcon,
+  CaretDownIcon,
+  LinkIcon,
+  PauseCircleIcon,
+  PencilSimpleLineIcon,
+  PlayIcon,
+  ArrowsCounterClockwiseIcon,
+  XIcon,
+} from "@phosphor-icons/react/ssr";
 import { isReviewSource, type SourceType } from "@outrival/shared";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -56,9 +56,9 @@ const CAUSE_SHORT: Record<string, string> = {
 // Secondary, diagnosis-specific suggestions shown below the paused card. Manual
 // entry and resume are first-class actions on the card itself; the source is
 // auto-paused on the unscrapable transition, so there is no "pause" option.
-const ICON: Record<string, typeof PencilLine> = {
-  different_url: ArrowRight,
-  replace_competitor: RefreshCcw,
+const ICON: Record<string, typeof PencilSimpleLineIcon> = {
+  different_url: ArrowRightIcon,
+  replace_competitor: ArrowsCounterClockwiseIcon,
 };
 
 interface Props {
@@ -202,16 +202,16 @@ export function MonitorAlternatives({
     <div className="mt-3 flex flex-wrap gap-2">
       {canSetUrl && (
         <Button size="sm" variant="outline" onClick={() => setUrlOpen(true)}>
-          <Link2 className="h-4 w-4" /> Set the URL
+          <LinkIcon className="h-4 w-4" /> Set the URL
         </Button>
       )}
       {manualAlt && (
         <Button size="sm" variant="outline" onClick={() => setManualOpen(true)}>
-          <PencilLine className="h-4 w-4" /> Enter data
+          <PencilSimpleLineIcon className="h-4 w-4" /> Enter data
         </Button>
       )}
       <Button size="sm" onClick={resume} disabled={resuming}>
-        <Play className="h-4 w-4" /> Resume anyway
+        <PlayIcon className="h-4 w-4" /> Resume anyway
       </Button>
     </div>
   );
@@ -219,7 +219,7 @@ export function MonitorAlternatives({
   const suggestionsList = suggestions.length > 0 && (
     <ul className="mt-3 flex flex-col gap-2.5">
       {suggestions.map((alt) => {
-        const Icon = ICON[alt.type] ?? ArrowRight;
+        const Icon = ICON[alt.type] ?? ArrowRightIcon;
         return (
           <li
             key={alt.id}
@@ -315,7 +315,7 @@ export function MonitorAlternatives({
         >
           <span className="text-sm font-medium text-foreground">{label}</span>
           <span className="truncate text-sm text-muted-foreground">· {shortCause}</span>
-          <ChevronDown
+          <CaretDownIcon
             className={cn(
               "ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform",
               expanded && "rotate-180",
@@ -350,10 +350,10 @@ export function MonitorAlternatives({
         aria-label="Dismiss"
         className="absolute right-2.5 top-2.5 rounded-md p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-50"
       >
-        <X className="h-4 w-4" />
+        <XIcon className="h-4 w-4" />
       </button>
       <div className="flex items-start gap-2.5 pr-8">
-        <PauseCircle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+        <PauseCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
         <div className="text-sm">
           <p className="font-medium text-foreground">{label} monitoring is paused</p>
           <p className="mt-0.5 text-muted-foreground">We paused it because {cause}. {recoveryHint}</p>
@@ -402,7 +402,7 @@ export function PausedMonitors({ monitors, onResolved }: PausedMonitorsProps) {
   return (
     <div className="rounded-lg border border-border bg-secondary/30 p-4">
       <div className="flex items-start gap-2.5">
-        <PauseCircle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+        <PauseCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
         <div className="text-sm">
           <p className="font-medium text-foreground">{active.length} sources paused</p>
           <p className="mt-0.5 text-muted-foreground">

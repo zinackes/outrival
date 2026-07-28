@@ -6,18 +6,18 @@ import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import {
-  X,
-  Plus,
-  Loader2,
-  ExternalLink,
-  Trash2,
-  RotateCcw,
-  Archive,
-  Telescope,
-  Search,
-  SlidersHorizontal,
-  ChevronRight,
-} from "lucide-react";
+  XIcon,
+  PlusIcon,
+  CircleNotchIcon,
+  ArrowSquareOutIcon,
+  TrashIcon,
+  ArrowCounterClockwiseIcon,
+  ArchiveIcon,
+  BinocularsIcon,
+  MagnifyingGlassIcon,
+  SlidersHorizontalIcon,
+  CaretRightIcon,
+} from "@phosphor-icons/react/ssr";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { toast } from "sonner";
 import { DISCOVERY_REGIONS } from "@outrival/shared";
@@ -333,7 +333,7 @@ function CandidateRow({
   const name = candidateName(candidate);
   const dismissed = tab === "dismissed";
 
-  // J and K walk the list without leaving the keyboard, T and X settle the row.
+  // J and K walk the list without leaving the keyboard, T and XIcon settle the row.
   // The row is a div, not a button: it carries buttons of its own.
   function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     if (e.key === "Enter" || e.key === " ") {
@@ -356,7 +356,7 @@ function CandidateRow({
       if (dismissed) onRestore();
       else onTrack();
     }
-    if (e.key === "x" || e.key === "X") {
+    if (e.key === "x" || e.key === "XIcon") {
       e.preventDefault();
       if (!dismissed) onDismiss();
     }
@@ -415,7 +415,7 @@ function CandidateRow({
                   onRestore();
                 }}
               >
-                <RotateCcw size={11} />
+                <ArrowCounterClockwiseIcon size={11} />
                 Restore
               </Button>
               <Tooltip>
@@ -431,7 +431,7 @@ function CandidateRow({
                       onDelete();
                     }}
                   >
-                    <Trash2 size={12} />
+                    <TrashIcon size={12} />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>Delete permanently</TooltipContent>
@@ -448,7 +448,7 @@ function CandidateRow({
                   onTrack();
                 }}
               >
-                {busy ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
+                {busy ? <CircleNotchIcon size={11} className="animate-spin" /> : <PlusIcon size={11} />}
                 Track
               </Button>
               <Tooltip>
@@ -464,7 +464,7 @@ function CandidateRow({
                       onDismiss();
                     }}
                   >
-                    <X size={12} />
+                    <XIcon size={12} />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>Dismiss</TooltipContent>
@@ -546,7 +546,7 @@ function Evidence({
         <Button variant="outline" size="sm" asChild>
           <a href={candidate.url} target="_blank" rel="noopener noreferrer">
             Open {prettyUrl(candidate.url)}
-            <ExternalLink size={11} />
+            <ArrowSquareOutIcon size={11} />
           </a>
         </Button>
         <span className="sr-only">Evidence for {name}</span>
@@ -713,7 +713,7 @@ function AddByUrlDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={!valid || saving}>
-              {saving && <Loader2 size={13} className="animate-spin" />}
+              {saving && <CircleNotchIcon size={13} className="animate-spin" />}
               Track it
             </Button>
           </DialogFooter>
@@ -1103,20 +1103,20 @@ export function DiscoveryView() {
                   aria-label="Adjust the search"
                   onClick={() => setConfigOpen(true)}
                 >
-                  <SlidersHorizontal size={13} />
+                  <SlidersHorizontalIcon size={13} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>Adjust the search</TooltipContent>
             </Tooltip>
             <Button variant="outline" size="sm" onClick={() => setAddOpen(true)}>
-              <Plus size={13} />
+              <PlusIcon size={13} />
               Add by URL
             </Button>
             <Button size="sm" onClick={requestDetection} disabled={scanning}>
               {scanning ? (
-                <Loader2 size={13} className="animate-spin" />
+                <CircleNotchIcon size={13} className="animate-spin" />
               ) : (
-                <Search size={13} />
+                <MagnifyingGlassIcon size={13} />
               )}
               {scanning ? "Scanning…" : "Scan for competitors"}
             </Button>
@@ -1209,7 +1209,7 @@ export function DiscoveryView() {
       {/* Queue */}
       {tab === "queue" && items !== null && ranked.length === 0 && (
         <EmptyState
-          icon={Telescope}
+          icon={BinocularsIcon}
           tone="positive"
           title="Nothing waiting on review"
           description={
@@ -1220,13 +1220,13 @@ export function DiscoveryView() {
           actions={
             <>
               <Button size="sm" onClick={() => setAddOpen(true)}>
-                <Plus size={13} />
+                <PlusIcon size={13} />
                 Add by URL
               </Button>
               {counts && counts.added > 0 && (
                 <Button variant="outline" size="sm" onClick={() => setTab("added")}>
                   See what they captured
-                  <ChevronRight size={13} />
+                  <CaretRightIcon size={13} />
                 </Button>
               )}
             </>
@@ -1320,7 +1320,7 @@ export function DiscoveryView() {
               <Kbd>T</Kbd> track
             </span>
             <span>
-              <Kbd>X</Kbd> dismiss
+              <Kbd>XIcon</Kbd> dismiss
             </span>
             <span className="ml-auto">
               Dismissing teaches the relevance threshold for the next scan.
@@ -1334,7 +1334,7 @@ export function DiscoveryView() {
         <div className="flex flex-col">
           {ranked.length === 0 ? (
             <EmptyState
-              icon={Archive}
+              icon={ArchiveIcon}
               title="Nothing dismissed"
               description="Suggestions you turn down land here, and are never suggested again. You can restore any of them."
             />
@@ -1357,7 +1357,7 @@ export function DiscoveryView() {
             <TableSkeleton rows={3} columns={4} />
           ) : (addedQ.data?.added.length ?? 0) === 0 ? (
             <EmptyState
-              icon={Telescope}
+              icon={BinocularsIcon}
               title="Nothing tracked from discovery yet"
               description="Companies you track from the queue land here with what they have captured since, so a seat that produces nothing is visible."
             />

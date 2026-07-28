@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, Check, CheckCheck, Trash2, X } from "lucide-react";
+import { BellIcon, CheckIcon, ChecksIcon, TrashIcon, XIcon } from "@phosphor-icons/react/ssr";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -81,7 +81,7 @@ export function NotificationsBell({ compact = false }: { compact?: boolean } = {
         toast(notif.title, {
           id: notif.id,
           description: notif.body ?? undefined,
-          icon: <Bell size={14} className="text-[var(--link)]" />,
+          icon: <BellIcon size={14} className="text-[var(--link)]" />,
           action: notif.linkUrl
             ? { label: "View", onClick: () => router.push(notif.linkUrl!) }
             : undefined,
@@ -191,7 +191,7 @@ export function NotificationsBell({ compact = false }: { compact?: boolean } = {
                 aria-controls="notifications-panel"
                 className="relative"
               >
-                <Bell size={14} />
+                <BellIcon size={14} />
                 {unreadCount > 0 && (
                   <span
                     className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-primary border-2 border-background"
@@ -211,7 +211,7 @@ export function NotificationsBell({ compact = false }: { compact?: boolean } = {
                 aria-controls="notifications-panel"
                 className="relative"
               >
-                <Bell size={16} />
+                <BellIcon size={16} />
                 {unreadCount > 0 && (
                   <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full text-meta font-bold flex items-center justify-center bg-primary text-primary-foreground">
                     {unreadCount > 99 ? "99+" : unreadCount}
@@ -244,7 +244,7 @@ export function NotificationsBell({ compact = false }: { compact?: boolean } = {
                     onClick={markAllRead}
                     className="h-7 px-2 text-xs text-primary hover:text-primary"
                   >
-                    <Check size={11} /> Mark all read
+                    <CheckIcon size={11} /> Mark all read
                   </Button>
                 )}
                 {items.length > 0 && (
@@ -254,7 +254,7 @@ export function NotificationsBell({ compact = false }: { compact?: boolean } = {
                     onClick={clearAll}
                     className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
                   >
-                    <Trash2 size={11} /> Clear all
+                    <TrashIcon size={11} /> Clear all
                   </Button>
                 )}
               </div>
@@ -263,7 +263,7 @@ export function NotificationsBell({ compact = false }: { compact?: boolean } = {
               {items.length === 0 ? (
                 <li className="flex flex-col items-center gap-2 p-8 text-center">
                   <span className="inline-flex size-9 items-center justify-center rounded-md border border-positive/25 bg-positive/10 text-positive">
-                    <CheckCheck size={17} aria-hidden />
+                    <ChecksIcon size={17} aria-hidden />
                   </span>
                   <span className="text-sm font-medium text-foreground">
                     You&apos;re all caught up
@@ -308,7 +308,7 @@ export function NotificationsBell({ compact = false }: { compact?: boolean } = {
                       aria-label="Delete notification"
                       className="absolute right-1.5 top-2 opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
                     >
-                      <X />
+                      <XIcon />
                     </Button>
                   </li>
                 ))

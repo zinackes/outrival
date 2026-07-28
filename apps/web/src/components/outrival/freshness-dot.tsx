@@ -1,7 +1,7 @@
 "use client";
 
 import { format, formatDistanceToNow } from "date-fns";
-import { Loader2 } from "lucide-react";
+import { CircleNotchIcon } from "@phosphor-icons/react/ssr";
 import {
   computeFreshness,
   computeFreshnessState,
@@ -178,7 +178,7 @@ export function FreshnessDot({
         disabled={rescanning}
         className="inline-flex items-center gap-1 text-xs text-muted-foreground underline-offset-2 transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {rescanning && <Loader2 className="h-3 w-3 animate-spin" aria-hidden />}
+        {rescanning && <CircleNotchIcon className="h-3 w-3 animate-spin" aria-hidden />}
         {rescanning ? "Re-scanning…" : "Re-scan"}
       </button>
     </span>

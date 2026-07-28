@@ -2,7 +2,14 @@
 
 import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { Loader2, Plus, Play, Sparkles, ChevronDown, Lock } from "lucide-react";
+import {
+  CircleNotchIcon,
+  PlusIcon,
+  PlayIcon,
+  SparkleIcon,
+  CaretDownIcon,
+  LockIcon,
+} from "@phosphor-icons/react/ssr";
 import {
   ANALYSIS_SCRAPE_TIMEOUT_MS,
   ANALYSIS_QUEUE_TIMEOUT_MS,
@@ -110,11 +117,11 @@ export function MonitorEmptyState({
           >
             {enabling ? (
               <>
-                <Loader2 size={12} className="animate-spin" /> Enabling…
+                <CircleNotchIcon size={12} className="animate-spin" /> Enabling…
               </>
             ) : (
               <>
-                <Plus size={12} /> Enable {label} monitoring
+                <PlusIcon size={12} /> Enable {label} monitoring
               </>
             )}
           </Button>
@@ -139,11 +146,11 @@ export function MonitorEmptyState({
       >
         {running ? (
           <>
-            <Loader2 size={12} className="animate-spin" /> Scraping…
+            <CircleNotchIcon size={12} className="animate-spin" /> Scraping…
           </>
         ) : (
           <>
-            <Play size={12} /> Scrape now
+            <PlayIcon size={12} /> Scrape now
           </>
         )}
       </Button>
@@ -202,7 +209,7 @@ export function FrequencyButton({
       disabled={disabled}
       className="h-7 gap-1.5 text-xs capitalize"
     >
-      {locked && <Lock size={10} className="opacity-70" />}
+      {locked && <LockIcon size={10} className="opacity-70" />}
       {freq}
       {locked && (
         <span className="inline-flex items-center rounded bg-muted-foreground/15 px-1 py-0.5 text-meta font-medium uppercase leading-none tracking-wide text-muted-foreground">
@@ -229,11 +236,11 @@ export function SourceSummary({
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-center gap-2 text-left"
       >
-        <Sparkles size={14} className="shrink-0 text-muted-foreground" />
+        <SparkleIcon size={14} className="shrink-0 text-muted-foreground" />
         <span className="text-content font-semibold tracking-tight leading-tight">
           What we found
         </span>
-        <ChevronDown
+        <CaretDownIcon
           size={14}
           className={cn(
             "shrink-0 text-muted-foreground transition-transform",

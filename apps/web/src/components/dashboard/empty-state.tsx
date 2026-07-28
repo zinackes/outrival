@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { LucideIcon } from "lucide-react";
+import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 
 /**
  * Shared empty-state panel (Step 0 cold-start system). Left-aligned and dense
@@ -17,7 +17,7 @@ export function EmptyState({
   tone = "default",
   className = "",
 }: {
-  icon?: LucideIcon;
+  icon?: PhosphorIcon;
   title: string;
   description?: ReactNode;
   actions?: ReactNode;

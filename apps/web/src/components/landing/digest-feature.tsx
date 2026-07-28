@@ -1,4 +1,4 @@
-import { Activity, ArrowRight, Layers, Zap } from "lucide-react";
+import { PulseIcon, ArrowRightIcon, StackIcon, LightningIcon } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 import { DigestMockup } from "./digest-mockup";
 
@@ -49,17 +49,17 @@ export function DigestFeature() {
             </p>
             <div className="mt-8 space-y-5">
               <FeatureItem
-                icon={<Layers size={16} />}
+                icon={<StackIcon size={16} />}
                 title="Smart aggregation"
                 desc="Related changes get grouped into a single coherent insight, not 4 separate alerts about the same pricing overhaul."
               />
               <FeatureItem
-                icon={<Activity size={16} />}
+                icon={<PulseIcon size={16} />}
                 title={'"So what" + action'}
                 desc="Every signal comes with the strategic implication and one recommended action, written for your market."
               />
               <FeatureItem
-                icon={<Zap size={16} />}
+                icon={<LightningIcon size={16} />}
                 title="Critical → real time"
                 desc="High/critical signals don't wait until Monday. They ship to Slack or email within 5 minutes."
               />
@@ -67,7 +67,7 @@ export function DigestFeature() {
             <div className="mt-8">
               <Button asChild variant="outline">
                 <a href="/sample">
-                  See the full sample digest <ArrowRight size={14} />
+                  See the full sample digest <ArrowRightIcon size={14} />
                 </a>
               </Button>
             </div>

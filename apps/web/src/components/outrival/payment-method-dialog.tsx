@@ -9,7 +9,7 @@ import {
   useElements,
   useStripe,
 } from "@stripe/react-stripe-js";
-import { Loader2 } from "lucide-react";
+import { CircleNotchIcon } from "@phosphor-icons/react/ssr";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import {
@@ -102,7 +102,7 @@ export function PaymentMethodDialog({
           <p className="text-sm text-destructive">{error}</p>
         ) : !options || !stripePromise ? (
           <div className="flex items-center justify-center py-8 text-muted-foreground">
-            <Loader2 size={16} className="animate-spin" />
+            <CircleNotchIcon size={16} className="animate-spin" />
           </div>
         ) : (
           <Elements stripe={stripePromise} options={options}>
@@ -175,7 +175,7 @@ function PaymentMethodForm({
           Cancel
         </Button>
         <Button type="submit" disabled={busy || !stripe}>
-          {busy && <Loader2 size={12} className="animate-spin" />}
+          {busy && <CircleNotchIcon size={12} className="animate-spin" />}
           {busy ? "Saving…" : "Save card"}
         </Button>
       </div>

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Check } from "lucide-react";
+import { CheckIcon } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 
 type Plan = {
@@ -159,7 +159,7 @@ export function Pricing() {
               >
                 {p.features.map((f, i) => (
                   <li key={i} className="flex items-start gap-2">
-                    <Check size={14} className="mt-0.5 shrink-0 text-primary" />
+                    <CheckIcon size={14} className="mt-0.5 shrink-0 text-primary" />
                     <span>{f}</span>
                   </li>
                 ))}

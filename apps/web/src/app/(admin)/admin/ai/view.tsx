@@ -9,7 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { AlertCircle } from "lucide-react";
+import { WarningCircleIcon } from "@phosphor-icons/react/ssr";
 import { PageHeader, Section, Empty, mono, pctFmt } from "../_components/shell";
 import type { AdminAiHealth } from "@/lib/api";
 
@@ -43,7 +43,7 @@ export function AiView({ data }: { data: AdminAiHealth | null }) {
 
       {breaker?.open && (
         <div className="flex items-start gap-2 rounded-md border border-critical/30 bg-critical/8 px-4 py-2.5 text-sm text-foreground">
-          <AlertCircle className="mt-0.5 size-4 shrink-0 text-critical" />
+          <WarningCircleIcon className="mt-0.5 size-4 shrink-0 text-critical" />
           <span>
             Global circuit breaker OPEN ({breaker.reason ?? "unknown"})
             {breaker.resetInSec != null && `, resets in ~${Math.ceil(breaker.resetInSec / 60)}min`}. AI generation is paused; scrapes continue.

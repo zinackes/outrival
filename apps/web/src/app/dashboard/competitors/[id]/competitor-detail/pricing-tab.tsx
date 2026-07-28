@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { ArrowUp, ArrowDown, ChevronRight } from "lucide-react";
+import { ArrowUpIcon, ArrowDownIcon, CaretRightIcon } from "@phosphor-icons/react/ssr";
 import { formatDistanceToNow } from "date-fns";
 import { PRICING_STATUS_LABELS } from "@outrival/shared";
 import { Fact, FactStrip } from "@/components/outrival/data-marks";
@@ -301,7 +301,7 @@ export function PricingTab({
           counts, which is what a reader wants before deciding to open a form. */}
       <details className="details-smooth group">
         <summary className="flex cursor-pointer list-none items-center gap-2 p-5 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset [&::-webkit-details-marker]:hidden">
-          <ChevronRight
+          <CaretRightIcon
             size={14}
             aria-hidden
             className="shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
@@ -493,7 +493,7 @@ function DeltaCell({ cmp, from, to }: { cmp: TierCmp | null; from?: string; to?:
       title={cmp.converted ? `Converted ${from} to ${to} at the ECB reference rate` : undefined}
     >
       {cmp.converted && <span className="opacity-70">≈</span>}
-      {cmp.pct < 0 ? <ArrowDown className="size-3" /> : <ArrowUp className="size-3" />}
+      {cmp.pct < 0 ? <ArrowDownIcon className="size-3" /> : <ArrowUpIcon className="size-3" />}
       {Math.abs(cmp.pct).toFixed(0)}%
     </span>
   );

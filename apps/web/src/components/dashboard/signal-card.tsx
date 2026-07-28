@@ -4,14 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import {
-  ArrowUpRight,
-  MoreHorizontal,
-  ListTodo,
-  MessageSquare,
-  Sparkles,
-  ChevronDown,
-  Archive,
-} from "lucide-react";
+  ArrowUpRightIcon,
+  DotsThreeIcon,
+  ListChecksIcon,
+  ChatIcon,
+  SparkleIcon,
+  CaretDownIcon,
+  ArchiveIcon,
+} from "@phosphor-icons/react/ssr";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { api, type Signal, type ActionStatus } from "@/lib/api";
@@ -225,7 +225,7 @@ export function SignalCard({
           <Tooltip>
             <TooltipTrigger asChild>
               <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-meta font-medium text-muted-foreground">
-                <Archive className="size-3" />
+                <ArchiveIcon className="size-3" />
                 From archive
               </span>
             </TooltipTrigger>
@@ -251,7 +251,7 @@ export function SignalCard({
           >
             {signal.competitorName}
           </span>
-          <ArrowUpRight
+          <ArrowUpRightIcon
             size={13}
             className="-translate-x-1 text-muted-foreground opacity-0 transition group-hover:translate-x-0 group-hover:opacity-100"
           />
@@ -368,9 +368,9 @@ export function SignalCard({
             aria-expanded={showContext}
             className="flex items-center gap-1.5 text-dense font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground"
           >
-            <Sparkles size={13} className="shrink-0" aria-hidden />
+            <SparkleIcon size={13} className="shrink-0" aria-hidden />
             Context
-            <ChevronDown
+            <CaretDownIcon
               className={cn(
                 "size-3.5 transition-transform",
                 showContext && "rotate-180",
@@ -426,7 +426,7 @@ export function SignalCard({
             className="h-7 shrink-0 text-xs text-muted-foreground"
             onClick={() => setShowComments((v) => !v)}
           >
-            <MessageSquare size={13} />
+            <ChatIcon size={13} />
             {commentCount && commentCount > 0 ? commentCount : "Discuss"}
           </Button>
           <span className="w-px h-3 bg-border" />
@@ -437,7 +437,7 @@ export function SignalCard({
                 size="sm"
                 className={cn("h-7 text-xs", !actionStatus && "text-muted-foreground")}
               >
-                <ListTodo size={13} />
+                <ListChecksIcon size={13} />
                 {actionStatus ? ACTION_LABEL[actionStatus] : "Track"}
               </Button>
             </DropdownMenuTrigger>
@@ -482,7 +482,7 @@ export function SignalCard({
                 className="text-muted-foreground"
                 aria-label="More actions"
               >
-                <MoreHorizontal size={15} />
+                <DotsThreeIcon size={15} />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">

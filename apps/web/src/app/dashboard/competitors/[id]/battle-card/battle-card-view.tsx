@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeftIcon } from "@phosphor-icons/react/ssr";
 import { BattleCardTab } from "@/components/outrival/battle-card-tab";
 import { competitorDetailQuery } from "@/lib/queries";
 import { competitorNameColor } from "@/lib/competitor-color";
@@ -25,7 +25,7 @@ export function BattleCardPageView({ id }: { id: string }) {
           aria-label="Back to competitor"
           className="mt-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <ArrowLeft size={16} />
+          <ArrowLeftIcon size={16} />
         </Link>
         <div className="min-w-0">
           <h1 className="m-0 text-title font-bold leading-tight tracking-tight">Battle card</h1>

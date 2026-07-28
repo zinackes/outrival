@@ -7,38 +7,38 @@ import { useRouter } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import {
-  ArrowLeft,
-  ArrowUp,
-  ArrowDown,
-  Play,
-  ExternalLink,
-  Activity,
-  DollarSign,
-  Briefcase,
-  Star,
-  FileText,
-  Sparkles,
-  Swords,
-  Loader2,
-  Trash2,
-  RefreshCw,
-  MoreHorizontal,
-  Plus,
-  Lock,
-  LayoutGrid,
-  ChevronLeft,
-  ChevronRight,
-  Pencil,
-  Pause,
-  PauseCircle,
-  Bell,
-  BellOff,
-  Download,
-  Link2,
-  Boxes,
-  Crosshair,
-  Palette,
-} from "lucide-react";
+  ArrowLeftIcon,
+  ArrowUpIcon,
+  ArrowDownIcon,
+  PlayIcon,
+  ArrowSquareOutIcon,
+  PulseIcon,
+  CurrencyDollarIcon,
+  BriefcaseIcon,
+  StarIcon,
+  FileTextIcon,
+  SparkleIcon,
+  SwordIcon,
+  CircleNotchIcon,
+  TrashIcon,
+  ArrowsClockwiseIcon,
+  DotsThreeIcon,
+  PlusIcon,
+  LockIcon,
+  GridFourIcon,
+  CaretLeftIcon,
+  CaretRightIcon,
+  PencilIcon,
+  PauseIcon,
+  PauseCircleIcon,
+  BellIcon,
+  BellSlashIcon,
+  DownloadSimpleIcon,
+  LinkIcon,
+  CardsThreeIcon,
+  CrosshairIcon,
+  PaletteIcon,
+} from "@phosphor-icons/react/ssr";
 import {
   Dialog,
   DialogContent,
@@ -137,19 +137,19 @@ import type { TabKey } from "./competitor-detail/types";
 // Six reading tabs, grouped by the question they answer. Configuration does not
 // live here any more — it moved to the Sources sub-page, so a tab is only ever a
 // lens on data. Tech stack became an Overview card, battle cards their own page.
-const TABS: Array<{ key: TabKey; label: string; icon: typeof Activity }> = [
-  { key: "overview", label: "Overview", icon: LayoutGrid },
-  { key: "activity", label: "Activity", icon: Activity },
-  { key: "pricing", label: "Pricing", icon: DollarSign },
-  { key: "hiring", label: "Hiring", icon: Briefcase },
-  { key: "reviews", label: "Reviews", icon: Star },
-  { key: "product", label: "Positioning", icon: FileText },
+const TABS: Array<{ key: TabKey; label: string; icon: typeof PulseIcon }> = [
+  { key: "overview", label: "Overview", icon: GridFourIcon },
+  { key: "activity", label: "PulseIcon", icon: PulseIcon },
+  { key: "pricing", label: "Pricing", icon: CurrencyDollarIcon },
+  { key: "hiring", label: "Hiring", icon: BriefcaseIcon },
+  { key: "reviews", label: "Reviews", icon: StarIcon },
+  { key: "product", label: "Positioning", icon: FileTextIcon },
 ];
 
 const VISIBLE_TABS = TABS;
 
 // Per-tab freshness dot (patch-14): tabs backed by monitored sources show how
-// recent that section's data is. Activity (signal feed) has no single source → no dot.
+// recent that section's data is. PulseIcon (signal feed) has no single source → no dot.
 const TAB_SOURCES: Partial<Record<TabKey, string[]>> = {
   pricing: ["pricing"],
   hiring: ["jobs"],
@@ -396,7 +396,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
     toast.success("Competitor updated");
   }
 
-  // Kebab → Pause / Resume monitoring. Optimistic local flip; the scheduler honours
+  // Kebab → PauseIcon / Resume monitoring. Optimistic local flip; the scheduler honours
   // the flag on its next cycle.
   async function toggleMonitoringPaused() {
     if (!data) return;
@@ -592,7 +592,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
   }
 
   // What landed since the last time this competitor was opened. Read once on
-  // mount so the highlight is stable for the session; shared with the Activity
+  // mount so the highlight is stable for the session; shared with the PulseIcon
   // tab, which flags the same signals in its own list.
   const lastVisit = useLastVisit(`competitor:${id}`);
 
@@ -694,7 +694,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
                   value={t.key}
                   className={cn(lock && "text-muted-foreground hover:text-muted-foreground")}
                 >
-                  {lock ? <Lock size={13} /> : <Icon size={13} />} {t.label}
+                  {lock ? <LockIcon size={13} /> : <Icon size={13} />} {t.label}
                   {fresh && (
                     <FreshnessDot
                       lastScrapedAt={fresh.lastScrapedAt}
@@ -843,7 +843,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
                 onClick={confirmDelete}
                 disabled={deleting}
               >
-                {deleting && <Loader2 size={13} className="animate-spin" />}
+                {deleting && <CircleNotchIcon size={13} className="animate-spin" />}
                 {deleting ? "Deleting…" : "Delete"}
               </Button>
             </DialogFooter>
@@ -917,7 +917,7 @@ function Header({
           aria-label="Back to competitors"
           className="mt-1.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <ArrowLeft size={16} />
+          <ArrowLeftIcon size={16} />
         </Link>
         {/* The competitor's own mark. It shipped with CompAvatar and the per-competitor
             colour, and the page it identifies was the one surface never using either. */}
@@ -979,7 +979,7 @@ function Header({
                 className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground"
               >
                 {hostOf(competitor.url)}
-                <ExternalLink size={11} />
+                <ArrowSquareOutIcon size={11} />
               </a>
             )}
             {sourceCount > 0 && (
@@ -1003,7 +1003,7 @@ function Header({
                 <span aria-hidden className="text-border-strong">·</span>
                 <StatusDot tone="warn">
                   <span className="inline-flex items-center gap-1">
-                    <PauseCircle size={11} /> Paused, plan limit
+                    <PauseCircleIcon size={11} /> Paused, plan limit
                   </span>
                 </StatusDot>
               </>
@@ -1012,7 +1012,7 @@ function Header({
                 <span aria-hidden className="text-border-strong">·</span>
                 <StatusDot>
                   <span className="inline-flex items-center gap-1">
-                    <Pause size={11} /> Paused
+                    <PauseIcon size={11} /> Paused
                   </span>
                 </StatusDot>
               </>
@@ -1022,7 +1022,7 @@ function Header({
                 <span aria-hidden className="text-border-strong">·</span>
                 <StatusDot>
                   <span className="inline-flex items-center gap-1">
-                    <BellOff size={11} /> Muted
+                    <BellSlashIcon size={11} /> Muted
                   </span>
                 </StatusDot>
               </>
@@ -1036,7 +1036,7 @@ function Header({
             always did — at generate time, inside the card view. */}
         <Button asChild size="sm" variant="outline" className="h-9">
           <Link href={`/dashboard/competitors/${competitor.id}/battle-card`}>
-            <Swords size={14} /> Battle card
+            <SwordIcon size={14} /> Battle card
           </Link>
         </Button>
         {total > 1 && index >= 0 && (
@@ -1051,7 +1051,7 @@ function Header({
                   onClick={onPrev}
                   aria-label="Previous competitor"
                 >
-                  <ChevronLeft size={14} />
+                  <CaretLeftIcon size={14} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent className="flex items-center gap-1.5">
@@ -1074,7 +1074,7 @@ function Header({
                   onClick={onNext}
                   aria-label="Next competitor"
                 >
-                  <ChevronRight size={14} />
+                  <CaretRightIcon size={14} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent className="flex items-center gap-1.5">
@@ -1094,7 +1094,7 @@ function Header({
               className="h-9 w-9 p-0"
               aria-label="More actions"
             >
-              <MoreHorizontal size={14} />
+              <DotsThreeIcon size={14} />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-60">
@@ -1102,19 +1102,19 @@ function Header({
               <DropdownMenuItem
                 onClick={() => window.open(competitor.url, "_blank", "noopener,noreferrer")}
               >
-                <ExternalLink size={13} /> Open website
+                <ArrowSquareOutIcon size={13} /> Open website
               </DropdownMenuItem>
             )}
             <DropdownMenuItem onClick={copyLink}>
-              <Link2 size={13} /> Copy link
+              <LinkIcon size={13} /> Copy link
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => setEditOpen(true)}>
-              <Pencil size={13} /> Edit details
+              <PencilIcon size={13} /> Edit details
             </DropdownMenuItem>
             <DropdownMenuSub>
               <DropdownMenuSubTrigger className="gap-2">
-                <Palette size={13} /> Color
+                <PaletteIcon size={13} /> Color
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent className="p-2.5">
                 <CompetitorColorPicker
@@ -1127,47 +1127,47 @@ function Header({
               </DropdownMenuSubContent>
             </DropdownMenuSub>
             <DropdownMenuItem onClick={() => setAssignOpen(true)}>
-              <Boxes size={13} /> Assign to products
+              <CardsThreeIcon size={13} /> Assign to products
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onRefreshSummary}>
-              <Sparkles size={13} /> Refresh AI summary
+              <SparkleIcon size={13} /> Refresh AI summary
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onRedetectPricing}>
-              <RefreshCw size={13} /> Re-detect pricing
+              <ArrowsClockwiseIcon size={13} /> Re-detect pricing
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onRecomputeOverlap()}>
-              <Crosshair size={13} /> Recompute overlap
+              <CrosshairIcon size={13} /> Recompute overlap
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onExport}>
-              <Download size={13} /> Export signals (CSV)
+              <DownloadSimpleIcon size={13} /> Export signals (CSV)
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onToggleMonitoring}>
               {competitor.monitoringPaused ? (
                 <>
-                  <Play size={13} /> Resume monitoring
+                  <PlayIcon size={13} /> Resume monitoring
                 </>
               ) : (
                 <>
-                  <Pause size={13} /> Pause monitoring
+                  <PauseIcon size={13} /> PauseIcon monitoring
                 </>
               )}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onToggleMute}>
               {competitor.alertsMuted ? (
                 <>
-                  <Bell size={13} /> Unmute alerts
+                  <BellIcon size={13} /> Unmute alerts
                 </>
               ) : (
                 <>
-                  <BellOff size={13} /> Mute alerts
+                  <BellSlashIcon size={13} /> Mute alerts
                 </>
               )}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onDelete} className="text-critical focus:text-critical">
-              <Trash2 size={13} /> Delete competitor
+              <TrashIcon size={13} /> Delete competitor
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -1302,7 +1302,7 @@ function EditDetailsDialog({
             Cancel
           </Button>
           <Button onClick={submit} disabled={saving || !name.trim()}>
-            {saving ? <Loader2 size={13} className="animate-spin" /> : null} Save
+            {saving ? <CircleNotchIcon size={13} className="animate-spin" /> : null} Save
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1392,7 +1392,7 @@ function AssignProductsDialog({
         </DialogHeader>
         {loading || !products ? (
           <div className="flex justify-center py-6">
-            <Loader2 size={16} className="animate-spin text-muted-foreground" />
+            <CircleNotchIcon size={16} className="animate-spin text-muted-foreground" />
           </div>
         ) : visible.length === 0 ? (
           <p className="py-4 text-sm text-muted-foreground">You don&apos;t have any products yet.</p>
@@ -1417,7 +1417,7 @@ function AssignProductsDialog({
                       Primary
                     </span>
                   )}
-                  {isPending && <Loader2 size={12} className="animate-spin text-muted-foreground" />}
+                  {isPending && <CircleNotchIcon size={12} className="animate-spin text-muted-foreground" />}
                 </label>
               );
             })}
@@ -1439,7 +1439,7 @@ function AssignProductsDialog({
 function MonitoringPausedBanner({ onResume }: { onResume: () => void }) {
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/40 px-4 py-3">
-      <Pause className="h-4 w-4 shrink-0 text-muted-foreground" />
+      <PauseIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-foreground">Monitoring is paused</p>
         <p className="mt-0.5 text-sm text-muted-foreground">
@@ -1448,7 +1448,7 @@ function MonitoringPausedBanner({ onResume }: { onResume: () => void }) {
         </p>
       </div>
       <Button size="sm" onClick={onResume} className="shrink-0">
-        <Play size={13} /> Resume monitoring
+        <PlayIcon size={13} /> Resume monitoring
       </Button>
     </div>
   );
@@ -1460,7 +1460,7 @@ function MonitoringPausedBanner({ onResume }: { onResume: () => void }) {
 function PlanCapPausedBanner() {
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-lg border border-high/40 bg-high/[0.06] px-4 py-3">
-      <PauseCircle className="h-4 w-4 shrink-0 text-medium" />
+      <PauseCircleIcon className="h-4 w-4 shrink-0 text-medium" />
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-foreground">
           Monitoring is paused, over your plan limit

@@ -8,20 +8,20 @@ import { AnimatePresence, motion } from "motion/react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import {
-  Eye,
-  Play,
-  Plus,
-  Trash2,
-  Pencil,
-  Check,
-  X,
-  ChevronRight,
-  Lock,
-  Loader2,
-  Box,
-  AlertTriangle,
-  Pause,
-} from "lucide-react";
+  EyeIcon,
+  PlayIcon,
+  PlusIcon,
+  TrashIcon,
+  PencilIcon,
+  CheckIcon,
+  XIcon,
+  CaretRightIcon,
+  LockIcon,
+  CircleNotchIcon,
+  CubeIcon,
+  WarningIcon,
+  PauseIcon,
+} from "@phosphor-icons/react/ssr";
 import { aiVisibilityQuery, productsListQuery } from "@/lib/queries";
 import {
   api,
@@ -303,7 +303,7 @@ export function AiVisibilityView({ locked = false }: { locked?: boolean }) {
 
   const runButton = (
     <Button onClick={runNow} disabled={running} size="sm">
-      {running ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
+      {running ? <CircleNotchIcon className="size-4 animate-spin" /> : <PlayIcon className="size-4" />}
       {running ? "Running…" : "Run now"}
     </Button>
   );
@@ -355,7 +355,7 @@ export function AiVisibilityView({ locked = false }: { locked?: boolean }) {
 
       {scopedToPrimary && (
         <div className="flex items-center gap-2.5 rounded-md border border-border bg-muted/30 px-3 py-2">
-          <Box className="size-4 shrink-0 text-link" aria-hidden />
+          <CubeIcon className="size-4 shrink-0 text-link" aria-hidden />
           <p className="text-sm text-muted-foreground">
             Tracked per product, showing{" "}
             <span className="font-medium text-foreground">{primaryProduct?.name}</span>. Pick
@@ -899,14 +899,14 @@ function QuestionList({
                           className={iconBtn}
                           aria-label="Save question"
                         >
-                          <Check className="size-4" />
+                          <CheckIcon className="size-4" />
                         </button>
                         <button
                           onClick={() => setEditingId(null)}
                           className={iconBtn}
                           aria-label="Cancel edit"
                         >
-                          <X className="size-4" />
+                          <XIcon className="size-4" />
                         </button>
                       </div>
                     ) : (
@@ -917,7 +917,7 @@ function QuestionList({
                           disabled={!cell}
                           className="flex min-w-0 flex-1 items-start gap-3 py-3 pl-5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset disabled:cursor-default"
                         >
-                          <ChevronRight
+                          <CaretRightIcon
                             className={cn(
                               "mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform",
                               expanded && "rotate-90",
@@ -943,12 +943,12 @@ function QuestionList({
                             <button
                               onClick={() => onToggle(p.id, !p.isActive)}
                               className={iconBtn}
-                              aria-label={p.isActive ? "Pause question" : "Resume question"}
+                              aria-label={p.isActive ? "PauseIcon question" : "Resume question"}
                             >
                               {p.isActive ? (
-                                <Pause className="size-4" />
+                                <PauseIcon className="size-4" />
                               ) : (
-                                <Play className="size-4" />
+                                <PlayIcon className="size-4" />
                               )}
                             </button>
                             <button
@@ -959,14 +959,14 @@ function QuestionList({
                               className={iconBtn}
                               aria-label="Edit question"
                             >
-                              <Pencil className="size-4" />
+                              <PencilIcon className="size-4" />
                             </button>
                             <button
                               onClick={() => setDeleteTarget(p)}
                               className={iconBtn}
                               aria-label="Remove question"
                             >
-                              <Trash2 className="size-4" />
+                              <TrashIcon className="size-4" />
                             </button>
                           </span>
                         </span>
@@ -998,7 +998,7 @@ function QuestionList({
           aria-label="New question"
         />
         <Button onClick={onAdd} size="sm" disabled={draft.trim().length < 3}>
-          <Plus className="size-4" />
+          <PlusIcon className="size-4" />
           Add
         </Button>
       </div>
@@ -1243,7 +1243,7 @@ function EmptyState({ onRun, running }: { onRun: () => void; running: boolean })
   return (
     <div className="flex flex-col items-center rounded-md border border-border bg-card px-6 py-14 text-center">
       <div className="flex size-11 items-center justify-center rounded-full bg-muted/60">
-        <Eye className="size-5 text-muted-foreground" aria-hidden />
+        <EyeIcon className="size-5 text-muted-foreground" aria-hidden />
       </div>
       <h2 className="mt-4 text-lg font-semibold tracking-tight">No visibility data yet</h2>
       <p className="mt-1.5 max-w-md text-sm text-muted-foreground">
@@ -1251,7 +1251,7 @@ function EmptyState({ onRun, running }: { onRun: () => void; running: boolean })
         which competitors show up instead.
       </p>
       <Button onClick={onRun} disabled={running} size="sm" className="mt-5">
-        {running ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
+        {running ? <CircleNotchIcon className="size-4 animate-spin" /> : <PlayIcon className="size-4" />}
         Run first check
       </Button>
     </div>
@@ -1268,7 +1268,7 @@ function RunProgressBanner({ landing }: { landing: boolean }) {
       aria-live="polite"
       className="flex items-start gap-3 rounded-md border border-border bg-card px-4 py-3"
     >
-      <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-link" aria-hidden />
+      <CircleNotchIcon className="mt-0.5 size-4 shrink-0 animate-spin text-link" aria-hidden />
       <div className="min-w-0">
         <p className="text-sm font-medium text-foreground">
           {landing ? "Results are landing…" : "Checking AI answer engines…"}
@@ -1292,7 +1292,7 @@ function EngineUnreachableBanner({ onRetry }: { onRetry: () => void }) {
       role="status"
       className="flex items-start gap-3 rounded-md border border-border bg-card px-4 py-3"
     >
-      <AlertTriangle className="mt-0.5 size-4 shrink-0 text-critical" aria-hidden />
+      <WarningIcon className="mt-0.5 size-4 shrink-0 text-critical" aria-hidden />
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-foreground">
           The last run couldn&apos;t reach the answer engine
@@ -1303,7 +1303,7 @@ function EngineUnreachableBanner({ onRetry }: { onRetry: () => void }) {
         </p>
       </div>
       <Button onClick={onRetry} size="sm" variant="outline" className="shrink-0">
-        <Play className="size-4" />
+        <PlayIcon className="size-4" />
         Retry
       </Button>
     </div>
@@ -1329,7 +1329,7 @@ function StaleRunNotice({
       role="status"
       className="flex items-start gap-3 rounded-md border border-border bg-card px-4 py-3"
     >
-      <AlertTriangle className="mt-0.5 size-4 shrink-0 text-medium" aria-hidden />
+      <WarningIcon className="mt-0.5 size-4 shrink-0 text-medium" aria-hidden />
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-foreground">
           The check on {shortDate(attemptedAt)} came back with nobody named
@@ -1341,8 +1341,8 @@ function StaleRunNotice({
         </p>
       </div>
       <Button onClick={onRetry} size="sm" variant="outline" className="shrink-0">
-        <Play className="size-4" />
-        Check again
+        <PlayIcon className="size-4" />
+        CheckIcon again
       </Button>
     </div>
   );
@@ -1362,7 +1362,7 @@ function LockedState() {
     <Shell>
       <div className="mx-auto mt-8 flex max-w-md flex-col items-center rounded-md border border-border bg-card px-6 py-14 text-center">
         <div className="flex size-11 items-center justify-center rounded-full bg-muted/60">
-          <Lock className="size-5 text-muted-foreground" aria-hidden />
+          <LockIcon className="size-5 text-muted-foreground" aria-hidden />
         </div>
         <h1 className="mt-4 text-lg font-semibold tracking-tight">AI Visibility</h1>
         <p className="mt-1.5 text-sm text-muted-foreground">

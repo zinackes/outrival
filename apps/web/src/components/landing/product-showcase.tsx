@@ -1,4 +1,4 @@
-import { ArrowRight } from "lucide-react";
+import { ArrowRightIcon } from "@phosphor-icons/react/ssr";
 
 import { ProductShot } from "./product-shot";
 
@@ -17,7 +17,7 @@ function Step({ label, last }: { label: string; last?: boolean }) {
     <li className="flex items-center gap-3">
       <span className="font-medium text-foreground">{label}</span>
       {!last && (
-        <ArrowRight className="size-3.5 shrink-0 text-text-subtle" aria-hidden />
+        <ArrowRightIcon className="size-3.5 shrink-0 text-text-subtle" aria-hidden />
       )}
     </li>
   );

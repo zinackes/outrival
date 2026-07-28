@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2 } from "lucide-react";
+import { CircleNotchIcon } from "@phosphor-icons/react/ssr";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -44,7 +44,7 @@ export function ReauthCodeField({
         disabled={sending}
         className="w-fit"
       >
-        {sending && <Loader2 size={13} className="animate-spin" />}
+        {sending && <CircleNotchIcon size={13} className="animate-spin" />}
         Email me a confirmation code
       </Button>
     );

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, Check } from "lucide-react";
+import { ArrowRightIcon, CheckIcon } from "@phosphor-icons/react/ssr";
 import type { Signal } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { shortAge } from "@/lib/format-date";
@@ -117,7 +117,7 @@ export function OverviewLead({
           </Button>
           {onMarkRead && !signal.isRead && (
             <Button size="sm" variant="ghost" onClick={() => onMarkRead(signal.id)}>
-              <Check size={13} /> Mark read
+              <CheckIcon size={13} /> Mark read
             </Button>
           )}
         </div>
@@ -213,7 +213,7 @@ function PulseStat({
         <span className="inline-flex items-center gap-1">
           {label}
           {href && (
-            <ArrowRight
+            <ArrowRightIcon
               size={11}
               className="opacity-0 transition-opacity group-hover/stat:opacity-100"
               aria-hidden

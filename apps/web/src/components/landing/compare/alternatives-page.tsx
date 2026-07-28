@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { ArrowRightIcon } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 import { Breadcrumbs, CompareShell } from "./compare-shell";
 import { CompareFaq } from "./compare-faq";
@@ -171,7 +171,7 @@ export function AlternativesPage({
                       className="inline-flex items-center gap-1.5 font-medium text-primary hover:underline"
                     >
                       Start free
-                      <ArrowRight size={13} aria-hidden />
+                      <ArrowRightIcon size={13} aria-hidden />
                     </Link>
                   ) : it.href ? (
                     <Link
@@ -179,7 +179,7 @@ export function AlternativesPage({
                       className="inline-flex items-center gap-1.5 text-text-muted transition-colors hover:text-foreground"
                     >
                       Outrival vs {it.name}
-                      <ArrowRight size={13} aria-hidden />
+                      <ArrowRightIcon size={13} aria-hidden />
                     </Link>
                   ) : null}
                 </div>
@@ -222,28 +222,28 @@ export function AlternativesPage({
               className="inline-flex items-center gap-1.5 text-text-muted transition-colors hover:text-foreground"
             >
               Outrival vs {subject}
-              <ArrowRight size={13} aria-hidden />
+              <ArrowRightIcon size={13} aria-hidden />
             </Link>
             <Link
               href={`/alternatives/${competitorKey === "crayon" ? "klue" : "crayon"}`}
               className="inline-flex items-center gap-1.5 text-text-muted transition-colors hover:text-foreground"
             >
               Best {competitorKey === "crayon" ? "Klue" : "Crayon"} alternatives
-              <ArrowRight size={13} aria-hidden />
+              <ArrowRightIcon size={13} aria-hidden />
             </Link>
             <Link
               href="/alternatives/best-competitive-intelligence-tools"
               className="inline-flex items-center gap-1.5 text-text-muted transition-colors hover:text-foreground"
             >
               Best competitive-intelligence tools
-              <ArrowRight size={13} aria-hidden />
+              <ArrowRightIcon size={13} aria-hidden />
             </Link>
             <Link
               href="/vs/diy"
               className="inline-flex items-center gap-1.5 text-text-muted transition-colors hover:text-foreground"
             >
               Outrival vs doing it yourself
-              <ArrowRight size={13} aria-hidden />
+              <ArrowRightIcon size={13} aria-hidden />
             </Link>
           </div>
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { Menu } from "lucide-react";
+import { ListIcon } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { AdminNav } from "./admin-nav";
@@ -12,8 +12,8 @@ export function AdminMobileNav() {
       <Sheet>
         <SheetTrigger asChild>
           <Button variant="outline" size="sm">
-            <Menu className="size-4" />
-            Menu
+            <ListIcon className="size-4" />
+            ListIcon
           </Button>
         </SheetTrigger>
         <SheetContent side="left" className="w-72 overflow-y-auto p-4">

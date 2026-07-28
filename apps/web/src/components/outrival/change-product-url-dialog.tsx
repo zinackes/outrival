@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Sparkles } from "lucide-react";
+import { CircleNotchIcon, SparkleIcon } from "@phosphor-icons/react/ssr";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { toastApiError } from "@/lib/error-helpers";
@@ -99,7 +99,7 @@ export function ChangeProductUrlDialog({
             Cancel
           </Button>
           <Button onClick={save} disabled={saving || !canSave}>
-            {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+            {saving ? <CircleNotchIcon className="size-3.5 animate-spin" /> : <SparkleIcon className="size-3.5" />}
             {saving ? "Saving…" : "Save"}
           </Button>
         </DialogFooter>

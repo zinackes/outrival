@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ThumbsDown } from "lucide-react";
+import { ThumbsDownIcon } from "@phosphor-icons/react/ssr";
 import { adminFetch } from "../_lib/server";
 import { PageHeader, Section, Stat, Empty } from "../_components/shell";
 
@@ -148,7 +148,7 @@ export default async function FeedbackQualityPage({
                   value={
                     <span className="inline-flex items-center gap-1.5">
                       {pct(agg.notUsefulRate)}
-                      <ThumbsDown className="size-4" />
+                      <ThumbsDownIcon className="size-4" />
                     </span>
                   }
                   hint={`${agg.useful} useful · ${agg.not_useful} not useful · ${agg.total} total`}

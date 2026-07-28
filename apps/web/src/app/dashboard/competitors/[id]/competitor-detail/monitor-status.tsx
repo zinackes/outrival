@@ -1,7 +1,12 @@
 "use client";
 
 import { formatDistanceToNow, formatDistanceToNowStrict } from "date-fns";
-import { AlertCircle, Clock, Loader2, PowerOff } from "lucide-react";
+import {
+  WarningCircleIcon,
+  ClockIcon,
+  CircleNotchIcon,
+  PauseCircleIcon,
+} from "@phosphor-icons/react/ssr";
 import type { Monitor } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -37,13 +42,13 @@ export function monitorStatus(m: Monitor, running: boolean, queued = false): Mon
 
 export function SourceStatusIcon({ status }: { status: MonitorStatus }) {
   if (status === "running")
-    return <Loader2 size={13} className="animate-spin text-muted-foreground shrink-0" />;
+    return <CircleNotchIcon size={13} className="animate-spin text-muted-foreground shrink-0" />;
   // A clock, not a spinner: nothing is turning yet, and a spinner that runs for
   // half an hour is what made the wait read as a hang in the first place.
-  if (status === "queued") return <Clock size={13} className="text-muted-foreground shrink-0" />;
-  if (status === "failed") return <AlertCircle size={13} className="text-critical shrink-0" />;
+  if (status === "queued") return <ClockIcon size={13} className="text-muted-foreground shrink-0" />;
+  if (status === "failed") return <WarningCircleIcon size={13} className="text-critical shrink-0" />;
   if (status === "disabled" || status === "paused")
-    return <PowerOff size={13} className="text-muted-foreground shrink-0" />;
+    return <PauseCircleIcon size={13} className="text-muted-foreground shrink-0" />;
   return (
     <span
       className={cn(

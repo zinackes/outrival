@@ -4,19 +4,19 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { myProductQuery, myProductChangesQuery, productsListQuery } from "@/lib/queries";
 import {
-  RefreshCw,
-  SquarePen,
-  Loader2,
-  AlertTriangle,
-  Briefcase,
-  DollarSign,
-  ExternalLink,
-  FileText,
-  Sparkles,
-  Store,
-  Users,
-  ChevronDown,
-} from "lucide-react";
+  ArrowsClockwiseIcon,
+  NotePencilIcon,
+  CircleNotchIcon,
+  WarningIcon,
+  BriefcaseIcon,
+  CurrencyDollarIcon,
+  ArrowSquareOutIcon,
+  FileTextIcon,
+  SparkleIcon,
+  StorefrontIcon,
+  UsersIcon,
+  CaretDownIcon,
+} from "@phosphor-icons/react/ssr";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { toast } from "sonner";
 import { toastApiError, toastRescanLimit } from "@/lib/error-helpers";
@@ -259,7 +259,7 @@ export function MyProductView({
   if (product === undefined) {
     return (
       <div className="flex items-center justify-center py-24 text-muted-foreground">
-        <Loader2 className="size-5 animate-spin" />
+        <CircleNotchIcon className="size-5 animate-spin" />
       </div>
     );
   }
@@ -269,7 +269,7 @@ export function MyProductView({
       <div>
         <PageHead title={title} />
         <EmptyState
-          icon={Store}
+          icon={StorefrontIcon}
           title="No product site to monitor yet"
           description={
             error
@@ -323,7 +323,7 @@ export function MyProductView({
                 rel="noreferrer"
                 className="inline-flex items-center gap-1 hover:text-foreground"
               >
-                {prettyUrl(p.url ?? p.repoUrl!)} <ExternalLink className="size-3" />
+                {prettyUrl(p.url ?? p.repoUrl!)} <ArrowSquareOutIcon className="size-3" />
               </a>
             ) : (
               <span>No site or repo yet</span>
@@ -331,11 +331,11 @@ export function MyProductView({
             <span className="text-[var(--muted-2)]">·</span>
             {p.scanning ? (
               <span className="inline-flex items-center gap-1 text-foreground">
-                <Loader2 className="size-3 animate-spin" /> Scanning…
+                <CircleNotchIcon className="size-3 animate-spin" /> Scanning…
               </span>
             ) : p.scanError ? (
               <span className="inline-flex items-center gap-1 text-destructive">
-                <AlertTriangle className="size-3" /> Last scan failed
+                <WarningIcon className="size-3" /> Last scan failed
               </span>
             ) : (
               <span>
@@ -355,7 +355,7 @@ export function MyProductView({
                 project stage), so it's the primary product's tool only. */}
             {isPrimary && (
               <Button onClick={() => setUpdateOpen(true)} variant="outline" size="sm">
-                <SquarePen className="size-3.5" />
+                <NotePencilIcon className="size-3.5" />
                 Update profile
               </Button>
             )}
@@ -374,9 +374,9 @@ export function MyProductView({
                 size="sm"
               >
                 {rescanning || p.scanning ? (
-                  <Loader2 className="size-3.5 animate-spin" />
+                  <CircleNotchIcon className="size-3.5 animate-spin" />
                 ) : (
-                  <RefreshCw className="size-3.5" />
+                  <ArrowsClockwiseIcon className="size-3.5" />
                 )}
                 {p.scanning ? "Scanning…" : "Re-scan"}
               </Button>
@@ -399,7 +399,7 @@ export function MyProductView({
       {p.scanError && !p.scanning && (
         <Card className="p-3.5 mb-4 border-destructive/40 bg-destructive/5">
           <div className="flex items-start gap-2.5">
-            <AlertTriangle className="size-4 shrink-0 text-destructive mt-0.5" />
+            <WarningIcon className="size-4 shrink-0 text-destructive mt-0.5" />
             <div className="min-w-0 flex-1">
               <h2 className="text-sm font-semibold mb-1">Last scan failed</h2>
               <p className="text-sm text-muted-foreground max-w-prose">
@@ -418,9 +418,9 @@ export function MyProductView({
                   disabled={rescanning || p.scanning}
                 >
                   {rescanning ? (
-                    <Loader2 className="size-3.5 animate-spin" />
+                    <CircleNotchIcon className="size-3.5 animate-spin" />
                   ) : (
-                    <RefreshCw className="size-3.5" />
+                    <ArrowsClockwiseIcon className="size-3.5" />
                   )}
                   Try again
                 </Button>
@@ -439,7 +439,7 @@ export function MyProductView({
             className="flex w-full items-center justify-between gap-2 text-left"
           >
             <h2 className="text-sm font-semibold">Not live yet</h2>
-            <ChevronDown
+            <CaretDownIcon
               className={`size-4 shrink-0 text-muted-foreground transition-transform ${
                 notLiveOpen ? "rotate-180" : ""
               }`}
@@ -466,7 +466,7 @@ export function MyProductView({
                   className="sm:max-w-sm"
                 />
                 <Button type="submit" disabled={enabling || !siteUrl.trim()}>
-                  {enabling ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+                  {enabling ? <CircleNotchIcon className="size-3.5 animate-spin" /> : <SparkleIcon className="size-3.5" />}
                   Enable monitoring
                 </Button>
               </form>
@@ -482,7 +482,7 @@ export function MyProductView({
                       className="inline-flex items-center gap-1 hover:text-foreground underline"
                     >
                       {p.repoUrl.replace(/^https?:\/\//, "")}
-                      <ExternalLink className="size-3" />
+                      <ArrowSquareOutIcon className="size-3" />
                     </a>
                   </p>
                 ) : (
@@ -502,9 +502,9 @@ export function MyProductView({
                     />
                     <Button type="submit" variant="outline" disabled={trackingRepo || !repoUrl.trim()}>
                       {trackingRepo ? (
-                        <Loader2 className="size-3.5 animate-spin" />
+                        <CircleNotchIcon className="size-3.5 animate-spin" />
                       ) : (
-                        <RefreshCw className="size-3.5" />
+                        <ArrowsClockwiseIcon className="size-3.5" />
                       )}
                       Track repo
                     </Button>
@@ -529,14 +529,14 @@ export function MyProductView({
       <Tabs value={tab} onValueChange={(v) => selectTab(v as ProductTabKey)} className="mt-5">
         <TabsList variant="line" className="w-full justify-start overflow-x-auto">
           <TabsTrigger value="positioning">
-            <FileText size={13} /> Positioning
+            <FileTextIcon size={13} /> Positioning
           </TabsTrigger>
           <TabsTrigger value="pricing">
-            <DollarSign size={13} /> Pricing
+            <CurrencyDollarIcon size={13} /> Pricing
           </TabsTrigger>
           {competitors && (
             <TabsTrigger value="competitors">
-              <Users size={13} /> Competitors
+              <UsersIcon size={13} /> Competitors
               <span className="ml-1.5 font-mono text-meta text-muted-foreground">
                 {competitors.length}
               </span>
@@ -544,7 +544,7 @@ export function MyProductView({
           )}
           {(p.url || p.jobs.total > 0) && (
             <TabsTrigger value="hiring">
-              <Briefcase size={13} /> Hiring
+              <BriefcaseIcon size={13} /> Hiring
               {p.jobs.total > 0 && (
                 <span className="ml-1.5 font-mono text-meta text-muted-foreground">
                   {p.jobs.total}
@@ -663,7 +663,7 @@ export function MyProductView({
               Keep as is
             </Button>
             <Button onClick={launchRediscovery} disabled={discovering}>
-              {discovering && <Loader2 className="size-3.5 animate-spin" />}
+              {discovering && <CircleNotchIcon className="size-3.5 animate-spin" />}
               Launch re-discovery
             </Button>
           </DialogFooter>

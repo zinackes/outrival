@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
-import { Users, ChevronRight, ChevronUp, MoreHorizontal } from "lucide-react";
+import { UsersIcon, CaretRightIcon, CaretUpIcon, DotsThreeIcon } from "@phosphor-icons/react/ssr";
 
 import { type Competitor } from "@/lib/api";
 import { competitorsQuery } from "@/lib/queries";
@@ -135,7 +135,7 @@ export function SidebarCompetitors() {
     <SidebarMenuItem>
       <SidebarMenuButton asChild isActive={parentActive} tooltip="Competitors">
         <Link href={listHref}>
-          <Users />
+          <UsersIcon />
           <span>Competitors</span>
         </Link>
       </SidebarMenuButton>
@@ -145,7 +145,7 @@ export function SidebarCompetitors() {
           onClick={() => setOpen((o) => !o)}
           aria-label={open ? "Collapse competitors" : "Expand competitors"}
         >
-          <ChevronRight
+          <CaretRightIcon
             className={cn("transition-transform", open && "rotate-90")}
           />
         </SidebarMenuAction>
@@ -204,12 +204,12 @@ export function SidebarCompetitors() {
                   >
                     {showAll ? (
                       <>
-                        <ChevronUp />
+                        <CaretUpIcon />
                         <span>Show less</span>
                       </>
                     ) : (
                       <>
-                        <MoreHorizontal />
+                        <DotsThreeIcon />
                         <span>Show all ({sorted.length})</span>
                       </>
                     )}

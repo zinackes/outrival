@@ -5,7 +5,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowRight, Link2, Loader2, MoreHorizontal, Search, Trash2, Unlink } from "lucide-react";
+import {
+  ArrowRightIcon,
+  LinkIcon,
+  CircleNotchIcon,
+  DotsThreeIcon,
+  MagnifyingGlassIcon,
+  TrashIcon,
+  LinkBreakIcon,
+} from "@phosphor-icons/react/ssr";
 import { api, type ProductLinkedCompetitor } from "@/lib/api";
 import { competitorsQuery, productDetailQuery, productsListQuery } from "@/lib/queries";
 import { competitorNameColor } from "@/lib/competitor-color";
@@ -161,7 +169,7 @@ export function ProductCompetitors({
               onClick={confirmDelete}
               disabled={deleting}
             >
-              {deleting && <Loader2 size={13} className="animate-spin" />}
+              {deleting && <CircleNotchIcon size={13} className="animate-spin" />}
               {deleting ? "Deleting…" : "Delete"}
             </Button>
           </DialogFooter>
@@ -182,12 +190,12 @@ export function ProductCompetitors({
           <div className="flex flex-wrap items-center justify-center gap-2">
             <Button asChild size="sm">
               <Link href="/dashboard/discovery">
-                <Search size={14} />
+                <MagnifyingGlassIcon size={14} />
                 Find competitors
               </Link>
             </Button>
             <Button size="sm" variant="outline" onClick={() => setLinking(true)}>
-              <Link2 size={14} />
+              <LinkIcon size={14} />
               Link existing
             </Button>
           </div>
@@ -219,12 +227,12 @@ export function ProductCompetitors({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Button size="sm" variant="outline" onClick={() => setLinking(true)}>
-            <Link2 size={14} />
+            <LinkIcon size={14} />
             Link existing
           </Button>
           <Button asChild size="sm" variant="outline">
             <Link href="/dashboard/discovery">
-              <Search size={14} />
+              <MagnifyingGlassIcon size={14} />
               Find more
             </Link>
           </Button>
@@ -350,26 +358,26 @@ function CompetitorRow({
               className="h-6 w-6 p-0 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100 max-sm:opacity-100"
             >
               {busy ? (
-                <Loader2 size={14} className="animate-spin" />
+                <CircleNotchIcon size={14} className="animate-spin" />
               ) : (
-                <MoreHorizontal size={14} />
+                <DotsThreeIcon size={14} />
               )}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuItem onSelect={() => router.push(href)}>
-              <ArrowRight size={13} /> Open detail
+              <ArrowRightIcon size={13} /> Open detail
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => onSetSpecific(!c.isSpecific)}>
-              <Link2 size={13} />
+              <LinkIcon size={13} />
               {c.isSpecific ? "Share across products" : "Make specific to this product"}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={onUnlink}>
-              <Unlink size={13} /> Remove from this product
+              <LinkBreakIcon size={13} /> Remove from this product
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={onDelete} className="text-critical focus:text-critical">
-              <Trash2 size={13} /> Delete competitor
+              <TrashIcon size={13} /> Delete competitor
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -444,7 +452,7 @@ function LinkCompetitorsDialog({
 
         {rosterQ.isPending ? (
           <div className="flex justify-center py-6">
-            <Loader2 size={16} className="animate-spin text-muted-foreground" />
+            <CircleNotchIcon size={16} className="animate-spin text-muted-foreground" />
           </div>
         ) : rosterQ.isError ? (
           <p className="py-4 text-sm text-muted-foreground">
@@ -478,7 +486,7 @@ function LinkCompetitorsDialog({
                   />
                   <CompAvatar name={c.name} url={c.url} size={22} />
                   <span className="min-w-0 flex-1 truncate text-sm font-medium">{c.name}</span>
-                  {isPending && <Loader2 size={12} className="animate-spin text-muted-foreground" />}
+                  {isPending && <CircleNotchIcon size={12} className="animate-spin text-muted-foreground" />}
                 </label>
               );
             })}

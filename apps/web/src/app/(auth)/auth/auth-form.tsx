@@ -3,7 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
-import { ArrowLeft, ArrowRight, CornerDownRight, Eye, EyeOff, Fingerprint, Loader2, Mail, ShieldCheck } from "lucide-react";
+import {
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  ArrowElbowDownRightIcon,
+  EyeIcon,
+  EyeSlashIcon,
+  FingerprintIcon,
+  CircleNotchIcon,
+  EnvelopeIcon,
+  ShieldCheckIcon,
+} from "@phosphor-icons/react/ssr";
 import { emailSchema } from "@outrival/shared";
 import { signIn } from "@/lib/auth-client";
 import { track, identifyUser } from "@/lib/posthog/events";
@@ -343,7 +353,7 @@ export function AuthForm() {
                   onClick={handlePasskey}
                   disabled={status === "loading"}
                 >
-                  <Fingerprint size={16} />
+                  <FingerprintIcon size={16} />
                   Sign in with a passkey
                 </Button>
               )}
@@ -396,14 +406,14 @@ export function AuthForm() {
                         aria-label={showPassword ? "Hide password" : "Show password"}
                         className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                       >
-                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        {showPassword ? <EyeSlashIcon size={16} /> : <EyeIcon size={16} />}
                       </button>
                     </div>
                     <Button
                       onClick={handlePasswordLogin}
                       disabled={!email || !password || status === "loading"}
                     >
-                      {status === "loading" && <Loader2 size={14} className="animate-spin" />}
+                      {status === "loading" && <CircleNotchIcon size={14} className="animate-spin" />}
                       Sign in
                     </Button>
                     {/* OTP-first recovery: a forgotten password isn't a dead end —
@@ -425,9 +435,9 @@ export function AuthForm() {
                 ) : (
                   <Button onClick={handleSendCode} disabled={!email || status === "loading"}>
                     {status === "loading" ? (
-                      <Loader2 size={14} className="animate-spin" />
+                      <CircleNotchIcon size={14} className="animate-spin" />
                     ) : (
-                      <ArrowRight size={14} />
+                      <ArrowRightIcon size={14} />
                     )}
                     {status === "loading" ? "Sending…" : "Continue with email"}
                   </Button>
@@ -441,7 +451,7 @@ export function AuthForm() {
                   onClick={togglePasswordMode}
                   className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  <CornerDownRight className="size-3.5" />
+                  <ArrowElbowDownRightIcon className="size-3.5" />
                   {usePassword ? "Email me a code instead" : "Prefer a password?"}
                 </button>
               </div>
@@ -519,7 +529,7 @@ function CodeStep({
   return (
     <div className="text-center">
       <div className="mx-auto flex size-11 items-center justify-center rounded-full bg-primary/10 text-primary">
-        <Mail size={18} />
+        <EnvelopeIcon size={18} />
       </div>
       <h2 className="mt-5 text-base font-medium text-foreground">Check your email</h2>
       <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
@@ -540,7 +550,7 @@ function CodeStep({
         onClick={() => onVerify(code)}
         disabled={code.length < 6 || status === "loading"}
       >
-        {status === "loading" && <Loader2 size={14} className="animate-spin" />}
+        {status === "loading" && <CircleNotchIcon size={14} className="animate-spin" />}
         Verify and continue
       </Button>
 
@@ -558,7 +568,7 @@ function CodeStep({
           onClick={onBack}
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
-          <ArrowLeft size={14} />
+          <ArrowLeftIcon size={14} />
           Use a different email
         </button>
         <span className="text-border" aria-hidden>
@@ -599,7 +609,7 @@ function TotpStep({
   return (
     <div className="text-center">
       <div className="mx-auto flex size-11 items-center justify-center rounded-full bg-primary/10 text-primary">
-        <ShieldCheck size={18} />
+        <ShieldCheckIcon size={18} />
       </div>
       <h2 className="mt-5 text-base font-medium text-foreground">
         Two-factor authentication
@@ -649,7 +659,7 @@ function TotpStep({
           status === "loading" || (useBackup ? code.length === 0 : code.length < 6)
         }
       >
-        {status === "loading" && <Loader2 size={14} className="animate-spin" />}
+        {status === "loading" && <CircleNotchIcon size={14} className="animate-spin" />}
         Verify and continue
       </Button>
 
@@ -665,7 +675,7 @@ function TotpStep({
           onClick={onBack}
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
-          <ArrowLeft size={14} />
+          <ArrowLeftIcon size={14} />
           Back to sign in
         </button>
         <span className="text-border" aria-hidden>
@@ -730,9 +740,9 @@ function OtpInput({
         commit(value.slice(0, i - 1) + value.slice(i));
         refs.current[i - 1]?.focus();
       }
-    } else if (e.key === "ArrowLeft" && i > 0) {
+    } else if (e.key === "ArrowLeftIcon" && i > 0) {
       refs.current[i - 1]?.focus();
-    } else if (e.key === "ArrowRight" && i < 5) {
+    } else if (e.key === "ArrowRightIcon" && i < 5) {
       refs.current[i + 1]?.focus();
     }
   }

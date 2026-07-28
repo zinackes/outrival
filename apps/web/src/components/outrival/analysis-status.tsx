@@ -1,13 +1,13 @@
 "use client";
 
 import {
-  Loader2,
-  Clock,
-  Sparkles,
-  AlertTriangle,
-  CheckCircle2,
-  Circle,
-} from "lucide-react";
+  CircleNotchIcon,
+  ClockIcon,
+  SparkleIcon,
+  WarningIcon,
+  CheckCircleIcon,
+  CircleIcon,
+} from "@phosphor-icons/react/ssr";
 import type { AnalysisStage, AnalysisStatus } from "@outrival/shared";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -23,7 +23,7 @@ type StageMeta = {
   label: string;
   // Terse variant for dense rows (AnalysisBadge).
   short: string;
-  Icon: typeof Loader2;
+  Icon: typeof CircleNotchIcon;
   spin: boolean;
   tone: string; // text colour token
 };
@@ -34,28 +34,28 @@ const STAGE_META: Partial<Record<AnalysisStage, StageMeta>> = {
   queued: {
     label: "Waiting in the scan queue",
     short: "Queued",
-    Icon: Clock,
+    Icon: ClockIcon,
     spin: false,
     tone: "text-muted-foreground",
   },
   scraping: {
     label: "Scraping the site…",
     short: "Scraping…",
-    Icon: Loader2,
+    Icon: CircleNotchIcon,
     spin: true,
     tone: "text-muted-foreground",
   },
   summarizing: {
     label: "Summarizing with AI…",
     short: "Analyzing…",
-    Icon: Sparkles,
+    Icon: SparkleIcon,
     spin: false,
     tone: "text-muted-foreground",
   },
   needs_attention: {
     label: "Insights need attention",
     short: "Needs attention",
-    Icon: AlertTriangle,
+    Icon: WarningIcon,
     spin: false,
     tone: "text-medium",
   },
@@ -166,7 +166,7 @@ export function AnalysisProgress({
     return (
       <div className={cn("rounded-lg border border-medium/40 bg-medium/5 p-4", className)}>
         <div className="flex items-start gap-2.5">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-medium" />
+          <WarningIcon className="mt-0.5 h-4 w-4 shrink-0 text-medium" />
           <div className="flex-1">
             <p className="text-sm font-medium text-foreground">
               This competitor needs attention
@@ -182,7 +182,7 @@ export function AnalysisProgress({
                 className="mt-3 h-7 text-xs"
                 onClick={onRetry}
               >
-                <Loader2 size={11} /> Retry analysis
+                <CircleNotchIcon size={11} /> Retry analysis
               </Button>
             )}
           </div>
@@ -196,7 +196,7 @@ export function AnalysisProgress({
   return (
     <div className={cn("rounded-lg border border-border bg-muted/30 p-4", className)}>
       <div className="flex items-start gap-2.5">
-        <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-link" />
+        <CircleNotchIcon className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-link" />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-foreground">Setting up this competitor</p>
           <p className="mt-0.5 text-sm text-muted-foreground">
@@ -206,7 +206,7 @@ export function AnalysisProgress({
           <ol className="mt-3 flex flex-wrap items-center gap-y-2">
             {PHASES.map((p, i) => {
               const st = phaseState(stage, p.key);
-              const Icon = st === "done" ? CheckCircle2 : st === "active" ? Loader2 : Circle;
+              const Icon = st === "done" ? CheckCircleIcon : st === "active" ? CircleNotchIcon : CircleIcon;
               return (
                 <li key={p.key} className="flex items-center">
                   <span

@@ -2,7 +2,13 @@
 
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { Pencil, Plus, Trash2, Sparkles, TriangleAlert } from "lucide-react";
+import {
+  PencilIcon,
+  PlusIcon,
+  TrashIcon,
+  SparkleIcon,
+  WarningIcon,
+} from "@phosphor-icons/react/ssr";
 import { normalizePlanKey } from "@outrival/shared";
 import {
   api,
@@ -156,7 +162,7 @@ export function PricingPlansEditor({
           <span className="text-meta text-muted-foreground">edited by you</span>
         )}
         <Button size="sm" variant="ghost" onClick={startEdit}>
-          <Pencil className="size-3.5" /> Edit
+          <PencilIcon className="size-3.5" /> Edit
         </Button>
       </div>
     ) : null;
@@ -211,7 +217,7 @@ export function PricingPlansEditor({
                   onClick={() => setRows((rs) => rs.filter((_, idx) => idx !== i))}
                   aria-label="Remove plan"
                 >
-                  <Trash2 className="size-3.5" />
+                  <TrashIcon className="size-3.5" />
                 </Button>
               </div>
             ))}
@@ -223,7 +229,7 @@ export function PricingPlansEditor({
                 setRows((rs) => [...rs, { planName: "", price: "", currency: "USD", billingPeriod: "monthly" }])
               }
             >
-              <Plus className="size-3.5" /> Add plan
+              <PlusIcon className="size-3.5" /> Add plan
             </Button>
           </div>
           <p className="text-meta text-muted-foreground">
@@ -269,12 +275,12 @@ export function PricingPlansEditor({
                   <div className="flex shrink-0 items-center gap-1.5">
                     {p.origin === "edited" && (
                       <Badge variant="secondary" className="text-meta">
-                        <Pencil className="mr-1 size-2.5" /> Edited
+                        <PencilIcon className="mr-1 size-2.5" /> Edited
                       </Badge>
                     )}
                     {p.origin === "added" && (
                       <Badge variant="outline" className="text-meta">
-                        <Plus className="mr-1 size-2.5" /> Added
+                        <PlusIcon className="mr-1 size-2.5" /> Added
                       </Badge>
                     )}
                     {p.origin === "detected" && delta != null && (
@@ -292,13 +298,13 @@ export function PricingPlansEditor({
                 </div>
                 {p.drift && (
                   <span className="inline-flex items-center gap-1 text-meta text-muted-foreground">
-                    <Sparkles className="size-3" /> Source now shows{" "}
+                    <SparkleIcon className="size-3" /> Source now shows{" "}
                     {priceLabel(p.drift.price, p.drift.currency, p.drift.billingPeriod)}
                   </span>
                 )}
                 {p.noLongerDetected && (
                   <span className="inline-flex items-center gap-1 text-meta text-muted-foreground">
-                    <TriangleAlert className="size-3" /> No longer on their pricing page
+                    <WarningIcon className="size-3" /> No longer on their pricing page
                   </span>
                 )}
               </li>

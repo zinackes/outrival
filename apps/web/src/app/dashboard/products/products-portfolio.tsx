@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Plus } from "lucide-react";
+import { CaretRightIcon, PlusIcon } from "@phosphor-icons/react/ssr";
 import { PLAN_LABELS, type Plan } from "@outrival/shared";
 import type { ProductSummary } from "@/lib/api";
 import { productsSettingsQuery } from "@/lib/queries";
@@ -65,7 +65,7 @@ export function ProductsPortfolio() {
               <Link href="/dashboard/settings/products">Manage products</Link>
             </Button>
             <Button size="sm" onClick={() => setAddOpen(true)} disabled={atLimit}>
-              <Plus size={14} />
+              <PlusIcon size={14} />
               Add product
             </Button>
           </div>
@@ -140,7 +140,7 @@ export function ProductsPortfolio() {
             </Button>
           ) : (
             <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
-              <Plus size={14} />
+              <PlusIcon size={14} />
               Add product
             </Button>
           )}
@@ -316,7 +316,7 @@ function ProductRow({ product: p }: { product: ProductSummary }) {
         )}
       </div>
 
-      <ChevronRight
+      <CaretRightIcon
         size={15}
         aria-hidden
         className="justify-self-end text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"

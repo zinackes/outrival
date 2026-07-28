@@ -1,5 +1,12 @@
 import Link from "next/link";
-import { ArrowDown, ArrowUp, ArrowRight, Info, Minus, type LucideIcon } from "lucide-react";
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  ArrowRightIcon,
+  InfoIcon,
+  MinusIcon,
+} from "@phosphor-icons/react/ssr";
+import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { Sparkline } from "./sparkline";
 import {
   Tooltip,
@@ -34,10 +41,10 @@ const DELTA_COLOR: Record<DeltaKind, string> = {
   neutral: "text-muted-foreground",
 };
 
-const DELTA_ICON: Record<DeltaKind, LucideIcon> = {
-  pos: ArrowUp,
-  neg: ArrowDown,
-  neutral: Minus,
+const DELTA_ICON: Record<DeltaKind, PhosphorIcon> = {
+  pos: ArrowUpIcon,
+  neg: ArrowDownIcon,
+  neutral: MinusIcon,
 };
 
 export function Kpi({
@@ -67,7 +74,7 @@ export function Kpi({
         <span className="inline-flex items-center gap-1">
           {label}
           {href && (
-            <ArrowRight
+            <ArrowRightIcon
               size={11}
               className="opacity-0 transition-opacity group-hover/kpi:opacity-100"
               aria-hidden
@@ -81,7 +88,7 @@ export function Kpi({
                   aria-label={`About ${label}`}
                   className="inline-flex cursor-help text-muted-foreground transition-colors hover:text-foreground"
                 >
-                  <Info size={12} aria-hidden />
+                  <InfoIcon size={12} aria-hidden />
                 </button>
               </TooltipTrigger>
               <TooltipContent className="max-w-[240px] font-sans text-xs font-normal normal-case tracking-normal">
@@ -94,7 +101,7 @@ export function Kpi({
           <span
             className={`text-meta inline-flex items-center gap-1 ${DELTA_COLOR[deltaKind]}`}
           >
-            <DeltaIcon size={11} strokeWidth={2.25} aria-hidden />
+            <DeltaIcon size={11} weight="bold" aria-hidden />
             {delta}
           </span>
         )}

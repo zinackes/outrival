@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
-import { ArrowRight, RotateCcw, X } from "lucide-react";
+import { ArrowRightIcon, ArrowCounterClockwiseIcon, XIcon } from "@phosphor-icons/react/ssr";
 import { api, type OnboardingSession } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 
@@ -47,10 +47,10 @@ export function OnboardingResumeBanner({ session }: { session: OnboardingSession
           <span className="text-muted-foreground">You'd reached {stage}.</span>
         </div>
         <Button size="sm" onClick={resume} disabled={busy}>
-          Resume <ArrowRight size={14} />
+          Resume <ArrowRightIcon size={14} />
         </Button>
         <Button size="sm" variant="ghost" onClick={() => void restart()} disabled={busy}>
-          <RotateCcw size={13} /> Restart
+          <ArrowCounterClockwiseIcon size={13} /> Restart
         </Button>
         <button
           type="button"
@@ -58,7 +58,7 @@ export function OnboardingResumeBanner({ session }: { session: OnboardingSession
           aria-label="Dismiss"
           className="text-muted-foreground hover:text-foreground transition-colors"
         >
-          <X size={14} />
+          <XIcon size={14} />
         </button>
       </div>
     </div>

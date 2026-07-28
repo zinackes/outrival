@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { pageMetadata } from "@/lib/metadata";
 import Link from "next/link";
-import { ArrowLeft, Check } from "lucide-react";
+import { ArrowLeftIcon, CheckIcon } from "@phosphor-icons/react/ssr";
 import { Footer } from "@/components/landing/footer";
 import { ProductShot } from "@/components/landing/product-shot";
 import { DemoForm } from "./demo-form";
@@ -59,7 +59,7 @@ export default async function DemoPage({
             href="/"
             className="inline-flex items-center gap-1.5 text-sm text-text-muted transition-colors hover:text-foreground"
           >
-            <ArrowLeft size={14} /> Back to home
+            <ArrowLeftIcon size={14} /> Back to home
           </Link>
         </div>
       </header>
@@ -137,7 +137,7 @@ export default async function DemoPage({
           <ul className="mt-8 space-y-3">
             {points.map((p) => (
               <li key={p} className="flex items-start gap-2.5 text-sm text-text-muted">
-                <Check size={16} className="mt-0.5 shrink-0 text-primary" />
+                <CheckIcon size={16} className="mt-0.5 shrink-0 text-primary" />
                 <span>{p}</span>
               </li>
             ))}

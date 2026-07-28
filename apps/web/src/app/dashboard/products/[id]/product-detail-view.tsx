@@ -3,7 +3,12 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Boxes, Check, ChevronDown, ChevronRight } from "lucide-react";
+import {
+  CardsThreeIcon,
+  CheckIcon,
+  CaretDownIcon,
+  CaretRightIcon,
+} from "@phosphor-icons/react/ssr";
 import { productDetailQuery, productsListQuery } from "@/lib/queries";
 import { useSetProductScope } from "@/components/dashboard/product-scope-provider";
 import { MyProductView } from "../my-product-view";
@@ -35,7 +40,7 @@ export function ProductDetailView({ productId }: { productId: string }) {
       <div className="xl:px-6 2xl:px-12">
         <ProductCrumbs productId={productId} name="Product" />
         <EmptyState
-          icon={Boxes}
+          icon={CardsThreeIcon}
           title="Product not found"
           description="This product doesn't exist or you don't have access to it."
           actions={
@@ -93,7 +98,7 @@ function ProductCrumbs({ productId, name }: { productId: string; name: string })
       >
         Products
       </button>
-      <ChevronRight size={13} aria-hidden />
+      <CaretRightIcon size={13} aria-hidden />
       {siblings.length > 1 ? (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -107,7 +112,7 @@ function ProductCrumbs({ productId, name }: { productId: string; name: string })
                 ring
               />
               <span className="max-w-40 truncate">{name}</span>
-              <ChevronDown size={13} className="text-muted-foreground" />
+              <CaretDownIcon size={13} className="text-muted-foreground" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-56">
@@ -130,7 +135,7 @@ function ProductCrumbs({ productId, name }: { productId: string; name: string })
                   ring
                 />
                 <span className="flex-1 truncate">{p.name}</span>
-                {p.id === productId && <Check size={13} className="shrink-0" />}
+                {p.id === productId && <CheckIcon size={13} className="shrink-0" />}
               </DropdownMenuItem>
             ))}
             <DropdownMenuSeparator />

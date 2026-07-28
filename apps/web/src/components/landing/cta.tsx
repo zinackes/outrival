@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { ArrowRightIcon } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 
 export function CTA() {
@@ -22,7 +22,7 @@ export function CTA() {
           <div className="flex flex-col items-start gap-3 lg:items-end">
             <Button asChild size="lg">
               <Link href="/auth">
-                Start monitoring free <ArrowRight size={14} />
+                Start monitoring free <ArrowRightIcon size={14} />
               </Link>
             </Button>
             {/* The sample IS the product, readable without an account. Pointing

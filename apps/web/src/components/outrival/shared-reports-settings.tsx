@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Copy, Trash2, Link2, Plus } from "lucide-react";
+import { CopyIcon, TrashIcon, LinkIcon, PlusIcon } from "@phosphor-icons/react/ssr";
 import { api } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -64,7 +64,7 @@ export function SharedReportsSettings() {
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={create} disabled={creating}>
-          <Plus className="size-4" />
+          <PlusIcon className="size-4" />
           Create link
         </Button>
       </header>
@@ -79,7 +79,7 @@ export function SharedReportsSettings() {
       ) : (
         links.map((link) => (
           <Card key={link.id} className="flex items-center gap-3 px-5 py-4">
-            <Link2 className="size-4 shrink-0 text-muted-foreground" />
+            <LinkIcon className="size-4 shrink-0 text-muted-foreground" />
             <div className="min-w-0 flex-1">
               <div className="truncate text-dense font-mono">{link.url}</div>
               <div className="text-meta text-muted-foreground mt-0.5">
@@ -87,11 +87,11 @@ export function SharedReportsSettings() {
               </div>
             </div>
             <Button variant="ghost" size="sm" onClick={() => copy(link.url)}>
-              <Copy className="size-4" />
-              Copy
+              <CopyIcon className="size-4" />
+              CopyIcon
             </Button>
             <Button variant="ghost" size="sm" onClick={() => revoke(link.id)}>
-              <Trash2 className="size-4" />
+              <TrashIcon className="size-4" />
               Revoke
             </Button>
           </Card>

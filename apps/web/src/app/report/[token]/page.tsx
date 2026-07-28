@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
-  Sparkles,
-  ArrowUpRight,
-  Tag,
-  Gift,
-  Briefcase,
-  Star,
-  type LucideIcon,
-} from "lucide-react";
+  SparkleIcon,
+  ArrowUpRightIcon,
+  TagIcon,
+  GiftIcon,
+  BriefcaseIcon,
+  StarIcon,
+} from "@phosphor-icons/react/ssr";
+import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { RecapDeck } from "@/components/dashboard/recap-wrapped";
 import type { MonthlyRecap } from "@/lib/api";
 
@@ -90,11 +90,11 @@ function entryPrice(rows: PricingRow[]): string | null {
   return `${fmtPrice(cheapest.price!, cheapest.currency)}/mo`;
 }
 
-const INSIGHT_ICON: Record<string, LucideIcon> = {
-  pricing_gap: Tag,
-  trial: Gift,
-  hiring: Briefcase,
-  reviews: Star,
+const INSIGHT_ICON: Record<string, PhosphorIcon> = {
+  pricing_gap: TagIcon,
+  trial: GiftIcon,
+  hiring: BriefcaseIcon,
+  reviews: StarIcon,
 };
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -108,7 +108,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 function Wordmark({ className }: { className?: string }) {
   return (
     <span className={`inline-flex items-center gap-1.5 ${className ?? ""}`}>
-      <Sparkles className="size-3.5 text-link" aria-hidden />
+      <SparkleIcon className="size-3.5 text-link" aria-hidden />
       <span className="text-dense font-semibold tracking-tight">Outrival</span>
     </span>
   );
@@ -151,9 +151,9 @@ function PoweredBy() {
         href="https://outrival.app"
         className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
-        <Sparkles className="size-4 text-link" />
+        <SparkleIcon className="size-4 text-link" />
         Powered by <span className="font-semibold text-foreground">Outrival</span>
-        <ArrowUpRight className="size-3.5" />
+        <ArrowUpRightIcon className="size-3.5" />
       </Link>
       <p className="mt-2 text-meta text-muted-foreground">
         Automated competitive intelligence: monitor competitors, get strategic insights.
@@ -280,7 +280,7 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
               <SectionLabel>Key takeaways</SectionLabel>
               <ul className="mt-4 space-y-2.5">
                 {insights.map((ins, i) => {
-                  const Icon = INSIGHT_ICON[ins.kind] ?? Sparkles;
+                  const Icon = INSIGHT_ICON[ins.kind] ?? SparkleIcon;
                   return (
                     <li
                       key={i}

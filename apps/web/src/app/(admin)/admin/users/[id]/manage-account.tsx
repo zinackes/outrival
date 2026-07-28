@@ -3,7 +3,13 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Mail, Ban, ShieldCheck, Trash2, AlertTriangle } from "lucide-react";
+import {
+  EnvelopeIcon,
+  ProhibitIcon,
+  ShieldCheckIcon,
+  TrashIcon,
+  WarningIcon,
+} from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -141,7 +147,7 @@ export function ManageAccount({ detail }: { detail: AdminUserDetail }) {
               </div>
               {detail.org.hasActiveStripeSub ? (
                 <p className="flex items-start gap-1.5 text-sm text-muted-foreground">
-                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <WarningIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   This org has an active Stripe subscription, so a manual change is an operator
                   grant and may be overwritten by the next Stripe webhook.
                 </p>
@@ -156,7 +162,7 @@ export function ManageAccount({ detail }: { detail: AdminUserDetail }) {
           <span className="text-sm font-medium">Login</span>
           <div>
             <Button variant="ghost" size="sm" disabled={busy === "link" || suspended} onClick={sendLink}>
-              <Mail className="mr-1.5 h-3.5 w-3.5" />
+              <EnvelopeIcon className="mr-1.5 h-3.5 w-3.5" />
               Resend sign-in link
             </Button>
           </div>
@@ -168,12 +174,12 @@ export function ManageAccount({ detail }: { detail: AdminUserDetail }) {
             <Button variant="outline" size="sm" disabled={busy === "suspend"} onClick={toggleSuspend}>
               {suspended ? (
                 <>
-                  <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />
+                  <ShieldCheckIcon className="mr-1.5 h-3.5 w-3.5" />
                   Reactivate account
                 </>
               ) : (
                 <>
-                  <Ban className="mr-1.5 h-3.5 w-3.5" />
+                  <ProhibitIcon className="mr-1.5 h-3.5 w-3.5" />
                   Suspend account
                 </>
               )}
@@ -186,7 +192,7 @@ export function ManageAccount({ detail }: { detail: AdminUserDetail }) {
                 setConfirmOpen(true);
               }}
             >
-              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+              <TrashIcon className="mr-1.5 h-3.5 w-3.5" />
               Delete account
             </Button>
           </div>

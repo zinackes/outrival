@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, Loader2, RefreshCw } from "lucide-react";
+import { CaretDownIcon, CircleNotchIcon, ArrowsClockwiseIcon } from "@phosphor-icons/react/ssr";
 import type { MyProductRescanCategory } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import {
@@ -46,9 +46,9 @@ export function RescanMenu({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="sm" disabled={busy}>
-          {busy ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+          {busy ? <CircleNotchIcon className="size-3.5 animate-spin" /> : <ArrowsClockwiseIcon className="size-3.5" />}
           {busy ? "Scanning…" : "Re-scan"}
-          <ChevronDown className="size-3.5" />
+          <CaretDownIcon className="size-3.5" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-52">

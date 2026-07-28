@@ -3,7 +3,8 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, FileText, IdCard, type LucideIcon } from "lucide-react";
+import { ArrowRightIcon, FileTextIcon, IdentificationCardIcon } from "@phosphor-icons/react/ssr";
+import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { battleCardsQuery, digestsQuery } from "@/lib/queries";
 import { formatDate, shortAge } from "@/lib/format-date";
 import { cn } from "@/lib/utils";
@@ -51,7 +52,7 @@ export function OverviewArtifacts() {
       {oldest && (
         <Shelf
           href="/dashboard/battle-cards"
-          icon={IdCard}
+          icon={IdentificationCardIcon}
           label="Battle cards"
           meta={
             <>
@@ -65,7 +66,7 @@ export function OverviewArtifacts() {
       {brief && (
         <Shelf
           href={`/dashboard/digests/${brief.id}`}
-          icon={FileText}
+          icon={FileTextIcon}
           label="Weekly brief"
           meta={
             <>
@@ -95,7 +96,7 @@ function Shelf({
   meta,
 }: {
   href: string;
-  icon: LucideIcon;
+  icon: PhosphorIcon;
   label: string;
   meta: ReactNode;
 }) {
@@ -114,7 +115,7 @@ function Shelf({
         <span className="block truncate text-dense font-semibold">{label}</span>
         <span className="mt-0.5 block truncate text-meta text-text-subtle">{meta}</span>
       </span>
-      <ArrowRight
+      <ArrowRightIcon
         size={14}
         className="ms-auto shrink-0 text-text-subtle transition-transform group-hover/shelf:translate-x-0.5"
         aria-hidden

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Megaphone } from "lucide-react";
+import { MegaphoneIcon } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { LATEST_WHATS_NEW_DATE, WHATS_NEW_SEEN_KEY } from "@/lib/whats-new";
@@ -40,7 +40,7 @@ export function WhatsNewButton() {
           className="relative"
         >
           <Link href="/dashboard/whats-new">
-            <Megaphone size={14} />
+            <MegaphoneIcon size={14} />
             {unseen && (
               <span
                 className="bg-primary absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full"

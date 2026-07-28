@@ -4,15 +4,15 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeft,
-  FileText,
-  GitBranch,
-  Globe,
-  Lightbulb,
-  Loader2,
-  Sparkles,
-  Upload,
-} from "lucide-react";
+  ArrowLeftIcon,
+  FileTextIcon,
+  GitBranchIcon,
+  GlobeIcon,
+  LightbulbIcon,
+  CircleNotchIcon,
+  SparkleIcon,
+  UploadSimpleIcon,
+} from "@phosphor-icons/react/ssr";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -44,12 +44,12 @@ const STAGES: {
   key: ProjectStage;
   label: string;
   hint: string;
-  icon: typeof Globe;
+  icon: typeof GlobeIcon;
 }[] = [
-  { key: "live", label: "Live site", hint: "It has a public website. We'll analyze and monitor it.", icon: Globe },
-  { key: "developing", label: "In development", hint: "A public GitHub repo we can read for a profile.", icon: GitBranch },
-  { key: "idea", label: "Idea", hint: "Describe it in a few words, no site yet.", icon: Lightbulb },
-  { key: "document", label: "Document", hint: "Upload a spec or deck, read in memory and never stored.", icon: FileText },
+  { key: "live", label: "Live site", hint: "It has a public website. We'll analyze and monitor it.", icon: GlobeIcon },
+  { key: "developing", label: "In development", hint: "A public GitHub repo we can read for a profile.", icon: GitBranchIcon },
+  { key: "idea", label: "Idea", hint: "Describe it in a few words, no site yet.", icon: LightbulbIcon },
+  { key: "document", label: "Document", hint: "UploadSimpleIcon a spec or deck, read in memory and never stored.", icon: FileTextIcon },
 ];
 
 function blankProfile(seedCategory = ""): ProductProfile {
@@ -378,7 +378,7 @@ export function AddProductWizard({
                     onClick={() => fileInputRef.current?.click()}
                     className="justify-start font-normal"
                   >
-                    <Upload size={14} className="mr-2" />
+                    <UploadSimpleIcon size={14} className="mr-2" />
                     {file ? file.name : "Choose a file (PDF, DOCX, TXT, MD, max 10MB)"}
                   </Button>
                   <p className="text-xs text-muted-foreground">
@@ -389,7 +389,7 @@ export function AddProductWizard({
             </div>
             <DialogFooter className="sm:justify-between">
               <Button variant="ghost" onClick={() => setScreen("stage")} disabled={!!busy}>
-                <ArrowLeft size={14} className="mr-1" />
+                <ArrowLeftIcon size={14} className="mr-1" />
                 Back
               </Button>
               <div className="flex gap-2">
@@ -398,9 +398,9 @@ export function AddProductWizard({
                 </Button>
                 <Button onClick={analyze} disabled={!!busy || !canAnalyze}>
                   {busy === "analyze" ? (
-                    <Loader2 size={14} className="mr-1 animate-spin" />
+                    <CircleNotchIcon size={14} className="mr-1 animate-spin" />
                   ) : (
-                    <Sparkles size={14} className="mr-1" />
+                    <SparkleIcon size={14} className="mr-1" />
                   )}
                   Analyze
                 </Button>
@@ -454,11 +454,11 @@ export function AddProductWizard({
             </div>
             <DialogFooter className="sm:justify-between">
               <Button variant="ghost" onClick={() => setScreen("input")} disabled={!!busy}>
-                <ArrowLeft size={14} className="mr-1" />
+                <ArrowLeftIcon size={14} className="mr-1" />
                 Back
               </Button>
               <Button onClick={createAndDiscover} disabled={!!busy || !name.trim() || !profileReady}>
-                {busy === "create" && <Loader2 size={14} className="mr-1 animate-spin" />}
+                {busy === "create" && <CircleNotchIcon size={14} className="mr-1 animate-spin" />}
                 Create & find competitors
               </Button>
             </DialogFooter>
@@ -476,14 +476,14 @@ export function AddProductWizard({
             <div className="flex flex-col items-center gap-3 py-6 text-center">
               {busy === "discover" ? (
                 <>
-                  <Loader2 size={28} className="animate-spin text-muted-foreground" />
+                  <CircleNotchIcon size={28} className="animate-spin text-muted-foreground" />
                   <p className="text-sm text-muted-foreground">Finding competitors…</p>
                 </>
               ) : discoverError ? (
                 <p className="text-sm text-muted-foreground">{discoverError}</p>
               ) : (
                 <>
-                  <Sparkles size={28} className="text-primary" />
+                  <SparkleIcon size={28} className="text-primary" />
                   <p className="text-content font-medium">
                     {detected && detected > 0
                       ? `Found ${detected} competitor${detected > 1 ? "s" : ""} to review`

@@ -1,7 +1,15 @@
 "use client";
 
 import { useId, useRef, useState } from "react";
-import { ChevronRight, ExternalLink, Info, Loader2, Lock, Play, Plus } from "lucide-react";
+import {
+  CaretRightIcon,
+  ArrowSquareOutIcon,
+  InfoIcon,
+  CircleNotchIcon,
+  LockIcon,
+  PlayIcon,
+  PlusIcon,
+} from "@phosphor-icons/react/ssr";
 import {
   MONITOR_FREQUENCIES,
   PLAN_LABELS,
@@ -156,7 +164,7 @@ export function SourceName({ label, url }: { label: string; url: string | null }
       className="group/src flex w-[132px] shrink-0 items-center gap-1 text-sm font-medium hover:underline focus-visible:outline-none focus-visible:underline"
     >
       <span className="truncate">{label}</span>
-      <ExternalLink
+      <ArrowSquareOutIcon
         size={11}
         className="shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/src:opacity-100"
       />
@@ -373,7 +381,7 @@ export function SourceRow({
               className="h-7 text-xs"
               onClick={() => onUpgrade(sourceType)}
             >
-              <Lock size={11} /> Upgrade
+              <LockIcon size={11} /> Upgrade
             </Button>
           )}
 
@@ -388,7 +396,7 @@ export function SourceRow({
               disabled={enabling}
               onClick={() => (needsUrlToEnable ? openWithUrlFocus() : void enableWithoutUrl())}
             >
-              {enabling ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
+              {enabling ? <CircleNotchIcon size={11} className="animate-spin" /> : <PlusIcon size={11} />}
               Turn on
             </Button>
           )}
@@ -421,7 +429,7 @@ export function SourceRow({
               disabled={running || monitor.isActive === false}
               onClick={() => onRun(monitor.id)}
             >
-              {running ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
+              {running ? <CircleNotchIcon size={11} className="animate-spin" /> : <PlayIcon size={11} />}
               Run
             </Button>
           )}
@@ -446,7 +454,7 @@ export function SourceRow({
               aria-hidden="true"
               className="flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground"
             >
-              <ChevronRight
+              <CaretRightIcon
                 size={14}
                 className={cn("transition-transform duration-200", open && "rotate-90")}
               />
@@ -505,7 +513,7 @@ export function SourceRow({
                               : void onEdit(monitor.id, { frequency: freq })
                           }
                         >
-                          {locked && <Lock size={9} className="opacity-70" />}
+                          {locked && <LockIcon size={9} className="opacity-70" />}
                           {freq}
                           {locked && (
                             <span className="text-meta uppercase tracking-wide opacity-70">
@@ -562,7 +570,7 @@ export function SourceRow({
                           aria-label="What this URL has to be"
                           className="rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
-                          <Info size={12} />
+                          <InfoIcon size={12} />
                         </button>
                       </TooltipTrigger>
                       <TooltipContent className="max-w-[44ch]">{urlHelp}</TooltipContent>
@@ -603,7 +611,7 @@ export function SourceRow({
                       className="mt-1.5 inline-flex max-w-full items-center gap-1 text-xs text-link hover:underline focus-visible:outline-none focus-visible:underline"
                     >
                       <span className="truncate">Open the page we scrape</span>
-                      <ExternalLink size={10} className="shrink-0" />
+                      <ArrowSquareOutIcon size={10} className="shrink-0" />
                     </a>
                   )}
                 </div>

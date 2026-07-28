@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Loader2 } from "lucide-react";
+import { CheckIcon, CircleNotchIcon } from "@phosphor-icons/react/ssr";
 import { toast } from "sonner";
 import { emailSchema } from "@outrival/shared";
 import { useSession, authClient } from "@/lib/auth-client";
@@ -117,7 +117,7 @@ function EmailField({ currentEmail }: { currentEmail: string }) {
           </p>
           <div className="flex items-center gap-2">
             <Button size="sm" onClick={sendCode} disabled={!emailValid || busy}>
-              {busy && <Loader2 size={13} className="animate-spin" />}
+              {busy && <CircleNotchIcon size={13} className="animate-spin" />}
               Send code
             </Button>
             <Button variant="ghost" size="sm" onClick={reset} disabled={busy}>
@@ -149,7 +149,7 @@ function EmailField({ currentEmail }: { currentEmail: string }) {
           </p>
           <div className="flex items-center gap-2">
             <Button size="sm" onClick={confirm} disabled={otp.length < 6 || busy}>
-              {busy && <Loader2 size={13} className="animate-spin" />}
+              {busy && <CircleNotchIcon size={13} className="animate-spin" />}
               Confirm new email
             </Button>
             <Button variant="ghost" size="sm" onClick={reset} disabled={busy}>
@@ -225,12 +225,12 @@ export function ProfileSettingsForm() {
 
       <div className="flex items-center gap-3">
         <Button size="sm" onClick={save} disabled={!dirty || saving}>
-          {saving && <Loader2 size={13} className="animate-spin" />}
+          {saving && <CircleNotchIcon size={13} className="animate-spin" />}
           Save changes
         </Button>
         {saved && (
           <span className="flex items-center gap-1.5 text-sm text-positive">
-            <Check className="size-4" /> Saved
+            <CheckIcon className="size-4" /> Saved
           </span>
         )}
       </div>

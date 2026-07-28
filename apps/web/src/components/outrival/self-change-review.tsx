@@ -1,7 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronRight, X, Plus, AlertTriangle, Check, ArrowUpRight } from "lucide-react";
+import {
+  CaretRightIcon,
+  XIcon,
+  PlusIcon,
+  WarningIcon,
+  CheckIcon,
+  ArrowUpRightIcon,
+} from "@phosphor-icons/react/ssr";
 import { formatDistanceToNow } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -218,7 +225,7 @@ export function SelfChangesPanel({
                     {preview}
                   </span>
                 )}
-                <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                <CaretRightIcon className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
               </button>
               <button
                 type="button"
@@ -228,7 +235,7 @@ export function SelfChangesPanel({
                 title="Ignore"
                 className="flex shrink-0 items-center px-3 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50"
               >
-                <X className="size-4" />
+                <XIcon className="size-4" />
               </button>
             </li>
           );
@@ -281,7 +288,7 @@ function ToggleItem({
           checked ? "border-primary bg-primary text-primary-foreground" : "border-input"
         }`}
       >
-        {checked && <Check className="size-3" strokeWidth={3} />}
+        {checked && <CheckIcon className="size-3" weight="bold" />}
       </span>
       <span
         className={`text-xs leading-snug ${dim && !checked ? "text-muted-foreground" : ""}`}
@@ -344,7 +351,7 @@ function DiffRow({ item, kind }: { item: DiffItem; kind: "added" | "removed" | "
             className="ml-1.5 inline-flex items-center gap-0.5 align-baseline text-dense font-medium text-link no-underline hover:underline"
           >
             View
-            <ArrowUpRight className="size-3" />
+            <ArrowUpRightIcon className="size-3" />
           </a>
         )}
       </span>
@@ -529,7 +536,7 @@ function ReviewBody({
                         aria-label={`Remove ${item}`}
                         className="text-[var(--muted-2)] hover:text-foreground"
                       >
-                        <X className="size-3" />
+                        <XIcon className="size-3" />
                       </button>
                     </span>
                   ))}
@@ -551,7 +558,7 @@ function ReviewBody({
                 className="h-8 text-xs"
               />
               <Button type="submit" size="sm" variant="outline" disabled={!draft.trim()}>
-                <Plus className="size-3.5" />
+                <PlusIcon className="size-3.5" />
                 Add
               </Button>
             </form>
@@ -599,7 +606,7 @@ function ReviewBody({
 
         {change.severity === "major" && (
           <div className="mt-5 flex items-start gap-2 rounded-md border border-border bg-accent/50 px-3 py-2.5 text-sm text-muted-foreground">
-            <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-destructive" />
+            <WarningIcon className="mt-0.5 size-3.5 shrink-0 text-destructive" />
             Major change. Accepting it may flag some competitors for re-evaluation.
           </div>
         )}

@@ -3,15 +3,15 @@
 import { useEffect, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import {
-  FileSearch,
-  Plus,
-  Lock,
-  Loader2,
-  Play,
-  Trash2,
-  ExternalLink,
-  Link2,
-} from "lucide-react";
+  FileMagnifyingGlassIcon,
+  PlusIcon,
+  LockIcon,
+  CircleNotchIcon,
+  PlayIcon,
+  TrashIcon,
+  ArrowSquareOutIcon,
+  LinkIcon,
+} from "@phosphor-icons/react/ssr";
 import {
   PLAN_LABELS,
   CUSTOM_MONITOR_HINTS,
@@ -98,7 +98,7 @@ export function CustomSources({
   if (locked && customMonitors.length === 0) {
     return (
       <Card className="flex flex-col items-center gap-3 border-dashed px-6 py-10 text-center">
-        <FileSearch size={20} className="text-muted-foreground" />
+        <FileMagnifyingGlassIcon size={20} className="text-muted-foreground" />
         <p className="text-sm font-semibold text-foreground">Watch a custom page</p>
         <p className="max-w-md text-sm text-muted-foreground">
           Track any page on this competitor&apos;s site: pricing FAQs, a security or
@@ -106,7 +106,7 @@ export function CustomSources({
           {PLAN_LABELS[minPlanForCustomMonitors()]} plan.
         </p>
         <Button size="sm" onClick={onLocked}>
-          <Lock size={12} /> Upgrade to watch pages
+          <LockIcon size={12} /> Upgrade to watch pages
         </Button>
       </Card>
     );
@@ -139,7 +139,7 @@ export function CustomSources({
                   : undefined
               }
             >
-              <Plus size={12} /> Watch a page
+              <PlusIcon size={12} /> Watch a page
             </Button>
           </div>
         </TabSection>
@@ -229,7 +229,7 @@ function CustomMonitorRow({
               className="inline-flex min-w-0 items-center gap-1 font-mono hover:text-foreground"
             >
               <span className="truncate">{url}</span>
-              <ExternalLink size={11} className="shrink-0" />
+              <ArrowSquareOutIcon size={11} className="shrink-0" />
             </a>
           )}
           <span aria-hidden className="text-muted-foreground/40">
@@ -253,11 +253,11 @@ function CustomMonitorRow({
         >
           {running ? (
             <>
-              <Loader2 size={12} className="animate-spin" /> Scraping…
+              <CircleNotchIcon size={12} className="animate-spin" /> Scraping…
             </>
           ) : (
             <>
-              <Play size={12} /> Scrape
+              <PlayIcon size={12} /> Scrape
             </>
           )}
         </Button>
@@ -277,7 +277,7 @@ function CustomMonitorRow({
               }
             }}
           >
-            {deleting ? <Loader2 size={12} className="animate-spin" /> : null}
+            {deleting ? <CircleNotchIcon size={12} className="animate-spin" /> : null}
             Remove?
           </Button>
         ) : (
@@ -288,7 +288,7 @@ function CustomMonitorRow({
             aria-label="Remove this custom page"
             onClick={() => setConfirming(true)}
           >
-            <Trash2 size={13} />
+            <TrashIcon size={13} />
           </Button>
         )}
       </div>
@@ -370,7 +370,7 @@ function AddCustomDialog({
           <div className="space-y-1.5">
             <p className="text-xs font-medium text-foreground">Page URL</p>
             <div className="relative">
-              <Link2
+              <LinkIcon
                 size={14}
                 className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
               />
@@ -425,7 +425,7 @@ function AddCustomDialog({
             Cancel
           </Button>
           <Button size="sm" onClick={submit} disabled={!canSubmit}>
-            {busy && <Loader2 size={12} className="animate-spin" />}
+            {busy && <CircleNotchIcon size={12} className="animate-spin" />}
             Watch page
           </Button>
         </DialogFooter>

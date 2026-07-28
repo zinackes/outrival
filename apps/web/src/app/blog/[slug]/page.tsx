@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeftIcon } from "@phosphor-icons/react/ssr";
 import { getAllPostSlugs, getPost, formatPostDate } from "@/lib/blog";
 import { BlogShell } from "@/components/blog/blog-shell";
 import { renderMdx } from "@/components/blog/mdx";
@@ -71,7 +71,7 @@ export default async function BlogPostPage({
           href="/blog"
           className="inline-flex items-center gap-1.5 text-sm text-text-muted transition-colors hover:text-foreground"
         >
-          <ArrowLeft size={14} /> All posts
+          <ArrowLeftIcon size={14} /> All posts
         </Link>
 
         <header className="mt-8 flex flex-col gap-4">

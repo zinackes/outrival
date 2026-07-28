@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Share2, Check } from "lucide-react";
+import { ShareNetworkIcon, CheckIcon } from "@phosphor-icons/react/ssr";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 
@@ -31,7 +31,7 @@ export function ShareRecapButton({ month }: { month: string }) {
 
   return (
     <Button variant="outline" size="sm" onClick={share} disabled={busy}>
-      {copied ? <Check className="size-4" /> : <Share2 className="size-4" />}
+      {copied ? <CheckIcon className="size-4" /> : <ShareNetworkIcon className="size-4" />}
       {copied ? "Link copied" : "Share recap"}
     </Button>
   );

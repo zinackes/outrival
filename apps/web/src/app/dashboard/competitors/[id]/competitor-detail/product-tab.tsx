@@ -3,7 +3,12 @@
 import { useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { format, formatDistanceToNow } from "date-fns";
-import { ExternalLink, FileText, Loader2, Play } from "lucide-react";
+import {
+  ArrowSquareOutIcon,
+  FileTextIcon,
+  CircleNotchIcon,
+  PlayIcon,
+} from "@phosphor-icons/react/ssr";
 import { api, type ChangeRow, type CompetitorSignal, type PositioningVersion } from "@/lib/api";
 import type { SourceType } from "@outrival/shared";
 import { Button } from "@/components/ui/button";
@@ -108,7 +113,7 @@ export function ProductTab({
     const running = scrapingIds.has(preferred.id);
     return (
       <EmptyState
-        icon={FileText}
+        icon={FileTextIcon}
         title="No changes yet"
         description={
           preferred.lastRunAt
@@ -124,11 +129,11 @@ export function ProductTab({
           >
             {running ? (
               <>
-                <Loader2 size={12} className="animate-spin" /> Scraping…
+                <CircleNotchIcon size={12} className="animate-spin" /> Scraping…
               </>
             ) : (
               <>
-                <Play size={12} /> Scrape {preferred.sourceType}
+                <PlayIcon size={12} /> Scrape {preferred.sourceType}
               </>
             )}
           </Button>
@@ -229,7 +234,7 @@ export function ProductTab({
                     rel="noreferrer noopener"
                     className="inline-flex items-center gap-1 text-link hover:underline"
                   >
-                    Read their page <ExternalLink size={11} />
+                    Read their page <ArrowSquareOutIcon size={11} />
                   </a>
                 </div>
               </div>
@@ -358,7 +363,7 @@ function LogList({
                   rel="noreferrer noopener"
                   className="inline-flex items-center gap-1 text-xs text-link hover:underline"
                 >
-                  {linkLabel} <ExternalLink size={11} />
+                  {linkLabel} <ArrowSquareOutIcon size={11} />
                 </a>
               )}
             </span>

@@ -15,6 +15,7 @@ let A: { orgId: string; userId: string; email: string };
 let B: { orgId: string; userId: string; email: string };
 let C: { orgId: string; userId: string; email: string };
 let D: { orgId: string; userId: string; email: string };
+let E: { orgId: string; userId: string; email: string };
 
 let seq = 0;
 
@@ -89,6 +90,7 @@ beforeAll(async () => {
   B = await seedOrg(testDb);
   C = await seedOrg(testDb);
   D = await seedOrg(testDb);
+  E = await seedOrg(testDb);
 
   // Org A — ordering + facets + filters.
   const a = await seedCompetitor(A.orgId);
@@ -110,6 +112,14 @@ beforeAll(async () => {
   for (let i = 0; i < 5; i++) {
     await seedSignal({ ...d, orgId: D.orgId, severity: "medium", isRead: false, createdAt: T(20 + i) });
   }
+
+  // Org E — the two halves of the default ordering, each with the older signal being
+  // the higher-threat one so threat and recency disagree inside both tiers.
+  const e = await seedCompetitor(E.orgId);
+  await seedSignal({ ...e, orgId: E.orgId, severity: "critical", isRead: false, createdAt: T(1), insight: "unread-critical-old" });
+  await seedSignal({ ...e, orgId: E.orgId, severity: "low", isRead: false, createdAt: T(2), insight: "unread-low-new" });
+  await seedSignal({ ...e, orgId: E.orgId, severity: "critical", isRead: true, createdAt: T(3), insight: "read-critical-old" });
+  await seedSignal({ ...e, orgId: E.orgId, severity: "low", isRead: true, createdAt: T(4), insight: "read-low-new" });
 });
 
 describe("signals feed", () => {
@@ -128,6 +138,20 @@ describe("signals feed", () => {
     expect(insights.indexOf("read-critical")).toBe(2);
     expect(insights).toContain("unread-low");
     expect(insights).toContain("pricing-one");
+  });
+
+  test("threat ranks the unread tier; the read tier is chronological", async () => {
+    const res = await app.request("/api/signals", asUser(E.userId, E.email));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.signals.map((s: { insight: string }) => s.insight)).toEqual([
+      // Unread tier: the older critical outranks the newer low.
+      "unread-critical-old",
+      "unread-low-new",
+      // Read tier: newest first, whatever the threat score.
+      "read-low-new",
+      "read-critical-old",
+    ]);
   });
 
   test("paginates with total + nextOffset", async () => {

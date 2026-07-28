@@ -25,11 +25,14 @@ import { CompareVerdict } from "@/components/dashboard/compare/verdict";
 import type { CompareEntity } from "@/components/dashboard/compare/lens";
 import {
   HiringLens,
+  MEASURE_LENSES,
   MovesLens,
   PositioningLens,
   PriceLens,
   RatingLens,
   StackLens,
+  lensHasContent,
+  type MeasureLensId,
 } from "@/components/dashboard/compare/lenses";
 import { agePhrase } from "@/components/dashboard/compare/derive";
 import {
@@ -380,6 +383,24 @@ export function CompareView() {
     onToggle: (id: string) => toggleRow(lens, id),
   });
 
+  /**
+   * The measure lenses that will actually draw, dealt alternately into two columns.
+   * Fixed slots (price+hiring left, rating+stack right) emptied the whole right half
+   * whenever a set had no reviews and no detected stack; alternating keeps both
+   * columns fed, and with a full roster it reproduces the original pairing exactly.
+   */
+  const visibleLenses = useMemo<MeasureLensId[]>(
+    () => MEASURE_LENSES.filter((id) => lensHasContent[id](rows)),
+    [rows],
+  );
+
+  const renderLens = (id: MeasureLensId) => {
+    if (id === "price") return <PriceLens key={id} {...lensProps("price")} />;
+    if (id === "rating") return <RatingLens key={id} {...lensProps("rating")} />;
+    if (id === "hiring") return <HiringLens key={id} {...lensProps("hiring")} />;
+    return <StackLens key={id} entities={rows} />;
+  };
+
   async function runExport() {
     const cols = exportIncludeYou
       ? loadedCols
@@ -548,17 +569,20 @@ export function CompareView() {
 
               {/* Two independent columns, not a two-column grid: a shared grid row
                   couples the heights, so expanding a row in Rating would leave a void
-                  under Price. On one column the lenses simply stack in this order. */}
-              <div className="grid items-start gap-8 lg:grid-cols-2 lg:gap-x-10">
-                <div className="flex min-w-0 flex-col gap-8">
-                  <PriceLens {...lensProps("price")} />
-                  <HiringLens {...lensProps("hiring")} />
+                  under Price. A lone lens takes the full width rather than sitting in
+                  a half-empty grid. */}
+              {visibleLenses.length <= 1 ? (
+                visibleLenses.map(renderLens)
+              ) : (
+                <div className="grid items-start gap-8 lg:grid-cols-2 lg:gap-x-10">
+                  <div className="flex min-w-0 flex-col gap-8">
+                    {visibleLenses.filter((_, i) => i % 2 === 0).map(renderLens)}
+                  </div>
+                  <div className="flex min-w-0 flex-col gap-8">
+                    {visibleLenses.filter((_, i) => i % 2 === 1).map(renderLens)}
+                  </div>
                 </div>
-                <div className="flex min-w-0 flex-col gap-8">
-                  <RatingLens {...lensProps("rating")} />
-                  <StackLens entities={rows} />
-                </div>
-              </div>
+              )}
 
               <PositioningLens entities={rows} />
               <MovesLens entities={rows} />

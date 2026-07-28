@@ -64,6 +64,34 @@ const loaded = (entities: CompareEntity[]): CompareColumn[] =>
 
 const anyPending = (entities: CompareEntity[]): boolean => entities.some((e) => e.pending);
 
+/** The measure lenses, in reading order. The prose lenses below run full width. */
+export const MEASURE_LENSES = ["price", "rating", "hiring", "stack"] as const;
+export type MeasureLensId = (typeof MEASURE_LENSES)[number];
+
+/**
+ * Whether a lens has anything to draw for this roster. Each lens gates itself on its
+ * own entry, and the view reads the same map to lay out ONLY the lenses that will
+ * render: a self-hiding lens used to leave its column slot empty, so a set with no
+ * reviews and no detected stack pushed the whole page into the left half.
+ */
+export const lensHasContent: Record<
+  MeasureLensId,
+  (entities: CompareEntity[]) => boolean
+> = {
+  price: (e) => loaded(e).some((c) => c.pricing != null) || anyPending(e),
+  rating: (e) => ratingScale(loaded(e)).hasData || anyPending(e),
+  hiring: (e) => loaded(e).some((c) => c.hiring != null) || anyPending(e),
+  stack: (e) => {
+    const cols = loaded(e);
+    const diff = techDiff(cols);
+    return (
+      cols.some((c) => (diff.byId.get(c.id) ?? []).length > 0) ||
+      diff.shared.length > 0 ||
+      anyPending(e)
+    );
+  },
+};
+
 /** A number without its currency symbol, for the far end of a band ("$29–149"). */
 function plain(value: number): string {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value);
@@ -88,8 +116,7 @@ export function PriceLens({ entities, expanded, onToggle }: LensProps) {
   const [full, setFull] = useState(false);
   const to = displayCurrency(cols, rates);
   const scale = priceScale(cols, { rates, to, full });
-  const hasAny = cols.some((c) => c.pricing != null);
-  if (!hasAny && !anyPending(entities)) return null;
+  if (!lensHasContent.price(entities)) return null;
 
   const canExpandScale = scale.fullMax > scale.robustMax;
   const derivation = [
@@ -316,7 +343,7 @@ function ScoreDot({ entity, score }: { entity: CompareEntity; score: number }) {
 export function RatingLens({ entities, expanded, onToggle }: LensProps) {
   const cols = loaded(entities);
   const scale = ratingScale(cols);
-  if (!scale.hasData && !anyPending(entities)) return null;
+  if (!lensHasContent.rating(entities)) return null;
 
   return (
     <Lens
@@ -417,8 +444,7 @@ export function RatingLens({ entities, expanded, onToggle }: LensProps) {
 export function HiringLens({ entities, expanded, onToggle }: LensProps) {
   const cols = loaded(entities);
   const scale = hiringScale(cols);
-  const hasAny = cols.some((c) => c.hiring != null);
-  if (!hasAny && !anyPending(entities)) return null;
+  if (!lensHasContent.hiring(entities)) return null;
 
   return (
     <Lens
@@ -518,8 +544,7 @@ export function HiringLens({ entities, expanded, onToggle }: LensProps) {
 export function StackLens({ entities }: Omit<LensProps, "expanded" | "onToggle">) {
   const cols = loaded(entities);
   const diff = techDiff(cols);
-  const hasAny = cols.some((c) => (diff.byId.get(c.id) ?? []).length > 0) || diff.shared.length > 0;
-  if (!hasAny && !anyPending(entities)) return null;
+  if (!lensHasContent.stack(entities)) return null;
 
   return (
     <Lens

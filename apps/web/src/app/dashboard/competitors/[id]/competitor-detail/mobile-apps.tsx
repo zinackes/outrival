@@ -1,5 +1,3 @@
-import { AppleLogoIcon, AndroidLogoIcon } from "@phosphor-icons/react/ssr";
-
 /**
  * Mobile-app presence. Detected without AI from captures we already take (store
  * badges on the homepage, the .well-known app-association files) and stored on the
@@ -22,23 +20,14 @@ export function readMobileApps(
   return ios || android ? { ios, android } : null;
 }
 
-function StoreLink({
-  href,
-  icon: Icon,
-  label,
-}: {
-  href: string;
-  icon: typeof AppleLogoIcon;
-  label: string;
-}) {
+function StoreLink({ href, label }: { href: string; label: string }) {
   return (
     <a
       href={href}
       target="_blank"
       rel="noreferrer noopener"
-      className="inline-flex items-center gap-1.5 rounded-sm border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground"
+      className="inline-flex items-center rounded-sm border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground"
     >
-      <Icon size={13} />
       {label}
     </a>
   );
@@ -57,12 +46,8 @@ export function MobileAppsFact({ apps, name }: { apps: MobileApps; name: string 
         {name} ships a mobile app on {platforms}.
       </p>
       <div className="flex flex-wrap gap-1.5">
-        {apps.ios && (
-          <StoreLink href={apps.ios.url} icon={AppleLogoIcon} label="App Store" />
-        )}
-        {apps.android && (
-          <StoreLink href={apps.android.url} icon={AndroidLogoIcon} label="Google Play" />
-        )}
+        {apps.ios && <StoreLink href={apps.ios.url} label="App Store" />}
+        {apps.android && <StoreLink href={apps.android.url} label="Google Play" />}
       </div>
     </div>
   );

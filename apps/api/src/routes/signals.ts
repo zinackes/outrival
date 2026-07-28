@@ -134,20 +134,28 @@ function feedConds(orgId: string, f: FeedQuery) {
 }
 
 // Feed ordering. Unread signals form a hard top tier (isRead ASC = false first) so
-// anything still needing attention outranks everything already seen; within each tier
-// we rank by the threat score (severity × overlap × relevance, override wins), createdAt
-// as the tie-break. "recent" stays purely chronological — the escape hatch for "newest
-// regardless", so read-state must not reorder it.
+// anything still needing attention outranks everything already seen. "recent" stays
+// purely chronological — the escape hatch for "newest regardless", so read-state must
+// not reorder it.
+//
+// The threat score (severity × overlap × relevance, override wins) ranks the UNREAD
+// tier only. Once a signal has been seen its threat rank carries no new information,
+// so the read tier reads as a chronological log: otherwise an old high-threat row that
+// was already triaged pins the top of the archive forever and this morning's medium is
+// buried under it, which reads as "nothing happened". Anything still needing work is
+// held by actionStatus (the "actions" view), not by feed order.
 function feedOrderBy(sort: "threat" | "recent") {
   if (sort === "recent") return [desc(signals.createdAt)];
   return [
     asc(signals.isRead),
     sql`(
-      CASE COALESCE(${signals.severityOverride}, ${signals.severity})
-        WHEN 'critical' THEN 1 WHEN 'high' THEN 0.75 WHEN 'medium' THEN 0.5 ELSE 0.25
+      CASE WHEN ${signals.isRead} THEN 0 ELSE
+        CASE COALESCE(${signals.severityOverride}, ${signals.severity})
+          WHEN 'critical' THEN 1 WHEN 'high' THEN 0.75 WHEN 'medium' THEN 0.5 ELSE 0.25
+        END
+        * COALESCE(${competitors.overlapScore} / 100.0, 0.5)
+        * COALESCE(${signals.relevanceScore}, 0.5)
       END
-      * COALESCE(${competitors.overlapScore} / 100.0, 0.5)
-      * COALESCE(${signals.relevanceScore}, 0.5)
     ) DESC`,
     desc(signals.createdAt),
   ];

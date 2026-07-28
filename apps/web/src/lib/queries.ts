@@ -120,6 +120,16 @@ export function digestDetailQuery(id: string) {
 }
 
 // Battle cards list (org-wide, across products).
+// The evidence a battle card is (or would be) written from. Its own query because it
+// must answer before a card exists — the empty state and the build view both read it.
+export function battleCardEvidenceQuery(competitorId: string, productId?: string) {
+  return queryOptions({
+    queryKey: ["battleCardEvidence", competitorId, productId ?? null] as const,
+    queryFn: () =>
+      api.getBattleCardEvidence(competitorId, productId).then((r) => r.evidence),
+  });
+}
+
 export function battleCardsQuery() {
   return queryOptions({
     queryKey: ["battleCards"] as const,

@@ -1251,13 +1251,30 @@ export interface BattleCard {
 // and how fresh it is. Best-effort read-time data; may be absent on older responses.
 export type BattleCardEvidenceKind = "pricing" | "reviews" | "techStack" | "homepage";
 
+export interface BattleCardEvidenceSource {
+  kind: BattleCardEvidenceKind;
+  present: boolean;
+  lastVerifiedAt: string | null;
+  // What that source actually holds ("3 plans, $0 to $49"), so the empty state and
+  // the build view can show the material rather than just a green dot. Absent on
+  // responses issued before the field existed.
+  detail?: string | null;
+}
+
 export interface BattleCardEvidence {
   confidence: "low" | "medium" | "high" | null;
-  sources: Array<{
-    kind: BattleCardEvidenceKind;
-    present: boolean;
-    lastVerifiedAt: string | null;
-  }>;
+  sources: BattleCardEvidenceSource[];
+}
+
+// Whether regenerating is worth it (patch-22), plus what moved since the card was
+// written — the count and per-category breakdown the header names before asking the
+// user to spend one of their daily cards.
+export interface BattleCardStaleness {
+  staleness: "never_generated" | "fresh" | "outdated";
+  needsRegeneration: boolean;
+  lastGeneratedAt?: string;
+  reason?: { userChanged: boolean; competitorChanged: boolean; flagged: boolean };
+  since?: { total: number; byCategory: Array<{ category: string; count: number }> } | null;
 }
 
 // patch-29 — org-wide battle card list item for /dashboard/battle-cards and the
@@ -3103,13 +3120,14 @@ export const api = {
     ),
   // Whether regenerating is worth it (patch-22): "fresh" → greyed-out button.
   getBattleCardStaleness: (competitorId: string, productId?: string) =>
-    request<{
-      staleness: "never_generated" | "fresh" | "outdated";
-      needsRegeneration: boolean;
-      lastGeneratedAt?: string;
-      reason?: { userChanged: boolean; competitorChanged: boolean; flagged: boolean };
-    }>(
+    request<BattleCardStaleness>(
       `/api/competitors/${competitorId}/battle-card/staleness${productId ? `?productId=${productId}` : ""}`,
+    ),
+  // The evidence readiness on its own, which GET /battle-card cannot serve because it
+  // 404s until a card exists. Powers the empty state and the build view.
+  getBattleCardEvidence: (competitorId: string, productId?: string) =>
+    request<{ evidence: BattleCardEvidence }>(
+      `/api/competitors/${competitorId}/battle-card/evidence${productId ? `?productId=${productId}` : ""}`,
     ),
   generateBattleCard: (competitorId: string, productId?: string) =>
     request<{ status: string; runId: string }>(

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { Icon as PhosphorIcon } from "@/components/icons";
 import {
   ArrowLeftIcon,
   BellIcon,
@@ -18,8 +19,7 @@ import {
   TrashIcon,
   UserIcon,
   UsersIcon,
-} from "@phosphor-icons/react/ssr";
-import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
+} from "@/components/icons";
 import { FEATURE_FLAGS } from "@outrival/shared";
 import {
   Sidebar,
@@ -146,7 +146,7 @@ export function SettingsSidebar({
         <SidebarGroup className="py-1 group-data-[collapsible=icon]:hidden">
           <SidebarGroupContent>
             <div className="relative">
-              <MagnifyingGlassIcon className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <MagnifyingGlassIcon className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <SidebarInput
                 placeholder="MagnifyingGlassIcon settings…"
                 value={query}

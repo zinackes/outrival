@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
-import { UsersIcon, CaretRightIcon, CaretUpIcon, DotsThreeIcon } from "@phosphor-icons/react/ssr";
+import { UsersIcon, CaretRightIcon, CaretUpIcon, DotsThreeIcon } from "@/components/icons";
 
 import { type Competitor } from "@/lib/api";
 import { competitorsQuery } from "@/lib/queries";

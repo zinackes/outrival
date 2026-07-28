@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CaretDownIcon, ArrowElbowDownRightIcon } from "@phosphor-icons/react/ssr";
+import { CaretDownIcon, ArrowElbowDownRightIcon } from "@/components/icons";
 import { api, type SignalDetail } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VisualDiff } from "@/components/outrival/visual-diff";
@@ -99,7 +99,7 @@ export function SignalEvidence({
             {detail.humanChangeAfter && (
               <p className="flex gap-1.5 text-foreground">
                 <ArrowElbowDownRightIcon
-                  className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
+                  className="mt-0.5 size-4 shrink-0 text-muted-foreground"
                   aria-hidden
                 />
                 <span className="line-clamp-2">{detail.humanChangeAfter}</span>

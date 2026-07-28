@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRightIcon, CheckIcon, MinusIcon } from "@phosphor-icons/react/ssr";
+import { ArrowRightIcon, CheckIcon, MinusIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Breadcrumbs, CompareShell } from "./compare-shell";
 import { CompareTable } from "./compare-table";
@@ -210,35 +210,35 @@ export function VsPage({ competitorKey }: { competitorKey: CompetitorKey }) {
               className="inline-flex items-center gap-1.5 text-text-muted transition-colors hover:text-foreground"
             >
               Outrival vs {otherName}
-              <ArrowRightIcon size={13} aria-hidden />
+              <ArrowRightIcon size={16} aria-hidden />
             </Link>
             <Link
               href={`/alternatives/${c.key}`}
               className="inline-flex items-center gap-1.5 text-text-muted transition-colors hover:text-foreground"
             >
               Best {c.name} alternatives
-              <ArrowRightIcon size={13} aria-hidden />
+              <ArrowRightIcon size={16} aria-hidden />
             </Link>
             <Link
               href={`/alternatives/${other}`}
               className="inline-flex items-center gap-1.5 text-text-muted transition-colors hover:text-foreground"
             >
               Best {otherName} alternatives
-              <ArrowRightIcon size={13} aria-hidden />
+              <ArrowRightIcon size={16} aria-hidden />
             </Link>
             <Link
               href="/vs/diy"
               className="inline-flex items-center gap-1.5 text-text-muted transition-colors hover:text-foreground"
             >
               Outrival vs doing it yourself
-              <ArrowRightIcon size={13} aria-hidden />
+              <ArrowRightIcon size={16} aria-hidden />
             </Link>
             <Link
               href="/alternatives/best-competitive-intelligence-tools"
               className="inline-flex items-center gap-1.5 text-text-muted transition-colors hover:text-foreground"
             >
               Best competitive-intelligence tools
-              <ArrowRightIcon size={13} aria-hidden />
+              <ArrowRightIcon size={16} aria-hidden />
             </Link>
           </div>
 

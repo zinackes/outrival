@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ThumbsDownIcon } from "@phosphor-icons/react/ssr";
+import { ThumbsDownIcon } from "@/components/icons";
 import { adminFetch } from "../_lib/server";
 import { PageHeader, Section, Stat, Empty } from "../_components/shell";
 

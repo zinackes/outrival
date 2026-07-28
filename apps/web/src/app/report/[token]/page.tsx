@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import type { Icon as PhosphorIcon } from "@/components/icons";
 import {
   SparkleIcon,
   ArrowUpRightIcon,
@@ -7,8 +8,7 @@ import {
   GiftIcon,
   BriefcaseIcon,
   StarIcon,
-} from "@phosphor-icons/react/ssr";
-import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
+} from "@/components/icons";
 import { RecapDeck } from "@/components/dashboard/recap-wrapped";
 import type { MonthlyRecap } from "@/lib/api";
 
@@ -108,7 +108,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 function Wordmark({ className }: { className?: string }) {
   return (
     <span className={`inline-flex items-center gap-1.5 ${className ?? ""}`}>
-      <SparkleIcon className="size-3.5 text-link" aria-hidden />
+      <SparkleIcon className="size-4 text-link" aria-hidden />
       <span className="text-dense font-semibold tracking-tight">Outrival</span>
     </span>
   );
@@ -153,7 +153,7 @@ function PoweredBy() {
       >
         <SparkleIcon className="size-4 text-link" />
         Powered by <span className="font-semibold text-foreground">Outrival</span>
-        <ArrowUpRightIcon className="size-3.5" />
+        <ArrowUpRightIcon className="size-4" />
       </Link>
       <p className="mt-2 text-meta text-muted-foreground">
         Automated competitive intelligence: monitor competitors, get strategic insights.
@@ -287,7 +287,7 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
                       className="flex items-start gap-3 rounded-lg border border-border bg-card px-4 py-3.5"
                     >
                       <span className="flex size-7 shrink-0 items-center justify-center rounded-full border border-border bg-accent/40 text-primary">
-                        <Icon size={14} aria-hidden />
+                        <Icon size={16} aria-hidden />
                       </span>
                       <span className="text-sm leading-snug">{ins.text}</span>
                     </li>

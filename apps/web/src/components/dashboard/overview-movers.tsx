@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRightIcon, ArrowUpIcon } from "@phosphor-icons/react/ssr";
+import { ArrowRightIcon, ArrowUpIcon } from "@/components/icons";
 import { SIGNAL_CATEGORIES } from "@outrival/shared";
 import type { Competitor } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -69,7 +69,7 @@ export function OverviewMovers({ competitors }: { competitors: Competitor[] }) {
         action={
           <Button asChild variant="outline" size="sm">
             <Link href="/dashboard/competitors">
-              All competitors <ArrowRightIcon size={11} />
+              All competitors <ArrowRightIcon size={16} />
             </Link>
           </Button>
         }
@@ -173,7 +173,7 @@ function MoverTile({ tile }: { tile: Tile }) {
           </span>
         ) : delta > 0 ? (
           <span className="inline-flex items-center gap-0.5 text-meta font-medium">
-            <ArrowUpIcon size={11} weight="bold" aria-hidden />
+            <ArrowUpIcon size={16} aria-hidden />
             <span className="font-mono tabular-nums">{delta}</span>
           </span>
         ) : (

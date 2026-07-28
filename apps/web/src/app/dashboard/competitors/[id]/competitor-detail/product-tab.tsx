@@ -6,10 +6,10 @@ import { format, formatDistanceToNow } from "date-fns";
 import {
   ArrowSquareOutIcon,
   FileTextIcon,
-  CircleNotchIcon,
+  SpinnerIcon,
   ClockIcon,
   PlayIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import { api, type ChangeRow, type CompetitorSignal, type PositioningVersion } from "@/lib/api";
 import type { SourceType } from "@outrival/shared";
 import { Button } from "@/components/ui/button";
@@ -132,15 +132,15 @@ export function ProductTab({
           >
             {activity === "scraping" ? (
               <>
-                <CircleNotchIcon size={12} className="animate-spin" /> Scraping…
+                <SpinnerIcon size={16} className="animate-spin" /> Scraping…
               </>
             ) : activity === "queued" ? (
               <>
-                <ClockIcon size={12} /> Queued
+                <ClockIcon size={16} /> Queued
               </>
             ) : (
               <>
-                <PlayIcon size={12} /> Scrape {preferred.sourceType}
+                <PlayIcon size={16} /> Scrape {preferred.sourceType}
               </>
             )}
           </Button>
@@ -241,7 +241,7 @@ export function ProductTab({
                     rel="noreferrer noopener"
                     className="inline-flex items-center gap-1 text-link hover:underline"
                   >
-                    Read their page <ArrowSquareOutIcon size={11} />
+                    Read their page <ArrowSquareOutIcon size={16} />
                   </a>
                 </div>
               </div>
@@ -370,7 +370,7 @@ function LogList({
                   rel="noreferrer noopener"
                   className="inline-flex items-center gap-1 text-xs text-link hover:underline"
                 >
-                  {linkLabel} <ArrowSquareOutIcon size={11} />
+                  {linkLabel} <ArrowSquareOutIcon size={16} />
                 </a>
               )}
             </span>

@@ -7,13 +7,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import {
   CaretRightIcon,
-  CircleNotchIcon,
+  SpinnerIcon,
   EnvelopeIcon,
   ArrowsClockwiseIcon,
   GearIcon,
   ArrowRightIcon,
   DownloadSimpleIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import { differenceInCalendarDays, endOfDay, startOfWeek } from "date-fns";
 import { toast } from "sonner";
 import { EmptyState } from "./empty-state";
@@ -154,7 +154,7 @@ export function DigestsView() {
         sub="Your weekly brief lands every Monday, 09:00 UTC."
         actions={
           <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)}>
-            <GearIcon size={12} /> Delivery
+            <GearIcon size={16} /> Delivery
           </Button>
         }
       />
@@ -195,9 +195,9 @@ export function DigestsView() {
               onClick={() => handleGenerate(genRange)}
             >
               {generating ? (
-                <CircleNotchIcon size={13} className="animate-spin" />
+                <SpinnerIcon size={16} className="animate-spin" />
               ) : (
-                <ArrowsClockwiseIcon size={13} />
+                <ArrowsClockwiseIcon size={16} />
               )}
               Write one now
             </Button>
@@ -321,12 +321,12 @@ function LeadBrief({
           <Button size="sm" asChild>
             <Link href={href}>
               Read the brief
-              <ArrowRightIcon size={13} />
+              <ArrowRightIcon size={16} />
             </Link>
           </Button>
           <Button variant="ghost" size="sm" asChild>
             <a href={`/brief/${digest.id}?print=1`} target="_blank" rel="noopener noreferrer">
-              <DownloadSimpleIcon size={13} /> Save as PDF
+              <DownloadSimpleIcon size={16} /> Save as PDF
             </a>
           </Button>
         </div>
@@ -390,7 +390,7 @@ function RunRow({ digest, colorOf }: { digest: Digest; colorOf: ColorOf }) {
         </span>
       </span>
       <CaretRightIcon
-        size={14}
+        size={16}
         aria-hidden
         className="hidden text-muted-foreground opacity-40 transition-opacity group-hover:opacity-100 sm:block"
       />

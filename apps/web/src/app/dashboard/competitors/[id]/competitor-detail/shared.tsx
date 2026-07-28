@@ -3,14 +3,14 @@
 import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import {
-  CircleNotchIcon,
+  SpinnerIcon,
   ClockIcon,
   PlusIcon,
   PlayIcon,
   SparkleIcon,
   CaretDownIcon,
   LockIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import {
   ANALYSIS_SCRAPE_TIMEOUT_MS,
   ANALYSIS_QUEUE_TIMEOUT_MS,
@@ -128,11 +128,11 @@ export function MonitorEmptyState({
           >
             {enabling ? (
               <>
-                <CircleNotchIcon size={12} className="animate-spin" /> Enabling…
+                <SpinnerIcon size={16} className="animate-spin" /> Enabling…
               </>
             ) : (
               <>
-                <PlusIcon size={12} /> Enable {label} monitoring
+                <PlusIcon size={16} /> Enable {label} monitoring
               </>
             )}
           </Button>
@@ -160,15 +160,15 @@ export function MonitorEmptyState({
       >
         {activity === "scraping" ? (
           <>
-            <CircleNotchIcon size={12} className="animate-spin" /> Scraping…
+            <SpinnerIcon size={16} className="animate-spin" /> Scraping…
           </>
         ) : activity === "queued" ? (
           <>
-            <ClockIcon size={12} /> Queued
+            <ClockIcon size={16} /> Queued
           </>
         ) : (
           <>
-            <PlayIcon size={12} /> Scrape now
+            <PlayIcon size={16} /> Scrape now
           </>
         )}
       </Button>
@@ -227,7 +227,7 @@ export function FrequencyButton({
       disabled={disabled}
       className="h-7 gap-1.5 text-xs capitalize"
     >
-      {locked && <LockIcon size={10} className="opacity-70" />}
+      {locked && <LockIcon size={16} className="opacity-70" />}
       {freq}
       {locked && (
         <span className="inline-flex items-center rounded bg-muted-foreground/15 px-1 py-0.5 text-meta font-medium uppercase leading-none tracking-wide text-muted-foreground">
@@ -254,12 +254,12 @@ export function SourceSummary({
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-center gap-2 text-left"
       >
-        <SparkleIcon size={14} className="shrink-0 text-muted-foreground" />
+        <SparkleIcon size={16} className="shrink-0 text-muted-foreground" />
         <span className="text-content font-semibold tracking-tight leading-tight">
           What we found
         </span>
         <CaretDownIcon
-          size={14}
+          size={16}
           className={cn(
             "shrink-0 text-muted-foreground transition-transform",
             open && "rotate-180",

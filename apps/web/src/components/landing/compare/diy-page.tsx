@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRightIcon, CheckIcon, MinusIcon } from "@phosphor-icons/react/ssr";
+import { ArrowRightIcon, CheckIcon, MinusIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Breadcrumbs, CompareShell } from "./compare-shell";
 import { CompareFaq } from "./compare-faq";
@@ -120,7 +120,7 @@ export function DiyPage() {
                 <div className="mt-1 text-dense text-text-subtle">{a.role}</div>
                 <p className="mt-4 flex gap-2.5 text-sm leading-relaxed text-text-muted">
                   <CheckIcon
-                    size={15}
+                    size={16}
                     className="mt-0.5 shrink-0 text-positive"
                     aria-hidden
                   />
@@ -128,7 +128,7 @@ export function DiyPage() {
                 </p>
                 <p className="mt-3 flex gap-2.5 text-sm leading-relaxed text-text-muted">
                   <MinusIcon
-                    size={15}
+                    size={16}
                     className="mt-0.5 shrink-0 text-text-subtle"
                     aria-hidden
                   />
@@ -229,21 +229,21 @@ export function DiyPage() {
               className="inline-flex items-center gap-1.5 text-text-muted transition-colors hover:text-foreground"
             >
               Best competitive-intelligence tools
-              <ArrowRightIcon size={13} aria-hidden />
+              <ArrowRightIcon size={16} aria-hidden />
             </Link>
             <Link
               href="/vs/crayon"
               className="inline-flex items-center gap-1.5 text-text-muted transition-colors hover:text-foreground"
             >
               Outrival vs Crayon
-              <ArrowRightIcon size={13} aria-hidden />
+              <ArrowRightIcon size={16} aria-hidden />
             </Link>
             <Link
               href="/vs/klue"
               className="inline-flex items-center gap-1.5 text-text-muted transition-colors hover:text-foreground"
             >
               Outrival vs Klue
-              <ArrowRightIcon size={13} aria-hidden />
+              <ArrowRightIcon size={16} aria-hidden />
             </Link>
           </div>
 

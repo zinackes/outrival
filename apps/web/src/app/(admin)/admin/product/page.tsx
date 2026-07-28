@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowSquareOutIcon } from "@phosphor-icons/react/ssr";
+import { ArrowSquareOutIcon } from "@/components/icons";
 import { adminFetch } from "../_lib/server";
 import { PageHeader, Section, Stat, Empty, pctFmt } from "../_components/shell";
 import type { AdminProductKpis } from "@/lib/api";
@@ -36,7 +36,7 @@ export default async function ProductPage() {
               className="flex items-center gap-1.5 text-xs text-muted-foreground underline-offset-2 hover:underline"
             >
               Open PostHog
-              <ArrowSquareOutIcon className="h-3.5 w-3.5" />
+              <ArrowSquareOutIcon className="h-4 w-4" />
             </Link>
           ) : undefined
         }

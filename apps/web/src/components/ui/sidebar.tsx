@@ -3,7 +3,7 @@
 import * as React from "react"
 import { usePathname } from "next/navigation"
 import { cva, type VariantProps } from "class-variance-authority"
-import { SidebarSimpleIcon } from "@phosphor-icons/react/ssr";
+import { SidebarSimpleIcon } from "@/components/icons";
 import { Slot } from "radix-ui"
 
 import { useIsMobile } from "@/hooks/use-mobile"

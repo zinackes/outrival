@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CheckIcon, CaretDownIcon, CopyIcon, DownloadSimpleIcon } from "@phosphor-icons/react/ssr";
+import { CheckIcon, CaretDownIcon, CopyIcon, DownloadSimpleIcon } from "@/components/icons";
 import { api, type Competitor, type CompareColumn, type ProductSummary } from "@/lib/api";
 import { productsListQuery, competitorsQuery, compareRankingQuery } from "@/lib/queries";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
@@ -461,11 +461,11 @@ export function CompareView() {
               disabled={!canExport}
             >
               {exportDone ? (
-                <CheckIcon size={12} />
+                <CheckIcon size={16} />
               ) : exportIsCopy ? (
-                <CopyIcon size={12} />
+                <CopyIcon size={16} />
               ) : (
-                <DownloadSimpleIcon size={12} />
+                <DownloadSimpleIcon size={16} />
               )}
               {exportDone
                 ? exportIsCopy
@@ -482,7 +482,7 @@ export function CompareView() {
                   disabled={!canExport}
                   aria-label="Export options"
                 >
-                  <CaretDownIcon size={14} />
+                  <CaretDownIcon size={16} />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">

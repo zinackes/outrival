@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
+import type { Icon as PhosphorIcon } from "@/components/icons";
 import {
   ArrowRightIcon,
   XIcon,
@@ -13,8 +14,7 @@ import {
   TargetIcon,
   PlantIcon,
   GlobeIcon,
-} from "@phosphor-icons/react/ssr";
-import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
+} from "@/components/icons";
 import { api, type SectoralSignal, type SectoralCategory } from "@/lib/api";
 import { sectoralTeaserQuery } from "@/lib/queries";
 import { Button } from "@/components/ui/button";
@@ -63,7 +63,7 @@ export function EvidenceModal({
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-content">
-                {Icon && <Icon size={15} className="text-muted-foreground" aria-hidden />}
+                {Icon && <Icon size={16} className="text-muted-foreground" aria-hidden />}
                 {signal.title}
               </DialogTitle>
             </DialogHeader>
@@ -134,7 +134,7 @@ export function SectoralRow({
     <div className="px-1.5 py-3.5">
       <div className="flex items-start gap-3">
         <Icon
-          size={15}
+          size={16}
           className="text-muted-foreground mt-0.5 shrink-0"
           aria-hidden
         />
@@ -158,7 +158,7 @@ export function SectoralRow({
           </div>
           <div className="mt-2 flex items-center gap-2.5">
             <Button variant="outline" size="sm" onClick={onOpen}>
-              View detail <ArrowRightIcon size={11} />
+              View detail <ArrowRightIcon size={16} />
             </Button>
             <span className="text-meta text-muted-foreground">
               Confidence {confidencePct(signal.confidence)}%
@@ -175,7 +175,7 @@ export function SectoralRow({
             aria-label="Dismiss"
             className="text-muted-foreground hover:text-foreground transition-colors mt-0.5"
           >
-            <XIcon size={14} />
+            <XIcon size={16} />
           </button>
         )}
       </div>
@@ -222,7 +222,7 @@ export function SectoralSignalsSection() {
     <section>
       <SectionHead
         title="Sector trends"
-        icon={<GlobeIcon size={14} />}
+        icon={<GlobeIcon size={16} />}
         sub="patterns across your competitors · not single-competitor signals"
       />
       <div>
@@ -238,7 +238,7 @@ export function SectoralSignalsSection() {
       <div className="pt-2">
         <Button asChild variant="ghost" size="sm">
           <Link href="/dashboard/sector">
-            View all sector trends <ArrowRightIcon size={11} />
+            View all sector trends <ArrowRightIcon size={16} />
           </Link>
         </Button>
       </div>

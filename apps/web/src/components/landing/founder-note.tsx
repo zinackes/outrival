@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRightIcon } from "@phosphor-icons/react/ssr";
+import { ArrowRightIcon } from "@/components/icons";
 
 // A quiet, first-person note from the founder, placed just before the final CTA.
 // No photo, no illustrated avatar — a clean serif signature (the landing's brand
@@ -31,7 +31,7 @@ export function FounderNote() {
               href="/about"
               className="inline-flex items-center gap-1.5 text-sm font-medium text-primary underline-offset-4 hover:underline"
             >
-              Read more <ArrowRightIcon size={14} />
+              Read more <ArrowRightIcon size={16} />
             </Link>
           </figcaption>
         </figure>

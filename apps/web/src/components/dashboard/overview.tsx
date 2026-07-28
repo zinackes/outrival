@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
-import { DownloadSimpleIcon, ArrowRightIcon, ScanIcon, FlaskIcon } from "@phosphor-icons/react/ssr";
+import { DownloadSimpleIcon, ArrowRightIcon, ScanIcon, FlaskIcon } from "@/components/icons";
 import { formatDistanceToNow } from "date-fns";
 import { api, type Signal } from "@/lib/api";
 import {
@@ -315,14 +315,14 @@ export function OverviewView() {
             <>
               <Button asChild size="sm">
                 <Link href="/dashboard/competitors">
-                  Add a competitor <ArrowRightIcon size={11} />
+                  Add a competitor <ArrowRightIcon size={16} />
                 </Link>
               </Button>
               <Button asChild size="sm" variant="outline">
                 <Link href="/dashboard/discovery">Find competitors</Link>
               </Button>
               <Button size="sm" variant="ghost" onClick={() => setSample(true)}>
-                <FlaskIcon size={13} /> Explore with sample data
+                <FlaskIcon size={16} /> Explore with sample data
               </Button>
             </>
           }
@@ -412,7 +412,7 @@ export function OverviewView() {
               onClick={exportCsv}
               disabled={derived.inWindow.length === 0}
             >
-              <DownloadSimpleIcon size={13} /> Export
+              <DownloadSimpleIcon size={16} /> Export
             </Button>
           </>
         }

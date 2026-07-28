@@ -11,7 +11,7 @@ import {
   ArrowsClockwiseIcon,
   SparkleIcon,
   TagIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { api, type Competitor, type PricingStatus } from "@/lib/api";
 import { toastApiError } from "@/lib/error-helpers";
@@ -122,7 +122,7 @@ export function CompetitorPricingCard({
     <div className="flex flex-col gap-2">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <TagIcon className="size-3.5 shrink-0 text-muted-foreground" />
+          <TagIcon className="size-4 shrink-0 text-muted-foreground" />
           <span className="text-content font-semibold tracking-tight leading-tight">{meta.label}</span>
           {competitor.pricingObservedRegion && (
             <span className="shrink-0 text-xs text-muted-foreground">
@@ -148,7 +148,7 @@ export function CompetitorPricingCard({
               onClick={() => setSummaryOpen((v) => !v)}
               aria-expanded={summaryOpen}
             >
-              <SparkleIcon className="size-3.5" /> Summary
+              <SparkleIcon className="size-4" /> Summary
               <CaretDownIcon
                 className={cn("size-3.5 transition-transform", summaryOpen && "rotate-180")}
               />
@@ -156,11 +156,11 @@ export function CompetitorPricingCard({
           )}
           {competitor.pricingManualOverride ? (
             <Button variant="ghost" size="sm" onClick={redetect} disabled={busy}>
-              <ArrowsClockwiseIcon className="size-3.5" /> Re-detect
+              <ArrowsClockwiseIcon className="size-4" /> Re-detect
             </Button>
           ) : (
             <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
-              <PencilIcon className="size-3.5" /> {status === "unknown" ? "Fill in" : "Edit"}
+              <PencilIcon className="size-4" /> {status === "unknown" ? "Fill in" : "Edit"}
             </Button>
           )}
         </div>
@@ -180,12 +180,12 @@ export function CompetitorPricingCard({
       {blurb && <p className="text-dense text-muted-foreground">{blurb}</p>}
       {capture === "scraping" && (
         <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-          <ArrowsClockwiseIcon className="size-3 animate-spin" /> Capturing pricing…
+          <ArrowsClockwiseIcon className="size-4 animate-spin" /> Capturing pricing…
         </p>
       )}
       {capture === "queued" && (
         <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-          <ClockIcon className="size-3" /> Pricing scan queued, waiting for a scanner
+          <ClockIcon className="size-4" /> Pricing scan queued, waiting for a scanner
         </p>
       )}
       {status === "gated_demo" && competitor.pricingDemoUrl && (
@@ -195,7 +195,7 @@ export function CompetitorPricingCard({
           rel="noreferrer"
           className="inline-flex items-center gap-1 text-dense text-primary hover:underline"
         >
-          <ArrowSquareOutIcon className="size-3" /> Demo / contact page
+          <ArrowSquareOutIcon className="size-4" /> Demo / contact page
         </a>
       )}
 

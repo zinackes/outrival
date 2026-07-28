@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { toast } from "sonner";
-import { WarningCircleIcon } from "@phosphor-icons/react/ssr";
+import { WarningCircleIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { api, type StructuralChangeRow } from "@/lib/api";
 import { structuralChangesQuery } from "@/lib/queries";

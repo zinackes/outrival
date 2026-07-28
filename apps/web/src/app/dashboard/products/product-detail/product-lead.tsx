@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRightIcon, SparkleIcon } from "@phosphor-icons/react/ssr";
+import { ArrowRightIcon, SparkleIcon } from "@/components/icons";
 import { formatDistanceToNow } from "date-fns";
 import type { MyProduct, ProductSummary } from "@/lib/api";
 import { sourceLabel } from "@/lib/source-labels";
@@ -71,7 +71,7 @@ export function ProductLead({
           <span aria-hidden>·</span>
           {detected ? (
             <span className="inline-flex items-center gap-1">
-              <SparkleIcon size={11} />
+              <SparkleIcon size={16} />
               read from your site
               {product.lastScanAt
                 ? ` ${formatDistanceToNow(new Date(product.lastScanAt), { addSuffix: true })}`
@@ -184,7 +184,7 @@ function LeadStat({
           {label}
           {href && (
             <ArrowRightIcon
-              size={11}
+              size={16}
               className="opacity-0 transition-opacity group-hover/stat:opacity-100"
               aria-hidden
             />

@@ -8,7 +8,7 @@ import {
   TrashIcon,
   CaretDownIcon,
   CheckIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import { toast } from "sonner";
 import { api, type SavedView, type SavedViewFilters } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -171,17 +171,17 @@ export function SavedViewsMenu({
               aria-label={activeView ? `Saved view: ${activeView.name}` : "Saved views"}
               title={activeView ? `Saved view: ${activeView.name}` : "Saved views"}
             >
-              <BookmarkSimpleIcon size={14} className={cn(activeView && "fill-current")} />
+              <BookmarkSimpleIcon size={16} className={cn(activeView && "fill-current")} />
             </Button>
           ) : (
             <Button variant={activeView ? "secondary" : "outline"} size="sm">
-              <BookmarkSimpleIcon size={13} className={cn(activeView && "fill-current")} />
+              <BookmarkSimpleIcon size={16} className={cn(activeView && "fill-current")} />
               {activeView ? (
                 <span className="max-w-[140px] truncate">{activeView.name}</span>
               ) : (
                 "Views"
               )}
-              <CaretDownIcon size={11} className="opacity-60" />
+              <CaretDownIcon size={16} className="opacity-60" />
             </Button>
           )}
         </DropdownMenuTrigger>
@@ -198,7 +198,7 @@ export function SavedViewsMenu({
               >
                 <span className="flex min-w-0 items-center gap-1.5">
                   <CheckIcon
-                    size={12}
+                    size={16}
                     className={cn(
                       "shrink-0 text-primary",
                       activeView?.id === v.id ? "opacity-100" : "opacity-0",
@@ -215,7 +215,7 @@ export function SavedViewsMenu({
                     aria-label={`Edit ${v.name}`}
                     className="text-muted-foreground hover:text-foreground transition-colors"
                   >
-                    <PencilIcon size={12} />
+                    <PencilIcon size={16} />
                   </button>
                   <button
                     onClick={(e) => {
@@ -225,7 +225,7 @@ export function SavedViewsMenu({
                     aria-label={`Delete ${v.name}`}
                     className="text-muted-foreground hover:text-destructive transition-colors"
                   >
-                    <TrashIcon size={12} />
+                    <TrashIcon size={16} />
                   </button>
                 </span>
               </DropdownMenuItem>

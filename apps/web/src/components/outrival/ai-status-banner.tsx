@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { WarningIcon, XIcon } from "@phosphor-icons/react/ssr";
+import { WarningIcon, XIcon } from "@/components/icons";
 import { aiStatusQuery } from "@/lib/queries";
 import { formatTime } from "@/lib/format-date";
 

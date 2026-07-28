@@ -1,4 +1,4 @@
-import { KeyIcon } from "@phosphor-icons/react/ssr";
+import { KeyIcon } from "@/components/icons";
 import { EmptyState } from "@/components/dashboard/empty-state";
 
 // patch-29 — placeholder. The public API is a Business-tier feature on the roadmap

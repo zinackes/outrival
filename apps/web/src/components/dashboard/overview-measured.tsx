@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRightIcon } from "@phosphor-icons/react/ssr";
+import { ArrowRightIcon } from "@/components/icons";
 import type { HiringMove, PricingMove, ReviewMove } from "@/lib/api";
 import { trendsSummaryQuery } from "@/lib/queries";
 import { Button } from "@/components/ui/button";
@@ -59,7 +59,7 @@ export function OverviewMeasured({
         action={
           <Button asChild variant="outline" size="sm">
             <Link href="/dashboard/trends">
-              Trends <ArrowRightIcon size={11} />
+              Trends <ArrowRightIcon size={16} />
             </Link>
           </Button>
         }

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { ShareNetworkIcon, CheckIcon } from "@phosphor-icons/react/ssr";
+import { ShareNetworkIcon, CheckIcon } from "@/components/icons";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 

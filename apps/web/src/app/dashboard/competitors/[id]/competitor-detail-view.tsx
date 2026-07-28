@@ -19,7 +19,7 @@ import {
   FileTextIcon,
   SparkleIcon,
   SwordIcon,
-  CircleNotchIcon,
+  SpinnerIcon,
   TrashIcon,
   ArrowsClockwiseIcon,
   DotsThreeIcon,
@@ -38,7 +38,7 @@ import {
   CardsThreeIcon,
   CrosshairIcon,
   PaletteIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import {
   Dialog,
   DialogContent,
@@ -695,7 +695,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
                   value={t.key}
                   className={cn(lock && "text-muted-foreground hover:text-muted-foreground")}
                 >
-                  {lock ? <LockIcon size={13} /> : <Icon size={13} />} {t.label}
+                  {lock ? <LockIcon size={16} /> : <Icon size={16} />} {t.label}
                   {fresh && (
                     <FreshnessDot
                       lastScrapedAt={fresh.lastScrapedAt}
@@ -844,7 +844,7 @@ export function CompetitorDetailView({ id }: { id: string }) {
                 onClick={confirmDelete}
                 disabled={deleting}
               >
-                {deleting && <CircleNotchIcon size={13} className="animate-spin" />}
+                {deleting && <SpinnerIcon size={16} className="animate-spin" />}
                 {deleting ? "Deleting…" : "Delete"}
               </Button>
             </DialogFooter>
@@ -980,7 +980,7 @@ function Header({
                 className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground"
               >
                 {hostOf(competitor.url)}
-                <ArrowSquareOutIcon size={11} />
+                <ArrowSquareOutIcon size={16} />
               </a>
             )}
             {sourceCount > 0 && (
@@ -1004,7 +1004,7 @@ function Header({
                 <span aria-hidden className="text-border-strong">·</span>
                 <StatusDot tone="warn">
                   <span className="inline-flex items-center gap-1">
-                    <PauseCircleIcon size={11} /> Paused, plan limit
+                    <PauseCircleIcon size={16} /> Paused, plan limit
                   </span>
                 </StatusDot>
               </>
@@ -1013,7 +1013,7 @@ function Header({
                 <span aria-hidden className="text-border-strong">·</span>
                 <StatusDot>
                   <span className="inline-flex items-center gap-1">
-                    <PauseIcon size={11} /> Paused
+                    <PauseIcon size={16} /> Paused
                   </span>
                 </StatusDot>
               </>
@@ -1023,7 +1023,7 @@ function Header({
                 <span aria-hidden className="text-border-strong">·</span>
                 <StatusDot>
                   <span className="inline-flex items-center gap-1">
-                    <BellSlashIcon size={11} /> Muted
+                    <BellSlashIcon size={16} /> Muted
                   </span>
                 </StatusDot>
               </>
@@ -1037,7 +1037,7 @@ function Header({
             always did — at generate time, inside the card view. */}
         <Button asChild size="sm" variant="outline" className="h-9">
           <Link href={`/dashboard/competitors/${competitor.id}/battle-card`}>
-            <SwordIcon size={14} /> Battle card
+            <SwordIcon size={16} /> Battle card
           </Link>
         </Button>
         {total > 1 && index >= 0 && (
@@ -1052,7 +1052,7 @@ function Header({
                   onClick={onPrev}
                   aria-label="Previous competitor"
                 >
-                  <CaretLeftIcon size={14} />
+                  <CaretLeftIcon size={16} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent className="flex items-center gap-1.5">
@@ -1075,7 +1075,7 @@ function Header({
                   onClick={onNext}
                   aria-label="Next competitor"
                 >
-                  <CaretRightIcon size={14} />
+                  <CaretRightIcon size={16} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent className="flex items-center gap-1.5">
@@ -1095,7 +1095,7 @@ function Header({
               className="h-9 w-9 p-0"
               aria-label="More actions"
             >
-              <DotsThreeIcon size={14} />
+              <DotsThreeIcon size={16} />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-60">
@@ -1103,19 +1103,19 @@ function Header({
               <DropdownMenuItem
                 onClick={() => window.open(competitor.url, "_blank", "noopener,noreferrer")}
               >
-                <ArrowSquareOutIcon size={13} /> Open website
+                <ArrowSquareOutIcon size={16} /> Open website
               </DropdownMenuItem>
             )}
             <DropdownMenuItem onClick={copyLink}>
-              <LinkIcon size={13} /> Copy link
+              <LinkIcon size={16} /> Copy link
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => setEditOpen(true)}>
-              <PencilIcon size={13} /> Edit details
+              <PencilIcon size={16} /> Edit details
             </DropdownMenuItem>
             <DropdownMenuSub>
               <DropdownMenuSubTrigger className="gap-2">
-                <PaletteIcon size={13} /> Color
+                <PaletteIcon size={16} /> Color
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent className="p-2.5">
                 <CompetitorColorPicker
@@ -1128,47 +1128,47 @@ function Header({
               </DropdownMenuSubContent>
             </DropdownMenuSub>
             <DropdownMenuItem onClick={() => setAssignOpen(true)}>
-              <CardsThreeIcon size={13} /> Assign to products
+              <CardsThreeIcon size={16} /> Assign to products
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onRefreshSummary}>
-              <SparkleIcon size={13} /> Refresh AI summary
+              <SparkleIcon size={16} /> Refresh AI summary
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onRedetectPricing}>
-              <ArrowsClockwiseIcon size={13} /> Re-detect pricing
+              <ArrowsClockwiseIcon size={16} /> Re-detect pricing
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onRecomputeOverlap()}>
-              <CrosshairIcon size={13} /> Recompute overlap
+              <CrosshairIcon size={16} /> Recompute overlap
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onExport}>
-              <DownloadSimpleIcon size={13} /> Export signals (CSV)
+              <DownloadSimpleIcon size={16} /> Export signals (CSV)
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onToggleMonitoring}>
               {competitor.monitoringPaused ? (
                 <>
-                  <PlayIcon size={13} /> Resume monitoring
+                  <PlayIcon size={16} /> Resume monitoring
                 </>
               ) : (
                 <>
-                  <PauseIcon size={13} /> PauseIcon monitoring
+                  <PauseIcon size={16} /> PauseIcon monitoring
                 </>
               )}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onToggleMute}>
               {competitor.alertsMuted ? (
                 <>
-                  <BellIcon size={13} /> Unmute alerts
+                  <BellIcon size={16} /> Unmute alerts
                 </>
               ) : (
                 <>
-                  <BellSlashIcon size={13} /> Mute alerts
+                  <BellSlashIcon size={16} /> Mute alerts
                 </>
               )}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onDelete} className="text-critical focus:text-critical">
-              <TrashIcon size={13} /> Delete competitor
+              <TrashIcon size={16} /> Delete competitor
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -1308,7 +1308,7 @@ function EditDetailsDialog({
             Cancel
           </Button>
           <Button onClick={submit} disabled={saving || !name.trim()}>
-            {saving ? <CircleNotchIcon size={13} className="animate-spin" /> : null} Save
+            {saving ? <SpinnerIcon size={16} className="animate-spin" /> : null} Save
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1398,7 +1398,7 @@ function AssignProductsDialog({
         </DialogHeader>
         {loading || !products ? (
           <div className="flex justify-center py-6">
-            <CircleNotchIcon size={16} className="animate-spin text-muted-foreground" />
+            <SpinnerIcon size={16} className="animate-spin text-muted-foreground" />
           </div>
         ) : visible.length === 0 ? (
           <p className="py-4 text-sm text-muted-foreground">You don&apos;t have any products yet.</p>
@@ -1423,7 +1423,7 @@ function AssignProductsDialog({
                       Primary
                     </span>
                   )}
-                  {isPending && <CircleNotchIcon size={12} className="animate-spin text-muted-foreground" />}
+                  {isPending && <SpinnerIcon size={16} className="animate-spin text-muted-foreground" />}
                 </label>
               );
             })}
@@ -1454,7 +1454,7 @@ function MonitoringPausedBanner({ onResume }: { onResume: () => void }) {
         </p>
       </div>
       <Button size="sm" onClick={onResume} className="shrink-0">
-        <PlayIcon size={13} /> Resume monitoring
+        <PlayIcon size={16} /> Resume monitoring
       </Button>
     </div>
   );

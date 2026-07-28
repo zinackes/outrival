@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { SparkleIcon } from "@phosphor-icons/react/ssr";
+import { SparkleIcon } from "@/components/icons";
 
 import {
   Sheet,

@@ -1,6 +1,6 @@
 "use client";
 
-import { ListIcon } from "@phosphor-icons/react/ssr";
+import { ListIcon } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { AdminNav } from "./admin-nav";

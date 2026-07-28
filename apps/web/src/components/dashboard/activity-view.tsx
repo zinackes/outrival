@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
-import { PulseIcon, XIcon } from "@phosphor-icons/react/ssr";
+import { PulseIcon, XIcon } from "@/components/icons";
 import type { ActivityDay, ActivitySource, ActivityStatusFilter } from "@/lib/api";
 import {
   ACTIVITY_FINDING_STATUSES,
@@ -140,7 +140,7 @@ export function ActivityView() {
     <div className="flex flex-col gap-6">
       <PageHead
         flush
-        icon={<PulseIcon size={18} className="text-muted-foreground" aria-hidden />}
+        icon={<PulseIcon size={20} className="text-muted-foreground" aria-hidden />}
         title="PulseIcon"
         sub="Every check Outrival ran for you, and what each one found."
       />
@@ -203,7 +203,7 @@ export function ActivityView() {
                   className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-2 px-2 py-1 text-dense text-foreground transition-colors hover:bg-surface-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                 >
                   <span className="font-mono tabular-nums">{hour.label}</span>
-                  <XIcon className="size-3.5 text-muted-foreground" aria-hidden />
+                  <XIcon className="size-4 text-muted-foreground" aria-hidden />
                   <span className="sr-only">Show every hour again</span>
                 </button>
               )}

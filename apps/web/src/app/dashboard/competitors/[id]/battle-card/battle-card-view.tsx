@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeftIcon } from "@phosphor-icons/react/ssr";
+import { ArrowLeftIcon } from "@/components/icons";
 import { BattleCardTab } from "@/components/outrival/battle-card-tab";
 import { competitorDetailQuery } from "@/lib/queries";
 import { competitorNameColor } from "@/lib/competitor-color";

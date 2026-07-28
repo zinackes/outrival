@@ -8,12 +8,12 @@ import { toast } from "sonner";
 import {
   ArrowRightIcon,
   LinkIcon,
-  CircleNotchIcon,
+  SpinnerIcon,
   DotsThreeIcon,
   MagnifyingGlassIcon,
   TrashIcon,
   LinkBreakIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import { api, type ProductLinkedCompetitor } from "@/lib/api";
 import { competitorsQuery, productDetailQuery, productsListQuery } from "@/lib/queries";
 import { competitorNameColor } from "@/lib/competitor-color";
@@ -169,7 +169,7 @@ export function ProductCompetitors({
               onClick={confirmDelete}
               disabled={deleting}
             >
-              {deleting && <CircleNotchIcon size={13} className="animate-spin" />}
+              {deleting && <SpinnerIcon size={16} className="animate-spin" />}
               {deleting ? "Deleting…" : "Delete"}
             </Button>
           </DialogFooter>
@@ -190,12 +190,12 @@ export function ProductCompetitors({
           <div className="flex flex-wrap items-center justify-center gap-2">
             <Button asChild size="sm">
               <Link href="/dashboard/discovery">
-                <MagnifyingGlassIcon size={14} />
+                <MagnifyingGlassIcon size={16} />
                 Find competitors
               </Link>
             </Button>
             <Button size="sm" variant="outline" onClick={() => setLinking(true)}>
-              <LinkIcon size={14} />
+              <LinkIcon size={16} />
               Link existing
             </Button>
           </div>
@@ -227,12 +227,12 @@ export function ProductCompetitors({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Button size="sm" variant="outline" onClick={() => setLinking(true)}>
-            <LinkIcon size={14} />
+            <LinkIcon size={16} />
             Link existing
           </Button>
           <Button asChild size="sm" variant="outline">
             <Link href="/dashboard/discovery">
-              <MagnifyingGlassIcon size={14} />
+              <MagnifyingGlassIcon size={16} />
               Find more
             </Link>
           </Button>
@@ -358,26 +358,26 @@ function CompetitorRow({
               className="h-6 w-6 p-0 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100 max-sm:opacity-100"
             >
               {busy ? (
-                <CircleNotchIcon size={14} className="animate-spin" />
+                <SpinnerIcon size={16} className="animate-spin" />
               ) : (
-                <DotsThreeIcon size={14} />
+                <DotsThreeIcon size={16} />
               )}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuItem onSelect={() => router.push(href)}>
-              <ArrowRightIcon size={13} /> Open detail
+              <ArrowRightIcon size={16} /> Open detail
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => onSetSpecific(!c.isSpecific)}>
-              <LinkIcon size={13} />
+              <LinkIcon size={16} />
               {c.isSpecific ? "Share across products" : "Make specific to this product"}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={onUnlink}>
-              <LinkBreakIcon size={13} /> Remove from this product
+              <LinkBreakIcon size={16} /> Remove from this product
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={onDelete} className="text-critical focus:text-critical">
-              <TrashIcon size={13} /> Delete competitor
+              <TrashIcon size={16} /> Delete competitor
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -452,7 +452,7 @@ function LinkCompetitorsDialog({
 
         {rosterQ.isPending ? (
           <div className="flex justify-center py-6">
-            <CircleNotchIcon size={16} className="animate-spin text-muted-foreground" />
+            <SpinnerIcon size={16} className="animate-spin text-muted-foreground" />
           </div>
         ) : rosterQ.isError ? (
           <p className="py-4 text-sm text-muted-foreground">
@@ -486,7 +486,7 @@ function LinkCompetitorsDialog({
                   />
                   <CompAvatar name={c.name} url={c.url} size={22} />
                   <span className="min-w-0 flex-1 truncate text-sm font-medium">{c.name}</span>
-                  {isPending && <CircleNotchIcon size={12} className="animate-spin text-muted-foreground" />}
+                  {isPending && <SpinnerIcon size={16} className="animate-spin text-muted-foreground" />}
                 </label>
               );
             })}

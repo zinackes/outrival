@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  CircleNotchIcon,
+  SpinnerIcon,
   SparkleIcon,
   GlobeIcon,
   GitBranchIcon,
@@ -13,7 +13,7 @@ import {
   ArrowsClockwiseIcon,
   ArrowRightIcon,
   ArrowLeftIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import { toast } from "sonner";
 import { api, type ProductProfile, type ProjectStage } from "@/lib/api";
 import { toastApiError } from "@/lib/error-helpers";
@@ -318,7 +318,7 @@ export function UpdateProfileDialog({
 
         {loading ? (
           <div className="py-10 flex items-center justify-center text-muted-foreground">
-            <CircleNotchIcon size={16} className="animate-spin" />
+            <SpinnerIcon size={16} className="animate-spin" />
           </div>
         ) : step === "stage" ? (
           /* Step 1 — pick the product's lifecycle stage (mirrors the add-product wizard) */
@@ -341,7 +341,7 @@ export function UpdateProfileDialog({
                     )}
                   >
                     <Icon
-                      size={18}
+                      size={20}
                       className={cn(
                         active
                           ? "text-primary"
@@ -365,7 +365,7 @@ export function UpdateProfileDialog({
             {/* Selected stage recap — change it via Back */}
             {activeStage && ActiveStageIcon && (
               <div className="flex items-center gap-2 text-dense">
-                <ActiveStageIcon size={14} className="text-primary" />
+                <ActiveStageIcon size={16} className="text-primary" />
                 <span className="font-medium text-foreground">{activeStage.label}</span>
                 <span className="text-muted-foreground">stage</span>
               </div>
@@ -402,7 +402,7 @@ export function UpdateProfileDialog({
               )}
               {stage === "document" && (
                 <label className="flex items-center gap-2 rounded-md border border-dashed border-border-strong px-3 py-2.5 cursor-pointer hover:bg-surface-2 text-sm">
-                  <UploadSimpleIcon size={14} className="text-muted-foreground" />
+                  <UploadSimpleIcon size={16} className="text-muted-foreground" />
                   <span className={file ? "text-foreground" : "text-muted-foreground"}>
                     {file ? file.name : "Select a pitch / brief (PDF, DOCX, MD, TXT)"}
                   </span>
@@ -429,9 +429,9 @@ export function UpdateProfileDialog({
                   disabled={!sourceValid || analyzing}
                 >
                   {analyzing ? (
-                    <CircleNotchIcon size={13} className="animate-spin" />
+                    <SpinnerIcon size={16} className="animate-spin" />
                   ) : (
-                    <ArrowsClockwiseIcon size={13} />
+                    <ArrowsClockwiseIcon size={16} />
                   )}
                   Re-analyze
                 </Button>
@@ -443,7 +443,7 @@ export function UpdateProfileDialog({
               <div className="flex flex-col gap-2 rounded-md border border-primary/30 bg-primary/[0.04] px-3 py-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 text-meta font-medium text-primary">
-                    <SparkleIcon size={12} /> Re-analysis · review {diffRows.length} change
+                    <SparkleIcon size={16} /> Re-analysis · review {diffRows.length} change
                     {diffRows.length > 1 ? "s" : ""}
                   </div>
                   <button
@@ -468,7 +468,7 @@ export function UpdateProfileDialog({
                         <span className="text-muted-foreground line-through">
                           {before || "—"}
                         </span>
-                        <ArrowRightIcon className="mx-1.5 inline size-3 text-muted-foreground" />
+                        <ArrowRightIcon className="mx-1.5 inline size-4 text-muted-foreground" />
                         <span className="text-foreground">{after || "—"}</span>
                       </div>
                       <div className="flex gap-1.5 mt-0.5">
@@ -549,7 +549,7 @@ export function UpdateProfileDialog({
                 disabled={loading || !stage}
               >
                 Continue
-                <ArrowRightIcon size={13} />
+                <ArrowRightIcon size={16} />
               </Button>
             </>
           ) : (
@@ -560,11 +560,11 @@ export function UpdateProfileDialog({
                 onClick={() => setStep("stage")}
                 disabled={saving}
               >
-                <ArrowLeftIcon size={13} />
+                <ArrowLeftIcon size={16} />
                 Back
               </Button>
               <Button size="sm" onClick={save} disabled={saving || loading || !dirty || emptyField}>
-                {saving && <CircleNotchIcon size={12} className="animate-spin" />}
+                {saving && <SpinnerIcon size={16} className="animate-spin" />}
                 {mode === "setup" ? "Save & find competitors" : "Save changes"}
               </Button>
             </>

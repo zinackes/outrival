@@ -1,6 +1,6 @@
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
-import { CircleNotchIcon } from "@phosphor-icons/react/ssr";
+import { SpinnerIcon } from "@/components/icons";
 import { Slot } from "radix-ui"
 
 import { cn } from "@/lib/utils"
@@ -91,7 +91,7 @@ function Button({
       ) : (
         <>
           {loading ? (
-            <CircleNotchIcon className="size-4 animate-spin" aria-hidden />
+            <SpinnerIcon className="size-4 animate-spin" aria-hidden />
           ) : null}
           {children}
         </>

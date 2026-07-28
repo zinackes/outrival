@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CheckIcon, CircleNotchIcon } from "@phosphor-icons/react/ssr";
+import { CheckIcon, SpinnerIcon } from "@/components/icons";
 import {
   api,
   type ChannelMode,
@@ -335,7 +335,7 @@ export function NotificationModerationForm() {
               Cancel
             </Button>
             <Button type="submit" size="sm" disabled={saving}>
-              {saving && <CircleNotchIcon size={12} className="animate-spin" />}
+              {saving && <SpinnerIcon size={16} className="animate-spin" />}
               {saving ? "Saving…" : "Save changes"}
             </Button>
           </div>

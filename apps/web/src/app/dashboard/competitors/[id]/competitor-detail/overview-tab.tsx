@@ -11,10 +11,10 @@ import {
   CaretRightIcon,
   GridFourIcon,
   StarIcon,
-  CircleNotchIcon,
+  SpinnerIcon,
   PlayIcon,
   TranslateIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import {
   api,
   type CompetitorSignal,
@@ -65,7 +65,7 @@ function Metric({
     >
       <span className="flex items-center gap-1 text-xs text-muted-foreground">
         {label}
-        <CaretRightIcon size={11} className="opacity-60" aria-hidden />
+        <CaretRightIcon size={16} className="opacity-60" aria-hidden />
       </span>
       <span className="block">{children}</span>
       {foot && <span className="flex min-h-4 items-center gap-1.5 text-xs">{foot}</span>}
@@ -412,7 +412,7 @@ export function OverviewTab({
         actions={
           homepageMonitor && (
             <Button size="sm" onClick={() => onRun(homepageMonitor.id)}>
-              <PlayIcon size={12} /> Scrape homepage now
+              <PlayIcon size={16} /> Scrape homepage now
             </Button>
           )
         }
@@ -546,9 +546,9 @@ export function OverviewTab({
               disabled={translating}
             >
               {translating ? (
-                <CircleNotchIcon size={12} className="animate-spin" />
+                <SpinnerIcon size={16} className="animate-spin" />
               ) : (
-                <TranslateIcon size={12} />
+                <TranslateIcon size={16} />
               )}
               Translate to English
             </Button>
@@ -559,7 +559,7 @@ export function OverviewTab({
               className="h-7 gap-1.5 text-dense"
               onClick={() => setShowOriginal((o) => !o)}
             >
-              <TranslateIcon size={12} />
+              <TranslateIcon size={16} />
               {showOriginal ? "Show English" : "Show original"}
             </Button>
           )}

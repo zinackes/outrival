@@ -1,12 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import {
-  CaretDownIcon,
-  CircleNotchIcon,
-  ClockIcon,
-  ArrowsClockwiseIcon,
-} from "@phosphor-icons/react/ssr";
+import { CaretDownIcon, SpinnerIcon, ClockIcon, ArrowsClockwiseIcon } from "@/components/icons";
 import type { MyProductRescanCategory } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import {
@@ -55,14 +50,14 @@ export function RescanMenu({
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="sm" disabled={busy || queued}>
           {busy ? (
-            <CircleNotchIcon className="size-3.5 animate-spin" />
+            <SpinnerIcon className="size-4 animate-spin" />
           ) : queued ? (
-            <ClockIcon className="size-3.5" />
+            <ClockIcon className="size-4" />
           ) : (
-            <ArrowsClockwiseIcon className="size-3.5" />
+            <ArrowsClockwiseIcon className="size-4" />
           )}
           {busy ? "Scanning…" : queued ? "Queued" : "Re-scan"}
-          <CaretDownIcon className="size-3.5" />
+          <CaretDownIcon className="size-4" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-52">

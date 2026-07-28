@@ -3,12 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import {
-  CardsThreeIcon,
-  CheckIcon,
-  CaretDownIcon,
-  CaretRightIcon,
-} from "@phosphor-icons/react/ssr";
+import { CardsThreeIcon, CheckIcon, CaretDownIcon, CaretRightIcon } from "@/components/icons";
 import { productDetailQuery, productsListQuery } from "@/lib/queries";
 import { useSetProductScope } from "@/components/dashboard/product-scope-provider";
 import { MyProductView } from "../my-product-view";
@@ -98,7 +93,7 @@ function ProductCrumbs({ productId, name }: { productId: string; name: string })
       >
         Products
       </button>
-      <CaretRightIcon size={13} aria-hidden />
+      <CaretRightIcon size={16} aria-hidden />
       {siblings.length > 1 ? (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -112,7 +107,7 @@ function ProductCrumbs({ productId, name }: { productId: string; name: string })
                 ring
               />
               <span className="max-w-40 truncate">{name}</span>
-              <CaretDownIcon size={13} className="text-muted-foreground" />
+              <CaretDownIcon size={16} className="text-muted-foreground" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-56">
@@ -135,7 +130,7 @@ function ProductCrumbs({ productId, name }: { productId: string; name: string })
                   ring
                 />
                 <span className="flex-1 truncate">{p.name}</span>
-                {p.id === productId && <CheckIcon size={13} className="shrink-0" />}
+                {p.id === productId && <CheckIcon size={16} className="shrink-0" />}
               </DropdownMenuItem>
             ))}
             <DropdownMenuSeparator />

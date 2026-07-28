@@ -3,7 +3,7 @@
 import { type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
-import { CaretRightIcon } from "@phosphor-icons/react/ssr";
+import { CaretRightIcon } from "@/components/icons";
 import type { CompareColumn } from "@/lib/api";
 import { CompAvatar } from "@/components/dashboard/comp-avatar";
 import { SectionHead } from "@/components/dashboard/section-head";
@@ -214,7 +214,7 @@ export function MeasureRow({
     <>
       {expandable ? (
         <CaretRightIcon
-          size={13}
+          size={16}
           aria-hidden
           className={cn(
             "text-muted-foreground shrink-0 motion-safe:transition-transform",

@@ -59,7 +59,11 @@ function bucketOf(at: number, now: number): Bucket {
 function whenLabel(at: number, now: number, bucket: Bucket): string {
   if (bucket === "soon") {
     const mins = Math.round((at - now) / 60_000);
-    return mins <= 1 ? "due now" : `in ${mins} min`;
+    // An overdue check is not run on the minute it came due: the fan-out is an
+    // hourly cron, so it is picked up on the next hour. Naming that hour is the
+    // difference between "due now" (which reads as stuck) and a real answer.
+    if (mins <= 1) return `due, runs ${formatTime(nextFanOut(now))}`;
+    return `in ${mins} min`;
   }
   // Inside a dated group the day is already stated by its header, so the row
   // only carries the clock; past tomorrow it has to name its own day.
@@ -68,6 +72,23 @@ function whenLabel(at: number, now: number, bucket: Bucket): string {
   }
   return formatTime(at);
 }
+
+// The scheduler fans due monitors out on the hour (`0 * * * *`), so the next
+// fan-out is the top of the next hour — the honest answer to "when does this
+// actually run" for anything already overdue.
+function nextFanOut(now: number): number {
+  const d = new Date(now);
+  d.setMinutes(0, 0, 0);
+  return d.getTime() + 3_600_000;
+}
+
+// A check whose run was already requested is no longer waiting on the schedule;
+// it is waiting on the fleet. Stated here because the schedule column would
+// otherwise keep counting down to a time that has already been acted on.
+const ACTIVITY_LABEL: Record<"scraping" | "queued", string> = {
+  scraping: "scanning now",
+  queued: "queued",
+};
 
 export function UpNext({ upcoming }: { upcoming: ActivityUpcoming[] }) {
   // Every label here is relative to the browser's clock, so the list can only be
@@ -88,9 +109,15 @@ export function UpNext({ upcoming }: { upcoming: ActivityUpcoming[] }) {
     if (now == null) return null;
     const rows = upcoming.map((u) => {
       const at = new Date(u.nextRunAt).getTime();
-      const bucket = bucketOf(at, now);
-      return { u, at, bucket, when: whenLabel(at, now, bucket) };
+      // An in-flight check sorts to the head of the list whatever its schedule
+      // says: it is the one thing here that is already happening.
+      const bucket: Bucket = u.activity ? "soon" : bucketOf(at, now);
+      const when = u.activity ? ACTIVITY_LABEL[u.activity] : whenLabel(at, now, bucket);
+      return { u, at, bucket, when, live: Boolean(u.activity) };
     });
+    // The API sorts by schedule; the in-flight rows have to lead so the "soon"
+    // group stays one contiguous block under its heading.
+    rows.sort((a, b) => Number(b.live) - Number(a.live) || a.at - b.at);
     return { rows, dueInADay: rows.filter((r) => r.at - now <= DAY).length };
   }, [upcoming, now]);
 
@@ -188,6 +215,9 @@ export function UpNext({ upcoming }: { upcoming: ActivityUpcoming[] }) {
                         "shrink-0 text-dense tabular-nums",
                         r.bucket === "soon" ? "text-foreground" : "text-muted-foreground",
                       )}
+                      // The exact scheduled instant, for the rows whose label is a
+                      // relative one ("in 12 min", "queued").
+                      title={`Scheduled ${formatDate(r.at, { weekday: "short", month: "short", day: "numeric" })} · ${formatTime(r.at)}`}
                     >
                       {r.when}
                     </span>

@@ -19,6 +19,8 @@ import {
   forcedRescansPerDay,
   planAllowsMonitorSource,
   deriveAnalysisStatus,
+  deriveScrapeActivity,
+  type ScrapeActivity,
 } from "@outrival/shared";
 import { db } from "../lib/db";
 import { enqueueJob } from "../lib/queue";
@@ -112,8 +114,10 @@ function editedField<T>(value: T): SelfProfileField<T> {
   return { value, isFromAutoDetect: false, lastEditedByUserAt: new Date().toISOString() };
 }
 
-/** Flag monitors as scraping so the page derives "scanning…" (see isScanning) and
- * survives a refresh. Clears any prior failure so the state flips straight to live. */
+/** Stamp the ENQUEUED time so the page derives its live state (see scanActivity)
+ * and survives a refresh. Clears any prior failure so the state flips straight to
+ * live. The worker stamps scrapePickedUpAt when it actually starts, which is what
+ * turns "queued" into "scanning". */
 async function markScanning(monitorIds: string[]) {
   if (monitorIds.length === 0) return;
   await db
@@ -147,21 +151,19 @@ const PatchSchema = z.object({
     .optional(),
 });
 
-/** A self monitor is "scanning" when its scrape was started after the last
- * terminal event (run or failure) and hasn't blown past the poll window.
- * Mirrors isServerScraping on the competitor page so the UI behaves the same. */
-const SCAN_TIMEOUT_MS = 5 * 60 * 1000;
-function isScanning(m: {
+/** Where a self monitor's open scrape request is: a worker has it ("scraping"), it
+ * is still waiting for a free scanner ("queued"), or nothing is open. Same deriver
+ * as the competitor page, so both behave identically — and the old local 5-minute
+ * ceiling is gone with it: it dropped the in-flight state while the job was still
+ * sitting in a queue that routinely runs half an hour deep, so a re-scan looked
+ * like it had silently died. */
+function scanActivity(m: {
   scrapeStartedAt: Date | null;
+  scrapePickedUpAt: Date | null;
   lastRunAt: Date | null;
   lastFailedAt: Date | null;
-}): boolean {
-  if (!m.scrapeStartedAt) return false;
-  const started = m.scrapeStartedAt.getTime();
-  const lastRun = m.lastRunAt?.getTime() ?? 0;
-  const lastFailed = m.lastFailedAt?.getTime() ?? 0;
-  if (started <= lastRun || started <= lastFailed) return false;
-  return Date.now() - started < SCAN_TIMEOUT_MS;
+}): ScrapeActivity {
+  return deriveScrapeActivity(m, Date.now());
 }
 
 // GET /api/my-product — the enriched self profile, or { product: null }.
@@ -200,15 +202,19 @@ myProductRouter.get("/", async (c) => {
     .map((m) => m.lastRunAt?.getTime() ?? 0)
     .reduce((a, b) => Math.max(a, b), 0);
 
-  // Live scan state so the page can show "scanning…" and surface a failure
-  // instead of leaving the user guessing whether a re-scan finished.
-  const scanning = selfMonitors.some(isScanning);
+  // Live scan state so the page can show what is actually happening and surface a
+  // failure instead of leaving the user guessing whether a re-scan finished.
+  // "queued" is reported separately: claiming to scan a site no worker has opened
+  // is the same lie here as on a competitor page.
+  const scanning = selfMonitors.some((m) => scanActivity(m) === "scraping");
+  const queued = selfMonitors.some((m) => scanActivity(m) === "queued");
   const failed = selfMonitors
-    .filter((m) => !isScanning(m) && m.lastError && m.lastFailedAt)
+    .filter((m) => scanActivity(m) === null && m.lastError && m.lastFailedAt)
     .filter((m) => (m.lastFailedAt?.getTime() ?? 0) > (m.lastRunAt?.getTime() ?? 0))
     .sort((a, b) => (b.lastFailedAt?.getTime() ?? 0) - (a.lastFailedAt?.getTime() ?? 0))[0];
-  const scanError = scanning ? null : (failed?.lastError ?? null);
-  const scanErrorSource = scanning ? null : (failed?.sourceType ?? null);
+  const busy = scanning || queued;
+  const scanError = busy ? null : (failed?.lastError ?? null);
+  const scanErrorSource = busy ? null : (failed?.sourceType ?? null);
 
   const repoMonitor = selfMonitors.find((m) => m.sourceType === "github_repo");
   const repoUrl =
@@ -256,6 +262,7 @@ myProductRouter.get("/", async (c) => {
       repoUrl,
       lastScanAt: lastScanAt > 0 ? new Date(lastScanAt).toISOString() : null,
       scanning,
+      scanQueued: queued,
       scanError,
       scanErrorSource,
       analysis,

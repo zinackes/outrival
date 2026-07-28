@@ -4,6 +4,7 @@ import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import {
   CircleNotchIcon,
+  ClockIcon,
   LockIcon,
   PlayIcon,
   PowerIcon,
@@ -42,7 +43,7 @@ import {
 import { StatusDot } from "@/components/outrival/data-marks";
 import { sourceShortLabel } from "@/lib/source-labels";
 import { friendlyScrapeError } from "@/lib/scrape-errors";
-import { isServerScraping, isServerQueued } from "./shared";
+import { scrapeActivity } from "./shared";
 import { lastScanLabel, monitorStatus, nextScanLabel, type MonitorStatus } from "./monitor-status";
 
 const label = (s: SourceType) => sourceShortLabel(s).toLowerCase();
@@ -118,6 +119,9 @@ export function CompetitorRail({
   // Sources still being captured count as fallbacks too: a competitor added a
   // minute ago shouldn't read as "blocked, and nothing else".
   const fallbacks = [...coverage.tracked, ...coverage.pending];
+  const queuedCount = monitors.filter(
+    (m) => scrapeActivity(m, scrapingIds.has(m.id)) === "queued",
+  ).length;
 
   // `top` clears the 52px sticky topbar plus the page gutter, so a pinned card
   // parks below the header instead of sliding under its blur.
@@ -140,22 +144,29 @@ export function CompetitorRail({
           )}
         </div>
 
+        {/* "Checking 3 sources…" reads as work already under way, and a queue that
+            routinely runs half an hour deep is not that. When nothing has been
+            captured yet and every source is still waiting, the card says so
+            outright; otherwise the queued count rides along the coverage line. */}
         <p className="px-4 pb-2 text-sm text-muted-foreground">
-          {coverageHeadline(coverage, label)}
+          {queuedCount > 0 && coverage.tracked.length === 0
+            ? `${queuedCount} source${queuedCount === 1 ? "" : "s"} queued, waiting for a free scanner`
+            : queuedCount > 0
+              ? `${coverageHeadline(coverage, label)} · ${queuedCount} queued`
+              : coverageHeadline(coverage, label)}
         </p>
 
         {monitors.length > 0 && (
           <div className="px-4">
             {monitors.map((m) => {
-              const running = scrapingIds.has(m.id) || isServerScraping(m);
-              const queued = !running && isServerQueued(m);
+              const activity = scrapeActivity(m, scrapingIds.has(m.id));
               return (
                 <SourceRow
                   key={m.id}
                   competitorId={competitor.id}
                   monitor={m}
-                  running={running}
-                  status={monitorStatus(m, running, queued)}
+                  busy={activity !== null}
+                  status={monitorStatus(m, activity === "scraping", activity === "queued")}
                   monitoringPaused={monitoringPaused}
                   plan={plan}
                   onRun={onRun}
@@ -283,7 +294,7 @@ function RailSummary({
 function SourceRow({
   competitorId,
   monitor: m,
-  running,
+  busy,
   status,
   monitoringPaused,
   plan,
@@ -295,7 +306,8 @@ function SourceRow({
 }: {
   competitorId: string;
   monitor: Monitor;
-  running: boolean;
+  /** Scraping OR queued: either way there is an open request, so no second run. */
+  busy: boolean;
   status: MonitorStatus;
   monitoringPaused: boolean;
   plan: Plan;
@@ -418,9 +430,9 @@ function SourceRow({
 
         <DropdownMenuSeparator />
         {status === "disabled" ? (
-          <DropdownMenuItem onClick={() => onResume(m.id)} disabled={running}>
-            {running ? <CircleNotchIcon size={13} className="animate-spin" /> : <ArrowsClockwiseIcon size={13} />}
-            {running ? "Resuming…" : "Resume monitoring"}
+          <DropdownMenuItem onClick={() => onResume(m.id)} disabled={busy}>
+            {busy ? <CircleNotchIcon size={13} className="animate-spin" /> : <ArrowsClockwiseIcon size={13} />}
+            {busy ? "Resuming…" : "Resume monitoring"}
           </DropdownMenuItem>
         ) : status === "paused" ? (
           <DropdownMenuItem onClick={() => onSetActive(m.id, true)}>
@@ -428,11 +440,24 @@ function SourceRow({
           </DropdownMenuItem>
         ) : (
           <>
-            <DropdownMenuItem onClick={() => onRun(m.id)} disabled={running}>
-              {running ? <CircleNotchIcon size={13} className="animate-spin" /> : <PlayIcon size={13} />}
-              {running ? "Scraping…" : "Run now"}
+            {/* A queued source already has a run coming: the item states that
+                instead of offering a second one that would only join the same
+                queue behind the first. */}
+            <DropdownMenuItem onClick={() => onRun(m.id)} disabled={busy}>
+              {status === "running" ? (
+                <CircleNotchIcon size={13} className="animate-spin" />
+              ) : status === "queued" ? (
+                <ClockIcon size={13} />
+              ) : (
+                <PlayIcon size={13} />
+              )}
+              {status === "running"
+                ? "Scraping…"
+                : status === "queued"
+                  ? "Queued, waiting for a scanner"
+                  : "Run now"}
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onSetActive(m.id, false)} disabled={running}>
+            <DropdownMenuItem onClick={() => onSetActive(m.id, false)} disabled={busy}>
               <PauseCircleIcon size={13} /> Pause monitoring
             </DropdownMenuItem>
           </>

@@ -7,6 +7,7 @@ import {
   ArrowsClockwiseIcon,
   NotePencilIcon,
   CircleNotchIcon,
+  ClockIcon,
   WarningIcon,
   BriefcaseIcon,
   CurrencyDollarIcon,
@@ -205,7 +206,9 @@ export function MyProductView({
           },
         });
       } else {
-        toast.success("Re-scan started", { description: "Scanning your sources now…" });
+        toast.success("Re-scan queued", {
+          description: "Your sources are scanned as soon as a scanner is free.",
+        });
       }
       await load(); // pick up scanning=true so the progress poll kicks in
     } catch (e) {
@@ -333,6 +336,12 @@ export function MyProductView({
               <span className="inline-flex items-center gap-1 text-foreground">
                 <CircleNotchIcon className="size-3 animate-spin" /> Scanning…
               </span>
+            ) : p.scanQueued ? (
+              // A clock, not a spinner: nothing is turning while the job waits its
+              // turn, and the wait routinely runs into the tens of minutes.
+              <span className="inline-flex items-center gap-1 text-muted-foreground">
+                <ClockIcon className="size-3" /> Queued for a scan
+              </span>
             ) : p.scanError ? (
               <span className="inline-flex items-center gap-1 text-destructive">
                 <WarningIcon className="size-3" /> Last scan failed
@@ -363,22 +372,25 @@ export function MyProductView({
               // Live product: site + pricing monitors exist, so offer selective re-scan.
               <RescanMenu
                 busy={rescanning || p.scanning}
+                queued={Boolean(p.scanQueued)}
                 onRescan={(categories) => void rescan(categories)}
               />
             ) : p.repoUrl ? (
               // Repo-only (developing) product: nothing to scope, plain re-scan.
               <Button
                 onClick={() => rescan()}
-                disabled={rescanning || p.scanning}
+                disabled={rescanning || p.scanning || p.scanQueued}
                 variant="outline"
                 size="sm"
               >
                 {rescanning || p.scanning ? (
                   <CircleNotchIcon className="size-3.5 animate-spin" />
+                ) : p.scanQueued ? (
+                  <ClockIcon className="size-3.5" />
                 ) : (
                   <ArrowsClockwiseIcon className="size-3.5" />
                 )}
-                {p.scanning ? "Scanning…" : "Re-scan"}
+                {p.scanning ? "Scanning…" : p.scanQueued ? "Queued" : "Re-scan"}
               </Button>
             ) : null}
           </div>

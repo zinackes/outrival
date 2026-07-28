@@ -37,6 +37,7 @@ import { EmptyState } from "@/components/dashboard/empty-state";
 import { CompetitorTechStack } from "@/components/outrival/competitor-tech-stack";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
 import { formatTierPrice, logoLabel, isRenderableLogoSrc } from "./helpers";
+import { scrapeActivity } from "./shared";
 import type { TabKey } from "./types";
 
 /**
@@ -379,16 +380,27 @@ export function OverviewTab({
 
   if (!hasAnything) {
     const homepageMonitor = monitors.find((m) => m.sourceType === "homepage");
-    const running = homepageMonitor ? scrapingIds.has(homepageMonitor.id) : false;
+    const activity = homepageMonitor
+      ? scrapeActivity(homepageMonitor, scrapingIds.has(homepageMonitor.id))
+      : null;
     // The first analysis is still running (queued → scraping → summarizing). The
     // top-of-page stepper carries the live stage; here we just avoid a misleading
     // "Nothing captured yet" + manual-scrape button while it's already working.
-    if (analysis?.pending || running) {
+    if (analysis?.pending || activity) {
+      // The stepper above this panel already says which of those it is, so this
+      // has to agree with it: "we're scanning the homepage" under a banner that
+      // reads "waiting in the scan queue" is the contradiction that made the wait
+      // look like a hang. Both read the same anchor monitor, so they cannot split.
+      const waiting = analysis ? analysis.stage === "queued" : activity === "queued";
       return (
         <EmptyState
           icon={GridFourIcon}
-          title="Analyzing this competitor…"
-          description="We're scanning the homepage and generating the first insights. This tab fills in automatically once it's done, no need to refresh."
+          title={waiting ? "Waiting in the scan queue…" : "Analyzing this competitor…"}
+          description={
+            waiting
+              ? "The first scan starts as soon as a scanner is free, then the insights are written. This tab fills in on its own, no need to refresh."
+              : "We're scanning the homepage and generating the first insights. This tab fills in automatically once it's done, no need to refresh."
+          }
         />
       );
     }
@@ -399,16 +411,8 @@ export function OverviewTab({
         description="Once the homepage is scraped, this is where you'll see what this competitor says about itself (positioning, value props, customers and pricing) at a glance."
         actions={
           homepageMonitor && (
-            <Button size="sm" disabled={running} onClick={() => onRun(homepageMonitor.id)}>
-              {running ? (
-                <>
-                  <CircleNotchIcon size={12} className="animate-spin" /> Scraping…
-                </>
-              ) : (
-                <>
-                  <PlayIcon size={12} /> Scrape homepage now
-                </>
-              )}
+            <Button size="sm" onClick={() => onRun(homepageMonitor.id)}>
+              <PlayIcon size={12} /> Scrape homepage now
             </Button>
           )
         }

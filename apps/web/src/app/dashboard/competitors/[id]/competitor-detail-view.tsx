@@ -140,7 +140,7 @@ import type { TabKey } from "./competitor-detail/types";
 // lens on data. Tech stack became an Overview card, battle cards their own page.
 const TABS: Array<{ key: TabKey; label: string; icon: typeof PulseIcon }> = [
   { key: "overview", label: "Overview", icon: GridFourIcon },
-  { key: "activity", label: "PulseIcon", icon: PulseIcon },
+  { key: "activity", label: "Activity", icon: PulseIcon },
   { key: "pricing", label: "Pricing", icon: CurrencyDollarIcon },
   { key: "hiring", label: "Hiring", icon: BriefcaseIcon },
   { key: "reviews", label: "Reviews", icon: StarIcon },

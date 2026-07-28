@@ -338,7 +338,7 @@ export function BattleCardTab({ competitorId }: Props) {
               ) : (
                 <FloppyDiskIcon size={16} />
               )}
-              {status === "saving" ? "Saving…" : "FloppyDiskIcon"}
+              {status === "saving" ? "Saving…" : "Save"}
             </Button>
           </>
         ) : (

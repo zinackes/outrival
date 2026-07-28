@@ -438,7 +438,7 @@ export function AskPanel({
       }
     } catch (e) {
       if (!(e instanceof DOMException && e.name === "AbortError")) {
-        setError("Network error. Could not reach the assistant. CheckIcon your connection.");
+        setError("Network error. Could not reach the assistant. Check your connection.");
       }
     } finally {
       setLoading(false);
@@ -718,8 +718,8 @@ export function AskPanel({
                   variant="ghost"
                   size="icon-sm"
                   onClick={copyAnswer}
-                  aria-label={copied ? "Copied" : "CopyIcon answer"}
-                  title={copied ? "Copied" : "CopyIcon answer"}
+                  aria-label={copied ? "Copied" : "Copy answer"}
+                  title={copied ? "Copied" : "Copy answer"}
                 >
                   {copied ? (
                     <CheckIcon className="size-4 text-[var(--positive)]" />

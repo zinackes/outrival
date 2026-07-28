@@ -943,7 +943,7 @@ function QuestionList({
                             <button
                               onClick={() => onToggle(p.id, !p.isActive)}
                               className={iconBtn}
-                              aria-label={p.isActive ? "PauseIcon question" : "Resume question"}
+                              aria-label={p.isActive ? "Pause question" : "Resume question"}
                             >
                               {p.isActive ? (
                                 <PauseIcon className="size-4" />

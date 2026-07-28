@@ -443,7 +443,7 @@ export function CompetitorsList() {
               className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
             />
             <Input
-              placeholder="MagnifyingGlassIcon…"
+              placeholder="Search…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="h-8 w-48 pl-8 text-xs"

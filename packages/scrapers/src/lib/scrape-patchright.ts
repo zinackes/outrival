@@ -7,7 +7,13 @@
 // OutrivalBot User-Agent, navigator.webdriver left true); we do not disguise the
 // crawler as a human. (Module + symbol names keep the historical "patchright"
 // spelling to avoid a churny rename; the import below is the source of truth.)
-import { chromium, type Browser, type Page, type Response } from "playwright";
+import {
+  chromium,
+  type Browser,
+  type BrowserContext,
+  type Page,
+  type Response,
+} from "playwright";
 import { browserLaunchOptions, type ProxyTier } from "./proxy";
 import { realisticHeaders, OUTRIVAL_UA } from "./fingerprint";
 import { navWaitUntil, settleAfterNav } from "./nav-strategy";
@@ -99,18 +105,78 @@ const browserByTier: Partial<Record<ProxyTier, Browser>> = {};
 // like from the inside.
 const launchingByTier: Partial<Record<ProxyTier, Promise<Browser>>> = {};
 
-// How many renders are currently holding a pooled browser, plus whether a teardown
-// was asked for while they were. See closePatchrightPool.
-let activeRenders = 0;
+// Ceilings for the pool operations Playwright leaves unbounded. `launch` takes its
+// own timeout option, but prod showed a launch still reported at three minutes, so
+// it is raced as well; `newContext` and `newPage` accept no timeout at all. Without
+// these, a browser that is alive but no longer answering parks a render forever.
+const LAUNCH_TIMEOUT_MS = 60_000;
+const DEFAULT_POOL_OP_TIMEOUT_MS = 30_000;
+
+// A render lease is a timestamp, not a counter. A counter only came back down if
+// every render returned, so ONE render parked forever held both teardown guards
+// below open for the life of the process: the dead browser stayed pooled, every
+// later render parked on it too, and only a restart cleared it (measured on prod
+// 2026-07-28 — 23h of uptime took throughput from ~800 jobs/h to 5). A lease older
+// than the longest legitimate render is treated as abandoned, so the guards recover
+// on their own even if a new way to hang turns up.
+const DEFAULT_RENDER_LEASE_MAX_MS = 5 * 60_000;
+const renderLeases = new Set<{ startedAt: number }>();
 let closeRequested = false;
+
+// Mutable only so the tests can reach the timeout paths without waiting out a
+// 30s ceiling or a 5min lease. Nothing in the product ever writes these.
+let poolOpTimeoutMs = DEFAULT_POOL_OP_TIMEOUT_MS;
+let renderLeaseMaxMs = DEFAULT_RENDER_LEASE_MAX_MS;
+
+/** Test-only: shrink the pool ceilings so their timeout paths run in milliseconds. */
+export function __setPoolCeilingsForTest(ms: { poolOp: number; leaseMax: number } | null): void {
+  poolOpTimeoutMs = ms?.poolOp ?? DEFAULT_POOL_OP_TIMEOUT_MS;
+  renderLeaseMaxMs = ms?.leaseMax ?? DEFAULT_RENDER_LEASE_MAX_MS;
+}
+
+/** Live (non-abandoned) render leases, pruning stale ones as it counts. */
+function liveRenders(): number {
+  const cutoff = Date.now() - renderLeaseMaxMs;
+  for (const lease of renderLeases) if (lease.startedAt < cutoff) renderLeases.delete(lease);
+  return renderLeases.size;
+}
+
+/**
+ * Reject if `promise` has not settled within `ms`. The rejection is named
+ * TimeoutError so it lands on the same `failureReason: "timeout"` branch a
+ * Playwright navigation timeout already does — no new case for the caller.
+ *
+ * The losing promise is NOT cancelled (nothing here can cancel it). A context that
+ * arrives after its ceiling is orphaned, and the pool teardown closes its browser.
+ * Freeing the lease is the point: an orphan costs memory, a held lease cost the
+ * whole process.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const ceiling = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      const err = new Error(`${label} exceeded ${ms}ms`);
+      err.name = "TimeoutError";
+      reject(err);
+    }, ms);
+  });
+  return Promise.race([promise, ceiling]).finally(() => clearTimeout(timer));
+}
 
 async function getBrowser(tier: ProxyTier): Promise<Browser> {
   const existing = browserByTier[tier];
   if (existing && existing.isConnected()) return existing;
   const pending = launchingByTier[tier];
   if (pending) return pending;
-  const launch = chromium
-    .launch(browserLaunchOptions(tier))
+  const launch = withTimeout(
+    chromium.launch({ ...browserLaunchOptions(tier), timeout: LAUNCH_TIMEOUT_MS }),
+    // Slightly above Playwright's own ceiling so its error wins in the normal case;
+    // this outer race exists only to guarantee the promise settles, because an
+    // unsettled launch is memoised in `launchingByTier` and every later caller is
+    // handed that same never-resolving promise.
+    LAUNCH_TIMEOUT_MS + 5_000,
+    `chromium.launch(${tier})`,
+  )
     .then((browser) => {
       browserByTier[tier] = browser;
       return browser;
@@ -134,7 +200,7 @@ export async function closeTierBrowser(tier: ProxyTier): Promise<void> {
   // one job, when that job holds no lease — but a concurrent job may be rendering
   // on this very browser. Leave it alone then; the RAM it saves is one Chromium,
   // the render it kills costs a failed scrape and a retry.
-  if (activeRenders > 0) return;
+  if (liveRenders() > 0) return;
   delete browserByTier[tier];
   await browser.close().catch(() => {});
 }
@@ -154,7 +220,7 @@ export async function closeTierBrowser(tier: ProxyTier): Promise<void> {
  * so the RAM intent survives and no live page is ever pulled.
  */
 export async function closePatchrightPool(): Promise<void> {
-  if (activeRenders > 0) {
+  if (liveRenders() > 0) {
     closeRequested = true;
     return;
   }
@@ -178,14 +244,15 @@ export async function scrapeWithPatchright(
   // Hold a lease on the process-global pool for the whole render — acquiring the
   // browser included, since a concurrent teardown between getBrowser and newPage
   // is exactly how "Target page, context or browser has been closed" happened.
-  activeRenders++;
+  const lease = { startedAt: Date.now() };
+  renderLeases.add(lease);
   try {
     return await renderWithPatchright(url, tier, options);
   } finally {
-    activeRenders--;
+    renderLeases.delete(lease);
     // A sibling job asked for the pool while this render held it: last one out
     // does the closing it deferred.
-    if (activeRenders === 0 && closeRequested) await closePatchrightPool();
+    if (liveRenders() === 0 && closeRequested) await closePatchrightPool();
   }
 }
 
@@ -195,32 +262,41 @@ async function renderWithPatchright(
   options: PatchrightOptions,
 ): Promise<ScrapeResult> {
   const startedAt = Date.now();
-  const browser = await getBrowser(tier);
-
-  const context = await browser.newContext({
-    userAgent: OUTRIVAL_UA,
-    locale: "en-US",
-    timezoneId: "America/New_York",
-    viewport: { width: 1920, height: 1080 },
-    extraHTTPHeaders: realisticHeaders(),
-  });
-
-  if (options.blockResources) {
-    // Abort heavy subresources before they hit the (paid) proxy.
-    const blocked = blockedResourceTypes(options);
-    await context.route("**/*", (route) => {
-      if (blocked.has(route.request().resourceType())) return route.abort();
-      return route.continue();
-    });
-  }
-
-  const page = await context.newPage();
-  const scriptUrls: string[] = [];
-  page.on("response", (r) => {
-    if (r.request().resourceType() === "script") scriptUrls.push(r.url());
-  });
-
+  // Acquiring the browser and opening the context/page are inside the try: each is
+  // now bounded, so each can fail, and this function must return a ScrapeResult for
+  // the cascade to reason about rather than throw out of it. `context` is declared
+  // here only so the finally can close it when a later step is the one that fails.
+  let context: BrowserContext | null = null;
   try {
+    const browser = await getBrowser(tier);
+
+    context = await withTimeout(
+      browser.newContext({
+        userAgent: OUTRIVAL_UA,
+        locale: "en-US",
+        timezoneId: "America/New_York",
+        viewport: { width: 1920, height: 1080 },
+        extraHTTPHeaders: realisticHeaders(),
+      }),
+      poolOpTimeoutMs,
+      "browser.newContext",
+    );
+
+    if (options.blockResources) {
+      // Abort heavy subresources before they hit the (paid) proxy.
+      const blocked = blockedResourceTypes(options);
+      await context.route("**/*", (route) => {
+        if (blocked.has(route.request().resourceType())) return route.abort();
+        return route.continue();
+      });
+    }
+
+    const page = await withTimeout(context.newPage(), poolOpTimeoutMs, "context.newPage");
+    const scriptUrls: string[] = [];
+    page.on("response", (r) => {
+      if (r.request().resourceType() === "script") scriptUrls.push(r.url());
+    });
+
     const response = await page.goto(url, { waitUntil: navWaitUntil(), timeout: 30000 });
     if (!response) {
       return { ok: false, failureReason: "network_error", durationMs: Date.now() - startedAt };
@@ -234,7 +310,7 @@ async function renderWithPatchright(
       durationMs: Date.now() - startedAt,
     };
   } finally {
-    await context.close().catch(() => {});
+    await context?.close().catch(() => {});
   }
 }
 

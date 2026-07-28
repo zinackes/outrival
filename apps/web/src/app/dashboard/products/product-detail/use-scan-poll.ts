@@ -34,7 +34,10 @@ export function useScanPoll({
   const wasScanning = useRef(false);
 
   useEffect(() => {
-    const scanning = product?.scanning ?? false;
+    // Queued counts as in progress: the scan has not happened yet, so settling
+    // here would report an outcome for work that has not started. This is what
+    // made a re-scan behind a busy queue announce itself as finished.
+    const scanning = (product?.scanning ?? false) || (product?.scanQueued ?? false);
     if (scanning) {
       wasScanning.current = true;
       const t = setInterval(() => load(), 4000);
@@ -89,5 +92,5 @@ export function useScanPoll({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the effect keys on the
     // scan transition only; adding load/queryClient would restart the poll on every
     // render (the behaviour this was extracted from, unchanged).
-  }, [product?.scanning, product?.scanError]);
+  }, [product?.scanning, product?.scanQueued, product?.scanError]);
 }

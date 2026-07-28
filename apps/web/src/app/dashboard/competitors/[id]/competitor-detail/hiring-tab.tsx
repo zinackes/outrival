@@ -28,7 +28,9 @@ import {
   TabLoading,
   MonitorEmptyState,
   SourceSummary,
+  scrapeActivity,
   type MonitorSourceProps,
+  type ScrapeActivity,
 } from "./shared";
 
 // recharts is heavy + client-only: lazy-load the chart so it stays off this
@@ -433,16 +435,36 @@ export function HiringTab({
           </span>
         )}
         {jobsMonitor && (
-          <button
-            type="button"
-            onClick={() => onRun(jobsMonitor.id)}
-            disabled={scrapingIds.has(jobsMonitor.id)}
-            className="ml-auto text-link hover:underline disabled:opacity-60"
-          >
-            {scrapingIds.has(jobsMonitor.id) ? "Scanning…" : "Re-scan now"}
-          </button>
+          <RescanLink
+            activity={scrapeActivity(jobsMonitor, scrapingIds.has(jobsMonitor.id))}
+            onRun={() => onRun(jobsMonitor.id)}
+          />
         )}
       </div>
     </TabCard>
+  );
+}
+
+/**
+ * Re-scan affordance for the jobs board. Three states, because "Scanning…" over a
+ * job that is still waiting for a free scanner is the claim that made a long queue
+ * look like a stalled scrape.
+ */
+function RescanLink({
+  activity,
+  onRun,
+}: {
+  activity: ScrapeActivity;
+  onRun: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onRun}
+      disabled={activity !== null}
+      className="ml-auto text-link hover:underline disabled:opacity-60"
+    >
+      {activity === "scraping" ? "Scanning…" : activity === "queued" ? "Queued" : "Re-scan now"}
+    </button>
   );
 }

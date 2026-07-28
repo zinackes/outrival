@@ -30,7 +30,7 @@ import {
   TabLoading,
   MonitorEmptyState,
   SourceSummary,
-  isServerScraping,
+  scrapeActivity,
   type MonitorSourceProps,
 } from "./shared";
 
@@ -116,11 +116,11 @@ export function PricingTab({
   );
 
   // A pricing scrape in flight (client-triggered or server-side, refresh-safe)
-  // lets the card say "Capturing pricing…" instead of a bare empty state.
+  // lets the card say where the request actually is instead of a bare empty state.
   const pricingMonitor = monitors.find((m) => m.sourceType === "pricing");
-  const isCapturing = pricingMonitor
-    ? scrapingIds.has(pricingMonitor.id) || isServerScraping(pricingMonitor)
-    : false;
+  const capture = pricingMonitor
+    ? scrapeActivity(pricingMonitor, scrapingIds.has(pricingMonitor.id))
+    : null;
   const hasCapturedTiers = (history?.length ?? 0) > 0;
 
   if (historyQuery.isError)
@@ -135,7 +135,7 @@ export function PricingTab({
               competitor={competitor}
               onUpdated={onRefresh}
               hasCapturedTiers={hasCapturedTiers}
-              isCapturing={isCapturing}
+              capture={capture}
               summary={pricingMonitor?.aiSummary}
               summaryUpdatedAt={pricingMonitor?.aiSummaryUpdatedAt}
             />

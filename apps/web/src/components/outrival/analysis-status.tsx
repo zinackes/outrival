@@ -193,10 +193,19 @@ export function AnalysisProgress({
 
   if (!analysis.pending) return null; // ready / idle → the real content is shown
 
+  // Nothing is turning while the job waits its turn, and a spinner that runs for
+  // half an hour is what made the queue read as a hang. The clock is the same
+  // mark the source rows use for the same state.
+  const waiting = stage === "queued";
+
   return (
     <div className={cn("rounded-lg border border-border bg-muted/30 p-4", className)}>
       <div className="flex items-start gap-2.5">
-        <CircleNotchIcon className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-link" />
+        {waiting ? (
+          <ClockIcon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+        ) : (
+          <CircleNotchIcon className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-link" />
+        )}
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-foreground">Setting up this competitor</p>
           <p className="mt-0.5 text-sm text-muted-foreground">
@@ -206,7 +215,14 @@ export function AnalysisProgress({
           <ol className="mt-3 flex flex-wrap items-center gap-y-2">
             {PHASES.map((p, i) => {
               const st = phaseState(stage, p.key);
-              const Icon = st === "done" ? CheckCircleIcon : st === "active" ? CircleNotchIcon : CircleIcon;
+              const Icon =
+                st === "done"
+                  ? CheckCircleIcon
+                  : st === "active"
+                    ? waiting
+                      ? ClockIcon
+                      : CircleNotchIcon
+                    : CircleIcon;
               return (
                 <li key={p.key} className="flex items-center">
                   <span
@@ -219,7 +235,7 @@ export function AnalysisProgress({
                       size={13}
                       className={cn(
                         "shrink-0",
-                        st === "active" && "animate-spin text-link",
+                        st === "active" && (waiting ? "text-muted-foreground" : "animate-spin text-link"),
                         st === "done" && "text-link",
                         st === "pending" && "text-muted-foreground/50",
                       )}

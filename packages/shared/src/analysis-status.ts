@@ -77,6 +77,46 @@ function toMs(v: string | Date | null): number | null {
   return Number.isNaN(ts) ? null : ts;
 }
 
+/** Where one source's open scrape request is, or null when nothing is open. */
+export type ScrapeActivity = "scraping" | "queued" | null;
+
+export interface ScrapeActivityInput {
+  lastRunAt: string | Date | null;
+  lastFailedAt: string | Date | null;
+  scrapeStartedAt: string | Date | null;
+  scrapePickedUpAt: string | Date | null;
+}
+
+/**
+ * The single answer to "is a worker on this source, or is it still waiting?".
+ * Pure, so the API, the analysis banner and every source row read the same two
+ * stamps the same way — the alternative was each surface recombining them by hand,
+ * which is how a page came to say "queued" at the top and "scanning" underneath.
+ */
+export function deriveScrapeActivity(
+  m: ScrapeActivityInput,
+  nowMs: number,
+): ScrapeActivity {
+  const started = toMs(m.scrapeStartedAt);
+  if (started === null) return null;
+  // Both stamps describe the CURRENT request only: a success or a failure closes
+  // the window, and the worker clears them on either outcome.
+  const terminal = Math.max(toMs(m.lastRunAt) ?? 0, toMs(m.lastFailedAt) ?? 0);
+  if (started <= terminal) return null;
+
+  const pickedUp = toMs(m.scrapePickedUpAt);
+  // A pick-up older than the request it would describe belongs to a PREVIOUS run
+  // that never cleared it (a handler killed mid-flight leaves it behind). Reading
+  // it as this request's would make a freshly enqueued job look like a long-dead
+  // scrape, i.e. like nothing at all.
+  if (pickedUp !== null && pickedUp >= started) {
+    // A worker has it. Past the ceiling the run pg-boss was tracking no longer
+    // exists, and a stamp that old describes nothing.
+    return nowMs - pickedUp < ANALYSIS_SCRAPE_TIMEOUT_MS ? "scraping" : null;
+  }
+  return nowMs - started < ANALYSIS_QUEUE_TIMEOUT_MS ? "queued" : null;
+}
+
 /**
  * Map (hasSummary, anchor scrape state) → a coarse analysis stage. Pure: takes
  * `nowMs` so it's deterministic and testable. Shared by the API (competitor list /
@@ -99,23 +139,13 @@ export function deriveAnalysisStatus(
 
   const lastRun = toMs(a.lastRunAt);
   const lastFailed = toMs(a.lastFailedAt);
-  const started = toMs(a.scrapeStartedAt);
-  const pickedUp = toMs(a.scrapePickedUpAt);
 
-  // Both stamps only describe the CURRENT request: a success or a failure closes
-  // the in-flight window, and the worker clears them on either.
-  const terminal = Math.max(lastRun ?? 0, lastFailed ?? 0);
-  const inFlight = started !== null && started > terminal;
-
-  // A worker has it: this is the only state where we may claim the site is being
-  // fetched right now.
-  if (inFlight && pickedUp !== null && nowMs - pickedUp < ANALYSIS_SCRAPE_TIMEOUT_MS) {
-    return { stage: "scraping", pending: true };
-  }
-  // Asked for, nobody on it yet — waiting behind whatever the fleet is chewing on.
-  if (inFlight && pickedUp === null && nowMs - started < ANALYSIS_QUEUE_TIMEOUT_MS) {
-    return { stage: "queued", pending: true };
-  }
+  // "A worker has it" is the only state that may claim the site is being fetched
+  // right now; "queued" is asked-for with nobody on it yet, waiting behind
+  // whatever the fleet is chewing on. Same deriver as every source row.
+  const activity = deriveScrapeActivity(a, nowMs);
+  if (activity === "scraping") return { stage: "scraping", pending: true };
+  if (activity === "queued") return { stage: "queued", pending: true };
 
   // The anchor's most recent terminal event is a failure: on a settled failure the
   // worker stamps lastFailedAt, clears scrapeStartedAt and pushes nextRunAt hours

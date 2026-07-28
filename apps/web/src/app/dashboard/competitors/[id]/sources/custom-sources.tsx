@@ -7,6 +7,7 @@ import {
   PlusIcon,
   LockIcon,
   CircleNotchIcon,
+  ClockIcon,
   PlayIcon,
   TrashIcon,
   ArrowSquareOutIcon,
@@ -44,6 +45,7 @@ import {
 } from "@/components/ui/dialog";
 import { TabCard, TabSection } from "@/components/outrival/tab-shell";
 import type { CustomAddResult } from "../competitor-detail/use-monitor-actions";
+import { scrapeActivity, type ScrapeActivity } from "../competitor-detail/shared";
 
 export interface CustomSourcesProps {
   competitorUrl: string;
@@ -159,7 +161,7 @@ export function CustomSources({
                 <CustomMonitorRow
                   key={m.id}
                   monitor={m}
-                  running={scrapingIds.has(m.id)}
+                  activity={scrapeActivity(m, scrapingIds.has(m.id))}
                   onRun={onRun}
                   onDelete={onDelete}
                 />
@@ -194,15 +196,17 @@ export function CustomSources({
 
 function CustomMonitorRow({
   monitor,
-  running,
+  activity,
   onRun,
   onDelete,
 }: {
   monitor: Monitor;
-  running: boolean;
+  /** Open scrape request, if any: a worker has it, or it is still in the queue. */
+  activity: ScrapeActivity;
   onRun: (id: string) => void;
   onDelete: (monitorId: string) => Promise<void>;
 }) {
+  const running = activity !== null;
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const url = monitor.config?.url ?? "";
@@ -251,9 +255,13 @@ function CustomMonitorRow({
           onClick={() => onRun(monitor.id)}
           disabled={running}
         >
-          {running ? (
+          {activity === "scraping" ? (
             <>
               <CircleNotchIcon size={12} className="animate-spin" /> Scraping…
+            </>
+          ) : activity === "queued" ? (
+            <>
+              <ClockIcon size={12} /> Queued
             </>
           ) : (
             <>

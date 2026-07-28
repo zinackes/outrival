@@ -7,6 +7,7 @@ import {
   ArrowSquareOutIcon,
   FileTextIcon,
   CircleNotchIcon,
+  ClockIcon,
   PlayIcon,
 } from "@phosphor-icons/react/ssr";
 import { api, type ChangeRow, type CompetitorSignal, type PositioningVersion } from "@/lib/api";
@@ -19,7 +20,7 @@ import { CatBadge } from "@/components/outrival/data-marks";
 import { sourceShortLabel } from "@/lib/source-labels";
 import { cn } from "@/lib/utils";
 import { PositioningDrift } from "./positioning-drift";
-import { Empty, type MonitorSourceProps } from "./shared";
+import { Empty, scrapeActivity, type MonitorSourceProps } from "./shared";
 import {
   PRODUCT_SOURCES,
   filterByLens,
@@ -110,26 +111,32 @@ export function ProductTab({
       tabMonitors.find((m) => m.sourceType === "homepage") ??
       tabMonitors.find((m) => m.sourceType === "blog") ??
       tabMonitors[0]!;
-    const running = scrapingIds.has(preferred.id);
+    const activity = scrapeActivity(preferred, scrapingIds.has(preferred.id));
     return (
       <EmptyState
         icon={FileTextIcon}
         title="No changes yet"
         description={
-          preferred.lastRunAt
-            ? `The ${preferred.sourceType} monitor was scraped ${formatDistanceToNow(new Date(preferred.lastRunAt), { addSuffix: true })}, with no change since.`
-            : `The ${preferred.sourceType} monitor has never been scraped. Run it now.`
+          activity === "queued"
+            ? `The ${preferred.sourceType} monitor is waiting in the scan queue. It runs as soon as a scanner is free.`
+            : preferred.lastRunAt
+              ? `The ${preferred.sourceType} monitor was scraped ${formatDistanceToNow(new Date(preferred.lastRunAt), { addSuffix: true })}, with no change since.`
+              : `The ${preferred.sourceType} monitor has never been scraped. Run it now.`
         }
         actions={
           <Button
             size="sm"
-            variant={running ? "secondary" : "default"}
+            variant={activity ? "secondary" : "default"}
             onClick={() => onRun(preferred.id)}
-            disabled={running}
+            disabled={activity !== null}
           >
-            {running ? (
+            {activity === "scraping" ? (
               <>
                 <CircleNotchIcon size={12} className="animate-spin" /> Scraping…
+              </>
+            ) : activity === "queued" ? (
+              <>
+                <ClockIcon size={12} /> Queued
               </>
             ) : (
               <>

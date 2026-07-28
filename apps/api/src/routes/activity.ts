@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { competitors, monitors } from "@outrival/db";
+import { deriveScrapeActivity } from "@outrival/shared";
 import { db } from "../lib/db";
 import { analyticsQuery, sql } from "../lib/analytics-safe";
 import { authMiddleware } from "../middleware/auth";
@@ -76,6 +77,12 @@ activityRouter.get("/health", async (c) => {
       isActive: monitors.isActive,
       lastRunAt: monitors.lastRunAt,
       nextRunAt: monitors.nextRunAt,
+      lastFailedAt: monitors.lastFailedAt,
+      // The two stamps that tell "enqueued, waiting for a scanner" from "a worker
+      // has it": without them a check whose run was already requested still reads
+      // as merely "due", which is why a long queue looked like nothing happening.
+      scrapeStartedAt: monitors.scrapeStartedAt,
+      scrapePickedUpAt: monitors.scrapePickedUpAt,
       consecutiveFailures: monitors.consecutiveFailures,
       markedUnscrapable: monitors.markedUnscrapable,
     })
@@ -132,6 +139,7 @@ activityRouter.get("/health", async (c) => {
   // due in the next day, and a truncated list would make that count describe the
   // slice rather than the schedule. These rows are already loaded for `sources`, so
   // the cost is JSON size on a roster the same request already carries.
+  const now = Date.now();
   const upcoming = rows
     .filter((r) => r.isActive && !r.markedUnscrapable && r.nextRunAt)
     .map((r) => ({
@@ -145,6 +153,10 @@ activityRouter.get("/health", async (c) => {
       // as its rhythm rather than as a source that has gone quiet.
       frequency: r.frequency,
       nextRunAt: r.nextRunAt,
+      // Whether this scheduled check has already been handed to the queue, and
+      // whether a worker took it. An overdue nextRunAt on its own can't tell the
+      // two apart, so "due now" was the only thing the list could ever say.
+      activity: deriveScrapeActivity(r, now),
     }))
     .sort((a, b) => (a.nextRunAt!.getTime() ?? 0) - (b.nextRunAt!.getTime() ?? 0));
 

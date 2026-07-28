@@ -31,6 +31,7 @@ import {
   detectTemporaryUrl,
   DISCOVERY_REGIONS,
   inferRegionFromUrl,
+  type AnalysisStage,
   type Plan,
 } from "@outrival/shared";
 import {
@@ -73,6 +74,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { analysisStageMeta } from "@/components/outrival/analysis-status";
 import { cn } from "@/lib/utils";
 
 type Screen = "stage" | "input" | "profile" | "discover" | "done";
@@ -1651,7 +1653,7 @@ function DoneStep({
   // Per-competitor analysis progress (drives the "Analyzing XIcon/Y" badge and the
   // breakdown popover). A competitor counts as analyzed once it has an AI summary.
   const [progress, setProgress] = useState<
-    { id: string; name: string; analyzed: boolean }[]
+    { id: string; name: string; analyzed: boolean; stage: AnalysisStage }[]
   >([]);
   const analyzed = progress.filter((c) => c.analyzed).length;
 
@@ -1686,11 +1688,15 @@ function DoneStep({
         if (!active) return;
         // Best-effort progress proxy: a competitor counts as analyzed once it has
         // an AI summary (first scrape → classify → summary pipeline produced output).
+        // The stage says WHERE the unfinished ones are — right after onboarding the
+        // queue is at its deepest (every seeded source lands at once), so "Analyzing"
+        // on all of them would describe work that has not begun.
         setProgress(
           competitors.map((c) => ({
             id: c.id,
             name: c.name,
             analyzed: c.aiSummary != null,
+            stage: c.analysis?.stage ?? "queued",
           })),
         );
       } catch {
@@ -1758,27 +1764,34 @@ function DoneStep({
                 Loading…
               </li>
             ) : (
-              progress.map((c) => (
-                <li
-                  key={c.id}
-                  className="flex items-center gap-2 rounded-sm px-2 py-1.5"
-                >
-                  {c.analyzed ? (
-                    <CheckIcon size={14} className="shrink-0 text-positive" />
-                  ) : (
-                    <CircleNotchIcon
-                      size={14}
-                      className="shrink-0 animate-spin text-muted-foreground"
-                    />
-                  )}
-                  <span className="truncate text-sm text-foreground">
-                    {c.name}
-                  </span>
-                  <span className="ml-auto shrink-0 text-meta text-muted-foreground">
-                    {c.analyzed ? "Ready" : "Analyzing"}
-                  </span>
-                </li>
-              ))
+              progress.map((c) => {
+                const meta = c.analyzed ? null : analysisStageMeta(c.stage);
+                const StageIcon = meta?.Icon ?? CircleNotchIcon;
+                return (
+                  <li
+                    key={c.id}
+                    className="flex items-center gap-2 rounded-sm px-2 py-1.5"
+                  >
+                    {c.analyzed ? (
+                      <CheckIcon size={14} className="shrink-0 text-positive" />
+                    ) : (
+                      <StageIcon
+                        size={14}
+                        className={cn(
+                          "shrink-0 text-muted-foreground",
+                          (meta?.spin ?? true) && "animate-spin",
+                        )}
+                      />
+                    )}
+                    <span className="truncate text-sm text-foreground">
+                      {c.name}
+                    </span>
+                    <span className="ml-auto shrink-0 text-meta text-muted-foreground">
+                      {c.analyzed ? "Ready" : (meta?.short ?? "Analyzing")}
+                    </span>
+                  </li>
+                );
+              })
             )}
           </ul>
         </PopoverContent>

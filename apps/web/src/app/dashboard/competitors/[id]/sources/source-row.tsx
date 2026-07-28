@@ -6,6 +6,7 @@ import {
   ArrowSquareOutIcon,
   InfoIcon,
   CircleNotchIcon,
+  ClockIcon,
   LockIcon,
   PlayIcon,
   PlusIcon,
@@ -38,7 +39,7 @@ import {
   nextScanIn,
   lastScanLabel,
 } from "../competitor-detail/monitor-status";
-import { isServerQueued } from "../competitor-detail/shared";
+import type { ScrapeActivity } from "../competitor-detail/shared";
 import { sourceCopy, isConcerning } from "./source-copy";
 
 // `limited` was `text-warning`, which no token defines — so the one tone that had
@@ -189,7 +190,7 @@ export function SourceRow({
   targets,
   competitorUrl,
   fallbacks,
-  running,
+  activity,
   monitoringPaused,
   onRun,
   onEnable,
@@ -206,7 +207,8 @@ export function SourceRow({
   competitorUrl: string | null;
   /** Other sources we ARE collecting — quoted in the blocked message. */
   fallbacks: string[];
-  running: boolean;
+  /** Open scrape request, if any: a worker has it, or it is still in the queue. */
+  activity: ScrapeActivity;
   monitoringPaused: boolean;
   onRun: (id: string) => void;
   onEnable: (source: SourceType, url?: string) => Promise<void>;
@@ -224,12 +226,13 @@ export function SourceRow({
   const drawerId = useId();
 
   const state = sourceState({ sourceType, plan, monitor, targets });
-  // `running` carries the optimistic client-side set (a click before the server has
-  // caught up); "queued" is purely server state, so it is read off the monitor here
-  // rather than threaded through as a second prop.
+  // One verdict, computed once by the caller: the server stamps say whether a
+  // worker holds the job or it is still waiting, and the optimistic client marker
+  // can only ever mean "queued" (a request is tracked from the moment it is sent).
   const status = monitor
-    ? monitorStatus(monitor, running, !running && isServerQueued(monitor))
+    ? monitorStatus(monitor, activity === "scraping", activity === "queued")
     : "idle";
+  const busy = activity !== null;
   const copy = sourceCopy({
     state,
     sourceType,
@@ -426,11 +429,17 @@ export function SourceRow({
               size="sm"
               variant="ghost"
               className="h-7 text-xs opacity-0 transition-opacity focus-visible:opacity-100 group-hover/row:opacity-100 group-data-[open]/row:opacity-100"
-              disabled={running || monitor.isActive === false}
+              disabled={busy || monitor.isActive === false}
               onClick={() => onRun(monitor.id)}
             >
-              {running ? <CircleNotchIcon size={11} className="animate-spin" /> : <PlayIcon size={11} />}
-              Run
+              {activity === "scraping" ? (
+                <CircleNotchIcon size={11} className="animate-spin" />
+              ) : activity === "queued" ? (
+                <ClockIcon size={11} />
+              ) : (
+                <PlayIcon size={11} />
+              )}
+              {activity === "queued" ? "Queued" : "Run"}
             </Button>
           )}
 

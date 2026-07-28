@@ -6,6 +6,7 @@ import { formatDistanceToNow } from "date-fns";
 import {
   CaretDownIcon,
   ArrowSquareOutIcon,
+  ClockIcon,
   PencilIcon,
   ArrowsClockwiseIcon,
   SparkleIcon,
@@ -59,7 +60,7 @@ export function CompetitorPricingCard({
   competitor,
   onUpdated,
   hasCapturedTiers = false,
-  isCapturing = false,
+  capture = null,
   summary,
   summaryUpdatedAt,
 }: {
@@ -69,8 +70,9 @@ export function CompetitorPricingCard({
   // The detected status can be "public" from price tokens alone, before the tiers
   // are parsed — so we don't claim prices are visible when none were captured.
   hasCapturedTiers?: boolean;
-  // A pricing scrape is in flight — show a "capturing" hint instead of an empty state.
-  isCapturing?: boolean;
+  // A pricing scrape is open — show what it is actually doing instead of an empty
+  // state. "queued" is not "capturing": the request is in, no worker has it yet.
+  capture?: "scraping" | "queued" | null;
   // The pricing source's AI summary, folded into this header as a "Summary"
   // toggle so the status and "what we found" share one row instead of two bands.
   summary?: string | null;
@@ -96,7 +98,7 @@ export function CompetitorPricingCard({
   // self-evident from the label, so the detected case collapses to one line. A
   // manual note, the missing-tiers warning, or a non-obvious status still show.
   const blurb = tiersMissing
-    ? isCapturing
+    ? capture
       ? null
       : "We couldn't capture structured tiers from this page automatically. Add them with Edit."
     : (competitor.pricingNote ?? (status === "public" ? null : meta.blurb));
@@ -176,9 +178,14 @@ export function CompetitorPricingCard({
       )}
 
       {blurb && <p className="text-dense text-muted-foreground">{blurb}</p>}
-      {isCapturing && (
+      {capture === "scraping" && (
         <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
           <ArrowsClockwiseIcon className="size-3 animate-spin" /> Capturing pricing…
+        </p>
+      )}
+      {capture === "queued" && (
+        <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+          <ClockIcon className="size-3" /> Pricing scan queued, waiting for a scanner
         </p>
       )}
       {status === "gated_demo" && competitor.pricingDemoUrl && (

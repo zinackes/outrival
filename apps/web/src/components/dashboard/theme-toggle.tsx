@@ -64,7 +64,7 @@ export function ThemeToggle() {
             data-active={mounted && theme === value}
             className="data-[active=true]:text-foreground text-muted-foreground"
           >
-            <Icon className="size-3.5" /> {label}
+            <Icon className="size-4" /> {label}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>

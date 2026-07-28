@@ -88,6 +88,7 @@ async function seedPlan(
 let rich = "";
 let quoteOnly = "";
 let noAts = "";
+let labelled = "";
 let foreign = "";
 
 afterAll(() => closeDb());
@@ -108,6 +109,7 @@ beforeAll(async () => {
   rich = await seedCompetitor(A.orgId, "Klarity");
   quoteOnly = await seedCompetitor(A.orgId, "Aperture");
   noAts = await seedCompetitor(A.orgId, "Beacon");
+  labelled = await seedCompetitor(A.orgId, "Meridian");
   foreign = await seedCompetitor(B.orgId, "Outsider");
 
   // Klarity: a stale batch that must be ignored, then the current one.
@@ -160,10 +162,18 @@ beforeAll(async () => {
   // Aperture: quote-based tiers only.
   await seedPlan(quoteOnly, "Enterprise", null, AT(9));
 
-  // Beacon: open roles but no authoritative ATS run, so no canonical buckets.
+  // Beacon: open roles but no authoritative ATS run, so no canonical buckets — and
+  // no label that reads as engineering either.
   await testDb
     .insert(jobCounts)
     .values({ competitorId: noAts, department: "Support", count: 2, recordedAt: AT(9) });
+
+  // Meridian: same fallback path, but its labels name the departments (what the
+  // LLM/careers extraction emits), so the engineering share is readable.
+  await testDb.insert(jobCounts).values([
+    { competitorId: labelled, department: "Engineering", count: 16, recordedAt: AT(9) },
+    { competitorId: labelled, department: "Sales", count: 34, recordedAt: AT(9) },
+  ]);
 }, HOOK_TIMEOUT_MS);
 
 describe("compare matrix", () => {
@@ -221,11 +231,19 @@ describe("compare matrix", () => {
     expect(body.competitors[0].hiring.engineeringOpen).toBe(9);
   });
 
-  test("leaves the engineering share null when no ATS run bucketed the roles", async () => {
+  test("leaves the engineering share null when no label reads as engineering", async () => {
     const body = await (
       await app.request(`/api/compare?competitorIds=${noAts}`, asUser(A.userId, A.email))
     ).json();
     expect(body.competitors[0].hiring.totalOpen).toBe(2);
     expect(body.competitors[0].hiring.engineeringOpen).toBeNull();
+  });
+
+  test("buckets the raw labels when no ATS run wrote hiring_metrics", async () => {
+    const body = await (
+      await app.request(`/api/compare?competitorIds=${labelled}`, asUser(A.userId, A.email))
+    ).json();
+    expect(body.competitors[0].hiring.totalOpen).toBe(50);
+    expect(body.competitors[0].hiring.engineeringOpen).toBe(16);
   });
 });

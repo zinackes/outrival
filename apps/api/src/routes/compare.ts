@@ -8,6 +8,7 @@ import {
   isComparablePricePeriod,
   type PricingTier,
   type CompetitorOverrides,
+  normalizeDepartment,
 } from "@outrival/shared";
 import { db } from "../lib/db";
 import { analyticsQuery, sql } from "../lib/analytics-safe";
@@ -44,6 +45,21 @@ function platformOf(p: PlatformProfile | null): PlatformDetail | null {
     hosting: p.hosting?.value ? platformLabel(p.hosting.value) : null,
   };
   return detail.framework || detail.cms || detail.ats || detail.hosting ? detail : null;
+}
+
+// Engineering share read off the raw job_counts labels, for a competitor no
+// authoritative ATS run ever bucketed (the LLM/careers path writes job_counts but
+// never hiring_metrics). Same normalizer the worker runs, minus the job titles it
+// cannot see here — so a label that says "Engineering" counts, and one that says
+// nothing stays out. Returns null rather than 0 when no label buckets to
+// engineering: that capture can be partial, and "no engineering hiring" is a
+// stronger claim than the data supports.
+function engineeringFromLabels(rows: Array<{ department: string; count: number }>): number | null {
+  let engineering = 0;
+  for (const r of rows) {
+    if (normalizeDepartment(r.department, null, null) === "engineering") engineering += r.count;
+  }
+  return engineering > 0 ? engineering : null;
 }
 
 // One pricing-history row from the latest batch (one per plan). Aggregated into
@@ -92,12 +108,11 @@ interface HiringDetail {
   totalOpen: number;
   topDepartment: string | null;
   departments: Array<{ department: string; count: number }>;
-  // Open roles in the canonical `engineering` bucket, from hiring_metrics. The
-  // compare page picks this share out of the total bar, because it is the share
-  // that says what a competitor is building. Null when the competitor has no
-  // authoritative ATS run (job_counts holds raw ATS labels, which cannot be
-  // bucketed here without guessing) — the UI then shows the total alone rather
-  // than a number it made up.
+  // Open roles in the canonical `engineering` bucket. The compare page picks this
+  // share out of the total bar, because it is the share that says what a competitor
+  // is building. hiring_metrics first (authoritative ATS run, bucketed with the
+  // titles); otherwise the raw job_counts labels are bucketed by the same
+  // normalizer. Null when neither yields engineering roles.
   engineeringOpen: number | null;
   capturedAt: string | null;
 }
@@ -273,9 +288,8 @@ compareRouter.get("/", async (c) => {
 
   // Engineering share of the open roles, from the canonical buckets the ATS path
   // writes weekly. Deliberately a separate read from job_counts: that table holds
-  // the raw ATS labels ("Platform Engineering", "R&D"), which only the worker's
-  // normalizeDepartment can bucket. Missing here (LLM/careers fallback, no ATS run)
-  // → engineeringOpen stays null and the UI shows the total alone.
+  // the raw ATS labels ("Platform Engineering", "R&D"). Missing here (LLM/careers
+  // fallback, no ATS run) → the labels are bucketed below instead.
   const engineeringRows = await analyticsQuery<{ competitorId: string; openCount: number }>(sql`
     WITH latest AS (
       SELECT competitor_id, max(week_start) AS w
@@ -331,13 +345,17 @@ compareRouter.get("/", async (c) => {
         totalOpen: h.count,
         topDepartment: h.department,
         departments: [{ department: h.department, count: h.count }],
-        engineeringOpen: engineeringById.get(h.competitorId) ?? null,
+        engineeringOpen: null,
         capturedAt: h.recordedAt,
       });
     } else {
       cur.totalOpen += h.count;
       cur.departments.push({ department: h.department, count: h.count });
     }
+  }
+  for (const [competitorId, detail] of hiringById) {
+    detail.engineeringOpen =
+      engineeringById.get(competitorId) ?? engineeringFromLabels(detail.departments);
   }
 
   const reviewsById = new Map<string, ReviewDetail[]>();

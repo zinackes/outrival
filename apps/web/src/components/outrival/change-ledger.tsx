@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, CornerDownRight } from "lucide-react";
+import { ArrowRightIcon, ArrowElbowDownRightIcon } from "@phosphor-icons/react/ssr";
 import { parseDelta, formatDeltaPct } from "@/lib/signal-delta";
 
 /**
@@ -31,7 +31,7 @@ export function ChangeLedger({
         <>
           <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
             <Figure label="Before" value={delta.before.raw} muted />
-            <ArrowRight
+            <ArrowRightIcon
               className="mb-1.5 size-4 shrink-0 text-muted-foreground"
               aria-hidden
             />
@@ -58,7 +58,7 @@ export function ChangeLedger({
           )}
           {after && (
             <p className="flex gap-2 text-foreground">
-              <CornerDownRight
+              <ArrowElbowDownRightIcon
                 className="mt-1 size-4 shrink-0 text-muted-foreground"
                 aria-hidden
               />

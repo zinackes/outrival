@@ -5,7 +5,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useState } from "react";
-import { Maximize2 } from "lucide-react";
+import { ArrowsOutIcon } from "@phosphor-icons/react/ssr";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -126,7 +126,7 @@ export function VisualDiff({
           className="h-1 flex-1 cursor-ew-resize accent-[var(--link)]"
         />
         <Button variant="outline" size="sm" onClick={() => setFull(true)}>
-          <Maximize2 size={12} /> Side by side
+          <ArrowsOutIcon size={12} /> Side by side
         </Button>
       </div>
 

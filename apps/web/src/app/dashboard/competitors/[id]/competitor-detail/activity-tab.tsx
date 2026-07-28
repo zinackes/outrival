@@ -4,7 +4,12 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import { format, formatDistanceToNow, isToday, isYesterday } from "date-fns";
-import { Activity, ArrowRight, ChevronRight, ExternalLink } from "lucide-react";
+import {
+  PulseIcon,
+  ArrowRightIcon,
+  CaretRightIcon,
+  ArrowSquareOutIcon,
+} from "@phosphor-icons/react/ssr";
 import type { CompetitorSignal, ChangeRow } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { feedItemMotion } from "@/lib/motion";
@@ -41,7 +46,7 @@ function dayOf(iso: string): { key: string; label: string; date: Date } {
 }
 
 /**
- * Activity is the chronology: what happened, newest first, triaged by materiality.
+ * PulseIcon is the chronology: what happened, newest first, triaged by materiality.
  *
  * It used to render signals and unclassified changes as one flat divided list,
  * repeating severity, category, timestamp and a "View page" link on every row,
@@ -131,7 +136,7 @@ export function ActivityTab({
     const hasScraped = lastRunMs > 0;
     return (
       <EmptyState
-        icon={Activity}
+        icon={PulseIcon}
         title={hasScraped ? "No changes yet" : "No activity yet"}
         description={
           hasScraped
@@ -144,7 +149,7 @@ export function ActivityTab({
               href={activityHref}
               className="inline-flex items-center gap-1.5 text-sm text-link hover:underline"
             >
-              <Activity size={14} aria-hidden />
+              <PulseIcon size={14} aria-hidden />
               View monitoring activity
             </Link>
           )
@@ -283,7 +288,7 @@ export function ActivityTab({
       )}
 
       {/* This tab shows signals and classified changes. The full run history,
-          including every no-change and baseline check, lives on the Activity page. */}
+          including every no-change and baseline check, lives on the PulseIcon page. */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-5 py-3">
         <span className="text-dense text-muted-foreground">
           {signals.length} {signals.length === 1 ? "signal" : "signals"} captured for this
@@ -294,7 +299,7 @@ export function ActivityTab({
           className="inline-flex items-center gap-1.5 text-dense text-link hover:underline"
         >
           Every check we ran, including no-change runs
-          <ArrowRight size={13} aria-hidden />
+          <ArrowRightIcon size={13} aria-hidden />
         </Link>
       </div>
     </Card>
@@ -417,7 +422,7 @@ function SignalRow({
             rel="noreferrer noopener"
             className="inline-flex items-center gap-1 text-xs text-link hover:underline"
           >
-            View page <ExternalLink size={11} />
+            View page <ArrowSquareOutIcon size={11} />
           </a>
         </dd>
       </dl>
@@ -451,7 +456,7 @@ function OtherChanges({
           "[&::-webkit-details-marker]:hidden",
         )}
       >
-        <ChevronRight
+        <CaretRightIcon
           size={13}
           aria-hidden
           className="shrink-0 transition-transform group-open:rotate-90"

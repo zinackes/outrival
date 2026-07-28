@@ -3,7 +3,7 @@
 import { type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
-import { ChevronRight } from "lucide-react";
+import { CaretRightIcon } from "@phosphor-icons/react/ssr";
 import type { CompareColumn } from "@/lib/api";
 import { CompAvatar } from "@/components/dashboard/comp-avatar";
 import { SectionHead } from "@/components/dashboard/section-head";
@@ -213,7 +213,7 @@ export function MeasureRow({
   const identity = (
     <>
       {expandable ? (
-        <ChevronRight
+        <CaretRightIcon
           size={13}
           aria-hidden
           className={cn(

@@ -4,12 +4,12 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import {
-  ExternalLink,
-  Loader2,
-  Sparkles,
-  ChevronDown,
-  ChevronRight,
-} from "lucide-react";
+  ArrowSquareOutIcon,
+  CircleNotchIcon,
+  SparkleIcon,
+  CaretDownIcon,
+  CaretRightIcon,
+} from "@phosphor-icons/react/ssr";
 import { api, type ChangeRow } from "@/lib/api";
 import { toastApiError } from "@/lib/error-helpers";
 import { cn } from "@/lib/utils";
@@ -70,7 +70,7 @@ export function ChangeCard({
             rel="noreferrer noopener"
             className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
-            View page <ExternalLink size={12} />
+            View page <ArrowSquareOutIcon size={12} />
           </a>
         )}
       </div>
@@ -91,11 +91,11 @@ export function ChangeCard({
           >
             {classifying ? (
               <>
-                <Loader2 size={11} className="animate-spin" /> Classifying…
+                <CircleNotchIcon size={11} className="animate-spin" /> Classifying…
               </>
             ) : (
               <>
-                <Sparkles size={11} /> Classify with AI
+                <SparkleIcon size={11} /> Classify with AI
               </>
             )}
           </Button>
@@ -109,7 +109,7 @@ export function ChangeCard({
             onClick={() => setOpen((v) => !v)}
             className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
-            {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+            {open ? <CaretDownIcon size={11} /> : <CaretRightIcon size={11} />}
             {open ? "Hide raw diff" : "Show raw diff"}
           </button>
           {open && (

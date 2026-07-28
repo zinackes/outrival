@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronDown, MoreHorizontal } from "lucide-react";
+import { CheckIcon, CaretDownIcon, DotsThreeIcon } from "@phosphor-icons/react/ssr";
 import type { ActionStatus } from "@/lib/api";
 import { ACTION_OPTIONS, SNOOZE_PRESETS } from "@/lib/signal-actions";
 import { Button } from "@/components/ui/button";
@@ -48,12 +48,12 @@ export function SignalsListFooter({
           className="h-7"
           onClick={() => onBulkMarkRead(true)}
         >
-          <Check size={13} /> Read
+          <CheckIcon size={13} /> Read
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon-sm" aria-label="More bulk actions">
-              <MoreHorizontal size={15} />
+              <DotsThreeIcon size={15} />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
@@ -104,7 +104,7 @@ export function SignalsListFooter({
         className="inline-flex items-center gap-1.5 rounded-sm outline-none transition-colors hover:text-foreground focus-visible:text-foreground"
       >
         <Kbd>?</Kbd> Shortcuts
-        <ChevronDown size={11} className="rotate-180 opacity-60" aria-hidden />
+        <CaretDownIcon size={11} className="rotate-180 opacity-60" aria-hidden />
       </button>
     </div>
   );

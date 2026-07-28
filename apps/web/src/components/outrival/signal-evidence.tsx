@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, CornerDownRight } from "lucide-react";
+import { CaretDownIcon, ArrowElbowDownRightIcon } from "@phosphor-icons/react/ssr";
 import { api, type SignalDetail } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VisualDiff } from "@/components/outrival/visual-diff";
@@ -98,7 +98,7 @@ export function SignalEvidence({
             )}
             {detail.humanChangeAfter && (
               <p className="flex gap-1.5 text-foreground">
-                <CornerDownRight
+                <ArrowElbowDownRightIcon
                   className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
                   aria-hidden
                 />
@@ -130,7 +130,7 @@ export function SignalEvidence({
             >
               {showAll ? "Hide" : "Show all"} {detail.changes.length} change
               {detail.changes.length === 1 ? "" : "s"}
-              <ChevronDown
+              <CaretDownIcon
                 className={cn(
                   "size-3.5 transition-transform",
                   showAll && "rotate-180",

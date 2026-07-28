@@ -2,7 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Check, Loader2, RefreshCw, Pencil } from "lucide-react";
+import {
+  CheckIcon,
+  CircleNotchIcon,
+  ArrowsClockwiseIcon,
+  PencilIcon,
+} from "@phosphor-icons/react/ssr";
 import { api, type ProductProfile, type ProjectStage, type WorkspaceSettings } from "@/lib/api";
 import { workspaceSettingsQuery } from "@/lib/queries";
 import { Button } from "@/components/ui/button";
@@ -193,7 +198,7 @@ export function WorkspaceSettingsForm() {
             onClick={() => setChangeUrlOpen(true)}
             title="Change the monitored product URL"
           >
-            <Pencil size={13} />
+            <PencilIcon size={13} />
             Change URL
           </Button>
         </div>
@@ -261,7 +266,7 @@ export function WorkspaceSettingsForm() {
             onClick={() => setUpdateOpen(true)}
             title="Refine your profile or re-analyze your source. Your competitors stay"
           >
-            <RefreshCw size={13} />
+            <ArrowsClockwiseIcon size={13} />
             Update my product profile
           </Button>
         </div>
@@ -272,7 +277,7 @@ export function WorkspaceSettingsForm() {
 
       {saved && !dirty && (
         <p className="flex items-center gap-1.5 text-sm text-positive">
-          <Check className="size-4" /> Saved
+          <CheckIcon className="size-4" /> Saved
         </p>
       )}
       {error && <p className="text-sm text-destructive">{error}</p>}
@@ -293,7 +298,7 @@ export function WorkspaceSettingsForm() {
               Cancel
             </Button>
             <Button type="submit" size="sm" disabled={saving}>
-              {saving && <Loader2 size={12} className="animate-spin" />}
+              {saving && <CircleNotchIcon size={12} className="animate-spin" />}
               {saving ? "Saving…" : "Save changes"}
             </Button>
           </div>

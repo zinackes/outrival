@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { ExternalLink, Loader2 } from "lucide-react";
+import { ArrowSquareOutIcon, CircleNotchIcon } from "@phosphor-icons/react/ssr";
 import { toast } from "sonner";
 import { api, type NotificationSettings } from "@/lib/api";
 import { notificationSettingsQuery } from "@/lib/queries";
@@ -152,7 +152,7 @@ export function DigestSettingsSheet({
           <Button asChild variant="ghost" size="sm">
             <Link href="/dashboard/settings" className="text-muted-foreground">
               All settings
-              <ExternalLink size={11} />
+              <ArrowSquareOutIcon size={11} />
             </Link>
           </Button>
           <div className="flex items-center gap-3">
@@ -162,7 +162,7 @@ export function DigestSettingsSheet({
               size="sm"
               disabled={saving || !settings}
             >
-              {saving && <Loader2 size={12} className="animate-spin" />}
+              {saving && <CircleNotchIcon size={12} className="animate-spin" />}
               {saving ? "Saving…" : "Save"}
             </Button>
           </div>

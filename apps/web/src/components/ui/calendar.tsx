@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { CaretLeftIcon, CaretRightIcon } from "@phosphor-icons/react/ssr";
 import { DayPicker } from "react-day-picker";
 
 import { cn } from "@/lib/utils";
@@ -66,7 +66,7 @@ function Calendar({
       }}
       components={{
         Chevron: ({ orientation, className: chevronClassName, ...rest }) => {
-          const Icon = orientation === "left" ? ChevronLeft : ChevronRight;
+          const Icon = orientation === "left" ? CaretLeftIcon : CaretRightIcon;
           return <Icon className={cn("size-4", chevronClassName)} {...rest} />;
         },
       }}

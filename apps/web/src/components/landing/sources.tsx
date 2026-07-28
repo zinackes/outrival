@@ -1,19 +1,19 @@
 import {
-  Activity,
-  ArrowRight,
-  Briefcase,
-  Cpu,
-  FileText,
-  Globe,
-  Newspaper,
-  Rss,
-  Star,
-  Tag,
-  type LucideIcon,
-} from "lucide-react";
+  PulseIcon,
+  ArrowRightIcon,
+  BriefcaseIcon,
+  CpuIcon,
+  FileTextIcon,
+  GlobeIcon,
+  NewspaperIcon,
+  RssIcon,
+  StarIcon,
+  TagIcon,
+} from "@phosphor-icons/react/ssr";
+import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 
-type Source = { icon: LucideIcon; label: string; meta: string };
+type Source = { icon: PhosphorIcon; label: string; meta: string };
 
 const FAMILIES: {
   title: string;
@@ -26,11 +26,11 @@ const FAMILIES: {
     stat: "≈60% of signals",
     desc: "Everything they show their own prospects, the densest layer.",
     sources: [
-      { icon: Globe, label: "Homepage", meta: "positioning" },
-      { icon: Tag, label: "Pricing page", meta: "plans · prices" },
-      { icon: Rss, label: "Blog", meta: "editorial" },
-      { icon: FileText, label: "Changelog", meta: "releases" },
-      { icon: Activity, label: "Status page", meta: "uptime" },
+      { icon: GlobeIcon, label: "Homepage", meta: "positioning" },
+      { icon: TagIcon, label: "Pricing page", meta: "plans · prices" },
+      { icon: RssIcon, label: "Blog", meta: "editorial" },
+      { icon: FileTextIcon, label: "Changelog", meta: "releases" },
+      { icon: PulseIcon, label: "Status page", meta: "uptime" },
     ],
   },
   {
@@ -38,8 +38,8 @@ const FAMILIES: {
     stat: "2 platforms",
     desc: "What their actual customers say: score, volume, and how it's trending.",
     sources: [
-      { icon: Star, label: "App Store", meta: "reviews" },
-      { icon: Star, label: "Trustpilot", meta: "score · trend" },
+      { icon: StarIcon, label: "App Store", meta: "reviews" },
+      { icon: StarIcon, label: "Trustpilot", meta: "score · trend" },
     ],
   },
   {
@@ -47,9 +47,9 @@ const FAMILIES: {
     stat: "weeks of lead",
     desc: "The earliest indicators of strategic moves, often before the announcement.",
     sources: [
-      { icon: Briefcase, label: "Job postings", meta: "roles" },
-      { icon: Cpu, label: "Tech stack", meta: "payments · CRM" },
-      { icon: Newspaper, label: "News", meta: "funding · M&A" },
+      { icon: BriefcaseIcon, label: "Job postings", meta: "roles" },
+      { icon: CpuIcon, label: "Tech stack", meta: "payments · CRM" },
+      { icon: NewspaperIcon, label: "News", meta: "funding · M&A" },
     ],
   },
 ];
@@ -123,7 +123,7 @@ export function Sources() {
           </div>
           <Button asChild size="lg">
             <a href="/auth">
-              Add your product free <ArrowRight size={15} />
+              Add your product free <ArrowRightIcon size={15} />
             </a>
           </Button>
         </div>

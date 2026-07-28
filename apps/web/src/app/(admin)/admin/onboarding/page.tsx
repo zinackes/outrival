@@ -1,4 +1,4 @@
-import { AlertTriangle } from "lucide-react";
+import { WarningIcon } from "@phosphor-icons/react/ssr";
 import { adminFetch } from "../_lib/server";
 import { PageHeader, Section, Stat, Empty, durationFmt, pctFmt } from "../_components/shell";
 import type { AdminFirstSignalMisses, AdminFirstSignalSlo, AdminOnboardingMetrics } from "@/lib/api";
@@ -70,7 +70,7 @@ export default async function OnboardingMetricsPage() {
                   className="inline-flex items-center gap-1 text-meta font-medium"
                   style={{ color: "var(--critical)" }}
                 >
-                  <AlertTriangle className="size-3" />
+                  <WarningIcon className="size-3" />
                   last 3 onboardings all missed
                 </span>
               )}
@@ -193,7 +193,7 @@ export default async function OnboardingMetricsPage() {
                     style={high ? { color: "var(--critical)" } : { color: "var(--muted-foreground)" }}
                   >
                     {f.dropoffPct == null ? "—" : `${pctFmt(f.dropoffPct)} drop`}
-                    {high && f.dropoffPct != null && <AlertTriangle className="size-3" />}
+                    {high && f.dropoffPct != null && <WarningIcon className="size-3" />}
                   </span>
                 </span>
               </div>

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { toast } from "sonner";
-import { AlertCircle } from "lucide-react";
+import { WarningCircleIcon } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 import { api, type StructuralChangeRow } from "@/lib/api";
 import { structuralChangesQuery } from "@/lib/queries";
@@ -60,7 +60,7 @@ export function StructuralChangeBanner() {
             className="rounded-lg border border-critical/40 bg-critical/5 p-4"
           >
             <div className="flex items-start gap-2.5">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-critical" />
+              <WarningCircleIcon className="mt-0.5 h-4 w-4 shrink-0 text-critical" />
               <div className="flex-1">
                 <p className="text-sm font-medium text-foreground">
                   {name} {TYPE_LABEL[change.type] ?? "changed structurally"}

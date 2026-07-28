@@ -3,7 +3,14 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
-import { ChevronDown, ExternalLink, Pencil, RefreshCw, Sparkles, Tag } from "lucide-react";
+import {
+  CaretDownIcon,
+  ArrowSquareOutIcon,
+  PencilIcon,
+  ArrowsClockwiseIcon,
+  SparkleIcon,
+  TagIcon,
+} from "@phosphor-icons/react/ssr";
 import { cn } from "@/lib/utils";
 import { api, type Competitor, type PricingStatus } from "@/lib/api";
 import { toastApiError } from "@/lib/error-helpers";
@@ -113,7 +120,7 @@ export function CompetitorPricingCard({
     <div className="flex flex-col gap-2">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <Tag className="size-3.5 shrink-0 text-muted-foreground" />
+          <TagIcon className="size-3.5 shrink-0 text-muted-foreground" />
           <span className="text-content font-semibold tracking-tight leading-tight">{meta.label}</span>
           {competitor.pricingObservedRegion && (
             <span className="shrink-0 text-xs text-muted-foreground">
@@ -139,19 +146,19 @@ export function CompetitorPricingCard({
               onClick={() => setSummaryOpen((v) => !v)}
               aria-expanded={summaryOpen}
             >
-              <Sparkles className="size-3.5" /> Summary
-              <ChevronDown
+              <SparkleIcon className="size-3.5" /> Summary
+              <CaretDownIcon
                 className={cn("size-3.5 transition-transform", summaryOpen && "rotate-180")}
               />
             </Button>
           )}
           {competitor.pricingManualOverride ? (
             <Button variant="ghost" size="sm" onClick={redetect} disabled={busy}>
-              <RefreshCw className="size-3.5" /> Re-detect
+              <ArrowsClockwiseIcon className="size-3.5" /> Re-detect
             </Button>
           ) : (
             <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
-              <Pencil className="size-3.5" /> {status === "unknown" ? "Fill in" : "Edit"}
+              <PencilIcon className="size-3.5" /> {status === "unknown" ? "Fill in" : "Edit"}
             </Button>
           )}
         </div>
@@ -171,7 +178,7 @@ export function CompetitorPricingCard({
       {blurb && <p className="text-dense text-muted-foreground">{blurb}</p>}
       {isCapturing && (
         <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-          <RefreshCw className="size-3 animate-spin" /> Capturing pricing…
+          <ArrowsClockwiseIcon className="size-3 animate-spin" /> Capturing pricing…
         </p>
       )}
       {status === "gated_demo" && competitor.pricingDemoUrl && (
@@ -181,7 +188,7 @@ export function CompetitorPricingCard({
           rel="noreferrer"
           className="inline-flex items-center gap-1 text-dense text-primary hover:underline"
         >
-          <ExternalLink className="size-3" /> Demo / contact page
+          <ArrowSquareOutIcon className="size-3" /> Demo / contact page
         </a>
       )}
 

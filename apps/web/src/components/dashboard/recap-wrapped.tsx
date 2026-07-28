@@ -4,7 +4,12 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
-import { ChevronLeft, ChevronRight, Sparkles, ArrowUpRight } from "lucide-react";
+import {
+  CaretLeftIcon,
+  CaretRightIcon,
+  SparkleIcon,
+  ArrowUpRightIcon,
+} from "@phosphor-icons/react/ssr";
 import { api, type MonthlyRecap } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { ShareRecapButton } from "./share-recap-button";
@@ -204,7 +209,7 @@ function buildSlides(r: MonthlyRecap, publicMode: boolean): React.ReactNode[] {
   slides.push(
     <Slide accent={a(7)}>
       <motion.div variants={item}>
-        <Sparkles className="mx-auto mb-4 size-7 text-link" />
+        <SparkleIcon className="mx-auto mb-4 size-7 text-link" />
       </motion.div>
       <Big>That&apos;s your month.</Big>
       <Lead>We&apos;ll keep watching. See you next month.</Lead>
@@ -212,7 +217,7 @@ function buildSlides(r: MonthlyRecap, publicMode: boolean): React.ReactNode[] {
         {publicMode ? (
           <Button asChild variant="outline" size="sm">
             <Link href="https://outrival.app">
-              <Sparkles className="size-4 text-link" /> Powered by Outrival
+              <SparkleIcon className="size-4 text-link" /> Powered by Outrival
             </Link>
           </Button>
         ) : (
@@ -220,7 +225,7 @@ function buildSlides(r: MonthlyRecap, publicMode: boolean): React.ReactNode[] {
             <ShareRecapButton month={r.month.key} />
             <Button asChild variant="ghost" size="sm">
               <Link href="/dashboard">
-                Back to dashboard <ArrowUpRight className="size-4" />
+                Back to dashboard <ArrowUpRightIcon className="size-4" />
               </Link>
             </Button>
           </>
@@ -296,7 +301,7 @@ export function RecapDeck({ recap, publicMode = false }: { recap: MonthlyRecap; 
           onClick={() => go(-1)}
           aria-label="Previous card"
         >
-          <ChevronLeft className="size-5" />
+          <CaretLeftIcon className="size-5" />
         </Button>
         <Button
           variant="ghost"
@@ -305,7 +310,7 @@ export function RecapDeck({ recap, publicMode = false }: { recap: MonthlyRecap; 
           onClick={() => go(1)}
           aria-label="Next card"
         >
-          <ChevronRight className="size-5" />
+          <CaretRightIcon className="size-5" />
         </Button>
       </div>
     </div>

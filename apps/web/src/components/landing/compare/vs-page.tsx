@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Check, Minus } from "lucide-react";
+import { ArrowRightIcon, CheckIcon, MinusIcon } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 import { Breadcrumbs, CompareShell } from "./compare-shell";
 import { CompareTable } from "./compare-table";
@@ -134,7 +134,7 @@ export function VsPage({ competitorKey }: { competitorKey: CompetitorKey }) {
             <ul className="mt-5 flex flex-col gap-4">
               {c.betterWhen.map((b) => (
                 <li key={b.title} className="flex gap-3">
-                  <Minus
+                  <MinusIcon
                     size={16}
                     className="mt-1 shrink-0 text-text-subtle"
                     aria-hidden
@@ -157,7 +157,7 @@ export function VsPage({ competitorKey }: { competitorKey: CompetitorKey }) {
             <ul className="mt-5 flex flex-col gap-4">
               {OUTRIVAL_WINS.map((b) => (
                 <li key={b.title} className="flex gap-3">
-                  <Check
+                  <CheckIcon
                     size={16}
                     className="mt-1 shrink-0 text-primary"
                     aria-hidden
@@ -210,35 +210,35 @@ export function VsPage({ competitorKey }: { competitorKey: CompetitorKey }) {
               className="inline-flex items-center gap-1.5 text-text-muted transition-colors hover:text-foreground"
             >
               Outrival vs {otherName}
-              <ArrowRight size={13} aria-hidden />
+              <ArrowRightIcon size={13} aria-hidden />
             </Link>
             <Link
               href={`/alternatives/${c.key}`}
               className="inline-flex items-center gap-1.5 text-text-muted transition-colors hover:text-foreground"
             >
               Best {c.name} alternatives
-              <ArrowRight size={13} aria-hidden />
+              <ArrowRightIcon size={13} aria-hidden />
             </Link>
             <Link
               href={`/alternatives/${other}`}
               className="inline-flex items-center gap-1.5 text-text-muted transition-colors hover:text-foreground"
             >
               Best {otherName} alternatives
-              <ArrowRight size={13} aria-hidden />
+              <ArrowRightIcon size={13} aria-hidden />
             </Link>
             <Link
               href="/vs/diy"
               className="inline-flex items-center gap-1.5 text-text-muted transition-colors hover:text-foreground"
             >
               Outrival vs doing it yourself
-              <ArrowRight size={13} aria-hidden />
+              <ArrowRightIcon size={13} aria-hidden />
             </Link>
             <Link
               href="/alternatives/best-competitive-intelligence-tools"
               className="inline-flex items-center gap-1.5 text-text-muted transition-colors hover:text-foreground"
             >
               Best competitive-intelligence tools
-              <ArrowRight size={13} aria-hidden />
+              <ArrowRightIcon size={13} aria-hidden />
             </Link>
           </div>
 

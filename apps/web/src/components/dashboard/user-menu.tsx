@@ -3,13 +3,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Bell,
-  ChevronDown,
-  LogOut,
-  MessageSquarePlus,
-  Settings,
-  User,
-} from "lucide-react";
+  BellIcon,
+  CaretDownIcon,
+  SignOutIcon,
+  ChatCenteredDotsIcon,
+  GearIcon,
+  UserIcon,
+} from "@phosphor-icons/react/ssr";
 import { signOut } from "@/lib/auth-client";
 import { resetUser } from "@/lib/posthog/events";
 import { UserAvatar } from "@/components/dashboard/user-avatar";
@@ -23,12 +23,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-interface User {
+interface UserIcon {
   name: string | null;
   email: string | null;
 }
 
-export function UserMenu({ user }: { user: User }) {
+export function UserMenu({ user }: { user: UserIcon }) {
   const router = useRouter();
 
   async function handleSignOut() {
@@ -53,7 +53,7 @@ export function UserMenu({ user }: { user: User }) {
           >
             {user.name ?? user.email ?? "Account"}
           </span>
-          <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+          <CaretDownIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" sideOffset={8} className="w-56">
@@ -74,18 +74,18 @@ export function UserMenu({ user }: { user: User }) {
         {/* patch-29 — personal shortcuts to the two most-visited sections. */}
         <DropdownMenuItem asChild>
           <Link href="/dashboard/settings/profile">
-            <User className="size-3.5" /> Profile
+            <UserIcon className="size-3.5" /> Profile
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
           <Link href="/dashboard/settings/notifications">
-            <Bell className="size-3.5" /> Notifications
+            <BellIcon className="size-3.5" /> Notifications
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
           <Link href="/dashboard/settings">
-            <Settings className="size-3.5" /> Settings
+            <GearIcon className="size-3.5" /> GearIcon
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem
@@ -93,11 +93,11 @@ export function UserMenu({ user }: { user: User }) {
             document.dispatchEvent(new CustomEvent(FEEDBACK_OPEN_EVENT))
           }
         >
-          <MessageSquarePlus className="size-3.5" /> Send feedback
+          <ChatCenteredDotsIcon className="size-3.5" /> Send feedback
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={handleSignOut}>
-          <LogOut className="size-3.5" /> Sign out
+          <SignOutIcon className="size-3.5" /> Sign out
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

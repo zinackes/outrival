@@ -4,22 +4,22 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  ArrowLeft,
-  Bell,
-  Building2,
-  Boxes,
-  CreditCard,
-  Database,
-  Gauge,
-  Key,
-  Lock,
-  Puzzle,
-  Search,
-  Trash2,
-  User,
-  Users,
-  type LucideIcon,
-} from "lucide-react";
+  ArrowLeftIcon,
+  BellIcon,
+  BuildingsIcon,
+  CardsThreeIcon,
+  CreditCardIcon,
+  DatabaseIcon,
+  GaugeIcon,
+  KeyIcon,
+  LockIcon,
+  PuzzlePieceIcon,
+  MagnifyingGlassIcon,
+  TrashIcon,
+  UserIcon,
+  UsersIcon,
+} from "@phosphor-icons/react/ssr";
+import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { FEATURE_FLAGS } from "@outrival/shared";
 import {
   Sidebar,
@@ -45,7 +45,7 @@ import { cn } from "@/lib/utils";
 interface NavItem {
   href: string;
   label: string;
-  icon: LucideIcon;
+  icon: PhosphorIcon;
   exact?: boolean;
   danger?: boolean;
   multiUserOnly?: boolean;
@@ -59,24 +59,24 @@ interface NavItem {
 // gains Profile + Security; Workspace gains Members (flag), Integrations, API keys,
 // Data. Routes here point at the pages that already exist.
 const PERSONAL: NavItem[] = [
-  { href: "/dashboard/settings/profile", label: "Profile", icon: User, exact: true, keywords: "name email avatar account change email" },
-  { href: "/dashboard/settings/notifications", label: "Notifications", icon: Bell, exact: true, keywords: "alerts digest quiet hours timezone slack webhook severity batching email cap" },
-  { href: "/dashboard/settings/security", label: "Security", icon: Lock, exact: true, keywords: "2fa two-factor authenticator totp password sessions devices sign out backup codes google connected accounts passkey" },
+  { href: "/dashboard/settings/profile", label: "Profile", icon: UserIcon, exact: true, keywords: "name email avatar account change email" },
+  { href: "/dashboard/settings/notifications", label: "Notifications", icon: BellIcon, exact: true, keywords: "alerts digest quiet hours timezone slack webhook severity batching email cap" },
+  { href: "/dashboard/settings/security", label: "Security", icon: LockIcon, exact: true, keywords: "2fa two-factor authenticator totp password sessions devices sign out backup codes google connected accounts passkey" },
 ];
 
 const WORKSPACE: NavItem[] = [
-  { href: "/dashboard/settings/general", label: "General", icon: Building2, exact: true, keywords: "workspace name slug product url profile category" },
-  { href: "/dashboard/settings/products", label: "Products", icon: Boxes, exact: true, keywords: "skus product add primary" },
-  { href: "/dashboard/settings/members", label: "Members", icon: Users, exact: true, multiUserOnly: true, keywords: "team invite roles" },
-  { href: "/dashboard/settings/billing", label: "Subscription", icon: CreditCard, keywords: "plan upgrade invoice payment stripe billing renew receipt" },
-  { href: "/dashboard/settings/usage", label: "Usage", icon: Gauge, exact: true, keywords: "limits quota competitors battle cards rescans" },
-  { href: "/dashboard/settings/integrations", label: "Integrations", icon: Puzzle, exact: true, keywords: "crm hubspot salesforce zapier make webhooks destinations" },
-  { href: "/dashboard/settings/api-keys", label: "API keys", icon: Key, exact: true, keywords: "api token" },
-  { href: "/dashboard/settings/data", label: "Data", icon: Database, exact: true, keywords: "export import gdpr retention privacy download" },
+  { href: "/dashboard/settings/general", label: "General", icon: BuildingsIcon, exact: true, keywords: "workspace name slug product url profile category" },
+  { href: "/dashboard/settings/products", label: "Products", icon: CardsThreeIcon, exact: true, keywords: "skus product add primary" },
+  { href: "/dashboard/settings/members", label: "Members", icon: UsersIcon, exact: true, multiUserOnly: true, keywords: "team invite roles" },
+  { href: "/dashboard/settings/billing", label: "Subscription", icon: CreditCardIcon, keywords: "plan upgrade invoice payment stripe billing renew receipt" },
+  { href: "/dashboard/settings/usage", label: "Usage", icon: GaugeIcon, exact: true, keywords: "limits quota competitors battle cards rescans" },
+  { href: "/dashboard/settings/integrations", label: "Integrations", icon: PuzzlePieceIcon, exact: true, keywords: "crm hubspot salesforce zapier make webhooks destinations" },
+  { href: "/dashboard/settings/api-keys", label: "API keys", icon: KeyIcon, exact: true, keywords: "api token" },
+  { href: "/dashboard/settings/data", label: "Data", icon: DatabaseIcon, exact: true, keywords: "export import gdpr retention privacy download" },
 ];
 
 const DANGER: NavItem[] = [
-  { href: "/dashboard/settings/danger", label: "Delete workspace", icon: Trash2, danger: true, keywords: "delete erase danger gdpr remove account close" },
+  { href: "/dashboard/settings/danger", label: "Delete workspace", icon: TrashIcon, danger: true, keywords: "delete erase danger gdpr remove account close" },
 ];
 
 export function SettingsSidebar({
@@ -135,7 +135,7 @@ export function SettingsSidebar({
               <SidebarMenuItem>
                 <SidebarMenuButton asChild tooltip="Back to dashboard">
                   <Link href="/dashboard">
-                    <ArrowLeft />
+                    <ArrowLeftIcon />
                     <span>Back to dashboard</span>
                   </Link>
                 </SidebarMenuButton>
@@ -146,13 +146,13 @@ export function SettingsSidebar({
         <SidebarGroup className="py-1 group-data-[collapsible=icon]:hidden">
           <SidebarGroupContent>
             <div className="relative">
-              <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <MagnifyingGlassIcon className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
               <SidebarInput
-                placeholder="Search settings…"
+                placeholder="MagnifyingGlassIcon settings…"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 className="pl-7"
-                aria-label="Search settings"
+                aria-label="MagnifyingGlassIcon settings"
               />
             </div>
           </SidebarGroupContent>

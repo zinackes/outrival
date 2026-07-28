@@ -3,7 +3,13 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ClipboardCopy, Download, Loader2, Mail } from "lucide-react";
+import {
+  ArrowLeftIcon,
+  ClipboardIcon,
+  DownloadSimpleIcon,
+  CircleNotchIcon,
+  EnvelopeIcon,
+} from "@phosphor-icons/react/ssr";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { api, ApiError, type DigestDetail } from "@/lib/api";
@@ -90,7 +96,7 @@ export function DigestReader({ id }: { id: string }) {
       className="-mb-1 self-start px-0 hover:bg-transparent"
     >
       <Link href="/dashboard/digests">
-        <ArrowLeft size={12} /> All digests
+        <ArrowLeftIcon size={12} /> All digests
       </Link>
     </Button>
   );
@@ -100,7 +106,7 @@ export function DigestReader({ id }: { id: string }) {
       <div className="mx-auto flex w-full max-w-[980px] flex-col gap-6">
         {backLink}
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 size={14} className="animate-spin" /> Loading brief…
+          <CircleNotchIcon size={14} className="animate-spin" /> Loading brief…
         </div>
       </div>
     );
@@ -111,7 +117,7 @@ export function DigestReader({ id }: { id: string }) {
       <div className="mx-auto flex w-full max-w-[980px] flex-col gap-6">
         {backLink}
         <EmptyState
-          icon={Mail}
+          icon={EnvelopeIcon}
           title="Brief not found"
           description="This brief doesn't exist or is no longer available."
         />
@@ -304,9 +310,9 @@ export function DigestReader({ id }: { id: string }) {
               onClick={handleSend}
             >
               {sending ? (
-                <Loader2 size={13} className="animate-spin" />
+                <CircleNotchIcon size={13} className="animate-spin" />
               ) : (
-                <Mail size={13} />
+                <EnvelopeIcon size={13} />
               )}
               {d.sentAt ? "Send again" : "Send by email"}
             </Button>
@@ -316,7 +322,7 @@ export function DigestReader({ id }: { id: string }) {
             <RailLabel>Take it with you</RailLabel>
             <Button variant="outline" size="sm" className="w-full justify-start" asChild>
               <a href={printHref} target="_blank" rel="noopener noreferrer">
-                <Download size={13} /> Save as PDF
+                <DownloadSimpleIcon size={13} /> Save as PDF
               </a>
             </Button>
             <Button
@@ -327,9 +333,9 @@ export function DigestReader({ id }: { id: string }) {
               onClick={handleCopy}
             >
               {copying ? (
-                <Loader2 size={13} className="animate-spin" />
+                <CircleNotchIcon size={13} className="animate-spin" />
               ) : (
-                <ClipboardCopy size={13} />
+                <ClipboardIcon size={13} />
               )}
               Copy as Markdown
             </Button>

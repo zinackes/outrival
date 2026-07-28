@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { Eye, Loader2, Pause, Play, Trash2 } from "lucide-react";
+import {
+  EyeIcon,
+  CircleNotchIcon,
+  PauseIcon,
+  PlayIcon,
+  TrashIcon,
+} from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -85,7 +91,7 @@ export function WatchedQuestions() {
   return (
     <div>
       <p className="flex items-center gap-1.5 text-dense font-medium text-muted-foreground">
-        <Eye className="size-3.5" aria-hidden />
+        <EyeIcon className="size-3.5" aria-hidden />
         Watched questions
       </p>
       <p className="mt-1 text-meta text-muted-foreground">
@@ -137,15 +143,15 @@ export function WatchedQuestions() {
                   size="icon-sm"
                   onClick={() => void toggle(q)}
                   disabled={busy}
-                  aria-label={q.isActive ? "Pause watching" : "Resume watching"}
-                  title={q.isActive ? "Pause watching" : "Resume watching"}
+                  aria-label={q.isActive ? "PauseIcon watching" : "Resume watching"}
+                  title={q.isActive ? "PauseIcon watching" : "Resume watching"}
                 >
                   {busy ? (
-                    <Loader2 className="size-3.5 animate-spin" />
+                    <CircleNotchIcon className="size-3.5 animate-spin" />
                   ) : q.isActive ? (
-                    <Pause className="size-3.5 text-muted-foreground" />
+                    <PauseIcon className="size-3.5 text-muted-foreground" />
                   ) : (
-                    <Play className="size-3.5 text-muted-foreground" />
+                    <PlayIcon className="size-3.5 text-muted-foreground" />
                   )}
                 </Button>
                 <Button
@@ -156,7 +162,7 @@ export function WatchedQuestions() {
                   aria-label="Stop watching and delete"
                   title="Stop watching and delete"
                 >
-                  <Trash2 className="size-3.5 text-muted-foreground" />
+                  <TrashIcon className="size-3.5 text-muted-foreground" />
                 </Button>
               </div>
             </div>

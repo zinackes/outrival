@@ -1,6 +1,6 @@
 "use client";
 
-import { Layers, Archive } from "lucide-react";
+import { StackIcon, ArchiveIcon } from "@phosphor-icons/react/ssr";
 import { formatDistanceToNow } from "date-fns";
 import type { Signal } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -103,7 +103,7 @@ export function SignalRow({
           <CatText category={signal.category} />
           {/* L2 provenance marker — this row was reconstructed from the web archive. */}
           {signal.filteredReason === "backfill" && (
-            <Archive
+            <ArchiveIcon
               size={12}
               className="shrink-0"
               aria-label="From archive"
@@ -182,7 +182,7 @@ export function BatchRow({
         selected ? "bg-accent" : "hover:bg-accent/50 focus-visible:bg-accent/50",
       )}
     >
-      <Layers
+      <StackIcon
         size={15}
         className={cn("mt-0.5 shrink-0", SEV_TEXT[maxSev])}
         aria-label={`${maxSev} severity batch`}

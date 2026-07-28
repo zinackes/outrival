@@ -1,7 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Loader2, Pencil, Plus, Sparkles, Trash2, X } from "lucide-react";
+import {
+  CheckIcon,
+  CircleNotchIcon,
+  PencilIcon,
+  PlusIcon,
+  SparkleIcon,
+  TrashIcon,
+  XIcon,
+} from "@phosphor-icons/react/ssr";
 import { formatDistanceToNow } from "date-fns";
 import type { MyProduct, MyProductPatch, MyProductPricingTier } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
@@ -102,7 +110,7 @@ export function PricingCard({
                 </>
               ) : (
                 <>
-                  <Sparkles className="size-3" /> detected auto
+                  <SparkleIcon className="size-3" /> detected auto
                 </>
               )}
             </span>
@@ -121,7 +129,7 @@ export function PricingCard({
           )}
           {!editing && (
             <Button size="sm" variant="ghost" onClick={startEdit}>
-              <Pencil className="size-3.5" /> Edit
+              <PencilIcon className="size-3.5" /> Edit
             </Button>
           )}
         </div>
@@ -167,7 +175,7 @@ export function PricingCard({
                   onClick={() => setTiers((ts) => ts.filter((_, idx) => idx !== i))}
                   aria-label="Remove tier"
                 >
-                  <Trash2 className="size-3.5" />
+                  <TrashIcon className="size-3.5" />
                 </Button>
               </div>
             ))}
@@ -182,7 +190,7 @@ export function PricingCard({
                 ])
               }
             >
-              <Plus className="size-3.5" /> Add tier
+              <PlusIcon className="size-3.5" /> Add tier
             </Button>
           </div>
 
@@ -220,11 +228,11 @@ export function PricingCard({
 
           <div className="flex gap-2">
             <Button size="sm" onClick={save} disabled={saving}>
-              {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
+              {saving ? <CircleNotchIcon className="size-3.5 animate-spin" /> : <CheckIcon className="size-3.5" />}
               Save
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setEditing(false)} disabled={saving}>
-              <X className="size-3.5" /> Cancel
+              <XIcon className="size-3.5" /> Cancel
             </Button>
           </div>
         </div>

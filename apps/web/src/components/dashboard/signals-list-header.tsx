@@ -1,16 +1,16 @@
 "use client";
 
 import {
-  ArrowUpDown,
-  Check,
-  Download,
-  Keyboard,
-  MoreHorizontal,
-  Rows3,
-  Search,
-  SlidersHorizontal,
-  X,
-} from "lucide-react";
+  ArrowsDownUpIcon,
+  CheckIcon,
+  DownloadSimpleIcon,
+  KeyboardIcon,
+  DotsThreeIcon,
+  RowsIcon,
+  MagnifyingGlassIcon,
+  SlidersHorizontalIcon,
+  XIcon,
+} from "@phosphor-icons/react/ssr";
 import type { SavedViewFilters, Signal } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -154,7 +154,7 @@ export function SignalsListHeader({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon-sm" aria-label="Feed actions">
-              <MoreHorizontal size={16} />
+              <DotsThreeIcon size={16} />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
@@ -162,14 +162,14 @@ export function SignalsListHeader({
               onSelect={onMarkAllRead}
               disabled={loading || unreadCount === 0}
             >
-              <Check size={13} /> Mark all read
+              <CheckIcon size={13} /> Mark all read
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={onExportCsv} disabled={loading || total === 0}>
-              <Download size={13} /> Export CSV
+              <DownloadSimpleIcon size={13} /> Export CSV
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={onShowShortcuts}>
-              <Keyboard size={13} /> Keyboard shortcuts
+              <KeyboardIcon size={13} /> KeyboardIcon shortcuts
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -177,14 +177,14 @@ export function SignalsListHeader({
 
       <div className="flex items-center gap-1.5 px-4 py-2.5">
         <div className="relative min-w-0 flex-1">
-          <Search
+          <MagnifyingGlassIcon
             size={14}
             className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
           />
           <Input
             id="signals-search"
-            aria-label="Search signals"
-            placeholder="Search…"
+            aria-label="MagnifyingGlassIcon signals"
+            placeholder="MagnifyingGlassIcon…"
             value={searchInput}
             onChange={(e) => onSearchInput(e.target.value)}
             className="h-8 w-full pl-8 text-sm"
@@ -198,7 +198,7 @@ export function SignalsListHeader({
               size="sm"
               className="h-8 shrink-0"
             >
-              <SlidersHorizontal size={13} />
+              <SlidersHorizontalIcon size={13} />
               Filters
               {activeFilterCount > 0 && (
                 <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 font-mono text-meta tabular-nums text-primary-foreground">
@@ -284,7 +284,7 @@ export function SignalsListHeader({
               }, ${GROUP_LABEL[group].toLowerCase()}`}
               title="Order and grouping"
             >
-              <ArrowUpDown size={14} />
+              <ArrowsDownUpIcon size={14} />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52">
@@ -303,7 +303,7 @@ export function SignalsListHeader({
             </DropdownMenuCheckboxItem>
             <DropdownMenuSeparator />
             <DropdownMenuLabel className="flex items-center gap-1.5">
-              <Rows3 size={13} /> Group by
+              <RowsIcon size={13} /> Group by
             </DropdownMenuLabel>
             {GROUP_MODES.map((m) => (
               <DropdownMenuCheckboxItem
@@ -387,7 +387,7 @@ function FilterChip({
             className="ml-0.5 text-muted-foreground transition-colors hover:text-foreground"
             aria-label="Remove filter"
           >
-            <X size={11} />
+            <XIcon size={11} />
           </button>
         </TooltipTrigger>
         <TooltipContent>Remove filter</TooltipContent>

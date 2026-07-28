@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { pageMetadata } from "@/lib/metadata";
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { ArrowRightIcon } from "@phosphor-icons/react/ssr";
 import { Nav } from "@/components/landing/nav";
 import { Footer } from "@/components/landing/footer";
 import { Button } from "@/components/ui/button";
@@ -132,7 +132,7 @@ export default function SamplePage() {
           <div className="flex flex-col items-start gap-3 sm:items-end">
             <Button asChild size="lg">
               <Link href="/auth">
-                Start monitoring free <ArrowRight size={14} />
+                Start monitoring free <ArrowRightIcon size={14} />
               </Link>
             </Button>
             <div className="text-xs text-text-subtle">

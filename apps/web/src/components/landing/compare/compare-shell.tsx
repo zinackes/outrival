@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { CaretRightIcon } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/dashboard/theme-toggle";
 import { Footer } from "../footer";
@@ -69,7 +69,7 @@ export function Breadcrumbs({
                 </Link>
               )}
               {!last && (
-                <ChevronRight
+                <CaretRightIcon
                   size={13}
                   className="text-text-subtle/60"
                   aria-hidden

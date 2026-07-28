@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
-import { CheckCircle2, Loader2 } from "lucide-react";
+import { CheckCircleIcon, CircleNotchIcon } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -89,7 +89,7 @@ export function DemoForm({
         role="status"
         className="flex flex-col items-start justify-center rounded-xl border border-border bg-surface p-8"
       >
-        <CheckCircle2 className="text-primary" size={28} />
+        <CheckCircleIcon className="text-primary" size={28} />
         <h2 className="mt-4 text-xl font-semibold tracking-tight">
           {isSample ? "Thanks, your brief is queued." : "Thanks, we'll be in touch."}
         </h2>
@@ -227,7 +227,7 @@ export function DemoForm({
         <Button type="submit" size="lg" disabled={status === "submitting"} className="w-full">
           {status === "submitting" ? (
             <>
-              <Loader2 className="animate-spin" size={16} /> Sending…
+              <CircleNotchIcon className="animate-spin" size={16} /> Sending…
             </>
           ) : isSample ? (
             "Get my sample digest"

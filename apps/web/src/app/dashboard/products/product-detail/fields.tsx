@@ -1,7 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Loader2, Pencil, Sparkles, X } from "lucide-react";
+import {
+  CheckIcon,
+  CircleNotchIcon,
+  PencilIcon,
+  SparkleIcon,
+  XIcon,
+} from "@phosphor-icons/react/ssr";
 import { formatDistanceToNow } from "date-fns";
 import type { SelfProfileField } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -15,7 +21,7 @@ export function FieldMeta({ field }: { field?: SelfProfileField<unknown> }) {
   if (field.isFromAutoDetect) {
     return (
       <span className="text-meta text-[var(--muted-2)] inline-flex items-center gap-1">
-        <Sparkles className="size-3" /> detected auto
+        <SparkleIcon className="size-3" /> detected auto
       </span>
     );
   }
@@ -67,7 +73,7 @@ export function EditableText({
             )}
             <div className="flex gap-2">
               <Button size="sm" onClick={save} disabled={saving}>
-                {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
+                {saving ? <CircleNotchIcon className="size-3.5 animate-spin" /> : <CheckIcon className="size-3.5" />}
                 Save
               </Button>
               <Button
@@ -79,7 +85,7 @@ export function EditableText({
                 }}
                 disabled={saving}
               >
-                <X className="size-3.5" /> Cancel
+                <XIcon className="size-3.5" /> Cancel
               </Button>
             </div>
           </div>
@@ -102,7 +108,7 @@ export function EditableText({
                 setEditing(true);
               }}
             >
-              <Pencil className="size-3.5" /> Edit
+              <PencilIcon className="size-3.5" /> Edit
             </Button>
           </div>
         )}
@@ -157,7 +163,7 @@ export function EditableList({
               setEditing(true);
             }}
           >
-            <Pencil className="size-3.5" /> Edit
+            <PencilIcon className="size-3.5" /> Edit
           </Button>
         )}
       </div>
@@ -171,11 +177,11 @@ export function EditableList({
           />
           <div className="flex gap-2">
             <Button size="sm" onClick={save} disabled={saving}>
-              {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
+              {saving ? <CircleNotchIcon className="size-3.5 animate-spin" /> : <CheckIcon className="size-3.5" />}
               Save
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setEditing(false)} disabled={saving}>
-              <X className="size-3.5" /> Cancel
+              <XIcon className="size-3.5" /> Cancel
             </Button>
           </div>
         </div>
@@ -185,7 +191,7 @@ export function EditableList({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5">
           {items.map((it, i) => (
             <div key={`${it}-${i}`} className="flex items-center gap-2 text-content">
-              <Check className="size-3.5 text-primary shrink-0" />
+              <CheckIcon className="size-3.5 text-primary shrink-0" />
               <span className="break-words">{it}</span>
             </div>
           ))}

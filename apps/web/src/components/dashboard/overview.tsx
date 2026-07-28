@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
-import { Download, ArrowRight, Radar, FlaskConical } from "lucide-react";
+import { DownloadSimpleIcon, ArrowRightIcon, ScanIcon, FlaskIcon } from "@phosphor-icons/react/ssr";
 import { formatDistanceToNow } from "date-fns";
 import { api, type Signal } from "@/lib/api";
 import {
@@ -308,21 +308,21 @@ export function OverviewView() {
           sub="Track every competitor move (pricing, hiring, product, content) as it happens."
         />
         <EmptyState
-          icon={Radar}
+          icon={ScanIcon}
           title="Start tracking your first competitor"
           description="Outrival watches competitor pricing, hiring, product and content, then turns each change into a signal with the context to act on it. Add a competitor to begin, or explore the interface with sample data first."
           actions={
             <>
               <Button asChild size="sm">
                 <Link href="/dashboard/competitors">
-                  Add a competitor <ArrowRight size={11} />
+                  Add a competitor <ArrowRightIcon size={11} />
                 </Link>
               </Button>
               <Button asChild size="sm" variant="outline">
                 <Link href="/dashboard/discovery">Find competitors</Link>
               </Button>
               <Button size="sm" variant="ghost" onClick={() => setSample(true)}>
-                <FlaskConical size={13} /> Explore with sample data
+                <FlaskIcon size={13} /> Explore with sample data
               </Button>
             </>
           }
@@ -412,7 +412,7 @@ export function OverviewView() {
               onClick={exportCsv}
               disabled={derived.inWindow.length === 0}
             >
-              <Download size={13} /> Export
+              <DownloadSimpleIcon size={13} /> Export
             </Button>
           </>
         }

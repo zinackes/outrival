@@ -2,7 +2,13 @@
 
 import { useTheme } from "next-themes";
 import { Toaster as SonnerToaster } from "sonner";
-import { AlertTriangle, CheckCircle2, Info, Loader2, XCircle } from "lucide-react";
+import {
+  WarningIcon,
+  CheckCircleIcon,
+  InfoIcon,
+  CircleNotchIcon,
+  XCircleIcon,
+} from "@phosphor-icons/react/ssr";
 
 export function Toaster() {
   const { theme } = useTheme();
@@ -18,11 +24,11 @@ export function Toaster() {
       // Custom icons keep the toast palette inside the OKLCH design system
       // (severity tokens + --link) instead of sonner's generic richColors set.
       icons={{
-        success: <CheckCircle2 size={16} className="text-positive" />,
-        error: <XCircle size={16} className="text-critical" />,
-        warning: <AlertTriangle size={16} className="text-medium" />,
-        info: <Info size={16} className="text-[var(--link)]" />,
-        loading: <Loader2 size={16} className="animate-spin text-muted-foreground" />,
+        success: <CheckCircleIcon size={16} className="text-positive" />,
+        error: <XCircleIcon size={16} className="text-critical" />,
+        warning: <WarningIcon size={16} className="text-medium" />,
+        info: <InfoIcon size={16} className="text-[var(--link)]" />,
+        loading: <CircleNotchIcon size={16} className="animate-spin text-muted-foreground" />,
       }}
       toastOptions={{
         classNames: {

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, RefreshCw, Sparkles } from "lucide-react";
+import { ArrowLeftIcon, ArrowsClockwiseIcon, SparkleIcon } from "@phosphor-icons/react/ssr";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -77,7 +77,7 @@ export function SignalsBriefRow({
         selected ? "bg-accent" : "hover:bg-accent/50 focus-visible:bg-accent/50",
       )}
     >
-      <Sparkles size={15} className="mt-0.5 shrink-0 text-link" aria-hidden />
+      <SparkleIcon size={15} className="mt-0.5 shrink-0 text-link" aria-hidden />
       <span className="min-w-0">
         <span className="block truncate text-dense font-semibold text-foreground">
           Brief of the week
@@ -122,10 +122,10 @@ export function SignalsBriefPanel({
             aria-label="Back to signals"
             onClick={onBack}
           >
-            <ArrowLeft size={16} />
+            <ArrowLeftIcon size={16} />
           </Button>
         )}
-        <Sparkles size={15} className="shrink-0 text-link" aria-hidden />
+        <SparkleIcon size={15} className="shrink-0 text-link" aria-hidden />
         <span className="text-dense font-semibold">Brief of the week</span>
         <span className="flex-1" />
         <Button
@@ -135,7 +135,7 @@ export function SignalsBriefPanel({
           onClick={refresh}
           disabled={refreshing}
         >
-          <RefreshCw size={13} className={cn(refreshing && "animate-spin")} />
+          <ArrowsClockwiseIcon size={13} className={cn(refreshing && "animate-spin")} />
           <span className="hidden xl:inline">Regenerate</span>
         </Button>
       </div>

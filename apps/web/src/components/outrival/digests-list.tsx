@@ -7,15 +7,16 @@ import { digestsQuery } from "@/lib/queries";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, ArrowRight, Check, Circle, type LucideIcon } from "lucide-react";
+import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, CircleIcon } from "@phosphor-icons/react/ssr";
+import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 
 const URGENCY_META: Record<
   DigestSection["urgency"],
-  { icon: LucideIcon; label: string; tone: "critical" | "high" | "positive" }
+  { icon: PhosphorIcon; label: string; tone: "critical" | "high" | "positive" }
 > = {
-  action_required: { icon: Circle, label: "Action required", tone: "critical" },
-  watch: { icon: Circle, label: "Watch", tone: "high" },
-  fyi: { icon: Circle, label: "FYI", tone: "positive" },
+  action_required: { icon: CircleIcon, label: "Action required", tone: "critical" },
+  watch: { icon: CircleIcon, label: "Watch", tone: "high" },
+  fyi: { icon: CircleIcon, label: "FYI", tone: "positive" },
 };
 
 const TONE_TEXT = {
@@ -66,7 +67,7 @@ export function DigestsList() {
           onClick={() => setActive(null)}
           className="mb-4 -ml-2"
         >
-          <ArrowLeft className="size-4" /> Back
+          <ArrowLeftIcon className="size-4" /> Back
         </Button>
         <h2 className="text-xl font-bold mb-1 font-[var(--font-syne)]">
           Week of {active.weekStart} to {active.weekEnd}
@@ -105,7 +106,7 @@ export function DigestsList() {
                       </div>
                       <p className="text-sm mb-1">{s.insight}</p>
                       <p className="flex gap-1 text-sm text-primary">
-                        <ArrowRight className="size-3.5 mt-0.5 shrink-0" />
+                        <ArrowRightIcon className="size-3.5 mt-0.5 shrink-0" />
                         {s.so_what}
                       </p>
                     </Card>
@@ -138,7 +139,7 @@ export function DigestsList() {
               <div className="flex items-center gap-1 text-xs text-muted-foreground">
                 {d.sentAt ? (
                   <>
-                    <Check className="size-3" /> sent
+                    <CheckIcon className="size-3" /> sent
                   </>
                 ) : (
                   "not sent"

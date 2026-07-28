@@ -1,7 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { CalendarIcon, Check, ChevronDown, ChevronRight } from "lucide-react";
+import {
+  CalendarBlankIcon,
+  CheckIcon,
+  CaretDownIcon,
+  CaretRightIcon,
+} from "@phosphor-icons/react/ssr";
 import { endOfDay, format, isSameDay, startOfDay, subDays } from "date-fns";
 import type { DateRange as RdpDateRange } from "react-day-picker";
 
@@ -104,9 +109,9 @@ export function DateRangePicker({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button variant="outline" size="sm" className={cn("gap-1.5", className)}>
-          <CalendarIcon size={13} />
+          <CalendarBlankIcon size={13} />
           {triggerLabel(value, presets)}
-          <ChevronDown size={13} className="text-muted-foreground" />
+          <CaretDownIcon size={13} className="text-muted-foreground" />
         </Button>
       </PopoverTrigger>
       <PopoverContent
@@ -131,7 +136,7 @@ export function DateRangePicker({
               className={itemClass(active)}
             >
               {p.label}
-              {active && <Check size={14} />}
+              {active && <CheckIcon size={14} />}
             </button>
           );
         })}
@@ -141,9 +146,9 @@ export function DateRangePicker({
             <button type="button" className={itemClass(isCustom || customOpen)}>
               <span className="flex items-center gap-2">
                 Custom range
-                {isCustom && <Check size={14} />}
+                {isCustom && <CheckIcon size={14} />}
               </span>
-              <ChevronRight size={14} className="text-muted-foreground" />
+              <CaretRightIcon size={14} className="text-muted-foreground" />
             </button>
           </PopoverTrigger>
           <PopoverContent

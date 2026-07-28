@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ThumbsUp, ThumbsDown, X } from "lucide-react";
+import { ThumbsUpIcon, ThumbsDownIcon, XIcon } from "@phosphor-icons/react/ssr";
 import { toast } from "sonner";
 import {
   api,
@@ -181,7 +181,7 @@ export function FeedbackButtons({
               verdict === "useful" && "bg-positive/12 text-positive hover:bg-positive/15 hover:text-positive",
             )}
           >
-            <ThumbsUp size={iconSize} />
+            <ThumbsUpIcon size={iconSize} />
           </button>
         </TooltipTrigger>
         <TooltipContent>{verdict === "useful" ? "Remove feedback" : "Useful"}</TooltipContent>
@@ -199,7 +199,7 @@ export function FeedbackButtons({
               verdict === "not_useful" && "bg-critical/12 text-critical hover:bg-critical/15 hover:text-critical",
             )}
           >
-            <ThumbsDown size={iconSize} />
+            <ThumbsDownIcon size={iconSize} />
           </button>
         </TooltipTrigger>
         <TooltipContent>{verdict === "not_useful" ? "Remove feedback" : "Not useful"}</TooltipContent>
@@ -230,7 +230,7 @@ export function FeedbackButtons({
             onClick={() => setShowReasons(false)}
             className="rounded p-0.5 text-text-subtle hover:text-foreground"
           >
-            <X size={12} />
+            <XIcon size={12} />
           </button>
         </div>
       )}

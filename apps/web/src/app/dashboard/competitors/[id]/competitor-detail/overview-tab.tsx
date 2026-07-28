@@ -8,13 +8,13 @@ import { useQuery } from "@tanstack/react-query";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { myProductQuery } from "@/lib/queries";
 import {
-  ChevronRight,
-  LayoutGrid,
-  Star,
-  Loader2,
-  Play,
-  Languages,
-} from "lucide-react";
+  CaretRightIcon,
+  GridFourIcon,
+  StarIcon,
+  CircleNotchIcon,
+  PlayIcon,
+  TranslateIcon,
+} from "@phosphor-icons/react/ssr";
 import {
   api,
   type CompetitorSignal,
@@ -64,7 +64,7 @@ function Metric({
     >
       <span className="flex items-center gap-1 text-xs text-muted-foreground">
         {label}
-        <ChevronRight size={11} className="opacity-60" aria-hidden />
+        <CaretRightIcon size={11} className="opacity-60" aria-hidden />
       </span>
       <span className="block">{children}</span>
       {foot && <span className="flex min-h-4 items-center gap-1.5 text-xs">{foot}</span>}
@@ -386,7 +386,7 @@ export function OverviewTab({
     if (analysis?.pending || running) {
       return (
         <EmptyState
-          icon={LayoutGrid}
+          icon={GridFourIcon}
           title="Analyzing this competitor…"
           description="We're scanning the homepage and generating the first insights. This tab fills in automatically once it's done, no need to refresh."
         />
@@ -394,7 +394,7 @@ export function OverviewTab({
     }
     return (
       <EmptyState
-        icon={LayoutGrid}
+        icon={GridFourIcon}
         title="Nothing captured yet"
         description="Once the homepage is scraped, this is where you'll see what this competitor says about itself (positioning, value props, customers and pricing) at a glance."
         actions={
@@ -402,11 +402,11 @@ export function OverviewTab({
             <Button size="sm" disabled={running} onClick={() => onRun(homepageMonitor.id)}>
               {running ? (
                 <>
-                  <Loader2 size={12} className="animate-spin" /> Scraping…
+                  <CircleNotchIcon size={12} className="animate-spin" /> Scraping…
                 </>
               ) : (
                 <>
-                  <Play size={12} /> Scrape homepage now
+                  <PlayIcon size={12} /> Scrape homepage now
                 </>
               )}
             </Button>
@@ -500,7 +500,7 @@ export function OverviewTab({
           {topReview ? (
             <span className="inline-flex items-baseline gap-1">
               <Big>{topReview.score.toFixed(1)}</Big>
-              <Star className="size-3.5 translate-y-px fill-current text-muted-foreground" />
+              <StarIcon className="size-3.5 translate-y-px fill-current text-muted-foreground" />
             </span>
           ) : (
             <Absent>Not tracked yet</Absent>
@@ -542,9 +542,9 @@ export function OverviewTab({
               disabled={translating}
             >
               {translating ? (
-                <Loader2 size={12} className="animate-spin" />
+                <CircleNotchIcon size={12} className="animate-spin" />
               ) : (
-                <Languages size={12} />
+                <TranslateIcon size={12} />
               )}
               Translate to English
             </Button>
@@ -555,7 +555,7 @@ export function OverviewTab({
               className="h-7 gap-1.5 text-dense"
               onClick={() => setShowOriginal((o) => !o)}
             >
-              <Languages size={12} />
+              <TranslateIcon size={12} />
               {showOriginal ? "Show English" : "Show original"}
             </Button>
           )}

@@ -7,17 +7,17 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { AnimatePresence, motion } from "motion/react";
 import {
-  Plus,
-  Search,
-  ArrowRight,
-  Loader2,
-  MoreHorizontal,
-  Trash2,
-  ExternalLink,
-  Telescope,
-  Building2,
-  PauseCircle,
-} from "lucide-react";
+  PlusIcon,
+  MagnifyingGlassIcon,
+  ArrowRightIcon,
+  CircleNotchIcon,
+  DotsThreeIcon,
+  TrashIcon,
+  ArrowSquareOutIcon,
+  BinocularsIcon,
+  BuildingsIcon,
+  PauseCircleIcon,
+} from "@phosphor-icons/react/ssr";
 import { EmptyState } from "./empty-state";
 import { toast } from "sonner";
 import { api, type Competitor } from "@/lib/api";
@@ -115,7 +115,7 @@ function PausedByPlanBadge() {
           href="/dashboard/settings/billing"
           className="relative z-10 flex shrink-0 items-center gap-1 rounded-sm border border-high/40 px-1.5 py-0.5 text-meta font-medium text-medium"
         >
-          <PauseCircle size={11} className="shrink-0" />
+          <PauseCircleIcon size={11} className="shrink-0" />
           Plan limit
         </Link>
       </TooltipTrigger>
@@ -377,10 +377,10 @@ export function CompetitorsList() {
         actions={
           <>
             <Button variant="secondary" onClick={() => router.push("/dashboard/discovery")}>
-              <Telescope size={13} /> Discovery
+              <BinocularsIcon size={13} /> Discovery
             </Button>
             <Button onClick={() => setShowDialog(true)}>
-              <Plus size={13} /> Add competitor
+              <PlusIcon size={13} /> Add competitor
             </Button>
           </>
         }
@@ -437,12 +437,12 @@ export function CompetitorsList() {
           </Select>
 
           <div className="relative">
-            <Search
+            <MagnifyingGlassIcon
               size={14}
               className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
             />
             <Input
-              placeholder="Search…"
+              placeholder="MagnifyingGlassIcon…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="h-8 w-48 pl-8 text-xs"
@@ -455,19 +455,19 @@ export function CompetitorsList() {
 
       {competitors && competitors.length === 0 && (
         <EmptyState
-          icon={Building2}
+          icon={BuildingsIcon}
           title="No competitors"
           description="Add one yourself, or let Discovery suggest competitors for you."
           actions={
             <>
               <Button onClick={() => setShowDialog(true)}>
-                <Plus size={13} /> Add competitor
+                <PlusIcon size={13} /> Add competitor
               </Button>
               <Button
                 variant="secondary"
                 onClick={() => router.push("/dashboard/discovery")}
               >
-                <Telescope size={13} /> Explore Discovery
+                <BinocularsIcon size={13} /> Explore Discovery
               </Button>
             </>
           }
@@ -575,7 +575,7 @@ export function CompetitorsList() {
               onClick={confirmDelete}
               disabled={deleting}
             >
-              {deleting && <Loader2 size={13} className="animate-spin" />}
+              {deleting && <CircleNotchIcon size={13} className="animate-spin" />}
               {deleting ? "Deleting…" : "Delete"}
             </Button>
           </DialogFooter>
@@ -653,7 +653,7 @@ function CompetitorRow({
               <span className="truncate underline-offset-2 group-hover/url:underline">
                 {prettyUrl(row.url)}
               </span>
-              <ExternalLink
+              <ArrowSquareOutIcon
                 size={10}
                 className="shrink-0 opacity-0 transition-opacity group-hover/url:opacity-100"
               />
@@ -778,18 +778,18 @@ function CompetitorRow({
               aria-label={`More actions for ${row.name}`}
               className="h-6 w-6 p-0 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100"
             >
-              <MoreHorizontal size={14} />
+              <DotsThreeIcon size={14} />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-40">
             <DropdownMenuItem onClick={() => router.push(href)}>
-              <ArrowRight size={13} /> Open detail
+              <ArrowRightIcon size={13} /> Open detail
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={onDelete}
               className="text-critical focus:text-critical"
             >
-              <Trash2 size={13} /> Delete
+              <TrashIcon size={13} /> Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -944,7 +944,7 @@ function AddCompetitorDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={busy}>
-              {busy && <Loader2 size={13} className="animate-spin" />}
+              {busy && <CircleNotchIcon size={13} className="animate-spin" />}
               {busy ? "Adding…" : "Add"}
             </Button>
           </DialogFooter>

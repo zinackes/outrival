@@ -2,7 +2,14 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Webhook, Trash2, Send, Plus, Loader2, Pencil } from "lucide-react";
+import {
+  WebhooksLogoIcon,
+  TrashIcon,
+  PaperPlaneTiltIcon,
+  PlusIcon,
+  CircleNotchIcon,
+  PencilIcon,
+} from "@phosphor-icons/react/ssr";
 import { toast } from "sonner";
 import { api, ApiError, type CrmDestination } from "@/lib/api";
 import { Card } from "@/components/ui/card";
@@ -172,7 +179,7 @@ export function CrmDestinations() {
                   onClick={saveEdit}
                   disabled={saving || !editName.trim() || !editUrl.trim()}
                 >
-                  {saving ? <Loader2 size={12} className="animate-spin" /> : "Save"}
+                  {saving ? <CircleNotchIcon size={12} className="animate-spin" /> : "Save"}
                 </Button>
                 <Button variant="ghost" size="sm" disabled={saving} onClick={() => setEditingId(null)}>
                   Cancel
@@ -181,7 +188,7 @@ export function CrmDestinations() {
               </div>
             ) : (
               <div key={d.id} className="flex items-center gap-3 px-4 py-3">
-                <Webhook size={14} className="text-muted-foreground shrink-0" aria-hidden />
+                <WebhooksLogoIcon size={14} className="text-muted-foreground shrink-0" aria-hidden />
                 <div className="min-w-0 flex-1">
                   <div className="text-dense font-medium">{d.name}</div>
                   <div className="text-muted-foreground truncate font-mono text-meta">
@@ -196,9 +203,9 @@ export function CrmDestinations() {
                   disabled={testingId === d.id}
                 >
                   {testingId === d.id ? (
-                    <Loader2 size={12} className="animate-spin" />
+                    <CircleNotchIcon size={12} className="animate-spin" />
                   ) : (
-                    <Send size={12} />
+                    <PaperPlaneTiltIcon size={12} />
                   )}
                   Test
                 </Button>
@@ -209,7 +216,7 @@ export function CrmDestinations() {
                   onClick={() => startEdit(d)}
                   className="text-muted-foreground"
                 >
-                  <Pencil size={13} />
+                  <PencilIcon size={13} />
                 </Button>
                 <Button
                   variant="ghost"
@@ -218,7 +225,7 @@ export function CrmDestinations() {
                   onClick={() => remove(d.id)}
                   className="text-muted-foreground"
                 >
-                  <Trash2 size={13} />
+                  <TrashIcon size={13} />
                 </Button>
               </div>
             ),
@@ -252,7 +259,7 @@ export function CrmDestinations() {
           className="h-8 w-40 text-dense"
         />
         <Button size="sm" onClick={add} disabled={adding || !name.trim() || !url.trim()}>
-          <Plus size={13} /> Add
+          <PlusIcon size={13} /> Add
         </Button>
       </div>
       {addError && <p className="text-xs text-critical">{addError}</p>}

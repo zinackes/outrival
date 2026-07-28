@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
-import { ChevronRight } from "lucide-react";
+import { CaretRightIcon } from "@phosphor-icons/react/ssr";
 import type { ActivityDay, ActivityEvent } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { activityQuietDayQuery } from "@/lib/queries";
@@ -170,7 +170,7 @@ function DaySection({
         className="group mb-1 flex w-full items-baseline justify-between gap-3 rounded-sm border-b border-border pb-1.5 pt-4 text-left first:pt-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       >
         <span className="flex min-w-0 items-center gap-1.5">
-          <ChevronRight
+          <CaretRightIcon
             className={cn(
               "size-3.5 shrink-0 text-text-subtle transition-transform duration-200 group-hover:text-foreground motion-reduce:transition-none",
               open && "rotate-90",
@@ -265,7 +265,7 @@ function QuietFold({
         aria-expanded={open}
         className="flex w-full items-center gap-1.5 rounded-md px-2 py-2 text-left text-dense text-muted-foreground transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring sm:pl-[46px]"
       >
-        <ChevronRight
+        <CaretRightIcon
           className={cn("size-3.5 shrink-0 text-text-subtle transition-transform", open && "rotate-90")}
           aria-hidden
         />

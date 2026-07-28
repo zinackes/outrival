@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, X } from "lucide-react";
+import { WarningIcon, XIcon } from "@phosphor-icons/react/ssr";
 import { aiStatusQuery } from "@/lib/queries";
 import { formatTime } from "@/lib/format-date";
 
@@ -64,7 +64,7 @@ export function AiStatusBanner() {
 
   return (
     <div className="mb-4 flex items-center gap-3 rounded-lg border border-critical/25 bg-critical/8 px-4 py-3">
-      <AlertTriangle size={16} className="text-critical shrink-0" />
+      <WarningIcon size={16} className="text-critical shrink-0" />
       <p className="flex-1 text-sm text-foreground">
         {down
           ? `AI is temporarily unavailable: all providers are catching up. Monitoring continues; new insights are paused and will resume automatically.${recoveryText}`
@@ -76,7 +76,7 @@ export function AiStatusBanner() {
         aria-label="Dismiss"
         className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-critical/15 hover:text-foreground"
       >
-        <X size={16} />
+        <XIcon size={16} />
       </button>
     </div>
   );

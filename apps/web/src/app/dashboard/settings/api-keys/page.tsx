@@ -1,4 +1,4 @@
-import { Key } from "lucide-react";
+import { KeyIcon } from "@phosphor-icons/react/ssr";
 import { EmptyState } from "@/components/dashboard/empty-state";
 
 // patch-29 — placeholder. The public API is a Business-tier feature on the roadmap
@@ -14,7 +14,7 @@ export default function ApiKeysSettingsPage() {
       </header>
 
       <EmptyState
-        icon={Key}
+        icon={KeyIcon}
         title="API access is coming soon"
         description="A public REST API will let you pull signals and competitor data programmatically. It will be available on the Business plan."
       />

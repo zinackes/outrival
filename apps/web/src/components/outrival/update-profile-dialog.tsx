@@ -3,17 +3,17 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Loader2,
-  Sparkles,
-  Globe,
-  GitBranch,
-  FileText,
-  Lightbulb,
-  Upload,
-  RefreshCw,
-  ArrowRight,
-  ArrowLeft,
-} from "lucide-react";
+  CircleNotchIcon,
+  SparkleIcon,
+  GlobeIcon,
+  GitBranchIcon,
+  FileTextIcon,
+  LightbulbIcon,
+  UploadSimpleIcon,
+  ArrowsClockwiseIcon,
+  ArrowRightIcon,
+  ArrowLeftIcon,
+} from "@phosphor-icons/react/ssr";
 import { toast } from "sonner";
 import { api, type ProductProfile, type ProjectStage } from "@/lib/api";
 import { toastApiError } from "@/lib/error-helpers";
@@ -57,11 +57,11 @@ type ProfileTextKey = "category" | "audience" | "whatItDoes" | "valueProp" | "pr
 // open-source product legitimately has no pricing, and the AI leaves it blank.
 const REQUIRED_FIELDS: ProfileTextKey[] = ["category", "audience", "valueProp"];
 
-const STAGES: { key: ProjectStage; label: string; hint: string; icon: typeof Globe }[] = [
-  { key: "idea", label: "Idea", hint: "Describe it in a few words, no site yet.", icon: Lightbulb },
-  { key: "document", label: "Pitch / brief", hint: "A spec or deck, read in memory and never stored.", icon: FileText },
-  { key: "developing", label: "Building", hint: "A public GitHub repo we can read for a profile.", icon: GitBranch },
-  { key: "live", label: "Live", hint: "It has a public website. We analyze and monitor it.", icon: Globe },
+const STAGES: { key: ProjectStage; label: string; hint: string; icon: typeof GlobeIcon }[] = [
+  { key: "idea", label: "Idea", hint: "Describe it in a few words, no site yet.", icon: LightbulbIcon },
+  { key: "document", label: "Pitch / brief", hint: "A spec or deck, read in memory and never stored.", icon: FileTextIcon },
+  { key: "developing", label: "Building", hint: "A public GitHub repo we can read for a profile.", icon: GitBranchIcon },
+  { key: "live", label: "Live", hint: "It has a public website. We analyze and monitor it.", icon: GlobeIcon },
 ];
 
 const PROFILE_FIELDS: Array<{
@@ -318,7 +318,7 @@ export function UpdateProfileDialog({
 
         {loading ? (
           <div className="py-10 flex items-center justify-center text-muted-foreground">
-            <Loader2 size={16} className="animate-spin" />
+            <CircleNotchIcon size={16} className="animate-spin" />
           </div>
         ) : step === "stage" ? (
           /* Step 1 — pick the product's lifecycle stage (mirrors the add-product wizard) */
@@ -402,7 +402,7 @@ export function UpdateProfileDialog({
               )}
               {stage === "document" && (
                 <label className="flex items-center gap-2 rounded-md border border-dashed border-border-strong px-3 py-2.5 cursor-pointer hover:bg-surface-2 text-sm">
-                  <Upload size={14} className="text-muted-foreground" />
+                  <UploadSimpleIcon size={14} className="text-muted-foreground" />
                   <span className={file ? "text-foreground" : "text-muted-foreground"}>
                     {file ? file.name : "Select a pitch / brief (PDF, DOCX, MD, TXT)"}
                   </span>
@@ -429,9 +429,9 @@ export function UpdateProfileDialog({
                   disabled={!sourceValid || analyzing}
                 >
                   {analyzing ? (
-                    <Loader2 size={13} className="animate-spin" />
+                    <CircleNotchIcon size={13} className="animate-spin" />
                   ) : (
-                    <RefreshCw size={13} />
+                    <ArrowsClockwiseIcon size={13} />
                   )}
                   Re-analyze
                 </Button>
@@ -443,7 +443,7 @@ export function UpdateProfileDialog({
               <div className="flex flex-col gap-2 rounded-md border border-primary/30 bg-primary/[0.04] px-3 py-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 text-meta font-medium text-primary">
-                    <Sparkles size={12} /> Re-analysis · review {diffRows.length} change
+                    <SparkleIcon size={12} /> Re-analysis · review {diffRows.length} change
                     {diffRows.length > 1 ? "s" : ""}
                   </div>
                   <button
@@ -468,7 +468,7 @@ export function UpdateProfileDialog({
                         <span className="text-muted-foreground line-through">
                           {before || "—"}
                         </span>
-                        <ArrowRight className="mx-1.5 inline size-3 text-muted-foreground" />
+                        <ArrowRightIcon className="mx-1.5 inline size-3 text-muted-foreground" />
                         <span className="text-foreground">{after || "—"}</span>
                       </div>
                       <div className="flex gap-1.5 mt-0.5">
@@ -549,7 +549,7 @@ export function UpdateProfileDialog({
                 disabled={loading || !stage}
               >
                 Continue
-                <ArrowRight size={13} />
+                <ArrowRightIcon size={13} />
               </Button>
             </>
           ) : (
@@ -560,11 +560,11 @@ export function UpdateProfileDialog({
                 onClick={() => setStep("stage")}
                 disabled={saving}
               >
-                <ArrowLeft size={13} />
+                <ArrowLeftIcon size={13} />
                 Back
               </Button>
               <Button size="sm" onClick={save} disabled={saving || loading || !dirty || emptyField}>
-                {saving && <Loader2 size={12} className="animate-spin" />}
+                {saving && <CircleNotchIcon size={12} className="animate-spin" />}
                 {mode === "setup" ? "Save & find competitors" : "Save changes"}
               </Button>
             </>

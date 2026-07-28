@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Sparkles } from "lucide-react";
+import { SparkleIcon } from "@phosphor-icons/react/ssr";
 
 import {
   Sheet,
@@ -57,7 +57,7 @@ export function AskDock() {
         >
           <SheetHeader className="border-b border-border">
             <SheetTitle className="flex items-center gap-2">
-              <Sparkles className="size-4 text-[var(--link)]" aria-hidden />
+              <SparkleIcon className="size-4 text-[var(--link)]" aria-hidden />
               Ask Outrival
             </SheetTitle>
             <SheetDescription>

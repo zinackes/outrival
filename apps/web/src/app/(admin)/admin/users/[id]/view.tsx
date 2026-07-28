@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, Shield, AlertTriangle } from "lucide-react";
+import { ArrowLeftIcon, ShieldIcon, WarningIcon } from "@phosphor-icons/react/ssr";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,7 +27,7 @@ export function UserDetailView({ detail }: { detail: AdminUserDetail }) {
         </div>
         <Button asChild variant="ghost" size="sm">
           <Link href="/admin/users">
-            <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
+            <ArrowLeftIcon className="mr-1.5 h-3.5 w-3.5" />
             Users
           </Link>
         </Button>
@@ -103,10 +103,10 @@ export function UserDetailView({ detail }: { detail: AdminUserDetail }) {
                               {m.sourceType}
                               {m.requiresLevel != null && m.requiresLevel >= 2 && (
                                 <>
-                                  <Shield className="size-3" />L{m.requiresLevel}
+                                  <ShieldIcon className="size-3" />L{m.requiresLevel}
                                 </>
                               )}
-                              {m.markedUnscrapable && <AlertTriangle className="size-3" />}
+                              {m.markedUnscrapable && <WarningIcon className="size-3" />}
                             </span>
                           </TableCell>
                           <TableCell className="text-xs text-muted-foreground">

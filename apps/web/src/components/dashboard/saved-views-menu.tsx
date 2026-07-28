@@ -2,7 +2,13 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bookmark, Pencil, Trash2, ChevronDown, Check } from "lucide-react";
+import {
+  BookmarkSimpleIcon,
+  PencilIcon,
+  TrashIcon,
+  CaretDownIcon,
+  CheckIcon,
+} from "@phosphor-icons/react/ssr";
 import { toast } from "sonner";
 import { api, type SavedView, type SavedViewFilters } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -165,17 +171,17 @@ export function SavedViewsMenu({
               aria-label={activeView ? `Saved view: ${activeView.name}` : "Saved views"}
               title={activeView ? `Saved view: ${activeView.name}` : "Saved views"}
             >
-              <Bookmark size={14} className={cn(activeView && "fill-current")} />
+              <BookmarkSimpleIcon size={14} className={cn(activeView && "fill-current")} />
             </Button>
           ) : (
             <Button variant={activeView ? "secondary" : "outline"} size="sm">
-              <Bookmark size={13} className={cn(activeView && "fill-current")} />
+              <BookmarkSimpleIcon size={13} className={cn(activeView && "fill-current")} />
               {activeView ? (
                 <span className="max-w-[140px] truncate">{activeView.name}</span>
               ) : (
                 "Views"
               )}
-              <ChevronDown size={11} className="opacity-60" />
+              <CaretDownIcon size={11} className="opacity-60" />
             </Button>
           )}
         </DropdownMenuTrigger>
@@ -191,7 +197,7 @@ export function SavedViewsMenu({
                 className="group flex items-center justify-between gap-2"
               >
                 <span className="flex min-w-0 items-center gap-1.5">
-                  <Check
+                  <CheckIcon
                     size={12}
                     className={cn(
                       "shrink-0 text-primary",
@@ -209,7 +215,7 @@ export function SavedViewsMenu({
                     aria-label={`Edit ${v.name}`}
                     className="text-muted-foreground hover:text-foreground transition-colors"
                   >
-                    <Pencil size={12} />
+                    <PencilIcon size={12} />
                   </button>
                   <button
                     onClick={(e) => {
@@ -219,7 +225,7 @@ export function SavedViewsMenu({
                     aria-label={`Delete ${v.name}`}
                     className="text-muted-foreground hover:text-destructive transition-colors"
                   >
-                    <Trash2 size={12} />
+                    <TrashIcon size={12} />
                   </button>
                 </span>
               </DropdownMenuItem>

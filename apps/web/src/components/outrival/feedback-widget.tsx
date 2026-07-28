@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { CircleNotchIcon } from "@phosphor-icons/react/ssr";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import {
@@ -178,7 +178,7 @@ export function FeedbackWidget() {
             <Button onClick={handleSubmit} disabled={!message.trim() || submitting}>
               {submitting ? (
                 <>
-                  <Loader2 size={14} className="animate-spin" /> Sending...
+                  <CircleNotchIcon size={14} className="animate-spin" /> Sending...
                 </>
               ) : (
                 "Send"

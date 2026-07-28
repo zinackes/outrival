@@ -2,7 +2,12 @@
 
 import dynamic from "next/dynamic";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { ArrowUp, ArrowDown, ChevronRight, ExternalLink } from "lucide-react";
+import {
+  ArrowUpIcon,
+  ArrowDownIcon,
+  CaretRightIcon,
+  ArrowSquareOutIcon,
+} from "@phosphor-icons/react/ssr";
 import { formatDistanceToNow } from "date-fns";
 import { Fact, FactStrip } from "@/components/outrival/data-marks";
 import { api, type CompetitorSignal } from "@/lib/api";
@@ -298,7 +303,7 @@ export function HiringTab({
                   "[&::-webkit-details-marker]:hidden",
                 )}
               >
-                <ChevronRight
+                <CaretRightIcon
                   size={14}
                   aria-hidden
                   className="shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
@@ -336,7 +341,7 @@ export function HiringTab({
                     "flat"
                   ) : (
                     <span className="inline-flex items-center justify-end gap-0.5">
-                      {delta > 0 ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />}
+                      {delta > 0 ? <ArrowUpIcon className="size-3" /> : <ArrowDownIcon className="size-3" />}
                       {Math.abs(delta)}
                     </span>
                   )}
@@ -359,7 +364,7 @@ export function HiringTab({
                               className="inline-flex items-center gap-1 underline-offset-2 hover:underline"
                             >
                               {role.title}
-                              <ExternalLink size={11} className="shrink-0 text-muted-foreground" />
+                              <ArrowSquareOutIcon size={11} className="shrink-0 text-muted-foreground" />
                             </a>
                           ) : (
                             role.title

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
-import { Globe, Lock } from "lucide-react";
+import { GlobeIcon, LockIcon } from "@phosphor-icons/react/ssr";
 import { minPlanForSectoral, PLAN_LABELS } from "@outrival/shared";
 import {
   api,
@@ -122,12 +122,12 @@ export function SectoralFeed({
       <div className="flex flex-col gap-5">
         <PageHead
           flush
-          icon={<Globe size={18} className="text-muted-foreground" aria-hidden />}
+          icon={<GlobeIcon size={18} className="text-muted-foreground" aria-hidden />}
           title="Sector trends"
           sub="Patterns across your competitors, not single-competitor signals."
         />
         <EmptyState
-          icon={Lock}
+          icon={LockIcon}
           title={`Sector trends are a ${planLabel} feature`}
           description={
             <>
@@ -159,7 +159,7 @@ export function SectoralFeed({
     <div className="flex flex-col gap-5">
       <PageHead
         flush
-        icon={<Globe size={18} className="text-muted-foreground" aria-hidden />}
+        icon={<GlobeIcon size={18} className="text-muted-foreground" aria-hidden />}
         title="Sector trends"
         sub="Patterns across your competitors, not single-competitor signals."
       />
@@ -196,7 +196,7 @@ export function SectoralFeed({
         <ListRowsSkeleton rows={5} />
       ) : signals.length === 0 ? (
         <EmptyState
-          icon={Globe}
+          icon={GlobeIcon}
           title={
             view === "dismissed"
               ? "Nothing dismissed"

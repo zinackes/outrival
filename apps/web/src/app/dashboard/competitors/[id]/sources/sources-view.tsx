@@ -5,7 +5,12 @@ import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
-import { ArrowLeft, ChevronRight, Loader2, Play } from "lucide-react";
+import {
+  ArrowLeftIcon,
+  CaretRightIcon,
+  CircleNotchIcon,
+  PlayIcon,
+} from "@phosphor-icons/react/ssr";
 import {
   ALL_CONFIGURABLE_SOURCES,
   ATTENTION_OF,
@@ -151,7 +156,7 @@ function CollapsedBlock({
         <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{summary}</span>
         <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
           {open ? "Hide" : cta}
-          <ChevronRight
+          <CaretRightIcon
             size={13}
             className={cn("transition-transform duration-200", open && "rotate-90")}
           />
@@ -384,7 +389,7 @@ export function SourcesView({ id }: { id: string }) {
               aria-label="Back to competitor"
               className="mt-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <ArrowLeft size={16} />
+              <ArrowLeftIcon size={16} />
             </Link>
             <div className="min-w-0">
               <h1 className="m-0 text-title font-bold leading-tight tracking-tight">Sources</h1>
@@ -400,7 +405,7 @@ export function SourcesView({ id }: { id: string }) {
             disabled={runningAll}
             className="h-8 shrink-0 text-xs"
           >
-            {runningAll ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
+            {runningAll ? <CircleNotchIcon size={12} className="animate-spin" /> : <PlayIcon size={12} />}
             Scan all
           </Button>
         </div>
@@ -608,9 +613,9 @@ export function SourcesView({ id }: { id: string }) {
                   disabled={techScraping}
                 >
                   {techScraping ? (
-                    <Loader2 size={11} className="animate-spin" />
+                    <CircleNotchIcon size={11} className="animate-spin" />
                   ) : (
-                    <Play size={11} />
+                    <PlayIcon size={11} />
                   )}
                   Run
                 </Button>

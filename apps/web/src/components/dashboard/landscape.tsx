@@ -5,20 +5,20 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { AiVisibilityTeaser } from "./ai-visibility-teaser";
 import {
-  ArrowRight,
-  Briefcase,
-  Check,
-  ChevronDown,
-  Clock3,
-  ExternalLink,
-  Gift,
-  Lightbulb,
-  Radar,
-  Star,
-  Tag,
-  TriangleAlert,
-  type LucideIcon,
-} from "lucide-react";
+  ArrowRightIcon,
+  BriefcaseIcon,
+  CheckIcon,
+  CaretDownIcon,
+  ClockIcon,
+  ArrowSquareOutIcon,
+  GiftIcon,
+  LightbulbIcon,
+  ScanIcon,
+  StarIcon,
+  TagIcon,
+  WarningIcon,
+} from "@phosphor-icons/react/ssr";
+import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import { formatDistanceToNow } from "date-fns";
 import type { LandscapeData, LandscapeInsight, LandscapePricingRow } from "@/lib/api";
 import { landscapeQuery } from "@/lib/queries";
@@ -131,7 +131,7 @@ function PriceCell({
         </>
       ) : (
         <span className="inline-flex items-center gap-1.5 text-meta text-muted-foreground">
-          <Clock3 size={11} aria-hidden /> {summary.secondary}
+          <ClockIcon size={11} aria-hidden /> {summary.secondary}
         </span>
       )}
     </span>
@@ -141,13 +141,13 @@ function PriceCell({
 function WaitEmptyState({ competitorCount }: { competitorCount: number }) {
   return (
     <EmptyState
-      icon={Radar}
+      icon={ScanIcon}
       title={`Outrival is watching ${competitorCount} competitor${competitorCount > 1 ? "s" : ""}`}
       description="Scans run continuously. Your first signals (pricing, hiring, product and content moves) land here the moment something changes."
       actions={
         <Button asChild size="sm" variant="outline">
           <Link href="/dashboard/competitors">
-            Review competitors <ArrowRight size={11} />
+            Review competitors <ArrowRightIcon size={11} />
           </Link>
         </Button>
       }
@@ -158,11 +158,11 @@ function WaitEmptyState({ competitorCount }: { competitorCount: number }) {
 // Day-0 "Did you know?" quick wins (Lever 3) — the aha the API already computes
 // in computeLandscapeInsights but the page never surfaced. Deterministic, no AI:
 // the sharpest pricing/hiring/review gaps between the user and each competitor.
-const INSIGHT_ICON: Record<LandscapeInsight["kind"], LucideIcon> = {
-  pricing_gap: Tag,
-  trial: Gift,
-  hiring: Briefcase,
-  reviews: Star,
+const INSIGHT_ICON: Record<LandscapeInsight["kind"], PhosphorIcon> = {
+  pricing_gap: TagIcon,
+  trial: GiftIcon,
+  hiring: BriefcaseIcon,
+  reviews: StarIcon,
 };
 
 function InsightCards({
@@ -178,7 +178,7 @@ function InsightCards({
       <SectionHead
         title="What we already found"
         sub="the sharpest gaps between you and your competitors"
-        icon={<Lightbulb size={16} />}
+        icon={<LightbulbIcon size={16} />}
         divider={false}
       />
       <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -245,7 +245,7 @@ function SourcesCoverage({
         aria-expanded={open}
         className="flex w-full items-center gap-2 px-4 py-3 text-left"
       >
-        <ChevronDown
+        <CaretDownIcon
           size={14}
           aria-hidden
           className={`shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
@@ -274,7 +274,7 @@ function SourcesCoverage({
               key={`${competitor.id}-${sourceType}`}
               className="flex items-center gap-2 border-b border-border px-4 py-2 text-dense last:border-b-0"
             >
-              <TriangleAlert
+              <WarningIcon
                 size={12}
                 className="shrink-0 text-muted-foreground"
                 aria-hidden
@@ -319,11 +319,11 @@ function SourcesCoverage({
                       className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-meta text-muted-foreground"
                     >
                       {s.status === "captured" ? (
-                        <Check size={11} className="text-primary" aria-hidden />
+                        <CheckIcon size={11} className="text-primary" aria-hidden />
                       ) : s.status === "pending" ? (
-                        <Clock3 size={11} aria-hidden />
+                        <ClockIcon size={11} aria-hidden />
                       ) : (
-                        <TriangleAlert size={11} aria-hidden />
+                        <WarningIcon size={11} aria-hidden />
                       )}
                       {SOURCE_LABELS[s.sourceType] ?? s.sourceType.replace(/_/g, " ")}
                     </span>
@@ -416,7 +416,7 @@ export function LandscapeSection({
                   href="/dashboard/compare"
                   className="inline-flex items-center gap-1 text-xs text-link underline-offset-2 hover:underline"
                 >
-                  Compare pricing <ArrowRight size={11} />
+                  Compare pricing <ArrowRightIcon size={11} />
                 </Link>
               </div>
               <div>
@@ -564,7 +564,7 @@ export function LandscapeSection({
                       className="group min-w-0 text-dense truncate hover:underline underline-offset-2"
                     >
                       {item.title}
-                      <ExternalLink
+                      <ArrowSquareOutIcon
                         size={10}
                         className="ml-1 inline shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
                       />

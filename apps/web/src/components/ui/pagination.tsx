@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react";
+import { CaretLeftIcon, CaretRightIcon, DotsThreeIcon } from "@phosphor-icons/react/ssr";
 
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
@@ -74,7 +74,7 @@ function PaginationPrevious({
       className={cn("gap-1 px-2.5", className)}
       {...props}
     >
-      <ChevronLeft />
+      <CaretLeftIcon />
       <span className="hidden sm:block">Previous</span>
     </PaginationLink>
   );
@@ -89,7 +89,7 @@ function PaginationNext({ className, ...props }: React.ComponentProps<"button">)
       {...props}
     >
       <span className="hidden sm:block">Next</span>
-      <ChevronRight />
+      <CaretRightIcon />
     </PaginationLink>
   );
 }
@@ -105,7 +105,7 @@ function PaginationEllipsis({ className, ...props }: React.ComponentProps<"span"
       )}
       {...props}
     >
-      <MoreHorizontal className="size-4" />
+      <DotsThreeIcon className="size-4" />
       <span className="sr-only">More pages</span>
     </span>
   );

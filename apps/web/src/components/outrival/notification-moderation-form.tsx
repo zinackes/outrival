@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Check, Loader2 } from "lucide-react";
+import { CheckIcon, CircleNotchIcon } from "@phosphor-icons/react/ssr";
 import {
   api,
   type ChannelMode,
@@ -323,7 +323,7 @@ export function NotificationModerationForm() {
 
       {saved && !dirty && (
         <p className="flex items-center gap-1.5 text-sm text-positive">
-          <Check className="size-4" /> Saved
+          <CheckIcon className="size-4" /> Saved
         </p>
       )}
 
@@ -335,7 +335,7 @@ export function NotificationModerationForm() {
               Cancel
             </Button>
             <Button type="submit" size="sm" disabled={saving}>
-              {saving && <Loader2 size={12} className="animate-spin" />}
+              {saving && <CircleNotchIcon size={12} className="animate-spin" />}
               {saving ? "Saving…" : "Save changes"}
             </Button>
           </div>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Play, ExternalLink } from "lucide-react";
+import { CircleNotchIcon, PlayIcon, ArrowSquareOutIcon } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -156,9 +156,9 @@ export function CronConsole() {
                   </div>
                   <Button size="sm" disabled={pending} onClick={() => run(cron.id)}>
                     {pending ? (
-                      <Loader2 className="animate-spin" />
+                      <CircleNotchIcon className="animate-spin" />
                     ) : (
-                      <Play />
+                      <PlayIcon />
                     )}
                     Run
                   </Button>
@@ -181,7 +181,7 @@ export function CronConsole() {
                         rel="noreferrer"
                         className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
                       >
-                        {state.runId} <ExternalLink className="size-3" />
+                        {state.runId} <ArrowSquareOutIcon className="size-3" />
                       </a>
                     )}
                   </div>

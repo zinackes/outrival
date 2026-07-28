@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Check, ChevronDown, Copy, Download } from "lucide-react";
+import { CheckIcon, CaretDownIcon, CopyIcon, DownloadSimpleIcon } from "@phosphor-icons/react/ssr";
 import { api, type Competitor, type CompareColumn, type ProductSummary } from "@/lib/api";
 import { productsListQuery, competitorsQuery, compareRankingQuery } from "@/lib/queries";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
@@ -440,11 +440,11 @@ export function CompareView() {
               disabled={!canExport}
             >
               {exportDone ? (
-                <Check size={12} />
+                <CheckIcon size={12} />
               ) : exportIsCopy ? (
-                <Copy size={12} />
+                <CopyIcon size={12} />
               ) : (
-                <Download size={12} />
+                <DownloadSimpleIcon size={12} />
               )}
               {exportDone
                 ? exportIsCopy
@@ -461,7 +461,7 @@ export function CompareView() {
                   disabled={!canExport}
                   aria-label="Export options"
                 >
-                  <ChevronDown size={14} />
+                  <CaretDownIcon size={14} />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, ArrowUpRight, ListFilter } from "lucide-react";
+import { ArrowRightIcon, ArrowUpRightIcon, FunnelSimpleIcon } from "@phosphor-icons/react/ssr";
 import { CatText } from "./cat-pill";
 import { MoverName } from "./digest-parts";
 import {
@@ -166,7 +166,7 @@ function Move({
 
       {section.so_what && (
         <p className="m-0 mt-2 flex max-w-[72ch] gap-2.5 text-content leading-relaxed text-muted-foreground">
-          <ArrowRight className="mt-1 size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+          <ArrowRightIcon className="mt-1 size-3.5 shrink-0 text-muted-foreground" aria-hidden />
           <span>{section.so_what}</span>
         </p>
       )}
@@ -178,7 +178,7 @@ function Move({
               href={competitorHref}
               className="inline-flex items-center gap-1.5 text-dense text-link hover:underline underline-offset-2"
             >
-              <ArrowUpRight size={12} aria-hidden />
+              <ArrowUpRightIcon size={12} aria-hidden />
               Open {section.competitor}
             </Link>
           )}
@@ -187,7 +187,7 @@ function Move({
               href={signalHref}
               className="inline-flex items-center gap-1.5 text-dense text-link hover:underline underline-offset-2"
             >
-              <ListFilter size={12} aria-hidden />
+              <FunnelSimpleIcon size={12} aria-hidden />
               See the signal
             </Link>
           )}

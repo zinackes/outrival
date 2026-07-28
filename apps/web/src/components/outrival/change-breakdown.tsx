@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronRight, CornerDownRight } from "lucide-react";
+import { CaretRightIcon, ArrowElbowDownRightIcon } from "@phosphor-icons/react/ssr";
 import type { SignalChange } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -99,7 +99,7 @@ function ChangeItem({ change: ch }: { change: SignalChange }) {
           {ch.before && <p className="text-muted-foreground">{ch.before}</p>}
           {ch.after && (
             <p className="flex gap-1.5 text-foreground">
-              <CornerDownRight className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+              <ArrowElbowDownRightIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
               <span>{ch.after}</span>
             </p>
           )}
@@ -205,7 +205,7 @@ export function GroupedChanges({ changes }: { changes: SignalChange[] }) {
                     aria-controls={panelId}
                     className="flex w-full items-center gap-2 rounded-md py-1.5 pr-1.5 text-left text-sm text-foreground outline-none transition-colors hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring/50"
                   >
-                    <ChevronRight
+                    <CaretRightIcon
                       className={cn(
                         "size-3 shrink-0 text-muted-foreground transition-transform",
                         open && "rotate-90",

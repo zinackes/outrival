@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle } from "lucide-react";
+import { WarningIcon } from "@phosphor-icons/react/ssr";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -72,7 +72,7 @@ export function AiOutputWarning({ targetType, targetId, onResolved, className }:
       )}
     >
       <div className="flex items-start gap-2.5">
-        <AlertTriangle size={16} className="mt-0.5 shrink-0 text-medium" />
+        <WarningIcon size={16} className="mt-0.5 shrink-0 text-medium" />
         <div className="space-y-1.5">
           <p className="font-medium text-foreground">
             This {LABEL[targetType]} couldn&apos;t be fully verified

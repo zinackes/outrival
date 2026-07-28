@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
-import { ArrowLeft, Printer } from "lucide-react";
+import { ArrowLeftIcon, PrinterIcon } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -25,11 +25,11 @@ export function PrintControls({ backHref, auto }: { backHref: string; auto: bool
       <div className="mx-auto flex max-w-[820px] items-center justify-between gap-4 px-5 py-2.5">
         <Button variant="ghost" size="sm" asChild className="px-0 hover:bg-transparent">
           <Link href={backHref}>
-            <ArrowLeft size={12} /> Back to the brief
+            <ArrowLeftIcon size={12} /> Back to the brief
           </Link>
         </Button>
         <Button size="sm" onClick={() => window.print()}>
-          <Printer size={13} /> Print or save as PDF
+          <PrinterIcon size={13} /> Print or save as PDF
         </Button>
       </div>
     </div>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
-import { Monitor, Moon, Sun } from "lucide-react";
+import { MonitorIcon, MoonIcon, SunIcon } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -18,9 +18,9 @@ import {
 } from "@/components/ui/tooltip";
 
 const OPTIONS = [
-  { value: "light", label: "Light", icon: Sun },
-  { value: "dark", label: "Dark", icon: Moon },
-  { value: "system", label: "System", icon: Monitor },
+  { value: "light", label: "Light", icon: SunIcon },
+  { value: "dark", label: "Dark", icon: MoonIcon },
+  { value: "system", label: "System", icon: MonitorIcon },
 ] as const;
 
 export function ThemeToggle() {
@@ -46,9 +46,9 @@ export function ThemeToggle() {
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon-sm" aria-label="Toggle theme">
                 {mounted && resolvedTheme === "dark" ? (
-                  <Moon size={14} />
+                  <MoonIcon size={14} />
                 ) : (
-                  <Sun size={14} />
+                  <SunIcon size={14} />
                 )}
               </Button>
             </DropdownMenuTrigger>

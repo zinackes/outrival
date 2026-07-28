@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { ArrowRightIcon } from "@phosphor-icons/react/ssr";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { NotificationSettingsForm } from "@/components/outrival/notification-settings-form";
 import { NotificationModerationForm } from "@/components/outrival/notification-moderation-form";
@@ -58,7 +58,7 @@ export default async function NotificationSettingsPage() {
             className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             View past digests
-            <ArrowRight size={12} />
+            <ArrowRightIcon size={12} />
           </Link>
         </div>
 

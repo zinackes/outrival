@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { Megaphone } from "lucide-react";
+import { MegaphoneIcon } from "@phosphor-icons/react/ssr";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { PageHead } from "./page-head";
@@ -59,7 +59,7 @@ export function WhatsNewView() {
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-8">
       <PageHead
         flush
-        icon={<Megaphone size={18} className="text-muted-foreground" aria-hidden />}
+        icon={<MegaphoneIcon size={18} className="text-muted-foreground" aria-hidden />}
         title="What's new"
         sub="Product updates and improvements, newest first."
       />

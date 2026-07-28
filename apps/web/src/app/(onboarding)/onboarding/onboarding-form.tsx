@@ -6,26 +6,26 @@ import Link from "next/link";
 import { useFeatureFlagEnabled } from "posthog-js/react";
 import { toast } from "sonner";
 import {
-  AlertCircle,
-  ArrowLeft,
-  ArrowRight,
-  Check,
-  ChevronDown,
-  ExternalLink,
-  FileText,
-  GitBranch,
-  Globe,
-  Lightbulb,
-  Loader2,
-  Lock,
-  LogOut,
-  Plus,
-  RotateCcw,
-  Sparkles,
-  Trash2,
-  Upload,
-  X,
-} from "lucide-react";
+  WarningCircleIcon,
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  CheckIcon,
+  CaretDownIcon,
+  ArrowSquareOutIcon,
+  FileTextIcon,
+  GitBranchIcon,
+  GlobeIcon,
+  LightbulbIcon,
+  CircleNotchIcon,
+  LockIcon,
+  SignOutIcon,
+  PlusIcon,
+  ArrowCounterClockwiseIcon,
+  SparkleIcon,
+  TrashIcon,
+  UploadSimpleIcon,
+  XIcon,
+} from "@phosphor-icons/react/ssr";
 import {
   PLAN_LIMITS,
   detectTemporaryUrl,
@@ -93,25 +93,25 @@ const SCREEN_TO_STEP: Record<Screen, number> = {
 
 const STAGE_META: Record<
   ProjectStage,
-  { icon: typeof Lightbulb; title: string; description: string }
+  { icon: typeof LightbulbIcon; title: string; description: string }
 > = {
   idea: {
-    icon: Lightbulb,
+    icon: LightbulbIcon,
     title: "I have an idea to explore",
     description: "Describe your concept in a few words",
   },
   document: {
-    icon: FileText,
+    icon: FileTextIcon,
     title: "I have a pitch or a brief",
-    description: "Upload your pitch deck or business plan",
+    description: "UploadSimpleIcon your pitch deck or business plan",
   },
   developing: {
-    icon: GitBranch,
+    icon: GitBranchIcon,
     title: "I'm building it",
     description: "Connect your public GitHub repo",
   },
   live: {
-    icon: Globe,
+    icon: GlobeIcon,
     title: "My product is live",
     description: "Give us your URL",
   },
@@ -210,7 +210,7 @@ function extractMessage(err: unknown): string {
   }
   if (err instanceof Error) {
     if (err.name === "TypeError" || err.message.toLowerCase().includes("fetch"))
-      return "Cannot connect to the server. Check your network connection.";
+      return "Cannot connect to the server. CheckIcon your network connection.";
     return err.message;
   }
   return String(err);
@@ -858,10 +858,10 @@ function Header({
           {showControls && (
             <>
               <Button variant="ghost" size="sm" onClick={onRestart}>
-                <RotateCcw size={14} /> <span className="hidden sm:inline">Restart</span>
+                <ArrowCounterClockwiseIcon size={14} /> <span className="hidden sm:inline">Restart</span>
               </Button>
               <Button variant="ghost" size="sm" onClick={() => void onSkip()}>
-                <LogOut size={14} /> <span className="hidden sm:inline">Leave for now</span>
+                <SignOutIcon size={14} /> <span className="hidden sm:inline">Leave for now</span>
               </Button>
             </>
           )}
@@ -907,7 +907,7 @@ function ErrorBanner({ message, onDismiss }: { message: string; onDismiss: () =>
       role="alert"
       className="mt-6 flex items-start gap-3 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3"
     >
-      <AlertCircle size={16} className="mt-0.5 text-destructive shrink-0" />
+      <WarningCircleIcon size={16} className="mt-0.5 text-destructive shrink-0" />
       <p className="flex-1 text-sm text-foreground">{message}</p>
       <button
         type="button"
@@ -915,7 +915,7 @@ function ErrorBanner({ message, onDismiss }: { message: string; onDismiss: () =>
         aria-label="Close"
         className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
       >
-        <X size={14} />
+        <XIcon size={14} />
       </button>
     </div>
   );
@@ -924,7 +924,7 @@ function ErrorBanner({ message, onDismiss }: { message: string; onDismiss: () =>
 function FallbackOffer({ onAccept, onDismiss }: { onAccept: () => void; onDismiss: () => void }) {
   return (
     <div className="mt-6 flex items-start gap-3 rounded-md border border-border-strong bg-surface-2/60 px-4 py-3">
-      <Sparkles size={16} className="mt-0.5 text-foreground shrink-0" />
+      <SparkleIcon size={16} className="mt-0.5 text-foreground shrink-0" />
       <div className="flex-1">
         <p className="text-sm text-foreground">Describe your product in a few words instead.</p>
         <div className="mt-2 flex gap-2">
@@ -963,20 +963,20 @@ function FooterNav({
         <div>
           {onBack && (
             <Button type="button" variant="ghost" onClick={onBack} disabled={busy}>
-              <ArrowLeft size={14} /> Edit
+              <ArrowLeftIcon size={14} /> Edit
             </Button>
           )}
         </div>
         <Button type="button" onClick={() => void onSubmit()} disabled={busy || primaryDisabled}>
           {busy ? (
             <>
-              <Loader2 size={14} className="animate-spin" />
+              <CircleNotchIcon size={14} className="animate-spin" />
               {busyLabel ?? "Loading…"}
             </>
           ) : (
             <>
               {primaryLabel}
-              <ArrowRight size={14} />
+              <ArrowRightIcon size={14} />
             </>
           )}
         </Button>
@@ -1164,7 +1164,7 @@ function ModeForm({
                 if (f) setFile(f);
               }}
             >
-              <Upload size={20} className="text-muted-foreground" />
+              <UploadSimpleIcon size={20} className="text-muted-foreground" />
               <span className="text-sm text-foreground">
                 {file ? file.name : "Drop or select a file"}
               </span>
@@ -1179,7 +1179,7 @@ function ModeForm({
               />
             </label>
             <div className="flex items-start gap-2 rounded-md border border-positive/30 bg-positive/10 px-4 py-3">
-              <Lock size={15} className="mt-0.5 text-positive shrink-0" />
+              <LockIcon size={15} className="mt-0.5 text-positive shrink-0" />
               <p className="text-xs text-foreground leading-relaxed">
                 Your document is analyzed in memory and will <strong>never be stored</strong>.
                 Only the extracted product profile is saved.
@@ -1224,7 +1224,7 @@ function ModeForm({
             />
             {temp.temporary && (
               <div className="mt-2 flex items-start gap-2 rounded-md border border-border-strong bg-surface-2/60 px-3 py-2">
-                <AlertCircle size={14} className="mt-0.5 text-foreground shrink-0" />
+                <WarningCircleIcon size={14} className="mt-0.5 text-foreground shrink-0" />
                 <div className="flex-1">
                   <p className="text-xs text-foreground">
                     This looks like a temporary URL. Would you rather use the “In
@@ -1305,7 +1305,7 @@ function ProfileForm({
       </p>
 
       <div className="flex items-center gap-1.5 mt-6 mb-3 text-xs text-muted-foreground">
-        <Sparkles size={13} className="text-primary" /> Extracted by AI
+        <SparkleIcon size={13} className="text-primary" /> Extracted by AI
       </div>
 
       <Card className="p-5 sm:p-6 flex flex-col gap-5">
@@ -1357,12 +1357,12 @@ function ProfileForm({
 
       {prefetchStatus === "running" && (
         <p className="mt-4 flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Loader2 size={12} className="animate-spin" /> Searching competitors…
+          <CircleNotchIcon size={12} className="animate-spin" /> Searching competitors…
         </p>
       )}
       {prefetchStatus === "completed" && (
         <p className="mt-4 flex items-center gap-1.5 text-xs text-positive">
-          <Check size={12} /> Competitors found
+          <CheckIcon size={12} /> Competitors found
         </p>
       )}
 
@@ -1426,7 +1426,7 @@ function DiscoverStep({
         Your competitors
       </h1>
       <p className="text-sm text-muted-foreground mt-3">
-        Check the ones that really matter. You can add or remove more later.
+        CheckIcon the ones that really matter. You can add or remove more later.
       </p>
 
       <div className="mt-5 flex flex-wrap items-center gap-2">
@@ -1457,7 +1457,7 @@ function DiscoverStep({
 
       {noStrongMatch && (
         <div className="mt-6 flex items-start gap-3 rounded-md border border-border-strong bg-surface-2/60 px-4 py-3">
-          <AlertCircle size={16} className="mt-0.5 text-foreground shrink-0" />
+          <WarningCircleIcon size={16} className="mt-0.5 text-foreground shrink-0" />
           <div className="flex-1">
             <p className="text-sm text-foreground">We didn't find any obvious competitors.</p>
             <div className="mt-2 flex gap-2">
@@ -1486,7 +1486,7 @@ function DiscoverStep({
       <Card className="p-2 sm:p-3 max-h-[420px] overflow-auto">
         {busy ? (
           <div className="px-4 py-12 flex items-center justify-center gap-2 text-sm text-muted-foreground">
-            <Loader2 size={16} className="animate-spin" /> Analyzing your market…
+            <CircleNotchIcon size={16} className="animate-spin" /> Analyzing your market…
           </div>
         ) : competitors.length === 0 ? (
           <div className="px-4 py-12 text-center text-sm text-muted-foreground">
@@ -1527,7 +1527,7 @@ function DiscoverStep({
             }}
           />
           <Button type="button" variant="outline" onClick={addManualCompetitor}>
-            <Plus size={14} /> Add
+            <PlusIcon size={14} /> Add
           </Button>
         </div>
       </div>
@@ -1593,7 +1593,7 @@ function CompetitorRow({
           className="text-meta font-mono text-muted-foreground hover:text-foreground inline-flex items-center gap-1 mt-0.5 max-w-full transition-colors"
         >
           <span className="truncate">{competitor.url.replace(/^https?:\/\//, "")}</span>
-          <ExternalLink size={10} className="shrink-0" />
+          <ArrowSquareOutIcon size={10} className="shrink-0" />
         </a>
         {competitor.snippet && (
           <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">
@@ -1612,7 +1612,7 @@ function CompetitorRow({
         aria-label="Remove"
         className="text-muted-foreground hover:text-destructive"
       >
-        <Trash2 size={14} />
+        <TrashIcon size={14} />
       </Button>
     </li>
   );
@@ -1648,7 +1648,7 @@ function DoneStep({
   plan: Plan;
   onDashboard: () => void;
 }) {
-  // Per-competitor analysis progress (drives the "Analyzing X/Y" badge and the
+  // Per-competitor analysis progress (drives the "Analyzing XIcon/Y" badge and the
   // breakdown popover). A competitor counts as analyzed once it has an AI summary.
   const [progress, setProgress] = useState<
     { id: string; name: string; analyzed: boolean }[]
@@ -1717,7 +1717,7 @@ function DoneStep({
   return (
     <div className="flex flex-col items-center text-center">
       <div className="w-12 h-12 rounded-full bg-positive/15 border border-positive/30 flex items-center justify-center">
-        <Check size={22} className="text-positive" />
+        <CheckIcon size={22} className="text-positive" />
       </div>
       <h1 className="text-title md:text-title-lg font-semibold mt-5">
         Setup complete
@@ -1734,15 +1734,15 @@ function DoneStep({
             className="group mt-6 inline-flex items-center gap-2 rounded-md border border-border bg-surface-2/60 px-4 py-2 outline-none transition-colors hover:bg-surface-2 focus-visible:ring-[3px] focus-visible:ring-ring/35"
           >
             {!allDone && (
-              <Loader2 size={14} className="animate-spin text-muted-foreground" />
+              <CircleNotchIcon size={14} className="animate-spin text-muted-foreground" />
             )}
-            {allDone && <Check size={14} className="text-positive" />}
+            {allDone && <CheckIcon size={14} className="text-positive" />}
             <span className="text-sm text-foreground">
               {allDone
                 ? `${totalCompetitors} competitors analyzed`
                 : `Analyzing ${analyzed}/${totalCompetitors} competitors…`}
             </span>
-            <ChevronDown
+            <CaretDownIcon
               size={14}
               className="text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
             />
@@ -1764,9 +1764,9 @@ function DoneStep({
                   className="flex items-center gap-2 rounded-sm px-2 py-1.5"
                 >
                   {c.analyzed ? (
-                    <Check size={14} className="shrink-0 text-positive" />
+                    <CheckIcon size={14} className="shrink-0 text-positive" />
                   ) : (
-                    <Loader2
+                    <CircleNotchIcon
                       size={14}
                       className="shrink-0 animate-spin text-muted-foreground"
                     />
@@ -1802,7 +1802,7 @@ function DoneStep({
       </Card>
 
       <Button className="mt-8" onClick={onDashboard}>
-        Go to dashboard <ArrowRight size={14} />
+        Go to dashboard <ArrowRightIcon size={14} />
       </Button>
     </div>
   );

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import dynamic from "next/dynamic";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { Lock, Plus, Loader2, Link2 } from "lucide-react";
+import { LockIcon, PlusIcon, CircleNotchIcon, LinkIcon } from "@phosphor-icons/react/ssr";
 import {
   PLAN_LABELS,
   planIncludesSource,
@@ -133,7 +133,7 @@ function ReviewEnableState({
                     locked ? `Requires ${PLAN_LABELS[minPlanForSource(o.value)]}` : undefined
                   }
                 >
-                  {locked && <Lock size={11} className="opacity-70" />}
+                  {locked && <LockIcon size={11} className="opacity-70" />}
                   {o.label}
                 </ToggleGroupItem>
               );
@@ -144,7 +144,7 @@ function ReviewEnableState({
         <div className="space-y-1.5">
           <p className="text-xs font-medium text-foreground">Page URL</p>
           <div className="relative">
-            <Link2
+            <LinkIcon
               size={14}
               className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
             />
@@ -183,15 +183,15 @@ function ReviewEnableState({
       >
         {busy ? (
           <>
-            <Loader2 size={12} className="animate-spin" /> Enabling…
+            <CircleNotchIcon size={12} className="animate-spin" /> Enabling…
           </>
         ) : sourceLocked ? (
           <>
-            <Lock size={12} /> Upgrade to enable
+            <LockIcon size={12} /> Upgrade to enable
           </>
         ) : (
           <>
-            <Plus size={12} /> Enable reviews monitoring
+            <PlusIcon size={12} /> Enable reviews monitoring
           </>
         )}
       </Button>

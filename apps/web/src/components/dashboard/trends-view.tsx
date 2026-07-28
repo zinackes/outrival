@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useQuery } from "@tanstack/react-query";
-import { LineChart as LineChartIcon } from "lucide-react";
+import { ChartLineIcon } from "@phosphor-icons/react/ssr";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import { EmptyState } from "./empty-state";
 import {
@@ -695,7 +695,7 @@ export function TrendsView() {
       ) : summary.degraded && allEmpty ? (
         <div className="rounded-lg border border-dashed border-border px-6 py-14 text-center text-muted-foreground">
           <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full border border-border bg-background">
-            <LineChartIcon size={16} className="text-muted-foreground" aria-hidden />
+            <ChartLineIcon size={16} className="text-muted-foreground" aria-hidden />
           </div>
           <div className="mb-1.5 text-base font-semibold tracking-tight text-foreground">
             Trends temporarily unavailable
@@ -707,7 +707,7 @@ export function TrendsView() {
         </div>
       ) : allEmpty ? (
         <EmptyState
-          icon={LineChartIcon}
+          icon={ChartLineIcon}
           title="No trends yet"
           description="Pricing, hiring, review and tech history build up over the next few scrapes."
         />

@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
-import { ChevronRight, ExternalLink } from "lucide-react";
+import { CaretRightIcon, ArrowSquareOutIcon } from "@phosphor-icons/react/ssr";
 import { formatDistanceToNow } from "date-fns";
 import type {
   ActivityCaptured,
@@ -137,7 +137,7 @@ export function RunRow({
         <span className="truncate max-sm:col-start-2">
           <CapturedCell event={event} />
         </span>
-        <ChevronRight
+        <CaretRightIcon
           className={cn(
             "size-3.5 justify-self-end text-text-subtle transition-transform max-sm:col-start-3 max-sm:row-start-1",
             isOpen && "rotate-90",
@@ -188,7 +188,7 @@ function RunPanel({
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 text-link hover:underline"
           >
-            <ExternalLink className="size-3.5" aria-hidden />
+            <ArrowSquareOutIcon className="size-3.5" aria-hidden />
             View the page we read
           </a>
         )}

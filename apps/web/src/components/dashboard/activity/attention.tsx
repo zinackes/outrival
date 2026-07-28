@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
-import { ChevronRight, X } from "lucide-react";
+import { CaretRightIcon, XIcon } from "@phosphor-icons/react/ssr";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { api, type ActivitySource } from "@/lib/api";
@@ -94,7 +94,7 @@ export function Attention({
         className="flex items-center justify-between gap-3 border-b border-border pb-2 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       >
         <span className="flex items-center gap-1.5">
-          <ChevronRight
+          <CaretRightIcon
             className={cn(
               "size-4 text-muted-foreground transition-transform duration-200 motion-reduce:transition-none",
               open && "rotate-90",
@@ -231,7 +231,7 @@ function AttentionRow({
           aria-label={`Stop showing ${source.competitorName} ${sourceLabel(source.sourceType).toLowerCase()} here`}
           title="Stop showing this here"
         >
-          <X className="size-3.5" aria-hidden />
+          <XIcon className="size-3.5" aria-hidden />
         </Button>
       </div>
     </motion.div>

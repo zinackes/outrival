@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle } from "lucide-react";
+import { WarningIcon } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 import { UpdateProfileDialog } from "@/components/outrival/update-profile-dialog";
 
@@ -16,7 +16,7 @@ export function OnboardingBanner() {
   const [open, setOpen] = useState(false);
   return (
     <div className="flex items-center gap-3 border-b border-accent/30 bg-accent/10 px-4 sm:px-6 py-2.5">
-      <AlertTriangle size={16} className="text-accent shrink-0" />
+      <WarningIcon size={16} className="text-accent shrink-0" />
       <p className="flex-1 text-sm text-foreground">
         Complete your setup to start tracking competitors.
       </p>

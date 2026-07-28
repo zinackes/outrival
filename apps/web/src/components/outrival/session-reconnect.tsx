@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { CircleNotchIcon } from "@phosphor-icons/react/ssr";
 import { Button } from "@/components/ui/button";
 
 // Shown when a server layout can't get a definitive session answer from the API
@@ -71,7 +71,7 @@ export function SessionReconnect() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-3 px-6 text-center">
-      <Loader2 className="size-5 animate-spin text-muted-foreground" />
+      <CircleNotchIcon className="size-5 animate-spin text-muted-foreground" />
       <p className="text-sm text-muted-foreground">Reconnecting…</p>
     </div>
   );

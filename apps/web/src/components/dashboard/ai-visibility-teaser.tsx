@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Sparkles, ArrowRight } from "lucide-react";
+import { SparkleIcon, ArrowRightIcon } from "@phosphor-icons/react/ssr";
 import { aiVisibilityTeaserQuery } from "@/lib/queries";
 import { Button } from "@/components/ui/button";
 
@@ -27,7 +27,7 @@ export function AiVisibilityTeaser() {
   if (!gaveUp && (isLoading || data?.status === "pending")) {
     return (
       <div className="flex items-center gap-2 rounded-md border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
-        <Sparkles className="size-4 shrink-0 animate-pulse text-muted-foreground" />
+        <SparkleIcon className="size-4 shrink-0 animate-pulse text-muted-foreground" />
         Checking how AI answer engines describe your market…
       </div>
     );
@@ -61,7 +61,7 @@ export function AiVisibilityTeaser() {
   return (
     <div className="rounded-md border border-border bg-card">
       <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-        <Sparkles className="size-4 text-link" />
+        <SparkleIcon className="size-4 text-link" />
         <span className="text-sm font-medium">Your AI visibility</span>
         <span className="ml-auto text-meta text-muted-foreground">
           Sampled from {promptsRun} buyer question{promptsRun === 1 ? "" : "s"}
@@ -77,7 +77,7 @@ export function AiVisibilityTeaser() {
         <Button asChild variant="link" size="sm" className="h-auto px-0">
           <Link href="/dashboard/ai-visibility">
             Track my AI visibility
-            <ArrowRight className="size-4" />
+            <ArrowRightIcon className="size-4" />
           </Link>
         </Button>
       </div>

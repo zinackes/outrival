@@ -47,6 +47,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { COMPETITOR_NAME_MAX_LENGTH } from "@outrival/shared";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -918,6 +919,7 @@ function AddCompetitorDialog({
             <Input
               id="competitor-name"
               required
+              maxLength={COMPETITOR_NAME_MAX_LENGTH}
               value={name}
               onChange={(e) => setName(e.target.value)}
               autoFocus

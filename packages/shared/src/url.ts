@@ -68,6 +68,53 @@ export function extractBrand(input: string | null | undefined): string | null {
   return label && label.length > 0 ? label : null;
 }
 
+/** Upper bound on a competitor's display name (create + edit + derivation). */
+export const COMPETITOR_NAME_MAX_LENGTH = 60;
+
+// Separators a page title uses between the brand and its tagline: " | ", " - ",
+// " – ", " — ", " · ", " • " and the "Brand: tagline" form.
+const TITLE_SEPARATOR = /\s+[|·•–—]\s+|\s+-\s+|:\s+/;
+
+const squash = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+function truncateOnWord(value: string, max: number): string {
+  if (value.length <= max) return value;
+  const cut = value.slice(0, max);
+  const lastSpace = cut.lastIndexOf(" ");
+  return (lastSpace > max / 2 ? cut.slice(0, lastSpace) : cut).trim();
+}
+
+/**
+ * Display name for a tracked company, derived from its page title.
+ *
+ * A <title> is a marketing sentence, not a company name ("Postiz: The All-in-One
+ * agentic social media scheduling tool"), and storing it verbatim made the
+ * competitor header render a whole tagline. The brand sits on one side of the
+ * title's separator, so the segment matching the registrable domain wins
+ * whichever side that is; with no match the first segment does, since titles lead
+ * with the brand far more often than they trail with it. A kept segment that is
+ * still a sentence loses to the domain label, which is a name rather than a
+ * chopped phrase.
+ */
+export function deriveCompetitorName(url: string, title: string | null | undefined): string {
+  const brand = extractBrand(url);
+  const fallback = normalizeDomain(url) ?? url.trim();
+  const segments = (title ?? "")
+    .replace(/\s+/g, " ")
+    .split(TITLE_SEPARATOR)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const first = segments[0];
+  if (!first) return truncateOnWord(fallback, COMPETITOR_NAME_MAX_LENGTH);
+
+  const brandKey = brand ? squash(brand) : null;
+  const picked = (brandKey ? segments.find((s) => squash(s) === brandKey) : undefined) ?? first;
+  if (picked.length <= COMPETITOR_NAME_MAX_LENGTH) return picked;
+  if (brand) return brand.charAt(0).toUpperCase() + brand.slice(1);
+  return truncateOnWord(picked, COMPETITOR_NAME_MAX_LENGTH);
+}
+
 const TEMPORARY_HOSTS = [
   "localhost",
   "127.0.0.1",

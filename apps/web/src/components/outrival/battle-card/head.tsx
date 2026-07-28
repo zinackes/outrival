@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { ArrowLeftIcon } from "@phosphor-icons/react/ssr";
+import { ArrowLeftIcon } from "@/components/icons";
 import { CompAvatar } from "@/components/dashboard/comp-avatar";
 import { competitorNameColor } from "@/lib/competitor-color";
 

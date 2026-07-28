@@ -1,6 +1,6 @@
 "use client";
 
-import { SparkleIcon } from "@phosphor-icons/react/ssr";
+import { SparkleIcon } from "@/components/icons";
 import type { BattleCardEvidence } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { TabCard } from "@/components/outrival/tab-shell";
@@ -45,7 +45,7 @@ export function BattleCardEmpty({
             className="inline-flex size-9 shrink-0 items-center justify-center rounded-md border border-border bg-surface-2 text-muted-foreground"
             aria-hidden
           >
-            <SparkleIcon size={17} />
+            <SparkleIcon size={16} />
           </span>
           <div className="min-w-0">
             <h2 className="text-base font-semibold tracking-tight text-foreground">
@@ -61,7 +61,7 @@ export function BattleCardEmpty({
 
         <div className="flex shrink-0 flex-col items-start gap-2 md:items-end">
           <Button size="sm" onClick={onGenerate}>
-            <SparkleIcon size={12} /> Generate battle card
+            <SparkleIcon size={16} /> Generate battle card
           </Button>
           <span className="font-mono text-meta text-muted-foreground">about 30 seconds</span>
         </div>
@@ -76,7 +76,7 @@ export function BattleCardEmpty({
                 color,
               )}
             >
-              <Icon size={14} className={cn("shrink-0", !color && "text-muted-foreground")} />
+              <Icon size={16} className={cn("shrink-0", !color && "text-muted-foreground")} />
               {title}
             </h3>
             <div className="flex flex-col gap-1.5" aria-hidden>

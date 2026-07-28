@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckIcon, CircleNotchIcon, MinusIcon } from "@phosphor-icons/react/ssr";
+import { CheckIcon, SpinnerIcon, MinusIcon } from "@/components/icons";
 import type { BattleCardEvidence } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TabCard } from "@/components/outrival/tab-shell";
@@ -66,7 +66,7 @@ export function BattleCardBuild({
     <TabCard>
       <div className="flex flex-col gap-3 px-5 py-3.5">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <CircleNotchIcon size={15} className="shrink-0 animate-spin text-primary" />
+          <SpinnerIcon size={16} className="shrink-0 animate-spin text-primary" />
           <span className="text-content font-medium">{STAGES[active]}</span>
           <span className="ml-auto font-mono text-meta tabular-nums text-muted-foreground">
             {elapsed}s
@@ -110,9 +110,9 @@ export function BattleCardBuild({
               >
                 <span className="flex w-4 shrink-0 justify-center">
                   {s.present ? (
-                    <CheckIcon size={13} className="text-positive" />
+                    <CheckIcon size={16} className="text-positive" />
                   ) : (
-                    <MinusIcon size={13} className="text-muted-foreground" />
+                    <MinusIcon size={16} className="text-muted-foreground" />
                   )}
                 </span>
                 <span>{EVIDENCE_LABELS[s.kind]}</span>
@@ -170,7 +170,7 @@ function SectionFrame({
           meta.color,
         )}
       >
-        <Icon size={15} className={cn("shrink-0", !meta.color && "text-muted-foreground")} />
+        <Icon size={16} className={cn("shrink-0", !meta.color && "text-muted-foreground")} />
         {meta.title}
       </h3>
       <div className="flex flex-col gap-2">

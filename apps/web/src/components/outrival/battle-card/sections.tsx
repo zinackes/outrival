@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ComponentType, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   ChatIcon,
   CheckCircleIcon,
@@ -12,7 +12,7 @@ import {
   TargetIcon,
   XCircleIcon,
   XIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import type { BattleCardContent } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,7 +20,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
-export type IconType = ComponentType<{ size?: number; className?: string }>;
+import type { Icon as PhosphorIcon } from "@/components/icons";
+
+export type IconType = PhosphorIcon;
 
 // The six sections, in the order a card is used rather than the order the columns
 // were declared: where each side stands, then where they are weak, then what to say,
@@ -57,7 +59,7 @@ export function SectionHeading({
           color,
         )}
       >
-        <Icon size={15} className={cn("shrink-0", !color && "text-muted-foreground")} />
+        <Icon size={16} className={cn("shrink-0", !color && "text-muted-foreground")} />
         {children}
         {count !== undefined && count > 0 && (
           <span className="font-mono text-meta font-normal tabular-nums text-muted-foreground">
@@ -120,7 +122,7 @@ function EditableList({
                 onClick={() => onChange(items.filter((_, idx) => idx !== i))}
                 aria-label="Remove"
               >
-                <XIcon size={12} />
+                <XIcon size={16} />
               </Button>
             </TooltipTrigger>
             <TooltipContent>Remove</TooltipContent>
@@ -197,7 +199,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
             }
           }}
         >
-          {done ? <CheckIcon size={12} /> : <CopyIcon size={12} />}
+          {done ? <CheckIcon size={16} /> : <CopyIcon size={16} />}
         </Button>
       </TooltipTrigger>
       <TooltipContent>{done ? "Copied" : label}</TooltipContent>
@@ -240,14 +242,14 @@ function ObjectionsSection({
                   }
                 }}
               >
-                {copiedAll ? <CheckIcon size={12} /> : <CopyIcon size={12} />}
+                {copiedAll ? <CheckIcon size={16} /> : <CopyIcon size={16} />}
                 {copiedAll ? "Copied" : "Copy all"}
               </Button>
             )}
             <Tooltip>
               <TooltipTrigger asChild>
                 <span className="inline-flex cursor-help p-1 text-muted-foreground">
-                  <QuestionIcon size={13} />
+                  <QuestionIcon size={16} />
                 </span>
               </TooltipTrigger>
               <TooltipContent className="max-w-xs">

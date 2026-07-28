@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ShieldCheckIcon } from "@phosphor-icons/react/ssr";
+import { ShieldCheckIcon } from "@/components/icons";
 import type { BattleCardEvidence, BattleCardEvidenceKind } from "@/lib/api";
 import { formatDate } from "@/lib/format-date";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -54,13 +54,13 @@ export function ConfidenceBadge({
           type="button"
           className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-surface-2 px-2.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-surface-3 hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/70"
         >
-          <ShieldCheckIcon size={12} className={cn("shrink-0", color)} />
+          <ShieldCheckIcon size={16} className={cn("shrink-0", color)} />
           {label}
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-72 p-0">
         <div className="flex items-center gap-1.5 border-b border-border px-3.5 py-2.5 text-dense">
-          <ShieldCheckIcon size={13} className={cn("shrink-0", color)} />
+          <ShieldCheckIcon size={16} className={cn("shrink-0", color)} />
           <span className="font-medium">{label}</span>
           <span className="ml-auto font-mono text-meta tabular-nums text-muted-foreground">
             {present.length}/{evidence.sources.length} sources

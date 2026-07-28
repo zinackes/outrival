@@ -5,12 +5,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowsClockwiseIcon,
-  CircleNotchIcon,
-  ClockCounterClockwiseIcon,
+  SpinnerIcon,
+  ClockIcon,
   DownloadSimpleIcon,
   FloppyDiskIcon,
   XIcon,
-} from "@phosphor-icons/react/ssr";
+} from "@/components/icons";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import {
   api,
@@ -348,7 +348,7 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
             <span>writing it now</span>
           </>,
           <Button size="sm" disabled>
-            <DownloadSimpleIcon size={12} /> Download PDF
+            <DownloadSimpleIcon size={16} /> Download PDF
           </Button>,
         )}
         <BattleCardBuild
@@ -406,13 +406,13 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
           setEditing(false);
         }}
       >
-        <XIcon size={12} /> Cancel
+        <XIcon size={16} /> Cancel
       </Button>
       <Button size="sm" disabled={status === "saving"} onClick={onSave}>
         {status === "saving" ? (
-          <CircleNotchIcon size={12} className="animate-spin" />
+          <SpinnerIcon size={16} className="animate-spin" />
         ) : (
-          <FloppyDiskIcon size={12} />
+          <FloppyDiskIcon size={16} />
         )}
         {status === "saving" ? "Saving…" : "Save"}
       </Button>
@@ -431,14 +431,14 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
               className="text-muted-foreground"
               onClick={() => setConfirmingRegen(true)}
             >
-              <ArrowsClockwiseIcon size={12} /> Regenerate · up to date
+              <ArrowsClockwiseIcon size={16} /> Regenerate · up to date
             </Button>
           </TooltipTrigger>
           <TooltipContent>No changes since the last generation.</TooltipContent>
         </Tooltip>
       ) : (
         <Button size="sm" onClick={onGenerate}>
-          <ArrowsClockwiseIcon size={12} /> Regenerate
+          <ArrowsClockwiseIcon size={16} /> Regenerate
         </Button>
       )}
       <Button asChild={canDownload} variant="outline" size="sm" disabled={!canDownload}>
@@ -448,11 +448,11 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
             target="_blank"
             rel="noreferrer"
           >
-            <DownloadSimpleIcon size={12} /> Download PDF
+            <DownloadSimpleIcon size={16} /> Download PDF
           </a>
         ) : (
           <span>
-            <DownloadSimpleIcon size={12} /> Download PDF
+            <DownloadSimpleIcon size={16} /> Download PDF
           </span>
         )}
       </Button>
@@ -471,7 +471,7 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
               "Regenerate" alone asks the user to spend a daily card on faith. */}
           {!editing && showStale && since && (
             <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 bg-high/[0.06] px-5 py-3 text-sm">
-              <ClockCounterClockwiseIcon size={15} className="shrink-0 text-high" />
+              <ClockIcon size={16} className="shrink-0 text-high" />
               <span>
                 <span className="font-medium">
                   {since.total} signal{since.total === 1 ? "" : "s"} on {competitorName}

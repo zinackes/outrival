@@ -49,7 +49,7 @@ const STAGES: {
   { key: "live", label: "Live site", hint: "It has a public website. We'll analyze and monitor it.", icon: GlobeIcon },
   { key: "developing", label: "In development", hint: "A public GitHub repo we can read for a profile.", icon: GitBranchIcon },
   { key: "idea", label: "Idea", hint: "Describe it in a few words, no site yet.", icon: LightbulbIcon },
-  { key: "document", label: "Document", hint: "UploadSimpleIcon a spec or deck, read in memory and never stored.", icon: FileTextIcon },
+  { key: "document", label: "Document", hint: "Upload a spec or deck, read in memory and never stored.", icon: FileTextIcon },
 ];
 
 function blankProfile(seedCategory = ""): ProductProfile {

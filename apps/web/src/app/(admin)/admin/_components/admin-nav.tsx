@@ -81,7 +81,7 @@ const SECTIONS: NavSection[] = [
   {
     title: "Support",
     items: [
-      { href: "/admin/users", label: "UsersIcon", icon: UsersIcon },
+      { href: "/admin/users", label: "Users", icon: UsersIcon },
       { href: "/admin/feedback", label: "Feedback", icon: ChatIcon },
       { href: "/admin/audit", label: "Audit", icon: ScrollIcon },
     ],

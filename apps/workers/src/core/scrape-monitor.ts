@@ -26,6 +26,7 @@ import {
   onboardingSessions,
 } from "@outrival/db";
 import { stampFirstScrape } from "../lib/onboarding-funnel";
+import { recordMobileApps } from "../lib/mobile-apps";
 import {
   clampFrequencyToPlan,
   computeHash,
@@ -1054,6 +1055,22 @@ export async function runScrapeMonitor(payload: z.input<typeof InputSchema>) {
       }
     } catch (err) {
       logger.warn("first_scrape stamp failed (non-fatal)", { error: String(err) });
+    }
+
+    // Mobile-app presence: an informational fact read off the capture we just took
+    // (homepage store badges, or the wellknown app-association fingerprint). It
+    // writes competitors.metadata.mobileApps and deliberately emits NO change and
+    // NO signal — the app-launch signal is the wellknown branch's job, below.
+    try {
+      await recordMobileApps({
+        competitorId: competitor.id,
+        metadata: competitor.metadata,
+        sourceType: monitor.sourceType,
+        html: result.html,
+        url: resolvedUrl,
+      });
+    } catch (err) {
+      logger.warn("Mobile-app detection failed (non-fatal)", { error: String(err) });
     }
 
     // Pricing taxonomy (patch-11): analyse the page we just captured, store the

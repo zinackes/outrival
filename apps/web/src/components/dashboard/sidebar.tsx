@@ -89,7 +89,7 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
     items: [
       { href: "/dashboard/signals", label: "Signals", icon: BroadcastIcon },
       { href: "/dashboard/digests", label: "Digests", icon: FileTextIcon },
-      { href: "/dashboard/activity", label: "PulseIcon", icon: PulseIcon },
+      { href: "/dashboard/activity", label: "Activity", icon: PulseIcon },
     ],
   },
   {
@@ -114,7 +114,7 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
 ];
 
 const BOTTOM_NAV: NavItem[] = [
-  { href: "/dashboard/settings", label: "GearIcon", icon: GearIcon },
+  { href: "/dashboard/settings", label: "Settings", icon: GearIcon },
 ];
 
 export function WorkspaceSwitcher({

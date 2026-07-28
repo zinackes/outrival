@@ -148,11 +148,11 @@ export function SettingsSidebar({
             <div className="relative">
               <MagnifyingGlassIcon className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <SidebarInput
-                placeholder="MagnifyingGlassIcon settings…"
+                placeholder="Search settings…"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 className="pl-7"
-                aria-label="MagnifyingGlassIcon settings"
+                aria-label="Search settings"
               />
             </div>
           </SidebarGroupContent>

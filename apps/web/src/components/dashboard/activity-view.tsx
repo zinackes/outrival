@@ -52,7 +52,7 @@ function segmentFromUrl(raw: string | null): Segment {
 }
 
 export function ActivityView() {
-  useSetAskContext({ kind: "view", label: "PulseIcon timeline" });
+  useSetAskContext({ kind: "view", label: "Activity timeline" });
 
   // The competitor page links here pre-filtered (?competitorId=…). Seed once on
   // mount; the user is free to change it afterwards (we never push back to the URL).
@@ -141,7 +141,7 @@ export function ActivityView() {
       <PageHead
         flush
         icon={<PulseIcon size={20} className="text-muted-foreground" aria-hidden />}
-        title="PulseIcon"
+        title="Activity"
         sub="Every check Outrival ran for you, and what each one found."
       />
 

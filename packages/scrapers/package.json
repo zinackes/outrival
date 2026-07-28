@@ -47,6 +47,10 @@
       "types": "./src/wellknown/wellknown.ts",
       "default": "./src/wellknown/wellknown.ts"
     },
+    "./mobile-apps": {
+      "types": "./src/mobile/mobile-apps.ts",
+      "default": "./src/mobile/mobile-apps.ts"
+    },
     "./phash": {
       "types": "./src/lib/phash.ts",
       "default": "./src/lib/phash.ts"

@@ -105,7 +105,7 @@ const STAGE_META: Record<
   document: {
     icon: FileTextIcon,
     title: "I have a pitch or a brief",
-    description: "UploadSimpleIcon your pitch deck or business plan",
+    description: "Upload your pitch deck or business plan",
   },
   developing: {
     icon: GitBranchIcon,
@@ -212,7 +212,7 @@ function extractMessage(err: unknown): string {
   }
   if (err instanceof Error) {
     if (err.name === "TypeError" || err.message.toLowerCase().includes("fetch"))
-      return "Cannot connect to the server. CheckIcon your network connection.";
+      return "Cannot connect to the server. Check your network connection.";
     return err.message;
   }
   return String(err);

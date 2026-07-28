@@ -356,7 +356,7 @@ function CandidateRow({
       if (dismissed) onRestore();
       else onTrack();
     }
-    if (e.key === "x" || e.key === "XIcon") {
+    if (e.key === "x" || e.key === "X") {
       e.preventDefault();
       if (!dismissed) onDismiss();
     }

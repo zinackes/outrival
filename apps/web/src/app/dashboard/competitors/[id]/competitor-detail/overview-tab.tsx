@@ -154,7 +154,7 @@ function LogoChip({ logo }: { logo: { name: string | null; src: string | null } 
   // to the theme — the standard "trusted by" wall treatment: coherent regardless of the
   // source artwork, polarity-correct in both light (dark ink) and dark (light ink) mode.
   const tile = (
-    <div className="flex h-14 items-center justify-center bg-card px-3">
+    <div className="flex h-14 min-w-0 grow basis-[104px] items-center justify-center bg-card px-3">
       {showImage ? (
         // eslint-disable-next-line @next/next/no-img-element -- arbitrary external logo URL, next/image can't whitelist competitor domains
         <img
@@ -634,17 +634,24 @@ export function OverviewTab({
             </span>
           }
         >
+          {/* One balanced flow, not two rigid columns. The logo wall is short and the
+              quotes are long, so a fixed two-column split stretched the wall to the
+              quotes' height and painted the leftover as dead bands between logo rows.
+              Balanced columns size themselves to the content: a quote drops under the
+              wall only when there is spare height AND a quote to spare — nothing is
+              stretched to fill, and nothing is moved just to fill. */}
           <div
             className={cn(
-              "grid gap-5",
-              customerLogos.length > 0 && dTestimonials.length > 0
-                ? "md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]"
-                : "grid-cols-1",
+              customerLogos.length > 0 &&
+                dTestimonials.length > 0 &&
+                "md:columns-2 md:gap-5",
             )}
           >
             {customerLogos.length > 0 && (
               <TooltipProvider delayDuration={150}>
-                <div className="grid grid-cols-[repeat(auto-fit,minmax(104px,1fr))] gap-px overflow-hidden rounded-md border border-border bg-border">
+                {/* flex-wrap rather than grid: a partial last row grows to fill itself,
+                    so the container's rule colour never shows through as empty cells. */}
+                <div className="mb-5 flex break-inside-avoid flex-wrap gap-px overflow-hidden rounded-md border border-border bg-border last:mb-0">
                   {customerLogos.map((l, i) => (
                     <LogoChip key={i} logo={l} />
                   ))}
@@ -652,10 +659,13 @@ export function OverviewTab({
               </TooltipProvider>
             )}
             {dTestimonials.length > 0 && (
-              <ul className="flex flex-col gap-3">
+              <ul>
                 {dTestimonials.map((t, i) => (
                   // The quotation marks are the quotation mark: no rail.
-                  <li key={i} className="flex flex-col gap-1.5">
+                  <li
+                    key={i}
+                    className="mb-3 flex break-inside-avoid flex-col gap-1.5 last:mb-0"
+                  >
                     <p className="text-sm leading-relaxed text-muted-foreground">
                       &ldquo;{t.quote}&rdquo;
                     </p>

@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CheckIcon, SpinnerIcon, LockIcon } from "@/components/icons";
+import { CheckIcon, SpinnerIcon, LockIcon, EnvelopeIcon } from "@/components/icons";
+import { toast } from "sonner";
 import { PLANS, PLAN_LABELS, PLAN_LIMITS, type Plan } from "@outrival/shared";
 import { api, type NotificationSettings } from "@/lib/api";
 import { notificationSettingsQuery, planQuery } from "@/lib/queries";
@@ -50,6 +51,7 @@ export function NotificationSettingsForm() {
   const plan = planQ.data ?? null;
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [testing, setTesting] = useState(false);
   const error = settingsQ.error;
   const [paywall, setPaywall] = useState<PaywallReason | null>(null);
 
@@ -90,6 +92,34 @@ export function NotificationSettingsForm() {
 
   function handleCancel() {
     if (pristine) setSettings(pristine);
+  }
+
+  // Fires one message down every configured channel and reports each verdict
+  // separately. The provider's raw error is surfaced on purpose: it is the only
+  // place a refused send (unverified sender domain, quota, bad webhook) is
+  // readable from the product instead of the logs.
+  async function handleTest() {
+    setTesting(true);
+    try {
+      const { results, errors } = await api.sendTestAlert();
+      const channels = ["email", "slack", "webhook"] as const;
+      const attempted = channels.filter((ch) => results[ch] !== "not_configured");
+      if (attempted.length === 0) {
+        toast.info("Nothing to test yet — save a digest email or a webhook first.");
+        return;
+      }
+      for (const channel of attempted) {
+        if (results[channel] === "sent") {
+          toast.success(`Test ${channel} sent.`);
+        } else {
+          toast.error(`Test ${channel} failed.`, { description: errors[channel] });
+        }
+      }
+    } catch (e) {
+      toastApiError(e, { title: "Couldn't send the test" });
+    } finally {
+      setTesting(false);
+    }
   }
 
   if (error && !settings) return <ListError error={error} />;
@@ -254,6 +284,27 @@ export function NotificationSettingsForm() {
           />
           Enable real-time alerts (high/critical)
         </label>
+      </div>
+
+      <div className="flex flex-col items-start gap-1.5 border-t border-border pt-5">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleTest}
+          disabled={testing}
+        >
+          {testing ? (
+            <SpinnerIcon size={16} className="animate-spin" />
+          ) : (
+            <EnvelopeIcon size={16} />
+          )}
+          {testing ? "Sending…" : "Send a test"}
+        </Button>
+        <p className="text-xs text-muted-foreground">
+          Delivers one message to every saved channel. Save your changes first —
+          the test uses the stored settings, not the ones on screen.
+        </p>
       </div>
 
       {saved && !dirty && (

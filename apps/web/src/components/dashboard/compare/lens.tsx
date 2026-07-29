@@ -51,10 +51,18 @@ const rowMotion = {
   transition: feedItemTransition,
 } as const;
 
-// Name track flexes between a phone and a wide column; the value track sizes to its
-// longest reading. Everything in between is the measure itself.
+// Name track flexes between a phone and a wide column; everything in between is the
+// measure itself.
+//
+// The value track is a FIXED lane, not `auto`. Every row is its own grid (it has to
+// be: it carries the row's border, hover and presence animation), so an auto track
+// resolved to a DIFFERENT width in every row — "not reviewed" and "4.7 · 34299" don't
+// measure the same — and each bar was drawn between a different pair of x positions.
+// The axis was worse: its value cell is empty, so auto collapsed to 0 and the ticks
+// ran a full value-column past the tracks they label. A fixed lane is what makes the
+// whole page one scale.
 const ROW_GRID =
-  "grid items-center gap-x-3 grid-cols-[minmax(5.5rem,9rem)_minmax(0,1fr)_auto]";
+  "grid items-center gap-x-3 grid-cols-[minmax(5.5rem,9rem)_minmax(0,1fr)_7.5rem]";
 
 /** "You" marker: accent fill, ink label, sentence case. Same object in the rail and the rows. */
 export function YouTag() {
@@ -139,9 +147,28 @@ export function LensFooter({
     <div className={cn(ROW_GRID, "mt-0")}>
       <div className="col-start-2 flex flex-col gap-1.5">
         {ticks && (
-          <div className="text-muted-foreground flex justify-between pt-1.5 font-mono text-meta tabular-nums">
+          // Each label sits ON its value rather than being spread by justify-between:
+          // the ticks are evenly spaced numbers, but their LABELS are not evenly wide
+          // ("$0" against "$1,200+"), so spacing the boxes put every middle tick off
+          // the point it names. The two ends stay flush with the track's ends, which
+          // is where a reader checks the scale's floor and ceiling.
+          <div className="text-muted-foreground relative mt-1.5 h-4 font-mono text-meta tabular-nums">
             {ticks.map((t, i) => (
-              <span key={i}>{t}</span>
+              <span
+                key={i}
+                className="absolute top-0 whitespace-nowrap"
+                style={{
+                  left: `${(i / Math.max(1, ticks.length - 1)) * 100}%`,
+                  transform:
+                    i === 0
+                      ? undefined
+                      : i === ticks.length - 1
+                        ? "translateX(-100%)"
+                        : "translateX(-50%)",
+                }}
+              >
+                {t}
+              </span>
             ))}
           </div>
         )}
@@ -222,8 +249,10 @@ export function MeasureRow({
           )}
         />
       ) : (
-        // Keeps the names aligned across rows whether or not a row can expand.
-        <span aria-hidden className="w-[13px] shrink-0" />
+        // Keeps the names aligned across rows whether or not a row can expand — so it
+        // has to be the caret's own 16px, not the 13px it used to reserve, which slid
+        // every non-expandable avatar 3px left of the ones above it.
+        <span aria-hidden className="w-4 shrink-0" />
       )}
       <CompAvatar name={entity.name} url={entity.url} size={22} />
       <span
@@ -407,14 +436,16 @@ export function PendingRow({ entity }: { entity: CompareEntity }) {
       className={cn(ROW_GRID, "border-border -mx-1.5 border-b px-1.5 py-2")}
     >
       <span className="flex min-w-0 items-center gap-2">
-        <span aria-hidden className="w-[13px] shrink-0" />
+        <span aria-hidden className="w-4 shrink-0" />
         <CompAvatar name={entity.name} url={entity.url} size={22} />
         <span className="truncate text-dense font-medium text-muted-foreground">
           {entity.name}
         </span>
       </span>
       <Skeleton className="h-2 w-full" />
-      <Skeleton className="h-3 w-12" />
+      {/* Right-aligned like the reading it stands in for, now that the value lane is
+          wider than the skeleton. */}
+      <Skeleton className="h-3 w-12 justify-self-end" />
     </motion.div>
   );
 }

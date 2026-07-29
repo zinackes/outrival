@@ -140,10 +140,11 @@ export interface Competitor {
   category: string | null;
   // User-assigned color identity (palette token or "#rrggbb"); null = neutral.
   color: string | null;
-  // patch-28 — products this competitor is *specific* to (product_competitors.isSpecific).
-  // Present on the list endpoint only (omitted on the detail payload); the web shows a
-  // product chip for these in all-products scope. Empty/absent = shared (no chip).
-  specificProductIds?: string[];
+  // patch-28 — products this competitor is linked to (product_competitors). Present on
+  // the list endpoint only (omitted on the detail payload); the web shows a product
+  // chip for these in all-products scope. Empty when it is linked to every product —
+  // attribution that never varies disambiguates nothing, so it renders no chip.
+  productIds?: string[];
   overlapScore: number | null;
   aiSummary: string | null;
   aiSummaryUpdatedAt: string | null;
@@ -2133,7 +2134,7 @@ export interface AdminMultiProductMetrics {
     fourToFive: number;
     sixPlus: number;
   };
-  associations: { shared: number; specific: number };
+  associations: { links: number; competitors: number; crossProduct: number };
   battleCards: { total: number; couples: number; avgPerProduct: number };
 }
 
@@ -2217,7 +2218,6 @@ export interface ProductPricingPosition {
 // A competitor linked to a product (junction product_competitors).
 export interface ProductLinkedCompetitor {
   competitorId: string;
-  isSpecific: boolean;
   relevanceScore: number | null;
   name: string;
   url: string | null;
@@ -2486,12 +2486,11 @@ export const api = {
         isPrimary: boolean;
         status: "active" | "paused" | "archived";
       }>;
-      links: Array<{ productId: string; isSpecific: boolean }>;
+      links: Array<{ productId: string }>;
     }>(`/api/competitors/${id}/products`),
-  attachCompetitorToProduct: (productId: string, competitorId: string, isSpecific?: boolean) =>
+  attachCompetitorToProduct: (productId: string, competitorId: string) =>
     request<{ ok: true }>(`/api/products/${productId}/competitors/${competitorId}`, {
       method: "POST",
-      body: JSON.stringify({ isSpecific: isSpecific ?? false }),
     }),
   detachCompetitorFromProduct: (productId: string, competitorId: string) =>
     request<{ ok: true }>(`/api/products/${productId}/competitors/${competitorId}`, {

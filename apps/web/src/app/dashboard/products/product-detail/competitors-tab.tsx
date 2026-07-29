@@ -85,25 +85,6 @@ export function ProductCompetitors({
     return queryClient.invalidateQueries({ queryKey: ["competitors"] });
   }
 
-  // Shared ↔ specific. Same endpoint as linking (it upserts), so the switch is one
-  // call and cannot leave the competitor unlinked on the way through.
-  async function setSpecific(c: ProductLinkedCompetitor, next: boolean) {
-    setPending(c.competitorId);
-    try {
-      await api.attachCompetitorToProduct(productId, c.competitorId, next);
-      toast.success(
-        next
-          ? `${c.name} now counts for this product only`
-          : `${c.name} is shared across your products`,
-      );
-      await refresh();
-    } catch (e) {
-      toastApiError(e, { title: "Couldn't update this competitor" });
-    } finally {
-      setPending(null);
-    }
-  }
-
   async function unlink(c: ProductLinkedCompetitor) {
     setPending(c.competitorId);
     try {
@@ -245,7 +226,6 @@ export function ProductCompetitors({
             key={c.competitorId}
             competitor={c}
             busy={pending === c.competitorId}
-            onSetSpecific={(next) => void setSpecific(c, next)}
             onUnlink={() => void unlink(c)}
             onDelete={() => setDeleteTarget(c)}
           />
@@ -266,13 +246,11 @@ export function ProductCompetitors({
 function CompetitorRow({
   competitor: c,
   busy,
-  onSetSpecific,
   onUnlink,
   onDelete,
 }: {
   competitor: ProductLinkedCompetitor;
   busy: boolean;
-  onSetSpecific: (next: boolean) => void;
   onUnlink: () => void;
   onDelete: () => void;
 }) {
@@ -300,16 +278,6 @@ function CompetitorRow({
             >
               {c.name}
             </Link>
-            <span
-              className={cn(
-                "shrink-0 rounded-sm border px-1.5 py-0.5 text-meta font-medium",
-                c.isSpecific
-                  ? "border-border-strong text-foreground"
-                  : "border-border bg-surface-2 text-muted-foreground",
-              )}
-            >
-              {c.isSpecific ? "Specific" : "Shared"}
-            </span>
           </div>
           {c.relevanceScore != null && (
             <span className="font-mono text-meta tabular-nums text-muted-foreground">
@@ -367,10 +335,6 @@ function CompetitorRow({
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuItem onSelect={() => router.push(href)}>
               <ArrowRightIcon size={16} /> Open detail
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => onSetSpecific(!c.isSpecific)}>
-              <LinkIcon size={16} />
-              {c.isSpecific ? "Share across products" : "Make specific to this product"}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={onUnlink}>

@@ -11,6 +11,7 @@ import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
 import { getOrgPlan, assertWithinLimit, tierLimitBody } from "../lib/plan";
+import { competitorAnchorProduct } from "../lib/products";
 import { captureServerEvent } from "../lib/posthog";
 
 type Variables = { user: { id: string } };
@@ -43,10 +44,14 @@ async function assertOwnedCompetitor(competitorId: string, orgId: string) {
 }
 
 // patch-28 — the product (SKU) a battle-card request is scoped to: the given product
-// (owned by the org), else the org's primary. Null for a legacy org with no product
-// row yet (cards then fall back to one-per-competitor). Returns the self-competitor
-// anchor too, for staleness against the product's own profile.
-async function resolveProduct(orgId: string, given?: string) {
+// (owned by the org), else the product this competitor is actually tracked for.
+// Falling back to the org's PRIMARY here was wrong: in all-products scope the web
+// sends no productId, so a competitor watched only for a secondary SKU got a card
+// written from the primary product's positioning — comparing the wrong product.
+// Null for a legacy org with no product row yet (cards then fall back to
+// one-per-competitor). Returns the self-competitor anchor too, for staleness against
+// the product's own profile.
+async function resolveProduct(orgId: string, competitorId: string, given?: string) {
   if (given) {
     const p = await db.query.products.findFirst({
       where: and(eq(products.id, given), eq(products.orgId, orgId)),
@@ -54,14 +59,7 @@ async function resolveProduct(orgId: string, given?: string) {
     });
     if (p) return p;
   }
-  return db.query.products.findFirst({
-    where: and(
-      eq(products.orgId, orgId),
-      eq(products.isPrimary, true),
-      ne(products.status, "archived"),
-    ),
-    columns: { id: true, selfCompetitorId: true },
-  });
+  return (await competitorAnchorProduct(orgId, competitorId)) ?? undefined;
 }
 
 // The battle-card lookup for a (product, competitor) couple, falling back to
@@ -123,7 +121,7 @@ battleCardsRouter.get("/:id/battle-card", async (c) => {
   const competitor = await assertOwnedCompetitor(id, orgId);
   if (!competitor) return c.json({ error: "Not found" }, 404);
 
-  const product = await resolveProduct(orgId, c.req.query("productId"));
+  const product = await resolveProduct(orgId, competitor.id, c.req.query("productId"));
   const card = await db.query.battleCards.findFirst({
     where: battleCardWhere(competitor.id, product?.id),
   });
@@ -259,7 +257,7 @@ battleCardsRouter.get("/:id/battle-card/evidence", async (c) => {
   const competitor = await assertOwnedCompetitor(id, orgId);
   if (!competitor) return c.json({ error: "Not found" }, 404);
 
-  const product = await resolveProduct(orgId, c.req.query("productId"));
+  const product = await resolveProduct(orgId, competitor.id, c.req.query("productId"));
   const card = await db.query.battleCards.findFirst({
     where: battleCardWhere(competitor.id, product?.id),
     columns: { id: true },
@@ -280,7 +278,7 @@ battleCardsRouter.get("/:id/battle-card/staleness", async (c) => {
   const competitor = await assertOwnedCompetitor(id, orgId);
   if (!competitor) return c.json({ error: "Not found" }, 404);
 
-  const product = await resolveProduct(orgId, c.req.query("productId"));
+  const product = await resolveProduct(orgId, competitor.id, c.req.query("productId"));
   const card = await db.query.battleCards.findFirst({
     where: battleCardWhere(competitor.id, product?.id),
   });
@@ -375,7 +373,7 @@ battleCardsRouter.post("/:id/battle-card/generate", aiIntensiveRateLimit, async 
   const competitor = await assertOwnedCompetitor(id, orgId);
   if (!competitor) return c.json({ error: "Not found" }, 404);
 
-  const product = await resolveProduct(orgId, c.req.query("productId"));
+  const product = await resolveProduct(orgId, competitor.id, c.req.query("productId"));
   const jobId = await enqueueJob(generateBattleCard, {
     competitorId: competitor.id,
     orgId,
@@ -409,7 +407,7 @@ battleCardsRouter.patch("/:id/battle-card", async (c) => {
     return c.json({ error: "Invalid body", issues: parsed.error.issues }, 400);
   }
 
-  const product = await resolveProduct(orgId, c.req.query("productId"));
+  const product = await resolveProduct(orgId, competitor.id, c.req.query("productId"));
   const existing = await db.query.battleCards.findFirst({
     where: battleCardWhere(competitor.id, product?.id),
   });
@@ -432,7 +430,7 @@ battleCardsRouter.get("/:id/battle-card/pdf", async (c) => {
   const competitor = await assertOwnedCompetitor(id, orgId);
   if (!competitor) return c.json({ error: "Not found" }, 404);
 
-  const product = await resolveProduct(orgId, c.req.query("productId"));
+  const product = await resolveProduct(orgId, competitor.id, c.req.query("productId"));
   const card = await db.query.battleCards.findFirst({
     where: battleCardWhere(competitor.id, product?.id),
   });

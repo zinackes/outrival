@@ -372,6 +372,13 @@
       "when": 1785168654349,
       "tag": "0052_mute_sabretooth",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1785340137244,
+      "tag": "0053_loud_purple_man",
+      "breakpoints": true
     }
   ]
 }

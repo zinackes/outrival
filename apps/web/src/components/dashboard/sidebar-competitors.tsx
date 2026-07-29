@@ -172,7 +172,7 @@ export function SidebarCompetitors() {
                       <span className="truncate">{c.name}</span>
                       {allProducts && (
                         <ProductChips
-                          productIds={c.specificProductIds}
+                          productIds={c.productIds}
                           dense
                           className="shrink-0"
                         />

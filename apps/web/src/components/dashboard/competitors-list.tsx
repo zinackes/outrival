@@ -660,7 +660,7 @@ function CompetitorRow({
               />
             </a>
             {allProducts && (
-              <ProductChips productIds={row.specificProductIds} className="shrink-0" />
+              <ProductChips productIds={row.productIds} className="shrink-0" />
             )}
           </div>
         </div>

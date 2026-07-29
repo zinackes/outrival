@@ -10,9 +10,9 @@ import { cn } from "@/lib/utils";
 const MAX_CHIPS = 2;
 
 // Product attribution for a competitor, shown ONLY in all-products scope (the caller
-// gates on that) and ONLY for the products a competitor is *specific* to
-// (product_competitors.isSpecific). A competitor shared across products renders
-// nothing — that's the anti-noise rule. The product's identity color is a small dot;
+// gates on that), listing the products it is linked to (product_competitors). The API
+// sends an empty list for a competitor linked to EVERY product — attribution that
+// never varies disambiguates nothing. The product's identity color is a small dot;
 // the label stays muted-foreground so it never competes with the competitor's own
 // name color (different visual slot, lighter weight). `dense` drops the labels (just
 // dots) for tight surfaces like the sidebar.
@@ -45,7 +45,7 @@ export function ProductChips({
   return (
     <span
       className={cn("flex items-center gap-1.5", className)}
-      // The full label of every specific product, so the dense (dot-only) variant and
+      // The full label of every linked product, so the dense (dot-only) variant and
       // the overflow "+N" stay discoverable on hover.
       title={resolved.map((p) => p.name).join(" · ")}
     >
@@ -75,7 +75,7 @@ export function ProductChips({
 }
 
 // Signal surfaces (feed rows + detail card) carry only a competitorId, so resolve the
-// competitor's specific products from the all-products roster cache (the same
+// competitor's linked products from the all-products roster cache (the same
 // ["competitors"] query the sidebar/list already keep warm — no extra fetch) and
 // render chips. Self-gates to all-products scope, matching the competitors surfaces.
 export function CompetitorProductChips({
@@ -96,7 +96,7 @@ export function CompetitorProductChips({
   const competitor = roster?.find((c) => c.id === competitorId);
   return (
     <ProductChips
-      productIds={competitor?.specificProductIds}
+      productIds={competitor?.productIds}
       dense={dense}
       className={className}
     />

@@ -23,7 +23,6 @@ export function ProductLead({
   product,
   row,
   competitorCount,
-  specificCount,
   onEdit,
   onRescan,
   canRescan,
@@ -32,7 +31,6 @@ export function ProductLead({
   /** The portfolio row for this product, when the list is in cache. */
   row?: ProductSummary;
   competitorCount: number | null;
-  specificCount: number | null;
   onEdit: () => void;
   onRescan: () => void;
   canRescan: boolean;
@@ -130,9 +128,7 @@ export function ProductLead({
               ? "loading"
               : competitorCount === 0
                 ? "none linked yet"
-                : specificCount
-                  ? `${specificCount} specific to it`
-                  : "all shared with your other products"}
+                : "linked to this product"}
           </span>
         </LeadStat>
 

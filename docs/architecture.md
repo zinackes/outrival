@@ -23,7 +23,7 @@ Mise à jour à chaque phase / patch.
 | CompetitorCandidate   | Concurrent suggéré à valider — détecté chaque semaine (Exa, `source=detection`) ou sauvé depuis la découverte d'onboarding non sélectionnée (`source=onboarding`) |
 | TechStackEntry        | Technologie tierce détectée chez un concurrent (paiements, CRM, analytics…) via headers/scripts/DOM/footer — scraper mensuel indépendant (patch-18) |
 | Product               | SKU de l'org (patch-28) — wrapper fin sur un self-competitor (`selfCompetitorId`, ancre de monitoring) ; multi-SKU = N self-competitors. isPrimary/status/position |
-| ProductCompetitor     | Junction product↔competitor (patch-28) — competitors au niveau Org, partagés (isSpecific=false) ou spécifiques ; pilote le tagging signals + les feeds par product |
+| ProductCompetitor     | Junction product↔competitor (patch-28) — competitors au niveau Org ; la LIGNE est l'appartenance (lié à N products = suivi pour N products). Pilote le tagging signals + les feeds par product |
 
 ## Stack
 
@@ -179,8 +179,11 @@ products               id, org_id, name, self_competitor_id (unique — l'ancre 
                        monitoring type=self ; url/profil/pricing/monitors y vivent),
                        is_primary, status (active|paused|archived), position,
                        created_at, updated_at  — patch-28, multi-SKU (wrapper fin)
-product_competitors    product_id, competitor_id (PK composite), is_specific,
-                       relevance_score, created_at  — patch-28, junction org-level
+product_competitors    product_id, competitor_id (PK composite),
+                       relevance_score, created_at  — patch-28, junction org-level.
+                       `is_specific` DROPPÉ (migration 0053) : chaque lien était
+                       écrit shared, donc le flag étiquetait faux le cas courant et
+                       répondait à une question que les lignes répondent déjà
 
 competitor_candidates  id, org_id, url, title, overlap_score, reason,
                        status (new|dismissed|added),
@@ -1414,10 +1417,28 @@ BUILD_TIME=                  # build timestamp → GET /api/version. In Coolify:
   clés analytics + R2), un `product` est un **wrapper fin** qui le référence
   (`products.selfCompetitorId`, 1:1) : le self-competitor reste l'ancre de monitoring,
   donc le pipeline scrape/extraction/CH/R2 est **intouché**. Multi-product = N
-  self-competitors. Concurrents au niveau Org, liés via `product_competitors`
-  (partagés/spécifiques). Signals taggés **déterministe** (`signals.product_ids`, pas
-  IA) selon les associations. Battle cards par couple `(product, competitor)`. Limite
-  de products par tier (`PRODUCT_LIMIT_*`). Mono-product = transparent (selector caché).
+  self-competitors. Concurrents au niveau Org, liés via `product_competitors` — la
+  LIGNE est l'appartenance, un concurrent suivi pour deux SKU a deux liens (le flag
+  `is_specific` est droppé, cf. décision ci-dessous). Signals taggés **déterministe**
+  (`signals.product_ids`, pas IA) selon les associations. Battle cards par couple
+  `(product, competitor)`. Limite de products par tier (`PRODUCT_LIMIT_*`).
+  Mono-product = transparent (selector caché).
+- **Le lien EST l'appartenance (2026-07-29)** — `product_competitors.is_specific`
+  distinguait un concurrent « partagé » d'un « spécifique », mais AUCUN chemin
+  d'écriture ne le mettait à `true` : `associateCompetitorWithScopedProduct` posait
+  `false` en dur, donc tout concurrent créé s'affichait « Shared » même lié à un
+  seul produit. Pire, la seule UI d'attribution (`ProductChips`, scope All products)
+  ne rendait un chip que pour les liens `is_specific` — donc jamais. Le flag est
+  droppé (migration 0053) : la question « ce concurrent, c'est pour quel produit »
+  est répondue par les LIGNES de la junction. Les chips listent maintenant les
+  produits liés, et sont vides pour un concurrent lié à TOUS les produits (une
+  attribution qui ne varie jamais ne désambiguïse rien). Conséquence sur l'ancrage :
+  pour qu'un SKU non-primaire parle au nom d'un concurrent, on le DÉLIE du primaire —
+  il n'y a plus de flag pour l'exprimer sans changer l'appartenance. Corrigé dans la
+  foulée : `resolveProduct` (battle cards) tombait sur le produit PRIMAIRE quand le
+  web n'envoyait pas de `productId` (scope All products), donc une carte comparait le
+  mauvais produit ; il résout désormais le produit depuis `product_competitors`, même
+  priorité d'ancrage que `generate-signal`.
 - **Pool de providers IA légaux (patch-22)** — remplace le pool multi-comptes Groq (violait
   les ToS). `complete()` reste l'entrée unique ; pour `provider="groq"` route via `callLLM`
   vers un pool OpenAI-compatible (Cerebras free prio1, Groq prio2, Hyperbolic payant prio3),

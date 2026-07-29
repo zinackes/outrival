@@ -18,9 +18,8 @@ export default async function MultiProductMetricsPage() {
     );
   }
 
-  const assocTotal = m.associations.shared + m.associations.specific;
-  const sharedPct = assocTotal > 0 ? m.associations.shared / assocTotal : null;
-  const specificPct = assocTotal > 0 ? m.associations.specific / assocTotal : null;
+  const assocTotal = m.associations.links;
+  const crossPct = assocTotal > 0 ? m.associations.crossProduct / m.associations.competitors : null;
 
   const dist: Array<{ label: string; value: number }> = [
     { label: "1 product", value: m.distribution.one },
@@ -69,21 +68,18 @@ export default async function MultiProductMetricsPage() {
       </Section>
 
       <Section
-        title="Shared vs specific competitors"
-        note="hybrid model, most should be shared"
-        info="Product↔competitor associations split between shared (org-wide, tracked for every product) and product-specific links. Most should be shared."
+        title="Product–competitor links"
+        info="Rows in the product↔competitor junction: total links, distinct competitors linked, and how many of those are followed for more than one product (genuine cross-SKU tracking)."
       >
         {assocTotal === 0 ? (
           <Empty>No product–competitor associations yet.</Empty>
         ) : (
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-3 gap-6">
+            <Stat label="Links" value={m.associations.links} />
+            <Stat label="Competitors linked" value={m.associations.competitors} />
             <Stat
-              label="Shared"
-              value={`${m.associations.shared}${sharedPct == null ? "" : ` · ${pctFmt(sharedPct)}`}`}
-            />
-            <Stat
-              label="Specific"
-              value={`${m.associations.specific}${specificPct == null ? "" : ` · ${pctFmt(specificPct)}`}`}
+              label="Cross-product"
+              value={`${m.associations.crossProduct}${crossPct == null ? "" : ` · ${pctFmt(crossPct)}`}`}
             />
           </div>
         )}

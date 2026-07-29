@@ -122,8 +122,8 @@ export function ProductsSettings() {
             />
           </span>
           <span>
-            <span className="font-mono tabular-nums text-foreground">{active.length}</span> of{" "}
-            <span className="font-mono tabular-nums text-foreground">{limit}</span> product
+            <span className="tabular-nums text-foreground">{active.length}</span> of{" "}
+            <span className="tabular-nums text-foreground">{limit}</span> product
             {limit > 1 ? "s" : ""} on {PLAN_LABELS[plan]}
           </span>
           {atLimit && (

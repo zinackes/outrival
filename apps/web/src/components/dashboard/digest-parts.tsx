@@ -138,7 +138,7 @@ export function CompetitorMovers({
         ))}
       </span>
       {rest > 0 && (
-        <span className="shrink-0 font-mono text-xs text-muted-foreground">+{rest}</span>
+        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">+{rest}</span>
       )}
     </span>
   );
@@ -246,7 +246,7 @@ function MoverRows({
                 style={{ width: `${share}%`, ...tintStyle(color) }}
               />
             </span>
-            <span className="w-4 shrink-0 text-right font-mono text-xs tabular-nums text-muted-foreground">
+            <span className="w-4 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
               {m.count}
             </span>
           </li>

@@ -241,7 +241,7 @@ function NumberRail({
           <span className="text-meta text-muted-foreground">{cell.label}</span>
           <span
             className={cn(
-              "font-mono text-lg tabular-nums tracking-tight",
+              "text-lg tabular-nums tracking-tight",
               cell.tone === "warn" && "text-medium",
             )}
           >
@@ -263,7 +263,7 @@ function ScoreMeter({ score }: { score: number | null }) {
     <span className="flex flex-col gap-1">
       <span
         className={cn(
-          "font-mono text-base tabular-nums tracking-tight",
+          "text-base tabular-nums tracking-tight",
           value != null && value < WORTH_MIN ? "text-muted-foreground" : "text-foreground",
         )}
       >
@@ -294,7 +294,7 @@ function BandHead({
   return (
     <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 px-0.5 pb-2 pt-[18px]">
       <h3 className="m-0 text-sm font-semibold tracking-tight">{title}</h3>
-      <span className="font-mono text-meta text-muted-foreground">{range}</span>
+      <span className="text-meta text-muted-foreground tabular-nums">{range}</span>
       {aside && <span className="ml-auto text-dense text-muted-foreground">{aside}</span>}
     </div>
   );
@@ -394,7 +394,7 @@ function CandidateRow({
           {candidate.snippet?.trim() || candidate.reason || "No description captured."}
         </span>
 
-        <span className="hidden justify-self-end font-mono text-meta text-muted-foreground tabular-nums @3xl:block">
+        <span className="hidden justify-self-end text-meta text-muted-foreground tabular-nums @3xl:block">
           {shortAge(candidate.firstSeenAt)}
         </span>
 
@@ -588,12 +588,12 @@ function AddedRow({ item }: { item: AddedCandidate }) {
             ? "Nothing captured yet."
             : `Last captured ${shortAge(item.lastSignalAt ?? item.competitor.addedAt)} ago.`}
       </span>
-      <span className="hidden justify-self-end font-mono text-meta text-muted-foreground tabular-nums @3xl:block">
+      <span className="hidden justify-self-end text-meta text-muted-foreground tabular-nums @3xl:block">
         {item.competitor ? `${shortAge(item.competitor.addedAt)} ago` : ""}
       </span>
       <span
         className={cn(
-          "justify-self-end font-mono text-dense tabular-nums",
+          "justify-self-end text-dense tabular-nums",
           item.signalCount === 0 ? "text-muted-foreground" : "text-foreground",
         )}
       >
@@ -1185,19 +1185,19 @@ export function DiscoveryView() {
         <TabsList variant="line" className="w-full justify-start">
           <TabsTrigger value="queue">
             Queue
-            <span className="font-mono text-meta tabular-nums text-muted-foreground">
+            <span className="text-meta tabular-nums text-muted-foreground">
               {counts?.new ?? 0}
             </span>
           </TabsTrigger>
           <TabsTrigger value="dismissed">
             Dismissed
-            <span className="font-mono text-meta tabular-nums text-muted-foreground">
+            <span className="text-meta tabular-nums text-muted-foreground">
               {counts?.dismissed ?? 0}
             </span>
           </TabsTrigger>
           <TabsTrigger value="added">
             Added
-            <span className="font-mono text-meta tabular-nums text-muted-foreground">
+            <span className="text-meta tabular-nums text-muted-foreground">
               {counts?.added ?? 0}
             </span>
           </TabsTrigger>

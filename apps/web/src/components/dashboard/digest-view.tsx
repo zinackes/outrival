@@ -69,7 +69,7 @@ export function DigestView({
             <div className="flex items-center gap-2.5 border-b border-border pb-2">
               <span aria-hidden className={`h-3.5 w-[3px] rounded-[1px] ${meta.swatch}`} />
               <h3 className="text-content font-semibold tracking-tight">{meta.label}</h3>
-              <span className="ml-auto font-mono text-xs tabular-nums text-muted-foreground">
+              <span className="ml-auto text-xs tabular-nums text-muted-foreground">
                 {group.items.length}
               </span>
             </div>

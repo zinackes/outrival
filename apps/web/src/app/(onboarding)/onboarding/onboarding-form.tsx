@@ -884,8 +884,8 @@ function ProgressBar({ step }: { step: number }) {
           Set up in under 3 minutes
         </span>
         <span className="text-xs text-muted-foreground">
-          Step <span className="font-mono text-foreground">{step}</span> of{" "}
-          <span className="font-mono">3</span>
+          Step <span className="text-foreground tabular-nums">{step}</span> of{" "}
+          <span className="tabular-nums">3</span>
         </span>
       </div>
       <div className="flex gap-1.5">
@@ -1477,9 +1477,9 @@ function DiscoverStep({
             "Searching…"
           ) : (
             <>
-              <span className="font-mono text-foreground">{competitors.length}</span> found
+              <span className="text-foreground tabular-nums">{competitors.length}</span> found
               {" · "}
-              <span className="font-mono text-foreground">{limitLabel}</span> selected
+              <span className="text-foreground tabular-nums">{limitLabel}</span> selected
             </>
           )}
         </p>
@@ -1630,7 +1630,7 @@ function OverlapBadge({ score }: { score: number }) {
   return (
     <span
       className={cn(
-        "text-meta px-1.5 py-0.5 font-medium border rounded font-mono",
+        "text-meta px-1.5 py-0.5 font-medium border rounded tabular-nums",
         classes,
       )}
     >

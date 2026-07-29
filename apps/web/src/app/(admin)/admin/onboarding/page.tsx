@@ -186,7 +186,7 @@ export default async function OnboardingMetricsPage() {
                 className="flex items-center justify-between gap-4 border-b border-border py-2 last:border-0"
               >
                 <span className="text-sm">{f.label}</span>
-                <span className="flex items-center gap-3 font-mono text-sm">
+                <span className="flex items-center gap-3 text-sm tabular-nums">
                   <span className="text-muted-foreground">{f.reached} reached</span>
                   <span
                     className="inline-flex w-24 items-center justify-end gap-1 text-right"

@@ -40,7 +40,7 @@ export function ChangeLedger({
               // Deliberately neutral: a competitor cutting a price is good for
               // them and bad for us, so colouring the direction would assert a
               // judgement the number doesn't carry.
-              <span className="mb-1 rounded-sm bg-surface-3 px-2 py-0.5 font-mono text-dense tabular-nums text-muted-foreground">
+              <span className="mb-1 rounded-sm bg-surface-3 px-2 py-0.5 text-dense tabular-nums text-muted-foreground">
                 {formatDeltaPct(delta.deltaPct)}
               </span>
             )}
@@ -86,8 +86,8 @@ function Figure({
       <span
         className={
           muted
-            ? "font-mono text-xl tabular-nums slashed-zero leading-none text-muted-foreground"
-            : "font-mono text-stat tabular-nums slashed-zero leading-none text-foreground"
+            ? "text-xl tabular-nums leading-none text-muted-foreground"
+            : "text-stat tabular-nums leading-none text-foreground"
         }
       >
         {value}

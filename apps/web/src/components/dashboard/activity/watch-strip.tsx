@@ -462,7 +462,7 @@ export function WatchStrip({
                 aria-hidden
               >
                 {model.widest === band && band.slots >= 4 && (
-                  <span className="absolute left-1/2 top-0.5 -translate-x-1/2 font-mono text-meta text-muted-foreground">
+                  <span className="absolute left-1/2 top-0.5 -translate-x-1/2 text-meta text-muted-foreground">
                     overnight
                   </span>
                 )}
@@ -564,7 +564,7 @@ export function WatchStrip({
 
             <div className="absolute inset-y-0 -bottom-px w-px bg-foreground" style={{ left: `${PAST_PCT}%` }}>
               <span className="absolute -left-[2.5px] top-0 size-1.5 rounded-full bg-foreground" aria-hidden />
-              <span className="absolute left-2.5 -top-0.5 font-mono text-meta text-foreground">now</span>
+              <span className="absolute left-2.5 -top-0.5 text-meta text-foreground">now</span>
             </div>
 
             {hoveredBar && <BucketCard bar={hoveredBar} stripRef={stripRef} touch={touch} />}
@@ -576,7 +576,7 @@ export function WatchStrip({
       </div>
 
       {model && (
-        <div className="flex font-mono text-meta text-muted-foreground tabular-nums">
+        <div className="flex text-meta text-muted-foreground tabular-nums">
           <div className="relative h-3.5" style={{ flex: `0 0 ${PAST_PCT}%` }}>
             {model.axis.map((mark, i) => (
               <span
@@ -791,7 +791,7 @@ function BucketCard({
       style={{ left: `${clamped}%` }}
       aria-live="polite"
     >
-      <div className="font-mono text-meta text-muted-foreground tabular-nums">
+      <div className="text-meta text-muted-foreground tabular-nums">
         {formatTime(bar.start)} to {bar.slot === 0 ? "now" : formatTime(bar.end)}
       </div>
       <div className="whitespace-nowrap text-dense text-foreground">

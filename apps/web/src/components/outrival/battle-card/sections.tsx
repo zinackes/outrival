@@ -63,7 +63,7 @@ export function SectionHeading({
         <Icon size={16} className={cn("shrink-0", !color && "text-muted-foreground")} />
         {children}
         {count !== undefined && count > 0 && (
-          <span className="font-mono text-meta font-normal tabular-nums text-muted-foreground">
+          <span className="text-meta font-normal tabular-nums text-muted-foreground">
             {count}
           </span>
         )}

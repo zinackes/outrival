@@ -92,7 +92,7 @@ export function ReviewQueueView({ items }: { items: ReviewItem[] }) {
                   className="rounded-full border px-2 py-0.5 text-meta"
                   style={{ borderColor: "var(--critical)", color: "var(--critical)" }}
                 >
-                  Not published · <span className="font-mono">{blocked.ratio.toFixed(2)}</span>{" "}
+                  Not published · <span className="tabular-nums">{blocked.ratio.toFixed(2)}</span>{" "}
                   supported
                 </span>
               )}

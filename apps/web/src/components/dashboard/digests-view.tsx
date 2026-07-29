@@ -176,7 +176,7 @@ export function DigestsView() {
               }`}
             >
               {t === "weekly" ? "Weekly" : "Daily"}
-              <span className="ml-1.5 font-mono text-xs tabular-nums text-muted-foreground">
+              <span className="ml-1.5 text-xs tabular-nums text-muted-foreground">
                 {t === "weekly" ? weekly.length : daily.length}
               </span>
             </button>
@@ -227,7 +227,7 @@ export function DigestsView() {
         <section className="flex flex-col">
           <div className="flex items-baseline justify-between border-b border-border pb-2">
             <h2 className="text-content font-semibold tracking-tight">Earlier briefs</h2>
-            <span className="font-mono text-xs tabular-nums text-muted-foreground">
+            <span className="text-xs tabular-nums text-muted-foreground">
               {earlier.length}
             </span>
           </div>
@@ -287,7 +287,7 @@ function LeadBrief({
             <span aria-hidden className="size-1.5 rounded-full bg-primary" />
             {kicker}
           </span>
-          <span className="font-mono">{digestLabel(digest)}</span>
+          <span className="tabular-nums">{digestLabel(digest)}</span>
         </div>
 
         {quiet ? (
@@ -374,7 +374,7 @@ function RunRow({ digest, colorOf }: { digest: Digest; colorOf: ColorOf }) {
       href={`/dashboard/digests/${digest.id}`}
       className="group -mx-2.5 grid grid-cols-1 items-center gap-x-5 gap-y-2 rounded-md border-b border-border px-2.5 py-3.5 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:grid-cols-[150px_minmax(0,1fr)_minmax(0,190px)_128px_16px] sm:gap-y-0"
     >
-      <span className="font-mono text-dense tabular-nums">{digestLabel(digest)}</span>
+      <span className="text-dense tabular-nums">{digestLabel(digest)}</span>
       <span
         className={`line-clamp-2 text-sm leading-snug ${
           quiet || !headline ? "text-muted-foreground" : ""

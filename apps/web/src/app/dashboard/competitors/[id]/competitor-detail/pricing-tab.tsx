@@ -537,7 +537,7 @@ function DeltaCell({ cmp, from, to }: { cmp: TierCmp | null; from?: string; to?:
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-0.5 rounded-sm px-2 py-0.5 font-mono text-dense font-semibold tabular-nums",
+        "inline-flex items-center gap-0.5 rounded-sm px-2 py-0.5 text-dense font-semibold tabular-nums",
         cmp.pct < 0
           ? "bg-positive/16 text-positive"
           : "bg-critical/16 text-critical",
@@ -727,7 +727,7 @@ function PricingComparison({
 
       {anyConverted && (
         <p className="text-xs text-muted-foreground">
-          <span className="font-mono">≈</span> competitor prices converted to {ourCurrency} at ECB
+          ≈ competitor prices converted to {ourCurrency} at ECB
           reference rates{fx?.date ? ` (${fx.date})` : ""}.
         </p>
       )}
@@ -790,16 +790,16 @@ function TierCell({
           align === "end" && "sm:flex-row-reverse",
         )}
       >
-        <span className="shrink-0 font-mono text-lead font-semibold tabular-nums">
+        <span className="shrink-0 text-lead font-semibold tabular-nums">
           {formatTierPrice(tier)}
         </span>
         <span className="truncate text-xs text-muted-foreground">{tier.plan_name}</span>
       </div>
       {conv && (
-        <span className="font-mono text-xs tabular-nums text-muted-foreground">{conv}</span>
+        <span className="text-xs tabular-nums text-muted-foreground">{conv}</span>
       )}
       {perMonth && (
-        <span className="font-mono text-xs tabular-nums text-muted-foreground">{perMonth}</span>
+        <span className="text-xs tabular-nums text-muted-foreground">{perMonth}</span>
       )}
     </div>
   );

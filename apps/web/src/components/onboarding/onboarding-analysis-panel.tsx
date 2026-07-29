@@ -32,7 +32,7 @@ export function OnboardingAnalysisPanel({
             {done ? "First analysis complete" : "Analyzing your competitors"}
           </span>
         </div>
-        <span className="font-mono text-meta uppercase tracking-widest text-muted-foreground tabular-nums">
+        <span className="text-meta uppercase tracking-widest text-muted-foreground tabular-nums">
           {analyzed}/{total}
         </span>
       </div>

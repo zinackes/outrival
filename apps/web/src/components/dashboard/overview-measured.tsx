@@ -76,7 +76,7 @@ export function OverviewMeasured({
             <span className="flex flex-wrap items-baseline gap-2 text-sm">
               {cell.from && (
                 <>
-                  <span className="font-mono text-muted-foreground line-through tabular-nums">
+                  <span className="text-muted-foreground line-through tabular-nums">
                     {cell.from}
                   </span>
                   <span className="text-text-subtle" aria-hidden>
@@ -84,7 +84,7 @@ export function OverviewMeasured({
                   </span>
                 </>
               )}
-              <span className="font-mono font-semibold tabular-nums">{cell.to}</span>
+              <span className="font-semibold tabular-nums">{cell.to}</span>
               <span className="text-xs text-muted-foreground">{cell.unit}</span>
             </span>
             <span className="truncate text-meta text-text-subtle">

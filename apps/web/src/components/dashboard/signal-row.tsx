@@ -206,7 +206,7 @@ export function BatchRow({
             {first.competitorName}
           </span>
           <span aria-hidden>·</span>
-          <span className="shrink-0 rounded-sm bg-surface-2 px-1.5 font-mono tabular-nums">
+          <span className="shrink-0 rounded-sm bg-surface-2 px-1.5 tabular-nums">
             {signals.length}
           </span>
           <span className="truncate">grouped</span>

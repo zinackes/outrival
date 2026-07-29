@@ -574,7 +574,7 @@ function Facts({
   return (
     <FactStrip>
       <Fact label="Your share of voice" muted={!ranked}>
-        <span className="font-mono text-xl font-semibold tracking-tight tabular-nums">
+        <span className="text-xl font-semibold tracking-tight tabular-nums">
           {self ? pctOf(self.sov) : "—"}
         </span>
         {delta != null && (
@@ -589,7 +589,7 @@ function Facts({
         )}
       </Fact>
       <Fact label="Questions naming you" muted={!ranked}>
-        <span className="font-mono tabular-nums">
+        <span className="tabular-nums">
           {self ? `${self.mentions} of ${self.prompts}` : "—"}
         </span>
         {seeded > 0 && (
@@ -601,7 +601,7 @@ function Facts({
       <Fact label="Standing" muted={!ranked}>
         {ranked ? (
           <>
-            <span className="font-mono tabular-nums">#{selfIdx + 1}</span>
+            <span className="tabular-nums">#{selfIdx + 1}</span>
             <span className="text-xs text-muted-foreground">
               of {lb.subjects.length} brands tracked
             </span>
@@ -612,7 +612,7 @@ function Facts({
       </Fact>
       {stale && measuredAt ? (
         <Fact label="Last measurable check" tone="warn">
-          <span className="font-mono tabular-nums">{shortDate(measuredAt)}</span>
+          <span className="tabular-nums">{shortDate(measuredAt)}</span>
           <span className="text-xs text-muted-foreground">
             {formatDistanceToNow(new Date(measuredAt), { addSuffix: true })}
           </span>
@@ -622,7 +622,7 @@ function Facts({
           {leader && leader.mentions > 0 ? (
             <>
               <span className="truncate">{leader.isSelf ? "You" : leader.name}</span>
-              <span className="font-mono text-xs tabular-nums text-muted-foreground">
+              <span className="text-xs tabular-nums text-muted-foreground">
                 {pctOf(leader.sov)}
               </span>
             </>
@@ -718,7 +718,7 @@ function BoardRow({
         s.isSelf ? "bg-primary/8 hover:bg-primary/12" : "hover:bg-surface-2",
       )}
     >
-      <span className="text-right font-mono text-xs tabular-nums text-muted-foreground">
+      <span className="text-right text-xs tabular-nums text-muted-foreground">
         {rank}
       </span>
       <span className="flex min-w-0 items-center gap-2">
@@ -753,13 +753,13 @@ function BoardRow({
           }}
         />
       </span>
-      <span className="hidden text-right font-mono text-dense tabular-nums text-muted-foreground sm:block">
+      <span className="hidden text-right text-dense tabular-nums text-muted-foreground sm:block">
         {s.mentions} of {s.prompts}
       </span>
-      <span className="text-right font-mono text-sm font-medium tabular-nums">{pctOf(s.sov)}</span>
+      <span className="text-right text-sm font-medium tabular-nums">{pctOf(s.sov)}</span>
       <span
         className={cn(
-          "text-right font-mono text-dense tabular-nums",
+          "text-right text-dense tabular-nums",
           delta == null || delta === 0
             ? "text-muted-foreground"
             : delta > 0
@@ -1070,7 +1070,7 @@ function MentionLine({
             style={{ background: colors[m.name] ?? "var(--muted)" }}
           />
           <span className="text-foreground">{m.name}</span>
-          {m.rank != null && <span className="font-mono tabular-nums">#{m.rank}</span>}
+          {m.rank != null && <span className="tabular-nums">#{m.rank}</span>}
         </span>
       ))}
       {cell.mentioned.length > 4 && <span>+{cell.mentioned.length - 4} more</span>}
@@ -1093,7 +1093,7 @@ function QuestionStatus({ cell, active }: { cell: AiVisibilityCell | null; activ
   if (cell.selfMentioned) {
     return (
       <span className="whitespace-nowrap text-dense font-medium text-link">
-        You{cell.selfRank != null && <span className="font-mono"> #{cell.selfRank}</span>}
+        You{cell.selfRank != null && <span className="tabular-nums"> #{cell.selfRank}</span>}
       </span>
     );
   }
@@ -1199,7 +1199,7 @@ function QuestionEvidence({
               />
               <span className={cn(m.isSelf && "font-medium text-link")}>{m.name}</span>
               {m.rank != null && (
-                <span className="font-mono tabular-nums text-muted-foreground">#{m.rank}</span>
+                <span className="tabular-nums text-muted-foreground">#{m.rank}</span>
               )}
             </span>
           ))}

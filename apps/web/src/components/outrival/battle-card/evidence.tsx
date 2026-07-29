@@ -62,7 +62,7 @@ export function ConfidenceBadge({
         <div className="flex items-center gap-1.5 border-b border-border px-3.5 py-2.5 text-dense">
           <ShieldCheckIcon size={14} className={cn("shrink-0", color)} />
           <span className="font-medium">{label}</span>
-          <span className="ml-auto font-mono text-meta tabular-nums text-muted-foreground">
+          <span className="ml-auto text-meta tabular-nums text-muted-foreground">
             {present.length}/{evidence.sources.length} sources
           </span>
         </div>
@@ -79,7 +79,7 @@ export function ConfidenceBadge({
               <span className={s.present ? "text-foreground" : "text-muted-foreground"}>
                 {EVIDENCE_LABELS[s.kind]}
               </span>
-              <span className="ml-auto font-mono text-meta text-muted-foreground">
+              <span className="ml-auto text-meta text-muted-foreground tabular-nums">
                 {s.present && s.lastVerifiedAt
                   ? `verified ${shortDate(s.lastVerifiedAt)}`
                   : "not tracked"}
@@ -144,7 +144,7 @@ export function EvidenceLine({
             aria-hidden
           />
           {EVIDENCE_LABELS[s.kind]}
-          <span className="font-mono text-meta text-muted-foreground">
+          <span className="text-meta text-muted-foreground tabular-nums">
             {s.present && s.lastVerifiedAt ? shortDate(s.lastVerifiedAt) : "not tracked"}
           </span>
         </span>

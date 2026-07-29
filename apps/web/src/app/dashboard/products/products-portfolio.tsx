@@ -130,8 +130,8 @@ export function ProductsPortfolio() {
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed border-border-strong px-4 py-3 text-dense text-muted-foreground">
           <span>
             You are using{" "}
-            <span className="font-mono tabular-nums text-foreground">{active.length}</span> of{" "}
-            <span className="font-mono tabular-nums text-foreground">{limit}</span> products on{" "}
+            <span className="tabular-nums text-foreground">{active.length}</span> of{" "}
+            <span className="tabular-nums text-foreground">{limit}</span> products on{" "}
             {PLAN_LABELS[plan]}.
           </span>
           {atLimit ? (
@@ -271,13 +271,13 @@ function ProductRow({ product: p }: { product: ProductSummary }) {
 
       <div className="hidden min-w-0 flex-col gap-1.5 @2xl:flex">
         <span className="flex items-baseline gap-2">
-          <span className="font-mono text-dense font-semibold tabular-nums">
+          <span className="text-dense font-semibold tabular-nums">
             {stats.signals7d}
           </span>
           {stats.signals7d > 0 ? (
             <DeltaPill delta={delta} />
           ) : (
-            <span className="font-mono text-xs text-muted-foreground">—</span>
+            <span className="text-xs text-muted-foreground">—</span>
           )}
         </span>
         <ActivitySpark
@@ -297,7 +297,7 @@ function ProductRow({ product: p }: { product: ProductSummary }) {
               <span className="size-1.5 shrink-0 rounded-full bg-high" />
               <span className="truncate">{sourceLabel(cov.failingSource)} blocked</span>
             </span>
-            <span className="font-mono text-meta tabular-nums text-muted-foreground">
+            <span className="text-meta tabular-nums text-muted-foreground">
               {cov.sources - cov.failing} of {cov.sources} live
             </span>
           </>
@@ -307,7 +307,7 @@ function ProductRow({ product: p }: { product: ProductSummary }) {
               <span className="size-1.5 shrink-0 rounded-full bg-positive" />
               {cov.sources} source{cov.sources > 1 ? "s" : ""} live
             </span>
-            <span className="font-mono text-meta tabular-nums text-muted-foreground">
+            <span className="text-meta tabular-nums text-muted-foreground">
               {p.lastScanAt ? `${shortAge(p.lastScanAt)} ago` : "never scanned"}
             </span>
           </>
@@ -355,7 +355,7 @@ function PriceBand({ pricing }: { pricing: ProductSummary["pricing"] }) {
   if (median == null || low == null || high == null || rivalsPriced < 2) {
     return (
       <div className="flex min-w-0 flex-col gap-1">
-        <span className="font-mono text-dense font-semibold tabular-nums">{amount}</span>
+        <span className="text-dense font-semibold tabular-nums">{amount}</span>
         <span className="text-meta text-muted-foreground">
           {rivalsPriced === 1 ? "1 rival priced" : "no priced rival"}
         </span>
@@ -389,7 +389,7 @@ function PriceBand({ pricing }: { pricing: ProductSummary["pricing"] }) {
         />
       </span>
       <span className="flex min-w-0 items-baseline gap-1.5">
-        <span className="font-mono text-dense font-semibold tabular-nums">{amount}</span>
+        <span className="text-dense font-semibold tabular-nums">{amount}</span>
         <span className="truncate text-meta text-muted-foreground">
           {gap === 0
             ? "at median"

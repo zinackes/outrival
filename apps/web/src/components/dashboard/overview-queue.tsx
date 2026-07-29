@@ -138,7 +138,7 @@ export function OverviewQueue({
                 {REASON_LABEL[reason]}
               </span>
               <time
-                className="w-8 shrink-0 text-right font-mono text-meta text-muted-foreground tabular-nums"
+                className="w-8 shrink-0 text-right text-meta text-muted-foreground tabular-nums"
                 dateTime={s.createdAt}
               >
                 {shortAge(s.createdAt)}

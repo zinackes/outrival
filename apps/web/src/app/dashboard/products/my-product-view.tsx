@@ -548,7 +548,7 @@ export function MyProductView({
           {competitors && (
             <TabsTrigger value="competitors">
               <UsersIcon size={16} /> Competitors
-              <span className="ml-1.5 font-mono text-meta text-muted-foreground">
+              <span className="ml-1.5 text-meta text-muted-foreground tabular-nums">
                 {competitors.length}
               </span>
             </TabsTrigger>
@@ -557,7 +557,7 @@ export function MyProductView({
             <TabsTrigger value="hiring">
               <BriefcaseIcon size={16} /> Hiring
               {p.jobs.total > 0 && (
-                <span className="ml-1.5 font-mono text-meta text-muted-foreground">
+                <span className="ml-1.5 text-meta text-muted-foreground tabular-nums">
                   {p.jobs.total}
                 </span>
               )}

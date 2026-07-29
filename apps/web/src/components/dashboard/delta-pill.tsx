@@ -31,7 +31,7 @@ export function computeDelta(curr: number, prev: number): Delta {
 export function DeltaPill({ delta }: { delta: Delta }) {
   if (delta.kind === "neutral") {
     return (
-      <span className="tabular-nums font-mono text-xs text-muted-foreground">
+      <span className="tabular-nums text-xs text-muted-foreground">
         {delta.label}
       </span>
     );
@@ -39,7 +39,7 @@ export function DeltaPill({ delta }: { delta: Delta }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-0.5 tabular-nums font-mono text-xs",
+        "inline-flex items-center gap-0.5 tabular-nums text-xs",
         delta.kind === "pos" && "text-positive",
         delta.kind === "neg" && "text-critical",
       )}

@@ -561,8 +561,9 @@
     line-height: 1.15;
   }
 
-  /* Geist Mono carries data: tabular figures + slashed zero to disambiguate
-     IDs, keys and timestamps wherever font-mono / code is used. */
+  /* Geist Mono carries strings read glyph by glyph: tabular figures + slashed zero
+     to disambiguate IDs, keys and codes wherever font-mono / code is used. Numbers
+     live in the sans with `tabular-nums` (DESIGN.md, Numbers-Are-Sans Rule). */
   .font-mono,
   code,
   kbd,

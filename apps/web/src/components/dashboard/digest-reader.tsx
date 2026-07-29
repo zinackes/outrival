@@ -180,7 +180,7 @@ export function DigestReader({ id }: { id: string }) {
               <span aria-hidden className="text-border-strong">
                 /
               </span>
-              <span className="font-mono tabular-nums">{digestLabel(d)}</span>
+              <span className="tabular-nums">{digestLabel(d)}</span>
             </div>
 
             {/* The model already writes the week's verdict as its first TL;DR point.
@@ -195,7 +195,7 @@ export function DigestReader({ id }: { id: string }) {
           {!quiet && (
             <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1.5 border-y border-border py-2.5 text-dense text-muted-foreground">
               <span>
-                <b className="font-mono font-medium tabular-nums text-foreground">
+                <b className="font-medium tabular-nums text-foreground">
                   {stats.moves}
                 </b>{" "}
                 moves
@@ -204,7 +204,7 @@ export function DigestReader({ id }: { id: string }) {
                 /
               </span>
               <span>
-                <b className="font-mono font-medium tabular-nums text-foreground">
+                <b className="font-medium tabular-nums text-foreground">
                   {stats.action}
                 </b>{" "}
                 need an answer
@@ -213,7 +213,7 @@ export function DigestReader({ id }: { id: string }) {
                 /
               </span>
               <span>
-                <b className="font-mono font-medium tabular-nums text-foreground">
+                <b className="font-medium tabular-nums text-foreground">
                   {stats.movers.length}
                 </b>{" "}
                 {stats.movers.length === 1 ? "competitor" : "competitors"}
@@ -238,7 +238,7 @@ export function DigestReader({ id }: { id: string }) {
                   className="flex flex-col gap-0.5 rounded-md border border-border px-4 py-3 transition-colors hover:border-border-strong hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <span className="text-xs text-muted-foreground">Previous brief</span>
-                  <span className="font-mono text-dense tabular-nums">
+                  <span className="text-dense tabular-nums">
                     {digestLabel(neighbours.previous)}
                   </span>
                 </Link>
@@ -251,7 +251,7 @@ export function DigestReader({ id }: { id: string }) {
                   className="flex flex-col gap-0.5 rounded-md border border-border px-4 py-3 text-right transition-colors hover:border-border-strong hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <span className="text-xs text-muted-foreground">Next brief</span>
-                  <span className="font-mono text-dense tabular-nums">
+                  <span className="text-dense tabular-nums">
                     {digestLabel(neighbours.next)}
                   </span>
                 </Link>
@@ -359,7 +359,7 @@ function ProvenanceLine({ label, value }: { label: string; value: number }) {
   return (
     <div className="flex items-baseline justify-between gap-3 text-dense">
       <span>{label}</span>
-      <span className="font-mono tabular-nums text-muted-foreground">{value}</span>
+      <span className="tabular-nums text-muted-foreground">{value}</span>
     </div>
   );
 }

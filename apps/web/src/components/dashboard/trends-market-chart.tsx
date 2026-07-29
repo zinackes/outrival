@@ -113,7 +113,7 @@ function TooltipCard({
               />
               <span className="truncate">{entry.item.competitorName}</span>
             </span>
-            <span className="shrink-0 font-mono tabular-nums">
+            <span className="shrink-0 tabular-nums">
               {entry.raw != null && formatValue(entry.raw, entry.item)}
               {mode === "index" && (
                 <span className="ml-1.5 text-muted-foreground">

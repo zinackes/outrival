@@ -149,7 +149,7 @@ export function PriceLens({ entities, expanded, onToggle }: LensProps) {
                 {scale.medianEntry != null && (
                   <LegendMedian>
                     median entry{" "}
-                    <span className="font-mono">{money(scale.medianEntry, scale.currency)}</span>
+                    <span className="tabular-nums">{money(scale.medianEntry, scale.currency)}</span>
                   </LegendMedian>
                 )}
                 {canExpandScale && (
@@ -362,7 +362,7 @@ export function RatingLens({ entities, expanded, onToggle }: LensProps) {
           legend={
             scale.median != null ? (
               <LegendMedian>
-                median <span className="font-mono">{scale.median.toFixed(1)}</span>
+                median <span className="tabular-nums">{scale.median.toFixed(1)}</span>
               </LegendMedian>
             ) : undefined
           }
@@ -681,7 +681,7 @@ export function MovesLens({ entities }: Omit<LensProps, "expanded" | "onToggle">
               </span>
             }
             right={
-              <span className="text-muted-foreground pt-px text-right font-mono text-meta whitespace-nowrap tabular-nums">
+              <span className="text-muted-foreground pt-px text-right text-meta whitespace-nowrap tabular-nums">
                 {move ? shortAge(move.createdAt) : "—"}
               </span>
             }

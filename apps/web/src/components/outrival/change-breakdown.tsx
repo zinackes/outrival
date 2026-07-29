@@ -78,7 +78,7 @@ function ChangeItem({ change: ch }: { change: SignalChange }) {
           {KIND_LABELS[ch.kind] ?? ch.kind}
         </span>
         {variation && (
-          <span className="font-mono text-meta text-foreground">{variation}</span>
+          <span className="text-meta text-foreground tabular-nums">{variation}</span>
         )}
         {ch.significance && (
           <span
@@ -213,7 +213,7 @@ export function GroupedChanges({ changes }: { changes: SignalChange[] }) {
                       aria-hidden
                     />
                     {family}
-                    <span className="ml-auto font-mono text-meta tabular-nums text-muted-foreground">
+                    <span className="ml-auto text-meta tabular-nums text-muted-foreground">
                       {items.length}
                     </span>
                   </button>

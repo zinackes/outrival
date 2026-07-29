@@ -138,7 +138,7 @@ function Monogram({ name }: { name: string }) {
 // the name as a compact strip.
 function Cell({ value }: { value: string | null }) {
   return value ? (
-    <span className="font-mono text-dense font-medium tabular-nums sm:text-right">{value}</span>
+    <span className="text-dense font-medium tabular-nums sm:text-right">{value}</span>
   ) : (
     <span className="text-dense text-muted-foreground sm:text-right">—</span>
   );
@@ -379,7 +379,7 @@ export default async function ReportPage({ params }: { params: Promise<{ token: 
               <ul className="mt-4 divide-y divide-border overflow-hidden rounded-xl border border-border">
                 {recentActivity.map((a, i) => (
                   <li key={i} className="flex items-baseline gap-3 px-4 py-3 text-sm">
-                    <span className="w-12 shrink-0 font-mono text-meta text-muted-foreground tabular-nums">
+                    <span className="w-12 shrink-0 text-meta text-muted-foreground tabular-nums">
                       {a.publishedAt
                         ? new Date(a.publishedAt).toLocaleDateString("en-US", {
                             month: "short",

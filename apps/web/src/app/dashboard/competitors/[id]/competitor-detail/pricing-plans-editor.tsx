@@ -304,7 +304,7 @@ export function PricingPlansEditor({
                     {p.origin === "detected" && delta != null && (
                       <span
                         className={cn(
-                          "text-xs font-mono tabular-nums",
+                          "text-xs tabular-nums",
                           delta > 0 ? "text-critical" : "text-positive",
                         )}
                       >

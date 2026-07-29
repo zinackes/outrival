@@ -360,7 +360,7 @@ export function ReviewsTab({
                 <Fact label={latest ? `${latest.source} rating` : "Rating"} muted={!latest}>
                   {latest ? (
                     <>
-                      <span className="font-mono tabular-nums">{latest.score.toFixed(1)}</span>
+                      <span className="tabular-nums">{latest.score.toFixed(1)}</span>
                       <span className="text-muted-foreground">of 5</span>
                     </>
                   ) : (
@@ -369,7 +369,7 @@ export function ReviewsTab({
                 </Fact>
                 <Fact label="Reviews counted" muted={!latest}>
                   {latest ? (
-                    <span className="font-mono tabular-nums">
+                    <span className="tabular-nums">
                       {latest.review_count.toLocaleString()}
                     </span>
                   ) : (
@@ -384,7 +384,7 @@ export function ReviewsTab({
                   {scoreDelta == null || Math.abs(scoreDelta) < 0.05 ? (
                     "Flat"
                   ) : (
-                    <span className="font-mono tabular-nums">
+                    <span className="tabular-nums">
                       {scoreDelta > 0 ? "+" : ""}
                       {scoreDelta.toFixed(1)}
                     </span>

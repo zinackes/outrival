@@ -263,7 +263,7 @@ export function SignalCard({
         {/* Confidence + threat used to crowd this header (9+ chips read as slop);
             they moved to the quiet meta line in the footer. */}
         <span className="flex-1" />
-        <span className="tabular-nums font-mono text-muted-foreground text-xs">
+        <span className="tabular-nums text-muted-foreground text-xs">
           {timeAgo}
         </span>
         {/* Unread dot doubles as the read toggle (patch-29): clicking it marks the

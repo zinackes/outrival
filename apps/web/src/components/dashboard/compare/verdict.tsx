@@ -57,7 +57,7 @@ function FactChip({ fact, index }: { fact: Fact; index: number }) {
       </span>
       <span
         className={cn(
-          "font-mono text-dense whitespace-nowrap tabular-nums",
+          "text-dense whitespace-nowrap tabular-nums",
           TONE_VALUE[fact.tone],
         )}
       >
@@ -93,7 +93,7 @@ export function CompareVerdict({
       <p className="m-0 max-w-[62ch] text-content leading-relaxed text-pretty">
         {lead.map((seg, i) =>
           seg.t === "num" ? (
-            <span key={i} className="font-mono tabular-nums">
+            <span key={i} className="tabular-nums">
               {seg.v}
             </span>
           ) : (

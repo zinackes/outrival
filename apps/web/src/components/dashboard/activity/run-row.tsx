@@ -109,7 +109,7 @@ export function RunRow({
           isOpen && "bg-surface-2",
         )}
       >
-        <span className="font-mono text-meta text-text-subtle tabular-nums max-sm:col-start-2">
+        <span className="text-meta text-text-subtle tabular-nums max-sm:col-start-2">
           {formatTime(event.recordedAt)}
         </span>
         <span

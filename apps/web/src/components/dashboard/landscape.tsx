@@ -122,7 +122,7 @@ function PriceCell({
     <span className="ml-auto text-right">
       {summary.primary ? (
         <>
-          <span className="block font-mono text-dense font-semibold tabular-nums">
+          <span className="block text-dense font-semibold tabular-nums">
             {summary.primary}
           </span>
           <span className="block text-meta text-muted-foreground">
@@ -251,9 +251,9 @@ function SourcesCoverage({
           className={`shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
         />
         <span className="text-dense font-medium">
-          Watching <span className="font-mono tabular-nums">{total}</span> source
+          Watching <span className="tabular-nums">{total}</span> source
           {total > 1 ? "s" : ""} across{" "}
-          <span className="font-mono tabular-nums">{competitors.length}</span>{" "}
+          <span className="tabular-nums">{competitors.length}</span>{" "}
           competitor{competitors.length > 1 ? "s" : ""}
         </span>
         {nextCheckAt && (
@@ -477,7 +477,7 @@ export function LandscapeSection({
                             {comp.name}
                           </span>
                           <span className="shrink-0 text-muted-foreground">
-                            <span className="font-mono tabular-nums text-foreground">
+                            <span className="tabular-nums text-foreground">
                               {h.total}
                             </span>{" "}
                             open role{h.total > 1 ? "s" : ""}
@@ -513,7 +513,7 @@ export function LandscapeSection({
                           </span>
                           <span className="shrink-0 text-muted-foreground">
                             {REVIEW_SOURCE_LABELS[r.source] ?? r.source}{" "}
-                            <span className="font-mono tabular-nums text-foreground">
+                            <span className="tabular-nums text-foreground">
                               {r.score}/5
                             </span>{" "}
                             ({r.reviewCount})
@@ -545,7 +545,7 @@ export function LandscapeSection({
                   key={`${item.competitorId}-${item.title}`}
                   className="flex items-baseline gap-3 px-4 py-2.5 border-b border-border last:border-b-0"
                 >
-                  <span className="w-14 shrink-0 font-mono text-meta text-muted-foreground tabular-nums">
+                  <span className="w-14 shrink-0 text-meta text-muted-foreground tabular-nums">
                     {item.publishedAt
                       ? formatDate(new Date(item.publishedAt), { month: "short", day: "numeric" })
                       : "—"}

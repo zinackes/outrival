@@ -89,7 +89,7 @@ export function BattleCardBuild({
               no worker has picked it up yet
             </span>
           )}
-          <span className="ml-auto font-mono text-meta tabular-nums text-muted-foreground">
+          <span className="ml-auto text-meta tabular-nums text-muted-foreground">
             {formatElapsed(elapsed)}
           </span>
         </div>
@@ -137,7 +137,7 @@ export function BattleCardBuild({
                   )}
                 </span>
                 <span>{EVIDENCE_LABELS[s.kind]}</span>
-                <span className="ml-auto text-right font-mono text-meta text-muted-foreground">
+                <span className="ml-auto text-right text-meta text-muted-foreground">
                   {s.present ? (s.detail ?? "captured") : "not tracked, skipped"}
                 </span>
               </li>
@@ -214,7 +214,7 @@ function SectionFrame({
           <Skeleton key={i} className="h-3" style={{ width: `${92 - i * 11}%` }} />
         ))}
       </div>
-      <p className="font-mono text-meta text-muted-foreground">from {meta.from}</p>
+      <p className="text-meta text-muted-foreground">from {meta.from}</p>
     </div>
   );
 }

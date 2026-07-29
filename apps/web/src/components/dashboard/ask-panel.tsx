@@ -643,7 +643,7 @@ export function AskPanel({
             <details className="group mt-6">
               <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 text-meta text-muted-foreground transition-colors hover:text-foreground">
                 <CaretRightIcon className="size-3.5 transition-transform group-open:rotate-90" aria-hidden />
-                <span className="font-mono">{trace.length}</span> steps to answer
+                <span className="tabular-nums">{trace.length}</span> steps to answer
               </summary>
               <div className="mt-3 pl-1">
                 <Steps steps={trace} active={false} />

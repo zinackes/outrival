@@ -631,7 +631,7 @@ export function BattleCardPage({ competitorId }: { competitorId: string }) {
                 </span>{" "}
                 since this card was generated.
               </span>
-              <span className="font-mono text-meta text-muted-foreground">
+              <span className="text-meta text-muted-foreground tabular-nums">
                 {since.byCategory
                   .slice(0, 4)
                   .map((c) => `${c.count} ${c.category}`)

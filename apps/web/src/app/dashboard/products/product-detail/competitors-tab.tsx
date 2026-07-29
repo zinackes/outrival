@@ -280,7 +280,7 @@ function CompetitorRow({
             </Link>
           </div>
           {c.relevanceScore != null && (
-            <span className="font-mono text-meta tabular-nums text-muted-foreground">
+            <span className="text-meta tabular-nums text-muted-foreground">
               {c.relevanceScore} overlap
             </span>
           )}
@@ -303,7 +303,7 @@ function CompetitorRow({
               <span aria-hidden className="text-border-strong">
                 ·
               </span>
-              <span className="font-mono tabular-nums">{shortAge(move.createdAt)}</span>
+              <span className="tabular-nums">{shortAge(move.createdAt)}</span>
             </span>
           </>
         ) : (

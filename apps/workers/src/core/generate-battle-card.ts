@@ -23,6 +23,7 @@ import {
   battleCardEvidence,
   wasTruncated,
   AI_CONFIG,
+  type BattleCardContent,
 } from "@outrival/ai";
 import { checkFaithfulness, isBlocked, blockedReviewEntry } from "../lib/faithfulness-gate";
 import {
@@ -43,6 +44,19 @@ import {
 import { detectThemeShifts, mergeRisingThemeObjections } from "../lib/review-theme-shift";
 import { runRefreshCompetitorSummary } from "./refresh-competitor-summary";
 import { notifyJobComplete } from "../lib/job-complete";
+
+/** Every section empty. Checked twice: on the draft, and again on a repaired card
+ * whose refused entries could have been the only ones it had. */
+function isEmptyCard(c: BattleCardContent): boolean {
+  return (
+    c.their_strengths.length === 0 &&
+    c.our_strengths.length === 0 &&
+    c.their_weaknesses.length === 0 &&
+    c.common_objections.length === 0 &&
+    c.when_we_win.length === 0 &&
+    c.when_we_lose.length === 0
+  );
+}
 
 // Pull the latest homepage capture as clean text so the card grounds feature
 // claims on what a product ACTUALLY says about itself — the biggest lever against
@@ -404,14 +418,7 @@ async function generate(payload: z.input<typeof InputSchema>) {
     // Safety net: a grounded card with no evidence comes back with every section
     // empty (the schema permits empty arrays). Never persist a blank document — abort
     // with a clear reason so the UI surfaces a failure instead of a card full of "—".
-    const isEmpty =
-      content.their_strengths.length === 0 &&
-      content.our_strengths.length === 0 &&
-      content.their_weaknesses.length === 0 &&
-      content.common_objections.length === 0 &&
-      content.when_we_win.length === 0 &&
-      content.when_we_lose.length === 0;
-    if (isEmpty) {
+    if (isEmptyCard(content)) {
       throw new AbortTaskRunError(
         "Battle card came back empty — no competitor summary, reviews or signals to ground on yet",
       );
@@ -443,27 +450,82 @@ async function generate(payload: z.input<typeof InputSchema>) {
     // binary judge settle the ones a quote can't. A blocked card is never written —
     // the previous card (if any) stays untouched rather than being overwritten by an
     // unfaithful one — and its failing claims land in the review queue.
-    const faithfulness = await checkFaithfulness({
+    const evidence = battleCardEvidence(battleCardInput);
+    let faithfulness = await checkFaithfulness({
       output: content,
-      sourceText: battleCardEvidence(battleCardInput),
+      sourceText: evidence,
       outputKind: "sales battle card",
       context: { competitorId: competitor.id, productId: product?.id ?? null },
       attribution,
     });
     if (isBlocked(faithfulness) && faithfulness) {
+      // One refused sentence used to cost the whole card: ~20 grounded bullets thrown
+      // away over one, with nothing for the user to do but re-roll the same evidence.
+      // So repair instead of discard — name the refused claims to the verification pass
+      // that already exists, then RE-VERIFY the result. The guarantee stays end-to-end:
+      // what publishes is what passed the gate, never what we believe we removed. That
+      // is also why the refused claims are not matched against the card here — a fuzzy
+      // match landing on the wrong entry would publish the refused claim.
+      const original = faithfulness;
+      const draft = content;
+      const refused = original.unfaithfulClaims.map((c) => c.claim.text);
+      let repaired: typeof content | null = null;
+      try {
+        repaired = await loggedAi(
+          "battle_card_repair",
+          AI_CONFIG.insights,
+          () => reviseBattleCard(battleCardInput, draft, refused),
+          attribution,
+        );
+      } catch (err) {
+        // A repair that cannot run leaves the block standing — never the card.
+        logger.warn("Battle card repair pass unavailable", { err: String(err) });
+      }
+      const recheck =
+        repaired && !isEmptyCard(repaired)
+          ? await checkFaithfulness({
+              output: repaired,
+              sourceText: evidence,
+              outputKind: "sales battle card",
+              context: {
+                competitorId: competitor.id,
+                productId: product?.id ?? null,
+                repair: true,
+              },
+              attribution,
+            })
+          : null;
+      // Strict on THIS path only: a clean pass publishes, a `skipped` does not.
+      // Everywhere else an unavailable verification means publish-unverified, but this
+      // content was already refused once — a provider outage mid-repair must not become
+      // the way it gets through.
+      const publishable = repaired && recheck?.verdict === "pass" ? repaired : null;
+
       await insertAiQualityCheck(
         blockedReviewEntry({
           aiTask: "generate_battle_card",
           targetType: "battle_card",
           targetId: existing?.id ?? null,
           orgId: org.id,
-          quality: content._quality,
-          report: faithfulness,
+          quality: draft._quality,
+          // The block is queued either way — whether the judge was right about these
+          // claims is a question the repair does not answer.
+          report: publishable ? { ...original, repaired: true } : original,
         }),
       );
-      throw new AbortTaskRunError(
-        `Battle card blocked by the faithfulness gate: ${faithfulness.reason ?? "unsupported claims"}`,
-      );
+
+      if (!publishable || !recheck) {
+        throw new AbortTaskRunError(
+          `Battle card blocked by the faithfulness gate: ${original.reason ?? "unsupported claims"}`,
+        );
+      }
+      logger.log("Battle card published after repairing a faithfulness block", {
+        competitorId: competitor.id,
+        refusedClaims: refused.length,
+        ratioBefore: original.ratio,
+      });
+      content = publishable;
+      faithfulness = recheck;
     }
 
     let battleCardId: string;

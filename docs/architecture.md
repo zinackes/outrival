@@ -916,10 +916,19 @@ carte (état live uniquement).
   └─ gather context (productProfile, aiSummary, top reviews, recent signals)
   └─ Groq battle card 6 sections → passe de révision (reviseBattleCard)
   └─ GATE DE FIDÉLITÉ : verifyFaithfulness(carte, battleCardEvidence(input)) —
-       la MÊME évidence que la génération et la révision. `blocked` → la carte
-       n'est PAS écrite (celle qui existe reste intacte), AbortTaskRunError +
-       review queue flaggée avec les claims fautifs. Sinon upsert content +
+       la MÊME évidence que la génération et la révision. Sinon upsert content +
        battle_cards.faithfulness
+  └─ `blocked` → UNE tentative de REPAIR, jamais une carte jetée : les claims
+       refusées sont nommées à reviseBattleCard (même passe, param `flaggedClaims`)
+       qui doit SUPPRIMER les entrées qui les portent, puis la sortie est
+       RE-VÉRIFIÉE. Verdict `pass` → la carte réparée est publiée et porte le
+       rapport de la 2e passe ; la review queue reçoit quand même le rapport
+       bloqué (`repaired:true`) car « le juge avait-il raison » survit à la
+       réparation. Tout le reste (repair indisponible, carte vide après coupe,
+       re-vérification `blocked` OU `skipped` — strict ici, contrairement au
+       fail-open général) → AbortTaskRunError, carte existante intacte. Le
+       publié est donc TOUJOURS ce qui a passé le gate, jamais ce qu'on croit
+       avoir retiré : aucune attribution floue claim→entrée n'est tentée
   └─ Playwright headless → page.pdf({format:"A4"}) → R2
 
 [cron */6h] ops-health-check (patch-02)
@@ -1403,11 +1412,15 @@ BUILD_TIME=                  # build timestamp → GET /api/version. In Coolify:
   et confie les indécises à un **juge BINAIRE** (fidèle / infidèle + une ligne de
   raison ; le schéma refuse une échelle, sinon la décision retombe sur le lecteur
   du chiffre). Le verdict est un **gate** : sous `FAITHFULNESS_MIN_RATIO` ou sur un
-  claim infidèle, la sortie ne part pas — pas d'email, pas de Slack, pas de carte
-  écrite — et atterrit dans la review queue EXISTANTE (`ai_quality_checks`,
+  claim infidèle, la sortie ne part pas — pas d'email, pas de Slack — et atterrit
+  dans la review queue EXISTANTE (`ai_quality_checks`,
   colonne `faithfulness`) **avec les phrases fautives nommées**. Le blocage vise la
   frontière SORTANTE, jamais la génération : le signal est inséré (l'idempotence
   par `changeId` est porteuse) et reste lisible in-app, seul l'envoi est retenu.
+  Les battle cards, elles, tentent d'abord UN repair (claims refusées nommées à
+  `reviseBattleCard`, sortie re-vérifiée, cf. pipeline) : une phrase refusée sur
+  vingt coûtait la carte entière, et l'utilisateur n'avait que le re-roll de la
+  MÊME évidence comme recours. Ce qui est publié reste ce qui a passé le gate.
   **Fail open** par construction (parse miss / rate limit / breaker ⇒ verdict
   `skipped` ⇒ publication) : une panne IA ne doit pas faire taire tout le produit.
   Périmètre = ce qui a un coût de faux : battle cards, digests hebdo, insights

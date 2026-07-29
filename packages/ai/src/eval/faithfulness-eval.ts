@@ -42,6 +42,22 @@ Complaint: "The dashboard is slow once you pass a few million events."
 Complaint: "Support takes days to reply on the Starter plan."
 Praise: "Setup took us under an hour."`;
 
+// Battle-card evidence shape, carrying an explicitly NEGATIVE captured fact. This is
+// where the rubric came apart in prod (2026-07-29, Dougs card): a claim that merely
+// restates a recorded negative reads like an absence claim, and the judge rejected it
+// — blocking a whole card over a fact the evidence states outright. The pair below
+// (accepted here, rejected in INVENTIONS) is what keeps the carve-out honest.
+const CARD_SOURCE = `Competitor name: Acme Books
+Free trial: yes (30-day, credit card required up front).
+Competitor pricing:
+- Solo: 49 EUR / monthly
+- Growth: 99 EUR / monthly`;
+
+const CARD_SOURCE_NO_TRIAL = `Competitor name: Acme Books
+Free trial: none offered.
+Competitor pricing:
+- Solo: 49 EUR / monthly`;
+
 const BLOG_SOURCE = `Introducing Acme Warehouse Sync
 Starting today, every Growth and Enterprise customer can stream events straight
 into Snowflake and BigQuery. Sync runs every 15 minutes. Redshift is planned for
@@ -95,6 +111,26 @@ const PARAPHRASES: Case[] = [
     source: REVIEWS_SOURCE,
     faithful: true,
   },
+  {
+    // The prod block: no quote offered (the negation is nowhere verbatim), so the
+    // fuzzy pass cannot settle it and the judge decides the whole card's fate.
+    label: "negation entailed by a recorded positive",
+    claim: {
+      text: "Acme Books offers no free trial without payment information.",
+      citedQuote: "",
+    },
+    source: CARD_SOURCE,
+    faithful: true,
+  },
+  {
+    label: "explicitly recorded negative restated",
+    claim: {
+      text: "Acme Books does not offer a free trial.",
+      citedQuote: "Free trial: none offered.",
+    },
+    source: CARD_SOURCE_NO_TRIAL,
+    faithful: true,
+  },
 ];
 
 // Inventions: plausible, on-topic, and absent from the source. Two of them are the
@@ -141,6 +177,15 @@ const INVENTIONS: Case[] = [
       citedQuote: "every customer can stream into Snowflake",
     },
     source: BLOG_SOURCE,
+    faithful: false,
+  },
+  {
+    // Same grammar as the accepted negation above, opposite verdict: this dimension
+    // is absent from the source, so the claim is about OUR data gap. If the carve-out
+    // ever leaks, this is the case that catches it.
+    label: "negative claim on a dimension the source never mentions",
+    claim: { text: "Acme Books has no free plan.", citedQuote: "" },
+    source: CARD_SOURCE,
     faithful: false,
   },
   {

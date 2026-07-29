@@ -368,11 +368,51 @@ Reply ONLY with a valid JSON object, no markdown and no surrounding text.
 export async function reviseBattleCard(
   input: BattleCardInput,
   draft: WithQuality<BattleCardContent>,
+  /**
+   * Claims the publication gate refused, verbatim. When present this pass is a
+   * REPAIR: the card already failed verification, and the caller re-verifies the
+   * result before publishing it. Naming the refused sentences here rather than
+   * matching them against the card afterwards is what makes the repair safe — a
+   * fuzzy match that picks the wrong entry would publish the refused claim.
+   */
+  flaggedClaims?: string[],
 ): Promise<WithQuality<BattleCardContent> | null> {
+  const prompt = buildRevisePrompt(input, draft, flaggedClaims);
+
+  // Same ceiling as the generate pass: this one re-emits all six sections and its
+  // prompt carries the evidence AND the draft, so it is the larger request of the
+  // two. A truncated revise silently discards the whole verification pass.
+  const raw = await complete(AI_CONFIG.insights, { prompt, json: true, maxTokens: 3072 });
+  const parsed = safeParseJson(raw, BattleCardSchema);
+  if (!parsed.ok) {
+    console.error("revise_battle_card parse failed:", parsed.error, "raw:", raw.slice(0, 500));
+    return null;
+  }
+  // Carry the generation-time quality envelope forward — the revised content is a
+  // strict subset, so its confidence/citations still describe it. Best-effort clear
+  // of the human-review flag: we just acted on the flagged issues by pruning.
+  const quality = { ...draft._quality, flaggedForHumanReview: false };
+  return attachQuality(parsed.value, quality);
+}
+
+/** Exported for tests: the refused-claims block is what makes a repair a repair. */
+export function buildRevisePrompt(
+  input: BattleCardInput,
+  draft: BattleCardContent,
+  flaggedClaims?: string[],
+): string {
   const blocks = computeBlocks(input);
   const sourceText = evidenceSourceText(input, blocks);
 
-  const prompt = `You are a strict fact-checker cleaning a competitive sales battle card before it is shown to a user. You are given the EVIDENCE (the only facts that may back a claim) and a DRAFT card. Return the SAME JSON structure, keeping ONLY claims that survive verification.
+  const refusedSection = flaggedClaims?.length
+    ? `\n\n<refused_claims>
+A fact-checker read this draft against the evidence and could not trace these claims to it:
+${flaggedClaims.map((c) => `- ${c}`).join("\n")}
+DELETE every entry that states any of them. Do not reword one to keep it, do not soften it, and do not replace it with a new claim — an entry carrying a refused claim must be absent from your answer. Everything else in the draft that survives the rules below stays.
+</refused_claims>`
+    : "";
+
+  return `You are a strict fact-checker cleaning a competitive sales battle card before it is shown to a user. You are given the EVIDENCE (the only facts that may back a claim) and a DRAFT card. Return the SAME JSON structure, keeping ONLY claims that survive verification.
 
 <evidence>
 ${sourceText}
@@ -380,11 +420,12 @@ ${sourceText}
 
 <draft>
 ${JSON.stringify(draft)}
-</draft>
+</draft>${refusedSection}
 
 <verification_rules>
 - DELETE any claim not directly supported by the evidence — do not soften it into a vaguer claim, remove it entirely.
 - DELETE any claim built on the ABSENCE of data — e.g. "reviews are not captured", "no public feature list", "pricing unknown", "no recent signals". Missing evidence is unknown, never a fact about either product.
+- But a negative fact the evidence explicitly RECORDS is not an absence claim: "Free trial: none offered." supports "they offer no free trial", and "credit card required up front" supports "you cannot try it without payment details". KEEP those.
 - DELETE any claim that the competitor LACKS, is worse at, or does not have something (and any "unlike them", "unique to us", "we win because", "differentiates" phrasing) unless the evidence describes that same dimension for BOTH products. But a one-sided positive fact about a SINGLE product — a real feature, price, tech or rating drawn from its own evidence — is VALID and must be KEPT even when the other side's evidence is silent. Only fabricated or unproven CONTRASTS are removed, not grounded one-sided facts.
 - Do NOT add any new claim, fact, or comparison that is not already in the draft.
 - You MAY trim a surviving claim down to the part the evidence supports.
@@ -401,19 +442,4 @@ Reply ONLY with a valid JSON object matching this shape, no markdown, no surroun
   "when_we_win": ["..."],
   "when_we_lose": ["..."]
 }`;
-
-  // Same ceiling as the generate pass: this one re-emits all six sections and its
-  // prompt carries the evidence AND the draft, so it is the larger request of the
-  // two. A truncated revise silently discards the whole verification pass.
-  const raw = await complete(AI_CONFIG.insights, { prompt, json: true, maxTokens: 3072 });
-  const parsed = safeParseJson(raw, BattleCardSchema);
-  if (!parsed.ok) {
-    console.error("revise_battle_card parse failed:", parsed.error, "raw:", raw.slice(0, 500));
-    return null;
-  }
-  // Carry the generation-time quality envelope forward — the revised content is a
-  // strict subset, so its confidence/citations still describe it. Best-effort clear
-  // of the human-review flag: we just acted on the flagged issues by pruning.
-  const quality = { ...draft._quality, flaggedForHumanReview: false };
-  return attachQuality(parsed.value, quality);
 }

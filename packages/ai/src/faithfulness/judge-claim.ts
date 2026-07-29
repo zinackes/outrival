@@ -31,6 +31,12 @@ Answer "faithful": true when the source really establishes the claim — includi
 
 Answer "faithful": false when the source does not establish it: a fact absent from the source, a number/date/name that appears nowhere, a comparison the source only supports for one side, or a statement built on the ABSENCE of data ("pricing is not public", "no reviews captured").
 
+A NEGATIVE claim is not automatically an absence claim. Decide on what the source RECORDS, never on the claim's grammar:
+- faithful — the source states the negative outright as a fact about the product ("Free trial: none offered." establishes "they offer no free trial"), or states a positive fact that logically forces it ("credit card required up front" establishes "you cannot start a trial without payment details").
+- false — the source merely OMITS the value or DEFERS it: a dimension it never mentions, an empty section, or a placeholder like "contact sales" / "custom pricing". That is a gap in what we captured, not a fact about them ("they have no SOC 2 certification", "their enterprise pricing is not public").
+
+EVERY part of the claim must hold. A claim carrying an unsupported comparison ("unlike ours", "we are cheaper", "the only one that") or an unsupported qualifier is false even when its first half is established.
+
 When the source is a change with <removed> and <added> sides, read the side the claim needs. <removed> is text the page NO LONGER shows; <added> is text it NOW shows. A claim that the company offers, launched or announced something is faithful only if <added> establishes it — if the wording sits under <removed>, the company DROPPED it and the claim states the reverse of the source, so answer false. A claim that they removed or stopped saying something is faithful when <removed> establishes it.
 
 You are judging the CLAIM against the SOURCE only. Never use outside knowledge about these companies — treat your own memory as unreliable.

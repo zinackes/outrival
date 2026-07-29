@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import posthog from "posthog-js";
+import { applyConsent } from "@/lib/posthog/lazy";
 import {
   getConsent,
   setConsent,
@@ -37,8 +37,7 @@ export function ConsentBanner() {
 
   const apply = (granted: boolean) => {
     setConsent(granted ? "granted" : "denied");
-    if (granted) posthog.opt_in_capturing();
-    else posthog.opt_out_capturing();
+    applyConsent(granted);
     setOpen(false);
     setCustomize(false);
   };

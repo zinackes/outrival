@@ -135,4 +135,22 @@ export default process.env.NODE_ENV === "development"
       silent: !process.env.CI,
       disableLogger: true,
       hideSourceMaps: true,
+      // Drop SDK code we provably never run. Session Replay is handled by PostHog,
+      // so both Sentry replay sample rates are 0 (instrumentation-client.ts) — yet
+      // the replay machinery was still shipped to every visitor, in the first-load
+      // JS, on a marketing page that will never record a session. Debug logging is
+      // dead weight in a production bundle for the same reason.
+      //
+      // Deliberately NOT set: `removeTracing`. tracesSampleRate is 0.1 and browser
+      // traces are what link a client error to the API request behind it. Flipping
+      // it to true is the next available saving, but it is an observability
+      // decision, not a cleanup.
+      webpack: {
+        treeshake: {
+          removeDebugLogging: true,
+          excludeReplayIframe: true,
+          excludeReplayShadowDOM: true,
+          excludeReplayCompressionWorker: true,
+        },
+      },
     });

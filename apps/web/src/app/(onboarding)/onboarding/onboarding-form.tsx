@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useFeatureFlagEnabled } from "posthog-js/react";
 import { toast } from "sonner";
 import {
   WarningCircleIcon,
@@ -45,6 +44,7 @@ import {
 } from "@/lib/api";
 import { signOut } from "@/lib/auth-client";
 import { resetUser } from "@/lib/posthog/events";
+import { useFeatureFlag } from "@/lib/posthog/use-feature-flag";
 import {
   ONBOARDING_EVENTS,
   milestoneKey,
@@ -234,7 +234,7 @@ export function OnboardingForm({
   const planLimits = PLAN_LIMITS[plan];
   const maxCompetitors = planLimits.maxCompetitors;
   const allowedFrequencies = planLimits.allowedFrequencies;
-  const discoveryDisabled = useFeatureFlagEnabled("kill-switch-discovery");
+  const discoveryDisabled = useFeatureFlag("kill-switch-discovery");
 
   // Resume: jump to the saved step when we already have a profile; otherwise
   // start at stage selection. discover/monitoring resume one step back (to

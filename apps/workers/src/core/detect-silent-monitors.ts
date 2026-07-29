@@ -12,7 +12,7 @@ import {
 import { sendSlackMessage } from "@outrival/shared";
 import { decideDispatch } from "../lib/notification-dispatcher";
 import { emailShell, e } from "../lib/email-shell";
-import { getResend, ALERT_FROM } from "../lib/resend";
+import { sendEmail, ALERT_FROM } from "../lib/resend";
 
 // Patch-27 — daily sweep for monitors that have produced nothing for a long time.
 // Pings ops (Slack) with the full list, and notifies each affected org once per
@@ -190,7 +190,7 @@ async function notifyOrg(orgId: string, list: SilentMonitor[]): Promise<void> {
     if (!to) return;
 
     const webUrl = process.env.WEB_URL ?? "";
-    await getResend().emails.send({
+    await sendEmail({
       from: ALERT_FROM,
       to,
       subject: title,

@@ -6,7 +6,7 @@ import {
   organizations,
   notifications,
 } from "@outrival/db";
-import { getResend, ALERT_FROM } from "./resend";
+import { sendEmail, ALERT_FROM } from "./resend";
 import { escapeHtml } from "./escape-html";
 import { emailShell, e } from "./email-shell";
 
@@ -88,7 +88,7 @@ export async function notifyStructuralChange(structuralChangeId: string): Promis
   );
 
   try {
-    await getResend().emails.send({
+    await sendEmail({
       from: ALERT_FROM,
       to: org.digestEmail,
       subject: `Important change detected at ${competitor.name}`,

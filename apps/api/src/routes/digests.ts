@@ -12,7 +12,7 @@ import {
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
 import { ensureUserOrg } from "../lib/org";
-import { getResend, ALERT_FROM } from "../lib/resend";
+import { sendEmail, ALERT_FROM } from "../lib/resend";
 
 type Variables = { user: { id: string } };
 
@@ -385,7 +385,7 @@ digestsRouter.post("/:id/send", async (c) => {
   );
 
   try {
-    await getResend().emails.send({
+    await sendEmail({
       from: ALERT_FROM,
       to,
       subject: isDaily

@@ -40,7 +40,7 @@ import {
 } from "@outrival/shared";
 import { insertSignalFeed, loggedAi } from "../lib/analytics";
 import { captureWorkerEvent, shutdownPostHog } from "../lib/posthog";
-import { getResend, ALERT_FROM } from "../lib/resend";
+import { sendEmail, ALERT_FROM } from "../lib/resend";
 import { decideDispatch } from "../lib/notification-dispatcher";
 import { applySeverityGuard } from "../lib/severity-guard";
 import { checkFaithfulness, isBlocked, blockedReviewEntry } from "../lib/faithfulness-gate";
@@ -566,7 +566,7 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
             soWhat: insight.so_what,
             signalUrl: `${webUrl}/dashboard/signals`,
           });
-          await getResend().emails.send({
+          await sendEmail({
             from: ALERT_FROM,
             to: org.digestEmail,
             subject: email.subject,

@@ -151,7 +151,7 @@ export function DigestsView() {
       <PageHead
         flush
         title="Digests"
-        sub="Your weekly brief lands every Monday, 09:00 UTC."
+        sub="Your weekly brief lands every Monday, 08:00 UTC."
         actions={
           <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)}>
             <GearIcon size={16} /> Delivery

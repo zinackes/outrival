@@ -494,7 +494,7 @@ export function AskPanel({
                 : "border-border text-muted-foreground hover:text-foreground",
             )}
           >
-            <CrosshairIcon className="size-4" /> {context.label}
+            <CrosshairIcon className="size-3.5" /> {context.label}
           </button>
           <span className="text-meta text-muted-foreground">
             {scoped ? "questions scoped here" : "asking across all competitors"}
@@ -506,7 +506,7 @@ export function AskPanel({
           with an AI system, at the latest at first interaction, in clear terms
           that aren't buried in the terms of service. */}
       <p className="mb-3 flex items-start gap-1.5 text-meta text-muted-foreground">
-        <InfoIcon className="mt-0.5 size-4 shrink-0" aria-hidden />
+        <InfoIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden />
         <span>
           You&apos;re interacting with AI. Ask Outrival generates answers from
           your workspace data and can be inaccurate, so verify important details.
@@ -596,7 +596,7 @@ export function AskPanel({
                     </span>
                     {item.context && (
                       <span className="hidden max-w-[8rem] shrink-0 items-center gap-1 text-meta text-muted-foreground sm:inline-flex">
-                        <CrosshairIcon className="size-4 shrink-0" aria-hidden />
+                        <CrosshairIcon className="size-3.5 shrink-0" aria-hidden />
                         <span className="truncate">{item.context.label}</span>
                       </span>
                     )}
@@ -642,7 +642,7 @@ export function AskPanel({
           {trace.length > 0 && (
             <details className="group mt-6">
               <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 text-meta text-muted-foreground transition-colors hover:text-foreground">
-                <CaretRightIcon className="size-4 transition-transform group-open:rotate-90" aria-hidden />
+                <CaretRightIcon className="size-3.5 transition-transform group-open:rotate-90" aria-hidden />
                 <span className="font-mono">{trace.length}</span> steps to answer
               </summary>
               <div className="mt-3 pl-1">
@@ -743,7 +743,7 @@ export function AskPanel({
                       className="inline-flex items-center gap-1 rounded-md border border-border bg-surface px-2.5 py-1 text-dense text-foreground transition-colors hover:border-border-strong hover:bg-surface-3"
                     >
                       {c.label}
-                      <ArrowUpRightIcon className="size-4 text-muted-foreground" />
+                      <ArrowUpRightIcon className="size-3.5 text-muted-foreground" />
                     </Link>
                   ))}
                 </div>
@@ -756,7 +756,7 @@ export function AskPanel({
             onClick={resetPanel}
             className="mt-3 inline-flex items-center gap-1.5 rounded-sm text-meta text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
           >
-            <PlusIcon className="size-4" aria-hidden />
+            <PlusIcon className="size-3.5" aria-hidden />
             Ask something else
           </button>
         </div>

@@ -188,7 +188,7 @@ function RunPanel({
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 text-link hover:underline"
           >
-            <ArrowSquareOutIcon className="size-4" aria-hidden />
+            <ArrowSquareOutIcon className="size-3.5" aria-hidden />
             View the page we read
           </a>
         )}

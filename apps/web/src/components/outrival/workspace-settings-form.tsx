@@ -272,7 +272,7 @@ export function WorkspaceSettingsForm() {
 
       {saved && !dirty && (
         <p className="flex items-center gap-1.5 text-sm text-positive">
-          <CheckIcon className="size-4" /> Saved
+          <CheckIcon className="size-3.5" /> Saved
         </p>
       )}
       {error && <p className="text-sm text-destructive">{error}</p>}

@@ -225,7 +225,7 @@ export function SignalCard({
           <Tooltip>
             <TooltipTrigger asChild>
               <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-meta font-medium text-muted-foreground">
-                <ArchiveIcon className="size-4" />
+                <ArchiveIcon className="size-3.5" />
                 From archive
               </span>
             </TooltipTrigger>
@@ -368,7 +368,7 @@ export function SignalCard({
             aria-expanded={showContext}
             className="flex items-center gap-1.5 text-dense font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground"
           >
-            <SparkleIcon size={16} className="shrink-0" aria-hidden />
+            <SparkleIcon size={14} className="shrink-0" aria-hidden />
             Context
             <CaretDownIcon
               className={cn(

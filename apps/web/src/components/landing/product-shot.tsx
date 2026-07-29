@@ -49,7 +49,7 @@ export function ProductShot({
           aria-hidden
           className="pointer-events-none absolute right-3 top-3 flex items-center gap-1.5 rounded-md border border-border bg-background/90 px-2 py-1 text-xs font-medium text-foreground opacity-0 shadow-sm backdrop-blur-sm transition-opacity group-hover:opacity-100"
         >
-          <ArrowsOutIcon className="size-4" />
+          <ArrowsOutIcon className="size-3.5" />
           Enlarge
         </span>
       </button>

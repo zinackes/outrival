@@ -181,7 +181,7 @@ export function CronConsole() {
                         rel="noreferrer"
                         className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
                       >
-                        {state.runId} <ArrowSquareOutIcon className="size-4" />
+                        {state.runId} <ArrowSquareOutIcon className="size-3.5" />
                       </a>
                     )}
                   </div>

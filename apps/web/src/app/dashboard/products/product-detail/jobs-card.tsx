@@ -13,7 +13,7 @@ export function JobsCard({ jobs }: { jobs: { total: number; items: MyProductJob[
     <Card className="bg-gradient-card-strong p-4">
       <h3 className="text-dense font-semibold uppercase tracking-wide text-muted-foreground mb-1">
         <span className="inline-flex items-center gap-1.5">
-          <BriefcaseIcon className="size-4" />
+          <BriefcaseIcon className="size-3.5" />
           Hiring{jobs.total > 0 ? ` (${jobs.total})` : ""}
         </span>
       </h3>
@@ -40,7 +40,7 @@ export function JobsCard({ jobs }: { jobs: { total: number; items: MyProductJob[
                   className="shrink-0 inline-flex items-center gap-1 text-dense font-medium text-link no-underline hover:underline"
                 >
                   View
-                  <ArrowSquareOutIcon className="size-4" />
+                  <ArrowSquareOutIcon className="size-3.5" />
                 </a>
               )}
             </li>

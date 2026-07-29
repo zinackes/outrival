@@ -620,7 +620,7 @@ export function SourceRow({
                       className="mt-1.5 inline-flex max-w-full items-center gap-1 text-xs text-link hover:underline focus-visible:outline-none focus-visible:underline"
                     >
                       <span className="truncate">Open the page we scrape</span>
-                      <ArrowSquareOutIcon size={16} className="shrink-0" />
+                      <ArrowSquareOutIcon size={14} className="shrink-0" />
                     </a>
                   )}
                 </div>

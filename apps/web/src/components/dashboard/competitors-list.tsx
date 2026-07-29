@@ -116,7 +116,7 @@ function PausedByPlanBadge() {
           href="/dashboard/settings/billing"
           className="relative z-10 flex shrink-0 items-center gap-1 rounded-sm border border-high/40 px-1.5 py-0.5 text-meta font-medium text-medium"
         >
-          <PauseCircleIcon size={16} className="shrink-0" />
+          <PauseCircleIcon size={14} className="shrink-0" />
           Plan limit
         </Link>
       </TooltipTrigger>

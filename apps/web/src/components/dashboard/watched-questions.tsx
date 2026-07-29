@@ -85,7 +85,7 @@ export function WatchedQuestions() {
   return (
     <div>
       <p className="flex items-center gap-1.5 text-dense font-medium text-muted-foreground">
-        <EyeIcon className="size-4" aria-hidden />
+        <EyeIcon className="size-3.5" aria-hidden />
         Watched questions
       </p>
       <p className="mt-1 text-meta text-muted-foreground">

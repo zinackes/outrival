@@ -69,7 +69,7 @@ export function ProductLead({
           <span aria-hidden>·</span>
           {detected ? (
             <span className="inline-flex items-center gap-1">
-              <SparkleIcon size={16} />
+              <SparkleIcon size={14} />
               read from your site
               {product.lastScanAt
                 ? ` ${formatDistanceToNow(new Date(product.lastScanAt), { addSuffix: true })}`

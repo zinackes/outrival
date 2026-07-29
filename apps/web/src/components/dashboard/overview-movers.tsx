@@ -173,7 +173,7 @@ function MoverTile({ tile }: { tile: Tile }) {
           </span>
         ) : delta > 0 ? (
           <span className="inline-flex items-center gap-0.5 text-meta font-medium">
-            <ArrowUpIcon size={16} aria-hidden />
+            <ArrowUpIcon size={14} aria-hidden />
             <span className="font-mono tabular-nums">{delta}</span>
           </span>
         ) : (

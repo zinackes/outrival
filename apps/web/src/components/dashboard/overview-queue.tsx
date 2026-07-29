@@ -59,7 +59,7 @@ export function OverviewQueue({
         action={
           <Button asChild variant="outline" size="sm">
             <Link href="/dashboard/signals">
-              Signals inbox <ArrowRightIcon size={16} />
+              Signals inbox <ArrowRightIcon size={14} />
             </Link>
           </Button>
         }

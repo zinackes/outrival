@@ -101,7 +101,7 @@ export function Kpi({
           <span
             className={`text-meta inline-flex items-center gap-1 ${DELTA_COLOR[deltaKind]}`}
           >
-            <DeltaIcon size={16} aria-hidden />
+            <DeltaIcon size={14} aria-hidden />
             {delta}
           </span>
         )}

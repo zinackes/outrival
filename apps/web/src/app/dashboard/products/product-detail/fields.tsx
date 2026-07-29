@@ -15,7 +15,7 @@ export function FieldMeta({ field }: { field?: SelfProfileField<unknown> }) {
   if (field.isFromAutoDetect) {
     return (
       <span className="text-meta text-[var(--muted-2)] inline-flex items-center gap-1">
-        <SparkleIcon className="size-4" /> detected auto
+        <SparkleIcon className="size-3.5" /> detected auto
       </span>
     );
   }

@@ -106,7 +106,7 @@ export function DigestsList() {
                       </div>
                       <p className="text-sm mb-1">{s.insight}</p>
                       <p className="flex gap-1 text-sm text-primary">
-                        <ArrowRightIcon className="size-4 mt-0.5 shrink-0" />
+                        <ArrowRightIcon className="size-3.5 mt-0.5 shrink-0" />
                         {s.so_what}
                       </p>
                     </Card>
@@ -139,7 +139,7 @@ export function DigestsList() {
               <div className="flex items-center gap-1 text-xs text-muted-foreground">
                 {d.sentAt ? (
                   <>
-                    <CheckIcon className="size-4" /> sent
+                    <CheckIcon className="size-3.5" /> sent
                   </>
                 ) : (
                   "not sent"

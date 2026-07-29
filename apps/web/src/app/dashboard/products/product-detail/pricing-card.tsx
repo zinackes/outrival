@@ -110,7 +110,7 @@ export function PricingCard({
                 </>
               ) : (
                 <>
-                  <SparkleIcon className="size-4" /> detected auto
+                  <SparkleIcon className="size-3.5" /> detected auto
                 </>
               )}
             </span>

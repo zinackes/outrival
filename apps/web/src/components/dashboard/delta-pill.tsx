@@ -44,7 +44,7 @@ export function DeltaPill({ delta }: { delta: Delta }) {
         delta.kind === "neg" && "text-critical",
       )}
     >
-      {delta.kind === "pos" ? <ArrowUpIcon size={16} /> : <ArrowDownIcon size={16} />}
+      {delta.kind === "pos" ? <ArrowUpIcon size={14} /> : <ArrowDownIcon size={14} />}
       {delta.label}
     </span>
   );

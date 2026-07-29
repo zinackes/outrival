@@ -1181,7 +1181,7 @@ function ModeForm({
               />
             </label>
             <div className="flex items-start gap-2 rounded-md border border-positive/30 bg-positive/10 px-4 py-3">
-              <LockIcon size={16} className="mt-0.5 text-positive shrink-0" />
+              <LockIcon size={14} className="mt-0.5 text-positive shrink-0" />
               <p className="text-xs text-foreground leading-relaxed">
                 Your document is analyzed in memory and will <strong>never be stored</strong>.
                 Only the extracted product profile is saved.
@@ -1307,7 +1307,7 @@ function ProfileForm({
       </p>
 
       <div className="flex items-center gap-1.5 mt-6 mb-3 text-xs text-muted-foreground">
-        <SparkleIcon size={16} className="text-primary" /> Extracted by AI
+        <SparkleIcon size={14} className="text-primary" /> Extracted by AI
       </div>
 
       <Card className="p-5 sm:p-6 flex flex-col gap-5">
@@ -1359,12 +1359,12 @@ function ProfileForm({
 
       {prefetchStatus === "running" && (
         <p className="mt-4 flex items-center gap-1.5 text-xs text-muted-foreground">
-          <SpinnerIcon size={16} className="animate-spin" /> Searching competitors…
+          <SpinnerIcon size={14} className="animate-spin" /> Searching competitors…
         </p>
       )}
       {prefetchStatus === "completed" && (
         <p className="mt-4 flex items-center gap-1.5 text-xs text-positive">
-          <CheckIcon size={16} /> Competitors found
+          <CheckIcon size={14} /> Competitors found
         </p>
       )}
 
@@ -1459,7 +1459,7 @@ function DiscoverStep({
 
       {noStrongMatch && (
         <div className="mt-6 flex items-start gap-3 rounded-md border border-border-strong bg-surface-2/60 px-4 py-3">
-          <WarningCircleIcon size={16} className="mt-0.5 text-foreground shrink-0" />
+          <WarningCircleIcon size={14} className="mt-0.5 text-foreground shrink-0" />
           <div className="flex-1">
             <p className="text-sm text-foreground">We didn't find any obvious competitors.</p>
             <div className="mt-2 flex gap-2">
@@ -1488,7 +1488,7 @@ function DiscoverStep({
       <Card className="p-2 sm:p-3 max-h-[420px] overflow-auto">
         {busy ? (
           <div className="px-4 py-12 flex items-center justify-center gap-2 text-sm text-muted-foreground">
-            <SpinnerIcon size={16} className="animate-spin" /> Analyzing your market…
+            <SpinnerIcon size={14} className="animate-spin" /> Analyzing your market…
           </div>
         ) : competitors.length === 0 ? (
           <div className="px-4 py-12 text-center text-sm text-muted-foreground">
@@ -1595,7 +1595,7 @@ function CompetitorRow({
           className="text-meta font-mono text-muted-foreground hover:text-foreground inline-flex items-center gap-1 mt-0.5 max-w-full transition-colors"
         >
           <span className="truncate">{competitor.url.replace(/^https?:\/\//, "")}</span>
-          <ArrowSquareOutIcon size={16} className="shrink-0" />
+          <ArrowSquareOutIcon size={14} className="shrink-0" />
         </a>
         {competitor.snippet && (
           <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">
@@ -1773,7 +1773,7 @@ function DoneStep({
                     className="flex items-center gap-2 rounded-sm px-2 py-1.5"
                   >
                     {c.analyzed ? (
-                      <CheckIcon size={16} className="shrink-0 text-positive" />
+                      <CheckIcon size={14} className="shrink-0 text-positive" />
                     ) : (
                       <StageIcon
                         size={14}

@@ -125,12 +125,12 @@ export function MonitoringDefaultsCard() {
                   )}
                   {locked && (
                     <span className="flex items-center gap-1 text-xs font-normal text-muted-foreground">
-                      <LockIcon className="size-4" />
+                      <LockIcon className="size-3.5" />
                       {PLAN_LABELS[minPlanForSource(source)]}
                     </span>
                   )}
                   {saving === source && (
-                    <SpinnerIcon className="size-4 animate-spin text-muted-foreground" />
+                    <SpinnerIcon className="size-3.5 animate-spin text-muted-foreground" />
                   )}
                 </label>
                 {SOURCE_HINTS[source] && (

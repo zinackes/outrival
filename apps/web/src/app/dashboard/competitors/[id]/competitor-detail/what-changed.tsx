@@ -90,7 +90,7 @@ export function WhatChanged({
       </span>
       <span className="inline-flex shrink-0 items-center gap-1.5 self-end text-xs text-link sm:self-auto">
         Review all
-        <ArrowRightIcon size={16} aria-hidden />
+        <ArrowRightIcon size={14} aria-hidden />
       </span>
     </button>
   );

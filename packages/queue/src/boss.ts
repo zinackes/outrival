@@ -235,10 +235,29 @@ export function jobData<P extends object>(data: P | null | undefined): P {
 }
 
 /**
+ * What a NonRetriable abort leaves behind on the job row. pg-boss stores whatever
+ * the work callback RETURNS as `job.output`, so this is the only trace an expected
+ * terminal outcome gets — and the difference between "the job did nothing, for a
+ * reason" and a job that reads as a plain success.
+ */
+export type AbortedOutput = { aborted: true; message: string };
+
+export function isAbortedOutput(output: unknown): output is AbortedOutput {
+  return !!output && typeof output === "object" && (output as AbortedOutput).aborted === true;
+}
+
+/**
  * Register a worker handler for a job. Adapts pg-boss's `(Job[]) => Promise`
  * batch signature to a single-job handler, routes NonRetriable to a clean
  * completion, and reports every other throw to Sentry before letting pg-boss
  * apply the retry policy.
+ *
+ * The handler's return value is passed back to pg-boss, which persists it as the
+ * job's `output` (single-job fetches only — the whole fleet runs batchSize 1).
+ * Dropping it, as this used to, made every NonRetriable abort indistinguishable
+ * from a success: a battle card that aborted on a truncated model reply sat in
+ * `pgboss.job` as `completed` with a null output, so nothing downstream — not the
+ * UI, not a post-mortem query — could tell it had produced nothing.
  */
 export function work<P extends object>(
   def: JobDef<P>,
@@ -247,14 +266,20 @@ export function work<P extends object>(
 ): Promise<string> {
   const options = { ...def.workOptions, ...overrideOptions };
   return getBoss().work<P>(def.name, options, async (jobs) => {
+    let last: unknown;
     for (const job of jobs) {
       try {
-        await handler(jobData(job.data), job);
+        last = await handler(jobData(job.data), job);
       } catch (err) {
-        if (err instanceof NonRetriable) continue; // terminal + expected → complete
+        if (err instanceof NonRetriable) {
+          // Terminal + expected → complete the job, but say so in the output.
+          last = { aborted: true, message: err.message } satisfies AbortedOutput;
+          continue;
+        }
         _reportError(err, { job: def.name, id: job.id });
         throw err; // pg-boss retries per the queue policy
       }
     }
+    return last;
   });
 }

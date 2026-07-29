@@ -1,5 +1,6 @@
 import { logger } from "../lib/job-logger";
 import { sendSlackMessage } from "../lib/slack";
+import { getBoss, deadLetterQueue } from "@outrival/queue";
 
 // Dead-man's switch. Every tick, ping an EXTERNAL monitor (Better Stack /
 // UptimeRobot heartbeat URL). The monitor alerts when the ping STOPS — so the
@@ -35,7 +36,69 @@ async function onPingFailure(detail: string): Promise<void> {
   );
 }
 
+// A queue whose jobs are WAITING while nothing at all is running on it. pg-boss
+// spawns one worker loop per localConcurrency and that loop awaits its own handler,
+// so a single wedged run silently takes an entire queue offline while the rest of
+// the process keeps working — measured on prod 2026-07-29: three battle cards sat
+// `created` for six hours while scrape-monitor on the same worker fetched normally,
+// and not one alert fired anywhere. `activeCount === 0` is what separates this from
+// an ordinary backlog: a draining queue always has something in flight.
+//
+// Counted in heartbeat ticks (every 5 min), so three ticks is ~15 minutes of ready
+// work nobody has touched. Kept in the process, like consecutiveFailures above: a
+// restart clears it, which is correct — a restart is also what clears the stall.
+const STALL_TICKS = 3;
+const STALL_REPEAT_TICKS = 12; // then hourly, so a long stall keeps being visible
+const stalledTicks = new Map<string, number>();
+
+async function checkStalledQueues(): Promise<void> {
+  const webhook = process.env.OPS_SLACK_WEBHOOK_URL;
+  if (!webhook) return;
+
+  let queues;
+  try {
+    queues = await getBoss().getQueues();
+  } catch (err) {
+    // The heartbeat's own job is to survive; a stats read that fails is not news.
+    logger.warn("Stalled-queue check skipped", { err: String(err) });
+    return;
+  }
+
+  const stalled: string[] = [];
+  for (const q of queues) {
+    // pg-boss's internal bookkeeping queues and the dead-letter sink have no
+    // consumer BY DESIGN — the DLQ's whole purpose is to hold rows in `created`
+    // until a human looks, so it would alarm forever.
+    if (q.name.startsWith("__pgboss__") || q.name === deadLetterQueue.name) continue;
+
+    if (q.readyCount > 0 && q.activeCount === 0) {
+      const ticks = (stalledTicks.get(q.name) ?? 0) + 1;
+      stalledTicks.set(q.name, ticks);
+      const due = ticks === STALL_TICKS || (ticks > STALL_TICKS && ticks % STALL_REPEAT_TICKS === 0);
+      if (due) {
+        stalled.push(`\`${q.name}\` — ${q.readyCount} waiting, 0 active for ~${ticks * 5} min`);
+      }
+    } else {
+      stalledTicks.delete(q.name);
+    }
+  }
+
+  if (stalled.length === 0) return;
+  await sendSlackMessage(
+    webhook,
+    `:rotating_light: Queue stalled — jobs are ready and nothing is consuming them:\n` +
+      stalled.map((s) => `• ${s}`).join("\n") +
+      `\nA wedged worker loop takes one queue down without touching the others. ` +
+      `Recreating the owning worker clears it: \`docker compose up -d --force-recreate\`.`,
+  );
+}
+
 export async function runHeartbeat() {
+  // Runs before the ping and independently of it: this alarm is about the fleet
+  // being alive but not working, which is exactly the state the dead-man switch
+  // cannot see (the pings keep arriving throughout).
+  await checkStalledQueues();
+
   const url = process.env.HEARTBEAT_URL;
   if (!url) {
     // Silently skipping leaves the box with NO dead-man switch at all, which is

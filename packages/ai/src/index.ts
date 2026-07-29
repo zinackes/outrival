@@ -6,6 +6,7 @@ export {
   getActiveProvider,
   getActiveModel,
   consumeUsage,
+  wasTruncated,
   withAiContext,
 } from "./provider/provider-context";
 export type { TokenUsage } from "./provider/provider-context";

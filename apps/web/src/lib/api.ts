@@ -1295,6 +1295,24 @@ export interface BattleCardStaleness {
   since?: { total: number; byCategory: Array<{ category: string; count: number }> } | null;
 }
 
+// What a generation run is actually doing, read from the queue + the ai_runs the
+// worker writes as it goes. Replaces inferring progress from "has a newer card row
+// appeared yet", which could not tell queued from running from gave-up. `job` is
+// null when the run id is unknown or the queue is unreachable — the caller then
+// falls back to watching the card row, which is exactly the old behaviour.
+export type BattleCardJobStage = "queued" | "gathering" | "checking" | "rendering";
+
+export interface BattleCardJob {
+  state: "queued" | "running" | "done" | "failed";
+  stage: BattleCardJobStage | "done" | "failed";
+  createdAt: string;
+  startedAt: string | null;
+  // The sentence to show the user when the run gave up. A run that aborts (a
+  // truncated model reply, an empty product profile) completes the queue job, so
+  // this is the only thing that says it produced nothing.
+  failure: string | null;
+}
+
 // patch-29 — org-wide battle card list item for /dashboard/battle-cards and the
 // overview "recent" section. productName is null for legacy cards with no product.
 export interface BattleCardSummary {
@@ -3160,6 +3178,11 @@ export const api = {
     request<{ status: string; runId: string }>(
       `/api/competitors/${competitorId}/battle-card/generate${productId ? `?productId=${productId}` : ""}`,
       { method: "POST" },
+    ),
+  // The live state of a run started by generateBattleCard, keyed by its runId.
+  getBattleCardJob: (competitorId: string, runId: string) =>
+    request<{ job: BattleCardJob | null }>(
+      `/api/competitors/${competitorId}/battle-card/job/${runId}`,
     ),
   patchBattleCard: (competitorId: string, content: BattleCardContent, productId?: string) =>
     request<{ battleCard: BattleCard }>(

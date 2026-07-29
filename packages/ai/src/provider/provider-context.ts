@@ -33,6 +33,7 @@ interface Scope {
   id: string | null;
   model: string | null;
   usage: TokenUsage;
+  truncated: boolean;
 }
 
 const zeroUsage = (): TokenUsage => ({ promptTokens: 0, completionTokens: 0, totalTokens: 0 });
@@ -42,7 +43,7 @@ const store = new AsyncLocalStorage<Scope>();
 function scope(): Scope {
   let s = store.getStore();
   if (!s) {
-    s = { id: null, model: null, usage: zeroUsage() };
+    s = { id: null, model: null, usage: zeroUsage(), truncated: false };
     store.enterWith(s);
   }
   return s;
@@ -63,7 +64,7 @@ function scope(): Scope {
  * Node, degrades to zeros elsewhere — exactly the pre-fix behaviour).
  */
 export function withAiContext<T>(fn: () => Promise<T>): Promise<T> {
-  return store.run({ id: null, model: null, usage: zeroUsage() }, fn);
+  return store.run({ id: null, model: null, usage: zeroUsage(), truncated: false }, fn);
 }
 
 export function markProvider(id: string): void {
@@ -89,6 +90,22 @@ export function markUsage(u: TokenUsage): void {
   s.usage.promptTokens += u.promptTokens;
   s.usage.completionTokens += u.completionTokens;
   s.usage.totalTokens += u.totalTokens;
+}
+
+/**
+ * Record that a `complete()` call in this scope hit its output ceiling
+ * (`finish_reason: "length"`). Sticky for the scope: a truncated reply is always
+ * malformed JSON downstream, and "the model ran out of room" is a different repair
+ * (raise maxTokens / shrink the envelope) from "the model wrote bad JSON". Without
+ * it the only trace was a `SyntaxError: Unterminated string` in a worker log.
+ */
+export function markTruncated(): void {
+  scope().truncated = true;
+}
+
+/** Whether any `complete()` call in this scope was cut off at its output ceiling. */
+export function wasTruncated(): boolean {
+  return store.getStore()?.truncated ?? false;
 }
 
 /**

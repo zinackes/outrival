@@ -8,6 +8,8 @@ export {
   work,
   jobData,
   NonRetriable,
+  isAbortedOutput,
+  type AbortedOutput,
   type QueueMode,
   type JobConfig,
   type JobDef,

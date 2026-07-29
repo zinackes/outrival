@@ -16,7 +16,7 @@ import {
   tripGlobalBreaker,
   AIUnavailableError,
 } from "./provider/circuit-breaker";
-import { markProvider, markModel, markUsage } from "./provider/provider-context";
+import { markProvider, markModel, markUsage, markTruncated } from "./provider/provider-context";
 
 // One OpenAI client per pool provider (Cerebras/Groq/Hyperbolic are all
 // OpenAI-compatible, routed by baseURL). maxRetries lets the SDK absorb a transient
@@ -193,6 +193,12 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
         completionTokens: res.usage?.completion_tokens ?? 0,
         totalTokens: res.usage?.total_tokens ?? 0,
       });
+      // A reply cut off at max_tokens is syntactically broken JSON, and the parse
+      // error it produces downstream ("Unterminated string") names the symptom, not
+      // the cause. Flag it on the call scope so the task that owns the budget can
+      // say so — a truncation is repaired by raising maxTokens or shrinking the
+      // prompt envelope, never by retrying the same call.
+      if (res.choices[0]?.finish_reason === "length") markTruncated();
       const content = res.choices[0]?.message?.content ?? "";
       // A 200 with empty content is a failed generation, never a valid answer (every
       // prompt asks for JSON or prose). It happens when a reasoning model's hidden
@@ -298,6 +304,7 @@ async function dispatch(
       completionTokens: outputTokens,
       totalTokens: inputTokens + outputTokens,
     });
+    if (res.stop_reason === "max_tokens") markTruncated();
     const block = res.content[0];
     return block && block.type === "text" ? block.text : "";
   }

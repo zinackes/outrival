@@ -17,7 +17,13 @@ import {
   insertAiQualityCheck,
   type SelfProfile,
 } from "@outrival/db";
-import { generateBattleCard, reviseBattleCard, battleCardEvidence, AI_CONFIG } from "@outrival/ai";
+import {
+  generateBattleCard,
+  reviseBattleCard,
+  battleCardEvidence,
+  wasTruncated,
+  AI_CONFIG,
+} from "@outrival/ai";
 import { checkFaithfulness, isBlocked, blockedReviewEntry } from "../lib/faithfulness-gate";
 import {
   uploadToR2,
@@ -82,7 +88,53 @@ const InputSchema = z.object({
 // cutover). Beyond the header and the signature, one call changes: the summary
 // warm-up no longer waits on a sibling job run (Decision #1 — pg-boss is
 // fire-and-forget), it calls the same body inline.
+//
+// Every giving-up path below is an AbortTaskRunError, which pg-boss records as a
+// COMPLETED job. That is right for the queue (retrying a truncated model reply or a
+// missing profile changes nothing) and was wrong for everyone else: the run wrote no
+// card, sent no notification and left no reason, so the user's page simply fell back
+// to the "no card yet" template and they clicked Generate again. Prod 2026-07-29:
+// three consecutive runs against LangChain, three silent nothings. The wrapper below
+// makes the giving-up visible — the reason reaches the bell for a user who navigated
+// away, and the throw still carries it into the job's output for a post-mortem.
 export async function runGenerateBattleCard(payload: z.input<typeof InputSchema>) {
+  const parsed = InputSchema.safeParse(payload);
+  try {
+    return await generate(payload);
+  } catch (err) {
+    if (parsed.success && parsed.data.notifyOnComplete) {
+      await notifyBattleCardFailed(parsed.data, err);
+    }
+    throw err;
+  }
+}
+
+/** The bell entry for a run that gave up. Best-effort, like every notify here: it
+ * must never replace the real error with an insert failure. */
+async function notifyBattleCardFailed(
+  input: z.output<typeof InputSchema>,
+  err: unknown,
+): Promise<void> {
+  try {
+    const competitor = await db.query.competitors.findFirst({
+      where: eq(competitors.id, input.competitorId),
+      columns: { name: true },
+    });
+    const linkUrl =
+      `/dashboard/competitors/${input.competitorId}/battle-card` +
+      (input.productId ? `?product=${input.productId}` : "");
+    await notifyJobComplete({
+      orgId: input.orgId,
+      title: `Battle card vs ${competitor?.name ?? "this competitor"} could not be generated`,
+      body: err instanceof Error ? err.message : String(err),
+      linkUrl,
+    });
+  } catch (notifyErr) {
+    logger.warn("Battle card failure notification skipped", { err: String(notifyErr) });
+  }
+}
+
+async function generate(payload: z.input<typeof InputSchema>) {
     const input = InputSchema.parse(payload);
     logger.log("Starting generate-battle-card", input);
 
@@ -120,8 +172,10 @@ export async function runGenerateBattleCard(payload: z.input<typeof InputSchema>
     const myCategory = sp?.category?.value ?? org.productProfile?.category ?? null;
     const myValueProp = sp?.valueProp?.value ?? org.productProfile?.valueProp ?? "";
     if (!myCategory) {
+      // Reaches the user's bell now, so it names what they can do about it rather
+      // than the org id they never see.
       throw new AbortTaskRunError(
-        `No product profile for org ${input.orgId} — onboarding incomplete`,
+        "Your product profile is empty, so there is nothing to compare this competitor against. Add your product's category and value proposition first.",
       );
     }
     const otherProducts = product
@@ -266,15 +320,30 @@ export async function runGenerateBattleCard(payload: z.input<typeof InputSchema>
 
     // Ops quality logging (patch-02): success / parse_failed (null) / error.
     const attribution = { orgId: org.id, competitorId: competitor.id };
+    // Read the truncation flag INSIDE the closure: loggedAi opens the AI context
+    // scope, so it is already gone by the time the await returns.
+    let outputTruncated = false;
     let content = await loggedAi(
       "battle_card",
       AI_CONFIG.insights,
-      () => generateBattleCard(battleCardInput),
+      async () => {
+        const draft = await generateBattleCard(battleCardInput);
+        outputTruncated = wasTruncated();
+        return draft;
+      },
       attribution,
     );
 
     if (!content) {
-      throw new AbortTaskRunError("Battle card generation returned null");
+      // Two very different causes wear the same null. Say which: a truncation is
+      // repaired by the token budget in packages/ai, a malformed reply by the
+      // prompt or the provider. "returned null" sent everyone looking in the wrong
+      // place — and told the user nothing at all.
+      throw new AbortTaskRunError(
+        outputTruncated
+          ? "The model's reply was cut off before the card was complete. Try again — if it keeps happening, this competitor has more evidence than the card budget allows."
+          : "The model returned an unreadable card. Try again in a moment.",
+      );
     }
 
     // Phase 2A — verification pass with teeth: re-read the draft against the same

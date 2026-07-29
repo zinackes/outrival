@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { withAiCache } from "@outrival/shared";
 import { complete } from "../provider";
+import { wasTruncated } from "../provider/provider-context";
 import { safeParseJson } from "../lib/parse";
 import { validateCitations, type Citation, type GroundingValidation } from "./citations";
 import {
@@ -136,7 +137,17 @@ export async function groundedAiCall<T>(
       // confidence, so the whole pipeline never regresses on an un-enveloped reply.
       const bare = safeParseJson(raw, params.schema);
       if (!bare.ok) {
-        console.error(`grounded ${params.taskName} parse failed:`, bare.error, "raw:", raw.slice(0, 500));
+        // Name the cause, not the symptom: a reply cut off at max_tokens ALWAYS
+        // fails to parse, and "raise the budget" is a different repair from "the
+        // model wrote bad JSON". Reading the flag here means every grounded task
+        // gets the distinction, not just the one that was found breaking.
+        const cause = wasTruncated() ? "truncated at maxTokens" : "malformed";
+        console.error(
+          `grounded ${params.taskName} parse failed (${cause}):`,
+          bare.error,
+          "raw:",
+          raw.slice(0, 500),
+        );
         return null;
       }
       output = bare.value;

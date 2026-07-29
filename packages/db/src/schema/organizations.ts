@@ -1,4 +1,5 @@
 import { pgTable, text, timestamp, boolean, jsonb, pgEnum } from "drizzle-orm/pg-core";
+import type { SourceType } from "@outrival/shared";
 
 export const planEnum = pgEnum("plan", ["free", "starter", "pro", "business"]);
 export const billingPeriodEnum = pgEnum("billing_period", ["monthly", "yearly"]);
@@ -46,6 +47,12 @@ export const organizations = pgTable("organizations", {
       keywords: "",
     }),
   detectionLastRunAt: timestamp("detection_last_run_at"),
+  // Which sources a newly-added competitor starts monitoring (Settings → General →
+  // "Monitoring defaults"). Narrowed by the plan at seed time, so storing a source
+  // the org can't reach yet is harmless — it starts applying on upgrade. null = the
+  // built-in default set, kept nullable rather than defaulted so widening that set
+  // later reaches every org that never customised it.
+  defaultSources: jsonb("default_sources").$type<SourceType[]>(),
   onboardingCompleted: boolean("onboarding_completed").notNull().default(false),
   // Project stage chosen at onboarding step 1: "idea" | "document" | "developing" | "live".
   // Drives which input mode the user went through and lets us adapt re-onboarding.

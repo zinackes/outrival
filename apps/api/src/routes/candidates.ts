@@ -1,12 +1,11 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
-import { detectPlatform, scrapeMonitor, USER_SCRAPE_PRIORITY } from "@outrival/queue";
+import { detectPlatform } from "@outrival/queue";
 import {
   competitorCandidates,
   competitors,
   discoveryRuns,
-  monitors,
   organizations,
   products,
   signals,
@@ -39,6 +38,7 @@ import {
   dimensionUsage,
 } from "../lib/plan";
 import { detectCandidatesForProduct } from "../lib/detect-candidates";
+import { seedCompetitorMonitors, enqueueFirstScrapes } from "../lib/seed-monitors";
 
 type Variables = { user: { id: string } };
 
@@ -556,48 +556,24 @@ candidatesRouter.post("/:id/add", async (c) => {
     });
   }
 
-  // Stamp scrapeStartedAt on seed so the detail page shows the first scrape as
-  // in-progress (isServerScraping derives "running" from scrapeStartedAt > lastRunAt).
-  // Without it a freshly-added competitor looks idle while its first scrape runs.
-  const scrapeStartedAt = new Date();
-  const monitorRows = await db
-    .insert(monitors)
-    .values([
-      { competitorId: competitor.id, sourceType: "homepage", frequency: "daily", scrapeStartedAt },
-      { competitorId: competitor.id, sourceType: "pricing", frequency: "daily", scrapeStartedAt },
-      { competitorId: competitor.id, sourceType: "blog", frequency: "weekly", scrapeStartedAt },
-      // Internal news/funding anchor (weekly) — see competitors.ts POST. Google
-      // News RSS by brand → diff surfaces company-level events.
-      { competitorId: competitor.id, sourceType: "news", frequency: "weekly", scrapeStartedAt },
-      // Internal subdomains anchor (weekly) — see competitors.ts POST. Certificate
-      // Transparency (crt.sh) → diff surfaces new live subdomains (expansion / pre-launch).
-      { competitorId: competitor.id, sourceType: "subdomains", frequency: "weekly", scrapeStartedAt },
-      // Internal YouTube anchor (weekly) — see competitors.ts POST. Channel resolved
-      // from a homepage link → diff of the sorted video list surfaces new uploads.
-      { competitorId: competitor.id, sourceType: "youtube", frequency: "weekly", scrapeStartedAt },
-      // Internal Hacker News anchor (weekly) — see competitors.ts POST. HN Algolia by
-      // brand → objectID-set diff surfaces Show HN launches / traction mentions.
-      { competitorId: competitor.id, sourceType: "hackernews", frequency: "weekly", scrapeStartedAt },
-      // Internal well-known anchor (weekly) — see competitors.ts POST. /.well-known +
-      // llms.txt fingerprint diff surfaces a mobile-app launch / an llms.txt manifest.
-      { competitorId: competitor.id, sourceType: "wellknown", frequency: "weekly", scrapeStartedAt },
-    ])
-    .returning();
+  // Same seeding as the manual-add path (one helper, so the two can no longer
+  // drift — this path was still missing the sitemap anchor).
+  const orgRow = await db.query.organizations.findFirst({
+    where: eq(organizations.id, orgId),
+    columns: { defaultSources: true },
+  });
+  const monitorRows = await seedCompetitorMonitors({
+    competitorId: competitor.id,
+    plan,
+    orgDefaultSources: orgRow?.defaultSources ?? null,
+  });
 
   await db
     .update(competitorCandidates)
     .set({ status: "added", competitorId: competitor.id })
     .where(eq(competitorCandidates.id, candidate.id));
 
-  for (const m of monitorRows) {
-    try {
-      await enqueueJob(scrapeMonitor, { monitorId: m.id, force: true }, {
-        priority: USER_SCRAPE_PRIORITY,
-      });
-    } catch (e) {
-      console.error("Failed to trigger initial scrape", { monitorId: m.id, error: String(e) });
-    }
-  }
+  await enqueueFirstScrapes(monitorRows);
 
   return c.json({ competitor, monitors: monitorRows });
 });

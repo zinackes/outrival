@@ -2,6 +2,8 @@ import { test, expect } from "bun:test";
 import {
   shortDate,
   mergeTrendsByDate,
+  buildPricingSeries,
+  buildReviewScoreSeries,
 } from "../src/app/dashboard/competitors/[id]/competitor-detail/charts";
 
 // The analytics tables store `recorded_at` as a naive `timestamp`, so the API
@@ -36,4 +38,56 @@ test("mergeTrendsByDate orders points by instant, not by label", () => {
   expect(merged).toHaveLength(2);
   expect(merged[0]).toEqual({ date: shortDate("2026-06-01 12:00:00+00"), Engineering: 4, Sales: 2 });
   expect(merged[1]).toEqual({ date: shortDate("2026-07-01 12:00:00+00"), Engineering: 7 });
+});
+
+const tier = (plan: string, price: number | null, recorded_at: string) => ({
+  plan_name: plan,
+  price,
+  currency: "USD",
+  billing_period: "monthly",
+  recorded_at,
+});
+
+test("buildPricingSeries orders captures by instant, not by the month label", () => {
+  // The archive backfill seeds pricing months apart, so the labels sort lexically
+  // into "Apr, Jan, Jul, May" — the exact scramble seen on a first scrape.
+  const { points } = buildPricingSeries([
+    tier("Agency", 79, "2026-04-14 12:00:00+00"),
+    tier("Agency", 75, "2026-01-14 12:00:00+00"),
+    tier("Agency", 89, "2026-07-28 12:00:00+00"),
+    tier("Agency", 79, "2026-05-25 12:00:00+00"),
+  ]);
+
+  expect(points.map((p) => p.Agency)).toEqual([75, 79, 79, 89]);
+});
+
+test("buildPricingSeries keeps the same day of two years as two captures", () => {
+  const { points } = buildPricingSeries([
+    tier("Agency", 59, "2025-04-14 12:00:00+00"),
+    tier("Agency", 79, "2026-04-14 12:00:00+00"),
+  ]);
+
+  expect(points.map((p) => p.Agency)).toEqual([59, 79]);
+});
+
+test("buildPricingSeries drops quote-based tiers from the points but keeps them in byPlan", () => {
+  const { points, byPlan } = buildPricingSeries([
+    tier("Agency", 79, "2026-07-28 12:00:00+00"),
+    tier("Enterprise", null, "2026-07-28 12:00:00+00"),
+  ]);
+
+  expect(points).toHaveLength(1);
+  expect(points[0]).toEqual({ date: shortDate("2026-07-28 12:00:00+00"), Agency: 79 });
+  expect(Object.keys(byPlan).sort()).toEqual(["Agency", "Enterprise"]);
+});
+
+test("buildReviewScoreSeries orders captures by instant, not by the month label", () => {
+  const { points, sources } = buildReviewScoreSeries([
+    { source: "g2", score: 4.4, recorded_at: "2026-04-14 12:00:00+00" },
+    { source: "g2", score: 4.1, recorded_at: "2026-01-14 12:00:00+00" },
+    { source: "g2", score: 4.6, recorded_at: "2026-07-28 12:00:00+00" },
+  ]);
+
+  expect(sources).toEqual(["g2"]);
+  expect(points.map((p) => p.g2)).toEqual([4.1, 4.4, 4.6]);
 });

@@ -273,6 +273,22 @@ function benignSkipFrom(err: unknown, sourceType: string): { reason: string } | 
     if (msg.includes("crt.sh:")) return { reason: "crtsh_unavailable" };
     if (msg.includes("no_live_subdomains")) return { reason: "no_live_subdomains" };
   }
+  // docs / roadmap are now seeded by default (Settings → Monitoring defaults), so
+  // "this competitor publishes none" went from a rare user choice to the common case.
+  // Both facts are stable absences, already read as `not_available` by the coverage
+  // layer (NO_TARGET_MARKERS) — burning the 3-strike budget on them would mark
+  // healthy competitors unscrapable and flood the ops failure rate. Note the
+  // deliberate omissions: docs `no_docs_index` (docs exist but expose no enumerable
+  // index — the user can point us at a URL) and a roadmap parse failure on a portal
+  // we DID reach both stay loud.
+  if (sourceType === "docs" && msg.includes("no_docs_surface")) {
+    return { reason: "no_docs_surface" };
+  }
+  if (sourceType === "roadmap") {
+    if (msg.includes("no_roadmap_portal")) return { reason: "no_roadmap_portal" };
+    if (msg.includes("portal_private")) return { reason: "portal_private" };
+    if (msg.includes("portal_empty")) return { reason: "portal_empty" };
+  }
   return null;
 }
 
@@ -347,7 +363,12 @@ async function handleBenignSkip(
       consecutiveFailures: 0,
       markedUnscrapable: false,
       lastFailedAt: null,
-      lastError: null,
+      // The reason is KEPT (with lastFailedAt cleared, so nothing reads this as a
+      // failure) because it is the only evidence the read side has that the surface
+      // genuinely doesn't exist: sourceState matches it against NO_TARGET_MARKERS to
+      // say "they publish no developer docs" instead of claiming we're collecting
+      // them. Clearing it made a benign skip indistinguishable from a healthy run.
+      lastError: reason,
     })
     .where(eq(monitors.id, monitor.id));
   await logScrapeRun({

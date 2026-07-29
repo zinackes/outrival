@@ -718,7 +718,22 @@ carte (état live uniquement).
                    le settle borné expire sur le shell vide (mesuré : atlassian.com ne
                    capturait ses postes qu'1 run sur 3). Les rendus jobs attendent donc,
                    borné, que le DOM cesse de grossir. Une page déjà statique sort au
-                   premier poll : coût nul là où c'est inutile)
+                   premier poll : coût nul là où c'est inutile.
+                   EXPANSION « SHOW MORE » (`SCRAPE_EXPAND_*`) : une liste stabilisée
+                   n'est encore que sa PREMIÈRE page quand le board pagine côté client.
+                   Workable rend 10 lignes sous un en-tête qui annonce « 56 jobs », donc
+                   la capture était une tranche indiscernable d'une liste complète et
+                   tout ce qui suivait était extrait comme non-ouvert (mesuré sur
+                   careers.exotec.com : 10 postings stockés pour 56 postes ouverts).
+                   Les rendus jobs cliquent donc le contrôle « Show more » / « Voir plus »
+                   de la liste tant qu'il AJOUTE des lignes. C'est la croissance du DOM
+                   qui valide chaque clic : un « Show more » de description se replie en
+                   « Show less » au premier, un filtre qui dit « More » n'ajoute rien et
+                   arrête la boucle. Les ancres qui navigueraient ne sont jamais cliquées
+                   (partir perdrait la capture). La pagination NUMÉROTÉE (« Next », « 2 »)
+                   est hors périmètre : elle REMPLACE les lignes, donc la suivre sans
+                   logique de fusion capturerait la DERNIÈRE page — pire que la tranche
+                   actuelle. Bornée en clics ET en wall-clock)
                   (hiring-velocity : sur un run ATS AUTORITATIF, extract-jobs bucketise
                    les offres en 8 départements canoniques — normalizeDepartment pur,
                    map déterministe + fallback titre, unknown compté — et UPSERT
@@ -1171,7 +1186,9 @@ HOMEPAGE_SCROLL_PASSES=2              # patch-16 — progressive scroll passes (
 HOMEPAGE_LAZY_WAIT_MS=2000            # patch-16 — wait after each scroll pass
 HOMEPAGE_NARRATIVE_MIN_SEVERITY=medium  # patch-16 — min severity to spend an AI narrative
 HOMEPAGE_SCREENSHOT_ENABLED=true     # capture a homepage screenshot (floors the cascade at L1 = browser render per homepage scrape) → pHash visual-redesign + before/after visual diff. false = cheap L0 fetch, no screenshot
-JOBS_RENDER_ENABLED=true             # jobs source only — render the committed careers/board page at L1 + scroll so client-injected openings (SSR "Loading positions…" placeholders) load before extraction. Path probing stays cheap L0; only the kept page + off-site hops pay a render. false = previous L0-only behaviour exactly
+JOBS_RENDER_ENABLED=true             # jobs source only — render the committed careers/board page at L1 + scroll + expand its "Show more" pagination, so client-injected openings (SSR "Loading positions…" placeholders) AND the rows past page 1 both load before extraction. Path probing stays cheap L0; only the kept page + off-site hops pay a render. false = previous L0-only behaviour exactly
+SCRAPE_EXPAND_MAX_CLICKS=25          # jobs renders — cap on "Show more" clicks per capture (~250 rows at Workable's 10/page). Each click must GROW the DOM or the loop stops, so this is a runaway guard, not a tuning knob. 0 disables expansion alone
+SCRAPE_EXPAND_MAX_MS=30000           # jobs renders — wall-clock cap on the whole expansion, so an infinite-scroll list can never hold a scrape open
 PRICING_TOGGLE_CAPTURE_ENABLED=true  # pricing source only — after the primary (default-period) capture, click the Monthly↔Annual toggle and append the other period's prices as a HIDDEN block so the extractor sees both periods (only the default state renders on JS pages). Best-effort + primary-capture-first (never affects the snapshot); the hidden block is stripped by extractContent (change-detection) so a flaky toggle can't fake a pricing change, but survives htmlToText for extraction. Browser levels only. false = default-period only. See docs/pricing-coverage-2026.md
 PRICING_RENDER_RETRY_ENABLED=true    # pricing source only — when the L0 (no-browser) capture contains no harvestable price, re-scrape once with a browser render (local L1, no proxy). Catches client-rendered pricing pages that L0 accepts as text-rich marketing shells. false = previous L0-accepting behaviour exactly
 PRICING_HARVEST_ENABLED=true         # pricing source only — L2 harvest floor (docs/pricing-coverage-2026.md Part II). When the staged extractor (structured→cache→heal→AI) returns no plans yet the page visibly carries prices, an AI-free DOM harvest recovers the entry price / band / per-card rows the SaaS-tuned AI floor drops on hosting/e-commerce/configurator layouts. Self-gating (no visible price → no-op), 0 AI. false = exactly today's behaviour (empty tiers when the AI floor finds none)

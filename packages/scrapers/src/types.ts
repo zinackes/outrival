@@ -53,6 +53,16 @@ export interface ScrapeOptions {
    */
   captureBillingToggle?: boolean;
   /**
+   * Click the listing's own "Show more" / "Load more" control until it stops adding
+   * rows, before capture. A client-paginated board puts only its FIRST page in the
+   * DOM — a Workable board shows 10 of 56 openings — and nothing downstream can tell
+   * that slice apart from a complete list, so the roles past the fold were counted as
+   * "not open". Bounded by clicks and wall-clock, growth-validated (a control that
+   * adds nothing ends the loop), and best-effort: a failure keeps the capture as-is.
+   * Default off; the jobs scraper enables it on the pages it commits to rendering.
+   */
+  expandLists?: boolean;
+  /**
    * Floor the cascade at L1 (browser render) even when L0 would have "succeeded".
    * Unlike `screenshot`, no PNG is captured — this is purely "L0's HTML is not
    * trustworthy for this page, render it". The jobs scraper uses it for careers /

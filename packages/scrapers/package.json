@@ -107,6 +107,10 @@
       "types": "./src/jobs/hiring.ts",
       "default": "./src/jobs/hiring.ts"
     },
+    "./jobs-signals": {
+      "types": "./src/jobs/signals.ts",
+      "default": "./src/jobs/signals.ts"
+    },
     "./structured-data": {
       "types": "./src/structured-data/index.ts",
       "default": "./src/structured-data/index.ts"

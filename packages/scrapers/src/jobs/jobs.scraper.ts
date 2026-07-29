@@ -172,11 +172,22 @@ export async function scrape(
   // rarely arrives and the bounded settle expires on the empty shell — measured on
   // atlassian.com, which captured the roles in only 1 run out of 3 even once the
   // right page was reached. Holding for the DOM to stop growing closes that gap.
+  // expandLists: and reaching a settled listing is STILL not enough. A board that
+  // paginates client-side settles on its first page — Workable renders 10 rows and a
+  // "Show more", while its own header reads "56 jobs" — so the capture was a slice
+  // that read as the whole list, and every role past the fold was extracted as
+  // absent. Measured on careers.exotec.com: 10 postings stored against 56 open.
   const renderPage = (u: string) =>
     scrapePage(
       u,
       renderJobs
-        ? { ...probeOpts, render: true, progressiveScroll: true, waitForStableContent: true }
+        ? {
+            ...probeOpts,
+            render: true,
+            progressiveScroll: true,
+            waitForStableContent: true,
+            expandLists: true,
+          }
         : probeOpts,
     );
 

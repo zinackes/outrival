@@ -20,6 +20,7 @@ import { navWaitUntil, settleAfterNav } from "./nav-strategy";
 import { isCloudflareChallenge } from "./block-detection";
 import { collapseAnimatedCounters } from "./normalize-text";
 import { extractContent, isContentCollapsed } from "./extract-content";
+import { EXPAND_LABEL, EXPAND_LABEL_MAX_CHARS } from "./expand-controls";
 
 // Cascade level a scrape was served from. 0/1 are free (no proxy); 2 uses the
 // configured datacenter egress. Stored per monitor as `requiresLevel` once learned.
@@ -75,6 +76,14 @@ export interface PatchrightOptions {
    * instead. Default off; a page that is already static exits after one poll.
    */
   waitForStableContent?: boolean;
+  /**
+   * Click the list's own "Show more" / "Load more" control until it stops adding
+   * rows (bounded). A paginated listing renders its FIRST page only — a Workable
+   * board shows 10 of 56 — so the capture is a silent slice of the real list while
+   * the page's own header still announces the full count. Default off; only the
+   * jobs render path asks for it. See ScrapeOptions.expandLists.
+   */
+  expandLists?: boolean;
 }
 
 // Subresources safe to abort before they hit the (paid) proxy. media + font are
@@ -364,6 +373,14 @@ export async function capturePage(
     await waitForStableContent(page).catch(() => {});
   }
 
+  // A listing that paginates client-side has only its FIRST page in the DOM at this
+  // point. Nothing above can see that: the shell settled, the rows arrived, the
+  // capture looks complete — it just holds 10 of 56 openings. Click the list's own
+  // "Show more" until it stops growing. Best-effort; a failure keeps the page we have.
+  if (options.expandLists) {
+    await expandPaginatedList(page).catch(() => {});
+  }
+
   let html = await page.content();
   if (isCloudflareChallenge(html))
     return { ok: false, statusCode, failureReason: "cloudflare_challenge", durationMs: Date.now() - startedAt };
@@ -434,6 +451,74 @@ async function waitForStableContent(page: Page): Promise<void> {
     if (size === last) return;
     last = size;
     await page.waitForTimeout(pollMs);
+  }
+}
+
+/**
+ * Expand a client-paginated list by clicking its own "Show more" control until it
+ * stops adding rows (see PatchrightOptions.expandLists).
+ *
+ * Every click is validated by growth: the DOM has to be BIGGER afterwards or the
+ * loop stops. That single rule is what keeps this safe on pages it wasn't meant
+ * for — a "Show more" that expands a description fires once and turns into "Show
+ * less"; a filter chip that happens to read "More" changes nothing and ends the
+ * loop on its first pass. Anchors that would navigate are never clicked: leaving
+ * the page would lose the capture entirely.
+ *
+ * Bounded twice (clicks and wall-clock) so an infinite-scroll list can't hold a
+ * scrape open. Hitting the cap is not silent — extract-jobs compares what it
+ * extracted against the count the page itself advertises and warns on a shortfall.
+ */
+async function expandPaginatedList(page: Page): Promise<void> {
+  const maxClicks = Number(process.env.SCRAPE_EXPAND_MAX_CLICKS ?? 25);
+  const maxMs = Number(process.env.SCRAPE_EXPAND_MAX_MS ?? 30000);
+  const deadline = Date.now() + maxMs;
+
+  for (let clicks = 0; clicks < maxClicks && Date.now() < deadline; clicks++) {
+    const before = await page.evaluate(() => document.body?.innerHTML.length ?? 0);
+    // The label rule is shared with isExpandControlLabel (unit-tested there) but has
+    // to cross into the page as a string: nothing from this module exists in there.
+    const clicked = await page.evaluate(({ source, maxLabel }) => {
+      const re = new RegExp(source, "i");
+      const candidates = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          'button, [role="button"], a, input[type="button"], input[type="submit"]',
+        ),
+      );
+      for (const el of candidates) {
+        // An <a> with a real href navigates — that would replace the page we are
+        // capturing. Only the "#"/JS-handler kind is a safe in-place control.
+        if (el instanceof HTMLAnchorElement) {
+          const href = el.getAttribute("href") ?? "";
+          if (href && href !== "#" && !href.toLowerCase().startsWith("javascript:")) continue;
+        }
+        if ((el as HTMLButtonElement).disabled) continue;
+        if (el.getAttribute("aria-disabled") === "true") continue;
+        const rect = el.getBoundingClientRect();
+        if (rect.width < 1 || rect.height < 1) continue;
+        if (getComputedStyle(el).visibility === "hidden") continue;
+        const label = (
+          el.innerText ||
+          (el as HTMLInputElement).value ||
+          el.getAttribute("aria-label") ||
+          el.textContent ||
+          ""
+        )
+          .replace(/\s+/g, " ")
+          .trim();
+        if (label.length === 0 || label.length > maxLabel || !re.test(label)) continue;
+        el.scrollIntoView({ block: "center" });
+        el.click();
+        return true;
+      }
+      return false;
+    }, { source: EXPAND_LABEL.source, maxLabel: EXPAND_LABEL_MAX_CHARS });
+    if (!clicked) return;
+
+    // The new rows arrive from an XHR, exactly like the first page did.
+    await waitForStableContent(page).catch(() => {});
+    const after = await page.evaluate(() => document.body?.innerHTML.length ?? 0);
+    if (after <= before) return; // the control added nothing — it wasn't pagination
   }
 }
 

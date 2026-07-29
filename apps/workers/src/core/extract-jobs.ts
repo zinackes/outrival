@@ -13,6 +13,7 @@ import {
 import { getFromR2, normalizeDomain } from "@outrival/shared";
 import { parseAtsJobsFromHtml } from "@outrival/scrapers/jobs-ats";
 import { bucketJobCounts, isoWeekStart } from "@outrival/scrapers/jobs-hiring";
+import { declaredOpenRoles } from "@outrival/scrapers/jobs-signals";
 import { jobsFromStructured } from "@outrival/scrapers/structured-data";
 import { htmlToText } from "../lib/html-to-text";
 import { insertJobCounts, upsertHiringMetrics, loggedAi, logExtractionRun } from "../lib/analytics";
@@ -115,6 +116,24 @@ export async function runExtractJobs(payload: z.input<typeof InputSchema>) {
         salaryCurrency: null,
       }));
       logger.log("Jobs extracted", { count: jobs.length, resolution: result.resolution });
+    }
+
+    // Cross-check the extraction against the count the page itself prints. Every way
+    // this pipeline undercounts — a client-paginated board captured on page 1, an AI
+    // window that cut the list, a board past its page cap — produces a SHORT list that
+    // is otherwise indistinguishable from a complete one, so nothing downstream can
+    // flag it: the Hiring tab showed 10 roles for a competitor whose own page said 54.
+    // Advisory only (site phrasing is far too varied to gate on), but it turns a silent
+    // slice into a line someone can find.
+    const declared = declaredOpenRoles(htmlToText(html));
+    if (declared !== null && jobs.length < declared * 0.75 && declared - jobs.length >= 5) {
+      logger.warn("Extracted far fewer roles than the page advertises", {
+        competitorId: input.competitorId,
+        snapshotId: input.snapshotId,
+        extracted: jobs.length,
+        declared,
+        path: atsJobs ? "ats" : "page",
+      });
     }
 
     const existing = await db.query.jobPostings.findMany({

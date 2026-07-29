@@ -76,6 +76,7 @@ export async function scrapePage(
     screenshot: options.screenshot,
     blockResources: options.blockResources,
     captureBillingToggle: options.captureBillingToggle,
+    expandLists: options.expandLists,
     render: options.render,
   });
 

@@ -16,9 +16,17 @@ export const JobsSchema = z.object({
 export type ExtractedJob = z.infer<typeof JobPostingSchema>;
 export type JobsExtraction = z.infer<typeof JobsSchema>;
 
+// A careers page is marketing copy FIRST and a listing second: exotec.com/careers
+// spends 7.6k characters on culture, teams and the site chrome before a single role
+// appears. The old 10k window therefore cut the page mid-list on any real board, and
+// the roles that fell outside it were extracted as "not open" — indistinguishable
+// downstream from a closed posting. Sized to hold the copy AND a large listing;
+// gpt-oss-120b reads 40k characters (~10k tokens) without trouble.
+const MAX_PAGE_CHARS = 40000;
+
 export async function extractJobs(careersPageText: string): Promise<JobsExtraction | null> {
   const prompt = `<careers_page>
-${careersPageText.slice(0, 10000)}
+${careersPageText.slice(0, MAX_PAGE_CHARS)}
 </careers_page>
 
 <task>
@@ -42,7 +50,9 @@ Reply ONLY with a valid JSON object, no markdown and no surrounding text.
 }
 </format>`;
 
-  const raw = await complete(AI_CONFIG.classification, { prompt, json: true, maxTokens: 4096 });
+  // A 56-role board already spends ~2k tokens of JSON; 4096 left no headroom, and an
+  // answer cut mid-object fails the parse and drops the whole extraction.
+  const raw = await complete(AI_CONFIG.classification, { prompt, json: true, maxTokens: 8192 });
   const result = safeParseJson(raw, JobsSchema);
   if (!result.ok) {
     console.error("Jobs extraction parse failed:", result.error, "raw:", raw.slice(0, 500));

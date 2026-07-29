@@ -87,6 +87,25 @@ function str(x: unknown): string {
 }
 
 /**
+ * Whether a `{brand}.canny.io` page belongs to a company that actually exists.
+ *
+ * Canny answers 200 on EVERY subdomain: an unclaimed brand gets the same shell as a
+ * live portal, and the only thing that tells them apart is `company.notFound` in the
+ * state island. A reachability probe therefore cannot validate the guessed address —
+ * this can.
+ *
+ * Deliberately narrow: only an explicit `notFound: true` disqualifies. An island we
+ * cannot read means "not proven a portal" (the caller keeps looking), and an island
+ * that simply lacks the key is left alone, so a Canny rename degrades to the
+ * behaviour we had before this check rather than hiding every real portal.
+ */
+export function cannyCompanyExists(html: string): boolean {
+  const island = extractStateIsland(html);
+  if (!island) return false;
+  return rec(island.company)?.notFound !== true;
+}
+
+/**
  * Whether the island shows at least one PUBLIC board. A Canny page whose boards are
  * all private/custom-access renders without posts; without this check that page would
  * look like an empty portal instead of a closed one.

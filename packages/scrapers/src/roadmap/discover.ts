@@ -1,7 +1,7 @@
 import * as cheerio from "cheerio";
 import { normalizeHostname } from "@outrival/shared";
 import { safeFetch } from "../lib/guarded-fetch";
-import { isCannyHost } from "./canny";
+import { cannyCompanyExists, isCannyHost } from "./canny";
 import { matchProductboardPortal } from "./productboard";
 import type { RoadmapVendor } from "./types";
 
@@ -9,8 +9,8 @@ import type { RoadmapVendor } from "./types";
  * Find a competitor's public roadmap / feedback portal, cheapest probe first:
  *
  *   1. the URL we were given is already a portal (the user's override wins verbatim);
- *   2. `{brand}.canny.io` — the default Canny address, derivable with no request
- *      beyond the reachability probe;
+ *   2. `{brand}.canny.io` — the default Canny address, derivable from the domain and
+ *      confirmed by reading the page's state island (Canny 200s on any subdomain);
  *   3. portal subdomains on the competitor's own domain (feedback./roadmap./ideas./
  *      portal.) — where a Canny or ProductBoard custom domain lives;
  *   4. a nav/footer link on the homepage, which is the only way to find a portal on
@@ -162,10 +162,16 @@ export async function discoverRoadmapPortal(
 
   // `{brand}.canny.io` — the address Canny hands out by default. The brand is the
   // registrable domain's first label (acme.com → acme.canny.io).
+  //
+  // Canny serves 200 on every subdomain, claimed or not, so this guess is confirmed
+  // by the state island and not by reachability. With a HEAD probe EVERY competitor
+  // "had" a Canny portal: the steps below never ran, and the phantom page — which
+  // parses fine, with no company and no boards — was reported as `portal_private`.
   const brand = domain.split(".")[0];
   if (brand) {
     const cannyUrl = `https://${brand}.canny.io/`;
-    if (await reachable(cannyUrl)) {
+    const cannyHtml = await fetchHtml(cannyUrl);
+    if (cannyHtml !== null && cannyCompanyExists(cannyHtml)) {
       return { url: cannyUrl, vendor: "canny", source: "canny_subdomain" };
     }
   }

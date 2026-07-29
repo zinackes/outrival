@@ -447,11 +447,34 @@ describe("portal discovery", () => {
     const found = await discoverRoadmapPortal("https://acme.com/product", {
       reachable: async (u) => {
         probed.push(u);
-        return u === "https://acme.canny.io/";
+        return false;
+      },
+      fetchHtml: async (u) => {
+        probed.push(u);
+        return u === "https://acme.canny.io/" ? CANNY_HTML : null;
       },
     });
     expect(found).toEqual({ url: "https://acme.canny.io/", vendor: "canny", source: "canny_subdomain" });
     expect(probed[0]).toBe("https://acme.canny.io/");
+  });
+
+  test("an unclaimed {brand}.canny.io is not a portal — Canny 200s for every brand", async () => {
+    // The shell Canny serves for a subdomain nobody owns: the island parses, and says
+    // so. Reachability cannot see this, which is why the probe reads the page.
+    const unclaimed = cannyPageWith((state) => {
+      state.company = { error: null, loading: false, notFound: true };
+      state.boards = { items: {} };
+      state.posts = {};
+      state.roadmap = { hasNextPage: false };
+    });
+    const found = await discoverRoadmapPortal("https://acme.com", {
+      reachable: async (u) => u === "https://feedback.acme.com/",
+      fetchHtml: async (u) => (u === "https://acme.canny.io/" ? unclaimed : null),
+    });
+    // Before the island check this returned the phantom Canny page, so the real
+    // portal one probe further down was never reached and the scrape reported
+    // `portal_private` — a portal that does not exist, called closed.
+    expect(found).toEqual({ url: "https://feedback.acme.com/", vendor: null, source: "subdomain" });
   });
 
   test("finds a custom-domain portal on a conventional subdomain", async () => {

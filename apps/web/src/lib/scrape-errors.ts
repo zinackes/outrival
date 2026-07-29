@@ -25,6 +25,20 @@ export function friendlyScrapeError(
 
   const e = raw.toLowerCase();
 
+  // Roadmap portals: three outcomes that are facts about the competitor, not scrape
+  // failures. The Sources page reads them as "not available" (NO_TARGET_MARKERS in
+  // @outrival/shared); without these branches the same monitor read "The scrape
+  // failed unexpectedly" everywhere else it surfaces.
+  if (e.includes("no_roadmap_portal")) {
+    return "We couldn't find a public roadmap or feedback portal for this competitor. If they have one, point us at it in the monitor settings.";
+  }
+  if (e.includes("portal_private")) {
+    return "This roadmap portal is private, so there's nothing public to collect.";
+  }
+  if (e.includes("portal_empty")) {
+    return "This roadmap portal is public but has no entries yet. We'll pick them up as they're posted.";
+  }
+
   // The crawler walked a list of known paths (e.g. /pricing, /tarifs, /plans) and none worked.
   if (e.includes("no candidate path succeeded")) {
     return `Couldn't find a ${page} on this site. None of the usual URLs responded.`;

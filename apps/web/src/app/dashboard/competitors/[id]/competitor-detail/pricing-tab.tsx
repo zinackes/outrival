@@ -543,6 +543,23 @@ function PricingComparison({
     );
   }
 
+  // Nothing of theirs left to rank: the manual overlay can hide every captured
+  // plan, and the ladder below reads theirsSorted[0] as their entry tier. An
+  // empty list threw there and took the whole tab down with it (the state a user
+  // lands in right after saving a plan edit that removed every row), so say there
+  // is nothing to compare instead.
+  if (theirsSorted.length === 0) {
+    return (
+      <div className="flex flex-col gap-1">
+        <p className="text-sm font-medium">Pricing comparison</p>
+        <p className="text-dense text-muted-foreground">
+          No current plans for {competitorName} to compare against. Add them under
+          &ldquo;Plan detail and manual overrides&rdquo; below.
+        </p>
+      </div>
+    );
+  }
+
   const rates = fx?.rates ?? null;
   const ourCurrency = oursSorted[0]?.currency ?? theirsSorted[0]?.currency ?? "";
 

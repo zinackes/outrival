@@ -20,7 +20,7 @@ import {
   splitDiffText,
   SIGNAL_CATEGORIES,
 } from "@outrival/shared";
-import { complete, withAiContext, AI_CONFIG } from "@outrival/ai";
+import { complete, withAiContext, explainMateriality, AI_CONFIG } from "@outrival/ai";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
@@ -605,6 +605,9 @@ signalsRouter.get("/:id/detail", async (c) => {
       // The lines the change added and removed. For every source with no
       // structured breakdown this is the only evidence the signal can show.
       diffText: changes.diffText,
+      // The three sub-scores the severity band was computed from. Null on the
+      // deterministically synthesized paths and on pre-materiality signals.
+      materiality: signals.materiality,
       competitorId: competitors.id,
       competitorName: competitors.name,
       sourceType: monitors.sourceType,
@@ -676,6 +679,20 @@ signalsRouter.get("/:id/detail", async (c) => {
       narrative: row.narrative,
       changes: breakdown,
       diffText: evidenceDiff(row.diffText),
+      // The band is a deterministic function of these three, so the scores plus
+      // the rule that read them ARE the explanation of the severity. Null when the
+      // classification was synthesized (no scoring happened) — the UI then says
+      // nothing rather than inventing a reason.
+      materiality: row.materiality
+        ? {
+            ...row.materiality,
+            explanation: explainMateriality({
+              decision_impact: row.materiality.decisionImpact,
+              urgency: row.materiality.urgency,
+              corroboration: row.materiality.corroboration,
+            }),
+          }
+        : null,
       relevanceScore,
       sourceType: row.sourceType,
       sourceUrl: row.sourceUrl,

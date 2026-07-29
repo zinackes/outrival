@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { sourceLabel } from "@/lib/source-labels";
 import { GroupedChanges } from "@/components/outrival/change-breakdown";
+import { DiffPreview } from "@/components/outrival/diff-preview";
 import {
   Dialog,
   DialogContent,
@@ -33,11 +34,98 @@ function hostOf(url: string | null): string | null {
   }
 }
 
-const SectionLabel = ({ children }: { children: React.ReactNode }) => (
-  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+const SectionLabel = ({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) => (
+  <div
+    className={cn(
+      "text-xs font-semibold uppercase tracking-wide text-muted-foreground",
+      className,
+    )}
+  >
     {children}
   </div>
 );
+
+// The three axes, in the order they are applied: the two that set the band, then
+// the one that modulates it. Each gloss says what the number MEANT, since the
+// number itself is on screen next to it.
+const MATERIALITY_AXES = [
+  {
+    key: "decisionImpact" as const,
+    label: "Decision impact",
+    gloss: "Would this change how you price, position or sell?",
+  },
+  {
+    key: "urgency" as const,
+    label: "Urgency",
+    gloss: "React within days, or read it in Monday's digest?",
+  },
+  {
+    key: "corroboration" as const,
+    label: "Corroboration",
+    gloss: "How many of their surfaces independently show it.",
+  },
+];
+
+/**
+ * The severity band, explained by the numbers it was computed from.
+ *
+ * The band is a deterministic function of these three scores, so this is not a
+ * paraphrase of a model's reasoning, it is the reasoning. Without it the panel
+ * stated a verdict and, next to the feed's threat meter, two different-looking
+ * verdicts ("Medium" beside "Low threat") with no way to reconcile them.
+ *
+ * Four ticks per axis, matching SeverityScale: the scores are positions on a
+ * 0-to-3 scale, not magnitudes, and the two instruments must read as one system.
+ */
+function MaterialityReadout({
+  scores,
+}: {
+  scores: { decisionImpact: number; urgency: number; corroboration: number; explanation: string };
+}) {
+  return (
+    <div className="mt-2.5 space-y-2.5">
+      {MATERIALITY_AXES.map((axis) => {
+        const value = scores[axis.key];
+        return (
+          <div key={axis.key} className="flex items-baseline gap-3">
+            <span
+              role="img"
+              aria-label={`${axis.label} ${value} of 3`}
+              className="flex shrink-0 items-center gap-[3px] pt-0.5"
+            >
+              {[0, 1, 2, 3].map((i) => (
+                <span
+                  key={i}
+                  className={cn(
+                    "h-3.5 w-1 rounded-sm",
+                    i <= value ? "bg-foreground" : "bg-border-strong",
+                  )}
+                  aria-hidden
+                />
+              ))}
+            </span>
+            <span className="min-w-0">
+              <span className="text-sm text-foreground">{axis.label}</span>
+              <span className="ml-2 text-xs tabular-nums text-muted-foreground">
+                {value}/3
+              </span>
+              <span className="block text-xs text-muted-foreground">{axis.gloss}</span>
+            </span>
+          </div>
+        );
+      })}
+      <p className="border-t border-border pt-2.5 text-sm leading-relaxed text-muted-foreground">
+        {scores.explanation}
+      </p>
+    </div>
+  );
+}
 
 /**
  * Progressive disclosure level 2 (patch-14): WHAT changed, WHERE it was seen, and
@@ -166,11 +254,26 @@ export function WhyInsightPanel({ signalId, open, onOpenChange }: WhyInsightPane
                     {detail.humanChangeAfter ?? "Not captured"}
                   </span>
                 </div>
+              ) : detail.diffText ? (
+                // The pair is null whenever the change is a SET rather than one
+                // value, which is most sources. The lines the page added and
+                // removed answer the same question without pretending the change
+                // had two sides.
+                <div className="mt-2.5">
+                  <DiffPreview diffText={detail.diffText} maxLines={12} />
+                </div>
               ) : (
                 <p className="mt-2.5 text-sm text-muted-foreground">
                   We compared the page against its previous capture. The change
                   was in the page text, so there is no field-level pair to show.
                 </p>
+              )}
+
+              {detail.materiality && (
+                <>
+                  <SectionLabel className="mt-6">Why this severity</SectionLabel>
+                  <MaterialityReadout scores={detail.materiality} />
+                </>
               )}
 
               {changes.length > 0 && (

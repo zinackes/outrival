@@ -399,6 +399,7 @@ export function getSampleSignalDetail(signalId: string): SignalDetail | null {
     narrative: null,
     changes: [],
     diffText: null,
+    materiality: null,
     relevanceScore: sig.relevanceScore ?? null,
     sourceType: sig.sourceType,
     sourceUrl: evidence.sourceUrl,

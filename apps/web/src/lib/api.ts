@@ -456,6 +456,16 @@ export interface SignalDetail {
   // side server-side). For every source that has no structured breakdown, which
   // measured on prod is 87% of signals, this is the only evidence there is.
   diffText: string | null;
+  // The three 0-3 sub-scores the severity band is a deterministic function of,
+  // with the rule that read them stated in words. null when the classification
+  // was synthesized deterministically (Hacker News, wellknown, sitemap
+  // comparison pages, pricing transitions) or predates the materiality taxonomy.
+  materiality: {
+    decisionImpact: number;
+    urgency: number;
+    corroboration: number;
+    explanation: string;
+  } | null;
   // Composite relevance score (patch-17), max across the change set. null when
   // not scored (lexical / pre-patch). Shown discreetly.
   relevanceScore: number | null;

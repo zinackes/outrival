@@ -1151,6 +1151,23 @@ export interface WorkspaceSettings {
   projectStage: ProjectStage | null;
 }
 
+/**
+ * Which sources a newly-added competitor starts with, plus how far behind the
+ * existing ones are. `defaultSources` is what the org stored (null = following the
+ * built-in default); `effectiveSources` is what that resolves to on this plan.
+ */
+export interface SourceDefaults {
+  plan: Plan;
+  defaultSources: SourceType[] | null;
+  /** Stored set, or the built-in default when the org never customised it. */
+  intendedSources: SourceType[];
+  effectiveSources: SourceType[];
+  availableSources: SourceType[];
+  seedableSources: SourceType[];
+  competitorCount: number;
+  gaps: { sourceType: SourceType; missingOn: number }[];
+}
+
 export interface ProductProfile {
   category: string;
   audience: string;
@@ -2983,6 +3000,17 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
+  getSourceDefaults: () => request<SourceDefaults>("/api/settings/sources"),
+  updateSourceDefaults: (defaultSources: SourceType[] | null) =>
+    request<{ ok: true; defaultSources: SourceType[] | null }>("/api/settings/sources", {
+      method: "PATCH",
+      body: JSON.stringify({ defaultSources }),
+    }),
+  applySourceDefaults: () =>
+    request<{ created: number; competitorsTouched: number; sources: SourceType[] }>(
+      "/api/settings/sources/apply",
+      { method: "POST" },
+    ),
   sendReauthCode: (purpose?: "password") =>
     request<{ ok: true }>("/api/settings/reauth/send", {
       method: "POST",

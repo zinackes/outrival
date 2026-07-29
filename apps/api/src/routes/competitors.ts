@@ -28,6 +28,7 @@ import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
 import { ensureUserOrg } from "../lib/org";
 import { enqueueJob } from "../lib/queue";
 import { associateCompetitorWithScopedProduct, productCompetitorIds } from "../lib/products";
+import { seedCompetitorMonitors, enqueueFirstScrapes } from "../lib/seed-monitors";
 import { analyticsQuery } from "../lib/analytics-safe";
 import { translateToEnglish } from "../lib/translate";
 import { detectContentLanguage } from "../lib/detect-language";
@@ -588,54 +589,20 @@ competitorsRouter.post("/", async (c) => {
     }
   })();
 
-  // Stamp scrapeStartedAt on seed so the detail page / list show the first scrape
-  // as in-progress straight away (isServerScraping + deriveAnalysisStatus both
-  // derive "running" from scrapeStartedAt > lastRunAt). Without it a freshly-added
-  // competitor looked idle for up to an hour while waiting on the scraping cron —
-  // the user had no signal anything was happening. Mirrors the discovery-add path.
-  const scrapeStartedAt = new Date();
-  const createdMonitors = await db
-    .insert(monitors)
-    .values([
-      { competitorId: competitor.id, sourceType: "homepage", frequency: "daily", scrapeStartedAt },
-      { competitorId: competitor.id, sourceType: "pricing", frequency: "daily", scrapeStartedAt },
-      { competitorId: competitor.id, sourceType: "blog", frequency: "weekly", scrapeStartedAt },
-      // patch-32: internal sitemap-diff anchor (weekly). Not user-facing; the diff
-      // of its sorted URL-list snapshot surfaces brand-new competitor pages.
-      { competitorId: competitor.id, sourceType: "sitemap", frequency: "weekly", scrapeStartedAt },
-      // Internal news/funding anchor (weekly). Google News RSS by brand → diff
-      // surfaces company-level events (funding/M&A/leadership/press).
-      { competitorId: competitor.id, sourceType: "news", frequency: "weekly", scrapeStartedAt },
-      // Internal subdomains anchor (weekly). Certificate Transparency (crt.sh) → diff
-      // of the sorted live-subdomain list surfaces a brand-new one (beta./ai./
-      // {product}.) as an expansion / pre-announcement product signal. Weekly (not
-      // daily): CT logs move slowly and daily × every competitor self-inflicts crt.sh
-      // 429s — one shared, flaky public provider.
-      { competitorId: competitor.id, sourceType: "subdomains", frequency: "weekly", scrapeStartedAt },
-      // Internal YouTube anchor (weekly). Resolves the channel from a homepage link
-      // → diff of the sorted video list surfaces a brand-new upload (content signal).
-      { competitorId: competitor.id, sourceType: "youtube", frequency: "weekly", scrapeStartedAt },
-      // Internal Hacker News anchor (weekly). HN Algolia by brand → objectID-set diff
-      // surfaces a Show HN launch (product/high) or a traction mention (content/medium).
-      { competitorId: competitor.id, sourceType: "hackernews", frequency: "weekly", scrapeStartedAt },
-      // Internal well-known anchor (weekly). /.well-known app-association files +
-      // llms.txt fingerprint → diff surfaces a mobile-app launch / an llms.txt manifest.
-      { competitorId: competitor.id, sourceType: "wellknown", frequency: "weekly", scrapeStartedAt },
-    ])
-    .returning();
-
-  // Kick the first scrape now instead of waiting on the hourly cron, so the
-  // add → scrape → summarize → ready pipeline starts (and is visibly tracked)
-  // immediately. Best-effort: a trigger miss just falls back to the cron.
-  for (const m of createdMonitors) {
-    try {
-      await enqueueJob(scrapeMonitor, { monitorId: m.id, force: true }, {
-        priority: USER_SCRAPE_PRIORITY,
-      });
-    } catch (e) {
-      console.error("Failed to trigger initial scrape", { monitorId: m.id, error: String(e) });
-    }
-  }
+  // Seed the org's default sources (plan-narrowed) plus the internal anchors, then
+  // kick their first scrape. scrapeStartedAt is stamped on seed so the detail page
+  // and the list show the first scrape as in-progress straight away instead of
+  // looking idle until the hourly cron.
+  const orgRow = await db.query.organizations.findFirst({
+    where: eq(organizations.id, orgId),
+    columns: { defaultSources: true },
+  });
+  const createdMonitors = await seedCompetitorMonitors({
+    competitorId: competitor.id,
+    plan,
+    orgDefaultSources: orgRow?.defaultSources ?? null,
+  });
+  await enqueueFirstScrapes(createdMonitors);
 
   void captureServerEvent(user.id, "competitor_added", {
     competitorId: competitor.id,

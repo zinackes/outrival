@@ -379,6 +379,13 @@
       "when": 1785340137244,
       "tag": "0053_loud_purple_man",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1785342853148,
+      "tag": "0054_minor_namora",
+      "breakpoints": true
     }
   ]
 }

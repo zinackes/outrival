@@ -1,5 +1,6 @@
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { WorkspaceSettingsForm } from "@/components/outrival/workspace-settings-form";
+import { MonitoringDefaultsCard } from "@/components/outrival/monitoring-defaults-card";
 import { getWorkspaceSettingsData } from "@/lib/api-server";
 import { makeServerQueryClient } from "@/lib/server-query";
 import { workspaceSettingsQuery } from "@/lib/queries";
@@ -22,6 +23,9 @@ export default async function GeneralSettingsPage() {
         <HydrationBoundary state={dehydrate(queryClient)}>
           <WorkspaceSettingsForm />
         </HydrationBoundary>
+      </div>
+      <div className="border-t border-border pt-5">
+        <MonitoringDefaultsCard />
       </div>
     </section>
   );

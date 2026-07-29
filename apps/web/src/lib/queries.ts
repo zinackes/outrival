@@ -248,6 +248,15 @@ export function workspaceSettingsQuery() {
   });
 }
 
+// Monitoring defaults + how many competitors are missing them. Read by both the
+// settings card and the dashboard banner, so they always agree on the count.
+export function sourceDefaultsQuery() {
+  return queryOptions({
+    queryKey: ["sourceDefaults"] as const,
+    queryFn: () => api.getSourceDefaults(),
+  });
+}
+
 // The org's own product ("My product"). null when no product site is set yet.
 // patch-28 — an optional productId scopes to a given product (the detail page passes
 // it). Omitted → the primary self, with the exact same cache key as before (zero

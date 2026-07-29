@@ -72,6 +72,68 @@ const CAREERS_KEYWORDS = [
 // actually get a page, not an empty SPA shell" floor — not a richness contest.
 const MIN_CAREERS_HOP_TEXT = 200;
 
+/** What a page's ATS board (if any) can give us. */
+type AtsResolution =
+  | { kind: "none" }
+  | { kind: "jobs"; board: AtsBoard; jobs: AtsJob[] }
+  /** Board found, API unusable (no mapping / down / empty) — its page is worth a hop. */
+  | { kind: "board"; board: AtsBoard }
+  /** Board found but larger than the page cap — see AtsFetch.truncated. */
+  | { kind: "oversized"; board: AtsBoard };
+
+async function resolveAts(html: string): Promise<AtsResolution> {
+  const board = detectAtsBoard(html);
+  if (!board) return { kind: "none" };
+  const { jobs, truncated } = await fetchAtsJobs(board);
+  if (jobs && jobs.length > 0) return { kind: "jobs", board, jobs };
+  return { kind: truncated ? "oversized" : "board", board };
+}
+
+function hostname(u: string): string | null {
+  try {
+    return new URL(u).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Cross-host is always worth a hop. Same-host only from the homepage fallback (the
+ * standard paths 404'd, the site links its openings at a non-standard path) or from
+ * a hub whose LISTING link we found. Never re-fetch the page we're standing on.
+ */
+function shouldFollow(link: string, from: string, onCareersPage: boolean, isListing: boolean) {
+  try {
+    if (new URL(link).hostname !== new URL(from).hostname) return true;
+  } catch {
+    return false;
+  }
+  return (!onCareersPage || isListing) && !isSameResource(link, from);
+}
+
+/** Append the ATS postings to a captured page: visible list + JSON island. */
+function withAtsJobs(
+  page: ScrapeOutcome,
+  board: AtsBoard,
+  jobs: AtsJob[],
+  extra: Record<string, unknown> = {},
+): ScrapeOutcome {
+  const jobsText = jobs
+    .map((j) => [j.title, j.department, j.location].filter(Boolean).join(" — "))
+    .join("\n");
+  return {
+    ...page,
+    html: appendAtsJobsToHtml(page.html, board, jobs),
+    text: `${page.text}\n${jobsText}`,
+    metadata: {
+      ...page.metadata,
+      ...extra,
+      atsDetected: board.provider,
+      atsJobs: jobs.length,
+    },
+  };
+}
+
 export async function scrape(
   _competitorId: string,
   url: string,
@@ -86,7 +148,7 @@ export async function scrape(
   if (atsKey) {
     const board = atsBoardFromKey(atsKey);
     if (board) {
-      const jobs = await fetchAtsJobs(board);
+      const { jobs } = await fetchAtsJobs(board);
       if (jobs) return atsOnlyOutcome(url, board, jobs);
     }
   }
@@ -118,6 +180,60 @@ export async function scrape(
         : probeOpts,
     );
 
+  /**
+   * Follow one hop and keep it only when it carries an actual listing.
+   *
+   * Cheap first, for a careers/listing link: an L0 fetch is enough to RECOGNISE an
+   * ATS board sitting on a vanity domain. `careers.exotec.com` renders an empty SPA
+   * shell, yet its <head> names `apply.workable.com/exotec` — the page we came from
+   * never did, which is why detection has to run AGAIN here. When it resolves, the
+   * postings come from the board API and no browser is used at all. The ATS-board
+   * target skips this probe: we already read that board and its API just failed.
+   *
+   * Otherwise render (boards inject their rows client-side) and keep the page only
+   * when it reads like a listing — a mis-followed link lands on an SPA home or a
+   * "why work here" blurb. The kept page is NEVER chosen by comparing text length
+   * against the page we came from: a marketing hub always has more words than the
+   * listing that has the jobs.
+   *
+   * Fail-soft: any failure returns null and the caller tries the next target.
+   */
+  const followHop = async (
+    target: string,
+    via: "atsFollowed" | "careersFollowed",
+  ): Promise<ScrapeOutcome | null> => {
+    let probe: ScrapeOutcome | null = null;
+    // Probe when the render is switched off (the probe IS the capture then), or when
+    // the target may be an unrecognised board on a vanity domain.
+    if (!renderJobs || via === "careersFollowed") {
+      try {
+        probe = await scrapePage(target, probeOpts);
+        if (via === "careersFollowed") {
+          const hopAts = await resolveAts(probe.html);
+          if (hopAts.kind === "jobs") {
+            return withAtsJobs(probe, hopAts.board, hopAts.jobs, { [via]: target });
+          }
+        }
+      } catch {
+        // L0 refused/failed — the render below is still worth a try.
+      }
+    }
+    const keep = (page: ScrapeOutcome) =>
+      page.text.length > MIN_CAREERS_HOP_TEXT && looksLikeCareers(page)
+        ? { ...page, metadata: { ...page.metadata, [via]: target } }
+        : null;
+    if (renderJobs) {
+      try {
+        const full = await renderPage(target);
+        const kept = keep(full);
+        if (kept) return kept;
+      } catch {
+        // ignore — fall back to the L0 probe, then to the caller's next target
+      }
+    }
+    return probe ? keep(probe) : null;
+  };
+
   let result: ScrapeOutcome;
   let onCareersPage: boolean; // false ⇒ the homepage fallback, not a careers page
   let rendered = false; // did `result` already come from a browser render?
@@ -147,86 +263,58 @@ export async function scrape(
   // linked/embedded from the careers page — scraping the page alone misses them.
   // The board link lives in the SSR HTML, so the cheap L0 probe already surfaces it
   // (no render needed to reach the structured API).
-  const board = detectAtsBoard(result.html);
-  if (board) {
-    // Phase A — pull the postings from the ATS public JSON API and append them to
-    // the snapshot (visible list for change detection + JSON island for a
-    // structured, LLM-free job_postings update downstream).
-    const jobs = await fetchAtsJobs(board);
-    if (jobs) {
-      const jobsText = jobs
-        .map((j) => [j.title, j.department, j.location].filter(Boolean).join(" — "))
-        .join("\n");
-      return {
-        ...result,
-        html: appendAtsJobsToHtml(result.html, board, jobs),
-        text: `${result.text}\n${jobsText}`,
-        metadata: { ...result.metadata, atsDetected: board.provider, atsJobs: jobs.length },
-      };
-    }
+  const ats = await resolveAts(result.html);
+  if (ats.kind === "jobs") return withAtsJobs(result, ats.board, ats.jobs);
 
-    // Phase B — no usable API (Workable, fetch failed, empty board): follow the
-    // board link one hop so the worker LLM-extracts from the real listing page
-    // instead of the marketing careers page. Board pages are JS-heavy → render.
-    // Fail-soft: keep the careers page.
-    try {
-      const hop = await renderPage(board.boardUrl);
-      if (hop.text.length > result.text.length) {
-        return {
-          ...hop,
-          metadata: { ...hop.metadata, atsDetected: board.provider, atsFollowed: board.boardUrl },
-        };
-      }
-    } catch {
-      // ignore — fall through to the careers page below
-    }
-    return { ...result, metadata: { ...result.metadata, atsDetected: board.provider } };
-  }
-
-  // No known ATS — the openings may live on a custom careers page linked from the
-  // nav/footer ("Nous rejoindre", "Jobs"). Follow the strongest discovered link one
-  // hop (rendered — these targets are often SPAs); the downstream LLM extracts the
-  // listing.
+  // The openings live one hop away, behind a button on the page we're standing on.
+  // Two kinds of target, tried in order until one yields a real listing:
   //
-  // A CROSS-host link (Welcome to the Jungle, a Notion board, careers.microsoft.com)
-  // is always worth it. A SAME-host link is followed in two cases:
+  //  1. the ATS board itself, when detected but not readable through its API
+  //     (no mapping, API down, empty). EXCLUDED when the board is `oversized`: its
+  //     page then shows an arbitrary 20-row slice of a global, multi-country board,
+  //     which is worse than useless for change detection — accenture.com/at-de is
+  //     one tenant of a Workday board with thousands of postings, and its OWN
+  //     `/at-de/careers/jobsearch` is the listing that answers the question asked.
+  //  2. the strongest careers/listing link on the page. A CROSS-host link (Welcome
+  //     to the Jungle, a Notion board, careers.microsoft.com) is always worth it. A
+  //     SAME-host link is followed in two cases:
+  //       - `result` is the homepage fallback (`!onCareersPage`): the standard path
+  //         guesses (/careers, /jobs, …) 404'd, yet the site still links its openings
+  //         at a non-standard path (thenile.dev → /about-us#careers, footer only).
+  //       - the page we committed to is a careers HUB that links its LISTING one
+  //         level deeper ("Browse jobs" → /company/careers/all-jobs). Path discovery
+  //         stops at the hub because it reads like a careers page (it is one — it
+  //         just has no roles on it). Only a listing-grade link qualifies, so we
+  //         never wander sideways into "Life at Acme" (regression-tested).
   //
-  //  - `result` is the homepage fallback (`!onCareersPage`): the standard path
-  //    guesses (/careers, /jobs, …) 404'd, yet the site still links its openings at
-  //    a non-standard path (e.g. thenile.dev → /about-us#careers, often only from
-  //    the footer). Without this the link is discovered but never opened.
-  //  - the page we committed to is a careers HUB that links its LISTING one level
-  //    deeper ("Browse jobs" → /company/careers/all-jobs). Path discovery stops at
-  //    the hub because it reads like a careers page (it is one — it just has no
-  //    roles on it), so atlassian.com yielded a page of culture copy and zero
-  //    openings. Only a listing-grade link qualifies here, so we still never wander
-  //    sideways into "Life at Acme" / "Early careers" (regression-tested).
+  // A detected board no longer SHORT-CIRCUITS the link hop: when the board turns out
+  // to be unreadable, falling back to the careers hub threw away a perfectly good
+  // on-site listing the page was pointing at.
   //
   // Re-fetching the page we already have (same host+path) is skipped.
-  //
-  // Keep the hop whenever it returns real content (floor) rather than requiring it
-  // to beat `result`: `result` is often the marketing homepage, which has far more
-  // raw text than a jobs listing yet zero openings — comparing lengths would wrongly
-  // discard the page that actually has the jobs. Fail-soft: keep `result`.
   const finalUrl = (typeof result.metadata.url === "string" && result.metadata.url) || url;
   const listingLink = onCareersPage ? findJobListingLink(result.html, finalUrl) : null;
   const careersLink = listingLink ?? findCareersLink(result.html, finalUrl);
-  if (careersLink) {
-    try {
-      const crossHost = new URL(careersLink).hostname !== new URL(finalUrl).hostname;
-      const followSameHost =
-        (!onCareersPage || listingLink !== null) && !isSameResource(careersLink, finalUrl);
-      if (crossHost || followSameHost) {
-        const hop = await renderPage(careersLink);
-        // Keep the hop only when it's a real listing, not just a page that rendered
-        // (a mis-followed link → SPA home, or a "why work here" blurb with no roles).
-        if (hop.text.length > MIN_CAREERS_HOP_TEXT && looksLikeCareers(hop)) {
-          return { ...hop, metadata: { ...hop.metadata, careersFollowed: careersLink } };
-        }
-      }
-    } catch {
-      // ignore — fall through to the original page
-    }
+  // An oversized board's pages are an arbitrary slice wherever you enter them, so a
+  // link pointing back at that same host is not an escape either.
+  const deadHost = ats.kind === "oversized" ? hostname(ats.board.boardUrl) : null;
+
+  const targets: { url: string; via: "atsFollowed" | "careersFollowed" }[] = [];
+  if (ats.kind === "board") targets.push({ url: ats.board.boardUrl, via: "atsFollowed" });
+  if (
+    careersLink &&
+    (deadHost === null || hostname(careersLink) !== deadHost) &&
+    shouldFollow(careersLink, finalUrl, onCareersPage, listingLink !== null)
+  ) {
+    targets.push({ url: careersLink, via: "careersFollowed" });
+  }
+
+  for (const target of targets) {
+    const hop = await followHop(target.url, target.via);
+    if (hop) return hop;
+  }
+  if (ats.kind !== "none") {
+    result = { ...result, metadata: { ...result.metadata, atsDetected: ats.board.provider } };
   }
 
   // Same-host careers page, no ATS, no off-site link: it may still render its

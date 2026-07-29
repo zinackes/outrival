@@ -342,7 +342,7 @@ function stubFetch(body: string, contentType: string, status = 200) {
 
 test("Lever mode=json returning HTML (200) fails cleanly to null", async () => {
   stubFetch("<!doctype html><html><body>Not found</body></html>", "text/html; charset=utf-8");
-  const jobs = await fetchAtsJobs({
+  const { jobs } = await fetchAtsJobs({
     provider: "lever",
     token: "does-not-exist",
     boardUrl: "https://jobs.lever.co/does-not-exist",
@@ -357,7 +357,7 @@ test("Lever mode=json returning real JSON is parsed", async () => {
     ]),
     "application/json",
   );
-  const jobs = await fetchAtsJobs({
+  const { jobs } = await fetchAtsJobs({
     provider: "lever",
     token: "acme",
     boardUrl: "https://jobs.lever.co/acme",

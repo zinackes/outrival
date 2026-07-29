@@ -675,7 +675,27 @@ carte (état live uniquement).
                    partielle. Une liste partielle est traitée en aval comme la liste
                    AUTORITATIVE des postes ouverts, donc tout ce qui dépasse le cap serait
                    diffé comme fermé. Workday annonçant son `total` dès la 1re page, un board
-                   hors cap sort en 1 requête (mesuré : 1,6s au lieu de 28s).
+                   hors cap sort en 1 requête (mesuré : 1,6s au lieu de 28s). `fetchAtsJobs`
+                   distingue désormais ce cas d'un simple échec (`{jobs, truncated}`). Un
+                   board HORS CAP n'est plus suivi en lien non plus, puisque n'importe quelle
+                   entrée dessus est une tranche arbitraire d'une liste mondiale, alors que
+                   la page de recherche LOCALE du site répond à la question posée.
+                   BOARD DÉTECTÉ ≠ FIN DE PARCOURS : un board illisible (pas d'API, API
+                   morte, hors cap) coupait tout le chemin de suivi de lien, donc le scrape
+                   retombait sur le hub marketing en jetant la page de listing que le site
+                   pointait à un clic (accenture.com/at-de/careers → /careers/jobsearch).
+                   Les cibles sont maintenant essayées dans l'ordre [board, lien listing],
+                   avec le MÊME test d'acceptation que le hop careers (plancher de texte +
+                   `looksLikeCareers`). Plus de comparaison de LONGUEUR contre la page
+                   d'origine : un hub marketing la gagne toujours contre un listing.
+                   RE-DÉTECTION APRÈS HOP : la détection ATS ne tournait que sur la PREMIÈRE
+                   page. Un board sur domaine vanity (`careers.exotec.com` EST un board
+                   Workable) n'est nommé nulle part sur la page careers : seul le <head> de
+                   la coquille SPA porte l'alternate `apply.workable.com/<token>`. Le hop
+                   sonde donc d'abord en L0 et re-détecte, et quand ça résout les postes
+                   viennent de l'API sans qu'AUCUN navigateur soit lancé. Workable a bien une
+                   API publique (`/api/v1/widget/accounts/{token}?details=true`, board entier
+                   en 1 requête). Le commentaire « no clean public API » était faux.
                    careers-link discovery élargie (labels « Jobs »/« Hiring », paths open-positions,
                    boards Notion off-site) + JOBS_RENDER_ENABLED : la page careers/board retenue et
                    les hops off-site sont rendus au navigateur (L1) + scroll, sinon les offres injectées

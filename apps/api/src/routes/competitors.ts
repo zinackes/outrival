@@ -373,7 +373,7 @@ async function buildHomepageFacts(
       customerLogos,
       testimonials,
       gtm: readGtm(s.hero),
-      navItems: productNavItems(s.navigation?.items),
+      navItems: productNavItems(s.navigation?.items, brandTokens),
     },
   };
 }

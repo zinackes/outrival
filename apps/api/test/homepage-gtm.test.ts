@@ -68,6 +68,48 @@ test("no primary motion means no alternate, even when the secondary has one", ()
   expect(r.alternate).toBeNull();
 });
 
+test("the vocabulary reads the labels prod actually stores", () => {
+  // Every one of these was silent until a prod audit of 181 stored captures named it.
+  const selfServe = [
+    "Getting started",
+    "Get StartedBring NextGen to My Campus", // two buttons captured glued together
+    "Continue with Google",
+    "Build with Nile",
+    "Generate your first presentation",
+    "Create Job PostCreate Job",
+    "Buy now",
+    "Démarrer gratuitement",
+    "ouvrir un compte",
+    "Rejoindre Thunder",
+    "Commander",
+  ];
+  for (const text of selfServe) {
+    expect(readGtm({ primaryCta: { text } }).motion).toBe("self_serve");
+  }
+});
+
+test("word-bounded tokens do not match inside a longer word", () => {
+  // "free" must not fire on "freelance", or an HR product reads as offering a trial.
+  expect(readGtm({ primaryCta: { text: "Freelance marketplace" } }).motion).toBeNull();
+});
+
+test("labels that name no motion stay silent", () => {
+  // Also from the prod audit: badges, ratings, release banners and vague verbs.
+  for (const text of [
+    "Explore the platform",
+    "See Platform",
+    "Show me how",
+    "Join the waitlist",
+    "Request Early Access",
+    "Why banks partner with BioCatch",
+    "4.8 sur 5",
+    "Loading... Jul 13, 2026",
+    "Découvrir nos offres",
+  ]) {
+    expect(readGtm({ primaryCta: { text } }).motion).toBeNull();
+  }
+});
+
 test("an imperative that puts the visitor in the product is self-serve", () => {
   // vercel.com, verbatim: the pair is the whole read, PLG with an enterprise path.
   const r = readGtm({
@@ -140,6 +182,66 @@ test("nav drops a flattened dropdown and a label with no letters", () => {
     { text: "Datasets" },
   ]);
   expect(items).toEqual(["Evals", "Datasets"]);
+});
+
+test("nav drops the chrome that lives in real headers", () => {
+  // Each of these classes filled a whole nav map in the prod audit: an a11y widget's
+  // control panel, a language switcher, a social bar, and a mailto link.
+  expect(
+    productNavItems([
+      { text: "Open toolbar" },
+      { text: "Increase Text" },
+      { text: "Grayscale" },
+      { text: "Evals" },
+      { text: "Datasets" },
+    ]),
+  ).toEqual(["Evals", "Datasets"]);
+
+  expect(
+    productNavItems([
+      { text: "日本語" },
+      { text: "Deutsch" },
+      { text: "English (United States)" },
+      { text: "pt-BR" },
+      { text: "en" },
+    ]),
+  ).toEqual([]);
+
+  expect(
+    productNavItems([
+      { text: "LinkedIn" },
+      { text: "YouTube" },
+      { text: "Twitter(X)" },
+      { text: "pr@acme.com" },
+    ]),
+  ).toEqual([]);
+});
+
+test("nav drops the header's own brand link but keeps a branded product area", () => {
+  // "apiplatform.io" and "pnpm" are the logo link. "Notion AI" is a product, so the
+  // brand test is equality, never containment.
+  expect(
+    productNavItems(
+      [{ text: "apiplatform.io" }, { text: "Data2API" }, { text: "SQL2API" }],
+      ["apiplatform"],
+    ),
+  ).toEqual(["Data2API", "SQL2API"]);
+  expect(
+    productNavItems([{ text: "Notion AI" }, { text: "Notion Mail" }], ["notion"]),
+  ).toEqual(["Notion AI", "Notion Mail"]);
+});
+
+test("numbered nav labels are matched against the generic list too", () => {
+  // "01Home" walked straight past the list until the prefix was stripped.
+  expect(
+    productNavItems([
+      { text: "01Home" },
+      { text: "03Use Cases" },
+      { text: "05Blog" },
+      { text: "Evals" },
+      { text: "Datasets" },
+    ]),
+  ).toEqual(["Evals", "Datasets"]);
 });
 
 test("a single surviving label is not a product map", () => {

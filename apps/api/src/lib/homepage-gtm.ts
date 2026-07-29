@@ -49,16 +49,25 @@ export interface GtmRead {
  * most self-serve ones, so accepting it would call a PLG company sales-led on the
  * strength of its footer navigation. "Contact sales" still matches, on `sales`.
  */
-const SALES_RE = /\b(demos?|sales|consultation|quote)\b|\b(talk|speak|chat) to\b|\b(book|schedule|request) a\b/i;
+const SALES_RE =
+  /\b(demos?|démos?|sales|consultation|quote|devis)\b|\b(talk|speak|chat) to\b|\b(book|schedule|request) a\b|\bprendre rendez-vous\b/i;
 
 /**
- * The user reaches the product without asking anyone. "free" belongs here because
- * a CTA offering something free is offering it directly; when it says "free demo"
- * the sales test above has already claimed it. "deploy" is here because an
- * imperative that puts the visitor inside the product is self-serve by definition
- * (vercel.com ships "Deploy now" next to "Talk to sales").
+ * The user reaches the product without asking anyone. Three families, and every
+ * entry was put here by a label measured on a real stored capture:
+ *
+ *  - signing up ("Sign up with Google", "Continue with Google", "S'inscrire")
+ *  - an imperative that puts the visitor inside the product ("Deploy now",
+ *    "Build with Nile", "Generate your first presentation", "Start submission")
+ *  - buying without a conversation ("Buy now", "Commander")
+ *
+ * "free" is here because a CTA offering something free is offering it directly;
+ * when it says "free demo" the sales test above has already claimed it. `start` is
+ * matched as a PREFIX because the wild is full of "Getting started" and of labels
+ * where two buttons were captured glued together ("Get StartedBring NextGen…").
  */
-const SELF_SERVE_RE = /\b(get started|sign ?up|register|create (an )?account|try|start|download|install|deploy|free)\b/i;
+const SELF_SERVE_RE =
+  /\b(get started|sign ?up|register|create|generate|continue with|try|build|deploy|download|install|buy|order|free)\b|\bstart|\b(démarrer|commencer|essai|essayer|gratuit|s'inscrire|inscription|rejoindre|télécharger|commander|ouvrir un compte)/i;
 
 function motionOf(text: string): GtmMotion | null {
   if (SALES_RE.test(text)) return "sales_led";
@@ -132,12 +141,81 @@ const GENERIC_NAV = new Set([
   "demo", "dashboard", "account", "my account",
   // Entering the app, and the merch shop. Both are destinations, not product areas.
   "home", "app", "open app", "web app", "launch app", "console", "store", "shop",
+  "merch", "downloads", "updates", "pro", "teams",
+  // Captured while a session was open, so the nav is the signed-in app's own chrome.
+  "log out", "logout", "sign out", "profile", "settings", "account details",
+  "change password", "close menu",
   // A segment every B2B nav names, and the tiers are already on the pricing tab.
   "enterprise", "business", "for enterprise",
   // Legal and chrome.
   "legal", "privacy", "privacy policy", "terms", "cookies", "security",
   "search", "menu", "language", "more", "close",
+  // Social accounts. A social bar living in the header nav read as a product map.
+  "linkedin", "youtube", "twitter", "twitter(x)", "x", "facebook", "instagram",
+  "threads", "bluesky", "tiktok", "github", "discord", "mastodon", "reddit",
+  // Pages that exist to sell rather than to name a capability.
+  "faq", "faqs", "tour", "compare", "compare us", "comparison", "comparisons",
+  "reviews", "terms of service", "cookie policy",
+  // Accessibility-widget controls. A third-party a11y toolbar renders inside the
+  // header nav, so its whole control panel was being read as a product map.
+  "open toolbar", "close toolbar", "increase text", "decrease text", "grayscale",
+  "high contrast", "negative contrast", "light background", "links underline",
+  "readable font", "reset", "accessibility",
+  // French equivalents of the same universals. Several tracked competitors are
+  // French, and their navs were surviving the English list intact.
+  "accueil", "tarifs", "à propos", "a propos", "qui sommes-nous", "contactez-nous",
+  "nous contacter", "connexion", "se connecter", "mon compte", "aide", "assistance",
+  "produit", "produits", "fonctionnalités", "entreprise", "carrières", "carrieres",
+  "actualités", "témoignages", "ressources", "documentation", "intégrations",
+  "mentions légales", "conditions générales", "confidentialité", "recherche",
 ]);
+
+/**
+ * Language switchers sit in the header nav, so a multilingual site handed us its
+ * locale list as its product map. Matched on the label rather than the href because
+ * the pattern is the same everywhere and the hrefs are not.
+ */
+const LANGUAGE_NAMES = new Set([
+  // Endonyms, as switchers usually write them.
+  "english", "français", "francais", "deutsch", "español", "espanol", "italiano",
+  "português", "portugues", "nederlands", "polski", "svenska", "dansk", "suomi",
+  "norsk", "türkçe", "turkce", "čeština", "русский", "українська", "日本語",
+  "中文", "简体中文", "繁體中文", "한국어", "العربية", "हिन्दी", "ไทย", "tiếng việt",
+  "bahasa indonesia", "bahasa melayu", "română", "ελληνικά",
+  // And in English, which some switchers use instead.
+  "french", "german", "spanish", "italian", "portuguese", "dutch", "polish",
+  "swedish", "danish", "finnish", "norwegian", "turkish", "czech", "russian",
+  "ukrainian", "japanese", "chinese", "korean", "arabic", "hindi", "thai",
+  "vietnamese", "indonesian", "malay", "romanian", "greek", "hebrew",
+]);
+
+/** A bare locale code ("en", "es", "pt-br", "zh-CN") is never a product area. */
+const LOCALE_CODE_RE = /^[a-z]{2}(-[a-z]{2,4})?$/i;
+
+function isLanguageLabel(text: string): boolean {
+  // Switchers routinely qualify the region: "English (United States)". The
+  // parenthetical is dropped before the lookup so one entry covers every variant.
+  const t = text.trim().toLowerCase().replace(/\s*\([^)]*\)\s*$/, "");
+  return LANGUAGE_NAMES.has(t) || LOCALE_CODE_RE.test(t);
+}
+
+/**
+ * The header's brand link, which every site has and which names the competitor we
+ * are already looking at. Matched on EQUALITY with a brand token (and on the domain
+ * form of the label), never on containment: "Notion AI" contains "notion" and is a
+ * genuine product area, so a containment test would delete the very thing this
+ * section exists to show.
+ */
+function isBrandSelfLink(text: string, brandTokens: string[]): boolean {
+  if (brandTokens.length === 0) return false;
+  const bare = text.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (brandTokens.includes(bare)) return true;
+  // "apiplatform.io" → "apiplatform": a label written as their own domain.
+  const asDomain = text.trim().toLowerCase();
+  if (!asDomain.includes(".")) return false;
+  const host = asDomain.replace(/^www\./, "").split(".")[0] ?? "";
+  return brandTokens.includes(host.replace(/[^a-z0-9]/g, ""));
+}
 
 /** Longest label we treat as a nav item: past this it is a flattened dropdown. */
 const MAX_NAV_LABEL = 28;
@@ -158,6 +236,8 @@ const MIN_NAV_ITEMS = 2;
  */
 export function productNavItems(
   items: Array<{ text?: string | null; href?: string | null }> | null | undefined,
+  /** The competitor's own brand tokens, so its header logo link drops out. */
+  brandTokens: string[] = [],
 ): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
@@ -166,12 +246,18 @@ export function productNavItems(
     if (!text || text.length > MAX_NAV_LABEL) continue;
     // A label with no letter is chrome (an arrow, a separator, a bare count).
     if (!/\p{L}/u.test(text)) continue;
-    const key = text.toLowerCase();
+    // A mailto link renders its address as the label ("pr@acme.com").
+    if (text.includes("@")) continue;
+    // Numbered and arrow-prefixed navs are common ("01Home", "02Compare", "→ Docs"),
+    // and the prefix alone was enough to walk every one of those labels past the
+    // generic list. Matched on the stripped key; the chip still shows their text.
+    const key = text.toLowerCase().replace(/^[\d\W_]+/u, "");
     if (GENERIC_NAV.has(key) || seen.has(key)) continue;
     // A label that names a buying motion is a call to action sitting in the nav
     // ("Get Notion free", "Talk to a human"), not an area of their product. Reusing
     // the CTA vocabulary catches these without listing every phrasing of them.
     if (motionOf(text)) continue;
+    if (isLanguageLabel(text) || isBrandSelfLink(text, brandTokens)) continue;
     seen.add(key);
     out.push(text);
     if (out.length >= MAX_NAV_ITEMS) break;

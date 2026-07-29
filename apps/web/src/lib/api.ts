@@ -1101,6 +1101,26 @@ export interface DigestDetail {
   provenance: DigestProvenance | null;
 }
 
+export interface AppNotification {
+  id: string;
+  // Mirrors the notification_type enum (packages/db). The bell renders every type
+  // the same way (title/body/link), so this is documentation + a narrowing guard,
+  // not a switch.
+  type:
+    | "signal"
+    | "new_competitor"
+    | "self_change"
+    | "onboarding_complete"
+    | "structural_change"
+    | "silent_monitor"
+    | "analysis_ready";
+  title: string;
+  body: string | null;
+  linkUrl: string | null;
+  isRead: boolean;
+  createdAt: string;
+}
+
 export interface NotificationSettings {
   slackWebhookUrl: string | null;
   webhookUrl: string | null;
@@ -2978,6 +2998,19 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     });
+  },
+  // The bell's opening snapshot. Two endpoints behind one call because the bell
+  // needs both to render (badge + dropdown) and it mounts on every dashboard page;
+  // the layout seeds this server-side so a cold load costs no browser round-trip.
+  getNotificationsSnapshot: async (): Promise<{
+    items: AppNotification[];
+    unreadCount: number;
+  }> => {
+    const [list, count] = await Promise.all([
+      request<{ notifications: AppNotification[] }>("/api/notifications?limit=20"),
+      request<{ count: number }>("/api/notifications/unread-count"),
+    ]);
+    return { items: list.notifications, unreadCount: count.count };
   },
   getNotificationSettings: () =>
     request<NotificationSettings>("/api/settings/notifications"),

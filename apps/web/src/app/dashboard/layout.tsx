@@ -13,6 +13,7 @@ import {
   structuralChangesQuery,
   aiStatusQuery,
   competitorsQuery,
+  notificationsBellQuery,
 } from "@/lib/queries";
 import { PostHogIdentitySync } from "@/lib/posthog/identity-sync";
 import { TimezoneSync } from "@/components/outrival/timezone-sync";
@@ -160,6 +161,9 @@ export default async function DashboardLayout({
       competitorsQuery(productScope ?? undefined).queryKey,
       shell.competitors,
     );
+  }
+  if (shell.notifications) {
+    queryClient.setQueryData(notificationsBellQuery().queryKey, shell.notifications);
   }
 
   return (

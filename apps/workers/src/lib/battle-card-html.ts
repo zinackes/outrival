@@ -71,7 +71,7 @@ export function renderBattleCardHtml(input: {
 </head>
 <body>
   <header>
-    <div class="brand"><img src="https://outrival.app/logo-dark.png" width="22" height="22" alt="" style="vertical-align:middle;margin-right:7px;" />Out<span>rival</span></div>
+    <div class="brand"><img src="https://outrival.app/logo-dark-96.png" width="22" height="22" alt="" style="vertical-align:middle;margin-right:7px;" />Out<span>rival</span></div>
     <div class="meta">
       Battle card · ${escape(input.generatedAt.toLocaleDateString("en-US", { day: "2-digit", month: "long", year: "numeric" }))}
     </div>

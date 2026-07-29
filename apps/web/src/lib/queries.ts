@@ -343,6 +343,20 @@ export function structuralChangesQuery() {
   });
 }
 
+// The notification bell's opening snapshot (list + unread count). Server-seeded by
+// the layout, so a cold dashboard load spends zero browser round-trips on the bell —
+// it used to fire two of them from `useEffect` on every page. Loaded ONCE per mount,
+// exactly like the imperative fetch it replaces: the live channel is the SSE stream,
+// so a refetch would only fight the local state the stream maintains.
+export function notificationsBellQuery() {
+  return queryOptions({
+    queryKey: ["notifications", "bell"] as const,
+    queryFn: () => api.getNotificationsSnapshot(),
+    staleTime: Infinity,
+    refetchOnMount: false,
+  });
+}
+
 // AI degradation status (layout banner). Server-seeded for the initial paint; the
 // banner adds its own refetchInterval to keep polling.
 export function aiStatusQuery() {

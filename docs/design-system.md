@@ -1,7 +1,13 @@
 # Design System — Outrival
 
-Source unique de vérité pour le design. Partagé entre Claude Design (landing +
-polish global) et Claude Code (UI de l'app). Tout changement de DA passe par ce fichier.
+> ⚠️ **Doc d'intention d'origine, PAS l'état du système.** La source de vérité est
+> `DESIGN.md` à la racine (tokens, échelle, règles nommées, parité light/dark). Ce
+> fichier a divergé sur plusieurs points depuis (accent amber → cyan/Iris, General
+> Sans → Geist pour les titres). La section Typographie ci-dessous a été resynchronisée
+> le 2026-07-29 ; le reste est à lire comme un document historique.
+
+Partagé à l'origine entre Claude Design (landing + polish global) et Claude Code
+(UI de l'app).
 
 ---
 
@@ -84,30 +90,29 @@ Ne jamais utiliser l'amber pour signifier une sévérité.
 
 ### Stack (verrouillée)
 ```
-Display    General Sans      (grotesque géométrique — hero, titres de section)
-Body / UI  Geist Sans        (grotesque — texte, boutons, labels)
-Data       Geist Mono        (chiffres, scores, codes, timestamps)
+Display    Geist Sans        (même famille que le corps — la hiérarchie vient du
+                              poids 600 + tracking négatif, pas d'une police typée)
+Body / UI  Geist Sans        (grotesque — texte, boutons, labels, ET LES CHIFFRES)
+Machine    Geist Mono        (kbd, codes, IDs, URLs, slugs, marqueurs de diff)
+Landing    Zodiak serif      (registre brand, scopé `.landing-canvas`)
 ```
 
-Toutes gratuites : General Sans (Fontshare), Geist + Geist Mono (Vercel).
-Look technique uniforme, lignée Linear/Vercel. Distinctif sans serif éditorial.
+Geist + Geist Mono (Vercel), Zodiak (Fontshare, ITF Free Font License). General Sans
+a été retirée : une display typée lisait « designed ».
 
 ### Échelle (desktop)
-```
-Display XL   56px / 1.05 / -0.025em   Hero headline (General Sans 600)
-Display L    40px / 1.08 / -0.02em    Titres de section (General Sans 600)
-Heading      24px / 1.2  / -0.01em    Sous-titres (General Sans 500 / Geist 600)
-Body L       18px / 1.6               Intro, sous-headlines (Geist Sans)
-Body         15px / 1.6               Texte courant (Geist Sans)
-Small        13px / 1.5               Labels, captions (Geist Sans, text-muted)
-Mono         13px / 1.4               Données (Geist Mono)
-Micro        11px / 1.4 / 0.05em      Labels uppercase (Geist Sans, tracking large)
-```
+L'échelle produit est tokenisée dans `globals.css` et documentée dans `DESIGN.md §3`
+(`text-meta` 11 → `text-title-lg` 34, KPI `text-stat` 44) — jamais de `text-[Npx]`.
+Les steps display 26→76px existent pour la landing (registre brand) seulement.
 
 Règles :
-- General Sans pour les titres et grands moments d'affirmation
-- Geist Sans pour tout le reste de l'UI (corps, boutons, labels)
-- Geist Mono pour TOUTE donnée chiffrée (scores d'overlap, prix, dates, codes)
+- Geist Sans partout : titres (poids + tracking), corps, boutons, labels
+- **Les chiffres sont en Geist Sans + `tabular-nums`** — prix, scores d'overlap, dates,
+  compteurs, KPI. C'est l'utilitaire qui aligne la colonne, pas la police ; le mono
+  n'ajoutait qu'une 2e texture à côté de la prose (`DESIGN.md`, Numbers-Are-Sans Rule)
+- Geist Mono seulement pour ce qui se lit glyphe par glyphe, où un caractère lu de
+  travers change le sens : `kbd`, backup codes / secret TOTP, IDs, URLs / hostnames /
+  slugs, noms de header, marqueurs `+`/`-` d'un diff (Machine-Truth Rule)
 - Tracking négatif sur les grands titres (-0.02 à -0.025em) pour la densité
 - Une seule H1 par page
 
@@ -165,8 +170,9 @@ Wording first-person : "Commencer gratuitement" / "Lancer ma veille".
   ou une classe `size-*`) — le défaut Phosphor est `1em`, pas 24px
 - Badges sévérité : pill, fond --{severity}-soft, texte --{severity}
 - Boutons : primaire amber (texte sombre), secondaire ghost (bordure --border)
-- Graphiques : recharts thémés dark + amber, grille discrète, mono pour les axes
-- Tables de données : denses, mono pour les chiffres, lignes séparées par --border
+- Graphiques : recharts thémés dark + amber, grille discrète, axes en sans
+- Tables de données : denses, chiffres en sans + `tabular-nums`, lignes séparées
+  par --border
 - États vides : courts, avec une action claire (jamais de gros vide décoratif)
 - Pas de badge de statut "en ligne/connecté" dans les headers (anti-pattern)
 

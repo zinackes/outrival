@@ -264,6 +264,7 @@ export function ActivityTab({
                     <SignalRow
                       signal={s}
                       unread={isNew(s.createdAt)}
+                      competitorId={competitorId}
                       competitorUrl={competitorUrl}
                     />
                   </motion.div>
@@ -345,13 +346,20 @@ function FilterButton({
 function SignalRow({
   signal: s,
   unread,
+  competitorId,
   competitorUrl,
 }: {
   signal: CompetitorSignal;
   unread: boolean;
+  competitorId: string;
   competitorUrl: string;
 }) {
   const pageUrl = s.monitorUrl ?? competitorUrl;
+  // The feed's established deep-link is ?focus=, but it only opens a signal that
+  // the loaded page actually contains — and the feed pages 50 at a time across the
+  // whole org, so a signal read here from months back would land on the feed with
+  // nothing selected. Scoping the destination to this competitor puts it in range.
+  const signalHref = `/dashboard/signals?competitor=${competitorId}&focus=${s.id}`;
   const leadsWithSoWhat = RANK[s.severity] >= RANK[SHOW_SO_WHAT_FROM] && !!s.soWhat;
   const sourceLabel = s.sourceType ? sourceShortLabel(s.sourceType as SourceType) : null;
 
@@ -411,6 +419,12 @@ function SignalRow({
             sourceType={s.sourceType}
             detectedAt={s.createdAt}
           />
+          <Link
+            href={signalHref}
+            className="inline-flex items-center gap-1 text-xs text-link hover:underline"
+          >
+            Open signal <ArrowRightIcon size={16} aria-hidden />
+          </Link>
           <a
             href={pageUrl}
             target="_blank"

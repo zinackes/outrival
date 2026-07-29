@@ -45,6 +45,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SidebarCompetitors } from "@/components/dashboard/sidebar-competitors";
+import { ProductTile } from "@/components/dashboard/product-tile";
 import { LogoMark } from "@/components/outrival/logo";
 import { productsListQuery } from "@/lib/queries";
 import {
@@ -54,10 +55,9 @@ import {
 } from "@/components/dashboard/product-scope-provider";
 
 export interface Org {
-  name: string;
   plan?: string;
-  seatsUsed?: number;
-  seatsLimit?: number;
+  /** Competitors currently watched by the workspace (all products). */
+  competitorsUsed?: number;
 }
 
 export interface SwitcherUser {
@@ -175,14 +175,17 @@ export function WorkspaceSwitcher({
     }
   }
 
-  const meta = [
-    org.plan,
-    org.seatsUsed != null && org.seatsLimit != null
-      ? `${org.seatsUsed}/${org.seatsLimit} seats`
-      : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  // The workspace has no name of its own (it used to render a fabricated
+  // "<first name> workspace"), so its identity line is what the workspace IS:
+  // the plan it runs on and how much it watches.
+  const planLabel = org.plan
+    ? org.plan.charAt(0).toUpperCase() + org.plan.slice(1)
+    : null;
+  const competitorsLabel =
+    org.competitorsUsed != null
+      ? `${org.competitorsUsed} competitor${org.competitorsUsed === 1 ? "" : "s"}`
+      : null;
+  const meta = [planLabel, competitorsLabel].filter(Boolean).join(" · ");
 
   return (
     <SidebarMenu>
@@ -191,34 +194,48 @@ export function WorkspaceSwitcher({
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
               size="lg"
-              tooltip={org.name}
+              tooltip={activeProduct?.name ?? "Workspace"}
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
-              <LogoMark size={30} />
+              {/* On a single product the switcher has nothing to disambiguate, so it
+                  keeps the brand mark; once a product is the active scope, that
+                  product's favicon IS the identity — the same mark it carries
+                  everywhere else it appears. */}
+              {activeProduct ? (
+                <ProductTile
+                  name={activeProduct.name}
+                  url={activeProduct.url}
+                  repoUrl={activeProduct.repoUrl}
+                  position={activeProduct.position}
+                  size={30}
+                  ring
+                />
+              ) : (
+                <LogoMark size={30} />
+              )}
               {multiProduct ? (
-                // Product is the primary context; org/plan drops to the muted sub-line.
+                // Product is the primary context; plan/coverage drops to the sub-line.
                 <div className="grid flex-1 text-left leading-tight">
                   <span className="truncate text-sm font-semibold inline-flex items-center gap-1">
-                    {activeProduct ? (
-                      <CubeIcon className="size-4 shrink-0 text-muted-foreground" />
-                    ) : (
+                    {!activeProduct && (
                       <CardsThreeIcon className="size-4 shrink-0 text-muted-foreground" />
                     )}
                     {activeProduct?.name ?? "All products"}
                   </span>
-                  <span className="truncate text-meta text-[var(--muted-2)]">
-                    {org.name}
-                    {meta ? ` · ${meta}` : ""}
-                  </span>
+                  {meta && (
+                    <span className="truncate text-meta text-[var(--muted-2)]">
+                      {meta}
+                    </span>
+                  )}
                 </div>
               ) : (
                 <div className="grid flex-1 text-left leading-tight">
                   <span className="truncate text-sm font-semibold text-foreground">
-                    {org.name}
+                    {planLabel ?? "Workspace"}
                   </span>
-                  {meta && (
+                  {competitorsLabel && (
                     <span className="truncate text-meta text-[var(--muted-2)]">
-                      {meta}
+                      {competitorsLabel}
                     </span>
                   )}
                 </div>
@@ -232,14 +249,8 @@ export function WorkspaceSwitcher({
             sideOffset={4}
             className="w-60"
           >
-            <DropdownMenuLabel className="text-xs text-[var(--muted-2)]">
-              {org.name}
-              {org.plan ? ` · ${org.plan}` : ""}
-            </DropdownMenuLabel>
-
             {multiProduct && (
               <>
-                <DropdownMenuSeparator />
                 <DropdownMenuLabel className="text-meta uppercase tracking-wide text-[var(--muted-2)]">
                   Products
                 </DropdownMenuLabel>
@@ -249,7 +260,14 @@ export function WorkspaceSwitcher({
                     onSelect={() => selectProduct(p.id)}
                     className="gap-2"
                   >
-                    <CubeIcon className="size-4 text-muted-foreground" />
+                    <ProductTile
+                      name={p.name}
+                      url={p.url}
+                      repoUrl={p.repoUrl}
+                      position={p.position}
+                      size={16}
+                      ring
+                    />
                     <span className="flex-1 truncate">{p.name}</span>
                     {current === p.id && <CheckIcon className="size-4 shrink-0" />}
                   </DropdownMenuItem>
@@ -267,10 +285,10 @@ export function WorkspaceSwitcher({
                     <GearIcon className="size-4" /> Manage products
                   </Link>
                 </DropdownMenuItem>
+                <DropdownMenuSeparator />
               </>
             )}
 
-            <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
               <Link href="/dashboard/settings">
                 <GearIcon className="size-4" /> Workspace settings

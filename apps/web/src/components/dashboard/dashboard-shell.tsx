@@ -18,10 +18,8 @@ interface User {
 }
 
 interface Org {
-  name: string;
   plan?: string;
-  seatsUsed?: number;
-  seatsLimit?: number;
+  competitorsUsed?: number;
 }
 
 export function DashboardShell({

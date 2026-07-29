@@ -343,7 +343,7 @@ export function CompetitorsList() {
           competitors ? (
             <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <span>
-                <b className="font-mono font-medium text-foreground tabular-nums">
+                <b className="font-medium text-foreground tabular-nums">
                   {counts.all}
                 </b>{" "}
                 tracked
@@ -352,7 +352,7 @@ export function CompetitorsList() {
                 <>
                   <span className="text-border-strong">·</span>
                   <span>
-                    <b className="font-mono font-medium text-foreground tabular-nums">
+                    <b className="font-medium text-foreground tabular-nums">
                       {counts.moving}
                     </b>{" "}
                     moved this week
@@ -363,7 +363,7 @@ export function CompetitorsList() {
                 <>
                   <span className="text-border-strong">·</span>
                   <span className="text-high">
-                    <b className="font-mono font-medium tabular-nums">
+                    <b className="font-medium tabular-nums">
                       {counts.attention}
                     </b>{" "}
                     needs attention
@@ -686,7 +686,7 @@ function CompetitorRow({
               <span aria-hidden className="text-border-strong">
                 ·
               </span>
-              <span className="font-mono tabular-nums">{shortAge(row.move.createdAt)}</span>
+              <span className="tabular-nums">{shortAge(row.move.createdAt)}</span>
             </span>
           </>
         ) : (
@@ -695,7 +695,7 @@ function CompetitorRow({
               Nothing detected yet.
             </span>
             <span className="text-meta text-muted-foreground">
-              Added <span className="font-mono tabular-nums">{shortAge(row.createdAt)}</span> ago
+              Added <span className="tabular-nums">{shortAge(row.createdAt)}</span> ago
             </span>
           </>
         )}
@@ -703,13 +703,13 @@ function CompetitorRow({
 
       <div className="hidden min-w-0 flex-col gap-1.5 @2xl:flex">
         <span className="flex items-baseline gap-2">
-          <span className="font-mono text-dense font-semibold tabular-nums">
+          <span className="text-dense font-semibold tabular-nums">
             {row.signals7d}
           </span>
           {row.signals7d > 0 ? (
             <DeltaPill delta={row.delta} />
           ) : (
-            <span className="font-mono text-xs text-muted-foreground">—</span>
+            <span className="text-xs text-muted-foreground">—</span>
           )}
         </span>
         <ActivitySpark
@@ -721,7 +721,7 @@ function CompetitorRow({
       <div className="hidden min-w-0 flex-col gap-1.5 @5xl:flex">
         {row.overlap != null ? (
           <>
-            <span className="font-mono text-dense font-semibold tabular-nums">
+            <span className="text-dense font-semibold tabular-nums">
               {row.overlap}
             </span>
             <span className="h-[3px] overflow-hidden rounded-sm bg-surface-3">
@@ -748,7 +748,7 @@ function CompetitorRow({
               <span className="size-1.5 shrink-0 rounded-full bg-high" />
               <span className="truncate">{sourceLabel(cov.failingSource)} blocked</span>
             </span>
-            <span className="font-mono text-meta text-muted-foreground tabular-nums">
+            <span className="text-meta text-muted-foreground tabular-nums">
               {live} of {cov.sources} live
             </span>
           </>
@@ -758,7 +758,7 @@ function CompetitorRow({
               <span className="size-1.5 shrink-0 rounded-full bg-positive" />
               {cov.sources} source{cov.sources > 1 ? "s" : ""} live
             </span>
-            <span className="font-mono text-meta text-muted-foreground">
+            <span className="text-meta text-muted-foreground tabular-nums">
               {row.freshness?.lastScrapedAt
                 ? `checked ${shortAge(row.freshness.lastScrapedAt)} ago`
                 : "not scanned yet"}
@@ -826,7 +826,7 @@ function BucketChip({
       {label}
       <span
         className={cn(
-          "font-mono text-meta tabular-nums",
+          "text-meta tabular-nums",
           warn ? "text-high" : active ? "text-muted-foreground" : "text-text-subtle",
         )}
       >

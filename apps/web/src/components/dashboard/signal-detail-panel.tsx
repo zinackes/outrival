@@ -502,7 +502,7 @@ export function SignalDetailPanel({
                 <span>Detected</span>
                 <time
                   dateTime={signal.createdAt}
-                  className="font-mono tabular-nums slashed-zero text-foreground"
+                  className="tabular-nums text-foreground"
                 >
                   {format(created, "MMM d, HH:mm")}
                 </time>
@@ -671,7 +671,7 @@ export function SignalDetailPanel({
                       <span className="min-w-0 flex-1 truncate text-dense text-foreground/90 group-hover:text-foreground">
                         {s.insight}
                       </span>
-                      <time className="shrink-0 font-mono text-meta tabular-nums text-muted-foreground">
+                      <time className="shrink-0 text-meta tabular-nums text-muted-foreground">
                         {formatDistanceToNow(new Date(s.createdAt), {
                           addSuffix: false,
                         })}

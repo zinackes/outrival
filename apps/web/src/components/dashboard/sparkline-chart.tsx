@@ -47,7 +47,7 @@ function SparkTooltip({ active, payload, labels, valueLabel }: TipProps) {
           {labels[i]}
         </div>
       )}
-      <div className="font-mono text-meta font-semibold tabular-nums">
+      <div className="text-meta font-semibold tabular-nums">
         {point.value}
         {valueLabel ? ` ${valueLabel}` : ""}
       </div>

@@ -133,7 +133,7 @@ export function PriceLadder({ productId }: { productId: string }) {
             </span>
             <span
               className={cn(
-                "text-right font-mono text-dense tabular-nums",
+                "text-right text-dense tabular-nums",
                 r.self ? "font-semibold text-foreground" : "text-muted-foreground",
               )}
             >
@@ -151,7 +151,7 @@ export function PriceLadder({ productId }: { productId: string }) {
           <>
             The middle of the {rows.filter((r) => !r.self).length} published monthly entry
             prices is{" "}
-            <span className="font-mono tabular-nums text-foreground">
+            <span className="tabular-nums text-foreground">
               {money(data.median, currency)}
             </span>
             .{" "}

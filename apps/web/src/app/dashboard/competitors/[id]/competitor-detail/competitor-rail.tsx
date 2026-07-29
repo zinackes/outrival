@@ -359,7 +359,7 @@ function SourceRow({
           </span>
           <span
             className={cn(
-              "shrink-0 font-mono text-meta tabular-nums",
+              "shrink-0 text-meta tabular-nums",
               failed ? "text-critical" : "text-muted-foreground",
             )}
           >

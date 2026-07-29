@@ -108,7 +108,7 @@ export function Kpi({
       </div>
       <div className="flex items-center justify-between gap-4">
         <div className="font-semibold text-stat tracking-tighter leading-none flex items-baseline gap-2 min-w-0">
-          <span className={`tabular-nums font-mono ${valueClassName ?? ""}`}>
+          <span className={`tabular-nums ${valueClassName ?? ""}`}>
             {value}
           </span>
           {suffix && (

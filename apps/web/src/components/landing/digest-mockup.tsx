@@ -57,11 +57,11 @@ export function DigestMockup({ animate = true }: { animate?: boolean }) {
           <span className="text-content font-semibold">
             Out<span className="text-primary">rival</span>
           </span>
-          <span className="font-mono text-meta text-text-subtle">
+          <span className="text-meta text-text-subtle">
             / weekly digest
           </span>
         </div>
-        <div className="flex gap-1 font-mono text-meta">
+        <div className="flex gap-1 text-meta">
           <span className="rounded bg-surface-3 px-2 py-1 text-foreground">
             This week
           </span>

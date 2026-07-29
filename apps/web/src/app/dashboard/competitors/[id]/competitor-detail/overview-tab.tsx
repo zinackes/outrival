@@ -77,7 +77,7 @@ function Metric({
 /** A number that carries the reading, in the data voice. */
 function Big({ children }: { children: React.ReactNode }) {
   return (
-    <span className="font-mono text-2xl font-semibold leading-none tracking-tight tabular-nums">
+    <span className="text-2xl font-semibold leading-none tracking-tight tabular-nums">
       {children}
     </span>
   );
@@ -498,7 +498,7 @@ export function OverviewTab({
                   </span>
                 </>
               ) : (
-                <span className="font-mono tabular-nums text-muted-foreground">
+                <span className="tabular-nums text-muted-foreground">
                   {topReview.review_count} reviews
                 </span>
               )
@@ -786,10 +786,10 @@ function HeadToHead({
             {usable.map((r) => (
               <tr key={r.label} className="border-t border-border">
                 <td className="py-2 text-muted-foreground">{r.label}</td>
-                <td className="py-2 text-right font-mono tabular-nums">
+                <td className="py-2 text-right tabular-nums">
                   {r.ours ?? <span className="font-sans text-dense text-muted-foreground">not tracked</span>}
                 </td>
-                <td className="py-2 text-right font-mono tabular-nums text-foreground">
+                <td className="py-2 text-right tabular-nums text-foreground">
                   {r.theirs ?? <span className="font-sans text-dense text-muted-foreground">not tracked</span>}
                 </td>
               </tr>

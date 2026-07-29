@@ -213,13 +213,13 @@ export function HiringTab({
       <TabSection>
         <FactStrip>
           <Fact label="Open roles">
-            <span className="font-mono tabular-nums">{jobs.total}</span>
+            <span className="tabular-nums">{jobs.total}</span>
           </Fact>
           <Fact label="Senior or above" muted={seniorPlus === 0}>
             {seniorPlus > 0 ? (
               <>
-                <span className="font-mono tabular-nums">{seniorPlus}</span> of{" "}
-                <span className="font-mono tabular-nums">{allRoles.length}</span>
+                <span className="tabular-nums">{seniorPlus}</span> of{" "}
+                <span className="tabular-nums">{allRoles.length}</span>
               </>
             ) : (
               "None posted"
@@ -227,7 +227,7 @@ export function HiringTab({
           </Fact>
           <Fact label="Salary observed" muted={!salaryBand}>
             {salaryBand ? (
-              <span className="font-mono tabular-nums">{salaryBand}</span>
+              <span className="tabular-nums">{salaryBand}</span>
             ) : (
               "No bands posted"
             )}
@@ -240,7 +240,7 @@ export function HiringTab({
             {totalDelta === 0 ? (
               "Flat"
             ) : (
-              <span className="font-mono tabular-nums">
+              <span className="tabular-nums">
                 {totalDelta > 0 ? `+${totalDelta}` : totalDelta}
               </span>
             )}
@@ -307,7 +307,7 @@ export function HiringTab({
                 />
                 <span className="min-w-0 truncate text-sm font-medium">{d.department}</span>
                 <span className="text-right text-dense text-muted-foreground">
-                  <span className="font-mono font-semibold tabular-nums text-foreground">
+                  <span className="font-semibold tabular-nums text-foreground">
                     {d.count}
                   </span>{" "}
                   open
@@ -326,7 +326,7 @@ export function HiringTab({
                 </span>
                 <span
                   className={cn(
-                    "text-right font-mono text-dense tabular-nums",
+                    "text-right text-dense tabular-nums",
                     delta === 0
                       ? "text-muted-foreground"
                       : delta > 0
@@ -382,7 +382,7 @@ export function HiringTab({
                         </span>
                         <span className="col-span-1 col-start-2 row-span-2 row-start-1 flex items-center gap-2.5">
                           {salary && (
-                            <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                            <span className="text-xs tabular-nums text-muted-foreground">
                               {salary}
                             </span>
                           )}

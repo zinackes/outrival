@@ -1265,7 +1265,7 @@ function GroupHeader({
       <span className="min-w-0 flex-1 truncate text-dense font-semibold text-foreground/90">
         {label}
       </span>
-      <span className="shrink-0 font-mono text-meta text-muted-foreground tabular-nums">
+      <span className="shrink-0 text-meta text-muted-foreground tabular-nums">
         {count}
       </span>
     </button>

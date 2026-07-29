@@ -155,7 +155,7 @@ function MoverTile({ tile }: { tile: Tile }) {
       <span className="flex items-baseline gap-1.5">
         <span
           className={cn(
-            "font-mono text-xl leading-none tracking-tight tabular-nums",
+            "text-xl leading-none tracking-tight tabular-nums",
             quiet ? "font-medium text-muted-foreground" : "font-semibold",
           )}
         >
@@ -165,7 +165,7 @@ function MoverTile({ tile }: { tile: Tile }) {
           <span className="text-meta text-muted-foreground">
             {lastSignalAt ? (
               <>
-                quiet <span className="font-mono tabular-nums">{shortAge(lastSignalAt)}</span>
+                quiet <span className="tabular-nums">{shortAge(lastSignalAt)}</span>
               </>
             ) : (
               "never moved"
@@ -174,11 +174,11 @@ function MoverTile({ tile }: { tile: Tile }) {
         ) : delta > 0 ? (
           <span className="inline-flex items-center gap-0.5 text-meta font-medium">
             <ArrowUpIcon size={14} aria-hidden />
-            <span className="font-mono tabular-nums">{delta}</span>
+            <span className="tabular-nums">{delta}</span>
           </span>
         ) : (
           <span className="text-meta text-muted-foreground">
-            {delta === 0 ? "flat" : <span className="font-mono tabular-nums">{delta}</span>}
+            {delta === 0 ? "flat" : <span className="tabular-nums">{delta}</span>}
           </span>
         )}
       </span>
@@ -192,7 +192,7 @@ function MoverTile({ tile }: { tile: Tile }) {
           ) : c.freshness?.lastScrapedAt ? (
             <>
               checked{" "}
-              <span className="font-mono tabular-nums">
+              <span className="tabular-nums">
                 {shortAge(c.freshness.lastScrapedAt)}
               </span>{" "}
               ago
@@ -222,7 +222,7 @@ function MoverTile({ tile }: { tile: Tile }) {
           <span className="truncate text-meta text-text-subtle">
             {lastSignalAt ? (
               <>
-                last move <span className="font-mono tabular-nums">{shortAge(lastSignalAt)}</span>{" "}
+                last move <span className="tabular-nums">{shortAge(lastSignalAt)}</span>{" "}
                 ago
               </>
             ) : (

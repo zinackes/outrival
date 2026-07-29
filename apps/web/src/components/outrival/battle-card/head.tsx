@@ -59,9 +59,9 @@ export function BattleCardHead({
                   <CompAvatar name={product.name} url={product.url} size={32} />
                   <span className="min-w-0">{product.name}</span>
                 </span>
-                {/* Deliberately small: an 11px mono operator between two 34px names.
+                {/* Deliberately small: an 11px operator between two 34px names.
                     The size gap does the work a badge or a divider would do louder. */}
-                <span className="font-mono text-meta font-normal tracking-wide text-muted-foreground">
+                <span className="text-meta font-normal tracking-wide text-muted-foreground">
                   vs
                 </span>
               </>

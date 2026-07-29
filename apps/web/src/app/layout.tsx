@@ -19,9 +19,9 @@ const geistSans = Geist({
   display: "swap",
 });
 
-// Data voice (numbers, IDs, timestamps, metrics) — Geist Mono, true monospace so
-// the machine-truth layer reads as data, not prose. tabular-nums + slashed-zero
-// stay enforced in globals.css.
+// Machine strings (keys, IDs, URLs, codes) — Geist Mono, true monospace so a glyph
+// read wrong is visible. NUMBERS are not this: they stay in the sans with
+// tabular-nums. tabular-nums + slashed-zero stay enforced in globals.css.
 const geistMono = Geist_Mono({
   subsets: ["latin"],
   variable: "--font-geist-mono",

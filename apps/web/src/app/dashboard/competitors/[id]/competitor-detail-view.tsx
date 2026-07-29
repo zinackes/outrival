@@ -988,7 +988,7 @@ function Header({
                   </kbd>
                 </TooltipContent>
               </Tooltip>
-              <span className="select-none px-0.5 font-mono text-dense tabular-nums text-muted-foreground">
+              <span className="select-none px-0.5 text-dense tabular-nums text-muted-foreground">
                 {index + 1}/{total}
               </span>
               <Tooltip>
@@ -1196,7 +1196,7 @@ function Header({
                         }}
                       />
                     </span>
-                    <span className="font-mono text-content font-semibold tabular-nums text-foreground">
+                    <span className="text-content font-semibold tabular-nums text-foreground">
                       {Math.round(competitor.overlapScore)}
                     </span>
                   </button>
@@ -1217,7 +1217,7 @@ function Header({
                 href={`/dashboard/competitors/${competitor.id}/sources`}
                 className="inline-flex items-center gap-1.5 rounded-sm transition-colors hover:text-link focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <span className="font-mono tabular-nums">{sourceCount}</span> tracked
+                <span className="tabular-nums">{sourceCount}</span> tracked
                 <CaretRightIcon size={14} className="text-muted-foreground" />
               </Link>
             </Fact>
@@ -1290,7 +1290,7 @@ function BattleCardButton({
             {state === "fresh" && generatedAt && (
               <span className="text-xs text-muted-foreground">
                 <span aria-hidden>·</span>{" "}
-                <span className="font-mono tabular-nums">{shortAge(generatedAt)}</span>
+                <span className="tabular-nums">{shortAge(generatedAt)}</span>
               </span>
             )}
           </Link>

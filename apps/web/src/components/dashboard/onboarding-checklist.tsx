@@ -66,7 +66,7 @@ export function OnboardingChecklistCard() {
         <div className="flex items-center gap-2">
           <RocketIcon size={16} className="text-muted-foreground" aria-hidden />
           <h2 className="text-sm font-semibold tracking-tight">Get set up</h2>
-          <span className="text-muted-foreground font-mono text-meta">
+          <span className="text-muted-foreground text-meta tabular-nums">
             {doneCount}/{data.steps.length}
           </span>
         </div>

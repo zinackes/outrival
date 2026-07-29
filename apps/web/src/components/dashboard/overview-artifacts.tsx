@@ -86,7 +86,7 @@ export function OverviewArtifacts() {
 }
 
 function Num({ children }: { children: ReactNode }) {
-  return <span className="font-mono tabular-nums">{children}</span>;
+  return <span className="tabular-nums">{children}</span>;
 }
 
 function Shelf({

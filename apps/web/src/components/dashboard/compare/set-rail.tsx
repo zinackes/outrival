@@ -183,7 +183,7 @@ export function CompareSetRail({
         </PopoverContent>
       </Popover>
 
-      <span className="text-muted-foreground ml-0.5 font-mono text-meta tabular-nums">
+      <span className="text-muted-foreground ml-0.5 text-meta tabular-nums">
         {usedComps}/{maxCompetitors}
       </span>
     </div>

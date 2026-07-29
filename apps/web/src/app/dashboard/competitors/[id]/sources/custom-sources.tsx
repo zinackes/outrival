@@ -125,7 +125,7 @@ export function CustomSources({
               <span className="text-content font-semibold tracking-tight text-foreground">
                 Custom pages
               </span>
-              <span className="font-mono text-xs tabular-nums text-muted-foreground">
+              <span className="text-xs tabular-nums text-muted-foreground">
                 {used}/{limit}
               </span>
             </div>

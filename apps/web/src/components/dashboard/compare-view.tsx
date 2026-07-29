@@ -479,7 +479,7 @@ export function CompareView() {
               {captured && (
                 <>
                   {" · captured "}
-                  <span className="font-mono tabular-nums">{agePhrase(captured)}</span>
+                  <span className="tabular-nums">{agePhrase(captured)}</span>
                 </>
               )}
             </>

@@ -346,7 +346,7 @@ export function BillingDashboard() {
                 </span>
               )}
             </div>
-            <p className="font-mono text-xs tabular-nums text-muted-foreground">
+            <p className="text-xs tabular-nums text-muted-foreground">
               {billing.plan === "free" ? (
                 "No card required"
               ) : (
@@ -360,7 +360,7 @@ export function BillingDashboard() {
               )}
             </p>
             {billing.paymentMethod?.last4 && (
-              <p className="font-mono text-xs tabular-nums text-muted-foreground">
+              <p className="text-xs tabular-nums text-muted-foreground">
                 {formatCardBrand(billing.paymentMethod.brand)} ···· {billing.paymentMethod.last4}
                 {billing.paymentMethod.expMonth && billing.paymentMethod.expYear
                   ? ` · expires ${billing.paymentMethod.expMonth}/${String(
@@ -408,7 +408,7 @@ export function BillingDashboard() {
           <div className="flex flex-col gap-2">
             <div className="flex items-baseline justify-between gap-3">
               <span className="text-sm text-foreground">Tracked competitors</span>
-              <span className="font-mono text-xs tabular-nums text-muted-foreground">
+              <span className="text-xs tabular-nums text-muted-foreground">
                 {used}
                 {isUnlimited ? (
                   <span className="text-muted-foreground"> / ∞</span>
@@ -426,7 +426,7 @@ export function BillingDashboard() {
                     usagePct >= 100 && "[&>div]:bg-destructive",
                   )}
                 />
-                <span className="font-mono text-meta tabular-nums text-[var(--muted-2)]">
+                <span className="text-meta tabular-nums text-[var(--muted-2)]">
                   {remaining} remaining
                 </span>
               </>
@@ -471,7 +471,7 @@ export function BillingDashboard() {
                     <div className="text-meta text-muted-foreground capitalize">{inv.status}</div>
                   )}
                 </div>
-                <span className="font-mono text-dense tabular-nums text-foreground">
+                <span className="text-dense tabular-nums text-foreground">
                   {formatInvoiceAmount(inv.amountPaid, inv.currency)}
                 </span>
                 {inv.hostedUrl || inv.pdfUrl ? (
@@ -587,7 +587,7 @@ export function BillingDashboard() {
                     </span>
                     <span className="text-sm text-text-subtle">/ month</span>
                   </div>
-                  <span className="mt-1 block h-4 font-mono text-meta tabular-nums text-text-subtle">
+                  <span className="mt-1 block h-4 text-meta tabular-nums text-text-subtle">
                     {period === "yearly" && isPaid
                       ? `€${pricing} billed yearly`
                       : isPaid

@@ -351,7 +351,7 @@ function LogList({
             key={c.id}
             className="grid grid-cols-[3.75rem_minmax(0,1fr)] items-baseline gap-x-4 gap-y-1 border-t border-border py-2.5 first:border-t-0 sm:grid-cols-[3.75rem_minmax(0,1fr)_auto]"
           >
-            <span className="font-mono text-xs tabular-nums text-muted-foreground">
+            <span className="text-xs tabular-nums text-muted-foreground">
               {format(new Date(c.detectedAt), "d MMM")}
             </span>
             <span className="min-w-0 text-sm leading-snug">
@@ -363,7 +363,7 @@ function LogList({
             </span>
             <span className="col-start-2 flex flex-wrap items-center gap-2.5 sm:col-start-3 sm:justify-end">
               {engagement && (
-                <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                <span className="text-xs tabular-nums text-muted-foreground">
                   {engagement}
                 </span>
               )}
@@ -478,7 +478,7 @@ function LensChip({
       )}
     >
       {label}
-      <span className="font-mono text-meta tabular-nums text-muted-foreground">{count}</span>
+      <span className="text-meta tabular-nums text-muted-foreground">{count}</span>
     </button>
   );
 }

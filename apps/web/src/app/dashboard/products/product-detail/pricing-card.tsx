@@ -34,8 +34,6 @@ export const PRICING_LABELS: Record<string, string> = {
   unknown: "Unknown",
 };
 
-const mono = { fontFamily: "var(--font-mono)" } as const;
-
 const PRICING_STATUS_OPTIONS = Object.entries(PRICING_LABELS).map(([value, label]) => ({
   value,
   label,
@@ -241,7 +239,7 @@ export function PricingCard({
           {pricing.tiers.map((t, i) => (
             <div key={`${t.plan_name}-${i}`} className="flex items-center justify-between text-sm">
               <span>{t.plan_name}</span>
-              <span style={mono} className="text-foreground">
+              <span className="tabular-nums text-foreground">
                 {t.price === null ? (
                   "Custom"
                 ) : (

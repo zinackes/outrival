@@ -46,7 +46,7 @@ function UsageRow({ item }: { item: UsageItem }) {
     <div className="py-3.5 border-b border-border last:border-b-0">
       <div className="flex items-baseline justify-between gap-3">
         <span className="text-dense font-medium">{DIMENSION_LABEL[item.dimension]}</span>
-        <span className="font-mono text-xs tabular-nums text-muted-foreground">
+        <span className="text-xs tabular-nums text-muted-foreground">
           <span className={atLimit ? "text-critical" : "text-foreground"}>{item.used}</span>
           {" / "}
           {item.limit}

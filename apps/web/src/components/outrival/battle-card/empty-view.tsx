@@ -63,7 +63,7 @@ export function BattleCardEmpty({
           <Button size="sm" onClick={onGenerate}>
             <SparkleIcon size={16} /> Generate battle card
           </Button>
-          <span className="font-mono text-meta text-muted-foreground">about 30 seconds</span>
+          <span className="text-meta text-muted-foreground">about 30 seconds</span>
         </div>
       </div>
 
@@ -88,7 +88,7 @@ export function BattleCardEmpty({
                 />
               ))}
             </div>
-            <p className="font-mono text-meta text-muted-foreground">from {from}</p>
+            <p className="text-meta text-muted-foreground">from {from}</p>
           </div>
         ))}
       </div>

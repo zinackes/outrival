@@ -59,7 +59,7 @@ export default async function MultiProductMetricsPage() {
               className="flex items-center justify-between gap-4 border-b border-border py-2 last:border-0"
             >
               <span className="text-sm">{d.label}</span>
-              <span className="font-mono text-sm text-muted-foreground">
+              <span className="text-sm text-muted-foreground tabular-nums">
                 {d.value} org{d.value === 1 ? "" : "s"}
               </span>
             </div>

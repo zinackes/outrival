@@ -323,7 +323,7 @@ function RailStat({
       <div className="text-xs text-muted-foreground">{label}</div>
       <span
         className={cn(
-          "font-mono text-xl font-semibold leading-none tracking-tight tabular-nums",
+          "text-xl font-semibold leading-none tracking-tight tabular-nums",
           // A competitor raising a price or opening roles is pressure on you, so
           // "up" is warm here rather than green.
           tone === "up" && "text-high",
@@ -364,7 +364,7 @@ function MoverChip({
         <span
           key={mark.value}
           className={cn(
-            "font-mono text-meta tabular-nums",
+            "text-meta tabular-nums",
             mark.tone === "pressure" && "text-high",
             mark.tone === "opening" && "text-positive",
             mark.tone === "neutral" && "text-muted-foreground",
@@ -548,7 +548,7 @@ function MoveRow({
           )}
         </span>
       </span>
-      <span className="col-start-2 row-start-1 justify-self-end text-right font-mono text-dense tabular-nums">
+      <span className="col-start-2 row-start-1 justify-self-end text-right text-dense tabular-nums">
         {value}
       </span>
       {shape && (
@@ -559,7 +559,7 @@ function MoveRow({
       <span className="col-start-2 row-start-2 justify-self-end text-right sm:col-start-4 sm:row-start-1">
         {delta}
         {when && (
-          <span className="ml-2 hidden font-mono text-meta text-muted-foreground sm:inline">
+          <span className="ml-2 hidden text-meta tabular-nums text-muted-foreground sm:inline">
             {when}
           </span>
         )}
@@ -581,13 +581,13 @@ function Delta({
   neutral?: boolean;
 }) {
   if (value === 0) {
-    return <span className="font-mono text-dense text-muted-foreground tabular-nums">flat</span>;
+    return <span className="text-dense text-muted-foreground tabular-nums">flat</span>;
   }
   const rising = value > 0;
   return (
     <span
       className={cn(
-        "font-mono text-dense tabular-nums",
+        "text-dense tabular-nums",
         neutral ? "text-foreground" : rising ? "text-high" : "text-positive",
       )}
     >
@@ -716,7 +716,7 @@ export function TrendsView() {
           {/* The reading, before the evidence. */}
           <div className="grid overflow-hidden rounded-lg border border-border-strong bg-card lg:grid-cols-[minmax(0,1fr)_300px]">
             <div className="flex min-w-0 flex-col gap-2 px-5 py-4">
-              <div className="font-mono text-meta text-muted-foreground">
+              <div className="text-meta text-muted-foreground tabular-nums">
                 {rangeLabel} · {competitorCount} {plural(competitorCount, "competitor")}
               </div>
               <h2 className="m-0 max-w-[42ch] text-lead font-medium leading-snug tracking-tight text-pretty lg:text-xl">
@@ -948,13 +948,13 @@ export function TrendsView() {
                     }
                     delta={
                       drift === null ? (
-                        <span className="font-mono text-dense text-muted-foreground">
+                        <span className="text-dense text-muted-foreground">
                           first read
                         </span>
                       ) : (
                         <span
                           className={cn(
-                            "font-mono text-dense tabular-nums",
+                            "text-dense tabular-nums",
                             drift === 0
                               ? "text-muted-foreground"
                               : drift > 0
@@ -995,7 +995,7 @@ export function TrendsView() {
                         {group.names.length > 3 && ` and ${group.names.length - 3} more`}
                       </span>
                     </span>
-                    <span className="shrink-0 font-mono text-meta text-muted-foreground">
+                    <span className="shrink-0 text-meta text-muted-foreground tabular-nums">
                       {shortDate(group.at)}
                     </span>
                   </div>

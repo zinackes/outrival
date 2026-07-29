@@ -253,7 +253,7 @@ export function ActivityTab({
                   {day.changes.length > 0 &&
                     `${day.changes.length} other ${day.changes.length === 1 ? "change" : "changes"}`}
                 </span>
-                <span className="ml-auto font-mono text-meta tabular-nums text-muted-foreground">
+                <span className="ml-auto text-meta tabular-nums text-muted-foreground">
                   {format(day.date, "d MMM")}
                 </span>
               </div>
@@ -303,7 +303,7 @@ export function ActivityTab({
 }
 
 function Count({ n }: { n: number }) {
-  return <span className="font-mono text-meta tabular-nums text-muted-foreground">{n}</span>;
+  return <span className="text-meta tabular-nums text-muted-foreground">{n}</span>;
 }
 
 function FilterButton({
@@ -385,7 +385,7 @@ function SignalRow({
         </span>
         <span className="col-start-2 row-start-1 flex items-center gap-2.5">
           <CatBadge category={s.category} />
-          <span className="inline-flex items-center gap-1.5 font-mono text-meta tabular-nums text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5 text-meta tabular-nums text-muted-foreground">
             {unread && (
               <span
                 aria-label="Unread"

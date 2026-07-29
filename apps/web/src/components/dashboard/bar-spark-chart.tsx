@@ -43,7 +43,7 @@ function BarTooltip({ active, payload, labels, unit, partialIndex }: TipProps) {
       className={`pointer-events-none rounded-md border border-border bg-popover px-2 py-1 whitespace-nowrap shadow-sm ${chartTooltipCardMotion}`}
     >
       {labels?.[i] && <div className="text-meta text-muted-foreground">{labels[i]}</div>}
-      <div className="font-mono text-meta font-semibold tabular-nums">
+      <div className="text-meta font-semibold tabular-nums">
         {v}
         {unit ? ` ${v === 1 ? unit : `${unit}s`}` : ""}
       </div>

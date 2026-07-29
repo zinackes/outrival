@@ -207,7 +207,7 @@ function LeadStat({
 
 function StatValue({ value }: { value: number }) {
   return (
-    <span className="font-mono text-xl font-semibold leading-none tracking-tight tabular-nums">
+    <span className="text-xl font-semibold leading-none tracking-tight tabular-nums">
       {value}
     </span>
   );

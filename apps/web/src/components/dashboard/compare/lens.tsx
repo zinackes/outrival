@@ -110,7 +110,7 @@ export function Lens({
         action={
           action ??
           (meta ? (
-            <span className="text-muted-foreground font-mono text-meta">{meta}</span>
+            <span className="text-muted-foreground text-meta tabular-nums">{meta}</span>
           ) : undefined)
         }
       />
@@ -152,7 +152,7 @@ export function LensFooter({
           // ("$0" against "$1,200+"), so spacing the boxes put every middle tick off
           // the point it names. The two ends stay flush with the track's ends, which
           // is where a reader checks the scale's floor and ceiling.
-          <div className="text-muted-foreground relative mt-1.5 h-4 font-mono text-meta tabular-nums">
+          <div className="text-muted-foreground relative mt-1.5 h-4 text-meta tabular-nums">
             {ticks.map((t, i) => (
               <span
                 key={i}
@@ -306,7 +306,7 @@ export function MeasureRow({
       <div className="min-w-0">{children}</div>
 
       {value !== undefined && (
-        <span className="text-right font-mono text-dense whitespace-nowrap tabular-nums">
+        <span className="text-right text-dense whitespace-nowrap tabular-nums">
           {value}
         </span>
       )}
@@ -596,7 +596,7 @@ export function DetailPair({ label, value }: { label: string; value: ReactNode }
   return (
     <span className="flex items-baseline justify-between gap-2.5 text-xs">
       <span className="text-muted-foreground truncate">{label}</span>
-      <span className="font-mono tabular-nums">{value}</span>
+      <span className="tabular-nums">{value}</span>
     </span>
   );
 }
@@ -631,7 +631,7 @@ export function DetailBar({
           }}
         />
       </span>
-      <span className="font-mono tabular-nums">{value}</span>
+      <span className="tabular-nums">{value}</span>
     </span>
   );
 }

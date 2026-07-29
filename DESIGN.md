@@ -131,8 +131,9 @@ should sit down and trust it on sight.
 
 The system is built on tonal neutrals and one accent. Depth comes from stacking
 surfaces, not from shadow. Type does the heavy lifting: a grotesque for headings, a
-neutral sans for voice, and a mono for the machine-truth layer (timestamps, counts,
-IDs, diffs). The palette is quiet on purpose so that severity reads instantly when
+neutral sans for voice and for every figure the product measured, and a mono only for
+strings read glyph by glyph (keys, IDs, URLs, diff markers). The palette is quiet on
+purpose so that severity reads instantly when
 it appears, the same way the product itself suppresses noise to surface signal.
 
 It explicitly rejects the generic 2026 SaaS look (cards nested in cards, purple-blue
@@ -144,7 +145,8 @@ red numbers with no hierarchy.
 **Key Characteristics:**
 - One accent (cyan), spent only on action, selection, focus, and live signal.
 - Flat surfaces; depth by tonal layering, never decorative shadow.
-- Geist Sans (headings AND body/UI — one neutral grotesque) + Geist Mono (data voice).
+- Geist Sans (headings, body/UI, and numbers via `tabular-nums`) + Geist Mono (keys,
+  IDs, URLs, codes — never figures).
 - Tight radii (6px on controls/cards), a fixed token type scale, high density.
 - Severity is a semantic color system, kept separate from the brand accent.
 - Calm by default; color and motion are spent only when severity earns them.
@@ -211,13 +213,15 @@ are always reinforced with label and icon, never hue alone.
 **Heading Font:** Geist Sans (`--font-display`; same family as the body) — headings
 (`h1`–`h5`) differ by weight (600) + negative tracking, not by a characterful face.
 **Body / UI Font:** Geist Sans (`--font-sans`) — body, labels, buttons, nav, data prose.
-**Mono Font:** Geist Mono (`--font-mono`; tabular-nums + slashed-zero) — the data voice.
+**Mono Font:** Geist Mono (`--font-mono`; tabular-nums + slashed-zero) — strings you
+read character by character: keys, IDs, URLs, diff markers, codes. **Not numbers.**
 **Landing only:** Zodiak serif (`--font-display` under `.landing-canvas`) — brand register.
 
 **Character:** One neutral grotesque carries voice AND headings (the Vercel/Geist
-pattern); a mono does the machine-truth work. The contrast that matters is sans-vs-mono
-(voice vs. data), which keeps the product dense and consistent rather than editorial.
-The old characterful display face (Space Grotesk) was dropped — it read "designed".
+pattern), numbers included. Geist Sans has tabular figures, so a column of prices or
+counts aligns without changing face; reaching for the mono there bought a texture, not
+alignment, and read as terminal cosplay next to the prose it sat beside. The old
+characterful display face (Space Grotesk) was dropped — it read "designed".
 
 ### Scale (token-only — never `text-[Npx]`)
 
@@ -237,17 +241,27 @@ defined once, so the scale stays enforceable and changes in one place.
 | `text-sm` | 14px | **default UI body & reading-prose floor** (descriptions, empty states, helper) |
 | `text-dense` | 13px | dense tables, secondary/meta lines, compact labels |
 | `text-xs` | 12px | labels, table-header text, controls |
-| `text-meta` | 11px | **mono** meta + the label/badge **floor**: timestamps, counts, IDs |
+| `text-meta` | 11px | meta line + the label/badge **floor**: timestamps, counts, IDs |
 | `text-micro` | 10px | a11y floor only — **not for labels**; defined but retired from usage |
-| `text-stat` | 44px | KPI numerals (mono) |
+| `text-stat` | 44px | KPI numerals (sans + `tabular-nums`) |
 
 Larger display steps (`text-2xl`…`text-7xl`, 26→76px) exist for the marketing
 landing (brand register); product chrome stays on the table above.
 
 ### Named Rules
-**The Machine-Truth Rule.** Geist Mono is reserved for values the machine produced:
-timestamps, counts, IDs, prices, diffs, metadata. Never used for prose or headings.
-When you see mono, you are looking at data, not voice.
+**The Machine-Truth Rule.** Geist Mono is reserved for strings read character by
+character, where a mistaken glyph changes the meaning: keyboard keys (`<kbd>`), backup
+codes and TOTP secrets, IDs and task names, URLs, hostnames and slugs, header names,
+diff `+`/`-` markers. Never for prose, headings, **or numbers**.
+
+**The Numbers-Are-Sans Rule.** A figure the product measured — price, count, score,
+date, rank, delta, KPI — is set in Geist Sans with `tabular-nums`. That utility is what
+makes a column line up; the mono face only added a second texture on the same line as
+the prose it belongs to, which is why the numbers already set in sans (activity log,
+signal rows, category bars) read better than the ones that were not. `tabular-nums`
+goes on any element whose digits can change in place or stack in a column; there is no
+KPI-only exception. The admin console (`app/(admin)`) is deliberately excluded — it is
+an ops terminal, and its `style={mono}` tables stay mono.
 
 **The No-Arbitrary-Size Rule.** No `text-[Npx]` in product UI. If a size you need
 isn't a token, the answer is almost always the nearest token, not a new arbitrary
@@ -282,7 +296,7 @@ shadow is forbidden. A 2014-app drop shadow on a card is always wrong here.
 
 ## 5. Components
 
-Precise and restrained. Tight radii, mono metadata, no decoration. Every interactive
+Precise and restrained. Tight radii, muted metadata, no decoration. Every interactive
 component ships its full state set: default, hover, focus-visible, active, disabled,
 and (where relevant) loading and error. Radius scale: `sm` 4px (badges/pills), `md`
 6px (controls **and** cards), `lg` 12px / `xl` 16px (larger surfaces, dialogs).
@@ -307,8 +321,8 @@ and (where relevant) loading and error. Radius scale: `sm` 4px (badges/pills), `
 - **Border:** 1px Border hairline; header and footer are divided by the same hairline.
 - **Internal Padding:** 16px vertical / 20px horizontal (`px-5 py-4`).
 - **Title/Description:** title is `text-sm` (14px) semibold tracking-tight;
-  description is `text-dense` (13px) / `text-meta` **mono**, muted (full strength, not `/80`).
-- **Boxless is preferred** for dashboard sections: a `SectionHead` (title + mono sub,
+  description is `text-dense` (13px) / `text-meta`, muted (full strength, not `/80`).
+- **Boxless is preferred** for dashboard sections: a `SectionHead` (title + meta sub,
   bounded by one hairline) over per-section card chrome. Depth from rhythm, not boxes.
 
 ### Inputs / Fields
@@ -319,7 +333,7 @@ and (where relevant) loading and error. Radius scale: `sm` 4px (badges/pills), `
   50% opacity, not-allowed cursor.
 
 ### Badges / Chips
-- **Style:** `rounded-sm` (4px), `px-2 py-0.5`, `text-xs` weight 500 (mono meta
+- **Style:** `rounded-sm` (4px), `px-2 py-0.5`, `text-xs` weight 500 (meta
   badges floor at `text-meta` 11px — never `text-micro`). Variants: default (cyan), secondary
   (neutral fill), destructive, outline (border only), ghost, link. Severity and
   category badges map to their scales, reinforced with an icon. Uppercase is allowed
@@ -341,8 +355,9 @@ and (where relevant) loading and error. Radius scale: `sm` 4px (badges/pills), `
   and hairline borders, not shadow (the Flat-By-Default Rule). Prefer boxless sections.
 - **Do** use the type-scale role tokens; never hand-code `text-[Npx]`
   (the No-Arbitrary-Size Rule).
-- **Do** use Geist Mono for data, metadata, timestamps, counts, IDs, and diffs, and
-  only for those (the Machine-Truth Rule).
+- **Do** use Geist Mono for keys, codes, IDs, URLs, and diff markers, and only for
+  those (the Machine-Truth Rule); numbers stay sans with `tabular-nums`
+  (the Numbers-Are-Sans Rule).
 - **Do** reinforce severity and category with label and icon, not color alone, and
   keep the three color systems separate.
 - **Do** ship every interactive component's full state set, including focus-visible
@@ -369,4 +384,5 @@ and (where relevant) loading and error. Radius scale: `sm` 4px (badges/pills), `
   greater than 1px as a colored stripe accent.
 - **Don't** use gradient text (`background-clip: text`) or glassmorphism as decoration.
 - **Don't** use cyan for large fills, and don't use white text on cyan (use Accent Ink).
-- **Don't** set mono on prose or headings, or display type in UI labels, buttons, or data.
+- **Don't** set mono on prose, headings, or numbers, or display type in UI labels,
+  buttons, or data. A figure gets `tabular-nums`, not a second typeface.

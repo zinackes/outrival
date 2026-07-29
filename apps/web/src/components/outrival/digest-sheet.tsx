@@ -210,7 +210,7 @@ function Fact({
       </dt>
       <dd
         className={`m-0 text-lead font-semibold tracking-tight ${
-          mono ? "font-mono tabular-nums" : "capitalize"
+          mono ? "tabular-nums" : "capitalize"
         }`}
       >
         {value}

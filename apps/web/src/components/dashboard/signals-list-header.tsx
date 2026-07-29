@@ -201,7 +201,7 @@ export function SignalsListHeader({
               <SlidersHorizontalIcon size={16} />
               Filters
               {activeFilterCount > 0 && (
-                <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 font-mono text-meta tabular-nums text-primary-foreground">
+                <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-meta tabular-nums text-primary-foreground">
                   {activeFilterCount}
                 </span>
               )}
@@ -358,7 +358,7 @@ export function SignalsListHeader({
               {/* A zero is not worth a figure: "Unread 0" advertised an empty view
                   on every render. The tab stays reachable, just unlabelled. */}
               {quickCounts[v.value] > 0 && (
-                <span className="font-mono text-meta tabular-nums text-muted-foreground">
+                <span className="text-meta tabular-nums text-muted-foreground">
                   {quickCounts[v.value]}
                 </span>
               )}

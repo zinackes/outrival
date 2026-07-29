@@ -86,7 +86,7 @@ export function OverviewLead({
             </>
           )}
           <span aria-hidden>·</span>
-          <time className="font-mono tabular-nums" dateTime={signal.createdAt}>
+          <time className="tabular-nums" dateTime={signal.createdAt}>
             {shortAge(signal.createdAt)}
           </time>
         </div>
@@ -131,7 +131,7 @@ export function OverviewLead({
           // comparison, and a "+13" chip beside it says it twice.
           trailing={
             pulse.comparable && pulse.prevCount > 0 && pulse.prevCount !== pulse.count ? (
-              <span className="font-mono tabular-nums">
+              <span className="tabular-nums">
                 {pulse.count > pulse.prevCount ? "+" : ""}
                 {pulse.count - pulse.prevCount}
               </span>
@@ -151,7 +151,7 @@ export function OverviewLead({
               unit="signal"
               partialLast={pulse.barsPartialLast}
             />
-            <div className="mt-1 flex justify-between font-mono text-meta text-muted-foreground">
+            <div className="mt-1 flex justify-between text-meta text-muted-foreground tabular-nums">
               <span>{pulse.barLabels[0]}</span>
               <span>{pulse.barLabels[pulse.barLabels.length - 1]}</span>
             </div>
@@ -244,7 +244,7 @@ function StatValue({ value, tone }: { value: number; tone?: "critical" }) {
   return (
     <span
       className={cn(
-        "font-mono text-xl font-semibold leading-none tracking-tight tabular-nums",
+        "text-xl font-semibold leading-none tracking-tight tabular-nums",
         tone === "critical" && "text-critical",
       )}
     >

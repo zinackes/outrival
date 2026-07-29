@@ -80,7 +80,8 @@ import { FreshnessDot } from "@/components/outrival/freshness-dot";
 import { AnalysisProgress } from "@/components/outrival/analysis-status";
 import { CompetitorColorPicker } from "@/components/dashboard/competitor-color-picker";
 import { competitorNameColor } from "@/lib/competitor-color";
-import { StatusDot } from "@/components/outrival/data-marks";
+import { Fact, FactStrip, StatusDot } from "@/components/outrival/data-marks";
+import { shortAge } from "@/lib/format-date";
 import { ListError } from "@/components/outrival/list-error";
 import { toastApiError, toastRescanLimit } from "@/lib/error-helpers";
 import { Button } from "@/components/ui/button";
@@ -108,7 +109,11 @@ import {
   type TechStackData,
   type CompetitorOverview,
 } from "@/lib/api";
-import { competitorDetailQuery, competitorsQuery } from "@/lib/queries";
+import {
+  battleCardStalenessQuery,
+  competitorDetailQuery,
+  competitorsQuery,
+} from "@/lib/queries";
 import { useSetAskContext } from "@/components/dashboard/ask-context";
 import { useProductScope } from "@/components/dashboard/product-scope-provider";
 import {
@@ -628,10 +633,12 @@ export function CompetitorDetailView({ id }: { id: string }) {
           competitor={competitor}
           lastRunMs={lastRunMs}
           sourceCount={monitors.length}
+          productId={productScope}
           index={rosterIdx}
           total={roster?.length ?? 0}
           onPrev={prevId ? () => router.push(`/dashboard/competitors/${prevId}`) : undefined}
           onNext={nextId ? () => router.push(`/dashboard/competitors/${nextId}`) : undefined}
+          onOpenActivity={() => selectTab("activity")}
           onDelete={() => setShowDelete(true)}
           onEditSave={saveCompetitorDetails}
           onToggleMonitoring={toggleMonitoringPaused}
@@ -868,10 +875,12 @@ function Header({
   competitor,
   lastRunMs,
   sourceCount,
+  productId,
   index,
   total,
   onPrev,
   onNext,
+  onOpenActivity,
   onDelete,
   onEditSave,
   onToggleMonitoring,
@@ -884,10 +893,13 @@ function Header({
   competitor: Competitor;
   lastRunMs: number;
   sourceCount: number;
+  /** Active product scope, so the battle-card state matches the card you'd open. */
+  productId?: string;
   index: number;
   total: number;
   onPrev?: () => void;
   onNext?: () => void;
+  onOpenActivity: () => void;
   onDelete: () => void;
   onEditSave: (patch: {
     name?: string;
@@ -916,17 +928,83 @@ function Header({
     }
   }
 
+  const hasFacts = competitor.overlapScore != null || sourceCount > 0 || lastRunMs > 0;
+
   return (
     <>
-    <div className="flex items-start md:items-center justify-between gap-4 flex-wrap">
+    <div className="space-y-3">
+    {/* Identity on top, measurements below. The name, the industry label and the
+        overlap meter used to share the h1 row, which made three unrelated things
+        (what they are called, what they do, how close they are to us) read as one
+        long title — and hung a progress bar off a heading. Facts now live in the
+        strip under the rule, where they are peers of each other. */}
+    <div className="flex items-start justify-between gap-4 flex-wrap">
       <div className="flex items-start gap-3 min-w-0">
-        <Link
-          href="/dashboard/competitors"
-          aria-label="Back to competitors"
-          className="mt-1.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <ArrowLeftIcon size={16} />
-        </Link>
+        {/* Leaving the roster and stepping through it are the same family, so they
+            travel together on the left. That leaves the right side carrying actions
+            only, instead of one undifferentiated row of four outline controls. */}
+        <div className="mt-1 flex shrink-0 items-center gap-0.5">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Link
+                href="/dashboard/competitors"
+                aria-label="Back to competitors"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <ArrowLeftIcon size={16} />
+              </Link>
+            </TooltipTrigger>
+            <TooltipContent>All competitors</TooltipContent>
+          </Tooltip>
+          {total > 1 && index >= 0 && (
+            <>
+              <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-border" />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 w-8 p-0 text-muted-foreground"
+                    disabled={!onPrev}
+                    onClick={onPrev}
+                    aria-label="Previous competitor"
+                  >
+                    <CaretLeftIcon size={16} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent className="flex items-center gap-1.5">
+                  Previous
+                  <kbd className="rounded-sm border border-border/60 px-1 font-mono text-meta">
+                    [
+                  </kbd>
+                </TooltipContent>
+              </Tooltip>
+              <span className="select-none px-0.5 font-mono text-dense tabular-nums text-muted-foreground">
+                {index + 1}/{total}
+              </span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 w-8 p-0 text-muted-foreground"
+                    disabled={!onNext}
+                    onClick={onNext}
+                    aria-label="Next competitor"
+                  >
+                    <CaretRightIcon size={16} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent className="flex items-center gap-1.5">
+                  Next
+                  <kbd className="rounded-sm border border-border/60 px-1 font-mono text-meta">
+                    ]
+                  </kbd>
+                </TooltipContent>
+              </Tooltip>
+            </>
+          )}
+        </div>
         {/* The competitor's own mark. It shipped with CompAvatar and the per-competitor
             colour, and the page it identifies was the one surface never using either. */}
         <div className="mt-0.5 shrink-0">
@@ -944,39 +1022,8 @@ function Header({
             {competitor.category && (
               <span className="text-dense text-muted-foreground">{competitor.category}</span>
             )}
-            {competitor.overlapScore != null && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    aria-label="About overlap"
-                    className="inline-flex cursor-help items-center gap-1.5"
-                  >
-                    <span className="h-1.5 w-12 overflow-hidden rounded-full bg-surface-3">
-                      <span
-                        className="block h-full rounded-full bg-primary"
-                        style={{
-                          width: `${Math.max(0, Math.min(100, competitor.overlapScore))}%`,
-                        }}
-                      />
-                    </span>
-                    <span className="font-mono text-dense font-semibold tabular-nums text-foreground">
-                      {Math.round(competitor.overlapScore)}
-                    </span>
-                    <span className="text-dense text-muted-foreground">overlap</span>
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent
-                  side="top"
-                  className="max-w-[240px] text-xs leading-relaxed text-pretty normal-case"
-                >
-                  How similar this competitor is to your product (0 to 100). Computed at
-                  discovery via Exa + AI scoring against your product profile.
-                </TooltipContent>
-              </Tooltip>
-            )}
           </div>
-          {/* One meta line instead of a three-line stack. */}
+          {/* Identity and monitoring state only. What we measure moved to the strip. */}
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-dense text-muted-foreground">
             {competitor.url && (
               <a
@@ -989,22 +1036,6 @@ function Header({
                 {hostOf(competitor.url)}
                 <ArrowSquareOutIcon size={16} />
               </a>
-            )}
-            {sourceCount > 0 && (
-              <>
-                <span aria-hidden className="text-border-strong">·</span>
-                <span>
-                  {sourceCount} {sourceCount === 1 ? "source" : "sources"} tracked
-                </span>
-              </>
-            )}
-            {lastRunMs > 0 && (
-              <>
-                <span aria-hidden className="text-border-strong">·</span>
-                <span>
-                  last check {formatDistanceToNow(new Date(lastRunMs), { addSuffix: true })}
-                </span>
-              </>
             )}
             {competitor.pausedByPlan ? (
               <>
@@ -1042,58 +1073,8 @@ function Header({
         {/* Battle cards left the tab strip: they're an artefact you go and make,
             not a lens you flip to. The daily generation cap still applies where it
             always did — at generate time, inside the card view. */}
-        <Button asChild size="sm" variant="outline" className="h-9">
-          <Link href={`/dashboard/competitors/${competitor.id}/battle-card`}>
-            <SwordIcon size={16} /> Battle card
-          </Link>
-        </Button>
-        {total > 1 && index >= 0 && (
-          <div className="flex items-center gap-1">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-9 w-9 p-0"
-                  disabled={!onPrev}
-                  onClick={onPrev}
-                  aria-label="Previous competitor"
-                >
-                  <CaretLeftIcon size={16} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent className="flex items-center gap-1.5">
-                Previous
-                <kbd className="rounded-sm border border-border/60 px-1 font-mono text-meta">
-                  [
-                </kbd>
-              </TooltipContent>
-            </Tooltip>
-            <span className="select-none px-0.5 text-dense tabular-nums text-muted-foreground">
-              {index + 1}/{total}
-            </span>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-9 w-9 p-0"
-                  disabled={!onNext}
-                  onClick={onNext}
-                  aria-label="Next competitor"
-                >
-                  <CaretRightIcon size={16} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent className="flex items-center gap-1.5">
-                Next
-                <kbd className="rounded-sm border border-border/60 px-1 font-mono text-meta">
-                  ]
-                </kbd>
-              </TooltipContent>
-            </Tooltip>
-          </div>
-        )}
+        <BattleCardButton competitorId={competitor.id} productId={productId} />
+        <span aria-hidden className="h-5 w-px shrink-0 bg-border" />
         <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
           <DropdownMenuTrigger asChild>
             <Button
@@ -1181,6 +1162,73 @@ function Header({
         </DropdownMenu>
       </div>
     </div>
+
+    {/* What we measure about them, on one baseline. Two of the three answer a
+        question with a page behind it, so they are links, not text: "how many
+        sources" is the Sources page, "when did we last look" is the activity
+        feed. The rule above is the only chrome the strip gets. */}
+    {hasFacts && (
+      <div className="border-t border-border pt-3">
+        <FactStrip className="max-w-2xl sm:grid-cols-3">
+          {competitor.overlapScore != null && (
+            <Fact label="Overlap">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="About overlap"
+                    className="inline-flex cursor-help items-center gap-2 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <span className="h-1.5 w-16 overflow-hidden rounded-full bg-surface-3">
+                      <span
+                        className="block h-full rounded-full bg-primary"
+                        style={{
+                          width: `${Math.max(0, Math.min(100, competitor.overlapScore))}%`,
+                        }}
+                      />
+                    </span>
+                    <span className="font-mono text-content font-semibold tabular-nums text-foreground">
+                      {Math.round(competitor.overlapScore)}
+                    </span>
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="bottom"
+                  className="max-w-[240px] text-xs leading-relaxed text-pretty normal-case"
+                >
+                  How similar this competitor is to your product (0 to 100). Computed at
+                  discovery via Exa + AI scoring against your product profile.
+                </TooltipContent>
+              </Tooltip>
+            </Fact>
+          )}
+          {sourceCount > 0 && (
+            <Fact label="Sources">
+              <Link
+                href={`/dashboard/competitors/${competitor.id}/sources`}
+                className="inline-flex items-center gap-1.5 rounded-sm transition-colors hover:text-link focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span className="font-mono tabular-nums">{sourceCount}</span> tracked
+                <CaretRightIcon size={16} className="text-muted-foreground" />
+              </Link>
+            </Fact>
+          )}
+          {lastRunMs > 0 && (
+            <Fact label="Last check">
+              <button
+                type="button"
+                onClick={onOpenActivity}
+                className="inline-flex items-center gap-1.5 rounded-sm transition-colors hover:text-link focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {formatDistanceToNow(new Date(lastRunMs), { addSuffix: true })}
+                <CaretRightIcon size={16} className="text-muted-foreground" />
+              </button>
+            </Fact>
+          )}
+        </FactStrip>
+      </div>
+    )}
+    </div>
     <EditDetailsDialog
       open={editOpen}
       onOpenChange={setEditOpen}
@@ -1189,6 +1237,58 @@ function Header({
     />
     <AssignProductsDialog open={assignOpen} onOpenChange={setAssignOpen} competitor={competitor} />
     </>
+  );
+}
+
+/**
+ * The way to the battle card, carrying which of its three states you'd land in.
+ *
+ * The button said the same word whether no card had ever been generated, one was
+ * current, or one had aged behind newer signals — so the page's one produced
+ * artefact was also the one control you couldn't read. The staleness endpoint
+ * already answers that for the card view; reading it here costs one request and
+ * turns a label into a status. Best-effort by design: a failed or pending read
+ * renders the plain label rather than guessing, or blocking the way there.
+ */
+function BattleCardButton({
+  competitorId,
+  productId,
+}: {
+  competitorId: string;
+  productId?: string;
+}) {
+  const { data } = useQuery(battleCardStalenessQuery(competitorId, productId));
+  const state = data?.staleness ?? null;
+  const generatedAt = data?.lastGeneratedAt ?? null;
+
+  const tip =
+    state === "never_generated"
+      ? "No battle card yet. Generating one takes a few seconds."
+      : state === "outdated"
+        ? "New signals landed since this card was generated."
+        : generatedAt
+          ? `Generated ${formatDistanceToNow(new Date(generatedAt), { addSuffix: true })}`
+          : "How you win against this competitor";
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button asChild size="sm" variant="outline" className="h-9">
+          <Link href={`/dashboard/competitors/${competitorId}/battle-card`}>
+            {state === "never_generated" ? <SparkleIcon size={16} /> : <SwordIcon size={16} />}
+            {state === "never_generated" ? "Generate battle card" : "Battle card"}
+            {state === "outdated" && <StatusDot tone="warn">outdated</StatusDot>}
+            {state === "fresh" && generatedAt && (
+              <span className="text-xs text-muted-foreground">
+                <span aria-hidden>·</span>{" "}
+                <span className="font-mono tabular-nums">{shortAge(generatedAt)}</span>
+              </span>
+            )}
+          </Link>
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{tip}</TooltipContent>
+    </Tooltip>
   );
 }
 

@@ -1,11 +1,11 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { and, desc, eq, gt, isNull, ne, or, sql as dsql } from "drizzle-orm";
-import { generateBattleCard } from "@outrival/queue";
+import { generateBattleCard, getBoss } from "@outrival/queue";
 import { battleCards, competitors, products, signals, selfProfileLastEditedAt } from "@outrival/db";
-import { getBytesFromR2 } from "@outrival/shared";
+import { getBytesFromR2, logger } from "@outrival/shared";
 import { db } from "../lib/db";
-import { enqueueJob } from "../lib/queue";
+import { enqueueJob, ensureQueue } from "../lib/queue";
 import { analyticsQuery, sql } from "../lib/analytics-safe";
 import { authMiddleware } from "../middleware/auth";
 import { aiIntensiveRateLimit } from "../middleware/ai-intensive-rate-limit";
@@ -392,6 +392,113 @@ battleCardsRouter.post("/:id/battle-card/generate", aiIntensiveRateLimit, async 
 
   return c.json({ status: "generating", runId: jobId });
 });
+
+// What the generation is ACTUALLY doing, for the run the generate route handed back
+// as `runId`. Before this the page inferred everything from "did a newer card row
+// appear within three minutes", which cannot tell apart the three states that matter:
+// still queued (nothing has picked the job up — measured at six hours on prod), still
+// running, and gave up (the job aborts on a truncated model reply or an empty profile
+// and pg-boss records that as `completed`, so the page fell back to the "no card yet"
+// template with nothing to explain it).
+//
+// Two sources, both cheap and both already there: pg-boss's own job row for the
+// coarse state and the reason, and `ai_runs` for which pass is in flight — the worker
+// logs one row per AI call, so the stage is observed rather than guessed off a timer.
+const AI_STAGE_TASKS = ["battle_card", "battle_card_revise"] as const;
+
+battleCardsRouter.get("/:id/battle-card/job/:runId", async (c) => {
+  const id = c.req.param("id");
+  const runId = c.req.param("runId");
+  const user = c.get("user");
+  const orgId = await ensureUserOrg(user.id);
+
+  const competitor = await assertOwnedCompetitor(id, orgId);
+  if (!competitor) return c.json({ error: "Not found" }, 404);
+
+  let job: BattleCardJobRow | null = null;
+  try {
+    await ensureQueue();
+    const rows = await getBoss().findJobs<{ orgId?: string; competitorId?: string }>(
+      generateBattleCard.name,
+      { id: runId },
+    );
+    job = (rows[0] as BattleCardJobRow | undefined) ?? null;
+  } catch (err) {
+    // The queue being unreachable is not this endpoint's problem to escalate: the
+    // page falls back to polling the card row, exactly as it did before.
+    logger.error({ err, runId }, "battle card job lookup failed");
+    return c.json({ job: null });
+  }
+
+  // The run id is a client-supplied opaque string, so the payload's org — not the
+  // caller's competitor param — is what authorises the read.
+  if (!job || job.data?.orgId !== orgId || job.data?.competitorId !== competitor.id) {
+    return c.json({ job: null });
+  }
+
+  const failure = failureReason(job);
+  const state: JobState =
+    failure !== null
+      ? "failed"
+      : job.state === "active"
+        ? "running"
+        : job.state === "completed"
+          ? "done"
+          : "queued";
+
+  return c.json({
+    job: {
+      state,
+      stage: state === "running" ? await currentStage(competitor.id, job.startedOn) : state,
+      createdAt: job.createdOn,
+      startedAt: job.startedOn ?? null,
+      failure,
+    },
+  });
+});
+
+type JobState = "queued" | "running" | "done" | "failed";
+
+type BattleCardJobRow = {
+  state: string;
+  createdOn: Date;
+  startedOn: Date | null;
+  data?: { orgId?: string; competitorId?: string } | null;
+  output?: unknown;
+};
+
+/** The sentence to show the user, or null while the run is still alive or fine. A
+ * NonRetriable abort completes the job carrying `{aborted, message}` (see
+ * @outrival/queue work()); a hard failure carries the serialised error. */
+function failureReason(job: BattleCardJobRow): string | null {
+  const output = job.output as { aborted?: boolean; message?: string } | null | undefined;
+  if (output?.aborted && output.message) return output.message;
+  if (job.state === "failed" || job.state === "cancelled") {
+    return output?.message ?? "The generation failed. Try again in a moment.";
+  }
+  return null;
+}
+
+/** Which pass the worker is on, read from the ai_runs rows it writes as it goes.
+ * Best-effort by construction (analyticsQuery swallows), and the fallback is the
+ * first stage — never a stage we cannot prove it reached. */
+async function currentStage(competitorId: string, startedOn: Date | null): Promise<string> {
+  if (!startedOn) return "gathering";
+  const rows = await analyticsQuery<{ task: string }>(sql`
+    select distinct task
+    from ai_runs
+    where competitor_id = ${competitorId}
+      and recorded_at >= ${startedOn.toISOString()}
+      and task in (${sql.join(
+        AI_STAGE_TASKS.map((t) => sql`${t}`),
+        sql`, `,
+      )})
+  `);
+  const done = new Set(rows.map((r) => r.task));
+  if (done.has("battle_card_revise")) return "rendering";
+  if (done.has("battle_card")) return "checking";
+  return "gathering";
+}
 
 battleCardsRouter.patch("/:id/battle-card", async (c) => {
   const id = c.req.param("id");

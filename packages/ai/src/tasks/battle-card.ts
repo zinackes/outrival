@@ -343,7 +343,16 @@ Reply ONLY with a valid JSON object, no markdown and no surrounding text.
     prompt,
     sourceText: evidenceSourceText(input, blocks),
     schema: BattleCardSchema,
-    maxTokens: 2048,
+    // The card is the widest grounded output in the product: up to 28 entries
+    // (5+5+5+5+4+4, and common_objections are two-field objects), each of which the
+    // full grounding envelope pairs with a VERBATIM sourceQuote — then gpt-oss spends
+    // hidden reasoning tokens out of this same ceiling before writing a byte. At 2048
+    // the reply was cut mid-string, the envelope failed to parse, groundedAiCall
+    // returned null and the job aborted having written nothing (prod, 2026-07-29:
+    // three consecutive user retries produced no card and no error anyone could see).
+    // 6144 clears the measured worst case. A ceiling is not a spend — an ordinary card
+    // still bills only the tokens it actually writes.
+    maxTokens: 6144,
   });
   return result ? attachQuality(result.output, result.quality) : null;
 }
@@ -394,7 +403,10 @@ Reply ONLY with a valid JSON object matching this shape, no markdown, no surroun
   "when_we_lose": ["..."]
 }`;
 
-  const raw = await complete(AI_CONFIG.insights, { prompt, json: true, maxTokens: 2048 });
+  // No citation envelope on this pass, but it re-emits all six sections plus the
+  // reasoning budget, so it sits under the generate ceiling rather than at the old
+  // shared 2048 — a truncated revise silently discards the whole verification pass.
+  const raw = await complete(AI_CONFIG.insights, { prompt, json: true, maxTokens: 4096 });
   const parsed = safeParseJson(raw, BattleCardSchema);
   if (!parsed.ok) {
     console.error("revise_battle_card parse failed:", parsed.error, "raw:", raw.slice(0, 500));

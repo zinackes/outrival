@@ -160,8 +160,16 @@ export const sendMonthlyRecap = defineJob<{ orgId: string; month: string }>(
   "send-monthly-recap",
   { retryLimit: 0, expireInSeconds: 60 },
 );
+// concurrency 2, not the default 1: pg-boss spawns ONE loop per localConcurrency and
+// that loop awaits its own handler, so a single wedged run takes the whole queue
+// offline with nothing to say so. Measured on prod 2026-07-29: three user-triggered
+// cards sat `created` for six hours while scrape-monitor on the SAME process kept
+// fetching normally, and only a container recreate cleared it. A second loop is the
+// cheap half of the fix (the loud half is the stuck-queue alarm in the heartbeat) —
+// cards are on-demand and rare, so two in flight costs nothing.
 export const generateBattleCard = defineJob<GenerateBattleCardPayload>("generate-battle-card", {
   expireInSeconds: 180, // browser (PDF via Playwright) — browser worker
+  concurrency: 2,
 });
 export const notifyOnboardingAnalysis = defineJob<NotifyOnboardingPayload>(
   "notify-onboarding-analysis",

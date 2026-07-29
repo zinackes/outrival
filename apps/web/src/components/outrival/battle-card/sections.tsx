@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   ChatIcon,
   CheckCircleIcon,
@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { useWriteIn, WriteCaret } from "./write-in";
 
 import type { Icon as PhosphorIcon } from "@/components/icons";
 
@@ -72,20 +73,41 @@ export function SectionHeading({
   );
 }
 
-function BulletList({ items }: { items: string[] }) {
+// How a line reads while the card is being written in: `read(globalIndex)` returns
+// the visible prefix, or null for a line that has not started. Absent (or a reader
+// that always returns the full text) when there is no animation to run.
+type WriteReader = (index: number) => string | null;
+
+function BulletList({
+  items,
+  read,
+  base,
+}: {
+  items: string[];
+  read?: WriteReader;
+  base: number;
+}) {
   if (items.length === 0) {
     return <p className="text-sm text-muted-foreground">Not enough verified data yet.</p>;
   }
+  const lines = items.map((it, i) => ({ i, text: read ? read(base + i) : it }));
+  const started = lines.filter((l) => l.text !== null);
+  // Nothing of this section written yet: render no list at all, so the card grows
+  // downward as it writes instead of showing six empty headed columns.
+  if (started.length === 0) return null;
   return (
     <ul className="flex flex-col gap-2.5">
-      {items.map((it, i) => (
+      {started.map(({ i, text }) => (
         <li key={i} className="flex gap-2.5 text-content leading-relaxed">
           {/* Muted marker, not the brand accent: twelve accent bullets on one screen
               spend the one colour the page has on decoration. */}
           <span className="mt-px shrink-0 text-muted-foreground" aria-hidden>
             •
           </span>
-          <span>{it}</span>
+          <span>
+            {text}
+            {text !== items[i] && <WriteCaret />}
+          </span>
         </li>
       ))}
     </ul>
@@ -151,6 +173,8 @@ function ListBlock({
   editing,
   max,
   onChange,
+  read,
+  base,
 }: {
   title: string;
   icon: IconType;
@@ -159,6 +183,8 @@ function ListBlock({
   editing: boolean;
   max: number;
   onChange: (items: string[]) => void;
+  read?: WriteReader;
+  base: number;
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -168,7 +194,7 @@ function ListBlock({
       {editing ? (
         <EditableList items={items} onChange={onChange} max={max} />
       ) : (
-        <BulletList items={items} />
+        <BulletList items={items} read={read} base={base} />
       )}
     </div>
   );
@@ -211,10 +237,14 @@ function ObjectionsSection({
   items,
   editing,
   onChange,
+  read,
+  base,
 }: {
   items: Array<{ objection: string; response: string }>;
   editing: boolean;
   onChange: (items: Array<{ objection: string; response: string }>) => void;
+  read?: WriteReader;
+  base: number;
 }) {
   const [copiedAll, setCopiedAll] = useState(false);
   const asText = items
@@ -311,23 +341,39 @@ function ObjectionsSection({
         <p className="text-sm text-muted-foreground">Not enough verified data yet.</p>
       ) : (
         <div className="flex flex-col divide-y divide-border">
-          {items.map((o, i) => (
-            <div
-              key={i}
-              className="group/obj flex items-start gap-2 py-3.5 first:pt-0 last:pb-0"
-            >
-              <div className="min-w-0 flex-1">
-                {/* The quote sets up quietly and the answer carries the reading size:
-                    on a live call the line you say is what has to be findable, and the
-                    old treatment bolded the objection and greyed the response. */}
-                <p className="text-sm leading-relaxed text-muted-foreground">
-                  “{o.objection}”
-                </p>
-                <p className="mt-1.5 text-content leading-relaxed">{o.response}</p>
+          {items.map((o, i) => {
+            // Two written lines per objection, so each pair takes two cursor slots.
+            const objection = read ? read(base + i * 2) : o.objection;
+            const response = read ? read(base + i * 2 + 1) : o.response;
+            if (objection === null) return null;
+            return (
+              <div
+                key={i}
+                className="group/obj flex items-start gap-2 py-3.5 first:pt-0 last:pb-0"
+              >
+                <div className="min-w-0 flex-1">
+                  {/* The quote sets up quietly and the answer carries the reading size:
+                      on a live call the line you say is what has to be findable, and the
+                      old treatment bolded the objection and greyed the response. */}
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    “{objection}”
+                    {objection !== o.objection && <WriteCaret />}
+                  </p>
+                  {response !== null && (
+                    <p className="mt-1.5 text-content leading-relaxed">
+                      {response}
+                      {response !== o.response && <WriteCaret />}
+                    </p>
+                  )}
+                </div>
+                {/* Copy stays out of the way until the answer is fully written —
+                    copying half a sentence is never what someone meant. */}
+                {response === o.response && (
+                  <CopyButton text={o.response} label="Copy this answer" />
+                )}
               </div>
-              <CopyButton text={o.response} label="Copy this answer" />
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </section>
@@ -343,12 +389,54 @@ export function BattleCardSections({
   editing,
   draft,
   setDraft,
+  writeIn = false,
 }: {
   content: BattleCardContent;
   editing: boolean;
   draft: BattleCardContent;
   setDraft: (next: BattleCardContent) => void;
+  /** Write the card in line by line — true only on the arrival of a fresh
+   *  generation, never when reopening a card that was already stored. */
+  writeIn?: boolean;
 }) {
+  // Every written line, in the order the sections render, so one shared cursor can
+  // walk the whole card. Objections contribute two lines each (quote, then answer).
+  const lines = useMemo(
+    () => [
+      ...content.their_strengths,
+      ...content.our_strengths,
+      ...content.their_weaknesses,
+      ...content.common_objections.flatMap((o) => [o.objection, o.response]),
+      ...content.when_we_win,
+      ...content.when_we_lose,
+    ],
+    [content],
+  );
+  const read = useWriteIn(lines, writeIn && !editing);
+  // Where each section starts on that shared cursor. Editing renders inputs, which
+  // are never animated, so the offsets are only ever read on the display path.
+  const at = {
+    their_strengths: 0,
+    our_strengths: content.their_strengths.length,
+    their_weaknesses: content.their_strengths.length + content.our_strengths.length,
+    common_objections:
+      content.their_strengths.length +
+      content.our_strengths.length +
+      content.their_weaknesses.length,
+    when_we_win:
+      content.their_strengths.length +
+      content.our_strengths.length +
+      content.their_weaknesses.length +
+      content.common_objections.length * 2,
+    when_we_lose:
+      content.their_strengths.length +
+      content.our_strengths.length +
+      content.their_weaknesses.length +
+      content.common_objections.length * 2 +
+      content.when_we_win.length,
+  };
+  const reader = writeIn && !editing ? read : undefined;
+
   return (
     <>
       <section className="grid grid-cols-1 gap-x-8 gap-y-6 p-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -360,6 +448,8 @@ export function BattleCardSections({
           editing={editing}
           max={SECTION_MAX.their_strengths}
           onChange={(items) => setDraft({ ...draft, their_strengths: items })}
+          read={reader}
+          base={at.their_strengths}
         />
         <ListBlock
           title="Our strengths"
@@ -369,6 +459,8 @@ export function BattleCardSections({
           editing={editing}
           max={SECTION_MAX.our_strengths}
           onChange={(items) => setDraft({ ...draft, our_strengths: items })}
+          read={reader}
+          base={at.our_strengths}
         />
         <ListBlock
           title="Their weaknesses"
@@ -378,6 +470,8 @@ export function BattleCardSections({
           editing={editing}
           max={SECTION_MAX.their_weaknesses}
           onChange={(items) => setDraft({ ...draft, their_weaknesses: items })}
+          read={reader}
+          base={at.their_weaknesses}
         />
       </section>
 
@@ -385,6 +479,8 @@ export function BattleCardSections({
         items={content.common_objections}
         editing={editing}
         onChange={(items) => setDraft({ ...draft, common_objections: items })}
+        read={reader}
+        base={at.common_objections}
       />
 
       <section className="grid grid-cols-1 gap-x-8 gap-y-6 p-5 sm:grid-cols-2">
@@ -396,6 +492,8 @@ export function BattleCardSections({
           editing={editing}
           max={SECTION_MAX.when_we_win}
           onChange={(items) => setDraft({ ...draft, when_we_win: items })}
+          read={reader}
+          base={at.when_we_win}
         />
         <ListBlock
           title="When we lose"
@@ -405,6 +503,8 @@ export function BattleCardSections({
           editing={editing}
           max={SECTION_MAX.when_we_lose}
           onChange={(items) => setDraft({ ...draft, when_we_lose: items })}
+          read={reader}
+          base={at.when_we_lose}
         />
       </section>
     </>

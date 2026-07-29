@@ -655,14 +655,19 @@ function FindingMark({
     <>
       {/* The dot the logo replaces. Kept where a logo would not fit, and kept
           outright when the finding count outran the named findings the summary
-          sends: a bar that moved is never left uncapped. */}
+          sends: a bar that moved is never left uncapped. Centred on its hour, but
+          never past now: the hour in progress is a sliver of a column in its first
+          minutes, so a centred cap straddles the line and reads as scheduled. */}
       <span
         className={cn(
           "absolute size-[5px] rounded-full",
           lead && "sm:hidden",
           kind === "failed" ? "bg-critical" : "bg-foreground",
         )}
-        style={{ left: `calc(${bar.left + bar.width / 2}% - 2.5px)`, bottom }}
+        style={{
+          left: `min(calc(${bar.left + bar.width / 2}% - 2.5px), calc(${PAST_PCT}% - 6px))`,
+          bottom,
+        }}
         aria-hidden
       />
       {marks.length > 0 && (
@@ -671,9 +676,17 @@ function FindingMark({
           // The fan opens inside the bar's own column, so it takes the bar's
           // geometry verbatim: a fan laid out on the raw hour would put its last
           // mark past the edge of the bar it caps.
+          //
+          // Anchored on the hour's END rather than its start, and floored at one
+          // mark wide. The hour in progress is drawn from its whole start to now,
+          // so at 09:02 its column is about a pixel: a cap centred in it hung half
+          // its width past the now line, into the hatched region that means
+          // scheduled. Pinned to the end instead, it grows leftwards into the past
+          // it belongs to. A column already wider than a mark resolves to exactly
+          // the old geometry (left edge = bar.left + 1px), so only the sliver moves.
           style={{
-            left: `calc(${bar.left}% + 1px)`,
-            width: `max(2px, calc(${bar.width}% - 2px))`,
+            right: `calc(${100 - bar.left - bar.width}% + 1px)`,
+            width: `max(${MARK}px, calc(${bar.width}% - 2px))`,
             height: MARK,
             bottom,
           }}

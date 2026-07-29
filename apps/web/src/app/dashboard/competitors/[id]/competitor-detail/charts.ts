@@ -31,6 +31,38 @@ export function shortDate(iso: string): string {
   return formatDate(d, { day: "2-digit", month: "short" });
 }
 
+/**
+ * Fold rows into one chart point per capture DAY, ordered by the real timestamp.
+ *
+ * Two traps live in the obvious version of this, and both drew a chart that lied:
+ *   - ordering on the formatted label ("Apr 14") is a LEXICAL sort, so April lands
+ *     before January and July before May. An archive-backfilled series, whose
+ *     captures span months, then reads as noise rather than as a trend;
+ *   - keying on that same label collapses the same day of two different years into
+ *     one point, silently dropping a capture.
+ * Keying on the ISO day and sorting on the epoch closes both.
+ */
+function mergeByDay<T>(
+  rows: T[],
+  recordedAt: (row: T) => string,
+  assign: (point: Record<string, number | string>, row: T) => void,
+): Array<Record<string, number | string>> {
+  const byDay = new Map<string, { at: number; point: Record<string, number | string> }>();
+  for (const row of rows) {
+    const iso = recordedAt(row);
+    const at = parseRecordedAt(iso);
+    // An unparseable timestamp keeps its raw string as the key so it stays one
+    // point instead of merging with every other unparseable row.
+    const key = Number.isNaN(at.getTime()) ? iso : at.toISOString().slice(0, 10);
+    const entry = byDay.get(key) ?? { at: at.getTime(), point: { date: shortDate(iso) } };
+    assign(entry.point, row);
+    byDay.set(key, entry);
+  }
+  return Array.from(byDay.values())
+    .sort((a, b) => a.at - b.at)
+    .map((e) => e.point);
+}
+
 export function buildPricingSeries(history: PricingHistoryPoint[]): {
   points: Array<Record<string, number | string>>;
   byPlan: Record<string, PricingHistoryPoint[]>;
@@ -41,16 +73,15 @@ export function buildPricingSeries(history: PricingHistoryPoint[]): {
   for (const p of history) {
     (byPlan[p.plan_name] ??= []).push(p);
   }
-  const byDate = new Map<string, Record<string, number | string>>();
-  for (const p of history) {
-    if (p.price == null) continue;
-    const date = shortDate(p.recorded_at);
-    const row = byDate.get(date) ?? { date };
-    row[p.plan_name] = p.price;
-    byDate.set(date, row);
-  }
-  const points = Array.from(byDate.values()).sort((a, b) =>
-    String(a.date).localeCompare(String(b.date)),
+  // One series per plan, so the caller must have narrowed `history` to a single
+  // billing period first: a `yearly` row is an annual TOTAL, and letting it share
+  // a plan's line with its monthly row draws a 12x cliff nobody is being charged.
+  const points = mergeByDay(
+    history.filter((p) => p.price != null),
+    (p) => p.recorded_at,
+    (point, p) => {
+      point[p.plan_name] = p.price!;
+    },
   );
   return { points, byPlan };
 }
@@ -68,22 +99,13 @@ export function buildJobTrend(
 export function mergeTrendsByDate(
   points: JobTrendPoint[],
 ): Array<Record<string, number | string>> {
-  // Ordered by the real timestamp, not by the "05 Jul" label: the label sorts
-  // lexically, which puts July before June, and the rows arrived in whatever
-  // order the query returned. An unordered series draws as noise.
-  const byDate = new Map<string, { at: number; row: Record<string, number | string> }>();
-  for (const p of points) {
-    const date = shortDate(p.recorded_at);
-    const entry = byDate.get(date) ?? {
-      at: parseRecordedAt(p.recorded_at).getTime(),
-      row: { date },
-    };
-    entry.row[p.department] = p.count;
-    byDate.set(date, entry);
-  }
-  return Array.from(byDate.values())
-    .sort((a, b) => a.at - b.at)
-    .map((e) => e.row);
+  return mergeByDay(
+    points,
+    (p) => p.recorded_at,
+    (point, p) => {
+      point[p.department] = p.count;
+    },
+  );
 }
 
 export function buildReviewScoreSeries(points: ReviewScorePoint[]): {
@@ -91,12 +113,14 @@ export function buildReviewScoreSeries(points: ReviewScorePoint[]): {
   sources: string[];
 } {
   const sources = Array.from(new Set(points.map((p) => p.source)));
-  const byDate = new Map<string, Record<string, number | string>>();
-  for (const p of points) {
-    const date = shortDate(p.recorded_at);
-    const row = byDate.get(date) ?? { date };
-    row[p.source] = p.score;
-    byDate.set(date, row);
-  }
-  return { points: Array.from(byDate.values()), sources };
+  return {
+    points: mergeByDay(
+      points,
+      (p) => p.recorded_at,
+      (point, p) => {
+        point[p.source] = p.score;
+      },
+    ),
+    sources,
+  };
 }

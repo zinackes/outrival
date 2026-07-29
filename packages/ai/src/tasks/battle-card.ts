@@ -385,6 +385,7 @@ ${JSON.stringify(draft)}
 <verification_rules>
 - DELETE any claim not directly supported by the evidence — do not soften it into a vaguer claim, remove it entirely.
 - DELETE any claim built on the ABSENCE of data — e.g. "reviews are not captured", "no public feature list", "pricing unknown", "no recent signals". Missing evidence is unknown, never a fact about either product.
+- But a negative fact the evidence explicitly RECORDS is not an absence claim: "Free trial: none offered." supports "they offer no free trial", and "credit card required up front" supports "you cannot try it without payment details". KEEP those.
 - DELETE any claim that the competitor LACKS, is worse at, or does not have something (and any "unlike them", "unique to us", "we win because", "differentiates" phrasing) unless the evidence describes that same dimension for BOTH products. But a one-sided positive fact about a SINGLE product — a real feature, price, tech or rating drawn from its own evidence — is VALID and must be KEPT even when the other side's evidence is silent. Only fabricated or unproven CONTRASTS are removed, not grounded one-sided facts.
 - Do NOT add any new claim, fact, or comparison that is not already in the draft.
 - You MAY trim a surviving claim down to the part the evidence supports.

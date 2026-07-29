@@ -54,11 +54,12 @@ describe("POST /onboarding/complete — digestEmail default", () => {
     expect(org?.onboardingCompleted).toBe(true);
   });
 
-  test("leftover candidates are gated on minOverlap; dismissals never are", async () => {
-    // The discover step over-fetches on purpose; unfiltered leftovers buried the
-    // Discovery queue (323 prod rows averaging overlap 42 — 2026-07-10 audit).
-    // Default detectionConfig.minOverlap = 65 (strictly above, like the weekly
-    // detection); dismissals are rejection memory and always persist.
+  test("every leftover candidate persists, whatever it scored", async () => {
+    // minOverlap (default 65) is the weekly detection's auto-notification bar, not
+    // an admission bar: gating leftovers on it deleted the 50-64 band a niche
+    // product's real competitors land in, after the user had already seen them on
+    // the discovery screen. The Discovery queue ranks and collapses low scorers
+    // into a weak band, so they stay reviewable instead of disappearing.
     const { orgId, userId, email } = await seedOrg(testDb);
     // Distinct REGISTRABLE domains: normalizeHostname reduces subdomains to the
     // registrable domain, so *.example.com URLs would all dedupe as one host.
@@ -85,10 +86,15 @@ describe("POST /onboarding/complete — digestEmail default", () => {
     });
     const byUrl = new Map(rows.map((r) => [r.url, r.status]));
     expect(byUrl.get("https://strong-co.com")).toBe("new");
+    expect(byUrl.get("https://weak-co.com")).toBe("new");
+    expect(byUrl.get("https://unscored-co.com")).toBe("new");
+    // Dismissals are the anti-re-suggestion memory, kept as their own status.
     expect(byUrl.get("https://trashed-co.com")).toBe("dismissed");
-    expect(byUrl.has("https://weak-co.com")).toBe(false);
-    expect(byUrl.has("https://unscored-co.com")).toBe(false);
-    expect(rows.length).toBe(2);
+    expect(rows.length).toBe(4);
+    // A leftover the scorer never ranked stores a null score, not a 0 that would
+    // read as "scored, and irrelevant".
+    const unscored = rows.find((r) => r.url === "https://unscored-co.com");
+    expect(unscored?.overlapScore).toBeNull();
   });
 
   test("an org that already chose a digestEmail keeps it", async () => {

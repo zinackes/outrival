@@ -826,16 +826,20 @@ onboardingRouter.post("/complete", async (c) => {
       source: "onboarding",
     });
   };
-  // The discover step over-fetches on purpose (30 Exa results so the best rise to
-  // the top), but saving every leftover unfiltered buried the Discovery queue in
-  // junk: 323 prod onboarding candidates averaging overlap 42 vs the weekly
-  // detection's 77 (2026-07-10 audit). Apply the SAME relevance bar the weekly
-  // detection uses (strictly above minOverlap) — one sensitivity knob, both paths.
-  // An unscored leftover (scoring failed) is skipped too: it was never really
-  // ranked, and weekly detection will re-surface it with a real score if relevant.
-  for (const item of savedCandidates) {
-    if ((item.overlapScore ?? 0) > detectionCfg.minOverlap) collectCandidate(item, "new");
-  }
+  // Every leftover the user saw is persisted, whatever it scored. `minOverlap`
+  // (default 65) is the WEEKLY DETECTION's auto-notification bar — the score above
+  // which a candidate is worth interrupting someone for. Reusing it here as an
+  // admission bar deleted the rest: a niche product's real competitors routinely
+  // score 50-64, and the user had already looked at them during discovery, so they
+  // vanished between the last onboarding screen and the Discovery queue with no
+  // trace and no way back. On-demand discovery never applied it either
+  // (`ON_DEMAND_MIN_OVERLAP` = 20, apps/api/src/lib/detect-candidates.ts), so the
+  // two paths disagreed about the same Exa results.
+  // The queue is a REVIEWABLE picklist, not a notification: discovery-view ranks by
+  // score and collapses everything under 60 into a weak band with a bulk dismiss,
+  // which is where a low or unscored leftover belongs. Junk lands there instead of
+  // being dropped silently (2026-07-10 audit: 323 prod rows averaging overlap 42).
+  for (const item of savedCandidates) collectCandidate(item, "new");
   // Dismissals are the anti-re-suggestion memory — saved regardless of score,
   // or the weekly detection would re-propose exactly what the user trashed.
   for (const item of dismissedCandidates) collectCandidate(item, "dismissed");

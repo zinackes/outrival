@@ -63,6 +63,25 @@ test("parseAppStoreSnapshot: score + count come from the store-wide aggregate, n
   expect(out.text).toContain("broke after update"); // verbatims still drive AI extraction
 });
 
+test("parseAppStoreSnapshot: an entry-less feed still carries the aggregate", () => {
+  // Observed in prod (2026-07-29): from the worker the RSS returns no verbatims while
+  // the Lookup aggregate resolves, so the stored snapshot is 124 bytes. The rating and
+  // the count are still there, and extract-reviews records them rather than treating
+  // the capture as empty.
+  const snap = JSON.stringify({
+    source: "appstore",
+    appId: "784907999",
+    countries: ["us"],
+    averageUserRating: 4.54669,
+    userRatingCount: 2506,
+    reviews: [],
+  });
+  const out = parseAppStoreSnapshot(snap)!;
+  expect(out.averageScore).toBe(4.55);
+  expect(out.reviewCount).toBe(2506);
+  expect(out.text).toBe(""); // no verbatims to hand the model
+});
+
 test("parseAppStoreSnapshot: falls back to the recent-sample mean when the aggregate is absent", () => {
   // Pre-aggregate snapshot (or a failed lookup) → the old behaviour: mean of the sample.
   const snap = JSON.stringify({

@@ -80,13 +80,22 @@ export function sortEntries(entries: RoadmapEntry[]): RoadmapEntry[] {
 
 export function buildRoadmapDoc(portal: RoadmapPortal): RoadmapDocument {
   const entries = sortEntries(portal.entries);
+  // "generic" is an internal routing word, not something to hand a reader (or the
+  // classifier) as the name of a product.
+  const vendorLabel = portal.vendor === "generic" ? "vendor unidentified" : portal.vendor;
   const intro =
-    `Public roadmap and feedback portal (${portal.vendor}) — what this vendor has ` +
+    `Public roadmap and feedback portal (${vendorLabel}) — what this vendor has ` +
     `committed to build, and how many of their own customers are asking for each item. ` +
     `A status moving forward is a shipping commitment; a vote count entering a higher ` +
     `band is customer demand building up behind a request.`;
+  // An unidentified vendor cannot tell us whether it paginated, so the count is
+  // reported as what we could read rather than as the size of their roadmap.
+  const countLabel =
+    portal.vendor === "generic"
+      ? `${entries.length} entries listed on the page we can read`
+      : `${entries.length} entries`;
   const header =
-    `Roadmap at ${portal.url} — ${statusCounts(entries)} (${entries.length} entries` +
+    `Roadmap at ${portal.url} — ${statusCounts(entries)} (${countLabel}` +
     (portal.truncated ? ", partial: the portal serves more than one page" : "") +
     `)`;
 

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { computeTextDiff } from "@outrival/shared";
 import { extractContent } from "../lib/extract-content";
 import { extractStateIsland, isCannyHost, parseCannyPortal } from "./canny";
+import { parseGenericPortal } from "./generic";
 import { matchProductboardPortal, parseProductboardPortal } from "./productboard";
 import { buildRoadmapDoc, entryLine, sortEntries, voteBand } from "./snapshot";
 import { discoverRoadmapPortal, looksLikePortalUrl, portalLinkIn } from "./discover";
@@ -399,8 +400,8 @@ describe("clean degradation", () => {
       "https://acme.com",
       {},
       deps({
-        reachable: async (u) => u.startsWith("https://feedback.acme.com"),
-        fetchPortalHtml: async () => ({ kind: "body", text: "<html><body>Support</body></html>" }),
+        fetchHtml: async (u) =>
+          u === "https://feedback.acme.com/" ? "<html><body>Support</body></html>" : null,
       }),
     );
     await expect(promise).rejects.toThrow("roadmap: no_roadmap_portal");
@@ -430,6 +431,116 @@ describe("clean degradation", () => {
   });
 });
 
+// --- the vendor-agnostic adapter -------------------------------------------
+
+/**
+ * The two island families that carry every portal we do not have an adapter for.
+ * Both shapes are copied from real captures, so a vendor renaming a field breaks
+ * these tests rather than production:
+ *   nextData — feedback.featurebase.app (`__NEXT_DATA__`, nested `postStatus`)
+ *   flight   — feedback.gleap.io (Next app router RSC stream, `initialUpvotes`)
+ */
+function nextDataPage(results: unknown[]): string {
+  const payload = { props: { pageProps: { fallback: { "$inf$@/v1/submission": [{ results }] } } } };
+  return `<html><body><script id="__NEXT_DATA__" type="application/json">${JSON.stringify(payload)}</script></body></html>`;
+}
+
+function flightPage(featureRequests: unknown[]): string {
+  // One flight line: `<ref>:<json>`, pushed as a JS string literal.
+  const line = `1a:${JSON.stringify({ featureRequests })}\n`;
+  return `<html><body><script>self.__next_f.push([1,${JSON.stringify(line)}])</script></body></html>`;
+}
+
+const FEATUREBASE_POSTS = [
+  { id: "6a57fe6a53e17ebb92e11e58", title: "Heap integration", slug: "heap-integration", upvotes: 18, commentCount: 0, postStatus: { name: "In Review" }, statusChangedAt: "2026-07-02T10:00:00Z" },
+  { id: "6a5f7cb05304b105b0e37e17", title: "Show Update categories in in-app widgets", slug: "show-update", upvotes: 13, commentCount: 3, postStatus: { name: "Planned" }, statusChangedAt: "2026-07-03T10:00:00Z" },
+  { id: "6a57fe6a4b24f98eeb66291e", title: "Grain integration", slug: "grain-integration", upvotes: 16, commentCount: 0, postStatus: { name: "Planned" }, statusChangedAt: "2026-07-04T10:00:00Z" },
+];
+
+describe("vendor-agnostic portals", () => {
+  test("a list that is not a roadmap is refused, whatever else it looks like", () => {
+    // Blog posts carry ids, titles and a `status` too. What they never carry is a
+    // roadmap status next to a vote count — and picking this array would emit a
+    // listing that the next diff reads as a roadmap appearing out of nowhere.
+    const blog = nextDataPage([
+      { id: "p1", title: "Introducing our new API", status: "published", readingTime: 4 },
+      { id: "p2", title: "How we scaled to 10k users", status: "published", readingTime: 7 },
+      { id: "p3", title: "Changelog: June", status: "draft", readingTime: 2 },
+      { id: "p4", title: "Hiring a designer", status: "published", readingTime: 3 },
+    ]);
+    expect(parseGenericPortal(blog, "https://acme.com/blog")).toEqual({ ok: false, reason: "unparsable" });
+  });
+
+  test("reads a __NEXT_DATA__ portal, including a status nested behind an object", () => {
+    const parsed = parseGenericPortal(nextDataPage(FEATUREBASE_POSTS), "https://feedback.acme.app/");
+    const portal = portalOf(parsed);
+    expect(portal.vendor).toBe("generic");
+    expect(portal.entries).toHaveLength(3);
+    // `postStatus.name`, lowercased — never `statusChangedAt`, which is excluded.
+    expect(new Set(portal.entries.map((e) => e.status))).toEqual(new Set(["in review", "planned"]));
+    expect(portal.entries.find((e) => e.title === "Heap integration")?.votes).toBe(18);
+  });
+
+  test("reads an app-router portal out of the RSC flight stream", () => {
+    const html = flightPage([
+      { id: "68526e76c6718dbd6cabaefd", title: "Request update button", status: "PLANNED", initialUpvotes: 54 },
+      { id: "69a1d710185f2ce26bfd43a8", title: "Richer Jira Sync", status: "PLANNED", initialUpvotes: 47 },
+      { id: "60f98141b52b5f00157043d5", title: "Custom fonts in Help Center", status: "IN_PROGRESS", initialUpvotes: 40 },
+    ]);
+    const portal = portalOf(parseGenericPortal(html, "https://feedback.acme.io/"));
+    expect(portal.entries.map((e) => e.votes).sort((a, b) => b - a)).toEqual([54, 47, 40]);
+    // `initialUpvotes` is nobody's canonical spelling — the fuzzy pass is what makes
+    // the adapter work on a vendor we have never read.
+    expect(portal.entries.every((e) => e.status.length > 0)).toBe(true);
+  });
+
+  test("free-text 'statuses' fail the enum bar, so a comment list is not a roadmap", () => {
+    const chatter = nextDataPage(
+      Array.from({ length: 10 }, (_, i) => ({
+        id: `c${i}`,
+        title: `Reply number ${i}`,
+        status: `answered by teammate ${i}`,
+        votes: i,
+      })),
+    );
+    expect(parseGenericPortal(chatter, "https://acme.com/")).toEqual({ ok: false, reason: "unparsable" });
+  });
+
+  test("a repeated id disqualifies the array — it cannot be the snapshot's sort key", () => {
+    const dupes = nextDataPage(
+      FEATUREBASE_POSTS.map((p) => ({ ...p, id: "same-id-for-everyone" })),
+    );
+    expect(parseGenericPortal(dupes, "https://acme.com/")).toEqual({ ok: false, reason: "unparsable" });
+  });
+
+  test("a global assigned a function, not data, is skipped rather than run", () => {
+    // Nuxt serialises state as an IIFE. There is no object literal to scan, and
+    // executing it is not something a scraper does.
+    const nuxt = `<html><body><script>window.__NUXT__=(function(a,b){return {data:[a,b]}}(1,2))</script></body></html>`;
+    expect(parseGenericPortal(nuxt, "https://acme.com/")).toEqual({ ok: false, reason: "unparsable" });
+  });
+
+  test("a guessed subdomain serving an unknown vendor becomes a real snapshot", async () => {
+    const out = await scrape(
+      "c1",
+      "https://acme.com",
+      {},
+      {
+        reachable: async () => false,
+        fetchHtml: async (u) => (u === "https://feedback.acme.com/" ? nextDataPage(FEATUREBASE_POSTS) : null),
+        fetchPortalHtml: async () => ({ kind: "body", text: nextDataPage(FEATUREBASE_POSTS) }),
+        fetchPortalApi: async () => ({ kind: "transient" }),
+      },
+    );
+    expect(out.metadata.vendor).toBe("generic");
+    expect(out.metadata.entries).toBe(3);
+    expect(out.metadata.discoveredVia).toBe("subdomain");
+    // Never claims to know the size of a roadmap it read one page of.
+    expect(out.text).toContain("entries listed on the page we can read");
+    expect(out.text).toContain("[in review] Heap integration — votes 13+");
+  });
+});
+
 // --- discovery --------------------------------------------------------------
 
 describe("portal discovery", () => {
@@ -445,21 +556,59 @@ describe("portal discovery", () => {
   test("falls back to {brand}.canny.io before probing the competitor's own subdomains", async () => {
     const probed: string[] = [];
     const found = await discoverRoadmapPortal("https://acme.com/product", {
-      reachable: async (u) => {
+      reachable: async () => false,
+      fetchHtml: async (u) => {
         probed.push(u);
-        return u === "https://acme.canny.io/";
+        return u === "https://acme.canny.io/" ? CANNY_HTML : null;
       },
     });
     expect(found).toEqual({ url: "https://acme.canny.io/", vendor: "canny", source: "canny_subdomain" });
     expect(probed[0]).toBe("https://acme.canny.io/");
   });
 
+  test("an unclaimed {brand}.canny.io is not a portal — Canny 200s for every brand", async () => {
+    // The shell Canny serves for a subdomain nobody owns: the island parses, and says
+    // so. Reachability cannot see this, which is why every guess is read, not pinged.
+    const unclaimed = cannyPageWith((state) => {
+      state.company = { error: null, loading: false, notFound: true };
+      state.boards = { items: {} };
+      state.posts = {};
+      state.roadmap = { hasNextPage: false };
+    });
+    const found = await discoverRoadmapPortal("https://acme.com", {
+      reachable: async () => false,
+      fetchHtml: async (u) =>
+        u === "https://acme.canny.io/" ? unclaimed : u === "https://feedback.acme.com/" ? CANNY_HTML : null,
+    });
+    // Before the island check this returned the phantom Canny page, so the real
+    // portal one probe further down was never reached and the scrape reported
+    // `portal_private` — a portal that does not exist, called closed.
+    expect(found).toEqual({ url: "https://feedback.acme.com/", vendor: null, source: "subdomain" });
+  });
+
   test("finds a custom-domain portal on a conventional subdomain", async () => {
     const found = await discoverRoadmapPortal("https://acme.com", {
-      reachable: async (u) => u === "https://feedback.acme.com/",
+      reachable: async () => false,
+      fetchHtml: async (u) => (u === "https://feedback.acme.com/" ? CANNY_HTML : null),
     });
     // Vendor unknown from the host alone — the payload identifies it.
     expect(found).toEqual({ url: "https://feedback.acme.com/", vendor: null, source: "subdomain" });
+  });
+
+  test("a subdomain that exists but is not a portal never ends the search", async () => {
+    // `feedback.` resolves on plenty of domains and serves a help centre. Committing
+    // to it on reachability alone is how a URL override onto a path (the escape hatch
+    // for every portal we cannot find) was silently ignored.
+    const found = await discoverRoadmapPortal("https://acme.com/roadmap", {
+      reachable: async () => true,
+      fetchHtml: async (u) =>
+        u === "https://feedback.acme.com/"
+          ? "<html><body><h1>Help centre</h1></body></html>"
+          : u === "https://acme.com/roadmap"
+            ? nextDataPage(FEATUREBASE_POSTS)
+            : null,
+    });
+    expect(found).toEqual({ url: "https://acme.com/roadmap", vendor: null, source: "page" });
   });
 
   test("follows a roadmap link from the nav, including one to a vendor host", () => {

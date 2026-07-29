@@ -1,7 +1,8 @@
 import * as cheerio from "cheerio";
 import { normalizeHostname } from "@outrival/shared";
 import { safeFetch } from "../lib/guarded-fetch";
-import { isCannyHost } from "./canny";
+import { cannyCompanyExists, isCannyHost } from "./canny";
+import { parseGenericPortal } from "./generic";
 import { matchProductboardPortal } from "./productboard";
 import type { RoadmapVendor } from "./types";
 
@@ -9,12 +10,17 @@ import type { RoadmapVendor } from "./types";
  * Find a competitor's public roadmap / feedback portal, cheapest probe first:
  *
  *   1. the URL we were given is already a portal (the user's override wins verbatim);
- *   2. `{brand}.canny.io` — the default Canny address, derivable with no request
- *      beyond the reachability probe;
+ *   2. `{brand}.canny.io` — the default Canny address, derivable from the domain and
+ *      confirmed by reading the page's state island (Canny 200s on any subdomain);
  *   3. portal subdomains on the competitor's own domain (feedback./roadmap./ideas./
  *      portal.) — where a Canny or ProductBoard custom domain lives;
  *   4. a nav/footer link on the homepage, which is the only way to find a portal on
- *      a bespoke address.
+ *      a bespoke address;
+ *   5. failing all of that, the page we were given, read as a portal itself — the
+ *      rung that honours a URL override onto a path (`acme.com/roadmap`).
+ *
+ * Steps 1-4 IDENTIFY a portal; step 5 only proposes one. Nothing here decides that a
+ * page is a roadmap — the adapters do, and they refuse far more than they accept.
  *
  * Mirrors `docs/discover.ts` in shape (injectable network surface, HEAD-then-GET
  * reachability, soft-404 guard) rather than sharing its helpers: that module's probes
@@ -43,7 +49,7 @@ export interface RoadmapCandidate {
   url: string;
   /** null when the host doesn't name a vendor — the fetcher identifies it by payload. */
   vendor: RoadmapVendor | null;
-  source: "given" | "canny_subdomain" | "subdomain" | "nav" | "footer";
+  source: "given" | "canny_subdomain" | "subdomain" | "nav" | "footer" | "page";
 }
 
 /** Injectable network surface, so the whole cascade is testable without sockets. */
@@ -94,6 +100,26 @@ async function defaultReachable(url: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Whether a GUESSED address really serves a portal — by reading it, not by pinging it.
+ *
+ * Every address this module invents is a guess, and each one had its own way of being
+ * wrong: Canny answers 200 on every subdomain including brands nobody owns, and a
+ * `feedback.` subdomain routinely exists while serving a help centre. Committing to
+ * either sent the scraper to a page that is not a roadmap and, worse, stopped the
+ * search — so the real portal one rung further down was never looked at.
+ *
+ * Addresses the SITE itself advertises (a nav or footer link) are not guesses and do
+ * not come through here.
+ */
+async function confirmPortal(url: string, fetchHtml: (u: string) => Promise<string | null>): Promise<boolean> {
+  const html = await fetchHtml(url);
+  if (html === null) return false;
+  // Canny custom domains are identified by their state island; everyone else by the
+  // vendor-agnostic shape. Neither costs an extra request.
+  return cannyCompanyExists(html) || parseGenericPortal(html, url).ok;
 }
 
 /**
@@ -165,7 +191,7 @@ export async function discoverRoadmapPortal(
   const brand = domain.split(".")[0];
   if (brand) {
     const cannyUrl = `https://${brand}.canny.io/`;
-    if (await reachable(cannyUrl)) {
+    if (await confirmPortal(cannyUrl, fetchHtml)) {
       return { url: cannyUrl, vendor: "canny", source: "canny_subdomain" };
     }
   }
@@ -174,7 +200,9 @@ export async function discoverRoadmapPortal(
   // domain, or a self-hosted portal we'll identify from its payload.
   for (const label of PORTAL_SUBDOMAINS) {
     const candidate = `https://${label}.${domain}/`;
-    if (await reachable(candidate)) return { url: candidate, vendor: null, source: "subdomain" };
+    if (await confirmPortal(candidate, fetchHtml)) {
+      return { url: candidate, vendor: null, source: "subdomain" };
+    }
   }
 
   // Last resort: one GET of the homepage, for a portal on a bespoke address.
@@ -189,5 +217,13 @@ export async function discoverRoadmapPortal(
     return { url: footer, vendor: looksLikePortalUrl(footer), source: "footer" };
   }
 
-  return null;
+  // Last rung: the page we were given, read AS a portal. This is what honours a URL
+  // override onto a bespoke path (`acme.com/roadmap`) — `looksLikePortalUrl` only
+  // recognises vendor HOSTS, so without this the override was searched FROM instead of
+  // read, and the "point us at it" copy on `no_roadmap_portal` promised nothing.
+  //
+  // Safe to try on a plain homepage too, because it is only ever a CANDIDATE: the
+  // generic adapter's qualification bar is what decides, and a marketing page carries
+  // no array of vote-bearing entries under a status enum.
+  return { url: base.toString(), vendor: null, source: "page" };
 }

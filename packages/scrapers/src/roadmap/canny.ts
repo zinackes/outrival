@@ -1,3 +1,4 @@
+import { parseLooseJson, scanObjectLiteral } from "./islands";
 import type { RoadmapEntry, RoadmapParse } from "./types";
 
 /**
@@ -41,41 +42,13 @@ export function isCannyHost(url: string): boolean {
 export function extractStateIsland(html: string): Record<string, unknown> | null {
   const marker = /window\.__data\s*=\s*/.exec(html);
   if (!marker) return null;
-  const start = marker.index + marker[0].length;
-  if (html[start] !== "{") return null;
-
-  // Brace scan that skips over string literals, so a `{` inside a post title cannot
-  // unbalance the object.
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-  let end = -1;
-  for (let i = start; i < html.length; i++) {
-    const c = html[i];
-    if (inString) {
-      if (escaped) escaped = false;
-      else if (c === "\\") escaped = true;
-      else if (c === '"') inString = false;
-      continue;
-    }
-    if (c === '"') inString = true;
-    else if (c === "{") depth++;
-    else if (c === "}" && --depth === 0) {
-      end = i;
-      break;
-    }
-  }
-  if (end === -1) return null;
-
-  // The only non-JSON token Canny emits is a bare `undefined` in value position.
-  // Anchoring on the preceding `:`/`,`/`[` keeps the substitution to value slots.
-  const json = html.slice(start, end + 1).replace(/([:,[]\s*)undefined\b/g, "$1null");
-  try {
-    const parsed: unknown = JSON.parse(json);
-    return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : null;
-  } catch {
-    return null;
-  }
+  // The brace scan and the tolerant `undefined` substitution live in `islands.ts`:
+  // Canny is not the only portal that inlines a JS object literal, and the generic
+  // adapter reads the same shapes.
+  const raw = scanObjectLiteral(html, marker.index + marker[0].length);
+  if (raw === null) return null;
+  const parsed = parseLooseJson(raw);
+  return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : null;
 }
 
 function rec(x: unknown): Record<string, unknown> | null {
@@ -84,6 +57,25 @@ function rec(x: unknown): Record<string, unknown> | null {
 
 function str(x: unknown): string {
   return typeof x === "string" ? x.trim() : "";
+}
+
+/**
+ * Whether a `{brand}.canny.io` page belongs to a company that actually exists.
+ *
+ * Canny answers 200 on EVERY subdomain: an unclaimed brand gets the same shell as a
+ * live portal, and the only thing that tells them apart is `company.notFound` in the
+ * state island. A reachability probe therefore cannot validate the guessed address —
+ * this can.
+ *
+ * Deliberately narrow: only an explicit `notFound: true` disqualifies. An island we
+ * cannot read means "not proven a portal" (the caller keeps looking), and an island
+ * that simply lacks the key is left alone, so a Canny rename degrades to the
+ * behaviour we had before this check rather than hiding every real portal.
+ */
+export function cannyCompanyExists(html: string): boolean {
+  const island = extractStateIsland(html);
+  if (!island) return false;
+  return rec(island.company)?.notFound !== true;
 }
 
 /**

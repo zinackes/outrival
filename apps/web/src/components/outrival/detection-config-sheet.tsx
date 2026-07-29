@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { SpinnerIcon } from "@/components/icons";
 import { toast } from "sonner";
 import { DETECTION_OVERLAP_PRESETS, DISCOVERY_REGIONS } from "@outrival/shared";
@@ -38,6 +38,7 @@ export function DetectionConfigSheet({
   onSaved?: () => void;
 }) {
   // Fetch-on-open via useQuery; `config` stays a local editable draft.
+  const queryClient = useQueryClient();
   const configQ = useQuery({
     queryKey: ["detectionConfig"],
     queryFn: () => api.getDetectionConfig().then((r) => r.config),
@@ -75,6 +76,9 @@ export function DetectionConfigSheet({
         ...config,
         excludedDomains,
       });
+      // The sheet stays mounted, so reopening reads the cache rather than
+      // refetching (app-wide staleTime is 60s) — seed it with what we just saved.
+      queryClient.setQueryData(["detectionConfig"], next);
       setConfig(next);
       setExcludedText(next.excludedDomains.join("\n"));
       onSaved?.();

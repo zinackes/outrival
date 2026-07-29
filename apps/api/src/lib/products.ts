@@ -118,7 +118,7 @@ export async function ensurePrimaryProductForSelf(
 
 /**
  * patch-28 — link a freshly added competitor to the product the caller is scoped to
- * (shared, isSpecific=false) so its signals get tagged into the feed the user was
+ * so its signals get tagged into the feed the user was
  * actually looking at, falling back to the org's primary when there is no scope (All
  * products) or the scope no longer resolves — a stale cookie or a foreign org must not
  * leave the competitor linked to nothing, which would hide it from every product feed.
@@ -140,10 +140,10 @@ export async function associateCompetitorWithScopedProduct(
 }
 
 /**
- * patch-28 — link a competitor to a specific product (shared, isSpecific=false),
- * tenant-safe via the products.orgId check. Used when tracking a discovery candidate
- * so it lands in the product it was discovered for, not always the primary.
- * relevanceScore seeds from the competitor's overlap. Idempotent.
+ * patch-28 — link a competitor to a product, tenant-safe via the products.orgId
+ * check. Used when tracking a discovery candidate so it lands in the product it was
+ * discovered for, not always the primary. relevanceScore seeds from the competitor's
+ * overlap. Idempotent.
  */
 export async function associateCompetitorWithProduct(
   orgId: string,
@@ -166,8 +166,45 @@ export async function associateCompetitorWithProduct(
     .values({
       productId,
       competitorId,
-      isSpecific: false,
       relevanceScore: competitor?.overlapScore ?? null,
     })
     .onConflictDoNothing();
+}
+
+/**
+ * The product a competitor-scoped action speaks for when the caller carries no
+ * product scope ("All products"): a product this competitor is actually LINKED to
+ * (product_competitors), primary first then display order, falling back to the org's
+ * primary when it is linked to none (a self-competitor, or a legacy org with no
+ * junction row). Mirrors the anchor priority the worker uses to pick whose profile
+ * writes a signal's insight, so a battle card and the signals it is built on speak
+ * for the same product instead of both defaulting to the primary SKU.
+ * Tenant-safe: org-scoped through the products join.
+ */
+export async function competitorAnchorProduct(
+  orgId: string,
+  competitorId: string,
+): Promise<{ id: string; selfCompetitorId: string } | null> {
+  const [linked] = await db
+    .select({ id: products.id, selfCompetitorId: products.selfCompetitorId })
+    .from(productCompetitors)
+    .innerJoin(products, eq(products.id, productCompetitors.productId))
+    .where(
+      and(
+        eq(productCompetitors.competitorId, competitorId),
+        eq(products.orgId, orgId),
+        ne(products.status, "archived"),
+      ),
+    )
+    .orderBy(desc(products.isPrimary), asc(products.position), asc(products.createdAt))
+    .limit(1);
+  if (linked) return linked;
+
+  const [primary] = await db
+    .select({ id: products.id, selfCompetitorId: products.selfCompetitorId })
+    .from(products)
+    .where(and(eq(products.orgId, orgId), ne(products.status, "archived")))
+    .orderBy(desc(products.isPrimary), asc(products.position), asc(products.createdAt))
+    .limit(1);
+  return primary ?? null;
 }

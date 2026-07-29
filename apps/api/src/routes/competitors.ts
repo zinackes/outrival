@@ -1085,9 +1085,11 @@ competitorsRouter.get("/", async (c) => {
     return { sources: rows.length, failing, failingSource };
   }
 
-  // Per-competitor product attribution for the all-products chip (patch-28): only the
-  // products a competitor is *specific* to (isSpecific). Shared competitors get an
-  // empty list → the web renders no chip. Org-joined so a forged productId can't leak.
+  // Per-competitor product attribution for the all-products chip (patch-28): the
+  // products a competitor is linked to. This used to list only the ones it was
+  // *specific* to, but every link was written shared, so the chips were empty for
+  // every competitor and the surface answered nothing. Org-joined so a forged
+  // productId can't leak.
   const linkRows = await db
     .select({
       competitorId: productCompetitors.competitorId,
@@ -1098,19 +1100,31 @@ competitorsRouter.get("/", async (c) => {
     .where(
       and(
         eq(products.orgId, orgId),
-        eq(productCompetitors.isSpecific, true),
+        ne(products.status, "archived"),
         inArray(
           productCompetitors.competitorId,
           list.map((c) => c.id),
         ),
       ),
     );
-  const specificByCompetitor = new Map<string, string[]>();
+  // A competitor linked to EVERY product is relevant everywhere: chips would repeat
+  // the same row on every competitor and disambiguate nothing, so it gets none. That
+  // keeps the anti-noise intent the isSpecific filter was reaching for, without
+  // hiding the attribution that actually distinguishes one competitor from another.
+  const [{ n: activeProductCount } = { n: 0 }] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(products)
+    .where(and(eq(products.orgId, orgId), ne(products.status, "archived")));
+  const productsByCompetitor = new Map<string, string[]>();
   for (const r of linkRows) {
-    const arr = specificByCompetitor.get(r.competitorId) ?? [];
+    const arr = productsByCompetitor.get(r.competitorId) ?? [];
     arr.push(r.productId);
-    specificByCompetitor.set(r.competitorId, arr);
+    productsByCompetitor.set(r.competitorId, arr);
   }
+  const attributionOf = (competitorId: string) => {
+    const ids = productsByCompetitor.get(competitorId) ?? [];
+    return ids.length >= activeProductCount ? [] : ids;
+  };
 
   // Competitors frozen by the plan cap (over-cap after a downgrade). Org-level and
   // independent of any product scope — the oldest `maxCompetitors` stay monitored,
@@ -1136,7 +1150,7 @@ competitorsRouter.get("/", async (c) => {
     );
     return {
       ...c,
-      specificProductIds: specificByCompetitor.get(c.id) ?? [],
+      productIds: attributionOf(c.id),
       pausedByPlan: pausedByPlan.has(c.id),
       freshness,
       analysis,
@@ -2068,7 +2082,6 @@ competitorsRouter.get("/:id/products", async (c) => {
   const links = await db
     .select({
       productId: productCompetitors.productId,
-      isSpecific: productCompetitors.isSpecific,
     })
     .from(productCompetitors)
     .innerJoin(products, eq(products.id, productCompetitors.productId))

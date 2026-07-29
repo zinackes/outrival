@@ -424,7 +424,6 @@ productsRouter.get("/:id", async (c) => {
   const linked = await db
     .select({
       competitorId: productCompetitors.competitorId,
-      isSpecific: productCompetitors.isSpecific,
       relevanceScore: productCompetitors.relevanceScore,
       name: competitors.name,
       url: competitors.url,
@@ -822,10 +821,9 @@ productsRouter.delete("/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-const AttachSchema = z.object({ isSpecific: z.boolean().optional() });
-
-// POST /api/products/:id/competitors/:competitorId — link a competitor to a product
-// (shared by default; isSpecific=true marks it specific to this product).
+// POST /api/products/:id/competitors/:competitorId — link a competitor to a product.
+// The link IS the membership: linking the same competitor to several products is how
+// a competitor shared across SKUs is expressed. Idempotent.
 productsRouter.post("/:id/competitors/:competitorId", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
@@ -839,22 +837,14 @@ productsRouter.post("/:id/competitors/:competitorId", async (c) => {
   });
   if (!competitor) return c.json({ error: "Competitor not found" }, 404);
 
-  const body = await c.req.json().catch(() => ({}));
-  const parsed = AttachSchema.safeParse(body ?? {});
-  const isSpecific = parsed.success ? (parsed.data.isSpecific ?? false) : false;
-
   await db
     .insert(productCompetitors)
     .values({
       productId: product.id,
       competitorId,
-      isSpecific,
       relevanceScore: competitor.overlapScore ?? null,
     })
-    .onConflictDoUpdate({
-      target: [productCompetitors.productId, productCompetitors.competitorId],
-      set: { isSpecific },
-    });
+    .onConflictDoNothing();
   return c.json({ ok: true });
 });
 

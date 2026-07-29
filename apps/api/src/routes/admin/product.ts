@@ -290,12 +290,27 @@ productRouter.get("/multi-product-metrics", async (c) => {
     else distribution.sixPlus += 1;
   }
 
+  // The shared/specific split is gone with the is_specific flag (2026-07-29). What
+  // the junction can still answer, and the thing worth watching, is how much
+  // cross-SKU tracking actually happens: total links, and how many competitors are
+  // deliberately followed for more than one product.
   const [assoc] = await db
     .select({
-      shared: sql<number>`count(*) filter (where ${productCompetitors.isSpecific} = false)::int`,
-      specific: sql<number>`count(*) filter (where ${productCompetitors.isSpecific} = true)::int`,
+      links: sql<number>`count(*)::int`,
+      competitors: sql<number>`count(distinct ${productCompetitors.competitorId})::int`,
     })
     .from(productCompetitors);
+
+  const [crossProduct] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(
+      db
+        .select({ competitorId: productCompetitors.competitorId })
+        .from(productCompetitors)
+        .groupBy(productCompetitors.competitorId)
+        .having(sql`count(*) > 1`)
+        .as("multi"),
+    );
 
   const [cards] = await db
     .select({
@@ -309,7 +324,11 @@ productRouter.get("/multi-product-metrics", async (c) => {
     multiProductOrgs,
     totalActiveProducts,
     distribution,
-    associations: { shared: assoc?.shared ?? 0, specific: assoc?.specific ?? 0 },
+    associations: {
+      links: assoc?.links ?? 0,
+      competitors: assoc?.competitors ?? 0,
+      crossProduct: crossProduct?.n ?? 0,
+    },
     battleCards: {
       total: cards?.total ?? 0,
       couples: cards?.couples ?? 0,

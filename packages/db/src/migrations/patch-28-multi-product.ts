@@ -71,8 +71,8 @@ export async function migrateToMultiProduct(): Promise<void> {
       productId = created.id;
     }
 
-    // Link every real competitor (non-self, not soft-deleted) to the product,
-    // shared (isSpecific=false). relevanceScore seeds from the competitor's overlap.
+    // Link every real competitor (non-self, not soft-deleted) to the product.
+    // relevanceScore seeds from the competitor's overlap.
     const orgCompetitors = await db.query.competitors.findMany({
       where: and(
         eq(competitors.orgId, org.id),
@@ -88,7 +88,6 @@ export async function migrateToMultiProduct(): Promise<void> {
           orgCompetitors.map((c) => ({
             productId,
             competitorId: c.id,
-            isSpecific: false,
             relevanceScore: c.overlapScore ?? null,
           })),
         )

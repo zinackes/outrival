@@ -212,7 +212,7 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
 
     // patch-28 — deterministically tag the products (SKUs) this signal affects:
     // every non-archived product of the org whose competitor set includes this
-    // competitor (via product_competitors). A competitor shared by two products
+    // competitor (via product_competitors). A competitor linked to two products
     // tags its signals into both feeds. Empty when the org has no product yet.
     // Resolved BEFORE the insight because it also decides WHOSE product the
     // insight is written from — see myProduct below.
@@ -230,17 +230,12 @@ export async function runGenerateSignal(payload: z.input<typeof InputSchema>) {
           ne(products.status, "archived"),
         ),
       )
-      // Anchor priority: a product this competitor is SPECIFICALLY assigned to
-      // (isSpecific) outranks a shared link, then the primary, then order. Every
-      // competitor is auto-linked to the primary as shared, so without the
-      // isSpecific tie-break a competitor tracked specifically for a non-primary
-      // SKU would still be judged from the primary product's perspective.
-      .orderBy(
-        desc(productCompetitors.isSpecific),
-        desc(products.isPrimary),
-        asc(products.position),
-        asc(products.createdAt),
-      );
+      // Anchor priority when a competitor is tracked for several SKUs: the primary,
+      // then display order. A competitor followed for ONE product needs no tie-break
+      // — the single link is the answer, which is why the old isSpecific ordering
+      // (dropped 2026-07-29) bought nothing: every link was written shared anyway.
+      // To have a non-primary SKU speak for a competitor, unlink it from the primary.
+      .orderBy(desc(products.isPrimary), asc(products.position), asc(products.createdAt));
     const productIds = associatedProducts.map((p) => p.productId);
 
     // Whose product the insight speaks for. `organizations.productProfile` is

@@ -1,0 +1,1 @@
+ALTER TABLE "product_competitors" DROP COLUMN "is_specific";

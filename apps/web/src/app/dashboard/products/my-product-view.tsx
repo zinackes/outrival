@@ -532,7 +532,6 @@ export function MyProductView({
         product={p}
         row={row}
         competitorCount={competitors ? competitors.length : (row?.competitorCount ?? null)}
-        specificCount={competitors?.filter((c) => c.isSpecific).length ?? null}
         onEdit={() => selectTab("positioning")}
         onRescan={() => void rescan(["profile"])}
         canRescan={Boolean(p.url)}

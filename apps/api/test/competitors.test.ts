@@ -73,7 +73,7 @@ describe("GET /competitors roster projection", () => {
     expect(item?.freshness).toBeDefined();
     expect(item?.analysis).toBeDefined();
     expect(item?.pausedByPlan).toBe(false);
-    expect(item?.specificProductIds).toEqual([]);
+    expect(item?.productIds).toEqual([]);
 
     // Heavy jsonb dropped by the columns projection (plan-012).
     expect(item?.overrides).toBeUndefined();

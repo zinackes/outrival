@@ -81,6 +81,21 @@ const GROUNDING_POLICY: Record<string, { grounding: boolean; confidence: boolean
   // rivals). The domains are validated downstream by the liveness check, so the
   // citation envelope would only cost output tokens.
   name_competitors: { grounding: false, confidence: false },
+  // The battle card is the WIDEST output in the product — up to 28 entries across
+  // six sections — so a verbatim sourceQuote per assertion roughly doubles it, and
+  // it was the top of that range that kept truncating (2 of the 4 parse failures
+  // ever recorded sit at exactly the 2048 ceiling). Raising the budget instead
+  // moved the failure rather than removing it: Groq's free tier counts
+  // `prompt_tokens + max_tokens` against 8000 TPM, so a 3.5k prompt asking for 6k
+  // came back 413 before the model ran at all.
+  //
+  // The envelope is also the redundant half of this card's verification. Nothing
+  // renders those citations — the battle card UI shows a confidence badge and
+  // evidence-source rows, never a quote — and the claim-level faithfulness gate
+  // independently decomposes the finished card and checks each claim against the
+  // SAME evidence, with the power to block publication, which the citation score
+  // never had. Drop the quotes, keep `confidence` (it is what the badge reads).
+  generate_battle_card: { grounding: false, confidence: true },
 };
 
 /**

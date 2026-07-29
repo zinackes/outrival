@@ -63,7 +63,19 @@ export interface CompletionOptions {
 function shouldFailover(err: unknown): boolean {
   if (!(err instanceof OpenAI.APIError)) return false;
   const s = err.status ?? 0;
-  return s === 429 || s === 401 || s === 403 || s === 404 || s >= 500;
+  return s === 429 || s === 413 || s === 401 || s === 403 || s === 404 || s >= 500;
+}
+
+// 413 = this request does not fit THIS provider's limits. Groq's free tier counts
+// `prompt_tokens + max_tokens` against a per-minute ceiling of 8000, so a prompt of
+// 3.5k asking for a 6k answer is refused outright — while Cerebras (1M/day) or a
+// paid provider would take it. That makes 413 the clearest possible failover signal
+// and, unlike every other failover cause, it says nothing at all about the
+// provider's health: parking it would push small tasks off a perfectly good
+// provider because one big task didn't fit.
+// Exported for unit testing this branch, like isConfigError below.
+export function isTooLarge(err: unknown): boolean {
+  return err instanceof OpenAI.APIError && err.status === 413;
 }
 
 // 401/403/404 = bad key, wrong model id, or wrong base URL at THIS provider — an env
@@ -147,6 +159,9 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
   // "all_providers_failed / no_providers_available" message implies.
   let sawConfigError = false;
   let sawTransientError = false;
+  // A request no provider would accept is a bug in what WE sent, not an outage —
+  // see the exhaustion path for why that distinction has to survive to the end.
+  let sawTooLarge = false;
   // In-memory record of providers already tried THIS call. The per-provider breaker
   // (tripBreaker) only advances pickProvider to the next provider when it persists —
   // which needs Redis. Without Upstash that breaker is a no-op, so pickProvider would
@@ -220,8 +235,16 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
     } catch (err) {
       if (shouldFailover(err)) {
         const rateLimited = err instanceof OpenAI.APIError && err.status === 429;
+        const tooLarge = isTooLarge(err);
         if (isConfigError(err)) sawConfigError = true;
+        else if (tooLarge) sawTooLarge = true;
         else sawTransientError = true;
+        // A refused-as-too-large request leaves the provider healthy: try the next
+        // one without parking this one.
+        if (tooLarge) {
+          lastErr = err;
+          continue;
+        }
         // Park THIS provider (per-provider breaker) and fail over. We deliberately do
         // NOT feed the GLOBAL breaker here: a per-provider failure the pool routes
         // around (the task still succeeds on the next provider) is not "all providers
@@ -254,6 +277,14 @@ async function callLLM(options: CompletionOptions, fast = false): Promise<string
       `ai_provider_misconfigured: every provider rejected the request (last: ${detail}). ` +
         `Check AI_PROVIDER_*_BASE_URL (needs a trailing /v1) and AI_PROVIDER_*_MODEL.`,
     );
+  }
+  // Every provider refused the request as too large. Nothing is down: the prompt or
+  // the max_tokens budget is simply bigger than the pool can serve, and counting it
+  // toward the global breaker would blank AI for the whole workspace over one
+  // oversized task. Surface it as what it is, so the fix goes to the caller's budget.
+  if (sawTooLarge && !sawTransientError && !sawConfigError) {
+    const detail = lastErr instanceof Error ? lastErr.message : String(lastErr);
+    throw new AIUnavailableError(`ai_request_too_large: ${detail}`);
   }
   // Transient cross-provider failure: count this failed TASK (not per attempt).
   // recordFailure trips the global breaker only once AI_CIRCUIT_BREAKER_THRESHOLD

@@ -472,11 +472,35 @@ type BattleCardJobRow = {
  * @outrival/queue work()); a hard failure carries the serialised error. */
 function failureReason(job: BattleCardJobRow): string | null {
   const output = job.output as { aborted?: boolean; message?: string } | null | undefined;
+  // An abort carries a sentence we wrote for this exact situation — pass it through.
   if (output?.aborted && output.message) return output.message;
   if (job.state === "failed" || job.state === "cancelled") {
-    return output?.message ?? "The generation failed. Try again in a moment.";
+    return humanise(output?.message) ?? "The generation failed. Try again in a moment.";
   }
   return null;
+}
+
+/**
+ * A crashed job carries the serialised error, which is written for us, not for the
+ * reader. Left raw, a Groq capacity refusal reached the user as
+ * "413 Request too large for model `openai/gpt-oss-120b` in organization
+ * org_01kks… service tier `on_demand` … Upgrade to Dev Tier today" — an org id, a
+ * model name and our supplier's billing link, none of which is theirs to act on.
+ * Translate the ones we know and keep the rest: the raw text still sits in the
+ * job's output and in Sentry, where it belongs.
+ */
+function humanise(message: string | undefined): string | null {
+  if (!message) return null;
+  if (/request too large|ai_request_too_large|context length/i.test(message)) {
+    return "This card was too large for the AI provider to accept. Try again — if it keeps happening on this competitor, tell us and we will size it down.";
+  }
+  if (/rate limit|rate_limited|\b429\b|tokens per minute|TPM/i.test(message)) {
+    return "The AI provider is rate-limited right now. Try again in a minute.";
+  }
+  if (/ai_unavailable|all_providers_failed|no_providers_available|misconfigured/i.test(message)) {
+    return "AI generation is temporarily unavailable. Try again shortly — nothing was lost.";
+  }
+  return message;
 }
 
 /** Which pass the worker is on, read from the ai_runs rows it writes as it goes.

@@ -44,6 +44,7 @@ import {
   type Job,
   type JobWithMetadata,
   type ScrapeMonitorPayload,
+  type GenerateBattleCardPayload,
   type OrgRefPayload,
 } from "@outrival/queue";
 import { logger } from "@outrival/shared";
@@ -87,7 +88,10 @@ import { runDetectSilentMonitors } from "../core/detect-silent-monitors";
 import { runHeartbeat } from "../core/heartbeat";
 import { runScrapeMonitor, onScrapeMonitorFailure } from "../core/scrape-monitor";
 import { runDetectPlatform } from "../core/detect-platform";
-import { runGenerateBattleCard } from "../core/generate-battle-card";
+import {
+  runGenerateBattleCard,
+  onGenerateBattleCardFailure,
+} from "../core/generate-battle-card";
 
 // Which queues a worker process consumes, keyed by WORKER_ROLE:
 //   browser — the jobs that launch Chromium or render a PDF (scrape-monitor,
@@ -222,7 +226,27 @@ export async function registerHandlers(role: WorkerRole): Promise<string[]> {
 
     // On-demand battle card — launches Chromium to render the PDF. The summary-less
     // grounding path runs refresh-competitor-summary inline (Decision #1).
-    await on(generateBattleCard, runGenerateBattleCard);
+    //
+    // Same terminal-attempt rule as scrape-monitor above: the "could not be
+    // generated" notification must fire ONCE per click, not once per retry. A
+    // retryable error (an AI rate limit, a provider 5xx) runs the body three times,
+    // and notifying inside it sent the user three identical toasts for one card.
+    const battleCardHandler = async (
+      data: GenerateBattleCardPayload,
+      job: Job<GenerateBattleCardPayload>,
+    ): Promise<unknown> => {
+      try {
+        return await runGenerateBattleCard(data);
+      } catch (err) {
+        const meta = job as JobWithMetadata<GenerateBattleCardPayload>;
+        if (err instanceof NonRetriable || meta.retryCount >= meta.retryLimit) {
+          await onGenerateBattleCardFailure({ payload: data, error: err });
+        }
+        throw err;
+      }
+    };
+    await work(generateBattleCard, battleCardHandler, { includeMetadata: true });
+    registered.push(generateBattleCard.name);
   }
 
   return registered;

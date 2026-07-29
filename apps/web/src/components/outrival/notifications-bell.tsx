@@ -2,34 +2,17 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { BellIcon, CheckIcon, ChecksIcon, TrashIcon, XIcon } from "@/components/icons";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { notificationsBellQuery } from "@/lib/queries";
+import type { AppNotification as Notification } from "@/lib/api";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
-
-interface Notification {
-  id: string;
-  // Mirrors the notification_type enum (packages/db). The bell renders every type
-  // the same way (title/body/link), so this is documentation + a narrowing guard,
-  // not a switch.
-  type:
-    | "signal"
-    | "new_competitor"
-    | "self_change"
-    | "onboarding_complete"
-    | "structural_change"
-    | "silent_monitor"
-    | "analysis_ready";
-  title: string;
-  body: string | null;
-  linkUrl: string | null;
-  isRead: boolean;
-  createdAt: string;
-}
 
 export function NotificationsBell({ compact = false }: { compact?: boolean } = {}) {
   const [items, setItems] = useState<Notification[]>([]);
@@ -41,28 +24,20 @@ export function NotificationsBell({ compact = false }: { compact?: boolean } = {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
-  async function loadInitial() {
-    try {
-      const [listRes, countRes] = await Promise.all([
-        fetch(`${BASE}/api/notifications?limit=20`, { credentials: "include" }),
-        fetch(`${BASE}/api/notifications/unread-count`, { credentials: "include" }),
-      ]);
-      if (listRes.ok) {
-        const { notifications } = (await listRes.json()) as { notifications: Notification[] };
-        for (const n of notifications) seenIds.current.add(n.id);
-        setItems(notifications);
-      }
-      if (countRes.ok) {
-        const { count } = (await countRes.json()) as { count: number };
-        setUnreadCount(count);
-      }
-    } catch {
-      /* ignore */
-    }
-  }
+  // The opening snapshot. Seeded by the dashboard layout, so on a cold load it is
+  // already in the cache and no request leaves the browser; without a seed the query
+  // fetches once, which is what the two mount-time fetches used to do. Everything
+  // after this point is local state driven by the SSE stream below.
+  const snapshot = useQuery(notificationsBellQuery());
 
   useEffect(() => {
-    loadInitial();
+    if (!snapshot.data) return;
+    for (const n of snapshot.data.items) seenIds.current.add(n.id);
+    setItems(snapshot.data.items);
+    setUnreadCount(snapshot.data.unreadCount);
+  }, [snapshot.data]);
+
+  useEffect(() => {
     const es = new EventSource(`${BASE}/api/notifications/stream`, {
       withCredentials: true,
     });

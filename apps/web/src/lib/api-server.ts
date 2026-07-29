@@ -36,6 +36,7 @@ import type {
   OnboardingChecklist,
   StructuralChangeRow,
   AiStatus,
+  AppNotification,
 } from "./api";
 import type { CompetitorData } from "@/app/dashboard/competitors/[id]/competitor-detail-view";
 
@@ -140,12 +141,13 @@ export async function getShellData(productId?: string): Promise<{
   structuralChanges: StructuralChangeRow[] | null;
   aiStatus: AiStatus | null;
   competitors: Competitor[] | null;
+  notifications: { items: AppNotification[]; unreadCount: number } | null;
 }> {
   // Same query string the page-level seeds build, so React.cache collapses the two
   // into ONE round-trip when a page seeds the roster too (overview, competitors,
   // compare) rather than fetching it twice per render.
   const compScope = productId ? `?productId=${encodeURIComponent(productId)}` : "";
-  const [products, structural, aiStatus, competitors] = await Promise.all([
+  const [products, structural, aiStatus, competitors, notifList, unread] = await Promise.all([
     tryGet<{ products: ProductSummary[] }>(`/api/products`),
     tryGet<{ changes: StructuralChangeRow[] }>(
       `/api/structural-changes?status=detected`,
@@ -156,12 +158,23 @@ export async function getShellData(productId?: string): Promise<{
     // after hydration — so the sidebar sat empty through the whole first paint on
     // every cold navigation, on every page. Seeded here it lands with the shell.
     tryGet<{ competitors: Competitor[] }>(`/api/competitors${compScope}`),
+    // The notification bell's opening snapshot. It mounts on every dashboard page
+    // and used to fire these two from the browser after hydration, so the badge and
+    // the dropdown were empty through the whole first paint, on every cold load.
+    tryGet<{ notifications: AppNotification[] }>(`/api/notifications?limit=20`),
+    tryGet<{ count: number }>(`/api/notifications/unread-count`),
   ]);
   return {
     products: products?.products ?? null,
     structuralChanges: structural?.changes ?? null,
     aiStatus: aiStatus ?? null,
     competitors: competitors?.competitors ?? null,
+    // Both halves or neither: the count is org-wide unread, not a tally of the 20
+    // rows above, so a half-seed would show a badge that contradicts its own list.
+    notifications:
+      notifList && unread
+        ? { items: notifList.notifications, unreadCount: unread.count }
+        : null,
   };
 }
 

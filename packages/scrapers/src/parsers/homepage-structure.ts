@@ -55,6 +55,17 @@ export interface HomepageSection {
 }
 
 export interface HomepageStructure {
+  /**
+   * Which generation of THIS parser produced the structure. Absent on everything
+   * stored before the field existed, which is exactly what makes it useful: the diff
+   * compares two captures that may have been parsed months apart, so a change in how
+   * a field is extracted otherwise reads as a change in the page itself. Bump it when
+   * an extraction rule changes what a field holds for the same HTML, and teach
+   * `diffHomepages` to sit out that field across a version boundary. One scrape later
+   * both sides carry the new version and the field is compared again.
+   */
+  parserVersion?: number;
+
   // Global metadata
   title: string;
   /** Primary language subtag ("fr", "de", "en"), lowercased. Detected from the
@@ -312,6 +323,100 @@ function walkSections(body: DomNode, baseUrl: string): RawSection[] {
 
 type CheerioRoot = ReturnType<typeof cheerio.load>;
 
+/**
+ * Generation of this parser, stamped on every structure it produces. `1` is the
+ * hero-CTA scope rewrite: version `undefined` means the CTAs were extracted by the
+ * old scope rule, so the two are not comparable and the diff must not read the
+ * difference between them as the page changing its buttons.
+ */
+export const PARSER_VERSION = 1;
+
+/**
+ * How far above the H1 we are willing to look for its buttons. Deep enough to clear
+ * the text column, the grid cell and the padding wrapper that modern hero markup
+ * stacks between the two; shallow enough that we stop before the page shell, where
+ * the first link found would be a navigation item rather than a call to action.
+ */
+const HERO_SCOPE_LEVELS = 5;
+/** Enough to reach the real button past a couple of eyebrow/badge links. */
+const MAX_HERO_CTAS = 12;
+
+/**
+ * True when `href` leaves the site the page belongs to. Subdomains stay: `app.acme.com`
+ * is where a real "Open the app" button points. A different registrable domain does
+ * not, and that single rule removes a whole class of hero eyebrow badges without a
+ * list of their names: "Backed by Y Combinator" points at ycombinator.com, "4.6/5 on
+ * G2" at g2.com, an app-store badge at apple.com. Each was being read as the primary
+ * call to action purely for being the first link in the hero.
+ */
+function isOffSite(href: string | null, baseUrl: string): boolean {
+  if (!href) return false;
+  try {
+    const link = new URL(href).hostname.toLowerCase().replace(/^www\./, "");
+    const page = new URL(baseUrl).hostname.toLowerCase().replace(/^www\./, "");
+    if (!link || !page) return false;
+    return !(link === page || link.endsWith(`.${page}`) || page.endsWith(`.${link}`));
+  } catch {
+    return false; // unparseable on either side — keep the candidate
+  }
+}
+
+/**
+ * Links and buttons inside `root` that could be a hero call to action, in document
+ * order. Each carries its class string so "primary-looking" can be judged without
+ * leaning on a cheerio element type that cheerio v1 does not export.
+ */
+function ctasWithin(
+  $: CheerioRoot,
+  root: ReturnType<CheerioRoot>,
+  baseUrl: string,
+): Array<Cta & { cls: string }> {
+  const out: Array<Cta & { cls: string }> = [];
+  root.find("a, button").each((_, el) => {
+    if (out.length >= MAX_HERO_CTAS) return;
+    const $el = $(el);
+    // Navigation and footer links are site chrome, never a hero CTA. The upward walk
+    // reaches an ancestor holding the navigation on plenty of pages, and without this
+    // the "primary CTA" of those pages becomes "Login" or a nav item. `header` is NOT
+    // excluded: on a landing page the header often IS the hero.
+    if ($el.closest('nav, [role="navigation"], footer').length) return;
+    // Read with the break-aware walk, not cheerio's .text(), which glues sibling
+    // blocks into one word: production captures stored labels like
+    // "Newv4.5.0 GAv4.5.0: AI Agents are GA" and "Get StartedBring NextGen".
+    const text = elText(el as unknown as DomNode);
+    if (!text) return;
+    // A skip link is an accessibility affordance present on well-built pages, and it
+    // is deliberately the FIRST focusable thing in the document.
+    if (/^skip to\b/i.test(text)) return;
+    const isAnchor = (el as unknown as DomNode).name?.toLowerCase() === "a";
+    const href = isAnchor ? resolveHref($el.attr("href"), baseUrl) : null;
+    if (isOffSite(href, baseUrl)) return;
+    out.push({ text, href, cls: ($el.attr("class") ?? "").toLowerCase() });
+  });
+  return out;
+}
+
+/**
+ * Walk up from the H1 and return the candidates of the first ancestor that has any,
+ * so the scope is defined by where the buttons actually are rather than by which tag
+ * happens to sit closest to the heading.
+ */
+function heroCtaCandidates(
+  $: CheerioRoot,
+  h1: ReturnType<CheerioRoot>,
+  baseUrl: string,
+): Array<Cta & { cls: string }> {
+  if (!h1.length) return [];
+  let node = h1.parent();
+  for (let level = 0; node.length && level < HERO_SCOPE_LEVELS; level++, node = node.parent()) {
+    const tag = (node[0] as unknown as DomNode | undefined)?.name?.toLowerCase();
+    if (tag === "body" || tag === "html") break;
+    const found = ctasWithin($, node, baseUrl);
+    if (found.length > 0) return found;
+  }
+  return [];
+}
+
 function extractHero(
   $: CheerioRoot,
   baseUrl: string,
@@ -329,25 +434,23 @@ function extractHero(
     subheadline = candidate || null;
   }
 
-  // CTAs: links/buttons within the hero scope (the H1's nearest section/header
-  // ancestor, falling back to its parent). The first "primary-looking" one wins.
-  const scope = h1.closest("section, header, div");
-  const root = scope.length ? scope : h1.parent();
-  // Pair each candidate with its class string so "primary-looking" can be judged
-  // without leaning on a cheerio element type that isn't exported in v1.
-  const candidates: Array<Cta & { cls: string }> = [];
-  root.find("a, button").each((_, el) => {
-    if (candidates.length >= 8) return;
-    const $el = $(el);
-    const text = norm($el.text());
-    if (!text) return;
-    const isAnchor = (el as unknown as DomNode).name?.toLowerCase() === "a";
-    const href = isAnchor ? resolveHref($el.attr("href"), baseUrl) : null;
-    candidates.push({ text, href, cls: ($el.attr("class") ?? "").toLowerCase() });
-  });
+  // CTAs: the links/buttons of the hero. "The hero" is the nearest ancestor of the
+  // H1 that actually holds one, walked upward a bounded number of levels.
+  //
+  // This used to be `h1.closest("section, header, div")`, i.e. the nearest ancestor
+  // of any of those kinds whether or not it contained a button, and a great many
+  // layouts wrap the H1 and its copy in a tight text column and put the buttons in a
+  // SIBLING of that column. The chosen scope then held no button at all and the hero
+  // came back with no CTA: 73 of the 181 homepage structures stored in production
+  // carry a headline with no call to action beside it, which is the single largest
+  // reason nothing can be said about how a competitor sells.
+  const candidates = heroCtaCandidates($, h1, baseUrl);
+  // `\bstart\b` on the LABEL, not just on the class: the class list already carried
+  // "start", so a hero whose button said "Start your project" (supabase.com) but
+  // carried no telltale class lost the ranking to whatever link came first in the DOM.
   const looksPrimary = (c: { cls: string; text: string }): boolean =>
     /primary|btn-primary|cta|get-?started|sign-?up|start/.test(c.cls) ||
-    /get started|start free|sign up|try /i.test(c.text);
+    /get started|\bstart\b|sign up|try |free trial/i.test(c.text);
 
   const strip = (c: Cta & { cls: string }): Cta => ({ text: c.text, href: c.href });
   const primaryRaw = candidates.find(looksPrimary) ?? candidates[0] ?? null;
@@ -709,6 +812,7 @@ export function parseHomepageStructure(html: string, baseUrl: string): HomepageS
   const language = detectLanguage(languageSample, declaredLang);
 
   return {
+    parserVersion: PARSER_VERSION,
     title,
     language,
     metaDescription,

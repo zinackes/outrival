@@ -119,6 +119,116 @@ describe("parseHomepageStructure — hero", () => {
   });
 });
 
+// The buttons of a hero are very often NOT inside the element that wraps the H1: a
+// text column holds the copy and a sibling holds the actions. Looking only at the
+// H1's nearest section/div therefore returned no CTA at all, which is what left 73
+// of 181 production captures with a headline and nothing to say about how the
+// competitor sells.
+describe("parseHomepageStructure — hero CTA scope", () => {
+  const page = (hero: string) =>
+    `<!doctype html><html><head><title>T</title></head><body>
+      <header><nav>
+        <a href="/product">Product</a><a href="/pricing">Pricing</a><a href="/login">Log in</a>
+      </nav></header>
+      <main>${hero}</main>
+      <footer><a href="/terms">Terms</a></footer>
+     </body></html>`;
+
+  it("finds the buttons in a SIBLING of the column that holds the H1", () => {
+    const s = parseHomepageStructure(
+      page(`<section class="hero">
+              <div class="max-w-xl"><h1>Ship faster</h1><p>For product teams.</p></div>
+              <div class="actions">
+                <a class="btn-primary" href="/signup">Start free</a>
+                <a href="/demo">Book a demo</a>
+              </div>
+            </section>`),
+      BASE,
+    );
+    expect(s.hero.primaryCta).toEqual({ text: "Start free", href: "https://acme.com/signup" });
+    expect(s.hero.secondaryCta?.text).toBe("Book a demo");
+  });
+
+  it("climbs through several wrappers between the H1 and the buttons", () => {
+    const s = parseHomepageStructure(
+      page(`<section><div><div><div class="copy"><h1>Ship faster</h1></div></div>
+              <a class="cta" href="/signup">Get started</a></div></section>`),
+      BASE,
+    );
+    expect(s.hero.primaryCta?.text).toBe("Get started");
+  });
+
+  it("never treats a navigation or footer link as a hero CTA", () => {
+    // The H1 sits alone in <main>, so the walk reaches an ancestor that also contains
+    // the nav. Before the nav exclusion, this hero's "primary CTA" was "Product".
+    const s = parseHomepageStructure(page(`<h1>Ship faster</h1>`), BASE);
+    expect(s.hero.primaryCta).toBeNull();
+    expect(s.hero.secondaryCta).toBeNull();
+  });
+
+  it("reads a button whose label spans several blocks without gluing it", () => {
+    // Verbatim shapes from production: "Newv4.5.0 GAv4.5.0: AI Agents are GA" and
+    // "Get StartedBring NextGen to My Campus" were stored as the primary CTA.
+    const s = parseHomepageStructure(
+      page(`<section><h1>Ship faster</h1>
+              <a href="/signup"><div>Get Started</div><div>Bring NextGen to My Campus</div></a>
+            </section>`),
+      BASE,
+    );
+    expect(s.hero.primaryCta?.text).toBe("Get Started Bring NextGen to My Campus");
+  });
+
+  it("does not mistake an off-site eyebrow badge for the call to action", () => {
+    // Heroes open with a funding badge, a review score or a release note, all of them
+    // pointing off-site, and all of them were being read as the primary CTA purely for
+    // coming first. One rule removes the class without naming any of them.
+    const s = parseHomepageStructure(
+      page(`<section>
+              <a href="https://www.ycombinator.com/companies/acme">Backed by Y Combinator</a>
+              <a href="https://www.g2.com/products/acme">4.6/5 on G2</a>
+              <h1>Ship faster</h1>
+              <a href="/signup">Start your project</a>
+            </section>`),
+      BASE,
+    );
+    expect(s.hero.primaryCta?.text).toBe("Start your project");
+  });
+
+  it("keeps a link to their own app subdomain", () => {
+    // "Open the app" points at app.acme.com, which is the same site, not off it.
+    const s = parseHomepageStructure(
+      page(`<section><h1>Ship faster</h1>
+              <a href="https://app.acme.com/new">Start building</a></section>`),
+      BASE,
+    );
+    expect(s.hero.primaryCta).toEqual({
+      text: "Start building",
+      href: "https://app.acme.com/new",
+    });
+  });
+
+  it("ranks the button by its label, not by document order", () => {
+    // supabase.com: "Start your project" carries no telltale class, so before the label
+    // was consulted it lost to whichever link the hero happened to render first.
+    const s = parseHomepageStructure(
+      page(`<section><h1>Build in a weekend</h1>
+              <a href="/docs">Documentation</a>
+              <a href="/dashboard">Start your project</a></section>`),
+      BASE,
+    );
+    expect(s.hero.primaryCta?.text).toBe("Start your project");
+  });
+
+  it("ignores the skip link, which is deliberately the first focusable element", () => {
+    const s = parseHomepageStructure(
+      page(`<section><a href="#main">Skip to content</a><h1>Ship faster</h1>
+              <a class="btn-primary" href="/signup">Start free</a></section>`),
+      BASE,
+    );
+    expect(s.hero.primaryCta?.text).toBe("Start free");
+  });
+});
+
 // Browser-rendered text: <br> and inline-styled fragments must not glue into
 // one word ("Gérer<br>une" → "Gérer une", not "Gérerune"), while a styled
 // substring of a single word ("Out<span>rival</span>") must stay glued.

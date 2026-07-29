@@ -2098,6 +2098,20 @@ export type CompetitorOverview = {
     valueProps: string[];
     customerLogos: Array<{ name: string | null; src: string | null }>;
     testimonials: Array<{ quote: string; author: string | null }>;
+    // How they ask a visitor to buy, read off the hero's calls to action (stored on
+    // every homepage capture since patch-16, never surfaced until now). `motion` is
+    // null when the primary CTA asks for neither ("Learn more", "Explore").
+    gtm: {
+      motion: "self_serve" | "sales_led" | null;
+      // The opposite motion, when the secondary CTA offers it. "Start free" next to
+      // "Talk to sales" is a different company from one that only offers the demo.
+      alternate: "self_serve" | "sales_led" | null;
+      primary: { text: string; href: string | null } | null;
+      secondary: { text: string; href: string | null } | null;
+    };
+    // Their own top-level nav, with the labels every SaaS ships dropped. Empty when
+    // the nav says nothing specific about what they build.
+    navItems: string[];
   } | null;
   numericClaims: Array<{
     pattern: string;

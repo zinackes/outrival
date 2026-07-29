@@ -32,6 +32,7 @@ import { seedCompetitorMonitors, enqueueFirstScrapes } from "../lib/seed-monitor
 import { analyticsQuery } from "../lib/analytics-safe";
 import { translateToEnglish } from "../lib/translate";
 import { detectContentLanguage } from "../lib/detect-language";
+import { readGtm, productNavItems, type GtmRead } from "../lib/homepage-gtm";
 import { dedupeVerbatims } from "../lib/review-verbatims";
 import {
   checkCompetitorQuota,
@@ -111,7 +112,13 @@ async function assertOwnedCompetitor(competitorId: string, orgId: string) {
 // parser produces (patch-16/17) is restated here for the fields the fact sheet needs.
 type StoredHomepage = {
   language?: string | null;
-  hero?: { headline?: string | null; subheadline?: string | null };
+  hero?: {
+    headline?: string | null;
+    subheadline?: string | null;
+    primaryCta?: { text?: string | null; href?: string | null } | null;
+    secondaryCta?: { text?: string | null; href?: string | null } | null;
+  };
+  navigation?: { items?: Array<{ text?: string | null; href?: string | null }> };
   sections?: Array<{ heading?: string; type?: string }>;
   socialProof?: {
     // Legacy snapshots stored a single string (alt || src); patch stores objects.
@@ -221,6 +228,11 @@ type HomepageFacts = {
   valueProps: string[];
   customerLogos: FactSheetLogo[];
   testimonials: Array<{ quote: string; author: string | null }>;
+  // How they ask a visitor to buy, and the product vocabulary in their own nav.
+  // Both come out of the same stored structure as the copy above, so they cost no
+  // extra query and exist on every capture we already hold.
+  gtm: GtmRead;
+  navItems: string[];
 };
 
 // Latest parsed homepage structure for a competitor → fact-sheet shape. Self-
@@ -360,6 +372,8 @@ async function buildHomepageFacts(
       valueProps,
       customerLogos,
       testimonials,
+      gtm: readGtm(s.hero),
+      navItems: productNavItems(s.navigation?.items, brandTokens),
     },
   };
 }

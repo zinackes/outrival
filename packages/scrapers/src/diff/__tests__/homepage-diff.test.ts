@@ -85,6 +85,34 @@ describe("diffHomepages — real signals", () => {
   });
 });
 
+// The hero-CTA extractor changed shape once (PARSER_VERSION 1), so a stored capture
+// and a fresh one can disagree about the buttons for reasons that have nothing to do
+// with the page. Comparing across that boundary would have announced a changed call
+// to action on every tracked competitor at once, the first time each was re-scraped.
+describe("diffHomepages — parser version boundary", () => {
+  it("does not report a CTA change between two parser generations", () => {
+    const after = BEFORE.replace("Get started", "Start free");
+    const old = { ...parse(BEFORE), parserVersion: undefined };
+    const changes = diffHomepages(old, parse(after));
+    expect(changes.find((c) => c.kind === "hero_cta_changed")).toBeUndefined();
+  });
+
+  it("still reports everything the version does not affect", () => {
+    const after = BEFORE.replace("Ship faster with Acme", "AI-powered project intelligence");
+    const old = { ...parse(BEFORE), parserVersion: undefined };
+    const changes = diffHomepages(old, parse(after));
+    expect(changes.find((c) => c.kind === "hero_headline_changed")).toBeDefined();
+  });
+
+  it("reports a real CTA change once both sides carry the same version", () => {
+    const after = BEFORE.replace("Get started", "Start free");
+    const changes = diffHomepages(parse(BEFORE), parse(after));
+    const cta = changes.find((c) => c.kind === "hero_cta_changed");
+    expect(cta).toBeDefined();
+    expect(cta?.field).toBe("hero.primaryCta");
+  });
+});
+
 describe("diffHomepages — reordering only", () => {
   it("a pure section reorder yields only section_reordered", () => {
     // Swap the Features and Testimonials sections, no content change.

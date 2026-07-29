@@ -52,6 +52,7 @@ import { SeverityScale } from "@/components/outrival/severity-scale";
 import { AiOutputWarning } from "@/components/outrival/ai-output-warning";
 import { VisualDiff } from "@/components/outrival/visual-diff";
 import { ChangeBreakdown } from "@/components/outrival/change-breakdown";
+import { DiffPreview } from "@/components/outrival/diff-preview";
 
 /**
  * The workspace's right column: one signal read as a document, not a card.
@@ -88,6 +89,11 @@ const PROSE = "max-w-[36rem]";
 // the bottom of the document. Show a glance, then reveal in feed-sized pages.
 const RELATED_INITIAL = 5;
 const RELATED_STEP = 10;
+
+// The page's own lines, collapsed and expanded. A glance is enough to see WHICH
+// roles or plans moved; the full set is for the reader who wants to audit it.
+const DIFF_LINES_COLLAPSED = 8;
+const DIFF_LINES_EXPANDED = 80;
 
 // Mirrors ConfidenceDot's tones so the two never disagree about how loud a
 // given confidence level is: amber only at "low", neutral at "moderate".
@@ -150,6 +156,7 @@ export function SignalDetailPanel({
   const [showComments, setShowComments] = useState(false);
   const [showContext, setShowContext] = useState(false);
   const [showAllChanges, setShowAllChanges] = useState(false);
+  const [showAllLines, setShowAllLines] = useState(false);
   const [showWhy, setShowWhy] = useState(false);
   const [visualFailed, setVisualFailed] = useState(false);
   const [relatedShown, setRelatedShown] = useState(RELATED_INITIAL);
@@ -237,7 +244,15 @@ export function SignalDetailPanel({
     Boolean(detail?.screenshots?.before && detail?.screenshots?.after) &&
     !visualFailed;
   const changes = detail?.changes ?? [];
-  const hasEvidence = hasVisual || changes.length > 0;
+  // The lines the page added and removed. For the sources with no structured
+  // breakdown, which is most of them, this is what makes the Evidence section
+  // exist at all: without it a jobs or pricing signal showed the reader no fact.
+  const diffText = detail?.diffText ?? null;
+  // Exact: the API sends one marked line per line, already capped per side.
+  const diffLineCount = diffText
+    ? diffText.split("\n").filter((l) => l.trim().length > 0).length
+    : 0;
+  const hasEvidence = hasVisual || changes.length > 0 || Boolean(diffText);
   const heldBack =
     signal.filteredReason && signal.filteredReason !== "backfill"
       ? signal.filteredReason
@@ -649,6 +664,32 @@ export function SignalDetailPanel({
                 ) : (
                   <ChangeBreakdown changes={changes} />
                 ))}
+              {diffText && (
+                <div className={cn((hasVisual || changes.length > 0) && "mt-4")}>
+                  <DiffPreview
+                    diffText={diffText}
+                    maxLines={showAllLines ? DIFF_LINES_EXPANDED : DIFF_LINES_COLLAPSED}
+                    hideTruncationNote={diffLineCount > DIFF_LINES_COLLAPSED}
+                  />
+                  {diffLineCount > DIFF_LINES_COLLAPSED && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllLines((v) => !v)}
+                      aria-expanded={showAllLines}
+                      className="mt-2 flex items-center gap-1.5 rounded-sm text-dense font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+                    >
+                      {showAllLines ? "Show fewer lines" : `Show all ${diffLineCount} lines`}
+                      <CaretDownIcon
+                        className={cn(
+                          "size-3.5 transition-transform",
+                          showAllLines && "rotate-180",
+                        )}
+                        aria-hidden
+                      />
+                    </button>
+                  )}
+                </div>
+              )}
             </Section>
           )}
 

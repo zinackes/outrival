@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -12,11 +12,9 @@ import {
 } from "@/components/icons";
 import { api, type ChangeRow } from "@/lib/api";
 import { toastApiError } from "@/lib/error-helpers";
-import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { eyebrowClass } from "@/components/outrival/eyebrow";
-import { parseDiff } from "./helpers";
+import { DiffPreview } from "@/components/outrival/diff-preview";
 
 export function ChangeCard({
   change,
@@ -123,48 +121,3 @@ export function ChangeCard({
   );
 }
 
-function DiffPreview({ diffText }: { diffText: string }) {
-  const { lines, truncated } = useMemo(() => parseDiff(diffText), [diffText]);
-  if (lines.length === 0) {
-    return (
-      <p className="text-xs text-muted-foreground italic">
-        Only HTML/markup differences, nothing meaningful to display.
-      </p>
-    );
-  }
-  const added = lines.filter((l) => l.kind === "add").length;
-  const removed = lines.filter((l) => l.kind === "remove").length;
-  return (
-    <div className="flex flex-col gap-1.5">
-      <div className={cn("flex items-center gap-3", eyebrowClass("micro"))}>
-        {added > 0 && <span className="text-positive">+ {added} added</span>}
-        {removed > 0 && <span className="text-critical">− {removed} removed</span>}
-      </div>
-      <ul className="flex flex-col gap-1 text-dense leading-relaxed">
-        {lines.map((l, i) => (
-          <li
-            key={i}
-            className={cn(
-              "px-2 py-1 rounded-sm font-normal flex gap-2",
-              l.kind === "add" && "bg-positive/[0.08] text-foreground",
-              l.kind === "remove" && "bg-critical/[0.08] text-foreground",
-            )}
-          >
-            <span
-              className={cn(
-                "font-mono shrink-0 select-none",
-                l.kind === "add" ? "text-positive" : "text-critical",
-              )}
-            >
-              {l.kind === "add" ? "+" : "−"}
-            </span>
-            <span className="break-words min-w-0">{l.text}</span>
-          </li>
-        ))}
-      </ul>
-      {truncated && (
-        <p className={eyebrowClass("micro")}>… more changes truncated</p>
-      )}
-    </div>
-  );
-}

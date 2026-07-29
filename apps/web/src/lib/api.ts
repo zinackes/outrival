@@ -452,6 +452,10 @@ export interface SignalDetail {
   // (patch-16). narrative is null and changes is empty for lexical / pre-patch signals.
   narrative: string | null;
   changes: SignalChange[];
+  // The lines the change added and removed, as marked `+`/`-` lines (capped per
+  // side server-side). For every source that has no structured breakdown, which
+  // measured on prod is 87% of signals, this is the only evidence there is.
+  diffText: string | null;
   // Composite relevance score (patch-17), max across the change set. null when
   // not scored (lexical / pre-patch). Shown discreetly.
   relevanceScore: number | null;

@@ -14,7 +14,12 @@ import {
   users,
   user as authUser,
 } from "@outrival/db";
-import { computeThreatScore, getBytesFromR2, SIGNAL_CATEGORIES } from "@outrival/shared";
+import {
+  computeThreatScore,
+  getBytesFromR2,
+  splitDiffText,
+  SIGNAL_CATEGORIES,
+} from "@outrival/shared";
 import { complete, withAiContext, AI_CONFIG } from "@outrival/ai";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../lib/db";
@@ -530,10 +535,50 @@ signalsRouter.get("/export", async (c) => {
   });
 });
 
+// How many lines PER SIDE of the change's diff ride along on a signal's detail.
+// The page's own text is the evidence for every source that has no structured
+// breakdown, so the cap is a payload bound, not an editorial one: the client caps
+// again for display and says how much is behind the fold.
+const EVIDENCE_LINES_PER_SIDE = 40;
+
+/**
+ * The diff a reader is shown, rebuilt from the persisted one.
+ *
+ * `changes.diff_text` runs to 50KB and puts EVERY removed line before the first
+ * added one, so a `left(diff_text, N)` cap would have shipped removals only and
+ * dropped the added side, which on most sources is the news. Split it, cap each
+ * side independently, and re-render the marked lines the client already parses.
+ * Returns null when there is nothing sided to show.
+ *
+ * A STRUCTURED homepage diff returns null here, and that is the point: its
+ * diff_text is `renderStructuredChanges` output, whose body lines are indented
+ * (`  + x`), so `splitDiffText` claims neither side. Those signals already carry
+ * the typed breakdown, so a second, flatter copy of it would be noise. If
+ * splitDiffText ever learns to trim leading whitespace, this stops being true and
+ * homepage signals start rendering both.
+ */
+function evidenceDiff(diffText: string | null): string | null {
+  if (!diffText) return null;
+  const { added, removed } = splitDiffText(diffText);
+  const lines = [
+    ...removed.slice(0, EVIDENCE_LINES_PER_SIDE).map((l) => `- ${l}`),
+    ...added.slice(0, EVIDENCE_LINES_PER_SIDE).map((l) => `+ ${l}`),
+  ];
+  return lines.length > 0 ? lines.join("\n") : null;
+}
+
 // User-safe "Why this insight?" detail (patch-14, progressive disclosure level 2).
-// Exposes ONLY what the user can consume: the plain-language before/after, the
-// monitored page (live URL), and when it was detected. NEVER the R2 snapshot, the
-// raw diff, or the AI classification — the admin tooling (patch-02) covers those.
+// Exposes the plain-language before/after, the monitored page (live URL), when it
+// was detected, and the lines the change added and removed. NEVER the R2 snapshot
+// or the AI classification — the admin tooling (patch-02) covers those.
+//
+// The diff lines were withheld here until 2026-07-29 on the reading that a diff is
+// ops detail. Measured on prod, half of all signals carry neither a before/after
+// pair (the classifier returns null when the change is a SET, which most sources
+// are) nor a structured breakdown (only the homepage differ writes one), so those
+// signals rendered three prose blobs and no fact: a careers-page signal named five
+// departments and not one role. The lines are the same page text the org already
+// reads on the competitor Activity tab, via GET /api/changes.
 signalsRouter.get("/:id/detail", async (c) => {
   const user = c.get("user");
   const orgId = await ensureUserOrg(user.id);
@@ -557,6 +602,9 @@ signalsRouter.get("/:id/detail", async (c) => {
       // semantic changes with their significance. User-safe (no raw HTML/diff) —
       // null/empty for lexical changes and pre-patch signals.
       structuredDiff: changes.structuredDiff,
+      // The lines the change added and removed. For every source with no
+      // structured breakdown this is the only evidence the signal can show.
+      diffText: changes.diffText,
       competitorId: competitors.id,
       competitorName: competitors.name,
       sourceType: monitors.sourceType,
@@ -627,6 +675,7 @@ signalsRouter.get("/:id/detail", async (c) => {
       humanChangeAfter: row.humanChangeAfter,
       narrative: row.narrative,
       changes: breakdown,
+      diffText: evidenceDiff(row.diffText),
       relevanceScore,
       sourceType: row.sourceType,
       sourceUrl: row.sourceUrl,

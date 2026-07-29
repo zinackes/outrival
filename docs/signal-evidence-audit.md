@@ -15,6 +15,42 @@ single-value change on a homepage. Every other shape of change (a set of N new
 items, which is most sources) falls through them and reaches the reader as prose
 only.
 
+## 1b. Measured on prod (2026-07-29, 344 signals)
+
+| source | signals | no before/after pair | no structured breakdown |
+|---|---|---|---|
+| homepage | 97 | 46 | 52 |
+| pricing | 97 | 55 | 97 |
+| jobs | 58 | 38 | 58 |
+| tech_stack | 39 | 0 | 39 |
+| blog | 26 | 18 | 26 |
+| changelog | 9 | 9 | 9 |
+| news | 9 | 5 | 9 |
+| ai_visibility | 6 | 0 | 6 |
+| sitemap | 2 | 2 | 2 |
+| review_shift | 1 | 0 | 1 |
+| **total** | **344** | **173 (50%)** | **299 (87%)** |
+
+Only homepage ever carries a breakdown (45 of its 97), so for every other source
+"no pair" means no evidence at all: **127 signals, 37% of the feed, render prose
+and nothing else.** Part of homepage's 46 pairless signals land there too, since
+52 of them have no breakdown either.
+
+Three things the numbers say that reading the code did not:
+
+- **Pricing is the worst bucket in absolute terms, not the best.** 55 of 97
+  without a pair. A pricing page in practice moves several plans at once, so it
+  is a set like the others, and the eight-word single-pair rule returns null. It
+  is the product's highest-volume source and `pricing_history` is written by the
+  same scrape.
+- **Structured homepage covers only 45 signals of 97.** The lexical fallback is
+  not an edge case, it is 54% of homepage signals, and it carries neither pipe.
+- **The deterministic paths never miss**: tech_stack 0 of 39, ai_visibility 0 of
+  6, review_shift 0 of 1. Meanwhile changelog is 9 of 9 pairless, sitemap 2 of 2,
+  blog 18 of 26. The facts are not missing from the product. They are lost when
+  the change goes through the AI classifier instead of a synthesized
+  classification.
+
 ## 2. The two pipes
 
 **Pipe A: `signals.human_change_before` / `_after`.** One pair of strings,
@@ -85,9 +121,9 @@ the best evidence in the product and none of them is displayed.
 
 | Source | Shape of the change | What the signal shows today | What exists unused |
 |---|---|---|---|
-| homepage (structured) | typed per-field | full breakdown + before/after screenshots + narrative | fine |
-| homepage (lexical fallback) | text | prose only | diff lines |
-| pricing | usually one pair | pair usually present, so this one reads well | the plan rows, trial facts, the price ladder |
+| homepage (structured) | typed per-field | full breakdown + before/after screenshots + narrative | fine, but only 45 of 97 homepage signals take this path |
+| homepage (lexical fallback) | text | prose only, and it is 52 of 97 | diff lines |
+| pricing | **set** of plan rows in practice | 55 of 97 have no pair at all | the plan rows, trial facts, the price ladder |
 | jobs | **set** of N roles | prose only | every title/location/seniority/salary/apply URL |
 | docs | **set** of endpoints and schema fields | prose only | `POST /v1/x` lines, deprecation markers |
 | blog, changelog, news | **set** of entries | prose only | entry titles |
@@ -184,8 +220,13 @@ is already in scope (declared at `:1123`). So passing it down is one argument.
 ## 6. Ranking if only one thing ships
 
 Wave 1 item 1. It is half a day, it adds no AI cost, it needs no migration, it
-reuses a component that already ships to users, and it turns thirteen sources
-from "trust us" into "here is what appeared on the page".
+reuses a component that already ships to users, and it is the only item that
+reaches all 299 signals with no breakdown at once.
+
+Second, and this is what the prod numbers changed: **the pricing fact block from
+wave 2**. 97 signals, 55 of them with no evidence, on the source where a fact is
+worth the most money, with the plan rows already written by the same scrape.
+Before the measurement this looked like the one source that was already fine.
 
 ## 7. Open questions
 
@@ -195,8 +236,8 @@ from "trust us" into "here is what appeared on the page".
 - The window-join versus `change_id` decision in wave 2 is the only migration in
   this document. Worth doing properly if we ever want "what did this signal
   consist of" to be auditable.
-- No prod numbers in this audit: the share of signals with a null pair per source
-  was not measured. The query is one `select` over `signals` joined to `changes`
-  and `monitors`, grouped by `source_type`. Running it would tell us which
-  sources hurt most, and would turn wave 1's coverage claim from reasoned into
-  measured.
+- Not yet measured: how many of the 299 breakdown-less signals actually carry
+  usable `raw_diff.added` / `removed` lines. That number is wave 1's real
+  recovery rate, and a change whose arrays are empty would render an empty
+  Evidence block, which is worse than no block. Worth knowing before building
+  the UI.

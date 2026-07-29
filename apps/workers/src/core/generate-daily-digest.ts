@@ -10,7 +10,7 @@ import {
   digests,
 } from "@outrival/db";
 import { emailButton, signUnsubscribeToken } from "@outrival/shared";
-import { getResend, ALERT_FROM } from "../lib/resend";
+import { sendEmail, ALERT_FROM } from "../lib/resend";
 import { localHour } from "../lib/notification-dispatcher";
 import { escapeHtml } from "../lib/escape-html";
 import { emailShell, e } from "../lib/email-shell";
@@ -180,7 +180,7 @@ export async function runGenerateDailyDigest(payload?: { timestamp?: Date }) {
       );
 
       try {
-        await getResend().emails.send({
+        await sendEmail({
           from: ALERT_FROM,
           to: org.digestEmail,
           // Lever 11 — same briefing branding as the weekly send.

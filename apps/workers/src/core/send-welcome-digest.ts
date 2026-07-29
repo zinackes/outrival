@@ -3,7 +3,7 @@ import { z } from "zod";
 import { and, eq, isNull, ne } from "drizzle-orm";
 import { db, organizations, competitors, onboardingSessions } from "@outrival/db";
 import { renderWelcomeEmail } from "@outrival/shared";
-import { getResend, ALERT_FROM } from "../lib/resend";
+import { sendEmail, ALERT_FROM } from "../lib/resend";
 import { stampOnce } from "../lib/onboarding-funnel";
 
 // Lever 5 brick 1 — D0 welcome digest. Fired from onboarding/complete: "here's your
@@ -37,7 +37,7 @@ export async function runSendWelcomeDigest(payload: z.input<typeof InputSchema>)
       competitorNames: comps.map((c) => c.name),
       dashboardUrl: `${webUrl}/dashboard`,
     });
-    await getResend().emails.send({
+    await sendEmail({
       from: ALERT_FROM,
       to: org.digestEmail,
       subject: email.subject,

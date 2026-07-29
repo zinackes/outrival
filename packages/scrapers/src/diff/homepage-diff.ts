@@ -123,15 +123,24 @@ function diffHero(prev: HomepageStructure, curr: HomepageStructure): StructuredC
       after: curr.hero.subheadline,
     });
   }
-  const ctaPairs: Array<["primaryCta" | "secondaryCta", Cta | null, Cta | null]> = [
-    ["primaryCta", prev.hero.primaryCta, curr.hero.primaryCta],
-    ["secondaryCta", prev.hero.secondaryCta, curr.hero.secondaryCta],
-  ];
-  for (const [name, before, after] of ctaPairs) {
-    const b = ctaString(before);
-    const a = ctaString(after);
-    if (b !== a) {
-      out.push({ kind: "hero_cta_changed", field: `hero.${name}`, before: b, after: a });
+  // The two sides were parsed by different generations of the hero-CTA extractor, so
+  // any difference here is ours and not theirs. Comparing across that boundary would
+  // announce a changed call to action on every competitor at once, the first time each
+  // is re-scraped after the deploy. Skipped for that one comparison only: the capture
+  // is still stored, so the next scrape has two same-version sides and resumes.
+  // Headline, subheadline and everything outside the hero are unaffected by the
+  // version and keep diffing normally.
+  if ((prev.parserVersion ?? 0) === (curr.parserVersion ?? 0)) {
+    const ctaPairs: Array<["primaryCta" | "secondaryCta", Cta | null, Cta | null]> = [
+      ["primaryCta", prev.hero.primaryCta, curr.hero.primaryCta],
+      ["secondaryCta", prev.hero.secondaryCta, curr.hero.secondaryCta],
+    ];
+    for (const [name, before, after] of ctaPairs) {
+      const b = ctaString(before);
+      const a = ctaString(after);
+      if (b !== a) {
+        out.push({ kind: "hero_cta_changed", field: `hero.${name}`, before: b, after: a });
+      }
     }
   }
   return out;

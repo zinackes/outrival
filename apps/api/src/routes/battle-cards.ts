@@ -257,7 +257,7 @@ battleCardsRouter.get("/:id/battle-card/evidence", async (c) => {
   const competitor = await assertOwnedCompetitor(id, orgId);
   if (!competitor) return c.json({ error: "Not found" }, 404);
 
-  const product = await resolveProduct(orgId, c.req.query("productId"));
+  const product = await resolveProduct(orgId, competitor.id, c.req.query("productId"));
   const card = await db.query.battleCards.findFirst({
     where: battleCardWhere(competitor.id, product?.id),
     columns: { id: true },

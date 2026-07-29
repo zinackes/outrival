@@ -43,6 +43,13 @@ export interface FaithfulnessReport {
   unfaithfulClaims: ClaimVerdict[];
   /** Why it was blocked or skipped; null on a clean pass. */
   reason: string | null;
+  /**
+   * Set on a BLOCKED report whose output was then repaired — the refused claims were
+   * deleted and the result re-verified clean, so it published after all. The blocked
+   * report still reaches the review queue: a human decides whether the judge was
+   * right, and that question survives the repair.
+   */
+  repaired?: boolean;
   durationMs: number;
   extractionMs: number;
   judgeMs: number;

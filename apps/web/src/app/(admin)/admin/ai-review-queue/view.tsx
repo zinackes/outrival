@@ -26,6 +26,8 @@ export interface ReviewFaithfulness {
   ratio: number;
   unfaithfulClaims: ReviewClaim[];
   reason: string | null;
+  /** The refused claims were deleted and the rest re-verified clean, so it shipped. */
+  repaired?: boolean;
 }
 
 export interface ReviewItem {
@@ -90,10 +92,14 @@ export function ReviewQueueView({ items }: { items: ReviewItem[] }) {
               {blocked && (
                 <span
                   className="rounded-full border px-2 py-0.5 text-meta"
-                  style={{ borderColor: "var(--critical)", color: "var(--critical)" }}
+                  style={
+                    blocked.repaired
+                      ? { borderColor: "var(--medium)", color: "var(--medium)" }
+                      : { borderColor: "var(--critical)", color: "var(--critical)" }
+                  }
                 >
-                  Not published · <span className="tabular-nums">{blocked.ratio.toFixed(2)}</span>{" "}
-                  supported
+                  {blocked.repaired ? "Claims removed, rest published" : "Not published"} ·{" "}
+                  <span className="tabular-nums">{blocked.ratio.toFixed(2)}</span> supported
                 </span>
               )}
               <span className="ml-auto text-meta text-text-subtle">

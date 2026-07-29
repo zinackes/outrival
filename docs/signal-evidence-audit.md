@@ -148,14 +148,33 @@ screenshot for thirteen sources at once.
 
 ### Wave 1: ship what is already stored (0 AI calls, 0 migrations)
 
-1. **Diff lines on the signal.** Add capped `diffText` plus
-   `rawDiff.added/removed` to `GET /signals/:id/detail`, render with the existing
-   `DiffPreview` inside the Evidence section, behind the existing "Show all N
-   changes" disclosure. Covers jobs, docs, blog, changelog, news, sitemap,
-   roadmap, subdomains, youtube, github_repo, custom, status, reviews.
-   Cap at roughly 40 lines and dedupe, since a careers page diff can carry
-   boilerplate between the roles.
+1. **Diff lines on the signal.** Add capped `diff_text` to
+   `GET /signals/:id/detail`, render with the existing `DiffPreview` inside the
+   Evidence section, behind the existing "Show all N changes" disclosure. Covers
+   jobs, docs, blog, changelog, news, sitemap, roadmap, subdomains, youtube,
+   github_repo, custom, status, reviews. Measured recovery: 169 of the 170
+   evidence-less signals carry lines.
    Effort: half a day.
+
+   Three things to get right, all learned the hard way by the code that already
+   exists:
+
+   - **Send `diff_text`, not `raw_diff`.** `diffLines` groups consecutive changed
+     lines into ONE part (`packages/shared/src/diff/index.ts:47`), so a
+     `raw_diff.added` entry is a multi-line block, not a line. That is why the
+     arrays look small (jobs averages 4 entries for 4289 chars of diff): the
+     count is hunks, not lines. `diff_text` carries a marker on every physical
+     line, and `splitDiffText` already splits it back.
+   - **Reuse the whole existing chain**: `splitDiffText` (shared),
+     `parseDiff` plus `stripHtml` plus `DiffPreview` (web). Nothing new to write
+     on the rendering side.
+   - **`parseDiff` currently emits every removed line before any added line, and
+     caps at 18 total** (`competitor-detail/helpers.ts:20-35`). On a change with
+     more than 18 removals, the additions never render at all. For a signal that
+     is the wrong way round: the added side is usually the news, and a panel
+     showing only what disappeared is precisely the polarity failure the diff
+     labelling was built to prevent. Either lead with the added side or balance
+     the two, and raise the cap for this surface.
 
 2. **Explain the band.** Send `signals.materiality` and render three mini-scales
    in "Why this insight?": decision impact, urgency, corroboration, plus the one

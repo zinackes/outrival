@@ -80,10 +80,11 @@ import { FreshnessDot } from "@/components/outrival/freshness-dot";
 import { AnalysisProgress } from "@/components/outrival/analysis-status";
 import { CompetitorColorPicker } from "@/components/dashboard/competitor-color-picker";
 import { competitorNameColor } from "@/lib/competitor-color";
-import { Fact, FactStrip, StatusDot } from "@/components/outrival/data-marks";
+import { StatusDot } from "@/components/outrival/data-marks";
 import { shortAge } from "@/lib/format-date";
 import { ListError } from "@/components/outrival/list-error";
 import { toastApiError, toastRescanLimit } from "@/lib/error-helpers";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -942,32 +943,88 @@ function Header({
   return (
     <>
     <div className="space-y-3">
-    {/* Identity on top, measurements below. The name, the industry label and the
-        overlap meter used to share the h1 row, which made three unrelated things
-        (what they are called, what they do, how close they are to us) read as one
-        long title — and hung a progress bar off a heading. Facts now live in the
-        strip under the rule, where they are peers of each other. */}
-    <div className="flex items-start justify-between gap-4 flex-wrap">
-      <div className="flex items-start gap-3 min-w-0">
-        {/* Leaving the roster and stepping through it are the same family, so they
-            travel together on the left. That leaves the right side carrying actions
-            only, instead of one undifferentiated row of four outline controls. */}
-        <div className="mt-1 flex shrink-0 items-center gap-0.5">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Link
-                href="/dashboard/competitors"
-                aria-label="Back to competitors"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <ArrowLeftIcon size={16} />
-              </Link>
-            </TooltipTrigger>
-            <TooltipContent>All competitors</TooltipContent>
-          </Tooltip>
-          {total > 1 && index >= 0 && (
-            <>
-              <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-border" />
+    {/* Identity, the way back and the actions on ONE line. Back, previous, 8/16 and
+        next used to queue in front of the name, which started the h1 186px off the
+        leading edge — and nothing below the header aligned to that edge, so the page
+        had two of them. Stepping through the roster acts on the LIST, not on this
+        competitor, so it travels with the other actions on the right; the only thing
+        left between the page edge and the name is the competitor's own mark. */}
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Link
+            href="/dashboard/competitors"
+            aria-label="Back to competitors"
+            className="-ml-2 inline-flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <ArrowLeftIcon size={16} />
+          </Link>
+        </TooltipTrigger>
+        <TooltipContent>All competitors</TooltipContent>
+      </Tooltip>
+
+      {/* The competitor's own mark. It shipped with CompAvatar and the per-competitor
+          colour, and the page it identifies was the one surface never using either. */}
+      <CompAvatar name={competitor.name} url={competitor.url} size={36} />
+
+      <h1
+        className="m-0 font-bold text-title tracking-tight leading-[1.1]"
+        style={competitorNameColor(competitor.color)}
+      >
+        {competitor.name}
+      </h1>
+
+      {/* A freeform industry label is an attribute, not a status. Bare on the h1
+          baseline it read as a broken tagline; a chip says "attribute" by its shape.
+          The width cap stops a long one from eating the row, hence the title. */}
+      {competitor.category && (
+        <Badge
+          variant="outline"
+          title={competitor.category}
+          className="max-w-[26ch] truncate font-normal text-muted-foreground"
+        >
+          {competitor.category}
+        </Badge>
+      )}
+
+      {competitor.url && (
+        <a
+          href={competitor.url}
+          target="_blank"
+          rel="noreferrer"
+          title={competitor.url}
+          className="inline-flex shrink-0 items-center gap-1.5 text-dense text-muted-foreground transition-colors hover:text-foreground"
+        >
+          {hostOf(competitor.url)}
+          <ArrowSquareOutIcon size={14} />
+        </a>
+      )}
+
+      {competitor.pausedByPlan ? (
+        <StatusDot tone="warn">
+          <span className="inline-flex items-center gap-1">
+            <PauseCircleIcon size={14} /> Paused, plan limit
+          </span>
+        </StatusDot>
+      ) : competitor.monitoringPaused ? (
+        <StatusDot>
+          <span className="inline-flex items-center gap-1">
+            <PauseIcon size={14} /> Paused
+          </span>
+        </StatusDot>
+      ) : null}
+      {competitor.alertsMuted && (
+        <StatusDot>
+          <span className="inline-flex items-center gap-1">
+            <BellSlashIcon size={14} /> Muted
+          </span>
+        </StatusDot>
+      )}
+
+      <div className="ml-auto flex items-center gap-2 shrink-0">
+        {total > 1 && index >= 0 && (
+          <>
+            <div className="flex items-center gap-0.5">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -1011,74 +1068,10 @@ function Header({
                   </kbd>
                 </TooltipContent>
               </Tooltip>
-            </>
-          )}
-        </div>
-        {/* The competitor's own mark. It shipped with CompAvatar and the per-competitor
-            colour, and the page it identifies was the one surface never using either. */}
-        <div className="mt-0.5 shrink-0">
-          <CompAvatar name={competitor.name} url={competitor.url} size={40} />
-        </div>
-        <div className="min-w-0">
-          <div className="flex items-center gap-x-2.5 gap-y-1 flex-wrap">
-            <h1
-              className="font-bold text-title md:text-title-lg tracking-tight leading-[1.1] m-0"
-              style={competitorNameColor(competitor.color)}
-            >
-              {competitor.name}
-            </h1>
-            {/* A freeform industry label is an attribute, not a status: plain text. */}
-            {competitor.category && (
-              <span className="text-dense text-muted-foreground">{competitor.category}</span>
-            )}
-          </div>
-          {/* Identity and monitoring state only. What we measure moved to the strip. */}
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-dense text-muted-foreground">
-            {competitor.url && (
-              <a
-                href={competitor.url}
-                target="_blank"
-                rel="noreferrer"
-                title={competitor.url}
-                className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground"
-              >
-                {hostOf(competitor.url)}
-                <ArrowSquareOutIcon size={14} />
-              </a>
-            )}
-            {competitor.pausedByPlan ? (
-              <>
-                <span aria-hidden className="text-border-strong">·</span>
-                <StatusDot tone="warn">
-                  <span className="inline-flex items-center gap-1">
-                    <PauseCircleIcon size={14} /> Paused, plan limit
-                  </span>
-                </StatusDot>
-              </>
-            ) : competitor.monitoringPaused ? (
-              <>
-                <span aria-hidden className="text-border-strong">·</span>
-                <StatusDot>
-                  <span className="inline-flex items-center gap-1">
-                    <PauseIcon size={16} /> Paused
-                  </span>
-                </StatusDot>
-              </>
-            ) : null}
-            {competitor.alertsMuted && (
-              <>
-                <span aria-hidden className="text-border-strong">·</span>
-                <StatusDot>
-                  <span className="inline-flex items-center gap-1">
-                    <BellSlashIcon size={16} /> Muted
-                  </span>
-                </StatusDot>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-      <div className="flex items-center gap-2 shrink-0">
+            </div>
+            <span aria-hidden className="h-5 w-px shrink-0 bg-border" />
+          </>
+        )}
         {/* Battle cards left the tab strip: they're an artefact you go and make,
             not a lens you flip to. The daily generation cap still applies where it
             always did — at generate time, inside the card view. */}
@@ -1172,69 +1165,73 @@ function Header({
       </div>
     </div>
 
-    {/* What we measure about them, on one baseline. Two of the three answer a
-        question with a page behind it, so they are links, not text: "how many
-        sources" is the Sources page, "when did we last look" is the activity
-        feed. The rule above is the only chrome the strip gets. */}
+    {/* What we measure about them, starting at the page's leading edge so everything
+        under the title is one column. The rule that used to separate this from the
+        identity is gone: it was a separator doing the job of a gap, and it turned
+        two halves of one block into a third horizontal band before any content.
+        Each fact carries its own noun now, which is what let the labels go — and
+        with them the three different baselines the label/value cells produced.
+        Two of the three answer a question with a page behind it, so they are links:
+        "how many sources" is the Sources page, "when did we last look" is activity. */}
     {hasFacts && (
-      <div className="border-t border-border pt-3">
-        <FactStrip className="max-w-2xl sm:grid-cols-3">
-          {competitor.overlapScore != null && (
-            <Fact label="Overlap">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    aria-label="About overlap"
-                    className="inline-flex cursor-help items-center gap-2 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <span className="h-1.5 w-16 overflow-hidden rounded-full bg-surface-3">
-                      <span
-                        className="block h-full rounded-full bg-primary"
-                        style={{
-                          width: `${Math.max(0, Math.min(100, competitor.overlapScore))}%`,
-                        }}
-                      />
-                    </span>
-                    <span className="font-mono text-content font-semibold tabular-nums text-foreground">
-                      {Math.round(competitor.overlapScore)}
-                    </span>
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent
-                  side="bottom"
-                  className="max-w-[240px] text-xs leading-relaxed text-pretty normal-case"
-                >
-                  How similar this competitor is to your product (0 to 100). Computed at
-                  discovery via Exa + AI scoring against your product profile.
-                </TooltipContent>
-              </Tooltip>
-            </Fact>
-          )}
-          {sourceCount > 0 && (
-            <Fact label="Sources">
-              <Link
-                href={`/dashboard/competitors/${competitor.id}/sources`}
-                className="inline-flex items-center gap-1.5 rounded-sm transition-colors hover:text-link focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <span className="font-mono tabular-nums">{sourceCount}</span> tracked
-                <CaretRightIcon size={14} className="text-muted-foreground" />
-              </Link>
-            </Fact>
-          )}
-          {lastRunMs > 0 && (
-            <Fact label="Last check">
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-dense text-muted-foreground">
+        {competitor.overlapScore != null && (
+          <Tooltip>
+            <TooltipTrigger asChild>
               <button
                 type="button"
-                onClick={onOpenActivity}
-                className="inline-flex items-center gap-1.5 rounded-sm transition-colors hover:text-link focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label="About overlap"
+                className="inline-flex cursor-help items-center gap-2 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                {formatDistanceToNow(new Date(lastRunMs), { addSuffix: true })}
-                <CaretRightIcon size={16} className="text-muted-foreground" />
+                <span className="h-1.5 w-10 overflow-hidden rounded-full bg-surface-3">
+                  <span
+                    className="block h-full rounded-full bg-primary"
+                    style={{
+                      width: `${Math.max(0, Math.min(100, competitor.overlapScore))}%`,
+                    }}
+                  />
+                </span>
+                <span className="font-mono font-semibold tabular-nums text-foreground">
+                  {Math.round(competitor.overlapScore)}
+                </span>
+                overlap
               </button>
-            </Fact>
-          )}
-        </FactStrip>
+            </TooltipTrigger>
+            <TooltipContent
+              side="bottom"
+              className="max-w-[240px] text-xs leading-relaxed text-pretty normal-case"
+            >
+              How similar this competitor is to your product (0 to 100). Computed at
+              discovery via Exa + AI scoring against your product profile.
+            </TooltipContent>
+          </Tooltip>
+        )}
+        {competitor.overlapScore != null && sourceCount > 0 && (
+          <span aria-hidden className="text-border-strong">·</span>
+        )}
+        {sourceCount > 0 && (
+          <Link
+            href={`/dashboard/competitors/${competitor.id}/sources`}
+            className="inline-flex items-center gap-1 rounded-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <span className="font-mono font-semibold tabular-nums text-foreground">
+              {sourceCount}
+            </span>
+            {sourceCount === 1 ? "source" : "sources"}
+          </Link>
+        )}
+        {(competitor.overlapScore != null || sourceCount > 0) && lastRunMs > 0 && (
+          <span aria-hidden className="text-border-strong">·</span>
+        )}
+        {lastRunMs > 0 && (
+          <button
+            type="button"
+            onClick={onOpenActivity}
+            className="rounded-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            checked {formatDistanceToNow(new Date(lastRunMs), { addSuffix: true })}
+          </button>
+        )}
       </div>
     )}
     </div>

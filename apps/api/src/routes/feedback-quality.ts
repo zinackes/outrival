@@ -6,6 +6,7 @@ import {
   signals,
   battleCards,
   competitorCandidates,
+  users,
 } from "@outrival/db";
 import { db } from "../lib/db";
 import { authMiddleware } from "../middleware/auth";
@@ -246,13 +247,41 @@ feedbackQualityRouter.post("/", async (c) => {
 });
 
 // GET /api/feedback-quality/nps-status — whether the periodic NPS prompt may show.
-// Eligible iff the user hasn't answered (or dismissed) an NPS prompt within the
-// configured window (default 30 days). Server-side so it holds across devices.
+// Three gates, all server-side so they hold across devices:
+//   1. tenure   — the account is at least FEEDBACK_NPS_MIN_ACCOUNT_AGE_DAYS old
+//   2. value    — the org has at least FEEDBACK_NPS_MIN_SIGNALS signals to judge
+//   3. interval — no NPS answer (or dismissal) within FEEDBACK_NPS_INTERVAL_DAYS
+// Asking on the way out of onboarding measures the signup flow, not the product:
+// the user has nothing to score yet, and the one prompt per 30 days is burnt.
 feedbackQualityRouter.get("/nps-status", async (c) => {
   const user = c.get("user");
   const intervalDays = Number(process.env.FEEDBACK_NPS_INTERVAL_DAYS ?? 30);
-  const cutoff = new Date(Date.now() - intervalDays * 24 * 60 * 60 * 1000);
+  const minAccountAgeDays = Number(process.env.FEEDBACK_NPS_MIN_ACCOUNT_AGE_DAYS ?? 14);
+  const minSignals = Number(process.env.FEEDBACK_NPS_MIN_SIGNALS ?? 3);
 
+  const account = await db.query.users.findFirst({
+    where: eq(users.id, user.id),
+    columns: { createdAt: true },
+  });
+  const ageCutoff = new Date(Date.now() - minAccountAgeDays * 24 * 60 * 60 * 1000);
+  if (!account || account.createdAt > ageCutoff) {
+    return c.json({ eligible: false });
+  }
+
+  if (minSignals > 0) {
+    const orgId = await ensureUserOrg(user.id);
+    // Capped probe, not a count(*): we only need "are there at least N".
+    const seen = await db
+      .select({ id: signals.id })
+      .from(signals)
+      .where(eq(signals.orgId, orgId))
+      .limit(minSignals);
+    if (seen.length < minSignals) {
+      return c.json({ eligible: false });
+    }
+  }
+
+  const cutoff = new Date(Date.now() - intervalDays * 24 * 60 * 60 * 1000);
   const last = await db.query.qualityFeedback.findFirst({
     where: and(
       eq(qualityFeedback.userId, user.id),
